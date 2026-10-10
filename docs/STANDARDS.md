@@ -59,14 +59,17 @@ why it is the way it is. Never edit what you have not read.
 - No silent fallbacks: `??`, `||`, `?.` and defaults only where the value is genuinely optional. Fail loudly, naming what
   failed, what was expected and what was received. Errors are named classes with structured fields; never swallowed.
 - Event-driven, no polling (only documented exceptions). Libraries over custom implementations.
+
+### Documented exceptions to "no polling"
+
+- **Clock jump on non-Linux hubs** (`apps/hub/src/clock/resume-watch.ts`, `drift.ts`): Linux re-arms timers on the logind `PrepareForSleep(false)` signal. Windows and macOS hubs run as plain Node services (Run-key launcher, launchd agent) with no power event, so one unref'd 5 s interval compares wall-clock time and re-arms timers when it jumped by more than 8 s. If Linux has no system bus (containers, the fixture sandbox), the hub logs one `clock.resume_watch_unavailable` warning and does not poll.
 - New contract fields are optional or defaulted, and readers ignore fields they do not know (writers stay strict), so an
   older app keeps working against a newer server and a rollback of either side never breaks the other.
 
 ## MCP and search coverage
 
 - **MCP**: everything the app can read or change, an AI can too, through the same hub handler. Each capability has an
-  MCP tool with an accurate one-line description, correct read/write/destructive marking, and confirmation where the app
-  asks for one. Only access-granting steps, phone-only protocols and live media may be human-only, each with a reason.
+  MCP tool with an accurate one-line description, correct read/write/destructive marking. Nothing asks for confirmation: the AI does what it is told and reports. Only access-granting steps, phone-only protocols and live media may be human-only, each with a reason.
 - **Search**: every page, sub-page, tab, in-page action, setting row and every device control and setting is in global
   search, nested under the page, section or device where it appears, with keywords and synonyms for the words people
   use.
