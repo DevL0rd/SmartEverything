@@ -1,3 +1,5 @@
+import { CALL_GLYPHS } from './icon-glyphs-call';
+import { CHAT_GLYPHS } from './icon-glyphs-chat';
 import ArrowUpGlyph from 'lucide-react-native/icons/arrow-up';
 import PaperclipGlyph from 'lucide-react-native/icons/paperclip';
 import ImageGlyph from 'lucide-react-native/icons/image';
@@ -72,6 +74,7 @@ import GaugeGlyph from 'lucide-react-native/icons/gauge';
 import CloudGlyph from 'lucide-react-native/icons/cloud';
 import RouterGlyph from 'lucide-react-native/icons/router';
 import CpuGlyph from 'lucide-react-native/icons/cpu';
+import BotGlyph from 'lucide-react-native/icons/bot';
 import PowerGlyph from 'lucide-react-native/icons/power';
 import AlarmSmokeGlyph from 'lucide-react-native/icons/alarm-smoke';
 import SirenGlyph from 'lucide-react-native/icons/siren';
@@ -261,6 +264,7 @@ export const GLYPHS = {
   cloud: CloudGlyph,
   router: RouterGlyph,
   cpu: CpuGlyph,
+  bot: BotGlyph,
   power: PowerGlyph,
   smoke: AlarmSmokeGlyph,
   siren: SirenGlyph,
@@ -383,6 +387,8 @@ export const GLYPHS = {
   folder: FolderGlyph,
   ban: BanGlyph,
   upload: UploadGlyph,
+  ...CALL_GLYPHS,
+  ...CHAT_GLYPHS,
 } as const;
 
 export type IconName = keyof typeof GLYPHS;

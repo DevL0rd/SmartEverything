@@ -3,7 +3,6 @@ import {
   WATCH_ACTION_RESULT,
   WATCH_CALENDAR,
   type WatchCalendarEvent,
-  type WatchActionRequest,
   type WatchActionResult,
 } from '@smarteverything/domain';
 import { AppUpdateNeededError, nativeFor, type SyncProgressSubscription } from './health-connect';
@@ -14,7 +13,6 @@ import {
   type PhoneApp,
   type WatchRelayChange,
   type WatchRelayStatus,
-  type WatchUserInput,
   PHONE_WATCH_STATUSES,
   WATCH_EVENT,
   WATCH_FAMILY_INFO,
@@ -24,6 +22,10 @@ import {
 
 export async function syncWatches(serverUrl: string, token: string): Promise<PhoneWatchStatus[]> {
   return PHONE_WATCH_STATUSES.parse(await nativeFor('syncWatches').syncWatches(serverUrl, token));
+}
+
+export async function runPushCommand(command: string, payloadJson: string): Promise<void> {
+  await nativeFor('runPushCommand').runPushCommand(command, payloadJson);
 }
 
 export async function startWatches(): Promise<void> {
@@ -99,10 +101,6 @@ export async function findWatch(deviceId: string, on: boolean): Promise<boolean>
   return GRANTED.parse(await nativeFor('findWatch').findWatch(deviceId, on));
 }
 
-export async function setWatchUser(user: WatchUserInput): Promise<number> {
-  return SENT_TO.parse(await nativeFor('setWatchUser').setWatchUser({ ...user }));
-}
-
 export async function watchRelayStatus(): Promise<WatchRelayStatus> {
   return WATCH_RELAY_STATUS.parse(await nativeFor('watchRelayStatus').watchRelayStatus());
 }
@@ -123,15 +121,6 @@ export async function openDndAccess(): Promise<void> {
   await nativeFor('openDndAccess').openDndAccess();
 }
 
-export async function runWatchActionHere(
-  deviceId: string,
-  action: WatchActionRequest,
-): Promise<WatchActionResult> {
-  return WATCH_ACTION_RESULT.parse(
-    await nativeFor('runWatchAction').runWatchAction(deviceId, JSON.stringify(action)),
-  );
-}
-
 export async function probeWatchWorkout(
   deviceId: string,
   sport: number,
@@ -147,9 +136,7 @@ export async function probeWatchWorkout(
 
 export async function setWatchCalendar(events: readonly WatchCalendarEvent[]): Promise<number> {
   const checked = WATCH_CALENDAR.parse(events);
-  return SENT_TO.parse(await nativeFor('setWatchCalendar').setWatchCalendar(JSON.stringify(checked)));
-}
-
-export async function setWatchWeather(weather: Readonly<Record<string, unknown>>): Promise<number> {
-  return SENT_TO.parse(await nativeFor('setWatchWeather').setWatchWeather(JSON.stringify(weather)));
+  return SENT_TO.parse(
+    await nativeFor('setWatchCalendar').setWatchCalendar(JSON.stringify(checked)),
+  );
 }

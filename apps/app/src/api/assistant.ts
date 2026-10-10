@@ -4,7 +4,6 @@ import {
   type AssistantMessageRow,
   type AssistantSettingsChange,
   type AssistantStatus,
-  type ResponderApp,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { SignedLink } from './media';
@@ -75,21 +74,4 @@ export async function updateAssistantSettings(
   const status = await api().call(E.updateAssistantSettings, { body: change });
   log.info('assistant.settings_updated', { fields: Object.keys(change) });
   return status;
-}
-
-export async function connectAssistantApp(app: ResponderApp): Promise<AssistantStatus> {
-  const status = await api().call(E.connectAssistantApp, { params: { app } });
-  log.info('assistant.app_connected', { app });
-  return status;
-}
-
-export async function disconnectAssistantApp(app: ResponderApp): Promise<AssistantStatus> {
-  const status = await api().call(E.disconnectAssistantApp, { params: { app } });
-  log.info('assistant.app_disconnected', { app });
-  return status;
-}
-
-export async function openClaudeDesktop(): Promise<void> {
-  await api().call(E.openAssistantConversation, {});
-  log.info('assistant.claude_desktop_opened', {});
 }

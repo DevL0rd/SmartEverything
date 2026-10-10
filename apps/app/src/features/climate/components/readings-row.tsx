@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Figure } from '../../../components/figure';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
-import { useIdiom } from '../../../design/platform';
+import { atLeast, useSizeClass } from '../../../design/size-class';
 import type { MetricReading } from '../model/comfort';
 import { metricColour, metricIcon, metricShort } from '../model/metric-look';
 
@@ -68,14 +68,17 @@ export function ReadingsRow({
 }: {
   readonly readings: readonly MetricReading[];
 }): ReactNode {
-  const inline = useIdiom() === 'pointer';
+  const size = useSizeClass();
+  const wide = atLeast(size.width, 'medium');
+  const inline = size.idiom === 'pointer' && wide;
+  const roomy = readings.length <= ROOMY && (size.idiom === 'touch' || wide);
   return (
     <View className="flex-row gap-4">
       {readings.map((reading) =>
         inline ? (
           <InlineReading key={reading.metric} reading={reading} />
         ) : (
-          <Reading key={reading.metric} reading={reading} roomy={readings.length <= ROOMY} />
+          <Reading key={reading.metric} reading={reading} roomy={roomy} />
         ),
       )}
     </View>

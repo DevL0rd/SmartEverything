@@ -102,7 +102,7 @@ function SegmentScroll({
         onContentSizeChange={onNeeded}
         horizontal
         showsHorizontalScrollIndicator={false}
-        className="max-w-full"
+        className="max-w-full grow-0"
         contentContainerClassName="grow-0"
       >
         {children}

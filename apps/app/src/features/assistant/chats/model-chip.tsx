@@ -1,78 +1,137 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import type { AiChatRow } from '@smarteverything/domain';
+import type { AiChatRow, Engine } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { effortLabel } from '../picker/efforts';
-import { useModelLabel, type ModelLabel } from '../picker/engine-models';
+import { Tooltip } from '../../../components/tooltip';
+import { useIdiom } from '../../../design/platform';
+import { useSizeClass } from '../../../design/size-class';
 import { ProviderLogo } from '../picker/provider-logo';
 import { changeChat } from './chat-actions';
-import { EnginePicker } from './engine-picker';
+import { useChatModel, type ChatModel } from './chat-model';
+import { ChatModelPicker } from './chat-model-picker';
 
 function ChipFace({
-  label,
-  effort,
+  model,
+  compact,
+  hovered,
 }: {
-  readonly label: ModelLabel;
-  readonly effort: string;
+  readonly model: ChatModel;
+  readonly compact: boolean;
+  readonly hovered: boolean;
 }): ReactNode {
+  const name = compact ? model.shortName : model.name;
   return (
-    <View className="h-9 flex-row items-center gap-1.5 rounded-full bg-surface-3 pl-1.5 pr-2">
-      {label.provider === null ? null : (
+    <View className="h-10 flex-row items-center gap-1.5 rounded-full bg-surface-1 pl-2 pr-2">
+      {model.provider === null ? null : (
         <ProviderLogo
-          provider={label.provider}
-          name={label.providerLabel ?? label.provider}
+          provider={model.provider}
+          name={model.providerLabel ?? model.provider}
           size="s"
         />
       )}
       <Text variant="label" numberOfLines={1} className="shrink">
-        {label.name}
+        {name}
       </Text>
-      {effort === '' ? null : (
-        <Text variant="label" tone="variant">
-          {effort}
+      {model.effort === null ? null : (
+        <Text variant="label" tone="variant" numberOfLines={1}>
+          {`· ${model.effort}`}
         </Text>
       )}
+      {model.effort === null && model.isDefault && !compact ? (
+        <Text variant="caption" tone="variant" className="shrink-0">
+          Default
+        </Text>
+      ) : null}
       <Icon name="chevronDown" size={16} tone="variant" />
+      {hovered ? <Tooltip text="Model and thinking" placement="above" /> : null}
     </View>
   );
 }
 
-export function ModelChip({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  const [open, setOpen] = useState(false);
-  const label = useModelLabel(chat.engine);
-  const effort = chat.engine.effort === null ? '' : effortLabel(chat.engine.effort);
+function labelOf(model: ChatModel): string {
+  const effort = model.effort === null ? '' : `, ${model.effort} thinking`;
+  return `Model: ${model.name}${effort}`;
+}
+
+export function EngineSheet({
+  open,
+  onClose,
+  engine,
+  onChange,
+}: {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly engine: Engine;
+  readonly onChange: (engine: Engine) => void;
+}): ReactNode {
   return (
-    <>
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Model and thinking"
+      detents={['full']}
+      scroll={false}
+    >
+      <ChatModelPicker engine={engine} onChange={onChange} />
+    </Sheet>
+  );
+}
+
+export function ModelChip({
+  engine,
+  onChange,
+}: {
+  readonly engine: Engine;
+  readonly onChange: (engine: Engine) => void;
+}): ReactNode {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const model = useChatModel(engine);
+  const compact = useSizeClass().width === 'compact';
+  const showTip = useIdiom() === 'pointer' && hovered;
+  return (
+    <View
+      className="min-w-0 shrink"
+      onPointerEnter={() => {
+        setHovered(true);
+      }}
+      onPointerLeave={() => {
+        setHovered(false);
+      }}
+    >
       <Interactive
-        label={`Model: ${label.name}${effort === '' ? '' : `, ${effort} thinking`}`}
+        label={labelOf(model)}
         onPress={() => {
           setOpen(true);
         }}
-        className="min-h-touch-min max-w-56 justify-center"
+        className="min-h-touch-min max-w-80 justify-center"
         layerClassName="rounded-full"
       >
-        <ChipFace label={label} effort={effort} />
+        <ChipFace model={model} compact={compact} hovered={showTip} />
       </Interactive>
-      <Sheet
+      <EngineSheet
         open={open}
         onClose={() => {
           setOpen(false);
         }}
-        title="Model and thinking"
-        detents={['full']}
-        scroll={false}
-      >
-        <EnginePicker
-          engine={chat.engine}
-          onChange={(engine) => {
-            void changeChat(chat.id, { engine });
-          }}
-        />
-      </Sheet>
-    </>
+        engine={engine}
+        onChange={onChange}
+      />
+    </View>
+  );
+}
+
+export function ChatModelChip({ chat }: { readonly chat: AiChatRow }): ReactNode {
+  return (
+    <ModelChip
+      engine={chat.engine}
+      onChange={(engine) => {
+        void changeChat(chat.id, { engine });
+      }}
+    />
   );
 }

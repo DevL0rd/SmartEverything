@@ -2,6 +2,7 @@ import {
   API_ENDPOINTS as E,
   type WatchActionRequest,
   type WatchActionResult,
+  type WatchBridge,
   type WatchDayRow,
 } from '@smarteverything/domain';
 import { api } from './transport';
@@ -17,9 +18,6 @@ export async function runWatchAction(
   return api().call(E.runWatchAction, { params: { deviceId }, body: action });
 }
 
-export async function answerWatchAction(
-  requestId: string,
-  result: WatchActionResult,
-): Promise<void> {
-  await api().call(E.answerWatchAction, { body: { requestId, ...result } });
+export async function takeOverWatchBridge(deviceId: string): Promise<WatchBridge> {
+  return api().call(E.takeOverWatchBridge, { params: { deviceId } });
 }

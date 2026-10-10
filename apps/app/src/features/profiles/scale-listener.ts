@@ -20,7 +20,8 @@ import { ValueStore, useValue } from '../../design/external-store';
 import { friendlyError, rawErrorText } from '../../format/errors';
 import { useConnection } from '../../api/transport';
 import { counted, isLocalScale, useActiveProfile } from '../../store/people';
-import { useDevices, useRows } from '../../store/selectors';
+import { useStoreSelector } from '../../store/store-context';
+import { rowsOf, type StoreState } from '../../store/state';
 
 const log = new Logger('app.scale');
 
@@ -169,8 +170,8 @@ function logEvent(event: ScaleEvent): void {
   void refreshRelay();
 }
 
-function useScaleAddresses(): string {
-  return useDevices({ includeHidden: true })
+function scaleAddresses(state: StoreState): string {
+  return rowsOf(state.tables.devices)
     .filter(isLocalScale)
     .flatMap((device) => {
       const address = device.details['address'];
@@ -179,17 +180,26 @@ function useScaleAddresses(): string {
     .join(',');
 }
 
+function useScaleAddresses(): string {
+  return useStoreSelector(scaleAddresses);
+}
+
 function useUnsavedReadings(): string {
   const profileId = useActiveProfile()?.id ?? null;
-  return useRows('body_readings')
-    .filter(
-      (reading) =>
-        reading.profile_id === profileId &&
-        counted(reading) &&
-        reading.saved_to_health_connect_at === null,
-    )
-    .map((reading) => `${reading.id}:${String(reading.version)}`)
-    .join(',');
+  return useStoreSelector(
+    (state) =>
+      rowsOf(state.tables.body_readings)
+        .filter(
+          (reading) =>
+            reading.profile_id === profileId &&
+            counted(reading) &&
+            reading.saved_to_health_connect_at === null,
+        )
+        .map((reading) => `${reading.id}:${String(reading.version)}`)
+        .join(','),
+    Object.is,
+    [profileId],
+  );
 }
 
 export function usePairedServer(): RelayServer | null {

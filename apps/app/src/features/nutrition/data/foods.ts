@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
 import { BARCODE, type FoodCandidate, type FoodRow } from '@smarteverything/domain';
 import { readFoods, searchProducts } from '../../../api/nutrition';
 import { FOODS_KEY, foodSearchKey } from '../../../queries/health-entries';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 const SEARCH_PAUSE_MS = 700;
 const SEARCH_MIN = 3;
 
 export function useFoods(): UseQueryResult<FoodRow[]> {
-  return useQuery({ queryKey: FOODS_KEY, queryFn: readFoods });
+  return useScreenQuery({ queryKey: FOODS_KEY, queryFn: readFoods });
 }
 
 function useSettled(value: string): string {
@@ -34,7 +35,7 @@ export function useProductSearch(query: string): {
 } {
   const settled = useSettled(query.trim().toLowerCase());
   const active = settled.length >= SEARCH_MIN && !isBarcode(settled);
-  const result = useQuery({
+  const result = useScreenQuery({
     queryKey: foodSearchKey(settled),
     queryFn: () => searchProducts(settled),
     enabled: active,

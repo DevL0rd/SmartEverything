@@ -1,8 +1,6 @@
 import { withUnit } from '../../../format/number';
 import { joinParts } from '../../../format/text';
-import type { Device } from '../../../store/state';
 import type { MetricReading } from '../../climate';
-import { isOffline } from '../../devices';
 
 export interface HomeSummary {
   readonly facts: string | null;
@@ -21,12 +19,9 @@ function factsOf(readings: readonly MetricReading[]): string | null {
   return facts === '' ? null : facts;
 }
 
-export function homeSummary(
-  readings: readonly MetricReading[],
-  devices: readonly Device[],
-): HomeSummary {
+export function homeSummary(readings: readonly MetricReading[], offline: number): HomeSummary {
   return {
     facts: factsOf(readings),
-    offline: devices.filter(isOffline).length,
+    offline,
   };
 }

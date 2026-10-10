@@ -11,7 +11,6 @@ export type Brand =
   | 'samsung'
   | 'claude'
   | 'chatgpt'
-  | 'claude-code'
   | 'cursor'
   | 'vscode'
   | 'mcp'
@@ -81,22 +80,6 @@ function Claude(): ReactNode {
   return (
     <Frame fill="#F4EDE4">
       <ClaudeBurst colour="#D97757" />
-    </Frame>
-  );
-}
-
-function ClaudeCode(): ReactNode {
-  return (
-    <Frame fill="#D97757">
-      <Path
-        d="m6.5 8 4 4-4 4"
-        stroke="#FFFFFF"
-        strokeWidth={2}
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Path d="M12.5 16.5h5" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" />
     </Frame>
   );
 }
@@ -220,7 +203,6 @@ const GLYPHS: Readonly<Record<Brand, () => ReactNode>> = {
   samsung: Samsung,
   claude: Claude,
   chatgpt: ChatGpt,
-  'claude-code': ClaudeCode,
   cursor: Cursor,
   vscode: VsCode,
   mcp: Mcp,

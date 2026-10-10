@@ -25,11 +25,19 @@ export interface BannerProps {
   readonly tone: StatusTone;
   readonly title: string;
   readonly body?: string;
+  readonly wrapBody?: boolean;
   readonly action?: BannerAction;
   readonly onDismiss?: () => void;
 }
 
-export function Banner({ tone, title, body, action, onDismiss }: BannerProps): ReactNode {
+export function Banner({
+  tone,
+  title,
+  body,
+  wrapBody = false,
+  action,
+  onDismiss,
+}: BannerProps): ReactNode {
   return (
     <View
       accessibilityRole={tone === 'critical' ? 'alert' : 'summary'}
@@ -42,7 +50,7 @@ export function Banner({ tone, title, body, action, onDismiss }: BannerProps): R
       <View className="min-w-40 flex-1 py-1">
         <Text variant="body-strong">{title}</Text>
         {body === undefined ? null : (
-          <Text variant="callout" tone="variant" numberOfLines={1}>
+          <Text variant="callout" tone="variant" {...(wrapBody ? {} : { numberOfLines: 1 })}>
             {body}
           </Text>
         )}

@@ -8,7 +8,7 @@ import { Text } from '../../../components/text';
 import { CostCard } from './cost-card';
 import type { ColourRole } from '../../../design/tokens';
 import { count } from '../../../format/number';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 import type { CostWindow } from './costs-range';
 import { EstimateNote } from './estimate-note';
 
@@ -56,6 +56,7 @@ export function SummaryTiles({
   readonly rangeName: string;
 }): ReactNode {
   const { sum } = summary.totals;
+  const money = useMoney();
   const trail = summary.series.points.map((point) => point.cost_micros);
   return (
     <>
@@ -63,7 +64,7 @@ export function SummaryTiles({
         title="Total"
         icon="gauge"
         accent="viz-1"
-        value={costText(sum.cost_micros)}
+        value={money.cost(sum.cost_micros)}
         caption={rangeName}
         trail={trail}
         extra={<EstimateNote micros={sum.pending_micros} />}
@@ -80,7 +81,7 @@ export function SummaryTiles({
         title="Per day"
         icon="calendar"
         accent="viz-3"
-        value={costText(Math.round(sum.cost_micros / Math.max(1, window.days)))}
+        value={money.cost(Math.round(sum.cost_micros / Math.max(1, window.days)))}
         caption={`Average over ${String(window.days)} ${window.days === 1 ? 'day' : 'days'}`}
       />
     </>

@@ -5,11 +5,12 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import {
-  MINIMUM_INTERVAL_MINUTES,
+  DEFAULT_INTERVAL_MINUTES,
   addSyncProgressListener,
   cancelSchedule,
   configure,
   getStatus,
+  healthConnectConfigured,
   grantedPermissions,
   isHealthConnectLinked,
   lastSync,
@@ -28,6 +29,8 @@ import type { SeriesGroup } from '../model/series-spec';
 
 const log = new Logger('app.health-connect');
 
+const OPEN_SYNC_GAP_MS = 10 * 60 * 1000;
+
 const ASKED_LATER: ReadonlySet<SeriesGroup> = new Set(['cycle', 'mindfulness']);
 
 function typesOfGroups(groups: ReadonlySet<SeriesGroup>): ReadonlySet<HealthRecordType> {
@@ -37,8 +40,6 @@ function typesOfGroups(groups: ReadonlySet<SeriesGroup>): ReadonlySet<HealthReco
 const LATER_TYPES = typesOfGroups(ASKED_LATER);
 
 export const HEALTH_CONNECT_ON_DEVICE = isHealthConnectLinked;
-
-const HEALTH_CONNECT_DEFAULT_INTERVAL = MINIMUM_INTERVAL_MINUTES;
 
 class HealthConnectUnavailableError extends Error {
   override readonly name = 'HealthConnectUnavailableError';
@@ -83,7 +84,7 @@ export async function connectPhone(
     (type) => status.readableTypes.includes(type) && !LATER_TYPES.has(type),
   );
   const grants = await requestPermissions({ types: readable, background: true, history: true });
-  await schedule({ intervalMinutes: HEALTH_CONNECT_DEFAULT_INTERVAL });
+  await schedule({ intervalMinutes: DEFAULT_INTERVAL_MINUTES });
   run.succeeded({ types: grants.types.length, background: grants.background });
   return grants;
 }
@@ -102,6 +103,27 @@ export function readLastSync(): Promise<SyncReport | null> {
 
 export function syncPhoneNow(): Promise<SyncReport> {
   return syncNow();
+}
+
+export async function syncWhenOpened(): Promise<void> {
+  const last = await lastSync();
+  if (last === null) {
+    log.info('health.open_sync_skipped', { reason: 'this phone has never synced' });
+    return;
+  }
+  if (Date.now() - Date.parse(last.finishedAt) < OPEN_SYNC_GAP_MS) {
+    log.info('health.open_sync_skipped', { reason: 'synced in the last 10 minutes' });
+    return;
+  }
+  const report = await syncNow();
+  log.info('health.open_synced', { outcome: report.outcome, records: report.records });
+}
+
+export async function applySyncSchedule(intervalMinutes: number): Promise<void> {
+  if (!(await healthConnectConfigured())) {
+    return;
+  }
+  await scheduleSync(intervalMinutes);
 }
 
 export async function askForAccess(

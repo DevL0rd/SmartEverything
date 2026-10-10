@@ -2,6 +2,7 @@ import {
   AI_CHAT_AREA_ENDPOINTS as C,
   AI_MODEL_ENDPOINTS as M,
   type AiChatChange,
+  type AiChatHit,
   type AiChatNew,
   type AiChatRow,
   type AiModelChoice,
@@ -10,9 +11,9 @@ import {
   type AiModelRow,
   type AiModelSuggested,
   type AiProviderCount,
+  type AiRetryFrom,
   type AssistantMessageRow,
-  type AssistantModels,
-  type EngineKind,
+  type MessageSource,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
@@ -47,6 +48,27 @@ export async function readAiModel(id: string): Promise<AiModelRow> {
   return (await api().call(M.readAiModel, { params: { id } })).model;
 }
 
+interface ChatListQuery {
+  readonly archived?: boolean;
+  readonly unread?: boolean;
+  readonly pinned?: boolean;
+  readonly source?: MessageSource;
+}
+
+export async function listAiChats(query: ChatListQuery): Promise<AiChatRow[]> {
+  return api().call(C.listAiChats, { query });
+}
+
+interface ChatSearchQuery {
+  readonly chatId?: string;
+  readonly archived?: boolean;
+  readonly limit?: number;
+}
+
+export async function searchAiChats(q: string, options: ChatSearchQuery): Promise<AiChatHit[]> {
+  return api().call(C.searchAiChats, { query: { q, ...options } });
+}
+
 export async function createAiChat(chat: AiChatNew): Promise<AiChatRow> {
   const row = await api().call(C.createAiChat, { body: chat });
   log.info('chat.created', { chatId: row.id });
@@ -56,6 +78,23 @@ export async function createAiChat(chat: AiChatNew): Promise<AiChatRow> {
 export async function updateAiChat(chatId: string, change: AiChatChange): Promise<AiChatRow> {
   const row = await api().call(C.updateAiChat, { params: { chatId }, body: change });
   log.info('chat.updated', { chatId, fields: Object.keys(change) });
+  return row;
+}
+
+export async function setAiChatRead(chatId: string, read: boolean): Promise<AiChatRow> {
+  return updateAiChat(chatId, { read });
+}
+
+export async function branchAiChat(
+  chatId: string,
+  messageId: string,
+  title?: string,
+): Promise<AiChatRow> {
+  const row = await api().call(C.branchAiChat, {
+    params: { chatId },
+    body: title === undefined ? { messageId } : { messageId, title },
+  });
+  log.info('chat.branched', { chatId, messageId, branchId: row.id });
   return row;
 }
 
@@ -75,20 +114,48 @@ export async function sendAiChatMessage(
   chatId: string,
   text: string,
   attachments: readonly string[],
+  clientMessageId?: string,
 ): Promise<AssistantMessageRow> {
   const row = await api().call(C.sendAiChatMessage, {
     params: { chatId },
-    body: { text, attachments: [...attachments] },
+    body: {
+      text,
+      attachments: [...attachments],
+      ...(clientMessageId === undefined ? {} : { client_message_id: clientMessageId }),
+    },
   });
   log.info('chat.sent', { chatId, attachments: attachments.length });
+  return row;
+}
+
+export async function retryAiChatMessage(
+  chatId: string,
+  messageId: string,
+  from: AiRetryFrom,
+): Promise<AssistantMessageRow> {
+  const row = await api().call(C.retryAiChatMessage, {
+    params: { chatId, messageId },
+    body: { from },
+  });
+  log.info('chat.retried', { chatId, messageId, from });
+  return row;
+}
+
+export async function editAiChatMessage(
+  chatId: string,
+  messageId: string,
+  text: string,
+  attachments?: readonly string[],
+): Promise<AssistantMessageRow> {
+  const row = await api().call(C.editAiChatMessage, {
+    params: { chatId, messageId },
+    body: attachments === undefined ? { text } : { text, attachments: [...attachments] },
+  });
+  log.info('chat.edited', { chatId, messageId });
   return row;
 }
 
 export async function interruptAiChat(chatId: string): Promise<void> {
   await api().call(C.interruptAiChat, { params: { chatId } });
   log.info('chat.interrupted', { chatId });
-}
-
-export async function readEngineModels(kind: EngineKind): Promise<AssistantModels> {
-  return api().call(C.readEngineModels, { params: { kind } });
 }

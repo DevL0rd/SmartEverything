@@ -12,6 +12,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
 import android.os.IBinder
+import expo.modules.healthconnect.ServiceStartRefused
 import expo.modules.healthconnect.talk.HeadsetButton
 import expo.modules.healthconnect.talk.TalkClient
 import expo.modules.healthconnect.talk.TalkEvents
@@ -107,6 +108,9 @@ class VoiceService : Service() {
     } catch (failure: SecurityException) {
       TalkNotice.reopen(this)
       stopSelf()
+    } catch (failure: IllegalStateException) {
+      TalkNotice.reopen(this)
+      stopSelf()
     }
   }
 
@@ -129,7 +133,11 @@ class VoiceService : Service() {
       Intent(context, VoiceService::class.java).setAction(action)
 
     fun send(context: Context, action: String, extras: Intent.() -> Unit = {}) {
-      context.startForegroundService(intent(context, action).apply(extras))
+      try {
+        context.startForegroundService(intent(context, action).apply(extras))
+      } catch (failure: IllegalStateException) {
+        throw ServiceStartRefused("the walkie-talkie service", failure)
+      }
     }
 
     fun pending(context: Context, action: String, code: Int): PendingIntent =

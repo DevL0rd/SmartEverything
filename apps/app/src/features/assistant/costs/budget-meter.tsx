@@ -7,7 +7,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { CardEmpty, CostCard } from './cost-card';
 import type { ColourRole } from '../../../design/tokens';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 import { useBudgetStatus } from '../data/budget';
 
 export const BUDGET_PAGE = 'assistant/budget';
@@ -28,11 +28,12 @@ function Meter({
   readonly period: AiBudgetPeriod;
   readonly warnAt: number;
 }): ReactNode {
+  const money = useMoney();
   if (period.limit_micros === null) {
     return null;
   }
   const share = period.spent_micros / Math.max(1, period.limit_micros);
-  const caption = `${costText(period.spent_micros)} of ${costText(period.limit_micros)} ${name}`;
+  const caption = `${money.cost(period.spent_micros)} of ${money.cost(period.limit_micros)} ${name}`;
   return (
     <View className="gap-1">
       <ProgressBar progress={share} colour={colourOf(share, warnAt)} label={caption} />

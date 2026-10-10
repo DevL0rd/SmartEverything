@@ -9,8 +9,10 @@ import { useSettingEnv } from './env';
 import { SettingsNav } from './settings-nav';
 import { pageAvailable, useBuiltSettingsPages } from './availability';
 import { SettingsFrame } from './settings-frame';
+import { href } from '../app-shell/hrefs';
 import { legacyHref } from '../app-shell/legacy-routes';
 import { mountedHref } from './mounts';
+import { retiredPageTarget } from './retired-pages';
 import { SettingsPageBody } from './settings-page';
 import { onPlatform, settingsPage } from './tree';
 import type { SettingsPageDefinition } from './types';
@@ -85,6 +87,10 @@ export function MountedSettingsRoute({ root }: { readonly root: string }): React
 export function SettingsCatchAll(): ReactNode {
   const { page, focus } = useLocalSearchParams<{ page: string[]; focus?: string }>();
   const id = page.join('/');
-  const moved = legacyHref(['settings', ...page]) ?? mountedHref(id, focus);
+  const retired = retiredPageTarget(id);
+  const moved =
+    retired === null
+      ? (legacyHref(['settings', ...page]) ?? mountedHref(id, focus))
+      : href.settings.page(retired);
   return moved === null ? <SettingsPageScreen page={id} /> : <Redirect href={moved} />;
 }

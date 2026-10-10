@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
+import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
-import { useTween } from '../use-tween';
+import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
 import type { XY } from './scale';
 
@@ -27,6 +28,9 @@ export function angleAt(centre: number, point: XY): number {
   const degrees = (Math.atan2(point.x - centre, centre - point.y) * 180) / Math.PI;
   return (degrees + 360) % 360;
 }
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 export interface ArcProps {
   readonly value: number;
@@ -67,12 +71,65 @@ function StartDot({
   at,
   colour,
   thickness,
+  drawn,
 }: {
   readonly at: XY;
   readonly colour: ColourRole;
   readonly thickness: number;
+  readonly drawn: SharedValue<number>;
 }): ReactNode {
-  return <Circle cx={at.x} cy={at.y} r={thickness / 2} fill={useColour(colour)} />;
+  const animated = useAnimatedProps(() => ({ opacity: drawn.get() > 0 ? 0 : 1 }));
+  return (
+    <AnimatedCircle
+      cx={at.x}
+      cy={at.y}
+      r={thickness / 2}
+      fill={useColour(colour)}
+      animatedProps={animated}
+    />
+  );
+}
+
+export function arcLength(radius: number, sweep: number): number {
+  return (radius * Math.PI * Math.min(sweep, 360)) / 180;
+}
+
+export function DrawnStroke({
+  d,
+  length,
+  colour,
+  thickness,
+  drawn,
+  after = 0,
+  through = Number.POSITIVE_INFINITY,
+}: {
+  readonly d: string;
+  readonly length: number;
+  readonly colour: ColourRole;
+  readonly thickness: number;
+  readonly drawn: SharedValue<number>;
+  readonly after?: number;
+  readonly through?: number;
+}): ReactNode {
+  const stroke = useColour(colour);
+  const animated = useAnimatedProps(
+    () => ({
+      strokeDashoffset: length * (1 - drawn.get()),
+      strokeOpacity: drawn.get() > after && drawn.get() <= through ? 1 : 0,
+    }),
+    [length, after, through],
+  );
+  return (
+    <AnimatedPath
+      d={d}
+      fill="none"
+      stroke={stroke}
+      strokeWidth={thickness}
+      strokeLinecap="round"
+      strokeDasharray={`${String(length)} ${String(length)}`}
+      animatedProps={animated}
+    />
+  );
 }
 
 function trackOf(
@@ -96,26 +153,27 @@ export function Arc({
   const centre = size / 2;
   const radius = (size - thickness) / 2;
   const target = Math.min(1, Math.max(0, value));
-  const share = useTween(target, !useMotion().reduced);
-  const drawn = sweep * share;
+  const drawn = useDraw(target, !useMotion().reduced);
+  const path = arcPath(centre, radius, startAngle, sweep);
   return (
     <Svg width={size} height={size} aria-hidden>
       {trackColour === null ? null : (
-        <ArcStroke
-          d={arcPath(centre, radius, startAngle, sweep)}
-          {...trackOf(colour, trackColour, tinted)}
-          thickness={thickness}
-        />
+        <ArcStroke d={path} {...trackOf(colour, trackColour, tinted)} thickness={thickness} />
       )}
-      {drawn > 0 ? (
-        <ArcStroke
-          d={arcPath(centre, radius, startAngle, drawn)}
+      <DrawnStroke
+        d={path}
+        length={arcLength(radius, sweep)}
+        colour={colour}
+        thickness={thickness}
+        drawn={drawn}
+      />
+      {tinted ? (
+        <StartDot
+          at={polar(centre, radius, startAngle)}
           colour={colour}
           thickness={thickness}
+          drawn={drawn}
         />
-      ) : null}
-      {tinted && drawn <= 0 ? (
-        <StartDot at={polar(centre, radius, startAngle)} colour={colour} thickness={thickness} />
       ) : null}
     </Svg>
   );

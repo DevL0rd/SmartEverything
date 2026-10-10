@@ -1,28 +1,21 @@
-import { createElement } from 'react';
 import type { AssistantSettingsChange } from '@smarteverything/domain';
 import {
   ASSISTANT_INSTRUCTIONS_MAX,
   ASSISTANT_NAME_MAX,
   COMPACT_AT_PERCENT,
+  LIVE_CONTEXT_MINUTES,
   REUSE_CHAT_MINUTES,
   assistantLabel,
 } from '@smarteverything/domain';
-import {
-  clearAssistantMessages,
-  openClaudeDesktop,
-  updateAssistantSettings,
-} from '../../api/assistant';
-import type { SettingContext, SettingDefinition, SettingEnv } from '../../settings/types';
+import { clearAssistantMessages, updateAssistantSettings } from '../../api/assistant';
+import type { SettingContext, SettingDefinition } from '../../settings/types';
 import type { StoreState } from '../../store/state';
 import { forgetOlderMessages } from './data/history';
 import { OPENROUTER_SETTINGS } from './settings/openrouter-settings';
-import type { ResponderApp } from '@smarteverything/domain';
-import { BackendChoices, BACKENDS } from './settings/backend-choices';
 import { BUDGET_SETTINGS } from './settings/budget-settings';
 import { REACH_SETTINGS } from './reach/reach-settings';
-import { ConnectionRow } from './settings/connection-row';
-import { DefaultModelRow } from './settings/default-model-row';
-import type { WorkerEngine } from './picker/engine-models';
+import { CALL_AUDIO_SETTINGS } from './settings/call-audio-settings';
+import { SPEECH_SETTINGS } from './settings/speech-settings';
 
 const owner = (env: { readonly owner: boolean }): boolean => env.owner;
 
@@ -44,6 +37,14 @@ async function writeLiveVideo(value: boolean, context: SettingContext): Promise<
   await write({ voice: { ...voice, live_video: value } }, context);
 }
 
+async function writeMuteMic(value: boolean, context: SettingContext): Promise<void> {
+  const voice = context.state.assistant?.settings.voice;
+  if (voice === undefined) {
+    throw new AssistantNotLoadedError();
+  }
+  await write({ voice: { ...voice, mute_mic_while_speaking: value } }, context);
+}
+
 const IDLE_CHOICES = [
   { value: '5', label: '5 seconds' },
   { value: '10', label: '10 seconds' },
@@ -52,6 +53,16 @@ const IDLE_CHOICES = [
   { value: '60', label: '1 minute' },
   { value: '120', label: '2 minutes' },
   { value: '300', label: '5 minutes' },
+] as const;
+
+const LIVE_CONTEXT_CHOICES = [
+  { value: '1', label: '1 minute' },
+  { value: '2', label: '2 minutes' },
+  { value: '4', label: '4 minutes' },
+  { value: '8', label: '8 minutes' },
+  { value: '15', label: '15 minutes' },
+  { value: '30', label: '30 minutes' },
+  { value: '60', label: '60 minutes' },
 ] as const;
 
 const REUSE_CHAT_CHOICES = [
@@ -78,42 +89,19 @@ async function writeIdleSeconds(value: string, context: SettingContext): Promise
   await write({ voice: { ...voice, idle_seconds: Number(value) } }, context);
 }
 
-const desktopOwner = (env: SettingEnv): boolean => env.owner && env.platform === 'desktop';
-
-function backendPage(
-  kind: WorkerEngine,
-  app: ResponderApp,
-  label: string,
-): readonly SettingDefinition[] {
-  const page = BACKENDS[kind].page;
-  return [
-    {
-      id: `${page}.connection`,
-      page,
-      title: 'Connection',
-      keywords: ['connect', 'repair', 'disconnect', label.toLowerCase()],
-      scope: 'server',
-      control: 'custom',
-      row: true,
-      render: () => createElement(ConnectionRow, { app }),
-    },
-    {
-      id: `${page}.default-model`,
-      page,
-      title: 'Default for new chats',
-      keywords: ['model', 'thinking', label.toLowerCase()],
-      scope: 'server',
-      control: 'custom',
-      row: true,
-      render: () => createElement(DefaultModelRow, { backend: kind }),
-    },
-  ];
+async function writeLiveContext(value: string, context: SettingContext): Promise<void> {
+  const voice = context.state.assistant?.settings.voice;
+  if (voice === undefined) {
+    throw new AssistantNotLoadedError();
+  }
+  await write({ voice: { ...voice, live_context_minutes: Number(value) } }, context);
 }
 
 export const SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'assistant.name',
     page: 'assistant',
+    icon: 'user',
     title: 'Name',
     description: 'Also its wake word.',
     keywords: ['name', 'wake word', 'coordinator', 'call it'],
@@ -130,31 +118,12 @@ export const SETTINGS: readonly SettingDefinition[] = [
   ...OPENROUTER_SETTINGS,
   ...BUDGET_SETTINGS,
   ...REACH_SETTINGS,
-  {
-    id: 'assistant.backend',
-    page: 'assistant/responder',
-    title: 'AI backend',
-    keywords: ['ai backend', 'openrouter', 'claude code', 'codex', 'who answers'],
-    scope: 'server',
-    control: 'custom',
-    render: () => createElement(BackendChoices),
-  },
-  ...backendPage('claude-session', 'claude-code', 'Claude Code'),
-  {
-    id: 'assistant/claude-code.desktop',
-    page: 'assistant/claude-code',
-    title: 'Open Claude Desktop',
-    description: 'Shows the conversation of your latest Claude Code chat.',
-    keywords: ['claude desktop', 'open'],
-    scope: 'server',
-    control: 'action',
-    visible: desktopOwner,
-    run: openClaudeDesktop,
-  },
-  ...backendPage('codex-thread', 'codex', 'Codex'),
+  ...CALL_AUDIO_SETTINGS,
+  ...SPEECH_SETTINGS,
   {
     id: 'assistant.steps',
     page: 'assistant',
+    icon: 'list',
     section: 'Conversation',
     title: 'Show working steps',
     description: 'A live list of what it’s doing while it works.',
@@ -167,8 +136,55 @@ export const SETTINGS: readonly SettingDefinition[] = [
     write: (value, context) => write({ activity_steps: value }, context),
   },
   {
+    id: 'assistant.reply-cost',
+    page: 'assistant',
+    icon: 'gauge',
+    section: 'Conversation',
+    title: 'Show cost under replies',
+    description: 'What each reply cost, in small print under it.',
+    keywords: ['cost', 'price', 'spend', 'per message', 'money', 'dollars'],
+    scope: 'server',
+    control: 'switch',
+    visible: owner,
+    when: known,
+    read: (state) => state.assistant?.settings.reply_cost === true,
+    write: (value, context) => write({ reply_cost: value }, context),
+  },
+  {
+    id: 'assistant.reply-suggestions',
+    page: 'assistant',
+    icon: 'sparkles',
+    section: 'Conversation',
+    title: 'Suggest replies',
+    description: 'After an answer, offer a few short replies to tap. Costs a little per answer.',
+    keywords: ['suggestions', 'follow-up', 'quick replies', 'suggest', 'smart reply'],
+    scope: 'server',
+    control: 'switch',
+    visible: owner,
+    when: known,
+    read: (state) => state.assistant?.settings.reply_suggestions === true,
+    write: (value, context) => write({ reply_suggestions: value }, context),
+  },
+  {
+    id: 'assistant.web-search',
+    page: 'assistant',
+    icon: 'globe',
+    section: 'Conversation',
+    title: 'Search the web',
+    description:
+      'Let chats and calls look things up online by default. Each chat has its own switch. Searches cost a little.',
+    keywords: ['web', 'search', 'internet', 'online', 'browse', 'google', 'look up', 'sources'],
+    scope: 'server',
+    control: 'switch',
+    visible: owner,
+    when: known,
+    read: (state) => state.assistant?.settings.web_search_default === true,
+    write: (value, context) => write({ web_search_default: value }, context),
+  },
+  {
     id: 'assistant.compact',
     page: 'assistant',
+    icon: 'layers',
     section: 'Conversation',
     title: 'Compact chats at',
     description: 'Older messages get summarized at this point.',
@@ -187,6 +203,7 @@ export const SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'assistant.reuse-chat',
     page: 'assistant',
+    icon: 'messageCircle',
     section: 'Conversation',
     title: 'Keep the same chat for',
     description:
@@ -210,11 +227,29 @@ export const SETTINGS: readonly SettingDefinition[] = [
     write: (value, context) => write({ reuse_chat_minutes: Number(value) }, context),
   },
   {
+    id: 'assistant.instructions',
+    page: 'assistant',
+    icon: 'fileText',
+    section: 'Conversation',
+    title: 'Custom instructions',
+    keywords: ['prompt', 'instructions', 'rules'],
+    scope: 'server',
+    control: 'text',
+    placeholder: 'Anything it should always keep in mind',
+    maxLength: ASSISTANT_INSTRUCTIONS_MAX,
+    visible: owner,
+    when: known,
+    read: (state) => state.assistant?.settings.instructions ?? '',
+    write: (value, context) => write({ instructions: value }, context),
+  },
+  {
     id: 'assistant.voice.idle',
     page: 'assistant',
+    icon: 'timer',
     section: 'Voice calls',
     title: 'End after silence',
-    description: 'Hangs up a call or camera conversation when nobody has spoken for this long.',
+    description:
+      'Hangs up a camera conversation or announcement when nobody has spoken for this long. Calls from the AI page stay open until you hang up.',
     keywords: ['hang up', 'timeout', 'silence', 'idle', 'end conversation', 'voice', 'call'],
     scope: 'server',
     control: 'select',
@@ -225,8 +260,36 @@ export const SETTINGS: readonly SettingDefinition[] = [
     write: writeIdleSeconds,
   },
   {
+    id: 'assistant.voice.context',
+    page: 'assistant',
+    icon: 'layers',
+    section: 'Voice calls',
+    title: 'Call memory',
+    description:
+      'How much of a call stays in the AI’s head. Older speech is dropped from it, and the transcript keeps the words. Shorter costs less.',
+    keywords: [
+      'call memory',
+      'voice context',
+      'context window',
+      'remember',
+      'tokens',
+      'cost',
+      'voice',
+      'call',
+    ],
+    scope: 'server',
+    control: 'select',
+    options: LIVE_CONTEXT_CHOICES,
+    visible: owner,
+    when: known,
+    read: (state) =>
+      String(state.assistant?.settings.voice.live_context_minutes ?? LIVE_CONTEXT_MINUTES.fallback),
+    write: writeLiveContext,
+  },
+  {
     id: 'assistant.voice.live-video',
     page: 'assistant',
+    icon: 'eye',
     section: 'Voice calls',
     title: 'Live video in camera calls',
     description: 'The AI watches the camera during the call. Costs more.',
@@ -239,19 +302,20 @@ export const SETTINGS: readonly SettingDefinition[] = [
     write: writeLiveVideo,
   },
   {
-    id: 'assistant.instructions',
+    id: 'assistant.voice.mute-mic',
     page: 'assistant',
-    section: 'Conversation',
-    title: 'Custom instructions',
-    keywords: ['prompt', 'instructions', 'rules'],
+    icon: 'micOff',
+    section: 'Voice calls',
+    title: 'Mute the camera mic while the AI speaks',
+    description:
+      'Stops it hearing itself, but you can’t talk over it. Off relies on the camera’s own echo cancellation.',
+    keywords: ['echo', 'mute mic', 'camera microphone', 'talk over', 'interrupt', 'hears itself'],
     scope: 'server',
-    control: 'text',
-    placeholder: 'Anything it should always keep in mind',
-    maxLength: ASSISTANT_INSTRUCTIONS_MAX,
+    control: 'switch',
     visible: owner,
     when: known,
-    read: (state) => state.assistant?.settings.instructions ?? '',
-    write: (value, context) => write({ instructions: value }, context),
+    read: (state) => state.assistant?.settings.voice.mute_mic_while_speaking === true,
+    write: writeMuteMic,
   },
   {
     id: 'assistant.clear',

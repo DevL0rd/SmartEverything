@@ -15,6 +15,9 @@ const LOCAL_PREFS = z.strictObject({
   talkChannel: z.string(),
   talkHeadset: z.boolean(),
   aiPanelOpen: z.boolean(),
+  chatListOpen: z.boolean(),
+  lastChat: z.string().nullable(),
+  chatPanelOpen: z.boolean(),
 });
 
 type Values = z.infer<typeof LOCAL_PREFS>;
@@ -36,11 +39,18 @@ const defaults: Values = {
   talkChannel: '',
   talkHeadset: false,
   aiPanelOpen: true,
+  chatListOpen: true,
+  lastChat: null,
+  chatPanelOpen: false,
 };
 
 const values = new ValueStore<Values>(defaults);
 
-export async function loadLocalPrefs(): Promise<void> {
+export type LocalPrefsStatus = 'loading' | 'ready' | 'failed';
+
+const status = new ValueStore<LocalPrefsStatus>('loading');
+
+async function readStored(): Promise<void> {
   const text = await AsyncStorage.getItem(STORAGE_KEY);
   if (text === null) {
     return;
@@ -52,6 +62,20 @@ export async function loadLocalPrefs(): Promise<void> {
     throw new Error('The preferences saved on this device are unreadable and were not applied.');
   }
   values.set(LOCAL_PREFS.parse({ ...defaults, ...parsed.data }));
+}
+
+export async function loadLocalPrefs(): Promise<void> {
+  try {
+    await readStored();
+    status.set('ready');
+  } catch (error) {
+    status.set('failed');
+    throw error;
+  }
+}
+
+export function useLocalPrefsStatus(): LocalPrefsStatus {
+  return useValue(status);
 }
 
 export function setLocalPref<K extends LocalPrefKey>(key: K, value: LocalPrefValue<K>): void {

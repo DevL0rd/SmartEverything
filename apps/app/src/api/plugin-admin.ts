@@ -4,6 +4,10 @@ import {
   type PluginId,
   type PluginInstall,
   type PluginLogLine,
+  type PluginOptionPage,
+  type PluginOptionQuery,
+  type PluginPerson,
+  type PluginPersonChange,
   type PluginRow,
   type PluginSaved,
   type PluginToolRow,
@@ -26,14 +30,10 @@ export async function installPlugin(install: PluginInstall): Promise<PluginRow> 
   return row;
 }
 
-export async function updatePlugin(
-  pluginId: PluginId,
-  edit: PluginEdit,
-  confirm: boolean,
-): Promise<PluginSaved> {
+export async function updatePlugin(pluginId: PluginId, edit: PluginEdit): Promise<PluginSaved> {
   const saved = await api().call(E.updatePlugin, {
     params: { pluginId },
-    body: { ...edit, confirm },
+    body: edit,
   });
   log.info('plugin.updated', { pluginId, outcome: saved.outcome });
   return saved;
@@ -55,4 +55,34 @@ export function readPluginTools(pluginId: PluginId): Promise<PluginToolRow[]> {
 
 export function readPluginLog(pluginId: PluginId): Promise<PluginLogLine[]> {
   return api().call(E.readPluginLog, { params: { pluginId } });
+}
+
+export function readPluginOptions(
+  pluginId: PluginId,
+  source: string,
+  query: PluginOptionQuery,
+): Promise<PluginOptionPage> {
+  return api().call(E.readPluginOptions, { params: { pluginId, source }, query });
+}
+
+export function readPluginPeople(pluginId: PluginId): Promise<PluginPerson[]> {
+  return api().call(E.listPluginPeople, { params: { pluginId } });
+}
+
+export async function savePluginPerson(
+  pluginId: PluginId,
+  externalId: string,
+  change: PluginPersonChange,
+): Promise<PluginPerson> {
+  const person = await api().call(E.setPluginPerson, {
+    params: { pluginId, externalId },
+    body: change,
+  });
+  log.info('plugin.person_saved', { pluginId, status: change.status });
+  return person;
+}
+
+export async function forgetPluginPerson(pluginId: PluginId, externalId: string): Promise<void> {
+  await api().call(E.removePluginPerson, { params: { pluginId, externalId } });
+  log.info('plugin.person_removed', { pluginId });
 }

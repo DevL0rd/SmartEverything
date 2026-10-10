@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { microsOfUsd } from '@smarteverything/domain';
 import { Banner } from '../../../components/banner';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 import { useOpenRouterAccount, useOpenRouterStatus } from '../data/openrouter';
 import { useTrackedOpenRouterToday } from './costs-data';
 
@@ -12,6 +12,7 @@ export function UntrackedNote(): ReactNode {
   const keySet = status.data?.key === 'set';
   const account = useOpenRouterAccount(keySet);
   const tracked = useTrackedOpenRouterToday(keySet);
+  const money = useMoney();
   if (account.data === undefined || tracked.data === undefined) {
     return null;
   }
@@ -24,8 +25,8 @@ export function UntrackedNote(): ReactNode {
   return (
     <Banner
       tone="info"
-      title={`${costText(untracked)} spent on this key today (UTC) outside SmartEverything`}
-      body={`Reported by OpenRouter: ${costText(reported)} · Tracked here: ${costText(here)}. The rest is other apps or tests using the same key.`}
+      title={`${money.cost(untracked)} spent on this key today (UTC) outside SmartEverything`}
+      body={`Reported by OpenRouter: ${money.cost(reported)} · Tracked here: ${money.cost(here)}. The rest is other apps or tests using the same key.`}
     />
   );
 }

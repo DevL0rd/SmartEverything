@@ -1,19 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { router, useGlobalSearchParams, useSegments, type Href } from 'expo-router';
 
-type DevicePage = 'controls' | 'history' | 'activity' | 'remote';
-
-const DEVICE_PAGES: ReadonlySet<string> = new Set<DevicePage>([
-  'controls',
-  'history',
-  'activity',
-  'remote',
-]);
-
-function isDevicePage(page: string | undefined): page is DevicePage {
-  return page !== undefined && DEVICE_PAGES.has(page);
-}
-
 type SettingsPage = 'remotes' | 'diagnostics' | 'camera';
 
 const SETTINGS_PAGES: ReadonlySet<string> = new Set<SettingsPage>([
@@ -26,15 +13,25 @@ function isSettingsPage(page: string | undefined): page is SettingsPage {
   return page !== undefined && SETTINGS_PAGES.has(page);
 }
 
-function homeHref(segments: readonly string[], id: string): Href | null {
+function homeHref(
+  segments: readonly string[],
+  id: string | undefined,
+  section: string | undefined,
+): Href | null {
   const [, , page, , subPage, settingsPage] = segments;
+  if (page === 'weather') {
+    return '/(app)/(home)/weather';
+  }
+  if (id === undefined) {
+    return null;
+  }
   if (page === 'rooms') {
     return `/(app)/(home)/rooms/${encodeURIComponent(id)}`;
   }
   if (page !== 'device') {
     return null;
   }
-  return subPage === 'settings' ? homeSettingsHref(id, settingsPage) : homeDeviceHref(id, subPage);
+  return subPage === 'settings' ? homeSettingsHref(id, settingsPage) : homeDeviceHref(id, section);
 }
 
 function homeSettingsHref(deviceId: string, page: string | undefined): Href {
@@ -44,14 +41,20 @@ function homeSettingsHref(deviceId: string, page: string | undefined): Href {
     : `/(app)/(home)/device/${id}/settings`;
 }
 
-function homeDeviceHref(deviceId: string, page: string | undefined): Href {
+function homeDeviceHref(deviceId: string, section: string | undefined): Href {
   const id = encodeURIComponent(deviceId);
-  return isDevicePage(page) ? `/(app)/(home)/device/${id}/${page}` : `/(app)/(home)/device/${id}`;
+  return section === undefined
+    ? `/(app)/(home)/device/${id}`
+    : `/(app)/(home)/device/${id}/${encodeURIComponent(section)}`;
 }
 
 export function useNaturalTabForColdLinks(): void {
   const segments = useSegments();
-  const { deviceId, roomId } = useGlobalSearchParams<{ deviceId?: string; roomId?: string }>();
+  const { deviceId, roomId, section } = useGlobalSearchParams<{
+    deviceId?: string;
+    roomId?: string;
+    section?: string;
+  }>();
   const checked = useRef(false);
   useEffect(() => {
     const group = segments[1];
@@ -59,11 +62,10 @@ export function useNaturalTabForColdLinks(): void {
       return;
     }
     checked.current = true;
-    const id = deviceId ?? roomId;
-    const target = group === '(home)' || id === undefined ? null : homeHref(segments, id);
+    const target = group === '(home)' ? null : homeHref(segments, deviceId ?? roomId, section);
     if (target !== null) {
       router.dismissAll();
       router.replace(target, { withAnchor: true });
     }
-  }, [segments, deviceId, roomId]);
+  }, [segments, deviceId, roomId, section]);
 }

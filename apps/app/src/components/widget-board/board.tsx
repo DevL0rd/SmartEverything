@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Pressable, View } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { BOARD_COLUMNS, type BoardClass } from '@smarteverything/domain';
@@ -11,6 +11,8 @@ import { heavyThud } from '../../platform/haptics';
 import { Button } from '../button';
 import { ErrorState } from '../error-state';
 import { notify } from '../toast-store';
+import { useMeasuredWidth } from '../use-measured-width';
+import { useStableValue } from '../use-stable-value';
 import { boardClassOf, cellOf, frameOf, type Cell } from './board-geometry';
 import { ADD_TILE, EditCanvas } from './edit/edit-canvas';
 import { isShown, type InstanceCheck } from './edit/edit-model';
@@ -87,10 +89,32 @@ function boxOf(placements: readonly Placement[], cell: Cell): { readonly height:
   return { height: heightOf(placements, cell) };
 }
 
+function samePlacement(left: Placement, right: Placement | undefined): boolean {
+  return (
+    left.widget === right?.widget &&
+    left.col === right.col &&
+    left.row === right.row &&
+    left.cols === right.cols &&
+    left.rows === right.rows &&
+    left.height === right.height
+  );
+}
+
+function samePlacements(left: readonly Placement[], right: readonly Placement[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((placement, index) => samePlacement(placement, right[index]))
+  );
+}
+
+function sameCell(left: Cell, right: Cell): boolean {
+  return Object.entries(left).every(([key, value]) => Object.is(value, Reflect.get(right, key)));
+}
+
 function StaticBoard({
   editor,
-  placements,
-  cell,
+  placements: nextPlacements,
+  cell: nextCell,
   catalogue,
 }: {
   readonly editor: BoardEditor;
@@ -99,6 +123,8 @@ function StaticBoard({
   readonly catalogue: readonly WidgetDefinition[];
 }): ReactNode {
   const touch = useIdiom() === 'touch';
+  const placements = useStableValue(nextPlacements, samePlacements);
+  const cell = useStableValue(nextCell, sameCell);
   return (
     <Pressable
       accessible={false}
@@ -160,7 +186,7 @@ function Arranged(
 }
 
 function Measured(props: WidgetBoardProps & { readonly board: BoardClass }): ReactNode {
-  const [width, setWidth] = useState(0);
+  const { width, onLayout } = useMeasuredWidth();
   const active = useIsFocused();
   const { editor } = props;
   useDocumentKeys(active && !editor.editing, (input) => {
@@ -171,12 +197,7 @@ function Measured(props: WidgetBoardProps & { readonly board: BoardClass }): Rea
     return true;
   });
   return (
-    <View
-      accessibilityLabel={`${editor.page} widgets`}
-      onLayout={(event) => {
-        setWidth(event.nativeEvent.layout.width);
-      }}
-    >
+    <View accessibilityLabel={`${editor.page} widgets`} onLayout={onLayout}>
       {width === 0 ? null : <Arranged {...props} width={width} active={active} />}
     </View>
   );

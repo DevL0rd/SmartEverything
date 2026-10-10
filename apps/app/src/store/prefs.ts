@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   API_ENDPOINTS as E,
   CLIENT_PREFS,
@@ -21,11 +22,14 @@ export type PrefRead<T> =
 export type Pref<T> = ClientPrefDefinition<T>;
 
 export const PREFS = {
+  aiSpeech: CLIENT_PREFS.ai_speech,
   appearance: CLIENT_PREFS.appearance,
+  callAudio: CLIENT_PREFS.call_audio,
   callRing: CLIENT_PREFS.call_ring,
   cameras: CLIENT_PREFS.cameras,
   healthSync: CLIENT_PREFS.health_sync,
   nutrition: CLIENT_PREFS.nutrition,
+  region: CLIENT_PREFS.region,
 } as const;
 
 function writeLayoutRow(
@@ -85,8 +89,10 @@ export function usePref<T>(pref: Pref<T>): PrefRead<T> {
   const store = useEntityStore();
   const stored = useStoreSelector(
     (state) => state.tables.layouts.byId[pref.storageKey]?.layout ?? null,
+    Object.is,
+    [pref.storageKey],
   );
-  const read = pref.decode(stored);
+  const read = useMemo(() => pref.decode(stored), [pref, stored]);
   if (read.status === 'invalid') {
     return {
       status: 'invalid',

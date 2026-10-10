@@ -25,7 +25,12 @@ class XiaomiFileId(val bytes: ByteArray) : Comparable<XiaomiFileId> {
   val label: String
     get() = "${if (type == SPORTS) "workout" else "activity"} ${subtypeName()} ${detailName()} v$version from $timestamp"
 
+  val shortLabel: String
+    get() = "t${type}s${subtype}d${detail}v$version"
+
   val empty: Boolean get() = timestamp.epochSecond == 0L && version == 0
+
+  val isSleep: Boolean get() = type == ACTIVITY && (subtype == SLEEP || subtype == SLEEP_STAGES)
 
   private fun fetchOrder(): Int = when (detail) {
     SUMMARY -> 0

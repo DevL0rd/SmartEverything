@@ -34,6 +34,7 @@ const LOOKS: Readonly<Record<EventLookKind, Omit<EventLook, 'label'>>> = {
   place_arrived: { icon: 'mapPin', tone: 'positive' },
   place_left: { icon: 'mapPin', tone: 'variant' },
   parked: { icon: 'car', tone: 'variant' },
+  phone_unlocked: { icon: 'lockOpen', tone: 'faint' },
   recording: { icon: 'film', tone: 'variant' },
 };
 

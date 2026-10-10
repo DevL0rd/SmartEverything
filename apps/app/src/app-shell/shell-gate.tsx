@@ -1,12 +1,13 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { Redirect } from 'expo-router';
+import { Redirect, SplashScreen } from 'expo-router';
 import { loadConnection, useConnection } from '../api/transport';
 import { Button } from '../components/button';
 import { ErrorState } from '../components/error-state';
 import { Text } from '../components/text';
 import { forgetServer } from '../api/transport';
 import { notify } from '../components/toast-store';
+import { useLocalPrefsStatus } from '../store/local-prefs';
 import { useLoaded, useSyncStatus } from '../store/selectors';
 import { ThemeSync } from './theme-sync';
 
@@ -16,6 +17,9 @@ function Centered({ children }: { readonly children: ReactNode }): ReactNode {
 
 function Opening(): ReactNode {
   const sync = useSyncStatus();
+  useEffect(() => {
+    SplashScreen.hide();
+  }, []);
   if (sync.problem !== null) {
     return (
       <Centered>
@@ -33,8 +37,9 @@ function Opening(): ReactNode {
   );
 }
 
-function LoadedGate({ children }: { readonly children: ReactNode }): ReactNode {
-  if (!useLoaded()) {
+export function LoadedGate({ children }: { readonly children: ReactNode }): ReactNode {
+  const prefs = useLocalPrefsStatus();
+  if (!useLoaded() || prefs === 'loading') {
     return <Opening />;
   }
   return (
@@ -75,6 +80,6 @@ export function ShellGate({ children }: { readonly children: ReactNode }): React
         </Centered>
       );
     case 'paired':
-      return <LoadedGate>{children}</LoadedGate>;
+      return children;
   }
 }

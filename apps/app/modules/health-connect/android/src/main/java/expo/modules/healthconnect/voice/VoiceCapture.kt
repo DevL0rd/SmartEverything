@@ -1,6 +1,7 @@
 package expo.modules.healthconnect.voice
 
 import android.annotation.SuppressLint
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -15,11 +16,38 @@ object VoiceCapture {
   const val SAMPLE_RATE = 48_000
   const val FRAME_SAMPLES = 960
 
+  private class Effects(val echo: AudioEffect?, val noise: AudioEffect?, val gain: AudioEffect?) {
+    fun all(): List<AudioEffect> = listOfNotNull(echo, noise, gain)
+
+    fun tune(noiseSuppression: Boolean, autoGain: Boolean) {
+      noise?.enabled = noiseSuppression
+      gain?.enabled = autoGain
+    }
+  }
+
   private val consumers = CopyOnWriteArraySet<(ShortArray) -> Unit>()
   private var thread: Thread? = null
+  private var recorder: AudioRecord? = null
+  private var effects: Effects? = null
+  private var noiseSuppression = true
+  private var autoGain = true
+  private var preferredInput: AudioDeviceInfo? = null
 
   @Volatile
   private var running = false
+
+  @Synchronized
+  fun configure(noiseSuppression: Boolean, autoGain: Boolean) {
+    this.noiseSuppression = noiseSuppression
+    this.autoGain = autoGain
+    effects?.tune(noiseSuppression, autoGain)
+  }
+
+  @Synchronized
+  fun preferInput(device: AudioDeviceInfo?) {
+    preferredInput = device
+    recorder?.preferredDevice = device
+  }
 
   @Synchronized
   fun addConsumer(consumer: (ShortArray) -> Unit): AutoCloseable {
@@ -36,6 +64,8 @@ object VoiceCapture {
     if (consumers.isEmpty()) {
       running = false
       thread = null
+      recorder = null
+      effects = null
     }
   }
 
@@ -56,30 +86,33 @@ object VoiceCapture {
       record.release()
       throw VoiceCaptureUnavailable("Android refused the recorder; is the microphone permission granted?")
     }
-    val effects = attachEffects(record.audioSessionId)
+    record.preferredDevice = preferredInput
+    val attached = attachEffects(record.audioSessionId)
+    recorder = record
+    effects = attached
     running = true
-    thread = Thread({ loop(record, effects) }, "smarteverything-voice-capture").apply { start() }
+    thread = Thread({ loop(record, attached) }, "smarteverything-voice-capture").apply { start() }
   }
 
-  private fun attachEffects(session: Int): List<AudioEffect> = listOfNotNull(
-    effect("echo canceller", AcousticEchoCanceler.isAvailable()) { AcousticEchoCanceler.create(session) },
-    effect("noise suppressor", NoiseSuppressor.isAvailable()) { NoiseSuppressor.create(session) },
-    effect("gain control", AutomaticGainControl.isAvailable()) { AutomaticGainControl.create(session) }
+  private fun attachEffects(session: Int): Effects = Effects(
+    effect("echo canceller", AcousticEchoCanceler.isAvailable(), true) { AcousticEchoCanceler.create(session) },
+    effect("noise suppressor", NoiseSuppressor.isAvailable(), noiseSuppression) { NoiseSuppressor.create(session) },
+    effect("gain control", AutomaticGainControl.isAvailable(), autoGain) { AutomaticGainControl.create(session) }
   )
 
-  private fun effect(name: String, available: Boolean, create: () -> AudioEffect?): AudioEffect? {
+  private fun effect(name: String, available: Boolean, enabled: Boolean, create: () -> AudioEffect?): AudioEffect? {
     if (!available) {
       return null
     }
     return try {
-      create()?.also { it.enabled = true }
+      create()?.also { it.enabled = enabled }
     } catch (failure: RuntimeException) {
       Log.w(TAG, "voice capture: the $name could not be attached: ${failure.message}")
       null
     }
   }
 
-  private fun loop(record: AudioRecord, effects: List<AudioEffect>) {
+  private fun loop(record: AudioRecord, effects: Effects) {
     try {
       record.startRecording()
       val frame = ShortArray(FRAME_SAMPLES)
@@ -90,7 +123,7 @@ object VoiceCapture {
         }
       }
     } finally {
-      effects.forEach { it.release() }
+      effects.all().forEach { it.release() }
       record.stop()
       record.release()
     }

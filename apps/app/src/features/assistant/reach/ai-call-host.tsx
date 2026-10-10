@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { AppState, Modal, View } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import type { AiOutreachRow } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
+import {
+  assistantCallLinked,
+  dismissIncomingCall,
+  ringIncomingCall,
+  type IncomingCallRing,
+} from '../../../../modules/health-connect';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
@@ -15,7 +20,7 @@ import { useSession } from '../../../store/selectors';
 import { useSizeClass } from '../../../design/size-class';
 import { useRingTone } from '../../cameras';
 import { useAssistantName } from '../data/assistant-data';
-import { declineOutreach, useOutreach } from './reach-data';
+import { declineOutreach, useOutreach, useRefreshOutreach } from './reach-data';
 
 const log = new Logger('app.reach-ring');
 
@@ -25,27 +30,78 @@ function useRinging(): AiOutreachRow | null {
   return rows.find((row) => row.state === 'ringing' && row.clients.includes(own)) ?? null;
 }
 
-function notifyInBackground(title: string, body: string): void {
-  if (AppState.currentState === 'active') {
-    return;
+function callOf(
+  ringing: Pick<AiOutreachRow, 'id' | 'chat_id' | 'reason' | 'expires_at'>,
+  name: string,
+): IncomingCallRing | null {
+  if (ringing.chat_id === null || ringing.expires_at === null) {
+    log.warn('reach.native_ring_incomplete', { outreachId: ringing.id });
+    return null;
   }
-  Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: null }).catch(
-    (error: unknown) => {
-      log.warn('reach.local_notification_failed', { reason: String(error) });
-    },
-  );
+  return {
+    caller: name,
+    outreachId: ringing.id,
+    chatId: ringing.chat_id,
+    reason: ringing.reason,
+    expiresAt: ringing.expires_at,
+  };
 }
 
-function useAttention(ringing: AiOutreachRow | null, name: string): void {
+function ringNatively(call: IncomingCallRing): void {
+  if (!assistantCallLinked()) {
+    return;
+  }
+  ringIncomingCall(call).catch((error: unknown) => {
+    log.warn('reach.native_ring_failed', { outreachId: call.outreachId, reason: String(error) });
+  });
+}
+
+function dismissNatively(outreachId: string): void {
+  if (!assistantCallLinked()) {
+    return;
+  }
+  dismissIncomingCall(outreachId).catch((error: unknown) => {
+    log.warn('reach.native_dismiss_failed', { outreachId, reason: String(error) });
+  });
+}
+
+function useNativeRing(ringing: AiOutreachRow | null, name: string): void {
+  const id = ringing?.id ?? null;
+  const chatId = ringing?.chat_id ?? null;
+  const reason = ringing?.reason ?? '';
+  const expiresAt = ringing?.expires_at ?? null;
+  useEffect(() => {
+    if (id === null || desktopBridge() !== null) {
+      return undefined;
+    }
+    const call = callOf({ id, chat_id: chatId, reason, expires_at: expiresAt }, name);
+    if (call === null) {
+      return undefined;
+    }
+    log.info('reach.ringing_seen', { outreachId: id, appState: AppState.currentState });
+    if (AppState.currentState !== 'active') {
+      ringNatively(call);
+    }
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        dismissNatively(id);
+      } else {
+        ringNatively(call);
+      }
+    });
+    return (): void => {
+      subscription.remove();
+      dismissNatively(id);
+    };
+  }, [id, chatId, reason, expiresAt, name]);
+}
+
+function useDesktopAttention(ringing: AiOutreachRow | null, name: string): void {
   const id = ringing?.id ?? null;
   const reason = ringing?.reason ?? '';
   useEffect(() => {
     const bridge = desktopBridge();
-    if (id === null) {
-      return;
-    }
-    if (bridge === null) {
-      notifyInBackground(`${name} is calling`, reason);
+    if (id === null || bridge === null) {
       return;
     }
     bridge.attention?.().catch((error: unknown) => {
@@ -57,7 +113,22 @@ function useAttention(ringing: AiOutreachRow | null, name: string): void {
   }, [id, name, reason]);
 }
 
+function useRefreshOnResume(): void {
+  const refresh = useRefreshOutreach();
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        refresh();
+      }
+    });
+    return (): void => {
+      subscription.remove();
+    };
+  }, [refresh]);
+}
+
 function decline(ringing: AiOutreachRow): void {
+  dismissNatively(ringing.id);
   declineOutreach(ringing.id).catch((error: unknown) => {
     notify({ message: 'The call couldn’t be declined', error, tone: 'critical' });
   });
@@ -83,6 +154,7 @@ function Actions({ ringing }: { readonly ringing: AiOutreachRow }): ReactNode {
         size="lg"
         grow
         onPress={() => {
+          dismissNatively(ringing.id);
           router.navigate(href.assistantCall('assistant', ringing.chat_id, ringing.id));
         }}
       />
@@ -119,7 +191,9 @@ export function AiCallHost(): ReactNode {
   const ringing = useRinging();
   const name = useAssistantName();
   const touch = useSizeClass().idiom === 'touch';
-  useAttention(ringing, name);
+  useDesktopAttention(ringing, name);
+  useNativeRing(ringing, name);
+  useRefreshOnResume();
   useRingTone(ringing !== null);
   if (ringing === null) {
     return null;

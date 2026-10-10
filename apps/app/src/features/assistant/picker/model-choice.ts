@@ -66,16 +66,6 @@ export function autoChoiceOf(
   return { ...choiceOf(row), id: AUTO_LATEST_GEMINI_FLASH, name: resolved.name, latest: true };
 }
 
-export function matchesQuery(model: ModelChoice, query: string): boolean {
-  const words = query
-    .trim()
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((word) => word !== '');
-  const haystack = `${model.name} ${model.id} ${model.providerLabel}`.toLowerCase();
-  return words.every((word) => haystack.includes(word));
-}
-
 export function keptEffort(model: ModelChoice, effort: string | null): string | null {
   return effort !== null && model.efforts.includes(effort) ? effort : null;
 }

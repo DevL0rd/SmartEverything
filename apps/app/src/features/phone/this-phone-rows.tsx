@@ -7,7 +7,9 @@ import { List } from '../../components/section';
 import { Text } from '../../components/text';
 import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
-import { usePairedServer } from '../profiles';
+import { useLocalPref } from '../../store/local-prefs';
+import { useHasScale, usePairedServer } from '../profiles';
+import { useWatchLink } from '../watches';
 import { CONTEXT_TEXT } from './phone-context-text';
 import { setPhoneNodeOn, usePhoneNode } from './phone-node';
 import { allowSoundControl, keepRunning } from './phone-permissions';
@@ -47,7 +49,7 @@ function NowRow({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
 }
 
 const KEEP_RUNNING =
-  'Android may pause SmartEverything to save battery, which delays what you’re doing, places and commands. Allow it to keep running.';
+  'Commands, calls and alerts reach this phone either way. Allow SmartEverything to keep running only for what stays on in the background:';
 
 const SAMSUNG_NOTE =
   ' On Samsung phones, also remove SmartEverything from Sleeping apps in Battery settings.';
@@ -56,15 +58,37 @@ function samsung(): boolean {
   return Platform.OS === 'android' && Platform.constants.Manufacturer.toLowerCase() === 'samsung';
 }
 
+function useBackgroundJobs(): string[] {
+  const link = useWatchLink();
+  const talk = useLocalPref('talkEnabled');
+  const scale = useHasScale();
+  const jobs: string[] = [];
+  if (link.kind === 'ready' && link.watches.length > 0) {
+    jobs.push('your watch connection');
+  }
+  if (talk) {
+    jobs.push('always-on walkie-talkie');
+  }
+  if (scale) {
+    jobs.push('your scale');
+  }
+  return jobs;
+}
+
 function BackgroundRows({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
+  const jobs = useBackgroundJobs();
+  if (jobs.length === 0) {
+    return null;
+  }
+  const footer = `${KEEP_RUNNING} ${jobs.join(', ')}.`;
   return (
-    <List title="Background" footer={samsung() ? KEEP_RUNNING + SAMSUNG_NOTE : KEEP_RUNNING}>
+    <List title="Background" footer={samsung() ? footer + SAMSUNG_NOTE : footer}>
       {status.permissions.batteryUnrestricted ? (
         <ListRow title="Keep running" value="Allowed" icon="battery" />
       ) : (
         <ListRow
           title="Keep running"
-          subtitle="Battery-optimised · may be delayed"
+          subtitle="Battery-optimised · background jobs may stop"
           icon="battery"
           chevron
           onPress={() => void keepRunning()}

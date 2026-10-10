@@ -1,113 +1,56 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import { View } from 'react-native';
 import Animated, { LinearTransition } from 'react-native-reanimated';
-import { Icon } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useMotion } from '../../../design/motion';
 import { Markdown } from '../components/markdown/markdown';
+import { StreamCaret } from '../components/stream-caret';
 import { TypingDots } from '../components/typing-dots';
-import { WorkSummary } from '../components/work-summary';
-import type { Turn } from '../../../store/chat-turns';
+import { useChatWorking, useThrottledTurnText } from '../data/chat-store';
+import { streamView } from '../model/stream-view';
 
-const FENCE = /^```/gm;
-
-export function splitSettled(text: string): readonly [string, string] {
-  const fences = text.match(FENCE)?.length ?? 0;
-  const open = fences % 2 === 1 ? text.lastIndexOf('```') : -1;
-  const searchEnd = open === -1 ? text.length : open;
-  const cut = text.lastIndexOf('\n\n', searchEnd);
-  return cut <= 0 ? ['', text] : [text.slice(0, cut), text.slice(cut + 2)];
-}
-
-function Reasoning({ text, live }: { readonly text: string; readonly live: boolean }): ReactNode {
-  const [open, setOpen] = useState(false);
+function Body({ text, caret }: { readonly text: string; readonly caret: boolean }): ReactNode {
+  const view = streamView(text);
   return (
-    <View className="gap-1">
-      <Interactive
-        label={open ? 'Hide thinking' : 'Show thinking'}
-        onPress={() => {
-          setOpen(!open);
-        }}
-        className="min-h-touch-min flex-row items-center gap-1 self-start rounded-full pr-2"
-        layerClassName="rounded-full"
-      >
-        <Icon name="brain" size={16} tone="variant" />
-        <Text variant="caption" tone="variant">
-          {live ? 'Thinking…' : 'Thought'}
-        </Text>
-        <Icon name={open ? 'chevronUp' : 'chevronDown'} size={16} tone="variant" />
-      </Interactive>
-      {open ? (
-        <View className="border-l-2 border-outline-variant pl-3">
-          <Text variant="footnote" tone="variant" selectable>
-            {text}
-          </Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function Body({ text }: { readonly text: string }): ReactNode {
-  const [settled, tail] = splitSettled(text);
-  return (
-    <View className="gap-2">
-      {settled === '' ? null : <Markdown text={settled} />}
-      {tail === '' ? null : <Markdown text={tail} />}
-    </View>
-  );
-}
-
-function TurnExtras({ turn }: { readonly turn: Turn }): ReactNode {
-  return (
-    <>
-      {turn.reasoning === '' ? null : (
-        <Reasoning text={turn.reasoning} live={turn.state === 'thinking'} />
+    <View className="gap-2.5">
+      {view.settled === '' ? null : <Markdown text={view.settled} />}
+      {view.tail === '' ? null : (
+        <Markdown
+          text={view.tail}
+          endMark={caret && view.pending === null ? <StreamCaret /> : null}
+        />
       )}
-      <WorkSummary
-        steps={turn.tools.map((tool) => ({
-          key: tool.callId,
-          title: tool.title,
-          state: tool.state,
-        }))}
-        live={isLive(turn)}
-      />
-    </>
+      {view.pending === null ? null : (
+        <View className="flex-row items-center gap-2">
+          <Text variant="footnote" tone="variant">
+            {view.pending === 'code' ? 'Writing code' : 'Building a table'}
+          </Text>
+          <TypingDots tone="primary" />
+        </View>
+      )}
+    </View>
   );
 }
 
-function shownText(turn: Turn | null, fallback: string): string {
-  return turn === null || turn.text.length < fallback.length ? fallback : turn.text;
-}
-
-function isLive(turn: Turn | null): boolean {
-  return turn !== null && turn.state !== 'idle' && turn.state !== 'failed';
-}
+const FLUSH_MS = 80;
 
 export function StreamingBubble({
-  turn,
+  chatId,
   fallback,
 }: {
-  readonly turn: Turn | null;
+  readonly chatId: string;
   readonly fallback: string;
 }): ReactNode {
+  const streamed = useThrottledTurnText(chatId, FLUSH_MS);
+  const live = useChatWorking(chatId);
   const motion = useMotion();
-  const text = shownText(turn, fallback);
+  const text = streamed.length < fallback.length ? fallback : streamed;
   return (
     <Animated.View
       {...(motion.reduced ? {} : { layout: LinearTransition.duration(150) })}
-      className="w-full gap-2"
+      className="w-full gap-2.5"
     >
-      {turn === null ? null : <TurnExtras turn={turn} />}
-      {text === '' ? null : <Body text={text} />}
-      {turn?.behind === true ? (
-        <Text variant="caption" tone="faint">
-          Catching up…
-        </Text>
-      ) : null}
-      {isLive(turn) && text === '' ? <TypingDots tone="primary" /> : null}
+      {text === '' ? null : <Body text={text} caret={live} />}
     </Animated.View>
   );
 }

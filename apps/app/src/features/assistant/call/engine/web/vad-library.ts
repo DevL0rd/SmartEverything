@@ -25,8 +25,16 @@ export interface MicVadOptions {
   readonly onVADMisfire: () => void;
 }
 
+export interface VadTuning {
+  readonly positiveSpeechThreshold: number;
+  readonly negativeSpeechThreshold: number;
+  readonly redemptionMs: number;
+  readonly minSpeechMs: number;
+}
+
 export interface MicVad {
   readonly destroy: () => Promise<void>;
+  readonly setOptions: (tuning: VadTuning) => void;
 }
 
 interface VadLibrary {

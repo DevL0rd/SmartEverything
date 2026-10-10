@@ -37,6 +37,7 @@ export const FAMILY_GROUPS: Readonly<Record<DeviceFamily, FamilyGroup>> = {
   router: group('Network'),
   file_sync: group('File sync'),
   dns_filter: group('Network'),
+  robot: group('Robot'),
   computer: group('Computer'),
   phone: group('Phone'),
   generic: group('Other device'),

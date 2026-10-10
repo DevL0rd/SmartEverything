@@ -222,6 +222,8 @@ export function SettingsRow({ setting }: { readonly setting: SettingDefinition }
       return <LinkSettingRow setting={setting} />;
     case 'action':
       return <ActionSettingRow setting={setting} />;
+    case 'listed':
+      return null;
     case 'custom':
       return setting.render();
   }

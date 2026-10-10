@@ -13,6 +13,7 @@ import { notify } from '../../components/toast-store';
 import { Toasts } from '../../components/toasts';
 import { ConnectionProvider } from '../../api/transport';
 import { startTheme } from '../../design/theme';
+import { perfTouch } from '../../perf/touch';
 import { makeQueryClient, watchDevice } from '../../queries/client';
 import { startClock } from '../../store/clock';
 import { loadLocalPrefs } from '../../store/local-prefs';
@@ -53,7 +54,14 @@ export function AppRoot({ children }: { readonly children: ReactNode }): ReactNo
                 <View
                   className="flex-1 bg-bg"
                   onTouchStart={() => {
+                    perfTouch('start');
                     preloader.interacted();
+                  }}
+                  onTouchMove={() => {
+                    perfTouch('move');
+                  }}
+                  onTouchEnd={() => {
+                    perfTouch('end');
                   }}
                 >
                   <HomeHost>{children}</HomeHost>

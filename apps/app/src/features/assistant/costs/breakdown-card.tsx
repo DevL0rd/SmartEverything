@@ -9,7 +9,7 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { CardEmpty, CostCard } from './cost-card';
 import { plural } from '../../../format/text';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 import { ProviderLogo } from '../picker/provider-logo';
 import { DIMENSION_INFO, partIcon, partTitle, providerOfModel } from './costs-dimensions';
 import type { CostDimension } from './costs-params';
@@ -45,10 +45,11 @@ interface RowProps {
 
 function PartRow({ dimension, part, share, onFilter }: RowProps): ReactNode {
   const title = partTitle(part);
+  const money = useMoney();
   return (
     <View className="flex-row items-center gap-1">
       <Interactive
-        label={`${title}, ${costText(part.cost_micros)}. Show only this`}
+        label={`${title}, ${money.cost(part.cost_micros)}. Show only this`}
         onPress={() => {
           onFilter(part.key);
         }}
@@ -62,7 +63,7 @@ function PartRow({ dimension, part, share, onFilter }: RowProps): ReactNode {
               {title}
             </Text>
             <Text variant="body-strong" className="tabular">
-              {costText(part.cost_micros)}
+              {money.cost(part.cost_micros)}
             </Text>
           </View>
           <ProgressBar progress={share} colour={DIMENSION_INFO[dimension].colour} label={title} />

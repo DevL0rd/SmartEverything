@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { onlineManager, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { EVENT_KIND_LABELS, isUrgent, type LiveChange } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { ServerConnection } from '../api/transport';
-import { desktopBridge } from '../design/platform';
-import { applyToWindows } from '../queries/live-invalidations';
+import { appPlatform, desktopBridge } from '../design/platform';
+import { applyToWindows, refreshAllWindows } from '../queries/live-invalidations';
 import { CommandLedger } from './command-ledger';
 import { EntityStore } from './entity-store';
 import { LiveSync } from './live-sync';
@@ -13,6 +14,24 @@ import { persistSnapshots, restoreSnapshot } from './persistence';
 import { StoreProvider, type StoreRuntime } from './store-context';
 
 const log = new Logger('app.store');
+
+function followAppState(sync: LiveSync, client: QueryClient): () => void {
+  if (appPlatform() !== 'android') {
+    return (): void => undefined;
+  }
+  const apply = (state: string): void => {
+    if (state === 'background') {
+      sync.suspend();
+    } else if (state === 'active' && sync.resume()) {
+      refreshAllWindows(client);
+    }
+  };
+  apply(AppState.currentState);
+  const subscription = AppState.addEventListener('change', apply);
+  return (): void => {
+    subscription.remove();
+  };
+}
 
 function notifyDesktop(store: EntityStore, changes: readonly LiveChange[]): void {
   const bridge = desktopBridge();
@@ -64,6 +83,7 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
       log.warn('snapshot.restore_failed', { reason: String(error) });
     });
     sync.start();
+    const following = followAppState(sync, client);
     const persisting = persistSnapshots(connection.url, store);
     const online = onlineManager.subscribe((isOnline) => {
       if (isOnline) {
@@ -72,6 +92,7 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
     });
     return (): void => {
       online();
+      following();
       persisting();
       sync.stop();
       ledger.stop();

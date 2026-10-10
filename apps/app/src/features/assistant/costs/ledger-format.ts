@@ -7,7 +7,6 @@ const COST_STATE_LABELS: Readonly<Record<CostState, string>> = {
   estimated: 'Estimated, settling',
   reported: 'Reported by the provider',
   reconciled: 'Final',
-  plan: 'On your plan',
 };
 
 export function costStateLabel(state: CostState): string {

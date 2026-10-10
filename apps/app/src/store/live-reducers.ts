@@ -7,6 +7,7 @@ import {
 } from '@smarteverything/domain';
 import {
   deviceOf,
+  makeTable,
   rowsOf,
   type DeviceValues,
   type ListTable,
@@ -35,7 +36,7 @@ function tableOf<R>(rows: readonly R[], rule: TableRule<R>, version: number): Ta
   for (const row of sorted) {
     byId[rule.idOf(row)] = row;
   }
-  return { byId, ids: sorted.map(rule.idOf), version };
+  return makeTable(byId, sorted.map(rule.idOf), version);
 }
 
 function upsert<R>(table: Table<R>, row: R, rule: TableRule<R>): Table<R> {
@@ -52,7 +53,11 @@ function remove<R>(table: Table<R>, id: string): Table<R> {
     return table;
   }
   const byId = Object.fromEntries(Object.entries(table.byId).filter(([key]) => key !== id));
-  return { byId, ids: table.ids.filter((other) => other !== id), version: table.version + 1 };
+  return makeTable(
+    byId,
+    table.ids.filter((other) => other !== id),
+    table.version + 1,
+  );
 }
 
 interface Change<R> {
@@ -132,6 +137,16 @@ function applyWeather(
     throw new UnreadableChangeError(change.table, 'the weather row arrived empty');
   }
   return { ...state, weather: change.record };
+}
+
+function applyExchangeRates(
+  state: StoreState,
+  change: Extract<RowChange, { table: 'exchange_rates' }>,
+): StoreState {
+  if (change.record === null) {
+    throw new UnreadableChangeError(change.table, 'the exchange rates row arrived empty');
+  }
+  return { ...state, exchangeRates: change.record };
 }
 
 function applyClient(
@@ -256,6 +271,7 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   watch_days: (state) => state,
   ai_outreach: (state) => state,
   weather: applyWeather,
+  exchange_rates: applyExchangeRates,
 };
 
 function applyTo<T extends RowChange['table']>(
@@ -375,6 +391,7 @@ export function replaceWith(state: StoreState, snapshot: Snapshot): StoreState {
     tables: tablesOf(snapshot, state.tables),
     settings: snapshot.tables.settings,
     weather: snapshot.tables.weather ?? null,
+    exchangeRates: snapshot.tables.exchange_rates ?? null,
     talkPresence: snapshot.tables.talk_presence ?? state.talkPresence,
     assistant: snapshot.tables.assistant_status ?? null,
     turns: turnsOf(snapshot.tables.chat_activity ?? []),

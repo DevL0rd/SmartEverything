@@ -11,6 +11,7 @@ import { DayScope, FITNESS_WIDGETS, TodayScope, dailySeriesKeyOf } from '../../f
 import { HOME_WIDGETS, SPOTLIGHT_WIDGET } from '../../home';
 import { nutritionWidgets, useTodayKey, type DaySource } from '../../nutrition';
 import { BOARD_CATALOGUE, definitionIn, isFitnessBoard } from './board-sources';
+import { WidgetUnavailableError } from './unavailable';
 
 export interface ResolvedWidget {
   readonly key: string;
@@ -48,10 +49,10 @@ function healthWidget(
   metric: HealthMetric,
   range: HealthWidgetRange,
   day: string | undefined,
-): ResolvedWidget | null {
+): ResolvedWidget {
   const series = dailySeriesKeyOf(metric);
   if (series === null) {
-    return null;
+    throw new WidgetUnavailableError('this health data', 'That measurement has no daily chart.');
   }
   const chosen = RANGE_OPTIONS[range];
   return {
@@ -88,15 +89,16 @@ export function resolveWidget(
   key: string,
   widget: BoardChatWidget,
   remoteDevice: (remoteId: string) => string | null,
-): ResolvedWidget | null {
+): ResolvedWidget {
   switch (widget.kind) {
     case 'device':
       return { ...plain(key, SPOTLIGHT_WIDGET, { deviceId: widget.id }), compact: true };
     case 'remote': {
       const deviceId = remoteDevice(widget.id);
-      return deviceId === null
-        ? null
-        : { ...plain(key, SPOTLIGHT_WIDGET, { deviceId }), compact: true };
+      if (deviceId === null) {
+        throw new WidgetUnavailableError('this remote', 'It was removed or its blaster is gone.');
+      }
+      return { ...plain(key, SPOTLIGHT_WIDGET, { deviceId }), compact: true };
     }
     case 'camera':
       return {

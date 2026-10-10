@@ -1,126 +1,123 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import type { AssistantMessageRow } from '@smarteverything/domain';
-import { Icon } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
-import { useContextMenu } from '../../../components/menu';
-import { Text } from '../../../components/text';
-import { useIdiom } from '../../../design/platform';
-import { entering, useMotion } from '../../../design/motion';
-import { Attachments } from './attachments';
-import { CallBubble } from './call-bubble';
-import { WorkSummary, stepsOf } from './work-summary';
-import { CompactionDivider } from './compaction-divider';
-import { ToolsNotice, toolsChangeOf } from './tools-notice';
-import { isCompaction } from '../data/compaction';
-import { Markdown } from './markdown/markdown';
-import { MessageActionBar, useMessageActions } from './message-actions';
-import { useWorkingRenderer } from './streaming-context';
-import { MessageWidgets } from '../widgets/message-widgets';
+import { exiting, useMotion } from '../../../design/motion';
+import type { MessageItem } from '../data/thread';
+import { AiMessage } from './ai-message';
+import { CallCard } from './call-card';
+import { MyMessage } from './my-message';
+import { PersonMessage } from './person-message';
+import { SystemEvent, systemEventOf } from './system-event';
+import { Rise } from './rise';
+import { MESSAGE_FADE, REPLY_SINK, RISE_MS, RISE_PX, ROW_EXIT } from './thread-motion';
+import { DayChip, TimeGap, UnreadDivider } from './thread-markers';
 
 const OPENED_AT = Date.now();
 
-export interface BubbleProps {
-  readonly row: AssistantMessageRow;
+const animated = new Set<string>();
+
+function isFresh(row: AssistantMessageRow): boolean {
+  if (Date.parse(row.created_at) <= OPENED_AT || animated.has(row.id)) {
+    return false;
+  }
+  animated.add(row.id);
+  return true;
 }
 
-function SystemLine({ row }: { readonly row: AssistantMessageRow }): ReactNode {
+function Row({ item }: { readonly item: MessageItem }): ReactNode {
+  const { row, speaker } = item;
+  if (row.kind === 'call') {
+    return <CallCard row={row} />;
+  }
+  const event = systemEventOf(row);
+  if (event !== null) {
+    return <SystemEvent event={event} />;
+  }
+  switch (speaker.kind) {
+    case 'me':
+      return <MyMessage item={item} replied={item.replied} />;
+    case 'person':
+      return <PersonMessage item={item} />;
+    case 'ai':
+      return <AiMessage item={item} />;
+    case 'system':
+      return <SystemEvent event={{ kind: 'note', icon: 'sparkles', text: row.text }} />;
+  }
+}
+
+function Flash(): ReactNode {
   return (
-    <View className="flex-row items-center gap-2 self-center rounded-full bg-surface-2 px-3 py-1.5">
-      <Icon name="sparkles" size={16} tone="primary" />
-      <Text variant="caption" tone="variant">
-        {row.text}
-      </Text>
-    </View>
+    <Animated.View
+      pointerEvents="none"
+      entering={FadeIn.duration(150)}
+      exiting={FadeOut.duration(450)}
+      className="absolute -inset-x-2 inset-y-0 rounded-lg bg-primary/12"
+    />
   );
 }
 
-function Content({ row }: BubbleProps): ReactNode {
-  const working = useWorkingRenderer();
-  if (working !== null && row.role === 'responder' && row.state === 'working') {
+function Markers({ item }: { readonly item: MessageItem }): ReactNode {
+  return (
+    <>
+      {item.day === null ? null : <DayChip label={item.day} />}
+      {item.divider ? <UnreadDivider /> : null}
+      {item.gap === null ? null : <TimeGap label={item.gap} />}
+    </>
+  );
+}
+
+function Entry({
+  item,
+  fresh,
+  children,
+}: {
+  readonly item: MessageItem;
+  readonly fresh: boolean;
+  readonly children: ReactNode;
+}): ReactNode {
+  const motion = useMotion();
+  const { speaker, row } = item;
+  if (!fresh || motion.reduced) {
     return (
-      <View className="w-full gap-2">
-        {working(row)}
-        <MessageWidgets row={row} />
-      </View>
+      <Animated.View {...exiting(motion, speaker.kind === 'ai' ? REPLY_SINK : ROW_EXIT)}>
+        {children}
+      </Animated.View>
     );
   }
-  const mine = row.role === 'person';
-  return (
-    <View
-      className={
-        mine ? 'max-w-full gap-2 self-end rounded-xl bg-surface-3 px-4 py-2.5' : 'w-full gap-2'
-      }
-    >
-      {mine || row.steps.length === 0 ? null : (
-        <WorkSummary steps={stepsOf(row.steps, false)} live={false} />
-      )}
-      {row.attachments.length === 0 ? null : <Attachments attachments={row.attachments} />}
-      {row.text === '' ? null : <Markdown text={row.text} />}
-      {mine ? null : <MessageWidgets row={row} />}
-    </View>
-  );
+  if (speaker.kind === 'me' && row.origin?.source === 'app') {
+    return (
+      <Rise from={RISE_PX.send} duration={RISE_MS.send}>
+        {children}
+      </Rise>
+    );
+  }
+  if (speaker.kind === 'ai') {
+    return (
+      <Rise from={RISE_PX.reply} duration={RISE_MS.reply}>
+        {children}
+      </Rise>
+    );
+  }
+  return <Animated.View entering={MESSAGE_FADE}>{children}</Animated.View>;
 }
 
-function Message({ row }: BubbleProps): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  const [hovered, setHovered] = useState(false);
-  const actions = useMessageActions(row);
-  const menu = useContextMenu(actions.items, 'Message');
-  const mine = row.role === 'person';
+export function MessageBubble({
+  item,
+  flash,
+}: {
+  readonly item: MessageItem;
+  readonly flash: boolean;
+}): ReactNode {
+  const [fresh] = useState(() => isFresh(item.row));
   return (
-    <View
-      onPointerEnter={() => {
-        setHovered(true);
-      }}
-      onPointerLeave={() => {
-        setHovered(false);
-      }}
-      className={mine ? 'relative items-end pl-12 medium:pl-24' : 'relative items-start'}
-    >
-      <Interactive
-        role="none"
-        label={mine ? 'Your message' : 'Reply'}
-        onLongPress={pointer ? undefined : menu.onLongPress}
-        onContextMenu={menu.onContextMenu}
-        className={mine ? 'max-w-full items-end' : 'w-full'}
-      >
-        <Content row={row} />
-      </Interactive>
-      <MessageActionBar
-        actions={actions}
-        pointer={pointer}
-        visible={hovered}
-        align={mine ? 'end' : 'start'}
-      />
-      {menu.host}
-      {actions.host}
-    </View>
-  );
-}
-
-function Row({ row }: BubbleProps): ReactNode {
-  if (row.kind === 'call') {
-    return <CallBubble row={row} />;
-  }
-  if (isCompaction(row)) {
-    return <CompactionDivider row={row} />;
-  }
-  const tools = toolsChangeOf(row);
-  if (tools !== null) {
-    return <ToolsNotice change={tools} />;
-  }
-  return row.role === 'system' ? <SystemLine row={row} /> : <Message row={row} />;
-}
-
-export function MessageBubble({ row }: BubbleProps): ReactNode {
-  const motion = useMotion();
-  const fresh = Date.parse(row.created_at) > OPENED_AT;
-  return (
-    <Animated.View {...(fresh ? entering(motion, FadeIn.duration(180)) : {})}>
-      <Row row={row} />
-    </Animated.View>
+    <Entry item={item} fresh={fresh}>
+      <Markers item={item} />
+      <View className="relative">
+        {flash ? <Flash /> : null}
+        <Row item={item} />
+      </View>
+    </Entry>
   );
 }

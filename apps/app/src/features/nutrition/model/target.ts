@@ -1,6 +1,8 @@
 import {
   defaultAmount,
   factsOf,
+  multiplierOf,
+  weightOf,
   type FoodCandidate,
   type FoodRow,
   type HealthEntryRow,
@@ -16,6 +18,7 @@ export interface PortionTarget {
   readonly fromOpenFoodFacts: boolean;
   readonly entry: HealthEntryRow | null;
   readonly amount: number;
+  readonly multiplier: number;
   readonly meal: Meal;
   readonly at: number;
 }
@@ -34,6 +37,7 @@ export function newTarget(
       ('food' in source ? source.food.origin : source.saveAs.origin) === 'open_food_facts',
     entry: null,
     amount: defaultAmount(food),
+    multiplier: 1,
     meal: meal ?? mealAt(at),
     at,
   };
@@ -67,7 +71,8 @@ export function editTarget(
     saveAs: null,
     fromOpenFoodFacts: saved?.origin === 'open_food_facts',
     entry,
-    amount: portion.amount,
+    amount: weightOf(portion),
+    multiplier: multiplierOf(portion),
     meal: mealOfCode(data.mealType) ?? 'snack',
     at: Date.parse(entry.start_time),
   };

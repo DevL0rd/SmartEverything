@@ -10,6 +10,7 @@ const isAdBlocker = (device: { readonly kind: string }): boolean => device.kind 
 export const adguardAppPlugin: AppPlugin = {
   id: ADGUARD_PLUGIN,
   widgets: ADGUARD_WIDGETS,
+  deviceSettings: [],
   deviceSections: [
     {
       key: 'blocking',

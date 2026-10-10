@@ -136,6 +136,50 @@ function addPages(builder: Builder, places: readonly DevicePlace[]): void {
   }
 }
 
+const CAMERA_OPTIONS: readonly {
+  readonly key: string;
+  readonly title: string;
+  readonly keywords: readonly string[];
+}[] = [
+  {
+    key: 'record-events',
+    title: 'Save event clips',
+    keywords: ['recording', 'record', 'clips', 'events', 'snapshot', 'motion'],
+  },
+  {
+    key: 'wake-sensitivity',
+    title: 'Wake sensitivity',
+    keywords: ['wake word', 'hey', 'listen', 'hear', 'microphone', 'mic', 'quiet', 'far', 'name'],
+  },
+  {
+    key: 'transcribe',
+    title: 'Transcribe what it hears',
+    keywords: ['transcript', 'transcribe', 'speech to text', 'captions', 'listen', 'microphone'],
+  },
+];
+
+function addCameraOptions(builder: Builder): void {
+  const { named } = builder;
+  if (!isCamera(named.device)) {
+    return;
+  }
+  const page = pageLinks(named).camera;
+  for (const option of CAMERA_OPTIONS) {
+    add(
+      builder,
+      {
+        id: `camopt:${named.device.id}:${option.key}`,
+        title: option.title,
+        keywords: option.keywords,
+        parent: page.id,
+        link: page.link,
+        icon: page.icon,
+      },
+      'setting',
+    );
+  }
+}
+
 const PRIVACY_WORDS: readonly string[] = ['privacy', 'private', 'camera off', 'sleep'];
 
 function privacyWords(named: NamedDevice, presented: PresentedCapability): readonly string[] {
@@ -194,6 +238,7 @@ export function deviceSources(named: readonly NamedDevice[], out: SourceLinks): 
     const builder: Builder = { named: device, out, sources };
     const places = devicePlaces(device.device);
     addPages(builder, places);
+    addCameraOptions(builder);
     for (const place of places) {
       addPlace(builder, place);
     }

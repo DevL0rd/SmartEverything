@@ -85,6 +85,24 @@ export interface AppliedTheme {
 let applied: AppliedTheme = { settings: DEFAULT_THEME_SETTINGS, idiom: idiomNow() };
 const listeners = new Set<() => void>();
 
+const written = new Map<ThemeName, Variables>();
+let writtenFor: readonly string[] = Uniwind.themes;
+
+function changedVariables(theme: ThemeName, next: Variables): Variables {
+  if (writtenFor !== Uniwind.themes) {
+    written.clear();
+    writtenFor = Uniwind.themes;
+  }
+  const previous = written.get(theme);
+  written.set(theme, next);
+  if (previous === undefined) {
+    return next;
+  }
+  return Object.fromEntries(
+    Object.entries(next).filter(([name, value]) => previous[name] !== value),
+  );
+}
+
 function write(): void {
   const { width } = Dimensions.get('window');
   const shared: Variables = {
@@ -93,7 +111,13 @@ function write(): void {
     ...radiusVariables(applied.settings.corners),
   };
   for (const theme of THEMES) {
-    Uniwind.updateCSSVariables(theme, { ...shared, ...colourVariables(applied.settings, theme) });
+    const changed = changedVariables(theme, {
+      ...shared,
+      ...colourVariables(applied.settings, theme),
+    });
+    if (Object.keys(changed).length > 0) {
+      Uniwind.updateCSSVariables(theme, changed);
+    }
   }
 }
 

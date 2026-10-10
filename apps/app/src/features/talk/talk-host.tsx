@@ -14,24 +14,24 @@ import { useMyChannels } from './data/talk-data';
 import { engineStatus } from './data/talk-status';
 import { loadDesktopTalk } from './desktop/use-talk-shortcuts';
 import { talkEngine } from './engine/engine';
-import { engineState, useTalkEngine, type TalkEngineState } from './engine/engine-state';
+import { engineState, useTalkEngineValue, type TalkEngineState } from './engine/engine-state';
 import { TalkBar } from './talk-bar';
 
 const log = new Logger('app.talk-host');
 
-function useEngineLifecycle(): void {
+function useEngineLifecycle(listening: boolean): void {
   const connection = useConnection();
   const enabled = useLocalPref('talkEnabled');
   const paired = connection.status === 'paired' ? connection.connection : null;
   useEffect(() => {
-    if (!enabled || paired === null) {
+    if (!enabled || !listening || paired === null) {
       return undefined;
     }
     talkEngine.start({ url: paired.url, token: paired.token });
     return (): void => {
       talkEngine.stop();
     };
-  }, [enabled, paired]);
+  }, [enabled, listening, paired]);
 }
 
 function holdCommand(incoming: DesktopTalkCommand): DesktopTalkCommand | null {
@@ -86,7 +86,9 @@ function activityOf(state: TalkEngineState): DesktopTalkTray['activity'] {
 }
 
 function useDesktop(channels: readonly TalkChannelRow[], talkChannel: string | null): void {
-  const state = useTalkEngine();
+  const channel = channels.find((each) => each.id === talkChannel);
+  const status = useTalkEngineValue((state) => engineStatus(state, channel, channels.length > 0));
+  const activity = useTalkEngineValue(activityOf);
   const bridge = desktopBridge();
   useEffect(() => {
     loadDesktopTalk();
@@ -98,18 +100,15 @@ function useDesktop(channels: readonly TalkChannelRow[], talkChannel: string | n
   useEffect(() => {
     bridge
       ?.setTalkTray?.({
-        status: engineStatus(
-          state,
-          channels.find((channel) => channel.id === talkChannel),
-        ),
-        activity: activityOf(state),
+        status,
+        activity,
         channels: channels.map((channel) => ({ id: channel.id, name: channel.name })),
         talkChannel,
       })
       .catch((error: unknown) => {
         log.warn('talk.tray_failed', { reason: rawErrorText(error) });
       });
-  }, [bridge, state, channels, talkChannel]);
+  }, [bridge, status, activity, channels, talkChannel]);
 }
 
 function useAndroid(channels: readonly TalkChannelRow[], talkChannel: string | null): void {
@@ -139,11 +138,16 @@ function AndroidTalk(): ReactNode {
   return null;
 }
 
+function EngineLifecycle(): null {
+  useEngineLifecycle(useMyChannels().length > 0);
+  return null;
+}
+
 export function TalkHost(): ReactNode {
-  useEngineLifecycle();
   const platform = appPlatform();
   return (
     <>
+      <EngineLifecycle />
       {platform === 'desktop' ? <DesktopTalk /> : null}
       {platform === 'android' ? <AndroidTalk /> : null}
       <TalkBar />

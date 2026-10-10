@@ -33,7 +33,32 @@ export function changeChat(chatId: string, change: AiChatChange): Promise<AiChat
   return attempt(() => updateAiChat(chatId, change), 'Chat not changed');
 }
 
-export async function deleteChat(chat: AiChatRow): Promise<boolean> {
+export async function setChatPinned(chatId: string, pinned: boolean): Promise<void> {
+  await changeChat(chatId, { pinned });
+}
+
+export async function setChatRead(chatId: string, read: boolean): Promise<void> {
+  await changeChat(chatId, { read });
+}
+
+export async function setChatArchived(chatId: string, archived: boolean): Promise<void> {
+  const row = await changeChat(chatId, { archived });
+  if (row === null || !archived) {
+    return;
+  }
+  notify({
+    message: 'Chat archived',
+    detail: row.title,
+    action: {
+      label: 'Undo',
+      onPress: (): void => {
+        void changeChat(chatId, { archived: false });
+      },
+    },
+  });
+}
+
+export async function deleteChat(chat: Pick<AiChatRow, 'id' | 'title'>): Promise<boolean> {
   const sure = await confirm({
     title: `Delete “${chat.title}”?`,
     body: 'Its messages and attachments are deleted too.',

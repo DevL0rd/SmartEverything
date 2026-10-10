@@ -4,7 +4,7 @@ import { href } from '../../../app-shell/hrefs';
 import type { IconName } from '../../../components/icon';
 import { visibleSettings } from '../../../settings/registry';
 import { breadcrumbOf, settingsPage } from '../../../settings/tree';
-import type { SettingDefinition, SettingEnv } from '../../../settings/types';
+import type { SettingDefinition, SettingEnv, SwitchSetting } from '../../../settings/types';
 import type { StoreState } from '../../../store/state';
 import { pageLinkView } from './page-links';
 
@@ -16,6 +16,7 @@ export interface LinkView {
   readonly trail: string;
   readonly value: string | null;
   readonly href: Href;
+  readonly toggle: SwitchSetting | null;
 }
 
 function trailOf(pageId: string, includeSelf: boolean): string {
@@ -49,6 +50,7 @@ function settingLink(setting: string, value: string | null, env: SettingEnv): Li
       trail: trailOf(setting, false),
       value,
       href: href.settings.page(setting),
+      toggle: null,
     };
   }
   const row = visibleSettings(env).find((candidate) => candidate.id === setting);
@@ -64,6 +66,7 @@ function settingLink(setting: string, value: string | null, env: SettingEnv): Li
     trail: trailOf(parent.id, true),
     value: formatted(row, value),
     href: href.settings.focus(parent.id, row.id),
+    toggle: row.control === 'switch' ? row : null,
   };
 }
 
@@ -134,6 +137,7 @@ function entityLink(link: EntityLink, tables: Tables): LinkView | null {
         trail: entity.trail,
         value: link.value,
         href: entity.to(link.id),
+        toggle: null,
       };
 }
 

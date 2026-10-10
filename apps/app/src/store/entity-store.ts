@@ -1,4 +1,5 @@
 import type { LiveChange, Snapshot } from '@smarteverything/domain';
+import { perfStoreChanged } from '../perf/store-hook';
 import { applyChange, replaceWith } from './live-reducers';
 import { emptyState, type StoreState, type SyncState } from './state';
 
@@ -22,7 +23,9 @@ export class EntityStore {
     if (next === this.state) {
       return;
     }
+    const previous = this.state;
     this.state = next;
+    perfStoreChanged(previous, next, this.listeners.size);
     for (const listener of this.listeners) {
       listener();
     }

@@ -13,6 +13,7 @@ import type {
   Snapshot,
   TableRow,
   WeatherRow,
+  ExchangeRatesRow,
 } from '@smarteverything/domain';
 
 export interface Device extends DeviceRow {
@@ -32,6 +33,7 @@ export type ListTable = Exclude<
   | 'foods'
   | 'watch_days'
   | 'weather'
+  | 'exchange_rates'
   | 'ai_outreach'
 >;
 
@@ -40,7 +42,20 @@ export type RowOf<T extends ListTable> = T extends 'devices' ? Device : TableRow
 export interface Table<R> {
   readonly byId: Readonly<Record<string, R>>;
   readonly ids: readonly string[];
+  readonly rows: readonly R[];
   readonly version: number;
+}
+
+export function makeTable<R>(
+  byId: Readonly<Record<string, R>>,
+  ids: readonly string[],
+  version: number,
+): Table<R> {
+  const rows = ids.flatMap((id) => {
+    const row = byId[id];
+    return row === undefined ? [] : [row];
+  });
+  return { byId, ids, rows, version };
 }
 
 export type Tables = { readonly [T in ListTable]: Table<RowOf<T>> };
@@ -52,10 +67,10 @@ export interface DeviceValue {
 
 export type DeviceValues = Readonly<Record<string, DeviceValue>>;
 
-type SyncStatus = 'connecting' | 'loading' | 'live' | 'interrupted' | 'refused';
+type SyncPhase = 'connecting' | 'loading' | 'live' | 'interrupted' | 'refused';
 
 export interface SyncState {
-  readonly status: SyncStatus;
+  readonly status: SyncPhase;
   readonly seq: number | null;
   readonly problem: string | null;
   readonly outdated: readonly string[];
@@ -75,6 +90,7 @@ export interface StoreState {
   readonly tables: Tables;
   readonly settings: SettingsRow | null;
   readonly weather: WeatherRow | null;
+  readonly exchangeRates: ExchangeRatesRow | null;
   readonly talkPresence: TalkPresence;
   readonly assistant: AssistantStatus | null;
   readonly turns: Turns;
@@ -90,7 +106,7 @@ export interface StoreState {
 }
 
 function emptyTable<R>(): Table<R> {
-  return { byId: {}, ids: [], version: 0 };
+  return makeTable({}, [], 0);
 }
 
 function emptyTables(): Tables {
@@ -133,6 +149,7 @@ export function emptyState(): StoreState {
     tables: emptyTables(),
     settings: null,
     weather: null,
+    exchangeRates: null,
     talkPresence: { floors: [], online: [] },
     assistant: null,
     turns: {},
@@ -148,9 +165,12 @@ export function emptyState(): StoreState {
   };
 }
 
+const NO_VALUES: DeviceValues = {};
+
+export function deviceValuesOf(state: StoreState, deviceId: string): DeviceValues {
+  return state.deviceValues[deviceId] ?? NO_VALUES;
+}
+
 export function rowsOf<R>(table: Table<R>): readonly R[] {
-  return table.ids.flatMap((id) => {
-    const row = table.byId[id];
-    return row === undefined ? [] : [row];
-  });
+  return table.rows;
 }

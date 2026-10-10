@@ -8,7 +8,7 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { api, connectionRefused, type ServerConnection } from '../api/transport';
 import { withFrame, withSnapshot } from './chat-turns';
-import { deliverWatchActionRequest } from './watch-action-requests';
+import { runPushCommand } from '../../modules/health-connect';
 import { deliverAiSpeech } from './ai-speech-requests';
 import { appPlatform } from '../design/platform';
 import type { EntityStore } from './entity-store';
@@ -20,6 +20,8 @@ import { rawErrorText } from '../format/errors';
 const log = new Logger('app.live');
 
 const SNAPSHOT_ROOTS: readonly string[] = ['tables', 'owner'];
+
+export const LINK_DEADLINE_MS = 20_000;
 
 export interface LiveSyncHooks {
   readonly onChanges: (changes: readonly LiveChange[]) => void;
@@ -39,11 +41,7 @@ function deployed<T extends string>(names: readonly T[]): T[] {
 }
 
 function platformStreams(): readonly LiveStream[] {
-  const platform = appPlatform();
-  if (platform === 'desktop') {
-    return ['service_log', 'talk'];
-  }
-  return platform === 'android' ? ['watch_actions', 'talk'] : ['talk'];
+  return appPlatform() === 'desktop' ? ['service_log', 'talk', 'assistant'] : ['talk', 'assistant'];
 }
 
 type Notice = Exclude<LiveMessage, { type: 'change' | 'subscribed' | 'profile_changed' }>;
@@ -105,11 +103,23 @@ const NOTICES: { readonly [K in Notice['type']]: NoticeHandler<K> } = {
   ai_speech: (_store, message) => {
     log.info('live.ai_speech', { listeners: deliverAiSpeech(message) });
   },
-  watch_action: (_store, message) => {
-    const handlers = deliverWatchActionRequest(message);
-    log.info('live.watch_action', { action: message.action.type, handlers });
+  push_command: (_store, message) => {
+    runPushCommand(message.command, JSON.stringify(message.payload)).catch((error: unknown) => {
+      log.error('live.push_command_failed', error, { command: message.command });
+    });
   },
+  watch_action: (_store, message) => {
+    log.warn('live.legacy_watch_action_ignored', { requestId: message.requestId });
+  },
+  claude_session: claudeNoticeNotShown,
+  claude_session_gone: claudeNoticeNotShown,
+  claude_thread: claudeNoticeNotShown,
+  claude_status: claudeNoticeNotShown,
 };
+
+function claudeNoticeNotShown(): void {
+  return undefined;
+}
 
 function noticeTo<K extends Notice['type']>(
   store: EntityStore,
@@ -123,12 +133,14 @@ function noticeTo<K extends Notice['type']>(
 export class LiveSync {
   private stopSocket: (() => void) | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
+  private deadline: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
   private phase: Phase = 'closed';
   private buffer: LiveChange[] = [];
   private batch: LiveChange[] = [];
   private snapshotRun = 0;
   private outdated: ReadonlySet<string> = new Set();
+  private suspended = false;
 
   constructor(
     private readonly connection: ServerConnection,
@@ -145,13 +157,36 @@ export class LiveSync {
       clearTimeout(this.retry);
       this.retry = null;
     }
+    this.clearDeadline();
     this.phase = 'closed';
+    this.snapshotRun += 1;
     this.stopSocket?.();
     this.stopSocket = null;
   }
 
+  suspend(): void {
+    if (this.suspended) {
+      return;
+    }
+    this.suspended = true;
+    this.attempt = 0;
+    this.stop();
+    this.store.setSync({ status: 'interrupted', problem: null });
+    log.info('live.suspended');
+  }
+
+  resume(): boolean {
+    if (!this.suspended) {
+      return false;
+    }
+    this.suspended = false;
+    log.info('live.resumed');
+    this.open();
+    return true;
+  }
+
   online(): void {
-    if (this.retry !== null) {
+    if (!this.suspended && this.retry !== null) {
       clearTimeout(this.retry);
       this.open();
     }
@@ -162,6 +197,7 @@ export class LiveSync {
     this.phase = 'buffering';
     this.buffer = [];
     this.store.setSync({ status: this.store.get().loaded ? 'interrupted' : 'connecting' });
+    this.armDeadline();
     this.stopSocket = openLiveSocket(
       {
         url: this.connection.url,
@@ -199,7 +235,11 @@ export class LiveSync {
       log.debug('live.outdated_change_skipped', { table });
       return;
     }
-    log.warn('live.unreadable', { reason, table: table ?? 'none' });
+    if (table === null) {
+      log.warn('live.notice_ignored', { reason });
+      return;
+    }
+    log.warn('live.unreadable', { reason, table });
     this.resnapshot(`The server sent something this app cannot read: ${reason}`);
   }
 
@@ -271,6 +311,7 @@ export class LiveSync {
   private async loadSnapshot(): Promise<void> {
     this.snapshotRun += 1;
     const run = this.snapshotRun;
+    this.armDeadline();
     this.store.setSync({ status: this.store.get().loaded ? 'interrupted' : 'loading' });
     try {
       const read = await api().callTables(
@@ -287,6 +328,7 @@ export class LiveSync {
       const replay = this.buffer.filter((change) => change.seq > snapshot.seq);
       this.buffer = [];
       this.phase = 'live';
+      this.clearDeadline();
       this.applyAll(replay);
       this.attempt = 0;
       this.store.setSync({ status: 'live', problem: null, outdated: read.skipped });
@@ -302,6 +344,9 @@ export class LiveSync {
         });
       }
     } catch (error) {
+      if (run !== this.snapshotRun) {
+        return;
+      }
       log.error('live.snapshot_failed', error);
       this.store.setSync({
         status: 'interrupted',
@@ -317,9 +362,37 @@ export class LiveSync {
     this.store.update((state) => ({ ...state, consentRequests: requests }));
   }
 
+  private armDeadline(): void {
+    this.clearDeadline();
+    this.deadline = setTimeout(() => {
+      this.deadline = null;
+      this.timedOut();
+    }, LINK_DEADLINE_MS);
+  }
+
+  private clearDeadline(): void {
+    if (this.deadline !== null) {
+      clearTimeout(this.deadline);
+      this.deadline = null;
+    }
+  }
+
+  private timedOut(): void {
+    log.warn('live.link_timed_out', { attempt: this.attempt });
+    this.stopSocket?.();
+    this.store.setSync({ status: 'interrupted', problem: 'The server did not answer in time' });
+    this.closed(0, 'link timed out');
+  }
+
   private closed(code: number, reason: string): void {
+    this.clearDeadline();
+    if (this.retry !== null) {
+      clearTimeout(this.retry);
+      this.retry = null;
+    }
     this.stopSocket = null;
     this.phase = 'closed';
+    this.snapshotRun += 1;
     this.store.setSync({ status: 'interrupted' });
     log.info('live.closed', { code, reason });
     if (code === TOKEN_WITHDRAWN) {

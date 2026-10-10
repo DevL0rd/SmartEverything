@@ -146,7 +146,7 @@ function withoutNamed<T extends { $?: { 'android:name': string } }>(
   return (items ?? []).filter((item) => item.$?.['android:name'] !== name);
 }
 
-function withQueries(manifest: AndroidManifest): void {
+function addQueries(manifest: AndroidManifest): void {
   const queries = manifest.manifest.queries;
   const listed = queries.some((query) =>
     (query.package ?? []).some((entry) => entry.$['android:name'] === HEALTH_CONNECT_PACKAGE),
@@ -156,7 +156,7 @@ function withQueries(manifest: AndroidManifest): void {
   }
 }
 
-function withRationale(manifest: AndroidManifest, privacyPolicyUrl: string): void {
+function addRationale(manifest: AndroidManifest, privacyPolicyUrl: string): void {
   const application = AndroidConfig.Manifest.getMainApplicationOrThrow(manifest);
   application.activity = [
     ...withoutNamed(application.activity, RATIONALE_ACTIVITY),
@@ -193,14 +193,36 @@ function withRationale(manifest: AndroidManifest, privacyPolicyUrl: string): voi
   );
 }
 
+const PICTURE_IN_PICTURE_CONFIG_CHANGES = [
+  'screenSize',
+  'smallestScreenSize',
+  'screenLayout',
+  'orientation',
+];
+
+function allowPictureInPicture(manifest: AndroidManifest): void {
+  const activity = AndroidConfig.Manifest.getMainActivityOrThrow(manifest);
+  activity.$['android:supportsPictureInPicture'] = 'true';
+  const present = (activity.$['android:configChanges'] ?? '').split('|').filter(Boolean);
+  const missing = PICTURE_IN_PICTURE_CONFIG_CHANGES.filter((change) => !present.includes(change));
+  activity.$['android:configChanges'] = [...present, ...missing].join('|');
+}
+
+type ManifestConfig = Parameters<Parameters<typeof withAndroidManifest>[1]>[0];
+
+function manifestEdit(privacyPolicyUrl: string): (modified: ManifestConfig) => ManifestConfig {
+  return (modified) => {
+    addQueries(modified.modResults);
+    addRationale(modified.modResults, privacyPolicyUrl);
+    allowPictureInPicture(modified.modResults);
+    return modified;
+  };
+}
+
 export const withHealthConnect: ConfigPlugin<HealthConnectPluginOptions> = (config, options) => {
   const privacyPolicyUrl = privacyPolicyOf(options);
   const permitted = AndroidConfig.Permissions.withPermissions(config, [
     ...HEALTH_CONNECT_PERMISSIONS,
   ]);
-  return withAndroidManifest(permitted, (modified) => {
-    withQueries(modified.modResults);
-    withRationale(modified.modResults, privacyPolicyUrl);
-    return modified;
-  });
+  return withAndroidManifest(permitted, manifestEdit(privacyPolicyUrl));
 };

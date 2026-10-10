@@ -11,7 +11,7 @@ import { atLeast, useSizeClass } from '../../../design/size-class';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useDeviceModel } from '../model/device-model';
-import { useDeviceHeader } from './device-header';
+import { DeviceHeader } from './device-header';
 import { DeviceBanner, Hero, PrimaryCard } from './device-overview';
 import {
   findSection,
@@ -41,7 +41,7 @@ function Stacked({
 }): ReactNode {
   return (
     <Screen
-      header={useDeviceHeader(device, null)}
+      header={<DeviceHeader device={device} sectionTitle={null} />}
       maxWidth={narrow ? 'reading' : 'detail'}
       banner={<DeviceBanner device={device} />}
     >
@@ -55,7 +55,7 @@ function Stacked({
 function TwoColumns({ device }: { readonly device: Device }): ReactNode {
   return (
     <Screen
-      header={useDeviceHeader(device, null)}
+      header={<DeviceHeader device={device} sectionTitle={null} />}
       maxWidth="detail"
       banner={<DeviceBanner device={device} />}
     >
@@ -84,7 +84,11 @@ function Split({
   const [active, setActive] = useState(initial);
   const shown = sections.find((section) => section.key === active) ?? sectionOf('overview');
   return (
-    <Screen header={useDeviceHeader(device, null)} maxWidth="detail" scroll={false}>
+    <Screen
+      header={<DeviceHeader device={device} sectionTitle={null} />}
+      maxWidth="detail"
+      scroll={false}
+    >
       <View className="w-full max-w-detail flex-1 flex-row gap-section-gap self-center px-gutter">
         <ScrollView
           className="max-w-140 flex-1"
@@ -124,7 +128,9 @@ function SubPage({
   const shown = findSection(useDeviceModel(device), section);
   return (
     <Screen
-      header={useDeviceHeader(device, shown === undefined ? null : shown.title)}
+      header={
+        <DeviceHeader device={device} sectionTitle={shown === undefined ? null : shown.title} />
+      }
       maxWidth="detail"
       banner={<DeviceBanner device={device} />}
     >

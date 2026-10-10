@@ -14,23 +14,8 @@ function failed(message: string): (error: unknown) => void {
   };
 }
 
-async function saveConfirmed(row: PluginRow, edit: PluginEdit): Promise<void> {
-  const first = await updatePlugin(row.id, edit, false);
-  if (first.outcome === 'saved') {
-    return;
-  }
-  const accepted = await confirm({
-    title: `Switch on ${row.manifest.name}?`,
-    body: [`It will be able to:`, ...first.powers.map((power) => `• ${power}`)].join('\n'),
-    confirmLabel: 'Switch on',
-  });
-  if (accepted) {
-    await updatePlugin(row.id, edit, true);
-  }
-}
-
 export function savePlugin(row: PluginRow, edit: PluginEdit, failure: string): Promise<void> {
-  return saveConfirmed(row, edit).catch(failed(failure));
+  return updatePlugin(row.id, edit).then(() => undefined, failed(failure));
 }
 
 export function switchPlugin(row: PluginRow, on: boolean): Promise<void> {

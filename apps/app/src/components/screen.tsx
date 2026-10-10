@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from 'react';
+import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { KeyboardAvoidingView, RefreshControl, View } from 'react-native';
 import Animated, {
   useAnimatedRef,
@@ -117,12 +117,15 @@ function ScrollBody({
   );
 }
 
-function screenValue(
+function useScreenValue(
   scrollY: ScreenValue['scrollY'],
   scrollRef: ScreenValue['scrollRef'],
   primaryAction: PrimaryActionProps | undefined,
 ): ScreenValue {
-  return { scrollY, scrollRef, primaryAction: primaryAction ?? null };
+  return useMemo(
+    () => ({ scrollY, scrollRef, primaryAction: primaryAction ?? null }),
+    [scrollY, scrollRef, primaryAction],
+  );
 }
 
 export function Screen({
@@ -140,7 +143,7 @@ export function Screen({
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const placement = usePrimaryActionPlacement();
   const fab = primaryAction !== undefined && placement === 'fab';
-  const value = screenValue(scrollY, scroll ? scrollRef : null, primaryAction);
+  const value = useScreenValue(scrollY, scroll ? scrollRef : null, primaryAction);
   return (
     <ScreenContext.Provider value={value}>
       <KeyboardAvoidingView behavior={isNative() ? 'padding' : undefined} className="flex-1">

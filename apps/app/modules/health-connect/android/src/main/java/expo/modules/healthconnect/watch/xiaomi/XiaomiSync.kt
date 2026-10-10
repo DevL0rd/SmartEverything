@@ -18,6 +18,7 @@ class XiaomiSync(
   private var current: XiaomiFileId? = null
   private var awaitingPast = false
   private var running = false
+  private val captured = mutableSetOf<String>()
   private val timeout = Runnable { fileTimedOut() }
 
   val busy: Boolean get() = running
@@ -30,6 +31,7 @@ class XiaomiSync(
     running = true
     parsed.clear()
     queue.clear()
+    captured.clear()
     awaitingPast = true
     sink.syncing("Asking the watch for new data ($reason)")
     send(health(FETCH_TODAY, ProtoWriter().message(5, ProtoWriter().varint(1, 0))))
@@ -47,9 +49,12 @@ class XiaomiSync(
     if (ids.size % 7 != 0) {
       sink.note("sync_list_unreadable", "the watch listed ${ids.size} bytes of file ids, not a multiple of 7")
     }
-    val fresh = XiaomiFileId.list(ids).filter { it.key !in skipped }
+    val listed = XiaomiFileId.list(ids)
+    val fresh = listed.filter { it.key !in skipped }
     fresh.filter { it !in queue }.forEach { queue.add(it) }
-    sink.note("sync_files", "${fresh.size} file(s) from ${if (subtype == FETCH_TODAY) "today" else "earlier days"}")
+    val source = if (subtype == FETCH_TODAY) "today" else "earlier days"
+    sink.note("sync_files", "${fresh.size} file(s) from $source, ${listed.size - fresh.size} skipped as unsupported earlier")
+    noteSleepFiles(source, listed)
     if (subtype == FETCH_TODAY) {
       send(health(FETCH_PAST, null))
       handler.postDelayed(timeout, FILE_TIMEOUT_MS)
@@ -83,13 +88,33 @@ class XiaomiSync(
       val data = XiaomiFileParser.parse(id, checked)
       parsed.add(id to data)
       sink.note("sync_file_read", "${id.label}: ${data.summary()}")
+      if (id.isSleep && data.sleeps.isEmpty()) {
+        sink.note("sync_sleep_empty", "${id.label}: ${file.size} bytes hold no finished night; it is acknowledged and removed from the watch")
+      }
+    } catch (implausible: ImplausibleMinute) {
+      sink.note("sync_file_implausible", "${implausible.message}; left on the watch")
     } catch (unsupported: UnsupportedFile) {
+      capture(id, file)
       skipped.add(id.key)
       sink.note("sync_file_unsupported", "${unsupported.message}; left on the watch")
     } catch (failure: IllegalArgumentException) {
       sink.note("sync_file_unreadable", "${id.label}: ${failure.message}; left on the watch")
     } catch (failure: java.nio.BufferUnderflowException) {
       sink.note("sync_file_unreadable", "${id.label}: the file ended early; left on the watch")
+    }
+  }
+
+  private fun capture(id: XiaomiFileId, file: ByteArray) {
+    if (!captured.add(XiaomiFileCapture.kindOf(id))) {
+      return
+    }
+    XiaomiFileCapture.lines(id, file).forEach { sink.note("sync_file_capture", it) }
+  }
+
+  private fun noteSleepFiles(source: String, listed: List<XiaomiFileId>) {
+    val sleep = listed.filter { it.isSleep }
+    if (sleep.isNotEmpty()) {
+      sink.note("sync_sleep_files", "${sleep.size} sleep file(s) from $source: ${sleep.joinToString("; ") { "${it.label}${if (it.key in skipped) " (skipped earlier)" else ""}" }}")
     }
   }
 

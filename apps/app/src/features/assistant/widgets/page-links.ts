@@ -63,5 +63,6 @@ export function pageLinkView(link: PageLink, tables: Tables): LinkView | null {
         trail: page.trail,
         value: link.value,
         href: page.to(link.id),
+        toggle: null,
       };
 }

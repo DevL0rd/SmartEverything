@@ -9,6 +9,8 @@ import { Text } from '../../components/text';
 import { TextField } from '../../components/text-field';
 import { href } from '../../app-shell/hrefs';
 import { plural } from '../../format/text';
+import { BridgeBanner } from './watch-bridge-banner';
+import { useMyWatch } from './watch-glance';
 import { allowCalls, changeRelay, openAccess, usePhoneApps, useRelay } from './watch-relay';
 
 const CONTENT_LABELS = {
@@ -120,6 +122,7 @@ function PhoneRows({ status }: { readonly status: WatchRelayStatus }): ReactNode
 
 export function WatchRelayRows(): ReactNode {
   const relay = useRelay();
+  const watch = useMyWatch();
   if (relay.kind === 'loading') {
     return null;
   }
@@ -128,6 +131,7 @@ export function WatchRelayRows(): ReactNode {
   }
   return (
     <View className="gap-section-gap">
+      {watch === null ? null : <BridgeBanner device={watch} />}
       <NotificationRows status={relay.status} />
       <PhoneRows status={relay.status} />
     </View>

@@ -1,3 +1,4 @@
+import { useListProbe } from '../../../perf/list-probe';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, FlatList, View } from 'react-native';
 import { Icon } from '../../../components/icon';
@@ -119,6 +120,7 @@ function Footer({ loading }: { readonly loading: boolean }): ReactNode {
 }
 
 export function ModelList(props: ModelListProps): ReactNode {
+  const probe = useListProbe('models', props.items.length);
   const offsets = props.items.reduce<number[]>(
     (all, item, index) => [...all, (all[index] ?? 0) + heightOf(item)],
     [0],
@@ -133,6 +135,10 @@ export function ModelList(props: ModelListProps): ReactNode {
         offset: offsets[index] ?? 0,
         index,
       })}
+      onScroll={probe.scrollWith()}
+      onLayout={probe.onLayout}
+      CellRendererComponent={probe.cell}
+      scrollEventThrottle={100}
       initialNumToRender={12}
       maxToRenderPerBatch={10}
       windowSize={5}

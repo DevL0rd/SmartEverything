@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Dot } from '../components/badge';
+import { CountPill, Dot } from '../components/badge';
 import { Icon } from '../components/icon';
 import { Interactive } from '../components/interactive';
 import { Text } from '../components/text';
@@ -32,7 +32,11 @@ function Indicator({
       )}
     >
       <Icon name={entry.route.icon} size={24} tone={entry.active ? 'primary' : 'variant'} />
-      {entry.badge === null ? null : (
+      {entry.count > 0 ? (
+        <View className="absolute -top-1 right-1">
+          <CountPill count={entry.count} />
+        </View>
+      ) : entry.badge === null ? null : (
         <View className="absolute right-3 top-1">
           <Dot tone="critical" />
         </View>
@@ -66,7 +70,11 @@ function Row({ entry }: { readonly entry: NavEntry }): ReactNode {
       >
         {entry.route.title}
       </Text>
-      {entry.badge === null ? null : <Dot tone="critical" />}
+      {entry.count > 0 ? (
+        <CountPill count={entry.count} />
+      ) : entry.badge === null ? null : (
+        <Dot tone="critical" />
+      )}
     </View>
   );
 }
@@ -80,6 +88,12 @@ const FRAME: Readonly<Record<NavLook, string>> = {
   sidebar: 'h-10 min-h-touch-min justify-center rounded-full px-4',
 };
 
+export function navLabelOf(entry: NavEntry): string {
+  return entry.count > 0
+    ? `${entry.route.title}, ${String(entry.count)} unread`
+    : entry.route.title;
+}
+
 export function NavItem({ entry, look, onPress, onIntent }: NavItemProps): ReactNode {
   return (
     <View
@@ -88,7 +102,7 @@ export function NavItem({ entry, look, onPress, onIntent }: NavItemProps): React
     >
       <Interactive
         role={look === 'bar' ? 'tab' : 'link'}
-        label={entry.route.title}
+        label={navLabelOf(entry)}
         selected={entry.active}
         onPress={onPress}
         className={cn(FRAME[look], look === 'sidebar' && entry.active && 'bg-primary-container')}

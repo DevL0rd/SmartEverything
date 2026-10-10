@@ -9,6 +9,7 @@ import { SETTINGS as HOME } from '../features/home/settings';
 import { SETTINGS as NUTRITION } from '../features/nutrition/settings';
 import { SETTINGS as PHONE } from '../features/phone';
 import { SETTINGS as PROFILES } from '../features/profiles';
+import { SETTINGS as REGION } from '../features/region';
 import { SETTINGS as SETTINGS_PAGES } from '../features/settings/settings';
 import { SETTINGS as TALK } from '../features/talk';
 import { SETTINGS as WATCHES } from '../features/watches';
@@ -29,6 +30,7 @@ const SETTINGS: readonly SettingDefinition[] = [
   ...TALK,
   ...ASSISTANT,
   ...SETTINGS_PAGES,
+  ...REGION,
   ...CONNECTIONS,
 ];
 

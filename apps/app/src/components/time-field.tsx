@@ -7,6 +7,7 @@ import { IconButton } from './icon-button';
 import { Segmented } from './segmented';
 import { Text } from './text';
 import { twoDigits } from '../format/number';
+import { committedValue, digitsDraft, settledValue } from './number-draft';
 
 export interface TimeOfDay {
   readonly hour: number;
@@ -49,11 +50,6 @@ function wrapped(value: number, min: number, max: number): number {
   return ((((value - min) % span) + span) % span) + min;
 }
 
-function accepts(digits: string, min: number, max: number): boolean {
-  const typed = Number(digits);
-  return digits !== '' && typed >= min && typed <= max;
-}
-
 interface PartProps {
   readonly value: number;
   readonly min: number;
@@ -62,19 +58,40 @@ interface PartProps {
   readonly onChange: (value: number) => void;
 }
 
-function TimePart({ value, min, max, label, onChange }: PartProps): ReactNode {
+interface PartDraft {
+  readonly draft: string | null;
+  readonly invalid: boolean;
+  readonly type: (text: string) => void;
+  readonly settle: () => void;
+}
+
+function usePartDraft(min: number, max: number, onChange: (value: number) => void): PartDraft {
   const [draft, setDraft] = useState<string | null>(null);
-  const invalid = draft !== null && !accepts(draft, min, max);
+  const range = { min, max };
+  const invalid = draft !== null && draft !== '' && committedValue(draft, range) === null;
+  const type = (text: string): void => {
+    const digits = digitsDraft(text);
+    setDraft(digits);
+    const next = committedValue(digits, range);
+    if (next !== null) {
+      onChange(next);
+    }
+  };
+  const settle = (): void => {
+    const next = draft === null ? null : settledValue(draft, range);
+    setDraft(null);
+    if (next !== null) {
+      onChange(next);
+    }
+  };
+  return { draft, invalid, type, settle };
+}
+
+function TimePart({ value, min, max, label, onChange }: PartProps): ReactNode {
+  const { draft, invalid, type, settle } = usePartDraft(min, max, onChange);
   const step = (by: number): void => {
     selectionTick();
     onChange(wrapped(value + by, min, max));
-  };
-  const type = (text: string): void => {
-    const digits = text.replace(/\D/g, '').slice(0, 2);
-    setDraft(digits);
-    if (accepts(digits, min, max)) {
-      onChange(Number(digits));
-    }
   };
   return (
     <View className="items-center">
@@ -88,12 +105,9 @@ function TimePart({ value, min, max, label, onChange }: PartProps): ReactNode {
       <TextInput
         value={draft ?? twoDigits(value)}
         onChangeText={type}
-        onBlur={() => {
-          setDraft(null);
-        }}
+        onBlur={settle}
         keyboardType="number-pad"
         maxLength={2}
-        selectTextOnFocus
         accessibilityLabel={label}
         className={cn(
           'h-control-h w-16 rounded-md border bg-surface-2 text-center font-sans-medium text-title-2 text-on-surface tabular focus:outline-2 focus:outline-focus',

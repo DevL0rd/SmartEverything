@@ -1,4 +1,3 @@
-import { ROUTES as AI_USAGE } from '../features/assistant/costs/routes';
 import { ROUTES as AUTOMATIONS } from '../features/automations/routes';
 import { ROUTES as CAMERAS, preloadCameras } from '../features/cameras/routes';
 import { ROUTES as CONNECTIONS } from '../features/connections/routes';
@@ -114,6 +113,36 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     keywords: ['ai', 'chat', 'ask', 'claude', 'coordinator', 'assistant'],
     available: always,
     searchable: true,
+    actions: [
+      {
+        key: 'new-chat',
+        title: 'New chat',
+        icon: 'pencil',
+        href: href.assistantChat('new'),
+        keywords: ['start', 'ask', 'conversation', 'compose', 'message', 'write'],
+      },
+      {
+        key: 'call',
+        title: 'Call the assistant',
+        icon: 'phone',
+        href: href.assistantCall('palette'),
+        keywords: ['voice', 'talk', 'speak', 'ring', 'phone call', 'coordinator'],
+      },
+      {
+        key: 'unread-chats',
+        title: 'Unread chats',
+        icon: 'circle',
+        href: href.assistantChats('unread'),
+        keywords: ['new messages', 'inbox', 'not read', 'waiting'],
+      },
+      {
+        key: 'archived-chats',
+        title: 'Archived chats',
+        icon: 'archive',
+        href: href.assistantChats('archived'),
+        keywords: ['old', 'hidden', 'restore', 'unarchive'],
+      },
+    ],
   },
   {
     key: 'talk',
@@ -155,7 +184,6 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
 const PAGES: readonly RouteDefinition[] = [
   ...HOME,
   ...WEATHER,
-  ...AI_USAGE,
   ...DEVICES,
   ...DEVICE_LIST,
   ...CAMERAS,

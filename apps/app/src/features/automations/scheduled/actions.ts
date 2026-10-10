@@ -8,39 +8,19 @@ import {
   type ScheduleEditInput,
   type ScheduleInput,
 } from '../../../api/schedules';
-import { confirm } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
 import { titleOf } from './view';
 
 export type ScheduleSave =
-  | { readonly kind: 'create'; readonly body: Omit<ScheduleInput, 'confirm'> }
-  | {
-      readonly kind: 'update';
-      readonly id: string;
-      readonly body: Omit<ScheduleEditInput, 'confirm'>;
-    };
+  | { readonly kind: 'create'; readonly body: ScheduleInput }
+  | { readonly kind: 'update'; readonly id: string; readonly body: ScheduleEditInput };
 
-function send(save: ScheduleSave, confirmed: boolean): Promise<ScheduleSaved> {
-  return save.kind === 'create'
-    ? createSchedule({ ...save.body, confirm: confirmed })
-    : updateSchedule(save.id, { ...save.body, confirm: confirmed });
-}
-
-export async function saveScheduled(save: ScheduleSave): Promise<ScheduleRow | null> {
-  const first = await send(save, false);
-  if (first.outcome === 'scheduled') {
-    return first.schedule;
-  }
-  const accepted = await confirm({
-    title: 'Confirm these steps',
-    body: first.steps.map((step) => step.line).join('\n'),
-    confirmLabel: 'Schedule them',
-  });
-  if (!accepted) {
-    return null;
-  }
-  const second = await send(save, true);
-  return second.outcome === 'scheduled' ? second.schedule : null;
+export async function saveScheduled(save: ScheduleSave): Promise<ScheduleRow> {
+  const saved: ScheduleSaved =
+    save.kind === 'create'
+      ? await createSchedule(save.body)
+      : await updateSchedule(save.id, save.body);
+  return saved.schedule;
 }
 
 export function cancelScheduled(row: ScheduleRow): void {

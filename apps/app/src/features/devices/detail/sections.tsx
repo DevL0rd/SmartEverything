@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import type { Href } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import type { IconName } from '../../../components/icon';
-import type { Device } from '../../../store/state';
+import { deviceValuesOf, type Device } from '../../../store/state';
 import { controlCount, extrasOf } from '../model/control-groups';
 import type { DeviceModel } from '../model/device-model';
 import { historyMetrics } from '../model/history-model';
@@ -12,17 +12,15 @@ import { ActivitySection } from './activity-section';
 import { ControlsSection } from './controls-section';
 import { HistorySection } from './history-section';
 import { MaintenanceCard } from './maintenance-card';
-import { ReadingGrid, useReadings } from './reading-grid';
+import { ReadingGrid, hasReadings } from './reading-grid';
 import { useDeviceModel } from '../model/device-model';
 import { maintenanceOf } from '../model/maintenance';
-import { useDeviceValues } from '../../../store/selectors';
+import { useStoreSelector } from '../../../store/store-context';
 import { ScaleDetails } from './scale-details';
 import { WatchStatus, isLocalWatch } from '../../watches';
-import { pluginSectionsOf } from './plugin-sections';
+import { pluginOverviewsOf, pluginSectionsOf } from './plugin-sections';
 
 export type DeviceSectionKey = 'overview' | 'controls' | 'history' | 'activity' | 'remote';
-
-export type SubSectionKey = Exclude<DeviceSectionKey, 'overview'>;
 
 export interface DeviceSection {
   readonly key: string;
@@ -35,27 +33,25 @@ interface BuiltinSection extends DeviceSection {
   readonly key: DeviceSectionKey;
 }
 
-const SUB_SECTION_KEYS: readonly SubSectionKey[] = ['controls', 'history', 'activity', 'remote'];
-
-function isSubSectionKey(key: string): key is SubSectionKey {
-  return SUB_SECTION_KEYS.some((known) => known === key);
-}
-
 export function sectionHref(deviceId: string, key: string): Href {
-  return isSubSectionKey(key)
-    ? href.deviceSection(deviceId, key)
-    : href.pluginDeviceSection(deviceId, key);
+  return href.deviceSection(deviceId, key);
 }
 
 export function useHasOverviewDetails(device: Device): boolean {
   const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
-  const readings = useReadings(device);
+  const details = useStoreSelector(
+    (state) => {
+      const values = deviceValuesOf(state, device.id);
+      return hasReadings(model, values) || maintenanceOf(model, values).length > 0;
+    },
+    Object.is,
+    [model, device.id],
+  );
   return (
     model.family === 'scale' ||
     isLocalWatch(device) ||
-    readings.length > 0 ||
-    maintenanceOf(model, values).length > 0
+    details ||
+    pluginOverviewsOf(device).length > 0
   );
 }
 
@@ -67,6 +63,9 @@ export function OverviewDetails({ device }: { readonly device: Device }): ReactN
       <MaintenanceCard device={device} />
       {model.family === 'scale' ? <ScaleDetails scale={device} /> : null}
       {isLocalWatch(device) ? <WatchStatus device={device} /> : null}
+      {pluginOverviewsOf(device).map((overview) => (
+        <View key={overview.key}>{overview.render(device)}</View>
+      ))}
     </View>
   );
 }

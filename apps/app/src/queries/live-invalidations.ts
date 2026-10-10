@@ -5,11 +5,13 @@ import { patchCameraDays, refreshSnapshots } from './camera-day';
 import { entryChanges } from './health-entries';
 import {
   AI_USAGE_PREFIX,
+  ARCHIVED_CHATS_KEY,
   HEALTH_PREFIX,
   HISTORY_PREFIX,
   OPENROUTER_ACCOUNT_KEY,
   PLUGIN_PREFIX,
   REACH_PREFIX,
+  WINDOW_PREFIX,
 } from './keys';
 
 const HISTORY_KEY = z.tuple([z.literal('window'), z.literal('history'), z.string(), z.number()]);
@@ -33,6 +35,19 @@ const HEALTH_TABLES: ReadonlySet<LiveTable> = new Set([
   'watch_days',
 ]);
 
+function invalidateAi(client: QueryClient, tables: ReadonlySet<LiveTable>): void {
+  if (tables.has('ai_usage')) {
+    void client.invalidateQueries({ queryKey: AI_USAGE_PREFIX });
+    void client.invalidateQueries({ queryKey: OPENROUTER_ACCOUNT_KEY });
+  }
+  if (tables.has('ai_chats')) {
+    void client.invalidateQueries({ queryKey: ARCHIVED_CHATS_KEY });
+  }
+  if (tables.has('ai_outreach')) {
+    void client.invalidateQueries({ queryKey: REACH_PREFIX });
+  }
+}
+
 export function applyToWindows(client: QueryClient, changes: readonly LiveChange[]): void {
   const tables = new Set<LiveTable>();
   for (const change of changes) {
@@ -48,13 +63,7 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
   if ([...tables].some((table) => HEALTH_TABLES.has(table))) {
     void client.invalidateQueries({ queryKey: HEALTH_PREFIX });
   }
-  if (tables.has('ai_usage')) {
-    void client.invalidateQueries({ queryKey: AI_USAGE_PREFIX });
-    void client.invalidateQueries({ queryKey: OPENROUTER_ACCOUNT_KEY });
-  }
-  if (tables.has('ai_outreach')) {
-    void client.invalidateQueries({ queryKey: REACH_PREFIX });
-  }
+  invalidateAi(client, tables);
   if (tables.has('plugins')) {
     void client.invalidateQueries({ queryKey: PLUGIN_PREFIX });
   }
@@ -63,4 +72,8 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
   }
   patchCameraDays(client, changes);
   refreshSnapshots(client, changes);
+}
+
+export function refreshAllWindows(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: WINDOW_PREFIX });
 }

@@ -19,6 +19,10 @@ class HubClient(private val target: IngestTarget) {
     exchange(urlOf(relative), "POST", body.toString().toByteArray(Charsets.UTF_8))
   }
 
+  suspend fun put(relative: String, body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+    exchange(urlOf(relative), "PUT", body.toString().toByteArray(Charsets.UTF_8))
+  }
+
   private fun exchange(url: URL, method: String, body: ByteArray?): JSONObject {
     try {
       val connection = url.openConnection() as HttpURLConnection

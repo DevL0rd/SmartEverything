@@ -35,6 +35,9 @@
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
   <queries>
     <package android:name="com.xiaomi.wearable" />
     <package android:name="com.mi.health" />
@@ -44,6 +47,10 @@
     </intent>
   </queries>
   <application>
+    <service
+      android:name="androidx.work.impl.foreground.SystemForegroundService"
+      android:foregroundServiceType="dataSync"
+      tools:node="merge" />
     <receiver android:name="expo.modules.healthconnect.ScaleAdvertReceiver" android:exported="false" />
     <receiver android:name="expo.modules.healthconnect.ScaleRelayRestart" android:exported="false">
       <intent-filter>
@@ -64,6 +71,10 @@
         <action android:name="android.service.notification.NotificationListenerService" />
       </intent-filter>
     </service>
+    <service
+      android:name="expo.modules.healthconnect.watch.FindPhoneService"
+      android:exported="false"
+      android:foregroundServiceType="mediaPlayback" />
     <receiver android:name="expo.modules.healthconnect.watch.FoundPhoneReceiver" android:exported="false" />
     <service
       android:name="expo.modules.healthconnect.assistant.AssistantInteractionService"
@@ -111,6 +122,15 @@
       android:name="expo.modules.healthconnect.voice.VoiceService"
       android:exported="false"
       android:foregroundServiceType="microphone|mediaPlayback" />
+    <service
+      android:name="expo.modules.healthconnect.assistant.CallService"
+      android:exported="false"
+      android:foregroundServiceType="microphone|mediaPlayback|camera|mediaProjection" />
+    <receiver android:name="expo.modules.healthconnect.assistant.CallActionReceiver" android:exported="false" />
+    <service
+      android:name="expo.modules.healthconnect.speech.AiSpeechService"
+      android:exported="false"
+      android:foregroundServiceType="mediaPlayback" />
     <receiver android:name="expo.modules.healthconnect.talk.TalkBootReceiver" android:exported="false">
       <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED" />

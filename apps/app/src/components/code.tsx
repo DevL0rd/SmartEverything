@@ -23,7 +23,7 @@ export function CodeBlock({ code, label, className }: CodeBlockProps): ReactNode
         </NativeText>
         <CopyButton value={code} label={`Copy ${label}`} />
       </View>
-      <ScrollView horizontal contentContainerClassName="px-3 pb-3">
+      <ScrollView horizontal className="grow-0" contentContainerClassName="px-3 pb-3">
         <NativeText selectable className="font-mono text-footnote text-on-surface">
           {code}
         </NativeText>

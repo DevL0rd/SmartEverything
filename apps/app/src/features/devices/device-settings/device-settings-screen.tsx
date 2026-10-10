@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { inTier, isCamera } from '@smarteverything/domain';
 import { NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
@@ -8,6 +8,7 @@ import type { Device } from '../../../store/state';
 import { CapabilityRow } from '../controls/capability-row';
 import { offlineReason } from '../controls/guard';
 import { MissingDevice } from '../detail/missing-device';
+import { pluginSettingsBlocksOf } from '../detail/plugin-sections';
 import { settingsOf } from '../model/control-groups';
 import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
@@ -77,7 +78,7 @@ function Body({ device }: { readonly device: Device }): ReactNode {
         <List>
           <NavRow
             title="Camera options"
-            subtitle="Picture, detection, speaker and memory card"
+            subtitle="Event clips, wake sensitivity, transcripts, picture, detection, speaker and memory card"
             icon="cameras"
             href={href.settings.camera(device.id)}
           />
@@ -99,6 +100,9 @@ function Body({ device }: { readonly device: Device }): ReactNode {
         </List>
       ) : null}
       {scale ? <ScaleStatus scale={device} /> : null}
+      {pluginSettingsBlocksOf(device).map((block) => (
+        <Fragment key={block.key}>{block.render(device)}</Fragment>
+      ))}
       <AboutSection device={device} />
       <RemoveSection device={device} name={name} />
     </DeviceSettingsFrame>

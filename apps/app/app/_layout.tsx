@@ -3,18 +3,32 @@ import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import Head from 'expo-router/head';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
+import { Logger } from '@smarteverything/logging';
+import { installCrashGuard } from '../src/platform/crash-guard';
+import { restoreTrail } from '../src/platform/crash-trail';
 import { startLogging } from '../src/platform/logging';
 import { provideRandomValues } from '../src/platform/random-values';
 import { APP_FONTS } from '../src/design/fonts';
 import { isNative } from '../src/design/platform';
 import { AppRoot } from '../src/features/root/app-root';
+import { CrashTrailHost } from '../src/features/root/crash-trail-host';
 import { FontFailure } from '../src/features/root/font-failure';
+import { startPerf } from '../src/perf/install';
+import { PerfHost } from '../src/perf/perf-host';
+import { probedScreen } from '../src/perf/screen-probe';
 import '../global.css';
 
 const SEE_THROUGH = { ...DarkTheme, colors: { ...DarkTheme.colors, background: 'transparent' } };
 
 startLogging();
+installCrashGuard();
+startPerf();
 provideRandomValues();
+restoreTrail().catch((error: unknown) => {
+  new Logger('app.crash-trail').warn('trail.not_restored', { reason: String(error) });
+});
+
+export { RouteErrorBoundary as ErrorBoundary } from '../src/app-shell/route-error-boundary';
 
 export default function RootLayout(): ReactNode {
   const [loaded, failure] = useFonts(APP_FONTS);
@@ -30,8 +44,13 @@ export default function RootLayout(): ReactNode {
         <title>SmartEverything</title>
       </Head>
       <StatusBar style="auto" />
+      <CrashTrailHost />
+      {__DEV__ ? <PerfHost /> : null}
       <ThemeProvider value={SEE_THROUGH}>
-        <Stack screenOptions={{ headerShown: false, animation: isNative() ? 'default' : 'fade' }}>
+        <Stack
+          screenLayout={probedScreen}
+          screenOptions={{ headerShown: false, animation: isNative() ? 'default' : 'fade' }}
+        >
           <Stack.Screen name="(app)" />
           <Stack.Screen name="pair" />
           <Stack.Screen

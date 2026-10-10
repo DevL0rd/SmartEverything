@@ -14,6 +14,7 @@ interface RowBase {
   readonly title: string;
   readonly titleHighlight?: TextRange | null;
   readonly subtitle?: string;
+  readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
   readonly disabled?: boolean;
 }

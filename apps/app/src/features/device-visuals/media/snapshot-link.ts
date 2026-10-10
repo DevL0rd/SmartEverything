@@ -1,7 +1,8 @@
-import { useQuery, type Query, type UseQueryResult } from '@tanstack/react-query';
+import { type Query, type UseQueryResult } from '@tanstack/react-query';
 import type { MediaSize } from '@smarteverything/domain';
 import { cameraSnapshotLink, linkLifetimeMs, type SignedLink } from '../../../api/media';
 import { cameraSnapshotKey } from '../../../queries/keys';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 function linkFresh(query: Query<SignedLink, Error, SignedLink, readonly string[]>): number {
   return linkLifetimeMs(query.state.data?.expiresAt);
@@ -27,5 +28,5 @@ export function useSnapshotLink(
   size: MediaSize,
   enabled: boolean,
 ): UseQueryResult<SignedLink> {
-  return useQuery({ ...snapshotQuery(deviceId, size), enabled });
+  return useScreenQuery({ ...snapshotQuery(deviceId, size), enabled });
 }

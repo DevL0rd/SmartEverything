@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, View } from 'react-native';
-import type { CallRingPref } from '@smarteverything/domain';
+import type { AiSpeechPref, CallRingPref } from '@smarteverything/domain';
 import type { Rect } from '../../../components/anchor';
 import { measureAnchor } from '../../../components/anchor';
 import { ListRow } from '../../../components/list-row';
@@ -102,6 +102,13 @@ export function callRingOf(state: StoreState): CallRingPref {
     state.tables.layouts.byId[PREFS.callRing.storageKey]?.layout ?? null,
   );
   return read.status === 'invalid' ? PREFS.callRing.defaultValue : read.value;
+}
+
+export function aiSpeechOf(state: StoreState): AiSpeechPref {
+  const read = PREFS.aiSpeech.decode(
+    state.tables.layouts.byId[PREFS.aiSpeech.storageKey]?.layout ?? null,
+  );
+  return read.status === 'invalid' ? PREFS.aiSpeech.defaultValue : read.value;
 }
 
 type MuteChoice = 'off' | 'hour' | 'morning';

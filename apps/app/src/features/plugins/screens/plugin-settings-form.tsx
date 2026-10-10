@@ -1,11 +1,20 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import type { JsonValue, PluginRow, PluginSetting } from '@smarteverything/domain';
+import type {
+  JsonValue,
+  PluginListSetting,
+  PluginRow,
+  PluginSetting,
+} from '@smarteverything/domain';
+import { plural } from '../../../format/text';
+import { href } from '../../../app-shell/hrefs';
 import { NavRow, SelectRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { savePlugin } from '../data/plugin-actions';
+import { settingGroups } from '../model/setting-groups';
 import {
+  listItems,
   numberProblem,
   settingText,
   settingValue,
@@ -62,10 +71,29 @@ function TextSettingRow({ row, name, setting, edit }: FieldProps<TextSetting>): 
   );
 }
 
+function ListSettingRow({
+  row,
+  name,
+  setting,
+}: Omit<FieldProps<PluginListSetting>, 'edit'>): ReactNode {
+  const items = listItems(row, name, setting);
+  return (
+    <NavRow
+      title={setting.title}
+      {...(setting.humanOnly ? { subtitle: 'Only you can change this' } : {})}
+      value={items.length === 0 ? 'Empty' : plural(items.length, 'item')}
+      href={href.pluginList(row.id, name)}
+    />
+  );
+}
+
 function Field({ row, name, setting, edit }: FieldProps<PluginSetting>): ReactNode {
   const save = saver(row, name, setting.title);
   const subtitle = setting.description ?? undefined;
-  const common = { title: setting.title, ...(subtitle === undefined ? {} : { subtitle }) };
+  const common = {
+    title: setting.title,
+    ...(subtitle === undefined ? {} : { subtitle, wrapSubtitle: true }),
+  };
   if (setting.type === 'boolean') {
     return (
       <SwitchRow
@@ -86,22 +114,27 @@ function Field({ row, name, setting, edit }: FieldProps<PluginSetting>): ReactNo
       />
     );
   }
+  if (setting.type === 'list') {
+    return <ListSettingRow row={row} name={name} setting={setting} />;
+  }
   return <TextSettingRow row={row} name={name} setting={setting} edit={edit} />;
 }
 
 export function PluginSettingsForm({ row }: { readonly row: PluginRow }): ReactNode {
   const [request, setRequest] = useState<TextEditRequest | null>(null);
-  const fields = Object.entries(row.manifest.contributes.settings);
-  if (fields.length === 0) {
+  const groups = settingGroups(Object.entries(row.manifest.contributes.settings));
+  if (groups.length === 0) {
     return null;
   }
   return (
     <>
-      <List inset title="Settings">
-        {fields.map(([name, setting]) => (
-          <Field key={name} row={row} name={name} setting={setting} edit={setRequest} />
-        ))}
-      </List>
+      {groups.map((group) => (
+        <List inset key={group.title ?? 'settings'} title={group.title ?? 'Settings'}>
+          {group.fields.map(([name, setting]) => (
+            <Field key={name} row={row} name={name} setting={setting} edit={setRequest} />
+          ))}
+        </List>
+      ))}
       <TextEditSheet
         request={request}
         onClose={() => {

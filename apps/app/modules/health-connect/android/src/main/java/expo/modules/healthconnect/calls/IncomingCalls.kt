@@ -13,6 +13,7 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.util.Log
 import androidx.work.WorkManager
+import expo.modules.healthconnect.NativeGuard
 import expo.modules.healthconnect.phone.PhonePostWorker
 import expo.modules.healthconnect.push.PushCommandHandler
 import org.json.JSONException
@@ -25,7 +26,14 @@ object IncomingCalls {
   private const val CHANNEL = "smarteverything.ai-calls"
   private const val ACTION_DECLINE = "expo.modules.healthconnect.calls.DECLINE"
 
+  @Volatile
+  var appForeground = false
+
   fun ring(context: Context, call: IncomingCall) {
+    if (call.expired()) {
+      Log.w(TAG, "AI call ${call.outreachId} had already ended when it arrived (ended at ${call.expiresAt}, phone clock ${System.currentTimeMillis()}); a wrong phone clock also causes this")
+      return
+    }
     val manager = context.getSystemService(NotificationManager::class.java)
     manager.createNotificationChannel(channel())
     manager.notify(call.notificationId, notification(context, call))
@@ -74,6 +82,7 @@ object IncomingCalls {
       .setContentText(call.reason)
       .setCategory(Notification.CATEGORY_CALL)
       .setOngoing(true)
+      .setOnlyAlertOnce(true)
       .setFullScreenIntent(screen(context, call, null), true)
       .setContentIntent(screen(context, call, null))
       .setTimeoutAfter((call.expiresAt - System.currentTimeMillis()).coerceAtLeast(1_000L))
@@ -91,8 +100,8 @@ object IncomingCalls {
 }
 
 class IncomingCallDeclineReceiver : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
-    val call = IncomingCall.fromIntent(intent) ?: return
+  override fun onReceive(context: Context, intent: Intent) = NativeGuard.run("IncomingCallDeclineReceiver") {
+    val call = IncomingCall.fromIntent(intent) ?: return@run
     IncomingCalls.decline(context, call.outreachId)
   }
 }
@@ -100,7 +109,12 @@ class IncomingCallDeclineReceiver : BroadcastReceiver() {
 object IncomingCallPush : PushCommandHandler {
   override fun handle(context: Context, data: Map<String, String>) {
     try {
-      IncomingCalls.ring(context, IncomingCall.fromPayload(data["payload"].orEmpty()))
+      val call = IncomingCall.fromPayload(data["payload"].orEmpty())
+      if (IncomingCalls.appForeground) {
+        Log.i(IncomingCalls.TAG, "AI call ${call.outreachId} left to the open app")
+        return
+      }
+      IncomingCalls.ring(context, call)
     } catch (failure: IncomingCallInvalid) {
       Log.e(IncomingCalls.TAG, failure.message.orEmpty())
     } catch (failure: SecurityException) {

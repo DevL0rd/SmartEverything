@@ -7,6 +7,7 @@ import { useNavigationState } from 'expo-router/react-navigation';
 import { useSizeClass, type HeaderKind } from '../design/size-class';
 import { Breadcrumbs, type Crumb } from './breadcrumbs';
 import { useHeaderSearchHandler } from './header-search';
+import { useHeaderStatus } from './header-status';
 import { Button } from './button';
 import type { IconName } from './icon';
 import { IconButton } from './icon-button';
@@ -177,15 +178,21 @@ function EditBar({ editing }: { readonly editing: HeaderEditing }): ReactNode {
 }
 
 function Trailing(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNode {
+  const status = useHeaderStatus();
   if (props.editing !== undefined && props.editing !== null) {
     return <EditBar editing={props.editing} />;
   }
   const actions = props.actions ?? [];
   const overflow = props.overflow ?? [];
-  return props.kind === 'desktop' ? (
-    <PointerActions actions={actions} overflow={overflow} />
-  ) : (
-    <TouchActions actions={actions} overflow={overflow} search={props.search ?? true} />
+  return (
+    <View className="flex-row items-center gap-1">
+      {status}
+      {props.kind === 'desktop' ? (
+        <PointerActions actions={actions} overflow={overflow} />
+      ) : (
+        <TouchActions actions={actions} overflow={overflow} search={props.search ?? true} />
+      )}
+    </View>
   );
 }
 
@@ -277,7 +284,7 @@ function DesktopHeader(props: PageHeaderProps): ReactNode {
         )}
         <View className="min-w-0 flex-1 gap-0.5">
           {props.breadcrumbs === undefined ? null : <Breadcrumbs crumbs={props.breadcrumbs} />}
-          <Text variant="title-1" accessibilityRole="header" numberOfLines={1}>
+          <Text variant="title-1" accessibilityRole="header" numberOfLines={2}>
             {props.title}
           </Text>
           {props.subtitle === undefined ? null : (

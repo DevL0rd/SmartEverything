@@ -18,9 +18,12 @@ const FRAME: Readonly<Record<IconButtonVariant, string>> = {
   overlay: 'bg-scrim',
 };
 
-function toneOf(variant: IconButtonVariant, selected: boolean): Tone {
+function toneOf(variant: IconButtonVariant, selected: boolean, tone: Tone | undefined): Tone {
   if (variant === 'filled') {
     return 'onPrimary';
+  }
+  if (tone !== undefined) {
+    return tone;
   }
   if (selected) {
     return 'primary';
@@ -46,6 +49,7 @@ export interface IconButtonProps {
   readonly selected?: boolean;
   readonly disabled?: boolean;
   readonly shortcut?: string;
+  readonly tone?: Tone;
 }
 
 export function IconButton({
@@ -58,6 +62,7 @@ export function IconButton({
   selected = false,
   disabled = false,
   shortcut,
+  tone,
 }: IconButtonProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const [hovered, setHovered] = useState(false);
@@ -82,7 +87,7 @@ export function IconButton({
         className={frameOf(variant, selected)}
         layerClassName="rounded-full"
       >
-        <Icon name={icon} size={pointer ? 20 : 24} tone={toneOf(variant, selected)} />
+        <Icon name={icon} size={pointer ? 20 : 24} tone={toneOf(variant, selected, tone)} />
       </Interactive>
       {pointer && hovered ? (
         <Tooltip text={shortcut === undefined ? label : `${label} · ${shortcut}`} />

@@ -100,6 +100,20 @@ function RingButton({ phone }: { readonly phone: Device }): ReactNode {
   );
 }
 
+function FlashlightButton({ phone }: { readonly phone: Device }): ReactNode {
+  const flashlight = useControl(phone.id, 'flashlight');
+  return (
+    <Button
+      label="Flashlight"
+      icon="bulb"
+      variant="tonal"
+      loading={flashlight.pending}
+      disabled={flashlight.offline}
+      onPress={() => void flashlight.set('toggle')}
+    />
+  );
+}
+
 function Body({ phone, size }: { readonly phone: Device; readonly size: WidgetSize }): ReactNode {
   const now = useMinute();
   const readings = phoneReadingsOf(useDeviceValues(phone.id));
@@ -119,7 +133,12 @@ function Body({ phone, size }: { readonly phone: Device; readonly size: WidgetSi
     <View className="flex-1 justify-center gap-3">
       <WidgetStats stats={wide ? stats : stats.slice(0, 2)} columns={wide ? 4 : 2} />
       <Playing title={readings.nowPlaying} />
-      {wide ? <RingButton phone={phone} /> : null}
+      {wide ? (
+        <View className="flex-row gap-2">
+          <RingButton phone={phone} />
+          <FlashlightButton phone={phone} />
+        </View>
+      ) : null}
     </View>
   );
 }

@@ -27,12 +27,13 @@ export function useOfflineLine(deviceId: string): string | null {
   return seen.wentOffline ? `Offline since ${when}` : `Last heard from ${when}`;
 }
 
-export function OfflineBanner({ device }: { readonly device: Device }): ReactNode {
-  const line = useOfflineLine(device.id);
-  if (device.online) {
-    return null;
-  }
+function OfflineNotice({ deviceId }: { readonly deviceId: string }): ReactNode {
+  const line = useOfflineLine(deviceId);
   return (
     <Banner tone="warning" title={line ?? 'Offline'} body="Controls are paused until it's back." />
   );
+}
+
+export function OfflineBanner({ device }: { readonly device: Device }): ReactNode {
+  return device.online ? null : <OfflineNotice deviceId={device.id} />;
 }

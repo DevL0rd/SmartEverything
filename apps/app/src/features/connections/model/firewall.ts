@@ -41,9 +41,15 @@ export const REACH_LOOK: Readonly<Record<CameraReach['state'], StateLook>> = {
 
 export function ruleText(rule: PortRule): string {
   const protocol = rule.protocol.toUpperCase();
-  return rule.purpose === 'webrtc'
-    ? `${protocol} port ${String(rule.port)}`
-    : `${protocol} from ${rule.source}`;
+  switch (rule.purpose) {
+    case 'webrtc':
+      return `${protocol} port ${String(rule.port)}`;
+    case 'plugin':
+      return `${protocol} port ${String(rule.port)} from ${rule.source}`;
+    case 'camera':
+    case 'device':
+      return `${protocol} from ${rule.source}`;
+  }
 }
 
 export function openingTitle(opening: FirewallOpening, names: readonly string[]): string {
@@ -55,6 +61,8 @@ export function openingTitle(opening: FirewallOpening, names: readonly string[])
       return who ?? 'Camera';
     case 'device':
       return who === null ? 'Device updates' : `${who} updates`;
+    case 'plugin':
+      return who ?? 'Plugin';
   }
 }
 
@@ -73,7 +81,7 @@ export function firewallSummary(firewall: FirewallStatus | null): FirewallSummar
   if (firewall === null) {
     return { text: 'Not checked', critical: false };
   }
-  const missing = needsFix(firewall).length;
+  const missing = needsFix(firewall).length + (firewall.lowPorts?.state === 'missing' ? 1 : 0);
   if (missing > 0) {
     return { text: `${plural(missing, 'opening')} missing`, critical: true };
   }

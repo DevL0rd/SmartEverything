@@ -1,64 +1,69 @@
 import type { AiChatRow } from '@smarteverything/domain';
-import type { Turns } from '../../../store/chat-turns';
-import type { ChatEntry, ChatState, ChatThreadGroup } from './chat-entry';
+import { chatSourceOf, type PluginNames } from '../model/chat-source';
+import type { ChatEntry, ChatLine } from './chat-entry';
+
+export interface ChatFailure {
+  readonly sent: boolean;
+  readonly reason: string;
+}
 
 export interface ChatPreview {
   readonly text: string;
   readonly at: string;
+  readonly speaker: string | null;
+  readonly failure: ChatFailure | null;
+}
+
+export interface ChatWork {
+  readonly step: string | null;
 }
 
 export interface EntrySources {
-  readonly chats: readonly AiChatRow[];
-  readonly turns: Turns;
   readonly previews: ReadonlyMap<string, ChatPreview>;
-  readonly workers: boolean;
+  readonly working: ReadonlyMap<string, ChatWork>;
+  readonly plugins: PluginNames;
 }
 
-function stateOf(turns: Turns, chatId: string): ChatState {
-  const states = Object.values(turns)
-    .filter((turn) => turn.chatId === chatId)
-    .map((turn) => turn.state);
-  if (states.some((state) => state !== 'idle' && state !== 'failed')) {
-    return 'working';
+function lineOf(
+  chat: AiChatRow,
+  preview: ChatPreview | undefined,
+  work: ChatWork | undefined,
+): ChatLine {
+  if (work !== undefined) {
+    return { kind: 'working', step: work.step };
   }
-  return states.includes('failed') ? 'failed' : 'idle';
+  if (preview?.failure !== null && preview?.failure !== undefined) {
+    return { kind: 'failed', ...preview.failure };
+  }
+  if (preview !== undefined) {
+    return { kind: 'preview', speaker: preview.speaker, text: preview.text };
+  }
+  if (chat.archived_at !== null) {
+    return { kind: 'archived' };
+  }
+  return { kind: 'empty' };
 }
 
-function entryOf(chat: AiChatRow, sources: EntrySources, nested: boolean): ChatEntry {
+export function entryOf(chat: AiChatRow, sources: EntrySources): ChatEntry {
   const preview = sources.previews.get(chat.id);
   return {
     id: chat.id,
     title: chat.title,
-    preview: preview?.text ?? null,
-    empty: chat.last_message_at === null && preview === undefined,
+    source: chatSourceOf(chat, sources.plugins),
     at: chat.last_message_at ?? preview?.at ?? chat.created_at,
     pinned: chat.pinned,
-    call: chat.kind === 'call',
-    worker: chat.kind === 'worker',
-    nested,
-    state: stateOf(sources.turns, chat.id),
+    archived: chat.archived_at !== null,
+    unread: chat.unread_count,
+    parentId: chat.parent_id,
+    line: lineOf(chat, preview, sources.working.get(chat.id)),
   };
 }
 
-export function groupsOf(sources: EntrySources): readonly ChatThreadGroup[] {
-  const live = sources.chats.filter(
-    (chat) => chat.archived_at === null && (sources.workers || chat.kind !== 'worker'),
-  );
-  const known = new Set(live.map((chat) => chat.id));
-  return live
-    .filter((chat) => chat.parent_id === null || !known.has(chat.parent_id))
-    .map((chat) => ({
-      parent: entryOf(chat, sources, false),
-      children: live
-        .filter((child) => child.parent_id === chat.id)
-        .map((child) => entryOf(child, sources, true)),
-    }));
-}
-
-export function matchesChat(group: ChatThreadGroup, needle: string): boolean {
-  return [group.parent, ...group.children].some(
-    (entry) =>
-      entry.title.toLowerCase().includes(needle) ||
-      (entry.preview?.toLowerCase().includes(needle) ?? false),
+export function matchesChat(entry: ChatEntry, needle: string): boolean {
+  const { line } = entry;
+  return (
+    entry.title.toLowerCase().includes(needle) ||
+    entry.source.label.toLowerCase().includes(needle) ||
+    (line.kind === 'preview' && line.text.toLowerCase().includes(needle))
   );
 }

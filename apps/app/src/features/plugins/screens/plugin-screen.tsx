@@ -31,7 +31,7 @@ function Header({ row }: { readonly row: PluginRow }): ReactNode {
 
 function StatusBanner({ row }: { readonly row: PluginRow }): ReactNode {
   const detail = row.status_detail ?? undefined;
-  const body = detail === undefined ? {} : { body: detail };
+  const body = detail === undefined ? {} : { body: detail, wrapBody: true };
   if (row.status === 'crashed') {
     return (
       <Banner
@@ -66,8 +66,8 @@ function Plugin({ row }: { readonly row: PluginRow }): ReactNode {
       <SwitchRows row={row} />
       <PowerRows row={row} />
       <ToolRows row={row} />
-      <PluginSettingsForm row={row} />
       <CustomSettings row={row} />
+      <PluginSettingsForm row={row} />
       <UpkeepRows row={row} />
     </SettingsFrame>
   );

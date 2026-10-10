@@ -1,12 +1,19 @@
 import { createElement } from 'react';
 import { PREFS, savePref } from '../../../store/prefs';
 import type { SettingContext, SettingDefinition, SettingEnv } from '../../../settings/types';
-import { MuteRingsRow, PhonePushRow, ScreenAlertsRow, callRingOf } from './notification-rows';
+import {
+  MuteRingsRow,
+  PhonePushRow,
+  ScreenAlertsRow,
+  aiSpeechOf,
+  callRingOf,
+} from './notification-rows';
 import {
   FIREBASE_PAGE,
   ChooseKeyRow,
   ForgetKeyRow,
   PasteKeyRow,
+  PushPurposeRow,
   PushServiceHelp,
   PushStatusRow,
 } from './push-service-rows';
@@ -56,6 +63,24 @@ export const NOTIFICATION_SETTINGS: readonly SettingDefinition[] = [
     },
   },
   {
+    id: 'notifications.ai_speech_text',
+    page: 'notifications',
+    section: 'Doorbell & calls',
+    title: 'Show what the AI says in its notification',
+    description:
+      'When the AI speaks to this phone with the app closed, the notification only says it is speaking. Turn this on to also show the words, which can then appear on the lock screen.',
+    icon: 'lock',
+    keywords: ['ai speech', 'speak', 'lock screen', 'privacy', 'notification text', 'voice'],
+    scope: 'client',
+    control: 'switch',
+    visible: onAndroid,
+    read: (state) => aiSpeechOf(state).showText,
+    write: (showText: boolean, context: SettingContext): Promise<void> => {
+      savePref(context.store, PREFS.aiSpeech, { showText });
+      return Promise.resolve();
+    },
+  },
+  {
     id: 'notifications.mute_rings',
     page: 'notifications',
     section: 'Doorbell & calls',
@@ -65,6 +90,15 @@ export const NOTIFICATION_SETTINGS: readonly SettingDefinition[] = [
     control: 'custom',
     row: true,
     render: () => createElement(MuteRingsRow),
+  },
+  {
+    id: 'push_service.purpose',
+    page: SERVICE,
+    title: 'What the push service is for',
+    keywords: ['firebase', 'call alerts', 'fcm'],
+    scope: 'server',
+    control: 'custom',
+    render: () => createElement(PushPurposeRow),
   },
   {
     id: 'push_service.status',
@@ -80,20 +114,19 @@ export const NOTIFICATION_SETTINGS: readonly SettingDefinition[] = [
     id: 'push_service.choose',
     page: FIREBASE_PAGE,
     section: 'Service account key',
-    title: 'Choose key file',
-    keywords: ['firebase key', 'service account'],
+    title: 'Import key file',
+    keywords: ['firebase key', 'service account', 'json', 'import', 'choose key file'],
     scope: 'server',
     control: 'custom',
     row: true,
-    visible: (env) => !onAndroid(env),
     render: () => createElement(ChooseKeyRow),
   },
   {
     id: 'push_service.paste',
     page: FIREBASE_PAGE,
     section: 'Service account key',
-    title: 'Paste key',
-    keywords: ['firebase key', 'service account'],
+    title: 'Paste instead',
+    keywords: ['firebase key', 'service account', 'paste key', 'clipboard'],
     scope: 'server',
     control: 'custom',
     row: true,

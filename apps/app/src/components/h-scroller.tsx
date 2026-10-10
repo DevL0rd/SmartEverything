@@ -69,7 +69,7 @@ export function HScroller({
         onScroll={(event) => {
           setOffset(event.nativeEvent.contentOffset.x);
         }}
-        {...(fill ? { className: 'flex-1' } : {})}
+        className={fill ? 'flex-1' : 'grow-0'}
         contentContainerClassName={fill ? 'h-full gap-grid-gap' : 'gap-grid-gap'}
       >
         {children}

@@ -10,6 +10,7 @@ const isRouter = (device: { readonly kind: string }): boolean => device.kind ===
 export const routerAppPlugin: AppPlugin = {
   id: ROUTER_PLUGIN,
   widgets: ROUTER_WIDGETS,
+  deviceSettings: [],
   deviceSections: [
     {
       key: 'internet',

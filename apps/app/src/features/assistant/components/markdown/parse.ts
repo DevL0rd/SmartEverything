@@ -41,7 +41,7 @@ function tokenOf(match: string): Inline {
   return { kind: 'em', text: match.slice(1, -1) };
 }
 
-export function parseInline(text: string): readonly Inline[] {
+function parseInline(text: string): readonly Inline[] {
   const parts: Inline[] = [];
   let at = 0;
   for (const match of text.matchAll(INLINE)) {
@@ -102,10 +102,11 @@ function codeBlock(cursor: Cursor, language: string): Block {
 
 function listBlock(cursor: Cursor, pattern: RegExp, ordered: boolean): Block {
   const lines = cursor.takeWhile((line) => pattern.test(line));
+  const texts = lines.map((line) => pattern.exec(line)?.[1] ?? line);
   return {
     kind: 'list',
     ordered,
-    items: lines.map((line) => parseInline(pattern.exec(line)?.[1] ?? line)),
+    items: texts.filter((text) => text.trim() !== '').map(parseInline),
   };
 }
 
@@ -208,25 +209,35 @@ export function parseMarkdown(text: string): readonly Block[] {
   return blocks;
 }
 
-function inlineText(inline: readonly Inline[]): string {
+export function inlineText(inline: readonly Inline[]): string {
   return inline.map((part) => part.text).join('');
 }
 
-function blockText(block: Block): string {
+type TableBlock = Extract<Block, { kind: 'table' }>;
+
+export function tableTsv(table: TableBlock): string {
+  return [table.header, ...table.rows].map((cells) => cells.map(inlineText).join('\t')).join('\n');
+}
+
+function blockReadable(block: Block): string {
   switch (block.kind) {
     case 'paragraph':
     case 'heading':
     case 'quote':
       return inlineText(block.inline);
     case 'list':
-      return block.items.map(inlineText).join(' · ');
+      return block.items
+        .map(
+          (item, index) => `${block.ordered ? `${String(index + 1)}.` : '•'} ${inlineText(item)}`,
+        )
+        .join('\n');
     case 'code':
       return block.code;
     case 'table':
-      return block.header.map(inlineText).join(' · ');
+      return tableTsv(block);
   }
 }
 
-export function plainText(markdown: string): string {
-  return parseMarkdown(markdown).map(blockText).join(' ').replace(/\s+/g, ' ').trim();
+export function readableText(markdown: string): string {
+  return parseMarkdown(markdown).map(blockReadable).join('\n\n');
 }

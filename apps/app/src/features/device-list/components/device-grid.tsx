@@ -1,6 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { View, type ViewStyle } from 'react-native';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
 import { useIdiom } from '../../../design/platform';
 import { useAppliedTheme } from '../../../design/theme';
@@ -16,6 +17,7 @@ import { DeviceCell } from './device-cell';
 const MIN_CELL: Readonly<Record<Idiom, number>> = { pointer: 196, touch: 172 };
 const CELL_HEIGHT: Readonly<Record<Idiom, number>> = { pointer: 196, touch: 220 };
 const MAX_COLUMNS = 6;
+const WINDOW_SIZE = 3;
 const GUTTERS = 32;
 
 function columnsFor(width: number, gap: number, minimum: number): number {
@@ -78,13 +80,34 @@ function SlotView({ entry, gap }: { readonly entry: Slot; readonly gap: number }
   );
 }
 
-function GridRowView({
-  row,
-  cell,
-}: {
+interface GridRowProps {
   readonly row: PackedRow;
   readonly cell: CellSize;
-}): ReactNode {
+}
+
+function sameSlot(left: Slot, right: Slot): boolean {
+  return (
+    left.key === right.key &&
+    left.span === right.span &&
+    left.half === right.half &&
+    left.devices.length === right.devices.length &&
+    left.devices.every((device, index) => device === right.devices[index])
+  );
+}
+
+function sameRow(left: PackedRow, right: PackedRow): boolean {
+  return (
+    left.key === right.key &&
+    left.free === right.free &&
+    left.slots.length === right.slots.length &&
+    left.slots.every((slot, index) => {
+      const other = right.slots[index];
+      return other !== undefined && sameSlot(slot, other);
+    })
+  );
+}
+
+function GridRow({ row, cell }: GridRowProps): ReactNode {
   const box = {
     height: cell.height,
     marginBottom: cell.gap,
@@ -107,36 +130,58 @@ function GridRowView({
   );
 }
 
-export function DeviceGrid({
-  groups,
-  header,
-  empty,
-}: {
+const GridRowView = memo(
+  GridRow,
+  (left, right) =>
+    left.cell.gap === right.cell.gap &&
+    left.cell.height === right.cell.height &&
+    sameRow(left.row, right.row),
+);
+
+interface DeviceGridProps {
   readonly groups: readonly RoomGroup<Device>[];
   readonly header: ReactElement;
   readonly empty: ReactElement;
-}): ReactNode {
-  const [width, setWidth] = useState(0);
+}
+
+function Grid({
+  groups,
+  header,
+  empty,
+  width,
+}: DeviceGridProps & { readonly width: number }): ReactNode {
+  const [topLength, setTopLength] = useState(0);
   const cell = useCellSize();
   const weights = useCardWeights(groups.flatMap((group) => group.devices));
   const columns = columnsFor(width - GUTTERS, cell.gap, cell.minimum);
   return (
-    <View
-      className="flex-1"
-      onLayout={(event) => {
-        setWidth(Math.round(event.nativeEvent.layout.width));
-      }}
-    >
-      {width === 0 ? null : (
-        <VirtualList
-          sections={sectionsOf(groups, columns, weights)}
-          keyOf={(row) => row.key}
-          widthClassName="max-w-dashboard"
-          header={header}
-          empty={empty}
-          renderItem={(row) => <GridRowView row={row} cell={cell} />}
-        />
-      )}
+    <VirtualList
+      sections={sectionsOf(groups, columns, weights)}
+      keyOf={(row) => row.key}
+      widthClassName="max-w-dashboard"
+      windowSize={WINDOW_SIZE}
+      sameItem={sameRow}
+      header={
+        <View
+          onLayout={(event) => {
+            setTopLength(event.nativeEvent.layout.height);
+          }}
+        >
+          {header}
+        </View>
+      }
+      fixedRows={{ rowLength: cell.height + cell.gap, topLength }}
+      empty={empty}
+      renderItem={(row) => <GridRowView row={row} cell={cell} />}
+    />
+  );
+}
+
+export function DeviceGrid(props: DeviceGridProps): ReactNode {
+  const { width, onLayout } = useMeasuredWidth(Math.round);
+  return (
+    <View className="flex-1" onLayout={onLayout}>
+      {width === 0 ? null : <Grid {...props} width={width} />}
     </View>
   );
 }

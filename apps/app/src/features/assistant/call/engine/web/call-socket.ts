@@ -20,6 +20,8 @@ export interface CallSocketHandlers {
 export interface CallSocket {
   readonly send: (message: AssistantVoiceClientMessage) => void;
   readonly sendAudio: (packet: Uint8Array) => void;
+  readonly sendPicture: (frame: Uint8Array) => void;
+  readonly isOpen: () => boolean;
   readonly close: () => void;
 }
 
@@ -68,6 +70,12 @@ export function openCallSocket(
         socket.send(audioFrameOf(packet));
       }
     },
+    sendPicture: (frame): void => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(frame);
+      }
+    },
+    isOpen: (): boolean => socket.readyState === WebSocket.OPEN,
     close: (): void => {
       socket.close(1000, 'call ended');
     },

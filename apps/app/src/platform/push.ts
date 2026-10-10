@@ -43,10 +43,13 @@ export async function registerForPush(): Promise<PushRegistration> {
       reason: 'Notifications are off for SmartEverything in Android settings',
     };
   }
-  const token = await firebaseToken();
-  await api().call(E.savePushTarget, { body: { token, platform: 'android' } });
+  await saveToken(await firebaseToken());
   log.info('push.registered');
   return { registered: true, platform: 'android' };
+}
+
+async function saveToken(token: string): Promise<void> {
+  await api().call(E.savePushTarget, { body: { token, platform: 'android' } });
 }
 
 export async function forgetThisPhone(): Promise<void> {

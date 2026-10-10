@@ -21,8 +21,10 @@ interface VoiceSocketListener {
 class VoiceSocket(
   private val url: String,
   private val protocols: List<String>,
-  private val listener: VoiceSocketListener
+  private val listener: VoiceSocketListener,
+  pingSeconds: Long = DEFAULT_PING_SECONDS
 ) {
+  private val client = CLIENT.newBuilder().pingInterval(pingSeconds, TimeUnit.SECONDS).build()
   private val handler = Handler(Looper.getMainLooper())
   private var socket: WebSocket? = null
   private var attempt = 0
@@ -56,7 +58,7 @@ class VoiceSocket(
       .url(url)
       .header("Sec-WebSocket-Protocol", protocols.joinToString(", "))
       .build()
-    socket = CLIENT.newWebSocket(request, Forwarder())
+    socket = client.newWebSocket(request, Forwarder())
   }
 
   private fun lost(code: Int, reason: String) {
@@ -94,8 +96,8 @@ class VoiceSocket(
     private const val NORMAL = 1000
     private const val FAILED = 1006
     private val BACKOFF_MS = longArrayOf(1_000, 2_000, 4_000, 8_000, 16_000, 30_000)
+    const val DEFAULT_PING_SECONDS = 15L
     private val CLIENT = OkHttpClient.Builder()
-      .pingInterval(15, TimeUnit.SECONDS)
       .readTimeout(0, TimeUnit.MILLISECONDS)
       .build()
   }

@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 import { useRouter } from 'expo-router';
 import { copyText } from '../../../components/copy-button';
 import type { MenuItem } from '../../../components/menu';
@@ -7,13 +7,13 @@ import { notify } from '../../../components/toast-store';
 import { href } from '../../../app-shell/hrefs';
 import { updateDevice } from '../../../api/devices';
 import { joinParts } from '../../../format/text';
-import { useDeviceValues, useRoomName } from '../../../store/selectors';
+import { useRoomName } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useScheduleBelow, useScheduleItems } from '../../automations';
 import { usePowerAction } from '../controls/power-toggle';
 import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
-import { stateLine } from '../model/state-line';
+import { useStateLine } from '../model/state-line';
 import { settingsItem } from '../../../settings/settings-item';
 
 function useOverflow(device: Device, name: string): readonly MenuItem[] {
@@ -57,9 +57,15 @@ function useOverflow(device: Device, name: string): readonly MenuItem[] {
   ];
 }
 
-export function useDeviceHeader(device: Device, sectionTitle: string | null): ReactElement {
+export function DeviceHeader({
+  device,
+  sectionTitle,
+}: {
+  readonly device: Device;
+  readonly sectionTitle: string | null;
+}): ReactNode {
   const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
+  const line = useStateLine(model, false);
   const name = useDisplayName(device.id);
   const room = useRoomName(device.id);
   const power = usePowerAction(device);
@@ -80,7 +86,7 @@ export function useDeviceHeader(device: Device, sectionTitle: string | null): Re
   return (
     <PageHeader
       title={sectionTitle ?? name}
-      subtitle={sectionTitle === null ? joinParts([room, stateLine(model, values, false)]) : name}
+      subtitle={sectionTitle === null ? joinParts([room, line]) : name}
       actions={sectionTitle === null ? actions : []}
       overflow={sectionTitle === null ? [...schedule, ...overflow] : []}
       {...below}

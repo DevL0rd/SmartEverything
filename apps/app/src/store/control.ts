@@ -35,8 +35,13 @@ export function useControl(deviceId: string, capability: string): Control {
       online: state.tables.devices.byId[deviceId]?.online ?? false,
     }),
     sameControl,
+    [deviceId, capability, slot],
   );
-  const device = useStoreSelector((state) => state.tables.devices.byId[deviceId] ?? null);
+  const device = useStoreSelector(
+    (state) => state.tables.devices.byId[deviceId] ?? null,
+    Object.is,
+    [deviceId],
+  );
   const pendingValue = read.entry?.value ?? null;
   return {
     value: pendingValue ?? read.reported?.value,

@@ -9,6 +9,7 @@ import { hourOf, longDate } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { openSearch } from '../../../search/open-search';
+import { useHomeSummary } from '../data/home-data';
 import type { HomeSummary } from '../model/summary';
 
 function summaryText(summary: HomeSummary): string {
@@ -18,7 +19,8 @@ function summaryText(summary: HomeSummary): string {
   ]);
 }
 
-export function SummaryLine({ summary }: { readonly summary: HomeSummary }): ReactNode {
+export function SummaryLine(): ReactNode {
+  const summary = useHomeSummary();
   const text = summaryText(summary);
   if (text === '') {
     return null;
@@ -88,18 +90,12 @@ function Greeting(): ReactNode {
   );
 }
 
-export function HeaderBelow({
-  summary,
-  search,
-}: {
-  readonly summary: HomeSummary;
-  readonly search: boolean;
-}): ReactNode {
+export function HeaderBelow({ search }: { readonly search: boolean }): ReactNode {
   return (
     <View className="gap-4">
       <View className="gap-1">
         <Greeting />
-        <SummaryLine summary={summary} />
+        <SummaryLine />
       </View>
       {search ? <SearchBar /> : null}
     </View>

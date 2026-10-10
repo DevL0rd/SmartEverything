@@ -1,7 +1,10 @@
 package expo.modules.healthconnect.watch
 
+import android.os.Handler
+import android.os.Looper
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 class PhoneNotification(
   val id: Int,
@@ -59,15 +62,64 @@ sealed class WatchEvent(val label: String) {
   class OpenNotification(val id: Int) : WatchEvent("open notification on the phone")
 }
 
+private class ReadyWaiter(private val then: (Boolean) -> Unit) {
+  private val done = AtomicBoolean(false)
+
+  fun finish(ready: Boolean) {
+    if (done.compareAndSet(false, true)) then(ready)
+  }
+}
+
 object WatchActions {
   private val connections = ConcurrentHashMap<String, WatchConnection>()
+  private val lock = Any()
+  private val readyIds = mutableSetOf<String>()
+  private val waiters = mutableMapOf<String, MutableList<ReadyWaiter>>()
+  private val timeouts by lazy { Handler(Looper.getMainLooper()) }
 
   fun attach(deviceId: String, connection: WatchConnection) {
     connections[deviceId] = connection
   }
 
   fun detach(deviceId: String, connection: WatchConnection) {
-    connections.remove(deviceId, connection)
+    if (connections.remove(deviceId, connection)) {
+      setReady(deviceId, false)
+    }
+  }
+
+  fun setReady(deviceId: String, ready: Boolean) {
+    val released = synchronized(lock) {
+      if (ready) {
+        readyIds.add(deviceId)
+        waiters.remove(deviceId).orEmpty()
+      } else {
+        readyIds.remove(deviceId)
+        emptyList()
+      }
+    }
+    released.forEach { it.finish(true) }
+  }
+
+  fun whenReady(deviceId: String, timeoutMs: Long, then: (Boolean) -> Unit): () -> Unit {
+    val waiter = ReadyWaiter(then)
+    val ready = synchronized(lock) {
+      val known = readyIds.contains(deviceId)
+      if (!known) waiters.getOrPut(deviceId) { mutableListOf() }.add(waiter)
+      known
+    }
+    if (ready) {
+      waiter.finish(true)
+      return {}
+    }
+    val expire = Runnable {
+      synchronized(lock) { waiters[deviceId]?.remove(waiter) }
+      waiter.finish(false)
+    }
+    timeouts.postDelayed(expire, timeoutMs)
+    return {
+      timeouts.removeCallbacks(expire)
+      synchronized(lock) { waiters[deviceId]?.remove(waiter) }
+    }
   }
 
   fun connected(): Boolean = connections.isNotEmpty()

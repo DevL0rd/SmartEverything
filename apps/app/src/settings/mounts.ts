@@ -65,19 +65,6 @@ export const SETTINGS_MOUNTS: readonly SettingsMount[] = [
             params: { ...withFocus(focus), page: [...rest] },
           },
   },
-  {
-    root: 'assistant',
-    owner: 'Assistant',
-    ownerHref: '/assistant',
-    base: 'assistant/settings',
-    href: (rest, focus) =>
-      rest.length === 0
-        ? { pathname: '/assistant/settings', params: withFocus(focus) }
-        : {
-            pathname: '/assistant/settings/[...page]',
-            params: { ...withFocus(focus), page: [...rest] },
-          },
-  },
 ];
 
 export function mountOf(id: string): SettingsMount | null {

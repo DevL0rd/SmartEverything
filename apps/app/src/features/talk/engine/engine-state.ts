@@ -1,5 +1,5 @@
 import type { TalkDenial, TalkEnding, TalkSpeaker } from '@smarteverything/domain';
-import { ValueStore, useValue } from '../../../design/external-store';
+import { ValueStore, useSelected, useValue } from '../../../design/external-store';
 
 export type TalkLink = 'off' | 'connecting' | 'ready' | 'offline' | 'unsupported';
 
@@ -60,6 +60,12 @@ export const engineState = new ValueStore<TalkEngineState>({
 
 export function useTalkEngine(): TalkEngineState {
   return useValue(engineState);
+}
+
+export function useTalkEngineValue<T extends string | number | boolean | null>(
+  select: (state: TalkEngineState) => T,
+): T {
+  return useSelected(engineState, select);
 }
 
 export interface TalkConnection {

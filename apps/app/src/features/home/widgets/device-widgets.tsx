@@ -14,7 +14,7 @@ export function FavouritesWidget({
   readonly size: WidgetSize;
   readonly editing: boolean;
 }): ReactNode {
-  const home = useHome();
+  const home = useHome((view) => view);
   const devices = unspotlighted(home);
   return (
     <WidgetFrame

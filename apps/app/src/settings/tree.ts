@@ -8,6 +8,7 @@ import { talkLinked } from '../../modules/health-connect';
 import type { StoreState } from '../store/state';
 import { ASSISTANT_PAGES } from './tree-assistant';
 import { PLUGIN_PAGES } from './tree-plugins';
+import { REGION_PAGES } from './tree-region';
 import { mountOf } from './mounts';
 import type { SettingEnv, SettingsPageDefinition } from './types';
 
@@ -142,6 +143,15 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     visible: (env) => env.availability.hasCameras,
   },
   {
+    id: 'cameras/transcripts',
+    title: 'Transcripts',
+    icon: 'fileText',
+    parent: 'cameras',
+    group: null,
+    keywords: ['transcribe', 'speech to text', 'what was said', 'captions', 'listening'],
+    visible: (env) => env.availability.hasCameras && env.owner,
+  },
+  {
     id: 'talk',
     title: 'Walkie-talkie settings',
     icon: 'radio',
@@ -250,6 +260,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     summary: appearanceSummary,
     keywords: ['theme', 'dark', 'light', 'accent', 'colour', 'density', 'motion'],
   },
+  ...REGION_PAGES,
   {
     id: 'notifications',
     title: 'Notifications',

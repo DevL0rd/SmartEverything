@@ -12,7 +12,7 @@ const CARD_MIN = 150;
 const GAP = 12;
 
 export function RoomsWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const { rooms } = useHome();
+  const rooms = useHome((view) => view.rooms);
   const [width, setWidth] = useState(0);
   const fits = columnsFor(width, CARD_MIN, GAP, rooms.length) >= rooms.length;
   const dense = size !== 'L';

@@ -26,7 +26,9 @@ object PhoneReporter {
       .put("at", Instant.now().toString())
       .put("values", changed)
       .put("events", JSONArray(events.map { it.toJson() }))
-    enqueue(context, report)
+    if (!enqueue(context, report)) {
+      return
+    }
     current.keys().forEach { sent.put(it, current.get(it)) }
     store.setSent(sent)
     PhoneEvents.emit("reported", "${changed.length()} values, ${events.size} events")
@@ -54,11 +56,17 @@ object PhoneReporter {
     return changed
   }
 
-  private fun enqueue(context: Context, report: JSONObject) {
-    WorkManager.getInstance(context).enqueueUniqueWork(
-      WORK_NAME,
-      ExistingWorkPolicy.APPEND_OR_REPLACE,
-      PhonePostWorker.request(PhonePostWorker.REPORT_PATH, report)
-    )
+  private fun enqueue(context: Context, report: JSONObject): Boolean {
+    try {
+      WorkManager.getInstance(context).enqueueUniqueWork(
+        WORK_NAME,
+        ExistingWorkPolicy.APPEND_OR_REPLACE,
+        PhonePostWorker.request(PhonePostWorker.REPORT_PATH, report)
+      )
+      return true
+    } catch (failure: IllegalStateException) {
+      PhoneEvents.emit("report_not_queued", "The phone report is too large to queue (${report.toString().length} characters): ${failure.message.orEmpty()}")
+      return false
+    }
   }
 }

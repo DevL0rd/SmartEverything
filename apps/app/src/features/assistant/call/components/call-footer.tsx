@@ -1,12 +1,23 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { View } from 'react-native';
+import { VOICE_KEY_MISSING } from '@smarteverything/domain';
+import { href } from '../../../../app-shell/hrefs';
 import { Button } from '../../../../components/button';
 import { callActive, changeCall, type CallView } from '../call-state';
 import { callEngine } from '../engine/engine';
-import { CallControls } from './call-controls';
+import type { CallLayout } from '../model/call-layout';
+import type { CallControlHandlers, ControlReasons } from '../model/call-controls';
+import { ControlBar } from './control-bar';
 
 export interface CallFooterProps {
   readonly call: CallView;
+  readonly layout: CallLayout;
+  readonly reasons: ControlReasons;
+  readonly handlers: CallControlHandlers;
+  readonly cameraAnchor: RefObject<View | null>;
+  readonly shareAnchor: RefObject<View | null>;
+  readonly settingsOpen: boolean;
+  readonly menu: 'camera' | 'share' | null;
   readonly onAgain: () => void;
   readonly onClose: () => void;
 }
@@ -24,10 +35,18 @@ function allowThenCall(onAgain: () => void): void {
   );
 }
 
-function EndedActions({ call, onAgain, onClose }: CallFooterProps): ReactNode {
+function EndedActions({
+  call,
+  onAgain,
+  onClose,
+}: Pick<CallFooterProps, 'call' | 'onAgain' | 'onClose'>): ReactNode {
   const microphone = call.fix === 'microphone';
+  const needsKey = call.problem === VOICE_KEY_MISSING;
   return (
-    <View className="w-full gap-3">
+    <View className="w-full max-w-call gap-3 self-center">
+      {needsKey ? (
+        <Button label="Open settings" icon="settings" size="lg" href={href.settings.assistant()} />
+      ) : null}
       {microphone ? (
         <Button
           label="Allow microphone"
@@ -43,7 +62,7 @@ function EndedActions({ call, onAgain, onClose }: CallFooterProps): ReactNode {
         <Button
           label="Call again"
           icon="phone"
-          variant={microphone ? 'tonal' : 'filled'}
+          variant={microphone || needsKey ? 'tonal' : 'filled'}
           size="lg"
           grow
           onPress={onAgain}
@@ -53,18 +72,9 @@ function EndedActions({ call, onAgain, onClose }: CallFooterProps): ReactNode {
   );
 }
 
-export function CallFooter(props: CallFooterProps): ReactNode {
-  const { call } = props;
-  if (!callActive(call)) {
-    return <EndedActions {...props} />;
+export function CallFooter({ onAgain, onClose, ...bar }: CallFooterProps): ReactNode {
+  if (!callActive(bar.call)) {
+    return <EndedActions call={bar.call} onAgain={onAgain} onClose={onClose} />;
   }
-  return (
-    <CallControls
-      muted={call.muted}
-      onMute={() => {
-        callEngine.mute(!call.muted);
-      }}
-      onEnd={callEngine.end}
-    />
-  );
+  return <ControlBar {...bar} />;
 }

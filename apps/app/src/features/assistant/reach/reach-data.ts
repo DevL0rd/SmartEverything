@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import {
   REACH_ENDPOINTS as R,
@@ -36,6 +37,15 @@ export function useOutreach(): UseQueryResult<AiOutreachRow[]> {
     queryKey: OUTREACH_KEY,
     queryFn: () => api().call(R.listOutreach, { query: { limit: OUTREACH_SHOWN } }),
   });
+}
+
+export function useRefreshOutreach(): () => void {
+  const client = useQueryClient();
+  return useCallback((): void => {
+    client.invalidateQueries({ queryKey: OUTREACH_KEY }).catch((error: unknown) => {
+      log.warn('reach.refresh_failed', { reason: String(error) });
+    });
+  }, [client]);
 }
 
 export async function declineOutreach(outreachId: string): Promise<void> {

@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Pressable, View, type AccessibilityRole } from 'react-native';
+import {
+  Pressable,
+  View,
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
+  type AccessibilityRole,
+} from 'react-native';
 import { Link as RouterLink, type Href } from 'expo-router';
 import { cn } from '../design/cn';
 import { useColour } from '../design/colour';
@@ -29,6 +35,9 @@ export interface InteractiveProps {
   readonly className?: string | undefined;
   readonly layerClassName?: string | undefined;
   readonly onTone?: 'surface' | 'primary' | undefined;
+  readonly focusInset?: boolean | undefined;
+  readonly accessibilityActions?: readonly AccessibilityActionInfo[] | undefined;
+  readonly onAccessibilityAction?: ((event: AccessibilityActionEvent) => void) | undefined;
 }
 
 interface ContextMenuEvent {
@@ -156,9 +165,10 @@ function accessibilityOf(input: AccessibilityInput): {
   };
 }
 
-function pressableClass(disabled: boolean, className: string | undefined): string {
+function pressableClass(disabled: boolean, inset: boolean, className: string | undefined): string {
   return cn(
-    'relative overflow-hidden focus:outline-2 focus:outline-offset-2 focus:outline-focus',
+    'relative overflow-hidden focus:outline-2 focus:outline-focus',
+    inset ? 'focus:-outline-offset-2' : 'focus:outline-offset-2',
     disabled && 'opacity-40',
     className,
   );
@@ -188,6 +198,7 @@ function Pressed(props: InteractiveProps): ReactNode {
     className,
     layerClassName,
     onTone,
+    focusInset = false,
     ...forwarded
   } = props;
   const primary = onTone === 'primary';
@@ -205,7 +216,7 @@ function Pressed(props: InteractiveProps): ReactNode {
       onFocus={hover.boost}
       android_ripple={ripple}
       {...accessibilityOf({ role, href, label, hint, disabled, selected, checked })}
-      className={pressableClass(disabled, className)}
+      className={pressableClass(disabled, focusInset, className)}
     >
       {({ pressed }) => (
         <>

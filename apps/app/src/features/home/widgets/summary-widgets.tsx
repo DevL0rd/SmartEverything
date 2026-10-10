@@ -25,7 +25,7 @@ import type { FitnessFigure } from '../model/fitness-today';
 import { FitnessSetupWidget, useFitnessReady } from '../../profiles';
 
 export function ActivityWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const { activity } = useHome();
+  const activity = useHome((view) => view.activity);
   const pointer = useIdiom() === 'pointer';
   return (
     <WidgetFrame title="Activity" icon="activity" accent="info" href={href.activity()} size={size}>
@@ -49,7 +49,7 @@ export function ActivityWidget({ size }: { readonly size: WidgetSize }): ReactNo
 }
 
 export function ScenesWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const { scenes } = useHome();
+  const scenes = useHome((view) => view.scenes);
   return (
     <WidgetFrame title="Scenes" icon="sparkles" accent="primary" href={href.scenes()} size={size}>
       {scenes.length === 0 ? (
@@ -98,7 +98,7 @@ function PowerTrend({ keys }: { readonly keys: readonly string[] }): ReactNode {
 const TREND_HOURS = 24;
 
 export function EnergyWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const { power } = useHome();
+  const power = useHome((view) => view.power);
   if (power === null) {
     return null;
   }
@@ -122,7 +122,7 @@ export function EnergyWidget({ size }: { readonly size: WidgetSize }): ReactNode
 }
 
 export function SecurityWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const { security } = useHome();
+  const security = useHome((view) => view.security);
   const alert = security.some((line) => line.alert);
   return (
     <WidgetFrame
@@ -205,7 +205,7 @@ function FitnessFigureView({
 }
 
 export function FitnessTodayWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const { fitness } = useHome();
+  const fitness = useHome((view) => view.fitness);
   const zone = useSettings().time_zone;
   const now = useMinute();
   const ready = useFitnessReady();

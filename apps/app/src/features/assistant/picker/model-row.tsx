@@ -8,12 +8,14 @@ import { Text } from '../../../components/text';
 import { Tooltip } from '../../../components/tooltip';
 import { cn } from '../../../design/cn';
 import { joinParts } from '../../../format/text';
+import { useMoney } from '../../region';
 import { contextText, pricePerMillionText } from '../data/cost';
 import type { Modality, ModelChoice } from './model-choice';
 import { ProviderLogo } from './provider-logo';
 
 function Price({ model }: { readonly model: ModelChoice }): ReactNode {
   const { inputPerMillion, outputPerMillion, variable } = model.price;
+  const money = useMoney();
   if (!variable && inputPerMillion === null && outputPerMillion === null) {
     return null;
   }
@@ -27,10 +29,10 @@ function Price({ model }: { readonly model: ModelChoice }): ReactNode {
   return (
     <View className="items-end">
       <Text variant="caption" tone="variant">
-        {`${pricePerMillionText(model.price.inputPerMillion)} in`}
+        {`${pricePerMillionText(model.price.inputPerMillion, money)} in`}
       </Text>
       <Text variant="caption" tone="variant">
-        {`${pricePerMillionText(model.price.outputPerMillion)} out`}
+        {`${pricePerMillionText(model.price.outputPerMillion, money)} out`}
       </Text>
     </View>
   );

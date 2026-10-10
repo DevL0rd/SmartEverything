@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
@@ -10,7 +10,7 @@ import { decimal } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { useComfortReadings, type ComfortMetric } from '../../climate';
 import { familyIcon } from '../../device-visuals';
-import type { RoomMember, RoomSummary } from '../model/rooms';
+import { sameRoom, type RoomMember, type RoomSummary } from '../model/rooms';
 
 const ROOM_METRICS: readonly ComfortMetric[] = ['temperature', 'humidity'];
 
@@ -54,13 +54,12 @@ function Members({ room }: { readonly room: RoomSummary }): ReactNode {
   );
 }
 
-export function RoomCard({
-  room,
-  dense,
-}: {
+interface RoomCardProps {
   readonly room: RoomSummary;
   readonly dense: boolean;
-}): ReactNode {
+}
+
+function Card({ room, dense }: RoomCardProps): ReactNode {
   const climate = useRoomClimate(room.id);
   return (
     <Interactive
@@ -104,3 +103,8 @@ export function RoomCard({
     </Interactive>
   );
 }
+
+export const RoomCard = memo(
+  Card,
+  (left, right) => left.dense === right.dense && sameRoom(left.room, right.room),
+);

@@ -10,11 +10,9 @@ import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
 import { TextField } from '../../../components/text-field';
 import { notify } from '../../../components/toast-store';
-import { appPlatform } from '../../../design/platform';
 import { errorText } from '../../../format/errors';
 import { joinParts, plural } from '../../../format/text';
-import { href } from '../../../app-shell/hrefs';
-import { ActionRow, NavRow } from '../../../components/rows';
+import { ActionRow } from '../../../components/rows';
 import { useOpenRouterActions, useOpenRouterStatus } from '../data/openrouter';
 
 interface KeyDraft {
@@ -127,11 +125,7 @@ export function KeyStatusRow(): ReactNode {
 }
 
 export function ImportKeyRow(): ReactNode {
-  const status = useOpenRouterStatus();
   const { importKey } = useOpenRouterActions();
-  if (appPlatform() !== 'desktop' || status.data?.sources.includes('discordinator') !== true) {
-    return null;
-  }
   return (
     <ActionRow
       title="Use the key from Discordinator"
@@ -164,11 +158,7 @@ export function PasteKeyRow(): ReactNode {
 }
 
 export function RemoveKeyRow(): ReactNode {
-  const status = useOpenRouterStatus();
   const { removeKey } = useOpenRouterActions();
-  if (status.data?.key !== 'set') {
-    return null;
-  }
   const remove = async (): Promise<void> => {
     const sure = await confirm({
       title: 'Remove the OpenRouter key?',
@@ -182,20 +172,5 @@ export function RemoveKeyRow(): ReactNode {
   };
   return (
     <ActionRow title="Remove the key" icon="trash" destructive onPress={() => void remove()} />
-  );
-}
-
-export const KEY_PAGE = 'assistant/openrouter/key';
-
-export function KeyRow(): ReactNode {
-  const status = useOpenRouterStatus();
-  const set = status.data?.key === 'set';
-  return (
-    <NavRow
-      title="API key"
-      icon="key"
-      href={href.settings.page(KEY_PAGE)}
-      {...(status.data === undefined ? {} : { value: set ? 'Added' : 'Not added' })}
-    />
   );
 }

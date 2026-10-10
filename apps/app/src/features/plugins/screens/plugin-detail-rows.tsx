@@ -7,7 +7,8 @@ import { ListRow } from '../../../components/list-row';
 import { ActionRow, NavRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { plural } from '../../../format/text';
-import { usePluginTool } from '../../../plugins/use-plugin-tool';
+import { notify } from '../../../components/toast-store';
+import { usePluginTool, type PluginToolResult } from '../../../plugins/use-plugin-tool';
 import { remove, restart, savePlugin, switchPlugin } from '../data/plugin-actions';
 import { usePluginTools } from '../data/plugin-queries';
 
@@ -78,6 +79,13 @@ function toolsValue(row: PluginRow, count: number | undefined): string {
   return count === undefined ? '' : plural(count, 'tool');
 }
 
+function reportDone(result: PluginToolResult | null): void {
+  const done = result?.['done'];
+  if (typeof done === 'string') {
+    notify({ message: done, tone: 'positive' });
+  }
+}
+
 export function ToolRows({ row }: { readonly row: PluginRow }): ReactNode {
   const tools = usePluginTools(row).data;
   const runner = usePluginTool(row.id);
@@ -90,7 +98,9 @@ export function ToolRows({ row }: { readonly row: PluginRow }): ReactNode {
             key={tool.name}
             icon="wrench"
             title={tool.title}
-            onPress={() => void runner.run(tool.name, {})}
+            onPress={() => {
+              void runner.run(tool.name, {}).then(reportDone);
+            }}
           />
         )),
         <NavRow
@@ -100,6 +110,16 @@ export function ToolRows({ row }: { readonly row: PluginRow }): ReactNode {
           value={toolsValue(row, tools?.length)}
           href={href.pluginSettings(row.id, 'tools')}
         />,
+        ...(row.manifest.permissions.inbound
+          ? [
+              <NavRow
+                key="people"
+                icon="users"
+                title="People"
+                href={href.pluginSettings(row.id, 'people')}
+              />,
+            ]
+          : []),
       ]}
     </List>
   );

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Stack, type SingularOptions } from 'expo-router';
+import { screenPause } from '../../../app-shell/screen-pause';
 import { useStackOptions } from '../../../app-shell/tab-stack';
 import { MasterDetail } from '../../../components/master-detail';
 import { useSizeClass } from '../../../design/size-class';
@@ -19,7 +20,10 @@ export function AutomationsLayout(): ReactNode {
   const options = useStackOptions();
   const master = isMasterWidth(width);
   const stack = (
-    <Stack screenOptions={master ? { ...options, animation: 'none' } : options}>
+    <Stack
+      screenLayout={screenPause}
+      screenOptions={master ? { ...options, animation: 'none' } : options}
+    >
       <Stack.Screen name="[automationId]/index" dangerouslySingular={idOf('automationId')} />
       <Stack.Screen name="scenes/[sceneId]" dangerouslySingular={idOf('sceneId')} />
     </Stack>

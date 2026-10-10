@@ -13,6 +13,7 @@ export interface ChannelFields {
   readonly icon: TalkIcon;
   readonly priority: TalkPriority;
   readonly keep_hours: TalkKeepHours;
+  readonly ai_listens: boolean;
 }
 
 export interface DraftMember {
@@ -26,6 +27,7 @@ export const NEW_CHANNEL: ChannelFields = {
   icon: 'radio',
   priority: 'normal',
   keep_hours: TALK_KEEP_HOURS_DEFAULT,
+  ai_listens: true,
 };
 
 export function fieldsOf(channel: TalkChannelRow): ChannelFields {
@@ -34,6 +36,7 @@ export function fieldsOf(channel: TalkChannelRow): ChannelFields {
     icon: channel.icon,
     priority: channel.priority,
     keep_hours: channel.keep_hours,
+    ai_listens: channel.ai_listens,
   };
 }
 

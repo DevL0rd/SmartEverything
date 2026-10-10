@@ -212,7 +212,7 @@ export function describeAction(names: Names, action: Action): string {
   }
 }
 
-export function summarize(names: Names, definition: AutomationDefinition): Summary {
+export function summarize(names: Names, definition: Omit<AutomationDefinition, 'origin'>): Summary {
   return {
     when: definition.triggers.map((trigger) => whenPhrase(names, trigger)),
     conditions: definition.conditions.items.map((condition) => describeCondition(names, condition)),

@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
 import { useId, useState } from 'react';
 import { View } from 'react-native';
+import Animated, {
+  useAnimatedProps,
+  useAnimatedStyle,
+  type SharedValue,
+} from 'react-native-reanimated';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
-import { useTween } from '../use-tween';
+import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
 import { startOfDayKey, weekdayShort } from '../../format/time';
 import { Text } from '../text';
@@ -28,7 +33,7 @@ interface Drawn {
   readonly chart: FillChartProps;
   readonly area: Area;
   readonly y: (v: number) => number;
-  readonly grow: number;
+  readonly grow: SharedValue<number>;
 }
 
 const PAD = 4;
@@ -108,6 +113,36 @@ function LineMarks({
   );
 }
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+interface GrowingBar {
+  readonly x: number;
+  readonly width: number;
+  readonly radius: number;
+  readonly height: number;
+  readonly bottom: number;
+  readonly fill: string;
+  readonly opacity: number;
+  readonly grow: SharedValue<number>;
+}
+
+function GrowingBarPath({
+  x,
+  width,
+  radius,
+  height,
+  bottom,
+  fill,
+  opacity,
+  grow,
+}: GrowingBar): ReactNode {
+  const animated = useAnimatedProps(() => {
+    const top = Math.min(bottom - STUB, bottom - height * grow.get());
+    return { d: roundedTop({ x, y: top, w: width, h: bottom - top }, radius) };
+  }, [x, width, radius, height, bottom]);
+  return <AnimatedPath fill={fill} fillOpacity={opacity} animatedProps={animated} />;
+}
+
 function BarMarks({ chart, area, y, grow }: Drawn): ReactNode {
   const fill = useColour(chart.colour);
   const track = useColour('surface-3');
@@ -126,15 +161,19 @@ function BarMarks({ chart, area, y, grow }: Drawn): ReactNode {
         />
       );
     }
-    const top = Math.min(area.height - STUB, area.height - (area.height - y(item.value)) * grow);
     const reached =
       chart.reference !== undefined && chart.reference !== null && item.value >= chart.reference;
     return (
-      <Path
+      <GrowingBarPath
         key={item.key}
-        d={roundedTop({ x, y: top, w: width, h: area.height - top }, radius)}
+        x={x}
+        width={width}
+        radius={radius}
+        height={area.height - y(item.value)}
+        bottom={area.height}
         fill={fill}
-        fillOpacity={index === lastIndex || reached ? 1 : 0.45}
+        opacity={index === lastIndex || reached ? 1 : 0.45}
+        grow={grow}
       />
     );
   });
@@ -148,6 +187,7 @@ interface Slot {
 }
 
 function roundedTop({ x, y, w, h }: Slot, r: number): string {
+  'worklet';
   const radius = Math.min(r, w / 2, h);
   const n = (value: number): string => value.toFixed(1);
   return `M${n(x)} ${n(y + h)} V${n(y + radius)} Q${n(x)} ${n(y)} ${n(x + radius)} ${n(y)} H${n(x + w - radius)} Q${n(x + w)} ${n(y)} ${n(x + w)} ${n(y + radius)} V${n(y + h)} Z`;
@@ -191,24 +231,35 @@ function Guides({
   );
 }
 
+function LineClip({ area, grow, children }: Drawn & { readonly children: ReactNode }): ReactNode {
+  const clip = useAnimatedStyle(
+    () => ({ width: area.width * grow.get(), height: area.height }),
+    [area.width, area.height],
+  );
+  return (
+    <Animated.View style={clip} className="absolute left-0 top-0 overflow-hidden">
+      {children}
+    </Animated.View>
+  );
+}
+
 function Marks(drawn: Drawn): ReactNode {
-  const { chart, area, grow } = drawn;
+  const { chart, area } = drawn;
   if (chart.kind === 'bars') {
     return <BarMarks {...drawn} />;
   }
-  const clip = { width: area.width * grow, height: area.height };
   return (
-    <View style={clip} className="absolute left-0 top-0 overflow-hidden">
+    <LineClip {...drawn}>
       <Svg width={area.width} height={area.height}>
         <LineMarks chart={chart} area={area} y={drawn.y} />
       </Svg>
-    </View>
+    </LineClip>
   );
 }
 
 export function FillChart(props: FillChartProps): ReactNode {
   const [area, setArea] = useState<Area | null>(null);
-  const grow = useTween(1, !useMotion().reduced);
+  const grow = useDraw(1, !useMotion().reduced);
   const domain = domainOf(props);
   const y =
     area === null

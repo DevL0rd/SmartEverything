@@ -1,5 +1,6 @@
 package expo.modules.healthconnect.watch.xiaomi
 
+import expo.modules.healthconnect.toHex
 import expo.modules.healthconnect.watch.KindSample
 import expo.modules.healthconnect.watch.MinuteSample
 import expo.modules.healthconnect.watch.RestingHeartRate
@@ -90,7 +91,32 @@ private class MinuteReader(private val groups: Groups, private val buffer: ByteB
   }
 }
 
+class ImplausibleMinute(
+  val fileId: XiaomiFileId,
+  val time: Instant,
+  val field: String,
+  val value: Int,
+  val limit: Int,
+  val header: String
+) : IllegalArgumentException(
+  "${fileId.label}: minute $time reads $field $value, above the physical limit of $limit per minute (header $header); the file is not uploaded"
+)
+
 object XiaomiDailyParsers {
+  private const val MAX_STEPS_PER_MINUTE = 300
+  private const val MAX_METERS_PER_MINUTE = 700
+  private const val MAX_KCAL_PER_MINUTE = 40
+
+  private fun checkPlausible(id: XiaomiFileId, header: ByteArray, minute: MinuteSample) {
+    val readings = listOf(
+      Triple("steps", minute.steps, MAX_STEPS_PER_MINUTE),
+      Triple("distance in meters", minute.distanceMeters, MAX_METERS_PER_MINUTE),
+      Triple("active kilocalories", minute.activeKcal, MAX_KCAL_PER_MINUTE)
+    )
+    val excess = readings.firstOrNull { (_, value, limit) -> (value ?: 0) > limit } ?: return
+    throw ImplausibleMinute(id, minute.time, excess.first, excess.second ?: 0, excess.third, header.toHex())
+  }
+
   fun details(id: XiaomiFileId, file: ByteArray): List<MinuteSample> {
     val headerSize = when (id.version) {
       1, 2 -> 4
@@ -104,7 +130,7 @@ object XiaomiDailyParsers {
     val minutes = mutableListOf<MinuteSample>()
     var time = id.timestamp
     while (buffer.hasRemaining()) {
-      minutes.add(reader.read(time))
+      minutes.add(reader.read(time).also { checkPlausible(id, header, it) })
       time = time.plusSeconds(60)
     }
     return minutes

@@ -6,12 +6,20 @@ import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { IconButton } from '../components/icon-button';
 import { modifierLabel } from '../design/platform';
 import { useSizeClass } from '../design/size-class';
+import { useUnreadChatCount } from '../features/assistant';
 import { setLocalPref, useLocalPref } from '../store/local-prefs';
 import { RailSearch } from '../search/rail-search';
 import { useAvailability } from '../store/selectors';
 import { atStackRoot, useTabRootBack } from './back-handler';
 import { BottomBar } from './bottom-bar';
-import { navEntries, navModel, tabOfRouteName, type NavEntry, type NavModel } from './nav-model';
+import {
+  navEntries,
+  navModel,
+  routeNameOfTab,
+  tabOfRouteName,
+  type NavEntry,
+  type NavModel,
+} from './nav-model';
 import { useNavigationHidden } from './nav-visibility';
 import { navIntent as intent } from './nav-groups';
 import { bindNavGo, navCurrent } from './nav-sheet-state';
@@ -23,7 +31,7 @@ import { popTabToRoot } from './tab-router';
 
 function useGo({ state, navigation }: BottomTabBarProps): (entry: NavEntry) => void {
   return (entry) => {
-    const target = state.routes.find((route) => route.name === `(${entry.route.tab})`);
+    const target = state.routes.find((route) => route.name === routeNameOfTab(entry.route.tab));
     if (target === undefined) {
       return;
     }
@@ -136,7 +144,8 @@ export function AdaptiveNav(props: BottomTabBarProps): ReactNode {
   const routeTab = tabOfRouteName(props.state.routes[props.state.index]?.name ?? '') ?? 'home';
   const shown = shownTab(routeTab, pathname);
   const current = nav === 'bar' ? routeTab : shown;
-  const model = navModel(nav, current, availability);
+  const unread = useUnreadChatCount();
+  const model = navModel(nav, current, availability, unread);
   const go = useGo(props);
   useEffect(() => bindNavGo(go), [go]);
   useEffect(() => {

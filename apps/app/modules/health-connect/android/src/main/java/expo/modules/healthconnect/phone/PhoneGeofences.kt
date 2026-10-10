@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import expo.modules.healthconnect.NativeGuard
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingEvent
@@ -13,7 +14,7 @@ import com.google.android.gms.location.LocationServices
 
 object PhoneGeofences {
   const val MAX_PLACES = 100
-  private const val DWELL_MS = 120_000
+  private const val DWELL_MS = 30_000
   private const val REQUEST_CODE = 7501
 
   @SuppressLint("MissingPermission")
@@ -58,11 +59,11 @@ object PhoneGeofences {
 }
 
 class PhoneGeofenceReceiver : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
-    val event = GeofencingEvent.fromIntent(intent) ?: return
+  override fun onReceive(context: Context, intent: Intent) = NativeGuard.run("PhoneGeofenceReceiver") {
+    val event = GeofencingEvent.fromIntent(intent) ?: return@run
     if (event.hasError()) {
       PhoneEvents.emit("places_error", GeofenceStatusCodes.getStatusCodeString(event.errorCode))
-      return
+      return@run
     }
     val arrived = event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_DWELL
     val places = PhonePlaces(context)

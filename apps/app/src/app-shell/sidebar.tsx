@@ -11,7 +11,6 @@ import { useSettings } from '../store/selectors';
 import type { NavViewProps } from './bottom-bar';
 import { HOME_ACTIONS } from './home-actions';
 import { NavItems } from './nav-groups';
-import { SyncRow } from './sync-indicator';
 
 const HOME_MENU = HOME_ACTIONS.map((action) => ({
   label: action.label,
@@ -61,7 +60,6 @@ export function Sidebar({ model, go, intent, searchRef, onCollapse }: SidebarPro
       </ScrollView>
       <View className="gap-1">
         <NavItems entries={model.system} go={go} intent={intent} />
-        <SyncRow />
       </View>
     </View>
   );

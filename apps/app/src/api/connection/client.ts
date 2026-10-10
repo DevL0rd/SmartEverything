@@ -98,8 +98,17 @@ function answeredTables<S extends z.ZodType>(
     throw new UnreadableAnswerError(route, issuesOf(read.error));
   }
   noteIgnored(route, read.ignored);
-  if (read.skipped.length > 0) {
-    log.warn('api.tables_skipped', { route, tables: read.skipped.join(', ') });
+  read.dropped.forEach((rows) => {
+    log.warn('api.rows_skipped', {
+      route,
+      table: rows.table,
+      rows: rows.count,
+      reason: rows.reason,
+    });
+  });
+  const wholly = read.skipped.filter((table) => !read.dropped.some((rows) => rows.table === table));
+  if (wholly.length > 0) {
+    log.warn('api.tables_skipped', { route, tables: wholly.join(', ') });
   }
   return { data: read.data, skipped: read.skipped };
 }

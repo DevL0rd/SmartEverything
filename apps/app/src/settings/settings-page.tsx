@@ -115,8 +115,12 @@ export function SettingsPageBody({ page }: { readonly page: string }): ReactNode
     shallowEqual,
   );
   const visible = settings.filter((setting) => shown.includes(setting.id));
+  const listed = visible.find((setting) => setting.id === focus);
+  const focusId = listed?.control === 'listed' ? listed.in : focus;
   const render = (list: readonly SettingDefinition[]): ReactNode =>
-    blocksOf(list).map((block) => <BlockView key={block.key} block={block} focus={focus} />);
+    blocksOf(list.filter((setting) => setting.control !== 'listed')).map((block) => (
+      <BlockView key={block.key} block={block} focus={focusId} />
+    ));
   const definition = settingsPage(page);
   const subPages = definition?.childrenInline === false ? null : <SubPages page={page} env={env} />;
   const first = definition?.subPagesFirst === true;

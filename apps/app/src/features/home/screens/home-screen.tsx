@@ -12,9 +12,11 @@ import {
   type BoardEditor,
   type BoardWidget,
 } from '../../../components/widget-board';
+import { useStableValue } from '../../../components/use-stable-value';
 import { useSizeClass } from '../../../design/size-class';
 import { usePageLayout, useSavePageLayout } from '../../../store/layouts';
 import { useSettings } from '../../../store/selectors';
+import { usePluginHomeTypes } from '../../../plugins/home-widgets';
 import { cameraInstanceAvailable } from '../../cameras';
 import { useNutritionWidgets, useTodayKey } from '../../nutrition';
 import { useClimateWidgets } from '../../climate';
@@ -24,11 +26,13 @@ import { HeaderBelow, SummaryLine } from '../components/home-header';
 import {
   HomeDataContext,
   availableWidgets,
+  sameIds,
+  useHomeBasics,
   useHomeData,
+  useHomeViewStore,
   type HomeData,
   type HomeView,
 } from '../data/home-data';
-import { spotlightable } from '../model/spotlight';
 import { spotlightOf } from '../widgets/spotlight';
 import { HOME_PAGE, HOME_RETIRED, HOME_WIDGETS, homeDefaults } from '../widgets';
 
@@ -53,8 +57,11 @@ function useView(data: HomeData, editor: BoardEditor): HomeView {
   return { ...data, spotlighted: new Set(ids.filter((id) => id !== null)) };
 }
 
-function instanceCheck(data: HomeData): (widget: BoardWidget) => boolean {
-  const cameraShown = cameraInstanceAvailable(data.cameras);
+function instanceCheck(
+  cameras: HomeData['cameras'],
+  spotlightable: readonly string[],
+): (widget: BoardWidget) => boolean {
+  const cameraShown = cameraInstanceAvailable(cameras);
   return (widget) => {
     if (widget.type === 'camera') {
       return cameraShown(widget);
@@ -63,25 +70,49 @@ function instanceCheck(data: HomeData): (widget: BoardWidget) => boolean {
     if (widget.type !== 'spotlight' || deviceId === null) {
       return true;
     }
-    return data.devices.some((device) => device.id === deviceId && spotlightable(device));
+    return spotlightable.includes(deviceId);
   };
 }
 
-export function HomeScreen(): ReactNode {
+function useAvailableTypes(view: HomeView): ReadonlySet<string> {
+  const nutrition = useNutritionWidgets(useTodayKey().day);
+  const weather = weatherShown(useWeather()) ? ['weather'] : [];
+  const climate = useClimateWidgets().types;
+  const plugins = usePluginHomeTypes();
+  return useStableValue(
+    new Set([...availableWidgets(view), ...nutrition, ...weather, ...climate, ...plugins]),
+    sameIds,
+  );
+}
+
+function HomeBoard({ editor }: { readonly editor: BoardEditor }): ReactNode {
   const data = useHomeData();
+  const view = useView(data, editor);
+  const viewStore = useHomeViewStore(view);
+  const available = useAvailableTypes(view);
+  return (
+    <HomeDataContext value={viewStore}>
+      <WidgetBoard
+        editor={editor}
+        catalogue={HOME_WIDGETS}
+        available={available}
+        instanceAvailable={instanceCheck(data.cameras, data.digest.spotlightable)}
+      />
+    </HomeDataContext>
+  );
+}
+
+export function HomeScreen(): ReactNode {
+  const { digest, cameras } = useHomeBasics();
   const title = useSettings().home_name;
   const { header } = useSizeClass();
   const editor = useBoardEditor({
     page: HOME_PAGE,
     layout: withoutRetired(usePageLayout(HOME_PAGE), HOME_RETIRED),
-    defaults: homeDefaults(data.devices, data.cameras),
+    defaults: homeDefaults(digest, cameras),
     onSave: useSavePageLayout(HOME_PAGE),
   });
-  const view = useView(data, editor);
-  const nutrition = useNutritionWidgets(useTodayKey().day);
-  const weather = weatherShown(useWeather()) ? ['weather'] : [];
-  const climate = useClimateWidgets().types;
-  if (data.devices.length === 0) {
+  if (digest.count === 0) {
     return <EmptyHome title={title} />;
   }
   return (
@@ -94,21 +125,12 @@ export function HomeScreen(): ReactNode {
           overflow={editor.editing ? [] : [HOME_SETTINGS]}
           search={header !== 'large'}
           editing={editor.header}
-          {...(header === 'standard'
-            ? {}
-            : { below: <HeaderBelow summary={data.summary} search={header === 'large'} /> })}
+          {...(header === 'standard' ? {} : { below: <HeaderBelow search={header === 'large'} /> })}
         />
       }
     >
-      {header === 'standard' ? <SummaryLine summary={data.summary} /> : null}
-      <HomeDataContext value={view}>
-        <WidgetBoard
-          editor={editor}
-          catalogue={HOME_WIDGETS}
-          available={new Set([...availableWidgets(view), ...nutrition, ...weather, ...climate])}
-          instanceAvailable={instanceCheck(data)}
-        />
-      </HomeDataContext>
+      {header === 'standard' ? <SummaryLine /> : null}
+      <HomeBoard editor={editor} />
     </Screen>
   );
 }

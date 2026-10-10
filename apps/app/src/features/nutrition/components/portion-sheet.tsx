@@ -1,8 +1,16 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { MEALS, portionLabel, unitLabel } from '@smarteverything/domain';
+import {
+  MEALS,
+  MULTIPLIER_MAX,
+  MULTIPLIER_MIN,
+  portionLabel,
+  scaledAmount,
+  unitLabel,
+} from '@smarteverything/domain';
 import { Button } from '../../../components/button';
+import { DateNav } from '../../../components/date-nav';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
@@ -23,8 +31,8 @@ function timeOf(at: number): TimeOfDay {
   return { hour: date.getHours(), minute: date.getMinutes() };
 }
 
-function atTime(at: number, time: TimeOfDay): number {
-  const date = new Date(at);
+function atTime(day: Date, time: TimeOfDay): number {
+  const date = new Date(day);
   date.setHours(time.hour, time.minute, 0, 0);
   return date.getTime();
 }
@@ -123,6 +131,26 @@ function AmountControl({
   );
 }
 
+function MultiplierControl({
+  multiplier,
+  onChange,
+}: {
+  readonly multiplier: number;
+  readonly onChange: (multiplier: number) => void;
+}): ReactNode {
+  return (
+    <NumberStepper
+      label="Multiplier"
+      value={multiplier}
+      min={MULTIPLIER_MIN}
+      max={MULTIPLIER_MAX}
+      step={0.5}
+      unit="×"
+      onChange={onChange}
+    />
+  );
+}
+
 function Footer({
   target,
   busy,
@@ -150,6 +178,60 @@ function Footer({
   );
 }
 
+interface PortionValues {
+  readonly amount: number;
+  readonly multiplier: number;
+  readonly day: Date;
+  readonly meal: Meal;
+  readonly time: TimeOfDay;
+}
+
+interface PortionSetters {
+  readonly setAmount: (amount: number) => void;
+  readonly setMultiplier: (multiplier: number) => void;
+  readonly setDay: (day: Date) => void;
+  readonly setMeal: (meal: Meal) => void;
+  readonly setTime: (time: TimeOfDay) => void;
+}
+
+function PortionBody({
+  target,
+  values,
+  set,
+}: {
+  readonly target: PortionTarget;
+  readonly values: PortionValues;
+  readonly set: PortionSetters;
+}): ReactNode {
+  const { amount, multiplier, day, meal, time } = values;
+  const total = scaledAmount(amount, multiplier);
+  const subtitle = joinParts([target.food.brand, portionLabel(target.food, total)]);
+  return (
+    <View className="gap-5 pb-2">
+      <Text variant="callout" tone="variant" numberOfLines={1}>
+        {subtitle}
+      </Text>
+      <NutrientPreview food={target.food} amount={total} />
+      {target.fromOpenFoodFacts ? <Attribution /> : null}
+      <Field label="Amount">
+        <AmountControl target={target} amount={amount} onChange={set.setAmount} />
+      </Field>
+      <Field label="Multiplier">
+        <MultiplierControl multiplier={multiplier} onChange={set.setMultiplier} />
+      </Field>
+      <Field label="Meal">
+        <Segmented<Meal> label="Meal" options={MEAL_OPTIONS} value={meal} onChange={set.setMeal} />
+      </Field>
+      <Field label="Day">
+        <DateNav value={day} range="day" max={new Date()} onChange={set.setDay} />
+      </Field>
+      <Field label="Time">
+        <TimeField label="Time" value={time} onChange={set.setTime} />
+      </Field>
+    </View>
+  );
+}
+
 export interface PortionForm {
   readonly body: ReactNode;
   readonly footer: ReactNode;
@@ -157,6 +239,8 @@ export interface PortionForm {
 
 export function usePortionForm(target: PortionTarget, onDone: () => void): PortionForm {
   const [amount, setAmount] = useState(target.amount);
+  const [multiplier, setMultiplier] = useState(target.multiplier);
+  const [day, setDay] = useState(() => new Date(target.at));
   const [meal, setMeal] = useState<Meal>(target.meal);
   const [time, setTime] = useState<TimeOfDay>(timeOf(target.at));
   const [busy, setBusy] = useState(false);
@@ -170,14 +254,13 @@ export function usePortionForm(target: PortionTarget, onDone: () => void): Porti
       }
     });
   };
-  const subtitle = joinParts([target.food.brand, portionLabel(target.food, amount)]);
   return {
     footer: (
       <Footer
         target={target}
         busy={busy}
         onSave={() => {
-          finish(log.save(target, { amount, meal, at: atTime(target.at, time) }));
+          finish(log.save(target, { amount, multiplier, meal, at: atTime(day, time) }));
         }}
         onRemove={() => {
           finish(log.remove(target));
@@ -185,22 +268,11 @@ export function usePortionForm(target: PortionTarget, onDone: () => void): Porti
       />
     ),
     body: (
-      <View className="gap-5 pb-2">
-        <Text variant="callout" tone="variant" numberOfLines={1}>
-          {subtitle}
-        </Text>
-        <NutrientPreview food={target.food} amount={amount} />
-        {target.fromOpenFoodFacts ? <Attribution /> : null}
-        <Field label="Amount">
-          <AmountControl target={target} amount={amount} onChange={setAmount} />
-        </Field>
-        <Field label="Meal">
-          <Segmented<Meal> label="Meal" options={MEAL_OPTIONS} value={meal} onChange={setMeal} />
-        </Field>
-        <Field label="Time">
-          <TimeField label="Time" value={time} onChange={setTime} />
-        </Field>
-      </View>
+      <PortionBody
+        target={target}
+        values={{ amount, multiplier, day, meal, time }}
+        set={{ setAmount, setMultiplier, setDay, setMeal, setTime }}
+      />
     ),
   };
 }

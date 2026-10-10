@@ -100,11 +100,11 @@ object ScaleAdverts {
 }
 
 class ScaleAdvertReceiver : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
+  override fun onReceive(context: Context, intent: Intent) = NativeGuard.run("ScaleAdvertReceiver") {
     val error = intent.getIntExtra(BluetoothLeScanner.EXTRA_ERROR_CODE, NO_ERROR)
     if (error != NO_ERROR) {
       ScaleStatus(context).note("failed", "The background scan stopped with error $error")
-      return
+      return@run
     }
     ScaleAdverts.relay(context, resultsOf(intent))
   }
@@ -169,15 +169,17 @@ class ScaleRelayWorker(context: Context, parameters: WorkerParameters) :
     const val MAX_BATCHES = 20
   }
 
-  override suspend fun getForegroundInfo(): ForegroundInfo = RelayNotification.foregroundInfo(applicationContext)
+  override suspend fun getForegroundInfo(): ForegroundInfo = RelayNotification.forScale(applicationContext)
 }
 
 class ScaleRelayRestart : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
-    try {
-      ScaleRelay(context).resume()
-    } catch (failure: SyncFailure) {
-      ScaleStatus(context).note("failed", "Listening did not restart: ${failure.message}")
+    NativeGuard.run("ScaleRelayRestart") {
+      try {
+        ScaleRelay(context).resume()
+      } catch (failure: SyncFailure) {
+        ScaleStatus(context).note("failed", "Listening did not restart: ${failure.message}")
+      }
     }
   }
 }

@@ -3,10 +3,14 @@ import type { AssistantMessageRow } from '@smarteverything/domain';
 
 export type WorkingRenderer = (row: AssistantMessageRow) => ReactNode;
 
-const StreamingContext = createContext<WorkingRenderer | null>(null);
+export interface StreamingRenderers {
+  readonly working: WorkingRenderer;
+}
+
+const StreamingContext = createContext<StreamingRenderers | null>(null);
 
 export const StreamingProvider = StreamingContext.Provider;
 
-export function useWorkingRenderer(): WorkingRenderer | null {
+export function useStreamingRenderers(): StreamingRenderers | null {
   return use(StreamingContext);
 }

@@ -18,19 +18,6 @@ class RelayChange : Record {
   @Field val findPhone: Boolean? = null
 }
 
-class WatchUserInput : Record {
-  @Field val heightCm: Int = 0
-  @Field val weightKg: Double = 0.0
-  @Field val birthDate: String = ""
-  @Field val female: Boolean = false
-  @Field val maxHeartRate: Int = 0
-  @Field val stepGoal: Int = 0
-  @Field val calorieGoal: Int = 0
-  @Field val activeMinutes: Int = 0
-
-  fun toUser(): WatchUser = WatchUser(heightCm, weightKg, birthDate, female, maxHeartRate, stepGoal, calorieGoal, activeMinutes)
-}
-
 object WatchPhoneBridge {
   fun findWatch(context: Context, deviceId: String, on: Boolean): Boolean {
     WatchStore(context).watches().firstOrNull { it.deviceId == deviceId } ?: throw WatchNotConfigured(deviceId)

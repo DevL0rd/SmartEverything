@@ -1,112 +1,122 @@
 import type { ReactNode, RefObject } from 'react';
 import { useRef, useState } from 'react';
-import { View } from 'react-native';
-import { cn } from '../design/cn';
-import { useIdiom } from '../design/platform';
+import { Dimensions, View, type GestureResponderEvent } from 'react-native';
+import { useSizeClass } from '../design/size-class';
 import { heavyThud } from '../platform/haptics';
-import { measureAnchor, pointRect, type Rect } from './anchor';
+import { centredRect, measureAnchor, pointRect, type Rect } from './anchor';
 import { BottomSheet } from './bottom-sheet';
-import { Icon, type IconName } from './icon';
 import { IconButton } from './icon-button';
-import { Interactive, type Point } from './interactive';
+import type { Point } from './interactive';
+import { LiftMenu, type PreviewAlign } from './menu-lift';
+import { arrangeEntries, MenuRows, type MenuItem } from './menu-rows';
 import { Popover } from './popover';
-import { Text } from './text';
+import { useIdiom } from '../design/platform';
 
-export interface MenuItem {
-  readonly label: string;
-  readonly icon?: IconName;
-  readonly onPress: () => void;
-  readonly destructive?: boolean;
-  readonly disabled?: boolean;
-  readonly shortcut?: string;
+export type { MenuItem } from './menu-rows';
+
+export interface MenuOptions {
+  readonly quick?: readonly MenuItem[];
+  readonly preview?: ReactNode;
+  readonly previewAlign?: PreviewAlign;
 }
 
-function MenuRow({
-  item,
-  close,
-  touch,
-}: {
-  readonly item: MenuItem;
-  readonly close: () => void;
-  readonly touch: boolean;
-}): ReactNode {
-  const tone = item.destructive === true ? 'critical' : 'default';
-  return (
-    <Interactive
-      label={item.label}
-      disabled={item.disabled}
-      role="menuitem"
-      onPress={() => {
-        close();
-        item.onPress();
-      }}
-      className={cn(
-        'flex-row items-center gap-3 px-4',
-        touch ? 'min-h-row-h' : 'min-h-9 mx-1 rounded-sm px-3',
-      )}
-      layerClassName="rounded-sm"
-    >
-      {item.icon === undefined ? null : (
-        <Icon
-          name={item.icon}
-          size={touch ? 24 : 16}
-          tone={item.destructive === true ? 'critical' : 'variant'}
-        />
-      )}
-      <Text variant="body" tone={tone} className="flex-1" numberOfLines={1}>
-        {item.label}
-      </Text>
-      {item.shortcut === undefined || touch ? null : (
-        <Text variant="caption" tone="faint">
-          {item.shortcut}
-        </Text>
-      )}
-    </Interactive>
-  );
-}
+const POINTER_WIDTH = 240;
+const TOUCH_POPOVER_WIDTH = 300;
 
 interface MenuProps {
   readonly items: readonly MenuItem[];
+  readonly options: MenuOptions;
   readonly anchor: Rect | null;
   readonly onClose: () => void;
   readonly label: string;
 }
 
-function Menu({ items, anchor, onClose, label }: MenuProps): ReactNode {
-  const touch = useIdiom() === 'touch';
-  const open = anchor !== null;
-  const rows = items.map((item) => (
-    <MenuRow key={item.label} item={item} close={onClose} touch={touch} />
-  ));
-  if (touch) {
+type SheetProps = Omit<MenuProps, 'anchor'>;
+
+function SheetMenu({ items, options, onClose, label }: SheetProps): ReactNode {
+  const quick = options.quick ?? [];
+  if (quick.length > 0 || options.preview !== undefined) {
     return (
-      <BottomSheet open={open} onClose={onClose} label={label} detents={['fit']}>
-        <View className="-mx-4">{rows}</View>
-      </BottomSheet>
+      <LiftMenu
+        label={label}
+        preview={options.preview ?? null}
+        previewAlign={options.previewAlign ?? 'start'}
+        quick={quick}
+        entries={arrangeEntries([], items)}
+        onClose={onClose}
+      />
     );
   }
   return (
-    <Popover open={open} onClose={onClose} anchor={anchor} label={label} width={240}>
-      {rows}
+    <BottomSheet open onClose={onClose} label={label} detents={['fit']}>
+      <View className="-mx-4">
+        <MenuRows entries={arrangeEntries([], items)} close={onClose} layout="sheet" />
+      </View>
+    </BottomSheet>
+  );
+}
+
+function PopoverMenu({
+  items,
+  options,
+  anchor,
+  onClose,
+  label,
+  touch,
+}: MenuProps & { readonly anchor: Rect; readonly touch: boolean }): ReactNode {
+  return (
+    <Popover
+      open
+      onClose={onClose}
+      anchor={anchor}
+      label={label}
+      width={touch ? TOUCH_POPOVER_WIDTH : POINTER_WIDTH}
+    >
+      <MenuRows
+        entries={arrangeEntries(options.quick ?? [], items)}
+        close={onClose}
+        layout={touch ? 'touch-popover' : 'popover'}
+      />
     </Popover>
   );
 }
 
+function OpenMenu(props: MenuProps & { readonly anchor: Rect }): ReactNode {
+  const { idiom, split } = useSizeClass();
+  const touch = idiom === 'touch';
+  return touch && !split ? <SheetMenu {...props} /> : <PopoverMenu {...props} touch={touch} />;
+}
+
+function Menu(props: MenuProps): ReactNode {
+  const { anchor } = props;
+  return anchor === null ? null : <OpenMenu {...props} anchor={anchor} />;
+}
+
 export interface ContextMenu {
-  readonly onLongPress: (() => void) | undefined;
+  readonly onLongPress: ((event?: GestureResponderEvent) => void) | undefined;
   readonly onContextMenu: ((point: Point) => void) | undefined;
   readonly host: ReactNode;
 }
 
-export function useContextMenu(items: readonly MenuItem[], label = 'Actions'): ContextMenu {
+function pressAnchor(event: GestureResponderEvent | undefined): Rect {
+  return event === undefined
+    ? centredRect(Dimensions.get('window'))
+    : pointRect(event.nativeEvent.pageX, event.nativeEvent.pageY);
+}
+
+export function useContextMenu(
+  items: readonly MenuItem[],
+  label = 'Actions',
+  options: MenuOptions = {},
+): ContextMenu {
   const [anchor, setAnchor] = useState<Rect | null>(null);
   if (items.length === 0) {
     return { onLongPress: undefined, onContextMenu: undefined, host: null };
   }
   return {
-    onLongPress: (): void => {
+    onLongPress: (event): void => {
       heavyThud();
-      setAnchor(pointRect(0, 0));
+      setAnchor(pressAnchor(event));
     },
     onContextMenu: (point): void => {
       setAnchor(pointRect(point.x, point.y));
@@ -114,6 +124,7 @@ export function useContextMenu(items: readonly MenuItem[], label = 'Actions'): C
     host: (
       <Menu
         items={items}
+        options={options}
         anchor={anchor}
         label={label}
         onClose={() => {
@@ -130,7 +141,11 @@ interface AnchoredMenu {
   readonly menu: ReactNode;
 }
 
-export function useAnchoredMenu(items: readonly MenuItem[], label: string): AnchoredMenu {
+export function useAnchoredMenu(
+  items: readonly MenuItem[],
+  label: string,
+  options: MenuOptions = {},
+): AnchoredMenu {
   const ref = useRef<View>(null);
   const [anchor, setAnchor] = useState<Rect | null>(null);
   return {
@@ -141,6 +156,7 @@ export function useAnchoredMenu(items: readonly MenuItem[], label: string): Anch
     menu: (
       <Menu
         items={items}
+        options={options}
         anchor={anchor}
         label={label}
         onClose={() => {

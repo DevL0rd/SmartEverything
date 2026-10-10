@@ -48,3 +48,32 @@ export function Dot({ tone }: { readonly tone: StatusTone | 'primary' }): ReactN
     />
   );
 }
+
+const COUNT_CAP = 99;
+
+export function countLabel(count: number): string {
+  return count > COUNT_CAP ? `${String(COUNT_CAP)}+` : String(count);
+}
+
+export function CountPill({
+  count,
+  label,
+}: {
+  readonly count: number;
+  readonly label?: string;
+}): ReactNode {
+  if (count <= 0) {
+    return null;
+  }
+  return (
+    <View
+      aria-hidden={label === undefined}
+      accessibilityLabel={label}
+      className="h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5"
+    >
+      <Text variant="caption" tone="onPrimary" className="tabular" numberOfLines={1}>
+        {countLabel(count)}
+      </Text>
+    </View>
+  );
+}

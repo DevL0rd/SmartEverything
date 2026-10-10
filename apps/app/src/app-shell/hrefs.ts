@@ -39,10 +39,26 @@ export const href = {
   more: (): Href => '/more',
   assistantCosts: (filters?: { readonly chat?: string }): Href =>
     filters?.chat === undefined
-      ? '/assistant/costs'
-      : { pathname: '/assistant/costs', params: { chat: filters.chat } },
-  assistantChat: (chatId?: string): Href =>
-    chatId === undefined ? '/assistant' : { pathname: '/assistant', params: { chat: chatId } },
+      ? '/settings/assistant/costs'
+      : { pathname: '/settings/assistant/costs', params: { chat: filters.chat } },
+  assistantChat: (
+    chatId?: string,
+    options: { readonly sheet?: 'chat'; readonly message?: string } = {},
+  ): Href =>
+    chatId === undefined
+      ? '/assistant'
+      : {
+          pathname: '/assistant/chat/[chatId]',
+          params: {
+            chatId,
+            ...(options.sheet === undefined ? {} : { sheet: options.sheet }),
+            ...(options.message === undefined ? {} : { message: options.message }),
+          },
+        },
+  assistantChats: (filter: 'unread' | 'archived'): Href => ({
+    pathname: '/assistant',
+    params: { filter },
+  }),
   talk: (): Href => '/talk',
   talkChannel: (channelId: string): Href => ({
     pathname: '/talk/[channelId]',
@@ -69,21 +85,17 @@ export const href = {
   }),
   cameraEvents: (): Href => '/cameras/events',
   cameraMonitor: (): Href => '/cameras/monitor',
-  deviceSection: (
-    deviceId: string,
-    section: 'controls' | 'history' | 'activity' | 'remote',
-  ): Href => ({ pathname: `/device/[deviceId]/${section}`, params: { deviceId } }),
-  pluginDeviceSection: (
-    deviceId: string,
-    section: string,
-    query: Readonly<Record<string, string>> = {},
-  ): Href => ({
+  deviceSection: (deviceId: string, section: string): Href => ({
     pathname: '/device/[deviceId]/[section]',
-    params: { ...query, deviceId, section },
+    params: { deviceId, section },
   }),
-  pluginSettings: (pluginId: string, page?: 'tools' | 'log'): Href => ({
+  pluginSettings: (pluginId: string, page?: 'tools' | 'log' | 'people'): Href => ({
     pathname: '/settings/[...page]',
     params: { page: page === undefined ? ['plugins', pluginId] : ['plugins', pluginId, page] },
+  }),
+  pluginList: (pluginId: string, setting: string): Href => ({
+    pathname: '/settings/[...page]',
+    params: { page: ['plugins', pluginId, 'list', setting] },
   }),
   settings: {
     index: (): Href => '/settings',
@@ -113,7 +125,7 @@ export const href = {
       params: { deviceId, page: 'camera' },
     }),
     remoteViewing: (): Href => '/cameras/settings/remote-viewing',
-    assistant: (): Href => '/assistant/settings',
+    assistant: (): Href => '/settings/assistant',
     profile: (profileId: string): Href => ({
       pathname: '/settings/profiles/[profileId]',
       params: { profileId },

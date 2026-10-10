@@ -8,6 +8,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiManager
+import expo.modules.healthconnect.NativeGuard
 
 object PhoneNetwork {
   const val HOME = "Home"
@@ -59,5 +60,5 @@ object PhoneNetwork {
 }
 
 class PhoneNetworkReceiver : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) = PhoneNetwork.changed(context)
+  override fun onReceive(context: Context, intent: Intent) = NativeGuard.run("PhoneNetworkReceiver") { PhoneNetwork.changed(context) }
 }

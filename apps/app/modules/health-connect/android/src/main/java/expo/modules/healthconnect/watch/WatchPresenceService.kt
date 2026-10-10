@@ -5,6 +5,7 @@ import android.companion.CompanionDeviceService
 import android.companion.DevicePresenceEvent
 import android.os.Build
 import androidx.annotation.RequiresApi
+import expo.modules.healthconnect.NativeGuard
 import expo.modules.healthconnect.phone.PhoneCar
 
 @RequiresApi(Build.VERSION_CODES.S)
@@ -67,7 +68,9 @@ class WatchPresenceService : CompanionDeviceService() {
     val watch = WatchStore(this).byAddress(address) ?: return
     WatchEvents.emit("presence", "${watch.name} $how", mapOf("deviceId" to watch.deviceId))
     if (!WatchStore(this).paused(watch.deviceId)) {
-      WatchService.send(this, WatchService.ACTION_CONNECT) { putExtra(WatchService.EXTRA_ADDRESS, address) }
+      NativeGuard.run("WatchPresenceService") {
+        WatchService.send(this, WatchService.ACTION_CONNECT) { putExtra(WatchService.EXTRA_ADDRESS, address) }
+      }
     }
   }
 }

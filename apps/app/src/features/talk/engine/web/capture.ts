@@ -12,13 +12,28 @@ export interface CaptureHandlers {
   readonly onFailure: (error: unknown) => void;
 }
 
-export function openMicrophone(): Promise<MediaStream> {
+export interface MicrophoneOptions {
+  readonly noiseSuppression: boolean;
+  readonly autoGainControl: boolean;
+  readonly deviceId: string | null;
+}
+
+const DEFAULT_MICROPHONE: MicrophoneOptions = {
+  noiseSuppression: true,
+  autoGainControl: true,
+  deviceId: null,
+};
+
+export function openMicrophone(
+  options: MicrophoneOptions = DEFAULT_MICROPHONE,
+): Promise<MediaStream> {
   return navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
       echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
+      noiseSuppression: options.noiseSuppression,
+      autoGainControl: options.autoGainControl,
+      ...(options.deviceId === null ? {} : { deviceId: { ideal: options.deviceId } }),
     },
     video: false,
   });

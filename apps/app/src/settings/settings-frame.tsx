@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import type { Crumb } from '../components/breadcrumbs';
 import { PageHeader, type HeaderAction } from '../components/page-header';
+import type { MenuItem } from '../components/menu';
 import type { PrimaryActionProps } from '../components/primary-action';
-import { Screen } from '../components/screen';
+import { Screen, type ScreenProps } from '../components/screen';
 import { useSizeClass } from '../design/size-class';
 import { mountOf } from './mounts';
 import { useSettingsParentBack } from './settings-back';
@@ -14,10 +15,16 @@ export interface SettingsFrameProps {
   readonly detail?: boolean;
   readonly trail?: readonly Crumb[];
   readonly actions?: readonly HeaderAction[];
+  readonly overflow?: readonly MenuItem[];
+  readonly search?: boolean;
+  readonly banner?: ReactNode;
+  readonly maxWidth?: ScreenProps['maxWidth'];
   readonly primaryAction?: PrimaryActionProps;
   readonly scroll?: boolean;
   readonly children: ReactNode;
 }
+
+type HeaderChrome = Pick<SettingsFrameProps, 'title' | 'actions' | 'overflow' | 'search'>;
 
 function crumbsOf(page: string, detail: boolean, trail: readonly Crumb[]): readonly Crumb[] {
   const crumbs = settingsTrail(page);
@@ -26,13 +33,13 @@ function crumbsOf(page: string, detail: boolean, trail: readonly Crumb[]): reado
 
 function FrameHeader({
   page,
-  title,
   detail,
   trail,
-  actions,
-}: Omit<SettingsFrameProps, 'children' | 'primaryAction' | 'detail' | 'trail'> & {
+  chrome: { title, ...chrome },
+}: Pick<SettingsFrameProps, 'page'> & {
   readonly detail: boolean;
   readonly trail: readonly Crumb[];
+  readonly chrome: HeaderChrome;
 }): ReactNode {
   const { split } = useSizeClass();
   const definition = settingsPage(page);
@@ -43,7 +50,7 @@ function FrameHeader({
       title={title ?? definition?.title ?? 'Settings'}
       {...(topLevel ? { back: false } : {})}
       breadcrumbs={crumbsOf(page, detail, trail)}
-      {...(actions === undefined ? {} : { actions })}
+      {...chrome}
     />
   );
 }
@@ -54,13 +61,17 @@ export function SettingsFrame({
   detail = false,
   trail = [],
   scroll = true,
-  ...header
+  maxWidth = 'reading',
+  banner,
+  page,
+  ...chrome
 }: SettingsFrameProps): ReactNode {
   return (
     <Screen
-      header={<FrameHeader {...header} detail={detail} trail={trail} />}
-      maxWidth="reading"
+      header={<FrameHeader page={page} detail={detail} trail={trail} chrome={chrome} />}
+      maxWidth={maxWidth}
       scroll={scroll}
+      {...(banner === undefined ? {} : { banner })}
       {...(primaryAction === undefined ? {} : { primaryAction })}
     >
       {children}

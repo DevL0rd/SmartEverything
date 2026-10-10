@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { MCP_ASKING_TOOLS, type McpToolName, type McpToolSummary } from '@smarteverything/domain';
+import type { McpToolName, McpToolSummary } from '@smarteverything/domain';
 import { Badge } from '../../../components/badge';
 import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
@@ -19,7 +19,6 @@ export function ToolSheet({ tool, on, onChange, onClose }: ToolSheetProps): Reac
   if (tool === null) {
     return null;
   }
-  const confirmed = MCP_ASKING_TOOLS.has(tool.name);
   return (
     <Sheet open onClose={onClose} title={toolTitle(tool)} detents={['fit']}>
       <View className="gap-4">
@@ -29,7 +28,6 @@ export function ToolSheet({ tool, on, onChange, onClose }: ToolSheetProps): Reac
             tone={tool.access === 'control' ? 'warning' : 'neutral'}
             icon={tool.access === 'control' ? 'pencil' : 'eye'}
           />
-          {confirmed ? <Badge label="Asks before it runs" tone="neutral" icon="shield" /> : null}
         </View>
         <Text variant="body">{tool.description}</Text>
         <List inset>

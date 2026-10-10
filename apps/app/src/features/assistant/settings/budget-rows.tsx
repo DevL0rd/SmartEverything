@@ -3,7 +3,6 @@ import { useState } from 'react';
 import {
   BURN_MINUTES_MAX,
   BURN_MINUTES_MIN,
-  microsOfUsd,
   type AiBudgetChange,
   type AiBudgetSettings,
 } from '@smarteverything/domain';
@@ -16,19 +15,15 @@ import { notify } from '../../../components/toast-store';
 import type { IconName } from '../../../components/icon-glyphs';
 import { useIsOwner } from '../../../store/selectors';
 import { useBudgetStatus, useBudgetUpdate } from '../data/budget';
-import { costText } from '../data/cost';
+import { useMoney, type Money } from '../../region';
 import { BudgetSheet, type BudgetField, type BudgetValues } from './budget-sheet';
 
 const USD_MAX = 100_000;
 
-function usd(value: number): string {
-  return costText(microsOfUsd(value));
-}
-
 export interface LimitSpec {
   readonly title: string;
   readonly icon: IconName;
-  readonly value: (settings: AiBudgetSettings) => string;
+  readonly value: (settings: AiBudgetSettings, money: Money) => string;
   readonly fields: (settings: AiBudgetSettings) => readonly BudgetField[];
   readonly change: (values: BudgetValues) => AiBudgetChange;
   readonly off: AiBudgetChange;
@@ -50,7 +45,7 @@ export const LIMITS: Readonly<Record<'daily' | 'monthly' | 'burn' | 'credits', L
   daily: {
     title: 'Daily limit',
     icon: 'sun',
-    value: (s) => (s.daily_usd === null ? 'Off' : usd(s.daily_usd)),
+    value: (s, m) => (s.daily_usd === null ? 'Off' : m.dollars(s.daily_usd)),
     fields: (s) => [money('usd', 'Per day, in US dollars', 'Counts every AI source.', s.daily_usd)],
     change: (v) => ({ daily_usd: amountOf(v, 'usd') }),
     off: { daily_usd: null },
@@ -58,7 +53,7 @@ export const LIMITS: Readonly<Record<'daily' | 'monthly' | 'burn' | 'credits', L
   monthly: {
     title: 'Monthly limit',
     icon: 'calendar',
-    value: (s) => (s.monthly_usd === null ? 'Off' : usd(s.monthly_usd)),
+    value: (s, m) => (s.monthly_usd === null ? 'Off' : m.dollars(s.monthly_usd)),
     fields: (s) => [
       money('usd', 'Per month, in US dollars', 'Counts every AI source.', s.monthly_usd),
     ],
@@ -68,7 +63,8 @@ export const LIMITS: Readonly<Record<'daily' | 'monthly' | 'burn' | 'credits', L
   burn: {
     title: 'Spending spike alert',
     icon: 'flame',
-    value: (s) => (s.burn === null ? 'Off' : `${usd(s.burn.usd)} in ${String(s.burn.minutes)} min`),
+    value: (s, m) =>
+      s.burn === null ? 'Off' : `${m.dollars(s.burn.usd)} in ${String(s.burn.minutes)} min`,
     fields: (s) => [
       money(
         'usd',
@@ -92,7 +88,7 @@ export const LIMITS: Readonly<Record<'daily' | 'monthly' | 'burn' | 'credits', L
   credits: {
     title: 'Low credits alert',
     icon: 'battery',
-    value: (s) => (s.low_credits_usd === null ? 'Off' : `Below ${usd(s.low_credits_usd)}`),
+    value: (s, m) => (s.low_credits_usd === null ? 'Off' : `Below ${m.dollars(s.low_credits_usd)}`),
     fields: (s) => [
       money('usd', 'Alert below, in US dollars', 'OpenRouter credits left.', s.low_credits_usd),
     ],
@@ -126,6 +122,7 @@ function Loaded({
 export function LimitRow({ spec }: { readonly spec: LimitSpec }): ReactNode {
   const owner = useIsOwner();
   const change = useBudgetChange();
+  const money = useMoney();
   const [open, setOpen] = useState(false);
   return (
     <Loaded>
@@ -134,7 +131,7 @@ export function LimitRow({ spec }: { readonly spec: LimitSpec }): ReactNode {
           <ListRow
             title={spec.title}
             icon={spec.icon}
-            value={spec.value(settings)}
+            value={spec.value(settings, money)}
             chevron={owner}
             disabled={!owner}
             onPress={() => {

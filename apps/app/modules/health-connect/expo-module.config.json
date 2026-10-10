@@ -7,7 +7,8 @@
       "expo.modules.healthconnect.HealthConnectModule",
       "expo.modules.healthconnect.talk.TalkModule",
       "expo.modules.healthconnect.assistant.AssistantCallModule",
-      "expo.modules.healthconnect.phone.PhoneModule"
+      "expo.modules.healthconnect.phone.PhoneModule",
+      "expo.modules.healthconnect.diagnostics.DiagnosticsModule"
     ]
   }
 }

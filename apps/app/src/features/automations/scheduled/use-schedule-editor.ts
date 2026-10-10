@@ -96,11 +96,9 @@ export function useScheduleEditor(start: ScheduleDraft, savedId: string | null):
     setProblem(null);
     mutation.run(() => saveScheduled(planned), {
       failure: 'It wasn’t scheduled',
-      onDone: (row) => {
-        if (row !== null) {
-          notify({ message: draft.when === null ? 'Saved' : `Scheduled ${whenLabel(draft.when)}` });
-          router.back();
-        }
+      onDone: () => {
+        notify({ message: draft.when === null ? 'Saved' : `Scheduled ${whenLabel(draft.when)}` });
+        router.back();
       },
     });
   };

@@ -1,10 +1,8 @@
 import { shallowEqual, useStoreSelector } from '../../../store/store-context';
-import type { Device, DeviceValues, StoreState } from '../../../store/state';
+import { deviceValuesOf, type Device, type StoreState } from '../../../store/state';
 import { cardWeight, deviceModelOf, type CardWeight, type DeviceModel } from '../../devices';
 
 const models = new WeakMap<Device, DeviceModel>();
-const NO_VALUES: DeviceValues = {};
-
 function modelOf(device: Device): DeviceModel {
   const known = models.get(device);
   if (known !== undefined) {
@@ -16,9 +14,7 @@ function modelOf(device: Device): DeviceModel {
 }
 
 function weightsIn(state: StoreState, devices: readonly Device[]): readonly CardWeight[] {
-  return devices.map((device) =>
-    cardWeight(modelOf(device), state.deviceValues[device.id] ?? NO_VALUES),
-  );
+  return devices.map((device) => cardWeight(modelOf(device), deviceValuesOf(state, device.id)));
 }
 
 export type Weights = ReadonlyMap<string, CardWeight>;

@@ -1,10 +1,8 @@
 import type { AiModelKind } from '@smarteverything/domain';
 import { aiModelsKeys } from '../../../queries/keys';
 import { count } from '../../../format/number';
-import { matchesQuery } from './model-choice';
 import type { ListItem } from './model-list';
 import { useModelPages, useModelProviders, useSuggestedModels } from './model-queries';
-import { useWorkerModels, type WorkerEngine } from './engine-models';
 import { suggestedItems } from './suggested-items';
 
 export type PickerView =
@@ -93,26 +91,5 @@ export function useProviderView(kind: AiModelKind, provider: string | null): Vie
     retry: pages.retry,
     more: pages.more,
     empty: 'No models from this maker right now.',
-  };
-}
-
-export function useWorkerView(kind: WorkerEngine | null, query: string): ViewData {
-  const models = useWorkerModels(kind ?? 'openrouter');
-  const shown = (models.data?.models ?? []).filter(
-    (model) => query === '' || matchesQuery(model, query),
-  );
-  return {
-    ...NO_DATA,
-    items:
-      shown.length === 0
-        ? []
-        : [
-            { type: 'header', key: 'plan', title: 'Included with your plan' },
-            ...shown.map((model): ListItem => ({ type: 'model', key: model.id, model })),
-          ],
-    loading: models.isPending && kind !== null,
-    error: models.error,
-    retry: (): void => void models.refetch(),
-    empty: query === '' ? 'This app reported no models.' : `No model matches “${query}”.`,
   };
 }

@@ -1,4 +1,4 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
 import {
   HEALTH_METRICS,
   SNAPSHOT_WINDOWS,
@@ -20,6 +20,7 @@ import {
   readSightings,
   type BestDay,
 } from './reads';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 export const PRESENCE_DAYS = 90;
 
@@ -43,7 +44,7 @@ export function useDailyFigures(
   last: string,
   metrics: readonly HealthMetric[],
 ): UseQueryResult<DailyFigure[]> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: healthKeys.daily(first, last, metrics),
     queryFn: () => readDailyFigures(first, last, metrics),
     enabled: metrics.length > 0 && first <= last,
@@ -95,7 +96,7 @@ export function useRecords(
   from: number,
   to: number,
 ): UseQueryResult<HealthRecord[]> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: healthKeys.records(types, from, to),
     queryFn: () => readRecords(types, from, to),
     enabled: types.length > 0,
@@ -103,7 +104,7 @@ export function useRecords(
 }
 
 export function useBestDay(metric: HealthMetric, lowest: boolean): UseQueryResult<BestDay | null> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: healthKeys.best(metric, lowest),
     queryFn: () => readBestDay(metric, lowest),
   });
@@ -111,14 +112,14 @@ export function useBestDay(metric: HealthMetric, lowest: boolean): UseQueryResul
 
 export function useSightings(today: string): UseQueryResult<SourceSighting[]> {
   const since = sightingsSince(today);
-  return useQuery({
+  return useScreenQuery({
     queryKey: healthKeys.sightings(since),
     queryFn: () => readSightings(since),
   });
 }
 
 export function useRecord(recordId: string): UseQueryResult<HealthRecord | null> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: healthKeys.record(recordId),
     queryFn: () => readRecord(recordId),
   });

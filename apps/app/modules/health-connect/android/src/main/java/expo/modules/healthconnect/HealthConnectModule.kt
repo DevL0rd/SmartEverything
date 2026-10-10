@@ -17,13 +17,11 @@ import expo.modules.healthconnect.watch.NotificationRules
 import expo.modules.healthconnect.watch.RelayChange
 import expo.modules.healthconnect.watch.VendorApps
 import expo.modules.healthconnect.watch.WatchPhoneBridge
+import expo.modules.healthconnect.push.PushCommands
 import expo.modules.healthconnect.watch.WatchAction
 import expo.modules.healthconnect.watch.WatchActions
 import expo.modules.healthconnect.watch.WatchRemote
-import expo.modules.healthconnect.watch.WatchWeather
-import org.json.JSONObject
 import expo.modules.kotlin.Promise
-import expo.modules.healthconnect.watch.WatchUserInput
 import expo.modules.healthconnect.watch.WatchHealthWriter
 import java.io.Serializable
 import kotlinx.coroutines.Dispatchers
@@ -162,6 +160,10 @@ class HealthConnectModule : Module() {
       WatchBridge.sync(context, serverUrl, token)
     }
 
+    AsyncFunction("runPushCommand") { command: String, payloadJson: String ->
+      PushCommands.run(context, mapOf(PushCommands.KEY to command, "payload" to payloadJson))
+    }
+
     AsyncFunction("startWatches") {
       WatchBridge.start(context)
     }
@@ -214,17 +216,8 @@ class HealthConnectModule : Module() {
       WatchActions.send(WatchAction.Calendar(WatchCalendar.of(eventsJson)))
     }
 
-    AsyncFunction("setWatchWeather") { weatherJson: String ->
-      WatchWeather.save(context, weatherJson)
-      WatchActions.send(WatchAction.Weather(WatchWeather.of(JSONObject(weatherJson))))
-    }
-
     AsyncFunction("findWatch") { deviceId: String, on: Boolean ->
       WatchPhoneBridge.findWatch(context, deviceId, on)
-    }
-
-    AsyncFunction("setWatchUser") { input: WatchUserInput ->
-      WatchPhoneBridge.setUser(context, input.toUser())
     }
 
     AsyncFunction("watchRelayStatus") {

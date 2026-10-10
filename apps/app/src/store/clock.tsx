@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
-import { useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { ClockTextView } from '../components/time-text';
 import type { TextVariant } from '../components/text';
 import type { Tone } from '../components/tone';
-import { ValueStore, useValue } from '../design/external-store';
+import { ValueStore, usePausable, useValue } from '../design/external-store';
 
 const minute = new ValueStore<number>(Date.now());
 
@@ -66,8 +65,17 @@ function followSecond(listener: () => void): () => void {
   };
 }
 
+const SECOND_MS = 1000;
+
+function readSecond(): number {
+  if (secondTimer === null) {
+    second.set(Math.floor(Date.now() / SECOND_MS) * SECOND_MS);
+  }
+  return second.get();
+}
+
 export function useSecond(): number {
-  return useSyncExternalStore(followSecond, second.get, second.get);
+  return usePausable(followSecond, readSecond);
 }
 
 interface TimeProps {

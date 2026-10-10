@@ -1,43 +1,10 @@
-const MICROS_PER_DOLLAR = 1_000_000;
+import type { Money } from '../../region';
 
-const formats = new Map<number, Intl.NumberFormat>();
-
-function money(dollars: number, digits: number): string {
-  let format = formats.get(digits);
-  if (format === undefined) {
-    format = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits,
-    });
-    formats.set(digits, format);
-  }
-  return format.format(dollars);
-}
-
-export function costText(micros: number): string {
-  const dollars = micros / MICROS_PER_DOLLAR;
-  if (micros === 0) {
-    return money(0, 2);
-  }
-  if (dollars < 0.001) {
-    return `<${money(0.001, 3)}`;
-  }
-  return money(dollars, dollars < 0.01 ? 3 : 2);
-}
-
-export function pricePerMillionText(dollars: number | null): string {
+export function pricePerMillionText(dollars: number | null, money: Money): string {
   if (dollars === null) {
     return '—';
   }
-  if (dollars === 0) {
-    return 'Free';
-  }
-  if (dollars < 0.001) {
-    return `<${money(0.001, 3)}`;
-  }
-  return money(dollars, dollars < 0.01 ? 3 : 2);
+  return dollars === 0 ? 'Free' : money.dollars(dollars);
 }
 
 export function contextText(tokens: number | null): string | null {

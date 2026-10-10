@@ -14,7 +14,7 @@ import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
 import { duration, longDate, clock } from '../../../format/time';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 import { costStateLabel, titleOfRow } from './ledger-format';
 
 interface Fact {
@@ -52,6 +52,7 @@ export interface LedgerSheetProps {
 
 export function LedgerSheet({ row, timeZone, onClose }: LedgerSheetProps): ReactNode {
   const chat = row?.chat ?? null;
+  const money = useMoney();
   return (
     <Sheet
       open={row !== null}
@@ -74,7 +75,7 @@ export function LedgerSheet({ row, timeZone, onClose }: LedgerSheetProps): React
       {row === null ? null : (
         <View className="gap-4 pb-2">
           <View className="gap-0.5">
-            <Figure value={costText(row.cost_micros)} size="l" />
+            <Figure value={money.cost(row.cost_micros)} size="l" />
             <Text variant="caption" tone="variant">
               {costStateLabel(row.cost_state)}
             </Text>

@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import type { AiModelKind, EngineKind } from '@smarteverything/domain';
-import { ErrorState } from '../../../components/error-state';
+import type { AiModelKind } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
 import { SearchField } from '../../../components/search-field';
 import { Segmented } from '../../../components/segmented';
@@ -13,33 +12,27 @@ import { useFavouriteModels } from '../data/favourites';
 import { effortLabel } from './efforts';
 import { keptEffort, type ModelChoice, type ModelPick } from './model-choice';
 import { ModelList } from './model-list';
+import { ModelsUnavailable } from './models-unavailable';
 import {
   useProviderView,
   useProvidersView,
   useSearchView,
   useSuggestedView,
-  useWorkerView,
   type PickerView,
   type ViewData,
 } from './model-views';
-import { useModelChoice, type WorkerEngine } from './engine-models';
+import { useModelChoice } from './model-label';
 
 const NONE = '';
 const SEARCH_DELAY_MS = 200;
 
 export interface ModelPickerProps {
-  readonly engine: EngineKind;
   readonly kind?: AiModelKind;
   readonly picked: ModelPick | null;
   readonly onPick: ((pick: ModelPick) => void) | null;
 }
 
-function workerOf(engine: EngineKind): WorkerEngine | null {
-  return engine === 'openrouter' ? null : engine;
-}
-
 interface ViewInput {
-  readonly engine: EngineKind;
   readonly kind: AiModelKind;
   readonly current: string | null;
   readonly query: string;
@@ -47,17 +40,10 @@ interface ViewInput {
   readonly setView: (view: PickerView) => void;
 }
 
-type Mode = 'worker' | 'search' | PickerView['kind'];
+type Mode = 'search' | PickerView['kind'];
 
-function modeOf(engine: EngineKind, query: string, view: PickerView): Mode {
-  if (engine !== 'openrouter') {
-    return 'worker';
-  }
-  return query === '' ? view.kind : 'search';
-}
-
-function useView({ engine, kind, current, query, view, setView }: ViewInput): ViewData {
-  const mode = modeOf(engine, query, view);
+function useView({ kind, current, query, view, setView }: ViewInput): ViewData {
+  const mode: Mode = query === '' ? view.kind : 'search';
   const views: Readonly<Record<Mode, ViewData>> = {
     suggested: useSuggestedView(kind, current, mode === 'suggested', () => {
       setView({ kind: 'providers' });
@@ -70,7 +56,6 @@ function useView({ engine, kind, current, query, view, setView }: ViewInput): Vi
       kind,
       mode === 'provider' && view.kind === 'provider' ? view.provider : null,
     ),
-    worker: useWorkerView(workerOf(engine), query),
   };
   return views[mode];
 }
@@ -150,15 +135,16 @@ function Title({
 
 interface BodyProps {
   readonly data: ViewData;
+  readonly keeping: string;
   readonly selected: string | null;
   readonly onPick: ((model: ModelChoice) => void) | null;
 }
 
-function Body({ data, selected, onPick }: BodyProps): ReactNode {
+function Body({ data, keeping, selected, onPick }: BodyProps): ReactNode {
   const favourites = useFavouriteModels();
   const ready = favourites.status === 'ready';
   if (data.error !== null && data.items.length === 0) {
-    return <ErrorState error={data.error} retry={data.retry} />;
+    return <ModelsUnavailable keeping={keeping} retry={data.retry} />;
   }
   if (!data.loading && data.items.length === 0) {
     return (
@@ -197,12 +183,12 @@ export function ModelPicker(props: ModelPickerProps): ReactNode {
   const [text, setText] = useState('');
   const [view, setView] = useState<PickerView>({ kind: 'suggested' });
   const [tapped, setTapped] = useState<ModelChoice | null>(null);
-  const { engine, kind = 'chat', picked, onPick } = props;
+  const { kind = 'chat', picked, onPick } = props;
   const pickedId = picked === null ? null : picked.model;
-  const initial = useModelChoice(engine, pickedId);
+  const initial = useModelChoice(pickedId);
   const chosen = tapped ?? initial;
   const query = useDebouncedValue(text.trim(), SEARCH_DELAY_MS);
-  const data = useView({ engine, kind, current: pickedId, query, view, setView });
+  const data = useView({ kind, current: pickedId, query, view, setView });
   return (
     <View className="min-h-0 flex-1 gap-2">
       <Thinking model={chosen} picked={picked} onPick={onPick} />
@@ -213,7 +199,12 @@ export function ModelPicker(props: ModelPickerProps): ReactNode {
           setView(view.kind === 'provider' ? { kind: 'providers' } : { kind: 'suggested' });
         }}
       />
-      <Body data={data} selected={chosen?.id ?? pickedId} onPick={pickHandler(props, setTapped)} />
+      <Body
+        data={data}
+        keeping={chosen?.name ?? 'its current model'}
+        selected={chosen?.id ?? pickedId}
+        onPick={pickHandler(props, setTapped)}
+      />
     </View>
   );
 }

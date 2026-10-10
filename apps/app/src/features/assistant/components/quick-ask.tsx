@@ -7,6 +7,7 @@ import { Text } from '../../../components/text';
 import { ValueStore, useValue } from '../../../design/external-store';
 import { AssistantOrb } from '../call/orb';
 import { useAssistantName, useChatState } from '../data/assistant-data';
+import { sendMessageRow } from '../data/send';
 import { Composer } from './composer';
 
 const open = new ValueStore(false);
@@ -15,13 +16,17 @@ export function openQuickAsk(): void {
   open.set(true);
 }
 
-function close(): void {
-  open.set(false);
+async function sendAndOpenChat(text: string, attachments: readonly string[]): Promise<boolean> {
+  const row = await sendMessageRow(text, attachments);
+  if (row === null) {
+    return false;
+  }
+  router.navigate(href.assistantChat(row.chat_id));
+  return true;
 }
 
-function sent(): void {
-  close();
-  router.navigate(href.assistantChat());
+function close(): void {
+  open.set(false);
 }
 
 export function QuickAskHost(): ReactNode {
@@ -36,7 +41,13 @@ export function QuickAskHost(): ReactNode {
           <AssistantOrb state="idle" size={32} />
           <Text variant="title-3">{ready ? `Ask ${name}` : `${name} isn’t ready`}</Text>
         </View>
-        <Composer disabled={!ready} placeholder={`Message ${name}`} focusOnMount onSent={sent} />
+        <Composer
+          disabled={!ready}
+          placeholder={`Message ${name}`}
+          focusOnMount
+          send={sendAndOpenChat}
+          onSent={close}
+        />
       </View>
     </Sheet>
   );

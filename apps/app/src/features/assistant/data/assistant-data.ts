@@ -1,5 +1,4 @@
 import { assistantLabel, type AssistantStatus } from '@smarteverything/domain';
-import { appPlatform } from '../../../design/platform';
 import { awaitingHubDeploy } from '../../../store/live-sync';
 import { useSyncStatus } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
@@ -16,10 +15,6 @@ export function useAssistantStatus(): AssistantStatus | null {
 export function useAssistantName(): string {
   const status = useAssistantStatus();
   return status === null ? 'Assistant' : assistantLabel(status.settings);
-}
-
-export function canSetUpHere(status: AssistantStatus): boolean {
-  return appPlatform() === 'desktop' && status.desktop_available;
 }
 
 function chatStateOf(status: AssistantStatus | null, live: boolean): ChatState {

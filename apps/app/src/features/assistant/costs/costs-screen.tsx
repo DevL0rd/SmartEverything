@@ -1,18 +1,18 @@
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 import type { UsageLedgerRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { ErrorState } from '../../../components/error-state';
-import { PageHeader } from '../../../components/page-header';
-import { Screen } from '../../../components/screen';
+import type { MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
+import { SettingsFrame } from '../../../settings/settings-frame';
 import { useIsOwner, useSettings } from '../../../store/selectors';
-import { BudgetBanner } from './budget-banner';
+import { CostsBanners } from './costs-banners';
 import { BUDGET_PAGE } from './budget-meter';
 import { useCostLedger, useCostSummary } from './costs-data';
 import { CostsHeader } from './costs-header';
@@ -62,34 +62,36 @@ function useLedger(
   return { ledger, sections: ledgerSections(rows, now, timeZone) };
 }
 
-function useCostsHeader(): ReactElement {
+const COSTS_PAGE = 'assistant/costs';
+
+function useCostsMenu(): readonly MenuItem[] {
   const router = useRouter();
-  return (
-    <PageHeader
-      title="Costs"
-      search={false}
-      overflow={[
-        {
-          label: 'AI budget',
-          icon: 'gauge',
-          onPress: (): void => {
-            router.push(href.settings.page(BUDGET_PAGE));
-          },
-        },
-        {
-          label: 'OpenRouter settings',
-          icon: 'settings',
-          onPress: (): void => {
-            router.push(href.settings.page('assistant/openrouter'));
-          },
-        },
-      ]}
-    />
-  );
+  return [
+    {
+      label: 'AI budget',
+      icon: 'gauge',
+      onPress: (): void => {
+        router.push(href.settings.page(BUDGET_PAGE));
+      },
+    },
+    {
+      label: 'OpenRouter settings',
+      icon: 'settings',
+      onPress: (): void => {
+        router.push(href.settings.page('assistant'));
+      },
+    },
+  ];
+}
+
+function loadMore(ledger: Ledger['ledger']): void {
+  if (ledger.hasNextPage && !ledger.isFetchingNextPage) {
+    void ledger.fetchNextPage();
+  }
 }
 
 export function CostsScreen(): ReactNode {
-  const header = useCostsHeader();
+  const menu = useCostsMenu();
   const timeZone = useSettings().time_zone;
   const now = useMinute();
   const state = useCostParams();
@@ -99,7 +101,14 @@ export function CostsScreen(): ReactNode {
   const owner = useIsOwner();
   const [open, setOpen] = useState<UsageLedgerRow | null>(null);
   return (
-    <Screen header={header} maxWidth="dashboard" scroll={false} banner={<BudgetBanner />}>
+    <SettingsFrame
+      page={COSTS_PAGE}
+      search={false}
+      overflow={menu}
+      maxWidth="dashboard"
+      scroll={false}
+      banner={<CostsBanners />}
+    >
       <VirtualList
         sections={summary.data?.totals.sum.count === 0 ? [] : sections}
         keyOf={(row) => row.id}
@@ -118,9 +127,7 @@ export function CostsScreen(): ReactNode {
         }
         footer={<LedgerFooter ledger={ledger} />}
         onEndReached={() => {
-          if (ledger.hasNextPage && !ledger.isFetchingNextPage) {
-            void ledger.fetchNextPage();
-          }
+          loadMore(ledger);
         }}
       />
       <LedgerSheet
@@ -130,6 +137,6 @@ export function CostsScreen(): ReactNode {
           setOpen(null);
         }}
       />
-    </Screen>
+    </SettingsFrame>
   );
 }

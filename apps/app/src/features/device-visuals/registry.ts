@@ -47,6 +47,7 @@ export const VISUALS: VisualRegistry = {
   router: glyphVisual(FAMILY_ICONS.router),
   file_sync: glyphVisual(FAMILY_ICONS.file_sync),
   dns_filter: glyphVisual(FAMILY_ICONS.dns_filter),
+  robot: glyphVisual(FAMILY_ICONS.robot),
   computer: glyphVisual(FAMILY_ICONS.computer),
   phone: glyphVisual(FAMILY_ICONS.phone),
   generic: glyphVisual(FAMILY_ICONS.generic),

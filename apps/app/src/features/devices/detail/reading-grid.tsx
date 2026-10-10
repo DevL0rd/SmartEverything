@@ -5,7 +5,7 @@ import { Section } from '../../../components/section';
 import { StatTile } from '../../../components/stat-tile';
 import type { Device, DeviceValues } from '../../../store/state';
 import { useDeviceValues } from '../../../store/selectors';
-import { valueOf, useDeviceModel } from '../model/device-model';
+import { valueOf, useDeviceModel, type DeviceModel } from '../model/device-model';
 import { heroReadingOf, readingsOf } from '../model/readings';
 import { splitUnit } from './device-hero';
 
@@ -26,7 +26,11 @@ function Tile({
   return <StatTile label={presented.label} {...shown} stale={stale} />;
 }
 
-export function useReadings(device: Device): readonly PresentedCapability[] {
+export function hasReadings(model: DeviceModel, values: DeviceValues): boolean {
+  return readingsOf(model, values, heroReadingOf(model, values)).length > 0;
+}
+
+function useReadings(device: Device): readonly PresentedCapability[] {
   const model = useDeviceModel(device);
   const values = useDeviceValues(device.id);
   return readingsOf(model, values, heroReadingOf(model, values));

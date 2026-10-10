@@ -15,7 +15,8 @@ export function BudgetBanner(): ReactNode {
       tone="warning"
       title="Background AI is paused"
       body={text}
-      action={{ label: 'Budget', href: href.settings.page(BUDGET_PAGE) }}
+      wrapBody
+      action={{ label: 'Open AI budget', href: href.settings.page(BUDGET_PAGE) }}
     />
   );
 }

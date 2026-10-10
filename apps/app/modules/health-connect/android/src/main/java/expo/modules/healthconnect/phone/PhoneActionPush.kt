@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.work.WorkManager
 import expo.modules.healthconnect.push.PushCommandHandler
+import java.time.Instant
+import java.time.format.DateTimeParseException
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -24,7 +26,21 @@ object PhoneActionPush : PushCommandHandler {
       Log.e(TAG, PhonePushPayloadInvalid(COMMAND, "expected requestId and action; received ${payload.keys().asSequence().toList()}").message.orEmpty())
       return
     }
+    if (expired(payload.optString("expiresAt"))) {
+      Log.w(TAG, "Phone action $requestId expired before it arrived (hub deadline ${payload.optString("expiresAt")}, phone clock ${Instant.now()}); if this repeats the phone clock is ahead of the hub")
+      return
+    }
     answer(context, requestId, runSafely(context, action))
+  }
+
+  private fun expired(expiresAt: String): Boolean {
+    if (expiresAt.isEmpty()) return false
+    return try {
+      Instant.parse(expiresAt).toEpochMilli() < System.currentTimeMillis()
+    } catch (failure: DateTimeParseException) {
+      Log.e(TAG, "A phone action push carried an unreadable expiresAt \"$expiresAt\"")
+      false
+    }
   }
 
   fun runSafely(context: Context, action: JSONObject): PhoneActionResult = try {

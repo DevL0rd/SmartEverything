@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -128,27 +128,31 @@ function useReorder<T>(props: ReorderableListProps<T>): {
   const keys = props.items.map(props.keyOf);
   const [dragging, setDragging] = useState<readonly string[] | null>(null);
   const latest = useRef<readonly string[] | null>(null);
+  const current = useRef({ keys, onReorder: props.onReorder });
+  useEffect(() => {
+    current.current = { keys, onReorder: props.onReorder };
+  });
   const order = dragging ?? keys;
   const update = (next: readonly string[] | null): void => {
     latest.current = next;
     setDragging(next);
   };
   const drag = useDragState((key: string, target: string | null): void => {
-    update(moved(latest.current ?? keys, key, target));
+    update(moved(latest.current ?? current.current.keys, key, target));
   });
   const autoScroll = useAutoScroll(drag);
   return {
     order,
     drag,
     lift: (): void => {
-      update(keys);
+      update(current.current.keys);
       autoScroll(true);
     },
     drop: (): void => {
       autoScroll(false);
       const final = latest.current;
-      if (final !== null && final.join() !== keys.join()) {
-        props.onReorder(final);
+      if (final !== null && final.join() !== current.current.keys.join()) {
+        current.current.onReorder(final);
       }
       update(null);
     },
@@ -159,6 +163,19 @@ function useReorder<T>(props: ReorderableListProps<T>): {
       }
     },
   };
+}
+
+function useSharedFrames(
+  reorder: { readonly order: readonly string[]; readonly drag: DragState },
+  heights: Readonly<Record<string, number>>,
+  width: number,
+): Readonly<Record<string, Frame>> {
+  const frames = framesOf(reorder.order, heights, width);
+  const shared = reorder.drag.frames;
+  useEffect(() => {
+    shared.set(frames);
+  }, [frames, shared]);
+  return frames;
 }
 
 function useHeights(): {
@@ -178,13 +195,12 @@ export function ReorderableList<T>(props: ReorderableListProps<T>): ReactNode {
   const { heights, measure } = useHeights();
   const [width, setWidth] = useState(0);
   const reorder = useReorder(props);
-  const frames = framesOf(reorder.order, heights, width);
+  const frames = useSharedFrames(reorder, heights, width);
   const total = Object.values(frames).reduce(
     (sum, frame) => Math.max(sum, frame.top + frame.height),
     0,
   );
   const container = useAnimatedStyle(() => ({ height: total }), [total]);
-  const byKey = new Map(props.items.map((item) => [props.keyOf(item), item]));
   return (
     <Animated.View
       style={container}
@@ -195,10 +211,10 @@ export function ReorderableList<T>(props: ReorderableListProps<T>): ReactNode {
     >
       {width === 0
         ? null
-        : reorder.order.map((key, index) => {
-            const item = byKey.get(key);
+        : props.items.map((item) => {
+            const key = props.keyOf(item);
             const frame = frames[key];
-            if (item === undefined || frame === undefined) {
+            if (frame === undefined) {
               return null;
             }
             return (
@@ -207,7 +223,7 @@ export function ReorderableList<T>(props: ReorderableListProps<T>): ReactNode {
                 rowKey={key}
                 label={props.labelOf(item)}
                 frame={frame}
-                first={index === 0}
+                first={reorder.order[0] === key}
                 drag={reorder.drag}
                 onLift={reorder.lift}
                 onDrop={reorder.drop}

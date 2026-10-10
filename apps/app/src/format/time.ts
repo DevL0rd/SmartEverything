@@ -13,25 +13,40 @@ function zoned(timeZone: string | null): Intl.DateTimeFormatOptions {
   return timeZone === null ? {} : { timeZone };
 }
 
+const formatters = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(
+  locale: string | undefined,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  const key = JSON.stringify([locale, options]);
+  const known = formatters.get(key);
+  if (known !== undefined) {
+    return known;
+  }
+  const made = new Intl.DateTimeFormat(locale, options);
+  formatters.set(key, made);
+  return made;
+}
+
 export function clock(moment: Date | string | number, timeZone: string | null = null): string {
-  return new Date(moment).toLocaleTimeString(undefined, {
+  return formatterFor(undefined, {
     hour: 'numeric',
     minute: '2-digit',
     ...zoned(timeZone),
-  });
+  }).format(new Date(moment));
 }
 
 export function localDayKey(
   moment: Date | string | number,
   timeZone: string | null = null,
 ): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
+  return formatterFor('en-CA', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     ...zoned(timeZone),
   }).format(new Date(moment));
-  return parts;
 }
 
 export function dayLabel(
@@ -46,12 +61,12 @@ export function dayLabel(
   if (key === localDayKey(new Date(now - DAY_MS), timeZone)) {
     return 'Yesterday';
   }
-  return new Date(moment).toLocaleDateString(undefined, {
+  return formatterFor(undefined, {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
     ...zoned(timeZone),
-  });
+  }).format(new Date(moment));
 }
 
 export function relative(moment: Date | string, now: number): string {

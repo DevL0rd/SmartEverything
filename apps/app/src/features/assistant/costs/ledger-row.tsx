@@ -5,7 +5,7 @@ import { IconWell } from '../../../components/icon-well';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { clock } from '../../../format/time';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 import { DIMENSION_INFO, partIcon } from './costs-dimensions';
 import { detailOfRow, titleOfRow } from './ledger-format';
 
@@ -17,8 +17,9 @@ export interface LedgerRowProps {
 }
 
 export function LedgerRow({ row, timeZone, showPerson, onOpen }: LedgerRowProps): ReactNode {
+  const money = useMoney();
   const title = titleOfRow(row);
-  const cost = costText(row.cost_micros);
+  const cost = money.cost(row.cost_micros);
   return (
     <Interactive
       label={`${title}, ${cost}, ${clock(row.at, timeZone)}`}

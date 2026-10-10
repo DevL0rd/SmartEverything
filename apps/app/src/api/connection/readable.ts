@@ -13,12 +13,19 @@ export type Readable<T> =
   | { readonly ok: true; readonly data: T; readonly ignored: readonly string[] }
   | { readonly ok: false; readonly error: z.ZodError };
 
+interface DroppedRows {
+  readonly table: string;
+  readonly count: number;
+  readonly reason: string;
+}
+
 export type ReadableTables<T> =
   | {
       readonly ok: true;
       readonly data: T;
       readonly ignored: readonly string[];
       readonly skipped: readonly string[];
+      readonly dropped: readonly DroppedRows[];
     }
   | { readonly ok: false; readonly error: z.ZodError };
 
@@ -114,14 +121,27 @@ export function readLeniently<S extends z.ZodType>(
     : { ok: false, error: parsed.error };
 }
 
-function tablesIn(error: z.ZodError, roots: readonly string[]): readonly string[] | null {
-  const tables = error.issues.map((issue) => {
-    const [root, table] = issue.path;
-    return typeof root === 'string' && roots.includes(root) && typeof table === 'string'
-      ? `${root}.${table}`
-      : null;
-  });
-  return tables.every((table) => table !== null) ? [...new Set(tables)] : null;
+interface Address {
+  readonly table: string;
+  readonly row: number | null;
+  readonly reason: string;
+}
+
+function addressOf(issue: Issue, roots: readonly string[]): Address | null {
+  const [root, table, row] = issue.path;
+  if (typeof root !== 'string' || !roots.includes(root) || typeof table !== 'string') {
+    return null;
+  }
+  return {
+    table: `${root}.${table}`,
+    row: typeof row === 'number' ? row : null,
+    reason: `${issue.path.slice(2).join('.') || 'value'} ${issue.message}`,
+  };
+}
+
+function addressesOf(error: z.ZodError, roots: readonly string[]): readonly Address[] | null {
+  const found = error.issues.map((issue) => addressOf(issue, roots));
+  return found.every((address) => address !== null) ? found : null;
 }
 
 function withoutTable(value: unknown, table: string): unknown {
@@ -133,19 +153,85 @@ function withoutTable(value: unknown, table: string): unknown {
   return { ...value, [root]: Array.isArray(dropped) ? { ...kept, [name]: [] } : kept };
 }
 
+function withoutRows(value: unknown, table: string, rows: ReadonlySet<number>): unknown {
+  const [root = '', name = ''] = table.split('.');
+  if (!isRecord(value) || !isRecord(value[root])) {
+    return value;
+  }
+  const list = value[root][name];
+  if (!Array.isArray(list)) {
+    return value;
+  }
+  return {
+    ...value,
+    [root]: { ...value[root], [name]: list.filter((_row: unknown, index) => !rows.has(index)) },
+  };
+}
+
+interface Trimmed {
+  readonly value: unknown;
+  readonly skipped: Set<string>;
+  readonly dropped: Map<string, { rows: Set<number>; reason: string }>;
+}
+
+function trimmed(value: unknown, addresses: readonly Address[], into: Trimmed): Trimmed {
+  const rowsOf = new Map<string, Set<number>>();
+  let current = value;
+  for (const address of addresses) {
+    if (address.row === null || !Array.isArray(rowListOf(value, address.table))) {
+      current = withoutTable(current, address.table);
+      into.skipped.add(address.table);
+      continue;
+    }
+    const rows = rowsOf.get(address.table) ?? new Set<number>();
+    rows.add(address.row);
+    rowsOf.set(address.table, rows);
+    const entry = into.dropped.get(address.table) ?? {
+      rows: new Set<number>(),
+      reason: address.reason,
+    };
+    entry.rows.add(address.row);
+    into.dropped.set(address.table, entry);
+  }
+  for (const [table, rows] of rowsOf) {
+    current = withoutRows(current, table, rows);
+    into.skipped.add(table);
+  }
+  return { ...into, value: current };
+}
+
+function rowListOf(value: unknown, table: string): unknown {
+  const [root = '', name = ''] = table.split('.');
+  return isRecord(value) && isRecord(value[root]) ? value[root][name] : undefined;
+}
+
+const TABLE_ROUNDS = 4;
+
 export function readTablesLeniently<S extends z.ZodType>(
   schema: S,
   value: unknown,
   roots: readonly string[],
 ): ReadableTables<z.output<S>> {
-  const first = readLeniently(schema, value);
-  if (first.ok) {
-    return { ...first, skipped: [] };
+  let state: Trimmed = { value, skipped: new Set(), dropped: new Map() };
+  let read = readLeniently(schema, state.value);
+  for (let round = 0; round < TABLE_ROUNDS && !read.ok; round += 1) {
+    const addresses = addressesOf(read.error, roots);
+    if (addresses === null) {
+      return read;
+    }
+    state = trimmed(state.value, addresses, state);
+    read = readLeniently(schema, state.value);
   }
-  const tables = tablesIn(first.error, roots);
-  if (tables === null) {
-    return first;
+  if (!read.ok) {
+    return read;
   }
-  const rest = readLeniently(schema, tables.reduce(withoutTable, value));
-  return rest.ok ? { ...rest, skipped: tables } : rest;
+  return {
+    ...read,
+    skipped: [...state.skipped],
+    dropped: [...state.dropped].map(([table, entry]) => ({
+      table,
+      count: entry.rows.size,
+      reason: entry.reason,
+    })),
+  };
 }

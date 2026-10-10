@@ -1,5 +1,5 @@
 import { deviceFamily, type DeviceFamily, type TableRow } from '@smarteverything/domain';
-import { rowsOf, type Device, type StoreState } from '../../../store/state';
+import { deviceValuesOf, rowsOf, type Device, type StoreState } from '../../../store/state';
 import { deviceModelOf, isOffline, powerStateOf } from '../../devices';
 import { orderedRooms } from '../../../store/table-rules';
 
@@ -24,7 +24,7 @@ const MEMBERS_SHOWN = 3;
 
 function summaryOf(state: StoreState, room: Room, devices: readonly Device[]): RoomSummary {
   const powers = devices.map((device) =>
-    powerStateOf(deviceModelOf(device), state.deviceValues[device.id] ?? {}),
+    powerStateOf(deviceModelOf(device), deviceValuesOf(state, device.id)),
   );
   return {
     id: room.id,
@@ -54,16 +54,18 @@ function membersKey(room: RoomSummary): string {
   return room.members.map((member) => `${member.id}:${String(member.on)}`).join(',');
 }
 
+export function sameRoom(left: RoomSummary, right: RoomSummary): boolean {
+  return (
+    FIELDS.every((field) => left[field] === right[field]) && membersKey(left) === membersKey(right)
+  );
+}
+
 export function sameRooms(left: readonly RoomSummary[], right: readonly RoomSummary[]): boolean {
   return (
     left.length === right.length &&
     left.every((room, index) => {
       const other = right[index];
-      return (
-        other !== undefined &&
-        FIELDS.every((field) => other[field] === room[field]) &&
-        membersKey(other) === membersKey(room)
-      );
+      return other !== undefined && sameRoom(other, room);
     })
   );
 }

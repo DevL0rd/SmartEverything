@@ -7,15 +7,18 @@ import {
 } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
 import type { IconName } from '../components/icon';
+import { chatSourceOf } from '../features/assistant';
 import { deviceIcon } from '../features/device-visuals';
 import { useSettingEnv } from '../settings/env';
 import type { SettingEnv } from '../settings/types';
+import { memoOnInputs } from '../store/memo-selector';
 import { shallowEqual, useStoreSelector } from '../store/store-context';
 import type { StoreState } from '../store/state';
 import {
   namedDevices,
   sourcesOf,
   type NamedDevice,
+  type SearchChat,
   type SearchTables,
   type SourceLinks,
 } from './sources';
@@ -177,6 +180,7 @@ function catalogueFor(tables: SearchTables, env: SettingEnv): SearchCatalogue {
     tables.automations,
     tables.scheduled,
     tables.plugins,
+    tables.chats,
   ];
   if (cached !== null && shallowEqual(cached.tables, key) && sameEnv(cached.env, env)) {
     return cached.catalogue;
@@ -186,24 +190,63 @@ function catalogueFor(tables: SearchTables, env: SettingEnv): SearchCatalogue {
   return catalogue;
 }
 
-const selectDevices = (state: StoreState): SearchTables['devices'] => state.tables.devices;
-const selectRooms = (state: StoreState): SearchTables['rooms'] => state.tables.rooms;
-const selectScenes = (state: StoreState): SearchTables['scenes'] => state.tables.scenes;
-const selectAutomations = (state: StoreState): SearchTables['automations'] =>
-  state.tables.automations;
-const selectScheduled = (state: StoreState): SearchTables['scheduled'] =>
-  state.tables.scheduled_actions;
-const selectPlugins = (state: StoreState): SearchTables['plugins'] => state.tables.plugins;
+const searchChatsOf = memoOnInputs(
+  (state: StoreState) => [state.tables.ai_chats, state.tables.plugins],
+  (state): readonly SearchChat[] => {
+    const names = new Map(state.tables.plugins.rows.map((row) => [row.id, row.manifest.name]));
+    return state.tables.ai_chats.rows
+      .filter((chat) => chat.archived_at === null)
+      .map((chat) => ({
+        id: chat.id,
+        title: chat.title,
+        source: chatSourceOf(chat, names).label,
+        pinned: chat.pinned,
+      }));
+  },
+);
+
+function sameChats(left: readonly SearchChat[], right: readonly SearchChat[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((chat, index) => {
+      const other = right[index];
+      return (
+        other?.id === chat.id &&
+        other.title === chat.title &&
+        other.source === chat.source &&
+        other.pinned === chat.pinned
+      );
+    })
+  );
+}
+
+function searchTablesOf(state: StoreState): SearchTables {
+  const t = state.tables;
+  return {
+    chats: searchChatsOf(state),
+    devices: t.devices,
+    rooms: t.rooms,
+    scenes: t.scenes,
+    automations: t.automations,
+    scheduled: t.scheduled_actions,
+    plugins: t.plugins,
+  };
+}
+
+function sameTables(left: SearchTables, right: SearchTables): boolean {
+  return (
+    left.devices === right.devices &&
+    left.rooms === right.rooms &&
+    left.scenes === right.scenes &&
+    left.automations === right.automations &&
+    left.scheduled === right.scheduled &&
+    left.plugins === right.plugins &&
+    sameChats(left.chats, right.chats)
+  );
+}
 
 export function useSearchCatalogue(): SearchCatalogue {
   const env = useSettingEnv();
-  const tables: SearchTables = {
-    devices: useStoreSelector(selectDevices),
-    rooms: useStoreSelector(selectRooms),
-    scenes: useStoreSelector(selectScenes),
-    automations: useStoreSelector(selectAutomations),
-    scheduled: useStoreSelector(selectScheduled),
-    plugins: useStoreSelector(selectPlugins),
-  };
+  const tables = useStoreSelector(searchTablesOf, sameTables);
   return catalogueFor(tables, env);
 }

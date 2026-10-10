@@ -6,6 +6,10 @@ export function titleCase(words: string): string {
     .join(' ');
 }
 
+export function naturalCompare(first: string, second: string): number {
+  return first.localeCompare(second, undefined, { numeric: true, sensitivity: 'base' });
+}
+
 export function plural(count: number, one: string, many = `${one}s`): string {
   return `${String(count)} ${count === 1 ? one : many}`;
 }
@@ -27,4 +31,12 @@ export function joinParts(parts: readonly (string | null | undefined | false)[])
 
 export function breakableUrl(url: string): string {
   return url.replace(/([./])/g, '$1​');
+}
+
+export function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
 }

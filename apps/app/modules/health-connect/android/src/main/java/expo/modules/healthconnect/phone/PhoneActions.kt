@@ -12,6 +12,7 @@ enum class PhoneActionType(val wire: String) {
   SET_VOLUME("set_volume"),
   SET_RINGER("set_ringer"),
   SET_DND("set_dnd"),
+  FLASHLIGHT("flashlight"),
   MEDIA("media"),
   OPEN_URL("open_url"),
   REFRESH("refresh");
@@ -43,6 +44,7 @@ object PhoneActions {
       PhoneActionType.SET_VOLUME -> volume(context, action.getString("stream"), action.getInt("percent"))
       PhoneActionType.SET_RINGER -> ringer(context, action.getString("mode"))
       PhoneActionType.SET_DND -> dnd(context, action.getBoolean("on"))
+      PhoneActionType.FLASHLIGHT -> PhoneFlashlight.set(context, action.getString("mode"))
       PhoneActionType.MEDIA -> media(action.getString("key"))
       PhoneActionType.OPEN_URL -> PhoneNotices.openUrl(context, action.getString("url"), action.getString("label"))
       PhoneActionType.REFRESH -> PhoneActionResult(true, "Sent a fresh report")

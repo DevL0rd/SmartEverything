@@ -1,7 +1,8 @@
-import { useQuery, type Query, type UseQueryResult } from '@tanstack/react-query';
+import { type Query, type UseQueryResult } from '@tanstack/react-query';
 import type { MediaSize } from '@smarteverything/domain';
 import { linkLifetimeMs, recordingLinks, type SignedLink } from '../../../api/media';
 import { recordingLinksKey } from '../../../queries/keys';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 type Links = Readonly<Record<string, SignedLink>>;
 
@@ -11,7 +12,7 @@ function linksFresh(query: Query<Links, Error, Links, readonly string[]>): numbe
 }
 
 export function useRecordingLinks(ids: readonly string[], size: MediaSize): UseQueryResult<Links> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: recordingLinksKey(ids, size),
     queryFn: () => recordingLinks(ids, size),
     staleTime: linksFresh,

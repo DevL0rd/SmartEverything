@@ -24,20 +24,53 @@ export interface Placement {
   readonly maxHeight: number;
 }
 
-const MARGIN = 8;
+export type Vertical = { readonly top: number } | { readonly bottom: number };
 
-export function placeBelow(
-  anchor: Rect,
-  width: number,
-  window: { readonly width: number; readonly height: number },
-): Placement {
-  const left = Math.min(Math.max(MARGIN, anchor.x), window.width - width - MARGIN);
-  const below = anchor.y + anchor.height + 4;
+export interface Placed {
+  readonly left: number;
+  readonly vertical: Vertical;
+  readonly maxHeight: number;
+}
+
+interface WindowSize {
+  readonly width: number;
+  readonly height: number;
+}
+
+const MARGIN = 8;
+const GAP = 4;
+const ROOM_ENOUGH = 240;
+
+function leftOf(anchor: Rect, width: number, window: WindowSize): number {
+  return Math.min(Math.max(MARGIN, anchor.x), window.width - width - MARGIN);
+}
+
+export function placeBelow(anchor: Rect, width: number, window: WindowSize): Placement {
+  const below = anchor.y + anchor.height + GAP;
   const roomBelow = window.height - below - MARGIN;
   const roomAbove = anchor.y - MARGIN;
-  if (roomBelow >= 240 || roomBelow >= roomAbove) {
+  const left = leftOf(anchor, width, window);
+  if (roomBelow >= ROOM_ENOUGH || roomBelow >= roomAbove) {
     return { left, top: below, maxHeight: roomBelow };
   }
-  const maxHeight = roomAbove;
-  return { left, top: MARGIN, maxHeight };
+  return { left, top: MARGIN, maxHeight: roomAbove };
+}
+
+export function placeNear(anchor: Rect, width: number, window: WindowSize): Placed {
+  const below = anchor.y + anchor.height + GAP;
+  const roomBelow = window.height - below - MARGIN;
+  const roomAbove = anchor.y - GAP - MARGIN;
+  const left = leftOf(anchor, width, window);
+  if (roomBelow >= ROOM_ENOUGH || roomBelow >= roomAbove) {
+    return { left, vertical: { top: below }, maxHeight: roomBelow };
+  }
+  return {
+    left,
+    vertical: { bottom: window.height - anchor.y + GAP },
+    maxHeight: roomAbove,
+  };
+}
+
+export function centredRect(window: WindowSize): Rect {
+  return pointRect(window.width / 2, window.height / 2);
 }

@@ -4,17 +4,18 @@ import { View } from 'react-native';
 import { IconButton } from '../../../components/icon-button';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 
 export function EstimateNote({ micros }: { readonly micros: number }): ReactNode {
   const [open, setOpen] = useState(false);
+  const money = useMoney();
   if (micros === 0) {
     return null;
   }
   return (
     <View className="-my-2 flex-row items-center gap-1">
       <Text variant="caption" tone="variant">
-        {`${costText(micros)} estimated`}
+        {`${money.cost(micros)} estimated`}
       </Text>
       <IconButton
         icon="info"

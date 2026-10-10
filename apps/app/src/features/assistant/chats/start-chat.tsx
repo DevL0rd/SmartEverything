@@ -1,35 +1,61 @@
 import type { ReactNode } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
-import { router } from 'expo-router';
-import { href } from '../../../app-shell/hrefs';
-import { EmptyChat } from '../components/chat-states';
+import { EmptyChat, NoKeyChat } from '../components/chat-states';
 import { Composer } from '../components/composer';
-import { useAssistantName, useAssistantStatus } from '../data/assistant-data';
+import { DropOverlay } from '../components/drop-overlay';
+import { useAssistantName } from '../data/assistant-data';
+import { resetDraftEngine, useDraftEngine } from '../data/draft-engine';
+import { setDraft } from '../data/drafts';
+import { useOpenRouterStatus } from '../data/openrouter';
+import { attachFiles } from '../data/uploads';
+import { useFileDrop } from '../../../platform/file-drop';
 import { chatStarter } from './chat-actions';
+import { ModelChip } from './model-chip';
 
-export function StartChat({ split }: { readonly split: boolean }): ReactNode {
+const DRAFT_KEY = 'new-chat';
+
+export function StartChat({
+  onStarted,
+}: {
+  readonly onStarted: (chatId: string) => void;
+}): ReactNode {
   const name = useAssistantName();
-  const kind = useAssistantStatus()?.settings.default_engine ?? 'openrouter';
-  const start = chatStarter({ kind, model: null, effort: null, worker_id: null }, (chatId) => {
-    if (split) {
-      router.setParams({ chat: chatId });
-    } else {
-      router.push(href.assistantChat(chatId));
-    }
+  const [engine, setEngine] = useDraftEngine();
+  const keyed = useOpenRouterStatus().data?.key !== 'missing';
+  const ref = useRef<View>(null);
+  const [dragging, setDragging] = useState(false);
+  useFileDrop(ref, { onFiles: attachFiles, onHover: setDragging });
+  const start = chatStarter(engine, (chatId) => {
+    resetDraftEngine();
+    onStarted(chatId);
   });
   return (
-    <View className="min-h-0 flex-1 justify-between pb-safe-offset-3">
+    <View ref={ref} className="min-h-0 flex-1 justify-between pb-safe-offset-3">
       <View className="flex-1 justify-center">
-        <EmptyChat name={name} send={start} />
+        {keyed ? (
+          <EmptyChat
+            name={name}
+            onSuggest={(text) => {
+              setDraft(DRAFT_KEY, text);
+            }}
+          />
+        ) : (
+          <NoKeyChat name={name} />
+        )}
       </View>
       <View className="w-full max-w-reading self-center px-gutter">
         <Composer
           disabled={false}
           placeholder={`Message ${name}`}
-          draftKey="new-chat"
+          draftKey={DRAFT_KEY}
           send={start}
+          focusOnMount
+          shortcuts
+          accessory={<ModelChip engine={engine} onChange={setEngine} />}
         />
       </View>
+      {dragging ? <DropOverlay /> : null}
     </View>
   );
 }

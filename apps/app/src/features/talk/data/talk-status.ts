@@ -1,10 +1,14 @@
 import type { TalkChannelRow } from '@smarteverything/domain';
 import type { TalkEngineState } from '../engine/engine-state';
 
-export function engineStatus(state: TalkEngineState, channel: TalkChannelRow | undefined): string {
+export function engineStatus(
+  state: TalkEngineState,
+  channel: TalkChannelRow | undefined,
+  hasChannels: boolean,
+): string {
   const place = channel === undefined ? 'No channel yet' : channel.name;
   if (state.link === 'off') {
-    return 'Off on this device';
+    return hasChannels ? 'Off on this device' : 'No channel yet';
   }
   if (state.link !== 'ready') {
     return state.problem ?? 'Connecting…';

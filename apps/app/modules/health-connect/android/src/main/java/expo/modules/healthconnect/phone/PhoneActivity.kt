@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import expo.modules.healthconnect.NativeGuard
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
@@ -54,9 +55,9 @@ object PhoneActivity {
 }
 
 class PhoneActivityReceiver : BroadcastReceiver() {
-  override fun onReceive(context: Context, intent: Intent) {
+  override fun onReceive(context: Context, intent: Intent) = NativeGuard.run("PhoneActivityReceiver") {
     if (!ActivityTransitionResult.hasResult(intent)) {
-      return
+      return@run
     }
     val events = ActivityTransitionResult.extractResult(intent)?.transitionEvents.orEmpty()
     events.sortedBy { it.elapsedRealTimeNanos }.forEach { event ->

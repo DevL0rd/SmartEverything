@@ -79,7 +79,7 @@ const WORK_ICONS: Readonly<Record<UsageWork, IconName>> = {
   video: 'film',
   transcribe: 'list',
   embed: 'search',
-  worker: 'cpu',
+  speak: 'speaker',
 };
 
 export function partTitle(part: UsagePart): string {

@@ -4,7 +4,7 @@ import type { MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
 import { plural } from '../../../format/text';
 import { shallowEqual, useLedger, useStoreSelector } from '../../../store/store-context';
-import { rowsOf, type Device, type StoreState } from '../../../store/state';
+import { deviceValuesOf, rowsOf, type Device, type StoreState } from '../../../store/state';
 import { deviceModelOf, powerStateOf } from '../../devices';
 
 const BULK_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['light', 'switch', 'plug']);
@@ -17,7 +17,7 @@ function targetsIn(state: StoreState, roomId: string): Device[] {
       device.room_id === roomId &&
       !device.hidden &&
       BULK_FAMILIES.has(deviceFamily(device)) &&
-      powerStateOf(deviceModelOf(device), state.deviceValues[device.id] ?? {}) === 'on',
+      powerStateOf(deviceModelOf(device), deviceValuesOf(state, device.id)) === 'on',
   );
 }
 

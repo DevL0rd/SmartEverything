@@ -79,7 +79,7 @@ export function callLengthOf(row: AssistantMessageRow): string {
 }
 
 export function callTitleOf(row: AssistantMessageRow): string {
-  return `Call · ${callLengthOf(row)}`;
+  return `Voice call · ${callLengthOf(row)}`;
 }
 
 export function callPreviewOf(row: AssistantMessageRow): string {
@@ -87,4 +87,8 @@ export function callPreviewOf(row: AssistantMessageRow): string {
     (turn) => turn.who !== 'tool' && turn.text.trim() !== '',
   );
   return spoken === undefined ? callTitleOf(row) : spoken.text.replace(/\s+/g, ' ').trim();
+}
+
+export function callFailuresOf(turns: readonly CallTurn[]): number {
+  return turns.filter((turn) => turn.who === 'tool' && !turn.ok).length;
 }

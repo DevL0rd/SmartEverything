@@ -3,14 +3,8 @@ import type { OpenRouterAccount } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { ValueRow } from '../../../components/rows';
-import {
-  balanceOf,
-  isLow,
-  MANAGEMENT_KEY_NOTE,
-  topUp,
-  usd,
-  usedLine,
-} from '../costs/costs-credits';
+import { balanceOf, isLow, MANAGEMENT_KEY_NOTE, topUp, usedLine } from '../costs/costs-credits';
+import { useMoney, type Money } from '../../region';
 import {
   useOpenRouterAccount,
   useOpenRouterActions,
@@ -27,6 +21,7 @@ function creditLine(
   keySet: boolean,
   account: OpenRouterAccount | undefined,
   failed: boolean,
+  money: Money,
 ): CreditLine {
   if (!keySet) {
     return { subtitle: 'Add a key to see your credit', warning: false };
@@ -42,8 +37,8 @@ function creditLine(
     return { subtitle: MANAGEMENT_KEY_NOTE, warning: false };
   }
   return {
-    value: `${usd(balance.left)} left`,
-    subtitle: usedLine(balance),
+    value: `${money.dollars(balance.left)} left`,
+    subtitle: usedLine(balance, money),
     warning: isLow(balance),
   };
 }
@@ -57,7 +52,8 @@ function useAccount(): ReturnType<typeof useOpenRouterAccount> & { readonly keyS
 export function CreditRow(): ReactNode {
   const account = useAccount();
   const { recheckAccount } = useOpenRouterActions();
-  const line = creditLine(account.keySet, account.data, account.isError);
+  const money = useMoney();
+  const line = creditLine(account.keySet, account.data, account.isError, money);
   return (
     <ListRow
       title="Credit"
@@ -84,36 +80,35 @@ type SpendKey = 'usage_daily' | 'usage_weekly' | 'usage_monthly';
 export function KeySpendRow({
   title,
   field,
+  account,
 }: {
   readonly title: string;
   readonly field: SpendKey;
+  readonly account: OpenRouterAccount;
 }): ReactNode {
-  const account = useAccount();
-  return account.data === undefined ? null : (
-    <ValueRow title={title} value={usd(account.data[field])} />
-  );
+  const money = useMoney();
+  return <ValueRow title={title} value={money.dollars(account[field])} />;
 }
 
 function limitTitle(reset: string | null): string {
   return reset === null ? 'This key’s limit' : `This key’s ${reset} limit`;
 }
 
-export function KeyLimitRow(): ReactNode {
-  const account = useAccount();
-  const data = account.data;
-  if (data === undefined) {
-    return null;
-  }
-  if (data.limit === null) {
-    return null;
-  }
+export function KeyLimitRow({
+  account,
+  limit,
+}: {
+  readonly account: OpenRouterAccount;
+  readonly limit: number;
+}): ReactNode {
+  const money = useMoney();
   return (
     <ValueRow
-      title={limitTitle(data.limit_reset)}
+      title={limitTitle(account.limit_reset)}
       value={
-        data.limit_remaining === null
-          ? usd(data.limit)
-          : `${usd(data.limit_remaining)} left of ${usd(data.limit)}`
+        account.limit_remaining === null
+          ? money.dollars(limit)
+          : `${money.dollars(account.limit_remaining)} left of ${money.dollars(limit)}`
       }
     />
   );

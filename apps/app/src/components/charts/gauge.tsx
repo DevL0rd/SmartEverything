@@ -3,9 +3,9 @@ import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
-import { useTween } from '../use-tween';
+import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
-import { arcPath } from './arc';
+import { DrawnStroke, arcLength, arcPath } from './arc';
 import { clamp } from './scale';
 
 const START = -135;
@@ -58,12 +58,10 @@ class GaugeBandsError extends Error {
   }
 }
 
-function bandOf(bands: readonly GaugeBand[], value: number): GaugeBand {
-  const band = bands.find((candidate) => value <= candidate.upTo);
-  if (band === undefined) {
+function assertCovered(bands: readonly GaugeBand[], value: number): void {
+  if (!bands.some((candidate) => value <= candidate.upTo)) {
     throw new GaugeBandsError(value);
   }
-  return band;
 }
 
 interface BandArc {
@@ -93,12 +91,17 @@ function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNod
   const { value, min, max, bands, size, thickness } = props;
   const centre = size / 2;
   const radius = (size - thickness) / 2;
-  const shown = useTween(clamp(value, { min, max }), !useMotion().reduced);
+  const shown = clamp(value, { min, max });
+  assertCovered(bands, shown);
   const share = max === min ? 0 : (shown - min) / (max - min);
+  const drawn = useDraw(share, !useMotion().reduced);
+  const full = arcPath(centre, radius, START, SWEEP);
+  const length = arcLength(radius, SWEEP);
+  const arcs = bandArcs(props);
   return (
     <View pointerEvents="none" className="absolute inset-0">
       <Svg width={size} height={size}>
-        {bandArcs(props).map((band) =>
+        {arcs.map((band) =>
           band.sweep > 0 ? (
             <GaugeStroke
               key={band.key}
@@ -109,14 +112,22 @@ function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNod
             />
           ) : null,
         )}
-        {share > 0 ? (
-          <GaugeStroke
-            d={arcPath(centre, radius, START, SWEEP * share)}
-            colour={bandOf(bands, shown).colour}
+        {arcs.map((band, index) => (
+          <DrawnStroke
+            key={band.key}
+            d={full}
+            length={length}
+            colour={band.colour}
             thickness={thickness}
-            opacity={1}
+            drawn={drawn}
+            after={index === 0 ? 0 : (band.from - START) / SWEEP}
+            through={
+              index === arcs.length - 1
+                ? Number.POSITIVE_INFINITY
+                : (band.from - START + band.sweep) / SWEEP
+            }
           />
-        ) : null}
+        ))}
       </Svg>
     </View>
   );

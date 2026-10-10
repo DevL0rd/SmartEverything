@@ -82,6 +82,11 @@ interface ActionSetting extends SettingBase {
   readonly run: (context: SettingContext) => Promise<void>;
 }
 
+interface ListedSetting extends SettingBase {
+  readonly control: 'listed';
+  readonly in: string;
+}
+
 interface CustomSetting extends SettingBase {
   readonly control: 'custom';
   readonly row?: boolean;
@@ -95,6 +100,7 @@ export type SettingDefinition =
   | TextSetting
   | LinkSetting
   | ActionSetting
+  | ListedSetting
   | CustomSetting;
 
 type SettingsGroup = 'Home' | 'Connections' | 'App' | 'System';

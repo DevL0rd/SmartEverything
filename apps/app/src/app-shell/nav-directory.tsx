@@ -4,6 +4,7 @@ import { router, type Href } from 'expo-router';
 import { ListRow } from '../components/list-row';
 import { List } from '../components/section';
 import { useValue } from '../design/external-store';
+import { useUnreadChatCount } from '../features/assistant';
 import { ProfileAvatar, ProfileSwitcher } from '../features/profiles';
 import { useActiveProfile, useProfiles } from '../store/people';
 import { useAvailability, useIsOwner, useSettings } from '../store/selectors';
@@ -42,7 +43,9 @@ function ProfileBlock(): ReactNode {
 
 function Destinations({ compact }: { readonly compact: boolean }): ReactNode {
   const current = useValue(navCurrent);
-  const entries = navEntries(directoryModel(current, useAvailability()));
+  const availability = useAvailability();
+  const unread = useUnreadChatCount();
+  const entries = navEntries(directoryModel(current, availability, unread));
   if (compact) {
     return (
       <View className="flex-row flex-wrap">

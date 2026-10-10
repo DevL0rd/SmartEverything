@@ -1,103 +1,72 @@
 import type { ReactNode } from 'react';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
+import Animated, { LinearTransition, SlideInRight, SlideOutRight } from 'react-native-reanimated';
 import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
+import { olderChatMessages } from '../../../api/ai';
+import { useHideNavigation } from '../../../app-shell/nav-visibility';
 import type { HeaderAction } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
-import { olderChatMessages } from '../../../api/ai';
+import { DURATION, EASING, entering, exiting, useMotion } from '../../../design/motion';
 import { useFileDrop } from '../../../platform/file-drop';
 import { EmptyChat } from '../components/chat-states';
-import { Composer, type MessageSender } from '../components/composer';
 import { DropOverlay } from '../components/drop-overlay';
-import { ThreadList, type LiveStatus } from '../components/thread-list';
+import { PerfProbe } from '../../../perf/probe-kit';
+import { StreamingProvider, type StreamingRenderers } from '../components/streaming-context';
+import { ThreadBanners } from '../components/thread-banners';
+import { ThreadList } from '../components/thread-list';
 import { useAssistantName } from '../data/assistant-data';
-import type { Turn } from '../../../store/chat-turns';
+import { useChatWorking } from '../data/chat-store';
+import { setDraft } from '../data/drafts';
+import { usePendingMessages } from '../data/outbox';
+import { statusRequestOf } from '../data/thread';
 import { attachFiles } from '../data/uploads';
-import { StreamingProvider } from '../components/streaming-context';
-import { chatSender, stopChat } from './chat-actions';
-import { ChatDetails } from './chat-details';
 import { ChatHeader } from './chat-header';
-import { ModelChip } from './model-chip';
-import { useHideNavigation } from '../../../app-shell/nav-visibility';
+import { usePanelState, type PanelState } from './chat-panel-state';
+import { ChatPanel, ChatSheet } from './chat-sheet';
+import { ThreadFooter } from './chat-thread-footer';
+import { useThreadKeys } from './chat-thread-keys';
+import { ChatStatusDock } from './chat-status-box';
 import { StreamingBubble } from './streaming-bubble';
 
 export interface ChatThreadProps {
   readonly chat: AiChatRow;
   readonly rows: readonly AssistantMessageRow[];
-  readonly turn: Turn | null;
   readonly back: boolean;
   readonly onDeleted: () => void;
   readonly leading?: readonly HeaderAction[];
 }
 
-function running(turn: Turn | null): turn is Turn {
-  return turn !== null && turn.state !== 'idle' && turn.state !== 'failed';
-}
-
-function hasWorkingRow(rows: readonly AssistantMessageRow[]): boolean {
-  return rows.some((row) => row.role === 'responder' && row.state === 'working');
-}
-
-function liveOf(turn: Turn | null): LiveStatus | null {
-  return running(turn) && turn.messageId !== null
-    ? { requestId: turn.messageId, node: null }
-    : null;
-}
-
 function Body({
   chat,
   rows,
-  live,
-  send,
   name,
 }: {
   readonly chat: AiChatRow;
   readonly rows: readonly AssistantMessageRow[];
-  readonly live: LiveStatus | null;
-  readonly send: MessageSender;
   readonly name: string;
 }): ReactNode {
   const ref = useRef<View>(null);
   const [dragging, setDragging] = useState(false);
   useFileDrop(ref, { onFiles: attachFiles, onHover: setDragging });
   return (
-    <View ref={ref} className="flex-1">
-      <ThreadList
-        rows={rows}
-        empty={<EmptyChat name={name} send={send} />}
-        historyKey={chat.id}
-        loadOlder={(before) => olderChatMessages(chat.id, before)}
-        live={live}
-      />
+    <View ref={ref} className="min-h-0 flex-1">
+      <PerfProbe id="list">
+        <ThreadList
+          rows={rows}
+          empty={
+            <EmptyChat
+              name={name}
+              onSuggest={(text) => {
+                setDraft(chat.id, text);
+              }}
+            />
+          }
+          historyKey={chat.id}
+          loadOlder={(before) => olderChatMessages(chat.id, before)}
+        />
+      </PerfProbe>
       {dragging ? <DropOverlay /> : null}
-    </View>
-  );
-}
-
-function ThreadFooter({
-  chat,
-  turn,
-  rows,
-  send,
-}: {
-  readonly chat: AiChatRow;
-  readonly turn: Turn | null;
-  readonly rows: readonly AssistantMessageRow[];
-  readonly send: MessageSender;
-}): ReactNode {
-  const name = useAssistantName();
-  const live = running(turn);
-  return (
-    <View className="w-full max-w-reading gap-2 self-center">
-      {live && !hasWorkingRow(rows) ? <StreamingBubble turn={turn} fallback="" /> : null}
-      <Composer
-        disabled={false}
-        placeholder={`Message ${name}`}
-        draftKey={chat.id}
-        send={send}
-        stop={live ? (): void => void stopChat(chat.id) : null}
-        accessory={<ModelChip chat={chat} />}
-      />
     </View>
   );
 }
@@ -107,51 +76,133 @@ function HiddenNavigation(): ReactNode {
   return null;
 }
 
-export function ChatThread({
+function Column({
   chat,
   rows,
-  turn,
   back,
+  leading,
+  panel,
   onDeleted,
-  leading = [],
-}: ChatThreadProps): ReactNode {
+}: ChatThreadProps & {
+  readonly leading: readonly HeaderAction[];
+  readonly panel: PanelState;
+}): ReactNode {
   const name = useAssistantName();
-  const [details, setDetails] = useState(false);
-  const send = chatSender(chat.id);
-  const live = running(turn);
-  const renderWorking = (row: AssistantMessageRow): ReactNode => (
-    <StreamingBubble turn={turn} fallback={row.text} />
-  );
+  const live = useChatWorking(chat.id);
+  const waiting = usePendingMessages(chat.id).length;
+  const request = useMemo(() => statusRequestOf(rows), [rows]);
   return (
-    <StreamingProvider value={renderWorking}>
+    <Screen
+      scroll={false}
+      maxWidth="full"
+      banner={<ThreadBanners />}
+      header={
+        <ChatHeader
+          chat={chat}
+          working={live}
+          waiting={waiting}
+          back={back}
+          leading={leading}
+          onInfo={panel.show}
+          panel={{ open: panel.open, toggle: panel.toggle }}
+        />
+      }
+    >
+      <Body chat={chat} rows={rows} name={name} />
+      <PerfProbe id="dock">
+        <ChatStatusDock chatId={chat.id} request={request} />
+      </PerfProbe>
+      <PerfProbe id="foot">
+        <ThreadFooter chat={chat} working={live} onInfo={panel.show} />
+      </PerfProbe>
+      <PanelHost chat={chat} rows={rows} panel={panel} onDeleted={onDeleted} />
+    </Screen>
+  );
+}
+
+function PanelHost({
+  chat,
+  rows,
+  panel,
+  onDeleted,
+}: {
+  readonly chat: AiChatRow;
+  readonly rows: readonly AssistantMessageRow[];
+  readonly panel: PanelState;
+  readonly onDeleted: () => void;
+}): ReactNode {
+  return panel.docked ? null : (
+    <ChatSheet
+      chat={chat}
+      rows={rows}
+      open={panel.overlay}
+      onClose={panel.hide}
+      onDeleted={onDeleted}
+    />
+  );
+}
+
+function DockedPanel({
+  chat,
+  rows,
+  onClose,
+  onDeleted,
+}: {
+  readonly chat: AiChatRow;
+  readonly rows: readonly AssistantMessageRow[];
+  readonly onClose: () => void;
+  readonly onDeleted: () => void;
+}): ReactNode {
+  const motion = useMotion();
+  return (
+    <Animated.View
+      {...entering(motion, SlideInRight.duration(DURATION.medium).easing(EASING.standard))}
+      {...exiting(motion, SlideOutRight.duration(DURATION.medium).easing(EASING.standard))}
+    >
+      <ChatPanel chat={chat} rows={rows} onClose={onClose} onDeleted={onDeleted} />
+    </Animated.View>
+  );
+}
+
+function renderersOf(chatId: string): StreamingRenderers {
+  return {
+    working: (row) => (
+      <PerfProbe id="stream">
+        <StreamingBubble chatId={chatId} fallback={row.text} />
+      </PerfProbe>
+    ),
+  };
+}
+
+export function ChatThread(props: ChatThreadProps): ReactNode {
+  const { chat, rows, back, onDeleted, leading = [] } = props;
+  const panel = usePanelState();
+  const motion = useMotion();
+  useThreadKeys(chat.id, rows, panel);
+  const renderers = useMemo(() => renderersOf(chat.id), [chat.id]);
+  return (
+    <StreamingProvider value={renderers}>
       {back ? <HiddenNavigation /> : null}
-      <Screen
-        scroll={false}
-        maxWidth="full"
-        header={
-          <ChatHeader
-            chat={chat}
-            working={live}
-            back={back}
-            leading={leading}
-            onDetails={() => {
-              setDetails(true);
-            }}
-            onDeleted={onDeleted}
-          />
-        }
-        footer={<ThreadFooter chat={chat} turn={turn} rows={rows} send={send} />}
-      >
-        <Body chat={chat} rows={rows} live={liveOf(turn)} send={send} name={name} />
-      </Screen>
-      <ChatDetails
-        chat={chat}
-        rows={rows}
-        open={details}
-        onClose={() => {
-          setDetails(false);
+      <View
+        className="min-h-0 flex-1 flex-row"
+        onLayout={(event) => {
+          panel.measure(event.nativeEvent.layout.width);
         }}
-      />
+      >
+        <Animated.View
+          {...(motion.reduced
+            ? {}
+            : { layout: LinearTransition.duration(DURATION.medium).easing(EASING.standard) })}
+          className="min-w-0 flex-1"
+        >
+          <PerfProbe id="thread">
+            <Column {...props} leading={leading} panel={panel} />
+          </PerfProbe>
+        </Animated.View>
+        {panel.docked ? (
+          <DockedPanel chat={chat} rows={rows} onClose={panel.hide} onDeleted={onDeleted} />
+        ) : null}
+      </View>
     </StreamingProvider>
   );
 }

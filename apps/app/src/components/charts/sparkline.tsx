@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
-import { useTween } from '../use-tween';
+import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
 import { extentOf, linePath, scaleLinear, segmentsOf, type ChartPoint } from './scale';
 
@@ -52,9 +53,9 @@ export function Sparkline(props: SparklineProps): ReactNode {
   const { colour, height = 32, area = false } = props;
   const [width, setWidth] = useState(0);
   const stroke = useColour(colour);
-  const reveal = useTween(1, !useMotion().reduced);
+  const reveal = useDraw(1, !useMotion().reduced);
   const box = { height };
-  const clip = { width: width * reveal, height };
+  const clip = useAnimatedStyle(() => ({ width: width * reveal.get(), height }), [width, height]);
   const shapes = width > 0 ? shapesOf(props, width, height) : [];
   return (
     <View
@@ -66,7 +67,7 @@ export function Sparkline(props: SparklineProps): ReactNode {
       }}
     >
       {width > 0 ? (
-        <View style={clip} className="overflow-hidden">
+        <Animated.View style={clip} className="overflow-hidden">
           <Svg width={width} height={height}>
             {area
               ? shapes.map((shape) => (
@@ -90,7 +91,7 @@ export function Sparkline(props: SparklineProps): ReactNode {
               />
             ))}
           </Svg>
-        </View>
+        </Animated.View>
       ) : null}
     </View>
   );

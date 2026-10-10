@@ -1,6 +1,7 @@
 import { presentValue, withRole, type CapabilityRole } from '@smarteverything/domain';
 import { joinParts } from '../../../format/text';
-import type { DeviceValues } from '../../../store/state';
+import { deviceValuesOf, type DeviceValues } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
 import { powerStateOf, valueOf, type DeviceModel } from './device-model';
 import { heroReadingOf } from './readings';
 
@@ -49,4 +50,12 @@ export function stateLine(model: DeviceModel, values: DeviceValues, withReading 
     return line;
   }
   return power === 'on' ? 'On' : 'Online';
+}
+
+export function useStateLine(model: DeviceModel, withReading: boolean): string {
+  return useStoreSelector(
+    (state) => stateLine(model, deviceValuesOf(state, model.device.id), withReading),
+    Object.is,
+    [model, withReading],
+  );
 }

@@ -1,10 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
 import type { WatchDayRow, WatchSampleKind } from '@smarteverything/domain';
 import { readWatchDays } from '../../api/watches';
 import type { ChartPoint } from '../../components/charts';
 import { dayKeyOf } from '../../format/time';
 import { watchDaysKey } from '../../queries/keys';
 import { useMinute } from '../../store/clock';
+import { useScreenQuery } from '../../queries/use-screen-query';
 
 export interface WatchDay {
   readonly points: readonly ChartPoint[];
@@ -37,7 +37,7 @@ function dayOf(rows: readonly WatchDayRow[], kind: WatchSampleKind): WatchDay {
 
 export function useWatchToday(): WatchDayState {
   const today = dayKeyOf(useMinute());
-  const query = useQuery({
+  const query = useScreenQuery({
     queryKey: watchDaysKey(today, today),
     queryFn: () => readWatchDays(today, today),
   });

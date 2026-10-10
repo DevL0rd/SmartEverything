@@ -1,11 +1,12 @@
 import { withRole, type HistoryRow, type PresentedCapability } from '@smarteverything/domain';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
 import type { PreloadContext } from '../../../app-shell/route-types';
 import type { ChartPoint, ChartSeries } from '../../../components/charts';
 import type { ColourRole } from '../../../design/tokens';
 import { readHistory } from '../../../queries/history';
 import { historyKey } from '../../../queries/keys';
 import type { ClimateSource } from '../model/climate-devices';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 export const AIR_METRICS = ['pm25', 'pm10', 'temperature', 'humidity', 'co2'] as const;
 
@@ -87,7 +88,10 @@ export function useAirHistory(
   range: AirRange,
 ): UseQueryResult<HistoryRow[]> {
   const keys = capabilityKeys(sources);
-  return useQuery({ ...historyQuery(keys, AIR_RANGE_HOURS[range]), enabled: keys.length > 0 });
+  return useScreenQuery({
+    ...historyQuery(keys, AIR_RANGE_HOURS[range]),
+    enabled: keys.length > 0,
+  });
 }
 
 const BUCKET_MS: Readonly<Record<AirRange, number>> = {

@@ -15,6 +15,8 @@ class IncomingCall(
 ) {
   val notificationId: Int get() = outreachId.hashCode()
 
+  fun expired(): Boolean = expiresAt <= System.currentTimeMillis()
+
   fun into(intent: Intent): Intent = intent
     .putExtra(OUTREACH, outreachId)
     .putExtra(CHAT, chatId)

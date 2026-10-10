@@ -79,6 +79,7 @@ export function useFocusedKeys(
 }
 
 function shareOf(value: number, min: number, max: number): number {
+  'worklet';
   return max > min ? (Math.min(max, Math.max(min, value)) - min) / (max - min) : 0;
 }
 

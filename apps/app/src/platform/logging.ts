@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { Logger } from '@smarteverything/logging';
 import { isNative } from '../design/platform';
+import { recordLog } from './crash-trail';
 
 function releaseOfBuild(): string {
   const version = Constants.expoConfig?.version;
@@ -15,6 +16,7 @@ export function startLogging(): void {
     level: __DEV__ ? 'debug' : 'info',
     style: __DEV__ && isNative() ? 'pretty' : __DEV__ ? 'plain' : 'json',
     consoleRouting: __DEV__ ? 'log-only' : 'by-level',
+    tap: recordLog,
     context: { platform: isNative() ? 'android' : 'web', release: releaseOfBuild() },
   });
 }

@@ -2,6 +2,7 @@ package expo.modules.healthconnect.voice
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -13,14 +14,19 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
 
-class OpusPlayer(context: Context) {
+enum class PlayerProfile(val usage: Int, val focusGain: Int) {
+  MEDIA(AudioAttributes.USAGE_MEDIA, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK),
+  CALL(AudioAttributes.USAGE_VOICE_COMMUNICATION, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+}
+
+class OpusPlayer(context: Context, profile: PlayerProfile = PlayerProfile.MEDIA) {
   private val audio = context.getSystemService(AudioManager::class.java)
   private val worker = Executors.newSingleThreadExecutor { Thread(it, "smarteverything-voice-player") }
   private val attributes = AudioAttributes.Builder()
-    .setUsage(AudioAttributes.USAGE_MEDIA)
+    .setUsage(profile.usage)
     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
     .build()
-  private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+  private val focus = AudioFocusRequest.Builder(profile.focusGain)
     .setAudioAttributes(attributes)
     .build()
   private var decoder: MediaCodec? = null
@@ -30,6 +36,22 @@ class OpusPlayer(context: Context) {
 
   @Volatile
   private var written = 0L
+
+  @Volatile
+  private var volume = 1f
+
+  @Volatile
+  private var preferredOutput: AudioDeviceInfo? = null
+
+  fun setVolume(level: Float) {
+    volume = level
+    worker.execute { track?.setVolume(level) }
+  }
+
+  fun preferOutput(device: AudioDeviceInfo?) {
+    preferredOutput = device
+    worker.execute { track?.preferredDevice = device }
+  }
 
   fun begin() = worker.execute {
     closeNow()
@@ -104,7 +126,7 @@ class OpusPlayer(context: Context) {
 
   private fun openTrack(): AudioTrack {
     val minimum = AudioTrack.getMinBufferSize(VoiceCapture.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-    return AudioTrack.Builder()
+    val opened = AudioTrack.Builder()
       .setAudioAttributes(attributes)
       .setAudioFormat(
         AudioFormat.Builder()
@@ -117,6 +139,9 @@ class OpusPlayer(context: Context) {
       .setTransferMode(AudioTrack.MODE_STREAM)
       .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
       .build()
+    opened.setVolume(volume)
+    opened.preferredDevice = preferredOutput
+    return opened
   }
 
   private fun openDecoder(): MediaCodec {

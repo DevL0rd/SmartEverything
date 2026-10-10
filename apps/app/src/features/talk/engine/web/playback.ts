@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 
 const JITTER_S = 0.06;
+const VOLUME_RAMP_S = 0.03;
 const FRAME_US = TALK_FRAME_MS * 1000;
 
 export type Tone = 'permit' | 'busy' | 'roger' | 'end';
@@ -27,6 +28,8 @@ export class Playback {
   private nextTime = 0;
   private timestamp = 0;
   private output: { readonly gain: GainNode; readonly analyser: AnalyserNode } | null = null;
+  private volume = 1;
+  private sinkId = '';
   private readonly scheduled = new Set<AudioBufferSourceNode>();
 
   constructor(private readonly onFailure: (error: unknown) => void) {}
@@ -117,6 +120,36 @@ export class Playback {
     this.contextNow();
   }
 
+  setVolume(volume: number): void {
+    this.volume = volume;
+    if (this.output !== null && this.context !== null) {
+      this.output.gain.gain.setTargetAtTime(volume, this.context.currentTime, VOLUME_RAMP_S);
+    }
+  }
+
+  async setSink(sinkId: string): Promise<void> {
+    if (sinkId === this.sinkId) {
+      return;
+    }
+    this.sinkId = sinkId;
+    await this.context?.setSinkId(sinkId);
+  }
+
+  probe(samples: Float32Array<ArrayBuffer>, sampleRate: number): Promise<void> {
+    const context = this.contextNow();
+    const buffer = context.createBuffer(1, samples.length, sampleRate);
+    buffer.copyToChannel(samples, 0);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.outputOf(context).gain);
+    return new Promise((resolve) => {
+      source.addEventListener('ended', () => {
+        resolve();
+      });
+      source.start();
+    });
+  }
+
   close(): void {
     this.end();
     this.context?.close().catch(this.onFailure);
@@ -125,7 +158,12 @@ export class Playback {
   }
 
   private contextNow(): AudioContext {
-    const context = this.context ?? new AudioContext({ latencyHint: 'interactive' });
+    const context =
+      this.context ??
+      new AudioContext({
+        latencyHint: 'interactive',
+        ...(this.sinkId === '' ? {} : { sinkId: this.sinkId }),
+      });
     this.context = context;
     if (context.state === 'suspended') {
       context.resume().catch(this.onFailure);
@@ -141,6 +179,7 @@ export class Playback {
       return this.output;
     }
     const gain = context.createGain();
+    gain.gain.value = this.volume;
     const analyser = context.createAnalyser();
     analyser.fftSize = 512;
     gain.connect(analyser);

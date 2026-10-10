@@ -1,14 +1,8 @@
-import { createContext, use } from 'react';
+import { createContext, use, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import type { SceneRow } from '@smarteverything/domain';
 import { localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import {
-  useAvailability,
-  useDevices,
-  useRows,
-  useSession,
-  useSettings,
-} from '../../../store/selectors';
+import { useAvailability, useRows, useSession, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import type { Device } from '../../../store/state';
 import { useActivity, type ActivityItem } from '../../activity';
@@ -18,7 +12,7 @@ import { useHasScale } from '../../profiles';
 import { useMyWatch } from '../../watches';
 import { favouritesOf, sameFavourites, type Favourites } from '../model/favourites';
 import { fitnessDayOf, type FitnessDay } from '../model/fitness-today';
-import { spotlightable } from '../model/spotlight';
+import { deviceDigest, sameDigest, type DeviceDigest } from '../model/spotlight';
 import { powerOf, samePower, type PowerUse } from '../model/power';
 import { roomSummaries, sameRooms, type RoomSummary } from '../model/rooms';
 import { sameSecurity, securityLines, type SecurityLine } from '../model/security';
@@ -27,10 +21,9 @@ import { homeSummary, type HomeSummary } from '../model/summary';
 const HOME_METRICS: readonly ComfortMetric[] = ['temperature', 'humidity', 'pm25', 'co2'];
 
 export interface HomeData {
-  readonly devices: readonly Device[];
+  readonly digest: DeviceDigest;
   readonly readings: readonly MetricReading[];
   readonly power: PowerUse | null;
-  readonly summary: HomeSummary;
   readonly favourites: Favourites;
   readonly rooms: readonly RoomSummary[];
   readonly cameras: readonly CameraEntry[];
@@ -54,19 +47,28 @@ function useFitnessDay(): FitnessDay | null {
   return day !== null && day.day >= yesterday ? day : null;
 }
 
+export function useHomeBasics(): Pick<HomeData, 'digest' | 'cameras'> {
+  return { digest: useStoreSelector(deviceDigest, sameDigest), cameras: useCameraEntries() };
+}
+
+export function useHomeSummary(): HomeSummary {
+  const readings = useComfortReadings(HOME_METRICS);
+  const { offline } = useStoreSelector(deviceDigest, sameDigest);
+  return homeSummary(readings, offline);
+}
+
 export function useHomeData(): HomeData {
-  const devices = useDevices();
+  const { digest, cameras } = useHomeBasics();
   const readings = useComfortReadings(HOME_METRICS);
   const health = useAvailability().hasHealth;
   const fitness = useFitnessDay();
   return {
-    devices,
+    digest,
     readings,
     power: useStoreSelector(powerOf, samePower),
-    summary: homeSummary(readings, devices),
     favourites: useStoreSelector(favouritesOf, sameFavourites),
     rooms: useStoreSelector(roomSummaries, sameRooms),
-    cameras: useCameraEntries(),
+    cameras,
     activity: useActivity(),
     scenes: useRows('scenes'),
     security: useStoreSelector(securityLines, sameSecurity),
@@ -80,18 +82,67 @@ export interface HomeView extends HomeData {
   readonly spotlighted: ReadonlySet<string>;
 }
 
-export const HomeDataContext = createContext<HomeView | null>(null);
+export interface HomeViewStore {
+  readonly get: () => HomeView;
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly set: (view: HomeView) => void;
+}
+
+export function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
+function sameView(left: HomeView, right: HomeView): boolean {
+  return Object.entries(left).every(([key, value]) =>
+    key === 'spotlighted'
+      ? sameIds(left.spotlighted, right.spotlighted)
+      : Object.is(value, Reflect.get(right, key)),
+  );
+}
+
+function createHomeViewStore(initial: HomeView): HomeViewStore {
+  let current = initial;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => current,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set: (view): void => {
+      if (sameView(current, view)) {
+        return;
+      }
+      current = view;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+  };
+}
+
+export function useHomeViewStore(view: HomeView): HomeViewStore {
+  const [store] = useState(() => createHomeViewStore(view));
+  useLayoutEffect(() => {
+    store.set(view);
+  }, [store, view]);
+  return store;
+}
+
+export const HomeDataContext = createContext<HomeViewStore | null>(null);
 
 class HomeDataMissingError extends Error {
   override readonly name = 'HomeDataMissingError';
 }
 
-export function useHome(): HomeView {
-  const data = use(HomeDataContext);
-  if (data === null) {
+export function useHome<T>(select: (view: HomeView) => T): T {
+  const store = use(HomeDataContext);
+  if (store === null) {
     throw new HomeDataMissingError('Home widgets must render inside the Home board.');
   }
-  return data;
+  return useSyncExternalStore(store.subscribe, () => select(store.get()));
 }
 
 const FREQUENT_AT_LEAST = 3;
@@ -105,7 +156,7 @@ export function availableWidgets(data: HomeView): ReadonlySet<string> {
     ['glance', data.readings.length > 0],
     ['scenes', data.scenes.length > 0],
     ['favourites', unspotlighted(data).length >= (data.favourites.chosen ? 1 : FREQUENT_AT_LEAST)],
-    ['spotlight', data.devices.some(spotlightable)],
+    ['spotlight', data.digest.spotlightable.length > 0],
     ['rooms', data.rooms.length > 0],
     ['camera', data.cameras.length > 0],
     ['activity', data.activity.length > 0],

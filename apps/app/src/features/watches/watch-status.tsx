@@ -7,6 +7,7 @@ import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
 import type { PhoneWatchStatus } from '../../../modules/health-connect';
 import type { Device } from '../../store/state';
+import { BridgeBanner } from './watch-bridge-banner';
 import { usePhoneWatch, useWatchLink } from './watch-link';
 import { PHASE_TEXT, PhoneRows, VendorBanner } from './watch-phone-rows';
 import { WatchToday } from './watch-today';
@@ -66,6 +67,7 @@ export function WatchStatus({ device }: { readonly device: Device }): ReactNode 
   const watch = usePhoneWatch(device.id);
   return (
     <>
+      <BridgeBanner device={device} />
       <Problems watch={watch} />
       {watch === null ? null : <VendorBanner watch={watch} />}
       <WatchToday />

@@ -5,7 +5,7 @@ import { Bars } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import { CardEmpty, CostCard } from './cost-card';
-import { costText } from '../data/cost';
+import { useMoney } from '../../region';
 import type { CostWindow } from './costs-range';
 
 const LABELLED_DAYS = 14;
@@ -33,6 +33,7 @@ export function CostChart({
   readonly window: CostWindow;
 }): ReactNode {
   const points = series.points.filter((point) => inRange(point, window));
+  const money = useMoney();
   const total = points.reduce((sum, point) => sum + point.cost_micros, 0);
   const hourly = window.bucket === 'hour';
   const average = Math.round(total / Math.max(1, points.length));
@@ -48,7 +49,7 @@ export function CostChart({
       ) : (
         <View className="gap-3">
           <View className="flex-row items-end gap-2">
-            <Figure value={costText(average)} size="m" />
+            <Figure value={money.cost(average)} size="m" />
             <Text variant="footnote" tone="variant" className="pb-1">
               {hourly ? 'an hour on average' : 'a day on average'}
             </Text>
@@ -61,8 +62,8 @@ export function CostChart({
             }))}
             colour="viz-1"
             height={160}
-            label={`Spend ${hourly ? 'by hour' : 'by day'}, ${costText(total)} in total`}
-            formatValue={costText}
+            label={`Spend ${hourly ? 'by hour' : 'by day'}, ${money.cost(total)} in total`}
+            formatValue={money.cost}
           />
         </View>
       )}

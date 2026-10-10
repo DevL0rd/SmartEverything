@@ -15,7 +15,11 @@ const BUILD_ENVIRONMENT = z.object({
 
 const VARIANTS = {
   release: { name: 'SmartEverything', suffix: '', scheme: 'smarteverything' },
-  development: { name: 'SmartEverything Dev', suffix: '.dev', scheme: 'smarteverything-dev' },
+  development: {
+    name: 'SmartEverything Dev',
+    suffix: '.dev',
+    scheme: 'smarteverything-dev',
+  },
 };
 
 const PAIRING_CAMERA_USE =
@@ -113,7 +117,10 @@ export default (): ExpoConfig => {
     ],
     icon: './assets/icon.png',
     web: { bundler: 'metro', output: 'single', favicon: './assets/favicon.png' },
-    android: { package: `${STORE_IDENTITY}${variant.suffix}` },
+    android: {
+      package: `${STORE_IDENTITY}${variant.suffix}`,
+      googleServicesFile: './google-services.json',
+    },
     runtimeVersion: { policy: 'appVersion' },
     updates: { enabled: false },
     extra,

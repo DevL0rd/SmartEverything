@@ -15,6 +15,8 @@ export interface TabItem {
   readonly onPress?: () => void;
 }
 
+const DENSE_FROM = 5;
+
 interface Span {
   readonly x: number;
   readonly width: number;
@@ -24,11 +26,13 @@ function Tab({
   item,
   selected,
   pointer,
+  dense,
   onMeasure,
 }: {
   readonly item: TabItem;
   readonly selected: boolean;
   readonly pointer: boolean;
+  readonly dense: boolean;
   readonly onMeasure: (span: Span) => void;
 }): ReactNode {
   return (
@@ -43,9 +47,10 @@ function Tab({
         selected={selected}
         href={item.href}
         onPress={item.onPress}
+        focusInset
         className={cn(
-          'items-center justify-center px-4',
-          pointer ? 'h-10 rounded-t-sm' : 'h-12 min-w-24',
+          'items-center justify-center',
+          pointer ? cn('h-10 rounded-t-sm', dense ? 'px-3' : 'px-4') : 'h-12 min-w-24 px-4',
         )}
       >
         <Text variant="label" tone={selected ? 'primary' : 'variant'} numberOfLines={1}>
@@ -56,6 +61,18 @@ function Tab({
         ) : null}
       </Interactive>
     </View>
+  );
+}
+
+function revealedAt(spans: Readonly<Record<string, Span>>, span: Span, viewport: number): number {
+  const needed = span.x + span.width - viewport;
+  if (needed <= 0) {
+    return 0;
+  }
+  const starts = Object.values(spans).map((other) => other.x);
+  return Math.min(
+    span.x,
+    starts.sort((left, right) => left - right).find((x) => x >= needed) ?? span.x,
   );
 }
 
@@ -72,10 +89,12 @@ function useRevealActive(
     if (span === undefined || viewport === 0) {
       return;
     }
-    const x = Math.max(0, span.x + span.width / 2 - viewport / 2);
-    ref.current?.scrollTo({ x, animated: !reduced && !first.current });
+    ref.current?.scrollTo({
+      x: revealedAt(spans, span, viewport),
+      animated: !reduced && !first.current,
+    });
     first.current = false;
-  }, [span, viewport, reduced]);
+  }, [span, spans, viewport, reduced]);
   return ref;
 }
 
@@ -101,11 +120,12 @@ export function TabsBar({
       <ScrollView
         ref={ref}
         horizontal
+        className="grow-0"
         showsHorizontalScrollIndicator={false}
         onLayout={(event) => {
           setViewport(event.nativeEvent.layout.width);
         }}
-        contentContainerClassName={pointer ? 'gap-1' : ''}
+        contentContainerClassName={pointer && items.length <= DENSE_FROM ? 'gap-1' : ''}
       >
         {items.map((item) => (
           <Tab
@@ -113,6 +133,7 @@ export function TabsBar({
             item={item}
             selected={item.key === active}
             pointer={pointer}
+            dense={items.length > DENSE_FROM}
             onMeasure={(span) => {
               setSpans((current) => ({ ...current, [item.key]: span }));
             }}

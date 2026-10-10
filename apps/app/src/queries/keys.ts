@@ -1,3 +1,5 @@
+export const WINDOW_PREFIX = ['window'] as const;
+
 export const HEALTH_PREFIX = ['window', 'health'] as const;
 
 export const HISTORY_PREFIX = ['window', 'history'] as const;
@@ -83,15 +85,38 @@ export const aiModelsKeys = {
   one: (id: string): readonly string[] => [...AI_MODELS_PREFIX, 'one', id],
 };
 
-export function engineModelsKey(kind: string): readonly ['window', 'engine-models', string] {
-  return ['window', 'engine-models', kind];
-}
-
 export const PLUGIN_PREFIX = ['window', 'plugins'] as const;
+
+export function pluginOptionsKey(
+  pluginId: string,
+  source: string,
+  rest: readonly string[],
+): readonly string[] {
+  return [...PLUGIN_PREFIX, pluginId, 'options', source, ...rest];
+}
 
 export function pluginKey(
   pluginId: string,
-  part: 'tools' | 'log',
-): readonly ['window', 'plugins', string, 'tools' | 'log'] {
+  part: 'tools' | 'log' | 'people',
+): readonly ['window', 'plugins', string, 'tools' | 'log' | 'people'] {
   return [...PLUGIN_PREFIX, pluginId, part];
+}
+
+export const TRANSCRIPT_PREFIX = ['window', 'transcripts'] as const;
+
+export const transcriptKeys = {
+  sessions: (): readonly string[] => [...TRANSCRIPT_PREFIX, 'sessions'],
+  session: (sessionId: string): readonly string[] => [...TRANSCRIPT_PREFIX, 'session', sessionId],
+  search: (words: string): readonly string[] => [...TRANSCRIPT_PREFIX, 'search', words],
+  settings: (): readonly string[] => [...TRANSCRIPT_PREFIX, 'settings'],
+  status: (): readonly string[] => [...TRANSCRIPT_PREFIX, 'status'],
+};
+
+export const ARCHIVED_CHATS_KEY = ['window', 'ai-chats', 'archived'] as const;
+
+export function chatSearchKey(
+  text: string,
+  archived: boolean,
+): readonly ['window', 'ai-chats', 'search', string, boolean] {
+  return ['window', 'ai-chats', 'search', text, archived];
 }

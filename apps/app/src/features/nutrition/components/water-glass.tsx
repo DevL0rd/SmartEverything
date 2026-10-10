@@ -21,10 +21,11 @@ export function WaterGlass({
 }): ReactNode {
   const { reduced } = useMotion();
   const share = Math.min(1, Math.max(0, progress));
+  const filled = percentOf(share);
   const fill = useAnimatedStyle(() => ({
     height: reduced
-      ? percentOf(share)
-      : withTiming(percentOf(share), { duration: DURATION.medium, easing: EASING.decelerate }),
+      ? filled
+      : withTiming(filled, { duration: DURATION.medium, easing: EASING.decelerate }),
   }));
   return (
     <View

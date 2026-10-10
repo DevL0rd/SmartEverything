@@ -1,6 +1,5 @@
-import { useRooms } from '../../../store/selectors';
 import { chartedMetric } from '../data/air-history';
-import { useClimateSources } from '../model/climate-devices';
+import { useClimateDerived, type ClimateSource } from '../model/climate-devices';
 import { comfortOf, INDOOR_METRICS, readingsOf } from '../model/comfort';
 import { hasSupplies } from '../model/supplies';
 import { useWeather, weatherShown } from '../../weather';
@@ -11,22 +10,47 @@ export interface ClimateWidgetState {
   readonly supplies: boolean;
 }
 
+interface ClimateShape {
+  readonly airQuality: boolean;
+  readonly comfort: boolean;
+  readonly airHistory: boolean;
+  readonly supplies: boolean;
+}
+
+function shapeOf(
+  sources: readonly ClimateSource[],
+  rooms: readonly { readonly id: string; readonly name: string }[],
+): ClimateShape {
+  return {
+    airQuality: readingsOf(sources, ['pm25']).length > 0,
+    comfort: comfortOf(sources, rooms, INDOOR_METRICS).length > 0,
+    airHistory: chartedMetric(sources) !== null,
+    supplies: sources.some(hasSupplies),
+  };
+}
+
+function sameShape(left: ClimateShape, right: ClimateShape): boolean {
+  return (
+    left.airQuality === right.airQuality &&
+    left.comfort === right.comfort &&
+    left.airHistory === right.airHistory &&
+    left.supplies === right.supplies
+  );
+}
+
 export function useClimateWidgets(): ClimateWidgetState {
-  const sources = useClimateSources(null);
-  const comfort = comfortOf(sources, useRooms(), INDOOR_METRICS).length > 0;
+  const shape = useClimateDerived(shapeOf, sameShape);
   const weather = weatherShown(useWeather());
-  const airHistory = chartedMetric(sources) !== null;
-  const supplies = sources.some(hasSupplies);
   const entries: readonly (readonly [string, boolean])[] = [
-    ['air-quality', readingsOf(sources, ['pm25']).length > 0],
-    ['comfort', comfort],
-    ['outdoor', weather && comfort],
-    ['air-chart', airHistory],
-    ['supplies', supplies],
+    ['air-quality', shape.airQuality],
+    ['comfort', shape.comfort],
+    ['outdoor', weather && shape.comfort],
+    ['air-chart', shape.airHistory],
+    ['supplies', shape.supplies],
   ];
   return {
     types: new Set(entries.filter(([, shown]) => shown).map(([type]) => type)),
-    airHistory,
-    supplies,
+    airHistory: shape.airHistory,
+    supplies: shape.supplies,
   };
 }

@@ -43,5 +43,5 @@ export const BOARD_CATALOGUE: readonly WidgetDefinition[] = [
   WATCH_WIDGET,
   STRESS_WIDGET,
   WATCH_WORKOUT_WIDGET,
-  ...APP_PLUGINS.flatMap((plugin) => plugin.widgets),
+  ...APP_PLUGINS.filter((plugin) => plugin.home === undefined).flatMap((plugin) => plugin.widgets),
 ];

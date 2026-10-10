@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import type { CalendarDate, EventRow, RecordingRow } from '@smarteverything/domain';
 import { readCameraDay, type CameraDay } from '../../../api/media';
 import { cameraDayKey } from '../../../queries/camera-day';
@@ -8,6 +7,7 @@ import {
   type TimelineFilter,
   type TimelineItem,
 } from '../logic/timeline';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 export type CameraItem = TimelineItem<EventRow, RecordingRow>;
 
@@ -34,7 +34,7 @@ export function useCameraDay(
   timeZone: string,
   filter: TimelineFilter,
 ): CameraDayRead {
-  const read = useQuery(cameraDayQuery(deviceIds, day, timeZone));
+  const read = useScreenQuery(cameraDayQuery(deviceIds, day, timeZone));
   if (read.error !== null) {
     return {
       status: 'failed',

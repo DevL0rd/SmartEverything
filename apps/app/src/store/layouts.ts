@@ -10,6 +10,7 @@ import type { BoardLayoutState } from '../components/widget-board';
 import type { EntityStore } from './entity-store';
 import { saveStoredLayout } from './prefs';
 import { useEntityStore, useStoreSelector } from './store-context';
+import { useLoaded } from './selectors';
 
 const STORED_LAYOUT = z.record(z.string(), JSON_VALUE);
 
@@ -31,8 +32,12 @@ export function useSavePageLayout(page: string): (layout: BoardLayout) => void {
 
 export function usePageLayout(page: string): BoardLayoutState {
   const store = useEntityStore();
-  const loaded = useStoreSelector((state) => state.loaded);
-  const stored = useStoreSelector((state) => state.tables.layouts.byId[page]?.layout ?? null);
+  const loaded = useLoaded();
+  const stored = useStoreSelector(
+    (state) => state.tables.layouts.byId[page]?.layout ?? null,
+    Object.is,
+    [page],
+  );
   if (!loaded) {
     return { status: 'loading' };
   }

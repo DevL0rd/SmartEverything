@@ -39,12 +39,10 @@ export {
   probeWatchWorkout,
   refreshWatches,
   requestWatchWrites,
-  runWatchActionHere,
+  runPushCommand,
   setWatchLive,
   setWatchRelay,
   setWatchCalendar,
-  setWatchUser,
-  setWatchWeather,
   startWatches,
   syncWatchNow,
   syncWatches,
@@ -54,10 +52,10 @@ export {
   watchWritesGranted,
 } from './src/watches';
 export {
+  DEFAULT_INTERVAL_MINUTES,
   ENTRY_REPORT,
   HEALTH_CONNECT_GRANTS,
   HEALTH_CONNECT_STATUS,
-  MINIMUM_INTERVAL_MINUTES,
   SYNC_PROGRESS,
   SYNC_REPORT,
   WRITE_REPORT,
@@ -78,7 +76,6 @@ export type {
   WatchEvent,
   WatchRelayChange,
   WatchRelayStatus,
-  WatchUserInput,
   WriteReport,
 } from './src/schemas';
 export {
@@ -98,15 +95,37 @@ export {
 export type { TalkChannelName, TalkNativeState } from './src/talk';
 export {
   addAssistantCallListeners,
-  assistantCallLevel,
+  addAssistantDeviceListener,
   answerAssistantCall,
+  applyAssistantCallAudio,
+  assistantAudioDevices,
+  assistantCallCan,
+  assistantCallLevel,
   assistantCallLinked,
   beginAssistantCall,
+  captureAssistantScreenStill,
+  dismissIncomingCall,
   endAssistantCall,
   muteAssistantCall,
   openAssistantCall,
+  ringIncomingCall,
+  runAssistantEchoTest,
+  sendAssistantCallFrame,
+  sendAssistantCallMessage,
+  setAssistantCallCamera,
+  setAssistantScreenLive,
+  startAssistantScreenShare,
+  stopAssistantScreenShare,
 } from './src/assistant-call';
-export type { AssistantCallListeners } from './src/assistant-call';
+export type {
+  AssistantCallListeners,
+  AudioDevice,
+  CallControl,
+  EchoReport,
+  IncomingCallRing,
+  NativeAudioSettings,
+  NativeFrameSampling,
+} from './src/assistant-call';
 export {
   addPhoneEventListener,
   choosePhoneCar,

@@ -1,3 +1,4 @@
+import { WIDGET_TYPE } from '@smarteverything/domain';
 import type {
   BoardClass,
   BoardDefaults,
@@ -5,10 +6,10 @@ import type {
   WidgetDefinition,
   WidgetSize,
 } from '../../components/widget-board';
-import type { Device } from '../../store/state';
+import { APP_PLUGINS } from '../../plugins/registry';
 import { CAMERA_WIDGETS, type CameraEntry } from '../cameras';
 import { CLIMATE_WIDGETS } from '../climate';
-import { featuredByDefault } from './model/spotlight';
+import type { DeviceDigest } from './model/spotlight';
 import { nutritionWidgets, useTodayKey } from '../nutrition';
 import { BODY_WIDGET } from '../fitness';
 import { PHONE_WIDGET } from '../phone';
@@ -36,7 +37,20 @@ function sizes(
   return { compact: allowed, medium: allowed, expanded: allowed };
 }
 
+class HomeWidgetTypeError extends Error {
+  override readonly name = 'HomeWidgetTypeError';
+
+  constructor(readonly type: string) {
+    super(
+      `The widget type ${type} cannot be saved in a board layout: use lower-case letters, digits and hyphens.`,
+    );
+  }
+}
+
 function scoped(definition: WidgetDefinition): WidgetDefinition {
+  if (!WIDGET_TYPE.safeParse(definition.type).success) {
+    throw new HomeWidgetTypeError(definition.type);
+  }
   return {
     ...definition,
     render: (props) => <HomeScope>{definition.render(props)}</HomeScope>,
@@ -135,18 +149,19 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
   ...TALK_WIDGETS,
   { ...PHONE_WIDGET, group: 'Devices' },
   ...CLIMATE_WIDGETS,
+  ...APP_PLUGINS.filter((plugin) => plugin.home !== undefined).flatMap((plugin) => plugin.widgets),
 ];
 
 export const HOME_RETIRED: ReadonlySet<string> = new Set(['devices-all']);
 
 export const HOME_WIDGETS: readonly WidgetDefinition[] = HOME_CATALOGUE.map(scoped);
 
-function spotlights(devices: readonly Device[], first: WidgetSize): readonly BoardWidget[] {
-  return featuredByDefault(devices).map((device, index) => ({
-    key: `spotlight:${device.id}`,
+function spotlights(digest: DeviceDigest, first: WidgetSize): readonly BoardWidget[] {
+  return digest.featured.map((deviceId, index) => ({
+    key: `spotlight:${deviceId}`,
     type: 'spotlight',
     size: index === 0 ? first : 'M',
-    options: { deviceId: device.id },
+    options: { deviceId },
   }));
 }
 
@@ -171,16 +186,13 @@ const TAIL: readonly BoardWidget[] = [
   widget('security', 'M'),
 ];
 
-export function homeDefaults(
-  devices: readonly Device[],
-  cameras: readonly CameraEntry[],
-): BoardDefaults {
+export function homeDefaults(digest: DeviceDigest, cameras: readonly CameraEntry[]): BoardDefaults {
   return {
     compact: [
       widget('glance', 'W'),
       widget('weather', 'W'),
       widget('scenes', 'W'),
-      ...spotlights(devices, 'L'),
+      ...spotlights(digest, 'L'),
       widget('favourites', 'L'),
       ...cameraTiles(cameras, 'M'),
       widget('rooms', 'M'),
@@ -191,7 +203,7 @@ export function homeDefaults(
       widget('glance', 'W'),
       widget('weather', 'W'),
       widget('scenes', 'W'),
-      ...spotlights(devices, 'L'),
+      ...spotlights(digest, 'L'),
       widget('favourites', 'XL'),
       ...cameraTiles(cameras, 'M'),
       widget('rooms', 'M'),
@@ -202,7 +214,7 @@ export function homeDefaults(
       widget('glance', 'W'),
       widget('weather', 'W'),
       widget('scenes', 'W'),
-      ...spotlights(devices, 'L'),
+      ...spotlights(digest, 'L'),
       widget('favourites', 'L'),
       widget('activity', 'L'),
       ...cameraTiles(cameras, 'M'),

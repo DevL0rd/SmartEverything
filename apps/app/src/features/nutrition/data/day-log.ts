@@ -1,4 +1,4 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
 import {
   API_ENDPOINTS as E,
   isOwnSource,
@@ -10,6 +10,7 @@ import { api } from '../../../api/transport';
 import { HEALTH_PREFIX } from '../../../queries/keys';
 import { entriesKey } from '../../../queries/health-entries';
 import { endOfDayKey, startOfDayKey } from '../../../format/time';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 
 export const LOGGED_TYPES = ['Nutrition', 'Hydration'] as const;
 
@@ -18,7 +19,7 @@ type OtherRecord = Extract<HealthRecord, { type: 'Nutrition' | 'Hydration' }>;
 export function useDayEntries(day: string): UseQueryResult<HealthEntryRow[]> {
   const from = startOfDayKey(day);
   const to = endOfDayKey(day);
-  return useQuery({
+  return useScreenQuery({
     queryKey: entriesKey(from, to, LOGGED_TYPES.join(',')),
     queryFn: () => readEntries(from, to, LOGGED_TYPES),
   });
@@ -42,7 +43,7 @@ async function readOthers(from: number, to: number): Promise<OtherRecord[]> {
 export function useOtherApps(day: string): UseQueryResult<OtherRecord[]> {
   const from = startOfDayKey(day);
   const to = endOfDayKey(day);
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...HEALTH_PREFIX, 'nutrition-others', from, to],
     queryFn: () => readOthers(from, to),
   });

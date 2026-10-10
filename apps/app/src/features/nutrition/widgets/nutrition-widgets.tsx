@@ -11,6 +11,8 @@ import {
   heroFigure,
   type WidgetSize,
 } from '../../../components/widget-board';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
+import { useIdiom } from '../../../design/platform';
 import { useSizeClass } from '../../../design/size-class';
 import { CalorieDial } from '../components/calorie-dial';
 import { MacroList } from '../components/macro-list';
@@ -26,6 +28,8 @@ import { cn } from '../../../design/cn';
 import type { ColourRole } from '../../../design/tokens';
 import { decimal, litres } from '../../../format/number';
 import { dayTitle } from '../../../format/time';
+
+const GLASS_BUTTON_ROOM = { touch: 168, pointer: 156 } as const;
 
 export interface DayProps {
   readonly size: WidgetSize;
@@ -220,6 +224,10 @@ export function WaterWidget({ size, day, today }: DayProps): ReactNode {
   const totals = useDayTotals(day);
   const goal = useWaterGoal();
   const drunk = (totals.hydration ?? 0) * 1000;
+  const idiom = useIdiom();
+  const row = useMeasuredWidth();
+  const readout = useMeasuredWidth();
+  const labelled = size !== 'S' && row.width - readout.width >= GLASS_BUTTON_ROOM[idiom];
   return (
     <WidgetFrame
       title={dayTitle('Water', day, today)}
@@ -228,21 +236,19 @@ export function WaterWidget({ size, day, today }: DayProps): ReactNode {
       href={page(day)}
       size={size}
     >
-      <View className="flex-1 flex-row items-end gap-3">
-        <View className="min-w-0 flex-1 flex-row items-end gap-3">
-          <WaterGlass progress={drunk / goal.ml} size={size === 'S' ? 'm' : 'l'} />
-          <View className="min-w-0 flex-1">
-            <Figure value={decimal(drunk / 1000, 2)} unit="L" size={heroFigure(size)} />
-            <Text variant="footnote" tone="variant" numberOfLines={1}>
-              {`of ${litres(goal.ml)}`}
-            </Text>
+      <View onLayout={row.onLayout} className="flex-1 flex-row items-end gap-3">
+        <View className="min-w-0 flex-1 flex-row">
+          <View onLayout={readout.onLayout} className="flex-row items-end gap-3">
+            <WaterGlass progress={drunk / goal.ml} size={size === 'S' ? 'm' : 'l'} />
+            <View>
+              <Figure value={decimal(drunk / 1000, 2)} unit="L" size={heroFigure(size)} />
+              <Text variant="footnote" tone="variant" numberOfLines={1}>
+                {`of ${litres(goal.ml)}`}
+              </Text>
+            </View>
           </View>
         </View>
-        {size === 'S' ? (
-          <GlassIcon day={day} today={today} />
-        ) : (
-          <GlassButton day={day} today={today} />
-        )}
+        {labelled ? <GlassButton day={day} today={today} /> : <GlassIcon day={day} today={today} />}
       </View>
     </WidgetFrame>
   );

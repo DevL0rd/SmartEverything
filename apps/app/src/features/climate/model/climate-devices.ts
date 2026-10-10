@@ -1,6 +1,12 @@
-import { isClimateDevice } from '@smarteverything/domain';
+import { isClimateDevice, type TableRow } from '@smarteverything/domain';
 import { useStoreSelector } from '../../../store/store-context';
-import { rowsOf, type Device, type DeviceValues, type StoreState } from '../../../store/state';
+import {
+  deviceValuesOf,
+  rowsOf,
+  type Device,
+  type DeviceValues,
+  type StoreState,
+} from '../../../store/state';
 import { deviceModelOf, type DeviceModel } from '../../devices';
 
 export interface ClimateSource {
@@ -20,18 +26,16 @@ function climateModelOf(device: Device): DeviceModel {
   return model;
 }
 
-const NO_VALUES: DeviceValues = {};
-
 function inRoom(device: Device, room: string | null): boolean {
   return room === null || device.room_id === room;
 }
 
-function sourcesIn(state: StoreState, room: string | null): readonly ClimateSource[] {
+export function sourcesIn(state: StoreState, room: string | null): readonly ClimateSource[] {
   return rowsOf(state.tables.devices)
     .filter((device) => !device.hidden && isClimateDevice(device) && inRoom(device, room))
     .map((device) => ({
       model: climateModelOf(device),
-      values: state.deviceValues[device.id] ?? NO_VALUES,
+      values: deviceValuesOf(state, device.id),
     }));
 }
 
@@ -47,4 +51,15 @@ function sameSources(left: readonly ClimateSource[], right: readonly ClimateSour
 
 export function useClimateSources(room: string | null): readonly ClimateSource[] {
   return useStoreSelector((state) => sourcesIn(state, room), sameSources);
+}
+
+export function useClimateDerived<T>(
+  derive: (sources: readonly ClimateSource[], rooms: readonly TableRow<'rooms'>[]) => T,
+  equal: (left: T, right: T) => boolean,
+): T {
+  return useStoreSelector(
+    (state) => derive(sourcesIn(state, null), rowsOf(state.tables.rooms)),
+    equal,
+    [derive],
+  );
 }

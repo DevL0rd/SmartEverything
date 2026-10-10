@@ -11,7 +11,7 @@ function glowOf(readings: readonly MetricReading[]): ColourRole | null {
 }
 
 export function GlanceWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const { readings } = useHome();
+  const readings = useHome((view) => view.readings);
   return (
     <WidgetFrame
       title="Indoors"

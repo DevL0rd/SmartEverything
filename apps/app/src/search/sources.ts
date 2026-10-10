@@ -4,6 +4,8 @@ import {
   isCamera,
   isScheduleActive,
   roomNameOf,
+  type PluginRow,
+  type PluginSetting,
   type SearchDevice,
   type SearchSetting,
   type SearchSources,
@@ -24,6 +26,14 @@ export interface SearchTables {
   readonly automations: StoreState['tables']['automations'];
   readonly scheduled: StoreState['tables']['scheduled_actions'];
   readonly plugins: StoreState['tables']['plugins'];
+  readonly chats: readonly SearchChat[];
+}
+
+export interface SearchChat {
+  readonly id: string;
+  readonly title: string;
+  readonly source: string;
+  readonly pinned: boolean;
 }
 
 export interface SourceLinks {
@@ -128,6 +138,78 @@ function scheduledPages(tables: SearchTables, out: SourceLinks): SearchSources['
     });
 }
 
+const ASSISTANT_ROUTE = 'assistant';
+
+function chatPages(tables: SearchTables, out: SourceLinks): SearchSources['pages'] {
+  return tables.chats.map((chat) => {
+    const key = `chat:${chat.id}`;
+    out.links.set(pageKey(key), href.assistantChat(chat.id));
+    out.icons.set(pageKey(key), 'sparkles');
+    out.parents.set(pageKey(key), pageKey(ASSISTANT_ROUTE));
+    return {
+      path: key,
+      title: chat.title,
+      description: 'Chat',
+      keywords: ['chat', 'conversation', chat.source, ...(chat.pinned ? ['pinned'] : [])],
+    };
+  });
+}
+
+interface PluginPage {
+  readonly path: string;
+  readonly title: string;
+  readonly description: string;
+  readonly keywords: readonly string[];
+  readonly to: Href;
+}
+
+function settingPage(
+  row: PluginRow,
+  parent: string,
+  entry: readonly [string, PluginSetting],
+): PluginPage {
+  const [name, setting] = entry;
+  const description = setting.description ?? '';
+  return setting.type === 'list'
+    ? {
+        path: `${parent}#list:${name}`,
+        title: setting.title,
+        description: row.manifest.name,
+        keywords: ['list', 'plugin', row.manifest.name, description],
+        to: href.pluginList(row.id, name),
+      }
+    : {
+        path: `${parent}#setting:${name}`,
+        title: setting.title,
+        description: row.manifest.name,
+        keywords: ['setting', 'plugin', row.manifest.name, setting.group ?? '', description],
+        to: href.pluginSettings(row.id),
+      };
+}
+
+function pluginSubPages(row: PluginRow, parent: string, out: SourceLinks): SearchSources['pages'] {
+  const settings = Object.entries(row.manifest.contributes.settings).map((entry) =>
+    settingPage(row, parent, entry),
+  );
+  const people = row.manifest.permissions.inbound
+    ? [
+        {
+          path: `${parent}#people`,
+          title: 'People',
+          description: row.manifest.name,
+          keywords: ['people', 'approved', 'owner', 'who can', 'plugin', row.manifest.name],
+          to: href.pluginSettings(row.id, 'people'),
+        },
+      ]
+    : [];
+  return [...people, ...settings].map(({ to, ...page }) => {
+    out.links.set(pageKey(page.path), to);
+    out.icons.set(pageKey(page.path), 'puzzle');
+    out.parents.set(pageKey(page.path), pageKey(parent));
+    return page;
+  });
+}
+
 function pluginPages(
   tables: SearchTables,
   env: SettingEnv,
@@ -136,17 +218,20 @@ function pluginPages(
   if (!env.owner) {
     return [];
   }
-  return rowsOf(tables.plugins).map((row) => {
+  return rowsOf(tables.plugins).flatMap((row) => {
     const key = `plugin:${row.id}`;
     out.links.set(`page:${key}`, href.pluginSettings(row.id));
     out.icons.set(`page:${key}`, 'puzzle');
     out.plugins.add(pageKey(key));
-    return {
-      path: key,
-      title: row.manifest.name,
-      description: 'Plugin',
-      keywords: ['plugin', row.manifest.publisher, row.manifest.description],
-    };
+    return [
+      {
+        path: key,
+        title: row.manifest.name,
+        description: 'Plugin',
+        keywords: ['plugin', row.manifest.publisher, row.manifest.description],
+      },
+      ...pluginSubPages(row, key, out),
+    ];
   });
 }
 
@@ -243,7 +328,12 @@ export function sourcesOf(
       name: room.name,
       deviceCount: devices.filter((named) => named.device.room_id === room.id).length,
     })),
-    pages: [...pagesOf(env, out), ...scheduledPages(tables, out), ...pluginPages(tables, env, out)],
+    pages: [
+      ...pagesOf(env, out),
+      ...scheduledPages(tables, out),
+      ...pluginPages(tables, env, out),
+      ...chatPages(tables, out),
+    ],
     settings: settingsOf(env, out),
     ...routinesOf(tables),
     irRemotes: [],

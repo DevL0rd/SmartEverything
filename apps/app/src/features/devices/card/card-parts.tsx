@@ -17,7 +17,8 @@ import type { ColourRole } from '../../../design/tokens';
 import { joinParts } from '../../../format/text';
 import { useHistory } from '../../../queries/history';
 import { useDeviceValues } from '../../../store/selectors';
-import type { Device, DeviceValues } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
+import { deviceValuesOf, type Device, type DeviceValues } from '../../../store/state';
 import { PowerToggle } from '../controls/power-toggle';
 import { splitUnit } from '../detail/device-hero';
 import { useOfflineLine, useSeenLine } from '../detail/offline-banner';
@@ -70,6 +71,30 @@ function asleepText(
     : (seen ?? state);
 }
 
+function useNamesText(device: Device, model: DeviceModel, look: NamesLook): string {
+  const offline = useOfflineLine(device.id);
+  const seen = useSeenLine(device.id, look !== 'tile' && look !== 'line');
+  const awake = device.online || model.sleepy;
+  return useStoreSelector(
+    (state) => {
+      const values = deviceValuesOf(state, device.id);
+      return awake
+        ? stateText(model, values, look !== 'large')
+        : asleepText(model, values, look === 'large' ? offline : seen, look);
+    },
+    Object.is,
+    [device.id, model, awake, look, offline, seen],
+  );
+}
+
+function useIsOn(model: DeviceModel): boolean {
+  return useStoreSelector(
+    (state) => powerStateOf(model, deviceValuesOf(state, model.device.id)) === 'on',
+    Object.is,
+    [model],
+  );
+}
+
 export function Names({
   device,
   look,
@@ -78,11 +103,8 @@ export function Names({
   readonly look: NamesLook;
 }): ReactNode {
   const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
-  const offline = useOfflineLine(device.id);
-  const seen = useSeenLine(device.id, look !== 'tile' && look !== 'line');
-  const awake = device.online || model.sleepy;
-  const on = powerStateOf(model, values) === 'on';
+  const text = useNamesText(device, model, look);
+  const on = useIsOn(model);
   return (
     <View className="min-w-0 gap-0.5" pointerEvents="none">
       <Text
@@ -96,9 +118,7 @@ export function Names({
         tone={on ? 'primary' : 'variant'}
         numberOfLines={look === 'line' ? 2 : 1}
       >
-        {awake
-          ? stateText(model, values, look !== 'large')
-          : asleepText(model, values, look === 'large' ? offline : seen, look)}
+        {text}
       </Text>
     </View>
   );

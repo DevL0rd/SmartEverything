@@ -11,6 +11,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import android.os.Process
+import android.util.Log
 import expo.modules.healthconnect.media.NowPlaying
 import expo.modules.healthconnect.watch.WatchNotificationListener
 import java.time.LocalDate
@@ -18,6 +19,9 @@ import java.time.ZoneId
 
 object PhoneReadings {
   private const val PERCENT = 100
+  private const val BATTERY_STEP = 5
+  private const val BATTERY_EXACT_BELOW = 20
+  private const val TAG = "SmartEverythingPhone"
   private const val MINUTE_MS = 60_000L
 
   fun read(context: Context, withScreenTime: Boolean): Map<String, Any?> {
@@ -38,11 +42,20 @@ object PhoneReadings {
 
   private fun power(context: Context): Map<String, Any?> {
     val battery = context.getSystemService(BatteryManager::class.java)
-    return mapOf(
-      "battery" to battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY),
-      "charging" to battery.isCharging,
-      "screen_on" to context.getSystemService(PowerManager::class.java).isInteractive
-    )
+    val level = steppedBattery(battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
+    return buildMap {
+      if (level != null) put("battery", level)
+      put("charging", battery.isCharging)
+      put("screen_on", context.getSystemService(PowerManager::class.java).isInteractive)
+    }
+  }
+
+  private fun steppedBattery(percent: Int): Int? {
+    if (percent < 0 || percent > PERCENT) {
+      Log.w(TAG, "The battery level could not be read (got $percent); expected 0 to $PERCENT")
+      return null
+    }
+    return if (percent <= BATTERY_EXACT_BELOW) percent else percent / BATTERY_STEP * BATTERY_STEP
   }
 
   private fun network(context: Context): Map<String, Any?> {

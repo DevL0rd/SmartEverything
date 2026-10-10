@@ -99,7 +99,9 @@ export function withSnapshot(turns: Turns, notice: ChatActivityNotice): Turns {
   };
   const others = Object.entries(turns).filter(
     ([turnId, other]) =>
-      turnId !== notice.turnId && !(other.chatId === notice.chatId && other.state === 'idle'),
+      turnId !== notice.turnId &&
+      !(other.chatId === notice.chatId && other.state === 'idle') &&
+      !(notice.messageId !== null && other.messageId === notice.messageId),
   );
   return { ...Object.fromEntries(others), [notice.turnId]: drain(turn) };
 }

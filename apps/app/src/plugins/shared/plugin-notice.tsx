@@ -25,6 +25,7 @@ export function PluginNotice({
       tone={notice.tone}
       title={notice.title}
       body={notice.body}
+      wrapBody
       {...(notice.settings
         ? { action: { label: 'Open settings', href: href.pluginSettings(pluginId) } }
         : {})}

@@ -1,4 +1,11 @@
-import type { CallSource } from '@smarteverything/domain';
+import type {
+  AppSightSource,
+  CallAudioPref,
+  CallSource,
+  EchoTestOutcome,
+  SightFacing,
+  SightSource,
+} from '@smarteverything/domain';
 
 export interface CallConnection {
   readonly url: string;
@@ -13,6 +20,19 @@ export interface CallRequest {
   readonly answering: string | null;
 }
 
+export interface EngineCapabilities {
+  readonly sight: Readonly<Record<AppSightSource, string | null>>;
+  readonly audio: string | null;
+  readonly echoTest: string | null;
+  readonly light: string | null;
+}
+
+export interface SightStart {
+  readonly source: AppSightSource;
+  readonly facing?: SightFacing;
+  readonly target?: string;
+}
+
 export interface CallEngine {
   readonly supported: () => string | null;
   readonly start: (request: CallRequest) => void;
@@ -21,4 +41,32 @@ export interface CallEngine {
   readonly allowMicrophone: () => Promise<boolean>;
   readonly inputLevel: () => number;
   readonly outputLevel: () => number;
+  readonly capabilities: () => EngineCapabilities;
+  readonly applyAudio: (pref: CallAudioPref) => void;
+  readonly startSight: (start: SightStart) => Promise<void>;
+  readonly stopSight: (source: SightSource) => void;
+  readonly switchCamera: () => Promise<void>;
+  readonly pauseSight: (paused: boolean) => void;
+  readonly setLight: (on: boolean) => void;
+  readonly showThis: (start: SightStart) => Promise<void>;
+  readonly watchCamera: (cameraId: string) => void;
+  readonly answerRequest: (requestId: string, accepted: boolean) => void;
+  readonly echoTest: () => Promise<EchoTestOutcome>;
+  readonly interrupt: () => void;
 }
+
+export type CallFeatureEngine = Pick<
+  CallEngine,
+  | 'capabilities'
+  | 'applyAudio'
+  | 'startSight'
+  | 'stopSight'
+  | 'switchCamera'
+  | 'pauseSight'
+  | 'setLight'
+  | 'showThis'
+  | 'watchCamera'
+  | 'answerRequest'
+  | 'echoTest'
+  | 'interrupt'
+>;

@@ -14,12 +14,27 @@ export interface FoodLog {
   readonly food: FoodCandidate;
   readonly foodId: string | null;
   readonly amount: number;
+  readonly multiplier: number;
   readonly meal: Meal;
   readonly at: number;
 }
 
-export function entryOfFood({ food, foodId, amount, meal, at }: FoodLog): HealthEntryInput {
-  return foodEntryOf({ food, foodId, amount, mealType: codeOfMeal(meal), span: entrySpan(at) });
+export function entryOfFood({
+  food,
+  foodId,
+  amount,
+  multiplier,
+  meal,
+  at,
+}: FoodLog): HealthEntryInput {
+  return foodEntryOf({
+    food,
+    foodId,
+    amount,
+    multiplier,
+    mealType: codeOfMeal(meal),
+    span: entrySpan(at),
+  });
 }
 
 export function waterEntry(millilitres: number, at: number): HealthEntryInput {

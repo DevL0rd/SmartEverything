@@ -1,7 +1,9 @@
 import { HEALTH_RECORD_TYPE, HEALTH_SOURCE_TOKEN, WATCH_PHASES } from '@smarteverything/domain';
 import { z } from 'zod';
 
-export const MINIMUM_INTERVAL_MINUTES = 15;
+const MINIMUM_INTERVAL_MINUTES = 15;
+
+export const DEFAULT_INTERVAL_MINUTES = 60;
 
 const AVAILABILITY = z.enum(['available', 'unavailable']);
 const COUNT = z.number().int().min(0);
@@ -206,14 +208,3 @@ export type WatchRelayChange = Partial<
 export const PHONE_APPS = z.array(z.object({ packageName: z.string().min(1), label: z.string() }));
 
 export type PhoneApp = z.infer<typeof PHONE_APPS>[number];
-
-export interface WatchUserInput {
-  readonly heightCm: number;
-  readonly weightKg: number;
-  readonly birthDate: string;
-  readonly female: boolean;
-  readonly maxHeartRate: number;
-  readonly stepGoal: number;
-  readonly calorieGoal: number;
-  readonly activeMinutes: number;
-}

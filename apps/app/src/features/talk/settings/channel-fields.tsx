@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { TALK_ICONS, TALK_KEEP_HOURS, type TalkKeepHours } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
-import { SelectRow } from '../../../components/rows';
+import { SelectRow, SwitchRow } from '../../../components/rows';
 import { List, Section } from '../../../components/section';
 import { Segmented } from '../../../components/segmented';
 import { TextField } from '../../../components/text-field';
@@ -54,6 +54,28 @@ function NameAndIcon({ fields, onChange, onNameDone, nameError }: ChannelFieldsP
   );
 }
 
+function AiListens({
+  fields,
+  onChange,
+}: Pick<ChannelFieldsProps, 'fields' | 'onChange'>): ReactNode {
+  return (
+    <List
+      inset
+      footer="The AI hears this channel, writes down what is said and answers when it hears its name. Turn it off to keep the AI out."
+    >
+      <SwitchRow
+        title="AI listens"
+        subtitle="Transcribes messages and answers to its name"
+        icon="sparkles"
+        value={fields.ai_listens}
+        onChange={(ai_listens) => {
+          onChange({ ai_listens });
+        }}
+      />
+    </List>
+  );
+}
+
 function PriorityAndKeep({
   fields,
   onChange,
@@ -88,6 +110,7 @@ function PriorityAndKeep({
           }}
         />
       </List>
+      <AiListens fields={fields} onChange={onChange} />
     </>
   );
 }

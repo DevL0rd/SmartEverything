@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   isCamera,
   isClimateDevice,
@@ -12,18 +13,19 @@ import {
   type TableRow,
   replacedIds,
 } from '@smarteverything/domain';
+import { memoOnInputs } from './memo-selector';
 import { shallowEqual, useStoreSelector } from './store-context';
 import {
   rowsOf,
   type Device,
   type DeviceValue,
+  deviceValuesOf,
   type DeviceValues,
   type ListTable,
   type RowOf,
   type Session,
   type StoreState,
   type SyncState,
-  type Table,
 } from './state';
 
 class HomeNotLoadedError extends Error {
@@ -36,48 +38,70 @@ class HomeNotLoadedError extends Error {
   }
 }
 
-function useTable<T extends ListTable>(table: T): Table<RowOf<T>> {
-  return useStoreSelector((state) => state.tables[table]);
-}
-
 export function useRows<T extends ListTable>(table: T): readonly RowOf<T>[] {
-  return rowsOf(useTable(table));
+  return useStoreSelector((state) => rowsOf(state.tables[table]), Object.is, [table]);
 }
 
 export function useRow<T extends ListTable>(table: T, id: string | null): RowOf<T> | null {
-  return useStoreSelector((state) => (id === null ? null : (state.tables[table].byId[id] ?? null)));
+  return useStoreSelector(
+    (state) => (id === null ? null : (state.tables[table].byId[id] ?? null)),
+    Object.is,
+    [table, id],
+  );
 }
+
+const selectLoaded = (state: StoreState): boolean => state.loaded;
 
 export function useLoaded(): boolean {
-  return useStoreSelector((state) => state.loaded);
+  return useStoreSelector(selectLoaded);
 }
 
-export function useSyncStatus(): SyncState {
-  return useStoreSelector((state) => state.sync);
+export type SyncStatus = Omit<SyncState, 'seq'>;
+
+const selectSync = (state: StoreState): SyncStatus => state.sync;
+
+function sameSyncStatus(left: SyncStatus, right: SyncStatus): boolean {
+  return (
+    left.status === right.status &&
+    left.problem === right.problem &&
+    shallowEqual(left.outdated, right.outdated)
+  );
 }
+
+export function useSyncStatus(): SyncStatus {
+  return useStoreSelector(selectSync, sameSyncStatus);
+}
+
+const selectHub = (state: StoreState): HubStatus | null => state.hub;
 
 export function useHubStatus(): HubStatus | null {
-  return useStoreSelector((state) => state.hub);
+  return useStoreSelector(selectHub);
 }
 
+const selectSettings = (state: StoreState): SettingsRow | null => state.settings;
+
 export function useSettings(): SettingsRow {
-  const settings = useStoreSelector((state) => state.settings);
+  const settings = useStoreSelector(selectSettings);
   if (settings === null) {
     throw new HomeNotLoadedError('The home settings');
   }
   return settings;
 }
 
+const selectSession = (state: StoreState): Session | null => state.session;
+
 export function useSession(): Session {
-  const session = useStoreSelector((state) => state.session);
+  const session = useStoreSelector(selectSession);
   if (session === null) {
     throw new HomeNotLoadedError('This device’s session');
   }
   return session;
 }
 
+const selectIsOwner = (state: StoreState): boolean => state.session?.client.role === 'owner';
+
 export function useIsOwner(): boolean {
-  return useStoreSelector((state) => state.session?.client.role === 'owner');
+  return useStoreSelector(selectIsOwner);
 }
 
 export interface DeviceFilter {
@@ -85,23 +109,37 @@ export interface DeviceFilter {
   readonly includeHidden?: boolean;
 }
 
-function devicesMatching(state: StoreState, filter: DeviceFilter): readonly Device[] {
-  return rowsOf(state.tables.devices).filter(
-    (device) =>
-      (filter.includeHidden === true || !device.hidden) &&
-      (filter.room === undefined || device.room_id === filter.room),
+const devicesTable = (state: StoreState): readonly unknown[] => [state.tables.devices];
+
+const DEVICE_SELECTORS = new Map<string, (state: StoreState) => readonly Device[]>();
+
+function deviceSelector(filter: DeviceFilter): (state: StoreState) => readonly Device[] {
+  const room = filter.room === undefined ? '*' : filter.room === null ? 'none' : `=${filter.room}`;
+  const key = `${room}|${filter.includeHidden === true ? 'hidden' : 'visible'}`;
+  const known = DEVICE_SELECTORS.get(key);
+  if (known !== undefined) {
+    return known;
+  }
+  const selector = memoOnInputs(devicesTable, (state) =>
+    rowsOf(state.tables.devices).filter(
+      (device) =>
+        (filter.includeHidden === true || !device.hidden) &&
+        (filter.room === undefined || device.room_id === filter.room),
+    ),
   );
+  DEVICE_SELECTORS.set(key, selector);
+  return selector;
 }
 
 export function useDevices(filter: DeviceFilter = {}): readonly Device[] {
-  return useStoreSelector((state) => devicesMatching(state, filter), shallowEqual);
+  return useStoreSelector(deviceSelector(filter), shallowEqual);
 }
 
-function listedIn(state: StoreState): readonly Device[] {
+const listedIn = memoOnInputs(devicesTable, (state): readonly Device[] => {
   const devices = rowsOf(state.tables.devices);
   const replaced = replacedIds(devices);
   return devices.filter((device) => !replaced.has(device.id));
-}
+});
 
 export function useListedDevices(): readonly Device[] {
   return useStoreSelector(listedIn, shallowEqual);
@@ -111,14 +149,16 @@ export function useDevice(deviceId: string): Device | null {
   return useRow('devices', deviceId);
 }
 
-const NO_VALUES: DeviceValues = {};
-
 export function useDeviceValues(deviceId: string): DeviceValues {
-  return useStoreSelector((state) => state.deviceValues[deviceId] ?? NO_VALUES);
+  return useStoreSelector((state) => deviceValuesOf(state, deviceId), Object.is, [deviceId]);
 }
 
 export function useDeviceValue(deviceId: string, capability: string): DeviceValue | null {
-  return useStoreSelector((state) => state.deviceValues[deviceId]?.[capability] ?? null);
+  return useStoreSelector(
+    (state) => state.deviceValues[deviceId]?.[capability] ?? null,
+    Object.is,
+    [deviceId, capability],
+  );
 }
 
 export function useRooms(): readonly TableRow<'rooms'>[] {
@@ -130,12 +170,16 @@ export function useRoom(roomId: string | null): TableRow<'rooms'> | null {
 }
 
 export function useRoomName(deviceId: string): string | null {
-  return useStoreSelector((state) => {
-    const room = state.tables.devices.byId[deviceId]?.room_id;
-    return room === null || room === undefined
-      ? null
-      : (state.tables.rooms.byId[room]?.name ?? null);
-  });
+  return useStoreSelector(
+    (state) => {
+      const room = state.tables.devices.byId[deviceId]?.room_id;
+      return room === null || room === undefined
+        ? null
+        : (state.tables.rooms.byId[room]?.name ?? null);
+    },
+    Object.is,
+    [deviceId],
+  );
 }
 
 export function useProviderLink(provider: Provider): TableRow<'provider_links'> | null {
@@ -144,27 +188,42 @@ export function useProviderLink(provider: Provider): TableRow<'provider_links'> 
 
 export function useIrRemotes(deviceId: string | null = null): readonly TableRow<'ir_remotes'>[] {
   const remotes = useRows('ir_remotes');
-  return deviceId === null ? remotes : remotes.filter((remote) => remote.blaster_id === deviceId);
+  return useMemo(
+    () =>
+      deviceId === null ? remotes : remotes.filter((remote) => remote.blaster_id === deviceId),
+    [remotes, deviceId],
+  );
 }
 
 export function useIrCodes(remoteId: string): readonly TableRow<'ir_codes'>[] {
-  return useRows('ir_codes').filter((code) => code.remote_id === remoteId);
+  const codes = useRows('ir_codes');
+  return useMemo(() => codes.filter((code) => code.remote_id === remoteId), [codes, remoteId]);
 }
+
+const selectFirewall = (state: StoreState): FirewallStatus | null => state.firewall;
 
 export function useFirewall(): FirewallStatus | null {
-  return useStoreSelector((state) => state.firewall);
+  return useStoreSelector(selectFirewall);
 }
+
+const selectConsentRequests = (state: StoreState): readonly McpConsentRequest[] =>
+  state.consentRequests;
 
 export function useConsentRequests(): readonly McpConsentRequest[] {
-  return useStoreSelector((state) => state.consentRequests);
+  return useStoreSelector(selectConsentRequests);
 }
+
+const selectServiceLog = (state: StoreState): readonly string[] => state.serviceLog;
 
 export function useServiceLog(): readonly string[] {
-  return useStoreSelector((state) => state.serviceLog);
+  return useStoreSelector(selectServiceLog);
 }
 
+const selectSmartThingsWebhook = (state: StoreState): SmartThingsWebhook | null =>
+  state.smartthingsWebhook;
+
 export function useSmartThingsWebhook(): SmartThingsWebhook | null {
-  return useStoreSelector((state) => state.smartthingsWebhook);
+  return useStoreSelector(selectSmartThingsWebhook);
 }
 
 export interface Availability {
@@ -182,7 +241,16 @@ export interface Availability {
 
 const SECURITY_KINDS: ReadonlySet<string> = new Set(['lock']);
 
-function availabilityOf(state: StoreState): Availability {
+const availabilityInputs = (state: StoreState): readonly unknown[] => [
+  state.tables.devices,
+  state.tables.health_daily,
+  state.tables.health_sources,
+  state.tables.scenes,
+  state.tables.ir_remotes,
+  state.tables.provider_links,
+];
+
+const availabilityOf = memoOnInputs(availabilityInputs, (state): Availability => {
   const devices = rowsOf(state.tables.devices).filter((device) => !device.hidden);
   return {
     hasDevices: devices.length > 0,
@@ -205,7 +273,7 @@ function availabilityOf(state: StoreState): Availability {
       (link) => link.status === 'needs_attention',
     ),
   };
-}
+});
 
 const AVAILABILITY_KEYS: readonly (keyof Availability)[] = [
   'hasDevices',

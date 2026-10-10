@@ -44,11 +44,9 @@ function QuickScheduleSheet({ device }: { readonly device: Device }): ReactNode 
         }),
       {
         failure: `${device.label} wasn’t scheduled`,
-        onDone: (row) => {
-          if (row !== null) {
-            notify({ message: `${device.label} turns ${on ? 'off' : 'on'} ${whenLabel(when)}` });
-            close();
-          }
+        onDone: () => {
+          notify({ message: `${device.label} turns ${on ? 'off' : 'on'} ${whenLabel(when)}` });
+          close();
         },
       },
     );

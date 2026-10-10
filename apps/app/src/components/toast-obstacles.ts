@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import { Keyboard, type View } from 'react-native';
 import { ValueStore, useValue } from '../design/external-store';
 
@@ -40,32 +40,50 @@ function put(key: string, obstacle: Obstacle | null): void {
   });
 }
 
+function sameFrame(left: Frame | null, right: Frame): boolean {
+  return (
+    left !== null &&
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height
+  );
+}
+
 export function useMeasuredFrame(onFrame: (frame: Frame | null) => void): MeasuredView {
-  const [node, setNode] = useState<View | null>(null);
-  const [layouts, setLayouts] = useState(0);
-  useEffect(() => {
-    let live = true;
-    node?.measureInWindow((x, y, width, height) => {
-      if (live) {
-        onFrame({ x, y, width, height });
+  const node = useRef<View | null>(null);
+  const reported = useRef<Frame | null>(null);
+  const live = useRef(false);
+  const handler = useRef(onFrame);
+  const measure = useCallback((): void => {
+    node.current?.measureInWindow((x, y, width, height) => {
+      const next = { x, y, width, height };
+      if (live.current && !sameFrame(reported.current, next)) {
+        reported.current = next;
+        handler.current(next);
       }
     });
+  }, []);
+  useEffect(() => {
+    handler.current = onFrame;
+    live.current = true;
+    reported.current = null;
+    measure();
     return (): void => {
-      live = false;
-    };
-  }, [node, layouts, onFrame]);
-  useEffect(
-    () => (): void => {
+      live.current = false;
       onFrame(null);
+    };
+  }, [onFrame, measure]);
+  const attach = useCallback(
+    (view: View | null): void => {
+      node.current = view;
+      if (view !== null) {
+        measure();
+      }
     },
-    [onFrame],
+    [measure],
   );
-  return {
-    attach: setNode,
-    onLayout: (): void => {
-      setLayouts((count) => count + 1);
-    },
-  };
+  return useMemo(() => ({ attach, onLayout: measure }), [attach, measure]);
 }
 
 export function useToastObstacle(edge: ObstacleEdge, active = true): MeasuredView {

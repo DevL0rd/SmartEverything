@@ -65,6 +65,7 @@ declare class HealthConnectNative extends NativeModule<HealthConnectEvents> {
   stopScaleLiveScan(): Promise<void>;
   syncWatches(serverUrl: string, token: string): Promise<unknown>;
   startWatches(): Promise<void>;
+  runPushCommand(command: string, payloadJson: string): Promise<void>;
   pauseWatch(deviceId: string, paused: boolean): Promise<void>;
   setWatchLive(on: boolean): Promise<void>;
   refreshWatches(): Promise<void>;
@@ -76,10 +77,8 @@ declare class HealthConnectNative extends NativeModule<HealthConnectEvents> {
   watchWritesGranted(): Promise<unknown>;
   openAppSettings(packageName: string): Promise<void>;
   findWatch(deviceId: string, on: boolean): Promise<unknown>;
-  setWatchWeather(weatherJson: string): Promise<unknown>;
   setWatchCalendar(eventsJson: string): Promise<unknown>;
   runWatchAction(deviceId: string, actionJson: string): Promise<unknown>;
-  setWatchUser(user: Readonly<Record<string, unknown>>): Promise<unknown>;
   watchRelayStatus(): Promise<unknown>;
   setWatchRelay(change: Readonly<Record<string, unknown>>): Promise<unknown>;
   phoneApps(): Promise<unknown>;

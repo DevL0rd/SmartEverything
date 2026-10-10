@@ -10,6 +10,7 @@ import { Logger } from '@smarteverything/logging';
 import { jsonText } from '../format/json-text';
 import type { EntityStore } from './entity-store';
 import { rowsOf, type StoreState } from './state';
+import { shallowEqual } from './store-context';
 
 const log = new Logger('app.persistence');
 
@@ -34,8 +35,8 @@ function keyOf(serverUrl: string): string {
   return `smarteverything.snapshot.${hashOf(serverUrl)}`;
 }
 
-function stateRows(state: StoreState): StateRow[] {
-  return Object.entries(state.deviceValues).flatMap(([device_id, values]) =>
+function stateRows(deviceValues: StoreState['deviceValues']): StateRow[] {
+  return Object.entries(deviceValues).flatMap(([device_id, values]) =>
     Object.entries(values).map(([capability, reading]) => ({
       device_id,
       capability,
@@ -45,12 +46,85 @@ function stateRows(state: StoreState): StateRow[] {
   );
 }
 
-function snapshotOf(state: StoreState): Snapshot | null {
-  const { settings, session, firewall, sync } = state;
+type PersistedInputs = Pick<
+  StoreState,
+  'settings' | 'session' | 'firewall' | 'weather' | 'exchangeRates' | 'assistant' | 'deviceValues'
+> &
+  Pick<
+    StoreState['tables'],
+    | 'rooms'
+    | 'devices'
+    | 'cameras'
+    | 'scenes'
+    | 'automations'
+    | 'provider_links'
+    | 'ir_remotes'
+    | 'ir_codes'
+    | 'layouts'
+    | 'events'
+    | 'commands'
+    | 'recordings'
+    | 'health_sources'
+    | 'health_daily'
+    | 'profiles'
+    | 'body_readings'
+    | 'talk_channels'
+    | 'talk_members'
+    | 'talk_messages'
+    | 'assistant_messages'
+    | 'scheduled_actions'
+    | 'ai_chats'
+    | 'clients'
+    | 'push_targets'
+    | 'mcp_tokens'
+    | 'oauth_clients'
+  >;
+
+function inputsOf(state: StoreState): PersistedInputs {
+  const t = state.tables;
+  return {
+    settings: state.settings,
+    session: state.session,
+    firewall: state.firewall,
+    weather: state.weather,
+    exchangeRates: state.exchangeRates,
+    assistant: state.assistant,
+    deviceValues: state.deviceValues,
+    rooms: t.rooms,
+    devices: t.devices,
+    cameras: t.cameras,
+    scenes: t.scenes,
+    automations: t.automations,
+    provider_links: t.provider_links,
+    ir_remotes: t.ir_remotes,
+    ir_codes: t.ir_codes,
+    layouts: t.layouts,
+    events: t.events,
+    commands: t.commands,
+    recordings: t.recordings,
+    health_sources: t.health_sources,
+    health_daily: t.health_daily,
+    profiles: t.profiles,
+    body_readings: t.body_readings,
+    talk_channels: t.talk_channels,
+    talk_members: t.talk_members,
+    talk_messages: t.talk_messages,
+    assistant_messages: t.assistant_messages,
+    scheduled_actions: t.scheduled_actions,
+    ai_chats: t.ai_chats,
+    clients: t.clients,
+    push_targets: t.push_targets,
+    mcp_tokens: t.mcp_tokens,
+    oauth_clients: t.oauth_clients,
+  };
+}
+
+function snapshotOf(state: StoreState, inputs: PersistedInputs): Snapshot | null {
+  const { sync } = state;
+  const { settings, session, firewall } = inputs;
   if (settings === null || session === null || firewall === null || sync.seq === null) {
     return null;
   }
-  const t = state.tables;
   const owner = session.client.role === 'owner';
   return {
     seq: sync.seq,
@@ -58,41 +132,46 @@ function snapshotOf(state: StoreState): Snapshot | null {
     firewall,
     tables: {
       settings,
-      rooms: [...rowsOf(t.rooms)],
-      devices: rowsOf(t.devices).map(({ label: _label, ...row }) => row),
-      device_state: stateRows(state),
-      cameras: [...rowsOf(t.cameras)],
-      scenes: [...rowsOf(t.scenes)],
-      automations: [...rowsOf(t.automations)],
-      provider_links: [...rowsOf(t.provider_links)],
-      ir_remotes: [...rowsOf(t.ir_remotes)],
-      ir_codes: [...rowsOf(t.ir_codes)],
-      layouts: [...rowsOf(t.layouts)],
-      events: [...rowsOf(t.events)],
-      commands: [...rowsOf(t.commands)],
-      recordings: [...rowsOf(t.recordings)],
-      health_sources: [...rowsOf(t.health_sources)],
-      health_daily: [...rowsOf(t.health_daily)],
-      profiles: [...rowsOf(t.profiles)],
-      body_readings: [...rowsOf(t.body_readings)],
-      ...(state.weather === null ? {} : { weather: state.weather }),
-      talk_channels: [...rowsOf(t.talk_channels)],
-      talk_members: [...rowsOf(t.talk_members)],
-      talk_messages: [...rowsOf(t.talk_messages)],
-      assistant_messages: rowsOf(t.assistant_messages).slice(0, ASSISTANT_MESSAGES_SNAPSHOT),
-      scheduled_actions: [...rowsOf(t.scheduled_actions)],
-      ...(state.assistant === null ? {} : { assistant_status: state.assistant }),
-      ai_chats: [...rowsOf(t.ai_chats)],
+      rooms: [...rowsOf(inputs.rooms)],
+      devices: rowsOf(inputs.devices).map(({ label: _label, ...row }) => row),
+      device_state: stateRows(inputs.deviceValues),
+      cameras: [...rowsOf(inputs.cameras)],
+      scenes: [...rowsOf(inputs.scenes)],
+      automations: [...rowsOf(inputs.automations)],
+      provider_links: [...rowsOf(inputs.provider_links)],
+      ir_remotes: [...rowsOf(inputs.ir_remotes)],
+      ir_codes: [...rowsOf(inputs.ir_codes)],
+      layouts: [...rowsOf(inputs.layouts)],
+      events: [...rowsOf(inputs.events)],
+      commands: [...rowsOf(inputs.commands)],
+      recordings: [...rowsOf(inputs.recordings)],
+      health_sources: [...rowsOf(inputs.health_sources)],
+      health_daily: [...rowsOf(inputs.health_daily)],
+      profiles: [...rowsOf(inputs.profiles)],
+      body_readings: [...rowsOf(inputs.body_readings)],
+      ...(inputs.weather === null ? {} : { weather: inputs.weather }),
+      ...(inputs.exchangeRates === null ? {} : { exchange_rates: inputs.exchangeRates }),
+      talk_channels: [...rowsOf(inputs.talk_channels)],
+      talk_members: [...rowsOf(inputs.talk_members)],
+      talk_messages: [...rowsOf(inputs.talk_messages)],
+      assistant_messages: rowsOf(inputs.assistant_messages).slice(0, ASSISTANT_MESSAGES_SNAPSHOT),
+      scheduled_actions: [...rowsOf(inputs.scheduled_actions)],
+      ...(inputs.assistant === null ? {} : { assistant_status: inputs.assistant }),
+      ai_chats: [...rowsOf(inputs.ai_chats)],
     },
     owner: owner
       ? {
-          clients: [...rowsOf(t.clients)],
-          push_targets: [...rowsOf(t.push_targets)],
-          mcp_tokens: [...rowsOf(t.mcp_tokens)],
-          oauth_clients: [...rowsOf(t.oauth_clients)],
+          clients: [...rowsOf(inputs.clients)],
+          push_targets: [...rowsOf(inputs.push_targets)],
+          mcp_tokens: [...rowsOf(inputs.mcp_tokens)],
+          oauth_clients: [...rowsOf(inputs.oauth_clients)],
         }
       : null,
   };
+}
+
+function persistedParts(inputs: PersistedInputs): readonly unknown[] {
+  return Object.values(inputs);
 }
 
 export async function restoreSnapshot(serverUrl: string, store: EntityStore): Promise<void> {
@@ -115,10 +194,14 @@ export async function restoreSnapshot(serverUrl: string, store: EntityStore): Pr
 export function persistSnapshots(serverUrl: string, store: EntityStore): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastWrite = 0;
+  let written: readonly unknown[] | null = null;
   const write = (): void => {
     timer = null;
     lastWrite = Date.now();
-    const snapshot = snapshotOf(store.get());
+    const state = store.get();
+    const inputs = inputsOf(state);
+    written = persistedParts(inputs);
+    const snapshot = snapshotOf(state, inputs);
     if (snapshot === null) {
       return;
     }
@@ -129,7 +212,10 @@ export function persistSnapshots(serverUrl: string, store: EntityStore): () => v
     );
   };
   const unsubscribe = store.subscribe(() => {
-    if (timer !== null) {
+    if (
+      timer !== null ||
+      (written !== null && shallowEqual(written, persistedParts(inputsOf(store.get()))))
+    ) {
       return;
     }
     const wait = Math.max(IDLE_MS, lastWrite + AT_MOST_EVERY_MS - Date.now());

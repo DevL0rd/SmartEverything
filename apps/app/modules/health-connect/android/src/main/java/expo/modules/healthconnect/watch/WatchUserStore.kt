@@ -23,7 +23,10 @@ object WatchUserStore {
 
   fun read(context: Context): WatchUser? {
     val text = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).getString("user", null) ?: return null
-    val json = JSONObject(text)
+    return userOf(JSONObject(text))
+  }
+
+  fun userOf(json: JSONObject): WatchUser {
     return WatchUser(
       json.getInt("heightCm"),
       json.getDouble("weightKg"),

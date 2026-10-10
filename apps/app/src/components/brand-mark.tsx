@@ -18,7 +18,6 @@ const BRAND_NAMES: Readonly<Record<Brand, string>> = {
   samsung: 'Samsung',
   claude: 'Claude',
   chatgpt: 'ChatGPT',
-  'claude-code': 'Claude Code',
   cursor: 'Cursor',
   vscode: 'VS Code',
   mcp: 'Other app',

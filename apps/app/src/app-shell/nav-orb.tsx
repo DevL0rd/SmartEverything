@@ -4,7 +4,9 @@ import { Interactive } from '../components/interactive';
 import { Text } from '../components/text';
 import { cn } from '../design/cn';
 import { AssistantOrb, startCall } from '../features/assistant';
+import { CountPill } from '../components/badge';
 import type { NavEntry } from './nav-model';
+import { navLabelOf } from './nav-item';
 
 export function NavOrb({
   entry,
@@ -19,7 +21,7 @@ export function NavOrb({
     <View onPointerEnter={onIntent} className="flex-1">
       <Interactive
         role="tab"
-        label={entry.route.title}
+        label={navLabelOf(entry)}
         hint="Hold to call"
         selected={entry.active}
         onPress={onPress}
@@ -36,6 +38,11 @@ export function NavOrb({
           )}
         >
           <AssistantOrb state="idle" size={entry.active ? 36 : 40} />
+          {entry.count > 0 ? (
+            <View className="absolute -right-1 -top-1">
+              <CountPill count={entry.count} />
+            </View>
+          ) : null}
         </View>
         <Text variant="caption" tone={entry.active ? 'default' : 'variant'} numberOfLines={1}>
           {entry.route.shortTitle ?? entry.route.title}

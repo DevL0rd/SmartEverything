@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import expo.modules.healthconnect.NativeGuard
 
 object PhoneNode {
   fun start(context: Context) {
@@ -17,6 +18,7 @@ object PhoneNode {
     PhoneActivity.register(context)
     PhoneGeofences.stop(context)
     PhoneNetwork.stop(context)
+    PhoneUnlock.unregister(context)
     PhoneReporter.forget(context)
   }
 
@@ -28,6 +30,7 @@ object PhoneNode {
     PhoneActivity.register(context)
     PhoneGeofences.register(context)
     PhoneCar.observe(context)
+    PhoneUnlock.register(context)
   }
 
   fun status(context: Context): Map<String, Any?> {
@@ -47,8 +50,10 @@ object PhoneNode {
 
 class PhoneBootReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
-    if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-      PhoneNode.watch(context)
+    NativeGuard.run("PhoneBootReceiver") {
+      if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+        PhoneNode.watch(context)
+      }
     }
   }
 }

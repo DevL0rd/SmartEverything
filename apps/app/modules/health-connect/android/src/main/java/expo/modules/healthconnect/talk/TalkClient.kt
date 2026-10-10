@@ -39,7 +39,7 @@ class TalkClient(context: Context) : VoiceSocketListener {
   fun start() {
     val target = credentials.load()
     val url = URL(URL(target.endpoint), TALK_PATH).toString().replaceFirst("http", "ws")
-    socket = VoiceSocket(url, listOf(PROTOCOL, "bearer.${target.token}"), this).also { it.open() }
+    socket = VoiceSocket(url, listOf(PROTOCOL, "bearer.${target.token}"), this, HEARTBEAT_SECONDS).also { it.open() }
     update { it.copy(link = "connecting", problem = null) }
   }
 
@@ -234,6 +234,7 @@ class TalkClient(context: Context) : VoiceSocketListener {
 
   private companion object {
     const val TALK_PATH = "/talk"
+    const val HEARTBEAT_SECONDS = 60L
     const val PROTOCOL = "smarteverything.talk.v1"
     const val AUDIO_FRAME: Byte = 1
     const val EARLY_KEPT = 50

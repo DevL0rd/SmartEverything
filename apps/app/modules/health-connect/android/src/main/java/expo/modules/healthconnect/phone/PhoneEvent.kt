@@ -16,6 +16,8 @@ data class PhoneEvent(val kind: String, val at: Instant, val details: Map<String
       mapOf("from" to from.wire, "to" to to.state.wire, "confidence" to to.confidence, "place" to to.place)
     )
 
+    fun unlocked(at: Instant): PhoneEvent = PhoneEvent("phone_unlocked", at, emptyMap())
+
     fun parked(place: String?, at: Instant): PhoneEvent = PhoneEvent("parked", at, mapOf("place" to place))
 
     fun place(kind: String, name: String, at: Instant): PhoneEvent = PhoneEvent(kind, at, mapOf("place" to name))

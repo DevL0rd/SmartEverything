@@ -9,6 +9,7 @@ import type { PortionTarget } from '../model/target';
 
 export interface PortionChoice {
   readonly amount: number;
+  readonly multiplier: number;
   readonly meal: Meal;
   readonly at: number;
 }

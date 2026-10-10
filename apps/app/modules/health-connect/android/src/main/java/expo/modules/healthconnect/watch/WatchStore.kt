@@ -75,7 +75,7 @@ class WatchStore(context: Context) {
     const val KEY_ALIAS = "expo.modules.healthconnect.watch-keys"
     const val WATCHES = "watches"
     const val PAUSED = "paused:"
-    const val SKIPPED = "skipped-2a:"
+    const val SKIPPED = "skipped-2b:"
   }
 }
 

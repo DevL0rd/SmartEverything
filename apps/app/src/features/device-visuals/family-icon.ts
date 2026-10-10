@@ -29,6 +29,7 @@ export const FAMILY_ICONS: Readonly<Record<DeviceFamily, IconName>> = {
   router: 'wifi',
   file_sync: 'folderSync',
   dns_filter: 'shield',
+  robot: 'bot',
   computer: 'monitor',
   phone: 'smartphone',
   generic: 'cpu',

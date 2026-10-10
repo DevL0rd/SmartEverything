@@ -19,6 +19,11 @@ export function detailOf(message: TalkMessageRow, now: number): string {
   ]);
 }
 
+function subtitleOf(message: TalkMessageRow, now: number): string {
+  const detail = detailOf(message, now);
+  return message.transcript === null ? detail : `${message.transcript}\n${detail}`;
+}
+
 function MessageRow({ message }: { readonly message: TalkMessageRow }): ReactNode {
   const now = useMinute();
   const playing = usePlayingMessage() === message.id;
@@ -26,7 +31,8 @@ function MessageRow({ message }: { readonly message: TalkMessageRow }): ReactNod
   return (
     <ListRow
       title={message.speaker_label}
-      subtitle={detailOf(message, now)}
+      subtitle={subtitleOf(message, now)}
+      wrapSubtitle
       icon={message.speaker_kind === 'camera' ? 'camera' : 'user'}
       trailing={
         saved ? (

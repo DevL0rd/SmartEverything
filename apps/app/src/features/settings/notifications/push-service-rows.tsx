@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
+import { usePushDeliveries } from '../../../api/diagnostics';
 import {
   clearPushAccount,
   savePushAccount,
@@ -13,7 +14,9 @@ import { ActionRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { jsonText } from '../../../format/json-text';
+import { relative } from '../../../format/time';
 import { pickTextFile } from '../../../platform/text-file';
+import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 
 export const FIREBASE_PAGE = 'notifications/push-service/firebase';
@@ -37,8 +40,13 @@ async function saveKey(read: () => Promise<string | null>): Promise<boolean> {
   if (!parsed.ok) {
     throw new ServiceAccountError('it is not JSON');
   }
-  await savePushAccount(serviceAccountOf(parsed.value));
-  notify({ message: 'Push service is ready', tone: 'positive' });
+  const account = serviceAccountOf(parsed.value);
+  await savePushAccount(account);
+  notify({
+    message: 'Key saved',
+    detail: `${account.project_id} · ${account.client_email}`,
+    tone: 'positive',
+  });
   return true;
 }
 
@@ -64,16 +72,37 @@ function useSaving(): {
   };
 }
 
+function deliverySummary(
+  status: ReturnType<typeof usePushDeliveries>,
+  now: number,
+): { readonly text: string; readonly tone: 'variant' | 'positive' | 'critical' } {
+  const data = status.data;
+  if (data === undefined) {
+    return { text: 'Checking the last alert', tone: 'variant' };
+  }
+  if (data.lastError !== null) {
+    return { text: `Last alert failed · ${data.lastError}`, tone: 'critical' };
+  }
+  if (data.lastSentAt === null) {
+    return { text: 'No alert sent yet', tone: 'variant' };
+  }
+  return { text: `Last alert sent ${relative(data.lastSentAt, now)}`, tone: 'positive' };
+}
+
 export function PushStatusRow(): ReactNode {
   const project = useSettings().push_project_id;
+  const deliveries = usePushDeliveries();
+  const summary = deliverySummary(deliveries, useMinute());
   return (
     <ListRow
       title="Alerts when the app is closed"
       subtitle={
         project === null
-          ? 'Phones get alerts while the app is open'
-          : `Through Firebase · ${project}`
+          ? 'Not set up · phones get alerts while the app is open'
+          : `${project} · ${summary.text}`
       }
+      subtitleTone={project === null ? 'variant' : summary.tone}
+      wrapSubtitle
       icon={project === null ? 'bellOff' : 'bell'}
       iconTone={project === null ? 'variant' : 'positive'}
       value={project === null ? 'Off' : 'On'}
@@ -81,15 +110,24 @@ export function PushStatusRow(): ReactNode {
   );
 }
 
+export function PushPurposeRow(): ReactNode {
+  return (
+    <Text variant="footnote" tone="variant" className="px-4">
+      Lets your hub send call alerts to your phone through Firebase.
+    </Text>
+  );
+}
+
 export function ChooseKeyRow(): ReactNode {
   const saving = useSaving();
   return (
     <ActionRow
-      title="Choose key file"
+      title="Import key file"
+      subtitle="Pick the .json key you downloaded from Firebase"
       icon="key"
       disabled={saving.busy}
       onPress={() => {
-        saving.run(() => pickTextFile('application/json,.json'));
+        saving.run(() => pickTextFile('application/json,application/octet-stream'));
       }}
     />
   );
@@ -99,7 +137,8 @@ export function PasteKeyRow(): ReactNode {
   const saving = useSaving();
   return (
     <ActionRow
-      title="Paste key"
+      title="Paste instead"
+      subtitle="Use a key copied to the clipboard"
       icon="copy"
       disabled={saving.busy}
       onPress={() => {

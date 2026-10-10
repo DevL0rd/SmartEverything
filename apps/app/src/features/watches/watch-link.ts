@@ -19,14 +19,13 @@ import {
   type PhoneWatchStatus,
   type WatchEvent,
 } from '../../../modules/health-connect';
+import { takeOverWatchBridge } from '../../api/watches';
 import { ValueStore, useValue } from '../../design/external-store';
 import { rawErrorText } from '../../format/errors';
 import { useActiveProfile } from '../../store/people';
 import { useDevices } from '../../store/selectors';
 import { usePairedServer, type RelayServer } from '../profiles';
-import { useWatchRemote } from './watch-remote';
-import { useWatchUserSync } from './watch-user';
-import { useWatchWeatherPush } from './watch-weather';
+import { bridgeOf } from './watch-bridge';
 
 const log = new Logger('app.watch');
 
@@ -115,7 +114,11 @@ const NOTABLE = new Set([
   'failed',
   'sync_failed',
   'sync_file_unsupported',
+  'sync_file_capture',
   'sync_file_unreadable',
+  'sync_file_implausible',
+  'sync_sleep_empty',
+  'data_failed',
   'gave_up',
   'report_failed',
   'watch_not_recognised',
@@ -175,6 +178,14 @@ class WatchNotConnectedError extends Error {
   }
 }
 
+export async function takeOverBridge(deviceId: string): Promise<void> {
+  log.info('watch.bridge_take_over_requested', { device: deviceId });
+  await run('watch.bridge_take_over_failed', async () => {
+    const bridge = await takeOverWatchBridge(deviceId);
+    log.info('watch.bridge_taken_over', { device: deviceId, since: bridge.since });
+  });
+}
+
 export async function syncNow(): Promise<void> {
   log.info('watch.sync_requested');
   await run('watch.sync_failed', syncWatchNow);
@@ -208,7 +219,7 @@ function useWatchKey(): string {
         device.details['driver'] === 'xiaomi_watch' &&
         device.details['profileId'] === profileId,
     )
-    .map((device) => device.id)
+    .map((device) => `${device.id}:${bridgeOf(device)?.clientId ?? ''}`)
     .join(',');
 }
 
@@ -217,9 +228,6 @@ export function WatchLinkHost(): null {
   const url = paired?.url ?? null;
   const token = paired?.token ?? null;
   const watches = useWatchKey();
-  useWatchUserSync(isHealthConnectLinked && watches !== '');
-  useWatchRemote();
-  useWatchWeatherPush(isHealthConnectLinked && watches !== '');
   useEffect(() => {
     if (!isHealthConnectLinked || url === null || token === null) {
       return undefined;

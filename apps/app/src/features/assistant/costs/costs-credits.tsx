@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react';
 import { AppState, View } from 'react-native';
 import * as Linking from 'expo-linking';
-import {
-  OPENROUTER_TOP_UP_URL,
-  microsOfUsd,
-  type OpenRouterAccount,
-} from '@smarteverything/domain';
+import { OPENROUTER_TOP_UP_URL, type OpenRouterAccount } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { ProgressBar } from '../../../components/charts';
@@ -13,7 +9,7 @@ import { Figure } from '../../../components/figure';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { CardEmpty, CostCard } from './cost-card';
-import { costText } from '../data/cost';
+import { useMoney, type Money } from '../../region';
 import {
   useOpenRouterAccount,
   useOpenRouterActions,
@@ -22,11 +18,7 @@ import {
 
 const LOW_CREDITS_USD = 1;
 
-const SETTINGS_PAGE = 'assistant/openrouter';
-
-export function usd(dollars: number): string {
-  return costText(microsOfUsd(dollars));
-}
+const SETTINGS_PAGE = 'assistant';
 
 export interface Balance {
   readonly left: number;
@@ -46,8 +38,8 @@ export function isLow(balance: Balance): boolean {
   return balance.left < LOW_CREDITS_USD;
 }
 
-export function usedLine(balance: Balance): string {
-  return `Used ${usd(balance.used)} of ${usd(balance.total)}`;
+export function usedLine(balance: Balance, money: Money): string {
+  return `Used ${money.dollars(balance.used)} of ${money.dollars(balance.total)}`;
 }
 
 export const MANAGEMENT_KEY_NOTE = 'OpenRouter shows the balance only to management keys.';
@@ -63,6 +55,7 @@ export function topUp(recheck: () => void): void {
 }
 
 export function BalanceView({ account }: { readonly account: OpenRouterAccount }): ReactNode {
+  const money = useMoney();
   const balance = balanceOf(account);
   if (balance === null) {
     return (
@@ -75,7 +68,7 @@ export function BalanceView({ account }: { readonly account: OpenRouterAccount }
   return (
     <View className="gap-2">
       <View className="gap-0.5">
-        <Figure value={usd(balance.left)} size="l" tone={low ? 'warning' : 'default'} />
+        <Figure value={money.dollars(balance.left)} size="l" tone={low ? 'warning' : 'default'} />
         <Text variant="caption" tone={low ? 'warning' : 'variant'}>
           {low ? 'Running low' : 'Left to spend'}
         </Text>
@@ -83,10 +76,10 @@ export function BalanceView({ account }: { readonly account: OpenRouterAccount }
       <ProgressBar
         progress={balance.total > 0 ? balance.used / balance.total : 0}
         colour={low ? 'warning' : 'positive'}
-        label={usedLine(balance)}
+        label={usedLine(balance, money)}
       />
       <Text variant="caption" tone="faint" numberOfLines={1}>
-        {usedLine(balance)}
+        {usedLine(balance, money)}
       </Text>
     </View>
   );

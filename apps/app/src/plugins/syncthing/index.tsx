@@ -11,6 +11,7 @@ const isFileSync = (device: { readonly kind: string }): boolean => device.kind =
 export const syncthingAppPlugin: AppPlugin = {
   id: SYNCTHING_PLUGIN,
   widgets: SYNCTHING_WIDGETS,
+  deviceSettings: [],
   deviceSections: [
     {
       key: 'sync',

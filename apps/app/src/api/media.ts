@@ -1,6 +1,7 @@
 import {
   API_ENDPOINTS as E,
   HUB_COMMAND,
+  type CameraChange,
   type EventRow,
   type IceServer,
   type MediaSize,
@@ -82,9 +83,9 @@ export async function acknowledgeEvent(eventId: string): Promise<void> {
   log.info('event.acknowledged', { eventId });
 }
 
-export async function setRecordEvents(deviceId: string, record: boolean): Promise<void> {
-  await api().call(E.updateCamera, { params: { deviceId }, body: { record_events: record } });
-  log.info('camera.record_events_changed', { deviceId, record });
+export async function changeCamera(deviceId: string, change: CameraChange): Promise<void> {
+  await api().call(E.updateCamera, { params: { deviceId }, body: change });
+  log.info('camera.changed', { deviceId, ...change });
 }
 
 export async function recordClip(deviceId: string, seconds: number): Promise<void> {
