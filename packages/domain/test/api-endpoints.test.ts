@@ -238,7 +238,7 @@ const TABLE = {
     method: 'PATCH',
     path: '/api/cameras/:deviceId',
     access: 'member',
-    summary: 'Turn recording of events on or off for a camera',
+    summary: 'Change whether a camera records events and how readily it hears the AI’s name',
   },
   offerCamera: {
     method: 'POST',
@@ -619,6 +619,7 @@ const QUERIED: readonly Name[] = [
   'readBestDay',
   'readHealthRecords',
   'readHealthSightings',
+  'readTalk',
 ];
 
 describe('endpoint queries', () => {

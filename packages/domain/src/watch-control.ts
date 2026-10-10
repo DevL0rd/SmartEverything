@@ -86,6 +86,15 @@ export type WatchActionResult = z.infer<typeof WATCH_ACTION_RESULT>;
 
 export const WATCH_ACTION_ANSWER = WATCH_ACTION_RESULT.extend({ requestId: z.uuid() });
 
+export const WATCH_ACTION_PUSH = z.strictObject({
+  requestId: z.uuid(),
+  deviceId: z.uuid(),
+  action: WATCH_ACTION,
+  expiresAt: z.iso.datetime({ offset: true }).optional(),
+});
+
+export type WatchActionPush = z.infer<typeof WATCH_ACTION_PUSH>;
+
 export const WATCH_ACTION_NOTICE = z.strictObject({
   type: z.literal('watch_action'),
   requestId: z.uuid(),

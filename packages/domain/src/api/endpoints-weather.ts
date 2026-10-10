@@ -18,7 +18,7 @@ export const WEATHER_AREA_ENDPOINTS = {
     method: 'POST',
     path: '/api/weather/refresh',
     access: 'member',
-    summary: 'Fetch the weather now instead of waiting for the next hourly update',
+    summary: 'Fetch the weather now instead of waiting for the next 15-minute update',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,

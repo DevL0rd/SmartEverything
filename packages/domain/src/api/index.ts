@@ -167,6 +167,7 @@ export {
   FIREWALL_BACKENDS,
   FIREWALL_STATUS,
   OPENING_STATES,
+  rulePort,
   ruleSource,
 } from './firewall';
 export type {
@@ -176,10 +177,11 @@ export type {
   FirewallPlan,
   FirewallPlanBackend,
   FirewallStatus,
+  LowPorts,
   PortRule,
   UfwRule,
 } from './firewall';
-export type { MediaLink } from './endpoints-media';
+export type { CameraChange, MediaLink } from './endpoints-media';
 export { API_ENDPOINTS } from './endpoints';
 export type {
   ApiEndpoints,
@@ -212,9 +214,16 @@ export type {
   LiveMessage,
   LiveServerMessage,
   LiveStream,
+  PushCommandNotice,
   LiveTable,
   RowChange,
   RowChangeInput,
   RowOperation,
   TableRow,
 } from './live';
+
+export * from '../transcripts';
+
+export * from './endpoints-transcripts';
+
+export * from '../robot';

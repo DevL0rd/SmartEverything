@@ -280,10 +280,17 @@ describe('device request bodies', () => {
 });
 
 describe('media request bodies', () => {
-  it('updateCamera turns event recording on or off', () => {
+  it('updateCamera changes event recording or the wake sensitivity', () => {
     expectKept('updateCamera', { record_events: true });
     expectKept('updateCamera', { record_events: false });
-    expectRefused('updateCamera', [{}, { record_events: 'on' }, { record_events: true, x: 1 }]);
+    expectKept('updateCamera', { wake_sensitivity: 'high' });
+    expectKept('updateCamera', { record_events: false, wake_sensitivity: 'highest' });
+    expectRefused('updateCamera', [
+      {},
+      { record_events: 'on' },
+      { record_events: true, x: 1 },
+      { wake_sensitivity: 'loud' },
+    ]);
   });
 
   it('offerCamera takes an SDP offer of up to 200,000 characters', () => {

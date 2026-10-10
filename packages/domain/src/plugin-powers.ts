@@ -7,6 +7,13 @@ export function pluginPowers(manifest: PluginManifest): string[] {
   return [
     ...(permissions.inbound ? ['Post messages into your AI chats'] : []),
     ...(permissions.voice ? ['Start voice conversations with your AI'] : []),
+    ...(permissions.listen.length > 0
+      ? [
+          `Listen on your home network: ${permissions.listen
+            .map((listen) => `${listen.protocol.toUpperCase()} ${String(listen.port)}`)
+            .join(', ')}`,
+        ]
+      : []),
     ...(areas.length > 0 ? [`Use SmartEverything tools: ${areas.join(', ')}`] : []),
   ];
 }

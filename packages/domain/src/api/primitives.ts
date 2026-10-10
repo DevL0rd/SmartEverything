@@ -5,7 +5,7 @@ export const ID = z.uuid();
 
 export const MOMENT = z.iso.datetime({ offset: true });
 
-export const DAY = z.iso.date();
+export const DAY = z.iso.date('must be a day written YYYY-MM-DD, such as 2026-10-10');
 
 export const FLAG = z.boolean();
 

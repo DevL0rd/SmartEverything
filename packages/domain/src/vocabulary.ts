@@ -72,6 +72,8 @@ export {
   AMBIENT_BACKGROUNDS,
   APPEARANCE_PREF,
   APPEARANCE_PREF_CHOICES,
+  CALL_AUDIO_PREF,
+  CALL_FACINGS,
   CALL_RING_PREF,
   CAMERAS_PREF,
   CAMERA_AWAY_MODES,
@@ -79,6 +81,7 @@ export {
   CLIENT_PREF_KEYS,
   CORNER_STYLES,
   DENSITY_STYLES,
+  ECHO_TEST_OUTCOMES,
   HEALTH_SYNC_INTERVALS,
   HEALTH_SYNC_PREF,
   LAYOUT_SCOPES,
@@ -89,13 +92,16 @@ export {
   layoutScopeOf,
 } from './client-prefs';
 export type {
+  AiSpeechPref,
   AppearancePref,
+  CallAudioPref,
   CallRingPref,
   CamerasPref,
   ClientPrefDefinition,
   ClientPrefKey,
   ClientPrefRead,
   ClientPrefValue,
+  EchoTestOutcome,
   HealthSyncPref,
   LayoutScope,
 } from './client-prefs';

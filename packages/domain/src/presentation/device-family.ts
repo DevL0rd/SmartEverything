@@ -27,6 +27,7 @@ const KIND_FAMILIES: Readonly<Record<DeviceKind, DeviceFamily>> = {
   router: 'router',
   file_sync: 'file_sync',
   dns_filter: 'dns_filter',
+  robot: 'robot',
   computer: 'computer',
   phone: 'phone',
   appliance: 'generic',

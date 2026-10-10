@@ -9,6 +9,7 @@ import {
   POSITION,
   boundedText,
 } from './primitives';
+import { DEFAULT_WAKE_SENSITIVITY, WAKE_SENSITIVITY } from '../wake-sensitivity';
 
 export const CAMERA_ROW = z.strictObject({
   device_id: ID,
@@ -17,6 +18,8 @@ export const CAMERA_ROW = z.strictObject({
   physical_ptz: FLAG,
   two_way_audio: FLAG,
   record_events: FLAG,
+  wake_sensitivity: WAKE_SENSITIVITY.default(DEFAULT_WAKE_SENSITIVITY),
+  transcribe: FLAG.default(false),
 });
 
 export type CameraRow = z.infer<typeof CAMERA_ROW>;

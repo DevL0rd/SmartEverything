@@ -22,11 +22,18 @@ export interface SignalFieldSpec {
   readonly unit: string | null;
 }
 
+export interface SignalMatchSpec {
+  readonly key: string;
+  readonly label: string;
+  readonly values: readonly string[] | null;
+}
+
 export interface SignalKindSpec {
   readonly kind: string;
   readonly label: string;
   readonly subject: SignalSubject;
   readonly fields: 'capabilities' | readonly SignalFieldSpec[];
+  readonly match: readonly SignalMatchSpec[];
   readonly pulse: boolean;
 }
 
@@ -60,4 +67,78 @@ export function signalRegistered(
 ): boolean {
   const spec = kindSpecOf(sources, signal);
   return spec !== undefined && fieldAllowed(spec, signal.field);
+}
+
+export class UnknownSignalError extends Error {
+  override readonly name = 'UnknownSignalError';
+
+  constructor(
+    readonly source: string,
+    readonly kind: string,
+  ) {
+    super(`No signal "${kind}" from "${source}" exists in this home.`);
+  }
+}
+
+export class UnknownSignalMatchError extends Error {
+  override readonly name = 'UnknownSignalMatchError';
+
+  constructor(
+    readonly source: string,
+    readonly kind: string,
+    readonly key: string,
+    readonly allowed: readonly string[],
+  ) {
+    const known =
+      allowed.length === 0 ? 'it has no match keys' : `its keys are ${allowed.join(', ')}`;
+    super(`The signal "${kind}" from "${source}" has no match key "${key}"; ${known}.`);
+  }
+}
+
+export class UnknownSignalMatchValueError extends Error {
+  override readonly name = 'UnknownSignalMatchValueError';
+
+  constructor(
+    readonly source: string,
+    readonly kind: string,
+    readonly key: string,
+    readonly allowed: readonly string[],
+  ) {
+    super(
+      `The match key "${key}" of the signal "${kind}" from "${source}" takes only ${allowed.join(', ')}.`,
+    );
+  }
+}
+
+export type SignalTriggerError =
+  UnknownSignalError | UnknownSignalMatchError | UnknownSignalMatchValueError;
+
+export interface SignalTriggerShape {
+  readonly source: string;
+  readonly kind: string;
+  readonly match: Readonly<Record<string, unknown>>;
+}
+
+function matchError(spec: SignalKindSpec, trigger: SignalTriggerShape): SignalTriggerError | null {
+  for (const [key, value] of Object.entries(trigger.match)) {
+    const entry = spec.match.find((candidate) => candidate.key === key);
+    if (entry === undefined) {
+      const allowed = spec.match.map((candidate) => candidate.key);
+      return new UnknownSignalMatchError(trigger.source, trigger.kind, key, allowed);
+    }
+    if (entry.values !== null && !entry.values.some((allowed) => allowed === value)) {
+      return new UnknownSignalMatchValueError(trigger.source, trigger.kind, key, entry.values);
+    }
+  }
+  return null;
+}
+
+export function signalTriggerError(
+  sources: readonly SignalSourceSpec[],
+  trigger: SignalTriggerShape,
+): SignalTriggerError | null {
+  const spec = kindSpecOf(sources, trigger);
+  return spec === undefined
+    ? new UnknownSignalError(trigger.source, trigger.kind)
+    : matchError(spec, trigger);
 }

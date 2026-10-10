@@ -6,6 +6,7 @@ import type { JsonValue } from './values';
 export interface AdapterSink {
   readonly state: (update: StateUpdate) => void;
   readonly event: (event: DeviceEvent) => void;
+  readonly online: (externalId: string, online: boolean) => void;
   readonly devices: (devices: readonly DiscoveredDevice[]) => void;
   readonly failure: (failure: AdapterFailure) => void;
 }

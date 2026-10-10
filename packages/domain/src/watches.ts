@@ -53,6 +53,14 @@ export type PhoneWatch = z.infer<typeof PHONE_WATCH>;
 
 export const PHONE_WATCHES = z.strictObject({ watches: z.array(PHONE_WATCH) });
 
+export const WATCH_BRIDGE = z.strictObject({
+  clientId: ID,
+  clientName: z.string().min(1),
+  since: MOMENT,
+});
+
+export type WatchBridge = z.infer<typeof WATCH_BRIDGE>;
+
 export const WATCH_PHASES = [
   'paused',
   'waiting',
@@ -136,6 +144,7 @@ export const WATCH_RECORDS_SAVED = z.strictObject({
   saved: z.int().min(0),
   samples: z.int().min(0).default(0),
   unmatchedRoutes: z.array(MOMENT).default([]),
+  rejected: z.int().min(0).default(0),
 });
 
 export const WATCH_DAY_ROW = z.strictObject({

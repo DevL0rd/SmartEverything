@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { NO_BODY, endpoint } from './endpoint';
+import { PLUGIN_ID } from '../plugins';
 import { ID, MOMENT, NOTHING } from './primitives';
 
 export const FIREWALL_BACKENDS = [
@@ -29,6 +30,8 @@ export const FIREWALL_GROUP = 'SmartEverything';
 
 const FIREWALL_ADDRESS = z.union([z.ipv4(), z.ipv6()]);
 
+const FIREWALL_NETWORK = z.union([z.cidrv4(), z.cidrv6()]);
+
 const PORT = z.int().min(1).max(65_535);
 
 const PROGRAM_PATH = z
@@ -57,7 +60,19 @@ const DEVICE_RULE = z.strictObject({
   source: FIREWALL_ADDRESS,
 });
 
-const PORT_RULE = z.discriminatedUnion('purpose', [CAMERA_RULE, WEBRTC_RULE, DEVICE_RULE]);
+const PLUGIN_RULE = z.strictObject({
+  purpose: z.literal('plugin'),
+  protocol: z.enum(FIREWALL_PROTOCOLS),
+  port: PORT,
+  source: FIREWALL_NETWORK,
+});
+
+const PORT_RULE = z.discriminatedUnion('purpose', [
+  CAMERA_RULE,
+  WEBRTC_RULE,
+  DEVICE_RULE,
+  PLUGIN_RULE,
+]);
 
 export type PortRule = z.infer<typeof PORT_RULE>;
 
@@ -65,9 +80,14 @@ export function ruleSource(rule: PortRule): string | null {
   return rule.purpose === 'webrtc' ? null : rule.source;
 }
 
+export function rulePort(rule: PortRule): number | null {
+  return rule.purpose === 'webrtc' || rule.purpose === 'plugin' ? rule.port : null;
+}
+
 const FIREWALL_OPENING = z.strictObject({
   id: z.string().min(1).max(120),
   deviceIds: z.array(ID),
+  pluginIds: z.array(PLUGIN_ID).default([]),
   rule: PORT_RULE,
   state: z.enum(OPENING_STATES),
 });
@@ -78,19 +98,39 @@ const UFW_RULE = z.strictObject({ rule: PORT_RULE, prepend: z.boolean() });
 
 export type UfwRule = z.infer<typeof UFW_RULE>;
 
+export const UNPRIVILEGED_PORT_KEY = 'net.ipv4.ip_unprivileged_port_start';
+
+export const UNPRIVILEGED_PORT_FILE = '/etc/sysctl.d/60-smarteverything-ports.conf';
+
+const UNPRIVILEGED_PORT_START = PORT.nullable().default(null);
+
+const LOW_PORTS = z.strictObject({
+  start: PORT,
+  state: z.enum(['open', 'missing', 'unknown']),
+});
+
+export type LowPorts = z.infer<typeof LOW_PORTS>;
+
 const REVISION = z.string().regex(/^[0-9a-f]{16,64}$/);
 
 const FIREWALL_PLAN = z.discriminatedUnion('backend', [
   z.strictObject({
     backend: z.literal('ufw'),
     revision: REVISION,
-    rules: z.array(UFW_RULE).min(1),
+    rules: z.array(UFW_RULE),
+    unprivilegedPortStart: UNPRIVILEGED_PORT_START,
   }),
   z.strictObject({
     backend: z.literal('firewalld'),
     revision: REVISION,
     zone: ZONE_NAME,
-    rules: z.array(PORT_RULE).min(1),
+    rules: z.array(PORT_RULE),
+    unprivilegedPortStart: UNPRIVILEGED_PORT_START,
+  }),
+  z.strictObject({
+    backend: z.literal('sysctl'),
+    revision: REVISION,
+    unprivilegedPortStart: PORT,
   }),
   z.strictObject({
     backend: z.literal('windows'),
@@ -127,6 +167,7 @@ export const FIREWALL_STATUS = z.strictObject({
   openings: z.array(FIREWALL_OPENING),
   plan: FIREWALL_PLAN.nullable(),
   cameras: z.array(CAMERA_REACH),
+  lowPorts: LOW_PORTS.nullable().default(null),
 });
 
 export type FirewallStatus = z.infer<typeof FIREWALL_STATUS>;

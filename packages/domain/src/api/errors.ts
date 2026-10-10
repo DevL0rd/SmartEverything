@@ -21,6 +21,7 @@ export const API_ERROR_CODES = [
   'camera_privacy_on',
   'firewall_blocked',
   'camera_busy',
+  'claude_not_ready',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -46,6 +47,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   camera_privacy_on: 409,
   firewall_blocked: 503,
   camera_busy: 429,
+  claude_not_ready: 503,
 };
 
 export const API_ERROR = z.strictObject({

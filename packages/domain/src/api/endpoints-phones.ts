@@ -14,7 +14,8 @@ export const PHONE_AREA_ENDPOINTS = {
     method: 'POST',
     path: '/api/nodes/self/report',
     access: 'member',
-    summary: 'What this phone currently sees: battery, network, sound, media, screen time and its context',
+    summary:
+      'What this phone currently sees: battery, network, sound, media, screen time and its context',
     params: NOTHING,
     query: NOTHING,
     body: PHONE_REPORT,
@@ -25,7 +26,7 @@ export const PHONE_AREA_ENDPOINTS = {
     path: '/api/phones/:deviceId/actions',
     access: 'member',
     summary:
-      'Ask a phone to ring, change a volume, the ringer or Do Not Disturb, control what it plays, show a link to open, or send a fresh report; waits for the phone to answer',
+      'Ask a phone to ring until stopped (find my phone: maximum volume even on silent, with a Stop notification; ring on:false stops it), turn its flashlight on, off or toggle, change a volume, the ringer or Do Not Disturb, control what it plays, show a link to open, or send a fresh report; waits for the phone to answer',
     params: z.strictObject({ deviceId: ID }),
     query: NOTHING,
     body: PHONE_ACTION,

@@ -72,6 +72,7 @@ export const DEVICE_FAMILIES = [
   'router',
   'file_sync',
   'dns_filter',
+  'robot',
   'generic',
 ] as const;
 

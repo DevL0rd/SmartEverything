@@ -8,7 +8,7 @@ const KEY = z.string().trim().min(1).max(200);
 
 export const MICROS_PER_USD = 1_000_000;
 
-export const USAGE_SOURCES = ['openrouter', 'gemini', 'gemini_live', 'claude', 'codex'] as const;
+export const USAGE_SOURCES = ['openrouter', 'gemini', 'gemini_live'] as const;
 
 export type UsageSource = (typeof USAGE_SOURCES)[number];
 
@@ -18,11 +18,7 @@ export const USAGE_SOURCE_LABELS: Readonly<Record<UsageSource, string>> = {
   openrouter: 'OpenRouter',
   gemini: 'Gemini',
   gemini_live: 'Gemini Live',
-  claude: 'Claude',
-  codex: 'Codex',
 };
-
-export const PLAN_SOURCES: ReadonlySet<UsageSource> = new Set(['claude', 'codex']);
 
 export const USAGE_WORKS = [
   'chat',
@@ -34,7 +30,7 @@ export const USAGE_WORKS = [
   'video',
   'transcribe',
   'embed',
-  'worker',
+  'speak',
 ] as const;
 
 export type UsageWork = (typeof USAGE_WORKS)[number];
@@ -43,7 +39,7 @@ export const USAGE_WORK = z.enum(USAGE_WORKS);
 
 export const USAGE_WORK_LABELS: Readonly<Record<UsageWork, string>> = {
   chat: 'Chat',
-  voice: 'Voice',
+  voice: 'Voice calls',
   subagent: 'Helpers',
   wake: 'Wake-ups',
   routine: 'Routines',
@@ -51,10 +47,10 @@ export const USAGE_WORK_LABELS: Readonly<Record<UsageWork, string>> = {
   video: 'Video',
   transcribe: 'Transcripts',
   embed: 'Search index',
-  worker: 'Claude and Codex',
+  speak: 'Spoken lines',
 };
 
-export const COST_STATES = ['estimated', 'reported', 'reconciled', 'plan'] as const;
+export const COST_STATES = ['estimated', 'reported', 'reconciled'] as const;
 
 export type CostState = (typeof COST_STATES)[number];
 
@@ -98,59 +94,41 @@ const USAGE_LINKS = {
   generation_id: KEY.nullable(),
 };
 
-function planIsFree(row: {
-  source: UsageSource;
-  cost_state: CostState;
-  cost_micros: number;
-}): boolean {
-  const plan = PLAN_SOURCES.has(row.source);
-  return plan ? row.cost_state === 'plan' && row.cost_micros === 0 : row.cost_state !== 'plan';
-}
-
-const PLAN_RULE = {
-  message:
-    'Claude and Codex usage is on a plan (cost 0, state plan); every other source has a price',
-};
-
-export const AI_USAGE_ROW = z
-  .strictObject({
-    id: ID,
-    at: MOMENT,
-    ...USAGE_LINKS,
-    ...USAGE_METER,
-    cost_micros: COUNT,
-    cost_state: COST_STATE,
-    meta: z.record(z.string(), JSON_VALUE),
-  })
-  .refine(planIsFree, PLAN_RULE);
+export const AI_USAGE_ROW = z.strictObject({
+  id: ID,
+  at: MOMENT,
+  ...USAGE_LINKS,
+  ...USAGE_METER,
+  cost_micros: COUNT,
+  cost_state: COST_STATE,
+  meta: z.record(z.string(), JSON_VALUE),
+});
 
 export type AiUsageRow = z.output<typeof AI_USAGE_ROW>;
 
-export const USAGE_ENTRY = z
-  .strictObject({
-    at: MOMENT.optional(),
-    ...USAGE_LINKS,
-    client_id: USAGE_LINKS.client_id.default(null),
-    chat_id: USAGE_LINKS.chat_id.default(null),
-    message_id: USAGE_LINKS.message_id.default(null),
-    call_id: USAGE_LINKS.call_id.default(null),
-    plugin_id: USAGE_LINKS.plugin_id.default(null),
-    worker_id: USAGE_LINKS.worker_id.default(null),
-    model_id: USAGE_LINKS.model_id.default(null),
-    generation_id: USAGE_LINKS.generation_id.default(null),
-    tokens_in: COUNT.default(0),
-    tokens_out: COUNT.default(0),
-    tokens_cached: COUNT.default(0),
-    tokens_reasoning: COUNT.default(0),
-    audio_in_ms: COUNT.default(0),
-    audio_out_ms: COUNT.default(0),
-    images: COUNT.default(0),
-    video_ms: COUNT.default(0),
-    cost_micros: COUNT,
-    cost_state: COST_STATE,
-    meta: z.record(z.string(), JSON_VALUE).default({}),
-  })
-  .refine(planIsFree, PLAN_RULE);
+export const USAGE_ENTRY = z.strictObject({
+  at: MOMENT.optional(),
+  ...USAGE_LINKS,
+  client_id: USAGE_LINKS.client_id.default(null),
+  chat_id: USAGE_LINKS.chat_id.default(null),
+  message_id: USAGE_LINKS.message_id.default(null),
+  call_id: USAGE_LINKS.call_id.default(null),
+  plugin_id: USAGE_LINKS.plugin_id.default(null),
+  worker_id: USAGE_LINKS.worker_id.default(null),
+  model_id: USAGE_LINKS.model_id.default(null),
+  generation_id: USAGE_LINKS.generation_id.default(null),
+  tokens_in: COUNT.default(0),
+  tokens_out: COUNT.default(0),
+  tokens_cached: COUNT.default(0),
+  tokens_reasoning: COUNT.default(0),
+  audio_in_ms: COUNT.default(0),
+  audio_out_ms: COUNT.default(0),
+  images: COUNT.default(0),
+  video_ms: COUNT.default(0),
+  cost_micros: COUNT,
+  cost_state: COST_STATE,
+  meta: z.record(z.string(), JSON_VALUE).default({}),
+});
 
 export type UsageEntry = z.input<typeof USAGE_ENTRY>;
 

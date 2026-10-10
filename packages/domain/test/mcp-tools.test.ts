@@ -49,12 +49,7 @@ describe('the published MCP tool catalogue', () => {
     expect(usage?.area).toBe('assistant');
     expect(MCP_ROUTES.get('read_usage')).toEqual({
       key: 'view',
-      parts: {
-        totals: 'usage_totals',
-        series: 'usage_series',
-        ledger: 'usage_ledger',
-        plan: 'assistant_usage',
-      },
+      parts: { totals: 'usage_totals', series: 'usage_series', ledger: 'usage_ledger' },
     });
   });
 

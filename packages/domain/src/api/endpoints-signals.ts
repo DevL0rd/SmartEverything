@@ -11,6 +11,12 @@ const SIGNAL_FIELD_INFO = z.strictObject({
   unit: z.string().nullable(),
 });
 
+const SIGNAL_MATCH_INFO = z.strictObject({
+  key: z.string(),
+  label: z.string(),
+  values: z.array(z.string()).nullable(),
+});
+
 export const SIGNAL_SOURCE_INFO = z.strictObject({
   source: z.string(),
   label: z.string(),
@@ -20,6 +26,10 @@ export const SIGNAL_SOURCE_INFO = z.strictObject({
       label: z.string(),
       subject: z.enum(SIGNAL_SUBJECTS),
       fields: z.union([z.literal('capabilities'), z.array(SIGNAL_FIELD_INFO)]),
+      match: z
+        .array(SIGNAL_MATCH_INFO)
+        .optional()
+        .describe('The keys a trigger’s match may use, with their values when they are fixed'),
       pulse: z.boolean(),
     }),
   ),
@@ -41,7 +51,7 @@ export const SIGNAL_ENDPOINTS = {
     path: '/api/signals/kinds',
     access: 'member',
     summary:
-      'Every kind of signal in the home (device values, events, weather, health, AI, scheduled actions…) with its fields and units, for “When something happens” automation triggers',
+      'Every kind of signal in the home (device values, events, weather, health, AI, scheduled actions…) with its fields, units and match keys, for “When something happens” automation triggers',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,

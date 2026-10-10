@@ -78,13 +78,21 @@ const MOMENT = z.iso.datetime({ offset: true });
 const ZONE_OFFSET = z.int().min(-64_800).max(64_800).nullable();
 const ID = z.uuid();
 
+export const MULTIPLIER_MIN = 0.1;
+export const MULTIPLIER_MAX = 20;
+
+export const FOOD_MULTIPLIER = z.number().min(MULTIPLIER_MIN).max(MULTIPLIER_MAX);
+
+const LARGEST_PORTION = 10_000 * MULTIPLIER_MAX;
+
 export const FOOD_PORTION = z.strictObject({
   foodId: ID.nullable(),
   name: z.string().trim().min(1).max(120),
-  amount: z.number().positive().max(10_000),
+  amount: z.number().positive().max(LARGEST_PORTION),
   unit: z.enum(PORTION_UNITS),
   label: z.string().trim().max(60),
-  waterMl: z.number().min(0).max(10_000),
+  waterMl: z.number().min(0).max(LARGEST_PORTION),
+  multiplier: FOOD_MULTIPLIER.optional(),
 });
 
 export type FoodPortion = z.infer<typeof FOOD_PORTION>;

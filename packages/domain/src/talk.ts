@@ -70,6 +70,7 @@ export const TALK_CHANNEL_ROW = z.strictObject({
   icon: TALK_ICON,
   priority: TALK_PRIORITY,
   keep_hours: TALK_KEEP,
+  ai_listens: z.boolean().default(true),
   position: z.int().min(0).max(1_000_000),
   created_at: MOMENT,
   updated_at: MOMENT,
@@ -118,6 +119,7 @@ export const TALK_MESSAGE_ROW = z.strictObject({
   duration_ms: COUNT.nullable(),
   bytes: COUNT,
   storage_path: z.string().min(1).nullable(),
+  transcript: z.string().min(1).nullable().default(null),
 });
 
 export type TalkMessageRow = z.infer<typeof TALK_MESSAGE_ROW>;
@@ -149,6 +151,7 @@ export type TalkFloorsNotice = z.infer<typeof TALK_FLOORS_NOTICE>;
 export const TALK_STATUS = z.strictObject({
   channels: z.array(TALK_CHANNEL_ROW),
   members: z.array(TALK_MEMBER_ROW),
+  messages: z.array(TALK_MESSAGE_ROW),
   ...TALK_PRESENCE.shape,
 });
 

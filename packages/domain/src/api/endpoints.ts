@@ -9,6 +9,9 @@ import { AI_BUDGET_ENDPOINTS } from './endpoints-ai-budget';
 import { AI_MODEL_ENDPOINTS } from './endpoints-ai-models';
 import { ACCESS_ENDPOINTS } from './endpoints-access';
 import { AUTOMATION_AREA_ENDPOINTS } from './endpoints-automation';
+import { CALL_ENDPOINTS } from './endpoints-calls';
+import { CLAUDE_ENDPOINTS } from './endpoints-claude';
+import { CLIENT_FAILURE_ENDPOINTS } from './endpoints-client-failures';
 import { COMPUTER_ENDPOINTS } from './endpoints-computers';
 import { COMPUTER_SESSION_ENDPOINTS } from './endpoints-computer-session';
 import { DEVICE_AREA_ENDPOINTS } from './endpoints-devices';
@@ -22,16 +25,19 @@ import { SNAPSHOT_ENDPOINTS } from './snapshot';
 import { TALK_AREA_ENDPOINTS } from './endpoints-talk';
 import { WATCH_AREA_ENDPOINTS } from './endpoints-watches';
 import { WEATHER_AREA_ENDPOINTS } from './endpoints-weather';
+import { EXCHANGE_RATES_AREA_ENDPOINTS } from './endpoints-exchange-rates';
 import { PLACE_AREA_ENDPOINTS } from './endpoints-places';
 import { SCHEDULE_ENDPOINTS } from './endpoints-schedules';
 import { PLUGIN_ENDPOINTS } from './endpoints-plugins';
 import { PHONE_AREA_ENDPOINTS } from './endpoints-phones';
 import { SIGNAL_ENDPOINTS } from './endpoints-signals';
 import { REACH_ENDPOINTS } from './endpoints-reach';
+import { TRANSCRIPT_ENDPOINTS } from './endpoints-transcripts';
 
 export const API_ENDPOINTS = {
   ...AI_MODEL_ENDPOINTS,
   ...ACCESS_ENDPOINTS,
+  ...CLIENT_FAILURE_ENDPOINTS,
   ...SNAPSHOT_ENDPOINTS,
   ...SETTINGS_AREA_ENDPOINTS,
   ...DEVICE_AREA_ENDPOINTS,
@@ -45,18 +51,22 @@ export const API_ENDPOINTS = {
   ...WATCH_AREA_ENDPOINTS,
   ...TALK_AREA_ENDPOINTS,
   ...WEATHER_AREA_ENDPOINTS,
+  ...EXCHANGE_RATES_AREA_ENDPOINTS,
   ...PLACE_AREA_ENDPOINTS,
   ...SCHEDULE_ENDPOINTS,
   ...PLUGIN_ENDPOINTS,
   ...PHONE_AREA_ENDPOINTS,
   ...SIGNAL_ENDPOINTS,
   ...REACH_ENDPOINTS,
+  ...CALL_ENDPOINTS,
+  ...TRANSCRIPT_ENDPOINTS,
   ...ASSISTANT_AREA_ENDPOINTS,
   ...AI_CHAT_AREA_ENDPOINTS,
   ...AI_COORDINATION_ENDPOINTS,
   ...ASSISTANT_VOICE_ENDPOINTS,
   ...AI_USAGE_ENDPOINTS,
   ...AI_BUDGET_ENDPOINTS,
+  ...CLAUDE_ENDPOINTS,
   ...COMPUTER_ENDPOINTS,
   ...COMPUTER_SESSION_ENDPOINTS,
 } as const;

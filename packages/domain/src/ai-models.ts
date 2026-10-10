@@ -7,7 +7,7 @@ export const AI_EFFORT = z.enum(AI_EFFORTS);
 
 export type AiEffort = z.infer<typeof AI_EFFORT>;
 
-export const AI_MODEL_KINDS = ['chat', 'image', 'video', 'embed', 'transcribe', 'live'] as const;
+export const AI_MODEL_KINDS = ['chat', 'image', 'video', 'embed', 'transcribe', 'live', 'speak'] as const;
 
 export const AI_MODEL_KIND = z.enum(AI_MODEL_KINDS);
 
@@ -141,7 +141,7 @@ export const OPENROUTER_SETTINGS = z.strictObject({
 export type OpenRouterSettings = z.infer<typeof OPENROUTER_SETTINGS>;
 
 export const OPENROUTER_DEFAULTS: OpenRouterSettings = {
-  default_model: AUTO_LATEST_GEMINI_FLASH,
+  default_model: 'openai/gpt-6-luna',
   default_effort: DEFAULT_AI_EFFORT,
   google_prices: {},
 };

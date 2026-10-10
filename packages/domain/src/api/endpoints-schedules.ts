@@ -11,21 +11,10 @@ import { DONE, ID, NOTHING } from './primitives';
 
 const SCHEDULE_PARAMS = z.strictObject({ scheduleId: ID });
 
-const CONFIRM = z
-  .boolean()
-  .default(false)
-  .describe('true once the person has confirmed the steps that need it');
-
-export const SCHEDULE_NEEDS_CONFIRMATION = z.strictObject({
-  outcome: z.literal('needs_confirmation'),
-  reason: z.string(),
-  steps: z.array(z.strictObject({ index: z.int().min(0), line: z.string() })).min(1),
+export const SCHEDULE_SAVED = z.strictObject({
+  outcome: z.literal('scheduled'),
+  schedule: SCHEDULE_ROW,
 });
-
-export const SCHEDULE_SAVED = z.discriminatedUnion('outcome', [
-  z.strictObject({ outcome: z.literal('scheduled'), schedule: SCHEDULE_ROW }),
-  SCHEDULE_NEEDS_CONFIRMATION,
-]);
 
 export type ScheduleSaved = z.infer<typeof SCHEDULE_SAVED>;
 
@@ -52,14 +41,13 @@ export const SCHEDULE_ENDPOINTS = {
     method: 'POST',
     path: '/api/scheduled',
     access: 'member',
-    summary: `Schedule one-off steps for later (“turn the fan off in 4 minutes”); ${TIMING_TEXT}; ${STEPS_TEXT}. Steps that need confirmation are listed back until confirm is true`,
+    summary: `Schedule one-off steps for later (“turn the fan off in 4 minutes”); ${TIMING_TEXT}; ${STEPS_TEXT}`,
     params: NOTHING,
     query: NOTHING,
     body: z.strictObject({
       label: SCHEDULE_LABEL.nullable().default(null),
       timing: SCHEDULE_TIMING,
       steps: SCHEDULE_STEPS,
-      confirm: CONFIRM,
     }),
     response: SCHEDULE_SAVED,
   }),
@@ -75,7 +63,6 @@ export const SCHEDULE_ENDPOINTS = {
         label: SCHEDULE_LABEL.nullable().optional(),
         timing: SCHEDULE_TIMING.optional(),
         steps: SCHEDULE_STEPS.optional(),
-        confirm: CONFIRM,
       })
       .refine(
         (change) =>

@@ -2,26 +2,29 @@ import { z } from 'zod';
 import { WIDGET_SIZES } from './board-layout';
 import { MCP_TOOL_AREAS } from './mcp/areas';
 import type { SignalSourceSpec } from './signal-sources/spec';
+import {
+  PLUGIN_ID,
+  PLUGIN_JSON_OBJECT as JSON_OBJECT,
+  PLUGIN_KEY as KEY,
+  PLUGIN_TITLE as TITLE,
+  PLUGIN_TOOL as TOOL,
+  type PluginId,
+} from './plugin-parts';
+import { PLUGIN_SETTING } from './plugin-settings';
 import { JSON_VALUE } from './values';
 
 const MOMENT = z.iso.datetime({ offset: true });
 
-export const PLUGIN_ID = z
-  .string()
-  .regex(/^[a-z][a-z0-9-]{1,31}$/, 'a lower-case plugin id (letters, digits, dashes)');
-
-export type PluginId = z.infer<typeof PLUGIN_ID>;
+export * from './plugin-options';
+export * from './plugin-people';
+export * from './plugin-settings';
+export { PLUGIN_ID, type PluginId };
 
 export const PLUGIN_TOOL_SEPARATOR = '__';
 
 export function pluginToolName(pluginId: PluginId, tool: string): string {
   return `${pluginId}${PLUGIN_TOOL_SEPARATOR}${tool}`;
 }
-
-const KEY = z.string().regex(/^[a-z][a-z0-9_.-]{0,79}$/, 'a lower-case key');
-const TITLE = z.string().trim().min(1).max(80);
-const TOOL = z.string().min(1).max(120);
-const JSON_OBJECT = z.record(z.string(), JSON_VALUE);
 
 export const PLUGIN_MCP = z.discriminatedUnion('transport', [
   z.strictObject({
@@ -42,12 +45,23 @@ export type PluginMcp = z.output<typeof PLUGIN_MCP>;
 
 export const PLUGIN_FILE_ACCESS = ['own', 'none'] as const;
 
+export const PLUGIN_LISTEN_PROTOCOLS = ['tcp', 'udp'] as const;
+
+export const PLUGIN_LISTEN = z.strictObject({
+  protocol: z.enum(PLUGIN_LISTEN_PROTOCOLS),
+  port: z.int().min(1).max(65_535),
+  purpose: TITLE,
+});
+
+export type PluginListen = z.output<typeof PLUGIN_LISTEN>;
+
 export const PLUGIN_PERMISSIONS = z.strictObject({
   seAreas: z.array(z.enum(MCP_TOOL_AREAS)).max(MCP_TOOL_AREAS.length).default([]),
   inbound: z.boolean().default(false),
   voice: z.boolean().default(false),
   network: z.boolean().default(true),
   files: z.enum(PLUGIN_FILE_ACCESS).default('own'),
+  listen: z.array(PLUGIN_LISTEN).max(8).default([]),
 });
 
 export type PluginPermissions = z.output<typeof PLUGIN_PERMISSIONS>;
@@ -118,43 +132,6 @@ export const WIDGET_SPEC = z.strictObject({
 
 export type WidgetSpec = z.output<typeof WIDGET_SPEC>;
 
-const SETTING_BASE = {
-  title: TITLE,
-  description: z.string().max(300).nullable().default(null),
-};
-
-export const PLUGIN_SETTING = z.discriminatedUnion('type', [
-  z.strictObject({
-    type: z.literal('string'),
-    ...SETTING_BASE,
-    secret: z.boolean().default(false),
-    default: z.string().max(2000).nullable().default(null),
-  }),
-  z.strictObject({
-    type: z.literal('number'),
-    ...SETTING_BASE,
-    minimum: z.number().nullable().default(null),
-    maximum: z.number().nullable().default(null),
-    default: z.number().nullable().default(null),
-  }),
-  z.strictObject({
-    type: z.literal('boolean'),
-    ...SETTING_BASE,
-    default: z.boolean().default(false),
-  }),
-  z.strictObject({
-    type: z.literal('enum'),
-    ...SETTING_BASE,
-    options: z
-      .array(z.strictObject({ value: KEY, label: TITLE }))
-      .min(1)
-      .max(30),
-    default: KEY.nullable().default(null),
-  }),
-]);
-
-export type PluginSetting = z.output<typeof PLUGIN_SETTING>;
-
 export const PLUGIN_COMMAND = z.strictObject({ name: KEY, title: TITLE, tool: TOOL });
 
 export const PLUGIN_SEARCH_MODES = ['push', 'query'] as const;
@@ -166,6 +143,7 @@ export const PLUGIN_CONTRIBUTIONS = z.strictObject({
   events: z.array(PLUGIN_EVENT_KIND).max(50).default([]),
   search: z.enum(PLUGIN_SEARCH_MODES).nullable().default(null),
   settings: z.record(KEY, PLUGIN_SETTING).default({}),
+  peoplePicker: KEY.nullable().default(null),
   commands: z.array(PLUGIN_COMMAND).max(20).default([]),
   deviceFamilies: z.array(KEY).max(20).default([]),
 });
@@ -238,6 +216,14 @@ export const INBOUND_ATTACHMENT = z.strictObject({
   ]),
 });
 
+export const PLUGIN_REPLY_FILE = z.strictObject({
+  path: z.string().min(1).max(1000),
+  name: z.string().min(1).max(200),
+  mime: z.string().min(1).max(100),
+});
+
+export type PluginReplyFile = z.output<typeof PLUGIN_REPLY_FILE>;
+
 export const INBOUND_MESSAGE = z.strictObject({
   eventId: z.string().min(1).max(200),
   conversation: z.strictObject({ key: z.string().min(1).max(200), title: TITLE }),
@@ -253,6 +239,8 @@ export const INBOUND_MESSAGE = z.strictObject({
     eventIdArg: KEY.default('eventId'),
     textArg: KEY.default('text'),
     idempotencyArg: KEY.nullable().default(null),
+    progressArg: KEY.nullable().default(null),
+    filesArg: KEY.nullable().default(null),
   }),
   rule: z.string().max(2000).nullable().default(null),
   voice: z.boolean().default(false),
@@ -338,6 +326,7 @@ export function pluginSignalSpec(manifest: PluginManifest): SignalSourceSpec {
       label: event.title,
       subject: 'none',
       fields: [],
+      match: Object.keys(event.fields).map((key) => ({ key, label: key, values: null })),
       pulse: true,
     })),
   };

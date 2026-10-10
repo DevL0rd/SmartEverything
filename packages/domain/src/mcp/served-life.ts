@@ -6,7 +6,7 @@ export const SERVED_LIFE = [
     'health',
     'read',
     'Read health',
-    'Health data of a person: daily summary, daily metrics, newest records, records in a range, what they logged, the record types, or watch stress days.',
+    'Health data of a person (profileId from list_people; the owner when left out): daily summary with the day’s totals (energy_in is the calories eaten), daily metrics, newest records, records in a range, what they logged, the record types, or watch stress days.',
     {
       key: 'view',
       parts: {
@@ -55,7 +55,7 @@ export const SERVED_LIFE = [
     'nutrition',
     'control',
     'Log food or water',
-    'Logs a portion of food or a drink of water for a person.',
+    'Logs a portion of food (foodId or barcode from find_food, or a new food) or a drink of water for a person (profileId from list_people).',
     { key: 'what', parts: { food: 'log_food', water: 'log_water' } },
   ],
   [
@@ -95,7 +95,7 @@ export const SERVED_LIFE = [
     'settings',
     'read',
     'Get settings',
-    'Settings of one area: app and home settings, the firewall, the assistant, AI defaults or the AI budget.',
+    'Settings of one area: app and home settings, the firewall, the assistant, AI defaults, the AI budget or the exchange rates behind the currency costs are shown in. Read the area before changing it with update_settings.',
     {
       key: 'area',
       parts: {
@@ -104,6 +104,7 @@ export const SERVED_LIFE = [
         assistant: 'read_assistant',
         ai_defaults: 'get_ai_defaults',
         budget: 'read_ai_budget',
+        exchange_rates: 'read_exchange_rates',
       },
     },
   ],
@@ -112,7 +113,7 @@ export const SERVED_LIFE = [
     'settings',
     'control',
     'Update settings',
-    'Changes settings of one area: an app preference, the home, its location, the assistant and its responder, AI defaults, the AI budget or the switched-off tools; also re-detects the firewall, fetches the weather now or downloads the model list.',
+    'Changes settings of one area (get_settings shows the current values and allowed ones): an app preference, the home, its location, the assistant, AI defaults, the AI budget or the switched-off tools; also re-detects the firewall, fetches the weather or the exchange rates now or downloads the model list.',
     {
       key: 'area',
       parts: {
@@ -120,12 +121,12 @@ export const SERVED_LIFE = [
         home: 'update_home',
         location: 'set_home_location_by_name',
         assistant: 'update_assistant_settings',
-        responder: 'set_assistant_responder',
         ai_defaults: 'set_ai_defaults',
         budget: 'set_ai_budget',
         tools: 'update_mcp_tools',
         firewall: 'check_firewall',
         weather: 'refresh_weather',
+        exchange_rates: 'refresh_exchange_rates',
         models: 'refresh_models',
       },
     },
@@ -135,7 +136,7 @@ export const SERVED_LIFE = [
     'talk',
     'read',
     'Read walkie-talkie',
-    'Walkie-talkie channels with members and who is talking, or recent messages.',
+    "Walkie-talkie channels with members, who is talking and each channel's latest messages with what was said (transcripts; messages sets how many per channel), or older messages with a time filter.",
     { key: 'view', parts: { channels: 'read_talk', messages: 'list_talk_messages' } },
   ],
   [
@@ -143,7 +144,7 @@ export const SERVED_LIFE = [
     'talk',
     'control',
     'Edit a walkie-talkie channel',
-    'Creates, changes or deletes a channel, or adds, changes or removes a member.',
+    'Creates, changes or deletes a channel (including whether the AI listens to it), or adds, changes or removes a member.',
     {
       key: 'action',
       parts: {

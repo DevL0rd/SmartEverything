@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AI_OUTREACH_ROW,
+  AI_SPEECH_NOTICE,
   OUTREACH_REASON_MAX,
   REACH_PRESENCE,
   REACH_SETTINGS,
@@ -38,7 +39,9 @@ export const REACH_TARGET = z
   .discriminatedUnion('kind', [
     z.strictObject({
       kind: z.literal('device'),
-      deviceId: ID.describe('A camera device id, or an app clientId from read_presence'),
+      deviceId: ID.describe(
+        'A camera or plugin speaker device id, or an app clientId from read_presence',
+      ),
     }),
     z.strictObject({
       kind: z.literal('channel'),
@@ -116,6 +119,16 @@ export const REACH_ENDPOINTS = {
     query: NOTHING,
     body: SPEAK,
     response: AI_OUTREACH_ROW,
+  }),
+  readAiSpeech: endpoint({
+    method: 'POST',
+    path: '/api/reach/speech/:speechId/claim',
+    access: 'member',
+    summary: 'A phone claims the speech the AI sent it by push, once, then plays it',
+    params: z.strictObject({ speechId: ID }),
+    query: NOTHING,
+    body: NOTHING,
+    response: AI_SPEECH_NOTICE,
   }),
   startConversation: endpoint({
     method: 'POST',

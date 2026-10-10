@@ -1,4 +1,5 @@
 import type { McpToolAccess, McpToolArea, McpToolSummary } from './areas';
+import { SHOW_WIDGETS_TEXT } from '../chat-widgets';
 import type { McpCoreToolName } from './names';
 
 type Entry = readonly [
@@ -155,14 +156,14 @@ const ENTRIES: readonly Entry[] = [
     'nutrition',
     'control',
     'Log food or a drink',
-    'Log a portion of a saved food, a barcode product or nutrition facts given inline, at a meal, for one person. Drinks also count toward water. Returns the entry.',
+    'Log a portion of a saved food, a barcode product or nutrition facts given inline, at a meal, for one person. A multiplier scales the portion, for example 0.5 for half. The time may be in the past. Drinks also count toward water. Returns the entry.',
   ],
   [
     'log_water',
     'nutrition',
     'control',
     'Log water',
-    'Log a drink of water in millilitres (or a number of glasses) for one person.',
+    'Log a drink of water in millilitres (or a number of glasses) for one person, now or at a past time. A multiplier scales the amount, for example 0.5 for half.',
   ],
   [
     'find_food',
@@ -186,6 +187,13 @@ const ENTRIES: readonly Entry[] = [
     'Take a live picture from every camera, or the chosen ones, and return each as an image with camera name and room. Cameras with privacy on, offline or blocked report why instead.',
   ],
   [
+    'see',
+    'cameras',
+    'read',
+    'Look at one thing',
+    'Takes one still picture now of a home camera (by name or id), a computer’s whole screen, or the window in front on a computer, and returns it as an image. Phone cameras and screens, and any other window, can only be looked at inside a voice call from the app. Needs the computer’s screenshots permission.',
+  ],
+  [
     'record_camera_clip',
     'cameras',
     'control',
@@ -204,7 +212,7 @@ const ENTRIES: readonly Entry[] = [
     'settings',
     'control',
     'Change a preference',
-    'Change an app preference (appearance, call ring, cameras, health sync, nutrition goals) for one person or one paired app. Only the fields given change.',
+    'Change an app preference (appearance, call ring, cameras, health sync, nutrition goals, region for currency) for one person or one paired app. Only the fields given change.',
   ],
   [
     'list_people',
@@ -242,25 +250,19 @@ const ENTRIES: readonly Entry[] = [
     'Set where the home is from a town or city name: the best match (or the match at `choice`) becomes the home’s location, which drives weather, sunrise and sunset. Also sets the home’s time zone unless `setTimeZone` is false. Returns the place that was set.',
   ],
   [
-    'assistant_reply',
-    'assistant',
-    'control',
-    'Answer an assistant request',
-    'Answer a SmartEverything chat or voice request by its eventId. Without progress it is a reply in the person’s chat (spoken for voice requests); with progress: true it is a short status line under their message. Files as { path } (a file in the temp folder, from this computer) or { uploadId } (from the upload operations).',
-  ],
-  [
     'assistant_post',
     'assistant',
     'control',
     'Post to the assistant chat',
     'Post a message, with optional files, to someone’s SmartEverything AI chat at any time, such as an update when work finishes; their phone gets a notification. The owner’s chat when profileId is left out.',
   ],
+  ['show_widgets', 'assistant', 'control', 'Show widgets', SHOW_WIDGETS_TEXT],
   [
     'read_assistant_attachment',
     'assistant',
     'read',
     'Read an assistant attachment',
-    'One file someone attached in the SmartEverything AI chat: images come back as images, text files as text, anything else as base64 (up to 4 MB).',
+    'One file someone attached in the SmartEverything AI chat: images come back as images (with their stored description), text files as text, audio and video as their transcript (made once and kept), anything else as base64 (up to 4 MB). The chat history shows older attachments as transcripts, so call this to look at or hear one in full.',
   ],
   [
     'usage_totals',
@@ -316,21 +318,21 @@ const ENTRIES: readonly Entry[] = [
     'assistant',
     'control',
     'Set AI defaults',
-    'Choose the model and thinking level new chats start with: auto:latest-gemini-flash follows each new Gemini Flash, or pick a chat model id from list_models. Owner only.',
+    'Choose the model and thinking level new chats start with: auto:latest-gemini-flash follows each new Gemini Flash, or pick a chat model id from list_models. Owner only. Not available to a plugin’s request.',
   ],
   [
     'list_operations',
     'everything',
     'read',
     'List app operations',
-    'Every operation of the SmartEverything API with its summary and area. Name operations to get their input JSON schema; responses on request.',
+    'Every operation of the SmartEverything API with its name, summary and area. Pass operations (camelCase names such as listClaudeSessions) to get their input JSON schema; responses on request.',
   ],
   [
     'call_operation',
     'everything',
     'control',
     'Call an app operation',
-    'Run any operation from list_operations with its path parameters, query and body, exactly as the app does. Operations the app double-checks need confirm: true.',
+    'Run any operation from list_operations with its path parameters, query and body, exactly as the app does.',
   ],
 ];
 

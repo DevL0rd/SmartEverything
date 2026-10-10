@@ -23,6 +23,8 @@ export const PHONE_PLAYBACK = ['playing', 'paused', 'stopped'] as const;
 
 export const PHONE_VOLUME_STREAMS = ['media', 'ring', 'alarm', 'notification'] as const;
 
+export const PHONE_FLASHLIGHT_MODES = ['on', 'off', 'toggle'] as const;
+
 export const PHONE_MEDIA_KEYS = ['play', 'pause', 'next', 'previous'] as const;
 
 export const PHONE_CONTEXT_STATE = z.enum(PHONE_CONTEXT_STATES);
@@ -78,6 +80,11 @@ export const PHONE_EVENT = z.discriminatedUnion('kind', [
     at: MOMENT,
     details: z.strictObject({ place: PHONE_PLACE_NAME.nullable() }),
   }),
+  z.strictObject({
+    kind: z.literal('phone_unlocked'),
+    at: MOMENT,
+    details: z.strictObject({}),
+  }),
 ]);
 
 export type PhoneEvent = z.infer<typeof PHONE_EVENT>;
@@ -100,6 +107,7 @@ export const PHONE_ACTION = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('set_ringer'), mode: z.enum(PHONE_RINGER_MODES) }),
   z.strictObject({ type: z.literal('set_dnd'), on: z.boolean() }),
+  z.strictObject({ type: z.literal('flashlight'), mode: z.enum(PHONE_FLASHLIGHT_MODES) }),
   z.strictObject({ type: z.literal('media'), key: z.enum(PHONE_MEDIA_KEYS) }),
   z.strictObject({
     type: z.literal('open_url'),
@@ -117,7 +125,11 @@ export type PhoneActionResult = z.infer<typeof PHONE_ACTION_RESULT>;
 
 export const PHONE_ACTION_ANSWER = PHONE_ACTION_RESULT.extend({ requestId: z.uuid() });
 
-export const PHONE_ACTION_PUSH = z.strictObject({ requestId: z.uuid(), action: PHONE_ACTION });
+export const PHONE_ACTION_PUSH = z.strictObject({
+  requestId: z.uuid(),
+  action: PHONE_ACTION,
+  expiresAt: z.iso.datetime({ offset: true }).optional(),
+});
 
 export type PhoneActionPush = z.infer<typeof PHONE_ACTION_PUSH>;
 

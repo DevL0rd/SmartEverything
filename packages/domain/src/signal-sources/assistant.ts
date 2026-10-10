@@ -9,6 +9,7 @@ export const ASSISTANT_SIGNALS: SignalSourceSpec = {
       label: 'The AI finishes a reply',
       subject: 'chat',
       fields: [],
+      match: [{ key: 'outcome', label: 'How the reply ended', values: ['answered', 'failed'] }],
       pulse: true,
     },
   ],

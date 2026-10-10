@@ -9,6 +9,7 @@ export const DEVICE_SIGNALS: SignalSourceSpec = {
       label: 'A device value changes',
       subject: 'device',
       fields: 'capabilities',
+      match: [],
       pulse: false,
     },
   ],

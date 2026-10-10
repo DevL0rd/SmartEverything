@@ -4,15 +4,19 @@ import { FOOD_ROW } from '../foods';
 import { WATCH_DAY_ROW } from '../watches';
 import { TALK_CHANNEL_ROW, TALK_FLOORS_NOTICE, TALK_MEMBER_ROW, TALK_MESSAGE_ROW } from '../talk';
 import { WEATHER_ROW } from '../weather/forecast';
+import { EXCHANGE_RATES_ROW } from '../exchange-rates';
 import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE, CHAT_STREAM_NOTICE } from '../ai-chats';
 import { ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS_NOTICE } from '../assistant';
 import { AI_USAGE_ROW } from '../ai-usage';
+import { CLAUDE_NOTICES } from '../claude';
 import { WATCH_ACTION_NOTICE } from '../watch-control';
 import { HEALTH_ENTRY_ROW } from '../health-entries';
 import { PROFILE_ROW } from '../profiles';
 import { SCHEDULE_ROW } from '../schedules';
 import { AI_OUTREACH_ROW, AI_SPEECH_NOTICE } from '../reach';
 import { PLUGIN_ROW, PLUGIN_STREAM_ROW } from '../plugins';
+import { PUSH_COMMAND } from '../push-commands';
+import { JSON_VALUE } from '../values';
 import { MCP_CONSENT_OUTCOME, MCP_CONSENT_REQUEST } from './assistants';
 import { API_ERROR } from './errors';
 import { HUB_STATUS } from './endpoints-access';
@@ -79,6 +83,7 @@ export const TABLE_ROWS = {
   foods: FOOD_ROW,
   watch_days: WATCH_DAY_ROW,
   weather: WEATHER_ROW,
+  exchange_rates: EXCHANGE_RATES_ROW,
   talk_channels: TALK_CHANNEL_ROW,
   talk_members: TALK_MEMBER_ROW,
   talk_messages: TALK_MESSAGE_ROW,
@@ -163,6 +168,7 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('foods', TABLE_ROWS.foods),
   changeOf('watch_days', TABLE_ROWS.watch_days),
   changeOf('weather', TABLE_ROWS.weather),
+  changeOf('exchange_rates', TABLE_ROWS.exchange_rates),
   changeOf('talk_channels', TABLE_ROWS.talk_channels),
   changeOf('talk_members', TABLE_ROWS.talk_members),
   changeOf('talk_messages', TABLE_ROWS.talk_messages),
@@ -183,11 +189,25 @@ export const LIVE_CHANGE = z.intersection(ROW_CHANGE, z.object({ seq: SEQ }));
 
 export type LiveChange = z.output<typeof LIVE_CHANGE>;
 
-export const LIVE_STREAMS = ['service_log', 'watch_actions', 'talk', 'assistant'] as const;
+export const LIVE_STREAMS = [
+  'service_log',
+  'watch_actions',
+  'talk',
+  'assistant',
+  'claude',
+] as const;
 
 export type LiveStream = (typeof LIVE_STREAMS)[number];
 
 const LIVE_STREAM = z.enum(LIVE_STREAMS);
+
+export const PUSH_COMMAND_NOTICE = z.strictObject({
+  type: z.literal('push_command'),
+  command: PUSH_COMMAND,
+  payload: JSON_VALUE,
+});
+
+export type PushCommandNotice = z.infer<typeof PUSH_COMMAND_NOTICE>;
 
 const NOTICES = [
   z.strictObject({ type: z.literal('presence'), hub: HUB_STATUS }),
@@ -208,6 +228,8 @@ const NOTICES = [
   CHAT_ACTIVITY_NOTICE,
   CHAT_STREAM_NOTICE,
   AI_SPEECH_NOTICE,
+  PUSH_COMMAND_NOTICE,
+  ...CLAUDE_NOTICES,
 ] as const;
 
 const READY = z.strictObject({

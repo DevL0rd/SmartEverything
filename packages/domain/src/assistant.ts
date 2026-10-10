@@ -1,38 +1,9 @@
 import { z } from 'zod';
-import { AI_MESSAGE_FIELDS, ENGINE_KIND } from './ai-chats';
+import { AI_MESSAGE_FIELDS, CHAT_STEP_OUTCOMES } from './ai-chats';
 import { ASSISTANT_VOICE_SETTINGS } from './assistant-voice';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
-
-export const RESPONDER_MODES = ['claude-session', 'codex-local', 'none'] as const;
-
-export type ResponderMode = (typeof RESPONDER_MODES)[number];
-
-const RETIRED_MODES: Readonly<Record<string, ResponderMode>> = { 'manual-mcp': 'none' };
-
-export const RESPONDER_MODE = z.preprocess(
-  (mode) => (typeof mode === 'string' ? (RETIRED_MODES[mode] ?? mode) : mode),
-  z.enum(RESPONDER_MODES),
-);
-
-export const RESPONDER_APPS = ['claude-code', 'codex'] as const;
-
-export type ResponderApp = (typeof RESPONDER_APPS)[number];
-
-export const RESPONDER_APP = z.enum(RESPONDER_APPS);
-
-export const RESPONDER_APP_OF: Readonly<Record<ResponderMode, ResponderApp | null>> = {
-  'claude-session': 'claude-code',
-  'codex-local': 'codex',
-  none: null,
-};
-
-export const RESPONDER_LABELS: Readonly<Record<ResponderMode, string>> = {
-  'claude-session': 'Claude Code',
-  'codex-local': 'Codex',
-  none: 'None',
-};
 
 export const ASSISTANT_TEXT_MAX = 16_000;
 export const ASSISTANT_STEP_MAX = 200;
@@ -44,10 +15,6 @@ export const ASSISTANT_MESSAGES_SNAPSHOT = 60;
 export const ASSISTANT_NAME_MAX = 40;
 export const ASSISTANT_INSTRUCTIONS_MAX = 8000;
 
-export const ASSISTANT_EFFORT = z.string().trim().min(1).max(32);
-
-export const ASSISTANT_MODEL = z.string().trim().min(1).max(200);
-
 export const ASSISTANT_NAME = z.string().trim().min(1).max(ASSISTANT_NAME_MAX);
 
 export const REUSE_CHAT_MINUTES = 120;
@@ -55,14 +22,6 @@ export const REUSE_CHAT_MINUTES = 120;
 export const COMPACT_AT_PERCENT = { min: 50, max: 95, step: 5, fallback: 85 } as const;
 
 export const ASSISTANT_SETTINGS = z.strictObject({
-  mode: RESPONDER_MODE.default('none'),
-  workspace: z.string().trim().min(1).max(1024).nullable().default(null),
-  default_engine: ENGINE_KIND.default('openrouter'),
-  background_only: z.boolean().default(false),
-  conversation_model: ASSISTANT_MODEL.nullable().default(null),
-  conversation_effort: ASSISTANT_EFFORT.nullable().default(null),
-  new_chat_model: ASSISTANT_MODEL.nullable().default(null),
-  new_chat_effort: ASSISTANT_EFFORT.nullable().default(null),
   instructions: z.string().max(ASSISTANT_INSTRUCTIONS_MAX).default(''),
   activity_steps: z.boolean().default(true),
   name: ASSISTANT_NAME.nullable().default('Coordinator'),
@@ -80,6 +39,25 @@ export const ASSISTANT_SETTINGS = z.strictObject({
     .default(REUSE_CHAT_MINUTES)
     .describe(
       'Conversations the AI starts (calls, camera and channel talks, wake words) continue the person’s latest conversation chat if it was active within this many minutes; 0 starts a new chat every time',
+    ),
+  reply_cost: z.boolean().default(true).describe('Show what each reply cost under it in the chat'),
+  reply_suggestions: z
+    .boolean()
+    .default(false)
+    .describe(
+      'After a reply in an app chat, ask a cheap model for up to three short follow-up replies to offer as taps; costs a little per reply',
+    ),
+  web_search_default: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Whether text chats and live voice may search the web unless a chat says otherwise; each chat can override it, and each search costs a little',
+    ),
+  claude_link_auto: z
+    .boolean()
+    .default(true)
+    .describe(
+      'When the hub starts and Claude Desktop is on this computer, install or repair the SmartEverything link in it automatically; false leaves the link as it is',
     ),
 });
 
@@ -110,6 +88,18 @@ export const ASSISTANT_REQUEST_STATES = [
 
 export type AssistantRequestState = (typeof ASSISTANT_REQUEST_STATES)[number];
 
+export const ASSISTANT_REASON_CODES = [
+  'credits',
+  'rate_limit',
+  'model_unavailable',
+  'offline',
+  'interrupted',
+  'stopped',
+  'unknown',
+] as const;
+
+export type AssistantReasonCode = (typeof ASSISTANT_REASON_CODES)[number];
+
 export const ASSISTANT_ATTACHMENT = z.strictObject({
   id: ID,
   name: z.string().min(1).max(200),
@@ -132,7 +122,22 @@ export const ASSISTANT_MESSAGE_ROW = z.strictObject({
   attachments: z.array(ASSISTANT_ATTACHMENT).max(ASSISTANT_ATTACHMENTS_MAX),
   state: z.enum(ASSISTANT_REQUEST_STATES).nullable(),
   reason: z.string().max(400).nullable(),
+  reason_code: z
+    .enum(ASSISTANT_REASON_CODES)
+    .nullable()
+    .default(null)
+    .describe(
+      'Why the message failed, in a form an app can offer a fix for; null while it has not',
+    ),
+  client_message_id: ID.nullable()
+    .default(null)
+    .describe('The id the sending app gave this message, so a resend never duplicates it'),
   steps: z.array(z.string().min(1).max(ASSISTANT_STEP_MAX)).max(ASSISTANT_STEPS_KEPT),
+  step_states: z
+    .array(z.enum(CHAT_STEP_OUTCOMES))
+    .max(ASSISTANT_STEPS_KEPT)
+    .default([])
+    .describe('How each step ended, in the order of steps; a step with no entry finished fine'),
   reply_to: ID.nullable(),
   ...AI_MESSAGE_FIELDS,
   created_at: MOMENT,
@@ -141,56 +146,29 @@ export const ASSISTANT_MESSAGE_ROW = z.strictObject({
 
 export type AssistantMessageRow = z.infer<typeof ASSISTANT_MESSAGE_ROW>;
 
-export const RESPONDER_STATES = ['none', 'ready', 'working', 'starting', 'unavailable'] as const;
+const RETIRED_FAILED_ACTION_PREFIX = 'Couldn’t do this: ';
 
-export type ResponderState = (typeof RESPONDER_STATES)[number];
-
-export const RESPONDER_PLACES = ['desktop', 'terminal', 'background', 'codex'] as const;
-
-export const RESPONDER_CONVERSATION = z.strictObject({
-  id: z.string().min(1).max(200),
-  name: z.string().min(1).max(120),
-  live: z.boolean(),
-  place: z.enum(RESPONDER_PLACES).nullable(),
-});
-
-export type ResponderConversation = z.infer<typeof RESPONDER_CONVERSATION>;
-
-export const RESPONDER_STATUS = z.strictObject({
-  mode: RESPONDER_MODE,
-  state: z.enum(RESPONDER_STATES),
-  reason: z.string().max(400).nullable(),
-  conversation: RESPONDER_CONVERSATION.nullable(),
-});
-
-export type ResponderStatus = z.infer<typeof RESPONDER_STATUS>;
-
-export const RESPONDER_APP_STATES = [
-  'not_installed',
-  'not_connected',
-  'connected',
-  'needs_repair',
-] as const;
-
-export type ResponderAppState = (typeof RESPONDER_APP_STATES)[number];
-
-export const RESPONDER_APP_STATUS = z.strictObject({
-  app: RESPONDER_APP,
-  state: z.enum(RESPONDER_APP_STATES),
-  detail: z.string().max(400).nullable(),
-  token_id: ID.nullable(),
-});
-
-export type ResponderAppStatus = z.infer<typeof RESPONDER_APP_STATUS>;
+export function isRetiredFailedAction(row: Pick<AssistantMessageRow, 'kind' | 'text'>): boolean {
+  return row.kind === 'action' && row.text.startsWith(RETIRED_FAILED_ACTION_PREFIX);
+}
 
 export const ASSISTANT_STATUS = z.strictObject({
   settings: ASSISTANT_SETTINGS,
-  responder: RESPONDER_STATUS,
-  apps: z.array(RESPONDER_APP_STATUS),
-  desktop_available: z.boolean(),
+  responder: z.looseObject({}).optional(),
+  apps: z.array(z.unknown()).optional(),
+  desktop_available: z.boolean().optional(),
 });
 
 export type AssistantStatus = z.infer<typeof ASSISTANT_STATUS>;
+
+export const RETIRED_STATUS_FIELDS: Pick<
+  AssistantStatus,
+  'responder' | 'apps' | 'desktop_available'
+> = {
+  responder: { mode: 'none', state: 'none', reason: null, conversation: null },
+  apps: [],
+  desktop_available: false,
+};
 
 export const ASSISTANT_STATUS_NOTICE = z.strictObject({
   type: z.literal('assistant_status'),
@@ -198,40 +176,6 @@ export const ASSISTANT_STATUS_NOTICE = z.strictObject({
 });
 
 export type AssistantStatusNotice = z.infer<typeof ASSISTANT_STATUS_NOTICE>;
-
-export const ASSISTANT_MODEL_INFO = z.strictObject({
-  id: z.string().max(200),
-  name: z.string().min(1).max(200),
-  efforts: z.array(ASSISTANT_EFFORT),
-});
-
-export type AssistantModelInfo = z.infer<typeof ASSISTANT_MODEL_INFO>;
-
-export const ASSISTANT_MODELS = z.strictObject({
-  mode: RESPONDER_MODE,
-  source: z.string().max(200),
-  note: z.string().max(400),
-  observed_at: MOMENT,
-  default_model: ASSISTANT_MODEL_INFO,
-  models: z.array(ASSISTANT_MODEL_INFO),
-  live_switch: z.boolean(),
-});
-
-export type AssistantModels = z.infer<typeof ASSISTANT_MODELS>;
-
-export const ASSISTANT_USAGE_WINDOW = z.strictObject({
-  label: z.string().min(1).max(80),
-  used_percent: z.number().min(0).max(1000),
-  resets_at: MOMENT.nullable(),
-});
-
-export const ASSISTANT_USAGE = z.strictObject({
-  mode: RESPONDER_MODE,
-  windows: z.array(ASSISTANT_USAGE_WINDOW),
-  note: z.string().max(400).nullable(),
-});
-
-export type AssistantUsage = z.infer<typeof ASSISTANT_USAGE>;
 
 export const ASSISTANT_REPLY_PUSH_DATA = z.strictObject({
   kind: z.literal('assistant_reply'),

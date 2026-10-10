@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BEARER_PROTOCOL_PREFIX, CLIENT_TOKEN } from './api/access';
+import { SIGHT_FRAME_LIMITS, SIGHT_SOURCES, type SightSource } from './call-sight';
 import { TALK_FRAME_BYTES_MAX, TALK_SPEAKER } from './talk';
 
 const ID = z.uuid();
@@ -10,7 +11,13 @@ export const TALK_PATH = '/talk';
 
 export const TALK_AUDIO_FRAME = 0x01;
 
-export const TALK_HEARTBEAT_MS = 15_000;
+export const ASSISTANT_SIGHT_FRAME = 0x02;
+
+export const SIGHT_FRAME_HEADER_BYTES = 3;
+
+const SIGHT_STILL_FLAG = 0x01;
+
+export const TALK_HEARTBEAT_MS = 60_000;
 
 export const TALK_CLIENT_MESSAGE = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('press'), channelId: ID }),
@@ -107,4 +114,60 @@ export function packetOfFrame(frame: Uint8Array): Uint8Array {
 
 export function talkProtocols(token: string): readonly [string, string] {
   return [TALK_PROTOCOL, `${BEARER_PROTOCOL_PREFIX}${CLIENT_TOKEN.parse(token)}`];
+}
+
+export type FrameKind = 'audio' | 'sight';
+
+export function frameKindOf(frame: Uint8Array): FrameKind {
+  if (frame[0] === TALK_AUDIO_FRAME) {
+    return 'audio';
+  }
+  if (frame[0] === ASSISTANT_SIGHT_FRAME) {
+    return 'sight';
+  }
+  throw new TalkFrameError(
+    `A call frame starts with ${String(TALK_AUDIO_FRAME)} or ${String(ASSISTANT_SIGHT_FRAME)}.`,
+  );
+}
+
+export interface SightFrame {
+  readonly source: SightSource;
+  readonly still: boolean;
+  readonly jpeg: Uint8Array;
+}
+
+export function sightFrameOf(frame: SightFrame): Uint8Array {
+  const sourceCode = SIGHT_SOURCES.indexOf(frame.source);
+  if (frame.jpeg.byteLength === 0 || frame.jpeg.byteLength > SIGHT_FRAME_LIMITS.maxBytes) {
+    throw new TalkFrameError(
+      `A picture is 1 to ${String(SIGHT_FRAME_LIMITS.maxBytes)} bytes; this one is ${String(frame.jpeg.byteLength)}.`,
+    );
+  }
+  const bytes = new Uint8Array(frame.jpeg.byteLength + SIGHT_FRAME_HEADER_BYTES);
+  bytes[0] = ASSISTANT_SIGHT_FRAME;
+  bytes[1] = sourceCode;
+  bytes[2] = frame.still ? SIGHT_STILL_FLAG : 0;
+  bytes.set(frame.jpeg, SIGHT_FRAME_HEADER_BYTES);
+  return bytes;
+}
+
+export function sightOfFrame(frame: Uint8Array): SightFrame {
+  if (frame[0] !== ASSISTANT_SIGHT_FRAME) {
+    throw new TalkFrameError(`A picture frame starts with ${String(ASSISTANT_SIGHT_FRAME)}.`);
+  }
+  const source = SIGHT_SOURCES[frame[1] ?? SIGHT_SOURCES.length];
+  const size = frame.byteLength - SIGHT_FRAME_HEADER_BYTES;
+  if (source === undefined) {
+    throw new TalkFrameError(`A picture frame names source ${String(frame[1])}, which is unknown.`);
+  }
+  if (size < 1 || size > SIGHT_FRAME_LIMITS.maxBytes) {
+    throw new TalkFrameError(
+      `A picture frame of ${String(frame.byteLength)} bytes is not allowed.`,
+    );
+  }
+  return {
+    source,
+    still: ((frame[2] ?? 0) & SIGHT_STILL_FLAG) !== 0,
+    jpeg: frame.subarray(SIGHT_FRAME_HEADER_BYTES),
+  };
 }

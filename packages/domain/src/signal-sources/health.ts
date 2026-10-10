@@ -36,6 +36,7 @@ export const HEALTH_SIGNALS: SignalSourceSpec = {
         label: metricLabel(metric),
         unit: HEALTH_METRIC_UNITS[metric] === COUNT_UNIT ? null : HEALTH_METRIC_UNITS[metric],
       })),
+      match: [],
       pulse: false,
     },
     {
@@ -47,6 +48,7 @@ export const HEALTH_SIGNALS: SignalSourceSpec = {
         label: loggedTypeLabel(type),
         unit: null,
       })),
+      match: [],
       pulse: true,
     },
     {
@@ -54,7 +56,16 @@ export const HEALTH_SIGNALS: SignalSourceSpec = {
       label: 'A scale reading arrives',
       subject: 'profile',
       fields: BODY_READING_FIELDS,
+      match: [{ key: 'deviceId', label: 'The scale', values: null }],
       pulse: false,
+    },
+    {
+      kind: 'sleep_ended',
+      label: 'Sleep ends (woke up)',
+      subject: 'profile',
+      fields: [],
+      match: [],
+      pulse: true,
     },
   ],
 };

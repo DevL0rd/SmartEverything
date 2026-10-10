@@ -58,8 +58,18 @@ export {
 } from './commands';
 export type { CommandRequest, CommandStatus, DeviceCommand } from './commands';
 
-export { DEVICE_EVENT, EVENT_KINDS, isPushed, isUrgent, pushedMessageOf } from './events';
-export type { DeviceEvent, EventKind } from './events';
+export {
+  CAMERA_DETECTION_KINDS,
+  DEVICE_EVENT,
+  EVENT_KINDS,
+  cameraDetectionsOf,
+  isPushed,
+  isUrgent,
+  miotDeviceEventKind,
+  miotDeviceEventsOf,
+  pushedMessageOf,
+} from './events';
+export type { CameraDetection, DeviceEvent, EventKind } from './events';
 
 export type { AdapterFailure, AdapterSink, ProviderAdapter, Unsubscribe } from './adapter';
 
@@ -104,6 +114,7 @@ export {
   TIME_ZONE,
   TRIGGER,
   WEEKDAYS,
+  automationSignalError,
   conditionsHold,
   eventTriggerFires,
   isTimedTrigger,
@@ -139,6 +150,9 @@ export { localClock, minuteOfClock, shiftedDate, zonedInstant } from './zoned-cl
 export type { LocalClock } from './zoned-clock';
 
 export * from './weather/index';
+export * from './exchange-rates';
+export * from './region';
+export * from './api/endpoints-exchange-rates';
 
 export { PLACE, PLACES, PLACE_NAME, placeLabel, shortPlaceLabel } from './places';
 export type { PlaceMatch, Places } from './places';
@@ -169,7 +183,10 @@ export type {
 export {
   CLIENT_RECORD_ID,
   ENTRIES_SOURCE_APP,
+  FOOD_MULTIPLIER,
   FOOD_PORTION,
+  MULTIPLIER_MAX,
+  MULTIPLIER_MIN,
   HEALTH_ENTRY_INPUT,
   HEALTH_ENTRY_ROW,
   LOGGABLE_TYPE,
@@ -287,7 +304,16 @@ export { zoneOffsetSeconds } from './zone-offset';
 export { HEALTH_TYPE_INFO, healthTypeInfo } from './health-types';
 export type { HealthTypeInfo } from './health-types';
 
-export { defaultAmount, factsOf, foodEntryOf, portionLabel, waterEntryOf } from './food-entries';
+export {
+  defaultAmount,
+  factsOf,
+  foodEntryOf,
+  multiplierOf,
+  portionLabel,
+  scaledAmount,
+  waterEntryOf,
+  weightOf,
+} from './food-entries';
 export type { EntrySpan, FoodLog } from './food-entries';
 
 export { MCP_PART_TEXTS, MCP_PATHS, MCP_SCOPE } from './mcp-tools';
@@ -296,7 +322,6 @@ export type { McpToolAccess, McpToolArea, McpToolSummary } from './mcp/areas';
 export { MCP_CORE_TOOL_NAMES, MCP_OPERATION_TOOLS, MCP_PART_NAMES } from './mcp/names';
 export type { McpCoreToolName, McpPartName } from './mcp/names';
 export {
-  MCP_ASKING_TOOLS,
   MCP_ONLY_TOOLS,
   MCP_ROUTES,
   MCP_TOOLS,
@@ -306,36 +331,9 @@ export {
   partsOf,
 } from './mcp/served';
 export type { McpRoute, McpToolName } from './mcp/served';
-export {
-  MCP_CONFIRMED_OPERATIONS,
-  MCP_HUMAN_ONLY_OPERATIONS,
-  isHumanOnlyOperation,
-  mcpOperationArea,
-} from './mcp/operations';
+export * from './mcp/operations';
 
-export type {
-  DesktopEventChannel,
-  DesktopFfmpeg,
-  DesktopFirewallOutcome,
-  DesktopFirewallResult,
-  DesktopGlobalName,
-  DesktopInvokeChannel,
-  DesktopInvokeChannels,
-  DesktopLinger,
-  DesktopPlatform,
-  DesktopServer,
-  DesktopServiceHealth,
-  DesktopServiceLogs,
-  DesktopServiceManager,
-  DesktopServiceStatus,
-  DesktopVersionArgumentPrefix,
-  DesktopTalkBackend,
-  DesktopTalkChannel,
-  DesktopTalkCommand,
-  DesktopTalkShortcuts,
-  DesktopTalkTray,
-  SmartEverythingDesktop,
-} from './desktop-bridge';
+export type * from './desktop-bridge';
 
 export * from './api/index';
 
@@ -358,6 +356,7 @@ export * from './talk-protocol';
 export * from './assistant';
 
 export * from './ai-chats';
+export * from './chat-steps';
 
 export * from './ai-usage';
 
@@ -369,11 +368,14 @@ export * from './ai-budget';
 
 export * from './api/endpoints-ai-budget';
 
-export { AI_CHAT_AREA_ENDPOINTS } from './api/endpoints-ai-chats';
+export * from './api/endpoints-ai-chats';
+export * from './message-speaker';
 export { AI_COORDINATION_ENDPOINTS } from './api/endpoints-ai-coordination';
 
 export * from './assistant-voice';
+export * from './one-shot-speech';
 export * from './voice-activity';
+export * from './wake-sensitivity';
 
 export * from './api/endpoints-assistant-voice';
 
@@ -383,7 +385,6 @@ export {
   ASSISTANT_NEW_MESSAGE,
   ASSISTANT_OUT_FILE,
   ASSISTANT_POST,
-  ASSISTANT_REPLY,
   ASSISTANT_UPLOAD,
   ASSISTANT_UPLOAD_CHUNK,
   ASSISTANT_UPLOAD_START,
@@ -392,7 +393,6 @@ export type {
   AssistantNewMessage,
   AssistantOutFile,
   AssistantPost,
-  AssistantReply,
 } from './api/endpoints-assistant';
 
 export {
@@ -418,10 +418,9 @@ export * from './plugins';
 export * from './router';
 export * from './syncthing';
 export * from './adguard';
+export * from './discord';
 export * from './plugin-powers';
-
 export * from './api/endpoints-plugins';
-
 export * from './node/index';
 
 export * from './signals';
@@ -434,6 +433,8 @@ export * from './api/endpoints-signals';
 
 export * from './push-commands';
 
+export * from './watch-data';
+
 export * from './phones';
 
 export * from './api/endpoints-phones';
@@ -442,6 +443,12 @@ export * from './reach';
 
 export * from './api/endpoints-reach';
 
+export * from './api/endpoints-calls';
+
+export * from './claude';
+
+export * from './api/endpoints-claude';
+
 export * from './chat-widgets';
 
-export * from './chat-links';
+export * from './client-failures';

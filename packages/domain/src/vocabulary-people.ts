@@ -77,6 +77,7 @@ export {
   PHONE_WATCHES,
   WATCH_ADDRESS,
   WATCH_AUTH_KEY,
+  WATCH_BRIDGE,
   WATCH_CANDIDATE,
   WATCH_CANDIDATES,
   WATCH_FAMILIES,
@@ -94,6 +95,7 @@ export {
 } from './watches';
 export type {
   PhoneWatch,
+  WatchBridge,
   WatchCandidate,
   WatchCandidates,
   WatchFamily,
@@ -110,6 +112,7 @@ export {
   WATCH_ACTION,
   WATCH_ACTION_ANSWER,
   WATCH_ACTION_NOTICE,
+  WATCH_ACTION_PUSH,
   WATCH_ACTION_RESULT,
   WATCH_ALARM,
   WATCH_CALENDAR,
@@ -136,6 +139,7 @@ export {
 export type { WatchSport, WatchWorkout, WatchWorkoutReport } from './watch-workouts';
 export type {
   WatchActionNotice,
+  WatchActionPush,
   WatchActionRequest,
   WatchActionResult,
   WatchAlarm,

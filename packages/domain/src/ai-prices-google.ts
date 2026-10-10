@@ -24,6 +24,18 @@ const LIVE_PRICES: AiPricing = {
   video_in_per_mtok: 1,
 };
 
+const SPEECH_FLASH_PRICES: AiPricing = {
+  ...NO_PRICES,
+  input_per_mtok: 0.5,
+  audio_out_per_mtok: 9,
+};
+
+const SPEECH_FLASH_LITE_PRICES: AiPricing = {
+  ...NO_PRICES,
+  input_per_mtok: 0.5,
+  audio_out_per_mtok: 6,
+};
+
 const FLASH_LITE_PRICES: AiPricing = {
   ...NO_PRICES,
   input_per_mtok: 0.3,
@@ -59,6 +71,30 @@ export const GOOGLE_MODELS: readonly GoogleModel[] = [
     contextLength: 128_000,
     reasoning: 'optional',
     pricing: LIVE_PRICES,
+  },
+  {
+    id: 'google:gemini-3.8-flash-lite-tts',
+    name: 'Gemini 3.8 Flash-Lite TTS',
+    family: 'gemini-tts',
+    description: 'Cheapest spoken lines: text in, voice out, no conversation.',
+    kinds: ['speak'],
+    input: ['text'],
+    output: ['audio'],
+    contextLength: null,
+    reasoning: 'none',
+    pricing: SPEECH_FLASH_LITE_PRICES,
+  },
+  {
+    id: 'google:gemini-3.8-flash-tts',
+    name: 'Gemini 3.8 Flash TTS',
+    family: 'gemini-tts',
+    description: 'Fuller, studio-grade spoken lines.',
+    kinds: ['speak'],
+    input: ['text'],
+    output: ['audio'],
+    contextLength: null,
+    reasoning: 'none',
+    pricing: SPEECH_FLASH_PRICES,
   },
   {
     id: 'google:gemini-3.5-flash-lite',

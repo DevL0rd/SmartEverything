@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { PLUGIN_KEY } from '../plugin-parts';
+import { PLUGIN_EXTERNAL_ID, PLUGIN_PERSON, PLUGIN_PERSON_CHANGE } from '../plugin-people';
+import { PLUGIN_OPTION_PAGE, PLUGIN_OPTION_QUERY } from '../plugin-options';
 import { INBOUND_MESSAGE, PLUGIN_DATA_POINT, PLUGIN_ID, PLUGIN_ROW } from '../plugins';
 import { JSON_VALUE } from '../values';
 import { NO_BODY, endpoint } from './endpoint';
@@ -10,6 +13,8 @@ const TOOL_NAME = z.string().min(1).max(120);
 
 const TOOL_PARAMS = z.strictObject({ pluginId: PLUGIN_ID, tool: TOOL_NAME });
 
+const PERSON_PARAMS = z.strictObject({ pluginId: PLUGIN_ID, externalId: PLUGIN_EXTERNAL_ID });
+
 const DATA_QUERY = z.strictObject({
   stream: z.string().min(1).max(80).optional(),
   limit: queryLimit(1, 200),
@@ -17,13 +22,12 @@ const DATA_QUERY = z.strictObject({
 
 export const PLUGIN_TOOL_CALL = z.strictObject({
   arguments: z.record(z.string(), z.unknown()).default({}),
-  confirm: z.boolean().default(false).describe('true once the person confirmed this action'),
 });
 
-export const PLUGIN_TOOL_OUTCOME = z.discriminatedUnion('outcome', [
-  z.strictObject({ outcome: z.literal('done'), result: z.record(z.string(), z.unknown()) }),
-  z.strictObject({ outcome: z.literal('needs_confirmation'), reason: z.string() }),
-]);
+export const PLUGIN_TOOL_OUTCOME = z.strictObject({
+  outcome: z.literal('done'),
+  result: z.record(z.string(), z.unknown()),
+});
 
 export type PluginToolOutcome = z.infer<typeof PLUGIN_TOOL_OUTCOME>;
 
@@ -51,7 +55,6 @@ export const PLUGIN_CHANGE = z
     trusted: z.boolean().optional(),
     tool_switches: z.record(z.string().min(1).max(120), z.boolean()).optional(),
     settings: z.record(z.string().min(1).max(80), JSON_VALUE).optional(),
-    confirm: z.boolean().default(false).describe('true once the person confirmed the powers'),
   })
   .refine(
     (change) =>
@@ -78,14 +81,7 @@ export const PLUGIN_LOG_LINE = z.strictObject({ at: MOMENT, line: z.string().max
 
 export type PluginLogLine = z.infer<typeof PLUGIN_LOG_LINE>;
 
-export const PLUGIN_SAVED = z.discriminatedUnion('outcome', [
-  z.strictObject({ outcome: z.literal('saved'), plugin: PLUGIN_ROW }),
-  z.strictObject({
-    outcome: z.literal('needs_confirmation'),
-    reason: z.string(),
-    powers: z.array(z.string()).min(1),
-  }),
-]);
+export const PLUGIN_SAVED = z.strictObject({ outcome: z.literal('saved'), plugin: PLUGIN_ROW });
 
 export type PluginSaved = z.infer<typeof PLUGIN_SAVED>;
 
@@ -115,8 +111,7 @@ export const PLUGIN_ENDPOINTS = {
     method: 'PATCH',
     path: '/api/plugins/:pluginId',
     access: 'owner',
-    summary:
-      'Switch a plugin on or off, trust it, switch single tools, or change its settings; switching on a plugin that can post into chats or join calls needs confirm',
+    summary: 'Switch a plugin on or off, trust it, switch single tools, or change its settings',
     params: PLUGIN_PARAMS,
     query: NOTHING,
     body: PLUGIN_CHANGE,
@@ -166,8 +161,7 @@ export const PLUGIN_ENDPOINTS = {
     method: 'POST',
     path: '/api/plugins/:pluginId/tools/:tool',
     access: 'member',
-    summary:
-      'Run one tool of a switched-on plugin, as a person; tools that remove things need confirm, setup tools need an owner',
+    summary: 'Run one tool of a switched-on plugin, as a person; setup tools need an owner',
     params: TOOL_PARAMS,
     query: NOTHING,
     body: PLUGIN_TOOL_CALL,
@@ -193,6 +187,49 @@ export const PLUGIN_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: z.array(PLUGIN_SEARCH_HIT),
+  }),
+  readPluginOptions: endpoint({
+    method: 'GET',
+    path: '/api/plugins/:pluginId/options/:source',
+    access: 'owner',
+    summary:
+      'Things a plugin setting can pick from, such as servers, channels, roles or people of the service behind it: search with q, continue with after, or look up chosen ones with ids (comma separated). Says unavailable, with the reason, when the plugin cannot list them now',
+    params: z.strictObject({ pluginId: PLUGIN_ID, source: PLUGIN_KEY }),
+    query: PLUGIN_OPTION_QUERY,
+    body: NO_BODY,
+    response: PLUGIN_OPTION_PAGE,
+  }),
+  listPluginPeople: endpoint({
+    method: 'GET',
+    path: '/api/plugins/:pluginId/people',
+    access: 'owner',
+    summary:
+      'The people a plugin lets act through it: approved, or the owner of this home, with the plugin’s own id for each',
+    params: PLUGIN_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: z.array(PLUGIN_PERSON),
+  }),
+  setPluginPerson: endpoint({
+    method: 'PUT',
+    path: '/api/plugins/:pluginId/people/:externalId',
+    access: 'owner',
+    summary:
+      'Approve a person of a plugin, or make them the owner of this home there; only a person in the app can do this',
+    params: PERSON_PARAMS,
+    query: NOTHING,
+    body: PLUGIN_PERSON_CHANGE,
+    response: PLUGIN_PERSON,
+  }),
+  removePluginPerson: endpoint({
+    method: 'DELETE',
+    path: '/api/plugins/:pluginId/people/:externalId',
+    access: 'owner',
+    summary: 'Stop letting a person act through a plugin; only a person in the app can do this',
+    params: PERSON_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: DONE,
   }),
   postPluginMessage: endpoint({
     method: 'POST',

@@ -11,6 +11,7 @@ import {
   TALK_PRESENCE,
 } from '../talk';
 import { WEATHER_ROW } from '../weather/forecast';
+import { EXCHANGE_RATES_ROW } from '../exchange-rates';
 import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE } from '../ai-chats';
 import { ASSISTANT_MESSAGES_SNAPSHOT, ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS } from '../assistant';
 import { NO_BODY, endpoint } from './endpoint';
@@ -71,6 +72,7 @@ export const SNAPSHOT_TABLES = z.strictObject({
   profiles: z.array(PROFILE_ROW).default([]),
   body_readings: z.array(BODY_READING_ROW).max(BODY_READINGS_SNAPSHOT).default([]),
   weather: WEATHER_ROW.optional(),
+  exchange_rates: EXCHANGE_RATES_ROW.optional(),
   talk_channels: z.array(TALK_CHANNEL_ROW).optional(),
   talk_members: z.array(TALK_MEMBER_ROW).optional(),
   talk_messages: z.array(TALK_MESSAGE_ROW).max(TALK_MESSAGES_SNAPSHOT).optional(),

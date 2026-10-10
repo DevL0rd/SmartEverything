@@ -1,15 +1,98 @@
-export const SPEECH_DETECTION = {
-  positiveSpeechThreshold: 0.5,
-  negativeSpeechThreshold: 0.35,
-  preSpeechPadMs: 320,
-  redemptionMs: 640,
-  minSpeechMs: 160,
-  submitUserSpeechOnPause: false,
-} as const;
+export const ECHO_MODES = ['headphones', 'normal', 'strong', 'no_interrupt'] as const;
+
+export type EchoMode = (typeof ECHO_MODES)[number];
+
+export const VOICE_DETECTIONS = ['less', 'standard', 'more'] as const;
+
+export type VoiceDetection = (typeof VOICE_DETECTIONS)[number];
+
+export const DEFAULT_VOICE_DETECTION: VoiceDetection = 'more';
+
+export const PAUSE_CHOICES_MS = [200, 320, 640, 1000, 2500] as const;
+
+export type PauseChoiceMs = (typeof PAUSE_CHOICES_MS)[number];
+
+export const DEFAULT_PAUSE_MS: PauseChoiceMs = 200;
+
+export interface VoiceDetectionPreset {
+  readonly positiveSpeechThreshold: number;
+  readonly negativeSpeechThreshold: number;
+  readonly minSpeechMs: number;
+}
+
+export const VOICE_DETECTION: Readonly<Record<VoiceDetection, VoiceDetectionPreset>> = {
+  less: { positiveSpeechThreshold: 0.65, negativeSpeechThreshold: 0.45, minSpeechMs: 240 },
+  standard: { positiveSpeechThreshold: 0.5, negativeSpeechThreshold: 0.35, minSpeechMs: 160 },
+  more: { positiveSpeechThreshold: 0.25, negativeSpeechThreshold: 0.15, minSpeechMs: 64 },
+};
+
+export interface SpeechDetection extends VoiceDetectionPreset {
+  readonly preSpeechPadMs: number;
+  readonly redemptionMs: number;
+  readonly submitUserSpeechOnPause: boolean;
+}
+
+export function speechDetectionOf(detection: VoiceDetection, pauseMs: number): SpeechDetection {
+  return {
+    ...VOICE_DETECTION[detection],
+    preSpeechPadMs: 320,
+    redemptionMs: pauseMs,
+    submitUserSpeechOnPause: false,
+  };
+}
+
+export const SPEECH_DETECTION: SpeechDetection = speechDetectionOf(
+  DEFAULT_VOICE_DETECTION,
+  DEFAULT_PAUSE_MS,
+);
 
 export const BARGE_IN = { probability: 0.8, sustainMs: 256, echoTailMs: 300 } as const;
 
 export const BARGE_IN_LEVEL = { echoCancelled: 0.04, raw: 0.125 } as const;
+
+export interface EchoPolicy {
+  readonly echoTailMs: number;
+  readonly sustainMs: number;
+  readonly bargeInLevelScale: number;
+  readonly ignoreAssistantAudible: boolean;
+  readonly aggressiveWhileAudible: boolean;
+  readonly interruptible: boolean;
+}
+
+export const ECHO_POLICY: Readonly<Record<EchoMode, EchoPolicy>> = {
+  headphones: {
+    echoTailMs: 0,
+    sustainMs: 0,
+    bargeInLevelScale: 1,
+    ignoreAssistantAudible: true,
+    aggressiveWhileAudible: false,
+    interruptible: true,
+  },
+  normal: {
+    echoTailMs: BARGE_IN.echoTailMs,
+    sustainMs: BARGE_IN.sustainMs,
+    bargeInLevelScale: 1,
+    ignoreAssistantAudible: false,
+    aggressiveWhileAudible: true,
+    interruptible: true,
+  },
+  strong: {
+    echoTailMs: 600,
+    sustainMs: 400,
+    bargeInLevelScale: 2,
+    ignoreAssistantAudible: false,
+    aggressiveWhileAudible: true,
+    interruptible: true,
+  },
+  no_interrupt: {
+    echoTailMs: BARGE_IN.echoTailMs,
+    sustainMs: BARGE_IN.sustainMs,
+    bargeInLevelScale: 1,
+    ignoreAssistantAudible: false,
+    aggressiveWhileAudible: true,
+    interruptible: false,
+  },
+};
 
 export const SPEECH_PREROLL_MS = 640;
 
@@ -37,18 +120,26 @@ export class TalkGate {
   constructor(
     private readonly events: TalkGateEvents,
     private readonly bargeInLevel: number,
+    private policy: EchoPolicy = ECHO_POLICY.normal,
   ) {}
 
   get open(): boolean {
     return this.opened;
   }
 
+  setPolicy(policy: EchoPolicy): void {
+    this.policy = policy;
+    this.consider();
+  }
+
   frame(frame: HeardFrame): void {
     this.lastAt = frame.at;
-    if (frame.assistantAudible) {
+    if (frame.assistantAudible && !this.policy.ignoreAssistantAudible) {
       this.audibleAt = frame.at;
     }
-    const confident = frame.probability >= BARGE_IN.probability && frame.level >= this.bargeInLevel;
+    const confident =
+      frame.probability >= BARGE_IN.probability &&
+      frame.level >= this.bargeInLevel * this.policy.bargeInLevelScale;
     this.bargeMs = confident ? this.bargeMs + frame.durationMs : 0;
     this.consider();
   }
@@ -74,14 +165,14 @@ export class TalkGate {
       return;
     }
     const clear = !this.overEcho && this.quiet();
-    if (clear || this.bargeMs >= BARGE_IN.sustainMs) {
+    if (clear || (this.policy.interruptible && this.bargeMs >= this.policy.sustainMs)) {
       this.opened = true;
       this.events.open();
     }
   }
 
   private quiet(): boolean {
-    return this.lastAt - this.audibleAt > BARGE_IN.echoTailMs;
+    return this.lastAt - this.audibleAt > this.policy.echoTailMs;
   }
 }
 

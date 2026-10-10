@@ -1,4 +1,11 @@
-import { FIREWALL_GROUP, type FirewallPlan, type PortRule, type UfwRule } from './api/firewall';
+import {
+  FIREWALL_GROUP,
+  UNPRIVILEGED_PORT_FILE,
+  UNPRIVILEGED_PORT_KEY,
+  type FirewallPlan,
+  type PortRule,
+  type UfwRule,
+} from './api/firewall';
 
 interface FirewallCommand {
   readonly program: string;
@@ -11,6 +18,7 @@ const RULE_NAMES: Readonly<Record<PortRule['purpose'], string>> = {
   camera: `${FIREWALL_GROUP} camera`,
   webrtc: `${FIREWALL_GROUP} live video`,
   device: `${FIREWALL_GROUP} device push`,
+  plugin: `${FIREWALL_GROUP} plugin`,
 };
 
 const SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/;
@@ -20,9 +28,15 @@ function familyOf(address: string): 'ipv4' | 'ipv6' {
 }
 
 function ufwMatch(rule: PortRule): readonly string[] {
-  return rule.purpose === 'webrtc'
-    ? ['proto', rule.protocol, 'from', 'any', 'to', 'any', 'port', String(rule.port)]
-    : ['proto', rule.protocol, 'from', rule.source, 'to', 'any'];
+  switch (rule.purpose) {
+    case 'webrtc':
+      return ['proto', rule.protocol, 'from', 'any', 'to', 'any', 'port', String(rule.port)];
+    case 'plugin':
+      return ['proto', rule.protocol, 'from', rule.source, 'to', 'any', 'port', String(rule.port)];
+    case 'camera':
+    case 'device':
+      return ['proto', rule.protocol, 'from', rule.source, 'to', 'any'];
+  }
 }
 
 function ufwCommand(entry: UfwRule): FirewallCommand {
@@ -40,9 +54,15 @@ function ufwCommand(entry: UfwRule): FirewallCommand {
 }
 
 function firewalldChange(rule: PortRule): string {
-  return rule.purpose === 'webrtc'
-    ? `--add-port=${String(rule.port)}/${rule.protocol}`
-    : `--add-rich-rule=rule family="${familyOf(rule.source)}" source address="${rule.source}" protocol value="${rule.protocol}" accept`;
+  switch (rule.purpose) {
+    case 'webrtc':
+      return `--add-port=${String(rule.port)}/${rule.protocol}`;
+    case 'plugin':
+      return `--add-rich-rule=rule family="${familyOf(rule.source)}" source address="${rule.source}" port port="${String(rule.port)}" protocol="${rule.protocol}" accept`;
+    case 'camera':
+    case 'device':
+      return `--add-rich-rule=rule family="${familyOf(rule.source)}" source address="${rule.source}" protocol value="${rule.protocol}" accept`;
+  }
 }
 
 function firewalldCommand(zone: string, rule: PortRule): FirewallCommand {
@@ -53,14 +73,32 @@ function firewalldCommand(zone: string, rule: PortRule): FirewallCommand {
 }
 
 function windowsMatch(rule: PortRule): readonly string[] {
-  return rule.purpose === 'webrtc'
-    ? [
+  switch (rule.purpose) {
+    case 'webrtc':
+      return [
         '-DisplayName',
         `${RULE_NAMES.webrtc} ${rule.protocol.toUpperCase()} ${String(rule.port)}`,
         '-LocalPort',
         String(rule.port),
-      ]
-    : ['-DisplayName', `${RULE_NAMES[rule.purpose]} ${rule.source}`, '-RemoteAddress', rule.source];
+      ];
+    case 'plugin':
+      return [
+        '-DisplayName',
+        `${RULE_NAMES.plugin} ${rule.protocol.toUpperCase()} ${String(rule.port)} ${rule.source}`,
+        '-LocalPort',
+        String(rule.port),
+        '-RemoteAddress',
+        rule.source,
+      ];
+    case 'camera':
+    case 'device':
+      return [
+        '-DisplayName',
+        `${RULE_NAMES[rule.purpose]} ${rule.source}`,
+        '-RemoteAddress',
+        rule.source,
+      ];
+  }
 }
 
 type WindowsPrograms = Pick<
@@ -69,7 +107,8 @@ type WindowsPrograms = Pick<
 >;
 
 function windowsCommand(plan: WindowsPrograms, rule: PortRule): FirewallCommand {
-  const program = rule.purpose === 'device' ? plan.appProgram : plan.program;
+  const program =
+    rule.purpose === 'device' || rule.purpose === 'plugin' ? plan.appProgram : plan.program;
   return {
     program: 'New-NetFirewallRule',
     args: [
@@ -97,14 +136,36 @@ function macCommands(program: string): readonly FirewallCommand[] {
   ];
 }
 
+function sysctlCommands(start: number | null): readonly FirewallCommand[] {
+  if (start === null) {
+    return [];
+  }
+  return [
+    {
+      program: 'sh',
+      args: [
+        '-c',
+        'printf "%s = %s\n" "$0" "$1" > "$2"',
+        UNPRIVILEGED_PORT_KEY,
+        String(start),
+        UNPRIVILEGED_PORT_FILE,
+      ],
+    },
+    { program: 'sysctl', args: ['-w', `${UNPRIVILEGED_PORT_KEY}=${String(start)}`] },
+  ];
+}
+
 function firewallCommands(plan: FirewallPlan): readonly FirewallCommand[] {
   switch (plan.backend) {
+    case 'sysctl':
+      return sysctlCommands(plan.unprivilegedPortStart);
     case 'ufw':
-      return plan.rules.map(ufwCommand);
+      return [...sysctlCommands(plan.unprivilegedPortStart), ...plan.rules.map(ufwCommand)];
     case 'firewalld':
       return [
+        ...sysctlCommands(plan.unprivilegedPortStart),
         ...plan.rules.map((rule) => firewalldCommand(plan.zone, rule)),
-        { program: 'firewall-cmd', args: ['--reload'] },
+        ...(plan.rules.length === 0 ? [] : [{ program: 'firewall-cmd', args: ['--reload'] }]),
       ];
     case 'windows':
       return plan.rules.map((rule) => windowsCommand(plan, rule));

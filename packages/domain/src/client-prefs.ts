@@ -1,5 +1,20 @@
 import { z } from 'zod';
+import {
+  DEFAULT_SIGHT_LOOK,
+  SIGHT_MEMORY_DEFAULT_SECONDS,
+  SIGHT_MEMORY_SECONDS,
+  SIGHT_MODE,
+  SIGHT_SOURCE,
+} from './call-sight';
 import { NUTRITION_PREF } from './foods';
+import {
+  DEFAULT_PAUSE_MS,
+  DEFAULT_VOICE_DETECTION,
+  ECHO_MODES,
+  PAUSE_CHOICES_MS,
+  VOICE_DETECTIONS,
+} from './voice-activity';
+import { REGION_PREF } from './region';
 import { JSON_VALUE, type JsonValue } from './values';
 
 export const THEMES = ['system', 'light', 'dark'] as const;
@@ -72,6 +87,73 @@ function legacyCallRing(stored: unknown): CallRingPref | null {
   return parsed.success ? { sound: !parsed.data.muted, mutedUntil: null } : null;
 }
 
+export const ECHO_TEST_OUTCOMES = ['none', 'some', 'strong', 'failed'] as const;
+
+export type EchoTestOutcome = (typeof ECHO_TEST_OUTCOMES)[number];
+
+export const CALL_FACINGS = ['front', 'back'] as const;
+
+const PAUSE_MS = z.union([
+  z.literal(PAUSE_CHOICES_MS[0]),
+  z.literal(PAUSE_CHOICES_MS[1]),
+  z.literal(PAUSE_CHOICES_MS[2]),
+  z.literal(PAUSE_CHOICES_MS[3]),
+  z.literal(PAUSE_CHOICES_MS[4]),
+]);
+
+export const CALL_AUDIO_PREF = z.strictObject({
+  echo: z
+    .enum(ECHO_MODES)
+    .describe(
+      'headphones: no echo handling, interrupt any time. normal: cancels echo, speak up to interrupt. strong: loud speakers or echoey rooms, interrupting needs a louder voice. no_interrupt: the assistant finishes before it listens',
+    ),
+  detection: z
+    .enum(VOICE_DETECTIONS)
+    .describe(
+      'Voice detection: less ignores quiet voices and background talk, standard suits most rooms, more picks up quiet or distant speech',
+    ),
+  pause_ms: PAUSE_MS.describe(
+    'How long to wait after the person stops talking before the assistant answers, in milliseconds: 200, 320, 640, 1000 or 2500',
+  ),
+  noise_suppression: z.boolean().describe('Remove steady noise such as fans'),
+  auto_gain: z.boolean().describe('Even out the person’s volume (automatic gain control)'),
+  input: z
+    .string()
+    .min(1)
+    .max(200)
+    .describe('Microphone: auto, or a device id the app lists in the call settings'),
+  output: z
+    .string()
+    .min(1)
+    .max(200)
+    .describe(
+      'Speaker: speaker, earpiece, auto, or a device id the app lists in the call settings',
+    ),
+  volume: z.number().min(0).max(1).describe('The assistant’s volume in a call, 0 to 1'),
+  video_mode: SIGHT_MODE.describe(
+    'live: pictures stream while a source is on. on_demand: one still when the assistant needs to see or the person taps Show this',
+  ),
+  memory_seconds: SIGHT_MEMORY_SECONDS.describe(
+    'How many seconds of video the assistant keeps in memory; older pictures are dropped. 5, 15, 30, 60 or any value from 5 to 300',
+  ),
+  look: z
+    .array(SIGHT_SOURCE)
+    .max(SIGHT_SOURCE.options.length)
+    .describe(
+      'What the assistant may look at on its own initiative: home_camera, phone_camera, phone_screen, desktop_screen, desktop_window. When the person asks about something, looking is always allowed',
+    ),
+  facing: z.enum(CALL_FACINGS).describe('Which phone camera a call starts with'),
+  last_echo_test: z
+    .strictObject({
+      outcome: z.enum(ECHO_TEST_OUTCOMES),
+      at: z.iso.datetime({ offset: true }),
+    })
+    .nullable()
+    .describe('The last echo test on this device'),
+});
+
+export type CallAudioPref = z.infer<typeof CALL_AUDIO_PREF>;
+
 export const CAMERA_AWAY_MODES = ['direct', 'server'] as const;
 
 export const CAMERAS_PREF = z.strictObject({
@@ -99,6 +181,10 @@ export const AI_MODELS_PREF = z.strictObject({
 });
 
 export type AiModelsPref = z.infer<typeof AI_MODELS_PREF>;
+
+export const AI_SPEECH_PREF = z.strictObject({ showText: z.boolean() });
+
+export type AiSpeechPref = z.infer<typeof AI_SPEECH_PREF>;
 
 export type ClientPrefRead<T> =
   | { readonly status: 'absent'; readonly value: T }
@@ -204,11 +290,33 @@ export const CLIENT_PREFS = {
     schema: CAMERAS_PREF,
     legacy: legacyCameras,
   }),
+  call_audio: clientPref({
+    storageKey: 'call-audio',
+    scope: 'client',
+    version: 1,
+    defaultValue: {
+      echo: 'normal',
+      detection: DEFAULT_VOICE_DETECTION,
+      pause_ms: DEFAULT_PAUSE_MS,
+      noise_suppression: true,
+      auto_gain: true,
+      input: 'auto',
+      output: 'speaker',
+      volume: 1,
+      video_mode: 'live',
+      memory_seconds: SIGHT_MEMORY_DEFAULT_SECONDS,
+      look: [...DEFAULT_SIGHT_LOOK],
+      facing: 'back',
+      last_echo_test: null,
+    },
+    schema: CALL_AUDIO_PREF,
+    legacy: noLegacy,
+  }),
   health_sync: clientPref({
     storageKey: 'health-sync',
     scope: 'client',
     version: 1,
-    defaultValue: { intervalMinutes: 0 },
+    defaultValue: { intervalMinutes: 60 },
     schema: HEALTH_SYNC_PREF,
     legacy: noLegacy,
   }),
@@ -234,6 +342,22 @@ export const CLIENT_PREFS = {
     schema: AI_MODELS_PREF,
     legacy: noLegacy,
   }),
+  ai_speech: clientPref({
+    storageKey: 'ai-speech',
+    scope: 'profile',
+    version: 1,
+    defaultValue: { showText: false },
+    schema: AI_SPEECH_PREF,
+    legacy: noLegacy,
+  }),
+  region: clientPref({
+    storageKey: 'region',
+    scope: 'profile',
+    version: 1,
+    defaultValue: { region: 'auto' },
+    schema: REGION_PREF,
+    legacy: noLegacy,
+  }),
 } as const;
 
 export type ClientPrefKey = keyof typeof CLIENT_PREFS;
@@ -244,10 +368,13 @@ export type ClientPrefValue<K extends ClientPrefKey> =
 export const CLIENT_PREF_KEYS: readonly ClientPrefKey[] = [
   'appearance',
   'call_ring',
+  'call_audio',
   'cameras',
   'health_sync',
   'nutrition',
   'ai_models',
+  'ai_speech',
+  'region',
 ];
 
 export const RESERVED_LAYOUT_KEYS: ReadonlySet<string> = new Set(

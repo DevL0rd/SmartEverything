@@ -141,6 +141,7 @@ export const STANDARD_TIERS: Readonly<Record<StandardCapability, PresentationTie
   screen_time_today: 'reading',
   now_playing: 'reading',
   ring: 'control',
+  flashlight: 'control',
 };
 
 export const READ_ONLY_STANDARD: ReadonlySet<StandardCapability> = new Set(['call_status']);

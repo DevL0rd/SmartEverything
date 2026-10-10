@@ -76,6 +76,31 @@ export interface DesktopTalkTray {
   readonly talkChannel: string | null;
 }
 
+export type DesktopCaptureMode = 'picker' | 'portal';
+
+export type DesktopCaptureKind = 'screen' | 'window';
+
+export interface DesktopCaptureSource {
+  readonly id: string;
+  readonly kind: DesktopCaptureKind;
+  readonly title: string;
+  readonly thumbnail: string | null;
+  readonly appIcon: string | null;
+  readonly primary: boolean;
+  readonly width: number | null;
+  readonly height: number | null;
+}
+
+export interface DesktopStill {
+  readonly sourceId: string;
+  readonly kind: DesktopCaptureKind;
+  readonly title: string;
+  readonly width: number;
+  readonly height: number;
+  readonly mime: 'image/jpeg';
+  readonly dataBase64: string;
+}
+
 export interface SmartEverythingDesktop {
   readonly platform: DesktopPlatform;
   readonly version: string;
@@ -100,6 +125,10 @@ export interface SmartEverythingDesktop {
   configureTalkShortcuts?(): Promise<DesktopTalkShortcuts>;
   setTalkTray?(tray: DesktopTalkTray): Promise<void>;
   attention?(): Promise<void>;
+  captureMode?(): Promise<DesktopCaptureMode>;
+  listCaptureSources?(): Promise<readonly DesktopCaptureSource[]>;
+  chooseCaptureSource?(sourceId: string | null): Promise<void>;
+  captureStill?(sourceId: string | null): Promise<DesktopStill>;
 }
 
 export interface DesktopInvokeChannels {
@@ -138,6 +167,22 @@ export interface DesktopInvokeChannels {
   };
   readonly 'desktop:talk-tray': { readonly request: DesktopTalkTray; readonly response: undefined };
   readonly 'desktop:attention': { readonly request: undefined; readonly response: undefined };
+  readonly 'desktop:capture-mode': {
+    readonly request: undefined;
+    readonly response: DesktopCaptureMode;
+  };
+  readonly 'desktop:capture-sources': {
+    readonly request: undefined;
+    readonly response: readonly DesktopCaptureSource[];
+  };
+  readonly 'desktop:capture-choose': {
+    readonly request: string | null;
+    readonly response: undefined;
+  };
+  readonly 'desktop:capture-still': {
+    readonly request: string | null;
+    readonly response: DesktopStill;
+  };
   readonly 'desktop:firewall-apply': {
     readonly request: string;
     readonly response: DesktopFirewallResult;

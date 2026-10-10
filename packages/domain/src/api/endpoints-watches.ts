@@ -3,6 +3,7 @@ import {
   PHONE_WATCHES,
   WATCH_CANDIDATES,
   WATCH_DAYS,
+  WATCH_BRIDGE,
   WATCH_RECORDS,
   WATCH_RECORDS_SAVED,
   WATCH_STATE,
@@ -13,6 +14,7 @@ import {
   WATCH_ACTION_RESULT,
   WATCH_CONFIG_REPORT,
 } from '../watch-control';
+import { WATCH_DATA } from '../watch-data';
 import { WATCH_WORKOUT_REPORT, WATCH_WORKOUT_START } from '../watch-workouts';
 import { NO_BODY, endpoint } from './endpoint';
 import { DAY, DONE, ID, NOTHING } from './primitives';
@@ -38,6 +40,16 @@ export const WATCH_AREA_ENDPOINTS = {
     body: NO_BODY,
     response: PHONE_WATCHES,
   }),
+  readWatchData: endpoint({
+    method: 'GET',
+    path: '/api/watches/mine/data',
+    access: 'member',
+    summary: 'The weather and the person’s body details in the form a phone sends to its watches',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: WATCH_DATA,
+  }),
   reportWatchState: endpoint({
     method: 'POST',
     path: '/api/watches/:deviceId/state',
@@ -57,6 +69,16 @@ export const WATCH_AREA_ENDPOINTS = {
     query: NOTHING,
     body: WATCH_RECORDS,
     response: WATCH_RECORDS_SAVED,
+  }),
+  takeOverWatchBridge: endpoint({
+    method: 'POST',
+    path: '/api/watches/:deviceId/bridge',
+    access: 'member',
+    summary: 'Make this app the one that connects to the watch over Bluetooth',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: WATCH_BRIDGE,
   }),
   readWatchDays: endpoint({
     method: 'GET',

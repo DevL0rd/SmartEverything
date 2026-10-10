@@ -183,6 +183,7 @@ const camera = {
   physical_ptz: true,
   two_way_audio: false,
   record_events: true,
+  wake_sensitivity: 'standard',
 };
 
 const recording = {
@@ -413,7 +414,15 @@ describe('home rows', () => {
 describe('media rows', () => {
   it('CAMERA_ROW keeps a camera and refuses empty stream details', () => {
     expectRoundTrip(CAMERA_ROW, camera);
-    expectRefused(CAMERA_ROW, camera, [{ stream_name: '' }, { source_url_kind: '' }]);
+    expectRefused(CAMERA_ROW, camera, [
+      { stream_name: '' },
+      { source_url_kind: '' },
+      { wake_sensitivity: 'loud' },
+    ]);
+  });
+
+  it('CAMERA_ROW from an older hub without a wake sensitivity reads as standard', () => {
+    expect(CAMERA_ROW.parse({ ...camera, wake_sensitivity: undefined })).toStrictEqual(camera);
   });
 
   it('RECORDING_ROW keeps snapshots and clips', () => {

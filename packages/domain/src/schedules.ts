@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CLOCK_TIME } from './automations';
+import { PLUGIN_ORIGIN } from './plugin-people';
 import { JSON_VALUE } from './values';
 
 const ID = z.uuid();
@@ -143,6 +144,7 @@ export const SCHEDULE_ROW = z.strictObject({
   results: z.array(SCHEDULE_RESULT).max(SCHEDULE_LIMITS.results),
   confirmed_at: MOMENT.nullable(),
   confirmed_by: ID.nullable(),
+  origin: PLUGIN_ORIGIN.nullable(),
   created_at: MOMENT,
   updated_at: MOMENT,
   finished_at: MOMENT.nullable(),

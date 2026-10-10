@@ -35,6 +35,7 @@ export const TALK_NEW_CHANNEL = z.strictObject({
   icon: TALK_ICON.default('radio'),
   priority: TALK_PRIORITY.default('normal'),
   keep_hours: TALK_KEEP.default(24),
+  ai_listens: z.boolean().default(true),
   members: z.array(TALK_NEW_MEMBER).max(100).default([]),
 });
 
@@ -45,6 +46,7 @@ export const TALK_CHANNEL_CHANGE = somethingToChange({
   icon: TALK_ICON,
   priority: TALK_PRIORITY,
   keep_hours: TALK_KEEP,
+  ai_listens: z.boolean(),
   position: z.int().min(0).max(1_000_000),
 });
 
@@ -58,9 +60,9 @@ export const TALK_AREA_ENDPOINTS = {
     path: '/api/talk',
     access: 'member',
     summary:
-      'Walkie-talkie channels, their members, who is talking now and which devices are online',
+      'Walkie-talkie channels, their members, who is talking now, which devices are online, and the latest messages with their transcripts for each channel (newest first, messages sets how many per channel, 0 for none)',
     params: NOTHING,
-    query: NOTHING,
+    query: z.strictObject({ messages: z.coerce.number().int().min(0).max(50).default(5) }),
     body: NO_BODY,
     response: TALK_STATUS,
   }),
@@ -68,7 +70,8 @@ export const TALK_AREA_ENDPOINTS = {
     method: 'POST',
     path: '/api/talk/channels',
     access: 'owner',
-    summary: 'Create a walkie-talkie channel, optionally with its first members',
+    summary:
+      'Create a walkie-talkie channel, optionally with its first members; the AI listens to it unless ai_listens is false',
     params: NOTHING,
     query: NOTHING,
     body: TALK_NEW_CHANNEL,
@@ -79,7 +82,7 @@ export const TALK_AREA_ENDPOINTS = {
     path: '/api/talk/channels/:channelId',
     access: 'owner',
     summary:
-      'Rename a walkie-talkie channel or change its icon, priority, order or message keeping',
+      'Rename a walkie-talkie channel or change its icon, priority, order, message keeping or whether the AI listens to it',
     params: CHANNEL_PARAMS,
     query: NOTHING,
     body: TALK_CHANNEL_CHANGE,
@@ -120,7 +123,8 @@ export const TALK_AREA_ENDPOINTS = {
     method: 'GET',
     path: '/api/talk/messages',
     access: 'member',
-    summary: 'Recent walkie-talkie messages, newest first, optionally for one channel',
+    summary:
+      'Recent walkie-talkie messages with their transcripts, newest first, optionally for one channel',
     params: NOTHING,
     query: z.strictObject({
       channelId: ID.optional(),

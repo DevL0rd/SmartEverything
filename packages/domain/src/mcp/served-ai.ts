@@ -1,3 +1,4 @@
+import { SHOW_WIDGETS_TEXT } from '../chat-widgets';
 import type { Served } from './served-types';
 
 const CUSTOM = { custom: true } as const;
@@ -8,11 +9,12 @@ export const SERVED_AI = [
     'assistant',
     'read',
     'Read chats',
-    'The caller’s AI chats, the messages of one chat, their default chat, or a file someone attached.',
+    'The caller’s AI chats (unread, pinned, archived or by source), a search through chat titles and message text, the messages of one chat, their default chat, or a file someone attached.',
     {
       key: 'view',
       parts: {
         list: 'chats_list',
+        search: 'chats_search',
         messages: 'chat_read',
         history: 'assistant_history',
         attachment: 'read_assistant_attachment',
@@ -24,15 +26,26 @@ export const SERVED_AI = [
     'assistant',
     'control',
     'Edit a chat',
-    'Starts a new AI chat, or renames, pins, archives or changes the engine, model or tools of one.',
-    { key: 'action', parts: { create: 'chat_create', update: 'chat_update' } },
+    'Starts a new AI chat, or renames, pins, archives, marks read or unread, branches, stops, regenerates the reply of, changes the engine, model, tools or web search of, or deletes one, or deletes a single message.',
+    {
+      key: 'action',
+      parts: {
+        create: 'chat_create',
+        update: 'chat_update',
+        branch: 'chat_branch',
+        retry: 'chat_retry',
+        stop: 'chat_stop',
+        delete: 'chat_delete',
+        delete_message: 'chat_message_delete',
+      },
+    },
   ],
   [
     'chat_send',
     'assistant',
     'control',
     'Message another chat',
-    'Sends a message from your chat to another of the person’s chats; its answer comes back.',
+    'Sends a message from your chat to another of the person’s chats (chatId from read_chats); its answer comes back.',
     { part: 'chat_send' },
   ],
   [
@@ -44,14 +57,6 @@ export const SERVED_AI = [
     { part: 'subagent_run' },
   ],
   [
-    'assistant_reply',
-    'assistant',
-    'control',
-    'Answer a request',
-    'Answers a SmartEverything chat or voice request by its eventId.',
-    { part: 'assistant_reply' },
-  ],
-  [
     'assistant_post',
     'assistant',
     'control',
@@ -60,30 +65,30 @@ export const SERVED_AI = [
     { part: 'assistant_post' },
   ],
   [
+    'show_widgets',
+    'assistant',
+    'control',
+    'Show widgets',
+    SHOW_WIDGETS_TEXT,
+    { part: 'show_widgets' },
+  ],
+  [
     'read_models',
     'assistant',
     'read',
     'Read AI models',
-    'AI models SmartEverything can use, one model with its prices, or the models the current responder reports.',
-    {
-      key: 'view',
-      parts: { list: 'list_models', model: 'get_model', responder: 'assistant_models' },
-    },
+    'AI models SmartEverything can use, or one model with its prices.',
+    { key: 'view', parts: { list: 'list_models', model: 'get_model' } },
   ],
   [
     'read_usage',
     'assistant',
     'read',
     'Read AI usage',
-    'What the AI cost: totals, a series over time, every cost one by one, or the responder’s plan limits.',
+    'What the AI cost: totals, a series over time, or every cost one by one.',
     {
       key: 'view',
-      parts: {
-        totals: 'usage_totals',
-        series: 'usage_series',
-        ledger: 'usage_ledger',
-        plan: 'assistant_usage',
-      },
+      parts: { totals: 'usage_totals', series: 'usage_series', ledger: 'usage_ledger' },
     },
   ],
   [
@@ -91,7 +96,7 @@ export const SERVED_AI = [
     'assistant',
     'read',
     'Read presence',
-    'Where a person can be reached now.',
+    'Where a person can be reached now (devices, phone, app). Read it before speak, start_conversation, call or notify_person.',
     { part: 'read_presence' },
   ],
   [
@@ -99,15 +104,18 @@ export const SERVED_AI = [
     'assistant',
     'read',
     'Read AI activity',
-    'Conversations the AI started, or the times automations woke it.',
-    { key: 'view', parts: { conversations: 'list_conversations', wakes: 'list_wakes' } },
+    'Conversations the AI started, voice calls running now, or the times automations woke it.',
+    {
+      key: 'view',
+      parts: { conversations: 'list_conversations', wakes: 'list_wakes', calls: 'list_calls' },
+    },
   ],
   [
     'notify_person',
     'assistant',
     'control',
     'Notify a person',
-    'Sends a person a message in their newest chat with a phone notification.',
+    'Sends a person (personId from list_people) a message in their newest chat with a phone notification.',
     { part: 'notify_person' },
   ],
   [
@@ -115,7 +123,7 @@ export const SERVED_AI = [
     'assistant',
     'control',
     'Speak',
-    'Says something out loud on a device or walkie-talkie channel.',
+    'Says something out loud on a device or walkie-talkie channel; read_presence and find_devices tell where the person is and which device can speak.',
     { part: 'speak' },
   ],
   [
@@ -123,7 +131,7 @@ export const SERVED_AI = [
     'assistant',
     'control',
     'Start a conversation',
-    'Starts a live voice conversation through a device or channel.',
+    'Starts a live voice conversation through a device or channel; read_presence and find_devices tell where the person is.',
     { part: 'start_conversation' },
   ],
   [
@@ -131,7 +139,7 @@ export const SERVED_AI = [
     'assistant',
     'control',
     'Call a person',
-    'Rings a person’s phone or desktop app for a live voice conversation.',
+    'Rings a person’s phone or desktop app for a live voice conversation (personId from list_people; read_presence first).',
     { part: 'call' },
   ],
   [
@@ -139,8 +147,16 @@ export const SERVED_AI = [
     'assistant',
     'control',
     'Hang up',
-    'Ends a call or conversation the AI started.',
+    'Ends a call or conversation the AI started (outreachId from read_ai_activity calls, or from what call or start_conversation returned).',
     { part: 'hang_up' },
+  ],
+  [
+    'call_sight',
+    'assistant',
+    'control',
+    'Show something in a call',
+    'Shows a home camera to the assistant in a running voice call, or stops it looking at anything.',
+    { key: 'action', parts: { show_camera: 'show_camera_in_call', stop: 'stop_sight_in_call' } },
   ],
   [
     'ai_inbox_post',
@@ -210,7 +226,7 @@ export const SERVED_AI = [
     'plugins',
     'read',
     'Read plugins',
-    'Installed plugins with status, powers and settings, or one plugin’s tools, data streams or log.',
+    'Installed plugins with status, powers and settings, or one plugin’s tools, data streams, log or the people it lets act.',
     {
       key: 'view',
       parts: {
@@ -218,6 +234,7 @@ export const SERVED_AI = [
         tools: 'list_plugin_tools',
         data: 'read_plugin_data',
         log: 'read_plugin_log',
+        people: 'list_plugin_people',
       },
     },
   ],
@@ -238,11 +255,53 @@ export const SERVED_AI = [
     { part: 'call_plugin_tool' },
   ],
   [
+    'read_claude',
+    'assistant',
+    'read',
+    'Read Claude',
+    'Claude Desktop (Claude Code) on this computer: its state and plan usage, the sessions with idle, busy or waiting state, one session, its messages from the transcript, plan limits, or the prompts waiting for an answer.',
+    {
+      key: 'view',
+      parts: {
+        status: 'read_claude_status',
+        sessions: 'list_claude_sessions',
+        session: 'read_claude_session',
+        thread: 'read_claude_thread',
+        usage: 'read_claude_usage',
+        prompts: 'list_claude_prompts',
+      },
+    },
+  ],
+  [
+    'claude_session',
+    'assistant',
+    'control',
+    'Control a Claude session',
+    'Sends a prompt to a Claude Desktop session (sessionId from read_claude sessions), interrupts its turn, keeps or lowers its permission mode, or sets its model. Raising a mode is only done by the person on Claude Desktop’s own approval card.',
+    { part: 'control_claude_session' },
+  ],
+  [
+    'claude_start',
+    'assistant',
+    'control',
+    'Start a Claude session',
+    'Starts a Claude Desktop session in a folder with a first prompt; without the controller the person presses Send in Claude Desktop.',
+    { part: 'start_claude_session' },
+  ],
+  [
+    'claude_answer',
+    'assistant',
+    'control',
+    'Answer a Claude prompt',
+    'Allows or denies a permission request or plan a Claude session is waiting on, or answers its questions; promptId comes from read_claude prompts; only the owner can allow a risky one.',
+    { part: 'answer_claude_prompt' },
+  ],
+  [
     'list_operations',
     'everything',
     'read',
     'List app operations',
-    'Every operation of the SmartEverything API with its summary and area; named ones with their input schema.',
+    'Every operation of the SmartEverything API with its name, summary and area, for anything that has no tool of its own; narrow it with area or search. Pass operations (exact camelCase operation names from this list, never tool names, such as listClaudeSessions) to get their input schemas before call_operation.',
     { part: 'list_operations' },
   ],
   [
@@ -250,7 +309,7 @@ export const SERVED_AI = [
     'everything',
     'control',
     'Call an app operation',
-    'Runs any operation from list_operations exactly as the app does.',
+    'Runs any operation from list_operations exactly as the app does; call list_operations with operations first for its input schema, then pass the arguments that schema shows.',
     { part: 'call_operation' },
   ],
   [

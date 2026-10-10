@@ -2,9 +2,11 @@ import { API_ENDPOINTS } from './api/endpoints';
 import type { McpToolSummary } from './mcp/areas';
 import { MCP_CORE_TOOLS } from './mcp/catalogue';
 import { MCP_OPERATION_TOOLS, type McpPartName } from './mcp/names';
-import { MCP_CONFIRMED_OPERATIONS, mcpOperationArea } from './mcp/operations';
+import { isAdminOperation, mcpOperationArea } from './mcp/operations';
 
 type McpPartText = McpToolSummary<McpPartName>;
+
+const ADMIN_NOTE = ' Not available to a plugin’s request.';
 
 function titleOf(name: string): string {
   const words = name.replaceAll('_', ' ');
@@ -13,11 +15,11 @@ function titleOf(name: string): string {
 
 const OPERATION_TOOLS: readonly McpPartText[] = MCP_OPERATION_TOOLS.map(([name, operation]) => {
   const endpoint = API_ENDPOINTS[operation];
-  const confirm = MCP_CONFIRMED_OPERATIONS.has(operation) ? ' Needs confirm: true.' : '';
+  const admin = isAdminOperation(operation) ? ADMIN_NOTE : '';
   return {
     name,
     title: titleOf(name),
-    description: `${endpoint.summary}.${confirm}`,
+    description: `${endpoint.summary}.${admin}`,
     access: endpoint.method === 'GET' ? 'read' : 'control',
     area: mcpOperationArea(endpoint),
   };

@@ -9,6 +9,7 @@ export const WEATHER_SIGNALS: SignalSourceSpec = {
       label: 'The forecast updates',
       subject: 'none',
       fields: [],
+      match: [],
       pulse: true,
     },
   ],

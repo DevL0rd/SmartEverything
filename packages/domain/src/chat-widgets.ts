@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DAY } from './api/primitives';
-import { HEALTH_METRICS, type HealthMetric } from './api/rows-access';
+import { HEALTH_METRICS } from './api/rows-access';
 
 const ID = z.uuid();
 
@@ -11,19 +11,6 @@ export type HealthWidgetRange = (typeof HEALTH_WIDGET_RANGES)[number];
 export const NUTRITION_WIDGET_PARTS = ['calories', 'macros', 'hydration'] as const;
 
 export type NutritionWidgetPart = (typeof NUTRITION_WIDGET_PARTS)[number];
-
-export const NUTRITION_WIDGET_OF: Readonly<Partial<Record<HealthMetric, NutritionWidgetPart>>> = {
-  energy_in: 'calories',
-  protein: 'macros',
-  carbohydrate: 'macros',
-  fat: 'macros',
-  fiber: 'macros',
-  sugar: 'macros',
-  saturated_fat: 'macros',
-  sodium: 'macros',
-  caffeine: 'macros',
-  hydration: 'hydration',
-};
 
 export const CHAT_LINK_VALUE_MAX = 80;
 
@@ -39,6 +26,8 @@ export const PLUGIN_CHAT_BOARDS: Readonly<Record<string, readonly string[]>> = {
   router: ['router.internet', 'router.home'],
   adguard: ['adguard.blocking'],
   syncthing: ['syncthing.health', 'syncthing.folders'],
+  discord: ['discord.call'],
+  aibi: ['aibi-status', 'aibi-conversation', 'aibi-moves'],
 };
 
 export const CHAT_WIDGET = z.discriminatedUnion('kind', [
@@ -105,6 +94,30 @@ export function isChatLink(widget: ChatWidget): widget is ChatLink {
 
 export const CHAT_WIDGETS_MAX = 6;
 
+export const CHAT_WIDGET_GUIDE: Readonly<Record<ChatWidgetKind, string>> = {
+  device:
+    'id: a live card of one device, with its state and controls (deviceId of any non-camera device)',
+  remote: 'id: an infrared remote with its buttons (remote id from list_remotes)',
+  camera: 'id: a live camera view (deviceId of a camera)',
+  health: `metric, range (${HEALTH_WIDGET_RANGES.join(', ')}; default week), optional day (YYYY-MM-DD): a chart of one health measurement; needs recorded data in the last 30 days`,
+  nutrition: `part (${NUTRITION_WIDGET_PARTS.join(', ')}), optional day (YYYY-MM-DD): the day's food or water totals`,
+  board: `type, optional options: a plugin status board; types: ${Object.values(PLUGIN_CHAT_BOARDS).flat().join(', ')}`,
+  weather: 'the current weather and forecast',
+  scenes: 'the scenes of the home, to run with a tap',
+  setting_link:
+    'setting (a settings page id or setting id from the app’s settings), value (what it was set to, or null): a button that opens that setting',
+  device_settings_link: 'id (deviceId), value or null: a button that opens the device’s settings',
+  automation_link: 'id (automation id), value or null: a button that opens the automation',
+  scene_link: 'id (scene id), value or null: a button that opens the scene',
+  room_link: 'id (room id), value or null: a button that opens the room',
+  scheduled_link: 'id (scheduleId), value or null: a button that opens the scheduled step',
+  page_link: `page (${CHAT_LINK_PAGES.join(', ')}), id or null, value or null: a button that opens that page`,
+};
+
+export const SHOW_WIDGETS_INPUT = z.strictObject({
+  widgets: z.array(CHAT_WIDGET).min(1).max(CHAT_WIDGETS_MAX),
+});
+
 function optionsKey(options: Readonly<Record<string, string>> | undefined): string {
   return Object.entries(options ?? {})
     .sort(([left], [right]) => left.localeCompare(right))
@@ -156,3 +169,9 @@ export function newChatWidgets(
   });
   return fresh.slice(0, Math.max(0, CHAT_WIDGETS_MAX - known.length));
 }
+
+export const SHOW_WIDGETS_TEXT = `Attaches widgets to the reply you are writing in this chat: live cards and charts the person sees under your message. Needs ids from reads, never guesses; one call can hold up to ${String(CHAT_WIDGETS_MAX)} widgets and it can be called again, and the same widget is not added twice. Each widget has a kind and its fields. Kinds: ${Object.entries(
+  CHAT_WIDGET_GUIDE,
+)
+  .map(([kind, text]) => `${kind} (${text})`)
+  .join('; ')}.`;

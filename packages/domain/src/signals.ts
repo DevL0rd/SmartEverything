@@ -12,7 +12,9 @@ export const SIGNAL_LIMITS = {
 
 const JSON_OBJECT = z.record(z.string(), JSON_VALUE);
 
-export const SIGNAL_SOURCE_NAME = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, 'a lowercase source name');
+export const SIGNAL_SOURCE_NAME = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]{0,39}$/, 'a lowercase source name');
 
 export const SIGNAL_INPUT = z.strictObject({
   source: SIGNAL_SOURCE_NAME,
@@ -69,7 +71,9 @@ export const SIGNAL_TRIGGER = z
     match: z
       .record(z.string().min(1).max(80), JSON_VALUE)
       .default({})
-      .describe('Details that must match exactly, e.g. {"sound":"baby_crying"}'),
+      .describe(
+        'Details that must match exactly, using only the kind’s match keys from list_signal_kinds, e.g. {"detection":"baby_cry"} for kind sound',
+      ),
     comparison: COMPARISON.nullable()
       .default(null)
       .describe('Compared with the value (or the window result); null fires on every signal'),

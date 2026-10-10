@@ -4,7 +4,13 @@ import { EVENT_KINDS, type EventKind } from './events';
 import { COMPARISON, VALUE_COMPARISON, compare } from './comparison';
 import { SUN_EVENTS, nextSunEvent, type GeoPoint } from './sun';
 import { TOOL_ACTION, WAKE_AI_ACTION } from './automation-ai';
+import { PLUGIN_ORIGIN } from './plugin-people';
 import { SIGNAL_TRIGGER } from './signals';
+import {
+  signalTriggerError,
+  type SignalSourceSpec,
+  type SignalTriggerError,
+} from './signal-sources/index';
 import { JSON_VALUE, type JsonValue } from './values';
 import type { WeatherForecast } from './weather/forecast';
 import {
@@ -26,11 +32,24 @@ export const WEEKDAYS = z
   .min(1)
   .refine((days) => new Set(days).size === days.length, { message: 'weekdays must not repeat' });
 
-export const TIME_ZONE = z
-  .string()
-  .refine((zone) => zone === 'UTC' || Intl.supportedValuesOf('timeZone').includes(zone), {
-    message: 'not an IANA time zone',
-  });
+function isIanaZone(zone: string): boolean {
+  if (zone === 'UTC') {
+    return true;
+  }
+  if (!zone.includes('/')) {
+    return false;
+  }
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: zone }).resolvedOptions().timeZone === zone;
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export const TIME_ZONE = z.string().refine(isIanaZone, { message: 'not an IANA time zone' });
 
 export const TRIGGER = z.discriminatedUnion('type', [
   z.object({
@@ -106,9 +125,23 @@ export const AUTOMATION_DEFINITION = z.object({
   triggers: z.array(TRIGGER).min(1),
   conditions: CONDITIONS,
   actions: z.array(ACTION).min(1),
+  origin: PLUGIN_ORIGIN.nullable().default(null),
 });
 
 export type AutomationDefinition = z.infer<typeof AUTOMATION_DEFINITION>;
+
+export function automationSignalError(
+  sources: readonly SignalSourceSpec[],
+  definition: Pick<AutomationDefinition, 'triggers'>,
+): SignalTriggerError | null {
+  for (const trigger of definition.triggers) {
+    const error = trigger.type === 'signal' ? signalTriggerError(sources, trigger) : null;
+    if (error !== null) {
+      return error;
+    }
+  }
+  return null;
+}
 
 export interface StateChange {
   readonly deviceId: string;

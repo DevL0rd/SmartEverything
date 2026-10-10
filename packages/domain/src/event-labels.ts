@@ -24,4 +24,5 @@ export const EVENT_KIND_LABELS: Readonly<Record<EventKind, string>> = {
   place_arrived: 'Arrived',
   place_left: 'Left',
   parked: 'Parked',
+  phone_unlocked: 'Phone unlocked',
 };

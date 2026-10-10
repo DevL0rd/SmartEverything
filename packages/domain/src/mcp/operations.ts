@@ -1,6 +1,7 @@
 import type { EndpointName } from '../api/endpoints';
 import type { EndpointShape } from '../api/endpoint';
 import type { McpToolArea } from './areas';
+import { MCP_OPERATION_TOOLS, type McpCoreToolName } from './names';
 
 export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
   status:
@@ -11,6 +12,8 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Would hand the desktop’s own credential to the assistant and sign the desktop out.',
   createMcpToken: 'Creates a credential for an assistant; granting access stays with the person.',
   createApprovalCode: 'Approves an assistant’s access; consent stays with the person.',
+  editAiChatMessage:
+    'Changes the words of a message the person wrote; only the person edits what they said.',
   decideMcpConsent: 'Allows or denies an assistant; consent stays with the person.',
   createHealthSource:
     'A phone registers itself to upload Health Connect data with a token it keeps.',
@@ -18,12 +21,20 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   readHealthOutbox: 'Phone delivery protocol (health source token) for writing to Health Connect.',
   ackHealthOutbox: 'Phone delivery protocol (health source token) for writing to Health Connect.',
   readBleWatch: 'The phone’s Bluetooth listener asks what to listen for.',
+  reportClientFailures:
+    'An app reports its own redacted errors for diagnosis; there is nothing for an assistant to do with it.',
   reportPhone: 'A phone reports what it sees about itself; use read_phone to read it.',
   answerPhoneAction: 'A phone answers an action; use run_phone_action to act.',
   relayBleAdverts: 'The phone’s Bluetooth listener forwards raw radio adverts.',
   readPhoneWatches:
     'Hands a phone the keys it needs to connect to its watches; keys stay on phones.',
+  readAiSpeech:
+    'A phone fetches speech the AI sent it by push; use speak to make the AI say something.',
+  readWatchData:
+    'The phone connected to a watch fetches what it sends the watch; use get_weather and list_people for the same facts.',
   reportWatchState: 'The phone connected to a watch reports what it sees.',
+  takeOverWatchBridge:
+    'Chooses which phone’s Bluetooth connects to a watch; only the person on that phone decides.',
   answerWatchAction:
     'The phone connected to a watch answers an action; use run_watch_action to act.',
   saveWatchRecords:
@@ -35,8 +46,6 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   cameraStream: 'Live video over a WebSocket; use camera_pictures to see a camera.',
   cameraSnapshot: 'Returns a signed link for a browser; camera_pictures returns the image.',
   recordingLinks: 'Returns signed links for a browser; camera_pictures returns saved images.',
-  connectAssistantApp:
-    'Installs SmartEverything into Claude Code or Codex with a new credential; granting access stays with the person.',
   importGeminiKey:
     'Copies a credential between apps on the computer; the person does it in Settings.',
   setGeminiKey: 'Stores a credential for the voice assistant; the person enters it in Settings.',
@@ -45,8 +54,6 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Copies a credential between apps on the computer; the person does it in Settings.',
   setOpenRouterKey: 'Stores the OpenRouter credential; the person enters it in Settings.',
   removeOpenRouterKey: 'Removes the OpenRouter credential; the person does it in Settings.',
-  disconnectAssistantApp:
-    'Removes an app’s SmartEverything credential; the person does it on the desktop.',
   declineOutreach: 'A person declines a ringing AI call on their own device.',
   updateReachSettings:
     'The person’s own rules for how the AI may reach them; only they change them in Settings.',
@@ -58,30 +65,73 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Returns a raw screenshot for the app; take_screenshot gives the AI the picture as a chat attachment.',
   installPlugin: 'Adds code that runs on this computer; the person adds plugins in Settings.',
   removePlugin: 'Removes a plugin with its data and keys; the person does it in Settings.',
+  setPluginPerson:
+    'Decides who may act through a plugin, including as the owner; only the person decides it in Settings.',
+  removePluginPerson:
+    'Decides who may act through a plugin; only the person decides it in Settings.',
+  readPluginOptions:
+    'Fills the pickers of a plugin’s settings in the app; the AI reads the same things through the plugin’s own tools.',
 };
 
-export const MCP_CONFIRMED_OPERATIONS: ReadonlySet<EndpointName> = new Set<EndpointName>([
-  'removeClient',
-  'clearPushAccount',
-  'removeRoom',
-  'removeEvent',
-  'removeRecording',
-  'removeIrRemote',
-  'removeIrCode',
-  'removeScene',
-  'removeAutomation',
-  'revokeHealthSource',
-  'revokeMcpToken',
-  'revokeOAuthGrant',
-  'deleteProfile',
-  'removeLocalDevice',
-  'deleteHealthEntry',
-  'deleteFood',
-  'removeTalkChannel',
-  'removeTalkMessage',
-  'signalComputerProcess',
-  'closeComputerApp',
-]);
+const MCP_ADMIN_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
+  updateAssistantSettings:
+    'Changes the assistant’s instructions, models and limits for everyone; only a person in the app does that.',
+  updateAiBudget: 'Sets what the AI may spend; only a person in the app does that.',
+  setOpenRouterDefaults:
+    'Chooses the models every new chat starts with; only a person in the app does that.',
+  setAiModelPrice:
+    'Overrides what a model costs, which feeds the budget; only a person in the app does that.',
+  updateMcpTools: 'Decides which tools an AI may use; only a person in the app does that.',
+  updatePlugin:
+    'Configures plugins, their tools and who they trust; only a person in the app does that.',
+  restartPlugin:
+    'Restarts a plugin, which can drop what it is doing; only a person in the app does that.',
+  postPluginMessage:
+    'Writes into a plugin’s inbox as one of its people, which would lift a request’s trust; only a person in the app does that.',
+  createProfile: 'Adds a person to the home; only a person in the app manages people.',
+  updateProfile: 'Changes a person’s profile; only a person in the app manages people.',
+  deleteProfile: 'Removes a person with their data; only a person in the app manages people.',
+  selectProfile: 'Switches whose data the app shows; only a person in the app does that.',
+  updateClient: 'Changes a paired app or computer; only a person in the app manages pairing.',
+  removeClient: 'Unpairs an app or computer; only a person in the app manages pairing.',
+  revokeMcpToken: 'Cuts an assistant’s access; only a person in the app manages access.',
+  revokeOAuthGrant: 'Cuts an assistant’s access; only a person in the app manages access.',
+  revokeHealthSource: 'Cuts a phone’s health sync; only a person in the app manages access.',
+  setPushAccount: 'Stores the push credentials; only a person in the app handles credentials.',
+  clearPushAccount: 'Removes the push credentials; only a person in the app handles credentials.',
+  setPublicUrl:
+    'Changes how the server is reached from outside; only a person in the app does that.',
+  verifyPublicUrl:
+    'Makes the server contact its public address; only a person in the app does that.',
+  updateNetwork:
+    'Changes the server’s network and relay settings; only a person in the app does that.',
+  setUpSmartThings:
+    'Links a provider account with its credentials; only a person in the app does that.',
+  authorizeSmartThings:
+    'Links a provider account with its credentials; only a person in the app does that.',
+  addLocalDevice:
+    'Adds a device on the local network with its keys; only a person in the app does that.',
+  removeLocalDevice: 'Removes a device on the local network; only a person in the app does that.',
+  sendAssistantMessage:
+    'Writes a message in the person’s own words and starts a turn as them; a plugin’s request uses chat_send.',
+  sendAiChatMessage:
+    'Writes a message in the person’s own words and starts a turn as them; a plugin’s request uses chat_send.',
+  retryAiChatMessage:
+    'Re-runs the AI on a message the person wrote and replaces its reply; only the owner’s own AI may, never a plugin’s request.',
+  controlClaudeSession:
+    'Changes what a Claude session may do (modes, interrupts, sends); only a person in the app does that.',
+  startClaudeSession:
+    'Starts a Claude session on the computer; only a person in the app does that.',
+  answerClaudePrompt:
+    'Approves or denies what a Claude session asks to do; only a person in the app does that.',
+  installClaudeLink:
+    'Installs the Claude link on the computer; only a person in the app does that.',
+  removeClaudeLink: 'Removes the Claude link; only a person in the app does that.',
+  registerClaudeController:
+    'Registers who may control Claude sessions; only a person in the app does that.',
+  removeClaudeController:
+    'Removes who may control Claude sessions; only a person in the app does that.',
+};
 
 const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/health/entries', 'health'],
@@ -102,6 +152,7 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/push-targets', 'settings'],
   ['/api/rooms', 'home'],
   ['/api/weather', 'home'],
+  ['/api/exchange-rates', 'settings'],
   ['/api/places', 'home'],
   ['/api/providers', 'home'],
   ['/api/devices', 'devices'],
@@ -112,6 +163,7 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/history', 'history'],
   ['/api/events', 'history'],
   ['/api/cameras', 'cameras'],
+  ['/api/transcript', 'cameras'],
   ['/api/recordings', 'cameras'],
   ['/api/talk', 'talk'],
   ['/api/assistant', 'assistant'],
@@ -125,6 +177,7 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/scheduled', 'automations'],
   ['/api/signals', 'automations'],
   ['/api/reach', 'assistant'],
+  ['/api/claude', 'assistant'],
   ['/api/plugins', 'plugins'],
 ];
 
@@ -135,4 +188,25 @@ export function mcpOperationArea(endpoint: Pick<EndpointShape, 'path'>): McpTool
 
 export function isHumanOnlyOperation(name: EndpointName): boolean {
   return MCP_HUMAN_ONLY_OPERATIONS[name] !== undefined;
+}
+
+const MCP_CORE_OPERATIONS: Readonly<Partial<Record<McpCoreToolName, EndpointName>>> = {
+  set_ai_defaults: 'setOpenRouterDefaults',
+};
+
+const OPERATION_OF_TOOL: ReadonlyMap<string, EndpointName> = new Map<string, EndpointName>([
+  ...MCP_OPERATION_TOOLS.map(([tool, operation]): [string, EndpointName] => [tool, operation]),
+  ...Object.entries(MCP_CORE_OPERATIONS),
+]);
+
+export function mcpToolOperation(tool: string): EndpointName | undefined {
+  return OPERATION_OF_TOOL.get(tool);
+}
+
+export function isAdminOperation(name: EndpointName): boolean {
+  return MCP_ADMIN_OPERATIONS[name] !== undefined;
+}
+
+export function pluginTurnOperationReason(name: EndpointName): string | null {
+  return MCP_HUMAN_ONLY_OPERATIONS[name] ?? MCP_ADMIN_OPERATIONS[name] ?? null;
 }

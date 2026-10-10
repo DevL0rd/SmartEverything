@@ -11,6 +11,7 @@ import {
   RECORDING_ROW,
   REMOTE_NAME,
 } from './rows-media';
+import { WAKE_SENSITIVITY } from '../wake-sensitivity';
 
 export const SESSION_DESCRIPTION = z.strictObject({ sdp: z.string().min(1).max(200_000) });
 
@@ -24,6 +25,25 @@ export type MediaLink = z.infer<typeof MEDIA_LINK>;
 export const RECORDING_LINK = MEDIA_LINK.extend({ id: ID });
 
 const CAMERA_PARAMS = z.strictObject({ deviceId: ID });
+
+export const CAMERA_CHANGE = z
+  .strictObject({
+    record_events: z.boolean().optional().describe('Keep a snapshot and clip of each event'),
+    wake_sensitivity: WAKE_SENSITIVITY.optional(),
+    transcribe: z
+      .boolean()
+      .optional()
+      .describe('Turn what this camera hears into text transcripts, kept for the owner'),
+  })
+  .refine(
+    (change) =>
+      change.record_events !== undefined ||
+      change.wake_sensitivity !== undefined ||
+      change.transcribe !== undefined,
+    { message: 'Change recording of events, the wake sensitivity or transcribing' },
+  );
+
+export type CameraChange = z.output<typeof CAMERA_CHANGE>;
 
 const CAMERA_ENDPOINTS = {
   listCameras: endpoint({
@@ -40,10 +60,11 @@ const CAMERA_ENDPOINTS = {
     method: 'PATCH',
     path: '/api/cameras/:deviceId',
     access: 'member',
-    summary: 'Turn recording of events on or off for a camera',
+    summary:
+      'Change whether a camera records events, how readily it hears the AI’s name and whether it transcribes what it hears',
     params: CAMERA_PARAMS,
     query: NOTHING,
-    body: z.strictObject({ record_events: z.boolean() }),
+    body: CAMERA_CHANGE,
     response: CAMERA_ROW,
   }),
   offerCamera: endpoint({

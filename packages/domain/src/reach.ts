@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CLIENT_PLATFORM } from './api/primitives';
 import { PHONE_CONTEXT } from './phones';
+import { PLUGIN_ORIGIN } from './plugin-people';
 
 const ID = z.uuid();
 
@@ -43,6 +44,7 @@ export const AI_OUTREACH_ROW = z.strictObject({
   call_id: ID.nullable(),
   client_id: ID.nullable(),
   clients: z.array(ID).max(50).default([]),
+  origin: PLUGIN_ORIGIN.nullable().default(null),
   created_at: MOMENT,
   answered_at: MOMENT.nullable(),
   ended_at: MOMENT.nullable(),
@@ -133,6 +135,13 @@ export const AI_SPEECH_NOTICE = z.strictObject({
   from: z.string().min(1).max(80),
   text: z.string().min(1).max(1000),
   audio: z.base64().max(AI_SPEECH_AUDIO_MAX),
+  showText: z.boolean().optional(),
 });
 
 export type AiSpeechNotice = z.infer<typeof AI_SPEECH_NOTICE>;
+
+export const AI_SPEECH_FETCH_SECONDS = 20;
+
+export const AI_SPEECH_PUSH = z.strictObject({ id: ID, expiresAt: MOMENT });
+
+export type AiSpeechPush = z.infer<typeof AI_SPEECH_PUSH>;

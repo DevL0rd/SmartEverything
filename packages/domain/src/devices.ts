@@ -39,6 +39,7 @@ export const DEVICE_KINDS = [
   'router',
   'file_sync',
   'dns_filter',
+  'robot',
   'appliance',
   'computer',
   'phone',

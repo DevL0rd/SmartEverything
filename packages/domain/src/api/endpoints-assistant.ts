@@ -4,14 +4,10 @@ import {
   ASSISTANT_ATTACHMENTS_MAX,
   ASSISTANT_ATTACHMENT_BYTES_MAX,
   ASSISTANT_MESSAGE_ROW,
-  ASSISTANT_MODELS,
   ASSISTANT_SETTINGS_CHANGE,
   ASSISTANT_STATUS,
   ASSISTANT_TEXT_MAX,
-  ASSISTANT_USAGE,
   ASSISTANT_UPLOAD_CHUNK_BYTES,
-  RESPONDER_APP,
-  RESPONDER_MODE,
 } from '../assistant';
 import { NO_BODY, endpoint } from './endpoint';
 import { MEDIA_LINK } from './endpoints-media';
@@ -23,6 +19,9 @@ export const ASSISTANT_NEW_MESSAGE = z
   .strictObject({
     text: z.string().trim().max(ASSISTANT_TEXT_MAX).default(''),
     attachments: ATTACHMENT_IDS,
+    client_message_id: ID.optional().describe(
+      'An id the sender makes up for this message; sending the same id again returns the first message instead of adding another',
+    ),
   })
   .refine((message) => message.text !== '' || message.attachments.length > 0, {
     message: 'send some text or at least one attachment',
@@ -35,7 +34,7 @@ const LOCAL_FILE = z.strictObject({
     .string()
     .min(1)
     .max(1024)
-    .describe('Absolute path of a file in the temp folder (local responders only)'),
+    .describe('Absolute path of a file in the temp folder (callers on this computer only)'),
 });
 
 const UPLOADED_FILE = z.strictObject({ uploadId: ID });
@@ -43,18 +42,6 @@ const UPLOADED_FILE = z.strictObject({ uploadId: ID });
 export const ASSISTANT_OUT_FILE = z.union([LOCAL_FILE, UPLOADED_FILE]);
 
 export type AssistantOutFile = z.infer<typeof ASSISTANT_OUT_FILE>;
-
-export const ASSISTANT_REPLY = z.strictObject({
-  eventId: ID.describe('The eventId of the request you are answering'),
-  text: z.string().trim().max(ASSISTANT_TEXT_MAX).default(''),
-  progress: z
-    .boolean()
-    .default(false)
-    .describe('true for a short status line shown under the request while you work'),
-  files: z.array(ASSISTANT_OUT_FILE).max(ASSISTANT_ATTACHMENTS_MAX).default([]),
-});
-
-export type AssistantReply = z.output<typeof ASSISTANT_REPLY>;
 
 export const ASSISTANT_POST = z.strictObject({
   text: z.string().trim().max(ASSISTANT_TEXT_MAX).default(''),
@@ -89,14 +76,12 @@ export const ASSISTANT_UPLOAD_CHUNK = z.strictObject({
 
 export const ASSISTANT_ATTACHMENT_LINK = MEDIA_LINK.extend({ id: ID });
 
-const APP_PARAMS = z.strictObject({ app: RESPONDER_APP });
-
 const MESSAGE_ENDPOINTS = {
   readAssistant: endpoint({
     method: 'GET',
     path: '/api/assistant',
     access: 'member',
-    summary: 'The AI assistant: its responder, conversation state, connected apps and settings',
+    summary: 'The AI assistant’s settings',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -116,7 +101,7 @@ const MESSAGE_ENDPOINTS = {
     method: 'POST',
     path: '/api/assistant/messages',
     access: 'member',
-    summary: 'Send a message with optional attachments to the responder',
+    summary: 'Send a message with optional attachments to the assistant',
     params: NOTHING,
     query: NOTHING,
     body: ASSISTANT_NEW_MESSAGE,
@@ -187,103 +172,21 @@ const ATTACHMENT_ENDPOINTS = {
   }),
 } as const;
 
-const RESPONDER_ENDPOINTS = {
-  readAssistantModels: endpoint({
-    method: 'GET',
-    path: '/api/assistant/models',
-    access: 'member',
-    summary: 'The models and thinking levels the current responder reports',
-    params: NOTHING,
-    query: NOTHING,
-    body: NO_BODY,
-    response: ASSISTANT_MODELS,
-  }),
-  readAssistantUsage: endpoint({
-    method: 'GET',
-    path: '/api/assistant/usage',
-    access: 'member',
-    summary: 'How much of its plan limits the current responder has used, per window',
-    params: NOTHING,
-    query: NOTHING,
-    body: NO_BODY,
-    response: ASSISTANT_USAGE,
-  }),
-  setAssistantResponder: endpoint({
-    method: 'PUT',
-    path: '/api/assistant/responder',
-    access: 'owner',
-    summary: 'Choose who answers the assistant chat: Claude Code, Codex, another MCP app or none',
-    params: NOTHING,
-    query: NOTHING,
-    body: z.strictObject({ mode: RESPONDER_MODE }),
-    response: ASSISTANT_STATUS,
-  }),
+const SETTINGS_ENDPOINTS = {
   updateAssistantSettings: endpoint({
     method: 'PATCH',
     path: '/api/assistant/settings',
     access: 'owner',
     summary:
-      'Change assistant settings: models and thinking, workspace, sharing, name, instructions, and how long conversations keep using the same chat',
+      'Change assistant settings: name, instructions, working steps, compaction, voice and how long conversations keep using the same chat',
     params: NOTHING,
     query: NOTHING,
     body: ASSISTANT_SETTINGS_CHANGE,
     response: ASSISTANT_STATUS,
   }),
-  connectAssistantApp: endpoint({
-    method: 'POST',
-    path: '/api/assistant/apps/:app/connect',
-    access: 'owner',
-    summary: 'Give Claude Code or Codex on this computer every SmartEverything tool (desktop only)',
-    params: APP_PARAMS,
-    query: NOTHING,
-    body: NO_BODY,
-    response: ASSISTANT_STATUS,
-  }),
-  disconnectAssistantApp: endpoint({
-    method: 'POST',
-    path: '/api/assistant/apps/:app/disconnect',
-    access: 'owner',
-    summary: 'Remove SmartEverything from Claude Code or Codex on this computer (desktop only)',
-    params: APP_PARAMS,
-    query: NOTHING,
-    body: NO_BODY,
-    response: ASSISTANT_STATUS,
-  }),
-  openAssistantConversation: endpoint({
-    method: 'POST',
-    path: '/api/assistant/conversation/open',
-    access: 'owner',
-    summary: 'Open the responder’s conversation in Claude Desktop on this computer',
-    params: NOTHING,
-    query: NOTHING,
-    body: NO_BODY,
-    response: DONE,
-  }),
-  newAssistantConversation: endpoint({
-    method: 'POST',
-    path: '/api/assistant/conversation/new',
-    access: 'owner',
-    summary:
-      'Start the responder on a fresh conversation (not while it is shared with Discordinator)',
-    params: NOTHING,
-    query: NOTHING,
-    body: NO_BODY,
-    response: ASSISTANT_STATUS,
-  }),
 } as const;
 
-const RESPONDER_TOOL_ENDPOINTS = {
-  replyAssistant: endpoint({
-    method: 'POST',
-    path: '/api/assistant/replies',
-    access: 'owner',
-    summary:
-      'Answer a delivered assistant request by its eventId, or add a status line with progress',
-    params: NOTHING,
-    query: NOTHING,
-    body: ASSISTANT_REPLY,
-    response: z.strictObject({ messageId: ID.nullable(), delivered: z.boolean() }),
-  }),
+const POST_ENDPOINTS = {
   postAssistant: endpoint({
     method: 'POST',
     path: '/api/assistant/posts',
@@ -299,6 +202,6 @@ const RESPONDER_TOOL_ENDPOINTS = {
 export const ASSISTANT_AREA_ENDPOINTS = {
   ...MESSAGE_ENDPOINTS,
   ...ATTACHMENT_ENDPOINTS,
-  ...RESPONDER_ENDPOINTS,
-  ...RESPONDER_TOOL_ENDPOINTS,
+  ...SETTINGS_ENDPOINTS,
+  ...POST_ENDPOINTS,
 } as const;

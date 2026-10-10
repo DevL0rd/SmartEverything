@@ -6,7 +6,7 @@ export const SERVED_HOME = [
     'home',
     'read',
     'Get the home',
-    'The home in one view: name, time zone and location, rooms in order with their devices, people, and device providers with their status.',
+    'The home in one view: name, time zone and location, rooms in order with their devices, people (their ids are the profileId and personId other tools take) and device providers with their status.',
     { compose: ['list_homes', 'list_rooms', 'list_people', 'list_providers'] },
   ],
   [
@@ -57,7 +57,7 @@ export const SERVED_HOME = [
     'devices',
     'read',
     'Find devices',
-    'Devices by rooms, families, kinds, capability or words, with id, name, room, provider, online state and capability keys; detail gives each device in full when at most 5 match.',
+    'Lists devices by rooms, families, kinds, capability or words, with id, name, room, provider, online state and capability keys; detail gives each device in full when at most 5 match. Its ids are what the other device tools take.',
     { part: 'list_devices' },
   ],
   [
@@ -65,7 +65,7 @@ export const SERVED_HOME = [
     'devices',
     'read',
     'Get a device',
-    'One device in full: every capability with label, role, allowed values, unit, danger level and current value.',
+    'One device in full: every capability with key, label, role, allowed values, unit, danger level and current value. Call it before control_devices or an automation or scene action when you need the exact capability keys and values.',
     { part: 'get_device' },
   ],
   [
@@ -73,7 +73,7 @@ export const SERVED_HOME = [
     'devices',
     'control',
     'Update a device',
-    'Changes how a device is shown (name, room, hidden, favourite, order) or whether a camera records events.',
+    'Changes how a device is shown (name, room, hidden, favourite, order), or for a camera whether it records events, how readily it hears the AI’s name (wake sensitivity) and whether it transcribes what it hears.',
     { key: 'what', parts: { device: 'update_device', camera: 'update_camera' } },
   ],
   [
@@ -89,7 +89,7 @@ export const SERVED_HOME = [
     'control',
     'control',
     'Press a remote button',
-    'Sends one button of an infrared remote through its blaster.',
+    'Sends one button of an infrared remote through its blaster; remote and button names come from list_remotes.',
     { part: 'press_remote_button' },
   ],
   [
@@ -105,7 +105,7 @@ export const SERVED_HOME = [
     'devices',
     'control',
     'Run a phone action',
-    'Makes a phone ring, change a volume, the ringer or Do Not Disturb, or control what it plays.',
+    'Makes a phone ring until stopped at maximum volume even on silent (find my phone; on:false stops it), turns its flashlight on, off or toggle, changes a volume, the ringer or Do Not Disturb, or controls what it plays.',
     { part: 'run_phone_action' },
   ],
   [
@@ -129,7 +129,7 @@ export const SERVED_HOME = [
     'control',
     'control',
     'Control devices',
-    'Changes capabilities or runs actions on devices chosen by ids, rooms, families or words, one change list for any number of devices; returns each command’s result and the new value.',
+    'Changes capabilities or runs actions (value null) on devices chosen by deviceIds, rooms, families or words, one change list for any number of devices; capability keys and allowed values come from get_device. Returns each command’s result and the new value.',
     { part: 'control_devices' },
   ],
   [
@@ -137,7 +137,7 @@ export const SERVED_HOME = [
     'control',
     'control',
     'Run a scene',
-    'Runs every command of a scene and waits for the results.',
+    'Runs every command of a scene (sceneId from list_scenes) and waits for the results.',
     { part: 'run_scene' },
   ],
   [
@@ -145,7 +145,7 @@ export const SERVED_HOME = [
     'history',
     'read',
     'Get history',
-    'How one capability of a device changed over a time range, raw or bucketed.',
+    'How one capability of a device changed over a time range, raw or bucketed; deviceId and capability key come from find_devices and get_device.',
     { part: 'get_history' },
   ],
   [
@@ -161,8 +161,16 @@ export const SERVED_HOME = [
     'cameras',
     'read',
     'Camera pictures',
-    'Pictures from cameras: live ones taken now, or the newest saved one or a recording’s snapshot.',
+    'Pictures from cameras: live ones taken now, or the newest saved one or a recording’s snapshot; camera deviceIds come from find_devices (family camera).',
     { key: 'view', parts: { live: 'take_camera_snapshots', saved: 'get_camera_snapshot' } },
+  ],
+  [
+    'see',
+    'cameras',
+    'read',
+    'Look at one thing',
+    'One still picture taken now of a home camera, a computer’s screen or the window in front on a computer; the same look the voice assistant takes in a call. It cannot see a phone screen or phone camera: those need a call in the SmartEverything app.',
+    { part: 'see' },
   ],
   [
     'record_camera_clip',
@@ -171,6 +179,39 @@ export const SERVED_HOME = [
     'Record a camera clip',
     'Records a clip of 5 to 300 seconds from a camera.',
     { part: 'record_camera_clip' },
+  ],
+  [
+    'read_transcripts',
+    'cameras',
+    'read',
+    'Read transcripts',
+    'What cameras heard and what plugin conversations said, as text: the transcripts newest first, one transcript with its lines, a search through every line, the camera listening status or the retention and daily cap. Only the owner reads them.',
+    {
+      key: 'view',
+      parts: {
+        list: 'list_transcripts',
+        session: 'read_transcript',
+        search: 'search_transcripts',
+        status: 'read_transcript_status',
+        settings: 'read_transcript_settings',
+      },
+    },
+  ],
+  [
+    'delete_transcripts',
+    'cameras',
+    'control',
+    'Delete a transcript',
+    'Deletes one transcript with all its lines. A conversation still in progress stays.',
+    { part: 'delete_transcript' },
+  ],
+  [
+    'update_transcript_settings',
+    'cameras',
+    'control',
+    'Update transcript settings',
+    'Changes how many days camera transcripts are kept or the most camera listening may spend on transcribing in a day. Whether a camera transcribes is update_device with what camera.',
+    { part: 'update_transcript_settings' },
   ],
   [
     'list_scenes',
@@ -185,7 +226,7 @@ export const SERVED_HOME = [
     'automations',
     'control',
     'Edit a scene',
-    'Adds, changes or removes a scene.',
+    'Adds, changes or removes a scene (sceneId from list_scenes; actions need deviceId and capability from get_device).',
     {
       key: 'action',
       parts: { create: 'create_scene', update: 'update_scene', remove: 'remove_scene' },
@@ -204,7 +245,7 @@ export const SERVED_HOME = [
     'automations',
     'control',
     'Edit an automation',
-    'Adds, changes, switches on or off, or removes an automation.',
+    'Adds, changes, switches on or off, or removes an automation (a definition of triggers, conditions and actions). automationId comes from list_automations; deviceId and capability keys from get_device; signal kinds and match keys from read_signals.',
     {
       key: 'action',
       parts: {
@@ -219,7 +260,7 @@ export const SERVED_HOME = [
     'automations',
     'control',
     'Run an automation',
-    'Runs an automation’s actions now, skipping its triggers and conditions.',
+    'Runs an automation’s actions now, skipping its triggers and conditions; automationId comes from list_automations.',
     { part: 'run_automation' },
   ],
   [
@@ -235,7 +276,7 @@ export const SERVED_HOME = [
     'automations',
     'control',
     'Schedule actions',
-    'One-off steps for later: create, change, cancel, run now or remove a scheduled action.',
+    'One-off steps for later (a timing and steps): create, change, cancel, run now or remove a scheduled action; scheduleId comes from list_scheduled.',
     {
       key: 'action',
       parts: {

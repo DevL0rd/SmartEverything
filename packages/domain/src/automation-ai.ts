@@ -30,9 +30,7 @@ export const TOOL_ACTION = z
     tool: z.string().min(1).max(120).describe('Any tool name, e.g. call_person'),
     args: z.record(z.string(), JSON_VALUE).default({}).describe('The tool’s arguments'),
   })
-  .describe(
-    'Calls one tool without an AI turn; tools that need a person to confirm them are refused',
-  );
+  .describe('Calls one tool without an AI turn');
 
 export type ToolAction = z.output<typeof TOOL_ACTION>;
 
