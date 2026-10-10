@@ -1,4 +1,4 @@
-import type { JsonValue } from '@smarteverything/domain';
+import type { JsonValue, WebSource } from '@smarteverything/domain';
 import type { ChatChunk, ChatUsage, ToolCall } from './chat-types';
 import { openRouterError } from './errors';
 
@@ -15,6 +15,7 @@ export interface Turn {
   readonly reasoning: string;
   readonly reasoningDetails: readonly JsonValue[];
   readonly toolCalls: readonly ToolCall[];
+  readonly citations: readonly WebSource[];
   readonly finishReason: string | null;
   readonly usage: ChatUsage | null;
 }
@@ -37,6 +38,7 @@ export class TurnAccumulator {
   private reasoning = '';
   private readonly reasoningDetails: JsonValue[] = [];
   private readonly calls = new Map<number, PendingCall>();
+  private readonly citations: WebSource[] = [];
   private finishReason: string | null = null;
   private usage: ChatUsage | null = null;
 
@@ -57,6 +59,9 @@ export class TurnAccumulator {
         return;
       case 'tool_call':
         this.toolDelta(chunk);
+        return;
+      case 'citation':
+        this.citations.push({ url: chunk.url, title: chunk.title });
         return;
       case 'finish':
         this.finishReason = chunk.reason;
@@ -80,6 +85,7 @@ export class TurnAccumulator {
       toolCalls: [...this.calls.entries()]
         .sort(([a], [b]) => a - b)
         .map(([index, call]) => finished(index, call)),
+      citations: [...this.citations],
       finishReason: this.finishReason,
       usage: this.usage,
     };

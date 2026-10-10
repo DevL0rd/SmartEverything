@@ -65,6 +65,14 @@ export class SessionBus {
     return new SessionBus(dbus.sessionBus());
   }
 
+  static system(): SessionBus {
+    return new SessionBus(dbus.systemBus());
+  }
+
+  onError(listener: (cause: unknown) => void): void {
+    this.bus.on('error', listener);
+  }
+
   async call(request: BusCall): Promise<readonly unknown[]> {
     const reply = await this.bus.call(
       new dbus.Message({

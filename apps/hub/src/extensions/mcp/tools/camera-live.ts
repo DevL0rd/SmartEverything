@@ -26,7 +26,7 @@ const LOOK = z.strictObject({
 
 type Look = z.infer<typeof LOOK>;
 
-interface Shot {
+export interface Shot {
   readonly item: Record<string, unknown>;
   readonly image: ToolImage | null;
 }
@@ -53,7 +53,7 @@ function blocked(context: ToolContext, { device }: Placed): string | null {
   return privacy !== null && isPrivate(privacy, state?.value) ? 'privacy_on' : null;
 }
 
-async function shotOf(context: ToolContext, placed: Placed, size: MediaSize): Promise<Shot> {
+export async function shotOf(context: ToolContext, placed: Placed, size: MediaSize): Promise<Shot> {
   const item = {
     deviceId: placed.device.id,
     camera: placed.name,

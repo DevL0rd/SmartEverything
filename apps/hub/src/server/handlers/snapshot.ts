@@ -24,6 +24,10 @@ function dayOf(moment: Date): string {
   return moment.toISOString().slice(0, 10);
 }
 
+function lastLocalDayOf(now: Date): string {
+  return dayOf(new Date(now.getTime() + DAY_MS));
+}
+
 interface Viewer {
   readonly client: ClientRow;
   readonly profileId: string;
@@ -55,7 +59,7 @@ function tablesOf(
     health_daily: store.health.dailyRange(
       profileId,
       dayOf(firstDay),
-      dayOf(now),
+      lastLocalDayOf(now),
       HEALTH_METRICS.filter(
         (metric) =>
           (extras.nutrition || !NUTRITION_METRICS.has(metric)) &&
@@ -66,6 +70,7 @@ function tablesOf(
     body_readings: store.bodyReadings.recent(BODY_READINGS_SNAPSHOT),
     scheduled_actions: store.schedules.list(),
     plugin_streams: store.pluginData.streams(),
+    exchange_rates: store.exchangeRates.read(),
     ...(extras.weather ? { weather: store.weather.read() } : {}),
   };
 }

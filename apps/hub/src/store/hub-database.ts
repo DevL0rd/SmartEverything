@@ -26,6 +26,7 @@ type InventoryPart = Pick<
   | 'loadState'
   | 'upsertState'
   | 'insertEvents'
+  | 'enrichEvent'
   | 'loadCameras'
   | 'upsertCameras'
 >;
@@ -55,6 +56,10 @@ function inventoryPart(store: Store): InventoryPart {
         store.state.write(rows);
       }),
     insertEvents: (rows) => settle(() => store.events.insert(rows).map((row) => row.id)),
+    enrichEvent: (id, details) =>
+      settle(() => {
+        store.events.enrich(id, details);
+      }),
     loadCameras: () =>
       settle(() =>
         store.cameras

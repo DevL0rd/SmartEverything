@@ -7,16 +7,19 @@ import type { SecretStore } from '../secrets/store';
 import type { Store } from '../store/store';
 import type { AccessService } from './access';
 import type { WatchActionBroker } from '../local/watch-actions';
+import type { WatchDataService } from '../local/watch-data';
 import type { PlaceFinder } from '../places/place-finder';
 import type { WeatherService } from '../weather/weather-service';
+import type { ExchangeRateService } from '../exchange-rates/exchange-rate-service';
 import type { PushCommandChannel } from '../extensions/push/commands';
+import type { OpenCalls } from '../assistant-voice/open-calls';
 import type { LiveHub } from './live';
 import type { MediaLinks } from './media-links';
 import type { PublicUrlVerifier } from './public-url';
 import type { TalkService } from '../talk/talk-service';
 import type { AssistantService } from '../assistant/service';
 import type { OpenRouterPlatform } from '../openrouter/platform';
-import type { McpCallFeed } from '../extensions/mcp/call-feed';
+import type { MediaNotes } from '../transcripts/media-notes';
 
 export interface ServerContext {
   readonly store: Store;
@@ -29,12 +32,15 @@ export interface ServerContext {
   readonly foodLookup: FoodLookup;
   readonly live: LiveHub;
   readonly pushCommands: PushCommandChannel;
-  readonly toolCalls: McpCallFeed;
+  readonly openCalls: OpenCalls;
   readonly watchActions: WatchActionBroker;
+  readonly watchData: WatchDataService;
   readonly talk: TalkService;
   readonly assistant: AssistantService;
   readonly weather: WeatherService;
+  readonly exchangeRates: ExchangeRateService;
   readonly openRouter: OpenRouterPlatform;
+  readonly mediaNotes: MediaNotes;
   readonly places: PlaceFinder;
   readonly status: () => HubStatus;
   readonly publicStatus: () => PublicStatus;

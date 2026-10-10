@@ -1,4 +1,5 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
+import { pluginOriginOf } from '../../ai-tools/plugin-turn';
 import type { ScheduleAuthor } from '../../schedules/book';
 import type { Schedules } from '../../schedules/start';
 import type { Store } from '../../store/store';
@@ -22,6 +23,7 @@ function authorOf(store: Store, caller: Caller): ScheduleAuthor {
     clientId: client.id,
     role: client.role,
     via: caller.kind === 'client' && caller.via === 'assistant' ? 'assistant' : 'app',
+    plugin: caller.kind === 'client' ? pluginOriginOf(caller) : null,
   };
 }
 

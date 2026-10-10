@@ -49,6 +49,10 @@ function ringPayload(row: AiOutreachRow, caller: string): Readonly<Record<string
 
 const ANDROID: ReadonlySet<string> = new Set(['android']);
 
+function callKeyOf(outreachId: string): string {
+  return `ai_call_${outreachId}`;
+}
+
 class PhoneTransport implements RingTransport {
   constructor(private readonly deps: TransportDeps) {}
 
@@ -62,21 +66,35 @@ class PhoneTransport implements RingTransport {
 
   async ring(row: AiOutreachRow, clients: readonly ClientRow[]): Promise<string | null> {
     const online = this.deps.online();
-    const live = clients.filter((client) => online.has(client.id));
-    const offline = clients.filter((client) => !online.has(client.id));
+    const reachable = new Set(this.pushTargets());
     const outcomes = await Promise.all(
-      offline.map((client) =>
-        this.deps.push.send({
-          clientId: client.id,
-          command: 'ai_ring',
-          payload: ringPayload(row, this.deps.aiName()),
-        }),
-      ),
+      clients
+        .filter((client) => reachable.has(client.id) || !online.has(client.id))
+        .map((client) =>
+          this.deps.push.send({
+            clientId: client.id,
+            command: 'ai_ring',
+            payload: ringPayload(row, this.deps.aiName()),
+            collapseKey: callKeyOf(row.id),
+          }),
+        ),
     );
+    clients
+      .filter((client) => online.has(client.id) && !reachable.has(client.id))
+      .forEach((client) => {
+        this.deps.log.warn('reach.ring_foreground_only', {
+          outreachId: row.id,
+          clientId: client.id,
+        });
+      });
     const failures = outcomes.flatMap((outcome) =>
       outcome.outcome === 'sent' ? [] : [outcome.reason],
     );
-    return live.length === 0 && failures.length === outcomes.length ? failures.join(' ') : null;
+    failures.forEach((reason) => {
+      this.deps.log.warn('reach.ring_push_failed', { outreachId: row.id, reason });
+    });
+    const anyLive = clients.some((client) => online.has(client.id));
+    return !anyLive && failures.length === outcomes.length ? failures.join(' ') : null;
   }
 
   cancel(row: AiOutreachRow, clients: readonly ClientRow[]): void {
@@ -85,7 +103,12 @@ class PhoneTransport implements RingTransport {
       .filter((client) => reachable.has(client.id))
       .forEach((client) => {
         this.deps.push
-          .send({ clientId: client.id, command: 'ai_ring_cancel', payload: { outreachId: row.id } })
+          .send({
+            clientId: client.id,
+            command: 'ai_ring_cancel',
+            payload: { outreachId: row.id },
+            collapseKey: callKeyOf(row.id),
+          })
           .then(
             (outcome) => {
               if (outcome.outcome !== 'sent') {

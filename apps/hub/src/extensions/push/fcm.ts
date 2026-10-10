@@ -1,6 +1,7 @@
 import { sign } from 'node:crypto';
 import type { PushServiceAccount } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { PushDelivery } from './commands';
 
 export const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
@@ -150,8 +151,17 @@ export class FcmClient {
     account: PushServiceAccount,
     token: string,
     data: Readonly<Record<string, string>>,
+    delivery: PushDelivery,
   ): Promise<Delivery> {
-    return this.deliver(account, { token, data, android: { priority: 'HIGH' } });
+    return this.deliver(account, {
+      token,
+      data,
+      android: {
+        priority: 'HIGH',
+        ttl: `${String(delivery.ttlSeconds)}s`,
+        ...(delivery.collapseKey === null ? {} : { collapse_key: delivery.collapseKey }),
+      },
+    });
   }
 
   private async deliver(account: PushServiceAccount, message: FcmMessage): Promise<Delivery> {

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, join, sep } from 'node:path';
 import type { AssistantOutFile, InboundMessage, PluginRow } from '@smarteverything/domain';
 
@@ -43,40 +44,51 @@ async function allowedPath(path: string, options: InboundFileOptions): Promise<s
   return real;
 }
 
-async function saved(bytes: Buffer, name: string, folder: string): Promise<string> {
-  const inbox = join(folder, 'inbox');
-  await mkdir(inbox, { recursive: true, mode: 0o700 });
-  const path = join(inbox, `${randomUUID()}-${basename(name)}`);
-  await writeFile(path, bytes, { mode: 0o600 });
-  return path;
-}
-
-async function fileOf(
-  attachment: Attachment,
-  options: InboundFileOptions,
-): Promise<AssistantOutFile> {
+async function bytesOf(attachment: Attachment, options: InboundFileOptions): Promise<Buffer> {
   const { source } = attachment;
   switch (source.kind) {
     case 'path':
-      return { path: await allowedPath(source.path, options) };
+      return readFile(await allowedPath(source.path, options));
     case 'base64':
-      return {
-        path: await saved(Buffer.from(source.data, 'base64'), attachment.name, options.folder),
-      };
+      return Buffer.from(source.data, 'base64');
     case 'url':
-      return {
-        path: await saved(
-          await downloaded(source.url, options.fetch),
-          attachment.name,
-          options.folder,
-        ),
-      };
+      return downloaded(source.url, options.fetch);
   }
 }
 
-export function inboundFiles(
+async function saved(
+  attachment: Attachment,
+  options: InboundFileOptions,
+  folder: string,
+): Promise<AssistantOutFile> {
+  const own = join(folder, randomUUID());
+  await mkdir(own, { mode: 0o700 });
+  const path = join(own, basename(attachment.name));
+  await writeFile(path, await bytesOf(attachment, options), { mode: 0o600 });
+  return { path };
+}
+
+export interface InboundFiles {
+  readonly files: AssistantOutFile[];
+  readonly discard: () => Promise<void>;
+}
+
+export async function inboundFiles(
   attachments: readonly Attachment[],
   options: InboundFileOptions,
-): Promise<AssistantOutFile[]> {
-  return Promise.all(attachments.map((attachment) => fileOf(attachment, options)));
+): Promise<InboundFiles> {
+  if (attachments.length === 0) {
+    return { files: [], discard: () => Promise.resolve() };
+  }
+  const folder = await mkdtemp(join(tmpdir(), 'smarteverything-inbound-'));
+  const discard = (): Promise<void> => rm(folder, { recursive: true, force: true });
+  try {
+    const files = await Promise.all(
+      attachments.map((attachment) => saved(attachment, options, folder)),
+    );
+    return { files, discard };
+  } catch (cause) {
+    await discard();
+    throw cause;
+  }
 }

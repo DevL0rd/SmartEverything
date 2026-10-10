@@ -12,9 +12,10 @@ import type { Logger } from '@smarteverything/logging';
 import type { ExtensionContext, ServerExtension } from '../../extensions';
 import type { OwnerAlert, OwnerAlerts } from '../owner-alerts';
 import { bound } from '../../server/router';
-import type { PushCommandOutcome } from './commands';
+import type { PushCommandOutcome, PushDelivery } from './commands';
 import { FcmClient, type Delivery, type PushNotification } from './fcm';
 import { notificationFor, urgentEventOf } from './messages';
+import { replyAudience } from './reply-audience';
 
 export interface PushOptions {
   readonly fetch: typeof fetch;
@@ -112,19 +113,23 @@ class PushSender {
   }
 
   assistantReplied(row: AssistantMessageRow): void {
-    const { store } = this.context;
+    const { store, live, openCalls } = this.context;
     const subject = { kind: 'assistant_reply', messageId: row.id };
-    const ownTarget = (target: PushTargetRow): boolean =>
-      store.profiles.activeOf(target.client_id).id === row.profile_id;
+    const audience = replyAudience(row, {
+      asker: (id) => store.assistantChat.find(id),
+      profileOf: (clientId) => store.profiles.activeOf(clientId).id,
+      listening: (clientId, stream) => live.clientListening(clientId, stream),
+      callOpen: (id) => openCalls.isOpen(id),
+    });
     this.track(
       subject,
       () => ({
         title: assistantLabel(store.assistantChat.settings()),
         body: assistantBody(row),
-        data: { ...subject, categoryId: 'assistant_reply' },
+        data: { ...subject, chatId: row.chat_id, categoryId: 'assistant_reply' },
         dataOnly: true,
       }),
-      ownTarget,
+      audience,
     );
   }
 
@@ -132,7 +137,11 @@ class PushSender {
     await Promise.all([...this.inflight]);
   }
 
-  async command(clientId: string, data: Subject): Promise<PushCommandOutcome> {
+  async command(
+    clientId: string,
+    data: Subject,
+    delivery: PushDelivery,
+  ): Promise<PushCommandOutcome> {
     const account = this.context.secrets.read().pushServiceAccount;
     if (account === null) {
       return { outcome: 'not_configured', reason: 'Push messages are not set up on this server.' };
@@ -143,21 +152,28 @@ class PushSender {
     if (targets.length === 0) {
       return {
         outcome: 'no_target',
-        reason: 'This phone has not signed up for push messages yet; open SmartEverything on it once.',
+        reason:
+          'This phone has not signed up for push messages yet; open SmartEverything on it once.',
       };
     }
     const deliveries = await Promise.all(
       targets.map(async (target) => ({
         target,
-        delivery: await this.safely(() => this.fcm.sendData(account, target.token, data)),
+        delivery: await this.safely(() => this.fcm.sendData(account, target.token, data, delivery)),
       })),
     );
     const tally = deliveries
       .map(({ target, delivery }) => this.count(target, delivery))
       .reduce(added, NOTHING);
     this.record(tally);
-    this.log.info('push.command_delivered', { clientId, command: data['command'], sent: tally.sent });
-    return tally.sent > 0 ? { outcome: 'sent' } : { outcome: 'failed', reason: tally.reasons.join('; ') };
+    this.log.info('push.command_delivered', {
+      clientId,
+      command: data['command'],
+      sent: tally.sent,
+    });
+    return tally.sent > 0
+      ? { outcome: 'sent' }
+      : { outcome: 'failed', reason: tally.reasons.join('; ') };
   }
 
   private notificationOf(row: EventRow): PushNotification {
@@ -285,15 +301,15 @@ export function pushExtension(options: PushOptions): ServerExtension {
         sender.eventWritten(change.record);
       }
       const reply = finishedReply(change);
-      if (reply !== null && !context.live.profileListening(reply.profile_id, 'assistant')) {
+      if (reply !== null) {
         sender.assistantReplied(reply);
       }
     });
     const stopAlerts = options.alerts.listen((alert) => {
       sender.alertRaised(alert);
     });
-    const detachCommands = context.pushCommands.attach((clientId, data) =>
-      sender.command(clientId, data),
+    const detachCommands = context.pushCommands.attach((clientId, data, delivery) =>
+      sender.command(clientId, data, delivery),
     );
     return Promise.resolve({
       endpoints: { readPushStatus: bound(E.readPushStatus, () => sender.status) },

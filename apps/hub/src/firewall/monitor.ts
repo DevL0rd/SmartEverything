@@ -5,11 +5,14 @@ import type {
   FirewallOpening,
   FirewallPlan,
   FirewallStatus,
+  LowPorts,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { DeviceRecord } from '../database/port';
 import { cameraSourceOf, pushSourceOf } from '../state/inventory';
+import { lanNetworks } from './lan-networks';
 import { probeLinux } from './linux';
+import { lowPortsOf } from './low-ports';
 import { probeMac } from './macos';
 import {
   always,
@@ -18,6 +21,7 @@ import {
   type DeviceAddress,
   type OpeningState,
   type PlanDraft,
+  type PluginPortNeed,
   type Probe,
   type Prober,
 } from './openings';
@@ -44,6 +48,7 @@ export type FirewallListener = (status: FirewallStatus) => void;
 interface Checked {
   readonly probe: Probe;
   readonly openings: readonly FirewallOpening[];
+  readonly lowPorts: LowPorts | null;
   readonly checkedAt: string;
 }
 
@@ -57,6 +62,18 @@ function failedProbe(cause: unknown): Probe {
     fixable: new Set(),
     watch: [],
   };
+}
+
+function withLowPorts(draft: PlanDraft | null, lowPorts: LowPorts | null): PlanDraft | null {
+  if (lowPorts?.state !== 'missing') {
+    return draft;
+  }
+  if (draft === null) {
+    return { backend: 'sysctl', unprivilegedPortStart: lowPorts.start };
+  }
+  return draft.backend === 'ufw' || draft.backend === 'firewalld'
+    ? { ...draft, unprivilegedPortStart: lowPorts.start }
+    : draft;
 }
 
 function revisionOf(draft: PlanDraft): FirewallPlan {
@@ -106,7 +123,10 @@ function pushingOf(devices: readonly DeviceRecord[], log: Logger): readonly Devi
 export class FirewallMonitor {
   private cameras: readonly DeviceAddress[] = [];
   private pushing: readonly DeviceAddress[] = [];
+  private plugins: readonly PluginPortNeed[] = [];
   private devicesKey = '';
+  private pluginsKey = '';
+  private warnedNoLan = false;
   private checked: Checked | null = null;
   private readonly failures = new Map<string, string>();
   private readonly opening = new Map<string, number>();
@@ -156,6 +176,16 @@ export class FirewallMonitor {
     this.cameras = cameras;
     this.pushing = pushing;
     this.devicesKey = key;
+    this.recheck();
+  }
+
+  pluginsChanged(needs: readonly PluginPortNeed[]): void {
+    const key = JSON.stringify(needs);
+    if (key === this.pluginsKey) {
+      return;
+    }
+    this.plugins = needs;
+    this.pluginsKey = key;
     this.recheck();
   }
 
@@ -230,13 +260,26 @@ export class FirewallMonitor {
       });
       return failedProbe(cause);
     });
-    const needs = { cameras: this.cameras, pushing: this.pushing, webrtcPort };
+    const networks = this.plugins.length === 0 ? [] : await lanNetworks(system.read);
+    this.warnNoLan(networks);
+    const needs = {
+      cameras: this.cameras,
+      pushing: this.pushing,
+      plugins: this.plugins,
+      networks,
+      webrtcPort,
+    };
     const openings = requiredOpenings(needs).map((opening) => ({
       ...opening,
       deviceIds: [...opening.deviceIds],
+      pluginIds: [...opening.pluginIds],
       state: probe.stateOf(opening.rule),
     }));
-    const checked = { probe, openings, checkedAt: this.options.now().toISOString() };
+    const lowPorts = await lowPortsOf(
+      system,
+      this.plugins.map((need) => need.port),
+    );
+    const checked = { probe, openings, lowPorts, checkedAt: this.options.now().toISOString() };
     this.checked = checked;
     this.follow(probe.watch);
     log.info('firewall.checked', {
@@ -244,6 +287,16 @@ export class FirewallMonitor {
       missing: openings.filter((opening) => opening.state !== 'open').length,
     });
     return this.publish(checked);
+  }
+
+  private warnNoLan(networks: readonly string[]): void {
+    if (this.plugins.length === 0 || networks.length > 0 || this.warnedNoLan) {
+      return;
+    }
+    this.warnedNoLan = true;
+    this.options.log.warn('firewall.no_lan_network', {
+      reason: 'no private IPv4 network on the default route; plugin ports get no opening',
+    });
   }
 
   private follow(paths: readonly string[]): void {
@@ -286,7 +339,8 @@ export class FirewallMonitor {
     const needed = openings.filter(
       (opening) => opening.state !== 'open' && probe.fixable.has(opening.state),
     );
-    const draft = needed.length === 0 || probe.draft === null ? null : probe.draft(needed);
+    const fixes = needed.length === 0 || probe.draft === null ? null : probe.draft(needed);
+    const draft = withLowPorts(fixes, checked.lowPorts);
     return {
       checkedAt: checked.checkedAt,
       backend: probe.backend,
@@ -295,6 +349,7 @@ export class FirewallMonitor {
       openings: [...openings],
       plan: draft === null ? null : revisionOf(draft),
       cameras: this.reach(openings),
+      lowPorts: checked.lowPorts,
     };
   }
 

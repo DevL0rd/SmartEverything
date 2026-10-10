@@ -1,14 +1,28 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ASSISTANT_POST, ASSISTANT_REPLY } from '@smarteverything/domain';
+import { ASSISTANT_POST, SHOW_WIDGETS_INPUT } from '@smarteverything/domain';
 import { z } from 'zod';
 import { operate } from './acting';
+import { showWidgets } from '../../../chat-widgets/show-widgets';
+import type { StoredAttachment } from '../../../store/repositories/assistant-chat';
+import { MediaTooLargeError, mediaKindOf } from '../../../transcripts/media-notes';
 import { READS, ToolError, WRITES, defineTool, type Tool, type ToolContext } from './registry';
 
 const INLINE_BYTES_MAX = 4 * 1024 * 1024;
 
 function textual(mime: string): boolean {
   return mime.startsWith('text/') || mime === 'application/json';
+}
+
+async function transcriptOf(context: ToolContext, file: StoredAttachment): Promise<string> {
+  try {
+    return await context.mediaNotes.ensure(file);
+  } catch (cause) {
+    if (cause instanceof MediaTooLargeError) {
+      throw new ToolError(cause.message);
+    }
+    throw cause;
+  }
 }
 
 async function attachment(
@@ -24,15 +38,19 @@ async function attachment(
     width: file.width,
     height: file.height,
   };
+  const kind = mediaKindOf(file.mime);
+  if (kind === 'audio' || kind === 'video') {
+    return { structured: { ...summary, transcript: await transcriptOf(context, file) } };
+  }
   if (file.bytes > INLINE_BYTES_MAX) {
     throw new ToolError(
       `${file.name} is larger than 4 MB; it is stored on the computer at ${file.storage_path} under the assistant folder.`,
     );
   }
   const content = await readFile(join(context.assistantFiles, file.storage_path));
-  if (file.mime.startsWith('image/')) {
+  if (kind === 'image') {
     return {
-      structured: summary,
+      structured: { ...summary, description: file.transcript },
       images: [{ data: content.toString('base64'), mimeType: file.mime }],
     };
   }
@@ -44,20 +62,18 @@ async function attachment(
 
 export const ASSISTANT_TOOLS: readonly Tool[] = [
   defineTool({
-    name: 'assistant_reply',
-    input: ASSISTANT_REPLY,
-    annotations: WRITES,
-    run: async (context, input) => ({
-      structured: { result: await operate(context, 'replyAssistant', { body: input }) },
-    }),
-  }),
-  defineTool({
     name: 'assistant_post',
     input: ASSISTANT_POST,
     annotations: WRITES,
     run: async (context, input) => ({
       structured: { result: await operate(context, 'postAssistant', { body: input }) },
     }),
+  }),
+  defineTool({
+    name: 'show_widgets',
+    input: SHOW_WIDGETS_INPUT,
+    annotations: WRITES,
+    run: (context, input) => ({ structured: showWidgets(context, input.widgets) }),
   }),
   defineTool({
     name: 'read_assistant_attachment',

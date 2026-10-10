@@ -51,7 +51,8 @@ export class TalkRelay {
       membership: options.membership,
       speakers: options.speakers,
       microphones: options.microphones,
-      endpoints: (): TalkEndpoint[] => [...this.listeners.values()].map((listener) => listener.endpoint),
+      endpoints: (): TalkEndpoint[] =>
+        [...this.listeners.values()].map((listener) => listener.endpoint),
       changed: (): void => {
         this.route();
       },

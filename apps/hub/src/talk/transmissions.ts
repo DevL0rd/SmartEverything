@@ -12,6 +12,7 @@ import type { CameraSpeakers } from './camera-speaker';
 import { memberLabel } from './labels';
 import type { TalkMembership } from './membership';
 import type { Recording, TalkRecorder } from './recorder';
+import type { TalkListening } from './talk-listening';
 import type { PacketSink, TalkEndpoint, Transmission } from './transmission';
 
 export interface TransmissionsOptions {
@@ -40,8 +41,13 @@ interface Opening {
 
 export class Transmissions {
   private readonly recordings = new Map<string, Recording>();
+  private listening: Pick<TalkListening, 'open'> | null = null;
 
   constructor(private readonly options: TransmissionsOptions) {}
+
+  attachListening(listening: Pick<TalkListening, 'open'>): void {
+    this.listening = listening;
+  }
 
   limitOf(kind: TalkMessageKind): number {
     return kind === 'talk' ? TALK_SECONDS_MAX : LISTEN_SECONDS_MAX;
@@ -138,21 +144,24 @@ export class Transmissions {
       speaker: opening.speaker,
       startedAt,
       owner: opening.owner,
-      sinks: this.sinksFor(opening.channelId, messageId, opening.skipCamera),
+      sinks: this.sinksFor(opening, messageId),
       stopSource: opening.stopSource,
     };
   }
 
-  private sinksFor(channelId: string, messageId: string, skipCamera: string | null): PacketSink[] {
-    const channel = this.options.membership.channel(channelId);
+  private sinksFor(opening: Opening, messageId: string): PacketSink[] {
+    const channel = this.options.membership.channel(opening.channelId);
     const sinks: PacketSink[] = this.options.membership
-      .speakerCameras(channelId)
-      .filter((cameraId) => cameraId !== skipCamera)
+      .speakerCameras(opening.channelId)
+      .filter((cameraId) => cameraId !== opening.skipCamera)
       .flatMap((cameraId) => this.options.speakers.open(cameraId, messageId, 'talk') ?? []);
     if (channel !== undefined && channel.keep_hours > 0) {
-      const recording = this.options.recorder.open(channelId, messageId);
+      const recording = this.options.recorder.open(opening.channelId, messageId);
       this.recordings.set(messageId, recording);
       sinks.push(recording);
+    }
+    if (channel?.ai_listens === true && opening.kind === 'talk' && this.listening !== null) {
+      sinks.push(this.listening.open(channel, messageId, opening.speaker));
     }
     return sinks;
   }

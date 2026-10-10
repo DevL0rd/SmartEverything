@@ -7,7 +7,7 @@ import type {
   UsageEntry,
 } from '@smarteverything/domain';
 import type { ChatChunk, ChatRequest, ChatUsage, ToolCall } from '../../../openrouter/chat-types';
-import type { JsonValue } from '@smarteverything/domain';
+import type { JsonValue, WebSource } from '@smarteverything/domain';
 
 export interface ChatClientPort {
   readonly chat: (request: ChatRequest, signal: AbortSignal) => AsyncIterable<ChatChunk>;
@@ -28,6 +28,7 @@ export interface TurnResult {
   readonly text: string;
   readonly reasoningDetails: readonly JsonValue[];
   readonly toolCalls: readonly ToolCall[];
+  readonly citations: readonly WebSource[];
   readonly finishReason: string | null;
   readonly usage: ChatUsage | null;
 }

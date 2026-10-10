@@ -92,6 +92,7 @@ describe('media commands (fake node)', () => {
         event: () => undefined,
         devices: () => undefined,
         failure: () => undefined,
+        online: () => undefined,
       },
       now: () => new Date(),
     };

@@ -35,8 +35,7 @@ function weatherFires(trigger: Trigger, signal: SignalInput): boolean {
   const next = WEATHER_FORECAST.safeParse(signal.value);
   const previous = WEATHER_FORECAST.safeParse(signal.previous);
   return (
-    next.success &&
-    weatherChangeFires(trigger, previous.success ? previous.data : null, next.data)
+    next.success && weatherChangeFires(trigger, previous.success ? previous.data : null, next.data)
   );
 }
 

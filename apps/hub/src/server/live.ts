@@ -1,19 +1,13 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
-  NUTRITION_METRICS,
-  WATCH_METRICS,
   LIVE_CLIENT_MESSAGE,
   LIVE_PROTOCOL,
-  OWNER_TABLES,
   type ClientRow,
   type FirewallStatus,
-  type HealthMetric,
   type HubStatus,
   type LiveChange,
   type LiveStream,
-  type LiveTable,
-  type WatchActionNotice,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
@@ -30,6 +24,14 @@ import {
   type Subscription,
 } from './live-dialect';
 import { readLegacySubscribe } from './live-legacy';
+import {
+  allowedStreams,
+  allowedTables,
+  visible,
+  type Connection,
+  type ProfileLookup,
+} from './live-visibility';
+import { LIVENESS_PROBE_MS, answersPing, receives, type LiveReceiver } from './live-reach';
 
 export type { LiveNotice } from './live-dialect';
 
@@ -41,16 +43,6 @@ const POLICY_VIOLATION = 1008;
 const TOKEN_WITHDRAWN = 4001;
 
 export type LiveAudience = 'everyone' | 'owners' | LiveStream;
-
-const OWNER_STREAMS: ReadonlySet<LiveStream> = new Set(['service_log']);
-
-interface Connection {
-  readonly client: ClientRow;
-  readonly socket: WebSocket;
-  readonly tables: Set<LiveTable>;
-  readonly streams: Set<LiveStream>;
-  alive: boolean;
-}
 
 export interface LiveOptions {
   readonly store: Store;
@@ -76,14 +68,6 @@ function hears(
   return connection.streams.has(audience);
 }
 
-function allowedTables(client: ClientRow, requested: readonly LiveTable[]): LiveTable[] {
-  return requested.filter((table) => client.role === 'owner' || !OWNER_TABLES.has(table));
-}
-
-function allowedStreams(client: ClientRow, requested: readonly LiveStream[]): LiveStream[] {
-  return requested.filter((stream) => client.role === 'owner' || !OWNER_STREAMS.has(stream));
-}
-
 function readSubscribe(raw: unknown): Subscription | z.ZodError {
   const legacy = readLegacySubscribe(raw);
   if (legacy !== null) {
@@ -92,90 +76,6 @@ function readSubscribe(raw: unknown): Subscription | z.ZodError {
   const parsed = LIVE_CLIENT_MESSAGE.safeParse(raw);
   return parsed.success ? { dialect: CURRENT_DIALECT, message: parsed.data } : parsed.error;
 }
-
-function ownRow(
-  connection: Connection,
-  row: { readonly client_id?: string | null; readonly profile_id: string | null } | null,
-  profileOf: ProfileLookup,
-): boolean {
-  return (
-    row !== null &&
-    (row.client_id === connection.client.id || row.profile_id === profileOf(connection.client.id))
-  );
-}
-
-function newerMetricVisible(connection: Connection, metric: HealthMetric): boolean {
-  return (
-    (connection.tables.has('health_entries') || !NUTRITION_METRICS.has(metric)) &&
-    (connection.tables.has('watch_days') || !WATCH_METRICS.has(metric))
-  );
-}
-
-function visibleDaily(
-  connection: Connection,
-  change: LiveChange,
-  profileOf: ProfileLookup,
-): boolean {
-  if (change.table !== 'health_daily') {
-    return true;
-  }
-  const row = change.record ?? change.oldRecord;
-  return (
-    ownRow(connection, row, profileOf) &&
-    (row === null || newerMetricVisible(connection, row.metric))
-  );
-}
-
-function visibleUsage(
-  connection: Connection,
-  row: { readonly client_id: string | null; readonly profile_id: string } | null,
-  profileOf: ProfileLookup,
-): boolean {
-  return connection.client.role === 'owner' || ownRow(connection, row, profileOf);
-}
-
-const PROFILE_ROW_TABLES: ReadonlySet<LiveTable> = new Set([
-  'layouts',
-  'health_entries',
-  'foods',
-  'watch_days',
-  'assistant_messages',
-  'ai_chats',
-  'ai_outreach',
-]);
-
-type ProfileScoped = Extract<
-  LiveChange,
-  {
-    table:
-      | 'layouts'
-      | 'health_entries'
-      | 'foods'
-      | 'watch_days'
-      | 'assistant_messages'
-      | 'ai_chats'
-      | 'ai_outreach';
-  }
->;
-
-function profileScoped(change: LiveChange): change is ProfileScoped {
-  return PROFILE_ROW_TABLES.has(change.table);
-}
-
-function visible(connection: Connection, change: LiveChange, profileOf: ProfileLookup): boolean {
-  if (!connection.tables.has(change.table)) {
-    return false;
-  }
-  if (profileScoped(change)) {
-    return ownRow(connection, change.record ?? change.oldRecord, profileOf);
-  }
-  if (change.table === 'ai_usage') {
-    return visibleUsage(connection, change.record ?? change.oldRecord, profileOf);
-  }
-  return visibleDaily(connection, change, profileOf);
-}
-
-type ProfileLookup = (clientId: string) => string;
 
 export class LiveHub {
   private readonly server = new WebSocketServer({
@@ -209,12 +109,25 @@ export class LiveHub {
     return new Set([...this.connections].map((connection) => connection.client.id));
   }
 
-  toClient(clientId: string, notice: LiveNotice): number {
-    const own = [...this.connections].filter((connection) => connection.client.id === clientId);
-    own.forEach((connection) => {
-      this.send(connection, notice);
-    });
-    return own.length;
+  async deliver(
+    clientId: string,
+    notice: LiveNotice,
+    receiver: LiveReceiver = 'any',
+  ): Promise<number> {
+    const own = [...this.connections].filter(
+      (connection) => connection.client.id === clientId && receives(connection.streams, receiver),
+    );
+    const reached = await Promise.all(
+      own.map(async (connection): Promise<boolean> => {
+        if (!(await answersPing(connection.socket, LIVENESS_PROBE_MS))) {
+          this.options.log.warn('live.connection_unresponsive', { clientId });
+          return false;
+        }
+        this.send(connection, notice);
+        return true;
+      }),
+    );
+    return reached.filter(Boolean).length;
   }
 
   presence(): void {
@@ -254,24 +167,10 @@ export class LiveHub {
     }
   }
 
-  profileListening(profileId: string, stream: LiveStream): boolean {
+  clientListening(clientId: string, stream: LiveStream): boolean {
     return [...this.connections].some(
-      (connection) =>
-        connection.streams.has(stream) &&
-        this.options.store.profiles.activeOf(connection.client.id).id === profileId,
+      (connection) => connection.client.id === clientId && connection.streams.has(stream),
     );
-  }
-
-  watchAction(notice: WatchActionNotice, profileId: string): string[] {
-    const reached: string[] = [];
-    for (const connection of this.connections) {
-      const own = this.options.store.profiles.activeOf(connection.client.id).id === profileId;
-      if (own && hears(connection, this.dialects.get(connection), notice, 'watch_actions')) {
-        this.send(connection, notice);
-        reached.push(connection.client.id);
-      }
-    }
-    return reached;
   }
 
   closeClient(clientId: string): void {

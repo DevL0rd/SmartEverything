@@ -1,4 +1,5 @@
-import type { HostedCall, Opening } from '../assistant-voice/outreach';
+import { PLAYOUT_SLACK_MS } from '../assistant-voice/call-link';
+import type { HostedCall, HostedListening, ReachOpening } from '../assistant-voice/outreach';
 import type { HostedCaller } from '../assistant-voice/persona';
 import type { CameraMicrophones, OpenMicrophone } from '../talk/camera-microphone';
 import type { CameraSpeakers } from '../talk/camera-speaker';
@@ -17,10 +18,13 @@ export interface CameraRequest {
   readonly cameraId: string;
   readonly cameraName: string;
   readonly caller: HostedCaller;
-  readonly opening: Opening;
+  readonly opening: ReachOpening;
   readonly heard?: () => Int16Array;
   readonly liveVideo: boolean;
+  readonly muteMic: boolean;
 }
+
+const OPEN_MIC: HostedListening = { echoFree: true, playoutSlackMs: PLAYOUT_SLACK_MS.open };
 
 type CameraDeps = HostedVoiceDeps & { readonly camera: CameraParts };
 
@@ -64,11 +68,13 @@ export async function cameraConversation(
   });
   const line = await hostLine(deps, {
     key: `camera:${cameraId}`,
+    callId: opening.outreachId,
     caller: request.caller,
     opening,
     play: sink.packet,
     closed: close,
     continuous: true,
+    ...(request.muteMic ? {} : { listening: OPEN_MIC }),
     ...(request.heard === undefined ? {} : { heard: request.heard }),
   }).catch((cause: unknown) => {
     close();

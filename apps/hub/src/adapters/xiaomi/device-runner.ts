@@ -4,23 +4,26 @@ import {
   checkValue,
   validateCommand,
   type AdapterSink,
+  type CameraDetection,
   type CapabilityKey,
   type DeviceCapability,
   type DeviceCommand,
+  type DeviceEvent,
   type DiscoveredDevice,
   type JsonValue,
   type StateUpdate,
 } from '@smarteverything/domain';
 import {
-  CAMERA_LIST_EVENTS,
   callEventName,
   deviceEventFromMiot,
   fromDevice,
   isCameraModel,
+  miotDetection,
   miotEventDetails,
   miotEventOf,
   propertyKeyOf,
   toDevice,
+  XiaomiCloudError,
   type ActionBinding,
   type PropertyBinding,
   type PropertyReading,
@@ -38,7 +41,7 @@ export interface RunnerContext extends LinkContext {
   readonly sink: () => AdapterSink | null;
   readonly motor: CameraMotor | null;
   readonly devicesChanged: () => void;
-  readonly cameraDetection: (did: string) => void;
+  readonly cameraDetected: (event: DeviceEvent, detection: CameraDetection) => void;
 }
 
 const CALL_STATUS = 'key-call-status';
@@ -64,7 +67,12 @@ export class DeviceRunner {
             context.motor,
             context.log,
           );
-    const setup = { did: entry.cloud.did, opened, readable: this.readable.length > 0 };
+    const setup = {
+      did: entry.cloud.did,
+      opened,
+      readable: this.readable.length > 0,
+      online: entry.cloud.online,
+    };
     this.link = new DeviceLink(setup, context, {
       poll: (): Promise<void> => this.poll(),
       readAll: (): Promise<void> => this.publishAll(),
@@ -97,6 +105,10 @@ export class DeviceRunner {
     this.link.start();
   }
 
+  lanMayBeBack(): void {
+    this.link.lanMayBeBack();
+  }
+
   ptzCapabilities(): DeviceCapability[] {
     return this.ptz === null ? [] : this.ptz.capabilities();
   }
@@ -119,8 +131,17 @@ export class DeviceRunner {
   }
 
   private async publishAll(): Promise<void> {
-    const { changed } = await this.readAll();
+    const { all, changed } = await this.readAll();
     this.publish(changed);
+    this.answered(all.length > 0);
+  }
+
+  private answered(usable: boolean): void {
+    if (this.io.transport === 'lan') {
+      this.link.reach.heard();
+      return;
+    }
+    void this.link.reach.disputed(usable);
   }
 
   private publish(updates: readonly StateUpdate[]): void {
@@ -252,6 +273,9 @@ export class DeviceRunner {
       operation: `${this.io.transport}-poll`,
       cause: error,
     });
+    if (this.io.transport === 'cloud' && error instanceof XiaomiCloudError) {
+      void this.link.reach.disputed(false);
+    }
     if (this.io.transport !== 'lan' || !(error instanceof MiioTimeoutError)) {
       return;
     }
@@ -264,6 +288,7 @@ export class DeviceRunner {
   }
 
   private uplink(uplink: Uplink): void {
+    this.link.reach.heard();
     if (uplink.kind === 'properties') {
       this.publish(this.accepted(uplink.readings).changed);
       return;
@@ -281,10 +306,6 @@ export class DeviceRunner {
     if (shape.name === CALL_START && this.watchesCallStatus()) {
       return;
     }
-    if (isCameraModel(this.entry.cloud.model) && CAMERA_LIST_EVENTS.has(shape.name)) {
-      this.context.cameraDetection(this.did);
-      return;
-    }
     const occurredAt = new Date(this.context.now()).toISOString();
     const details = { source: 'lan-push', ...miotEventDetails(shape, uplink.arguments) };
     this.emit(shape.name, occurredAt, details);
@@ -296,7 +317,12 @@ export class DeviceRunner {
       this.context.log.warn('xiaomi_device.event_unmapped', { did: this.did, event: name });
       return;
     }
-    this.context.sink()?.event(event);
+    const detection = isCameraModel(this.entry.cloud.model) ? miotDetection(name) : null;
+    if (detection === null) {
+      this.context.sink()?.event(event);
+      return;
+    }
+    this.context.cameraDetected(event, detection);
   }
 
   private watchesCallStatus(): boolean {

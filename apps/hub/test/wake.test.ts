@@ -58,6 +58,7 @@ async function bench(): Promise<Bench> {
       triggers: [{ type: 'interval', everyMinutes: 5 }],
       conditions: { mode: 'all', items: [] },
       actions: [{ type: 'delay', seconds: 1 }],
+      origin: null,
     },
   });
   const turns: WakeTurnInput[] = [];
@@ -67,7 +68,12 @@ async function bench(): Promise<Bench> {
     turns,
     profileId,
     chatId: chat.id,
-    origin: { automationId: automation.id, name: automation.name, signal: signalOf({}) },
+    origin: {
+      automationId: automation.id,
+      name: automation.name,
+      signal: signalOf({}),
+      plugin: null,
+    },
     failNext: false,
     runner: new WakeRunner({
       store: opened.store,
@@ -188,7 +194,11 @@ describe('signal bus values', () => {
 });
 
 describe('feed signals', () => {
-  const context = feedContextOf(new Date(START), () => 'UTC');
+  const context = feedContextOf(
+    new Date(START),
+    () => 'UTC',
+    () => null,
+  );
 
   function daily(day: string): RowChange {
     return {

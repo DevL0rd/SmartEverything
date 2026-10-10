@@ -51,7 +51,6 @@ export function discoveryTools(served: () => readonly Tool[]): Tool[] {
     {
       name: 'search_tools',
       listing: servedListing('search_tools', jsonSchemaOf(SEARCH, 'input'), READS),
-      confirms: (): boolean => false,
       check: (_context, raw): string | null => {
         const result = SEARCH.safeParse(raw);
         return result.success ? null : issuesOf(result.error);
@@ -61,7 +60,6 @@ export function discoveryTools(served: () => readonly Tool[]): Tool[] {
     {
       name: 'tool_details',
       listing: servedListing('tool_details', jsonSchemaOf(DETAILS, 'input'), READS),
-      confirms: (): boolean => false,
       check: (_context, raw): string | null => {
         const result = DETAILS.safeParse(raw);
         return result.success ? null : issuesOf(result.error);

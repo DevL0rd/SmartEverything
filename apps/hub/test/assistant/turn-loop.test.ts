@@ -46,19 +46,21 @@ describe('the OpenRouter turn loop', () => {
         role: 'owner',
         chatId: 'chat',
         via: 'chat',
-        confirmed: false,
         clientId: null,
       },
       images: { model: 'google/gemini-3.5-flash', allowed: false },
       work: 'chat',
+      webSearch: false,
       signal: new AbortController().signal,
       hooks: {
         stream,
         text: (): void => undefined,
         toolLine: (): void => undefined,
+        toolFailed: (): void => undefined,
         usage: (entry): void => {
           usage.push(entry);
         },
+        retried: (): void => undefined,
       },
     });
     await expect(run).rejects.toThrow('The connection dropped.');

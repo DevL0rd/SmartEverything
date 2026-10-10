@@ -1,4 +1,4 @@
-import type { Action, CommandAction, SignalInput } from '@smarteverything/domain';
+import type { Action, CommandAction, PluginOrigin, SignalInput } from '@smarteverything/domain';
 import type { Clock } from '../clock';
 import type { CommandInsert, CommandRow, HubDatabase } from '../database/port';
 import type { AutomationAiSlot } from './automation-ai';
@@ -7,6 +7,7 @@ export interface ActionOrigin {
   readonly automationId: string;
   readonly name: string;
   readonly signal: SignalInput | null;
+  readonly plugin: PluginOrigin | null;
 }
 
 export interface ActionRunnerOptions {

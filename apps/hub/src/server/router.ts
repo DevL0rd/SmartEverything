@@ -107,6 +107,7 @@ type ExtensionEndpointName =
   | 'listMcpConsents'
   | 'decideMcpConsent'
   | PhoneEndpointName
+  | 'reportClientFailures'
   | ComputerEndpointName;
 
 export type RouteTable = Readonly<Record<Exclude<EndpointName, ExtensionEndpointName>, Bound>>;

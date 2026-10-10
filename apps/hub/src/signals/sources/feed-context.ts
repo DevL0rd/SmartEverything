@@ -3,6 +3,7 @@ import { localClock, type RowChange, type SignalInput } from '@smarteverything/d
 export interface FeedContext {
   readonly at: string;
   readonly today: () => string;
+  readonly recentSleepEnd: (profileId: string) => string | null;
 }
 
 export type FeedProducer = (change: RowChange, context: FeedContext) => readonly SignalInput[];
@@ -24,6 +25,10 @@ export function homeDay(instant: Date, timeZone: string): string {
   return `${padded(year, 4)}-${padded(month, 2)}-${padded(day, 2)}`;
 }
 
-export function feedContextOf(now: Date, timeZone: () => string): FeedContext {
-  return { at: now.toISOString(), today: () => homeDay(now, timeZone()) };
+export function feedContextOf(
+  now: Date,
+  timeZone: () => string,
+  recentSleepEnd: (profileId: string) => string | null,
+): FeedContext {
+  return { at: now.toISOString(), today: () => homeDay(now, timeZone()), recentSleepEnd };
 }

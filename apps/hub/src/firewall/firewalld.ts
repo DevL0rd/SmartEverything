@@ -3,13 +3,14 @@ import {
   FIXABLE_UNLESS_DENIED,
   addressIn,
   portIn,
+  sourceEdges,
   type OpeningState,
   type Probe,
 } from './openings';
+import { defaultInterface } from './lan-networks';
 import { answerOf, type FirewallSystem } from './system';
 
 const FIREWALL_CMD = 'firewall-cmd';
-const ROUTE_TABLE = '/proc/net/route';
 const WATCHED = ['/etc/firewalld', '/etc/firewalld/zones'];
 const ACCEPTED = new Set(['accept']);
 const REFUSED = new Set(['reject', 'drop']);
@@ -31,18 +32,8 @@ export async function firewalldRunning(system: FirewallSystem): Promise<boolean>
   return result?.code === 0 && result.stdout.trim() === 'running';
 }
 
-async function defaultInterface(system: FirewallSystem): Promise<string | null> {
-  const table = (await system.read(ROUTE_TABLE)) ?? '';
-  const route = table
-    .split('\n')
-    .slice(1)
-    .map((line) => line.trim().split(/\s+/))
-    .find((fields) => fields[1] === '00000000');
-  return route?.[0] ?? null;
-}
-
 async function zoneName(system: FirewallSystem): Promise<string> {
-  const device = await defaultInterface(system);
+  const device = await defaultInterface(system.read);
   if (device !== null) {
     const bound = await system.run(FIREWALL_CMD, [`--get-zone-of-interface=${device}`]);
     if (bound?.code === 0) {
@@ -89,7 +80,9 @@ function portOpen(zone: Zone, protocol: string, port: number): boolean {
   });
 }
 
-type SourceRule = Exclude<PortRule, { readonly purpose: 'webrtc' }>;
+type SourceRule = Exclude<PortRule, { readonly purpose: 'webrtc' | 'plugin' }>;
+
+type PluginRule = Extract<PortRule, { readonly purpose: 'plugin' }>;
 
 function richRuleCovers(text: string, rule: SourceRule): boolean {
   const source = /source address="([^"]+)"/.exec(text)?.[1];
@@ -104,13 +97,37 @@ function richRuleCovers(text: string, rule: SourceRule): boolean {
   );
 }
 
-function sourceState(zone: Zone, rule: SourceRule): OpeningState {
-  const matching = zone.richRules.filter((text) => richRuleCovers(text, rule));
-  const verdicts = matching.map((text) => text.split(' ').at(-1) ?? '');
+function pluginRichRuleCovers(text: string, rule: PluginRule): boolean {
+  const source = /source address="([^"]+)"/.exec(text)?.[1];
+  const port = /port port="([^"]+)"/.exec(text)?.[1];
+  const protocol = /protocol="([^"]+)"/.exec(text)?.[1];
+  return (
+    source !== undefined &&
+    !text.includes('source NOT') &&
+    sourceEdges(rule.source).every((edge) => addressIn(source, edge)) &&
+    port !== undefined &&
+    portIn(port, rule.port) &&
+    protocol === rule.protocol
+  );
+}
+
+function verdictState(rules: readonly string[]): OpeningState {
+  const verdicts = rules.map((text) => text.split(' ').at(-1) ?? '');
   if (verdicts.some((verdict) => REFUSED.has(verdict))) {
     return 'denied';
   }
   return verdicts.some((verdict) => ACCEPTED.has(verdict)) ? 'open' : 'missing';
+}
+
+function sourceState(zone: Zone, rule: SourceRule): OpeningState {
+  return verdictState(zone.richRules.filter((text) => richRuleCovers(text, rule)));
+}
+
+function pluginState(zone: Zone, rule: PluginRule): OpeningState {
+  if (portOpen(zone, rule.protocol, rule.port)) {
+    return 'open';
+  }
+  return verdictState(zone.richRules.filter((text) => pluginRichRuleCovers(text, rule)));
 }
 
 function firewalldStateOf(zone: Zone, rule: PortRule): OpeningState {
@@ -120,7 +137,7 @@ function firewalldStateOf(zone: Zone, rule: PortRule): OpeningState {
   if (rule.purpose === 'webrtc') {
     return portOpen(zone, rule.protocol, rule.port) ? 'open' : 'missing';
   }
-  return sourceState(zone, rule);
+  return rule.purpose === 'plugin' ? pluginState(zone, rule) : sourceState(zone, rule);
 }
 
 export async function probeFirewalld(system: FirewallSystem): Promise<Probe> {
@@ -138,6 +155,7 @@ export async function probeFirewalld(system: FirewallSystem): Promise<Probe> {
       backend: 'firewalld',
       zone: name,
       rules: needed.map((opening) => opening.rule),
+      unprivilegedPortStart: null,
     }),
     fixable: FIXABLE_UNLESS_DENIED,
     watch: WATCHED,

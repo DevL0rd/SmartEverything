@@ -1,7 +1,13 @@
-import { AI_SPEECH_AUDIO_MAX, type AiSpeechNotice, type CallEnding } from '@smarteverything/domain';
+import {
+  AI_SPEECH_AUDIO_MAX,
+  type AiSpeechNotice,
+  type CallEnding,
+  type ClientRow,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { AnnounceRequest, AnnounceSink, Announcement } from '../assistant-voice/announcer';
 import type { Clock } from '../clock';
+import type { AppSpeech } from './app-speech';
+import type { Saying, SpeechRequest, SpeechSink } from '../speech/one-shot-speech';
 import { OggOpusWriter } from '../talk/ogg';
 import type { PacketSink } from '../talk/transmission';
 import type { CameraParts } from './camera-conversation';
@@ -12,13 +18,13 @@ import { SpeakerPacer } from './voice-pacing';
 
 export const FEED_TAIL_MS = 1500;
 
-export type Announce = (request: AnnounceRequest) => Promise<Announcement>;
+export type Say = (request: SpeechRequest) => Promise<Saying>;
 
 export interface AnnouncingDeps {
-  readonly announce: Announce;
+  readonly say: Say;
   readonly camera: CameraParts;
   readonly openLive: OpenLive;
-  readonly deliver: (clientId: string, notice: AiSpeechNotice) => number;
+  readonly app: Pick<AppSpeech, 'play'>;
   readonly aiName: () => string;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
@@ -29,7 +35,7 @@ export interface SpeakJob {
   readonly profileId: string;
   readonly clientId: string | null;
   readonly text: string;
-  readonly target: ResolvedTarget;
+  readonly target: Exclude<ResolvedTarget, { readonly kind: 'plugin' }>;
   readonly done: (failure: string | null) => void;
 }
 
@@ -84,7 +90,7 @@ function speakerOutput(deps: AnnouncingDeps, job: SpeakJob): Output {
   };
 }
 
-function appOutput(deps: AnnouncingDeps, job: SpeakJob, client: string): Output {
+function appOutput(deps: AnnouncingDeps, job: SpeakJob, client: ClientRow): Output {
   const pages: Buffer[] = [];
   const writer = new OggOpusWriter(Math.floor(Math.random() * 0xffffffff), (page) => {
     pages.push(page);
@@ -108,9 +114,9 @@ function appOutput(deps: AnnouncingDeps, job: SpeakJob, client: string): Output 
         text: job.text,
         audio,
       };
-      done(
-        deps.deliver(client, notice) > 0 ? null : 'The app disconnected before it could play this.',
-      );
+      deps.app.play(client, notice).then(done, (cause: unknown) => {
+        done(cause instanceof Error ? cause.message : String(cause));
+      });
     },
     close: (): void => undefined,
   };
@@ -118,11 +124,11 @@ function appOutput(deps: AnnouncingDeps, job: SpeakJob, client: string): Output 
 
 function outputOf(deps: AnnouncingDeps, job: SpeakJob): Output {
   return job.target.kind === 'app'
-    ? appOutput(deps, job, job.target.client.id)
+    ? appOutput(deps, job, job.target.client)
     : speakerOutput(deps, job);
 }
 
-function sinkFor(output: Output, settle: (failure: string | null) => void): AnnounceSink {
+function sinkFor(output: Output, settle: (failure: string | null) => void): SpeechSink {
   return {
     audio: output.packet,
     said: (): void => {
@@ -140,7 +146,7 @@ function sinkFor(output: Output, settle: (failure: string | null) => void): Anno
 
 export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<void> {
   const output = outputOf(deps, job);
-  const holder: { current: Announcement | null; finished: boolean } = {
+  const holder: { current: Saying | null; finished: boolean } = {
     current: null,
     finished: false,
   };
@@ -160,7 +166,7 @@ export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<vo
   };
   const sink = sinkFor(output, settle);
   const started = deps
-    .announce({
+    .say({
       id: job.id,
       profileId: job.profileId,
       clientId: job.clientId,

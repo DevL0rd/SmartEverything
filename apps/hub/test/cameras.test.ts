@@ -270,6 +270,7 @@ function cameraRow(recordEvents: boolean): CameraRow {
     physical_ptz: false,
     two_way_audio: false,
     record_events: recordEvents,
+    wake_sensitivity: 'standard',
   };
 }
 

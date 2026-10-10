@@ -1,6 +1,6 @@
 import type { ChatToolItem } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { HubToolResult, ToolCaller } from '../../../ai-tools/hub-tool';
+import { failure, type HubToolResult, type ToolCaller } from '../../../ai-tools/hub-tool';
 import type { ToolHub } from '../../../ai-tools/tool-hub';
 import type { ChatMessage, ContentPart, ToolCall } from '../../../openrouter/chat-types';
 
@@ -13,10 +13,16 @@ export interface ToolRun {
   readonly lines: readonly string[];
 }
 
+function failedResult(result: HubToolResult): boolean {
+  return typeof result.response['error'] === 'string';
+}
+
 export interface ToolRunOptions {
+  readonly refused: Map<string, string>;
   readonly hub: ToolHub;
   readonly caller: ToolCaller;
   readonly tool: (item: ChatToolItem) => void;
+  readonly failed: (name: string, reason: string) => void;
   readonly images: PictureReader;
 }
 
@@ -100,21 +106,42 @@ function detailOf(result: HubToolResult): string | null {
   return result.line === '' ? null : result.line.slice(0, 400);
 }
 
+const REFUSED_ARGUMENTS = 'invalid_request:';
+
+async function attempted(
+  call: ToolCall,
+  args: Readonly<Record<string, unknown>> | null,
+  options: ToolRunOptions,
+): Promise<HubToolResult> {
+  if (args === null) {
+    return failure('The arguments are not a JSON object; send them as JSON.');
+  }
+  const signature = JSON.stringify([call.function.name, args]);
+  const before = options.refused.get(signature);
+  if (before !== undefined) {
+    return failure(
+      `You already sent this exact call in this turn and it was refused (${before}). Change the arguments instead of repeating it.`,
+    );
+  }
+  const result = await options.hub.call(call.function.name, args, options.caller);
+  const error = result.response['error'];
+  if (typeof error === 'string' && error.startsWith(REFUSED_ARGUMENTS)) {
+    options.refused.set(signature, error.slice(REFUSED_ARGUMENTS.length).trim().slice(0, 300));
+  }
+  return result;
+}
+
 async function runOne(call: ToolCall, options: ToolRunOptions): Promise<HubToolResult> {
   const args = argumentsOf(call);
   const name = toolNameOf(call, args);
   const base = { callId: call.id, name, title: titleOf(options.hub, name) };
   options.tool({ ...base, state: 'running', detail: null });
-  const result: HubToolResult =
-    args === null
-      ? {
-          response: { error: 'The arguments are not a JSON object; send them as JSON.' },
-          line: '',
-          pictures: [],
-        }
-      : await options.hub.call(call.function.name, args, options.caller);
-  const failed = typeof result.response['error'] === 'string';
+  const result = await attempted(call, args, options);
+  const failed = failedResult(result);
   options.tool({ ...base, state: failed ? 'failed' : 'done', detail: detailOf(result) });
+  if (failed) {
+    options.failed(name, detailOf(result) ?? '');
+  }
   return result;
 }
 
@@ -136,7 +163,7 @@ export async function runTools(
     ],
     lines: done
       .filter(({ call }) => !readOnly(options.hub, call))
-      .map(({ result }) => result.line)
-      .filter((line) => line !== ''),
+      .filter(({ result }) => !failedResult(result) && result.line !== '')
+      .map(({ result }) => result.line),
   };
 }

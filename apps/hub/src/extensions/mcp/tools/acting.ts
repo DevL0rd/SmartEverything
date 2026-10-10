@@ -34,12 +34,29 @@ export function profileFor(context: ToolContext, as: ActingAs): string {
   return context.store.profiles.activeOf(clientFor(context, as.clientId).id).id;
 }
 
+function pluginOrigin(
+  context: ToolContext,
+): Pick<Extract<Caller, { kind: 'client' }>, 'pluginId' | 'pluginRequester'> {
+  const pluginId = context.caller?.via === 'plugin' ? context.caller.id : context.actor?.pluginId;
+  return {
+    ...(pluginId === undefined ? {} : { pluginId }),
+    ...(context.actor?.pluginRequester === undefined
+      ? {}
+      : { pluginRequester: context.actor.pluginRequester }),
+  };
+}
+
 export function callerFor(context: ToolContext, as: ActingAs = {}): Caller {
   const client = clientFor(context, as.clientId);
   const local = context.caller?.localOnly === true;
   const chatId = context.actor?.chatId ?? null;
-  const plugin = context.caller?.via === 'plugin' ? { pluginId: context.caller.id } : {};
-  const base = { kind: 'client', client, via: 'assistant', local, ...plugin } as const;
+  const base = {
+    kind: 'client',
+    client,
+    via: 'assistant',
+    local,
+    ...pluginOrigin(context),
+  } as const;
   const acting = chatId === null ? base : { ...base, chatId };
   return as.profileId === undefined && context.actor === null
     ? acting

@@ -1,6 +1,7 @@
 import type { AiOutreachRow, DeviceRow, TalkChannelRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { HostedCall, Opening } from '../assistant-voice/outreach';
+import type { HostedCall, ReachOpening } from '../assistant-voice/outreach';
+import { hostedUnder } from '../assistant-voice/plugin-caller';
 import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import { cameraConversation, type CameraParts } from './camera-conversation';
@@ -20,6 +21,7 @@ export interface HostingOptions {
   readonly chatFor: (asker: Asker, label: string) => string;
   readonly aiName: () => string;
   readonly liveVideo: () => boolean;
+  readonly muteMic: () => boolean;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
@@ -54,13 +56,17 @@ export class Hosting {
         {
           cameraId: device.id,
           cameraName: label,
-          caller: { profileId: asker.profileId, role: asker.role, label },
+          caller: hostedUnder(
+            { profileId: asker.profileId, role: asker.role, label },
+            asker.origin,
+          ),
           opening: this.opening(
             row,
             cameraOpening({ id: device.id, name: label }, reason, heard !== undefined, live),
           ),
           ...(heard === undefined ? {} : { heard }),
           liveVideo: live,
+          muteMic: this.options.muteMic(),
         },
       ),
     );
@@ -80,7 +86,10 @@ export class Hosting {
           channelId: channel.id,
           channelName: channel.name,
           label: this.options.aiName(),
-          caller: { profileId: asker.profileId, role: asker.role, label: channel.name },
+          caller: hostedUnder(
+            { profileId: asker.profileId, role: asker.role, label: channel.name },
+            asker.origin,
+          ),
           opening: this.opening(row, channelOpening(channel.name, reason)),
         },
       ),
@@ -123,10 +132,11 @@ export class Hosting {
       state: 'live',
       detail: STARTED_HINT,
       expires_at: null,
+      origin: asker.origin ?? null,
     });
   }
 
-  private opening(row: AiOutreachRow, text: string): Opening {
+  private opening(row: AiOutreachRow, text: string): ReachOpening {
     if (row.chat_id === null) {
       throw new ReachRefusedError('The chat for this conversation is gone.');
     }

@@ -4,15 +4,22 @@ import { MIIO_PORT } from '@smarteverything/xiaomi';
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
+export interface CameraFollowUps {
+  readonly delaysMs: readonly number[];
+  readonly gridMs: number;
+}
+
 export interface XiaomiTiming {
   readonly lanPollMs: number;
   readonly cloudPollMs: number;
   readonly cameraPollMs: number;
-  readonly cameraFollowUpMs: number;
+  readonly cameraFollowUps: CameraFollowUps;
   readonly requestTimeoutMs: number;
   readonly requestAttempts: number;
   readonly handshakeMaxAgeMs: number;
   readonly lanFailuresBeforeCloud: number;
+  readonly lanRetryFirstMs: number;
+  readonly lanRetryMaxMs: number;
   readonly keepAliveMinMs: number;
   readonly keepAliveMaxMs: number;
   readonly fastPingMs: number;
@@ -35,11 +42,13 @@ const DEFAULT_TIMING: XiaomiTiming = {
   lanPollMs: 10_000,
   cloudPollMs: 60_000,
   cameraPollMs: 15_000,
-  cameraFollowUpMs: 20_000,
+  cameraFollowUps: { delaysMs: [20_000, 70_000], gridMs: 15_000 },
   requestTimeoutMs: 2_000,
   requestAttempts: 3,
   handshakeMaxAgeMs: 60_000,
   lanFailuresBeforeCloud: 3,
+  lanRetryFirstMs: 10_000,
+  lanRetryMaxMs: 300_000,
   keepAliveMinMs: 10_000,
   keepAliveMaxMs: 50_000,
   fastPingMs: 5_000,

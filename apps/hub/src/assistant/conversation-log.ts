@@ -4,11 +4,17 @@ import {
   type ToolsChangedEmbed,
   ASSISTANT_STEPS_KEPT,
   ASSISTANT_TEXT_MAX,
+  WEB_SOURCES_KIND,
+  WEB_SOURCES_MAX,
+  type WebSource,
   ApiError,
   assistantLabel,
   isChatActivity,
   type AiChatRow,
+  type ChatStepOutcome,
+  type SettledStep,
   type AssistantMessageRow,
+  type AssistantReasonCode,
   type AssistantRequestState,
   type MessageOrigin,
 } from '@smarteverything/domain';
@@ -17,7 +23,6 @@ import { summaryOf, type StoredAttachment } from '../store/repositories/assistan
 import type { NewAssistantMessage } from '../store/repositories/assistant-chat';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
-import { activityLine } from './tool-activity';
 
 export interface PersonMessage {
   readonly chat: AiChatRow;
@@ -26,6 +31,7 @@ export interface PersonMessage {
   readonly text: string;
   readonly files: readonly StoredAttachment[];
   readonly origin: MessageOrigin;
+  readonly clientMessageId?: string;
 }
 
 export interface ResponderMessage {
@@ -37,18 +43,24 @@ export interface ResponderMessage {
   readonly model?: string | null;
 }
 
+function activityLine(label: string): string {
+  return label.replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
 const NO_EXTRAS = { origin: null, embeds: [], cost_micros: 0, model: null };
 
-function keptSteps(steps: readonly string[]): string[] {
-  return steps
-    .map((step) => activityLine(step))
-    .filter((step) => step !== '')
+function keptSteps(steps: readonly SettledStep[]): {
+  readonly steps: string[];
+  readonly step_states: ChatStepOutcome[];
+} {
+  const kept = steps
+    .map((step) => ({ title: activityLine(step.title), outcome: step.outcome }))
+    .filter((step) => step.title !== '')
     .slice(-ASSISTANT_STEPS_KEPT);
+  return { steps: kept.map((step) => step.title), step_states: kept.map((step) => step.outcome) };
 }
 
 export class ConversationLog {
-  private readonly replied = new Set<string>();
-
   constructor(private readonly store: Store) {}
 
   private get messages(): Store['assistantChat'] {
@@ -84,8 +96,12 @@ export class ConversationLog {
         state: 'queued',
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: null,
         origin: input.origin,
+        ...(input.clientMessageId === undefined
+          ? {}
+          : { client_message_id: input.clientMessageId }),
       },
       input.files,
     );
@@ -110,6 +126,7 @@ export class ConversationLog {
         state: null,
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: input.replyTo,
         model: input.model ?? null,
       },
@@ -132,6 +149,7 @@ export class ConversationLog {
         state: 'working',
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: replyTo,
         model,
       },
@@ -146,23 +164,38 @@ export class ConversationLog {
   finishReply(
     id: string,
     text: string,
-    model: string,
-    steps: readonly string[],
+    done: {
+      readonly model: string;
+      readonly steps: readonly SettledStep[];
+      readonly sources: readonly WebSource[];
+    },
   ): AssistantMessageRow {
+    const kept = this.messages
+      .message(id)
+      .embeds.filter((embed) => embed.kind !== WEB_SOURCES_KIND);
     return this.messages.updateMessage(id, {
+      embeds:
+        done.sources.length === 0
+          ? kept
+          : [...kept, { kind: WEB_SOURCES_KIND, sources: done.sources.slice(0, WEB_SOURCES_MAX) }],
       text: text.slice(0, ASSISTANT_TEXT_MAX),
-      model,
+      model: done.model,
       state: 'answered',
-      steps: keptSteps(steps),
+      ...keptSteps(done.steps),
     });
   }
 
-  failReply(id: string, text: string, reason: string, steps: readonly string[]): void {
+  failReply(
+    id: string,
+    failure: { readonly text: string; readonly reason: string; readonly code: AssistantReasonCode },
+    steps: readonly SettledStep[],
+  ): void {
     this.messages.updateMessage(id, {
-      text: text.slice(0, ASSISTANT_TEXT_MAX),
+      text: failure.text.slice(0, ASSISTANT_TEXT_MAX),
       state: 'failed',
-      reason: reason.slice(0, 400),
-      steps: keptSteps(steps),
+      reason: failure.reason.slice(0, 400),
+      reason_code: failure.code,
+      ...keptSteps(steps),
     });
   }
 
@@ -182,6 +215,7 @@ export class ConversationLog {
         state: 'queued',
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: null,
         origin,
       },
@@ -209,6 +243,7 @@ export class ConversationLog {
         state: null,
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: null,
         origin,
       },
@@ -232,6 +267,7 @@ export class ConversationLog {
         state: null,
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: null,
       },
       [],
@@ -254,6 +290,7 @@ export class ConversationLog {
         state: null,
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: null,
       },
       [],
@@ -275,6 +312,7 @@ export class ConversationLog {
         state: null,
         reason: null,
         steps: [],
+        step_states: [],
         reply_to: null,
       },
       [],
@@ -307,25 +345,26 @@ export class ConversationLog {
     this.messages.updateMessage(message.id, { state, reason });
   }
 
-  failedMessage(messageId: string | null, reason: string): void {
+  failedMessage(messageId: string | null, reason: string, code: AssistantReasonCode): void {
     const message = this.message(messageId);
     if (message !== null) {
-      this.messages.updateMessage(message.id, { state: 'failed', reason });
+      this.messages.updateMessage(message.id, {
+        state: 'failed',
+        reason: reason.slice(0, 400),
+        reason_code: code,
+      });
     }
   }
 
-  state(eventId: string, state: AssistantRequestState): void {
-    this.stateOf(this.store.assistantEvents.event(eventId).message_id, state);
-  }
-
-  step(eventId: string, line: string): void {
-    const message = this.message(this.store.assistantEvents.event(eventId).message_id);
-    const step = activityLine(line);
-    if (message === null || step === '' || message.steps.at(-1) === step) {
-      return;
-    }
-    this.messages.updateMessage(message.id, {
-      steps: [...message.steps, step].slice(-ASSISTANT_STEPS_KEPT),
+  interrupted(reason: string): void {
+    this.store.write(() => {
+      this.messages.failWorking(reason, 'interrupted');
+      for (const event of this.store.assistantEvents.abandoned()) {
+        this.store.assistantEvents.mark(event.id, 'answered_at');
+        if (this.message(event.message_id)?.role === 'person') {
+          this.failedMessage(event.message_id, reason, 'interrupted');
+        }
+      }
     });
   }
 
@@ -336,17 +375,7 @@ export class ConversationLog {
     }
   }
 
-  repliedTo(eventId: string): void {
-    this.replied.add(eventId);
-    this.state(eventId, 'working');
-  }
-
-  settled(eventId: string): void {
-    this.state(eventId, this.replied.has(eventId) ? 'answered' : 'delivered');
-    this.replied.delete(eventId);
-  }
-
   failed(event: StoredEvent, reason: string): void {
-    this.failedMessage(event.message_id, `Assistant unavailable: ${reason}`);
+    this.failedMessage(event.message_id, `Assistant unavailable: ${reason}`, 'unknown');
   }
 }

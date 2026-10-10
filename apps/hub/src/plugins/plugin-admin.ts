@@ -1,34 +1,38 @@
 import { rm } from 'node:fs/promises';
 import {
   ApiError,
-  pluginPowers,
   type JsonValue,
   type InboundMessage,
   type PluginDataPoint,
   type PluginInstall,
   type PluginLogLine,
+  type PluginOptionPage,
+  type PluginOptionQuery,
+  type PluginPerson,
+  type PluginPersonChange,
   type PluginRow,
   type PluginSaved,
   type PluginToolOutcome,
   type PluginToolRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { needsConfirmation } from '../ai-tools/confirmation';
 import type { ToolCaller } from '../ai-tools/hub-tool';
 import type { Store } from '../store/store';
 import type { PluginConfiguration } from './builtin/contract';
 import type { PluginHost, RunningTool } from './host';
 import type { PluginInbox } from './inbound';
 import { findManifest } from './manifest-source';
-import { applyChange, type PluginChangeInput } from './plugin-change';
+import { applyChange, type AppliedChange, type PluginChangeInput } from './plugin-change';
+import type { PluginPeople } from './plugin-people';
 import type { PluginSecrets } from './plugin-secrets';
-import { pluginHubTool } from './plugin-tools';
+import type { SettingsAuthor } from './plugin-settings';
 
 export interface PluginAdminOptions {
   readonly store: Store;
   readonly secrets: PluginSecrets;
   readonly host: () => PluginHost;
   readonly inbox: () => PluginInbox;
+  readonly people: PluginPeople;
   readonly validate: (
     row: PluginRow,
     settings: Readonly<Record<string, JsonValue>>,
@@ -38,10 +42,22 @@ export interface PluginAdminOptions {
 
 export interface ToolCall {
   readonly arguments: Readonly<Record<string, unknown>>;
-  readonly confirm: boolean;
 }
 
 const FAILED = z.looseObject({ error: z.string() });
+
+function authorOfConfigure(row: PluginRow, by: ToolCaller | undefined): SettingsAuthor {
+  if (by === undefined) {
+    return 'plugin';
+  }
+  if (by.via !== 'app' || by.role !== 'owner' || by.pluginRequester !== undefined) {
+    throw new ApiError(
+      'forbidden',
+      `Only a person in the app can change ${row.manifest.name} here.`,
+    );
+  }
+  return 'person';
+}
 
 export class PluginAdmin {
   constructor(private readonly options: PluginAdminOptions) {}
@@ -63,30 +79,37 @@ export class PluginAdmin {
     });
   }
 
-  async update(id: string, change: PluginChangeInput): Promise<PluginSaved> {
+  async update(
+    id: string,
+    change: Omit<PluginChangeInput, 'author'>,
+    author: SettingsAuthor,
+  ): Promise<PluginSaved> {
     const row = this.options.store.plugins.byId(id);
-    const powers = pluginPowers(row.manifest);
-    if (change.enabled === true && !row.enabled && powers.length > 0 && !change.confirm) {
-      return {
-        outcome: 'needs_confirmation',
-        reason: `Switching on ${row.manifest.name} lets it do more than offer tools.`,
-        powers,
-      };
-    }
-    const applied = await applyChange(row, change, this.options);
+    const applied = await applyChange(row, { ...change, author }, this.options);
     await this.restartIf(applied.restart, applied.row);
+    this.applyLive(applied);
     this.options.host().changed();
     return { outcome: 'saved', plugin: this.options.store.plugins.byId(id) };
   }
 
-  async configure(id: string, change: Partial<PluginConfiguration>): Promise<void> {
+  async configure(
+    id: string,
+    change: Partial<PluginConfiguration>,
+    by?: ToolCaller,
+  ): Promise<void> {
     const row = this.options.store.plugins.byId(id);
+    const author = authorOfConfigure(row, by);
     const applied = await applyChange(
       row,
-      { settings: change.settings ?? {}, secrets: change.secrets ?? {}, confirm: false },
+      {
+        settings: change.settings ?? {},
+        secrets: change.secrets ?? {},
+        author,
+      },
       this.options,
     );
     setImmediate(() => {
+      this.applyLive(applied);
       this.restartIf(applied.restart, applied.row).catch((cause: unknown) => {
         this.options.host().slot(id)?.logs.add(String(cause), new Date());
       });
@@ -147,21 +170,41 @@ export class PluginAdmin {
     caller: ToolCaller,
   ): Promise<PluginToolOutcome> {
     const found = this.runningTool(id, name);
+    if (caller.pluginRequester !== undefined && found.tool.humanOnly) {
+      throw new ApiError('forbidden', `Only a person in the app can run ${found.tool.title}.`);
+    }
     if (found.tool.humanOnly && caller.role !== 'owner') {
       throw new ApiError('forbidden', `Only an owner can run ${found.tool.title}.`);
     }
-    const hubTool = { ...pluginHubTool(found.plugin, found.tool), humanOnly: false };
-    if (!call.confirm && needsConfirmation(hubTool, call.arguments)) {
-      return { outcome: 'needs_confirmation', reason: hubTool.title };
-    }
-    const result = await this.options
-      .host()
-      .call(id, name, call.arguments, { ...caller, confirmed: true });
+    const result = await this.options.host().call(id, name, call.arguments, caller);
     const failed = FAILED.safeParse(result.response);
     if (failed.success) {
       throw new ApiError('upstream_failed', failed.data.error);
     }
     return { outcome: 'done', result: result.response };
+  }
+
+  choices(id: string, source: string, query: PluginOptionQuery): Promise<PluginOptionPage> {
+    const row = this.options.store.plugins.byId(id);
+    const slot = this.options.host().slot(id);
+    return slot === undefined
+      ? Promise.resolve({ state: 'unavailable', message: `${row.manifest.name} is switched off.` })
+      : slot.choices(source, query);
+  }
+
+  people(id: string): PluginPerson[] {
+    return this.options.people.list(id);
+  }
+
+  setPerson(id: string, externalId: string, change: PluginPersonChange): PluginPerson {
+    const saved = this.options.people.set(id, externalId, change);
+    this.options.host().changed();
+    return saved;
+  }
+
+  removePerson(id: string, externalId: string): void {
+    this.options.people.remove(id, externalId);
+    this.options.host().changed();
   }
 
   post(pluginId: string, message: InboundMessage): void {
@@ -185,6 +228,12 @@ export class PluginAdmin {
       );
     }
     return found;
+  }
+
+  private applyLive(applied: AppliedChange): void {
+    if (applied.live) {
+      this.options.host().applyLive(applied.row.id, applied.row.settings);
+    }
   }
 
   private async restartIf(restart: boolean, row: PluginRow): Promise<void> {

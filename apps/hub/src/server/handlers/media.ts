@@ -3,6 +3,7 @@ import { API_ENDPOINTS as E, type RecordingRow } from '@smarteverything/domain';
 import { thumbnailPathOf } from '../../cameras/thumbnails';
 import { clientOf } from '../auth';
 import type { ServerContext } from '../context';
+import { ownerReader } from './transcripts';
 import { DONE_REPLY, bound, type Bound } from '../router';
 
 type InfraredRoutes = Record<
@@ -66,9 +67,12 @@ export function mediaRoutes(context: ServerContext): MediaRoutes {
   const { store, hub, links } = context;
   return {
     listCameras: bound(E.listCameras, () => store.cameras.list()),
-    updateCamera: bound(E.updateCamera, ({ params, body }) =>
-      store.cameras.setRecordEvents(params.deviceId, body.record_events),
-    ),
+    updateCamera: bound(E.updateCamera, ({ params, body, caller }) => {
+      if (body.transcribe === true) {
+        ownerReader(store, caller);
+      }
+      return store.cameras.change(params.deviceId, body);
+    }),
     offerCamera: bound(E.offerCamera, async ({ params, body, caller }) => ({
       sdp: await hub.answerOffer(params.deviceId, body.sdp, clientOf(caller).id),
     })),

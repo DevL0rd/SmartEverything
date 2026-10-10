@@ -6,11 +6,15 @@ import {
   ASSISTANT_VOICE_HEARTBEAT_MS,
   ASSISTANT_VOICE_PATH,
   ASSISTANT_VOICE_PROTOCOL,
+  SIGHT_FRAME_LIMITS,
   TALK_FRAMES_PER_SECOND_MAX,
   TalkFrameError,
+  frameKindOf,
   packetOfFrame,
+  sightOfFrame,
   type AssistantVoiceClientMessage,
   type ClientRow,
+  type SightFrame,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
@@ -30,6 +34,7 @@ export interface VoiceSocketHandlers {
     message: AssistantVoiceClientMessage,
   ) => void;
   readonly audio: (endpoint: VoiceEndpoint, packet: Uint8Array) => void;
+  readonly sight: (endpoint: VoiceEndpoint, frame: SightFrame) => void;
   readonly disconnected: (endpoint: VoiceEndpoint) => void;
 }
 
@@ -44,6 +49,7 @@ class ConnectionHealth {
   private alive = true;
   private windowStart = Date.now();
   private frames = 0;
+  private pictures = 0;
 
   answered(): void {
     this.alive = true;
@@ -56,12 +62,23 @@ class ConnectionHealth {
   }
 
   spend(now: number): boolean {
+    this.roll(now);
+    this.frames += 1;
+    return this.frames <= TALK_FRAMES_PER_SECOND_MAX * 2;
+  }
+
+  spendPicture(now: number): boolean {
+    this.roll(now);
+    this.pictures += 1;
+    return this.pictures <= SIGHT_FRAME_LIMITS.hardPerSecond * 2;
+  }
+
+  private roll(now: number): void {
     if (now - this.windowStart >= BUDGET_WINDOW_MS) {
       this.windowStart = now;
       this.frames = 0;
+      this.pictures = 0;
     }
-    this.frames += 1;
-    return this.frames <= TALK_FRAMES_PER_SECOND_MAX * 2;
   }
 }
 
@@ -163,7 +180,7 @@ export class VoiceSockets {
 
   private receive(connection: Connection, data: Buffer, binary: boolean): void {
     if (binary) {
-      this.audio(connection, data);
+      this.binary(connection, data);
       return;
     }
     const message = parsed(data.toString('utf8'));
@@ -174,19 +191,35 @@ export class VoiceSockets {
     this.handlers.message(connection.endpoint, connection.client, message);
   }
 
-  private audio(connection: Connection, data: Buffer): void {
-    if (!connection.health.spend(Date.now())) {
-      this.refuse(connection, 'too many audio frames');
-      return;
-    }
+  private binary(connection: Connection, data: Buffer): void {
     try {
-      this.handlers.audio(connection.endpoint, packetOfFrame(data));
+      if (frameKindOf(data) === 'audio') {
+        this.audio(connection, data);
+      } else {
+        this.picture(connection, data);
+      }
     } catch (cause) {
       if (!(cause instanceof TalkFrameError)) {
         throw cause;
       }
       this.refuse(connection, cause.message);
     }
+  }
+
+  private audio(connection: Connection, data: Buffer): void {
+    if (!connection.health.spend(Date.now())) {
+      this.refuse(connection, 'too many audio frames');
+      return;
+    }
+    this.handlers.audio(connection.endpoint, packetOfFrame(data));
+  }
+
+  private picture(connection: Connection, data: Buffer): void {
+    if (!connection.health.spendPicture(Date.now())) {
+      this.refuse(connection, 'too many picture frames');
+      return;
+    }
+    this.handlers.sight(connection.endpoint, sightOfFrame(data));
   }
 
   private refuse(connection: Connection, reason: string): void {

@@ -4,7 +4,13 @@ import { OggPacketReader, OggStreamError } from './ogg';
 
 const STDERR_KEPT = 600;
 
-const SPEECH_LEVELLING = 'speechnorm=e=12.5:r=0.0001:l=1';
+const RUMBLE_CUTOFF_HZ = 120;
+const SPEECH_MAX_EXPANSION = 12.5;
+const SPEECH_EXPANSION_RAISE = 0.0001;
+const SPEECH_LEVELLING = [
+  `highpass=f=${String(RUMBLE_CUTOFF_HZ)}`,
+  `speechnorm=e=${String(SPEECH_MAX_EXPANSION)}:r=${String(SPEECH_EXPANSION_RAISE)}:l=1`,
+].join(',');
 
 export interface CameraMicrophoneOptions {
   readonly rtspPort: number;

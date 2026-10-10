@@ -27,7 +27,11 @@ export interface PluginHostOptions {
   readonly builtins: readonly BuiltinPlugin[];
   readonly builtin: Omit<BuiltinContextOptions, 'configure' | 'secrets' | 'store' | 'log'>;
   readonly contributions: Omit<ContributionOptions, 'store'>;
-  readonly configure: (pluginId: string, change: Partial<PluginConfiguration>) => Promise<void>;
+  readonly configure: (
+    pluginId: string,
+    change: Partial<PluginConfiguration>,
+    by?: ToolCaller,
+  ) => Promise<void>;
   readonly dataDirectory: string;
   readonly mcpUrl: () => string;
   readonly now: () => Date;
@@ -95,6 +99,10 @@ export class PluginHost {
 
   dataOf(id: string): string {
     return join(this.options.dataDirectory, 'plugins', id);
+  }
+
+  applyLive(id: string, settings: Readonly<Record<string, JsonValue>>): void {
+    this.slots.get(id)?.settingsChanged(settings);
   }
 
   slot(id: string): PluginSlot | undefined {

@@ -1,7 +1,7 @@
 import { ApiError, type JsonValue, type PluginRow } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import type { PluginSecrets } from './plugin-secrets';
-import { splitSettings } from './plugin-settings';
+import { checkedSecrets, splitSettings, type SettingsAuthor } from './plugin-settings';
 
 export interface PluginChangeInput {
   readonly enabled?: boolean | undefined;
@@ -9,12 +9,42 @@ export interface PluginChangeInput {
   readonly tool_switches?: Readonly<Record<string, boolean>> | undefined;
   readonly settings?: Readonly<Record<string, JsonValue>> | undefined;
   readonly secrets?: Readonly<Record<string, string>> | undefined;
-  readonly confirm: boolean;
+  readonly author: SettingsAuthor;
 }
 
 export interface AppliedChange {
   readonly row: PluginRow;
   readonly restart: boolean;
+  readonly live: boolean;
+}
+
+function restartNeeded(
+  row: PluginRow,
+  updated: PluginRow,
+  settingsChanged: boolean,
+  secretsChanged: boolean,
+): boolean {
+  if (updated.enabled !== row.enabled) {
+    return true;
+  }
+  if (!updated.enabled) {
+    return false;
+  }
+  return (
+    updated.trusted !== row.trusted ||
+    secretsChanged ||
+    (settingsChanged && !changedKeysAreLive(row, updated))
+  );
+}
+
+function changedKeysAreLive(row: PluginRow, updated: PluginRow): boolean {
+  if (row.source !== 'builtin') {
+    return false;
+  }
+  const declared = row.manifest.contributes.settings;
+  return Object.keys(updated.settings)
+    .filter((key) => JSON.stringify(updated.settings[key]) !== JSON.stringify(row.settings[key]))
+    .every((key) => declared[key]?.live === true);
 }
 
 export interface ChangeDeps {
@@ -50,12 +80,18 @@ function checkedSettings(
   if (change.settings === undefined && change.secrets === undefined) {
     return null;
   }
-  const split = splitSettings(row, change.settings ?? {});
+  const split = splitSettings(row, change.settings ?? {}, change.author);
   const reason = deps.validate(row, split.settings);
   if (reason !== null) {
     throw new ApiError('invalid_request', reason);
   }
-  return { settings: split.settings, secrets: { ...split.secrets, ...change.secrets } };
+  return {
+    settings: split.settings,
+    secrets: {
+      ...split.secrets,
+      ...checkedSecrets(row, change.secrets ?? {}, change.author),
+    },
+  };
 }
 
 export async function applyChange(
@@ -75,8 +111,6 @@ export async function applyChange(
     settings: split?.settings,
     secretNames: deps.secrets.names(row.id),
   });
-  const restart =
-    updated.enabled !== row.enabled ||
-    (updated.enabled && (updated.trusted !== row.trusted || split !== null || secretsChanged));
-  return { row: updated, restart };
+  const restart = restartNeeded(row, updated, split !== null, secretsChanged);
+  return { row: updated, restart, live: split !== null && !restart && updated.enabled };
 }

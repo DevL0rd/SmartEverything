@@ -1,15 +1,23 @@
-import { AI_OUTREACH_ROW, type AiOutreachRow, type OutreachState } from '@smarteverything/domain';
+import {
+  AI_OUTREACH_ROW,
+  type AiOutreachRow,
+  type OutreachState,
+  type PluginOrigin,
+} from '@smarteverything/domain';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { flag, jsonText } from '../sql';
 
-const STORED_OUTREACH = storedRow(AI_OUTREACH_ROW, { flags: ['urgent'], json: ['clients'] });
+const STORED_OUTREACH = storedRow(AI_OUTREACH_ROW, {
+  flags: ['urgent'],
+  json: ['clients', 'origin'],
+});
 
 const COUNTED = storedRow(z.strictObject({ count: z.int().min(0) }), {});
 
 const COLUMNS =
-  'id, profile_id, chat_id, from_chat_id, how, target, target_label, reason, urgent, state, detail, call_id, client_id, clients, created_at, answered_at, ended_at, expires_at';
+  'id, profile_id, chat_id, from_chat_id, how, target, target_label, reason, urgent, state, detail, call_id, client_id, clients, origin, created_at, answered_at, ended_at, expires_at';
 
 const KEPT_DAYS = 90;
 const DAY_MS = 86_400_000;
@@ -27,7 +35,7 @@ export type NewOutreach = Pick<
   | 'state'
   | 'detail'
   | 'expires_at'
-> & { readonly clients?: readonly string[] };
+> & { readonly clients?: readonly string[]; readonly origin?: PluginOrigin | null };
 
 export interface OutreachStep {
   readonly state: OutreachState;
@@ -58,6 +66,7 @@ export class AiOutreachRepository {
       const row: AiOutreachRow = {
         ...outreach,
         clients: [...(outreach.clients ?? [])],
+        origin: outreach.origin ?? null,
         id: this.context.newId(),
         call_id: null,
         client_id: null,
@@ -69,7 +78,7 @@ export class AiOutreachRepository {
         'record the AI outreach',
         `insert into ai_outreach (${COLUMNS})
          values ($id, $profile, $chat, $from, $how, $target, $label, $reason, $urgent, $state,
-                 $detail, null, null, $clients, $now, null, $ended, $expires)`,
+                 $detail, null, null, $clients, $origin, $now, null, $ended, $expires)`,
         {
           id: row.id,
           profile: row.profile_id,
@@ -83,6 +92,7 @@ export class AiOutreachRepository {
           state: row.state,
           detail: row.detail,
           clients: jsonText(row.clients),
+          origin: row.origin === null ? null : jsonText(row.origin),
           now,
           ended: row.ended_at,
           expires: row.expires_at,

@@ -82,6 +82,11 @@ export class Budget {
     return AI_BUDGET_SETTINGS.parse(this.options.settings.read(AI_BUDGET_KEY) ?? {});
   }
 
+  exhausted(): string | null {
+    const reasons = stopReasons(this.spend(), this.settings());
+    return reasons.length === 0 ? null : reasons.join(' and ');
+  }
+
   async status(): Promise<AiBudgetStatus> {
     const reading = await this.options.credits.fresh();
     this.creditAlerts(null);

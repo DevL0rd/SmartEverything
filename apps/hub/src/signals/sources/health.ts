@@ -46,6 +46,34 @@ function loggedSignals(change: RowChange, context: FeedContext): readonly Signal
   ];
 }
 
+function sleepEndedSignals(change: RowChange, context: FeedContext): readonly SignalInput[] {
+  if (change.table !== 'health_daily' || change.record === null) {
+    return [];
+  }
+  const { record, oldRecord } = change;
+  if (record.profile_id === null || record.metric !== 'sleep' || record.day !== context.today()) {
+    return [];
+  }
+  if (record.value <= (oldRecord?.value ?? 0)) {
+    return [];
+  }
+  const endedAt = context.recentSleepEnd(record.profile_id);
+  if (endedAt === null) {
+    return [];
+  }
+  return [
+    signalAt(context, {
+      source: 'health',
+      kind: 'sleep_ended',
+      subject: record.profile_id,
+      field: null,
+      value: endedAt,
+      profileId: record.profile_id,
+      data: { endedAt, day: record.day, minutes: record.value },
+    }),
+  ];
+}
+
 function readingValues(record: BodyReadingRow): readonly (readonly [string, number])[] {
   const values: Readonly<Record<string, number | null>> = {
     weight_kg: record.weight_kg,
@@ -85,5 +113,6 @@ export function healthSignals(change: RowChange, context: FeedContext): readonly
     ...todaySignals(change, context),
     ...loggedSignals(change, context),
     ...readingSignals(change, context),
+    ...sleepEndedSignals(change, context),
   ];
 }

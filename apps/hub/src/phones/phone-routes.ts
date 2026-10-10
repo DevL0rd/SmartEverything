@@ -6,7 +6,8 @@ import type { Store } from '../store/store';
 import type { PhoneActionBroker } from './phone-actions';
 import type { PhoneTarget } from './phone-nodes';
 
-export type PhoneEndpointName = 'reportPhone' | 'runPhoneAction' | 'answerPhoneAction' | 'readPhoneContext';
+export type PhoneEndpointName =
+  'reportPhone' | 'runPhoneAction' | 'answerPhoneAction' | 'readPhoneContext';
 
 export interface PhoneRouteContext {
   readonly store: Store;
@@ -16,7 +17,10 @@ export interface PhoneRouteContext {
 
 function allowedTarget(context: PhoneRouteContext, device: DeviceRow, caller: Caller): PhoneTarget {
   const target = context.hub.phones.target(device);
-  if (clientOf(caller).role !== 'owner' && profileIdOf(context.store, caller) !== target.profileId) {
+  if (
+    clientOf(caller).role !== 'owner' &&
+    profileIdOf(context.store, caller) !== target.profileId
+  ) {
     throw new ApiError('forbidden', `${target.name} belongs to another person.`);
   }
   return target;
@@ -37,7 +41,11 @@ export function phoneRoutes(context: PhoneRouteContext): Record<PhoneEndpointNam
       return DONE_REPLY;
     }),
     runPhoneAction: bound(E.runPhoneAction, ({ params, body, caller }) =>
-      actions.run(allowedTarget(context, store.devices.byId(params.deviceId), caller), body, clientOf(caller).id),
+      actions.run(
+        allowedTarget(context, store.devices.byId(params.deviceId), caller),
+        body,
+        clientOf(caller).id,
+      ),
     ),
     answerPhoneAction: bound(E.answerPhoneAction, ({ body, caller }) => {
       const { requestId, ...result } = body;

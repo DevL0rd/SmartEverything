@@ -2,7 +2,7 @@ import { SCENE_ACTIONS } from '@smarteverything/domain';
 import { z } from 'zod';
 import { CHANGE, applyChanges } from './changes';
 import { reported, waitFor } from './commanding';
-import { CONFIRM, PHYSICAL, READS, defineTool, type Tool, type ToolContext } from './registry';
+import { PHYSICAL, READS, defineTool, type Tool, type ToolContext } from './registry';
 import { nameOf } from './targets';
 
 function deviceLabel(context: ToolContext, deviceId: string): string {
@@ -30,27 +30,15 @@ function scenes(context: ToolContext): Record<string, unknown>[] {
 
 const CONTROL = z.strictObject({
   changes: z.array(CHANGE).min(1).max(50).describe('Changes, each on the devices it names'),
-  confirm: CONFIRM,
 });
 
-function unlocks(raw: Readonly<Record<string, unknown>>): boolean {
-  const parsed = CONTROL.safeParse(raw);
-  return (
-    parsed.success &&
-    parsed.data.changes.some((change) => change.capability === 'lock' && change.value !== true)
-  );
-}
-
 export const CONTROL_TOOLS: readonly Tool[] = [
-  {
-    ...defineTool({
-      name: 'control_devices',
-      input: CONTROL,
-      annotations: PHYSICAL,
-      run: (context, input) => applyChanges(context, input.changes, input.confirm),
-    }),
-    confirms: unlocks,
-  },
+  defineTool({
+    name: 'control_devices',
+    input: CONTROL,
+    annotations: PHYSICAL,
+    run: (context, input) => applyChanges(context, input.changes),
+  }),
   defineTool({
     name: 'run_scene',
     input: z.strictObject({ sceneId: z.uuid() }),

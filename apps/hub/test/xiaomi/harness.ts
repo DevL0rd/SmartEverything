@@ -117,6 +117,7 @@ export function recorder(): Recorded & { readonly sink: AdapterSink } {
       devices: (devices): void => {
         recorded.devices.push(devices);
       },
+      online: (): void => undefined,
       failure: (failure): void => {
         recorded.failures.push(failure);
       },

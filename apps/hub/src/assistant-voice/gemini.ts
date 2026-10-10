@@ -6,11 +6,15 @@ import {
   FunctionResponseScheduling,
   GoogleGenAI,
   Modality,
+  type AutomaticActivityDetection,
   type FunctionDeclaration,
+  type LiveConnectConfig,
   type LiveServerMessage,
   type Session,
   type UsageMetadata,
 } from '@google/genai';
+import { DEFAULT_PAUSE_MS, type SightResolution } from '@smarteverything/domain';
+import { LIVE_WEB_SEARCH_TOOL } from '../assistant/web-search';
 import type { VideoFrame } from './video';
 
 export interface LiveOptions {
@@ -18,9 +22,12 @@ export interface LiveOptions {
   readonly voice: string;
   readonly system: string;
   readonly tools: readonly FunctionDeclaration[];
+  readonly webSearch: boolean;
   readonly resume: string | null;
   readonly window: LiveWindow | null;
   readonly automatic: boolean;
+  readonly resolution?: SightResolution;
+  readonly pauseMs?: number;
 }
 
 export interface LiveWindow {
@@ -55,7 +62,8 @@ export interface Picture {
 export interface LiveSession {
   readonly audio: (pcm: Int16Array) => void;
   readonly speaking: (speaking: boolean) => void;
-  readonly text: (text: string, respond: boolean, image?: Picture) => void;
+  readonly text: (text: string, respond: boolean) => void;
+  readonly picture: (picture: Picture) => void;
   readonly toolResult: (
     id: string,
     name: string,
@@ -72,11 +80,30 @@ export interface VoiceProvider {
 
 const QUICK_TURNS = {
   disabled: false,
-  startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_LOW,
+  startOfSpeechSensitivity: StartSensitivity.START_SENSITIVITY_HIGH,
   endOfSpeechSensitivity: EndSensitivity.END_SENSITIVITY_HIGH,
-  prefixPaddingMs: 100,
-  silenceDurationMs: 500,
+  prefixPaddingMs: 200,
+  silenceDurationMs: DEFAULT_PAUSE_MS,
 };
+
+function turnTakingOf(options: LiveOptions): AutomaticActivityDetection {
+  if (!options.automatic) {
+    return { disabled: true };
+  }
+  if (options.pauseMs === undefined) {
+    return QUICK_TURNS;
+  }
+  return options.pauseMs === 0 ? {} : { ...QUICK_TURNS, silenceDurationMs: options.pauseMs };
+}
+
+function resolutionOf(options: LiveOptions): MediaResolution | null {
+  if (options.resolution === 'medium') {
+    return MediaResolution.MEDIA_RESOLUTION_MEDIUM;
+  }
+  return options.resolution === 'low' || options.automatic
+    ? MediaResolution.MEDIA_RESOLUTION_LOW
+    : null;
+}
 
 export class MissingGeminiKeyError extends Error {
   override readonly name = 'MissingGeminiKeyError';
@@ -158,7 +185,12 @@ function route(message: LiveServerMessage, events: LiveEvents): void {
   }
 }
 
-function wrap(session: Session): LiveSession {
+export type LiveWire = Pick<
+  Session,
+  'sendRealtimeInput' | 'sendClientContent' | 'sendToolResponse' | 'close'
+>;
+
+export function liveSessionOf(session: LiveWire): LiveSession {
   return {
     audio: (pcm): void => {
       session.sendRealtimeInput({
@@ -168,14 +200,15 @@ function wrap(session: Session): LiveSession {
     speaking: (speaking): void => {
       session.sendRealtimeInput(speaking ? { activityStart: {} } : { activityEnd: {} });
     },
-    text: (text, respond, image): void => {
-      const picture =
-        image === undefined
-          ? []
-          : [{ inlineData: { data: image.data.toString('base64'), mimeType: image.mimeType } }];
+    text: (text, respond): void => {
       session.sendClientContent({
-        turns: [{ role: 'user', parts: [...picture, { text }] }],
+        turns: [{ role: 'user', parts: [{ text }] }],
         turnComplete: respond,
+      });
+    },
+    picture: (picture): void => {
+      session.sendRealtimeInput({
+        video: { data: picture.data.toString('base64'), mimeType: picture.mimeType },
       });
     },
     toolResult: (id, name, response, delivery): void => {
@@ -202,6 +235,35 @@ function wrap(session: Session): LiveSession {
   };
 }
 
+export function liveConfigOf(options: LiveOptions): LiveConnectConfig {
+  const resolution = resolutionOf(options);
+  return {
+    responseModalities: [Modality.AUDIO],
+    systemInstruction: options.system,
+    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: options.voice } } },
+    ...(resolution === null ? {} : { mediaResolution: resolution }),
+    inputAudioTranscription: {},
+    outputAudioTranscription: {},
+    realtimeInputConfig: {
+      automaticActivityDetection: turnTakingOf(options),
+      activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+    },
+    ...(options.window === null
+      ? {}
+      : {
+          contextWindowCompression: {
+            triggerTokens: String(options.window.triggerTokens),
+            slidingWindow: { targetTokens: String(options.window.targetTokens) },
+          },
+        }),
+    sessionResumption: options.resume === null ? {} : { handle: options.resume },
+    tools: [
+      ...(options.webSearch ? [LIVE_WEB_SEARCH_TOOL] : []),
+      { functionDeclarations: [...options.tools] },
+    ],
+  };
+}
+
 export class Gemini implements VoiceProvider {
   constructor(private readonly key: () => string | null) {}
 
@@ -213,28 +275,7 @@ export class Gemini implements VoiceProvider {
     const ai = new GoogleGenAI({ apiKey });
     const session = await ai.live.connect({
       model: options.model,
-      config: {
-        responseModalities: [Modality.AUDIO],
-        systemInstruction: options.system,
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: options.voice } } },
-        ...(options.automatic ? { mediaResolution: MediaResolution.MEDIA_RESOLUTION_LOW } : {}),
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-        realtimeInputConfig: {
-          automaticActivityDetection: options.automatic ? QUICK_TURNS : { disabled: true },
-          activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
-        },
-        ...(options.window === null
-          ? {}
-          : {
-              contextWindowCompression: {
-                triggerTokens: String(options.window.triggerTokens),
-                slidingWindow: { targetTokens: String(options.window.targetTokens) },
-              },
-            }),
-        sessionResumption: options.resume === null ? {} : { handle: options.resume },
-        tools: [{ functionDeclarations: [...options.tools] }],
-      },
+      config: liveConfigOf(options),
       callbacks: {
         onmessage: (message): void => {
           route(message, events);
@@ -245,6 +286,6 @@ export class Gemini implements VoiceProvider {
         },
       },
     });
-    return wrap(session);
+    return liveSessionOf(session);
   }
 }

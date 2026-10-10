@@ -62,15 +62,17 @@ export class Ledger {
 
   record(entry: UsageEntry): AiUsageRow {
     const parsed = USAGE_ENTRY.parse(entry);
-    const row = AI_USAGE_ROW.parse({
-      ...parsed,
-      id: this.context.newId(),
-      at: parsed.at ?? this.context.now(),
-    });
-    this.context.write(() => {
+    const row = this.context.write(() => {
+      const row = AI_USAGE_ROW.parse({
+        ...parsed,
+        id: this.context.newId(),
+        at: parsed.at ?? this.context.now(),
+        chat_id: parsed.chat_id ?? this.rows.chatOf(parsed.message_id, parsed.call_id),
+      });
       this.rows.insert(row);
       this.context.changed('ai_usage', 'INSERT', row, null);
       this.sink(row, row.cost_micros);
+      return row;
     });
     this.tell(row);
     return row;

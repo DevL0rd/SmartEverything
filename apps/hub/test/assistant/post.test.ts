@@ -36,7 +36,6 @@ beforeEach(async () => {
       throw new Error('posts never deliver');
     },
     voiceResult: (): null => null,
-    settles: (): boolean => true,
     done: (): void => undefined,
   });
 });

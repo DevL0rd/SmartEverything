@@ -9,8 +9,15 @@ export interface PlaceholderValues {
 export class MissingSecretError extends Error {
   override readonly name = 'MissingSecretError';
 
-  constructor(readonly secret: string) {
-    super(`The plugin needs its ${secret} secret; add it in the plugin's settings.`);
+  constructor(
+    readonly secret: string,
+    label?: string,
+  ) {
+    super(
+      label === undefined
+        ? `The plugin needs its ${secret} secret; add it in the plugin's settings.`
+        : `Add the “${label}” in the plugin's settings.`,
+    );
   }
 }
 

@@ -1,6 +1,8 @@
 import {
   MCP_PART_TEXTS,
   MCP_TOOLS,
+  isAdminOperation,
+  mcpToolOperation,
   type McpRoute,
   type McpToolName,
 } from '@smarteverything/domain';
@@ -15,6 +17,7 @@ const LISTED = z.looseObject({
   inputSchema: z.looseObject({
     properties: z.record(z.string(), z.unknown()).default({}),
     required: z.array(z.string()).default([]),
+    additionalProperties: z.unknown().optional(),
   }),
   annotations: z.looseObject({
     readOnlyHint: z.boolean(),
@@ -76,6 +79,7 @@ interface PartFields {
   readonly part: string;
   readonly properties: Readonly<Record<string, unknown>>;
   readonly required: readonly string[];
+  readonly closed: boolean;
 }
 
 function partFields(route: Routed, parts: ReadonlyMap<string, Tool>): readonly PartFields[] {
@@ -87,6 +91,7 @@ function partFields(route: Routed, parts: ReadonlyMap<string, Tool>): readonly P
       part,
       properties: schema?.properties ?? {},
       required: schema?.required ?? [],
+      closed: schema?.additionalProperties === false,
     };
   });
 }
@@ -98,9 +103,17 @@ function fieldsText(fields: PartFields): string {
   return names.length === 0 ? 'no other fields' : `fields: ${names.join(', ')}`;
 }
 
+function adminNote(part: string): string {
+  const operation = mcpToolOperation(part);
+  return operation !== undefined && isAdminOperation(operation)
+    ? ', not available to a plugin’s request'
+    : '';
+}
+
 function keySchema(route: Routed, all: readonly PartFields[]): Args {
   const lines = all.map(
-    (fields) => `${fields.value}: ${firstSentence(fields.part)} (${fieldsText(fields)})`,
+    (fields) =>
+      `${fields.value}: ${firstSentence(fields.part)}${adminNote(fields.part)} (${fieldsText(fields)})`,
   );
   return {
     type: 'string',
@@ -126,20 +139,43 @@ function shapeOf(schema: unknown): string {
   return known ?? (parsed.success ? (parsed.data.description ?? '') : '');
 }
 
+function sameField(schema: unknown): string {
+  const parsed = FIELD_SHAPE.safeParse(schema);
+  if (!parsed.success) {
+    return JSON.stringify(schema);
+  }
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(parsed.data).filter(([key]) => key !== 'default' && key !== 'description'),
+    ),
+  );
+}
+
+function withoutDefault(schema: unknown): unknown {
+  const parsed = FIELD_SHAPE.safeParse(schema);
+  return parsed.success
+    ? Object.fromEntries(Object.entries(parsed.data).filter(([key]) => key !== 'default'))
+    : schema;
+}
+
 function mergedField(uses: readonly (readonly [string, unknown])[]): unknown {
-  const distinct = [
-    ...new Map(uses.map(([, schema]) => [JSON.stringify(schema), schema])).values(),
-  ];
+  const distinct = [...new Map(uses.map(([, schema]) => [sameField(schema), schema])).values()];
   if (distinct.length === 1) {
-    return distinct[0];
+    return new Set(uses.map(([, schema]) => JSON.stringify(schema))).size === 1
+      ? distinct[0]
+      : withoutDefault(distinct[0]);
   }
   const groups = new Map<string, string[]>();
   for (const [value, schema] of uses) {
     const shape = shapeOf(schema);
     groups.set(shape, [...(groups.get(shape) ?? []), value]);
   }
-  const lines = [...groups].map(([shape, values]) => `${values.join(', ')}: ${shape}`);
-  return { anyOf: distinct, description: lines.join('; ') };
+  const lines = [...groups]
+    .filter(([shape]) => shape !== '')
+    .map(([shape, values]) => `${values.join(', ')}: ${shape}`);
+  return lines.length === 0
+    ? { anyOf: distinct }
+    : { anyOf: distinct, description: lines.join('; ') };
 }
 
 function routedSchema(route: Routed, parts: ReadonlyMap<string, Tool>): Args {
@@ -188,19 +224,29 @@ function partNamed(parts: ReadonlyMap<string, Tool>, name: string): Tool {
   return part;
 }
 
+function refusedFields(route: Routed, fields: PartFields, args: Args): void {
+  const extras = Object.keys(args).filter((field) => !(field in fields.properties));
+  if (fields.closed && extras.length > 0) {
+    throw new ToolError(
+      `${route.key} ${fields.value} does not take ${extras.join(', ')}; it takes ${fieldsText(fields)}`,
+    );
+  }
+}
+
 function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string, Tool>): Tool {
   const members = Object.values(route.parts).map((part) => partNamed(parts, part));
+  const fieldsOf = new Map(partFields(route, parts).map((fields) => [fields.part, fields]));
   const resolve = (args: Args): { tool: Tool; args: Args } => {
     const call = partCall(route, name, args);
+    const fields = fieldsOf.get(call.name);
+    if (fields !== undefined) {
+      refusedFields(route, fields, call.args);
+    }
     return { tool: partNamed(parts, call.name), args: call.args };
   };
   return {
     name,
     listing: servedListing(name, routedSchema(route, parts), merged(members)),
-    confirms: (args): boolean => {
-      const call = partCall(route, name, args);
-      return partNamed(parts, call.name).confirms(call.args);
-    },
     check: (context, args): string | null => {
       try {
         const found = resolve(args);
@@ -229,7 +275,6 @@ function composed(name: McpToolName, members: readonly Tool[]): Tool {
       { type: 'object', properties: {}, additionalProperties: false },
       merged(members),
     ),
-    confirms: (): boolean => false,
     check: (): string | null => null,
     call: async (context): Promise<ToolOutput> => {
       const outputs = await Promise.all(members.map((member) => member.call(context, {})));

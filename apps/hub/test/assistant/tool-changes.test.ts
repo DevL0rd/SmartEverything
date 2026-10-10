@@ -23,7 +23,6 @@ function tool(name: string, plugin: string | null): HubTool {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     origin: plugin === null ? { kind: 'se' } : { kind: 'plugin', pluginId: plugin },
     humanOnly: false,
-    confirms: (): boolean => false,
   };
 }
 

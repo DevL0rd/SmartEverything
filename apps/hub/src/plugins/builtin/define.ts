@@ -41,7 +41,20 @@ export function defineBuiltinPlugin<S>(definition: BuiltinPluginDefinition<S>): 
       if (!parsed.success) {
         return { ok: false, reason: `The settings are not valid: ${issuesOf(parsed.error)}` };
       }
-      const stop = await definition.start({ ...context, settings: parsed.data });
+      const { watchSettings, ...rest } = context;
+      const stop = await definition.start({
+        ...rest,
+        settings: parsed.data,
+        settingsChanged: (listener) =>
+          watchSettings((changed): void => {
+            const next = definition.settings.safeParse(changed);
+            if (next.success) {
+              listener(next.data);
+            } else {
+              context.log.error('plugin.settings_invalid', next.error);
+            }
+          }),
+      });
       return { ok: true, stop };
     },
   };

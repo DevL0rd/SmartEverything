@@ -15,6 +15,10 @@ export interface CallLink {
   readonly caption: (who: Speaker, text: string) => void;
 }
 
+export interface SocketLink extends CallLink {
+  readonly restate: () => void;
+}
+
 export interface VoiceEndpoint {
   readonly id: string;
   readonly clientId: string;
@@ -22,7 +26,7 @@ export interface VoiceEndpoint {
   readonly audio: (frame: Uint8Array) => void;
 }
 
-export const PLAYOUT_SLACK_MS = { app: 250, hosted: 2500 } as const;
+export const PLAYOUT_SLACK_MS = { app: 250, hosted: 2500, open: 0 } as const;
 
 export type CallEndpoint = Pick<VoiceEndpoint, 'id' | 'send' | 'audio'>;
 
@@ -36,9 +40,14 @@ export function socketCallLink(
   target: CallLinkTarget,
   now: () => number,
   slackMs: number = PLAYOUT_SLACK_MS.app,
-): CallLink {
+): SocketLink {
   const { callId, chatId } = target;
   let playingUntil = 0;
+  let current: CallState | null = null;
+  const tell = (state: CallState): void => {
+    current = state;
+    endpoint.send({ type: 'call_state', callId, state, chatId });
+  };
   return {
     audio: (frames): void => {
       frames.forEach((frame) => {
@@ -53,8 +62,11 @@ export function socketCallLink(
       playingUntil = 0;
     },
     playing: () => now() < playingUntil + slackMs,
-    state: (state): void => {
-      endpoint.send({ type: 'call_state', callId, state, chatId });
+    state: tell,
+    restate: (): void => {
+      if (current !== null) {
+        tell(current);
+      }
     },
     caption: (who, text): void => {
       endpoint.send({ type: 'caption', callId, who, text: text.slice(0, 2000) });

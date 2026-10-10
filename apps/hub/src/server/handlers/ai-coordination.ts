@@ -1,5 +1,6 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import type { AskSender } from '../../assistant/coordination/asks';
+import { pluginOriginOf } from '../../ai-tools/plugin-turn';
 import { clientOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { bound, type Bound } from '../router';
@@ -10,6 +11,7 @@ function senderOf(context: ServerContext, caller: Caller): AskSender {
     owner: { profileId: profileIdOf(context.store, caller), role: client.role },
     clientId: client.id,
     chatId: caller.kind === 'client' ? (caller.chatId ?? null) : null,
+    plugin: caller.kind === 'client' ? pluginOriginOf(caller) : null,
   };
 }
 

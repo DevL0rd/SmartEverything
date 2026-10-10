@@ -1,4 +1,4 @@
-import type { Provider } from '@smarteverything/domain';
+import type { JsonValue, Provider } from '@smarteverything/domain';
 import type {
   AutomationChange,
   AutomationRecord,
@@ -177,6 +177,15 @@ export class FakeDatabase implements HubDatabase {
         this.events.push({ ...row, id });
         return id;
       });
+    });
+
+  enrichEvent = (id: string, details: Readonly<Record<string, JsonValue>>): Promise<void> =>
+    this.run('enrichEvent', () => {
+      const index = this.events.findIndex((row) => row.id === id);
+      const row = this.events[index];
+      if (row !== undefined) {
+        this.events[index] = { ...row, details: { ...details, ...row.details } };
+      }
     });
 
   loadCameras = (): Promise<readonly CameraRecord[]> =>

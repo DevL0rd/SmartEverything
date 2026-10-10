@@ -1,5 +1,6 @@
 import {
   PHONE_CONTEXT_STATES,
+  PHONE_FLASHLIGHT_MODES,
   PHONE_NETWORKS,
   PHONE_PLAYBACK,
   PHONE_RINGER_MODES,
@@ -28,7 +29,12 @@ export const PHONE_CAPABILITIES: readonly DeviceCapability[] = [
     access: 'read',
     value: { kind: 'enum', options: [...PHONE_CONTEXT_STATES] },
   },
-  { key: 'network', label: 'Network', access: 'read', value: { kind: 'enum', options: [...PHONE_NETWORKS] } },
+  {
+    key: 'network',
+    label: 'Network',
+    access: 'read',
+    value: { kind: 'enum', options: [...PHONE_NETWORKS] },
+  },
   {
     key: 'ringer_mode',
     label: 'Ringer',
@@ -43,7 +49,12 @@ export const PHONE_CAPABILITIES: readonly DeviceCapability[] = [
     access: 'read_write',
     value: { kind: 'enum', options: [...PHONE_PLAYBACK] },
   },
-  { key: 'now_playing', label: 'Now playing', access: 'read', value: { kind: 'text', maxLength: NOW_PLAYING_LONGEST } },
+  {
+    key: 'now_playing',
+    label: 'Now playing',
+    access: 'read',
+    value: { kind: 'text', maxLength: NOW_PLAYING_LONGEST },
+  },
   {
     key: 'screen_time_today',
     label: 'Screen time today',
@@ -52,9 +63,17 @@ export const PHONE_CAPABILITIES: readonly DeviceCapability[] = [
   },
   { key: 'screen_on', label: 'Screen on', access: 'read', value: { kind: 'boolean' } },
   { key: 'ring', label: 'Ring', access: 'write', value: { kind: 'action' } },
+  {
+    key: 'flashlight',
+    label: 'Flashlight',
+    access: 'write',
+    value: { kind: 'enum', options: [...PHONE_FLASHLIGHT_MODES] },
+  },
 ];
 
-const REPORTED: ReadonlySet<string> = new Set(PHONE_CAPABILITIES.map((capability) => capability.key));
+const REPORTED: ReadonlySet<string> = new Set(
+  PHONE_CAPABILITIES.map((capability) => capability.key),
+);
 
 export function isPhoneCapability(key: string): key is StandardCapability {
   return REPORTED.has(key);

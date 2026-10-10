@@ -9,6 +9,7 @@ import { AI_MODEL_TOOLS } from './ai-models';
 import { AI_USAGE_TOOLS } from './ai-usage';
 import { ASSISTANT_TOOLS } from './assistant';
 import { CAMERA_TOOLS } from './camera';
+import { CLAUDE_TOOLS } from './claude';
 import { CONTROL_TOOLS } from './control';
 import { DEVICE_TOOLS } from './devices';
 import { HEALTH_TOOLS } from './health';
@@ -24,6 +25,7 @@ import { discoveryTools } from './discovery';
 import { partCall, servedTool, type PartCall } from './served';
 import { REMOTE_TOOLS } from './remotes';
 import { SEARCH_TOOL } from './search';
+import { SEE_TOOL } from './see';
 import { SETTINGS_TOOLS } from './settings';
 import { WEATHER_TOOLS } from './weather';
 
@@ -38,6 +40,7 @@ const PARTS: readonly Tool[] = [
   ...HEALTH_TOOLS,
   ...NUTRITION_TOOLS,
   ...CAMERA_TOOLS,
+  SEE_TOOL,
   ...SETTINGS_TOOLS,
   ...PEOPLE_TOOLS,
   ...WEATHER_TOOLS,
@@ -46,6 +49,7 @@ const PARTS: readonly Tool[] = [
   ...AI_USAGE_TOOLS,
   ...AI_MODEL_TOOLS,
   ...OPERATION_TOOLS,
+  ...CLAUDE_TOOLS,
 ];
 
 const PART_BY_NAME: ReadonlyMap<string, Tool> = new Map(PARTS.map((tool) => [tool.name, tool]));

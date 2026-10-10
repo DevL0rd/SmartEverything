@@ -32,6 +32,7 @@ import { DeviceRunner, type RunnerContext } from './device-runner';
 import { XiaomiHealthCloud } from './health-cloud';
 import { discoveredDevice, fetchInventory, type InventoryEntry } from './inventory';
 import { MiioClient } from './miio-client';
+import type { CloudLookup } from './reachability';
 import type { SpecStore } from './spec-store';
 
 const VIRTUAL_DID_BYTES = 8;
@@ -50,6 +51,22 @@ class LanTokenMissingError extends Error {
 
   constructor(did: string, host: string) {
     super(`The device ${did} answers at ${host}, but the hub holds no LAN token for it.`);
+  }
+}
+
+class DeviceUnlistedError extends Error {
+  override readonly name = 'DeviceUnlistedError';
+
+  constructor(did: string) {
+    super(`The Xiaomi device list no longer holds the device ${did}.`);
+  }
+}
+
+class CameraPollerMissingError extends Error {
+  override readonly name = 'CameraPollerMissingError';
+
+  constructor(did: string) {
+    super(`The camera ${did} pushed a detection, but the hub reads no event list for it.`);
   }
 }
 
@@ -113,8 +130,12 @@ export class XiaomiAdapter implements ProviderAdapter {
 
   readonly subscribe = async (sink: AdapterSink): Promise<Unsubscribe> => {
     this.sink = sink;
+    const stopWatching = this.options.cloud.onReturn(() => {
+      this.networkReturned();
+    });
     this.startRunning();
     return Promise.resolve(async () => {
+      stopWatching();
       this.sink = null;
       await this.stopRunning();
     });
@@ -167,19 +188,28 @@ export class XiaomiAdapter implements ProviderAdapter {
         }
         return this.connect(host, token);
       },
-      locate: (did) => this.locate(did),
+      lookup: (did) => this.lookup(did),
+      online: (did, online): void => {
+        this.sink?.online(did, online);
+      },
       motor: this.options.motor,
       devicesChanged: (): void => {
         this.rebuild();
         this.updateCameraTriggers();
         this.sink?.devices([...this.devices.values()]);
       },
-      cameraDetection: (did): void => {
+      cameraDetected: (event, detection): void => {
         const sink = this.sink;
-        const camera = this.cameras.find((candidate) => candidate.did === did);
-        if (sink !== null && camera !== undefined) {
-          camera.poller.detected(sink, dependencies.timing.cameraFollowUpMs);
+        if (sink === null) {
+          return;
         }
+        const camera = this.cameras.find((candidate) => candidate.did === event.externalId);
+        if (camera === undefined) {
+          log.error('xiaomi_camera.poller_missing', new CameraPollerMissingError(event.externalId));
+          sink.event(event);
+          return;
+        }
+        camera.poller.detected(sink, event, detection, dependencies.timing.cameraFollowUps);
       },
     };
   }
@@ -202,10 +232,20 @@ export class XiaomiAdapter implements ProviderAdapter {
     return new XiaomiHealthCloud(dependencies, cloud.account, log).wearables();
   }
 
-  private async locate(did: string): Promise<string | null> {
+  private networkReturned(): void {
+    for (const runner of this.runners.values()) {
+      runner.lanMayBeBack();
+    }
+  }
+
+  private async lookup(did: string): Promise<CloudLookup> {
     const page = parseDeviceList(await this.options.cloud.call(DEVICE_LIST_PATH, deviceListData()));
     const device = page.devices.find((candidate) => candidate.did === did);
-    return device === undefined || chooseTransport(device).transport === 'cloud' ? null : device.ip;
+    if (device === undefined) {
+      throw new DeviceUnlistedError(did);
+    }
+    const host = chooseTransport(device).transport === 'cloud' ? null : device.ip;
+    return { host, online: device.online };
   }
 
   private async connect(host: string, token: string): Promise<MiioClient> {
@@ -232,21 +272,22 @@ export class XiaomiAdapter implements ProviderAdapter {
     const { cloud, log } = this.options;
     const choice = chooseTransport(entry.cloud);
     const { ip, token, did } = entry.cloud;
-    const toCloud = (reason: string): Opened => ({
+    const toCloud = (reason: string, retryHost: string | null): Opened => ({
       host: null,
       client: null,
       io: cloudIo(did, cloud),
       reason,
+      retryHost,
     });
     if (choice.transport === 'cloud' || ip === null || token === null) {
-      return toCloud(choice.reason);
+      return toCloud(choice.reason, null);
     }
     try {
       const client = await this.connect(ip, token);
-      return { host: ip, client, io: lanIo(did, client), reason: choice.reason };
+      return { host: ip, client, io: lanIo(did, client), reason: choice.reason, retryHost: null };
     } catch (error) {
       log.warn('xiaomi_device.lan_unreachable', { did, reason: String(error) });
-      return toCloud(`the LAN handshake with ${ip} failed: ${String(error)}`);
+      return toCloud(`the LAN handshake with ${ip} failed: ${String(error)}`, ip);
     }
   }
 
@@ -289,7 +330,7 @@ export class XiaomiAdapter implements ProviderAdapter {
   private cameraEventsDetail(poller: CameraEventPoller): string {
     const interval = seconds(this.options.dependencies.timing.cameraPollMs);
     return poller.trigger === 'lan-push'
-      ? 'cloud event list, read when the camera pushes a detection over the LAN'
+      ? 'pushed over the LAN at once; the cloud event list adds the clip afterwards'
       : `cloud event list every ${interval} s: the camera has no LAN push subscription`;
   }
 

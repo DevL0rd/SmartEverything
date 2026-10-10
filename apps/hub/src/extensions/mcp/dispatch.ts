@@ -19,6 +19,8 @@ import { resourceList, resourceRead } from './resources';
 import { TOOLS, toolNamed } from './tools';
 import { ToolError, type Tool, type ToolContext, type ToolOutput } from './tools/registry';
 
+const REFUSAL_LOGGED = 300;
+
 const CALL = z.object({
   name: z.string().min(1),
   arguments: z.record(z.string(), z.unknown()).optional(),
@@ -79,16 +81,13 @@ function refusal(cause: unknown): Refusal | null {
 
 interface Success {
   readonly request: RpcRequest;
-  readonly context: ToolContext;
   readonly log: Logger;
   readonly name: string;
-  readonly args: Readonly<Record<string, unknown>>;
 }
 
 function succeeded(done: Success, output: ToolOutput): unknown {
-  const { request, context, name, args } = done;
+  const { request, name } = done;
   done.log.info('tool.succeeded', { tool: name });
-  context.calls?.called({ name, args, output: output.structured, caller: context.caller });
   return resultMessage(request.id, {
     content: contentOf(output),
     structuredContent: output.structured,
@@ -124,16 +123,17 @@ async function called(request: RpcRequest, context: ToolContext, log: Logger): P
   }
   try {
     const args = call.data.arguments ?? {};
-    return succeeded(
-      { request, context, log, name: tool.name, args },
-      await tool.call(context, args),
-    );
+    return succeeded({ request, log, name: tool.name }, await tool.call(context, args));
   } catch (cause) {
     const refused = refusal(cause);
     if (refused === null) {
       log.error('tool.failed', cause, { tool: tool.name });
     } else {
-      log.warn('tool.refused', { tool: tool.name, refusal: refused.code });
+      log.warn('tool.refused', {
+        tool: tool.name,
+        refusal: refused.code,
+        message: refused.message.slice(0, REFUSAL_LOGGED),
+      });
     }
     return failed(
       request,

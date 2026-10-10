@@ -22,6 +22,7 @@ function usageOf(usage: OrUsage): ChatUsage {
     completionTokens: usage.completion_tokens,
     ...detailsOf(usage),
     upstreamCost: usage.cost_details?.upstream_inference_cost ?? null,
+    searchRequests: usage.server_tool_use?.web_search_requests ?? 0,
   };
 }
 
@@ -45,6 +46,20 @@ function textChunks(delta: Delta): ChatChunk[] {
   return out;
 }
 
+function citationChunks(delta: Delta): ChatChunk[] {
+  return (delta.annotations ?? []).flatMap((annotation): ChatChunk[] =>
+    annotation.type === 'url_citation' && annotation.url_citation !== undefined
+      ? [
+          {
+            type: 'citation',
+            url: annotation.url_citation.url,
+            title: annotation.url_citation.title ?? '',
+          },
+        ]
+      : [],
+  );
+}
+
 function toolChunks(delta: Delta): ChatChunk[] {
   return (delta.tool_calls ?? []).map((call) => ({
     type: 'tool_call',
@@ -59,7 +74,11 @@ function deltaChunks(chunk: OrChunk): ChatChunk[] {
   return chunk.choices.flatMap((choice): ChatChunk[] => [
     ...(choice.delta === undefined
       ? []
-      : [...textChunks(choice.delta), ...toolChunks(choice.delta)]),
+      : [
+          ...textChunks(choice.delta),
+          ...citationChunks(choice.delta),
+          ...toolChunks(choice.delta),
+        ]),
     ...(typeof choice.finish_reason === 'string'
       ? [{ type: 'finish' as const, reason: choice.finish_reason }]
       : []),

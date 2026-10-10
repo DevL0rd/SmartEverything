@@ -44,7 +44,12 @@ function bestPaths(vocabulary: PieceVocabulary, text: string): (Best | null)[] {
 }
 
 export function wordPieces(vocabulary: PieceVocabulary, phrase: string): string[] | null {
-  const words = phrase.toUpperCase().match(/[A-Z']+/g) ?? [];
+  const words =
+    phrase
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .toUpperCase()
+      .match(/[A-Z']+/g) ?? [];
   if (words.length === 0) {
     return null;
   }

@@ -16,6 +16,19 @@ import { Go2rtcError } from '../cameras/go2rtc-client';
 import { CameraBusyError, CameraTalkUnsupportedError } from '../cameras/viewers';
 import { ThumbnailError } from '../cameras/thumbnails';
 import { CameraBlockedByFirewallError } from '../firewall/observed-go2rtc';
+import {
+  ClaudeControlFailedError,
+  ClaudeControlTimeoutError,
+  ClaudeCursorError,
+  ClaudeHookInputError,
+  ClaudeInvalidAnswerError,
+  ClaudeLinkError,
+  ClaudeNotReadyError,
+  ClaudePromptNotFoundError,
+  ClaudePromptNotWaitingError,
+  ClaudeSendRefusedError,
+  ClaudeSessionNotFoundError,
+} from '../claude/errors';
 import { StoreNotFoundError } from '../store/context';
 import { StoreConflictError } from '../store/sql';
 
@@ -43,6 +56,17 @@ const KNOWN_ERRORS: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [FrameTimeoutError, 'camera_unavailable'],
   [Go2rtcError, 'upstream_failed'],
   [ThumbnailError, 'upstream_failed'],
+  [ClaudeNotReadyError, 'claude_not_ready'],
+  [ClaudeSessionNotFoundError, 'not_found'],
+  [ClaudeCursorError, 'invalid_request'],
+  [ClaudeSendRefusedError, 'forbidden'],
+  [ClaudePromptNotFoundError, 'not_found'],
+  [ClaudePromptNotWaitingError, 'conflict'],
+  [ClaudeInvalidAnswerError, 'invalid_request'],
+  [ClaudeHookInputError, 'invalid_request'],
+  [ClaudeControlFailedError, 'upstream_failed'],
+  [ClaudeControlTimeoutError, 'upstream_failed'],
+  [ClaudeLinkError, 'upstream_failed'],
 ];
 
 export function apiErrorFor(cause: unknown): ApiError | null {

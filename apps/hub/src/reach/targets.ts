@@ -5,6 +5,7 @@ import {
   type ReachTarget,
   type TalkChannelRow,
 } from '@smarteverything/domain';
+import type { PluginSpeaker, PluginSpeakers } from '../plugins/plugin-reach';
 import { clientsOf, deviceName, type PresenceStore } from './presence';
 import { ReachRefusedError } from './reach-errors';
 import type { Asker } from './reach-guards';
@@ -12,22 +13,37 @@ import type { ReachRules } from './reach-rules';
 
 export type ResolvedTarget =
   | { readonly kind: 'camera'; readonly device: DeviceRow; readonly label: string }
+  | {
+      readonly kind: 'plugin';
+      readonly device: DeviceRow;
+      readonly speaker: PluginSpeaker;
+      readonly label: string;
+    }
   | { readonly kind: 'channel'; readonly channel: TalkChannelRow; readonly label: string }
   | { readonly kind: 'app'; readonly client: ClientRow; readonly label: string };
 
 export type TargetStore = PresenceStore;
 
-function deviceTarget(store: TargetStore, rules: ReachRules, deviceId: string): ResolvedTarget {
+export interface TargetRules {
+  readonly rules: ReachRules;
+  readonly speakers: Pick<PluginSpeakers, 'forDevice'>;
+}
+
+function deviceTarget(store: TargetStore, access: TargetRules, deviceId: string): ResolvedTarget {
   const device = store.devices.find(deviceId);
   if (device !== undefined) {
     const label = deviceName(device);
-    if (!isCamera(device)) {
-      throw new ReachRefusedError(`${label} has no speaker the AI can use.`);
-    }
-    if (!rules.cameras().includes(device.id)) {
+    if (isCamera(device) && !access.rules.cameras().includes(device.id)) {
       throw new ReachRefusedError(
         `The AI may not talk through ${label}; it is turned off in Settings › Assistant › Reaching you.`,
       );
+    }
+    const speaker = access.speakers.forDevice(device);
+    if (speaker !== null) {
+      return { kind: 'plugin', device, speaker, label };
+    }
+    if (!isCamera(device)) {
+      throw new ReachRefusedError(`${label} has no speaker the AI can use.`);
     }
     return { kind: 'camera', device, label };
   }
@@ -55,12 +71,12 @@ function mayUseChannel(store: TargetStore, asker: Asker, channelId: string): voi
 
 export function resolveTarget(
   store: TargetStore,
-  rules: ReachRules,
+  access: TargetRules,
   asker: Asker,
   target: ReachTarget,
 ): ResolvedTarget {
   if (target.kind === 'device') {
-    return deviceTarget(store, rules, target.deviceId);
+    return deviceTarget(store, access, target.deviceId);
   }
   const channel = store.talk.channels().find((row) => row.id === target.channelId);
   if (channel === undefined) {

@@ -1,55 +1,88 @@
 import { randomUUID } from 'node:crypto';
-import type {
-  WatchActionNotice,
-  WatchActionRequest,
-  WatchActionResult,
-} from '@smarteverything/domain';
+import { type WatchActionRequest, type WatchActionResult } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { PendingAnswers } from './pending-answers';
+import type { PushCommandChannel, PushCommandOutcome } from '../extensions/push/commands';
+import { clientsOf, type PresenceStore } from '../reach/presence';
+import type { Store } from '../store/store';
+import { ANSWER_TIMEOUT_MS, PendingAnswers } from './pending-answers';
 
-export type ActionSender = (notice: WatchActionNotice, profileId: string) => string[];
+export type WatchActionStore = PresenceStore & Pick<Store, 'personal'>;
 
 export interface WatchActionTarget {
   readonly deviceId: string;
   readonly profileId: string;
   readonly name: string;
+  readonly bridgeClientId: string | null;
 }
 
-export const ANSWER_TIMEOUT_MS = 25_000;
+function unreachable(name: string, outcomes: readonly PushCommandOutcome[]): string {
+  const reasons = outcomes.flatMap((outcome) =>
+    outcome.outcome === 'sent' ? [] : [outcome.reason],
+  );
+  return reasons.length === 0
+    ? `No phone of ${name}’s person has signed up for push messages yet; open SmartEverything on the phone once.`
+    : `${name}’s phone could not be reached: ${reasons.join('; ')}`;
+}
+
+export function phonesOf(
+  store: WatchActionStore,
+  profileId: string,
+  bridgeClientId: string | null = null,
+): string[] {
+  const phones = clientsOf(store, profileId)
+    .filter((client) => client.platform === 'android')
+    .map((client) => client.id);
+  return bridgeClientId !== null && phones.includes(bridgeClientId) ? [bridgeClientId] : phones;
+}
 
 export class WatchActionBroker {
   private readonly answers = new PendingAnswers<WatchActionResult>('watch action');
 
   constructor(
-    private readonly send: ActionSender,
+    private readonly push: PushCommandChannel,
+    private readonly store: WatchActionStore,
     private readonly log: Logger,
   ) {}
 
-  run(
+  async run(
     target: WatchActionTarget,
     action: WatchActionRequest,
     by: string,
   ): Promise<WatchActionResult> {
     const requestId = randomUUID();
-    const clients = this.send(
-      { type: 'watch_action', requestId, deviceId: target.deviceId, action },
-      target.profileId,
+    const payload = {
+      requestId,
+      deviceId: target.deviceId,
+      action,
+      expiresAt: new Date(Date.now() + ANSWER_TIMEOUT_MS).toISOString(),
+    };
+    const phones = phonesOf(this.store, target.profileId, target.bridgeClientId);
+    const sent = await Promise.all(
+      phones.map(async (clientId) => ({
+        clientId,
+        outcome: await this.push.send({ clientId, command: 'watch_action', payload }),
+      })),
     );
+    const reached = sent.filter(({ outcome }) => outcome.outcome === 'sent');
     this.log.info('watch.action_sent', {
       device: target.deviceId,
       action: action.type,
       by,
-      phones: clients.length,
+      phones: phones.length,
+      reached: reached.length,
     });
-    if (clients.length === 0) {
-      return Promise.resolve({
+    if (reached.length === 0) {
+      return {
         ok: false,
-        detail: `No phone of ${target.name}’s person is online with SmartEverything open or in the background.`,
-      });
+        detail: unreachable(
+          target.name,
+          sent.map(({ outcome }) => outcome),
+        ),
+      };
     }
     return this.answers.wait({
       requestId,
-      clients,
+      clients: reached.map(({ clientId }) => clientId),
       timeoutMs: ANSWER_TIMEOUT_MS,
       unanswered: () => {
         this.log.warn('watch.action_unanswered', { device: target.deviceId, action: action.type });

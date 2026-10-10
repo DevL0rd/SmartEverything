@@ -1,5 +1,6 @@
 import { ApiError, type EndpointName } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import { operationRefusal } from '../ai-tools/plugin-turn';
 import type { Caller } from './auth';
 import { issuesOf } from './errors';
 import type { Bound } from './router';
@@ -72,6 +73,13 @@ export class Operations {
   }
 
   run(name: EndpointName, caller: Caller, input: OperationInput): Promise<unknown> {
+    const refusal =
+      caller.kind === 'client' && caller.pluginRequester !== undefined
+        ? operationRefusal(name)
+        : null;
+    if (refusal !== null) {
+      return Promise.reject(refusal);
+    }
     return this.bound(name).run(
       caller,
       {

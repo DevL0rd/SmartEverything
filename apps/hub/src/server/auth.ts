@@ -8,6 +8,7 @@ import {
   type Access,
   type ClientRow,
   type HealthSourceRow,
+  type PluginRequester,
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { bearerOf } from './http';
@@ -22,6 +23,7 @@ export type Caller =
       readonly local?: boolean;
       readonly chatId?: string;
       readonly pluginId?: string;
+      readonly pluginRequester?: PluginRequester;
     }
   | { readonly kind: 'health_source'; readonly source: HealthSourceRow };
 

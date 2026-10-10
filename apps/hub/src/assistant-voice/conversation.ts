@@ -1,23 +1,26 @@
 import type { UsageMetadata } from '@google/genai';
 import type { CallEnding } from '@smarteverything/domain';
 import { opusCodec, OpusFramer, type OpusCodec } from './audio';
-import { failedAnswer } from './tool-answer';
 import type { ConversationHooks } from './conversation-hooks';
-import { deliverToolAnswer, timingOf } from './tool-delivery';
+import { VoiceTools } from './conversation-tools';
 import { connectWithin } from './live-connect';
+import { MicMeter } from './mic-meter';
+import { sightWindow, sameTuning, type SightTuning } from './live-window';
 import { ReplyWatchdog, type WatchdogStep } from './reply-watchdog';
-import type { LiveEvents, LiveSession, VoiceProvider } from './gemini';
+import type { LiveEvents, LiveSession, Picture, VoiceProvider } from './gemini';
 import type { CallLink } from './call-link';
-import { stringArgument } from '../ai-tools/arguments';
-import { speechInput, type SpeechInput } from './speech-input';
+import { speechInput, streamsInput, type SpeechInput } from './speech-input';
 import { TurnText, isFarewell } from './turn-text';
+import { TurnTimer } from './turn-timing';
 import type { SpeechGateEvents } from './speech-gate';
 import type { VideoFrame } from './video';
-import { VOICE_TOOL_NAMES } from './voice-tools';
 
 const STOP_GRACE_MS = 5000;
 const TICK_MS = 100;
+const USER_QUIET_MS = 1500;
+export const REPLY_GRACE_MS = 6000;
 const NUDGE = '[They finished speaking and you have not answered yet. Answer them now.]';
+const SAY_NOW = '[Say this to them now, naturally and in your own words]';
 
 export class Conversation {
   private session: LiveSession | null = null;
@@ -30,6 +33,7 @@ export class Conversation {
   private timer: NodeJS.Timeout | null = null;
   private stopTimer: NodeJS.Timeout | null = null;
   private lastActivity: number;
+  private lastBusy: number;
   private closed = false;
   private stopping = false;
   private turnDone = false;
@@ -37,7 +41,12 @@ export class Conversation {
   private reconnected = false;
   private generation = 0;
   private muted = false;
-  private readonly tasks = new Map<string, { readonly id: string; readonly name: string }>();
+  private suppressed = false;
+  private tuning: SightTuning | null = null;
+  private openedWith: SightTuning | null = null;
+  private readonly tools: VoiceTools;
+  private readonly meter: MicMeter;
+  private readonly timing: TurnTimer;
 
   constructor(
     private readonly provider: VoiceProvider,
@@ -46,6 +55,23 @@ export class Conversation {
     private readonly now: () => number = Date.now,
   ) {
     this.lastActivity = now();
+    this.lastBusy = this.lastActivity;
+    this.meter = new MicMeter(now, hooks.measured);
+    this.timing = new TurnTimer(now, hooks.measured, () => this.meter.sinceVoiceMs);
+    this.tools = new VoiceTools({
+      hooks,
+      timing: this.timing,
+      now,
+      link,
+      watchdog: this.watchdog,
+      text: this.text,
+      session: (): LiveSession | null => this.session,
+      closed: (): boolean => this.closed,
+      userSpeaking: (): boolean => (this.meter.sinceVoiceMs ?? Infinity) < USER_QUIET_MS,
+      assistantSpeaking: (): boolean => this.speaking || this.link.playing(),
+      flushHeard: this.flushHeard.bind(this),
+      finishSoon: this.finishSoon.bind(this),
+    });
   }
 
   get active(): boolean {
@@ -94,23 +120,43 @@ export class Conversation {
     }
   }
 
+  tune(tuning: SightTuning | null): void {
+    this.tuning = tuning;
+  }
+
+  interrupt(): void {
+    if (!this.closed) {
+      this.suppressed = true;
+      this.cut();
+    }
+  }
+
   mute(muted: boolean): void {
     this.muted = muted;
     this.input?.reset();
   }
 
-  taskUpdate(eventId: string, text: string): boolean {
-    const call = this.tasks.get(eventId);
-    if (this.closed || call === undefined || this.session === null) {
-      return false;
+  note(text: string, picture?: Picture, respond = false): void {
+    if (!this.closed) {
+      if (picture !== undefined) {
+        this.session?.picture(picture);
+      }
+      this.session?.text(text, respond);
     }
-    this.lastActivity = this.now();
-    const scheduling = timingOf(this.hooks.settings());
-    this.session.toolResult(call.id, call.name, { update: text }, { scheduling, more: true });
-    return true;
   }
 
-  async reopen(): Promise<void> {
+  say(text: string): void {
+    if (!this.closed) {
+      this.lastActivity = this.now();
+      this.session?.text(`${SAY_NOW} ${text}`, true);
+    }
+  }
+
+  taskUpdate(eventId: string, text: string): boolean {
+    return this.tools.taskUpdate(eventId, text);
+  }
+
+  private async reopen(): Promise<void> {
     if (this.closed || this.session === null) {
       return;
     }
@@ -158,18 +204,20 @@ export class Conversation {
     return speechInput(this.hooks.speech, this.speechEvents(), {
       assistantAudible: audible,
       now: this.now,
+      meter: this.meter,
     });
   }
 
   private speechEvents(): SpeechGateEvents {
     return {
       start: (): void => {
+        this.suppressed = false;
         this.lastActivity = this.now();
         this.watchdog.turnStarted(this.now());
         this.session?.speaking(true);
       },
       audio: (pcm): void => {
-        this.lastActivity = this.hooks.speech === 'raw' ? this.lastActivity : this.now();
+        this.lastActivity = streamsInput(this.hooks.speech) ? this.lastActivity : this.now();
         this.session?.audio(pcm);
       },
       end: (): void => {
@@ -187,14 +235,21 @@ export class Conversation {
     this.generation += 1;
     const generation = this.generation;
     const current = (): boolean => generation === this.generation;
+    const base = this.hooks.window();
+    this.openedWith = this.tuning;
     const options = {
       model: settings.model,
       voice: settings.voice,
       system: this.hooks.system(),
       tools: this.hooks.tools(),
+      webSearch: this.hooks.webSearch(),
       resume: this.resume,
-      window: this.hooks.window(),
-      automatic: this.hooks.speech === 'raw',
+      window: this.tuning === null ? base : sightWindow(this.tuning, base),
+      automatic: streamsInput(this.hooks.speech),
+      ...(this.tuning === null ? {} : { resolution: this.tuning.resolution }),
+      ...(this.hooks.listening?.pauseMs === undefined
+        ? {}
+        : { pauseMs: this.hooks.listening.pauseMs }),
     };
     return connectWithin(this.provider.live(options, this.events(current, settings.model)));
   }
@@ -216,7 +271,8 @@ export class Conversation {
       }),
       heard: live((text: string) => {
         this.lastActivity = this.now();
-        this.link.caption('person', this.text.heard(text, this.now()));
+        this.timing.heard();
+        this.link.caption('person', this.text.heard(text));
       }),
       interrupted: live(() => {
         this.cut();
@@ -225,7 +281,7 @@ export class Conversation {
         this.finishTurn();
       }),
       tool: live((id: string, name: string, args: Readonly<Record<string, unknown>>) => {
-        this.tool(id, name, args);
+        this.tools.handle(id, name, args);
       }),
       resumable: live((handle: string) => {
         this.resume = handle;
@@ -240,12 +296,14 @@ export class Conversation {
   }
 
   private play(pcm: Int16Array): void {
-    if (this.closed) {
+    if (this.closed || this.suppressed) {
       return;
     }
     this.lastActivity = this.now();
     this.watchdog.replied();
+    this.meter.played(pcm);
     if (!this.speaking) {
+      this.timing.spoke();
       this.speaking = true;
       this.flushHeard();
       this.link.state('speaking');
@@ -262,6 +320,7 @@ export class Conversation {
   }
 
   private finishTurn(): void {
+    this.suppressed = false;
     this.watchdog.replied();
     if (this.stopping) {
       this.turnDone = true;
@@ -277,6 +336,14 @@ export class Conversation {
     this.link.state('listening');
   }
 
+  private finishSoon(): void {
+    this.stopping = true;
+    this.stopTimer ??= setTimeout(() => {
+      void this.end('finished');
+    }, STOP_GRACE_MS);
+    this.stopTimer.unref();
+  }
+
   private flushHeard(): void {
     const heard = this.text.takeHeard();
     if (heard !== '') {
@@ -290,61 +357,6 @@ export class Conversation {
       this.hooks.record({ who: 'assistant', text: said, ok: true, detail: null });
     }
     return said;
-  }
-
-  private tool(id: string, name: string, args: Readonly<Record<string, unknown>>): void {
-    this.watchdog.replied();
-    this.flushHeard();
-    if (name === VOICE_TOOL_NAMES.end) {
-      this.session?.toolResult(id, name, { ok: true }, { scheduling: 'silent', more: false });
-      this.stopping = true;
-      this.stopTimer ??= setTimeout(() => {
-        void this.end('finished');
-      }, STOP_GRACE_MS);
-      this.stopTimer.unref();
-      return;
-    }
-    if (name === VOICE_TOOL_NAMES.task) {
-      this.startTask(id, name, stringArgument(args, 'task'));
-      return;
-    }
-    void this.runTool(id, name, args);
-  }
-
-  private startTask(id: string, name: string, task: string): void {
-    const reply = (response: Readonly<Record<string, unknown>>, more: boolean): void => {
-      this.session?.toolResult(id, name, response, { scheduling: more ? 'idle' : 'silent', more });
-    };
-    if (task === '') {
-      reply({ error: 'No task was given' }, false);
-      return;
-    }
-    try {
-      const eventId = this.hooks.task(task, this.text.recentHeard());
-      this.tasks.set(eventId, { id, name });
-      this.hooks.record({ who: 'tool', text: 'Handed over a task', ok: true, detail: null });
-      reply({ status: 'started; it is running now' }, true);
-    } catch (cause) {
-      const error = cause instanceof Error ? cause.message : 'That cannot be done from here';
-      reply({ error }, false);
-    }
-  }
-
-  private async runTool(
-    id: string,
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-  ): Promise<void> {
-    this.link.state('thinking');
-    const heardSince = (at: number): string => this.text.heardSince(at);
-    this.watchdog.toolStarted();
-    const answer = await this.hooks.run(name, args, heardSince).catch(failedAnswer);
-    this.watchdog.toolFinished();
-    if (this.closed) {
-      return;
-    }
-    const to = { session: this.session, record: this.hooks.record };
-    deliverToolAnswer({ ...to, scheduling: timingOf(this.hooks.settings()) }, { id, name }, answer);
   }
 
   private async dropped(reason: string): Promise<void> {
@@ -372,7 +384,9 @@ export class Conversation {
       this.session?.text(NUDGE, true);
     } else if (step === 'give_up') {
       this.hooks.stalled('gave_up');
-      void this.end('failed', 'The AI stopped answering; call again.');
+      if (!this.hooks.staysOpenWhenQuiet()) {
+        void this.end('failed', 'The AI stopped answering; call again.');
+      }
     }
   }
 
@@ -385,11 +399,23 @@ export class Conversation {
       return;
     }
     this.guard(this.watchdog.check(this.now()));
-    if (this.busy()) {
+    this.watchIdle();
+  }
+
+  private watchIdle(): void {
+    const idleMs = (this.hooks.listening?.idleSeconds ?? this.hooks.settings().idle_seconds) * 1000;
+    if (this.busy() || this.hooks.detached?.() === true) {
       this.lastActivity = this.now();
-    } else if (this.now() - this.lastActivity > this.hooks.settings().idle_seconds * 1000) {
+      this.lastBusy = this.lastActivity;
+    } else if (!this.hooks.staysOpenWhenQuiet() && this.quietFor(idleMs)) {
       void this.end('idle');
+    } else if (this.resume !== null && !sameTuning(this.tuning, this.openedWith)) {
+      void this.reopen();
     }
+  }
+
+  private quietFor(idleMs: number): boolean {
+    return this.now() - this.lastActivity > idleMs && this.now() - this.lastBusy > REPLY_GRACE_MS;
   }
 
   private busy(): boolean {

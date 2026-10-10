@@ -259,6 +259,7 @@ export async function subscribe(
     event: () => undefined,
     devices: () => undefined,
     failure: () => undefined,
+    online: () => undefined,
   });
   return { states, stop };
 }

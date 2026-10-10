@@ -1,8 +1,13 @@
-import { TALK_FRAME_MS, packetOfFrame } from '@smarteverything/domain';
+import {
+  TALK_FRAME_MS,
+  packetOfFrame,
+  type AssistantVoiceServerMessage,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type {
   HostedCall,
   HostedCallRequest,
+  HostedListening,
   HostedSpeaking,
   Opening,
 } from '../assistant-voice/outreach';
@@ -32,12 +37,17 @@ export interface HostedVoiceDeps {
 
 export interface HostedSpec {
   readonly key: string;
+  readonly callId: string;
   readonly caller: HostedCaller;
   readonly opening: Opening;
+  readonly place?: string;
+  readonly pluginId?: string;
   readonly play: (packet: Uint8Array) => void;
   readonly closed: () => void;
   readonly continuous?: boolean;
   readonly heard?: () => Int16Array;
+  readonly listening?: HostedListening;
+  readonly listen?: (message: AssistantVoiceServerMessage) => void;
 }
 
 export interface HostedLine {
@@ -59,17 +69,21 @@ export async function hostLine(deps: HostedVoiceDeps, spec: HostedSpec): Promise
   }
   const call = await deps
     .host({
-      callId: spec.opening.outreachId,
+      callId: spec.callId,
       caller: spec.caller,
       opening: spec.opening,
       speaking: CONVERSATION,
+      ...(spec.place === undefined ? {} : { place: spec.place }),
+      ...(spec.pluginId === undefined ? {} : { pluginId: spec.pluginId }),
       ...(spec.heard === undefined ? {} : { heard: spec.heard }),
+      ...(spec.listening === undefined ? {} : { listening: spec.listening }),
       endpoint: {
         id: spec.key,
         audio: (frame): void => {
           pacer.push(packetOfFrame(frame));
         },
         send: (message): void => {
+          spec.listen?.(message);
           if (message.type === 'interrupted') {
             pacer.cut();
           } else if (message.type === 'ended') {

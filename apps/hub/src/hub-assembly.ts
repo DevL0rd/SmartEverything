@@ -21,6 +21,7 @@ import type { ModuleRegistry } from './providers/registry-types';
 import type { SecretStore } from './secrets/store';
 import { SignalBus } from './signals/bus';
 import { eventSignal, stateSignal } from './signals/sources/device';
+import { installedSignalSources } from './signals/sources/installed';
 import { EventRouter } from './state/event-router';
 import { Inventory } from './state/inventory';
 import { StateWriter } from './state/state-writer';
@@ -187,6 +188,7 @@ function assembleEngine(
     valueOf: (deviceId, capability) => writers.state.valueOf(deviceId, capability),
     forecast: () => parts.store.weather.read().forecast,
     armers: [],
+    sources: () => installedSignalSources(parts.store),
     clock: parts.clock,
     log: areaOf(parts, 'automations'),
   });

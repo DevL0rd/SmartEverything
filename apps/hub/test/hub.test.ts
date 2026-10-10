@@ -219,7 +219,7 @@ describe('hub core on the SQLite store', () => {
     expect(
       await readFile(recordingPathIn(opened.directory)(snapshot?.storage_path ?? '')),
     ).toStrictEqual(Buffer.from([1]));
-    store.cameras.setRecordEvents(camera, false);
+    store.cameras.change(camera, { record_events: false });
     fake.adapter.sink?.event({
       externalId: 'camera-1',
       kind: 'motion',

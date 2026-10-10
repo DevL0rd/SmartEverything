@@ -7,7 +7,7 @@ import {
 import { z } from 'zod';
 import { reported, sendAndWait, type CommandRequest } from './commanding';
 import { ToolError, type ToolContext, type ToolOutput } from './registry';
-import { TARGET, findCapability, guardDanger, targeted, type Target } from './targets';
+import { TARGET, findCapability, targeted, type Target } from './targets';
 import { VALUE_UNIT, valueFor, type TemperatureUnit } from './values';
 
 export interface Change {
@@ -55,7 +55,7 @@ function privacyChange(device: DeviceRow, change: Change): Change {
   };
 }
 
-function planned(context: ToolContext, asked: Change, confirm: boolean, into: Plan): void {
+function planned(context: ToolContext, asked: Change, into: Plan): void {
   for (const placed of targeted(context.store, asked.target)) {
     const device = placed.device;
     const change = privacyChange(device, asked);
@@ -71,7 +71,6 @@ function planned(context: ToolContext, asked: Change, confirm: boolean, into: Pl
       });
       continue;
     }
-    guardDanger(placed, presented, confirm);
     into.commands.push({
       device_id: device.id,
       capability: presented.key,
@@ -83,11 +82,10 @@ function planned(context: ToolContext, asked: Change, confirm: boolean, into: Pl
 export async function applyChanges(
   context: ToolContext,
   changes: readonly Change[],
-  confirm: boolean,
 ): Promise<ToolOutput> {
   const plan: Plan = { commands: [], skipped: [] };
   for (const change of changes) {
-    planned(context, change, confirm, plan);
+    planned(context, change, plan);
   }
   if (plan.commands.length === 0) {
     throw new ToolError(

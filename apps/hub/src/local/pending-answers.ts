@@ -1,4 +1,6 @@
-import { ApiError } from '@smarteverything/domain';
+import { ApiError, PUSH_ACTION_ANSWER_SECONDS } from '@smarteverything/domain';
+
+export const ANSWER_TIMEOUT_MS = PUSH_ACTION_ANSWER_SECONDS * 1000;
 
 interface Pending<R> {
   readonly clients: readonly string[];

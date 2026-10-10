@@ -157,16 +157,3 @@ export function capabilityOf({ name, device }: Placed, reference: string): Prese
   }
   return found;
 }
-
-export function guardDanger(
-  { name }: Placed,
-  presented: PresentedCapability,
-  confirm: boolean,
-): void {
-  if (presented.danger.tier !== 'none' && !confirm) {
-    throw new ToolError(
-      `${presented.label} on ${name} is something the app asks the person to confirm; call again with confirm: true`,
-      'confirmation_required',
-    );
-  }
-}

@@ -1,4 +1,4 @@
-import type { HostedCall, Opening } from '../assistant-voice/outreach';
+import type { HostedCall, ReachOpening } from '../assistant-voice/outreach';
 import type { HostedCaller } from '../assistant-voice/persona';
 import type { LiveChannel, LiveConversation, LiveMember } from '../talk/live-sessions';
 import type { LiveOpening } from '../talk/relay';
@@ -13,7 +13,7 @@ export interface ChannelRequest {
   readonly channelName: string;
   readonly label: string;
   readonly caller: HostedCaller;
-  readonly opening: Opening;
+  readonly opening: ReachOpening;
 }
 
 const REFUSALS = {
@@ -63,6 +63,7 @@ export async function channelConversation(
   });
   const line = await hostLine(deps, {
     key: `channel:${channelId}`,
+    callId: opening.outreachId,
     caller: request.caller,
     opening,
     play: live.speak,

@@ -1,6 +1,7 @@
 import type { z } from 'zod';
+import { OPENROUTER_WEB_SEARCH_TOOL } from '../assistant/web-search';
 import type { ChatChunk, ChatRequest, Credits, GenerationStats, KeyInfo } from './chat-types';
-import { errorCodeOf, openRouterError, OpenRouterError, readJson } from './errors';
+import { errorCodeOf, networkFailure, openRouterError, OpenRouterError, readJson } from './errors';
 import { sseData } from './sse';
 import { ChunkReader } from './stream';
 import {
@@ -37,15 +38,30 @@ export interface OpenRouterCall {
   readonly signal?: AbortSignal;
 }
 
+function wireMessages(req: ChatRequest): readonly unknown[] {
+  const [first, ...rest] = req.messages;
+  if (req.prefixBreakpoint !== true || first?.role !== 'system') {
+    return req.messages;
+  }
+  const marked = [{ type: 'text', text: first.content, cache_control: { type: 'ephemeral' } }];
+  return [{ role: 'system', content: marked }, ...rest];
+}
+
+function toolFields(req: ChatRequest): Record<string, unknown> {
+  const tools = [
+    ...(req.tools ?? []),
+    ...(req.webSearch === true ? [OPENROUTER_WEB_SEARCH_TOOL] : []),
+  ];
+  return tools.length === 0 ? {} : { tools, tool_choice: req.toolChoice ?? 'auto' };
+}
+
 function requestBody(req: ChatRequest): Record<string, unknown> {
   return {
     model: req.model,
-    messages: req.messages,
+    messages: wireMessages(req),
     stream: true,
     usage: { include: true },
-    ...(req.tools === undefined || req.tools.length === 0
-      ? {}
-      : { tools: req.tools, tool_choice: req.toolChoice ?? 'auto' }),
+    ...toolFields(req),
     ...(req.parallelToolCalls === undefined ? {} : { parallel_tool_calls: req.parallelToolCalls }),
     ...(req.effort === null ? {} : { reasoning: { effort: req.effort } }),
     ...(req.maxTokens === undefined ? {} : { max_tokens: req.maxTokens }),
@@ -211,8 +227,7 @@ export class OpenRouterClient {
       if (cause instanceof OpenRouterError) {
         throw cause;
       }
-      const reason = cause instanceof Error ? cause.message : String(cause);
-      throw openRouterError('unavailable', `couldn’t reach OpenRouter: ${reason}`);
+      throw openRouterError('unavailable', `couldn’t reach OpenRouter: ${networkFailure(cause)}`);
     }
     if (!response.ok) {
       throw await failureOf(response);

@@ -1,5 +1,5 @@
 import type { CommandRow } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { submitAndWait } from '../../src/extensions/mcp/command-waiter';
 import { ChangeFeed } from '../../src/store/feed';
 import type { Booted } from '../support/booted';
@@ -57,13 +57,20 @@ describe('waiting for a command', () => {
       feed,
       clock,
       waitMs: 20_000,
-      submit: () => [row],
+      submit: () => Promise.resolve([row]),
       current: () => row,
+    });
+  }
+
+  function timerSet(): Promise<void> {
+    return vi.waitFor(() => {
+      expect(clock.pending()).toHaveLength(1);
     });
   }
 
   it('settles as soon as the change feed reports the command finished', async () => {
     const outcome = waiting();
+    await timerSet();
     expect(clock.pending()).toStrictEqual(['2026-10-09T10:00:20.000Z']);
     feed.emit({
       type: 'change',
@@ -87,6 +94,7 @@ describe('waiting for a command', () => {
 
   it('reports the command as unfinished after twenty seconds', async () => {
     const outcome = waiting();
+    await timerSet();
     clock.advanceTo('2026-10-09T10:00:19.999Z');
     clock.advanceTo('2026-10-09T10:00:20.000Z');
     expect(await outcome).toStrictEqual({ commands: [row], allFinished: false });
@@ -98,18 +106,16 @@ describe('waiting for a command', () => {
     expect(clock.pending()).toStrictEqual([]);
   });
 
-  it('stops listening when the submission is refused', () => {
-    expect(() =>
+  it('stops listening when the submission is refused', async () => {
+    await expect(
       submitAndWait({
         feed,
         clock,
         waitMs: 20_000,
-        submit: () => {
-          throw new Error('refused');
-        },
+        submit: () => Promise.reject(new Error('refused')),
         current: () => row,
       }),
-    ).toThrow('refused');
+    ).rejects.toThrow('refused');
     expect(clock.pending()).toStrictEqual([]);
   });
 });

@@ -13,6 +13,11 @@ export function localDriverSink(
     event: (event): void => {
       core.events.fromProvider('local', event);
     },
+    online: (externalId, online): void => {
+      core.inventory.setOnline('local', externalId, online).catch((cause: unknown) => {
+        log.error('driver.online_not_applied', cause, { externalId, online });
+      });
+    },
     devices: (devices): void => {
       core.inventory.apply('local', devices).catch((cause: unknown) => {
         log.error('driver.devices_not_applied', cause, { count: devices.length });

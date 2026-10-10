@@ -49,11 +49,13 @@ export interface ChatRequest {
   readonly tools?: readonly ChatTool[];
   readonly toolChoice?: 'auto' | 'none' | 'required';
   readonly parallelToolCalls?: boolean;
+  readonly webSearch?: boolean;
   readonly effort: AiEffort | null;
   readonly maxTokens?: number;
   readonly user?: string;
   readonly sessionId?: string;
   readonly cacheControl?: boolean;
+  readonly prefixBreakpoint?: boolean;
 }
 
 export interface ChatUsage {
@@ -65,6 +67,7 @@ export interface ChatUsage {
   readonly reasoningTokens: number;
   readonly audioTokens: number;
   readonly upstreamCost: number | null;
+  readonly searchRequests: number;
 }
 
 export type ChatChunk =
@@ -79,6 +82,7 @@ export type ChatChunk =
       readonly name: string | null;
       readonly arguments: string;
     }
+  | { readonly type: 'citation'; readonly url: string; readonly title: string }
   | { readonly type: 'finish'; readonly reason: string }
   | {
       readonly type: 'usage';

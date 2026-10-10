@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import type { WakeSensitivity } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { sileroModel } from '../../src/assistant-voice/silero-vad';
 import { opusCodec } from '../../src/assistant-voice/audio';
@@ -27,7 +28,7 @@ function padded(pcm: Int16Array): Int16Array {
 }
 
 function segment(spotter: KeywordSpotter, names: readonly string[], name: string): SegmentResult {
-  const listening = spotter.listen(names);
+  const listening = spotter.listen(names, 'standard');
   if (listening === null) {
     return { heard: null, nearMiss: null };
   }
@@ -121,10 +122,12 @@ async function earHears(name: string, busy: boolean): Promise<string[]> {
   const heard: string[] = [];
   const timers: Cancel[] = [];
   const ear = new CameraEar('camera-1', {
+    claims: { request: (): Promise<boolean> => Promise.resolve(true) },
     microphones: fakeMicrophones(opusPackets(padded(fixture(name)))),
     spotter: new KeywordSpotter(),
     model: sileroModel,
     names: (): string[] => ['Coordinator'],
+    sensitivity: (): WakeSensitivity => 'standard',
     busy: (): boolean => busy,
     heard: (cameraId, phrase): void => {
       heard.push(`${cameraId}: ${phrase}`);

@@ -57,12 +57,9 @@ function deviceChange(args: Args): Args | null {
   if (!parsed.success) {
     return null;
   }
-  const { deviceId, capability, value, unit, confirm } = parsed.data;
+  const { deviceId, capability, value, unit } = parsed.data;
   const change = { target: { deviceIds: [deviceId] }, capability, value };
-  return {
-    changes: [unit === undefined ? change : { ...change, unit }],
-    ...(confirm === undefined ? {} : { confirm }),
-  };
+  return { changes: [unit === undefined ? change : { ...change, unit }] };
 }
 
 const RENAMES: ReadonlyMap<string, Renamed> = new Map([

@@ -1,5 +1,6 @@
 import {
   SCHEDULE_ROW,
+  type PluginOrigin,
   type ScheduleResult,
   type ScheduleRow,
   type ScheduleState,
@@ -12,14 +13,22 @@ import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 
-const JSON_COLUMNS = ['timing', 'occurrences', 'steps', 'step_lines', 'device_ids', 'results'];
+const JSON_COLUMNS = [
+  'timing',
+  'occurrences',
+  'steps',
+  'step_lines',
+  'device_ids',
+  'results',
+  'origin',
+];
 
 const STORED_SCHEDULE = storedRow(SCHEDULE_ROW, { json: JSON_COLUMNS });
 
 const COLUMNS =
   'id, profile_id, client_id, via, label, timing, occurrences, steps, step_lines, device_ids, ' +
-  'state, next_at, occurrence, step, results, confirmed_at, confirmed_by, created_at, updated_at, ' +
-  'finished_at';
+  'state, next_at, occurrence, step, results, confirmed_at, confirmed_by, origin, created_at, ' +
+  'updated_at, finished_at';
 
 const ORDER =
   'order by case when next_at is null then 1 else 0 end, next_at, ' +
@@ -44,8 +53,7 @@ export interface NewSchedule {
   readonly steps: readonly ScheduleStep[];
   readonly stepLines: readonly (string | null)[];
   readonly deviceIds: readonly string[];
-  readonly confirmedAt: string | null;
-  readonly confirmedBy: string | null;
+  readonly origin: PluginOrigin | null;
 }
 
 export interface ScheduleChange {
@@ -60,13 +68,16 @@ export interface ScheduleChange {
   readonly occurrence?: number;
   readonly step?: number;
   readonly results?: readonly ScheduleResult[];
-  readonly confirmedAt?: string | null;
-  readonly confirmedBy?: string | null;
+  readonly origin?: PluginOrigin | null;
   readonly finishedAt?: string | null;
 }
 
 function json(value: unknown): string | undefined {
   return value === undefined ? undefined : jsonText(value);
+}
+
+function originText(origin: PluginOrigin | null): string | null {
+  return origin === null ? null : jsonText(origin);
 }
 
 function columnsOf(change: ScheduleChange): Readonly<Record<string, SQLInputValue | undefined>> {
@@ -82,8 +93,7 @@ function columnsOf(change: ScheduleChange): Readonly<Record<string, SQLInputValu
     occurrence: change.occurrence,
     step: change.step,
     results: json(change.results),
-    confirmed_at: change.confirmedAt,
-    confirmed_by: change.confirmedBy,
+    origin: change.origin === undefined ? undefined : originText(change.origin),
     finished_at: change.finishedAt,
   };
 }
@@ -148,10 +158,11 @@ export class SchedulesRepository {
       this.context.sql.run(
         'add the scheduled action',
         `insert into scheduled_actions (id, profile_id, client_id, via, label, timing, occurrences,
-           steps, step_lines, device_ids, state, next_at, confirmed_at, confirmed_by, created_at,
-           updated_at)
+           steps, step_lines, device_ids, state, next_at, origin,
+           created_at, updated_at)
          values ($id, $profileId, $clientId, $via, $label, $timing, $occurrences, $steps,
-           $stepLines, $deviceIds, 'scheduled', $nextAt, $confirmedAt, $confirmedBy, $now, $now)`,
+           $stepLines, $deviceIds, 'scheduled', $nextAt, $origin,
+           $now, $now)`,
         {
           id,
           profileId: schedule.profileId,
@@ -164,8 +175,7 @@ export class SchedulesRepository {
           stepLines: jsonText(schedule.stepLines),
           deviceIds: jsonText(schedule.deviceIds),
           nextAt: schedule.occurrences[0] ?? null,
-          confirmedAt: schedule.confirmedAt,
-          confirmedBy: schedule.confirmedBy,
+          origin: originText(schedule.origin),
           now,
         },
       );

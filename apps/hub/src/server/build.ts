@@ -13,16 +13,21 @@ import { startBudget } from '../ledger/start-budget';
 import type { Budget } from '../ledger/budget';
 import type { OwnerAlerts } from '../extensions/owner-alerts';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
-import { startAssistantVoice } from '../assistant-voice/start';
+import { followBudget, startAssistantVoice } from '../assistant-voice/start';
+import { homeCameras } from '../assistant-voice/home-cameras';
 import { Reconciler } from '../ledger/reconciler';
+import type { ClaudeService } from '../claude/service';
 import { createToolHub } from '../ai-tools/create';
-import { startChatWidgets } from '../chat-widgets/start';
 import { startSchedules, type Schedules } from '../schedules/start';
-import { aiTurnsOf, attachAssistant, type Listening } from './assistant-wiring';
+import type { ToolChanges } from '../assistant/tool-changes';
+import { aiTurnsOf, attachAssistant } from './assistant-wiring';
 import { attachAutomationAi } from './automation-ai-wiring';
+import { startClaude } from './claude-wiring';
 import { startReach, type StartedReach } from './reach-wiring';
 import { contextOf, statusOf } from './build-context';
 import { extensionRoutes, routeTable, startExtensions } from './build-routes';
+import { PluginSpeakers } from '../plugins/plugin-reach';
+import { startTranscribing, type Transcribing } from './transcribing';
 import { wirePlugins, type Plugins } from './plugin-wiring';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import { createHttpServer } from './http-server';
@@ -80,8 +85,10 @@ interface Serving {
   readonly budget: Budget;
   readonly reconciler: Reconciler;
   readonly plugins: Plugins;
-  readonly stopWidgets: () => void;
+  readonly toolChanges: ToolChanges;
   readonly reach: StartedReach;
+  readonly claude: ClaudeService;
+  readonly transcribing: Transcribing;
 }
 
 function serve(
@@ -91,25 +98,30 @@ function serve(
   extensions: readonly RunningExtension[],
 ): Serving {
   const cameraSockets = new CameraSockets(options.log.forArea('hub.streams'));
-  const tools = createToolHub({
-    store: options.store,
-    hub: options.core.hub,
-    operations,
-    dataDirectory: options.dataDirectory,
-    clock: options.clock,
-    log: options.log.forArea('hub.ai-tools'),
-  });
-  attachAssistant(options, context, tools);
-  const stopWidgets = startChatWidgets({ ...options, context, tools });
-  const plugins = wirePlugins(options, context, tools);
+  const tools = toolHubOf(options, context, operations);
+  const toolChanges = attachAssistant(options, context, tools);
+  const speakers = new PluginSpeakers();
   const voice = voiceOf(options, context, tools);
-  const budget = budgetOf(options, context);
+  const transcribing = startTranscribing(options, context, voice);
+  const plugins = wirePlugins(options, context, tools, { speakers, voice: transcribing.plugins });
+  const budget = budgetOf(options, context, voice);
   context.assistant.coordination.attachGate(budget.gate);
   const reconciler = reconcilerOf(options, context);
   const schedules = startSchedules({ ...options, tools, ai: aiTurnsOf(context) });
   attachAutomationAi(context, tools, options);
-  const reach = startReach(context, voice, options);
-  const routes = { voice, schedules, budget, plugins, reach: reach.routes };
+  const reach = startReach(context, voice, options, { speakers, transcribing });
+  const started = startClaude(context, options);
+  const claude = started.service;
+  const routes = {
+    voice,
+    schedules,
+    budget,
+    plugins,
+    reach: reach.routes,
+    claude,
+    transcribing,
+    tools,
+  };
   const table = {
     ...routeTable(context, options.clock.now, routes),
     ...extensionRoutes(extensions),
@@ -118,7 +130,7 @@ function serve(
   const http = createHttpServer({
     context,
     router: new Router(table, options.store, context.log),
-    rawRoutes: extensions.flatMap((extension) => extension.routes),
+    rawRoutes: [...extensions.flatMap((extension) => extension.routes), ...started.routes],
     allowedOrigins: options.allowedOrigins,
     cameraSockets,
     assistantVoice: voice,
@@ -126,7 +138,19 @@ function serve(
   });
   plugins.boot(http);
   const parts = { http, cameraSockets, voice, tools, schedules, budget, reconciler, plugins };
-  return { ...parts, stopWidgets, reach };
+  return { ...parts, toolChanges, reach, claude, transcribing };
+}
+
+function toolHubOf(options: BuildOptions, context: ServerContext, operations: Operations): ToolHub {
+  return createToolHub({
+    store: options.store,
+    hub: options.core.hub,
+    operations,
+    dataDirectory: options.dataDirectory,
+    clock: options.clock,
+    mediaNotes: context.mediaNotes,
+    log: options.log.forArea('hub.ai-tools'),
+  });
 }
 
 function voiceOf(options: BuildOptions, context: ServerContext, tools: ToolHub): AssistantVoice {
@@ -134,14 +158,16 @@ function voiceOf(options: BuildOptions, context: ServerContext, tools: ToolHub):
     ...options,
     tools,
     prices: context.openRouter.catalogue,
+    openCalls: context.openCalls,
+    cameras: homeCameras({ store: options.store, video: context.talk.camera.video }),
     now: options.clock.now,
     assistant: context.assistant,
     log: options.log.forArea('hub.voice'),
   });
 }
 
-function budgetOf(options: BuildOptions, context: ServerContext): Budget {
-  return startBudget({
+function budgetOf(options: BuildOptions, context: ServerContext, voice: AssistantVoice): Budget {
+  const budget = startBudget({
     store: options.store,
     openRouter: context.openRouter,
     alerts: options.alerts,
@@ -151,6 +177,8 @@ function budgetOf(options: BuildOptions, context: ServerContext): Budget {
     clock: options.clock,
     log: options.log.forArea('hub.budget'),
   });
+  followBudget(voice, budget);
+  return budget;
 }
 
 function reconcilerOf(options: BuildOptions, context: ServerContext): Reconciler {
@@ -165,8 +193,10 @@ function reconcilerOf(options: BuildOptions, context: ServerContext): Reconciler
 function stopServing(served: Serving): void {
   served.reconciler.stop();
   served.budget.stop();
-  served.stopWidgets();
+  served.toolChanges.stop();
   served.reach.stop();
+  served.transcribing.transcripts.stop();
+  served.claude.stop();
 }
 
 export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
@@ -176,17 +206,16 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
     status: status.status,
     log: options.log.forArea('hub.live'),
   });
-  const listening: Listening = { server: null };
-  const context = contextOf(options, live, status, listening);
+  const context = contextOf(options, live, status);
   await context.talk.start();
-  await context.assistant.start();
+  context.assistant.start();
   const operations = new Operations(context.log);
   const extensions = await startExtensions(options, context, operations);
   const served = serve(options, context, operations, extensions);
   const { http, cameraSockets, voice, schedules } = served;
-  listening.server = http;
   const unsubscribe = followNetworkSettings(options, context);
   context.weather.start();
+  context.exchangeRates.start();
   context.openRouter.start();
   const unfollowFirewall = options.core.firewall.onChange((firewall) => {
     live.firewall(firewall);
@@ -208,6 +237,7 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
       context.talk.stop();
       context.assistant.stop();
       context.weather.stop();
+      context.exchangeRates.stop();
       stopServing(served);
       context.openRouter.stop();
       cameraSockets.stop();

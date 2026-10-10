@@ -1,48 +1,61 @@
 import {
   ASSISTANT_SETTINGS,
+  RETIRED_STATUS_FIELDS,
   ApiError,
   type AiChatChange,
+  type AiChatBranch,
+  type AiChatHit,
   type AiChatNew,
   type AiChatRow,
+  type AiChatSearch,
+  type AiEdit,
+  type AiRetryFrom,
   type AiUsageRow,
   type AssistantMessageRow,
   type AssistantNewMessage,
   type AssistantPost,
-  type AssistantReply,
   type AssistantSettings,
   type AssistantSettingsChange,
   type AssistantStatus,
   type ChatActivityNotice,
+  type ChatStreamNotice,
   type MessageOrigin,
-  type EngineKind,
-  type ResponderApp,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
+import { ChatBranches } from './chat-branch';
 import { ChatDirectory, type ChatOwner } from './chat-directory';
-import type { BridgeLaunch } from './claude-plugin';
-import { ResponderConnections } from './connections';
 import { ConversationLog } from './conversation-log';
 import { Coordination } from './coordination/asks';
+import { costRolledUp } from './cost-rollup';
 import { scopedHub } from './coordination/scoped-tools';
 import { AssistantDelivery, type Routing } from './delivery';
 import type { PromptFacts } from './engines/openrouter/context';
 import { ChatRunner, type ChatRunnerDeps } from './engines/openrouter/runner';
 import type { StreamEmit } from './engines/openrouter/stream';
+import type { EngineStatus } from './engines/engine';
 import { EngineRegistry } from './engines/registry';
-import { AppsMonitor } from './apps-monitor';
 import { AssistantFiles } from './files';
-import { responderModels, responderUsage } from './providers';
 import { AssistantRequests, type InboundTurn, type Sender } from './requests';
-import { ClaudeChats, type ClaudeChatHooks } from './engines/claude-chats';
-import { desktopInstalled } from './claude-sessions';
 import { facts } from './prompt-facts';
-import { ChatTitles, type TitleCatalogue } from './titles/chat-titles';
+import type { SideCatalogue } from './side-completion';
+import { ReplySuggestions } from './suggestions/reply-suggestions';
+import { ChatTitles } from './titles/chat-titles';
 import type { VoiceResponder, VoiceResultHandler } from './voice-link';
 
 export type { Sender } from './requests';
+
+const RESTART_REASON = 'Stopped by a server restart.';
+
+export interface TurnActivity {
+  readonly eventId: string;
+  readonly state: ChatActivityNotice['state'];
+  readonly steps: readonly string[];
+}
+
+export type TurnActivityListener = (activity: TurnActivity) => void;
 
 export type TurnEnded = (event: StoredEvent, text: string, ok: boolean) => void;
 
@@ -51,8 +64,6 @@ export interface AssistantServiceOptions {
   readonly dataDirectory: string;
   readonly announce: (status: AssistantStatus) => void;
   readonly emit: StreamEmit;
-  readonly localUrl: () => string;
-  readonly bridge: () => BridgeLaunch;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -69,21 +80,18 @@ export interface LedgerRollup {
   readonly rollup: (sink: (row: AiUsageRow, deltaMicros: number) => void) => () => void;
 }
 
-export type OpenRouterParts = Pick<ChatRunnerDeps, 'client' | 'newTurn' | 'ledger'> & {
-  readonly catalogue: ChatRunnerDeps['catalogue'] & TitleCatalogue;
+export type OpenRouterParts = Pick<ChatRunnerDeps, 'client' | 'newTurn' | 'ledger' | 'notes'> & {
+  readonly catalogue: ChatRunnerDeps['catalogue'] & SideCatalogue;
 };
 
 export class AssistantService {
   readonly files: AssistantFiles;
-  readonly connections: ResponderConnections;
-  private readonly apps: AppsMonitor;
   readonly voice: VoiceResponder;
   readonly chats: ChatDirectory;
+  readonly branches: ChatBranches;
   readonly coordination: Coordination;
   private readonly conversation: ConversationLog;
   private readonly delivery: AssistantDelivery;
-  private readonly claude: ClaudeChats;
-  private desktop = false;
   private readonly engines: EngineRegistry;
   private readonly requests: AssistantRequests;
   private tools: ToolHub | null = null;
@@ -92,6 +100,7 @@ export class AssistantService {
   private voiceResult: VoiceResultHandler | null = null;
   private publishing = false;
   private readonly turnEnded = new Set<TurnEnded>();
+  private readonly turnActivity = new Set<TurnActivityListener>();
 
   constructor(private readonly options: AssistantServiceOptions) {
     const { store } = options;
@@ -100,23 +109,10 @@ export class AssistantService {
       chat: store.assistantChat,
       now: options.now,
     });
-    this.connections = new ResponderConnections({
-      store,
-      dataDirectory: options.dataDirectory,
-      localUrl: options.localUrl,
-      bridge: options.bridge,
-    });
-    this.apps = new AppsMonitor({
-      apps: this.connections,
-      changed: (): void => {
-        this.publish();
-      },
-      log: options.log,
-    });
     this.conversation = new ConversationLog(store);
     this.chats = new ChatDirectory(store, this.files, options.now);
-    this.claude = new ClaudeChats(this.claudeHooks());
-    this.engines = new EngineRegistry(store, this.claude.engine());
+    this.branches = new ChatBranches(store, this.files, this.chats);
+    this.engines = new EngineRegistry(store);
     this.delivery = this.deliveryOf();
     this.coordination = new Coordination({
       store,
@@ -165,36 +161,10 @@ export class AssistantService {
       conversation: this.conversation,
       delivery: (): AssistantDelivery => this.delivery,
       voiceResult: (): VoiceResultHandler | null => this.voiceResult,
-      settles: (event): boolean =>
-        store.aiChats.chat(event.chat_id).engine.kind !== 'claude-session',
       done: (event, text, ok): void => {
         this.ended(event, text, ok);
       },
     });
-  }
-
-  private claudeHooks(): ClaudeChatHooks {
-    const log = this.conversation;
-    return {
-      dataDirectory: this.options.dataDirectory,
-      settings: (): AssistantSettings => this.settings(),
-      pickedUp: (eventId): void => {
-        log.state(eventId, 'working');
-      },
-      step: (eventId, step): void => {
-        log.step(eventId, step);
-      },
-      replied: (eventId): void => {
-        log.repliedTo(eventId);
-      },
-      settled: (eventId): void => {
-        log.settled(eventId);
-      },
-      changed: (): void => {
-        this.publish();
-      },
-      log: this.options.log,
-    };
   }
 
   activity(profileId: string): ChatActivityNotice[] {
@@ -206,23 +176,14 @@ export class AssistantService {
     return { chatId: chat.id, eventId: this.requests.turn(chat, input.text, input.origin) };
   }
 
-  async start(): Promise<void> {
-    this.options.store.assistantChat.failWorking('Stopped by a server restart.');
-    this.desktop = await desktopInstalled();
+  start(): void {
+    this.conversation.interrupted(RESTART_REASON);
     this.delivery.pump();
-    this.apps.start();
   }
 
   attachLedger(ledger: LedgerRollup): () => void {
     const { store } = this.options;
-    return ledger.rollup((row, delta) => {
-      if (row.message_id !== null) {
-        store.assistantChat.addCost(row.message_id, delta);
-      }
-      if (row.chat_id !== null) {
-        store.aiChats.addCost(row.chat_id, delta);
-      }
-    });
+    return ledger.rollup(costRolledUp(store));
   }
 
   onFinished(listener: TurnEnded): () => void {
@@ -232,6 +193,23 @@ export class AssistantService {
     };
   }
 
+  onActivity(listener: TurnActivityListener): () => void {
+    this.turnActivity.add(listener);
+    return (): void => {
+      this.turnActivity.delete(listener);
+    };
+  }
+
+  private fedActivity(notice: ChatActivityNotice | ChatStreamNotice): void {
+    if (notice.type !== 'chat_activity') {
+      return;
+    }
+    const activity = { eventId: notice.turnId, state: notice.state, steps: notice.steps };
+    this.turnActivity.forEach((listener) => {
+      listener(activity);
+    });
+  }
+
   private ended(event: StoredEvent, text: string, ok: boolean): void {
     this.coordination.finished(event, text, ok);
     this.turnEnded.forEach((listener) => {
@@ -239,8 +217,8 @@ export class AssistantService {
     });
   }
 
-  async inbound(turn: InboundTurn): Promise<{ eventId: string }> {
-    return { eventId: await this.requests.inbound(turn) };
+  inbound(turn: InboundTurn): Promise<{ eventId: string; messageId: string }> {
+    return this.requests.inbound(turn);
   }
 
   systemNote(chatId: string, text: string, author: string): AssistantMessageRow {
@@ -260,7 +238,10 @@ export class AssistantService {
       files: this.files,
       facts: (chat): PromptFacts =>
         facts(this.options.store, chat, scopedHub(this.tools, chat.tools), this.options.now()),
-      emit: this.options.emit,
+      emit: (notice, profileId): void => {
+        this.options.emit(notice, profileId);
+        this.fedActivity(notice);
+      },
       finished: (event, text, ok): void => {
         this.requests.finished(event, text, ok);
       },
@@ -271,18 +252,13 @@ export class AssistantService {
     const { store, now, log } = this.options;
     this.titles = new ChatTitles({ ...parts, store, now, log });
     this.onFinished(this.titles.afterReply);
+    this.onFinished(new ReplySuggestions({ ...parts, store, log }).afterReply);
     this.titles.backfill();
     this.delivery.pump();
   }
 
-  refreshApps(): void {
-    this.apps.recheck();
-  }
-
   stop(): void {
     this.delivery.stop();
-    this.claude.stop();
-    this.apps.stop();
   }
 
   onVoiceResult(handler: VoiceResultHandler): void {
@@ -294,17 +270,7 @@ export class AssistantService {
   }
 
   status(): AssistantStatus {
-    return {
-      settings: this.settings(),
-      responder: {
-        mode: this.settings().mode,
-        state: this.settings().mode === 'none' ? 'none' : 'ready',
-        reason: null,
-        conversation: null,
-      },
-      apps: [...this.connections.statuses],
-      desktop_available: this.desktop,
-    };
+    return { settings: this.settings(), ...RETIRED_STATUS_FIELDS };
   }
 
   update(change: AssistantSettingsChange): Promise<AssistantStatus> {
@@ -313,55 +279,7 @@ export class AssistantService {
     );
     this.delivery.pump();
     this.publish();
-    this.refreshApps();
     return Promise.resolve(this.status());
-  }
-
-  async newConversation(profileId: string): Promise<AssistantStatus> {
-    await this.claude.reset(this.claudeChat(profileId));
-    this.publish();
-    return this.status();
-  }
-
-  async openConversation(profileId: string): Promise<void> {
-    await this.claude.open(this.claudeChat(profileId));
-  }
-
-  async openChat(owner: ChatOwner, chatId: string): Promise<void> {
-    const chat = this.chats.own(owner, chatId);
-    if (chat.engine.kind !== 'claude-session') {
-      throw new ApiError('conflict', 'Only a Claude Code chat opens in Claude Desktop.');
-    }
-    await this.claude.open(chat);
-  }
-
-  private claudeChat(profileId: string): AiChatRow {
-    const chat = this.options.store.aiChats.latestWithEngine(profileId, 'claude-session');
-    if (chat === undefined) {
-      throw new ApiError('conflict', 'There is no Claude Code chat yet; start one first.');
-    }
-    return chat;
-  }
-
-  async connect(app: ResponderApp, connected: boolean): Promise<AssistantStatus> {
-    await (connected ? this.connections.connect(app) : this.connections.disconnect(app));
-    this.publish();
-    return this.status();
-  }
-
-  usage(): ReturnType<typeof responderUsage> {
-    return responderUsage(this.settings().mode);
-  }
-
-  models(): ReturnType<typeof responderModels> {
-    return responderModels(this.settings().mode, false);
-  }
-
-  engineModels(kind: EngineKind): ReturnType<typeof responderModels> {
-    return responderModels(
-      kind === 'codex-thread' ? 'codex-local' : kind === 'claude-session' ? kind : 'none',
-      false,
-    );
   }
 
   messages(chatId: string, before: string | undefined, limit: number): AssistantMessageRow[] {
@@ -381,10 +299,26 @@ export class AssistantService {
     return this.chats.create(owner, input);
   }
 
+  branchChat(owner: ChatOwner, chatId: string, body: AiChatBranch): Promise<AiChatRow> {
+    return this.branches.branch(owner, chatId, body);
+  }
+
+  searchChats(owner: ChatOwner, query: AiChatSearch): AiChatHit[] {
+    return this.chats.search(owner, query);
+  }
+
   updateChat(owner: ChatOwner, chatId: string, change: AiChatChange): Promise<AiChatRow> {
     const chat = this.chats.update(owner, chatId, change);
     this.delivery.pump();
     return Promise.resolve(chat);
+  }
+
+  engineStatus(chat: AiChatRow): EngineStatus | null {
+    return this.engines.engineOf(chat)?.status(chat) ?? null;
+  }
+
+  async compact(owner: ChatOwner, chatId: string): Promise<boolean> {
+    return (await this.runner?.compact(this.chats.own(owner, chatId))) ?? false;
   }
 
   async interrupt(owner: ChatOwner, chatId: string): Promise<void> {
@@ -408,8 +342,20 @@ export class AssistantService {
     return this.requests.send(sender, body, chat);
   }
 
-  reply(body: AssistantReply, local: boolean): ReturnType<AssistantRequests['reply']> {
-    return this.requests.reply(body, local);
+  retry(
+    owner: ChatOwner,
+    target: { readonly chatId: string; readonly messageId: string },
+    from: AiRetryFrom,
+  ): Promise<AssistantMessageRow> {
+    return this.requests.retry(this.chats.own(owner, target.chatId), target.messageId, from);
+  }
+
+  edit(
+    owner: ChatOwner,
+    target: { readonly chatId: string; readonly messageId: string },
+    body: AiEdit,
+  ): Promise<AssistantMessageRow> {
+    return this.requests.edit(this.chats.own(owner, target.chatId), target.messageId, body);
   }
 
   post(body: AssistantPost, local: boolean): Promise<AssistantMessageRow> {

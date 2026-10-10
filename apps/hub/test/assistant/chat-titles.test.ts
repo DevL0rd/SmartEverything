@@ -256,6 +256,7 @@ describe('chat titles', () => {
       state: 'answered',
       reason: null,
       steps: [],
+      step_states: [],
       reply_to: null,
       chat_id: chat.id,
       origin: null,

@@ -6,59 +6,59 @@ import {
   type AiModelPriceRow,
   type AiModelRow,
   type OpenRouterSettings,
-} from "@smarteverything/domain";
-import { z } from "zod";
-import { storedRow } from "../store/codec";
-import type { StoreContext } from "../store/context";
-import { jsonText } from "../store/sql";
+} from '@smarteverything/domain';
+import { z } from 'zod';
+import { storedRow } from '../store/codec';
+import type { StoreContext } from '../store/context';
+import { jsonText } from '../store/sql';
 
 const ARRAYS = [
-  "input_modalities",
-  "output_modalities",
-  "supported_parameters",
-  "efforts",
-  "kinds",
+  'input_modalities',
+  'output_modalities',
+  'supported_parameters',
+  'efforts',
+  'kinds',
 ] as const;
 
 const STORED_MODEL = storedRow(AI_MODEL_ROW, {
-  json: [...ARRAYS, "pricing"],
-  flags: ["tools"],
+  json: [...ARRAYS, 'pricing'],
+  flags: ['tools'],
 });
 
-const STORED_PRICE = storedRow(AI_MODEL_PRICE_ROW, { json: ["pricing"] });
+const STORED_PRICE = storedRow(AI_MODEL_PRICE_ROW, { json: ['pricing'] });
 
 const COLUMNS = [
-  "id",
-  "provider",
-  "name",
-  "author",
-  "author_name",
-  "family",
-  "description",
-  "created",
-  "context_length",
-  "max_output",
+  'id',
+  'provider',
+  'name',
+  'author',
+  'author_name',
+  'family',
+  'description',
+  'created',
+  'context_length',
+  'max_output',
   ...ARRAYS,
-  "reasoning",
-  "default_effort",
-  "tools",
-  "alias_of",
-  "pricing",
-  "expires_at",
-  "synced_at",
-  "gone_at",
+  'reasoning',
+  'default_effort',
+  'tools',
+  'alias_of',
+  'pricing',
+  'expires_at',
+  'synced_at',
+  'gone_at',
 ] as const;
 
-const COLUMN_LIST = COLUMNS.join(", ");
+const COLUMN_LIST = COLUMNS.join(', ');
 
-const SETTINGS_KEY = "openrouter";
+const SETTINGS_KEY = 'openrouter';
 const RECENT_SCAN = 30;
 
 const RECENT = z.strictObject({
   id: z.string().min(1),
   used: z.string().min(1),
 });
-const SYNC_KEY = "catalogue";
+const SYNC_KEY = 'catalogue';
 
 const MOMENT = z.iso.datetime({ offset: true });
 
@@ -77,7 +77,7 @@ const NEVER_SYNCED: CatalogueState = {
 };
 
 const STORED_SETTING = storedRow(z.strictObject({ settings: z.unknown() }), {
-  json: ["settings"],
+  json: ['settings'],
 });
 
 export interface UpsertResult {
@@ -133,10 +133,7 @@ export class AiModelsRepository {
     );
   }
 
-  replace(
-    rows: readonly AiModelRow[],
-    provider: AiModelRow["provider"],
-  ): UpsertResult {
+  replace(rows: readonly AiModelRow[], provider: AiModelRow['provider']): UpsertResult {
     return this.context.write(() => {
       const known = new Map(this.all().map((row) => [row.id, row]));
       let added = 0;
@@ -190,13 +187,13 @@ export class AiModelsRepository {
   }
 
   private upsert(row: AiModelRow): void {
-    const updates = COLUMNS.filter((column) => column !== "id")
+    const updates = COLUMNS.filter((column) => column !== 'id')
       .map((column) => `${column} = excluded.${column}`)
-      .join(", ");
+      .join(', ');
     this.context.sql.run(
-      "save an AI model",
+      'save an AI model',
       `insert into ai_models (${COLUMN_LIST})
-        values (${COLUMNS.map((column) => `$${column}`).join(", ")})
+        values (${COLUMNS.map((column) => `$${column}`).join(', ')})
         on conflict (id) do update set ${updates}`,
       parametersOf(row),
     );
@@ -204,28 +201,22 @@ export class AiModelsRepository {
 
   private price(row: AiModelRow): void {
     this.context.sql.run(
-      "record an AI model price",
+      'record an AI model price',
       `insert or replace into ai_model_prices (model_id, effective_at, pricing)
         values ($modelId, $at, $pricing)`,
       { modelId: row.id, at: row.synced_at, pricing: jsonText(row.pricing) },
     );
   }
 
-  private markGone(
-    provider: AiModelRow["provider"],
-    present: ReadonlySet<string>,
-  ): number {
+  private markGone(provider: AiModelRow['provider'], present: ReadonlySet<string>): number {
     const now = this.context.now();
     const leaving = this.all().filter(
-      (row) =>
-        row.provider === provider &&
-        row.gone_at === null &&
-        !present.has(row.id),
+      (row) => row.provider === provider && row.gone_at === null && !present.has(row.id),
     );
     for (const row of leaving) {
       this.context.sql.run(
-        "mark an AI model gone",
-        "update ai_models set gone_at = $now where id = $id",
+        'mark an AI model gone',
+        'update ai_models set gone_at = $now where id = $id',
         { now, id: row.id },
       );
     }
@@ -235,7 +226,7 @@ export class AiModelsRepository {
   private setting<T>(key: string, schema: z.ZodType<T>, empty: T): T {
     const row = this.context.sql.get(
       STORED_SETTING,
-      "select settings from ai_settings where key = $key",
+      'select settings from ai_settings where key = $key',
       { key },
     );
     return row === undefined ? empty : schema.parse(row.settings);

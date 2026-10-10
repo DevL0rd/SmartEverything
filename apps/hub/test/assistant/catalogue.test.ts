@@ -48,13 +48,19 @@ describe('the tool catalogue text', () => {
 });
 
 describe('the Live context window', () => {
-  it('slides at the compaction percent of the Live model’s window', () => {
-    const settings = ASSISTANT_SETTINGS.parse({ compact_at_percent: 80 });
-    expect(liveWindow(settings)).toEqual({ triggerTokens: 102_400, targetTokens: 64_000 });
+  it('keeps four minutes of speech by default, whatever the compaction percent', () => {
+    const expected = { triggerTokens: 17_100, targetTokens: 13_680 };
+    expect(liveWindow(ASSISTANT_SETTINGS.parse({ compact_at_percent: 95 }))).toEqual(expected);
+    expect(liveWindow(ASSISTANT_SETTINGS.parse({ compact_at_percent: 50 }))).toEqual(expected);
   });
 
-  it('leaves the window alone for a model without a known length', () => {
+  it('grows with the chosen number of minutes', () => {
+    const settings = ASSISTANT_SETTINGS.parse({ voice: { live_context_minutes: 8 } });
+    expect(liveWindow(settings)).toEqual({ triggerTokens: 26_700, targetTokens: 21_360 });
+  });
+
+  it('still limits a model without a known length', () => {
     const settings = ASSISTANT_SETTINGS.parse({ voice: { model: 'gemini-unknown-live' } });
-    expect(liveWindow(settings)).toBeNull();
+    expect(liveWindow(settings)).toEqual({ triggerTokens: 17_100, targetTokens: 13_680 });
   });
 });

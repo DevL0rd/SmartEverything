@@ -73,6 +73,7 @@ interface SinkRecord {
   readonly events: DeviceEvent[];
   readonly devices: (readonly DiscoveredDevice[])[];
   readonly failures: AdapterFailure[];
+  readonly onlines: (readonly [string, boolean])[];
 }
 
 function recordingSink(): SinkRecord {
@@ -80,17 +81,20 @@ function recordingSink(): SinkRecord {
   const events: DeviceEvent[] = [];
   const devices: (readonly DiscoveredDevice[])[] = [];
   const failures: AdapterFailure[] = [];
+  const onlines: (readonly [string, boolean])[] = [];
   return {
     sink: {
       state: (update) => states.push(update),
       event: (event) => events.push(event),
       devices: (list) => devices.push(list),
+      online: (externalId, online) => onlines.push([externalId, online]),
       failure: (failure) => failures.push(failure),
     },
     states,
     events,
     devices,
     failures,
+    onlines,
   };
 }
 
@@ -340,8 +344,8 @@ describe('SmartThings webhook events', () => {
     ]);
     expect(recorded.events.map((event) => [event.externalId, event.kind])).toEqual([
       ['sensor-1', 'motion'],
-      ['lamp-1', 'device_offline'],
     ]);
+    expect(recorded.onlines).toEqual([['lamp-1', false]]);
     expect(recorded.failures.map((failure) => failure.operation)).toEqual(['events.read']);
     expect(record.logs.find((line) => line.event === 'events.ignored')?.payload).toEqual({
       eventType: 'MODE_EVENT',

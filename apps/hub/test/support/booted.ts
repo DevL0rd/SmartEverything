@@ -9,6 +9,7 @@ import {
 } from '../../src/main';
 import { CAMERA, LAMP, fakeModule, type FakeModule } from './fake-provider';
 import { captureLogs, testLogger } from './logs';
+import { LogLines } from '../../src/service/log-lines';
 import { call, fakeGo2rtcServer, freePort, openLive, temporaryDirectory } from './server';
 
 export const PUBLIC_URL = 'https://home.example.com';
@@ -67,6 +68,7 @@ export async function bootServer(
     modules: xiaomiWithCameraLogin(fake),
     fetch: tunnel(() => base),
     clock,
+    logLines: new LogLines(),
     ...extra,
   });
   base = server.url;

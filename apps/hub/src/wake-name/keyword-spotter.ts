@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import type { WakeSensitivity } from '@smarteverything/domain';
 import { KEYWORD_RESULT, sherpa, type KeywordStream, type Kws } from './sherpa';
 import { pieceVocabulary, wordPieces, type PieceVocabulary } from './word-pieces';
 
@@ -8,35 +9,60 @@ const PCM_FULL_SCALE = 32_768;
 const TRAILING_SILENCE = new Float32Array(SAMPLE_RATE / 2);
 
 export const KEYWORD_TUNING = {
-  threshold: 0.2,
   nearThreshold: 0.08,
   boost: 2,
   activePaths: 8,
 } as const;
+
+export const WAKE_SENSITIVITY_SCORES: Readonly<Record<WakeSensitivity, number>> = {
+  standard: 0.2,
+  high: 0.15,
+  highest: 0.1,
+};
 
 export function modelDirectory(): string {
   return fileURLToPath(new URL('wake-name-model/', import.meta.url));
 }
 
 export function wakePhrases(names: readonly string[]): string[] {
-  return [...new Set(names.map((name) => name.trim()).filter((name) => name !== ''))];
+  const seen = new Set<string>();
+  return names
+    .map((name) => name.trim())
+    .filter((name) => {
+      const key = name.toLocaleLowerCase();
+      if (name === '' || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
 }
 
 function keywordLines(vocabulary: PieceVocabulary, phrases: readonly string[]): string {
   return phrases
     .map((phrase) => {
       const pieces = wordPieces(vocabulary, phrase);
-      return pieces === null ? null : `${pieces.join(' ')} @${phrase.replace(/\s+/g, '_')}`;
+      return pieces === null ? null : `${pieces.join(' ')} @${phrase.replace(/[\s@#:]+/g, '_')}`;
     })
     .filter((line) => line !== null)
     .join('\n');
 }
 
-interface Loaded {
-  readonly sure: Kws;
-  readonly near: Kws;
-  readonly keywords: string;
-  users: number;
+class Keyset {
+  readonly sures = new Map<WakeSensitivity, Kws>();
+  users = 0;
+
+  constructor(
+    readonly keywords: string,
+    readonly near: Kws,
+  ) {}
+
+  free(): void {
+    this.sures.forEach((sure) => {
+      sure.free();
+    });
+    this.near.free();
+  }
 }
 
 export interface SegmentResult {
@@ -46,21 +72,23 @@ export interface SegmentResult {
 
 export class KeywordSpotter {
   private readonly vocabulary: PieceVocabulary;
-  private current: Loaded | null = null;
-  private readonly retired = new Set<Loaded>();
+  private current: Keyset | null = null;
+  private readonly retired = new Set<Keyset>();
 
   constructor(private readonly directory: string = modelDirectory()) {
     this.vocabulary = pieceVocabulary(readFileSync(`${directory}bpe.vocab`, 'utf8'));
   }
 
-  listen(names: readonly string[]): KeywordListening | null {
-    const loaded = this.forKeywords(keywordLines(this.vocabulary, wakePhrases(names)));
-    if (loaded === null) {
+  listen(names: readonly string[], sensitivity: WakeSensitivity): KeywordListening | null {
+    const keywords = keywordLines(this.vocabulary, wakePhrases(names));
+    if (keywords === '') {
       return null;
     }
-    loaded.users += 1;
-    return new KeywordListening(loaded, () => {
-      loaded.users -= 1;
+    const keyset = this.keysetFor(keywords);
+    const sure = this.sureFor(keyset, sensitivity);
+    keyset.users += 1;
+    return new KeywordListening(sure, keyset.near, () => {
+      keyset.users -= 1;
       this.sweep();
     });
   }
@@ -73,28 +101,30 @@ export class KeywordSpotter {
     this.sweep();
   }
 
-  private forKeywords(keywords: string): Loaded | null {
-    if (keywords === '') {
-      return null;
+  private keysetFor(keywords: string): Keyset {
+    if (this.current?.keywords === keywords) {
+      return this.current;
     }
-    if (this.current?.keywords !== keywords) {
-      this.free();
-      this.current = {
-        sure: this.create(keywords, KEYWORD_TUNING.threshold),
-        near: this.create(keywords, KEYWORD_TUNING.nearThreshold),
-        keywords,
-        users: 0,
-      };
-    }
+    this.free();
+    this.current = new Keyset(keywords, this.create(keywords, KEYWORD_TUNING.nearThreshold));
     return this.current;
   }
 
+  private sureFor(keyset: Keyset, sensitivity: WakeSensitivity): Kws {
+    const known = keyset.sures.get(sensitivity);
+    if (known !== undefined) {
+      return known;
+    }
+    const sure = this.create(keyset.keywords, WAKE_SENSITIVITY_SCORES[sensitivity]);
+    keyset.sures.set(sensitivity, sure);
+    return sure;
+  }
+
   private sweep(): void {
-    for (const loaded of [...this.retired]) {
-      if (loaded.users === 0) {
-        loaded.sure.free();
-        loaded.near.free();
-        this.retired.delete(loaded);
+    for (const keyset of [...this.retired]) {
+      if (keyset.users === 0) {
+        keyset.free();
+        this.retired.delete(keyset);
       }
     }
   }
@@ -159,11 +189,12 @@ export class KeywordListening {
   private reported = false;
 
   constructor(
-    loaded: Loaded,
+    sure: Kws,
+    near: Kws,
     private readonly done: () => void,
   ) {
-    this.sure = new SpottingStream(loaded.sure);
-    this.near = new SpottingStream(loaded.near);
+    this.sure = new SpottingStream(sure);
+    this.near = new SpottingStream(near);
   }
 
   hear(pcm: Int16Array): string | null {

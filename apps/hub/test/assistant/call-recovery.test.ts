@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ASSISTANT_VOICE_SETTINGS, type AssistantVoiceSettings } from '@smarteverything/domain';
 import type { CallLink } from '../../src/assistant-voice/call-link';
-import { Conversation } from '../../src/assistant-voice/conversation';
+import { Conversation, REPLY_GRACE_MS } from '../../src/assistant-voice/conversation';
 import type { LiveSession, VoiceProvider } from '../../src/assistant-voice/gemini';
 import { LiveConnectTimeoutError, connectWithin } from '../../src/assistant-voice/live-connect';
 import {
@@ -17,8 +17,11 @@ function recordingSession(log: string[]): LiveSession {
     speaking: (speaking): void => {
       log.push(`speaking ${String(speaking)}`);
     },
-    text: (text, respond, image): void => {
-      log.push(`text ${text} respond=${String(respond)} image=${String(image !== undefined)}`);
+    text: (text, respond): void => {
+      log.push(`text ${text} respond=${String(respond)}`);
+    },
+    picture: (picture): void => {
+      log.push(`picture ${picture.mimeType}`);
     },
     toolResult: (_id, name, response): void => {
       log.push(`result ${name} ${JSON.stringify(response)}`);
@@ -62,9 +65,12 @@ describe('deliverToolAnswer', () => {
     const log: string[] = [];
     const turns: string[] = [];
     deliverToolAnswer(
-      recordingSession(log),
-      (turn) => {
-        turns.push(turn.text);
+      {
+        session: recordingSession(log),
+        record: (turn) => {
+          turns.push(turn.text);
+        },
+        scheduling: 'idle',
       },
       { id: 'call-1', name: 'take_camera_snapshots' },
       {
@@ -73,16 +79,16 @@ describe('deliverToolAnswer', () => {
         pictures: [{ data: Buffer.from('jpeg'), mimeType: 'image/jpeg' }],
       },
     );
-    expect(log[0]).toBe('text [Photo from take_camera_snapshots] respond=false image=true');
-    expect(log[1]).toMatch(/^result take_camera_snapshots .*"photos":"Look at the \[Photo\]/);
+    expect(log[0]).toBe('picture image/jpeg');
+    expect(log[1]).toMatch(/^result take_camera_snapshots .*"photos":"Look at the picture sent/);
+    expect(log).toHaveLength(2);
     expect(turns).toEqual(['Looked through the living room camera']);
   });
 
   it('sends a plain result when there is no picture', () => {
     const log: string[] = [];
     deliverToolAnswer(
-      recordingSession(log),
-      () => undefined,
+      { session: recordingSession(log), record: () => undefined, scheduling: 'idle' },
       { id: 'c', name: 'get_weather' },
       {
         response: { result: 'sunny' },
@@ -120,20 +126,92 @@ describe('connectWithin', () => {
 });
 
 describe('Conversation watchdog', () => {
-  it('nudges Gemini once, then ends the call when it never answers', async () => {
+  it.each([false, true])(
+    'nudges Gemini once, then gives up (stays open: %s)',
+    async (staysOpen) => {
+      vi.useFakeTimers();
+      let clock = 0;
+      const log: string[] = [];
+      const endings: string[] = [];
+      const stalls: string[] = [];
+      const provider: VoiceProvider = { live: () => Promise.resolve(recordingSession(log)) };
+      const link: CallLink = {
+        audio: () => undefined,
+        cut: () => undefined,
+        playing: () => false,
+        state: () => undefined,
+        caption: () => undefined,
+      };
+      const conversation = new Conversation(
+        provider,
+        link,
+        {
+          speech: 'gated-client',
+          settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
+          system: (): string => 'system',
+          tools: (): [] => [],
+          webSearch: (): boolean => false,
+          window: (): null => null,
+          record: (): void => undefined,
+          task: (): string => 'event',
+          run: (): Promise<never> => Promise.reject(new Error('no tools here')),
+          ended: (reason, detail): void => {
+            endings.push(`${reason}: ${String(detail)}`);
+          },
+          usage: (): void => undefined,
+          measured: (): void => undefined,
+          stalled: (step): void => {
+            stalls.push(step);
+          },
+          staysOpenWhenQuiet: (): boolean => staysOpen,
+        },
+        () => clock,
+      );
+      await conversation.start(null);
+      conversation.activity(true);
+      conversation.hear(new Int16Array(320));
+      conversation.activity(false);
+      const advance = async (ms: number): Promise<void> => {
+        clock += ms;
+        await vi.advanceTimersByTimeAsync(ms);
+      };
+      await advance(NO_REPLY_MS + 200);
+      expect(stalls).toEqual(['nudged']);
+      expect(log.filter((line) => line.startsWith('text ['))).toHaveLength(1);
+      await advance(NO_REPLY_MS + 200);
+      expect(stalls).toEqual(['nudged', 'gave_up']);
+      await advance(60_000);
+      expect(endings).toEqual(staysOpen ? [] : ['failed: The AI stopped answering; call again.']);
+      vi.useRealTimers();
+    },
+  );
+});
+
+describe('Conversation idle timeout', () => {
+  async function idleRun(
+    inFlight: boolean,
+  ): Promise<{ endings: string[]; advance: (ms: number) => Promise<void> }> {
     vi.useFakeTimers();
     let clock = 0;
-    const log: string[] = [];
     const endings: string[] = [];
-    const stalls: string[] = [];
-    const provider: VoiceProvider = { live: () => Promise.resolve(recordingSession(log)) };
+    let toolCall: () => void = () => undefined;
+    const provider: VoiceProvider = {
+      live: (_options, events) => {
+        toolCall = (): void => {
+          events.tool('t', 'get_home', {});
+        };
+        return Promise.resolve(recordingSession([]));
+      },
+    };
+    let playing = true;
     const link: CallLink = {
       audio: () => undefined,
       cut: () => undefined,
-      playing: () => false,
+      playing: () => playing,
       state: () => undefined,
       caption: () => undefined,
     };
+    let release: (value: never) => void = () => undefined;
     const conversation = new Conversation(
       provider,
       link,
@@ -142,34 +220,51 @@ describe('Conversation watchdog', () => {
         settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
         system: (): string => 'system',
         tools: (): [] => [],
+        webSearch: (): boolean => false,
         window: (): null => null,
         record: (): void => undefined,
         task: (): string => 'event',
-        run: (): Promise<never> => Promise.reject(new Error('no tools here')),
-        ended: (reason, detail): void => {
-          endings.push(`${reason}: ${String(detail)}`);
+        run: (): Promise<never> =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+        ended: (reason): void => {
+          endings.push(reason);
         },
         usage: (): void => undefined,
-        stalled: (step): void => {
-          stalls.push(step);
-        },
+        measured: (): void => undefined,
+        stalled: (): void => undefined,
+        staysOpenWhenQuiet: (): boolean => false,
       },
       () => clock,
     );
     await conversation.start(null);
-    conversation.activity(true);
-    conversation.hear(new Int16Array(320));
-    conversation.activity(false);
     const advance = async (ms: number): Promise<void> => {
       clock += ms;
       await vi.advanceTimersByTimeAsync(ms);
     };
-    await advance(NO_REPLY_MS + 200);
-    expect(stalls).toEqual(['nudged']);
-    expect(log.filter((line) => line.startsWith('text ['))).toHaveLength(1);
-    await advance(NO_REPLY_MS + 200);
-    expect(stalls).toEqual(['nudged', 'gave_up']);
-    expect(endings).toEqual(['failed: The AI stopped answering; call again.']);
+    await advance(200);
+    if (inFlight) {
+      toolCall();
+    }
+    playing = false;
+    void release;
+    return { endings, advance };
+  }
+
+  it('waits a grace period after the AI stops speaking before ending as idle', async () => {
+    const { endings, advance } = await idleRun(false);
+    await advance(6000);
+    expect(endings).toEqual([]);
+    await advance(REPLY_GRACE_MS);
+    expect(endings).toEqual(['idle']);
+    vi.useRealTimers();
+  });
+
+  it('never ends as idle while a tool call is running', async () => {
+    const { endings, advance } = await idleRun(true);
+    await advance(120_000);
+    expect(endings).toEqual([]);
     vi.useRealTimers();
   });
 });

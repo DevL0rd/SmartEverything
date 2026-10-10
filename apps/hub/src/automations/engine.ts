@@ -4,7 +4,7 @@ import {
   GEO_POINT,
   SCENE_ACTIONS,
   TIME_ZONE,
-  SIGNAL_SOURCES,
+  automationSignalError,
   conditionsHold,
   isTimedTrigger,
   kindSpecOf,
@@ -14,6 +14,7 @@ import {
   type ConditionContext,
   type Place,
   type SignalInput,
+  type SignalSourceSpec,
   type TimedTrigger,
   type Trigger,
   type WeatherForecast,
@@ -47,16 +48,9 @@ export interface AutomationEngineOptions {
   readonly valueOf: ConditionContext['stateOf'];
   readonly forecast: () => WeatherForecast | null;
   readonly armers: readonly TriggerArmer[];
+  readonly sources: () => readonly SignalSourceSpec[];
   readonly clock: Clock;
   readonly log: Logger;
-}
-
-class UnknownSignalError extends Error {
-  override readonly name = 'UnknownSignalError';
-
-  constructor(source: string, kind: string) {
-    super(`No signal "${kind}" from "${source}" exists in this home.`);
-  }
 }
 
 interface Loaded {
@@ -64,21 +58,23 @@ interface Loaded {
   readonly definition: AutomationDefinition;
 }
 
-function watchedTriggers(definition: AutomationDefinition): WatchedTrigger[] {
+function watchedTriggers(
+  definition: AutomationDefinition,
+  sources: readonly SignalSourceSpec[],
+): WatchedTrigger[] {
   return definition.triggers.flatMap((trigger) =>
     trigger.type === 'signal'
-      ? [{ trigger, pulse: kindSpecOf(SIGNAL_SOURCES, trigger)?.pulse === true }]
+      ? [{ trigger, pulse: kindSpecOf(sources, trigger)?.pulse === true }]
       : [],
   );
 }
 
-function unknownSignalOf(definition: AutomationDefinition): string | null {
-  const unknown = definition.triggers.find(
-    (trigger) => trigger.type === 'signal' && kindSpecOf(SIGNAL_SOURCES, trigger) === undefined,
-  );
-  return unknown?.type === 'signal'
-    ? `UnknownSignalError: ${new UnknownSignalError(unknown.source, unknown.kind).message}`
-    : null;
+function unknownSignalOf(
+  sources: readonly SignalSourceSpec[],
+  definition: AutomationDefinition,
+): string | null {
+  const error = automationSignalError(sources, definition);
+  return error === null ? null : `${error.name}: ${error.message}`;
 }
 
 export class AutomationEngine {
@@ -129,13 +125,14 @@ export class AutomationEngine {
         return [[scene.id, actions.data] as const];
       }),
     );
+    const sources = this.options.sources();
     this.automations = new Map(
-      (await Promise.all(automations.map((record) => this.loaded(record)))).flat(),
+      (await Promise.all(automations.map((record) => this.loaded(record, sources)))).flat(),
     );
     this.watchers.load(
       [...this.automations.values()].map((automation) => ({
         automationId: automation.record.id,
-        triggers: watchedTriggers(automation.definition),
+        triggers: watchedTriggers(automation.definition, sources),
       })),
     );
     this.reschedule();
@@ -162,13 +159,16 @@ export class AutomationEngine {
     this.cancels = [];
   }
 
-  private async loaded(record: AutomationRecord): Promise<(readonly [string, Loaded])[]> {
+  private async loaded(
+    record: AutomationRecord,
+    sources: readonly SignalSourceSpec[],
+  ): Promise<(readonly [string, Loaded])[]> {
     if (!record.enabled) {
       return [];
     }
     const definition = AUTOMATION_DEFINITION.safeParse(record.definition);
     const message = definition.success
-      ? unknownSignalOf(definition.data)
+      ? unknownSignalOf(sources, definition.data)
       : `InvalidAutomationError: ${definition.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`;
     if (definition.success && message === null) {
       this.runCounts.set(record.id, record.runCount);
@@ -213,6 +213,14 @@ export class AutomationEngine {
     }
   }
 
+  private upcoming(trigger: TimedTrigger, after: Date, place: Place): Date | null {
+    const next = nextOccurrence(trigger, after, place);
+    const now = this.options.clock.now();
+    return next !== null && next.getTime() <= now.getTime()
+      ? nextOccurrence(trigger, now, place)
+      : next;
+  }
+
   private schedule(automation: Loaded, trigger: TimedTrigger, after: Date): void {
     const place = this.place;
     if (place === null) {
@@ -220,7 +228,7 @@ export class AutomationEngine {
     }
     let next: Date | null;
     try {
-      next = nextOccurrence(trigger, after, place);
+      next = this.upcoming(trigger, after, place);
     } catch (cause) {
       void this.recordError(automation, describeError(cause));
       return;
@@ -286,6 +294,7 @@ export class AutomationEngine {
         automationId,
         name: automation.record.name,
         signal,
+        plugin: automation.definition.origin,
       });
       run.succeeded();
     } catch (cause) {

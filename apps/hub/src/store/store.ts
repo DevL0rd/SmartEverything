@@ -7,6 +7,7 @@ import { migrate } from './migrate';
 import { MIGRATIONS } from './migrations';
 import { AssistantRepository } from './repositories/assistant';
 import { AssistantChatRepository } from './repositories/assistant-chat';
+import { AssistantMessageSearchRepository } from './repositories/assistant-message-search';
 import { AiChatsRepository } from './repositories/ai-chats';
 import { AssistantEventsRepository } from './repositories/assistant-events';
 import { AutomationsRepository } from './repositories/automations';
@@ -37,8 +38,11 @@ import { ComputerScopesRepository } from './repositories/computer-scopes';
 import { AppSessionsRepository } from './repositories/app-sessions';
 import { TalkRepository } from './repositories/talk';
 import { WeatherRepository } from './repositories/weather';
+import { ExchangeRatesRepository } from './repositories/exchange-rates';
 import { SchedulesRepository } from './repositories/schedules';
 import { PluginDataRepository } from './repositories/plugin-data';
+import { PluginPeopleRepository } from './repositories/plugin-people';
+import { TranscriptsRepository } from './repositories/transcripts';
 import { PluginsRepository } from './repositories/plugins';
 import { AiWakesRepository } from './repositories/ai-wakes';
 import { AiOutreachRepository } from './repositories/ai-outreach';
@@ -78,6 +82,7 @@ export interface Store {
   readonly watchDays: WatchDaysRepository;
   readonly assistant: AssistantRepository;
   readonly assistantChat: AssistantChatRepository;
+  readonly assistantSearch: AssistantMessageSearchRepository;
   readonly aiChats: AiChatsRepository;
   readonly assistantEvents: AssistantEventsRepository;
   readonly oauth: OAuthRepository;
@@ -87,9 +92,12 @@ export interface Store {
   readonly phoneContexts: PhoneContextsRepository;
   readonly talk: TalkRepository;
   readonly weather: WeatherRepository;
+  readonly exchangeRates: ExchangeRatesRepository;
   readonly schedules: SchedulesRepository;
   readonly plugins: PluginsRepository;
   readonly pluginData: PluginDataRepository;
+  readonly pluginPeople: PluginPeopleRepository;
+  readonly transcripts: TranscriptsRepository;
   readonly aiWakes: AiWakesRepository;
   readonly aiOutreach: AiOutreachRepository;
   readonly aiModels: AiModelsRepository;
@@ -138,6 +146,16 @@ function routineRepositories(
   };
 }
 
+function pluginRepositories(
+  context: StoreContext,
+): Pick<Store, 'plugins' | 'pluginData' | 'pluginPeople'> {
+  return {
+    plugins: new PluginsRepository(context),
+    pluginData: new PluginDataRepository(context),
+    pluginPeople: new PluginPeopleRepository(context),
+  };
+}
+
 function computerRepositories(
   context: StoreContext,
 ): Pick<Store, 'computerScopes' | 'appSessions'> {
@@ -156,13 +174,22 @@ function localRepositories(context: StoreContext): Pick<Store, 'localDevices' | 
 
 function assistantRepositories(
   context: StoreContext,
-): Pick<Store, 'assistant' | 'assistantChat' | 'aiChats' | 'assistantEvents'> {
+): Pick<Store, 'assistant' | 'assistantChat' | 'assistantSearch' | 'aiChats' | 'assistantEvents'> {
   return {
     assistant: new AssistantRepository(context),
     assistantChat: new AssistantChatRepository(context),
+    assistantSearch: new AssistantMessageSearchRepository(context),
     aiChats: new AiChatsRepository(context),
     assistantEvents: new AssistantEventsRepository(context),
   };
+}
+
+function scalarRepositories(context: StoreContext): Pick<Store, 'weather' | 'exchangeRates'> {
+  const weather = new WeatherRepository(context);
+  weather.ensure();
+  const exchangeRates = new ExchangeRatesRepository(context);
+  exchangeRates.ensure();
+  return { weather, exchangeRates };
 }
 
 export function openStore(options: StoreOptions): Store {
@@ -174,8 +201,6 @@ export function openStore(options: StoreOptions): Store {
   const settings = new SettingsRepository(context);
   settings.ensure();
   startTimeZone(settings, options);
-  const weather = new WeatherRepository(context);
-  weather.ensure();
   options.log.info('store.opened', { version });
   return {
     feed,
@@ -203,11 +228,11 @@ export function openStore(options: StoreOptions): Store {
     bodyReadings: new BodyReadingsRepository(context),
     ...localRepositories(context),
     talk: new TalkRepository(context),
-    weather,
+    ...scalarRepositories(context),
     ...routineRepositories(context),
     aiModels: new AiModelsRepository(context),
-    plugins: new PluginsRepository(context),
-    pluginData: new PluginDataRepository(context),
+    ...pluginRepositories(context),
+    transcripts: new TranscriptsRepository(context),
     ledger: new Ledger(context, () => settings.read().time_zone),
     write: (work) => context.write(work),
     close: (): void => {

@@ -1,10 +1,25 @@
-import type { AdapterSink, DeviceEvent } from '@smarteverything/domain';
+import { randomUUID } from 'node:crypto';
+import {
+  CAMERA_DETECTION_KINDS,
+  type AdapterSink,
+  type CameraDetection,
+  type DeviceEvent,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { cameraEventKinds, parseCameraEventPage, type CameraEvent } from '@smarteverything/xiaomi';
+import {
+  cameraEventDetections,
+  parseCameraEventPage,
+  type CameraEvent,
+} from '@smarteverything/xiaomi';
 import type { XiaomiCloud } from './cloud-api';
+import type { CameraFollowUps } from './dependencies';
 import { startLoop, type Loop } from './loop';
 
 const PAGE_LIMIT = 20;
+const SAME_DETECTION_WITHIN_MS = 120_000;
+const ANNOUNCED_KEPT_MS = 3_600_000;
+const SAME_PUSH_GAP_MS = 30_000;
+const SAME_PUSH_LONGEST_MS = 60_000;
 
 export interface CameraEventSource {
   readonly did: string;
@@ -14,16 +29,25 @@ export interface CameraEventSource {
 
 export type CameraEventTrigger = 'lan-push' | 'timer';
 
+interface Announced {
+  readonly occurrence: string;
+  readonly detection: CameraDetection;
+  readonly firstMs: number;
+  readonly lastMs: number;
+}
+
 export class CameraEventPoller {
   private seenUntil: number;
   private loop: Loop | null = null;
   private inFlight: Promise<void> | null = null;
   private again = false;
-  private followUp: NodeJS.Timeout | null = null;
+  private readonly readsDue = new Set<number>();
+  private readTimer: NodeJS.Timeout | null = null;
+  private announced: readonly Announced[] = [];
 
   constructor(
     private readonly camera: CameraEventSource,
-    private readonly cloud: XiaomiCloud,
+    private readonly cloud: Pick<XiaomiCloud, 'cameraEvents'>,
     private readonly now: () => number,
     private readonly log: Logger,
   ) {
@@ -46,23 +70,35 @@ export class CameraEventPoller {
     this.loop = null;
   }
 
-  detected(sink: AdapterSink, followUpMs: number): void {
-    void this.fetch(sink);
-    if (this.followUp !== null) {
-      clearTimeout(this.followUp);
+  detected(
+    sink: AdapterSink,
+    event: DeviceEvent,
+    detection: CameraDetection,
+    followUps: CameraFollowUps,
+  ): void {
+    const atMs = Date.parse(event.occurredAt);
+    const kept = this.kept();
+    const ongoing = kept.find(
+      (entry) =>
+        entry.detection === detection &&
+        atMs - entry.lastMs <= SAME_PUSH_GAP_MS &&
+        atMs - entry.firstMs <= SAME_PUSH_LONGEST_MS,
+    );
+    const occurrence = ongoing?.occurrence ?? randomUUID();
+    this.announced = [
+      ...kept.filter((entry) => entry !== ongoing),
+      { occurrence, detection, firstMs: ongoing?.firstMs ?? atMs, lastMs: atMs },
+    ];
+    if (ongoing === undefined) {
+      sink.event({ ...event, occurrence });
     }
-    this.followUp = setTimeout(() => {
-      this.followUp = null;
-      void this.fetch(sink);
-    }, followUpMs);
+    this.scheduleReads(sink, followUps);
   }
 
   stop(): void {
     this.usePush();
-    if (this.followUp !== null) {
-      clearTimeout(this.followUp);
-      this.followUp = null;
-    }
+    this.readsDue.clear();
+    this.disarm();
   }
 
   fetch(sink: AdapterSink): Promise<void> {
@@ -78,6 +114,43 @@ export class CameraEventPoller {
       }
     });
     return this.inFlight;
+  }
+
+  private scheduleReads(sink: AdapterSink, followUps: CameraFollowUps): void {
+    const base = this.now();
+    for (const delayMs of followUps.delaysMs) {
+      this.readsDue.add(Math.ceil((base + delayMs) / followUps.gridMs) * followUps.gridMs);
+    }
+    this.arm(sink);
+  }
+
+  private arm(sink: AdapterSink): void {
+    this.disarm();
+    const next = Math.min(...this.readsDue);
+    if (!Number.isFinite(next)) {
+      return;
+    }
+    this.readTimer = setTimeout(
+      () => {
+        this.readTimer = null;
+        const due = [...this.readsDue].filter((at) => at <= this.now());
+        for (const at of due) {
+          this.readsDue.delete(at);
+        }
+        if (due.length > 0) {
+          void this.fetch(sink);
+        }
+        this.arm(sink);
+      },
+      Math.max(0, next - this.now()),
+    );
+  }
+
+  private disarm(): void {
+    if (this.readTimer !== null) {
+      clearTimeout(this.readTimer);
+      this.readTimer = null;
+    }
   }
 
   private async poll(sink: AdapterSink): Promise<void> {
@@ -117,7 +190,7 @@ export class CameraEventPoller {
   }
 
   private emit(sink: AdapterSink, event: CameraEvent): void {
-    const { kinds, unrecognized } = cameraEventKinds(event.eventType);
+    const { detections, unrecognized } = cameraEventDetections(event.eventType);
     if (unrecognized.length > 0) {
       this.log.warn('xiaomi_camera.event_type_unknown', {
         did: this.camera.did,
@@ -125,18 +198,46 @@ export class CameraEventPoller {
         unrecognized,
       });
     }
-    for (const kind of kinds) {
-      const deviceEvent: DeviceEvent = {
+    for (const detection of detections) {
+      const announced = this.claim(detection, event.createTime);
+      sink.event({
         externalId: this.camera.did,
-        kind,
+        kind: CAMERA_DETECTION_KINDS[detection],
         occurredAt: new Date(event.createTime).toISOString(),
         details: {
           source: 'camera-event-list',
           eventType: event.eventType,
+          detection,
           ...(event.fileId === undefined ? {} : { fileId: event.fileId }),
+          ...(event.imgStoreId === undefined ? {} : { imgStoreId: event.imgStoreId }),
         },
-      };
-      sink.event(deviceEvent);
+        ...(announced === null ? {} : { occurrence: announced.occurrence }),
+      });
     }
+  }
+
+  private kept(): readonly Announced[] {
+    const oldestMs = this.now() - ANNOUNCED_KEPT_MS;
+    return this.announced.filter(
+      (entry) =>
+        entry.lastMs >= oldestMs && this.seenUntil <= entry.lastMs + SAME_DETECTION_WITHIN_MS,
+    );
+  }
+
+  private claim(detection: CameraDetection, atMs: number): Announced | null {
+    const kept = this.kept();
+    this.announced = kept;
+    const near = kept.filter(
+      (entry) =>
+        entry.detection === detection &&
+        atMs >= entry.firstMs - SAME_DETECTION_WITHIN_MS &&
+        atMs <= entry.lastMs + SAME_DETECTION_WITHIN_MS,
+    );
+    const distance = (entry: Announced): number =>
+      Math.max(entry.firstMs - atMs, atMs - entry.lastMs, 0);
+    return near.reduce<Announced | null>(
+      (best, entry) => (best === null || distance(entry) < distance(best) ? entry : best),
+      null,
+    );
   }
 }

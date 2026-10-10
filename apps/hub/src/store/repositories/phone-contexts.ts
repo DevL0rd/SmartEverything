@@ -1,4 +1,8 @@
-import { PHONE_CONTEXT_STATE, PHONE_PLACE_NAME, type PhoneContextState } from '@smarteverything/domain';
+import {
+  PHONE_CONTEXT_STATE,
+  PHONE_PLACE_NAME,
+  type PhoneContextState,
+} from '@smarteverything/domain';
 import { z } from 'zod';
 import type { StoreContext } from '../context';
 
@@ -26,19 +30,17 @@ const STORED_ENTRY = z
     phone_in_use: z.union([z.literal(0), z.literal(1)]).nullable(),
     reported_at: z.string(),
   })
-  .transform(
-    (row): PhoneContextEntry => ({
-      deviceId: row.device_id,
-      profileId: row.profile_id,
-      clientId: row.client_id,
-      state: row.state,
-      since: row.since,
-      confidence: row.confidence,
-      place: row.place,
-      phoneInUse: row.phone_in_use === null ? null : row.phone_in_use === 1,
-      reportedAt: row.reported_at,
-    }),
-  );
+  .transform((row): PhoneContextEntry => ({
+    deviceId: row.device_id,
+    profileId: row.profile_id,
+    clientId: row.client_id,
+    state: row.state,
+    since: row.since,
+    confidence: row.confidence,
+    place: row.place,
+    phoneInUse: row.phone_in_use === null ? null : row.phone_in_use === 1,
+    reportedAt: row.reported_at,
+  }));
 
 const COLUMNS =
   'device_id, profile_id, client_id, state, since, confidence, place, phone_in_use, reported_at';

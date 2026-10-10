@@ -6,6 +6,7 @@ import type { RunningHub } from '../hub';
 import type { Operations } from '../server/operations';
 import { recordingPathIn } from '../services';
 import type { Store } from '../store/store';
+import type { MediaNotes } from '../transcripts/media-notes';
 import { SeTools } from './se-tools';
 import { ToolHub } from './tool-hub';
 
@@ -15,6 +16,7 @@ export interface ToolHubOptions {
   readonly operations: Operations;
   readonly dataDirectory: string;
   readonly clock: Clock;
+  readonly mediaNotes: MediaNotes;
   readonly log: Logger;
 }
 
@@ -44,8 +46,8 @@ export function createToolHub(options: ToolHubOptions): ToolHub {
         recordingPath: recordingPathIn(options.dataDirectory),
         caller: null,
         actor: null,
-        calls: null,
         assistantFiles: join(options.dataDirectory, 'assistant'),
+        mediaNotes: options.mediaNotes,
       },
       deviceName: (id): string | null => deviceLabel(store, id),
       log: options.log,

@@ -139,6 +139,19 @@ export class Inventory {
     this.listener.devicesChanged([]);
   }
 
+  async setOnline(provider: Provider, externalId: string, online: boolean): Promise<void> {
+    const device = this.deviceOf(provider, externalId);
+    if (device === undefined || device.online === online) {
+      return;
+    }
+    const saved = await this.store.setDevicesOnline([device.id], online);
+    if (this.deviceOf(provider, externalId)?.online === online) {
+      return;
+    }
+    this.remember(saved);
+    this.announce(saved, new Map([[externalId, device]]));
+  }
+
   async markOffline(provider: Provider): Promise<void> {
     const devices = this.devicesOf(provider).filter((device) => device.online);
     if (devices.length === 0) {

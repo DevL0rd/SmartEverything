@@ -3,9 +3,11 @@ import { MCP_ONLY_TOOLS, isMcpToolName } from '@smarteverything/domain';
 import { z } from 'zod';
 import { answered } from '../extensions/mcp/dispatch';
 import { TOOLS, toolNamed } from '../extensions/mcp/tools';
-import type { ToolContext } from '../extensions/mcp/tools/registry';
+import type { ToolActor, ToolContext } from '../extensions/mcp/tools/registry';
+import { withoutAbsentFields } from './arguments';
 import {
   failure,
+  needsOwnDevice,
   type HubTool,
   type HubToolResult,
   type ToolCaller,
@@ -56,7 +58,6 @@ const SE_TOOLS: readonly HubTool[] = TOOLS.filter(
     annotations: listing.annotations,
     origin: { kind: 'se' },
     humanOnly: false,
-    confirms: (args: Readonly<Record<string, unknown>>): boolean => tool.confirms(args),
   };
 });
 
@@ -66,6 +67,16 @@ function picturesOf(content: readonly z.infer<typeof CONTENT>[]): ToolPicture[] 
       ? [{ data: Buffer.from(part.data, 'base64'), mimeType: part.mimeType }]
       : [],
   );
+}
+
+function actorOf(caller: ToolCaller): ToolActor {
+  return {
+    clientId: caller.clientId,
+    profileId: caller.profileId,
+    chatId: caller.chatId,
+    ...(caller.pluginRequester === undefined ? {} : { pluginRequester: caller.pluginRequester }),
+    ...(caller.pluginId === undefined ? {} : { pluginId: caller.pluginId }),
+  };
 }
 
 export interface SeToolsOptions {
@@ -96,7 +107,7 @@ export class SeTools implements ToolSource {
     const found = toolNamed(tool.name);
     return found === undefined
       ? `There is no tool named ${tool.name}`
-      : found.check(this.options.context, args);
+      : found.check(this.options.context, withoutAbsentFields(tool.inputSchema, args));
   }
 
   async call(
@@ -104,7 +115,7 @@ export class SeTools implements ToolSource {
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
   ): Promise<HubToolResult> {
-    if (caller.clientId === null && caller.role !== 'owner') {
+    if (needsOwnDevice(caller)) {
       return failure('This needs the device of the person it runs for');
     }
     this.sequence += 1;
@@ -114,11 +125,14 @@ export class SeTools implements ToolSource {
           jsonrpc: '2.0',
           id: `ai-${String(this.sequence)}`,
           method: 'tools/call',
-          params: { name: tool.name, arguments: { ...args } },
+          params: {
+            name: tool.name,
+            arguments: { ...withoutAbsentFields(tool.inputSchema, args) },
+          },
         },
         {
           ...this.options.context,
-          actor: { clientId: caller.clientId, profileId: caller.profileId, chatId: caller.chatId },
+          actor: actorOf(caller),
         },
         this.options.log,
       ),
@@ -128,10 +142,10 @@ export class SeTools implements ToolSource {
     }
     const { content, structuredContent, isError } = reply.result;
     const text = content.find((part) => part.type === 'text')?.text ?? '';
-    const line = toolLine({ tool, args, failed: isError, deviceName: this.options.deviceName });
     if (isError) {
-      return { response: { error: text, schema: tool.inputSchema }, line, pictures: [] };
+      return { response: { error: text, schema: tool.inputSchema }, line: '', pictures: [] };
     }
+    const line = toolLine({ tool, args, deviceName: this.options.deviceName });
     return { response: { result: structuredContent ?? text }, line, pictures: picturesOf(content) };
   }
 }

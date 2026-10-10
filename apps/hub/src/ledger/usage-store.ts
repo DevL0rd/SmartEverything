@@ -1,4 +1,5 @@
 import { AI_USAGE_ROW, type AiUsageRow, type UsageFilter } from '@smarteverything/domain';
+import { z } from 'zod';
 import { storedRow } from '../store/codec';
 import { found, type StoreContext } from '../store/context';
 import { jsonText } from '../store/sql';
@@ -34,6 +35,8 @@ const COLUMNS = [
   'meta',
 ] as const;
 
+const CHAT_LINK = z.strictObject({ chat_id: z.string().nullable() });
+
 const LIST = COLUMNS.join(', ');
 
 const VALUES = COLUMNS.map((column) => `$${column}`).join(', ');
@@ -46,6 +49,18 @@ export interface UsagePage {
 
 export class UsageStore {
   constructor(private readonly context: StoreContext) {}
+
+  chatOf(messageId: string | null, callId: string | null): string | null {
+    const row = this.context.sql.get(
+      CHAT_LINK,
+      `select coalesce(
+         (select m.chat_id from assistant_messages m where m.id = $message_id),
+         (select coalesce(o.chat_id, o.from_chat_id) from ai_outreach o where o.id = $call_id)
+       ) as chat_id`,
+      { message_id: messageId, call_id: callId },
+    );
+    return row === undefined ? null : row.chat_id;
+  }
 
   insert(row: AiUsageRow): void {
     this.context.sql.run('record AI usage', `insert into ai_usage (${LIST}) values (${VALUES})`, {

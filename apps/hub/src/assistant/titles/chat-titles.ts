@@ -1,28 +1,10 @@
-import {
-  latestGeminiFlashLite,
-  type AiEffort,
-  type AiModelKind,
-  type AiModelRow,
-} from '@smarteverything/domain';
+import type { AiModelRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
-import type { Store } from '../../store/store';
-import type { ChatClientPort, LedgerPort, TurnPort } from '../engines/openrouter/ports';
-import { pendingUsage, usageOf, type TurnUsage } from '../engines/openrouter/turn-loop';
+import { SideCompletion, type SideCompletionDeps } from '../side-completion';
 import { callSource, cleanTitle, exchangeSource, titleMessages } from './title-text';
 
-export interface TitleCatalogue {
-  readonly rows: (kind: AiModelKind) => readonly AiModelRow[];
-  readonly effortFor: (model: AiModelRow, wanted: AiEffort) => AiEffort | null;
-  readonly onChange: (listener: () => void) => () => void;
-}
-
-export interface ChatTitlesDeps {
-  readonly store: Store;
-  readonly client: ChatClientPort;
-  readonly catalogue: TitleCatalogue;
-  readonly newTurn: () => TurnPort;
-  readonly ledger: LedgerPort;
+export interface ChatTitlesDeps extends SideCompletionDeps {
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -37,14 +19,15 @@ const BACKFILL_KEY = 'chat_titles_backfill';
 
 const BACKFILL_MAX = 50;
 
-const TITLE_TIMEOUT_MS = 30_000;
-
 const TITLE_TOKENS_MAX = 60;
 
 export class ChatTitles {
   private readonly busy = new Set<string>();
+  private readonly side: SideCompletion;
 
-  constructor(private readonly deps: ChatTitlesDeps) {}
+  constructor(private readonly deps: ChatTitlesDeps) {
+    this.side = new SideCompletion(deps);
+  }
 
   readonly afterReply = (event: StoredEvent, text: string, ok: boolean): void => {
     if (ok && TITLED_EVENTS.has(event.kind)) {
@@ -99,13 +82,13 @@ export class ChatTitles {
   }
 
   private storedSource(chatId: string): string | null {
-    const { assistantChat } = this.deps.store;
-    const person = assistantChat.firstText(chatId, 'person', 'text');
-    const reply = assistantChat.firstText(chatId, 'responder', 'text');
+    const { assistantSearch } = this.deps.store;
+    const person = assistantSearch.firstText(chatId, 'person', 'text');
+    const reply = assistantSearch.firstText(chatId, 'responder', 'text');
     if (person !== null && reply !== null) {
       return exchangeSource(person, reply);
     }
-    const call = assistantChat.firstText(chatId, 'system', 'call');
+    const call = assistantSearch.firstText(chatId, 'system', 'call');
     return call === null ? null : callSource(call);
   }
 
@@ -134,7 +117,11 @@ export class ChatTitles {
     if (model === null) {
       throw new TitleError('There is no Gemini Flash-Lite in the model list yet.');
     }
-    const text = await this.complete(chatId, model, source);
+    const text = await this.side.complete(model, {
+      chatId,
+      messages: titleMessages(source),
+      maxTokens: TITLE_TOKENS_MAX,
+    });
     const title = cleanTitle(text);
     if (title === null) {
       throw new TitleError('The model sent no usable title.');
@@ -142,44 +129,7 @@ export class ChatTitles {
     this.deps.store.aiChats.autoTitle(chatId, title);
   }
 
-  private async complete(chatId: string, model: AiModelRow, source: string): Promise<string> {
-    const turn = this.deps.newTurn();
-    const request = {
-      model: model.id,
-      messages: titleMessages(source),
-      effort: this.deps.catalogue.effortFor(model, 'none'),
-      maxTokens: TITLE_TOKENS_MAX,
-    };
-    let generationId: string | null = null;
-    try {
-      for await (const chunk of this.deps.client.chat(
-        request,
-        AbortSignal.timeout(TITLE_TIMEOUT_MS),
-      )) {
-        generationId = chunk.type === 'start' ? chunk.generationId : generationId;
-        turn.feed(chunk);
-      }
-    } catch (cause) {
-      if (generationId !== null) {
-        this.record(chatId, pendingUsage(generationId, model.id, 'chat'));
-      }
-      throw cause;
-    }
-    const result = turn.result();
-    this.record(chatId, usageOf(result, model.id, 'chat'));
-    return result.text;
-  }
-
-  private record(chatId: string, usage: TurnUsage): void {
-    const chat = this.deps.store.aiChats.chat(chatId);
-    this.deps.ledger.record({
-      ...usage,
-      profile_id: chat.profile_id,
-      chat_id: chatId,
-    });
-  }
-
   private model(): AiModelRow | null {
-    return latestGeminiFlashLite(this.deps.catalogue.rows('chat'));
+    return this.side.model();
   }
 }

@@ -13,7 +13,13 @@ import type { DeviceRecord } from '../database/port';
 import type { Core, HubParts } from '../hub-assembly';
 import type { Store } from '../store/store';
 import { nextContext } from './phone-context';
-import { describePhone, isPhoneCapability, phoneExternalId, type PhoneIdentity } from './phone-device';
+import {
+  describePhone,
+  isPhoneCapability,
+  PHONE_CAPABILITIES,
+  phoneExternalId,
+  type PhoneIdentity,
+} from './phone-device';
 
 export interface PhoneNodesOptions {
   readonly store: Store;
@@ -34,6 +40,11 @@ export interface PhoneTarget {
 function detailText(device: DeviceRow, key: string): string | null {
   const value = device.details[key];
   return typeof value === 'string' ? value : null;
+}
+
+function hasCurrentCapabilities(device: DeviceRow): boolean {
+  const known = new Set(device.capabilities.map((capability) => capability.key));
+  return PHONE_CAPABILITIES.every((capability) => known.has(capability.key));
 }
 
 export class PhoneNodes {
@@ -61,10 +72,17 @@ export class PhoneNodes {
       }
     });
     report.events.forEach((event) => {
-      this.options.event({ externalId, kind: event.kind, occurredAt: event.at, details: event.details });
+      this.options.event({
+        externalId,
+        kind: event.kind,
+        occurredAt: event.at,
+        details: event.details,
+      });
     });
     const previous = this.options.store.phoneContexts.byDevice(device.id);
-    this.options.store.phoneContexts.save(nextContext({ device: device.id, phone, previous, report }));
+    this.options.store.phoneContexts.save(
+      nextContext({ device: device.id, phone, previous, report }),
+    );
     this.options.log.info('phone.reported', {
       device: device.id,
       values: Object.keys(report.values).length,
@@ -105,7 +123,10 @@ export class PhoneNodes {
     const clientId = detailText(device, 'clientId');
     const profileId = detailText(device, 'profileId');
     if (device.kind !== 'phone' || clientId === null || profileId === null) {
-      throw new ApiError('invalid_request', `${device.name} is not a phone running SmartEverything.`);
+      throw new ApiError(
+        'invalid_request',
+        `${device.name} is not a phone running SmartEverything.`,
+      );
     }
     return { deviceId: device.id, clientId, profileId, name: device.display_name ?? device.name };
   }
@@ -113,7 +134,11 @@ export class PhoneNodes {
   private async ensure(phone: PhoneIdentity): Promise<DeviceRow> {
     const externalId = phoneExternalId(phone.clientId);
     const known = this.deviceOf(externalId);
-    if (known?.name === phone.name && detailText(known, 'profileId') === phone.profileId) {
+    if (
+      known?.name === phone.name &&
+      detailText(known, 'profileId') === phone.profileId &&
+      hasCurrentCapabilities(known)
+    ) {
       return known;
     }
     await this.options.apply([describePhone(phone)]);

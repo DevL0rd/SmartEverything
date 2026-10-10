@@ -1,7 +1,9 @@
 import type { RunningExtension } from '../extensions';
 import { aiModelRoutes } from '../openrouter/routes';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
+import type { ClaudeService } from '../claude/service';
 import type { Budget } from '../ledger/budget';
+import type { ToolHub } from '../ai-tools/tool-hub';
 import type { Schedules } from '../schedules/start';
 import type { BuildOptions } from './build';
 import type { ServerContext } from './context';
@@ -9,10 +11,12 @@ import { accessRoutes } from './handlers/access';
 import { aiBudgetRoutes } from './handlers/ai-budget';
 import { aiChatRoutes } from './handlers/ai-chats';
 import { aiCoordinationRoutes } from './handlers/ai-coordination';
+import { claudeRoutes } from './handlers/claude';
 import { aiUsageRoutes } from './handlers/ai-usage';
 import { assistantChatRoutes } from './handlers/assistant';
 import { assistantVoiceRoutes } from './handlers/assistant-voice';
 import { automationRoutes, sceneRoutes } from './handlers/automation';
+import { callRoutes } from './handlers/calls';
 import { deviceRoutes } from './handlers/devices';
 import { firewallRoutes } from './handlers/firewall';
 import { assistantRoutes, healthRoutes } from './handlers/health';
@@ -23,13 +27,16 @@ import { placeRoutes } from './handlers/places';
 import { pluginRoutes } from './handlers/plugins';
 import { scheduleRoutes } from './handlers/schedules';
 import { settingsRoutes } from './handlers/settings';
+import { transcriptRoutes } from './handlers/transcripts';
 import { signalRoutes } from './handlers/signals';
 import { snapshotRoutes } from './handlers/snapshot';
 import { talkRoutes } from './handlers/talk';
 import { watchRoutes } from './handlers/watches';
 import { weatherRoutes } from './handlers/weather';
+import { exchangeRatesRoutes } from './handlers/exchange-rates';
 import type { Operations } from './operations';
 import type { Plugins } from './plugin-wiring';
+import type { Transcribing } from './transcribing';
 import type { ReachRoutes } from './handlers/reach';
 import type { ExtensionRouteTable, RouteTable } from './router';
 
@@ -39,6 +46,9 @@ export interface RouteServices {
   readonly schedules: Schedules;
   readonly plugins: Plugins;
   readonly reach: ReachRoutes;
+  readonly claude: ClaudeService;
+  readonly transcribing: Transcribing;
+  readonly tools: ToolHub;
 }
 
 export function routeTable(
@@ -48,7 +58,14 @@ export function routeTable(
 ): RouteTable {
   return {
     ...assistantVoiceRoutes(services.voice),
+    ...callRoutes(context, services.voice),
     ...services.reach,
+    ...claudeRoutes(services.claude),
+    ...transcriptRoutes(
+      context.store,
+      services.transcribing.transcripts,
+      services.transcribing.listening,
+    ),
     ...pluginRoutes(context.store, services.plugins.admin),
     ...snapshotRoutes(context, now),
     ...accessRoutes(context),
@@ -57,13 +74,14 @@ export function routeTable(
     ...mediaRoutes(context),
     ...firewallRoutes(context),
     ...sceneRoutes(context),
-    ...automationRoutes(context),
+    ...automationRoutes(context, services.tools),
     ...healthRoutes(context),
     ...assistantRoutes(context),
     ...peopleRoutes(context),
     ...nutritionRoutes(context),
     ...watchRoutes(context),
     ...weatherRoutes(context, now),
+    ...exchangeRatesRoutes(context, now),
     ...placeRoutes(context),
     ...talkRoutes(context),
     ...scheduleRoutes(context.store, services.schedules),
@@ -97,7 +115,8 @@ export function startExtensions(
         secrets: options.secrets,
         live: context.live,
         pushCommands: context.pushCommands,
-        toolCalls: context.toolCalls,
+        openCalls: context.openCalls,
+        mediaNotes: context.mediaNotes,
         operations,
         dataDirectory: options.dataDirectory,
         log: options.log.forArea('hub.extension'),

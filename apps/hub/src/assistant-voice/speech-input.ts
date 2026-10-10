@@ -1,8 +1,13 @@
 import { BARGE_IN, BARGE_IN_LEVEL } from '@smarteverything/domain';
+import type { MicMeter } from './mic-meter';
 import { sileroModel } from './silero-vad';
 import { SpeechGate, type SpeechGateEvents } from './speech-gate';
 
-export type SpeechSource = 'gated-client' | 'echo-cancelled' | 'raw';
+export type SpeechSource = 'gated-client' | 'echo-cancelled' | 'raw' | 'echo-free';
+
+export function streamsInput(source: SpeechSource): boolean {
+  return source === 'raw' || source === 'echo-free';
+}
 
 const BURST_SAMPLES = 16_000;
 
@@ -16,6 +21,7 @@ export interface SpeechInput {
 export interface SpeechInputContext {
   readonly assistantAudible: () => boolean;
   readonly now: () => number;
+  readonly meter: MicMeter;
 }
 
 function clientSpeech(events: SpeechGateEvents): SpeechInput {
@@ -70,14 +76,20 @@ async function detectedSpeech(
   };
 }
 
-function streamedSpeech(events: SpeechGateEvents, context: SpeechInputContext): SpeechInput {
+function streamedSpeech(
+  events: SpeechGateEvents,
+  context: SpeechInputContext,
+  echoFree: boolean,
+): SpeechInput {
   let audibleAt = Number.NEGATIVE_INFINITY;
   return {
     hear: (pcm): void => {
       if (context.assistantAudible()) {
         audibleAt = context.now();
       }
-      if (context.now() - audibleAt <= BARGE_IN.echoTailMs) {
+      const dropped = !echoFree && context.now() - audibleAt <= BARGE_IN.echoTailMs;
+      context.meter.heard(pcm, dropped);
+      if (dropped) {
         return;
       }
       for (let offset = 0; offset < pcm.length; offset += BURST_SAMPLES) {
@@ -86,7 +98,10 @@ function streamedSpeech(events: SpeechGateEvents, context: SpeechInputContext): 
     },
     activity: () => false,
     reset: (): void => undefined,
-    release: () => Promise.resolve(),
+    release: (): Promise<void> => {
+      context.meter.summarize();
+      return Promise.resolve();
+    },
   };
 }
 
@@ -95,8 +110,8 @@ export function speechInput(
   events: SpeechGateEvents,
   context: SpeechInputContext,
 ): Promise<SpeechInput> {
-  if (source === 'raw') {
-    return Promise.resolve(streamedSpeech(events, context));
+  if (streamsInput(source)) {
+    return Promise.resolve(streamedSpeech(events, context, source === 'echo-free'));
   }
   return source === 'gated-client'
     ? Promise.resolve(clientSpeech(events))

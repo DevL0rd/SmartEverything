@@ -1,12 +1,14 @@
 import type { Stream } from 'node:stream';
 import { Client } from '@modelcontextprotocol/client';
 import {
+  ApiError,
   INBOUND_MESSAGE,
   PLUGIN_DATA_POINT,
   PLUGIN_EVENT,
   PLUGIN_NOTIFICATIONS,
   PLUGIN_SEARCH_ENTRY,
   type PluginManifest,
+  type PluginOptionPage,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { failure, type HubToolResult } from '../ai-tools/hub-tool';
@@ -68,6 +70,14 @@ function followLines(stream: Stream | null, sink: (line: string) => void): void 
   });
 }
 
+class McpSettingsNotLiveError extends Error {
+  override readonly name = 'McpSettingsNotLiveError';
+
+  constructor() {
+    super('An external plugin takes its settings only when it starts.');
+  }
+}
+
 export class McpRuntime implements PluginRuntime {
   private client: Client | null = null;
   private listed: readonly RuntimeTool[] = [];
@@ -93,6 +103,10 @@ export class McpRuntime implements PluginRuntime {
     await this.refreshTools();
   }
 
+  settingsChanged(): void {
+    throw new McpSettingsNotLiveError();
+  }
+
   async stop(): Promise<void> {
     this.stopping = true;
     const client = this.client;
@@ -103,6 +117,12 @@ export class McpRuntime implements PluginRuntime {
 
   tools(): readonly RuntimeTool[] {
     return this.listed;
+  }
+
+  choices(source: string): Promise<PluginOptionPage> {
+    return Promise.reject(
+      new ApiError('not_found', `${this.manifest.name} has no list named ${source}.`),
+    );
   }
 
   async call(name: string, args: Readonly<Record<string, unknown>>): Promise<HubToolResult> {

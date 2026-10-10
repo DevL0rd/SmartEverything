@@ -1,9 +1,7 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { dirname, join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import type { ToolHub } from '../ai-tools/tool-hub';
-import type { BridgeLaunch } from '../assistant/claude-plugin';
 import { ConversationLog } from '../assistant/conversation-log';
 import { AssistantService } from '../assistant/service';
 import { ToolChanges } from '../assistant/tool-changes';
@@ -33,23 +31,13 @@ export function localUrlOf(listening: Listening): string {
   return `http://127.0.0.1:${String(address.port)}`;
 }
 
-export function assistantOf(
-  options: AssistantWiring,
-  live: LiveHub,
-  listening: Listening,
-): AssistantService {
+export function assistantOf(options: AssistantWiring, live: LiveHub): AssistantService {
   const service = new AssistantService({
     store: options.store,
     dataDirectory: options.dataDirectory,
     announce: (status): void => {
       live.announce({ type: 'assistant_status', status }, 'assistant');
     },
-    localUrl: (): string => localUrlOf(listening),
-    bridge: (): BridgeLaunch => ({
-      command: process.execPath,
-      script: join(dirname(process.argv[1] ?? ''), 'mcp-bridge.mjs'),
-      dataDirectory: options.dataDirectory,
-    }),
     emit: (notice, profileId): void => {
       live.profileNotice(notice, profileId, 'assistant');
     },
@@ -64,21 +52,24 @@ export function attachAssistant(
   options: AssistantWiring,
   context: ServerContext,
   tools: ToolHub,
-): void {
+): ToolChanges {
   context.assistant.attachTools(tools);
-  new ToolChanges({
+  const changes = new ToolChanges({
     store: options.store,
     conversation: new ConversationLog(options.store),
     now: options.clock.now,
     log: options.log.forArea('hub.assistant'),
-  }).attach(tools);
+  });
+  changes.attach(tools);
   context.assistant.attachOpenRouter({
     client: context.openRouter.client,
     catalogue: context.openRouter.catalogue,
     newTurn: () => new TurnAccumulator(),
     ledger: options.store.ledger,
+    notes: context.mediaNotes,
   });
   context.assistant.attachLedger(options.store.ledger);
+  return changes;
 }
 
 export function aiTurnsOf(context: ServerContext): AiTurns {
@@ -90,7 +81,13 @@ export function aiTurnsOf(context: ServerContext): AiTurns {
           ...(input.chatId === null ? {} : { chatId: input.chatId }),
           title: input.title,
           text: input.text,
-          origin: { source: 'schedule', plugin_id: null, device_id: null, name: input.title },
+          origin: {
+            source: 'schedule',
+            plugin_id: null,
+            device_id: null,
+            name: input.title,
+            ...(input.plugin ?? {}),
+          },
         }).chatId,
       }),
   };

@@ -41,6 +41,7 @@ export class CallRecord {
       state: null,
       reason: null,
       steps: [],
+      step_states: [],
       reply_to: null,
       chat_id: start.chatId,
       origin: { source: 'voice', plugin_id: null, device_id: null, name: start.person },

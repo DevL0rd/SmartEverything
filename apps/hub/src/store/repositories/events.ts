@@ -65,6 +65,23 @@ export class EventsRepository {
     );
   }
 
+  enrich(id: string, details: Readonly<Record<string, JsonValue>>): EventRow {
+    return this.context.write(() => {
+      const before = this.byId(id);
+      if (Object.keys(details).every((key) => Object.hasOwn(before.details, key))) {
+        return before;
+      }
+      this.context.sql.run(
+        'enrich the event',
+        'update events set details = $details where id = $id',
+        { id, details: jsonText({ ...details, ...before.details }) },
+      );
+      const after = this.byId(id);
+      this.context.changed('events', 'UPDATE', after, before);
+      return after;
+    });
+  }
+
   acknowledge(id: string): EventRow {
     return this.context.write(() => {
       const before = this.byId(id);

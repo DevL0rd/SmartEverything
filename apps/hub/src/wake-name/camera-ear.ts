@@ -1,38 +1,34 @@
-import type { Logger } from '@smarteverything/logging';
 import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
-import { BARGE_IN_LEVEL, levelOf } from '@smarteverything/domain';
-import { SpeechGate } from '../assistant-voice/speech-gate';
+import type { WakeSensitivity } from '@smarteverything/domain';
+import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { CameraMicrophones, OpenMicrophone } from '../talk/camera-microphone';
 import { OpusSpeech } from '../reach/voice-pacing';
-import { KEYWORD_TUNING, type KeywordListening, type KeywordSpotter } from './keyword-spotter';
-import { SegmentNotes } from './segment-notes';
-import { WakeHandoff } from './wake-handoff';
+import { Ear, type SpeechSegment } from './ear';
+import type { KeywordSpotter } from './keyword-spotter';
+import type { WakeClaims } from './wake-claims';
 
-export const WAKE_COOLDOWN_MS = 20_000;
-export const NO_AUDIO_MS = 15_000;
+const NO_AUDIO_MS = 15_000;
 const REOPEN_AFTER_MS = [5_000, 30_000, 120_000] as const;
-const PCM_FULL_SCALE = 32_768;
 
 export interface EarDeps {
+  readonly claims: Pick<WakeClaims, 'request'>;
   readonly microphones: Pick<CameraMicrophones, 'open'>;
   readonly spotter: KeywordSpotter;
   readonly model: () => Promise<Model>;
   readonly names: () => readonly string[];
+  readonly sensitivity: (cameraId: string) => WakeSensitivity;
   readonly busy: (cameraId: string) => boolean;
-  readonly heard: (cameraId: string, phrase: string, words: () => Int16Array) => void;
+  readonly heard?: (cameraId: string, phrase: string, words: () => Int16Array) => void;
+  readonly speech?: (cameraId: string, segment: SpeechSegment) => void;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
 
 export class CameraEar {
+  private ear: Ear | null = null;
   private microphone: OpenMicrophone | null = null;
   private speech: OpusSpeech | null = null;
-  private gate: SpeechGate | null = null;
-  private listening: KeywordListening | null = null;
-  private readonly notes: SegmentNotes;
-  private readonly handoff = new WakeHandoff();
-  private quietUntil = 0;
   private failures = 0;
   private timer: Cancel | null = null;
   private flowing = false;
@@ -41,35 +37,30 @@ export class CameraEar {
   constructor(
     readonly cameraId: string,
     private readonly deps: EarDeps,
-  ) {
-    this.notes = new SegmentNotes(cameraId, deps.log);
-  }
+  ) {}
 
   async open(): Promise<void> {
-    this.gate ??= new SpeechGate(
-      await this.deps.model(),
-      {
-        start: (): void => {
-          this.notes.started(this.now());
-          this.listening = this.deps.spotter.listen(this.deps.names());
-        },
-        audio: (pcm): void => {
-          this.notes.level(levelOf(pcm, PCM_FULL_SCALE));
-          this.found(this.listening?.hear(pcm) ?? null);
-        },
-        end: (): void => {
-          this.stopListening();
-        },
-        failed: (reason): void => {
-          this.deps.log.warn('wake.detection_failed', { cameraId: this.cameraId, reason });
-        },
-      },
-      {
-        bargeInLevel: BARGE_IN_LEVEL.raw,
-        assistantAudible: (): boolean => false,
-        now: (): number => this.now(),
-      },
-    );
+    const { deps, cameraId } = this;
+    const { heard, speech } = deps;
+    this.ear ??= new Ear(deps, {
+      claim: { source: 'camera', key: cameraId },
+      fields: { cameraId },
+      sensitivity: (): WakeSensitivity => deps.sensitivity(cameraId),
+      resting: (): boolean => deps.busy(cameraId),
+      wake:
+        heard === undefined
+          ? null
+          : (phrase, words): void => {
+              heard(cameraId, phrase, words);
+            },
+      speech:
+        speech === undefined
+          ? null
+          : (segment): void => {
+              speech(cameraId, segment);
+            },
+    });
+    await this.ear.open();
     await this.listen();
   }
 
@@ -77,17 +68,12 @@ export class CameraEar {
     this.closed = true;
     this.timer?.();
     this.release();
-    this.listening?.finish();
-    this.listening = null;
-    await this.gate?.release();
+    await this.ear?.close();
   }
 
   private async listen(): Promise<void> {
     const speech = new OpusSpeech((pcm) => {
-      this.handoff.keep(pcm);
-      if (!this.resting()) {
-        this.gate?.hear(pcm);
-      }
+      this.ear?.hear(pcm);
     });
     this.speech = speech;
     this.flowing = false;
@@ -134,35 +120,6 @@ export class CameraEar {
     this.microphone = null;
     this.speech?.free();
     this.speech = null;
-  }
-
-  private resting(): boolean {
-    const resting = this.now() < this.quietUntil || this.deps.busy(this.cameraId);
-    if (resting && this.listening !== null) {
-      this.listening.finish();
-      this.listening = null;
-      this.gate?.reset();
-    }
-    return resting;
-  }
-
-  private stopListening(): void {
-    const listening = this.listening;
-    this.listening = null;
-    if (listening === null) {
-      return;
-    }
-    const result = listening.finish();
-    this.notes.ended(this.now(), result.nearMiss, KEYWORD_TUNING.threshold);
-    this.found(result.heard);
-  }
-
-  private found(phrase: string | null): void {
-    if (phrase === null || this.now() < this.quietUntil) {
-      return;
-    }
-    this.quietUntil = this.now() + WAKE_COOLDOWN_MS;
-    this.deps.heard(this.cameraId, phrase, this.handoff.begin());
   }
 
   private retry(reason: string): void {

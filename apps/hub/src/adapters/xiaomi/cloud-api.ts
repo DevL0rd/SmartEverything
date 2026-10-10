@@ -34,6 +34,17 @@ export class XiaomiHttpError extends Error {
   }
 }
 
+export class XiaomiNetworkError extends Error {
+  override readonly name = 'XiaomiNetworkError';
+
+  constructor(
+    readonly path: string,
+    cause: unknown,
+  ) {
+    super(`The Xiaomi cloud could not be reached for ${path}: ${String(cause)}`, { cause });
+  }
+}
+
 export interface CloudHooks {
   readonly saveSecrets: (secrets: XiaomiSecrets) => Promise<void>;
   readonly needsAttention: (cause: Error) => Promise<void>;
@@ -58,6 +69,8 @@ function isExpired(error: unknown): boolean {
 export class XiaomiCloud {
   private renewal: Promise<void> | null = null;
   private rejected = false;
+  private unreachable = false;
+  private readonly returned = new Set<() => void>();
 
   constructor(
     private readonly dependencies: XiaomiDependencies,
@@ -91,7 +104,39 @@ export class XiaomiCloud {
     return payload.data;
   }
 
+  onReturn(listener: () => void): () => void {
+    this.returned.add(listener);
+    return (): void => {
+      this.returned.delete(listener);
+    };
+  }
+
   private async request(target: Target): Promise<CloudPayload> {
+    try {
+      const payload = await this.renewing(target);
+      this.reached();
+      return payload;
+    } catch (error) {
+      if (error instanceof XiaomiNetworkError) {
+        this.unreachable = true;
+      } else {
+        this.reached();
+      }
+      throw error;
+    }
+  }
+
+  private reached(): void {
+    if (!this.unreachable) {
+      return;
+    }
+    this.unreachable = false;
+    this.returned.forEach((listener) => {
+      listener();
+    });
+  }
+
+  private async renewing(target: Target): Promise<CloudPayload> {
     if (this.rejected) {
       throw new XiaomiSessionRejectedError();
     }
@@ -159,18 +204,30 @@ export class XiaomiCloud {
       target.method === 'GET'
         ? `${target.base}${target.path}?${fields}`
         : `${target.base}${target.path}`;
-    const response = await this.dependencies.fetch(url, {
-      method: target.method,
-      headers: this.headers(),
-      ...(target.method === 'POST' ? { body: fields } : {}),
-    });
-    const text = await response.text();
-    if (response.status !== 200) {
-      throw new XiaomiHttpError(target.path, response.status);
+    const { status, text } = await this.exchange(url, target, fields);
+    if (status !== 200) {
+      throw new XiaomiHttpError(target.path, status);
     }
     const plain = text.trimStart().startsWith('{')
       ? text
       : decryptResponse(this.secrets.ssecurity, nonce, text);
     return parseCloudEnvelope(target.path, plain);
+  }
+
+  private async exchange(
+    url: string,
+    target: Target,
+    fields: string,
+  ): Promise<{ readonly status: number; readonly text: string }> {
+    try {
+      const response = await this.dependencies.fetch(url, {
+        method: target.method,
+        headers: this.headers(),
+        ...(target.method === 'POST' ? { body: fields } : {}),
+      });
+      return { status: response.status, text: await response.text() };
+    } catch (error) {
+      throw new XiaomiNetworkError(target.path, error);
+    }
   }
 }

@@ -37,6 +37,7 @@ export interface InventoryEntry {
 
 export interface TransportState {
   readonly transport: Transport;
+  readonly online: boolean;
   readonly reason: string;
   readonly updates: string;
   readonly pushSource: string | null;
@@ -164,7 +165,7 @@ export function discoveredDevice(
     model: entry.cloud.model,
     manufacturer: entry.cloud.model.split('.')[0] ?? entry.cloud.model,
     room: entry.room,
-    online: entry.cloud.online,
+    online: transport.online,
     capabilities:
       'go2rtcSource' in camera
         ? [...entry.model.capabilities, CAMERA_STREAM]

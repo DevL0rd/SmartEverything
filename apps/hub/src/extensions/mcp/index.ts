@@ -153,8 +153,8 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
       recordingPath: recordingPathIn(context.dataDirectory),
       caller: null,
       actor: null,
-      calls: context.toolCalls,
       assistantFiles: join(context.dataDirectory, 'assistant'),
+      mediaNotes: context.mediaNotes,
     },
   };
   return [

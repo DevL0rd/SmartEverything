@@ -1,6 +1,7 @@
 import {
   CAMERA_ROW,
   RECORDING_ROW,
+  type CameraChange,
   type CameraRow,
   type RecordingKind,
   type RecordingRow,
@@ -12,13 +13,13 @@ import { flag } from '../sql';
 import { windowFilter, type TimeWindow } from './window';
 
 const STORED_CAMERA = storedRow(CAMERA_ROW, {
-  flags: ['physical_ptz', 'two_way_audio', 'record_events'],
+  flags: ['physical_ptz', 'two_way_audio', 'record_events', 'transcribe'],
 });
 
 const STORED_RECORDING = storedRow(RECORDING_ROW, {});
 
 const CAMERA_COLUMNS =
-  'device_id, stream_name, source_url_kind, physical_ptz, two_way_audio, record_events';
+  'device_id, stream_name, source_url_kind, physical_ptz, two_way_audio, record_events, wake_sensitivity, transcribe';
 
 const RECORDING_COLUMNS =
   'id, device_id, event_id, kind, storage_path, started_at, duration_ms, bytes, created_at';
@@ -76,13 +77,19 @@ export class CamerasRepository {
     });
   }
 
-  setRecordEvents(deviceId: string, record: boolean): CameraRow {
+  change(deviceId: string, change: CameraChange): CameraRow {
     return this.context.write(() => {
       const before = this.byDevice(deviceId);
       this.context.sql.run(
         'change the camera',
-        'update cameras set record_events = $record where device_id = $deviceId',
-        { deviceId, record: flag(record) },
+        `update cameras set record_events = $record, wake_sensitivity = $sensitivity,
+           transcribe = $transcribe where device_id = $deviceId`,
+        {
+          deviceId,
+          record: flag(change.record_events ?? before.record_events),
+          sensitivity: change.wake_sensitivity ?? before.wake_sensitivity,
+          transcribe: flag(change.transcribe ?? before.transcribe),
+        },
       );
       const after = this.byDevice(deviceId);
       this.context.changed('cameras', 'UPDATE', after, before);
@@ -154,7 +161,7 @@ export class CamerasRepository {
     });
   }
 
-  private find(deviceId: string): CameraRow | undefined {
+  find(deviceId: string): CameraRow | undefined {
     return this.context.sql.get(
       STORED_CAMERA,
       `select ${CAMERA_COLUMNS} from cameras where device_id = $deviceId`,

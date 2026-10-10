@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import { memberLabel } from '../../talk/labels';
+import { recentTalkMessages } from '../../talk/recent-messages';
 import { clientOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type Bound } from '../router';
@@ -58,11 +59,15 @@ function channelRoutes(
 ): Pick<TalkRoutes, 'readTalk' | 'createTalkChannel' | 'updateTalkChannel' | 'removeTalkChannel'> {
   const { store, talk } = context;
   return {
-    readTalk: bound(E.readTalk, () => ({
-      channels: store.talk.channels(),
-      members: store.talk.members(),
-      ...talk.presence(),
-    })),
+    readTalk: bound(E.readTalk, ({ query }) => {
+      const channels = store.talk.channels();
+      return {
+        channels,
+        members: store.talk.members(),
+        messages: recentTalkMessages(store.talk, channels, query.messages),
+        ...talk.presence(),
+      };
+    }),
     createTalkChannel: bound(E.createTalkChannel, ({ body }) =>
       store.write(() => {
         const { members, ...channel } = body;

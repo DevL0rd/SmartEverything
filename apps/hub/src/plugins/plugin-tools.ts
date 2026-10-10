@@ -1,15 +1,9 @@
 import { pluginToolName, type PluginRow } from '@smarteverything/domain';
-import {
-  failure,
-  removesThings,
-  type HubTool,
-  type HubToolResult,
-  type ToolSource,
-} from '../ai-tools/hub-tool';
+import { failure, type HubTool, type HubToolResult, type ToolSource } from '../ai-tools/hub-tool';
 import type { PluginHost } from './host';
 import type { RuntimeTool } from './runtime';
 
-export function pluginHubTool(plugin: PluginRow, tool: RuntimeTool): HubTool {
+function pluginHubTool(plugin: PluginRow, tool: RuntimeTool): HubTool {
   return {
     name: pluginToolName(plugin.id, tool.name),
     title: `${plugin.manifest.name}: ${tool.title}`,
@@ -18,7 +12,6 @@ export function pluginHubTool(plugin: PluginRow, tool: RuntimeTool): HubTool {
     annotations: tool.annotations,
     origin: { kind: 'plugin', pluginId: plugin.id },
     humanOnly: tool.humanOnly,
-    confirms: (): boolean => removesThings(tool.annotations),
   };
 }
 

@@ -196,7 +196,12 @@ export class Catalogue {
   }
 
   defaultModel(): AiResolvedModel | null {
-    return latestGeminiFlash(this.loaded) === null ? null : this.resolve(null, null);
+    const wanted = this.settings().default_model;
+    const available =
+      wanted === AUTO_LATEST_GEMINI_FLASH
+        ? latestGeminiFlash(this.loaded) !== null
+        : this.loaded.some((row) => row.id === wanted && row.gone_at === null);
+    return available ? this.resolve(null, null) : null;
   }
 
   setGooglePrice(id: string, pricing: AiPricing | null): AiModelDetail {

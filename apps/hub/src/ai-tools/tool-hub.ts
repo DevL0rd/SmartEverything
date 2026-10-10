@@ -1,6 +1,6 @@
 import type { FunctionDeclaration } from '@google/genai';
+import { pluginToolName } from '@smarteverything/domain';
 import { recordArgument, stringArgument } from './arguments';
-import { confirmationRequest, needsConfirmation } from './confirmation';
 import {
   failure,
   type HubTool,
@@ -9,24 +9,16 @@ import {
   type ToolSource,
   type ToolSpec,
 } from './hub-tool';
+import type { PluginTurnRefusedError } from './plugin-turn';
+import { toolRefusal } from './plugin-turn-tools';
 import { geminiDeclarationOf, openAiToolOf, type OpenAiTool } from './tool-adapters';
-import { META_TOOL_NAMES, catalogueOf } from './tool-sets';
+import { META_TOOL_NAMES, chatCatalogue, toolIndex } from './tool-sets';
 
 export type ToolCheck =
   { readonly ok: true; readonly tool: HubTool } | { readonly ok: false; readonly reason: string };
 
-export interface ToolCallRecord {
-  readonly name: string;
-  readonly args: Readonly<Record<string, unknown>>;
-  readonly caller: ToolCaller;
-  readonly result: HubToolResult;
-}
-
-export type ToolWatcher = (call: ToolCallRecord) => void;
-
 export class ToolHub {
   private readonly sources: ToolSource[] = [];
-  private readonly watchers = new Set<ToolWatcher>();
 
   constructor(sources: readonly ToolSource[]) {
     this.sources.push(...sources);
@@ -39,13 +31,6 @@ export class ToolHub {
       if (index >= 0) {
         this.sources.splice(index, 1);
       }
-    };
-  }
-
-  watch(watcher: ToolWatcher): () => void {
-    this.watchers.add(watcher);
-    return (): void => {
-      this.watchers.delete(watcher);
     };
   }
 
@@ -66,18 +51,11 @@ export class ToolHub {
       return failure(`There is no tool named ${name}, or it is switched off`);
     }
     const { tool, source } = found;
-    if (needsConfirmation(tool, args) && !caller.confirmed) {
-      return { response: confirmationRequest(tool), line: '', pictures: [] };
-    }
-    const result = await source
+    return source
       .call(tool, args, caller)
       .catch((cause: unknown) =>
         failure(cause instanceof Error ? cause.message : 'That did not work'),
       );
-    this.watchers.forEach((watcher) => {
-      watcher({ name, args, caller, result });
-    });
-    return result;
   }
 
   check(name: string, args: Readonly<Record<string, unknown>>): ToolCheck {
@@ -90,6 +68,23 @@ export class ToolHub {
     }
     const reason = found.source.validate(found.tool, args);
     return reason === null ? { ok: true, tool: found.tool } : { ok: false, reason };
+  }
+
+  pluginTurnRefusal(
+    name: string,
+    args: Readonly<Record<string, unknown>>,
+  ): PluginTurnRefusedError | null {
+    if (name === META_TOOL_NAMES.call) {
+      return this.pluginTurnRefusal(
+        stringArgument(args, 'name'),
+        recordArgument(args, 'arguments'),
+      );
+    }
+    return toolRefusal(
+      name,
+      args,
+      (pluginId, tool) => this.locate(pluginToolName(pluginId, tool))?.tool,
+    );
   }
 
   changes(listener: () => void): () => void {
@@ -110,7 +105,11 @@ export class ToolHub {
   }
 
   catalogue(set: readonly HubTool[]): string {
-    return catalogueOf(set);
+    return chatCatalogue(set);
+  }
+
+  index(set: readonly HubTool[]): string {
+    return toolIndex(set);
   }
 
   private locate(name: string): { tool: HubTool; source: ToolSource } | null {

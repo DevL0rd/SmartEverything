@@ -12,6 +12,7 @@ export type OpeningState = FirewallOpening['state'];
 export interface RequiredOpening {
   readonly id: string;
   readonly deviceIds: readonly string[];
+  readonly pluginIds: readonly string[];
   readonly rule: PortRule;
 }
 
@@ -20,9 +21,17 @@ export interface DeviceAddress {
   readonly address: string;
 }
 
+export interface PluginPortNeed {
+  readonly pluginId: string;
+  readonly protocol: 'tcp' | 'udp';
+  readonly port: number;
+}
+
 export interface OpeningNeeds {
   readonly cameras: readonly DeviceAddress[];
   readonly pushing: readonly DeviceAddress[];
+  readonly plugins: readonly PluginPortNeed[];
+  readonly networks: readonly string[];
   readonly webrtcPort: number;
 }
 
@@ -60,21 +69,51 @@ function sourceOpenings(
   return [...byAddress].map(([address, deviceIds]): RequiredOpening => ({
     id: `${purpose}:${address}`,
     deviceIds,
+    pluginIds: [],
     rule: { purpose, protocol: 'udp', source: address },
   }));
+}
+
+function pluginOpenings(
+  plugins: readonly PluginPortNeed[],
+  networks: readonly string[],
+): RequiredOpening[] {
+  const byPort = new Map<string, { need: PluginPortNeed; pluginIds: string[] }>();
+  for (const need of plugins) {
+    const key = `${need.protocol}:${String(need.port)}`;
+    const entry = byPort.get(key) ?? { need, pluginIds: [] };
+    entry.pluginIds.push(need.pluginId);
+    byPort.set(key, entry);
+  }
+  return [...byPort.values()].flatMap(({ need, pluginIds }) =>
+    networks.map((source): RequiredOpening => ({
+      id: `plugin:${need.protocol}:${String(need.port)}:${source}`,
+      deviceIds: [],
+      pluginIds: [...new Set(pluginIds)],
+      rule: { purpose: 'plugin', protocol: need.protocol, port: need.port, source },
+    })),
+  );
 }
 
 export function requiredOpenings({
   cameras,
   pushing,
+  plugins,
+  networks,
   webrtcPort,
 }: OpeningNeeds): readonly RequiredOpening[] {
   const webrtc = (['tcp', 'udp'] as const).map((protocol): RequiredOpening => ({
     id: `webrtc:${protocol}:${String(webrtcPort)}`,
     deviceIds: [],
+    pluginIds: [],
     rule: { purpose: 'webrtc', protocol, port: webrtcPort },
   }));
-  return [...sourceOpenings('camera', cameras), ...sourceOpenings('device', pushing), ...webrtc];
+  return [
+    ...sourceOpenings('camera', cameras),
+    ...sourceOpenings('device', pushing),
+    ...pluginOpenings(plugins, networks),
+    ...webrtc,
+  ];
 }
 
 function familyOf(address: string): 'ipv4' | 'ipv6' | null {
@@ -98,6 +137,21 @@ export function addressIn(range: string, address: string): boolean {
     list.addSubnet(network, Number(prefix), family);
   }
   return list.check(address, family);
+}
+
+export function sourceEdges(source: string): readonly string[] {
+  const [network = '', prefix] = source.split('/');
+  if (prefix === undefined || isIP(network) !== 4) {
+    return [network];
+  }
+  const bits = Number(prefix);
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  const base = network.split('.').reduce((total, part) => total * 256 + Number(part), 0);
+  const first = (base & mask) >>> 0;
+  const last = (first | (~mask >>> 0)) >>> 0;
+  const text = (value: number): string =>
+    [24, 16, 8, 0].map((shift) => String((value >>> shift) & 255)).join('.');
+  return [text(first), text(last)];
 }
 
 export function portIn(list: string, port: number): boolean {

@@ -1,6 +1,18 @@
-import { PLUGIN_MANIFEST, type JsonValue } from '@smarteverything/domain';
+import {
+  ApiError,
+  PLUGIN_MANIFEST,
+  type JsonValue,
+  type PluginOptionPage,
+  type PluginOptionQuery,
+} from '@smarteverything/domain';
 import { failure, type HubToolResult, type ToolCaller } from '../ai-tools/hub-tool';
-import type { BuiltinPlugin, PluginStop, PluginTool, Unsubscribe } from './builtin/contract';
+import type {
+  BuiltinPlugin,
+  PluginOptionProvider,
+  PluginStop,
+  PluginTool,
+  Unsubscribe,
+} from './builtin/contract';
 import { builtinContext, type BuiltinContextOptions } from './builtin-context';
 import type { PluginRuntime, RuntimeSinks, RuntimeTool } from './runtime';
 
@@ -11,6 +23,8 @@ export interface BuiltinRuntimeOptions {
   readonly sinks: RuntimeSinks;
 }
 
+type SettingsListener = (settings: Readonly<Record<string, JsonValue>>) => void;
+
 export class BuiltinPluginStartError extends Error {
   override readonly name = 'BuiltinPluginStartError';
 }
@@ -20,6 +34,8 @@ export class BuiltinRuntime implements PluginRuntime {
   private readonly disposers = new Set<Unsubscribe>();
   private controller: AbortController | null = null;
   private stopPlugin: PluginStop | null = null;
+  private readonly settingsListeners = new Set<SettingsListener>();
+  private readonly providers = new Map<string, PluginOptionProvider>();
 
   constructor(private readonly options: BuiltinRuntimeOptions) {}
 
@@ -36,6 +52,8 @@ export class BuiltinRuntime implements PluginRuntime {
           this.options.sinks.toolsChanged();
         },
         track: (stop) => this.track(stop),
+        watchSettings: (listener) => this.watchSettings(listener),
+        options: (source, provider) => this.provide(source, provider),
       }),
       this.options.settings,
     );
@@ -52,6 +70,7 @@ export class BuiltinRuntime implements PluginRuntime {
     const stopPlugin = this.stopPlugin;
     this.stopPlugin = null;
     this.registered = [];
+    this.providers.clear();
     try {
       await stopPlugin?.();
     } finally {
@@ -60,6 +79,12 @@ export class BuiltinRuntime implements PluginRuntime {
       });
       this.disposers.clear();
     }
+  }
+
+  settingsChanged(settings: Readonly<Record<string, JsonValue>>): void {
+    this.settingsListeners.forEach((listener) => {
+      listener(settings);
+    });
   }
 
   tools(): readonly RuntimeTool[] {
@@ -75,6 +100,31 @@ export class BuiltinRuntime implements PluginRuntime {
     return tool === undefined
       ? Promise.resolve(failure(`The plugin has no tool named ${name}`))
       : tool.run(args, caller);
+  }
+
+  async choices(source: string, query: PluginOptionQuery): Promise<PluginOptionPage> {
+    const provider = this.providers.get(source);
+    if (provider === undefined && this.controller === null) {
+      return { state: 'unavailable', message: 'The plugin is not running. Check its status.' };
+    }
+    if (provider === undefined) {
+      throw new ApiError('not_found', `The plugin has no list named ${source}.`);
+    }
+    return await provider(query);
+  }
+
+  private provide(source: string, provider: PluginOptionProvider): Unsubscribe {
+    this.providers.set(source, provider);
+    return this.track((): void => {
+      this.providers.delete(source);
+    });
+  }
+
+  private watchSettings(listener: SettingsListener): Unsubscribe {
+    this.settingsListeners.add(listener);
+    return this.track((): void => {
+      this.settingsListeners.delete(listener);
+    });
   }
 
   private track(stop: Unsubscribe): Unsubscribe {

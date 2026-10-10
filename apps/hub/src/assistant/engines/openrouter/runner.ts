@@ -1,10 +1,11 @@
-import { readFile } from 'node:fs/promises';
 import {
   AI_EFFORT,
   AI_MODEL_CHOICE,
+  chatSearchesWeb,
+  ApiError,
   type AiChatRow,
   type AiResolvedModel,
-  type AssistantAttachment,
+  type AssistantMessageRow,
   type ChatActivityNotice,
   type UsageWork,
 } from '@smarteverything/domain';
@@ -12,22 +13,32 @@ import type { Logger } from '@smarteverything/logging';
 import type { ToolCaller } from '../../../ai-tools/hub-tool';
 import type { ToolHub } from '../../../ai-tools/tool-hub';
 import { chatSet } from '../../../ai-tools/tool-sets';
-import type { ChatMessage, ContentPart } from '../../../openrouter/chat-types';
+import type { ChatMessage } from '../../../openrouter/chat-types';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import type { Store } from '../../../store/store';
+import type { MediaNotes } from '../../../transcripts/media-notes';
 import type { ConversationLog } from '../../conversation-log';
 import { scopedHub } from '../../coordination/scoped-tools';
 import type { AssistantFiles } from '../../files';
+import { reasonWithActions } from '../../failure-reason';
+import { reasonCodeOf } from '../../reason-code';
 import type { Engine, EngineStatus } from '../engine';
 import { Compactor, type ChatContext } from './compaction';
-import { historyMessages, summaryMessage, systemMessages, type PromptFacts } from './context';
+import {
+  historyMessages,
+  stableMessage,
+  summaryMessage,
+  turnMessage,
+  type PromptFacts,
+} from './context';
+import { planMedia, type MediaPlan, type MediaView } from './media-view';
 import type { CataloguePort, ChatClientPort, LedgerPort, TurnPort } from './ports';
 import { TurnStream, type StreamEmit } from './stream';
+import { turnCaller } from './turn-caller';
 import { runLoop, type TurnUsage } from './turn-loop';
 
-const INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
 const FLUSH_ROW_MS = 2000;
-const AFFIRMATIVE = /^\s*(yes|yeah|yep|sure|ok(ay)?|go ahead|do it|confirm(ed)?|please do)\b/i;
+const COMPACT_TIMEOUT_MS = 120_000;
 
 export interface ChatRunnerDeps {
   readonly store: Store;
@@ -38,6 +49,7 @@ export interface ChatRunnerDeps {
   readonly tools: () => ToolHub | null;
   readonly conversation: ConversationLog;
   readonly files: AssistantFiles;
+  readonly notes: MediaNotes;
   readonly facts: (chat: AiChatRow) => PromptFacts;
   readonly emit: StreamEmit;
   readonly finished: (event: StoredEvent, text: string, ok: boolean) => void;
@@ -47,6 +59,7 @@ export interface ChatRunnerDeps {
 class Turn {
   readonly controller = new AbortController();
   readonly usage: TurnUsage[] = [];
+  readonly actions: string[] = [];
   private reply: string | null = null;
   private flushTimer: NodeJS.Timeout | null = null;
 
@@ -84,12 +97,6 @@ class Turn {
 
 const IN_HISTORY: ReadonlySet<StoredEvent['kind']> = new Set(['chat', 'report', 'plugin']);
 
-const PERSON_KINDS: ReadonlySet<StoredEvent['kind']> = new Set(['chat', 'voice']);
-
-function fromPerson(event: StoredEvent): boolean {
-  return event.hops === 0 && PERSON_KINDS.has(event.kind);
-}
-
 function reasonOf(cause: unknown): string {
   return cause instanceof Error ? cause.message : 'The AI could not answer';
 }
@@ -117,6 +124,28 @@ export class ChatRunner {
         return Promise.resolve();
       },
     };
+  }
+
+  async compact(chat: AiChatRow): Promise<boolean> {
+    if (this.turns.has(chat.id)) {
+      throw new ApiError('conflict', 'The AI is answering in this chat; compact when it is done.');
+    }
+    const model = this.resolve(chat);
+    const before = this.compactor.context(chat.id).summary;
+    const usage: TurnUsage[] = [];
+    const after = await this.compactor.fit({
+      chat,
+      model: model.model_id,
+      window: this.deps.catalogue.model(model.model_id).context_length,
+      prefix: [],
+      signal: AbortSignal.timeout(COMPACT_TIMEOUT_MS),
+      usage: (entry): void => {
+        usage.push(entry);
+      },
+      force: true,
+    });
+    this.book(chat, null, usage, null);
+    return after.summary !== before;
   }
 
   activity(profileId: string): ChatActivityNotice[] {
@@ -175,7 +204,7 @@ export class ChatRunner {
     const row = this.deps.catalogue.model(model.model_id);
     const images = row.input_modalities.includes('image');
     const tools = hub === null ? [] : hub.openAiTools(chatSet(hub.list()));
-    const system = systemMessages(this.deps.facts(turn.chat));
+    const system = [stableMessage(this.deps.facts(turn.chat))];
     const context = await this.compactor.fit({
       chat: turn.chat,
       model: model.model_id,
@@ -186,26 +215,29 @@ export class ChatRunner {
         turn.usage.push(entry);
       },
     });
+    const { rows, media } = await this.media(turn, context, images);
     const result = await runLoop({
       client: this.deps.client,
       newTurn: this.deps.newTurn,
       model,
-      messages: [...system, ...(await this.history(turn, context, images))],
+      messages: [...system, ...(await this.history(turn, context, rows, media.view))],
       tools,
       hub,
       caller: this.callerOf(turn),
       images: { model: model.model_id, allowed: images },
       work: this.workOf(turn),
+      webSearch: this.searches(turn.chat),
       signal: turn.controller.signal,
       hooks: this.hooks(turn),
     });
-    this.deps.conversation.finishReply(
-      reply.id,
-      result.text,
-      result.model,
-      turn.stream.current().steps,
-    );
+    media.afterTurn();
+    this.deps.conversation.finishReply(reply.id, result.text, {
+      model: result.model,
+      steps: turn.stream.settled(),
+      sources: result.sources,
+    });
     this.record(turn, reply.id);
+    this.compactor.measure(turn.chat.id, row.context_length, [...system, ...tools]);
     this.deps.conversation.stateOf(turn.event.message_id, 'answered');
     turn.stream.snapshot('idle', result.finish ?? 'stop', null);
     this.deps.finished(turn.event, result.text, true);
@@ -213,20 +245,25 @@ export class ChatRunner {
 
   private failed(turn: Turn, cause: unknown): void {
     const stopped = turn.controller.signal.aborted;
-    const reason = stopped ? 'Stopped.' : reasonOf(cause);
-    this.deps.log.warn('assistant.chat_turn_failed', { chatId: turn.chat.id, reason });
+    const reason = reasonWithActions(stopped ? 'Stopped.' : reasonOf(cause), turn.actions);
+    const code = reasonCodeOf(cause, stopped);
+    this.deps.log.warn('assistant.chat_turn_failed', { chatId: turn.chat.id, reason, code });
     if (turn.replyId !== null) {
-      const { draft, steps } = turn.stream.current();
-      this.deps.conversation.failReply(turn.replyId, draft, reason, steps);
+      const { draft } = turn.stream.current();
+      this.deps.conversation.failReply(
+        turn.replyId,
+        { text: draft, reason, code },
+        turn.stream.settled(),
+      );
     }
     this.record(turn, turn.replyId ?? turn.event.message_id);
-    this.deps.conversation.failedMessage(turn.event.message_id, reason);
+    this.deps.conversation.failedMessage(turn.event.message_id, reason, code);
     turn.stream.snapshot('failed', stopped ? 'stopped' : 'error', reason);
     this.deps.finished(turn.event, reason, false);
   }
 
   private replyTo(turn: Turn): string | null {
-    return turn.event.kind === 'chat' || turn.event.kind === 'plugin'
+    return turn.event.kind === 'chat' || turn.event.kind === 'plugin' || turn.event.kind === 'voice'
       ? turn.event.message_id
       : null;
   }
@@ -240,12 +277,23 @@ export class ChatRunner {
         });
       },
       toolLine: (line): void => {
+        turn.actions.push(line);
         this.deps.conversation.action(turn.chat, line);
+      },
+      toolFailed: (tool, reason): void => {
+        this.deps.log.warn('assistant.tool_failed', { chatId: turn.chat.id, tool, reason });
       },
       usage: (entry): void => {
         turn.usage.push(entry);
       },
+      retried: (reason): void => {
+        this.deps.log.warn('assistant.model_retry', { chatId: turn.chat.id, reason });
+      },
     };
+  }
+
+  private searches(chat: AiChatRow): boolean {
+    return chatSearchesWeb(chat, this.deps.store.assistantChat.settings().web_search_default);
   }
 
   private resolve(chat: AiChatRow): AiResolvedModel {
@@ -272,49 +320,73 @@ export class ChatRunner {
   private callerOf(turn: Turn): ToolCaller {
     const { store } = this.deps;
     const { event } = turn;
-    const client = event.client_id === null ? undefined : store.clients.byId(event.client_id);
-    const latest = event.message_id === null ? null : store.assistantChat.message(event.message_id);
-    return {
-      profileId: turn.chat.profile_id,
-      role: client?.role ?? 'owner',
-      chatId: turn.chat.id,
-      via: event.kind === 'voice' ? 'voice' : 'chat',
-      confirmed: fromPerson(event) && AFFIRMATIVE.test(latest?.text ?? event.text),
-      clientId: event.client_id,
-    };
+    return turnCaller({
+      chat: turn.chat,
+      event,
+      latest: event.message_id === null ? null : store.assistantChat.message(event.message_id),
+      client: event.client_id === null ? undefined : store.clients.byId(event.client_id),
+    });
   }
 
-  private async history(turn: Turn, context: ChatContext, images: boolean): Promise<ChatMessage[]> {
+  private async media(
+    turn: Turn,
+    context: ChatContext,
+    images: boolean,
+  ): Promise<{ rows: AssistantMessageRow[]; media: MediaPlan }> {
     const rows = context.rows.filter(
-      (row) => !(row.role === 'responder' && row.state === 'working'),
+      (item) => !(item.role === 'responder' && item.state === 'working'),
     );
-    const history = await historyMessages(rows, (file) => this.inline(file, images));
+    const media = await planMedia({
+      rows,
+      newest: this.newest(turn),
+      images,
+      store: this.deps.store,
+      files: this.deps.files,
+      notes: this.deps.notes,
+      log: this.deps.log,
+    });
+    return { rows, media };
+  }
+
+  private newest(turn: Turn): ReadonlySet<string> {
+    const { message_id: id } = turn.event;
+    if (id === null) {
+      return new Set();
+    }
+    const referenced = this.deps.store.assistantChat.message(id).reply_to;
+    return new Set(referenced === null ? [id] : [id, referenced]);
+  }
+
+  private async history(
+    turn: Turn,
+    context: ChatContext,
+    rows: readonly AssistantMessageRow[],
+    media: MediaView,
+  ): Promise<ChatMessage[]> {
+    const history = await historyMessages(rows, media);
     const extra: ChatMessage[] = IN_HISTORY.has(turn.event.kind)
       ? []
       : [{ role: 'user', content: turn.event.text }];
     const summary = context.summary === null ? [] : [summaryMessage(context.summary)];
-    return [...summary, ...history, ...extra];
-  }
-
-  private async inline(file: AssistantAttachment, images: boolean): Promise<ContentPart | null> {
-    if (!images || !file.mime.startsWith('image/') || file.bytes > INLINE_IMAGE_BYTES) {
-      return null;
-    }
-    const stored = this.deps.store.assistantChat.attachment(file.id);
-    const data = await readFile(this.deps.files.pathOf(stored));
-    return {
-      type: 'image_url',
-      image_url: { url: `data:${file.mime};base64,${data.toString('base64')}` },
-    };
+    return [...summary, ...history, ...extra, turnMessage(this.deps.facts(turn.chat))];
   }
 
   private record(turn: Turn, messageId: string | null): void {
-    turn.usage.splice(0).forEach((entry) => {
+    this.book(turn.chat, turn.event.client_id, turn.usage.splice(0), messageId);
+  }
+
+  private book(
+    chat: AiChatRow,
+    clientId: string | null,
+    entries: readonly TurnUsage[],
+    messageId: string | null,
+  ): void {
+    entries.forEach((entry) => {
       this.deps.ledger.record({
         ...entry,
-        profile_id: turn.chat.profile_id,
-        client_id: turn.event.client_id,
-        chat_id: turn.chat.id,
+        profile_id: chat.profile_id,
+        client_id: clientId,
+        chat_id: chat.id,
         message_id: messageId,
       });
     });

@@ -3,15 +3,16 @@ import {
   NEW_CHAT_TITLE,
   ApiError,
   type AiChatChange,
+  type AiChatHit,
   type AiChatNew,
   type AiChatRow,
-  type Engine,
+  type AiChatSearch,
   type Role,
 } from '@smarteverything/domain';
+import { NothingToMarkUnreadError } from '../store/repositories/ai-chats';
 import type { Store } from '../store/store';
+import { snippetOf } from './chat-snippet';
 import type { AssistantFiles } from './files';
-
-const OWNER_ENGINES: ReadonlySet<Engine['kind']> = new Set(['claude-session', 'codex-thread']);
 
 const CONVERSATION_SOURCE = 'conversation';
 
@@ -58,7 +59,7 @@ export class ChatDirectory {
         icon: null,
         parentId: null,
         sourceKey: null,
-        engine: this.ownerEngine(profileId),
+        engine: DEFAULT_ENGINE,
         titleAuto: true,
       })
     );
@@ -72,37 +73,38 @@ export class ChatDirectory {
   }
 
   conversationChat(profileId: string, title: string): AiChatRow {
+    return this.sourceChat(profileId, CONVERSATION_SOURCE, title, {
+      kind: 'chat',
+      titleAuto: true,
+    });
+  }
+
+  chatForPlugin(profileId: string, sourceKey: string, title: string): AiChatRow {
+    return this.sourceChat(profileId, sourceKey, title, { kind: 'plugin', titleAuto: false });
+  }
+
+  private sourceChat(
+    profileId: string,
+    sourceKey: string,
+    title: string,
+    shape: { readonly kind: AiChatRow['kind']; readonly titleAuto: boolean },
+  ): AiChatRow {
     const minutes = this.store.assistantChat.settings().reuse_chat_minutes;
-    const latest = this.store.aiChats.bySource(profileId, CONVERSATION_SOURCE);
+    const latest = this.store.aiChats.bySource(profileId, sourceKey);
     const since = this.now().getTime() - minutes * MINUTE_MS;
     if (latest !== undefined && Date.parse(latest.last_message_at ?? latest.created_at) > since) {
       return latest;
     }
     return this.store.aiChats.create({
       profileId,
-      kind: 'chat',
+      kind: shape.kind,
       title: title.slice(0, 80),
       icon: null,
       parentId: null,
-      sourceKey: CONVERSATION_SOURCE,
-      engine: this.ownerEngine(profileId),
-      titleAuto: true,
+      sourceKey,
+      engine: DEFAULT_ENGINE,
+      titleAuto: shape.titleAuto,
     });
-  }
-
-  chatForPlugin(profileId: string, sourceKey: string, title: string): AiChatRow {
-    return (
-      this.store.aiChats.bySource(profileId, sourceKey) ??
-      this.store.aiChats.create({
-        profileId,
-        kind: 'plugin',
-        title: title.slice(0, 80),
-        icon: null,
-        parentId: null,
-        sourceKey,
-        engine: this.ownerEngine(profileId),
-      })
-    );
   }
 
   forTurn(profileId: string, chatId: string | undefined, title: string | undefined): AiChatRow {
@@ -116,14 +118,12 @@ export class ChatDirectory {
       icon: null,
       parentId: null,
       sourceKey: null,
-      engine: this.ownerEngine(profileId),
+      engine: DEFAULT_ENGINE,
       titleAuto: title === undefined,
     });
   }
 
   create(owner: ChatOwner, input: AiChatNew): AiChatRow {
-    const engine = input.engine ?? this.ownerEngine(owner.profileId);
-    this.mayUse(owner, engine);
     if (input.parent_id !== undefined) {
       this.own(owner, input.parent_id);
     }
@@ -134,17 +134,51 @@ export class ChatDirectory {
       icon: input.icon ?? null,
       parentId: input.parent_id ?? null,
       sourceKey: null,
-      engine,
+      engine: input.engine ?? DEFAULT_ENGINE,
       titleAuto: input.title === undefined,
     });
   }
 
   update(owner: ChatOwner, chatId: string, change: AiChatChange): AiChatRow {
     this.own(owner, chatId);
-    if (change.engine !== undefined) {
-      this.mayUse(owner, change.engine);
+    try {
+      return this.store.aiChats.update(chatId, change);
+    } catch (cause) {
+      if (cause instanceof NothingToMarkUnreadError) {
+        throw new ApiError('conflict', 'This chat has no incoming message to mark unread.');
+      }
+      throw cause;
     }
-    return this.store.aiChats.update(chatId, change);
+  }
+
+  search(owner: ChatOwner, query: AiChatSearch): AiChatHit[] {
+    const { aiChats, assistantSearch } = this.store;
+    if (query.chatId !== undefined) {
+      this.own(owner, query.chatId);
+    }
+    const base = { profileId: owner.profileId, text: query.q, archived: query.archived };
+    const titles =
+      query.chatId === undefined
+        ? aiChats.titleHits({ ...base, limit: query.limit }).map((hit): AiChatHit => ({
+            chatId: hit.id,
+            title: hit.title,
+            messageId: null,
+            snippet: hit.title,
+            at: hit.at,
+            archived: hit.archived,
+          }))
+        : [];
+    const messages = assistantSearch
+      .hits({ ...base, chatId: query.chatId ?? null, limit: query.limit })
+      .map((hit): AiChatHit => ({
+        chatId: hit.chat_id,
+        title: hit.title,
+        messageId: hit.id,
+        snippet: snippetOf(hit.text, query.q),
+        at: hit.at,
+        archived: hit.archived,
+      }));
+    return [...titles, ...messages].slice(0, query.limit);
   }
 
   async remove(owner: ChatOwner, chatId: string): Promise<void> {
@@ -154,19 +188,5 @@ export class ChatDirectory {
     );
     await this.files.remove(files);
     this.store.aiChats.remove(chatId);
-  }
-
-  private mayUse(owner: ChatOwner, engine: Engine): void {
-    if (owner.role !== 'owner' && OWNER_ENGINES.has(engine.kind)) {
-      throw new ApiError('forbidden', 'Only the owner can use Claude Code or Codex for a chat.');
-    }
-  }
-
-  private ownerEngine(profileId: string): Engine {
-    const kind = this.store.assistantChat.settings().default_engine;
-    const owner = this.store.clients
-      .list()
-      .some((client) => client.profile_id === profileId && client.role === 'owner');
-    return owner && OWNER_ENGINES.has(kind) ? { ...DEFAULT_ENGINE, kind } : DEFAULT_ENGINE;
   }
 }

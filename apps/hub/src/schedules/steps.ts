@@ -1,9 +1,11 @@
 import {
   SCHEDULED_AI_STEPS_REASON,
+  type PluginOrigin,
   type ScheduleRow,
   type ScheduleStep,
 } from '@smarteverything/domain';
 import type { ToolCaller } from '../ai-tools/hub-tool';
+import { limitsOf } from '../ai-tools/plugin-turn';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import { describeError } from '../commands/executor';
 import type { Store } from '../store/store';
@@ -13,6 +15,7 @@ export interface AiTurnInput {
   readonly chatId: string | null;
   readonly title: string;
   readonly text: string;
+  readonly plugin: PluginOrigin | null;
 }
 
 export interface AiTurns {
@@ -76,8 +79,8 @@ export class StepRunner {
       role: client.role,
       chatId: null,
       via: 'schedule',
-      confirmed: row.confirmed_at !== null,
       clientId: client.id,
+      ...limitsOf(row.origin?.requester, row.origin?.plugin_id),
     };
   }
 
@@ -90,9 +93,6 @@ export class StepRunner {
     const error = result.response['error'];
     if (typeof error === 'string') {
       return failed(line, error);
-    }
-    if (result.response['needs_confirmation'] !== undefined) {
-      return failed(line, 'It needs a confirmation it did not get when it was scheduled.');
     }
     return { outcome: 'ok', line: result.line === '' ? line : result.line, detail: null };
   }
@@ -110,6 +110,7 @@ export class StepRunner {
       chatId: step.chatId,
       title: row.label ?? DEFAULT_SCHEDULE_TITLE,
       text: step.prompt,
+      plugin: row.origin,
     });
     return { outcome: 'ok', line, detail: `chat ${turn.chatId}` };
   }

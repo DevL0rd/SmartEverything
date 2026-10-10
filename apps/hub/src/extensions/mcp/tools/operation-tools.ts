@@ -8,6 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { operate } from './acting';
+import { operationNamed } from './operation-names';
 import {
   CALLABLE_OPERATIONS,
   isEndpointName,
@@ -16,7 +17,6 @@ import {
   type OperationShape,
 } from './operation-shape';
 import {
-  CONFIRM,
   PROFILE,
   READS,
   ToolError,
@@ -58,12 +58,11 @@ function annotationsOf(shape: OperationShape): ToolAnnotations {
   }
 }
 
-function operationTool(name: McpPartName, operation: EndpointName): Tool {
+export function operationTool(name: McpPartName, operation: EndpointName): Tool {
   const shape = operationShape(operation);
   return {
     name,
     listing: listingOf(name, shape.input, annotationsOf(shape)),
-    confirms: (): boolean => shape.confirm,
     call: (context, args) => called(context, shape, args),
     check: (context, args): string | null => {
       const profileId = PROFILE_ID.safeParse(args['profileId']);
@@ -89,7 +88,6 @@ function listed(name: EndpointName): Record<string, unknown> {
     access: shape.endpoint.access,
     area: mcpOperationArea(shape.endpoint),
     summary: shape.endpoint.summary,
-    confirm: shape.confirm,
     human_only: MCP_HUMAN_ONLY_OPERATIONS[name] ?? null,
   };
 }
@@ -98,18 +96,18 @@ const LIST = z.strictObject({
   area: z.enum(MCP_TOOL_AREAS).optional(),
   search: z.string().min(1).max(100).optional().describe('Words in the name, path or summary'),
   operations: z
-    .array(z.string().refine(isEndpointName, 'not an operation name'))
+    .array(z.string().min(1))
     .min(1)
     .max(20)
     .optional()
-    .describe('Give the input JSON schema of these operations'),
+    .describe(
+      'Give the input JSON schema of these operations, named as in the listing (camelCase, such as listClaudeSessions)',
+    ),
   responses: z.boolean().default(false).describe('Also give their response JSON schemas'),
 });
 
-function detailed(name: string, responses: boolean): Record<string, unknown> {
-  if (!isEndpointName(name)) {
-    return { name, error: 'not an operation' };
-  }
+function detailed(asked: string, responses: boolean): Record<string, unknown> {
+  const name = operationNamed(asked);
   const shape = operationShape(name);
   return {
     ...listed(name),
@@ -143,19 +141,21 @@ function operationsListed(input: z.infer<typeof LIST>): Record<string, unknown> 
 }
 
 const CALL = z.strictObject({
-  operation: z.string().min(1).describe('An operation name from list_operations'),
+  operation: z
+    .string()
+    .min(1)
+    .describe('An operation name from list_operations, camelCase such as listClaudeSessions'),
   arguments: z
     .record(z.string(), z.unknown())
     .default({})
-    .describe('Path parameters, query and body fields as list_operations gives them'),
-  confirm: CONFIRM,
+    .describe(
+      'Path parameters, query and body fields as list_operations gives them; a field it shows as body goes under a body key',
+    ),
   profileId: PROFILE,
 });
 
-function callable(name: string): EndpointName {
-  if (!isEndpointName(name)) {
-    throw new ToolError(`There is no operation ${name}; list_operations names them`, 'not_found');
-  }
+function callable(asked: string): EndpointName {
+  const name = operationNamed(asked);
   const reason = MCP_HUMAN_ONLY_OPERATIONS[name];
   if (reason !== undefined) {
     throw new ToolError(`${name} stays with the person: ${reason}`, 'human_only');
@@ -177,7 +177,6 @@ export const OPERATION_TOOLS: readonly Tool[] = [
     run: (context, input) =>
       called(context, operationShape(callable(input.operation)), {
         ...input.arguments,
-        confirm: input.confirm,
         ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
       }),
   }),

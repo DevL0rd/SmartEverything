@@ -1,7 +1,10 @@
 import type {
   InboundMessage,
+  JsonValue,
   PluginDataPoint,
   PluginEvent,
+  PluginOptionPage,
+  PluginOptionQuery,
   PluginSearchEntry,
   PluginStatus,
 } from '@smarteverything/domain';
@@ -37,7 +40,9 @@ export interface RuntimeSinks extends ContributionSinks {
 export interface PluginRuntime {
   readonly start: () => Promise<void>;
   readonly stop: () => Promise<void>;
+  readonly settingsChanged: (settings: Readonly<Record<string, JsonValue>>) => void;
   readonly tools: () => readonly RuntimeTool[];
+  readonly choices: (source: string, query: PluginOptionQuery) => Promise<PluginOptionPage>;
   readonly call: (
     name: string,
     args: Readonly<Record<string, unknown>>,

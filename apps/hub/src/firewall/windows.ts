@@ -1,10 +1,11 @@
 import { BlockList, isIP } from 'node:net';
-import { powershellQuoted, ruleSource, type PortRule } from '@smarteverything/domain';
+import { powershellQuoted, rulePort, ruleSource, type PortRule } from '@smarteverything/domain';
 import { z } from 'zod';
 import {
   FIXABLE_UNLESS_DENIED,
   addressIn,
   portIn,
+  sourceEdges,
   type OpeningState,
   type Probe,
 } from './openings';
@@ -141,15 +142,18 @@ function addressCovers(entry: string, address: string): boolean {
 
 function ruleCovers(rule: WindowsRule, wanted: PortRule): boolean {
   const protocolCovers = rule.protocol === 'Any' || rule.protocol === wanted.protocol.toUpperCase();
+  const port = rulePort(wanted);
   const portCovers =
     rule.localPort.includes('Any') ||
-    (wanted.purpose === 'webrtc' &&
-      rule.localPort.some((entry) => /^[0-9,-]+$/.test(entry) && portIn(entry, wanted.port)));
+    (port !== null &&
+      rule.localPort.some((entry) => /^[0-9,-]+$/.test(entry) && portIn(entry, port)));
   const source = ruleSource(wanted);
   const sourceCovers =
     source === null
       ? rule.remoteAddress.includes('Any')
-      : rule.remoteAddress.some((entry) => addressCovers(entry, source));
+      : rule.remoteAddress.some((entry) =>
+          sourceEdges(source).every((edge) => addressCovers(entry, edge)),
+        );
   return protocolCovers && portCovers && sourceCovers;
 }
 
@@ -171,7 +175,8 @@ function filteringProfiles(firewall: WindowsFirewall): readonly string[] {
 
 function windowsStateOf(firewall: WindowsFirewall, wanted: PortRule): OpeningState {
   const profiles = filteringProfiles(firewall);
-  const rules = wanted.purpose === 'device' ? firewall.appRules : firewall.rules;
+  const rules =
+    wanted.purpose === 'device' || wanted.purpose === 'plugin' ? firewall.appRules : firewall.rules;
   const covering = rules.filter((rule) => ruleCovers(rule, wanted));
   const appliesHere = (rule: WindowsRule): boolean =>
     profiles.some((profile) => profileCovers(rule, profile));

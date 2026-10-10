@@ -7,9 +7,10 @@ import { fetchForecast } from './open-meteo-forecast';
 import type { ProviderRequest } from '../outbound/provider-json';
 import type { WeatherSpot } from './open-meteo';
 
-const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
-const SLOT_MINUTE = 5;
+const SLOT_PERIOD_MS = 15 * MINUTE_MS;
+const SLOT_OFFSET_MS = MINUTE_MS;
+const MIN_GAP_MS = 5 * MINUTE_MS;
 const RETRY_SECONDS = [15, 300, 900, 2700, 3600] as const;
 const LONGEST_RETRY_SECONDS = 3600;
 const FRESH_MS = 2 * MINUTE_MS;
@@ -22,8 +23,9 @@ export interface WeatherServiceOptions {
 }
 
 export function nextSlot(now: Date): Date {
-  const slot = Math.floor(now.getTime() / HOUR_MS) * HOUR_MS + SLOT_MINUTE * MINUTE_MS;
-  return new Date(slot > now.getTime() + SLOT_MINUTE * MINUTE_MS ? slot : slot + HOUR_MS);
+  const earliest = now.getTime() + MIN_GAP_MS - SLOT_OFFSET_MS;
+  const slot = (Math.floor(earliest / SLOT_PERIOD_MS) + 1) * SLOT_PERIOD_MS + SLOT_OFFSET_MS;
+  return new Date(slot);
 }
 
 function spotOf(settings: SettingsRow): WeatherSpot | null {

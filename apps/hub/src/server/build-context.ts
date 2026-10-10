@@ -1,18 +1,22 @@
+import { join } from 'node:path';
 import type { HubStatus, PublicStatus } from '@smarteverything/domain';
+import { OpenCalls } from '../assistant-voice/open-calls';
 import { FoodLookup } from '../foods/food-lookup';
 import { PushCommandChannel } from '../extensions/push/commands';
 import { WatchActionBroker } from '../local/watch-actions';
+import { WatchDataService } from '../local/watch-data';
 import { createOpenRouter } from '../openrouter/platform';
 import { PlaceFinder } from '../places/place-finder';
 import { TalkService } from '../talk/talk-service';
+import { GeminiMediaNotes, MediaNotes } from '../transcripts/media-notes';
 import { WeatherService } from '../weather/weather-service';
+import { ExchangeRateService } from '../exchange-rates/exchange-rate-service';
 import { AccessService } from './access';
-import { assistantOf, type Listening } from './assistant-wiring';
+import { assistantOf } from './assistant-wiring';
 import type { BuildOptions } from './build';
 import type { ServerContext } from './context';
 import type { LiveHub } from './live';
 import { MediaLinks } from './media-links';
-import { McpCallFeed } from '../extensions/mcp/call-feed';
 import { PublicUrlVerifier } from './public-url';
 
 export function statusOf(options: BuildOptions): {
@@ -71,20 +75,35 @@ function accessOf(options: BuildOptions, live: LiveHub): AccessService {
 
 function outboundOf(
   options: BuildOptions,
-): Pick<ServerContext, 'weather' | 'openRouter' | 'places'> {
+): Pick<ServerContext, 'weather' | 'exchangeRates' | 'openRouter' | 'places' | 'mediaNotes'> {
+  const openRouter = createOpenRouter({
+    models: options.store.aiModels,
+    secrets: options.secrets,
+    clock: options.clock,
+    fetch: options.fetch,
+    log: options.log.forArea('hub.openrouter'),
+  });
   return {
+    mediaNotes: new MediaNotes({
+      provider: new GeminiMediaNotes(() => options.secrets.read().geminiKey),
+      chat: options.store.assistantChat,
+      ledger: options.store.ledger,
+      prices: openRouter.catalogue,
+      filesRoot: join(options.dataDirectory, 'assistant'),
+      log: options.log.forArea('hub.assistant'),
+    }),
+    openRouter,
     weather: new WeatherService({
       store: options.store,
       request: { fetch: options.fetch, version: options.version },
       clock: options.clock,
       log: options.log.forArea('hub.weather'),
     }),
-    openRouter: createOpenRouter({
-      models: options.store.aiModels,
-      secrets: options.secrets,
+    exchangeRates: new ExchangeRateService({
+      store: options.store,
+      request: { fetch: options.fetch, version: options.version },
       clock: options.clock,
-      fetch: options.fetch,
-      log: options.log.forArea('hub.openrouter'),
+      log: options.log.forArea('hub.exchange-rates'),
     }),
     places: new PlaceFinder({
       request: { fetch: options.fetch, version: options.version },
@@ -94,14 +113,10 @@ function outboundOf(
   };
 }
 
-export function contextOf(
-  options: BuildOptions,
-  live: LiveHub,
-  statuses: Statuses,
-  listening: Listening,
-): ServerContext {
+export function contextOf(options: BuildOptions, live: LiveHub, statuses: Statuses): ServerContext {
   const log = options.log.forArea('hub.server');
   const pushCommands = new PushCommandChannel();
+  pushCommands.attachLive((clientId, notice, receiver) => live.deliver(clientId, notice, receiver));
   return {
     store: options.store,
     hub: options.core.hub,
@@ -119,13 +134,15 @@ export function contextOf(
     }),
     live,
     pushCommands,
-    toolCalls: new McpCallFeed(),
+    openCalls: new OpenCalls(),
     talk: talkOf(options, live),
-    assistant: assistantOf(options, live, listening),
+    assistant: assistantOf(options, live),
     watchActions: new WatchActionBroker(
-      (notice, profileId) => live.watchAction(notice, profileId),
+      pushCommands,
+      options.store,
       options.log.forArea('hub.watch'),
     ),
+    watchData: new WatchDataService({ store: options.store, now: options.clock.now }),
     ...outboundOf(options),
     ...statuses,
     recordingPath: options.core.recordingPath,

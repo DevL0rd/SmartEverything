@@ -1,12 +1,11 @@
-import { MCP_PART_TEXTS, type McpPartName } from '@smarteverything/domain';
+import { MCP_PART_TEXTS, type McpPartName, type PluginRequester } from '@smarteverything/domain';
 import { z } from 'zod';
-import { removesThings } from '../../../ai-tools/hub-tool';
 import type { Clock } from '../../../clock';
 import type { RunningHub } from '../../../hub';
 import type { Operations } from '../../../server/operations';
 import type { Store } from '../../../store/store';
+import type { MediaNotes } from '../../../transcripts/media-notes';
 import type { AcceptedCaller } from '../bearer';
-import type { McpCallFeed } from '../call-feed';
 
 export interface ToolImage {
   readonly data: string;
@@ -17,6 +16,8 @@ export interface ToolActor {
   readonly clientId: string | null;
   readonly profileId: string;
   readonly chatId: string | null;
+  readonly pluginRequester?: PluginRequester;
+  readonly pluginId?: string;
 }
 
 export interface ToolContext {
@@ -28,8 +29,8 @@ export interface ToolContext {
   readonly recordingPath: (storagePath: string) => string;
   readonly caller: AcceptedCaller | null;
   readonly assistantFiles: string;
+  readonly mediaNotes: MediaNotes;
   readonly actor: ToolActor | null;
-  readonly calls: McpCallFeed | null;
 }
 
 export interface ToolOutput {
@@ -54,7 +55,6 @@ export interface ToolDefinition<I> {
 export interface Tool {
   readonly name: string;
   readonly listing: Readonly<Record<string, unknown>>;
-  readonly confirms: (raw: Readonly<Record<string, unknown>>) => boolean;
   readonly call: (
     context: ToolContext,
     raw: Readonly<Record<string, unknown>>,
@@ -163,7 +163,6 @@ export function jsonSchemaOf(schema: z.ZodType, io: 'input' | 'output'): Record<
 export function defineTool<I>(definition: ToolDefinition<I>): Tool {
   return {
     name: definition.name,
-    confirms: (): boolean => removesThings(definition.annotations),
     listing: listingOf(
       definition.name,
       jsonSchemaOf(definition.input, 'input'),
@@ -191,11 +190,6 @@ export function matches(words: string, ...fields: readonly (string | null)[]): b
 export const MOMENT_ARGUMENT = z.iso
   .datetime({ offset: true })
   .transform((text) => new Date(text).toISOString());
-
-export const CONFIRM = z
-  .boolean()
-  .default(false)
-  .describe('true to go ahead with something the app asks the person to confirm first');
 
 export const PROFILE = z
   .uuid()

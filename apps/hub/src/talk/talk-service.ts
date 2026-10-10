@@ -13,6 +13,7 @@ import { TalkMembership } from './membership';
 import { TalkRecorder } from './recorder';
 import type { LiveConversation } from './live-sessions';
 import { TalkRelay, type LiveOpening } from './relay';
+import type { TalkListening } from './talk-listening';
 import { TalkSockets } from './talk-sockets';
 import { Transmissions } from './transmissions';
 
@@ -34,6 +35,7 @@ export class TalkService {
     readonly microphones: CameraMicrophones;
     readonly video: CameraVideo;
   };
+  private readonly transmissions: Transmissions;
   private readonly feeds: TalkFeeds;
   private readonly membership: TalkMembership;
   private readonly relay: TalkRelay;
@@ -71,6 +73,7 @@ export class TalkService {
       now: options.now,
       log,
     });
+    this.transmissions = transmissions;
     this.relay = new TalkRelay({
       membership: this.membership,
       transmissions,
@@ -89,6 +92,10 @@ export class TalkService {
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
       this.changed(change);
     });
+  }
+
+  attachListening(listening: Pick<TalkListening, 'open'>): void {
+    this.transmissions.attachListening(listening);
   }
 
   openLive(channelId: string, conversation: LiveConversation): LiveOpening {

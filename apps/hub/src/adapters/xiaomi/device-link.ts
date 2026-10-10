@@ -4,8 +4,10 @@ import type { XiaomiTiming } from './dependencies';
 import { lanIo, type DeviceIo } from './device-io';
 import type { TransportState } from './inventory';
 import { LanPush, type PushState } from './lan-push';
+import { LanReconnect } from './lan-reconnect';
 import { startLoop, type Loop } from './loop';
 import type { MiioClient } from './miio-client';
+import { Reachability, type CloudLookup } from './reachability';
 
 const MILLISECONDS_PER_SECOND = 1000;
 const CLOUD_HAS_NO_PUSH =
@@ -19,7 +21,8 @@ export interface LinkContext {
   readonly virtualDid: bigint;
   readonly openCloud: (did: string) => DeviceIo;
   readonly openLan: (did: string, host: string) => Promise<MiioClient>;
-  readonly locate: (did: string) => Promise<string | null>;
+  readonly lookup: (did: string) => Promise<CloudLookup>;
+  readonly online: (did: string, online: boolean) => void;
 }
 
 export interface LinkHooks {
@@ -34,12 +37,14 @@ export interface Opened {
   readonly client: MiioClient | null;
   readonly io: DeviceIo;
   readonly reason: string;
+  readonly retryHost: string | null;
 }
 
 export interface LinkSetup {
   readonly did: string;
   readonly opened: Opened;
   readonly readable: boolean;
+  readonly online: boolean;
 }
 
 interface Lan {
@@ -60,9 +65,12 @@ export class DeviceLink {
   private lan: Lan | null = null;
   private loop: Loop | null = null;
   private running = false;
+  private retryHost: string | null;
+  private readonly reconnect: LanReconnect;
+  readonly reach: Reachability;
 
   constructor(
-    { did, opened, readable }: LinkSetup,
+    { did, opened, readable, online }: LinkSetup,
     private readonly context: LinkContext,
     private readonly hooks: LinkHooks,
   ) {
@@ -70,6 +78,26 @@ export class DeviceLink {
     this.readable = readable;
     this.io = opened.io;
     this.reason = opened.reason;
+    this.retryHost = opened.retryHost;
+    this.reach = new Reachability({
+      did,
+      online,
+      lookup: context.lookup,
+      publish: (id, now): void => {
+        context.online(id, now);
+        if (now) {
+          this.lanMayBeBack();
+        }
+      },
+      log: context.log,
+    });
+    this.reconnect = new LanReconnect({
+      did,
+      timing: context.timing,
+      jitter: context.jitter,
+      log: context.log,
+      attempt: (): Promise<boolean> => this.reconnectLan(),
+    });
     if (opened.host !== null && opened.client !== null) {
       this.lan = this.lanOf(opened.host, opened.client);
     }
@@ -84,6 +112,7 @@ export class DeviceLink {
       return;
     }
     this.running = true;
+    this.watchLan();
     if (this.lan !== null && this.lan.push.state.kind === 'probing') {
       this.lan.push.start();
       return;
@@ -91,8 +120,16 @@ export class DeviceLink {
     this.updateLoop();
   }
 
+  lanMayBeBack(): void {
+    if (this.lan === null && this.retryHost !== null) {
+      this.reconnect.trigger();
+    }
+  }
+
   async stop(): Promise<void> {
     this.running = false;
+    this.reach.close();
+    this.reconnect.cancel();
     this.stopLoop();
     const lan = this.lan;
     this.lan = null;
@@ -107,6 +144,7 @@ export class DeviceLink {
     const subscribed = this.io.transport === 'lan' && push?.kind === 'subscribed';
     return {
       transport: this.io.transport,
+      online: this.reach.online,
       reason: this.reason,
       updates: this.updatesOf(push),
       pushSource: subscribed && this.lan !== null ? this.lan.host : null,
@@ -117,7 +155,10 @@ export class DeviceLink {
   async useCloud(reason: string): Promise<void> {
     const lan = this.lan;
     this.lan = null;
+    this.retryHost = lan?.host ?? this.retryHost;
     this.switchTo(this.context.openCloud(this.did), reason);
+    this.watchLan();
+    void this.reach.confirm();
     if (lan !== null) {
       await lan.push.close();
       await lan.client.close();
@@ -130,7 +171,7 @@ export class DeviceLink {
       return 'none: the device has no readable MIoT properties';
     }
     if (this.io.transport === 'cloud') {
-      return `cloud-poll every ${seconds(cloudPollMs)} s: ${CLOUD_HAS_NO_PUSH}`;
+      return `cloud-poll every ${seconds(cloudPollMs)} s: ${CLOUD_HAS_NO_PUSH}${this.retryNote()}`;
     }
     switch (push?.kind) {
       case 'subscribed':
@@ -142,6 +183,58 @@ export class DeviceLink {
         return `lan-poll every ${seconds(lanPollMs)} s: ${push.reason}`;
       case undefined:
         return `lan-poll every ${seconds(lanPollMs)} s: the LAN link has no push session`;
+    }
+  }
+
+  private retryNote(): string {
+    const { lanRetryFirstMs, lanRetryMaxMs } = this.context.timing;
+    return this.retryHost === null
+      ? ''
+      : `; the hub retries the LAN at ${this.retryHost} when the network or the device returns, and after a ${seconds(lanRetryFirstMs)}-${seconds(lanRetryMaxMs)} s backoff`;
+  }
+
+  private watchLan(): void {
+    if (this.running && this.lan === null && this.retryHost !== null) {
+      this.reconnect.arm();
+    }
+  }
+
+  private async reconnectLan(): Promise<boolean> {
+    const host = this.retryHost;
+    if (host === null || !this.wantsLan()) {
+      return true;
+    }
+    try {
+      const client = await this.context.openLan(this.did, host);
+      if (!this.wantsLan()) {
+        await client.close();
+        return true;
+      }
+      this.retryHost = null;
+      this.lan = this.lanOf(host, client);
+      this.reach.heard();
+      this.switchTo(lanIo(this.did, client), `the LAN handshake with ${host} succeeded on retry`);
+      this.lan.push.start();
+      return true;
+    } catch (error) {
+      this.context.log.info('xiaomi_device.lan_retry_failed', {
+        did: this.did,
+        host,
+        reason: String(error),
+      });
+      await this.followDevice(host);
+      return false;
+    }
+  }
+
+  private wantsLan(): boolean {
+    return this.running && this.lan === null;
+  }
+
+  private async followDevice(host: string): Promise<void> {
+    const moved = (await this.reach.confirm())?.host ?? null;
+    if (moved !== null && moved !== host) {
+      this.retryHost = moved;
     }
   }
 
@@ -174,13 +267,7 @@ export class DeviceLink {
     if (lan === null) {
       return;
     }
-    const host = await this.context.locate(this.did).catch((error: unknown) => {
-      this.context.log.warn('xiaomi_device.locate_failed', {
-        did: this.did,
-        reason: String(error),
-      });
-      return null;
-    });
+    const host = (await this.reach.confirm())?.host ?? null;
     if (host !== null && host !== lan.host) {
       await this.moveLan(lan, host);
       return;
@@ -192,6 +279,7 @@ export class DeviceLink {
   }
 
   private lanReturned(host: string, client: MiioClient): void {
+    this.reach.heard();
     this.switchTo(lanIo(this.did, client), `the device answers on the LAN again at ${host}`);
   }
 
@@ -199,9 +287,11 @@ export class DeviceLink {
     await previous.push.close();
     await previous.client.close();
     this.lan = null;
+    this.retryHost = host;
     try {
       const client = await this.context.openLan(this.did, host);
       this.lan = this.lanOf(host, client);
+      this.retryHost = null;
       this.switchTo(lanIo(this.did, client), `the device moved from ${previous.host} to ${host}`);
       if (this.running) {
         this.lan.push.start();
@@ -211,6 +301,7 @@ export class DeviceLink {
         this.context.openCloud(this.did),
         `the device moved to ${host}, and the LAN handshake there failed: ${String(error)}`,
       );
+      this.watchLan();
     }
   }
 

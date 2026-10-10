@@ -2,7 +2,7 @@ import {
   API_ENDPOINTS as E,
   AI_ACTION_TYPES,
   ApiError,
-  SIGNAL_SOURCES,
+  automationSignalError,
   type AutomationDefinition,
   type ResponseOf,
   type SignalInput,
@@ -10,6 +10,8 @@ import {
 } from '@smarteverything/domain';
 import { clientOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
+import { installedSignalSources } from '../../signals/sources/installed';
+import type { Store } from '../../store/store';
 import { bound, type Bound } from '../router';
 
 type SignalRoutes = Record<'listSignalKinds' | 'readSignal' | 'listWakes', Bound>;
@@ -20,6 +22,10 @@ function sourceInfo(spec: SignalSourceSpec): ResponseOf<'listSignalKinds'>[numbe
     kinds: spec.kinds.map((kind) => ({
       ...kind,
       fields: kind.fields === 'capabilities' ? kind.fields : [...kind.fields],
+      match: kind.match.map((entry) => ({
+        ...entry,
+        values: entry.values === null ? null : [...entry.values],
+      })),
     })),
   };
 }
@@ -59,10 +65,20 @@ export function requireOwnerForAiActions(
   }
 }
 
+export function requireKnownSignals(
+  store: Pick<Store, 'plugins'>,
+  definition: Pick<AutomationDefinition, 'triggers'>,
+): void {
+  const error = automationSignalError(installedSignalSources(store), definition);
+  if (error !== null) {
+    throw new ApiError('invalid_request', `${error.name}: ${error.message}`);
+  }
+}
+
 export function signalRoutes(context: ServerContext): SignalRoutes {
   const { store, hub } = context;
   return {
-    listSignalKinds: bound(E.listSignalKinds, () => SIGNAL_SOURCES.map(sourceInfo)),
+    listSignalKinds: bound(E.listSignalKinds, () => installedSignalSources(store).map(sourceInfo)),
     readSignal: bound(E.readSignal, ({ query, caller }) => {
       const visible = visibleTo(context, caller);
       return hub.signals.latest(query).filter(visible).slice(0, query.limit);

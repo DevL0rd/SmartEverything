@@ -31,6 +31,8 @@ async function keyIn(source: GeminiKeySource): Promise<string | null> {
 }
 
 export class GeminiKeys {
+  private readonly listeners = new Set<() => void>();
+
   constructor(
     private readonly secrets: SecretStore,
     private readonly fetcher: typeof fetch,
@@ -38,6 +40,13 @@ export class GeminiKeys {
 
   current(): string | null {
     return this.secrets.read().geminiKey;
+  }
+
+  changes(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return (): void => {
+      this.listeners.delete(listener);
+    };
   }
 
   async status(): Promise<AssistantVoiceStatus> {
@@ -61,12 +70,20 @@ export class GeminiKeys {
   async save(key: string): Promise<AssistantVoiceStatus> {
     await this.check(key);
     await this.secrets.update((secrets) => ({ ...secrets, geminiKey: key }));
+    this.changed();
     return this.status();
   }
 
   async remove(): Promise<AssistantVoiceStatus> {
     await this.secrets.update((secrets) => ({ ...secrets, geminiKey: null }));
+    this.changed();
     return this.status();
+  }
+
+  private changed(): void {
+    this.listeners.forEach((listener) => {
+      listener();
+    });
   }
 
   private async check(key: string): Promise<void> {

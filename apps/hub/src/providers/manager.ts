@@ -32,7 +32,7 @@ export interface ProviderManagerOptions {
   readonly registry: ModuleRegistry;
   readonly secrets: SecretStore;
   readonly store: Pick<HubDatabase, 'updateProviderLink'>;
-  readonly inventory: Pick<Inventory, 'apply' | 'markOffline' | 'devicesOf'>;
+  readonly inventory: Pick<Inventory, 'apply' | 'markOffline' | 'devicesOf' | 'setOnline'>;
   readonly state: Pick<StateWriter, 'push'>;
   readonly events: Pick<EventRouter, 'fromProvider'>;
   readonly dataDirectory: string;
@@ -77,7 +77,11 @@ export class ProviderManager implements AdapterDirectory {
     );
   }
 
-  private async startStored(provider: Provider, account: StoredAccount, attempt: number): Promise<void> {
+  private async startStored(
+    provider: Provider,
+    account: StoredAccount,
+    attempt: number,
+  ): Promise<void> {
     this.cancelRetry(provider);
     try {
       await this.start(provider, account);
@@ -206,6 +210,15 @@ export class ProviderManager implements AdapterDirectory {
       },
       event: (event): void => {
         this.options.events.fromProvider(provider, event);
+      },
+      online: (externalId, online): void => {
+        this.options.inventory.setOnline(provider, externalId, online).catch((cause: unknown) => {
+          this.options.log.error('provider.online_not_applied', cause, {
+            provider,
+            externalId,
+            online,
+          });
+        });
       },
       devices: (devices): void => {
         this.applyDevices(provider, devices).catch((cause: unknown) => {

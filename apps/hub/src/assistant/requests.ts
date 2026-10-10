@@ -2,21 +2,25 @@ import { randomUUID } from 'node:crypto';
 import {
   ApiError,
   type AiChatRow,
+  type AiEdit,
+  type AiRetryFrom,
   type AssistantMessageRow,
   type AssistantNewMessage,
   type AssistantOutFile,
   type AssistantPost,
-  type AssistantReply,
   type MessageOrigin,
 } from '@smarteverything/domain';
-import type { StoredAttachment } from '../store/repositories/assistant-chat';
+import {
+  summaryOf,
+  type AssistantMessageChange,
+  type StoredAttachment,
+} from '../store/repositories/assistant-chat';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
 import type { ChatDirectory } from './chat-directory';
 import type { ConversationLog } from './conversation-log';
 import type { AssistantDelivery } from './delivery';
 import type { AssistantFiles } from './files';
-import { chatRequestText, voiceRequestText, type RequestSender } from './request-text';
 import type { VoiceResultHandler, VoiceTask } from './voice-link';
 
 export interface Sender {
@@ -40,59 +44,179 @@ export interface RequestsDeps {
   readonly conversation: ConversationLog;
   readonly delivery: () => AssistantDelivery;
   readonly voiceResult: () => VoiceResultHandler | null;
-  readonly settles: (event: StoredEvent) => boolean;
   readonly done: (event: StoredEvent, text: string, ok: boolean) => void;
 }
 
-function spokenText(task: VoiceTask, sender: RequestSender): string {
+function spokenText(task: VoiceTask, profileName: string): string {
   const said = task.said === null ? '' : `\n\nIn their own words: "${task.said}"`;
-  return `[Spoken by ${sender.profileName} in a voice call on ${task.device}; your final reply is read out loud, so keep it short and speakable, with no markdown] ${task.task}${said}`;
+  return `[Spoken by ${profileName} in a voice call on ${task.device}; your final reply is read out loud, so keep it short and speakable, with no markdown] ${task.task}${said}`;
+}
+
+interface FileReplacement {
+  readonly kept: StoredAttachment[];
+  readonly removed: StoredAttachment[];
+}
+
+const KEPT_FILES: FileReplacement = { kept: [], removed: [] };
+
+interface Rearmed {
+  readonly row: AssistantMessageRow;
+  readonly files: readonly StoredAttachment[];
+  readonly queued: boolean;
 }
 
 export class AssistantRequests {
   constructor(private readonly deps: RequestsDeps) {}
 
   send(sender: Sender, body: AssistantNewMessage, chat: AiChatRow): AssistantMessageRow {
+    const { store } = this.deps;
+    const sent =
+      body.client_message_id === undefined
+        ? undefined
+        : store.assistantSearch.byClientMessageId(chat.id, body.client_message_id);
+    if (sent !== undefined) {
+      return sent;
+    }
+    const row = store.write(() => this.accept(sender, body, chat));
+    this.deps.delivery().added();
+    return row;
+  }
+
+  private accept(sender: Sender, body: AssistantNewMessage, chat: AiChatRow): AssistantMessageRow {
+    const { store } = this.deps;
     const files = this.ownFiles(sender.profileId, body.attachments);
-    const from = this.sender(sender);
     const row = this.deps.conversation.person({
       chat,
       clientId: sender.clientId,
-      author: from.profileName,
+      author: store.profiles.byId(sender.profileId).name,
       text: body.text,
       files,
       origin: { source: 'app', plugin_id: null, device_id: null, name: null },
+      ...(body.client_message_id === undefined ? {} : { clientMessageId: body.client_message_id }),
     });
-    const eventId = randomUUID();
-    this.deps.store.assistantEvents.add({
-      id: eventId,
+    store.assistantEvents.add({
+      id: randomUUID(),
       kind: 'chat',
       chat_id: chat.id,
       message_id: row.id,
       profile_id: sender.profileId,
       client_id: sender.clientId,
-      text: chatRequestText({
-        eventId,
-        sender: from,
-        text: body.text,
-        files: files.map((file) => ({ file, path: this.deps.files.pathOf(file) })),
-      }),
+      text: body.text,
     });
-    this.deps.delivery().added();
+    store.aiChats.update(chat.id, { read: true });
     return row;
+  }
+
+  async retry(chat: AiChatRow, messageId: string, from: AiRetryFrom): Promise<AssistantMessageRow> {
+    return this.replayed(() => this.rearm(chat, messageId, from));
+  }
+
+  async edit(chat: AiChatRow, messageId: string, body: AiEdit): Promise<AssistantMessageRow> {
+    return this.replayed(() => this.reword(chat, messageId, body));
+  }
+
+  private async replayed(work: () => Rearmed): Promise<AssistantMessageRow> {
+    const { row, files, queued } = this.deps.store.write(work);
+    await this.deps.files.remove(files);
+    if (queued) {
+      this.deps.delivery().added();
+    }
+    return row;
+  }
+
+  private rearm(chat: AiChatRow, messageId: string, from: AiRetryFrom): Rearmed {
+    const { message, event } = this.askedMessage(chat, messageId);
+    if (message.state !== from) {
+      return { row: message, files: [], queued: false };
+    }
+    this.requireLatest(chat, message, 'retried');
+    return this.replay(chat, { message, event }, {});
+  }
+
+  private reword(chat: AiChatRow, messageId: string, body: AiEdit): Rearmed {
+    const { message, event } = this.askedMessage(chat, messageId);
+    if (message.origin !== null && message.origin.source !== 'app') {
+      throw new ApiError('invalid_request', 'Only a message written in the app can be edited.');
+    }
+    if (message.state !== 'answered' && message.state !== 'failed') {
+      throw new ApiError('conflict', 'Wait for the AI to finish, or stop it, before editing.');
+    }
+    this.requireLatest(chat, message, 'edited');
+    const replaced =
+      body.attachments === undefined ? KEPT_FILES : this.replaceFiles(message, body.attachments);
+    const change: AssistantMessageChange = {
+      text: body.text,
+      ...(body.attachments === undefined ? {} : { attachments: replaced.kept.map(summaryOf) }),
+    };
+    const done = this.replay(chat, { message, event }, change);
+    return { ...done, files: [...done.files, ...replaced.removed] };
+  }
+
+  private replaceFiles(message: AssistantMessageRow, ids: readonly string[]): FileReplacement {
+    const { assistantChat } = this.deps.store;
+    const kept = this.ownFiles(message.profile_id, ids);
+    const removed = assistantChat.attachmentsOf(message.id);
+    assistantChat.removeAttachments(removed.map((file) => file.id));
+    assistantChat.attachTo(
+      message.id,
+      kept.map((file) => file.id),
+    );
+    return { kept, removed };
+  }
+
+  private askedMessage(
+    chat: AiChatRow,
+    messageId: string,
+  ): { readonly message: AssistantMessageRow; readonly event: StoredEvent } {
+    const { assistantChat: messages, assistantEvents: events } = this.deps.store;
+    const message = messages.message(messageId);
+    const event = events.ofMessage(messageId);
+    if (message.chat_id !== chat.id || message.role !== 'person' || event === undefined) {
+      throw new ApiError(
+        'invalid_request',
+        'Only a message of a person that the AI was asked about can be retried or edited.',
+      );
+    }
+    return { message, event };
+  }
+
+  private requireLatest(chat: AiChatRow, message: AssistantMessageRow, verb: string): void {
+    if (this.deps.store.assistantChat.latestPersonText(chat.id)?.id !== message.id) {
+      throw new ApiError('conflict', `Only the latest message of a chat can be ${verb}.`);
+    }
+  }
+
+  private replay(
+    chat: AiChatRow,
+    asked: { readonly message: AssistantMessageRow; readonly event: StoredEvent },
+    change: AssistantMessageChange,
+  ): Rearmed {
+    const { message, event } = asked;
+    const { assistantChat: messages, assistantEvents: events } = this.deps.store;
+    const files = messages.removeMessages(messages.repliesTo(message.id).map((reply) => reply.id));
+    const row = messages.updateMessage(message.id, {
+      ...change,
+      state: 'queued',
+      reason: null,
+      reason_code: null,
+    });
+    events.add({
+      id: randomUUID(),
+      kind: event.kind,
+      chat_id: chat.id,
+      message_id: message.id,
+      profile_id: event.profile_id,
+      client_id: event.client_id,
+      text: change.text ?? event.text,
+      report_to: event.report_to,
+      hops: event.hops,
+    });
+    return { row, files, queued: true };
   }
 
   voice(task: VoiceTask & { readonly chatId: string }): string {
     const { store } = this.deps;
     const chat = store.aiChats.chat(task.chatId);
-    const client =
-      task.clientId === null ? store.clients.owner() : store.clients.byId(task.clientId);
-    const sender: RequestSender = {
-      profileName: store.profiles.byId(task.profileId).name,
-      profileId: task.profileId,
-      role: client?.role ?? 'owner',
-      device: task.device,
-    };
     const eventId = randomUUID();
     store.assistantEvents.add({
       id: eventId,
@@ -101,35 +225,10 @@ export class AssistantRequests {
       message_id: task.callMessageId,
       profile_id: task.profileId,
       client_id: task.clientId,
-      text:
-        chat.engine.kind === 'openrouter'
-          ? spokenText(task, sender)
-          : voiceRequestText({ eventId, sender, task: task.task, said: task.said }),
+      text: spokenText(task, store.profiles.byId(task.profileId).name),
     });
     this.deps.delivery().added();
     return eventId;
-  }
-
-  async reply(
-    body: AssistantReply,
-    local: boolean,
-  ): Promise<{ messageId: string | null; delivered: boolean }> {
-    const event = this.deps.store.assistantEvents.event(body.eventId);
-    if (body.progress) {
-      return { messageId: null, delivered: this.progress(event, body.text) };
-    }
-    const files = await Promise.all(
-      body.files.map((file) => this.deps.files.fromResponder(event.profile_id, file, local)),
-    );
-    const row = this.deps.conversation.responderInChat({
-      chat: this.deps.store.aiChats.chat(event.chat_id),
-      replyTo: event.kind === 'voice' ? null : event.message_id,
-      text: body.text,
-      files,
-    });
-    this.deps.conversation.repliedTo(event.id);
-    this.answered(event, body.text);
-    return { messageId: row.id, delivered: true };
   }
 
   async post(
@@ -146,7 +245,7 @@ export class AssistantRequests {
     }
     const chat = this.deps.chats.defaultChat(profileId);
     const files = await Promise.all(
-      body.files.map((file) => this.deps.files.fromResponder(profileId, file, local)),
+      body.files.map((file) => this.deps.files.fromOutFile(profileId, file, local)),
     );
     return this.deps.conversation.responderInChat({
       chat,
@@ -173,9 +272,9 @@ export class AssistantRequests {
     return eventId;
   }
 
-  async inbound(turn: InboundTurn): Promise<string> {
+  async inbound(turn: InboundTurn): Promise<{ eventId: string; messageId: string }> {
     const files = await Promise.all(
-      turn.files.map((file) => this.deps.files.fromResponder(turn.chat.profile_id, file, true)),
+      turn.files.map((file) => this.deps.files.fromOutFile(turn.chat.profile_id, file, true)),
     );
     const row = this.deps.conversation.person({
       chat: turn.chat,
@@ -196,7 +295,7 @@ export class AssistantRequests {
       text: turn.engineText,
     });
     this.deps.delivery().added();
-    return eventId;
+    return { eventId, messageId: row.id };
   }
 
   finished(event: StoredEvent, text: string, ok: boolean): void {
@@ -205,20 +304,6 @@ export class AssistantRequests {
       this.deps.voiceResult()?.(event.id, text, false);
     }
     this.deps.done(event, text, ok);
-  }
-
-  private progress(event: StoredEvent, text: string): boolean {
-    this.deps.conversation.step(event.id, text);
-    return event.kind === 'voice'
-      ? (this.deps.voiceResult()?.(event.id, text, true) ?? false)
-      : true;
-  }
-
-  private answered(event: StoredEvent, text: string): void {
-    this.finished(event, text, true);
-    if (this.deps.settles(event)) {
-      this.deps.conversation.settled(event.id);
-    }
   }
 
   private ownFiles(profileId: string, ids: readonly string[]): StoredAttachment[] {
@@ -232,16 +317,5 @@ export class AssistantRequests {
       }
       return file;
     });
-  }
-
-  private sender(sender: Sender): RequestSender {
-    const { store } = this.deps;
-    const client = store.clients.byId(sender.clientId);
-    return {
-      profileName: store.profiles.byId(sender.profileId).name,
-      profileId: sender.profileId,
-      role: client.role,
-      device: client.name,
-    };
   }
 }

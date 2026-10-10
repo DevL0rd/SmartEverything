@@ -1,5 +1,5 @@
 import type { CommandRow, MediaSize, RowChange } from '@smarteverything/domain';
-import { ApiError } from '@smarteverything/domain';
+import { ApiError, jsonEquals } from '@smarteverything/domain';
 import { XiaomiAdapter } from './adapters/xiaomi';
 import { onlyRunBookkeeping } from './automations/changes';
 import { areaOf, assemble, reportFailure, type Core, type HubParts } from './hub-assembly';
@@ -9,6 +9,7 @@ import type { AutomationAiSlot } from './automations/automation-ai';
 import type { SignalBus } from './signals/bus';
 import { feedSignals } from './signals/sources/feed';
 import { feedContextOf } from './signals/sources/feed-context';
+import { recentSleepEnd } from './signals/sources/sleep-end';
 import { ScaleReadings } from './local/scale-readings';
 import type { BluetoothIdentity } from './local/setup-types';
 import { LocalWatches } from './local/watches';
@@ -48,12 +49,20 @@ function placeChanged(change: Extract<RowChange, { table: 'settings' }>): boolea
   );
 }
 
+function pluginSignalsChanged(change: Extract<RowChange, { table: 'plugins' }>): boolean {
+  const { record, oldRecord } = change;
+  return record === null || oldRecord === null || !jsonEquals(record.manifest, oldRecord.manifest);
+}
+
 function needsReload(change: RowChange): boolean {
   if (change.table === 'automations') {
     return !onlyRunBookkeeping(change);
   }
   if (change.table === 'settings') {
     return placeChanged(change);
+  }
+  if (change.table === 'plugins') {
+    return pluginSignalsChanged(change);
   }
   return change.table === 'scenes';
 }
@@ -64,7 +73,12 @@ function reacting(parts: HubParts, core: Core): (change: RowChange) => void {
     if (change.table === 'cameras' && change.record !== null) {
       core.cameras.cameraChanged(change.record);
     }
-    const moment = feedContextOf(parts.clock.now(), () => parts.store.settings.read().time_zone);
+    const now = parts.clock.now();
+    const moment = feedContextOf(
+      now,
+      () => parts.store.settings.read().time_zone,
+      (profileId) => recentSleepEnd(parts.store, profileId, now),
+    );
     for (const signal of feedSignals(change, moment)) {
       core.signals.emit(signal);
     }
@@ -114,6 +128,7 @@ function startLocal(parts: HubParts, core: Core): LocalParts {
     secrets: parts.secrets,
     local,
     wearables,
+    now: parts.clock.now,
     log: areaOf(parts, 'watch'),
   });
   return { local, watches, readings, phones: phoneNodesOf(parts, core) };

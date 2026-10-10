@@ -34,7 +34,7 @@ const RECORD_TYPES = [
   'SexualActivity',
 ] as const satisfies readonly HealthRecordType[];
 
-const DAY = z.iso.date();
+const DAY = z.iso.date('must be a day written YYYY-MM-DD, such as 2026-10-10');
 
 const HEALTH_RANGE = z
   .strictObject({
@@ -44,7 +44,9 @@ const HEALTH_RANGE = z
       .array(z.enum(HEALTH_METRICS))
       .min(1)
       .optional()
-      .describe('Only these daily metrics, such as steps, sleep, energy_in, protein or hydration'),
+      .describe(
+        'Only these daily metrics, such as steps, sleep, protein or hydration; energy_in is the calories eaten, active_energy and total_energy the calories burned',
+      ),
     records: z
       .boolean()
       .default(true)

@@ -1,3 +1,5 @@
+import type { PluginRequester } from '@smarteverything/domain';
+
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
 export interface ToolSpec {
@@ -22,23 +24,22 @@ export interface HubTool extends ToolSpec {
   readonly annotations: ToolAnnotationHints;
   readonly origin: ToolOrigin;
   readonly humanOnly: boolean;
-  readonly confirms: (args: Readonly<Record<string, unknown>>) => boolean;
 }
 
-export function removesThings(annotations: ToolAnnotationHints): boolean {
-  return annotations.destructiveHint && !annotations.openWorldHint;
-}
-
-export type ToolVia =
-  'chat' | 'voice' | 'wake' | 'worker' | 'plugin' | 'schedule' | 'automation' | 'app';
+export type ToolVia = 'chat' | 'voice' | 'wake' | 'plugin' | 'schedule' | 'automation' | 'app';
 
 export interface ToolCaller {
   readonly profileId: string;
   readonly role: 'owner' | 'member';
   readonly chatId: string | null;
   readonly via: ToolVia;
-  readonly confirmed: boolean;
   readonly clientId: string | null;
+  readonly pluginRequester?: PluginRequester;
+  readonly pluginId?: string;
+}
+
+export function needsOwnDevice(caller: ToolCaller): boolean {
+  return caller.clientId === null && caller.role !== 'owner';
 }
 
 export interface ToolPicture {

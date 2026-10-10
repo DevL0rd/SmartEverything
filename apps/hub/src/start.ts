@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { HubStatus, PublicStatus } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ProviderModule } from './adapters/contract';
-import { systemClock, type Clock } from './clock';
+import { rearmTimers, systemClock, type Clock } from './clock';
 import { lockDataDirectory, type DataLock } from './data-lock';
 import type { RunningExtension, ServerExtension } from './extensions';
 import { bodyAlertsExtension } from './extensions/body-alerts';
@@ -17,6 +17,7 @@ import { nodeFirewallSystem, type FirewallSystem } from './firewall/system';
 import { pushExtension } from './extensions/push';
 import { smartThingsWiring } from './extensions/smartthings';
 import type { ModuleRegistry } from './providers/registry-types';
+import { watchResume } from './clock/resume-watch';
 import { openSecretStore } from './secrets/open';
 import { buildServer, type BuiltServer } from './server/build';
 import { DATABASE_FILE } from './service/configuration';
@@ -189,6 +190,11 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
   const clock = options.clock ?? systemClock;
   await mkdir(options.dataDirectory, { recursive: true, mode: 0o700 });
   const undo: Undo[] = [];
+  const stopResumeWatch =
+    options.clock === undefined
+      ? watchResume({ log: options.log, onResume: rearmTimers })
+      : (): void => undefined;
+  undo.push(stopResumeWatch);
   try {
     const started = await boot(options, clock, undo);
     const ownerToken = await started.built.access.ensureOwner();
@@ -201,7 +207,10 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       rotateOwnerToken: () => started.built.access.rotateOwner(),
       status: started.built.context.status,
       publicStatus: started.built.context.publicStatus,
-      stop: () => stopAll(started),
+      stop: async (): Promise<void> => {
+        stopResumeWatch();
+        await stopAll(started);
+      },
     };
   } catch (cause) {
     await rollBack(undo, options.log);

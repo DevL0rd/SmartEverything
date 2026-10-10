@@ -1,4 +1,4 @@
-import type { WakeAiAction } from '@smarteverything/domain';
+import { leastTrustedOrigin, type PluginOrigin, type WakeAiAction } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ActionOrigin } from '../automations/actions';
 import type { Cancel, Clock } from '../clock';
@@ -7,13 +7,14 @@ import type { Store } from '../store/store';
 import { wakeRefusal, type WakeRefusalStore } from './wake-refusal';
 import { WakeText, type WakeLines, type WakeNameStore } from './wake-text';
 
-export const WAKE_GATHER_MS = 3000;
+export const WAKE_GATHER_MS = 1000;
 
 export interface WakeTurnInput {
   readonly profileId: string;
   readonly chatId: string | null;
   readonly title: string;
   readonly text: string;
+  readonly plugin: PluginOrigin | null;
 }
 
 export interface WakeTurns {
@@ -144,6 +145,7 @@ export class WakeRunner {
         chatId: batch.chatId,
         title: batch.title,
         text: batch.items.map((item) => item.lines.text).join('\n\n'),
+        plugin: leastTrustedOrigin(batch.items.flatMap((item) => item.origin.plugin ?? [])),
       });
       this.settleAll(batch, { state: 'woke', reason: null, chatId }, null);
     } catch (cause) {

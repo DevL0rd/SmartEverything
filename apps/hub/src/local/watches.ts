@@ -1,6 +1,8 @@
 import {
   ApiError,
   WATCH_AUTH_KEY,
+  type ClientRow,
+  type WatchBridge,
   type DeviceRow,
   WATCH_CONFIG,
   WATCH_WORKOUT,
@@ -22,12 +24,15 @@ import type { WearableSource } from './setup-types';
 import { cloudRowOf, externalIdOfWatch } from './watch-setup';
 import type { WatchActionTarget } from './watch-actions';
 import { saveWatchUpload, type UploadResult, type WatchUpload } from './watch-uploads';
+import { WatchBridges } from './watch-bridge';
+import { screenWatchRecords } from './watch-plausibility';
 
 export interface LocalWatchesOptions {
   readonly store: Store;
   readonly secrets: SecretStore;
   readonly local: LocalDevices;
   readonly wearables: WearableSource;
+  readonly now: () => Date;
   readonly log: Logger;
 }
 
@@ -36,8 +41,25 @@ function profileOf(entry: LocalDeviceEntry): string | null {
   return typeof profileId === 'string' ? profileId : null;
 }
 
+export interface SavedWatchUpload extends UploadResult {
+  readonly rejected: number;
+}
+
 export class LocalWatches {
-  constructor(private readonly options: LocalWatchesOptions) {}
+  private readonly bridges: WatchBridges;
+
+  constructor(private readonly options: LocalWatchesOptions) {
+    this.bridges = new WatchBridges({
+      observe: (externalId, values): Promise<void> => options.local.observe(externalId, values),
+      now: options.now,
+      log: options.log,
+    });
+  }
+
+  takeOverBridge(device: DeviceRow, profileId: string, client: ClientRow): Promise<WatchBridge> {
+    this.ownedBy(device, profileId);
+    return this.bridges.takeOver(device, client);
+  }
 
   async candidates(): Promise<WatchCandidates> {
     const list = await this.options.wearables();
@@ -59,30 +81,41 @@ export class LocalWatches {
     };
   }
 
-  mine(profileId: string, requestedBy: string): { watches: PhoneWatch[] } {
-    const watches = this.entries()
-      .filter((entry) => profileOf(entry) === profileId)
-      .map((entry) => this.phoneWatchOf(entry));
-    this.options.log.info('watch.keys_served', { requestedBy, profileId, watches: watches.length });
+  async mine(profileId: string, client: ClientRow): Promise<{ watches: PhoneWatch[] }> {
+    const watches: PhoneWatch[] = [];
+    for (const entry of this.entries().filter((candidate) => profileOf(candidate) === profileId)) {
+      const device = this.options.local.deviceOf(entry);
+      if (device === undefined || (await this.bridges.acquire(device, client)) === null) {
+        watches.push(this.phoneWatchOf(entry));
+      }
+    }
+    this.options.log.info('watch.keys_served', {
+      requestedBy: client.id,
+      profileId,
+      watches: watches.length,
+    });
     return { watches };
   }
 
-  async report(device: DeviceRow, profileId: string, state: WatchState, by: string): Promise<void> {
-    const entry = this.watchOf(device);
-    if (profileOf(entry) !== profileId) {
-      throw new ApiError('forbidden', `${device.name} belongs to another person’s phone.`);
-    }
+  async report(
+    device: DeviceRow,
+    profileId: string,
+    state: WatchState,
+    client: ClientRow,
+  ): Promise<void> {
+    const entry = this.ownedBy(device, profileId);
+    await this.bridges.require(device, client);
     const { at, config, workout, ...rest } = state;
     await this.options.local.observe(entry.externalId, {
       ...rest,
       ...(config === undefined ? {} : { config }),
       ...(workout === undefined ? {} : { workout }),
       reportedAt: at,
-      reportedBy: by,
+      reportedBy: client.id,
     });
     const payload = {
       device: device.id,
-      by,
+      by: client.id,
       phase: state.phase,
       battery: state.battery,
       error: state.error,
@@ -94,22 +127,47 @@ export class LocalWatches {
     }
   }
 
-  save(device: DeviceRow, profileId: string, upload: WatchUpload, by: string): UploadResult {
-    const entry = this.watchOf(device);
-    if (profileOf(entry) !== profileId) {
-      throw new ApiError('forbidden', `${device.name} belongs to another person’s phone.`);
+  async save(
+    device: DeviceRow,
+    profileId: string,
+    upload: WatchUpload,
+    client: ClientRow,
+  ): Promise<SavedWatchUpload> {
+    this.ownedBy(device, profileId);
+    await this.bridges.require(device, client);
+    const screened = screenWatchRecords(upload.records, this.options.now());
+    for (const failure of screened.rejected) {
+      this.options.log.warn('watch.record_implausible', {
+        device: device.id,
+        by: client.id,
+        record: failure.detail.recordId,
+        type: failure.detail.recordType,
+        field: failure.detail.field,
+        value: failure.detail.value,
+        limit: failure.detail.limit,
+        dropped: screened.dropped,
+      });
     }
-    const result = saveWatchUpload(this.options.store, { profileId, deviceId: device.id }, upload);
+    const result = saveWatchUpload(
+      this.options.store,
+      { profileId, deviceId: device.id },
+      { ...upload, records: screened.accepted },
+    );
     this.options.log.info('watch.records_saved', {
       device: device.id,
-      by,
+      by: client.id,
       records: result.saved,
-      types: [...new Set(upload.records.map((record) => record.type))].join(', '),
+      types: [...new Set(screened.accepted.map((record) => record.type))].join(', '),
       samples: result.samples,
       routes: upload.routes.length,
       unmatchedRoutes: result.unmatchedRoutes.length,
+      rejected: screened.dropped,
     });
-    return result;
+    return { ...result, rejected: screened.dropped };
+  }
+
+  bridgeClientOf(device: DeviceRow): string | null {
+    return this.bridges.holderOf(device)?.clientId ?? null;
   }
 
   target(device: DeviceRow): WatchActionTarget {
@@ -118,7 +176,12 @@ export class LocalWatches {
     if (profileId === null) {
       throw new ApiError('conflict', `${device.name} is not assigned to anyone yet.`);
     }
-    return { deviceId: device.id, profileId, name: device.display_name ?? device.name };
+    return {
+      deviceId: device.id,
+      profileId,
+      name: device.display_name ?? device.name,
+      bridgeClientId: this.bridgeClientOf(device),
+    };
   }
 
   config(device: DeviceRow): WatchConfigReport {
@@ -156,6 +219,14 @@ export class LocalWatches {
 
   days(profileId: string, from: string, to: string): { days: WatchDayRow[] } {
     return { days: this.options.store.watchDays.window(profileId, from, to) };
+  }
+
+  private ownedBy(device: DeviceRow, profileId: string): LocalDeviceEntry {
+    const entry = this.watchOf(device);
+    if (profileOf(entry) !== profileId) {
+      throw new ApiError('forbidden', `${device.name} belongs to another person’s phone.`);
+    }
+    return entry;
   }
 
   private entries(): LocalDeviceEntry[] {

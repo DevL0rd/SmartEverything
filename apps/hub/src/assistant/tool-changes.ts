@@ -50,6 +50,13 @@ export class ToolChanges {
     this.check(hub);
   }
 
+  stop(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+
   private settle(hub: ToolHub): void {
     if (this.timer !== null) {
       clearTimeout(this.timer);

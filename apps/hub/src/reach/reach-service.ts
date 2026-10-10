@@ -1,16 +1,20 @@
-import type {
-  AiOutreachRow,
-  CallEnding,
-  CallPerson,
-  NotifyPerson,
-  Speak,
-  StartConversation,
+import {
+  SPEECH_FAILED,
+  type AiOutreachRow,
+  type CallEnding,
+  type CallPerson,
+  type NotifyPerson,
+  type PluginOrigin,
+  type Speak,
+  type StartConversation,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { PluginSpeakers } from '../plugins/plugin-reach';
 import type { OutreachAnswer, OutreachAnswering, OutreachDesk } from '../assistant-voice/outreach';
 import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import { speakOnce, type AnnouncingDeps } from './announcing';
+import type { AppSpeech } from './app-speech';
 import type { CameraParts } from './camera-conversation';
 import type { CameraFraming } from './camera-framing';
 import type { OpenLive } from './channel-conversation';
@@ -25,20 +29,22 @@ import { appOwner, resolveTarget, type ResolvedTarget } from './targets';
 
 export interface ReachAssistant {
   readonly conversationChat: (profileId: string, title: string) => string;
-  readonly turn: (chatId: string, text: string) => void;
+  readonly turn: (chatId: string, text: string, origin: PluginOrigin | null) => void;
   readonly message: (personId: string, text: string) => Promise<string>;
   readonly aiName: () => string;
   readonly liveVideo: () => boolean;
+  readonly muteMic: () => boolean;
 }
 
 export interface ReachServiceOptions {
   readonly store: Store;
   readonly rules: ReachRules;
+  readonly speakers: Pick<PluginSpeakers, 'forDevice'>;
   readonly assistant: ReachAssistant;
   readonly transports: Readonly<Record<RingDevice, RingTransport>>;
   readonly host: HostVoice;
-  readonly announce: AnnouncingDeps['announce'];
-  readonly deliver: AnnouncingDeps['deliver'];
+  readonly say: AnnouncingDeps['say'];
+  readonly app: Pick<AppSpeech, 'play' | 'refusal'>;
   readonly camera: CameraParts;
   readonly framing: CameraFraming;
   readonly openLive: OpenLive;
@@ -80,6 +86,7 @@ export class ReachService implements OutreachDesk {
       chatFor: (asker, label): string => this.chatFor(asker, asker.profileId, label),
       aiName: options.assistant.aiName,
       liveVideo: options.assistant.liveVideo,
+      muteMic: options.assistant.muteMic,
     });
   }
 
@@ -109,7 +116,7 @@ export class ReachService implements OutreachDesk {
   }
 
   async startConversation(asker: Asker, body: StartConversation): Promise<AiOutreachRow> {
-    const target = resolveTarget(this.options.store, this.options.rules, asker, body.target);
+    const target = resolveTarget(this.options.store, this.options, asker, body.target);
     if (target.kind === 'app') {
       const device = target.client.platform === 'android' ? 'phone' : 'desktop';
       return this.ring(asker, {
@@ -119,6 +126,11 @@ export class ReachService implements OutreachDesk {
         reason: body.reason,
         urgent: body.urgent,
       });
+    }
+    if (target.kind === 'plugin') {
+      throw new ReachRefusedError(
+        `${target.label} can be spoken through, but a conversation there starts from the device itself.`,
+      );
     }
     withinLimit(this.options.store, asker.profileId, this.options.clock.now());
     return target.kind === 'camera'
@@ -131,7 +143,7 @@ export class ReachService implements OutreachDesk {
     body: { cameraId: string; reason: string },
     heard?: () => Int16Array,
   ): Promise<AiOutreachRow> {
-    const resolved = resolveTarget(this.options.store, this.options.rules, asker, {
+    const resolved = resolveTarget(this.options.store, this.options, asker, {
       kind: 'device',
       deviceId: body.cameraId,
     });
@@ -144,17 +156,21 @@ export class ReachService implements OutreachDesk {
 
   async speak(asker: Asker, body: Speak): Promise<AiOutreachRow> {
     const { store } = this.options;
-    const target = resolveTarget(store, this.options.rules, asker, body.target);
+    const target = resolveTarget(store, this.options, asker, body.target);
     const personId = target.kind === 'app' ? appOwner(store, target.client) : asker.profileId;
     if (target.kind === 'app') {
       this.mayDisturb(asker, personId, false);
+      const refusal = this.options.app.refusal(target.client);
+      if (refusal !== null) {
+        throw new ReachRefusedError(refusal);
+      }
     }
     withinLimit(store, personId, this.options.clock.now());
     const row = store.aiOutreach.add({
       profile_id: personId,
       chat_id: null,
       from_chat_id: asker.chatId,
-      how: target.kind,
+      how: target.kind === 'plugin' ? 'message' : target.kind,
       target: targetId(target),
       target_label: target.label,
       reason: body.text.slice(0, 500),
@@ -163,11 +179,14 @@ export class ReachService implements OutreachDesk {
       detail: null,
       expires_at: null,
       clients: target.kind === 'app' ? [target.client.id] : [],
+      origin: asker.origin ?? null,
     });
-    await this.announce(row, target, asker, body.text);
+    const outcome = { returned: false };
+    await this.announce(row, target, { clientId: asker.clientId, text: body.text }, outcome);
+    outcome.returned = true;
     const after = store.aiOutreach.byId(row.id);
     if (after.state === 'failed') {
-      throw new ReachRefusedError(after.detail ?? 'That could not be said.');
+      throw new ReachRefusedError(after.detail ?? SPEECH_FAILED);
     }
     return after;
   }
@@ -188,6 +207,7 @@ export class ReachService implements OutreachDesk {
       state: 'sent',
       detail: 'In their newest chat, with a notification.',
       expires_at: null,
+      origin: asker.origin ?? null,
     });
   }
 
@@ -240,27 +260,37 @@ export class ReachService implements OutreachDesk {
       reason: ring.reason,
       urgent: ring.urgent,
       detail: null,
+      origin: asker.origin ?? null,
     });
   }
 
   private async announce(
     row: AiOutreachRow,
     target: ResolvedTarget,
-    asker: Asker,
-    text: string,
+    line: { readonly clientId: string | null; readonly text: string },
+    outcome: { returned: boolean },
   ): Promise<void> {
+    const { text } = line;
     const { store, log } = this.options;
     const done = (failure: string | null): void => {
       store.aiOutreach.step(
         row.id,
         failure === null ? { state: 'sent' } : { state: 'failed', detail: failure },
       );
+      if (failure !== null && outcome.returned) {
+        this.closed(store.aiOutreach.byId(row.id));
+      }
     };
     try {
-      await speakOnce(
-        { ...this.options, aiName: this.options.assistant.aiName },
-        { id: row.id, profileId: row.profile_id, clientId: asker.clientId, text, target, done },
-      );
+      if (target.kind === 'plugin') {
+        await target.speaker.speak(text);
+        done(null);
+      } else {
+        await speakOnce(
+          { ...this.options, aiName: this.options.assistant.aiName },
+          { id: row.id, profileId: row.profile_id, clientId: line.clientId, text, target, done },
+        );
+      }
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : String(cause);
       done(reason);
@@ -285,7 +315,7 @@ export class ReachService implements OutreachDesk {
       return;
     }
     try {
-      this.options.assistant.turn(from, outcomeText(row));
+      this.options.assistant.turn(from, outcomeText(row), row.origin);
     } catch (cause) {
       this.options.log.error('reach.outcome_failed', cause, { outreachId: row.id });
     }
@@ -301,6 +331,7 @@ export class ReachService implements OutreachDesk {
 function targetId(target: ResolvedTarget): string {
   switch (target.kind) {
     case 'camera':
+    case 'plugin':
       return target.device.id;
     case 'channel':
       return target.channel.id;

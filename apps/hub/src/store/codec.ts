@@ -3,6 +3,7 @@ import { SQL_FLAG, SQL_JSON } from './sql';
 
 export interface Codec {
   readonly flags?: readonly string[];
+  readonly nullableFlags?: readonly string[];
   readonly json?: readonly string[];
 }
 
@@ -12,6 +13,9 @@ function converted(raw: Readonly<Record<string, unknown>>, codec: Codec): Record
   const row: Record<string, unknown> = { ...raw };
   for (const column of codec.flags ?? []) {
     row[column] = SQL_FLAG.parse(raw[column]);
+  }
+  for (const column of codec.nullableFlags ?? []) {
+    row[column] = raw[column] === null ? null : SQL_FLAG.parse(raw[column]);
   }
   for (const column of codec.json ?? []) {
     const text = raw[column];

@@ -1,7 +1,10 @@
-import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, ApiError, type PluginOrigin } from '@smarteverything/domain';
+import { pluginOriginOf } from '../../ai-tools/plugin-turn';
 import { presenceOf, type PresenceSources } from '../../reach/presence';
 import { ReachRefusedError } from '../../reach/reach-errors';
 import { mayManage, type Asker } from '../../reach/reach-guards';
+import type { AppSpeech } from '../../reach/app-speech';
+import { speechTextShown } from '../../reach/speech-text';
 import type { ReachRules } from '../../reach/reach-rules';
 import type { ReachService } from '../../reach/reach-service';
 import { clientOf, profileIdOf, type Caller } from '../auth';
@@ -11,11 +14,13 @@ import { bound, type Bound } from '../router';
 export interface Reach {
   readonly service: ReachService;
   readonly rules: ReachRules;
+  readonly speech: AppSpeech;
   readonly presence: PresenceSources;
 }
 
 export type ReachRoutes = Record<
   | 'readPresence'
+  | 'readAiSpeech'
   | 'callPerson'
   | 'speak'
   | 'startConversation'
@@ -28,6 +33,10 @@ export type ReachRoutes = Record<
   Bound
 >;
 
+function originOf(caller: Caller): PluginOrigin | null {
+  return caller.kind === 'client' ? pluginOriginOf(caller) : null;
+}
+
 function askerOf(context: ServerContext, caller: Caller): Asker {
   const client = clientOf(caller);
   return {
@@ -35,6 +44,7 @@ function askerOf(context: ServerContext, caller: Caller): Asker {
     role: client.role,
     clientId: client.id,
     chatId: caller.kind === 'client' ? (caller.chatId ?? null) : null,
+    origin: originOf(caller),
   };
 }
 
@@ -82,7 +92,7 @@ function reachingRoutes(
 function outreachRoutes(
   context: ServerContext,
   reach: Reach,
-): Pick<ReachRoutes, 'listOutreach' | 'endOutreach' | 'declineOutreach'> {
+): Pick<ReachRoutes, 'listOutreach' | 'endOutreach' | 'declineOutreach' | 'readAiSpeech'> {
   const { store } = context;
   const { service } = reach;
   return {
@@ -95,6 +105,10 @@ function outreachRoutes(
         return service.hangUp(params.outreachId);
       }),
     ),
+    readAiSpeech: bound(E.readAiSpeech, ({ params, caller }) => {
+      const { id } = clientOf(caller);
+      return { ...reach.speech.fetch(id, params.speechId), showText: speechTextShown(store, id) };
+    }),
     declineOutreach: bound(E.declineOutreach, ({ params, caller }) =>
       refusing(() => service.ringing.decline(params.outreachId, clientOf(caller).id)),
     ),

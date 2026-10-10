@@ -36,6 +36,8 @@ export class RecordingSink implements AdapterSink {
     this.notify();
   };
 
+  readonly online = (): void => undefined;
+
   readonly failure = (failure: AdapterFailure): void => {
     this.failures.push(failure);
     this.notify();

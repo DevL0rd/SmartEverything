@@ -135,8 +135,10 @@ describe('connecting an assistant', () => {
       await rpc(booted.base, tokens.access_token, {
         method: 'tools/call',
         params: {
-          name: 'set_device',
-          arguments: { deviceId: lamp?.id, capability: 'brightness', value: 40 },
+          name: 'control_devices',
+          arguments: {
+            changes: [{ target: { deviceIds: [lamp?.id] }, capability: 'brightness', value: 40 }],
+          },
         },
       }),
     );
@@ -279,8 +281,12 @@ describe('the owner approval', () => {
     const html = await page.text();
     expect(html).toContain('Allow Claude to use Home?');
     expect(html).toContain('claude.ai');
-    expect(page.headers.get('content-security-policy')).toBe(
-      "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://claude.ai; frame-ancestors 'none'; base-uri 'none'",
+    const policy = page.headers.get('content-security-policy') ?? '';
+    const nonce = /script-src 'nonce-([A-Za-z0-9+/]+=*)'/.exec(policy)?.[1] ?? '';
+    expect(nonce).not.toBe('');
+    expect(html).toContain(`nonce="${nonce}"`);
+    expect(policy.replace(nonce, 'NONCE')).toBe(
+      "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-NONCE'; connect-src 'self'; form-action 'self' https://claude.ai; frame-ancestors 'none'; base-uri 'none'",
     );
     expect(page.headers.get('x-frame-options')).toBe('DENY');
     const request = await consentPage(booted.base, clientId, challenge);

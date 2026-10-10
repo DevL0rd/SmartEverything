@@ -50,6 +50,7 @@ function context(
         event: (event) => recorded.events.push(event),
         devices: () => undefined,
         failure: () => undefined,
+        online: () => undefined,
       },
       now: () => new Date('2026-10-10T10:00:00.000Z'),
     },

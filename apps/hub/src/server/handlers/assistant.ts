@@ -13,27 +13,10 @@ type AssistantChatRoutes = Record<
   | 'sendAssistantUploadChunk'
   | 'finishAssistantUpload'
   | 'assistantAttachmentLinks'
-  | 'readAssistantModels'
-  | 'readAssistantUsage'
-  | 'setAssistantResponder'
   | 'updateAssistantSettings'
-  | 'connectAssistantApp'
-  | 'disconnectAssistantApp'
-  | 'openAssistantConversation'
-  | 'newAssistantConversation'
-  | 'replyAssistant'
   | 'postAssistant',
   Bound
 >;
-
-function onDesktop(caller: Caller): void {
-  if (!clientOf(caller).built_in) {
-    throw new ApiError(
-      'forbidden',
-      'Do this in the desktop app on the computer that runs SmartEverything.',
-    );
-  }
-}
 
 function local(caller: Caller): boolean {
   return caller.kind === 'client' && caller.via === 'assistant' && caller.local === true;
@@ -51,10 +34,7 @@ function chatRoutes(
 > {
   const { store, assistant } = context;
   return {
-    readAssistant: bound(E.readAssistant, () => {
-      assistant.refreshApps();
-      return assistant.status();
-    }),
+    readAssistant: bound(E.readAssistant, () => assistant.status()),
     listAssistantMessages: bound(E.listAssistantMessages, ({ query, caller }) =>
       assistant.messages(
         assistant.chats.defaultChat(profileIdOf(store, caller)).id,
@@ -129,54 +109,12 @@ function fileRoutes(
   };
 }
 
-function responderRoutes(
+function settingsRoutes(
   context: ServerContext,
-): Pick<
-  AssistantChatRoutes,
-  | 'readAssistantModels'
-  | 'readAssistantUsage'
-  | 'setAssistantResponder'
-  | 'updateAssistantSettings'
-  | 'connectAssistantApp'
-  | 'disconnectAssistantApp'
-  | 'openAssistantConversation'
-  | 'newAssistantConversation'
-> {
+): Pick<AssistantChatRoutes, 'updateAssistantSettings' | 'postAssistant'> {
   const { assistant } = context;
   return {
-    readAssistantModels: bound(E.readAssistantModels, () => assistant.models()),
-    readAssistantUsage: bound(E.readAssistantUsage, () => assistant.usage()),
-    setAssistantResponder: bound(E.setAssistantResponder, ({ body }) =>
-      assistant.update({ mode: body.mode }),
-    ),
     updateAssistantSettings: bound(E.updateAssistantSettings, ({ body }) => assistant.update(body)),
-    connectAssistantApp: bound(E.connectAssistantApp, ({ params, caller }) => {
-      onDesktop(caller);
-      return assistant.connect(params.app, true);
-    }),
-    disconnectAssistantApp: bound(E.disconnectAssistantApp, ({ params, caller }) => {
-      onDesktop(caller);
-      return assistant.connect(params.app, false);
-    }),
-    openAssistantConversation: bound(E.openAssistantConversation, async ({ caller }) => {
-      onDesktop(caller);
-      await assistant.openConversation(profileIdOf(context.store, caller));
-      return DONE_REPLY;
-    }),
-    newAssistantConversation: bound(E.newAssistantConversation, ({ caller }) =>
-      assistant.newConversation(profileIdOf(context.store, caller)),
-    ),
-  };
-}
-
-function toolRoutes(
-  context: ServerContext,
-): Pick<AssistantChatRoutes, 'replyAssistant' | 'postAssistant'> {
-  const { assistant } = context;
-  return {
-    replyAssistant: bound(E.replyAssistant, ({ body, caller }) =>
-      assistant.reply(body, local(caller)),
-    ),
     postAssistant: bound(E.postAssistant, ({ body, caller }) =>
       assistant.post(body, local(caller)),
     ),
@@ -187,7 +125,6 @@ export function assistantChatRoutes(context: ServerContext): AssistantChatRoutes
   return {
     ...chatRoutes(context),
     ...fileRoutes(context),
-    ...responderRoutes(context),
-    ...toolRoutes(context),
+    ...settingsRoutes(context),
   };
 }

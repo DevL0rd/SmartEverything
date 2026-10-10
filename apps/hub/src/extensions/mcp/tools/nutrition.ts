@@ -2,6 +2,7 @@ import {
   API_ENDPOINTS as E,
   BARCODE,
   FOOD_CANDIDATE,
+  FOOD_MULTIPLIER,
   MEALS,
   MEAL_TYPES,
   NUTRITION_PREF,
@@ -41,9 +42,14 @@ const LOG_FOOD = z
       .positive()
       .max(10_000)
       .optional()
-      .describe('Grams or ml; one serving when left out'),
+      .describe('Grams or ml of one portion; one serving when left out'),
+    multiplier: FOOD_MULTIPLIER.optional().describe(
+      'How many portions were eaten, applied to amount: 0.5 for half the bag, 2 for two; 1 when left out',
+    ),
     meal: z.enum(MEALS),
-    at: MOMENT_ARGUMENT.optional().describe('When it was eaten or drunk; now when left out'),
+    at: MOMENT_ARGUMENT.optional().describe(
+      'When it was eaten or drunk, an ISO time that may be in the past, for example last night; now when left out',
+    ),
     profileId: PROFILE,
   })
   .refine(
@@ -103,6 +109,7 @@ async function foodLogged(context: ToolContext, input: LogFood): Promise<unknown
     food,
     foodId,
     amount: input.amount ?? defaultAmount(food),
+    multiplier: input.multiplier,
     mealType: MEAL_TYPES[input.meal],
     span: minuteSpan(context, start),
   });
@@ -118,7 +125,12 @@ const LOG_WATER = z
       .max(20)
       .optional()
       .describe('Glasses of the person’s glass size'),
-    at: MOMENT_ARGUMENT.optional().describe('When; now when left out'),
+    multiplier: FOOD_MULTIPLIER.optional().describe(
+      'How many times the amount was drunk, applied to millilitres or glasses: 0.5 for half, 2 for twice; 1 when left out',
+    ),
+    at: MOMENT_ARGUMENT.optional().describe(
+      'When it was drunk, an ISO time that may be in the past, for example yesterday evening; now when left out',
+    ),
     profileId: PROFILE,
   })
   .refine((input) => (input.millilitres === undefined) !== (input.glasses === undefined), {
@@ -148,7 +160,7 @@ async function waterLogged(
   return operate(
     context,
     'createHealthEntry',
-    { body: waterEntryOf(millilitres, minuteSpan(context, start)) },
+    { body: waterEntryOf(millilitres, minuteSpan(context, start), input.multiplier) },
     input,
   );
 }

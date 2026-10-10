@@ -8,15 +8,15 @@ import {
   type AiChatRow,
   type AiSubagent,
   type MessageOrigin,
+  type PluginOrigin,
 } from '@smarteverything/domain';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
 import type { Store } from '../../store/store';
 import type { ChatDirectory, ChatOwner } from '../chat-directory';
 import type { ConversationLog } from '../conversation-log';
 import type { StreamEmit } from '../engines/openrouter/stream';
-import { DEADLOCK_TEXT, PAUSED_TEXT, TOO_MANY_HOPS, WORKER_TEXT } from './limits';
+import { DEADLOCK_TEXT, PAUSED_TEXT, TOO_MANY_HOPS } from './limits';
 import { LoopGuard } from './loop-guard';
-import { askText } from './relay-text';
 import { Reports, originOf, type ReportBack } from './reports';
 import { Waiters } from './waiters';
 
@@ -37,6 +37,7 @@ export interface AskSender {
   readonly owner: ChatOwner;
   readonly clientId: string;
   readonly chatId: string | null;
+  readonly plugin: PluginOrigin | null;
 }
 
 interface RelayInput {
@@ -83,9 +84,6 @@ export class Coordination {
 
   async ask(sender: AskSender, chatId: string, body: AiAsk): Promise<AiAskResult> {
     const target = this.deps.chats.own(sender.owner, chatId);
-    if (target.kind === 'worker') {
-      throw new ApiError('invalid_request', WORKER_TEXT);
-    }
     const source = this.sourceOf(sender);
     if (source?.id === target.id) {
       throw new ApiError('invalid_request', 'A chat cannot message itself; pick another chat.');
@@ -102,9 +100,6 @@ export class Coordination {
   async subagent(sender: AskSender, parentId: string, body: AiSubagent): Promise<AiAskResult> {
     const parent = this.deps.chats.own(sender.owner, parentId);
     const engine = body.engine ?? DEFAULT_ENGINE;
-    if (body.tools !== undefined && engine.kind !== 'openrouter') {
-      throw new ApiError('invalid_request', 'A tool list works only for OpenRouter subagents.');
-    }
     const child = this.deps.chats.create(sender.owner, {
       title: body.title ?? titleOf(body.task),
       engine,
@@ -163,8 +158,8 @@ export class Coordination {
     const name = (relay.source?.title ?? store.clients.byId(sender.clientId).name).slice(0, 120);
     const origin: MessageOrigin =
       relay.source === null
-        ? { source: 'chat', plugin_id: null, device_id: null, name, hops }
-        : originOf(relay.source, hops);
+        ? { source: 'chat', plugin_id: null, device_id: null, name, hops, ...(sender.plugin ?? {}) }
+        : originOf(relay.source, hops, sender.plugin);
     const row = this.deps.conversation.person({
       chat: relay.target,
       clientId: sender.clientId,
@@ -181,7 +176,7 @@ export class Coordination {
       message_id: row.id,
       profile_id: relay.target.profile_id,
       client_id: sender.clientId,
-      text: askText({ eventId, from: name, text: relay.text, answersBack: relay.source !== null }),
+      text: relay.text,
       report_to: relay.source?.id ?? null,
       hops,
     });

@@ -1,4 +1,9 @@
-import type { PluginStatus } from '@smarteverything/domain';
+import type {
+  JsonValue,
+  PluginOptionPage,
+  PluginOptionQuery,
+  PluginStatus,
+} from '@smarteverything/domain';
 import { failure, type HubToolResult, type ToolCaller } from '../ai-tools/hub-tool';
 import { Backoff } from './backoff';
 import type { Contributions } from './contributions';
@@ -53,8 +58,18 @@ export class PluginSlot {
     this.options.toolsChanged();
   }
 
+  settingsChanged(settings: Readonly<Record<string, JsonValue>>): void {
+    this.runtime?.settingsChanged(settings);
+  }
+
   tools(): readonly RuntimeTool[] {
     return this.runtime?.tools() ?? [];
+  }
+
+  choices(source: string, query: PluginOptionQuery): Promise<PluginOptionPage> {
+    return this.runtime === null
+      ? Promise.resolve({ state: 'unavailable', message: 'The plugin is not running.' })
+      : this.runtime.choices(source, query);
   }
 
   call(

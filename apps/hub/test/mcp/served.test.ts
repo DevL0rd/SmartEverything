@@ -37,18 +37,6 @@ describe('the served MCP tools', () => {
     expect(listing.annotations.readOnlyHint).toBe(false);
   });
 
-  it('ask the person only for the actions that need it', () => {
-    const room = served('edit_room');
-    expect(room.confirms({ action: 'create', name: 'Den' })).toBe(false);
-    expect(room.confirms({ action: 'remove', roomId: 'x' })).toBe(true);
-    const control = served('control_devices');
-    const change = (value: boolean): Record<string, unknown> => ({
-      changes: [{ target: { search: 'door' }, capability: 'lock', value }],
-    });
-    expect(control.confirms(change(true))).toBe(false);
-    expect(control.confirms(change(false))).toBe(true);
-  });
-
   it('resolve a served call to the part that runs it', () => {
     expect(partCallOf('log_food', { what: 'water', millilitres: 250 })).toEqual({
       name: 'log_water',
@@ -87,7 +75,13 @@ describe('the chat tool set', () => {
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     origin: plugin ? { kind: 'plugin', pluginId: 'router' } : { kind: 'se' },
     humanOnly: false,
-    confirms: (): boolean => false,
+  });
+
+  it('declares home tools by name, so the declaration list never changes order', () => {
+    const names = chatSet([tool('set_x', false), tool('get_a', false), tool('log_b', true)]).map(
+      (spec) => spec.name,
+    );
+    expect(names).toEqual(['get_a', 'set_x', 'call_tool']);
   });
 
   it('declares every home tool and lists plugin tools for call_tool', () => {

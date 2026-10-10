@@ -1,6 +1,6 @@
-import { ruleSource, type PortRule } from '@smarteverything/domain';
+import { rulePort, ruleSource, type PortRule } from '@smarteverything/domain';
 import { z } from 'zod';
-import { addressIn, portIn, type OpeningState, type Probe } from './openings';
+import { addressIn, portIn, sourceEdges, type OpeningState, type Probe } from './openings';
 import type { FirewallSystem } from './system';
 
 const UFW_DIRECTORY = '/etc/ufw';
@@ -114,14 +114,17 @@ function ufwTuples(text: string): readonly UfwTuple[] {
 
 function sourceCovers(tuple: UfwTuple, rule: PortRule): boolean {
   const source = ruleSource(rule);
-  return source === null ? ANY_NETWORK.has(tuple.src) : addressIn(tuple.src, source);
+  return source === null
+    ? ANY_NETWORK.has(tuple.src)
+    : sourceEdges(source).every((edge) => addressIn(tuple.src, edge));
 }
 
 function portCovers(tuple: UfwTuple, rule: PortRule): boolean {
   if (tuple.dport === 'any') {
     return true;
   }
-  return rule.purpose === 'webrtc' && portIn(tuple.dport, rule.port);
+  const port = rulePort(rule);
+  return port !== null && portIn(tuple.dport, port);
 }
 
 function protocolCovers(tuple: UfwTuple, rule: PortRule): boolean {
@@ -186,6 +189,7 @@ export async function probeUfw(system: FirewallSystem): Promise<Probe> {
     draft: (needed) => ({
       backend: 'ufw',
       rules: needed.map((opening) => ({ rule: opening.rule, prepend: opening.state === 'denied' })),
+      unprivilegedPortStart: null,
     }),
     fixable: new Set(['missing', 'unknown', 'denied']),
     watch: [UFW_DIRECTORY],

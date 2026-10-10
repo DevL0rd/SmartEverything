@@ -4,16 +4,34 @@ import {
   type AiChatKind,
   type AiChatRow,
   type Engine,
+  type MessageSource,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { flag, jsonText } from '../sql';
 
-const STORED_CHAT = storedRow(AI_CHAT_ROW, { json: ['engine', 'tools'], flags: ['pinned'] });
+const STORED_CHAT = storedRow(AI_CHAT_ROW, {
+  json: ['engine', 'tools', 'origin'],
+  flags: ['pinned'],
+  nullableFlags: ['web_search'],
+});
 
-const CHAT_COLUMNS =
-  'id, profile_id, kind, title, icon, parent_id, source_key, engine, tools, pinned, archived_at, cost_micros, last_message_at, created_at, updated_at';
+const STORED_COLUMNS =
+  'id, profile_id, kind, title, icon, parent_id, source_key, engine, tools, web_search, pinned, archived_at, cost_micros, read_at, context_percent, branch_message_id, last_message_at, created_at, updated_at';
+
+const INCOMING_SQL = `((m.role = 'responder' and m.kind in ('text', 'update') and m.state is not 'working')
+  or (m.role = 'person' and json_extract(m.origin, '$.source') not in ('app', 'voice')
+      and not (json_extract(m.origin, '$.source') = 'plugin'
+               and coalesce(json_extract(m.origin, '$.requester'), '') = 'owner')))`;
+
+const CHAT_COLUMNS = `${STORED_COLUMNS},
+  (select m.origin from assistant_messages m
+   where m.chat_id = ai_chats.id and m.origin is not null
+   order by m.created_at, m.rowid limit 1) as origin,
+  (select count(*) from assistant_messages m
+   where m.chat_id = ai_chats.id and (ai_chats.read_at is null or m.created_at > ai_chats.read_at)
+     and ${INCOMING_SQL}) as unread_count`;
 
 const TITLE_AUTO = storedRow(z.strictObject({ title_auto: z.boolean() }), {
   flags: ['title_auto'],
@@ -33,13 +51,48 @@ export interface NewChat {
   readonly parentId: string | null;
   readonly sourceKey: string | null;
   readonly engine: Engine;
+  readonly tools?: readonly string[] | null;
+  readonly branchMessageId?: string | null;
   readonly titleAuto?: boolean;
 }
 
 export interface ChatQuery {
   readonly profileId: string;
   readonly archived: boolean;
+  readonly unread?: boolean | undefined;
+  readonly pinned?: boolean | undefined;
+  readonly source?: MessageSource | undefined;
 }
+
+export interface TitleHit {
+  readonly id: string;
+  readonly title: string;
+  readonly at: string;
+  readonly archived: boolean;
+}
+
+export class NothingToMarkUnreadError extends Error {
+  override readonly name = 'NothingToMarkUnreadError';
+
+  constructor(readonly chatId: string) {
+    super(`The chat ${chatId} has no incoming message to mark unread.`);
+  }
+}
+
+const TITLE_HIT = storedRow(
+  z.strictObject({
+    id: z.uuid(),
+    title: z.string(),
+    at: z.iso.datetime({ offset: true }),
+    archived: z.boolean(),
+  }),
+  { flags: ['archived'] },
+);
+
+const MOMENT_ROW = storedRow(
+  z.strictObject({ at: z.iso.datetime({ offset: true }).nullable() }),
+  {},
+);
 
 export class AiChatsRepository {
   constructor(private readonly context: StoreContext) {}
@@ -59,8 +112,40 @@ export class AiChatsRepository {
       STORED_CHAT,
       `select ${CHAT_COLUMNS} from ai_chats
        where profile_id = $profile and (archived_at is not null) = $archived
-       order by pinned desc, coalesce(last_message_at, created_at) desc`,
-      { profile: query.profileId, archived: flag(query.archived) },
+         and ($unread is null or (unread_count > 0) = $unread)
+         and ($pinned is null or pinned = $pinned)
+         and ($source is null or coalesce(json_extract(origin, '$.source'), 'app') = $source)
+       order by pinned desc, coalesce(last_message_at, created_at) desc, id`,
+      {
+        profile: query.profileId,
+        archived: flag(query.archived),
+        unread: query.unread === undefined ? null : flag(query.unread),
+        pinned: query.pinned === undefined ? null : flag(query.pinned),
+        source: query.source ?? null,
+      },
+    );
+  }
+
+  titleHits(query: {
+    readonly profileId: string;
+    readonly text: string;
+    readonly archived: boolean;
+    readonly limit: number;
+  }): TitleHit[] {
+    return this.context.sql.all(
+      TITLE_HIT,
+      `select id, title, coalesce(last_message_at, created_at) as at,
+              (archived_at is not null) as archived
+       from ai_chats
+       where profile_id = $profile and instr(lower(title), lower($text)) > 0
+         and ($archived = 1 or archived_at is null)
+       order by at desc, id limit $limit`,
+      {
+        profile: query.profileId,
+        text: query.text,
+        archived: flag(query.archived),
+        limit: query.limit,
+      },
     );
   }
 
@@ -91,16 +176,6 @@ export class AiChatsRepository {
     );
   }
 
-  latestWithEngine(profileId: string, kind: Engine['kind']): AiChatRow | undefined {
-    return this.context.sql.get(
-      STORED_CHAT,
-      `select ${CHAT_COLUMNS} from ai_chats
-       where profile_id = $profile and json_extract(engine, '$.kind') = $kind and archived_at is null
-       order by coalesce(last_message_at, created_at) desc limit 1`,
-      { profile: profileId, kind },
-    );
-  }
-
   bySource(profileId: string, sourceKey: string): AiChatRow | undefined {
     return this.context.sql.get(
       STORED_CHAT,
@@ -117,9 +192,9 @@ export class AiChatsRepository {
       const now = this.context.now();
       this.context.sql.run(
         'add the AI chat',
-        `insert into ai_chats (${CHAT_COLUMNS}, title_auto)
-         values ($id, $profile, $kind, $title, $icon, $parent, $source, $engine, null, 0, null, 0,
-                 null, $now, $now, $auto)`,
+        `insert into ai_chats (${STORED_COLUMNS}, title_auto)
+         values ($id, $profile, $kind, $title, $icon, $parent, $source, $engine, $tools, null, 0, null, 0,
+                 null, null, $branch, null, $now, $now, $auto)`,
         {
           id,
           profile: input.profileId,
@@ -129,6 +204,8 @@ export class AiChatsRepository {
           parent: input.parentId,
           source: input.sourceKey,
           engine: jsonText(input.engine),
+          tools: input.tools === undefined || input.tools === null ? null : jsonText(input.tools),
+          branch: input.branchMessageId ?? null,
           now,
           auto: flag(input.titleAuto ?? false),
         },
@@ -147,6 +224,7 @@ export class AiChatsRepository {
         title_auto: change.title === undefined ? undefined : flag(false),
         icon: change.icon,
         pinned: change.pinned === undefined ? undefined : flag(change.pinned),
+        web_search: change.web_search === undefined ? undefined : flag(change.web_search),
         archived_at: archivedAt(change.archived, this.context.now()),
         engine: change.engine === undefined ? undefined : jsonText(change.engine),
         tools:
@@ -161,9 +239,56 @@ export class AiChatsRepository {
         ...set.parameters,
         id,
       });
+      if (change.read !== undefined) {
+        this.setRead(id, change.read);
+      }
       const after = this.chat(id);
       this.context.changed('ai_chats', 'UPDATE', after, before);
       return after;
+    });
+  }
+
+  private setRead(id: string, read: boolean): void {
+    if (read) {
+      this.context.sql.run(
+        'mark the AI chat read',
+        `update ai_chats set read_at = max($now,
+           coalesce((select max(created_at) from assistant_messages where chat_id = $id), $now))
+         where id = $id`,
+        { id, now: this.context.now() },
+      );
+      return;
+    }
+    const latest = this.context.sql.get(
+      MOMENT_ROW,
+      `select max(m.created_at) as at from assistant_messages m
+       where m.chat_id = $id and ${INCOMING_SQL}`,
+      { id },
+    )?.at;
+    if (latest === null || latest === undefined) {
+      throw new NothingToMarkUnreadError(id);
+    }
+    this.context.sql.run(
+      'mark the AI chat unread',
+      `update ai_chats set read_at = (
+         select max(created_at) from assistant_messages where chat_id = $id and created_at < $latest)
+       where id = $id`,
+      { id, latest },
+    );
+  }
+
+  noteContext(id: string, percent: number): void {
+    this.context.write(() => {
+      const before = this.chat(id);
+      if (before.context_percent === percent) {
+        return;
+      }
+      this.context.sql.run(
+        'note how full the AI chat is',
+        'update ai_chats set context_percent = $percent where id = $id',
+        { id, percent },
+      );
+      this.context.changed('ai_chats', 'UPDATE', this.chat(id), before);
     });
   }
 

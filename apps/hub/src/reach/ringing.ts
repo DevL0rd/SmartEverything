@@ -81,13 +81,13 @@ export class Ringing {
     if (!ring.rung.some((entry) => entry.client.id === answering.clientId)) {
       return { kind: 'refused', reason: 'This call was for a different device.' };
     }
-    this.forget(row.id, answering.clientId);
+    this.forget(row.id);
     const live = this.options.store.aiOutreach.step(row.id, {
       state: 'live',
       callId: answering.callId,
       clientId: answering.clientId,
     });
-    return { kind: 'answer', opening: this.options.opening(live) };
+    return { kind: 'answer', opening: this.options.opening(live), origin: live.origin };
   }
 
   decline(outreachId: string, clientId: string): AiOutreachRow {
@@ -130,9 +130,7 @@ export class Ringing {
   private async ring(row: AiOutreachRow, rung: readonly Rung[]): Promise<string | null> {
     const devices = [...new Set(rung.map((entry) => entry.device))];
     const refusals = await Promise.all(
-      devices.map((device) =>
-        this.options.transports[device].ring(row, clientsOn(rung, device, null)),
-      ),
+      devices.map((device) => this.options.transports[device].ring(row, clientsOn(rung, device))),
     );
     const failed = refusals.filter((refusal) => refusal !== null);
     return failed.length === refusals.length ? failed.join(' ') : null;
@@ -144,7 +142,7 @@ export class Ringing {
     detail: string,
     clientId?: string,
   ): AiOutreachRow {
-    this.forget(outreachId, null);
+    this.forget(outreachId);
     const row = this.options.store.aiOutreach.step(outreachId, {
       state,
       detail,
@@ -154,7 +152,7 @@ export class Ringing {
     return row;
   }
 
-  private forget(outreachId: string, answeredBy: string | null): void {
+  private forget(outreachId: string): void {
     const ring = this.rings.get(outreachId);
     if (ring === undefined) {
       return;
@@ -164,13 +162,11 @@ export class Ringing {
     const row = this.options.store.aiOutreach.byId(outreachId);
     const devices = new Set(ring.rung.map((entry) => entry.device));
     devices.forEach((device) => {
-      this.options.transports[device].cancel(row, clientsOn(ring.rung, device, answeredBy));
+      this.options.transports[device].cancel(row, clientsOn(ring.rung, device));
     });
   }
 }
 
-function clientsOn(rung: readonly Rung[], device: RingDevice, except: string | null): ClientRow[] {
-  return rung
-    .filter((entry) => entry.device === device && entry.client.id !== except)
-    .map((entry) => entry.client);
+function clientsOn(rung: readonly Rung[], device: RingDevice): ClientRow[] {
+  return rung.filter((entry) => entry.device === device).map((entry) => entry.client);
 }

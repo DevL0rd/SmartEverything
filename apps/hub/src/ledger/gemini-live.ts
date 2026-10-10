@@ -14,6 +14,7 @@ export interface PriceBook {
 export interface LiveTurn {
   readonly profileId: string;
   readonly clientId: string | null;
+  readonly pluginId: string | null;
   readonly callId: string;
   readonly chatId: string | null;
   readonly messageId: string | null;
@@ -36,7 +37,7 @@ type Rate =
   | 'audio_out_per_mtok'
   | 'video_in_per_mtok';
 
-const AUDIO_TOKENS_PER_SECOND = 32;
+export const AUDIO_TOKENS_PER_SECOND = 32;
 
 type Rates = ReadonlyMap<MediaModality, Rate>;
 
@@ -151,18 +152,36 @@ function metaOf(usage: UsageMetadata): Record<string, JsonValue> {
   };
 }
 
-export function recordLiveTurn(ledger: Ledger, prices: PriceBook, turn: LiveTurn): AiUsageRow {
+interface GeminiTurn {
+  readonly profileId: string;
+  readonly clientId: string | null;
+  readonly pluginId: string | null;
+  readonly chatId: string | null;
+  readonly messageId: string | null;
+  readonly callId: string | null;
+  readonly model: string;
+  readonly usage: UsageMetadata;
+  readonly meta: Readonly<Record<string, JsonValue>>;
+}
+
+function recordGeminiTurn(
+  ledger: Ledger,
+  prices: PriceBook,
+  kind: { readonly source: 'gemini' | 'gemini_live'; readonly work: 'voice' | 'transcribe' },
+  turn: GeminiTurn,
+): AiUsageRow {
   const { usage } = turn;
   const modelId = googleModelIdOf(turn.model);
   const priced = priceTurn(usage, modelId, prices.priceOf(modelId));
   return ledger.record({
     profile_id: turn.profileId,
     client_id: turn.clientId,
+    plugin_id: turn.pluginId,
     chat_id: turn.chatId,
     message_id: turn.messageId,
     call_id: turn.callId,
-    source: 'gemini_live',
-    work: 'voice',
+    source: kind.source,
+    work: kind.work,
     model_id: modelId,
     tokens_in: promptTokens(usage),
     tokens_out: usage.responseTokenCount ?? 0,
@@ -172,6 +191,37 @@ export function recordLiveTurn(ledger: Ledger, prices: PriceBook, turn: LiveTurn
     audio_out_ms: audioMs(tokensOf(usage.responseTokensDetails ?? [], MediaModality.AUDIO)),
     cost_micros: priced.micros,
     cost_state: priced.estimated ? 'estimated' : 'reported',
-    meta: metaOf(usage),
+    meta: { ...metaOf(usage), ...turn.meta },
   });
+}
+
+export function recordLiveTurn(ledger: Ledger, prices: PriceBook, turn: LiveTurn): AiUsageRow {
+  return recordGeminiTurn(
+    ledger,
+    prices,
+    { source: 'gemini_live', work: 'voice' },
+    { ...turn, meta: {} },
+  );
+}
+
+export interface TranscriptionTurn {
+  readonly profileId: string;
+  readonly messageId: string | null;
+  readonly pluginId: string | null;
+  readonly model: string;
+  readonly usage: UsageMetadata;
+  readonly meta: Readonly<Record<string, JsonValue>>;
+}
+
+export function recordTranscription(
+  ledger: Ledger,
+  prices: PriceBook,
+  turn: TranscriptionTurn,
+): AiUsageRow {
+  return recordGeminiTurn(
+    ledger,
+    prices,
+    { source: 'gemini', work: 'transcribe' },
+    { ...turn, clientId: null, chatId: null, callId: null },
+  );
 }

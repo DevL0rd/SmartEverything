@@ -14,14 +14,15 @@ import { assignments, found, type StoreContext } from '../context';
 import { flag } from '../sql';
 import type { MemberLabel } from '../../talk/labels';
 
-const STORED_CHANNEL = storedRow(TALK_CHANNEL_ROW, {});
+const STORED_CHANNEL = storedRow(TALK_CHANNEL_ROW, { flags: ['ai_listens'] });
 const STORED_MEMBER = storedRow(TALK_MEMBER_ROW, { flags: ['listening'] });
 const STORED_MESSAGE = storedRow(TALK_MESSAGE_ROW, {});
 
-const CHANNEL_COLUMNS = 'id, name, icon, priority, keep_hours, position, created_at, updated_at';
+const CHANNEL_COLUMNS =
+  'id, name, icon, priority, keep_hours, ai_listens, position, created_at, updated_at';
 const MEMBER_COLUMNS = 'channel_id, member_kind, member_id, label, detail, listening, created_at';
 const MESSAGE_COLUMNS =
-  'id, channel_id, speaker_kind, speaker_id, speaker_label, speaker_detail, kind, started_at, duration_ms, bytes, storage_path';
+  'id, channel_id, speaker_kind, speaker_id, speaker_label, speaker_detail, kind, started_at, duration_ms, bytes, storage_path, transcript';
 
 export interface MemberKey {
   readonly channelId: string;
@@ -29,7 +30,10 @@ export interface MemberKey {
   readonly memberId: string;
 }
 
-export type NewTalkMessage = Omit<TalkMessageRow, 'duration_ms' | 'bytes' | 'storage_path'>;
+export type NewTalkMessage = Omit<
+  TalkMessageRow,
+  'duration_ms' | 'bytes' | 'storage_path' | 'transcript'
+>;
 
 export interface FinishedTalkMessage {
   readonly durationMs: number;
@@ -72,13 +76,14 @@ export class TalkRepository {
       this.context.sql.run(
         'add the walkie-talkie channel',
         `insert into talk_channels (${CHANNEL_COLUMNS})
-         values ($id, $name, $icon, $priority, $keep, $position, $now, $now)`,
+         values ($id, $name, $icon, $priority, $keep, $listens, $position, $now, $now)`,
         {
           id,
           name: input.name,
           icon: input.icon,
           priority: input.priority,
           keep: input.keep_hours,
+          listens: flag(input.ai_listens),
           position: this.channels().length,
           now,
         },
@@ -92,7 +97,11 @@ export class TalkRepository {
   updateChannel(id: string, change: TalkChannelChange): TalkChannelRow {
     return this.context.write(() => {
       const before = this.channel(id);
-      const set = assignments({ ...change, updated_at: this.context.now() });
+      const set = assignments({
+        ...change,
+        ai_listens: change.ai_listens === undefined ? undefined : flag(change.ai_listens),
+        updated_at: this.context.now(),
+      });
       this.context.sql.run(
         'change the walkie-talkie channel',
         `update talk_channels set ${set.text} where id = $id`,
@@ -208,7 +217,7 @@ export class TalkRepository {
       this.context.sql.run(
         'save the walkie-talkie message',
         `insert into talk_messages (${MESSAGE_COLUMNS})
-         values ($id, $channel, $speakerKind, $speakerId, $label, $detail, $kind, $startedAt, null, 0, null)`,
+         values ($id, $channel, $speakerKind, $speakerId, $label, $detail, $kind, $startedAt, null, 0, null, null)`,
         {
           id: message.id,
           channel: message.channel_id,
@@ -241,16 +250,45 @@ export class TalkRepository {
     });
   }
 
-  message(id: string): TalkMessageRow {
-    return found(
-      this.context.sql.get(
+  setTranscript(id: string, transcript: string): TalkMessageRow | null {
+    return this.context.write(() => {
+      const before = this.findMessage(id);
+      if (before === undefined) {
+        return null;
+      }
+      this.context.sql.run(
+        'save the walkie-talkie transcript',
+        'update talk_messages set transcript = $transcript where id = $id',
+        { id, transcript },
+      );
+      const after = this.message(id);
+      this.context.changed('talk_messages', 'UPDATE', after, before);
+      return after;
+    });
+  }
+
+  recentTranscripts(channelId: string, since: string, limit: number): TalkMessageRow[] {
+    return this.context.sql
+      .all(
         STORED_MESSAGE,
-        `select ${MESSAGE_COLUMNS} from talk_messages where id = $id`,
-        { id },
-      ),
-      'walkie-talkie message',
-      id,
+        `select ${MESSAGE_COLUMNS} from talk_messages
+         where channel_id = $channel and transcript is not null and started_at >= $since
+         order by started_at desc limit $limit`,
+        { channel: channelId, since, limit },
+      )
+      .reverse();
+  }
+
+  findMessage(id: string): TalkMessageRow | undefined {
+    return this.context.sql.get(
+      STORED_MESSAGE,
+      `select ${MESSAGE_COLUMNS} from talk_messages where id = $id`,
+      { id },
     );
+  }
+
+  message(id: string): TalkMessageRow {
+    return found(this.findMessage(id), 'walkie-talkie message', id);
   }
 
   messages(query: MessageQuery): TalkMessageRow[] {

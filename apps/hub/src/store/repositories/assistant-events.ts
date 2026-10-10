@@ -83,11 +83,12 @@ export class AssistantEventsRepository {
     );
   }
 
-  after(cursor: number, limit: number): StoredEvent[] {
-    return this.context.sql.all(
+  ofMessage(messageId: string): StoredEvent | undefined {
+    return this.context.sql.get(
       STORED_EVENT,
-      `select ${EVENT_COLUMNS} from assistant_events where cursor > $cursor order by cursor limit $limit`,
-      { cursor, limit },
+      `select ${EVENT_COLUMNS} from assistant_events
+       where message_id = $message and kind in ('chat', 'plugin') order by cursor desc limit 1`,
+      { message: messageId },
     );
   }
 
@@ -96,6 +97,14 @@ export class AssistantEventsRepository {
       STORED_EVENT,
       `select ${EVENT_COLUMNS} from assistant_events
        where delivered_at is null and answered_at is null order by cursor`,
+    );
+  }
+
+  abandoned(): StoredEvent[] {
+    return this.context.sql.all(
+      STORED_EVENT,
+      `select ${EVENT_COLUMNS} from assistant_events
+       where delivered_at is not null and answered_at is null order by cursor`,
     );
   }
 

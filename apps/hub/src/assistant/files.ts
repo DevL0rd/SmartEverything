@@ -156,7 +156,7 @@ export class AssistantFiles {
     return file;
   }
 
-  async fromResponder(
+  async fromOutFile(
     profileId: string,
     file: AssistantOutFile,
     local: boolean,
@@ -174,6 +174,22 @@ export class AssistantFiles {
     const content = await readFile(path);
     const name = safeName(basename(path));
     return this.keep({ id: randomUUID(), profileId, name, mime: mimeOf(name), content });
+  }
+
+  async copy(file: StoredAttachment): Promise<StoredAttachment> {
+    const content = await readFile(this.pathOf(file));
+    const copy = await this.keep({
+      id: randomUUID(),
+      profileId: file.profile_id,
+      name: file.name,
+      mime: file.mime,
+      content,
+    });
+    if (file.transcript === null) {
+      return copy;
+    }
+    this.options.chat.setTranscript(copy.id, file.transcript);
+    return { ...copy, transcript: file.transcript };
   }
 
   async remove(files: readonly StoredAttachment[]): Promise<void> {

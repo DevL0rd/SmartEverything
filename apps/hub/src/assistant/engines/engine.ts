@@ -12,7 +12,3 @@ export interface Engine {
   readonly deliver: (event: StoredEvent, chat: AiChatRow) => Promise<void>;
   readonly interrupt: (chat: AiChatRow) => Promise<void>;
 }
-
-export class EngineUnavailableError extends Error {
-  override readonly name = 'EngineUnavailableError';
-}

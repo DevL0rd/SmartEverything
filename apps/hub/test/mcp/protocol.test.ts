@@ -98,7 +98,7 @@ describe('the MCP endpoint', () => {
     );
     expect(result).toMatchObject({
       protocolVersion: '2025-11-25',
-      capabilities: { tools: { listChanged: false } },
+      capabilities: { tools: { listChanged: true } },
       serverInfo: { name: 'smarteverything', title: 'SmartEverything' },
     });
     const later = await resultOf(
@@ -111,7 +111,7 @@ describe('the MCP endpoint', () => {
     expect(tokens[0]?.last_used_at).not.toBeNull();
   });
 
-  it('answers ping, accepts notifications and responses with 202, and opens no stream', async () => {
+  it('answers ping, accepts notifications and responses with 202, and opens a stream only when asked for one', async () => {
     expect(await resultOf(await rpc(booted.base, token, { method: 'ping' }))).toStrictEqual({});
     const notification = await fetch(`${booted.base}/mcp`, {
       method: 'POST',
@@ -126,14 +126,16 @@ describe('the MCP endpoint', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 4, result: {} }),
     });
     expect(reply.status).toBe(202);
-    for (const method of ['GET', 'DELETE']) {
-      const refused = await fetch(`${booted.base}/mcp`, {
-        method,
-        headers: { authorization: `Bearer ${token}` },
-      });
-      expect(refused.status).toBe(405);
-      expect(refused.headers.get('allow')).toBe('POST');
-    }
+    const plainGet = await fetch(`${booted.base}/mcp`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(plainGet.status).toBe(406);
+    const deleted = await fetch(`${booted.base}/mcp`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(deleted.status).toBe(405);
+    expect(deleted.headers.get('allow')).toBe('GET, POST');
   });
 
   it('refuses unsupported versions, malformed bodies, unknown methods and unknown tools', async () => {
@@ -161,10 +163,10 @@ describe('the MCP endpoint', () => {
     const batch = await send(JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'ping' }]));
     expect(batch.status).toBe(400);
     expect((await errorOf(batch)).code).toBe(-32600);
-    const method = await rpc(booted.base, token, { method: 'resources/list' });
+    const method = await rpc(booted.base, token, { method: 'prompts/list' });
     expect(await errorOf(method)).toStrictEqual({
       code: -32601,
-      message: 'This server does not answer resources/list',
+      message: 'This server does not answer prompts/list',
     });
     const tool = await rpc(booted.base, token, { method: 'tools/call', params: { name: 'nope' } });
     expect(await errorOf(tool)).toStrictEqual({ code: -32602, message: 'Unknown tool: nope' });
@@ -188,7 +190,22 @@ describe('the MCP endpoint', () => {
     expect(tools.map((tool) => tool.name)).toStrictEqual(MCP_TOOLS.map((tool) => tool.name));
     expect(
       tools.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name),
-    ).toStrictEqual(['set_device', 'run_scene']);
+    ).toStrictEqual([
+      'edit_room',
+      'press_remote_button',
+      'control_devices',
+      'run_scene',
+      'delete_transcripts',
+      'edit_scene',
+      'edit_automation',
+      'schedule',
+      'log_health',
+      'edit_food',
+      'edit_person',
+      'edit_talk_channel',
+      'edit_chat',
+      'call_operation',
+    ]);
   });
 
   it('refuses a revoked personal token', async () => {

@@ -1,5 +1,5 @@
 import { assistantLabel, type AiChatRow } from '@smarteverything/domain';
-import { chatCatalogue } from '../ai-tools/tool-sets';
+import { chatCatalogue, toolIndex } from '../ai-tools/tool-sets';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { Store } from '../store/store';
 import type { PromptFacts } from './engines/openrouter/context';
@@ -25,6 +25,7 @@ export function facts(
     timeZone: settings.time_zone,
     now,
     instructions: assistant.instructions,
+    toolIndex: tools === null ? '' : toolIndex(tools.list()),
     catalogue: tools === null ? '' : chatCatalogue(tools.list()),
     chat,
   };

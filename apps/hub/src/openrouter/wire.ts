@@ -173,7 +173,15 @@ const TOOL_CALL_DELTA = z.looseObject({
     .optional(),
 });
 
+const ANNOTATION = z.looseObject({
+  type: z.string(),
+  url_citation: z
+    .looseObject({ url: z.string().min(1), title: z.string().nullable().optional() })
+    .optional(),
+});
+
 const DELTA = z.looseObject({
+  annotations: z.array(ANNOTATION).optional(),
   content: z.string().nullable().optional(),
   reasoning: z.string().nullable().optional(),
   reasoning_details: z.array(JSON_VALUE).optional(),
@@ -196,6 +204,7 @@ export const OR_USAGE = z.looseObject({
     .looseObject({ reasoning_tokens: COUNT.optional() })
     .nullable()
     .optional(),
+  server_tool_use: z.looseObject({ web_search_requests: COUNT.optional() }).nullable().optional(),
   cost_details: z
     .looseObject({ upstream_inference_cost: z.number().nullable().optional() })
     .nullable()

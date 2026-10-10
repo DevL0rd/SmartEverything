@@ -15,8 +15,8 @@ function withPhotoNote(answer: ToolAnswer): Readonly<Record<string, unknown>> {
   }
   const photos =
     count === 1
-      ? 'the [Photo] sent just before this result'
-      : `the ${String(count)} [Photo n] images sent just before this result`;
+      ? 'the picture sent just before this result'
+      : `the ${String(count)} pictures sent just before this result, in order`;
   return { ...answer.response, photos: `Look at ${photos}; describe what you see in it.` };
 }
 
@@ -40,9 +40,8 @@ export function deliverToolAnswer(to: ToolDelivery, call: ToolCallRef, answer: T
       detail: errorOf(answer.response),
     });
   }
-  answer.pictures.forEach((picture, index) => {
-    const label = answer.pictures.length > 1 ? ` ${String(index + 1)}` : '';
-    session?.text(`[Photo${label} from ${call.name}]`, false, picture);
-  });
+  for (const picture of answer.pictures) {
+    session?.picture(picture);
+  }
   session?.toolResult(call.id, call.name, withPhotoNote(answer), { scheduling, more: false });
 }

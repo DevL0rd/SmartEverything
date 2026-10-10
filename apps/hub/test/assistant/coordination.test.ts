@@ -31,7 +31,7 @@ beforeEach(async () => {
     true,
   );
   owner = { profileId: store.profiles.activeOf(client.id).id, role: 'owner' };
-  sender = (chatId): AskSender => ({ owner, clientId: client.id, chatId });
+  sender = (chatId): AskSender => ({ owner, clientId: client.id, chatId, plugin: null });
   const now = (): Date => new Date(clock);
   chats = new ChatDirectory(
     store,
@@ -226,24 +226,6 @@ describe('subagents', () => {
       title: 'Compare two kettles',
       tools: ['search_everything'],
     });
-    await expect(
-      coordination.subagent(sender(parent.id), parent.id, {
-        task: 'x',
-        engine: { ...DEFAULT_ENGINE, kind: 'claude-session' },
-        tools: ['search_everything'],
-        wait: false,
-        timeoutSeconds: 60,
-      }),
-    ).rejects.toThrow('only for OpenRouter subagents');
-    const member = { ...sender(parent.id), owner: { ...owner, role: 'member' as const } };
-    await expect(
-      coordination.subagent(member, parent.id, {
-        task: 'x',
-        engine: { ...DEFAULT_ENGINE, kind: 'claude-session' },
-        wait: false,
-        timeoutSeconds: 60,
-      }),
-    ).rejects.toThrow('Only the owner');
   });
 
   it('limits a subagent to the tools on its list', async () => {
@@ -255,7 +237,6 @@ describe('subagents', () => {
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       origin: { kind: 'se' },
       humanOnly: false,
-      confirms: (): boolean => false,
     });
     const hub = new ToolHub([
       {
@@ -275,7 +256,6 @@ describe('subagents', () => {
       role: 'owner',
       chatId: null,
       via: 'chat',
-      confirmed: false,
       clientId: null,
     };
     expect(scoped.list().map((entry) => entry.name)).toStrictEqual(['allowed']);

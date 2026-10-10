@@ -82,6 +82,7 @@ function start(viewers: Viewers): {
     event: () => undefined,
     devices: (devices) => recorded.devices.push(devices.length),
     failure: () => undefined,
+    online: () => undefined,
   };
   new ComputerSession({
     link,

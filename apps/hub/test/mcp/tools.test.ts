@@ -14,6 +14,8 @@ let lamp: string;
 let camera: string;
 
 const NAMED = z.array(z.object({ name: z.string() }));
+const HOST_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const NOT_FOUND_ID = '0d000000-0000-4000-8000-000000000001';
 
 beforeEach(async () => {
   captureLogs();
@@ -49,6 +51,14 @@ async function refusal(name: string, args: Record<string, unknown>): Promise<str
   return JSON.stringify(result.content);
 }
 
+function change(
+  capability: string,
+  value: unknown,
+  deviceIds: readonly string[],
+): Record<string, unknown> {
+  return { changes: [{ target: { deviceIds }, capability, value }] };
+}
+
 async function owner(method: string, path: string, body?: unknown): Promise<unknown> {
   const reply = await call(booted.base, booted.owner, { method, path, body });
   expect(reply.status, JSON.stringify(reply.body)).toBe(200);
@@ -57,32 +67,47 @@ async function owner(method: string, path: string, body?: unknown): Promise<unkn
 
 describe('the home tools', () => {
   it('describe the home, its rooms and its linked providers', async () => {
-    expect(structured(await tool('list_homes'))).toStrictEqual({
-      homes: [{ name: 'Home', time_zone: 'UTC', role: 'owner', rooms: 2, devices: 2 }],
-    });
+    const home = structured(await tool('get_home'));
+    const computers = z
+      .array(z.object({ family: z.string() }))
+      .parse(structured(await tool('find_devices'))['devices'])
+      .filter((device) => device.family === 'computer');
+    expect(home['homes']).toStrictEqual([
+      {
+        name: 'Home',
+        time_zone: HOST_TIME_ZONE,
+        latitude: null,
+        longitude: null,
+        role: 'owner',
+        rooms: 2,
+        devices: 2 + computers.length,
+        people: 1,
+      },
+    ]);
     const rooms = z
-      .array(z.object({ name: z.string(), devices: z.number() }))
-      .parse(structured(await tool('list_rooms'))['rooms']);
-    expect(rooms.map((room) => [room.name, room.devices]).sort()).toStrictEqual([
+      .array(z.object({ name: z.string(), devices: z.array(z.object({ id: z.string() })) }))
+      .parse(home['rooms']);
+    expect(rooms.map((room) => [room.name, room.devices.length]).sort()).toStrictEqual([
       ['Hall', 1],
       ['Study', 1],
     ]);
-    expect(structured(await tool('list_providers'))['providers']).toMatchObject([
+    expect(home['providers']).toMatchObject([
       { provider: 'xiaomi', status: 'linked', device_count: 2, waiting_for: null },
     ]);
   });
 
   it('list, filter, describe and search devices', async () => {
     const ids = (args: Record<string, unknown>): Promise<string[]> =>
-      tool('list_devices', args).then((result) =>
+      tool('find_devices', args).then((result) =>
         z
-          .array(z.object({ id: z.string() }))
+          .array(z.object({ id: z.string(), family: z.string() }))
           .parse(structured(result)['devices'])
+          .filter((device) => device.family !== 'computer')
           .map((device) => device.id),
       );
     expect((await ids({})).sort()).toStrictEqual([lamp, camera].sort());
     expect(await ids({ capability: 'brightness' })).toStrictEqual([lamp]);
-    expect(await ids({ kind: 'camera' })).toStrictEqual([camera]);
+    expect(await ids({ kinds: ['camera'] })).toStrictEqual([camera]);
     expect(await ids({ search: 'FRONT' })).toStrictEqual([camera]);
     expect(await ids({ search: 'study' })).toStrictEqual([lamp]);
     await owner('PATCH', `/api/devices/${camera}`, { hidden: true });
@@ -91,17 +116,14 @@ describe('the home tools', () => {
     const described = structured(await tool('get_device', { deviceId: camera }));
     expect(described['device']).toMatchObject({
       name: 'Front door',
-      physical_ptz: true,
-      two_way_audio: false,
-      capabilities: [{ key: 'privacy_mode' }],
+      camera: { physical_ptz: true, two_way_audio: false },
     });
-    expect(
-      await refusal('get_device', { deviceId: '0d000000-0000-4000-8000-000000000001' }),
-    ).toContain('There is no device');
+    expect(described['capabilities']).toMatchObject([{ key: 'privacy_mode' }]);
+    expect(await refusal('get_device', { deviceId: NOT_FOUND_ID })).toContain('There is no device');
     expect(await refusal('get_device', { deviceId: 'nope' })).toContain('deviceId');
     const found = structured(await tool('search_everything', { query: 'dim' }));
     expect(found['capabilities']).toStrictEqual([
-      { key: 'brightness', label: 'Brightness', group: 'lighting', devices: 1 },
+      { key: 'brightness', label: 'Brightness', devices: 1 },
     ]);
     const desk = structured(await tool('search_everything', { query: 'desk' }));
     expect(NAMED.parse(desk['devices']).map((device) => device.name)).toStrictEqual(['Desk lamp']);
@@ -110,33 +132,25 @@ describe('the home tools', () => {
 
 describe('the control tools', () => {
   it('validate a device command, issue it as the assistant and wait for its result', async () => {
-    expect(
-      await refusal('set_device', { deviceId: lamp, capability: 'brightness', value: 150 }),
-    ).toContain('outside 1 to 100');
-    expect(
-      await refusal('set_device', { deviceId: lamp, capability: 'temperature', value: 20 }),
-    ).toContain('it can only be read');
-    expect(
-      await refusal('set_device', { deviceId: lamp, capability: 'hub:unlink_provider', value: {} }),
-    ).toContain('hub command');
-    expect(
-      await refusal('set_device', {
-        deviceId: '0d000000-0000-4000-8000-000000000001',
-        capability: 'power',
-        value: true,
-      }),
-    ).toContain('There is no device');
-    const done = structured(
-      await tool('set_device', { deviceId: lamp, capability: 'power', value: false }),
+    expect(await refusal('control_devices', change('brightness', 150, [lamp]))).toContain(
+      'outside 1 to 100',
     );
+    expect(await refusal('control_devices', change('temperature', 20, [lamp]))).toContain(
+      'is read-only',
+    );
+    expect(await refusal('control_devices', change('hub:unlink_provider', {}, [lamp]))).toContain(
+      'has no hub:unlink_provider',
+    );
+    expect(await refusal('control_devices', change('power', true, [NOT_FOUND_ID]))).toContain(
+      'No device matches',
+    );
+    const done = structured(await tool('control_devices', change('power', false, [lamp])));
     expect(done).toMatchObject({
       allFinished: true,
       commands: [{ device_id: lamp, capability: 'power', value: false, status: 'succeeded' }],
     });
     booted.fake.adapter.failure = new Error('The lamp is unplugged');
-    const failed = structured(
-      await tool('set_device', { deviceId: lamp, capability: 'power', value: true }),
-    );
+    const failed = structured(await tool('control_devices', change('power', true, [lamp])));
     expect(failed).toMatchObject({ allFinished: true, commands: [{ status: 'failed' }] });
   });
 
@@ -164,12 +178,16 @@ describe('the control tools', () => {
       .map((command) => command.source);
     expect(sources).toStrictEqual(['scene', 'scene', 'app']);
     expect(await refusal('run_scene', { sceneId: empty.id })).toContain('has no actions');
-    expect(
-      await refusal('run_scene', { sceneId: '0d000000-0000-4000-8000-000000000001' }),
-    ).toContain('There is no scene');
+    expect(await refusal('run_scene', { sceneId: NOT_FOUND_ID })).toContain('There is no scene');
     expect(structured(await tool('list_scenes'))['scenes']).toMatchObject([
-      { name: 'Empty', actions: 0 },
-      { name: 'Evening', actions: 2 },
+      { name: 'Empty', actions: [] },
+      {
+        name: 'Evening',
+        actions: [
+          { type: 'command', capability: 'brightness', value: 30, device: 'Desk lamp' },
+          { type: 'command', capability: 'power', value: true, device: 'Desk lamp' },
+        ],
+      },
     ]);
     const automation = API_ENDPOINTS.createAutomation.response.parse(
       await owner('POST', '/api/automations', {
@@ -186,12 +204,17 @@ describe('the control tools', () => {
     ]);
     expect(
       structured(
-        await tool('set_automation_enabled', { automationId: automation.id, enabled: false }),
+        await tool('edit_automation', {
+          action: 'update',
+          automationId: automation.id,
+          enabled: false,
+        }),
       ),
-    ).toStrictEqual({ automation: { id: automation.id, name: 'Night check', enabled: false } });
+    ).toMatchObject({ result: { id: automation.id, name: 'Night check', enabled: false } });
     expect(
-      await refusal('set_automation_enabled', {
-        automationId: '0d000000-0000-4000-8000-000000000001',
+      await refusal('edit_automation', {
+        action: 'update',
+        automationId: NOT_FOUND_ID,
         enabled: true,
       }),
     ).toContain('There is no automation');
@@ -267,7 +290,7 @@ describe('the history, event, health and camera tools', () => {
     ).toContain('must not exceed 92 days');
     expect(
       await refusal('get_history', { deviceId: lamp, capability: 'humidity', ...range }),
-    ).toContain('has no capability humidity');
+    ).toContain('has no capability');
   });
 
   it('list events by kind and return the latest snapshot as an image', async () => {
@@ -293,11 +316,11 @@ describe('the history, event, health and camera tools', () => {
     live.socket.close();
     const motion = structured(await tool('list_events', { kinds: ['motion'] }));
     expect(motion['events']).toMatchObject([{ kind: 'motion', device: 'Desk lamp' }]);
-    const all = structured(await tool('list_events', { deviceId: camera }));
+    const all = structured(await tool('list_events', { deviceIds: [camera] }));
     expect(all['events']).toMatchObject([{ kind: 'doorbell', device: 'Front door' }]);
-    const snapshot = await tool('get_camera_snapshot', { deviceId: camera });
+    const snapshot = await tool('camera_pictures', { view: 'saved', deviceId: camera });
     expect(snapshot.isError).toBe(false);
-    expect(snapshot.content[0]).toStrictEqual({
+    expect(snapshot.content[1]).toStrictEqual({
       type: 'image',
       data: Buffer.from([0xff, 0xd8, 0xff]).toString('base64'),
       mimeType: 'image/jpeg',
@@ -307,8 +330,8 @@ describe('the history, event, health and camera tools', () => {
       device: 'Front door',
       mimeType: 'image/jpeg',
     });
-    expect(await refusal('get_camera_snapshot', { deviceId: lamp })).toContain(
-      'There is no snapshot',
+    expect(await refusal('camera_pictures', { view: 'saved', deviceId: lamp })).toContain(
+      'has no saved snapshot',
     );
   });
 
@@ -338,17 +361,20 @@ describe('the history, event, health and camera tools', () => {
     });
     expect(ingested.status).toBe(200);
     const range = { from: '2026-01-01', to: '2026-01-02' };
+    const summary = (args: Record<string, unknown>): Promise<ToolResult> =>
+      tool('read_health', { view: 'summary', ...args });
+    const days = (result: ToolResult): unknown =>
+      z
+        .array(z.object({ days: z.array(z.unknown()) }))
+        .parse(structured(result)['people'])
+        .flatMap((person) => person.days);
+    expect(days(await summary({ ...range, metrics: ['steps'] }))).toStrictEqual([
+      { day: '2026-01-01', metric: 'steps', value: 8000, unit: 'count' },
+      { day: '2026-01-02', metric: 'steps', value: 9000, unit: 'count' },
+    ]);
+    expect(days(await summary(range))).toHaveLength(2);
     expect(
-      structured(await tool('get_health_summary', { ...range, metrics: ['steps'] })),
-    ).toStrictEqual({
-      days: [
-        { day: '2026-01-01', metric: 'steps', value: 8000, unit: 'count' },
-        { day: '2026-01-02', metric: 'steps', value: 9000, unit: 'count' },
-      ],
-    });
-    expect(structured(await tool('get_health_summary', range))['days']).toHaveLength(2);
-    expect(await refusal('get_health_summary', { from: range.to, to: range.from })).toContain(
-      'from must not be after to',
-    );
+      await refusal('read_health', { view: 'summary', from: range.to, to: range.from }),
+    ).toContain('from must not be after to');
   });
 });

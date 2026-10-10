@@ -164,6 +164,7 @@ export interface HubDatabase {
   readonly loadState: () => Promise<readonly StateRecord[]>;
   readonly upsertState: (rows: readonly StateRecord[]) => Promise<void>;
   readonly insertEvents: (rows: readonly EventInsert[]) => Promise<readonly string[]>;
+  readonly enrichEvent: (id: string, details: Readonly<Record<string, JsonValue>>) => Promise<void>;
   readonly loadCameras: () => Promise<readonly CameraRecord[]>;
   readonly upsertCameras: (rows: readonly CameraUpsert[]) => Promise<void>;
   readonly updateProviderLink: (provider: Provider, change: ProviderLinkChange) => Promise<void>;

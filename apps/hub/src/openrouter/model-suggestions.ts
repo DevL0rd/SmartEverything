@@ -6,13 +6,10 @@ import {
   type AiModelKind,
   type AiModelRow,
   type AiModelSuggested,
-} from "@smarteverything/domain";
-import type {
-  LayoutOwner,
-  PersonalRepository,
-} from "../store/repositories/personal";
-import type { Catalogue } from "./catalogue";
-import type { AiModelsRepository } from "./models-repository";
+} from '@smarteverything/domain';
+import type { LayoutOwner, PersonalRepository } from '../store/repositories/personal';
+import type { Catalogue } from './catalogue';
+import type { AiModelsRepository } from './models-repository';
 
 const RECENT_COUNT = 6;
 const DATED_ID = /-\d{8}$/;
@@ -29,28 +26,20 @@ export interface SuggestionDeps {
   readonly personal: PersonalRepository;
 }
 
-function favouriteIds(
-  personal: PersonalRepository,
-  owner: LayoutOwner,
-): readonly string[] {
+function favouriteIds(personal: PersonalRepository, owner: LayoutOwner): readonly string[] {
   const pref = CLIENT_PREFS.ai_models;
   const read = pref.decode(personal.layout(owner, pref.storageKey)?.layout);
-  if (read.status === "invalid") {
-    throw new ApiError("conflict", read.reason);
+  if (read.status === 'invalid') {
+    throw new ApiError('conflict', read.reason);
   }
   return read.value.favourites;
 }
 
-function rowsFor(
-  catalogue: Catalogue,
-  ids: readonly string[],
-  kind: AiModelKind,
-): AiModelRow[] {
+function rowsFor(catalogue: Catalogue, ids: readonly string[], kind: AiModelKind): AiModelRow[] {
   const seen = new Set<string>();
   const rows: AiModelRow[] = [];
   for (const id of ids) {
-    const row =
-      catalogue.usable(id) ?? catalogue.usable(id.replace(DATED_ID, ""));
+    const row = catalogue.usable(id) ?? catalogue.usable(id.replace(DATED_ID, ''));
     if (row !== null && row.kinds.includes(kind) && !seen.has(row.id)) {
       seen.add(row.id);
       rows.push(row);
@@ -59,10 +48,7 @@ function rowsFor(
   return rows;
 }
 
-function currentOf(
-  catalogue: Catalogue,
-  current: AiModelChoice | undefined,
-): AiModelRow | null {
+function currentOf(catalogue: Catalogue, current: AiModelChoice | undefined): AiModelRow | null {
   if (current === undefined) {
     return null;
   }
@@ -71,10 +57,7 @@ function currentOf(
     : catalogue.model(current);
 }
 
-export function suggestionsOf(
-  deps: SuggestionDeps,
-  request: SuggestionRequest,
-): AiModelSuggested {
+export function suggestionsOf(deps: SuggestionDeps, request: SuggestionRequest): AiModelSuggested {
   const { catalogue } = deps;
   const overview = catalogue.overview();
   const defaultId = overview.default?.model_id;
@@ -84,11 +67,7 @@ export function suggestionsOf(
     default: overview.default,
     default_model: defaultId === undefined ? null : catalogue.usable(defaultId),
     current: currentOf(catalogue, request.current),
-    favourites: rowsFor(
-      catalogue,
-      favouriteIds(deps.personal, request.owner),
-      request.kind,
-    ),
+    favourites: rowsFor(catalogue, favouriteIds(deps.personal, request.owner), request.kind),
     recent: rowsFor(
       catalogue,
       deps.models.recentModelIds(request.owner.profileId),

@@ -1,15 +1,23 @@
 import type {
   HealthRecord,
+  InboundMessage,
   JsonValue,
   PluginEvent,
   PluginManifest,
   PluginManifestInput,
+  PluginOptionPage,
+  PluginOptionQuery,
+  PluginPerson,
+  PluginPersonChange,
   PluginSearchEntry,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import type { HubToolResult, ToolAnnotationHints, ToolCaller } from '../../ai-tools/hub-tool';
 import type { DeviceDriver } from '../../local/device-driver';
+import type { PluginNetwork } from '../plugin-listen';
+import type { PluginSpeaker } from '../plugin-reach';
+import type { PluginVoice } from '../plugin-voice';
 
 export type Unsubscribe = () => void;
 
@@ -39,6 +47,12 @@ export interface PluginTool {
   ) => Promise<HubToolResult>;
 }
 
+export type PluginOptionProvider = (query: PluginOptionQuery) => Promise<PluginOptionPage>;
+
+export interface PluginOptions {
+  readonly register: (source: string, provider: PluginOptionProvider) => Unsubscribe;
+}
+
 export interface PluginSecrets {
   readonly get: (name: string) => string | null;
   readonly set: (name: string, value: string) => Promise<void>;
@@ -65,9 +79,66 @@ export interface PluginMetrics {
   readonly push: (externalId: string, key: string, value: number, at: string) => void;
 }
 
+interface PluginMessages {
+  readonly post: (message: InboundMessage) => void;
+}
+
+export interface PluginPeopleView {
+  readonly save: (externalId: string, change: PluginPersonChange) => PluginPerson;
+  readonly find: (externalId: string) => PluginPerson | null;
+  readonly list: () => readonly PluginPerson[];
+  readonly watch: (listener: () => void) => Unsubscribe;
+}
+
+interface PluginReachTargets {
+  readonly register: (speaker: PluginSpeaker) => Unsubscribe;
+}
+
+export interface PluginConversationState {
+  readonly title: string;
+  readonly state: 'ready' | 'working' | 'unavailable';
+  readonly reason: string | null;
+  readonly model: string | null;
+  readonly costMicros: number;
+}
+
+export interface PluginUsageSpan {
+  readonly costMicros: number;
+  readonly calls: number;
+}
+
+export interface PluginUsageView {
+  readonly today: PluginUsageSpan;
+  readonly week: PluginUsageSpan;
+  readonly month: PluginUsageSpan;
+}
+
+export interface PluginAssistant {
+  readonly settings: () => {
+    readonly name: string | null;
+    readonly aliases: readonly string[];
+    readonly activitySteps: boolean;
+    readonly reuseChatMinutes: number;
+    readonly compactAtPercent: number;
+  };
+  readonly conversation: (key: string) => PluginConversationState | null;
+  readonly usage: () => PluginUsageView;
+  readonly compact: (key: string) => Promise<boolean>;
+  readonly startOver: (key: string) => Promise<boolean>;
+  readonly stop: (key: string) => Promise<boolean>;
+  readonly setModel: (key: string, model: string | null) => Promise<string | null>;
+}
+
+export interface PluginFiles {
+  readonly folder: string;
+  readonly outbox: string;
+  readonly attachmentsOf: (chatId: string) => readonly string[];
+}
+
 export interface PluginContext<S> {
   readonly manifest: PluginManifest;
   readonly settings: S;
+  readonly settingsChanged: (listener: (settings: S) => void) => Unsubscribe;
   readonly secrets: PluginSecrets;
   readonly signal: AbortSignal;
   readonly log: Logger;
@@ -75,14 +146,22 @@ export interface PluginContext<S> {
   readonly devices: { readonly register: (driver: DeviceDriver) => Unsubscribe };
   readonly data: { readonly publish: (stream: string, value: JsonValue) => void };
   readonly events: { readonly emit: (event: PluginEvent) => void };
+  readonly options: PluginOptions;
   readonly search: { readonly replace: (entries: readonly PluginSearchEntry[]) => void };
   readonly health: {
     readonly write: (profileId: string, records: readonly HealthRecord[]) => Promise<void>;
   };
   readonly records: (collection: string) => PluginRecords;
-  readonly configure: (change: Partial<PluginConfiguration>) => Promise<void>;
+  readonly configure: (change: Partial<PluginConfiguration>, by?: ToolCaller) => Promise<void>;
   readonly viewers: PluginViewers;
   readonly metrics: PluginMetrics;
+  readonly messages: PluginMessages;
+  readonly people: PluginPeopleView;
+  readonly reach: PluginReachTargets;
+  readonly network: PluginNetwork;
+  readonly voice: PluginVoice;
+  readonly assistant: PluginAssistant;
+  readonly files: PluginFiles;
 }
 
 export interface BuiltinPluginDefinition<S> {
@@ -91,7 +170,11 @@ export interface BuiltinPluginDefinition<S> {
   readonly start: (context: PluginContext<S>) => Promise<PluginStop>;
 }
 
-export type PluginHostContext = Omit<PluginContext<unknown>, 'settings'>;
+export type PluginHostContext = Omit<PluginContext<unknown>, 'settings' | 'settingsChanged'> & {
+  readonly watchSettings: (
+    listener: (settings: Readonly<Record<string, JsonValue>>) => void,
+  ) => Unsubscribe;
+};
 
 export type BuiltinStart =
   | { readonly ok: true; readonly stop: PluginStop }

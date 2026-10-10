@@ -22,7 +22,6 @@ const CALLER: ToolCaller = {
   role: 'owner',
   chatId: null,
   via: 'app',
-  confirmed: true,
   clientId: null,
 };
 

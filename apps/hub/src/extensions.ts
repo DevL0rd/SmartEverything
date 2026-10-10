@@ -1,6 +1,6 @@
 import type { Logger } from '@smarteverything/logging';
 import type { PushCommandChannel } from './extensions/push/commands';
-import type { McpCallFeed } from './extensions/mcp/call-feed';
+import type { OpenCalls } from './assistant-voice/open-calls';
 import type { RunningHub } from './hub';
 import type { SecretStore } from './secrets/store';
 import type { RawRoute } from './server/http-server';
@@ -8,6 +8,7 @@ import type { ExtensionRouteTable } from './server/router';
 import type { LiveHub } from './server/live';
 import type { Operations } from './server/operations';
 import type { Store } from './store/store';
+import type { MediaNotes } from './transcripts/media-notes';
 
 export interface ExtensionContext {
   readonly store: Store;
@@ -15,7 +16,8 @@ export interface ExtensionContext {
   readonly secrets: SecretStore;
   readonly live: LiveHub;
   readonly pushCommands: PushCommandChannel;
-  readonly toolCalls: McpCallFeed;
+  readonly openCalls: OpenCalls;
+  readonly mediaNotes: MediaNotes;
   readonly operations: Operations;
   readonly dataDirectory: string;
   readonly log: Logger;

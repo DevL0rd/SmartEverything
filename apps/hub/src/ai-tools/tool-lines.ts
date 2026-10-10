@@ -7,7 +7,6 @@ const NAMES_SHOWN = 3;
 export interface ToolLineInput {
   readonly tool: HubTool;
   readonly args: Readonly<Record<string, unknown>>;
-  readonly failed: boolean;
   readonly deviceName: (id: string) => string | null;
 }
 
@@ -49,6 +48,5 @@ export function toolLine(input: ToolLineInput): string {
     .map(input.deviceName)
     .filter((name): name is string => name !== null);
   const phrase = actionPhrase(input.tool, input.args, devicesPhrase(labels));
-  const line = phrase ?? input.tool.title;
-  return input.failed ? `Couldn’t do this: ${line}` : line;
+  return phrase ?? input.tool.title;
 }

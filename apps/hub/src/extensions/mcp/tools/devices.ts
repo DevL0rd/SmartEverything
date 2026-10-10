@@ -116,7 +116,6 @@ function described(
     value_type: presented.capability.value,
     options: presented.options,
     unit: presented.unit,
-    danger: presented.danger.tier === 'none' ? null : 'needs confirm: true',
     value: value ?? null,
     shown_as: value === undefined ? null : presentValue(presented, value),
     observed_at: state?.observed_at ?? null,

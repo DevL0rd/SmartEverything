@@ -1,4 +1,4 @@
-import type { AiOutreachRow, Role } from '@smarteverything/domain';
+import type { AiOutreachRow, PluginOrigin, Role } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { ReachRefusedError } from './reach-errors';
 
@@ -7,6 +7,7 @@ export interface Asker {
   readonly role: Role;
   readonly clientId: string | null;
   readonly chatId: string | null;
+  readonly origin?: PluginOrigin | null;
 }
 
 const WINDOW_MS = 10 * 60_000;

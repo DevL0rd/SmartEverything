@@ -7,7 +7,7 @@ import {
 import type { ChatMessage } from '../../../openrouter/chat-types';
 import type { Store } from '../../../store/store';
 import type { ConversationLog } from '../../conversation-log';
-import { explicitCache } from './context';
+import { explicitCache } from './cache';
 import type { ChatClientPort, TurnPort } from './ports';
 import { pendingUsage, usageOf, type TurnUsage } from './turn-loop';
 
@@ -31,6 +31,7 @@ export interface FitRequest {
   readonly prefix: readonly unknown[];
   readonly signal: AbortSignal;
   readonly usage: (entry: TurnUsage) => void;
+  readonly force?: boolean;
 }
 
 export interface CompactorDeps {
@@ -73,11 +74,26 @@ export function chatContext(store: Store, chatId: string): ChatContext {
   };
 }
 
+function totalOf(context: ChatContext, prefixTokens: number): number {
+  return prefixTokens + tokensOf(context.summary ?? '') + tokensOf(context.rows);
+}
+
 export class Compactor {
   constructor(private readonly deps: CompactorDeps) {}
 
   context(chatId: string): ChatContext {
     return chatContext(this.deps.store, chatId);
+  }
+
+  measure(chatId: string, window: number | null, prefix: readonly unknown[]): void {
+    if (window !== null) {
+      this.note(chatId, totalOf(this.context(chatId), tokensOf(prefix)), window);
+    }
+  }
+
+  private note(chatId: string, total: number, window: number): void {
+    const percent = Math.min(100, Math.round((total * 100) / window));
+    this.deps.store.aiChats.noteContext(chatId, percent);
   }
 
   async fit(request: FitRequest): Promise<ChatContext> {
@@ -86,19 +102,24 @@ export class Compactor {
       return context;
     }
     const percent = this.deps.store.assistantChat.settings().compact_at_percent;
-    const prefix = tokensOf(request.prefix) + tokensOf(context.summary ?? '');
+    const prefixTokens = tokensOf(request.prefix);
+    const prefix = prefixTokens + tokensOf(context.summary ?? '');
     const total = prefix + tokensOf(context.rows);
-    if (total < (request.window * percent) / 100) {
+    if (request.force !== true && total < (request.window * percent) / 100) {
+      this.note(request.chat.id, total, request.window);
       return context;
     }
     const older = this.older(context.rows, request.window * KEEP_SHARE - prefix);
     const last = older.at(-1);
     if (last === undefined) {
+      this.note(request.chat.id, total, request.window);
       return context;
     }
     const summary = await this.summarise(request, context.summary, older);
     this.deps.conversation.compaction(request.chat, summary, last.created_at);
-    return this.context(request.chat.id);
+    const after = this.context(request.chat.id);
+    this.note(request.chat.id, totalOf(after, prefixTokens), request.window);
+    return after;
   }
 
   private older(rows: readonly AssistantMessageRow[], keep: number): AssistantMessageRow[] {

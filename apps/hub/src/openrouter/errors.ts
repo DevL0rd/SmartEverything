@@ -29,6 +29,8 @@ export class OpenRouterError extends Error {
   }
 }
 
+const CAUSE_DEPTH = 4;
+
 const STATUS_CODES: Readonly<Record<number, OpenRouterErrorCode>> = {
   400: 'bad_request',
   401: 'unauthorized',
@@ -54,6 +56,22 @@ const FRIENDLY: Readonly<Record<OpenRouterErrorCode, string>> = {
   unreadable: 'OpenRouter sent an answer this app can’t read',
   failed: 'OpenRouter failed',
 };
+
+function causeChain(cause: unknown): string[] {
+  const parts: string[] = [];
+  let current: unknown = cause;
+  while (current instanceof Error && parts.length < CAUSE_DEPTH) {
+    const code: unknown = Reflect.get(current, 'code');
+    parts.push(typeof code === 'string' ? `${current.message} [${code}]` : current.message);
+    current = current.cause;
+  }
+  return parts;
+}
+
+export function networkFailure(cause: unknown): string {
+  const parts = causeChain(cause);
+  return parts.length === 0 ? String(cause) : parts.join(': ');
+}
 
 export function errorCodeOf(status: number): OpenRouterErrorCode {
   return STATUS_CODES[status] ?? (status >= 500 ? 'unavailable' : 'failed');

@@ -1,6 +1,5 @@
 import {
   API_ENDPOINTS,
-  MCP_CONFIRMED_OPERATIONS,
   NO_BODY,
   isHumanOnlyOperation,
   mcpOperationArea,
@@ -27,7 +26,6 @@ export interface OperationShape {
   readonly params: readonly string[];
   readonly query: readonly string[];
   readonly flatBody: readonly string[] | null;
-  readonly confirm: boolean;
   readonly personal: boolean;
   readonly input: Record<string, unknown>;
 }
@@ -48,12 +46,7 @@ function flatBodyOf(endpoint: EndpointShape, taken: readonly string[]): ObjectSc
   return body;
 }
 
-const EXTRA_FIELDS: readonly string[] = ['confirm', 'profileId', 'body'];
-
-const CONFIRM_FIELD = {
-  type: 'boolean',
-  description: 'Must be true: the app asks the person to confirm this',
-};
+const EXTRA_FIELDS: readonly string[] = ['profileId', 'body'];
 
 const PROFILE_FIELD = {
   type: 'string',
@@ -68,7 +61,6 @@ interface Parts {
 }
 
 interface Extra {
-  readonly confirm: boolean;
   readonly personal: boolean;
 }
 
@@ -86,11 +78,8 @@ function nestedBody(endpoint: EndpointShape, parts: Parts): ObjectSchema | null 
 function extraOf(extra: Extra): ObjectSchema {
   return {
     type: 'object',
-    properties: {
-      ...(extra.confirm ? { confirm: CONFIRM_FIELD } : {}),
-      ...(extra.personal ? { profileId: PROFILE_FIELD } : {}),
-    },
-    required: extra.confirm ? ['confirm'] : [],
+    properties: extra.personal ? { profileId: PROFILE_FIELD } : {},
+    required: [],
   };
 }
 
@@ -132,7 +121,6 @@ function shapeOf(name: EndpointName): OperationShape {
     ...EXTRA_FIELDS,
   ];
   const flat = flatBodyOf(endpoint, taken);
-  const confirm = MCP_CONFIRMED_OPERATIONS.has(name);
   const personal = PERSONAL_AREAS.has(mcpOperationArea(endpoint));
   return {
     name,
@@ -140,9 +128,8 @@ function shapeOf(name: EndpointName): OperationShape {
     params: Object.keys(params?.properties ?? {}),
     query: Object.keys(query?.properties ?? {}),
     flatBody: flat === null ? null : Object.keys(flat.properties),
-    confirm,
     personal,
-    input: inputOf(endpoint, { params, query, flat }, { confirm, personal }),
+    input: inputOf(endpoint, { params, query, flat }, { personal }),
   };
 }
 
@@ -180,12 +167,6 @@ export function operationInput(
   if (unknown.length > 0) {
     throw new ToolError(
       `${shape.name} does not take ${unknown.join(', ')}; list_operations gives its fields`,
-    );
-  }
-  if (shape.confirm && args['confirm'] !== true) {
-    throw new ToolError(
-      `${shape.name} is something the app asks the person to confirm; call again with confirm: true`,
-      'confirmation_required',
     );
   }
   return {

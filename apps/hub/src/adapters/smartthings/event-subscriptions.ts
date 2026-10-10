@@ -1,8 +1,8 @@
 import type { AdapterSink } from '@smarteverything/domain';
 import {
   deviceEventsFor,
-  healthEventFor,
   INSTALLED_APP,
+  isOnlineHealth,
   INSTALLED_SUBSCRIPTION_LIST,
   nextPageOf,
   planSubscriptions,
@@ -233,8 +233,9 @@ export class EventSubscriptions {
         });
         return;
       case 'DEVICE_HEALTH_EVENT':
-        sink.event(
-          healthEventFor(event.deviceHealthEvent.deviceId, event.deviceHealthEvent.status, at),
+        sink.online(
+          event.deviceHealthEvent.deviceId,
+          isOnlineHealth(event.deviceHealthEvent.status),
         );
         return;
       case 'DEVICE_LIFECYCLE_EVENT':

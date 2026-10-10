@@ -1,4 +1,4 @@
-import type { AiOutreachRow } from '@smarteverything/domain';
+import type { AiOutreachRow, MessageOrigin, PluginOrigin } from '@smarteverything/domain';
 
 const HOW_WORDS: Readonly<Record<AiOutreachRow['how'], string>> = {
   phone: 'phone',
@@ -8,6 +8,16 @@ const HOW_WORDS: Readonly<Record<AiOutreachRow['how'], string>> = {
   channel: 'walkie-talkie channel',
   message: 'message',
 };
+
+export function outcomeOrigin(origin: PluginOrigin | null): MessageOrigin {
+  return {
+    source: 'wake',
+    plugin_id: null,
+    device_id: null,
+    name: 'Outreach',
+    ...(origin ?? {}),
+  };
+}
 
 export function callOpening(row: AiOutreachRow): string {
   return [

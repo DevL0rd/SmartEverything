@@ -1,9 +1,10 @@
 import {
-  ASSISTANT_STEPS_KEPT,
+  settledSteps,
   type ChatActivityNotice,
   type ChatStreamNotice,
   type ChatStreamPart,
   type ChatToolItem,
+  type SettledStep,
 } from '@smarteverything/domain';
 
 const FLUSH_MS = 50;
@@ -25,7 +26,6 @@ export class TurnStream {
   private draft = '';
   private separate = false;
   private reasoningText = '';
-  private steps: string[] = [];
   private readonly tools = new Map<string, ChatToolItem>();
 
   constructor(
@@ -56,9 +56,6 @@ export class TurnStream {
 
   tool(item: ChatToolItem): void {
     this.tools.set(item.callId, item);
-    if (item.state === 'running' && this.steps.at(-1) !== item.title) {
-      this.steps = [...this.steps, item.title].slice(-ASSISTANT_STEPS_KEPT);
-    }
     this.push({ kind: 'tool', ...item });
     this.snapshot('tool', null, null);
   }
@@ -66,6 +63,10 @@ export class TurnStream {
   private state: ChatActivityNotice['state'] = 'thinking';
   private finish: string | null = null;
   private reason: string | null = null;
+
+  settled(): readonly SettledStep[] {
+    return settledSteps([...this.tools.values()]);
+  }
 
   current(): ChatActivityNotice {
     return {
@@ -75,7 +76,7 @@ export class TurnStream {
       messageId: this.target.messageId,
       seq: this.seq,
       state: this.state,
-      steps: [...this.steps],
+      steps: this.settled().map((step) => step.title),
       draft: this.draft,
       reasoning: this.reasoningText,
       tools: [...this.tools.values()],

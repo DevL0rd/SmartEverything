@@ -20,6 +20,7 @@ const COMMANDS: Readonly<Record<string, (value: JsonValue) => unknown>> = {
   dnd: (value) => ({ type: 'set_dnd', on: value }),
   playback: (value) => ({ type: 'media', key: value === 'playing' ? 'play' : 'pause' }),
   ring: () => ({ type: 'ring', on: true }),
+  flashlight: (value) => ({ type: 'flashlight', mode: value }),
 };
 
 function actionOf(command: DeviceCommand): PhoneAction {

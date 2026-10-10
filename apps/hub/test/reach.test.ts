@@ -4,8 +4,8 @@ import {
   type AiSpeechNotice,
   type ClientRow,
 } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { AnnounceRequest, Announcement } from '../src/assistant-voice/announcer';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Saying, SpeechRequest } from '../src/speech/one-shot-speech';
 import type { HostedCall, HostedCallRequest } from '../src/assistant-voice/outreach';
 import type { CameraParts } from '../src/reach/camera-conversation';
 import { CameraFraming } from '../src/reach/camera-framing';
@@ -37,7 +37,7 @@ interface Bench {
   readonly rang: AiOutreachRow[];
   readonly cancelled: string[];
   readonly hosted: HostedCallRequest[];
-  readonly announced: AnnounceRequest[];
+  readonly announced: SpeechRequest[];
   readonly delivered: AiSpeechNotice[];
   reachable: boolean;
   stuck: boolean;
@@ -116,23 +116,28 @@ async function bench(): Promise<Bench> {
       },
       message: (): Promise<string> => Promise.resolve(chat.id),
       aiName: (): string => 'Coordinator',
+      liveVideo: (): boolean => false,
+      muteMic: (): boolean => false,
     },
     transports: { phone: ring, desktop: transport(parts, () => []) },
     host: (request): Promise<HostedCall> => {
       parts.hosted.push(request);
       return Promise.resolve({ hear: () => undefined, end: () => Promise.resolve() });
     },
-    announce: (request): Promise<Announcement> => {
+    say: (request): Promise<Saying> => {
       parts.announced.push(request);
       if (parts.stuck) {
         request.sink.ended('failed', 'Gemini closed the connection.');
-        return new Promise<Announcement>(() => undefined);
+        return new Promise<Saying>(() => undefined);
       }
       return Promise.resolve({ end: () => Promise.resolve() });
     },
-    deliver: (_clientId, notice): number => {
-      parts.delivered.push(notice);
-      return parts.reachable ? 1 : 0;
+    app: {
+      refusal: (): null => null,
+      play: (_client, notice): Promise<string | null> => {
+        parts.delivered.push(notice);
+        return Promise.resolve(parts.reachable ? null : 'The app is gone.');
+      },
     },
     camera: idleCamera(),
     framing: new CameraFraming({
@@ -243,7 +248,7 @@ const NOWHERE = '1d000000-0000-4000-8000-000000000009';
 
 const OPUS_FRAME = new Uint8Array([0xf8, 0xff, 0xfe]);
 
-function spoken(index = 0): AnnounceRequest {
+function spoken(index = 0): SpeechRequest {
   const request = current.announced[index];
   if (request === undefined) {
     throw new Error('Nothing was announced.');
@@ -261,8 +266,10 @@ describe('speak', () => {
     expect(spoken().text).toBe('Dinner is ready');
     spoken().sink.audio(OPUS_FRAME);
     spoken().sink.said();
+    await vi.waitFor(() => {
+      expect(current.opened.store.aiOutreach.byId(row.id).state).toBe('sent');
+    });
     expect(current.delivered[0]).toMatchObject({ type: 'ai_speech', text: 'Dinner is ready' });
-    expect(current.opened.store.aiOutreach.byId(row.id).state).toBe('sent');
     expect(current.turns).toHaveLength(0);
   });
 
@@ -273,7 +280,9 @@ describe('speak', () => {
       text: 'Hello',
     });
     spoken().sink.said();
-    expect(current.opened.store.aiOutreach.byId(row.id)).toMatchObject({ state: 'failed' });
+    await vi.waitFor(() => {
+      expect(current.opened.store.aiOutreach.byId(row.id)).toMatchObject({ state: 'failed' });
+    });
   });
 
   it('answers with the failure when the voice service never opens', async () => {
@@ -284,6 +293,17 @@ describe('speak', () => {
         text: 'Hello',
       }),
     ).rejects.toThrow(/voice service stopped \(Gemini closed/);
+  });
+
+  it('tells the asking chat when the voice service fails after the call returned', async () => {
+    await current.service.speak(current.asker, {
+      target: { kind: 'device', deviceId: current.phone.id },
+      text: 'Hello',
+    });
+    spoken().sink.ended('failed', 'Voice Nope is not valid for speech');
+    await vi.waitFor(() => {
+      expect(current.turns[0]?.text).toContain('Voice Nope is not valid for speech');
+    });
   });
 
   it('refuses an unknown device without speaking', async () => {

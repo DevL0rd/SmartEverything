@@ -50,6 +50,8 @@ export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs)
       return readOf(context, CLIENT_PREFS.appearance, as);
     case 'call_ring':
       return readOf(context, CLIENT_PREFS.call_ring, as);
+    case 'call_audio':
+      return readOf(context, CLIENT_PREFS.call_audio, as);
     case 'cameras':
       return readOf(context, CLIENT_PREFS.cameras, as);
     case 'health_sync':
@@ -58,6 +60,10 @@ export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs)
       return readOf(context, CLIENT_PREFS.nutrition, as);
     case 'ai_models':
       return readOf(context, CLIENT_PREFS.ai_models, as);
+    case 'ai_speech':
+      return readOf(context, CLIENT_PREFS.ai_speech, as);
+    case 'region':
+      return readOf(context, CLIENT_PREFS.region, as);
   }
 }
 
@@ -72,6 +78,8 @@ export function writePref(
       return writeOf(context, CLIENT_PREFS.appearance, patch, as);
     case 'call_ring':
       return writeOf(context, CLIENT_PREFS.call_ring, patch, as);
+    case 'call_audio':
+      return writeOf(context, CLIENT_PREFS.call_audio, patch, as);
     case 'cameras':
       return writeOf(context, CLIENT_PREFS.cameras, patch, as);
     case 'health_sync':
@@ -80,5 +88,9 @@ export function writePref(
       return writeOf(context, CLIENT_PREFS.nutrition, patch, as);
     case 'ai_models':
       return writeOf(context, CLIENT_PREFS.ai_models, patch, as);
+    case 'ai_speech':
+      return writeOf(context, CLIENT_PREFS.ai_speech, patch, as);
+    case 'region':
+      return writeOf(context, CLIENT_PREFS.region, patch, as);
   }
 }

@@ -1,4 +1,5 @@
 import type { ToolAction } from '@smarteverything/domain';
+import { limitsOf } from '../ai-tools/plugin-turn';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { ActionOrigin } from './actions';
 
@@ -20,16 +21,11 @@ export async function runToolAction(
     role: 'owner',
     chatId: null,
     via: 'automation',
-    confirmed: false,
     clientId: null,
+    ...limitsOf(origin.plugin?.requester, origin.plugin?.plugin_id),
   });
   const error = result.response['error'];
   if (typeof error === 'string') {
     throw new ToolActionError(`${check.tool.title}: ${error}`);
-  }
-  if (result.response['needs_confirmation'] !== undefined) {
-    throw new ToolActionError(
-      `${check.tool.title} needs a person to confirm it, so the automation “${origin.name}” can’t run it.`,
-    );
   }
 }

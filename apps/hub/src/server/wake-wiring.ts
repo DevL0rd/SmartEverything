@@ -3,12 +3,17 @@ import { assistantNames } from '../assistant-voice/persona';
 import type { Clock } from '../clock';
 import type { ReachRules } from '../reach/reach-rules';
 import type { ReachService } from '../reach/reach-service';
+import type { Ears, SpeechSegment } from '../wake-name/ear';
+import type { WakeClaims } from '../wake-name/wake-claims';
 import { WakeListeners } from '../wake-name/wake-listeners';
 import type { ServerContext } from './context';
 
 export interface WakeWiring {
   readonly rules: ReachRules;
   readonly service: ReachService;
+  readonly ears: Ears;
+  readonly claims: WakeClaims;
+  readonly speech: (cameraId: string, segment: SpeechSegment) => void;
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -23,6 +28,8 @@ export function startWakeName(context: ServerContext, wiring: WakeWiring): WakeL
     store,
     rules: wiring.rules,
     microphones: context.talk.camera.microphones,
+    ears: wiring.ears,
+    claims: wiring.claims,
     names: (): string[] => assistantNames(store),
     wake: async (cameraId: string, phrase: string, heard: () => Int16Array): Promise<void> => {
       const owner = store.profiles.first();
@@ -32,6 +39,7 @@ export function startWakeName(context: ServerContext, wiring: WakeWiring): WakeL
         heard,
       );
     },
+    speech: wiring.speech,
     clock: wiring.clock,
     log: wiring.log.forArea('hub.wake-name'),
   });

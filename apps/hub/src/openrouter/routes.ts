@@ -5,29 +5,29 @@ import {
   type OpenRouterAccount,
   type OpenRouterCredits,
   type OpenRouterStatus,
-} from "@smarteverything/domain";
-import { clientOf, profileIdOf, type Caller } from "../server/auth";
-import type { ServerContext } from "../server/context";
-import { bound, type Bound } from "../server/router";
-import type { ModelFilter, PageRequest } from "./catalogue-query";
-import { OpenRouterError, type OpenRouterErrorCode } from "./errors";
-import { discordinatorHasKey, readDiscordinatorKey } from "./key-import";
-import { suggestionsOf } from "./model-suggestions";
-import type { OpenRouterPlatform } from "./platform";
+} from '@smarteverything/domain';
+import { clientOf, profileIdOf, type Caller } from '../server/auth';
+import type { ServerContext } from '../server/context';
+import { bound, type Bound } from '../server/router';
+import type { ModelFilter, PageRequest } from './catalogue-query';
+import { OpenRouterError, type OpenRouterErrorCode } from './errors';
+import { discordinatorHasKey, readDiscordinatorKey } from './key-import';
+import { suggestionsOf } from './model-suggestions';
+import type { OpenRouterPlatform } from './platform';
 
 type AiModelRoutes = Record<keyof typeof E, Bound>;
 
 const API_CODES: Readonly<Record<OpenRouterErrorCode, ApiErrorCode>> = {
-  no_key: "invalid_request",
-  unauthorized: "upstream_failed",
-  no_credits: "upstream_failed",
-  rate_limited: "rate_limited",
-  unavailable: "upstream_failed",
-  bad_request: "upstream_failed",
-  not_found: "upstream_failed",
-  refused: "upstream_failed",
-  unreadable: "upstream_failed",
-  failed: "upstream_failed",
+  no_key: 'invalid_request',
+  unauthorized: 'upstream_failed',
+  no_credits: 'upstream_failed',
+  rate_limited: 'rate_limited',
+  unavailable: 'upstream_failed',
+  bad_request: 'upstream_failed',
+  not_found: 'upstream_failed',
+  refused: 'upstream_failed',
+  unreadable: 'upstream_failed',
+  failed: 'upstream_failed',
 };
 
 async function upstream<T>(work: () => Promise<T>): Promise<T> {
@@ -44,44 +44,35 @@ async function upstream<T>(work: () => Promise<T>): Promise<T> {
 function onThisComputer(caller: Caller): void {
   if (!clientOf(caller).built_in) {
     throw new ApiError(
-      "forbidden",
-      "Import the key in the desktop app on the computer that runs SmartEverything.",
+      'forbidden',
+      'Import the key in the desktop app on the computer that runs SmartEverything.',
     );
   }
 }
 
-async function statusOf(
-  platform: OpenRouterPlatform,
-): Promise<OpenRouterStatus> {
+async function statusOf(platform: OpenRouterPlatform): Promise<OpenRouterStatus> {
   const { catalogue } = platform;
   return {
-    key: platform.keys.current() === null ? "missing" : "set",
-    sources: (await discordinatorHasKey()) ? ["discordinator"] : [],
+    key: platform.keys.current() === null ? 'missing' : 'set',
+    sources: (await discordinatorHasKey()) ? ['discordinator'] : [],
     settings: catalogue.settings(),
     ...catalogue.overview(),
   };
 }
 
-async function creditsOf(
-  platform: OpenRouterPlatform,
-): Promise<OpenRouterCredits> {
+async function creditsOf(platform: OpenRouterPlatform): Promise<OpenRouterCredits> {
   try {
-    return { state: "known", ...(await platform.client.credits()) };
+    return { state: 'known', ...(await platform.client.credits()) };
   } catch (cause) {
-    if (cause instanceof OpenRouterError && cause.code === "refused") {
-      return { state: "needs_management_key" };
+    if (cause instanceof OpenRouterError && cause.code === 'refused') {
+      return { state: 'needs_management_key' };
     }
     throw cause;
   }
 }
 
-async function accountOf(
-  platform: OpenRouterPlatform,
-): Promise<OpenRouterAccount> {
-  const [key, credits] = await Promise.all([
-    platform.client.key(),
-    creditsOf(platform),
-  ]);
+async function accountOf(platform: OpenRouterPlatform): Promise<OpenRouterAccount> {
+  const [key, credits] = await Promise.all([platform.client.key(), creditsOf(platform)]);
   return {
     label: key.label,
     limit: key.limit,
@@ -97,14 +88,12 @@ async function accountOf(
   };
 }
 
-async function importKey(
-  platform: OpenRouterPlatform,
-): Promise<OpenRouterStatus> {
+async function importKey(platform: OpenRouterPlatform): Promise<OpenRouterStatus> {
   const key = await readDiscordinatorKey();
   if (key === null) {
     throw new ApiError(
-      "not_found",
-      "There is no OpenRouter key in Discordinator on this computer.",
+      'not_found',
+      'There is no OpenRouter key in Discordinator on this computer.',
     );
   }
   await upstream(() => platform.keys.save(key));
@@ -112,7 +101,7 @@ async function importKey(
 }
 
 interface ListQuery {
-  readonly kind?: ModelFilter["kind"] | undefined;
+  readonly kind?: ModelFilter['kind'] | undefined;
   readonly q?: string | undefined;
   readonly provider?: string | undefined;
   readonly cursor?: string | undefined;
@@ -140,7 +129,7 @@ function pickerRoutes(
   context: ServerContext,
 ): Pick<
   AiModelRoutes,
-  "listAiModels" | "suggestedAiModels" | "listAiModelProviders" | "readAiModel"
+  'listAiModels' | 'suggestedAiModels' | 'listAiModelProviders' | 'readAiModel'
 > {
   const { catalogue } = context.openRouter;
   return {
@@ -167,9 +156,7 @@ function pickerRoutes(
     listAiModelProviders: bound(E.listAiModelProviders, ({ query }) =>
       catalogue.providers(query.kind),
     ),
-    readAiModel: bound(E.readAiModel, ({ params }) =>
-      catalogue.detail(params.id),
-    ),
+    readAiModel: bound(E.readAiModel, ({ params }) => catalogue.detail(params.id)),
   };
 }
 
@@ -178,9 +165,7 @@ export function aiModelRoutes(context: ServerContext): AiModelRoutes {
   const { catalogue, keys } = platform;
   return {
     ...pickerRoutes(context),
-    refreshAiModels: bound(E.refreshAiModels, () =>
-      upstream(() => catalogue.sync()),
-    ),
+    refreshAiModels: bound(E.refreshAiModels, () => upstream(() => catalogue.sync())),
     setAiModelPrice: bound(E.setAiModelPrice, ({ params, body }) =>
       catalogue.setGooglePrice(params.id, body.pricing),
     ),
