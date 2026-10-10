@@ -11,15 +11,42 @@ describe('isPermissionGranted', () => {
     ).toBe(true);
   });
 
-  it('isPermissionGranted refuses the camera even alongside the microphone', () => {
+  it('isPermissionGranted lets the app use the camera alone or with the microphone for video calls', () => {
     expect(
       isPermissionGranted({ permission: 'media', requestingUrl: APP_PAGE, mediaTypes: ['video'] }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isPermissionGranted({
         permission: 'media',
         requestingUrl: APP_PAGE,
         mediaTypes: ['audio', 'video'],
+      }),
+    ).toBe(true);
+  });
+
+  it('isPermissionGranted refuses a media request for anything but audio and video', () => {
+    expect(
+      isPermissionGranted({
+        permission: 'media',
+        requestingUrl: APP_PAGE,
+        mediaTypes: ['audio', 'unknown'],
+      }),
+    ).toBe(false);
+  });
+
+  it('isPermissionGranted lets the app capture the screen and refuses every other origin', () => {
+    expect(
+      isPermissionGranted({
+        permission: 'display-capture',
+        requestingUrl: APP_PAGE,
+        mediaTypes: [],
+      }),
+    ).toBe(true);
+    expect(
+      isPermissionGranted({
+        permission: 'display-capture',
+        requestingUrl: 'https://evil.example',
+        mediaTypes: [],
       }),
     ).toBe(false);
   });

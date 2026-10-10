@@ -67,6 +67,7 @@ function programsOf(plan: FirewallPlan): readonly string[] {
       return plan.programs;
     case 'ufw':
     case 'firewalld':
+    case 'sysctl':
       return [];
   }
 }

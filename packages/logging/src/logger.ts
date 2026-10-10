@@ -15,6 +15,7 @@ export interface LoggerSettings {
   readonly style: OutputStyle;
   readonly context: LogContext;
   readonly sink: LogSink;
+  readonly tap: LogSink | null;
   readonly now: () => Date;
   readonly consoleRouting: ConsoleRouting;
 }
@@ -65,6 +66,7 @@ interface Settings {
   style: OutputStyle;
   context: LogContext;
   sink: LogSink | null;
+  tap: LogSink | null;
   now: () => Date;
   consoleRouting: ConsoleRouting;
 }
@@ -75,6 +77,7 @@ function defaultSettings(): Settings {
     style: 'pretty',
     context: {},
     sink: null,
+    tap: null,
     now: systemClock,
     consoleRouting: 'by-level',
   };
@@ -98,6 +101,7 @@ export class Logger {
     if (changes.level !== undefined) settings.level = changes.level;
     if (changes.style !== undefined) settings.style = changes.style;
     if (changes.sink !== undefined) settings.sink = changes.sink;
+    if (changes.tap !== undefined) settings.tap = changes.tap;
     if (changes.now !== undefined) settings.now = changes.now;
     if (changes.consoleRouting !== undefined) settings.consoleRouting = changes.consoleRouting;
     settings.context = { ...settings.context, ...changes.context };
@@ -205,6 +209,7 @@ export class Logger {
       ...(cause === undefined ? {} : { failure: describeFailure(cause) }),
     };
 
+    settings.tap?.(record);
     if (settings.sink === null) {
       writeToConsole(record, settings.style, settings.consoleRouting);
       return;

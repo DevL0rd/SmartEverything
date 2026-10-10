@@ -1,3 +1,5 @@
+import workletCallsWorklets from './worklet-calls-worklets.js';
+
 const CONTROL = /^\s*(eslint|global|globals|exported|prettier-ignore)\b/;
 
 const noComments = {
@@ -25,4 +27,6 @@ const noComments = {
   },
 };
 
-export default { rules: { 'no-comments': noComments } };
+export default {
+  rules: { 'no-comments': noComments, 'worklet-calls-worklets': workletCallsWorklets },
+};

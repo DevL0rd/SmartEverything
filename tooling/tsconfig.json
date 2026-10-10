@@ -3,8 +3,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "./dist",
-    "types": ["node"]
+    "types": ["node"],
+    "rewriteRelativeImportExtensions": true
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "claude-hook/*.ts"],
   "references": [{ "path": "../packages/logging" }]
 }

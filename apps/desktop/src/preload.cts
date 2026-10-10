@@ -1,5 +1,8 @@
 import electron = require('electron');
 import type {
+  DesktopCaptureKind,
+  DesktopCaptureMode,
+  DesktopCaptureSource,
   DesktopEventChannel,
   DesktopFfmpeg,
   DesktopFirewallOutcome,
@@ -14,6 +17,7 @@ import type {
   DesktopServiceLogs,
   DesktopServiceManager,
   DesktopServiceStatus,
+  DesktopStill,
   DesktopTalkCommand,
   DesktopTalkShortcuts,
   DesktopTalkTray,
@@ -135,6 +139,18 @@ function booleanOf(channel: string, fields: Fields, key: string): boolean {
     throw new BridgeAnswerError(channel, `a boolean ${key}`);
   }
   return value;
+}
+
+function numberOf(channel: string, fields: Fields, key: string): number {
+  const value = fields[key];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new BridgeAnswerError(channel, `a number ${key}`);
+  }
+  return value;
+}
+
+function nullableNumberOf(channel: string, fields: Fields, key: string): number | null {
+  return fields[key] === null ? null : numberOf(channel, fields, key);
 }
 
 function choiceOf<T extends string>(
@@ -295,6 +311,55 @@ async function setTalkTray(tray: DesktopTalkTray): Promise<void> {
   await invoke('desktop:talk-tray', tray);
 }
 
+const CAPTURE_MODES: readonly DesktopCaptureMode[] = ['picker', 'portal'];
+const CAPTURE_KINDS: readonly DesktopCaptureKind[] = ['screen', 'window'];
+
+async function captureMode(): Promise<DesktopCaptureMode> {
+  const channel = 'desktop:capture-mode';
+  return choiceOf(channel, { mode: await invoke(channel, undefined) }, 'mode', CAPTURE_MODES);
+}
+
+function captureSourceOf(channel: string, value: unknown): DesktopCaptureSource {
+  const fields = fieldsOf(channel, 'a capture source', value);
+  return {
+    id: stringOf(channel, fields, 'id'),
+    kind: choiceOf(channel, fields, 'kind', CAPTURE_KINDS),
+    title: stringOf(channel, fields, 'title'),
+    thumbnail: nullableStringOf(channel, fields, 'thumbnail'),
+    appIcon: nullableStringOf(channel, fields, 'appIcon'),
+    primary: booleanOf(channel, fields, 'primary'),
+    width: nullableNumberOf(channel, fields, 'width'),
+    height: nullableNumberOf(channel, fields, 'height'),
+  };
+}
+
+async function listCaptureSources(): Promise<readonly DesktopCaptureSource[]> {
+  const channel = 'desktop:capture-sources';
+  const answer = await invoke(channel, undefined);
+  if (!isList(answer)) {
+    throw new BridgeAnswerError(channel, 'a list of capture sources');
+  }
+  return answer.map((source) => captureSourceOf(channel, source));
+}
+
+async function chooseCaptureSource(sourceId: string | null): Promise<void> {
+  await invoke('desktop:capture-choose', sourceId);
+}
+
+async function captureStill(sourceId: string | null): Promise<DesktopStill> {
+  const channel = 'desktop:capture-still';
+  const fields = fieldsOf(channel, 'a still image', await invoke(channel, sourceId));
+  return {
+    sourceId: stringOf(channel, fields, 'sourceId'),
+    kind: choiceOf(channel, fields, 'kind', CAPTURE_KINDS),
+    title: stringOf(channel, fields, 'title'),
+    width: numberOf(channel, fields, 'width'),
+    height: numberOf(channel, fields, 'height'),
+    mime: choiceOf(channel, fields, 'mime', ['image/jpeg']),
+    dataBase64: stringOf(channel, fields, 'dataBase64'),
+  };
+}
+
 const desktop: SmartEverythingDesktop = {
   platform: platformOfProcess(),
   version: versionOfProcess(),
@@ -323,6 +388,10 @@ const desktop: SmartEverythingDesktop = {
   attention: async () => {
     await invoke('desktop:attention', undefined);
   },
+  captureMode,
+  listCaptureSources,
+  chooseCaptureSource,
+  captureStill,
 };
 
 electron.contextBridge.exposeInMainWorld(GLOBAL_NAME, desktop);

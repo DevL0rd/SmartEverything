@@ -12,3 +12,7 @@ reports/
 **/dist-types/
 .cache/
 out/
+STATE.md
+optimization/
+AGENT-BRIEF.md
+apps/app/google-services.json

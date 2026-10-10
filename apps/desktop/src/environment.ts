@@ -26,3 +26,24 @@ const buildEnvironmentSchema = z.object({ APP_VARIANT: VARIANT_NAME.default('rel
 export function readBuildVariant(): DesktopVariantName {
   return buildEnvironmentSchema.parse(env).APP_VARIANT;
 }
+
+const displayEnvironmentSchema = z.object({
+  XDG_SESSION_TYPE: z.string().optional(),
+  WAYLAND_DISPLAY: z.string().optional(),
+  ELECTRON_OZONE_PLATFORM_HINT: z.string().optional(),
+});
+
+export interface DisplayEnvironment {
+  readonly sessionType: string | undefined;
+  readonly waylandDisplay: string | undefined;
+  readonly ozoneHint: string | undefined;
+}
+
+export function readDisplayEnvironment(): DisplayEnvironment {
+  const parsed = displayEnvironmentSchema.parse(env);
+  return {
+    sessionType: parsed.XDG_SESSION_TYPE,
+    waylandDisplay: parsed.WAYLAND_DISPLAY,
+    ozoneHint: parsed.ELECTRON_OZONE_PLATFORM_HINT,
+  };
+}

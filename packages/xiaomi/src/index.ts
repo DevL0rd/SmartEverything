@@ -143,11 +143,11 @@ export type {
 export {
   CAMERA_EVENT_HOST,
   CAMERA_EVENT_PATH,
-  CAMERA_LIST_EVENTS,
   callEventName,
-  cameraEventKinds,
+  cameraEventDetections,
   cameraEventListData,
   deviceEventFromMiot,
+  miotDetection,
   miotEventDetails,
   miotEventKind,
   miotEventOf,
@@ -155,7 +155,7 @@ export {
 } from './events';
 export type {
   CameraEvent,
-  CameraEventKinds,
+  CameraEventDetections,
   CameraEventPage,
   CameraEventQuery,
   MiotEventShape,

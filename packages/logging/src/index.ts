@@ -6,7 +6,7 @@ export type { Runtime } from './scope';
 
 export { isEventName, assertEventName, InvalidEventNameError } from './event-name';
 
-export { REDACTED, DENIED_FIELDS, isDeniedField, redact } from './redaction';
+export { REDACTED, DENIED_FIELDS, isDeniedField, redact, redactText } from './redaction';
 export type { LogPayload } from './redaction';
 
 export { FOREGROUND, BACKGROUND, RESET, BOLD, paint, withoutColour } from './palette';

@@ -1,5 +1,8 @@
 import {
+  CAMERA_DETECTION_KINDS,
   JSON_VALUE,
+  miotDeviceEventKind,
+  type CameraDetection,
   type DeviceEvent,
   type EventKind,
   type JsonValue,
@@ -7,46 +10,26 @@ import {
 import { z } from 'zod';
 import { parseUrn, type MiotSpec } from './spec';
 
-const KIND_BY_MIOT_EVENT: ReadonlyMap<string, EventKind> = new Map<string, EventKind>([
-  ['key-call-start', 'call'],
-  ['phone-call-start', 'call'],
-  ['doorbell-ring', 'doorbell'],
-  ['someone-at-the-door', 'person'],
-  ['someone-appeared', 'person'],
-  ['people-fence-in', 'person'],
-  ['people-fence-out', 'person'],
-  ['pet-appeared', 'pet'],
-  ['motion-detected', 'motion'],
-  ['object-motion', 'motion'],
-  ['abnormal-sound', 'sound'],
-  ['louder-sound', 'sound'],
-  ['detected-babycry-event', 'sound'],
-  ['door-opened', 'opened'],
-  ['top-grille', 'opened'],
-  ['filter-exhausted', 'maintenance'],
-  ['low-water-level', 'maintenance'],
-  ['fault-motor-stuck', 'fault'],
-  ['childlock-trigger', 'button'],
-  ['cruise-started', 'activity'],
-  ['cruise-ended', 'activity'],
-  ['into-fav-area', 'activity'],
-  ['out-fav-area', 'activity'],
-  ['ir-turned-on', 'activity'],
-  ['ir-turned-off', 'activity'],
-  ['self-check-complete', 'activity'],
-  ['long-time-no-humang', 'alarm'],
-  ['no-huamn-appear', 'alarm'],
-]);
+interface DetectionSource {
+  readonly detection: CameraDetection;
+  readonly miotEvents: readonly string[];
+  readonly cloudToken: RegExp;
+}
 
-export const CAMERA_LIST_EVENTS: ReadonlySet<string> = new Set([
-  'someone-appeared',
-  'pet-appeared',
-  'object-motion',
-  'motion-detected',
-  'abnormal-sound',
-  'louder-sound',
-  'detected-babycry-event',
-]);
+const DETECTION_SOURCES: readonly DetectionSource[] = [
+  { detection: 'doorbell', miotEvents: ['doorbell-ring'], cloudToken: /bell|ring/i },
+  { detection: 'call', miotEvents: ['key-call-start', 'phone-call-start'], cloudToken: /call/i },
+  {
+    detection: 'person',
+    miotEvents: ['someone-appeared', 'someone-at-the-door'],
+    cloudToken: /people|face|person|human/i,
+  },
+  { detection: 'baby_cry', miotEvents: ['detected-babycry-event'], cloudToken: /cry/i },
+  { detection: 'abnormal_sound', miotEvents: ['abnormal-sound'], cloudToken: /abnormal/i },
+  { detection: 'loud_sound', miotEvents: ['louder-sound'], cloudToken: /sound/i },
+  { detection: 'pet', miotEvents: ['pet-appeared'], cloudToken: /pet/i },
+  { detection: 'motion', miotEvents: ['object-motion', 'motion-detected'], cloudToken: /motion/i },
+];
 
 const CALL_CALLING = 1;
 
@@ -56,15 +39,22 @@ export interface ObservedEvent {
   readonly details: Readonly<Record<string, JsonValue>>;
 }
 
+export function miotDetection(name: string): CameraDetection | null {
+  return DETECTION_SOURCES.find((source) => source.miotEvents.includes(name))?.detection ?? null;
+}
+
 export function miotEventKind(name: string): EventKind | null {
-  return KIND_BY_MIOT_EVENT.get(name) ?? null;
+  const detection = miotDetection(name);
+  return detection === null ? miotDeviceEventKind(name) : CAMERA_DETECTION_KINDS[detection];
 }
 
 export function deviceEventFromMiot(name: string, observed: ObservedEvent): DeviceEvent | null {
   const kind = miotEventKind(name);
+  const detection = miotDetection(name);
+  const named = { ...observed.details, miotEvent: name };
   return kind === null
     ? null
-    : { ...observed, kind, details: { ...observed.details, miotEvent: name } };
+    : { ...observed, kind, details: detection === null ? named : { ...named, detection } };
 }
 
 export interface MiotEventShape {
@@ -160,29 +150,22 @@ export function parseCameraEventPage(data: JsonValue): CameraEventPage {
   return { events, malformed: units.length - events.length + (page.success ? 0 : 1) };
 }
 
-const CAMERA_TOKENS: readonly (readonly [RegExp, EventKind])[] = [
-  [/bell|ring/i, 'doorbell'],
-  [/call/i, 'call'],
-  [/people|face|person|human/i, 'person'],
-  [/sound|cry/i, 'sound'],
-  [/pet/i, 'pet'],
-  [/motion/i, 'motion'],
-];
-
-export interface CameraEventKinds {
-  readonly kinds: readonly EventKind[];
+export interface CameraEventDetections {
+  readonly detections: readonly CameraDetection[];
   readonly unrecognized: readonly string[];
 }
 
-export function cameraEventKinds(eventType: string): CameraEventKinds {
+export function cameraEventDetections(eventType: string): CameraEventDetections {
   const tokens = eventType.split(':').filter((token) => token !== '');
   const matches = tokens.map((token) => ({
     token,
-    match: CAMERA_TOKENS.find(([pattern]) => pattern.test(token)),
+    match: DETECTION_SOURCES.find(({ cloudToken }) => cloudToken.test(token)),
   }));
-  const kinds = new Set(matches.flatMap(({ match }) => (match === undefined ? [] : [match[1]])));
+  const detections = new Set(
+    matches.flatMap(({ match }) => (match === undefined ? [] : [match.detection])),
+  );
   return {
-    kinds: [...kinds],
+    detections: [...detections],
     unrecognized: matches.flatMap(({ token, match }) => (match === undefined ? [token] : [])),
   };
 }

@@ -4,7 +4,7 @@ import type { SmartThingsDeviceEvent } from '../src/webhook-messages';
 import { DEVICE } from '../src/rest-schemas';
 import {
   deviceEventsFor,
-  healthEventFor,
+  isOnlineHealth,
   statesForEvent,
   statesOf,
   withEvent,
@@ -217,13 +217,8 @@ describe('device events', () => {
     ).toHaveLength(1);
   });
 
-  it('reports a device going online or offline', () => {
-    expect(healthEventFor('d', 'ONLINE', AT)).toEqual({
-      externalId: 'd',
-      kind: 'device_online',
-      occurredAt: AT,
-      details: { status: 'ONLINE' },
-    });
-    expect(healthEventFor('d', 'UNHEALTHY', AT).kind).toBe('device_offline');
+  it('reads a health status as online or offline', () => {
+    expect(isOnlineHealth('ONLINE')).toBe(true);
+    expect(isOnlineHealth('UNHEALTHY')).toBe(false);
   });
 });

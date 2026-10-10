@@ -30,6 +30,7 @@ class PlanPlatformError extends Error {
 const PLAN_PLATFORM: Readonly<Record<FirewallPlan['backend'], DesktopPlatform>> = {
   ufw: 'linux',
   firewalld: 'linux',
+  sysctl: 'linux',
   windows: 'win32',
   macos: 'darwin',
 };
@@ -118,6 +119,7 @@ export function elevatedRunOf(plan: FirewallPlan, platform: DesktopPlatform): El
   switch (plan.backend) {
     case 'ufw':
     case 'firewalld':
+    case 'sysctl':
       return linuxRun(plan);
     case 'windows':
       return windowsRun(firewallScript(plan));

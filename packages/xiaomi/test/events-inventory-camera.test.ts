@@ -7,7 +7,7 @@ import {
   HOME_LIST_PATH,
   MIOT_SPEC,
   callEventName,
-  cameraEventKinds,
+  cameraEventDetections,
   cameraEventListData,
   cameraFeatures,
   chooseTransport,
@@ -58,7 +58,7 @@ describe('MIoT events', () => {
       externalId: '42',
       occurredAt: '2026-10-08T10:00:00.000Z',
       kind: 'call',
-      details: { a: 1, miotEvent: 'key-call-start' },
+      details: { a: 1, miotEvent: 'key-call-start', detection: 'call' },
     });
     expect(deviceEventFromMiot('cruise-ended', observed)).toBeNull();
   });
@@ -126,17 +126,17 @@ describe('the camera event list', () => {
     expect(parseCameraEventPage('x')).toStrictEqual({ events: [], malformed: 1 });
   });
 
-  it('turns event types into kinds and reports what it does not know', () => {
-    expect(cameraEventKinds('ObjectMotion:PeopleMotion')).toStrictEqual({
-      kinds: ['motion', 'person'],
+  it('turns event types into detections and reports what it does not know', () => {
+    expect(cameraEventDetections('ObjectMotion:PeopleMotion')).toStrictEqual({
+      detections: ['motion', 'person'],
       unrecognized: [],
     });
-    expect(cameraEventKinds('Doorbell::KeyCall:Face:BabyCry:Pet:Default')).toStrictEqual({
-      kinds: ['doorbell', 'call', 'person', 'sound', 'motion'],
+    expect(cameraEventDetections('Doorbell::KeyCall:Face:BabyCry:Pet:Default')).toStrictEqual({
+      detections: ['doorbell', 'call', 'person', 'baby_cry', 'pet'],
       unrecognized: ['Default'],
     });
-    expect(cameraEventKinds('Ring:human:LouderSound')).toStrictEqual({
-      kinds: ['doorbell', 'person', 'sound'],
+    expect(cameraEventDetections('Ring:human:LouderSound')).toStrictEqual({
+      detections: ['doorbell', 'person', 'loud_sound'],
       unrecognized: [],
     });
   });

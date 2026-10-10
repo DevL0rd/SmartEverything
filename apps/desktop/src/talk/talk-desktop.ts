@@ -3,6 +3,7 @@ import type {
   DesktopTalkShortcuts,
   DesktopTalkTray,
 } from '@smarteverything/domain';
+import { isDeepStrictEqual } from 'node:util';
 import type { BrowserWindow } from 'electron';
 import type { DesktopTray } from '../tray.js';
 import { revealWindow } from '../window.js';
@@ -24,6 +25,7 @@ export class TalkDesktop {
   #window: BrowserWindow | null = null;
   #tray: DesktopTray | null = null;
   #keys: TalkKeys | null = null;
+  #shown: DesktopTalkTray | null = null;
 
   attach(window: BrowserWindow, tray: DesktopTray): void {
     this.#window = window;
@@ -54,6 +56,11 @@ export class TalkDesktop {
   }
 
   tray(state: DesktopTalkTray): void {
+    const previous = this.#shown;
+    if (previous !== null && isDeepStrictEqual(previous, state)) {
+      return;
+    }
+    this.#shown = state;
     this.#tray?.talk(state);
   }
 

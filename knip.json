@@ -2,7 +2,11 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["vitest.mutation.config.ts", "tooling/*.ts"],
+      "entry": [
+        "vitest.mutation.config.ts",
+        "tooling/*.ts",
+        "tooling/claude-hook/baseline.vitest.config.ts"
+      ],
       "project": ["**/*.{ts,js,mjs}"]
     },
     "packages/logging": {

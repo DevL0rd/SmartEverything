@@ -2,6 +2,9 @@
   "version": "0.2",
   "language": "en-GB,en",
   "words": [
+    "navs",
+    "janks",
+    "jank",
     "ABCDEFGHJKMNPQRSTUVWXYZ",
     "ACCESSTOKEN",
     "accountsdk",
@@ -64,10 +67,13 @@
     "cwysj",
     "Dafang",
     "DAZN",
+    "dbus",
+    "envrc",
     "dckiller",
     "deeplink",
     "devl0rd",
     "dids",
+    "dont",
     "doorcontact",
     "dpdm",
     "dport",
@@ -90,6 +96,7 @@
     "freeyourgadget",
     "fskg",
     "Gadgetbridge",
+    "genai",
     "getappblocked",
     "getglobalstate",
     "gethome",
@@ -213,7 +220,11 @@
     "nosniff",
     "occured",
     "ONEPLUS",
+    "onnx",
+    "onnxruntime",
     "ONVIF",
+    "openrouter",
+    "opusscript",
     "osascript",
     "oura",
     "ouraring",
@@ -263,6 +274,7 @@
     "setpoints",
     "sgbj",
     "shealth",
+    "sidechain",
     "siid",
     "skagen",
     "smartcamera",
@@ -358,7 +370,17 @@
     "zhimi",
     "Zigbee",
     "zndb",
-    "zzff"
+    "zzff",
+    "mgmt",
+    "netrc",
+    "pypirc",
+    "shortlog",
+    "ncat",
+    "paru",
+    "bunx",
+    "execdir",
+    "fprint",
+    "doas"
   ],
   "ignorePaths": [
     "node_modules/**",
@@ -379,5 +401,11 @@
     "apps/app/assets/licences.json",
     "**/build/**"
   ],
-  "ignoreRegExpList": ["GHSA(-[a-z0-9]{4}){3}"]
+  "ignoreRegExpList": ["GHSA(-[a-z0-9]{4}){3}"],
+  "overrides": [
+    {
+      "filename": "**/apps/hub/src/claude/safe-{programs,git}.ts",
+      "ignoreRegExpList": ["/'[^'\\s]+'/g"]
+    }
+  ]
 }

@@ -21,6 +21,7 @@ function packageDirectory(name) {
 const vadDirectory = packageDirectory('@ricky0123/vad-web');
 const ortDirectory = packageDirectory('onnxruntime-web');
 const sherpaDirectory = packageDirectory('sherpa-onnx');
+const daveyScope = join(packageDirectory('@snazzah/davey'), '..');
 const wakeModel = join(root, 'apps', 'hub', 'src', 'wake-name', 'wake-name-model');
 
 const WEB = [
@@ -41,6 +42,13 @@ const SERVICE_MODULES = [
   ...readdirSync(sherpaDirectory)
     .filter((file) => file === 'package.json' || /\.(js|wasm)$/.test(file))
     .map((file) => [sherpaDirectory, 'sherpa-onnx', file]),
+  ...readdirSync(daveyScope)
+    .filter((name) => name.startsWith('davey-'))
+    .flatMap((name) =>
+      readdirSync(join(daveyScope, name))
+        .filter((file) => file === 'package.json' || file.endsWith('.node'))
+        .map((file) => [join(daveyScope, name), `@snazzah/${name}`, file]),
+    ),
 ];
 
 function copy(from, to) {

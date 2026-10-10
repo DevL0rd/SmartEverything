@@ -126,6 +126,7 @@ export default tseslint.config(
       ...react.configs.flat['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.flatConfigs.strict.rules,
+      'local/worklet-calls-worklets': 'error',
       'react/jsx-no-leaked-render': 'error',
       'react/no-unstable-nested-components': 'error',
       'react/jsx-key': 'error',

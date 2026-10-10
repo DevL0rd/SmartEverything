@@ -3,6 +3,8 @@ import type { Binding } from './bindings';
 import type { SmartThingsDeviceEvent } from './webhook-messages';
 import type { DeviceStatus } from './rest-schemas';
 
+const ONLINE_HEALTH = 'ONLINE';
+
 export type StatusByComponent = DeviceStatus['components'];
 
 export interface DeviceState {
@@ -92,11 +94,6 @@ export function deviceEventsFor(
     : [{ externalId: event.deviceId, kind: alert[3], occurredAt, details }];
 }
 
-export function healthEventFor(deviceId: string, status: string, occurredAt: string): DeviceEvent {
-  return {
-    externalId: deviceId,
-    kind: status === 'ONLINE' ? 'device_online' : 'device_offline',
-    occurredAt,
-    details: { status },
-  };
+export function isOnlineHealth(status: string): boolean {
+  return status === ONLINE_HEALTH;
 }

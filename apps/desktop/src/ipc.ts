@@ -6,6 +6,7 @@ import type {
   DesktopInvokeChannel,
   DesktopInvokeChannels,
 } from '@smarteverything/domain';
+import type { DisplayCapture } from './display-capture.js';
 import { isAppOrigin } from './origin.js';
 import { ManagedByStableAppError, type ServiceController } from './service/controller.js';
 import type { TalkDesktop } from './talk/talk-desktop.js';
@@ -40,9 +41,15 @@ export interface IpcServices {
   readonly ffmpeg: () => DesktopFfmpeg;
   readonly applyFirewall: (revision: string) => Promise<DesktopFirewallResult>;
   readonly talk: TalkDesktop;
+  readonly capture: DisplayCapture;
   readonly startUrl: string;
   readonly managedBy: 'stable-app' | undefined;
 }
+
+const captureSourceIdSchema = z
+  .string()
+  .regex(/^(?:screen|window):\d+:\d+$/)
+  .nullable();
 
 const firewallRevisionSchema = z.string().regex(/^[0-9a-f]{16,64}$/);
 
@@ -95,6 +102,7 @@ export function registerDesktopIpc(services: IpcServices): void {
   registerServiceIpc(services, handle);
   registerOwnerIpc(services, handle);
   registerTalkIpc(services.talk, handle);
+  registerCaptureIpc(services.capture, handle);
 }
 
 function refuseForStableApp(): never {
@@ -118,7 +126,9 @@ function registerOwnerIpc(services: IpcServices, handle: Handle): void {
 const talkTraySchema = z.strictObject({
   status: z.string().max(200),
   activity: z.enum(['idle', 'talking', 'receiving']),
-  channels: z.array(z.strictObject({ id: z.string().min(1), name: z.string().min(1).max(80) })).max(50),
+  channels: z
+    .array(z.strictObject({ id: z.string().min(1), name: z.string().min(1).max(80) }))
+    .max(50),
   talkChannel: z.string().min(1).nullable(),
 });
 
@@ -129,6 +139,18 @@ function registerTalkIpc(talk: TalkDesktop, handle: Handle): void {
     talk.tray(talkTraySchema.parse(argument));
     return undefined;
   });
+}
+
+function registerCaptureIpc(capture: DisplayCapture, handle: Handle): void {
+  handle('desktop:capture-mode', () => capture.mode);
+  handle('desktop:capture-sources', () => capture.listSources());
+  handle('desktop:capture-choose', async (argument) => {
+    await capture.choose(captureSourceIdSchema.parse(argument));
+    return undefined;
+  });
+  handle('desktop:capture-still', (argument) =>
+    capture.still(captureSourceIdSchema.parse(argument)),
+  );
 }
 
 function registerServiceIpc(services: IpcServices, handle: Handle): void {

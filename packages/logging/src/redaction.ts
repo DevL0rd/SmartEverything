@@ -71,3 +71,18 @@ function redactRecord(payload: LogPayload, depth: number): LogPayload {
 export function redact(payload: LogPayload): LogPayload {
   return redactRecord(payload, 0);
 }
+
+const URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>)]+/gi;
+const EMAIL_PATTERN = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g;
+const ADDRESS_PATTERN = /\b\d{1,3}(?:\.\d{1,3}){3}\b/g;
+const SECRET_PATTERN = /[A-Za-z0-9_-]{24,}/g;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function redactText(text: string, limit: number): string {
+  return text
+    .replace(URL_PATTERN, REDACTED)
+    .replace(EMAIL_PATTERN, REDACTED)
+    .replace(ADDRESS_PATTERN, REDACTED)
+    .replace(SECRET_PATTERN, (match) => (UUID_PATTERN.test(match) ? match : REDACTED))
+    .slice(0, limit);
+}

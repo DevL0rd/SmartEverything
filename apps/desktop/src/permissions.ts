@@ -6,10 +6,16 @@ export interface PermissionQuestion {
   readonly mediaTypes: readonly string[];
 }
 
-const GRANTED_WITHOUT_MEDIA = new Set(['fullscreen', 'clipboard-sanitized-write']);
+const GRANTED_WITHOUT_MEDIA = new Set([
+  'fullscreen',
+  'clipboard-sanitized-write',
+  'display-capture',
+]);
 
-function isMicrophoneOnly(mediaTypes: readonly string[]): boolean {
-  return mediaTypes.length > 0 && mediaTypes.every((mediaType) => mediaType === 'audio');
+const CALL_MEDIA_TYPES = new Set(['audio', 'video']);
+
+function isCallMedia(mediaTypes: readonly string[]): boolean {
+  return mediaTypes.length > 0 && mediaTypes.every((mediaType) => CALL_MEDIA_TYPES.has(mediaType));
 }
 
 export function isPermissionGranted(
@@ -20,7 +26,7 @@ export function isPermissionGranted(
     return false;
   }
   if (question.permission === 'media') {
-    return isMicrophoneOnly(question.mediaTypes);
+    return isCallMedia(question.mediaTypes);
   }
   return GRANTED_WITHOUT_MEDIA.has(question.permission);
 }

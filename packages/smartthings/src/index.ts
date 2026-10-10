@@ -81,7 +81,7 @@ export type {
   SubscriptionPlan,
   SubscriptionRequest,
 } from './subscriptions';
-export { deviceEventsFor, healthEventFor, statesForEvent, statesOf, withEvent } from './state';
+export { deviceEventsFor, isOnlineHealth, statesForEvent, statesOf, withEvent } from './state';
 export type { DeviceState } from './state';
 export {
   WEBHOOK_EVENT_ANSWER,

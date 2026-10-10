@@ -2,6 +2,7 @@ import type { DesktopPlatform, DesktopServiceStatus } from '@smarteverything/dom
 import { serviceUrl } from '@smarteverything/hub/service/configuration';
 import { Logger } from '@smarteverything/logging';
 import { app, dialog, session, type BrowserWindow } from 'electron';
+import { currentCaptureMode, DisplayCapture, prepareScreenCapture } from './display-capture.js';
 import { buildContentSecurityPolicy } from './csp.js';
 import { deepLinkInArguments } from './deep-link.js';
 import { DeepLinkInbox, type DeepLinkRefusal } from './deep-link-inbox.js';
@@ -62,6 +63,7 @@ function registerDeepLinkScheme(): void {
 
 class DesktopShell {
   readonly #variant: DesktopVariant;
+  readonly #capture: DisplayCapture;
   readonly #inbox = new DeepLinkInbox(refuseDeepLink);
   #window: BrowserWindow | undefined;
   #tray: DesktopTray | undefined;
@@ -69,8 +71,9 @@ class DesktopShell {
   readonly #talk = new TalkDesktop();
   #quitting = false;
 
-  constructor(variant: DesktopVariant) {
+  constructor(variant: DesktopVariant, capture: DisplayCapture) {
     this.#variant = variant;
+    this.#capture = capture;
   }
 
   listen(): void {
@@ -108,6 +111,7 @@ class DesktopShell {
       buildContentSecurityPolicy(serviceUrl(config)),
     );
     restrictPermissions(session.defaultSession, variant.startUrl);
+    this.#capture.attach(session.defaultSession);
     if (variant.managedBy === undefined) {
       registerDeepLinkScheme();
     }
@@ -121,6 +125,7 @@ class DesktopShell {
       service: service.controller,
       ffmpeg: service.ffmpeg,
       talk: this.#talk,
+      capture: this.#capture,
       applyFirewall: (revision) =>
         applyFirewall(
           {
@@ -215,8 +220,8 @@ class DesktopShell {
   }
 }
 
-function start(variant: DesktopVariant): void {
-  const shell = new DesktopShell(variant);
+function start(variant: DesktopVariant, capture: DisplayCapture): void {
+  const shell = new DesktopShell(variant, capture);
   shell.listen();
   app
     .whenReady()
@@ -237,8 +242,11 @@ function main(): void {
     app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
   }
   registerAppScheme();
+  const captureMode = currentCaptureMode();
+  prepareScreenCapture(captureMode);
   if (app.requestSingleInstanceLock()) {
-    start(readDesktopVariant(app.getAppPath()));
+    const variant = readDesktopVariant(app.getAppPath());
+    start(variant, new DisplayCapture(captureMode, variant.startUrl));
   } else {
     app.quit();
   }
