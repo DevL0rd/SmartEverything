@@ -1,0 +1,60 @@
+--- a/internal/mjpeg/mjpeg.go
++++ b/internal/mjpeg/mjpeg.go
+@@ -1,6 +1,7 @@
+ package mjpeg
+ 
+ import (
++	"context"
+ 	"errors"
+ 	"io"
+ 	"net/http"
+@@ -84,11 +85,20 @@
+ 	}
+ 
+ 	once := &core.OnceBuffer{} // init and first frame
++	stop := context.AfterFunc(r.Context(), func() {
++		_ = cons.Stop()
++	})
+ 	_, _ = cons.WriteTo(once)
++	stop()
+ 	b = once.Buffer()
+ 
+ 	stream.RemoveConsumer(cons)
+ 
++	if r.Context().Err() != nil || len(b) == 0 {
++		b = nil
++		return
++	}
++
+ 	switch cons.CodecName() {
+ 	case core.CodecH264, core.CodecH265:
+ 		ts := time.Now()
+--- a/internal/webrtc/webrtc.go
++++ b/internal/webrtc/webrtc.go
+@@ -1,6 +1,7 @@
+ package webrtc
+ 
+ import (
++	"time"
+ 	"errors"
+ 	"net"
+ 	"strings"
+@@ -295,9 +296,18 @@
+ 		log.Error().Err(err).Caller().Send()
+ 	}
+ 
++	time.AfterFunc(connectTimeout, func() {
++		if pc.ConnectionState() != pion.PeerConnectionStateConnected {
++			log.Debug().Msg("[webrtc] closing a session that never connected")
++			_ = conn.Close()
++		}
++	})
++
+ 	return
+ }
+ 
++const connectTimeout = 15 * time.Second
++
+ func IsConsumer(conn *webrtc.Conn) bool {
+ 	// if wants get video - consumer
+ 	for _, media := range conn.GetMedias() {

@@ -1,0 +1,13 @@
+title = "SmartEverything secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake credentials in tests and build output"
+paths = [
+  '''(^|/)test/.*\.ts$''',
+  '''\.test\.ts$''',
+  '''(^|/)dist(-types)?/''',
+  '''(^|/)node_modules/''',
+]

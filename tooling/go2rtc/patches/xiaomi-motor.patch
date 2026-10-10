@@ -1,0 +1,312 @@
+diff -ruN a/internal/streams/stream.go b/internal/streams/stream.go
+--- a/internal/streams/stream.go
++++ b/internal/streams/stream.go
+@@ -47,6 +47,18 @@
+ 	}
+ }
+ 
++func (s *Stream) Conns() []core.Producer {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	conns := make([]core.Producer, 0, len(s.producers))
++	for _, prod := range s.producers {
++		prod.mu.Lock()
++		conns = append(conns, prod.conn)
++		prod.mu.Unlock()
++	}
++	return conns
++}
++
+ func (s *Stream) Sources() []string {
+ 	sources := make([]string, 0, len(s.producers))
+ 	for _, prod := range s.producers {
+diff -ruN a/internal/xiaomi/motor_test.go b/internal/xiaomi/motor_test.go
+--- a/internal/xiaomi/motor_test.go
++++ b/internal/xiaomi/motor_test.go
+@@ -0,0 +1,80 @@
++package xiaomi
++
++import (
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"github.com/AlexxIT/go2rtc/internal/streams"
++	"github.com/AlexxIT/go2rtc/pkg/core"
++)
++
++type fakeMotor struct {
++	core.Connection
++	operations []int
++	err        error
++}
++
++func (f *fakeMotor) GetTrack(*core.Media, *core.Codec) (*core.Receiver, error) {
++	return nil, errors.New("no tracks")
++}
++
++func (f *fakeMotor) Start() error {
++	return nil
++}
++
++func (f *fakeMotor) Motor(operation int) error {
++	f.operations = append(f.operations, operation)
++	return f.err
++}
++
++func motorRequest(method, query string) *httptest.ResponseRecorder {
++	w := httptest.NewRecorder()
++	apiMotor(w, httptest.NewRequest(method, "/api/xiaomi/motor?"+query, nil))
++	return w
++}
++
++func TestMotorMovesTheConnectedSource(t *testing.T) {
++	stream, _ := streams.New("motor-ok")
++	defer streams.Delete("motor-ok")
++	motor := &fakeMotor{}
++	stream.AddProducer(motor)
++
++	for _, operation := range []string{"1", "2", "3", "4", "5"} {
++		if w := motorRequest("POST", "src=motor-ok&operation="+operation); w.Code != http.StatusOK {
++			t.Fatalf("operation %s: status %d, body %q", operation, w.Code, w.Body.String())
++		}
++	}
++	if len(motor.operations) != 5 || motor.operations[0] != 1 || motor.operations[4] != 5 {
++		t.Fatalf("operations sent: %v", motor.operations)
++	}
++}
++
++func TestMotorRefusals(t *testing.T) {
++	idle, _ := streams.New("motor-idle")
++	defer streams.Delete("motor-idle")
++	_ = idle
++	failing, _ := streams.New("motor-failing")
++	defer streams.Delete("motor-failing")
++	failing.AddProducer(&fakeMotor{err: errors.New("cs2: can't send command")})
++
++	cases := []struct {
++		method, query string
++		status        int
++	}{
++		{"GET", "src=motor-idle&operation=1", http.StatusMethodNotAllowed},
++		{"POST", "src=motor-idle&operation=0", http.StatusBadRequest},
++		{"POST", "src=motor-idle&operation=6", http.StatusBadRequest},
++		{"POST", "src=motor-idle&operation=1abc", http.StatusBadRequest},
++		{"POST", "src=motor-idle", http.StatusBadRequest},
++		{"POST", "src=missing&operation=1", http.StatusNotFound},
++		{"POST", "src=motor-idle&operation=1", http.StatusConflict},
++		{"POST", "src=motor-failing&operation=1", http.StatusBadGateway},
++	}
++	for _, c := range cases {
++		if w := motorRequest(c.method, c.query); w.Code != c.status {
++			t.Errorf("%s %s: status %d, want %d (%q)", c.method, c.query, w.Code, c.status, w.Body.String())
++		}
++	}
++}
+diff -ruN a/internal/xiaomi/xiaomi.go b/internal/xiaomi/xiaomi.go
+--- a/internal/xiaomi/xiaomi.go
++++ b/internal/xiaomi/xiaomi.go
+@@ -7,6 +7,7 @@
+ 	"fmt"
+ 	"net/http"
+ 	"net/url"
++	"strconv"
+ 	"strings"
+ 	"sync"
+ 
+@@ -48,6 +49,39 @@
+ 	})
+ 
+ 	api.HandleFunc("api/xiaomi", apiXiaomi)
++	api.HandleFunc("api/xiaomi/motor", apiMotor)
++}
++
++type motorer interface {
++	Motor(operation int) error
++}
++
++func apiMotor(w http.ResponseWriter, r *http.Request) {
++	if r.Method != "POST" {
++		http.Error(w, "POST only", http.StatusMethodNotAllowed)
++		return
++	}
++	query := r.URL.Query()
++	operation, err := strconv.Atoi(query.Get("operation"))
++	if err != nil || operation < 1 || operation > 5 {
++		http.Error(w, "operation must be 1 (left), 2 (right), 3 (up), 4 (down) or 5 (calibrate)", http.StatusBadRequest)
++		return
++	}
++	name := query.Get("src")
++	stream := streams.Get(name)
++	if stream == nil {
++		http.Error(w, fmt.Sprintf("xiaomi: motor: no stream %q", name), http.StatusNotFound)
++		return
++	}
++	for _, conn := range stream.Conns() {
++		if m, ok := conn.(motorer); ok {
++			if err = m.Motor(operation); err != nil {
++				http.Error(w, "xiaomi: motor: "+err.Error(), http.StatusBadGateway)
++			}
++			return
++		}
++	}
++	http.Error(w, fmt.Sprintf("xiaomi: motor: stream %q has no connected source with a motor", name), http.StatusConflict)
+ }
+ 
+ var log zerolog.Logger
+diff -ruN a/pkg/xiaomi/miss/client.go b/pkg/xiaomi/miss/client.go
+--- a/pkg/xiaomi/miss/client.go
++++ b/pkg/xiaomi/miss/client.go
+@@ -193,6 +193,20 @@
+ 	return c.WriteCommand(data)
+ }
+ 
++func (c *Client) Motor(operation int) error {
++	data := binary.BigEndian.AppendUint32(nil, cmdMotorReq)
++	data = fmt.Appendf(data, `{"operation":%d}`, operation)
++	return c.WriteCommand(data)
++}
++
++func (c *Client) discardCommands() {
++	for {
++		if _, _, err := c.Conn.ReadCommand(); err != nil {
++			return
++		}
++	}
++}
++
+ func (c *Client) StopMedia() error {
+ 	data := binary.BigEndian.AppendUint32(nil, cmdVideoStop)
+ 	return c.WriteCommand(data)
+diff -ruN a/pkg/xiaomi/miss/cs2/command_test.go b/pkg/xiaomi/miss/cs2/command_test.go
+--- a/pkg/xiaomi/miss/cs2/command_test.go
++++ b/pkg/xiaomi/miss/cs2/command_test.go
+@@ -0,0 +1,21 @@
++package cs2
++
++import (
++	"encoding/binary"
++	"testing"
++)
++
++func TestReadCommandRefusesShortCommands(t *testing.T) {
++	c := &Conn{channels: [4]*dataChannel{newDataChannel(0, 10), nil, nil, nil}}
++	c.channels[0].popBuf <- []byte{1, 2}
++	if _, _, err := c.ReadCommand(); err == nil {
++		t.Fatal("a two byte command was accepted")
++	}
++
++	full := binary.LittleEndian.AppendUint32(nil, 0x113)
++	c.channels[0].popBuf <- append(full, '{', '}')
++	cmd, data, err := c.ReadCommand()
++	if err != nil || cmd != 0x113 || string(data) != "{}" {
++		t.Fatalf("ReadCommand = %x, %q, %v", cmd, data, err)
++	}
++}
+diff -ruN a/pkg/xiaomi/miss/cs2/conn.go b/pkg/xiaomi/miss/cs2/conn.go
+--- a/pkg/xiaomi/miss/cs2/conn.go
++++ b/pkg/xiaomi/miss/cs2/conn.go
+@@ -197,6 +197,9 @@
+ 	if !ok {
+ 		return 0, nil, c.Error()
+ 	}
++	if len(buf) < 4 {
++		return 0, nil, fmt.Errorf("%s: command too short: %d bytes", "cs2", len(buf))
++	}
+ 	cmd = binary.LittleEndian.Uint32(buf)
+ 	data = buf[4:]
+ 	return
+diff -ruN a/pkg/xiaomi/miss/motor_test.go b/pkg/xiaomi/miss/motor_test.go
+--- a/pkg/xiaomi/miss/motor_test.go
++++ b/pkg/xiaomi/miss/motor_test.go
+@@ -0,0 +1,66 @@
++package miss
++
++import (
++	"encoding/binary"
++	"errors"
++	"io"
++	"net"
++	"testing"
++	"time"
++
++	"github.com/AlexxIT/go2rtc/pkg/xiaomi/crypto"
++)
++
++type fakeConn struct {
++	replies  int
++	written  [][]byte
++	commands []uint32
++}
++
++func (f *fakeConn) Protocol() string { return "fake" }
++func (f *fakeConn) Version() string  { return "fake" }
++func (f *fakeConn) ReadCommand() (uint32, []byte, error) {
++	if f.replies == 0 {
++		return 0, nil, io.EOF
++	}
++	f.replies--
++	return cmdMotorRes, []byte("{}"), nil
++}
++func (f *fakeConn) WriteCommand(cmd uint32, data []byte) error {
++	f.commands = append(f.commands, cmd)
++	f.written = append(f.written, data)
++	return nil
++}
++func (f *fakeConn) ReadPacket() ([]byte, []byte, error) { return nil, nil, errors.New("no media") }
++func (f *fakeConn) WritePacket([]byte, []byte) error    { return nil }
++func (f *fakeConn) RemoteAddr() net.Addr                { return &net.UDPAddr{} }
++func (f *fakeConn) SetDeadline(time.Time) error         { return nil }
++func (f *fakeConn) Close() error                        { return nil }
++
++func TestMotorSendsTheMotorRequest(t *testing.T) {
++	key := make([]byte, 32)
++	conn := &fakeConn{}
++	client := &Client{Conn: conn, key: key}
++	if err := client.Motor(3); err != nil {
++		t.Fatal(err)
++	}
++	if len(conn.commands) != 1 || conn.commands[0] != cmdEncoded {
++		t.Fatalf("commands = %v", conn.commands)
++	}
++	plain, err := crypto.Decode(conn.written[0], key)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if binary.BigEndian.Uint32(plain) != cmdMotorReq || string(plain[4:]) != `{"operation":3}` {
++		t.Fatalf("motor request = %x %q", plain[:4], plain[4:])
++	}
++}
++
++func TestDiscardCommandsDrainsUntilTheSessionEnds(t *testing.T) {
++	conn := &fakeConn{replies: 25}
++	client := &Client{Conn: conn}
++	client.discardCommands()
++	if conn.replies != 0 {
++		t.Fatalf("%d replies were left unread", conn.replies)
++	}
++}
+diff -ruN a/pkg/xiaomi/miss/producer.go b/pkg/xiaomi/miss/producer.go
+--- a/pkg/xiaomi/miss/producer.go
++++ b/pkg/xiaomi/miss/producer.go
+@@ -38,6 +38,8 @@
+ 		return nil, err
+ 	}
+ 
++	go client.discardCommands()
++
+ 	return &Producer{
+ 		Connection: core.Connection{
+ 			ID:         core.NewID(),
+@@ -198,6 +200,10 @@
+ 	return p.Connection.Stop()
+ }
+ 
++func (p *Producer) Motor(operation int) error {
++	return p.client.Motor(operation)
++}
++
+ // TimeToRTP convert time in milliseconds to RTP time
+ func TimeToRTP(timeMS, clockRate uint64) uint32 {
+ 	return uint32(timeMS * clockRate / 1000)

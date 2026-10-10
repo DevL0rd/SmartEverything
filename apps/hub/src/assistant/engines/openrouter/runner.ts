@@ -1,0 +1,322 @@
+import { readFile } from 'node:fs/promises';
+import {
+  AI_EFFORT,
+  AI_MODEL_CHOICE,
+  type AiChatRow,
+  type AiResolvedModel,
+  type AssistantAttachment,
+  type ChatActivityNotice,
+  type UsageWork,
+} from '@smarteverything/domain';
+import type { Logger } from '@smarteverything/logging';
+import type { ToolCaller } from '../../../ai-tools/hub-tool';
+import type { ToolHub } from '../../../ai-tools/tool-hub';
+import { chatSet } from '../../../ai-tools/tool-sets';
+import type { ChatMessage, ContentPart } from '../../../openrouter/chat-types';
+import type { StoredEvent } from '../../../store/repositories/assistant-events';
+import type { Store } from '../../../store/store';
+import type { ConversationLog } from '../../conversation-log';
+import { scopedHub } from '../../coordination/scoped-tools';
+import type { AssistantFiles } from '../../files';
+import type { Engine, EngineStatus } from '../engine';
+import { Compactor, type ChatContext } from './compaction';
+import { historyMessages, summaryMessage, systemMessages, type PromptFacts } from './context';
+import type { CataloguePort, ChatClientPort, LedgerPort, TurnPort } from './ports';
+import { TurnStream, type StreamEmit } from './stream';
+import { runLoop, type TurnUsage } from './turn-loop';
+
+const INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+const FLUSH_ROW_MS = 2000;
+const AFFIRMATIVE = /^\s*(yes|yeah|yep|sure|ok(ay)?|go ahead|do it|confirm(ed)?|please do)\b/i;
+
+export interface ChatRunnerDeps {
+  readonly store: Store;
+  readonly client: ChatClientPort;
+  readonly catalogue: CataloguePort;
+  readonly newTurn: () => TurnPort;
+  readonly ledger: LedgerPort;
+  readonly tools: () => ToolHub | null;
+  readonly conversation: ConversationLog;
+  readonly files: AssistantFiles;
+  readonly facts: (chat: AiChatRow) => PromptFacts;
+  readonly emit: StreamEmit;
+  readonly finished: (event: StoredEvent, text: string, ok: boolean) => void;
+  readonly log: Logger;
+}
+
+class Turn {
+  readonly controller = new AbortController();
+  readonly usage: TurnUsage[] = [];
+  private reply: string | null = null;
+  private flushTimer: NodeJS.Timeout | null = null;
+
+  constructor(
+    readonly event: StoredEvent,
+    readonly chat: AiChatRow,
+    readonly stream: TurnStream,
+  ) {}
+
+  get replyId(): string | null {
+    return this.reply;
+  }
+
+  adopt(replyId: string): void {
+    this.reply = replyId;
+  }
+
+  scheduleFlush(flush: (replyId: string, text: string) => void): void {
+    this.flushTimer ??= setTimeout(() => {
+      this.flushTimer = null;
+      if (this.reply !== null) {
+        flush(this.reply, this.stream.current().draft);
+      }
+    }, FLUSH_ROW_MS);
+  }
+
+  close(): void {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    this.stream.close();
+  }
+}
+
+const IN_HISTORY: ReadonlySet<StoredEvent['kind']> = new Set(['chat', 'report', 'plugin']);
+
+const PERSON_KINDS: ReadonlySet<StoredEvent['kind']> = new Set(['chat', 'voice']);
+
+function fromPerson(event: StoredEvent): boolean {
+  return event.hops === 0 && PERSON_KINDS.has(event.kind);
+}
+
+function reasonOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : 'The AI could not answer';
+}
+
+export class ChatRunner {
+  private readonly turns = new Map<string, Turn>();
+  private readonly queues = new Map<string, Promise<void>>();
+
+  private readonly compactor: Compactor;
+
+  constructor(private readonly deps: ChatRunnerDeps) {
+    this.compactor = new Compactor(deps);
+  }
+
+  engine(): Engine {
+    return {
+      kind: 'openrouter',
+      status: (chat): EngineStatus => ({
+        state: this.turns.has(chat.id) ? 'working' : 'ready',
+        reason: null,
+      }),
+      deliver: (event, chat): Promise<void> => this.enqueue(event, chat),
+      interrupt: (chat): Promise<void> => {
+        this.turns.get(chat.id)?.controller.abort();
+        return Promise.resolve();
+      },
+    };
+  }
+
+  activity(profileId: string): ChatActivityNotice[] {
+    return [...this.turns.values()]
+      .filter((turn) => turn.chat.profile_id === profileId)
+      .map((turn) => turn.stream.current());
+  }
+
+  private enqueue(event: StoredEvent, chat: AiChatRow): Promise<void> {
+    const previous = this.queues.get(chat.id) ?? Promise.resolve();
+    const next = previous.then(() => this.turn(event, chat));
+    const settled = next.finally(() => {
+      if (this.queues.get(chat.id) === settled) {
+        this.queues.delete(chat.id);
+      }
+    });
+    this.queues.set(chat.id, settled);
+    return next;
+  }
+
+  private open(event: StoredEvent, chat: AiChatRow): Turn {
+    const target = {
+      chatId: chat.id,
+      turnId: event.id,
+      messageId: event.message_id,
+      profileId: chat.profile_id,
+    };
+    const turn = new Turn(event, chat, new TurnStream(target, this.deps.emit));
+    this.turns.set(chat.id, turn);
+    return turn;
+  }
+
+  private async turn(event: StoredEvent, chat: AiChatRow): Promise<void> {
+    const turn = this.open(event, chat);
+    this.deps.conversation.stateOf(event.message_id, 'working');
+    turn.stream.snapshot('thinking', null, null);
+    try {
+      await this.answer(turn);
+    } catch (cause) {
+      this.failed(turn, cause);
+    } finally {
+      this.close(turn);
+    }
+  }
+
+  private close(turn: Turn): void {
+    turn.close();
+    this.turns.delete(turn.chat.id);
+  }
+
+  private async answer(turn: Turn): Promise<void> {
+    const model = this.resolve(turn.chat);
+    const reply = this.deps.conversation.startReply(turn.chat, this.replyTo(turn), model.model_id);
+    turn.adopt(reply.id);
+    const hub = scopedHub(this.deps.tools(), turn.chat.tools);
+    const row = this.deps.catalogue.model(model.model_id);
+    const images = row.input_modalities.includes('image');
+    const tools = hub === null ? [] : hub.openAiTools(chatSet(hub.list()));
+    const system = systemMessages(this.deps.facts(turn.chat));
+    const context = await this.compactor.fit({
+      chat: turn.chat,
+      model: model.model_id,
+      window: row.context_length,
+      prefix: [...system, ...tools],
+      signal: turn.controller.signal,
+      usage: (entry): void => {
+        turn.usage.push(entry);
+      },
+    });
+    const result = await runLoop({
+      client: this.deps.client,
+      newTurn: this.deps.newTurn,
+      model,
+      messages: [...system, ...(await this.history(turn, context, images))],
+      tools,
+      hub,
+      caller: this.callerOf(turn),
+      images: { model: model.model_id, allowed: images },
+      work: this.workOf(turn),
+      signal: turn.controller.signal,
+      hooks: this.hooks(turn),
+    });
+    this.deps.conversation.finishReply(
+      reply.id,
+      result.text,
+      result.model,
+      turn.stream.current().steps,
+    );
+    this.record(turn, reply.id);
+    this.deps.conversation.stateOf(turn.event.message_id, 'answered');
+    turn.stream.snapshot('idle', result.finish ?? 'stop', null);
+    this.deps.finished(turn.event, result.text, true);
+  }
+
+  private failed(turn: Turn, cause: unknown): void {
+    const stopped = turn.controller.signal.aborted;
+    const reason = stopped ? 'Stopped.' : reasonOf(cause);
+    this.deps.log.warn('assistant.chat_turn_failed', { chatId: turn.chat.id, reason });
+    if (turn.replyId !== null) {
+      const { draft, steps } = turn.stream.current();
+      this.deps.conversation.failReply(turn.replyId, draft, reason, steps);
+    }
+    this.record(turn, turn.replyId ?? turn.event.message_id);
+    this.deps.conversation.failedMessage(turn.event.message_id, reason);
+    turn.stream.snapshot('failed', stopped ? 'stopped' : 'error', reason);
+    this.deps.finished(turn.event, reason, false);
+  }
+
+  private replyTo(turn: Turn): string | null {
+    return turn.event.kind === 'chat' || turn.event.kind === 'plugin'
+      ? turn.event.message_id
+      : null;
+  }
+
+  private hooks(turn: Turn): Parameters<typeof runLoop>[0]['hooks'] {
+    return {
+      stream: turn.stream,
+      text: (): void => {
+        turn.scheduleFlush((replyId, text) => {
+          this.deps.conversation.flushReply(replyId, text);
+        });
+      },
+      toolLine: (line): void => {
+        this.deps.conversation.action(turn.chat, line);
+      },
+      usage: (entry): void => {
+        turn.usage.push(entry);
+      },
+    };
+  }
+
+  private resolve(chat: AiChatRow): AiResolvedModel {
+    const choice = AI_MODEL_CHOICE.safeParse(chat.engine.model);
+    const effort = AI_EFFORT.safeParse(chat.engine.effort);
+    return this.deps.catalogue.resolve(
+      choice.success ? choice.data : null,
+      effort.success ? effort.data : null,
+    );
+  }
+
+  private workOf(turn: Turn): UsageWork {
+    if (turn.chat.kind === 'subagent') {
+      return 'subagent';
+    }
+    if (turn.event.kind !== 'wake') {
+      return 'chat';
+    }
+    const { message_id: noteId } = turn.event;
+    const note = noteId === null ? null : this.deps.store.assistantChat.message(noteId);
+    return note?.origin?.source === 'schedule' ? 'routine' : 'wake';
+  }
+
+  private callerOf(turn: Turn): ToolCaller {
+    const { store } = this.deps;
+    const { event } = turn;
+    const client = event.client_id === null ? undefined : store.clients.byId(event.client_id);
+    const latest = event.message_id === null ? null : store.assistantChat.message(event.message_id);
+    return {
+      profileId: turn.chat.profile_id,
+      role: client?.role ?? 'owner',
+      chatId: turn.chat.id,
+      via: event.kind === 'voice' ? 'voice' : 'chat',
+      confirmed: fromPerson(event) && AFFIRMATIVE.test(latest?.text ?? event.text),
+      clientId: event.client_id,
+    };
+  }
+
+  private async history(turn: Turn, context: ChatContext, images: boolean): Promise<ChatMessage[]> {
+    const rows = context.rows.filter(
+      (row) => !(row.role === 'responder' && row.state === 'working'),
+    );
+    const history = await historyMessages(rows, (file) => this.inline(file, images));
+    const extra: ChatMessage[] = IN_HISTORY.has(turn.event.kind)
+      ? []
+      : [{ role: 'user', content: turn.event.text }];
+    const summary = context.summary === null ? [] : [summaryMessage(context.summary)];
+    return [...summary, ...history, ...extra];
+  }
+
+  private async inline(file: AssistantAttachment, images: boolean): Promise<ContentPart | null> {
+    if (!images || !file.mime.startsWith('image/') || file.bytes > INLINE_IMAGE_BYTES) {
+      return null;
+    }
+    const stored = this.deps.store.assistantChat.attachment(file.id);
+    const data = await readFile(this.deps.files.pathOf(stored));
+    return {
+      type: 'image_url',
+      image_url: { url: `data:${file.mime};base64,${data.toString('base64')}` },
+    };
+  }
+
+  private record(turn: Turn, messageId: string | null): void {
+    turn.usage.splice(0).forEach((entry) => {
+      this.deps.ledger.record({
+        ...entry,
+        profile_id: turn.chat.profile_id,
+        client_id: turn.event.client_id,
+        chat_id: turn.chat.id,
+        message_id: messageId,
+      });
+    });
+  }
+}

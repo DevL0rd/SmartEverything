@@ -1,0 +1,73 @@
+import { randomUUID } from 'node:crypto';
+import { createSocket, type Socket } from 'node:dgram';
+import { reconnectDelay } from '@smarteverything/tuya';
+import TuyaDevice from 'tuyapi';
+import { WebSocket } from 'ws';
+import type { MessageSocket } from './message-socket';
+import type { LocalClient, LocalClientOptions } from './local-client';
+import { nodeMqttConnect, type MqttConnect } from './mqtt-connection';
+
+type Fetch = (url: string, init: RequestInit) => Promise<Response>;
+
+interface TuyaTiming {
+  readonly irLearnTimeoutMs: number;
+  readonly cloudLearnQueryMs: number;
+  readonly messagePingMs: number;
+  readonly qrScanQueryMs: number;
+  readonly qrScanTimeoutMs: number;
+  readonly messagingRenewMarginMs: number;
+  readonly inventorySettleMs: number;
+  readonly reconnectDelay: (failures: number) => number;
+}
+
+export interface TuyaDependencies {
+  readonly fetch: Fetch;
+  readonly now: () => number;
+  readonly nonce: () => string;
+  readonly requestId: () => string;
+  readonly timing: TuyaTiming;
+  readonly localPort: number;
+  readonly localClient: (options: LocalClientOptions) => LocalClient;
+  readonly udpSocket: () => Socket;
+  readonly discoveryPorts: readonly number[];
+  readonly messageSocket: (url: string, headers: Readonly<Record<string, string>>) => MessageSocket;
+  readonly mqtt: MqttConnect;
+}
+
+const DEFAULT_TIMING: TuyaTiming = {
+  irLearnTimeoutMs: 30_000,
+  cloudLearnQueryMs: 2_000,
+  messagePingMs: 30_000,
+  qrScanQueryMs: 2_000,
+  qrScanTimeoutMs: 300_000,
+  messagingRenewMarginMs: 60_000,
+  inventorySettleMs: 1_000,
+  reconnectDelay,
+};
+
+const TUYA_LOCAL_PORT = 6668;
+
+export function nodeDependencies(discoveryPorts: readonly number[]): TuyaDependencies {
+  return {
+    fetch: (url, init) => fetch(url, init),
+    now: () => Date.now(),
+    nonce: () => randomUUID().replaceAll('-', ''),
+    requestId: () => randomUUID(),
+    timing: DEFAULT_TIMING,
+    localPort: TUYA_LOCAL_PORT,
+    localClient: (options) =>
+      new TuyaDevice({
+        id: options.id,
+        key: options.key,
+        ip: options.ip,
+        port: options.port,
+        version: options.version,
+        issueGetOnConnect: true,
+        issueRefreshOnConnect: false,
+      }),
+    udpSocket: () => createSocket({ type: 'udp4', reuseAddr: true }),
+    discoveryPorts,
+    messageSocket: (url, headers) => new WebSocket(url, { headers: { ...headers } }),
+    mqtt: nodeMqttConnect,
+  };
+}

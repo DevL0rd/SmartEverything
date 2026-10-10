@@ -1,0 +1,252 @@
+import type { Href } from 'expo-router';
+import {
+  displayName,
+  isCamera,
+  isScheduleActive,
+  roomNameOf,
+  type SearchDevice,
+  type SearchSetting,
+  type SearchSources,
+} from '@smarteverything/domain';
+import { href } from '../app-shell/hrefs';
+import { ROUTES, type RouteDefinition } from '../app-shell/routes';
+import type { IconName } from '../components/icon';
+import { visibleSettings } from '../settings/registry';
+import { mountOf } from '../settings/mounts';
+import { SETTINGS_TREE, settingsPage, settingsTrail } from '../settings/tree';
+import type { SettingDefinition, SettingEnv, SettingsPageDefinition } from '../settings/types';
+import { rowsOf, type Device, type StoreState } from '../store/state';
+
+export interface SearchTables {
+  readonly devices: StoreState['tables']['devices'];
+  readonly rooms: StoreState['tables']['rooms'];
+  readonly scenes: StoreState['tables']['scenes'];
+  readonly automations: StoreState['tables']['automations'];
+  readonly scheduled: StoreState['tables']['scheduled_actions'];
+  readonly plugins: StoreState['tables']['plugins'];
+}
+
+export interface SourceLinks {
+  readonly links: Map<string, Href>;
+  readonly icons: Map<string, IconName>;
+  readonly parents: Map<string, string>;
+  readonly plugins: Set<string>;
+}
+
+const SCHEDULED_ROUTE = 'automations.scheduled';
+
+function pageKey(path: string): string {
+  return `page:${path}`;
+}
+
+function settingsPageKey(pageId: string): string {
+  return `setting:page/${pageId}`;
+}
+
+export interface NamedDevice {
+  readonly device: Device;
+  readonly name: string;
+  readonly room: string | null;
+}
+
+function trailOf(pageId: string, inclusive: boolean): string {
+  const crumbs = settingsTrail(pageId).map((crumb) => crumb.label);
+  return (inclusive ? crumbs : crumbs.slice(0, -1)).join(' › ');
+}
+
+function ownerRouteOf(pageId: string): string | null {
+  const mount = mountOf(pageId);
+  const owner = mount === null ? undefined : ROUTES.find((route) => route.href === mount.ownerHref);
+  return owner === undefined ? null : pageKey(owner.key);
+}
+
+function treePage(page: SettingsPageDefinition, out: SourceLinks): SearchSetting {
+  const id = `page/${page.id}`;
+  out.links.set(`setting:${id}`, href.settings.page(page.id));
+  out.icons.set(`setting:${id}`, page.icon);
+  const parent = page.parent === null ? ownerRouteOf(page.id) : settingsPageKey(page.parent);
+  if (parent !== null) {
+    out.parents.set(`setting:${id}`, parent);
+  }
+  return {
+    id,
+    title: page.title,
+    section: trailOf(page.id, false),
+    keywords: page.keywords,
+    state: null,
+    value: undefined,
+    runLabel: 'Open',
+    path: '',
+  };
+}
+
+function registrySetting(setting: SettingDefinition, out: SourceLinks): SearchSetting {
+  const page = settingsPage(setting.page);
+  out.links.set(
+    `setting:${setting.id}`,
+    setting.control === 'link' ? setting.href : href.settings.focus(setting.page, setting.id),
+  );
+  out.icons.set(`setting:${setting.id}`, setting.icon ?? page?.icon ?? 'settings');
+  out.parents.set(`setting:${setting.id}`, settingsPageKey(setting.page));
+  return {
+    id: setting.id,
+    title: setting.title,
+    section: page === undefined ? 'Settings' : trailOf(page.id, true),
+    keywords: [...setting.keywords, ...(page === undefined ? [] : [page.title])],
+    state: null,
+    value: undefined,
+    runLabel: 'Open',
+    path: '',
+  };
+}
+
+function settingsOf(env: SettingEnv, out: SourceLinks): SearchSources['settings'] {
+  const pages = SETTINGS_TREE.filter(
+    (page) => page.href === undefined && (page.visible?.(env) ?? true),
+  );
+  return [
+    ...pages.map((page) => treePage(page, out)),
+    ...visibleSettings(env).map((setting) => registrySetting(setting, out)),
+  ];
+}
+
+function scheduledPages(tables: SearchTables, out: SourceLinks): SearchSources['pages'] {
+  return rowsOf(tables.scheduled)
+    .filter((row) => isScheduleActive(row.state))
+    .map((row) => {
+      const key = `scheduled:${row.id}`;
+      out.links.set(`page:${key}`, href.scheduledItem(row.id));
+      out.icons.set(`page:${key}`, 'timer');
+      out.parents.set(pageKey(key), pageKey(SCHEDULED_ROUTE));
+      const title = row.label ?? row.step_lines.find((line) => line !== null) ?? 'Scheduled action';
+      return {
+        path: key,
+        title,
+        description: 'Scheduled',
+        keywords: ['scheduled', 'timer', 'later', 'cancel'],
+      };
+    });
+}
+
+function pluginPages(
+  tables: SearchTables,
+  env: SettingEnv,
+  out: SourceLinks,
+): SearchSources['pages'] {
+  if (!env.owner) {
+    return [];
+  }
+  return rowsOf(tables.plugins).map((row) => {
+    const key = `plugin:${row.id}`;
+    out.links.set(`page:${key}`, href.pluginSettings(row.id));
+    out.icons.set(`page:${key}`, 'puzzle');
+    out.plugins.add(pageKey(key));
+    return {
+      path: key,
+      title: row.manifest.name,
+      description: 'Plugin',
+      keywords: ['plugin', row.manifest.publisher, row.manifest.description],
+    };
+  });
+}
+
+function ancestorTitles(route: RouteDefinition): readonly string[] {
+  const parent = ROUTES.find((candidate) => candidate.key === route.parent);
+  return parent === undefined ? [] : [parent.title, ...ancestorTitles(parent)];
+}
+
+function routeActions(
+  route: RouteDefinition,
+  env: SettingEnv,
+  out: SourceLinks,
+): SearchSources['pages'] {
+  return (route.actions ?? [])
+    .filter((action) => action.ownerOnly !== true || env.owner)
+    .map((action) => {
+      const path = `${route.key}#${action.key}`;
+      out.links.set(pageKey(path), action.href);
+      out.icons.set(pageKey(path), action.icon);
+      out.parents.set(pageKey(path), pageKey(route.key));
+      return { path, title: action.title, description: '', keywords: action.keywords };
+    });
+}
+
+function routePage(route: RouteDefinition, out: SourceLinks): SearchSources['pages'][number] {
+  const key = pageKey(route.key);
+  out.links.set(key, route.href);
+  out.icons.set(key, route.icon);
+  if (route.parent !== null) {
+    out.parents.set(key, pageKey(route.parent));
+  }
+  return {
+    path: route.key,
+    title: route.title,
+    description: '',
+    keywords: [...route.keywords, ...ancestorTitles(route)],
+  };
+}
+
+function pagesOf(env: SettingEnv, out: SourceLinks): SearchSources['pages'] {
+  return ROUTES.filter((route) => route.searchable && route.available(env.availability)).flatMap(
+    (route) => [routePage(route, out), ...routeActions(route, env, out)],
+  );
+}
+
+export function namedDevices(tables: SearchTables): readonly NamedDevice[] {
+  const rooms = rowsOf(tables.rooms);
+  const all = rowsOf(tables.devices);
+  return all
+    .filter((device) => !device.hidden)
+    .map((device) => ({
+      device,
+      name: displayName(device, all, rooms),
+      room: roomNameOf(device, rooms),
+    }));
+}
+
+function deviceOf(named: NamedDevice): SearchDevice {
+  return {
+    id: named.device.id,
+    name: named.name,
+    room: named.room,
+    kind: named.device.kind,
+    model: named.device.model,
+    online: named.device.online,
+    favourite: named.device.favourite,
+    capabilities: isCamera(named.device) ? [] : named.device.capabilities,
+    state: {},
+  };
+}
+
+function routinesOf(tables: SearchTables): Pick<SearchSources, 'scenes' | 'automations'> {
+  return {
+    scenes: rowsOf(tables.scenes).map((scene) => ({ id: scene.id, name: scene.name, path: '' })),
+    automations: rowsOf(tables.automations).map((automation) => ({
+      id: automation.id,
+      name: automation.name,
+      enabled: automation.enabled,
+      path: '',
+    })),
+  };
+}
+
+export function sourcesOf(
+  tables: SearchTables,
+  devices: readonly NamedDevice[],
+  env: SettingEnv,
+  out: SourceLinks,
+): SearchSources {
+  return {
+    devices: devices.map(deviceOf),
+    rooms: rowsOf(tables.rooms).map((room) => ({
+      id: room.id,
+      name: room.name,
+      deviceCount: devices.filter((named) => named.device.room_id === room.id).length,
+    })),
+    pages: [...pagesOf(env, out), ...scheduledPages(tables, out), ...pluginPages(tables, env, out)],
+    settings: settingsOf(env, out),
+    ...routinesOf(tables),
+    irRemotes: [],
+    cameras: [],
+  };
+}

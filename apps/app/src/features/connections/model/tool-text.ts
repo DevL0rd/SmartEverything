@@ -1,0 +1,93 @@
+import type { McpToolName, McpToolSummary } from '@smarteverything/domain';
+
+interface ToolText {
+  readonly title?: string;
+  readonly line: string;
+}
+
+const TEXT: Readonly<Record<McpToolName, ToolText>> = {
+  get_home: { title: 'See the home', line: 'Rooms, devices, people and providers' },
+  edit_room: { title: 'Edit rooms', line: 'Add, rename, reorder or remove' },
+  sync_provider: { title: 'Sync a provider', line: 'Fetch its devices again' },
+  search_places: { title: 'Find a place', line: 'Towns and cities by name' },
+  get_weather: { title: 'Weather', line: 'Now and the forecast' },
+  search_everything: { title: 'Search everything', line: 'Devices, rooms, people and more' },
+  find_devices: { title: 'Find devices', line: 'By room, kind, feature or name' },
+  get_device: { title: 'Read a device', line: 'Every setting and its value' },
+  update_device: { title: 'Change a device', line: 'Name, room, order, camera recording' },
+  list_remotes: { title: 'List remotes', line: 'Infrared remotes and their buttons' },
+  press_remote_button: { title: 'Press a remote button', line: 'Through its blaster' },
+  read_phone: { title: 'What someone is doing', line: 'Driving, walking, at home and more' },
+  run_phone_action: { title: 'Use a phone', line: 'Ring it, volume, Do Not Disturb, media' },
+  read_watch: { title: 'Read a watch', line: 'Settings, alarms, faces and workouts' },
+  run_watch_action: { title: 'Use a watch', line: 'Find, settings, alarms and workouts' },
+  control_devices: { title: 'Control devices', line: 'Any setting on any device, room or kind' },
+  run_scene: { title: 'Run a scene', line: 'Every command in it' },
+  get_history: { title: 'Device history', line: 'How a value changed over time' },
+  list_events: { title: 'List events', line: 'Motion, doorbell, alarms and more' },
+  camera_pictures: { title: 'Camera pictures', line: 'Live or saved' },
+  record_camera_clip: { title: 'Record a clip', line: '5 seconds to 5 minutes' },
+  list_scenes: { title: 'List scenes', line: 'With their actions' },
+  edit_scene: { title: 'Edit scenes', line: 'Add, change or remove' },
+  list_automations: { title: 'List automations', line: 'Triggers, actions and last run' },
+  edit_automation: { title: 'Edit automations', line: 'Add, change, switch or remove' },
+  run_automation: { title: 'Run an automation', line: 'Its actions, right now' },
+  list_scheduled: { title: 'List scheduled', line: 'What is waiting to run, and how it went' },
+  schedule: { title: 'Schedule', line: 'Plan steps for later, change or cancel them' },
+  read_signals: { title: 'Read signals', line: 'Everything an automation can react to' },
+  read_health: { title: 'Read health', line: 'Days, records, logs and types' },
+  log_health: { title: 'Log health', line: 'Add, change or delete a record' },
+  find_food: { title: 'Find food', line: 'Saved foods, products and barcodes' },
+  edit_food: { title: 'Edit foods', line: 'Save, change or forget' },
+  log_food: { title: 'Log food or water', line: 'A portion or a drink' },
+  list_people: { title: 'List people', line: 'Body facts, goals and apps' },
+  edit_person: { title: 'Edit people', line: 'Add, change, remove or set goals' },
+  assign_body_reading: { title: 'Assign a scale reading', line: 'Who stood on the scale' },
+  get_settings: { title: 'Read settings', line: 'App, firewall, assistant, AI and budget' },
+  update_settings: { title: 'Change settings', line: 'Home, preferences, assistant, AI and tools' },
+  read_talk: { title: 'Read walkie-talkie', line: 'Channels, members and messages' },
+  edit_talk_channel: { title: 'Edit walkie channels', line: 'Channels and their members' },
+  read_chats: { title: 'Read chats', line: 'Chats, messages and files' },
+  edit_chat: { title: 'Edit chats', line: 'Start, rename, pin, archive or switch model' },
+  chat_send: { title: 'Message another chat', line: 'Its AI answers back by itself' },
+  subagent_run: { title: 'Run a subagent', line: 'A helper chat works on a task' },
+  assistant_reply: { title: 'Answer a request', line: 'Reply in a chat or call' },
+  assistant_post: { title: 'Post to a chat', line: 'A message at any time' },
+  read_models: { title: 'Read AI models', line: 'Names, prices and thinking levels' },
+  read_usage: { title: 'Read AI costs', line: 'Totals, over time, one by one, plan limits' },
+  read_presence: {
+    title: 'Where is someone',
+    line: 'Their apps, phone, last seen in the home, quiet hours',
+  },
+  read_ai_activity: { title: 'AI activity', line: 'Conversations it started and wake-ups' },
+  notify_person: { title: 'Message someone', line: 'A note in their chat, with a notification' },
+  speak: { title: 'Say something', line: 'Once, on a camera, an app or a walkie channel' },
+  start_conversation: {
+    title: 'Start a conversation',
+    line: 'Talk live through a camera, a walkie channel or an app',
+  },
+  call: { title: 'Call someone', line: 'Rings their phone, computer or any app' },
+  hang_up: { title: 'Hang up', line: 'Stop ringing or end a conversation' },
+  ai_inbox_post: { title: 'Hand over a message', line: 'Plugins only: a chat message to answer' },
+  get_computer: { title: 'Read a computer', line: 'Load, history and permissions' },
+  list_processes: { title: 'List programs', line: 'Busiest programs running on a computer' },
+  end_process: { title: 'End a program', line: 'End, pause or resume your own program' },
+  computer_apps: { title: 'List apps', line: 'Installed apps and time spent in each' },
+  run_computer_app: { title: 'Open or close an app', line: 'On a computer' },
+  read_files: { title: 'Read files', line: 'Folders and files in your home folder' },
+  read_plugins: { title: 'Read plugins', line: 'Status, tools, data and log' },
+  update_plugin: { title: 'Change a plugin', line: 'Switch it, its tools, settings or restart' },
+  call_plugin_tool: { title: 'Use a plugin tool', line: 'Run one thing a plugin offers' },
+  list_operations: { title: 'List app operations', line: 'Everything the app can do' },
+  call_operation: { title: 'Run an app operation', line: 'Anything without its own tool' },
+  search_tools: { title: 'Search tools', line: 'For other AI apps' },
+  tool_details: { title: 'Tool details', line: 'For other AI apps' },
+};
+
+export function toolTitle(tool: McpToolSummary<McpToolName>): string {
+  return TEXT[tool.name].title ?? tool.title;
+}
+
+export function toolLine(tool: McpToolSummary<McpToolName>): string {
+  return TEXT[tool.name].line;
+}

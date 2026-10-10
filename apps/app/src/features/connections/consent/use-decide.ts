@@ -1,0 +1,37 @@
+import { useState } from 'react';
+import { ApiError, type McpConsentDecision, type McpConsentRequest } from '@smarteverything/domain';
+import { decideMcpConsent } from '../../../api/access';
+import { notify } from '../../../components/toast-store';
+import { useEntityStore } from '../../../store/store-context';
+
+export interface Decision {
+  readonly busy: McpConsentDecision | null;
+  readonly decide: (decision: McpConsentDecision) => void;
+}
+
+export function useDecide(request: McpConsentRequest, onDecided: () => void): Decision {
+  const store = useEntityStore();
+  const [busy, setBusy] = useState<McpConsentDecision | null>(null);
+  const close = (): void => {
+    store.update((state) => ({
+      ...state,
+      consentRequests: state.consentRequests.filter((item) => item.id !== request.id),
+    }));
+    onDecided();
+  };
+  const decide = (decision: McpConsentDecision): void => {
+    setBusy(decision);
+    decideMcpConsent(request.id, decision)
+      .then(close, (error: unknown) => {
+        if (error instanceof ApiError && error.code === 'not_found') {
+          close();
+          return;
+        }
+        notify({ message: 'Your answer wasn’t sent', error, tone: 'critical' });
+      })
+      .finally(() => {
+        setBusy(null);
+      });
+  };
+  return { busy, decide };
+}

@@ -1,0 +1,13 @@
+{
+  "version": "1.9.14",
+  "commit": "c245815e75e2a5fd60b4290f12bfc04e55a984d3",
+  "source": "https://codeload.github.com/AlexxIT/go2rtc/tar.gz/c245815e75e2a5fd60b4290f12bfc04e55a984d3",
+  "sha256": "110fd3be00b6df6e32ff2fc1e36a4cf229d9b675a0c12de53db13fb5969d97ca",
+  "go": "1.27.1",
+  "patches": [
+    "patches/xiaomi-motor.patch",
+    "patches/consumer-lifetime.patch",
+    "patches/consumer-close.patch",
+    "patches/cs2-talk-payload.patch"
+  ]
+}

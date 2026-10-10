@@ -1,0 +1,85 @@
+import { createElement } from 'react';
+import type { SettingDefinition } from '../../../settings/types';
+import { appearanceChoice, appearanceRead } from './appearance-pref';
+import { AccentRow, AppearancePreview, InvalidAppearanceBanner, ThemeRow } from './appearance-rows';
+
+export const APPEARANCE_SETTINGS: readonly SettingDefinition[] = [
+  {
+    id: 'appearance.invalid',
+    page: 'appearance',
+    title: 'Reset appearance',
+    keywords: ['reset appearance'],
+    scope: 'client',
+    control: 'custom',
+    when: (state) => appearanceRead(state).status === 'invalid',
+    render: () => createElement(InvalidAppearanceBanner),
+  },
+  {
+    id: 'appearance.preview',
+    page: 'appearance',
+    title: 'Preview',
+    keywords: ['preview'],
+    scope: 'client',
+    control: 'custom',
+    render: () => createElement(AppearancePreview),
+  },
+  {
+    id: 'appearance.theme',
+    page: 'appearance',
+    section: 'Colour',
+    title: 'Theme',
+    keywords: ['dark mode', 'light mode', 'theme', 'night'],
+    scope: 'client',
+    control: 'custom',
+    row: true,
+    render: () => createElement(ThemeRow),
+  },
+  {
+    id: 'appearance.accent',
+    page: 'appearance',
+    section: 'Colour',
+    title: 'Accent',
+    keywords: ['accent', 'colour', 'color', 'tint'],
+    scope: 'client',
+    control: 'custom',
+    row: true,
+    render: () => createElement(AccentRow),
+  },
+  appearanceChoice({
+    key: 'background',
+    title: 'Background',
+    section: 'Colour',
+    keywords: ['background', 'wallpaper', 'gradient'],
+    labels: { ambient: 'Ambient', off: 'Plain' },
+  }),
+  appearanceChoice({
+    key: 'surface',
+    title: 'Cards',
+    section: 'Shape',
+    keywords: ['surface', 'translucent', 'glass', 'cards'],
+    labels: { solid: 'Solid', translucent: 'Translucent' },
+  }),
+  appearanceChoice({
+    key: 'corners',
+    title: 'Corners',
+    section: 'Shape',
+    keywords: ['corners', 'rounded', 'radius'],
+    labels: { sharp: 'Sharp', soft: 'Soft', round: 'Round' },
+  }),
+  appearanceChoice({
+    key: 'density',
+    title: 'Density',
+    section: 'Shape',
+    description: 'Compact fits more on screen',
+    keywords: ['density', 'compact', 'spacing'],
+    labels: { comfortable: 'Comfortable', compact: 'Compact' },
+  }),
+  appearanceChoice({
+    key: 'motion',
+    title: 'Motion',
+    section: 'Motion',
+    description: 'System follows your device’s reduce motion setting',
+    keywords: ['animation', 'motion', 'reduce motion'],
+    labels: { system: 'System', full: 'Full', reduced: 'Reduced' },
+  }),
+];

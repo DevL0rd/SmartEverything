@@ -1,0 +1,43 @@
+import type { HubStatus, PublicStatus } from '@smarteverything/domain';
+import type { Logger } from '@smarteverything/logging';
+import type { FirewallMonitor } from '../firewall/monitor';
+import type { FoodLookup } from '../foods/food-lookup';
+import type { RunningHub } from '../hub';
+import type { SecretStore } from '../secrets/store';
+import type { Store } from '../store/store';
+import type { AccessService } from './access';
+import type { WatchActionBroker } from '../local/watch-actions';
+import type { PlaceFinder } from '../places/place-finder';
+import type { WeatherService } from '../weather/weather-service';
+import type { PushCommandChannel } from '../extensions/push/commands';
+import type { LiveHub } from './live';
+import type { MediaLinks } from './media-links';
+import type { PublicUrlVerifier } from './public-url';
+import type { TalkService } from '../talk/talk-service';
+import type { AssistantService } from '../assistant/service';
+import type { OpenRouterPlatform } from '../openrouter/platform';
+import type { McpCallFeed } from '../extensions/mcp/call-feed';
+
+export interface ServerContext {
+  readonly store: Store;
+  readonly hub: RunningHub;
+  readonly firewall: FirewallMonitor;
+  readonly secrets: SecretStore;
+  readonly access: AccessService;
+  readonly links: MediaLinks;
+  readonly publicUrl: PublicUrlVerifier;
+  readonly foodLookup: FoodLookup;
+  readonly live: LiveHub;
+  readonly pushCommands: PushCommandChannel;
+  readonly toolCalls: McpCallFeed;
+  readonly watchActions: WatchActionBroker;
+  readonly talk: TalkService;
+  readonly assistant: AssistantService;
+  readonly weather: WeatherService;
+  readonly openRouter: OpenRouterPlatform;
+  readonly places: PlaceFinder;
+  readonly status: () => HubStatus;
+  readonly publicStatus: () => PublicStatus;
+  readonly recordingPath: (storagePath: string) => string;
+  readonly log: Logger;
+}

@@ -1,0 +1,27 @@
+import type { EventKind } from './events';
+
+export const EVENT_KIND_LABELS: Readonly<Record<EventKind, string>> = {
+  doorbell: 'Doorbell',
+  call: 'Call',
+  motion: 'Motion',
+  person: 'Person seen',
+  sound: 'Sound',
+  alarm: 'Alarm',
+  button: 'Button pressed',
+  leak: 'Water leak',
+  smoke: 'Smoke',
+  device_online: 'Back online',
+  device_offline: 'Went offline',
+  automation_run: 'Automation ran',
+  provider_error: 'Connection problem',
+  pet: 'Pet seen',
+  opened: 'Opened',
+  maintenance: 'Needs maintenance',
+  fault: 'Device fault',
+  activity: 'Device activity',
+  computer_power: 'Computer power',
+  phone_context_changed: 'Started doing something else',
+  place_arrived: 'Arrived',
+  place_left: 'Left',
+  parked: 'Parked',
+};

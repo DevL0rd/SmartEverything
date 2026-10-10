@@ -1,0 +1,35 @@
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { useForeground } from '../../../design/animation-gate';
+import { cn } from '../../../design/cn';
+import { BLINK, EASE_IN_OUT, loopStyle } from '../../../design/loops';
+import { useMotion } from '../../../design/motion';
+
+const DELAYS = [0, 180, 360] as const;
+
+export function TypingDots({
+  moving = true,
+  tone = 'variant',
+}: {
+  readonly moving?: boolean;
+  readonly tone?: 'variant' | 'primary';
+}): ReactNode {
+  const { reduced } = useMotion();
+  const foreground = useForeground();
+  const running = moving && !reduced && foreground;
+  return (
+    <View accessibilityLabel="Typing" className="h-4 flex-row items-center gap-1">
+      {DELAYS.map((delay) => (
+        <Animated.View
+          key={delay}
+          style={loopStyle({ name: BLINK, ms: 1100, easing: EASE_IN_OUT, delay }, running)}
+          className={cn(
+            'size-1.5 rounded-full',
+            tone === 'primary' ? 'bg-primary' : 'bg-on-surface-variant',
+          )}
+        />
+      ))}
+    </View>
+  );
+}

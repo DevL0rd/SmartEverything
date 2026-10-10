@@ -1,0 +1,80 @@
+export const OPENROUTER_ERROR_CODES = [
+  'no_key',
+  'unauthorized',
+  'no_credits',
+  'rate_limited',
+  'unavailable',
+  'bad_request',
+  'not_found',
+  'refused',
+  'unreadable',
+  'failed',
+] as const;
+
+export type OpenRouterErrorCode = (typeof OPENROUTER_ERROR_CODES)[number];
+
+export class OpenRouterError extends Error {
+  override readonly name = 'OpenRouterError';
+
+  constructor(
+    readonly code: OpenRouterErrorCode,
+    message: string,
+    readonly status: number | null = null,
+  ) {
+    super(message);
+  }
+
+  get retryable(): boolean {
+    return this.code === 'rate_limited' || this.code === 'unavailable';
+  }
+}
+
+const STATUS_CODES: Readonly<Record<number, OpenRouterErrorCode>> = {
+  400: 'bad_request',
+  401: 'unauthorized',
+  402: 'no_credits',
+  403: 'refused',
+  404: 'not_found',
+  408: 'unavailable',
+  429: 'rate_limited',
+  502: 'unavailable',
+  503: 'unavailable',
+  504: 'unavailable',
+};
+
+const FRIENDLY: Readonly<Record<OpenRouterErrorCode, string>> = {
+  no_key: 'Add an OpenRouter key in Settings › AI first',
+  unauthorized: 'OpenRouter didn’t accept the key',
+  no_credits: 'OpenRouter is out of credits. Top up to keep chatting',
+  rate_limited: 'OpenRouter is busy right now. Try again in a moment',
+  unavailable: 'OpenRouter or the model’s provider is unavailable right now',
+  bad_request: 'OpenRouter refused the request',
+  not_found: 'OpenRouter doesn’t have that',
+  refused: 'OpenRouter refused this',
+  unreadable: 'OpenRouter sent an answer this app can’t read',
+  failed: 'OpenRouter failed',
+};
+
+export function errorCodeOf(status: number): OpenRouterErrorCode {
+  return STATUS_CODES[status] ?? (status >= 500 ? 'unavailable' : 'failed');
+}
+
+export function openRouterError(
+  code: OpenRouterErrorCode,
+  detail: string | null,
+  status: number | null = null,
+): OpenRouterError {
+  const base = FRIENDLY[code];
+  return new OpenRouterError(code, detail === null ? `${base}.` : `${base} (${detail}).`, status);
+}
+
+export type JsonRead =
+  { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly reason: string };
+
+export function readJson(text: string): JsonRead {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (cause) {
+    return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+  }
+}

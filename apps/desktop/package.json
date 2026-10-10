@@ -1,0 +1,38 @@
+{
+  "name": "@smarteverything/desktop",
+  "productName": "SmartEverything",
+  "version": "0.1.0",
+  "description": "SmartEverything for the desktop",
+  "author": "DevL0rd",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/main.js",
+  "scripts": {
+    "build": "tsc -b . && esbuild src/main.ts --bundle --platform=node --format=esm --target=node24 --external:electron --outfile=dist/src/main.js && esbuild src/preload.cts --bundle --platform=node --format=cjs --target=node24 --external:electron --outfile=dist/src/preload.cjs && pnpm run build:service",
+    "build:service": "esbuild ../hub/src/service.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/service/service.mjs --external:x11 --external:usocket --external:cpu-features '--external:*.node' '--banner:js=import { createRequire as createServiceRequire } from \"node:module\"; import { fileURLToPath as serviceFileUrlToPath } from \"node:url\"; import { dirname as serviceDirname } from \"node:path\"; const require = createServiceRequire(import.meta.url); const __filename = serviceFileUrlToPath(import.meta.url); const __dirname = serviceDirname(__filename);' && esbuild ../hub/src/assistant/mcp-bridge.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/service/mcp-bridge.mjs && esbuild src/system-migration/cli.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/service/system-migration.mjs && node -e \"require('node:fs').cpSync(require('node:path').dirname(require.resolve('opusscript/package.json', { paths: ['../hub'] })), 'dist/service/node_modules/opusscript', { recursive: true, dereference: true })\" && node ../../tooling/copy-voice-assets.mjs service",
+    "start": "pnpm run build && electron-forge start",
+    "package": "pnpm run build && electron-forge package",
+    "package:dev": "APP_VARIANT=development pnpm run package",
+    "make": "pnpm run build && electron-forge make",
+    "prepare:web": "pnpm --filter @smarteverything/app run export:web && test -f ../app/dist/index.html"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-deb": "8.0.1",
+    "@electron-forge/maker-dmg": "8.0.1",
+    "@electron-forge/maker-rpm": "8.0.1",
+    "@electron-forge/maker-squirrel": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "@electron-forge/plugin-fuses": "8.0.1",
+    "@electron-forge/shared-types": "8.0.1",
+    "@electron/fuses": "2.1.3",
+    "@jellybrick/dbus-next": "0.11.4",
+    "@smarteverything/domain": "workspace:*",
+    "@smarteverything/hub": "workspace:*",
+    "@smarteverything/logging": "workspace:*",
+    "electron": "44.7.0",
+    "esbuild": "0.28.2",
+    "png2icons": "2.0.1",
+    "zod": "4.4.3"
+  }
+}

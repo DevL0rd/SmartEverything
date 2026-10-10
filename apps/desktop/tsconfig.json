@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "rootDir": ".",
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.cts",
+    "test/**/*.ts",
+    "packaging/**/*.ts",
+    "forge.config.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/logging"
+    },
+    {
+      "path": "../../packages/domain"
+    },
+    {
+      "path": "../hub"
+    }
+  ]
+}

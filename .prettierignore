@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.stryker-tmp/
+reports/
+pnpm-lock.yaml
+apps/*/dist/
+apps/*/.expo/
+**/dist-types/
+apps/*/uniwind-types.d.ts
+apps/*/expo-env.d.ts
+.agents/
+apps/app/android/

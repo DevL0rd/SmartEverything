@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard", ":semanticCommits"],
+  "rangeStrategy": "pin",
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 3,
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Expo manages its own matrix; upgrade the SDK deliberately, not piecemeal",
+      "matchPackageNames": [
+        "expo",
+        "expo-**",
+        "react-native",
+        "react-native-**",
+        "@expo/**",
+        "@react-native/**",
+        "react",
+        "react-dom"
+      ],
+      "groupName": "expo sdk",
+      "schedule": ["before 4am on the first day of the month"]
+    },
+    {
+      "description": "TypeScript is capped by what typescript-eslint supports",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<6.1.0"
+    },
+    {
+      "description": "Stryker core and its runner must move together",
+      "matchPackageNames": ["@stryker-mutator/**"],
+      "groupName": "stryker"
+    },
+    {
+      "description": "Vitest and its coverage provider must move together",
+      "matchPackageNames": ["vitest", "@vitest/**"],
+      "groupName": "vitest"
+    }
+  ]
+}

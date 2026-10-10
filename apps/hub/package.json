@@ -1,0 +1,37 @@
+{
+  "name": "@smarteverything/hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/main.ts",
+    "./service": "./src/service.ts",
+    "./service/configuration": "./src/service/configuration.ts",
+    "./firewall/powershell": "./src/firewall/powershell.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.291",
+    "@google/genai": "2.27.0",
+    "@modelcontextprotocol/client": "2.2.0",
+    "@ricky0123/vad-web": "0.0.31",
+    "@smarteverything/ble": "workspace:*",
+    "@smarteverything/domain": "workspace:*",
+    "@smarteverything/logging": "workspace:*",
+    "@smarteverything/smartthings": "workspace:*",
+    "@smarteverything/tuya": "workspace:*",
+    "@smarteverything/xiaomi": "workspace:*",
+    "dbus-next": "0.10.2",
+    "mqtt": "5.16.0",
+    "onnxruntime-web": "1.30.0",
+    "opusscript": "0.1.1",
+    "sherpa-onnx": "1.13.8",
+    "ssh2": "1.17.0",
+    "tuyapi": "7.7.1",
+    "ws": "8.22.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/ssh2": "1.15.6",
+    "@types/ws": "8.18.2"
+  }
+}

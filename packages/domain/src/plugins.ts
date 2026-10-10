@@ -1,0 +1,363 @@
+import { z } from 'zod';
+import { WIDGET_SIZES } from './board-layout';
+import { MCP_TOOL_AREAS } from './mcp/areas';
+import type { SignalSourceSpec } from './signal-sources/spec';
+import { JSON_VALUE } from './values';
+
+const MOMENT = z.iso.datetime({ offset: true });
+
+export const PLUGIN_ID = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{1,31}$/, 'a lower-case plugin id (letters, digits, dashes)');
+
+export type PluginId = z.infer<typeof PLUGIN_ID>;
+
+export const PLUGIN_TOOL_SEPARATOR = '__';
+
+export function pluginToolName(pluginId: PluginId, tool: string): string {
+  return `${pluginId}${PLUGIN_TOOL_SEPARATOR}${tool}`;
+}
+
+const KEY = z.string().regex(/^[a-z][a-z0-9_.-]{0,79}$/, 'a lower-case key');
+const TITLE = z.string().trim().min(1).max(80);
+const TOOL = z.string().min(1).max(120);
+const JSON_OBJECT = z.record(z.string(), JSON_VALUE);
+
+export const PLUGIN_MCP = z.discriminatedUnion('transport', [
+  z.strictObject({
+    transport: z.literal('stdio'),
+    command: z.string().min(1).max(500),
+    args: z.array(z.string().max(2000)).max(50).default([]),
+    env: z.record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string().max(2000)).default({}),
+    cwd: z.string().min(1).max(500).nullable().default(null),
+  }),
+  z.strictObject({
+    transport: z.literal('http'),
+    url: z.url({ protocol: /^https?$/ }),
+    bearer: z.string().min(1).max(500).nullable().default(null),
+  }),
+]);
+
+export type PluginMcp = z.output<typeof PLUGIN_MCP>;
+
+export const PLUGIN_FILE_ACCESS = ['own', 'none'] as const;
+
+export const PLUGIN_PERMISSIONS = z.strictObject({
+  seAreas: z.array(z.enum(MCP_TOOL_AREAS)).max(MCP_TOOL_AREAS.length).default([]),
+  inbound: z.boolean().default(false),
+  voice: z.boolean().default(false),
+  network: z.boolean().default(true),
+  files: z.enum(PLUGIN_FILE_ACCESS).default('own'),
+});
+
+export type PluginPermissions = z.output<typeof PLUGIN_PERMISSIONS>;
+
+export const PLUGIN_DATA_STREAM = z.strictObject({
+  stream: KEY,
+  title: TITLE,
+  schema: JSON_OBJECT,
+  unit: z.string().min(1).max(20).nullable().default(null),
+  history: z.int().min(0).max(200).default(200),
+});
+
+export type PluginDataStream = z.output<typeof PLUGIN_DATA_STREAM>;
+
+export const PLUGIN_EVENT_FIELD_TYPES = ['string', 'number', 'boolean'] as const;
+
+export const PLUGIN_EVENT_KIND = z.strictObject({
+  kind: KEY,
+  title: TITLE,
+  fields: z.record(KEY, z.enum(PLUGIN_EVENT_FIELD_TYPES)).default({}),
+});
+
+export type PluginEventKind = z.output<typeof PLUGIN_EVENT_KIND>;
+
+const STREAM_REF = z.strictObject({ stream: KEY, field: KEY.nullable().default(null) });
+
+const CONTROL_BASE = { label: TITLE, tool: TOOL, args: JSON_OBJECT.default({}) };
+
+export const WIDGET_CONTROL = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('button'), ...CONTROL_BASE }),
+  z.strictObject({ kind: z.literal('toggle'), ...CONTROL_BASE, value: STREAM_REF, arg: KEY }),
+  z.strictObject({
+    kind: z.literal('slider'),
+    ...CONTROL_BASE,
+    value: STREAM_REF,
+    arg: KEY,
+    min: z.number(),
+    max: z.number(),
+    step: z.number().positive(),
+  }),
+]);
+
+export const WIDGET_BODY = z.discriminatedUnion('type', [
+  z.strictObject({ type: z.literal('figure'), value: STREAM_REF, caption: TITLE.nullable() }),
+  z.strictObject({
+    type: z.literal('gauge'),
+    value: STREAM_REF,
+    min: z.number(),
+    max: z.number(),
+  }),
+  z.strictObject({
+    type: z.literal('sparkline'),
+    value: STREAM_REF,
+    minutes: z.int().min(1).max(1440),
+  }),
+  z.strictObject({ type: z.literal('list'), value: STREAM_REF, limit: z.int().min(1).max(20) }),
+  z.strictObject({ type: z.literal('controls'), items: z.array(WIDGET_CONTROL).min(1).max(6) }),
+  z.strictObject({ type: z.literal('map'), value: STREAM_REF }),
+]);
+
+export const WIDGET_SPEC = z.strictObject({
+  id: KEY,
+  title: TITLE,
+  icon: z.string().min(1).max(40),
+  sizes: z.array(z.enum(WIDGET_SIZES)).min(1),
+  body: WIDGET_BODY,
+});
+
+export type WidgetSpec = z.output<typeof WIDGET_SPEC>;
+
+const SETTING_BASE = {
+  title: TITLE,
+  description: z.string().max(300).nullable().default(null),
+};
+
+export const PLUGIN_SETTING = z.discriminatedUnion('type', [
+  z.strictObject({
+    type: z.literal('string'),
+    ...SETTING_BASE,
+    secret: z.boolean().default(false),
+    default: z.string().max(2000).nullable().default(null),
+  }),
+  z.strictObject({
+    type: z.literal('number'),
+    ...SETTING_BASE,
+    minimum: z.number().nullable().default(null),
+    maximum: z.number().nullable().default(null),
+    default: z.number().nullable().default(null),
+  }),
+  z.strictObject({
+    type: z.literal('boolean'),
+    ...SETTING_BASE,
+    default: z.boolean().default(false),
+  }),
+  z.strictObject({
+    type: z.literal('enum'),
+    ...SETTING_BASE,
+    options: z
+      .array(z.strictObject({ value: KEY, label: TITLE }))
+      .min(1)
+      .max(30),
+    default: KEY.nullable().default(null),
+  }),
+]);
+
+export type PluginSetting = z.output<typeof PLUGIN_SETTING>;
+
+export const PLUGIN_COMMAND = z.strictObject({ name: KEY, title: TITLE, tool: TOOL });
+
+export const PLUGIN_SEARCH_MODES = ['push', 'query'] as const;
+
+export const PLUGIN_CONTRIBUTIONS = z.strictObject({
+  directTools: z.array(TOOL).max(40).default([]),
+  widgets: z.array(WIDGET_SPEC).max(30).default([]),
+  data: z.array(PLUGIN_DATA_STREAM).max(50).default([]),
+  events: z.array(PLUGIN_EVENT_KIND).max(50).default([]),
+  search: z.enum(PLUGIN_SEARCH_MODES).nullable().default(null),
+  settings: z.record(KEY, PLUGIN_SETTING).default({}),
+  commands: z.array(PLUGIN_COMMAND).max(20).default([]),
+  deviceFamilies: z.array(KEY).max(20).default([]),
+});
+
+export type PluginContributions = z.output<typeof PLUGIN_CONTRIBUTIONS>;
+
+export const PLUGIN_MANIFEST = z.strictObject({
+  id: PLUGIN_ID,
+  name: z.string().trim().min(1).max(60),
+  version: z.string().regex(/^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/, 'a version like 1.2.0'),
+  description: z.string().trim().min(1).max(300),
+  publisher: z.string().trim().min(1).max(60),
+  icon: z.string().min(1).max(500).nullable().default(null),
+  homepage: z
+    .url({ protocol: /^https?$/ })
+    .nullable()
+    .default(null),
+  mcp: PLUGIN_MCP.nullable().default(null),
+  permissions: PLUGIN_PERMISSIONS.prefault({}),
+  contributes: PLUGIN_CONTRIBUTIONS.prefault({}),
+  requires: z.string().max(40).nullable().default(null),
+});
+
+export type PluginManifest = z.output<typeof PLUGIN_MANIFEST>;
+
+export type PluginManifestInput = z.input<typeof PLUGIN_MANIFEST>;
+
+export const PLUGIN_SOURCES = ['builtin', 'local', 'url'] as const;
+
+export type PluginSource = (typeof PLUGIN_SOURCES)[number];
+
+export const PLUGIN_STATUSES = [
+  'disabled',
+  'starting',
+  'running',
+  'crashed',
+  'needs_auth',
+] as const;
+
+export type PluginStatus = (typeof PLUGIN_STATUSES)[number];
+
+export const PLUGIN_ROW = z.strictObject({
+  id: PLUGIN_ID,
+  manifest: PLUGIN_MANIFEST,
+  source: z.enum(PLUGIN_SOURCES),
+  location: z.string().min(1).max(1000).nullable(),
+  enabled: z.boolean(),
+  trusted: z.boolean(),
+  status: z.enum(PLUGIN_STATUSES),
+  status_detail: z.string().max(400).nullable(),
+  tool_switches: z.record(TOOL, z.boolean()),
+  settings: JSON_OBJECT,
+  secret_names: z.array(KEY),
+  icon_url: z.string().min(1).max(500).nullable(),
+  installed_at: MOMENT,
+  updated_at: MOMENT,
+});
+
+export type PluginRow = z.infer<typeof PLUGIN_ROW>;
+
+export const INBOUND_PRIORITIES = ['normal', 'urgent'] as const;
+
+export const INBOUND_ATTACHMENT = z.strictObject({
+  name: z.string().min(1).max(200),
+  mime: z.string().min(1).max(100),
+  source: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('url'), url: z.url({ protocol: /^https?$/ }) }),
+    z.strictObject({ kind: z.literal('path'), path: z.string().min(1).max(1000) }),
+    z.strictObject({ kind: z.literal('base64'), data: z.base64().max(14_000_000) }),
+  ]),
+});
+
+export const INBOUND_MESSAGE = z.strictObject({
+  eventId: z.string().min(1).max(200),
+  conversation: z.strictObject({ key: z.string().min(1).max(200), title: TITLE }),
+  text: z.string().max(16_000),
+  from: z.strictObject({
+    id: z.string().min(1).max(200),
+    name: z.string().trim().min(1).max(120),
+    trusted: z.boolean().default(false),
+  }),
+  attachments: z.array(INBOUND_ATTACHMENT).max(10).default([]),
+  reply: z.strictObject({
+    tool: TOOL,
+    eventIdArg: KEY.default('eventId'),
+    textArg: KEY.default('text'),
+    idempotencyArg: KEY.nullable().default(null),
+  }),
+  rule: z.string().max(2000).nullable().default(null),
+  voice: z.boolean().default(false),
+  priority: z.enum(INBOUND_PRIORITIES).default('normal'),
+});
+
+export type InboundMessage = z.output<typeof INBOUND_MESSAGE>;
+
+export const PLUGIN_DATA_POINT = z.strictObject({
+  stream: KEY,
+  value: JSON_VALUE,
+  at: MOMENT,
+});
+
+export type PluginDataPoint = z.infer<typeof PLUGIN_DATA_POINT>;
+
+export const PLUGIN_STREAM_ROW = z.strictObject({
+  plugin_id: PLUGIN_ID,
+  stream: KEY,
+  value: JSON_VALUE,
+  at: MOMENT,
+});
+
+export type PluginStreamRow = z.infer<typeof PLUGIN_STREAM_ROW>;
+
+export function pluginStreamKey(pluginId: string, stream: string): string {
+  return `${pluginId}/${stream}`;
+}
+
+export const PLUGIN_EVENT = z.strictObject({
+  kind: KEY,
+  subject: z.string().min(1).max(200).nullable().default(null),
+  data: JSON_OBJECT.default({}),
+});
+
+export type PluginEvent = z.output<typeof PLUGIN_EVENT>;
+
+export const PLUGIN_SEARCH_ENTRY = z.strictObject({
+  id: z.string().min(1).max(200),
+  title: TITLE,
+  subtitle: z.string().max(120).nullable().default(null),
+  keywords: z.array(z.string().min(1).max(60)).max(20).default([]),
+  target: z.discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('device'),
+      externalId: z.string().min(1).max(200),
+      section: KEY.nullable().default(null),
+      query: z.record(KEY, z.string().max(200)).default({}),
+    }),
+    z.strictObject({
+      kind: z.literal('path'),
+      path: z
+        .string()
+        .regex(/^\/[^\s?#]*$/, 'an app path starting with /')
+        .max(300),
+    }),
+  ]),
+});
+
+export type PluginSearchEntry = z.output<typeof PLUGIN_SEARCH_ENTRY>;
+
+export const PLUGIN_NOTIFICATIONS = {
+  message: 'notifications/smarteverything/message',
+  data: 'notifications/smarteverything/data',
+  event: 'notifications/smarteverything/event',
+  search: 'notifications/smarteverything/search',
+} as const;
+
+export const PLUGIN_MANIFEST_RESOURCE = 'se://manifest';
+
+export const PLUGIN_MANIFEST_FILE = 'smarteverything-plugin.json';
+
+export function pluginSignalSource(pluginId: PluginId): string {
+  return `plugin_${pluginId.replaceAll('-', '_')}`;
+}
+
+export function pluginSignalSpec(manifest: PluginManifest): SignalSourceSpec {
+  return {
+    source: pluginSignalSource(manifest.id),
+    label: manifest.name,
+    kinds: manifest.contributes.events.map((event) => ({
+      kind: event.kind,
+      label: event.title,
+      subject: 'none',
+      fields: [],
+      pulse: true,
+    })),
+  };
+}
+
+const PLUGIN_CHAT_PREFIX = 'plugin:';
+
+export function pluginChatKey(pluginId: PluginId, conversationKey: string): string {
+  return `${PLUGIN_CHAT_PREFIX}${pluginId}:${conversationKey}`;
+}
+
+export function pluginIdOfChat(chat: {
+  readonly kind: string;
+  readonly source_key: string | null;
+}): PluginId | null {
+  if (chat.kind !== 'plugin' || chat.source_key?.startsWith(PLUGIN_CHAT_PREFIX) !== true) {
+    return null;
+  }
+  const rest = chat.source_key.slice(PLUGIN_CHAT_PREFIX.length);
+  const end = rest.indexOf(':');
+  const parsed = PLUGIN_ID.safeParse(end > 0 ? rest.slice(0, end) : '');
+  return parsed.success ? parsed.data : null;
+}

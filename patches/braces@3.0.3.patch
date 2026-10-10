@@ -1,0 +1,56 @@
+diff --git a/lib/constants.js b/lib/constants.js
+index 2bb3b8840382c56700869b3a9e1f958fcce01efd..4e870e0fc0841395ac0a02fc4d65e569e822cc9b 100644
+--- a/lib/constants.js
++++ b/lib/constants.js
+@@ -2,6 +2,7 @@
+ 
+ module.exports = {
+   MAX_LENGTH: 10000,
++  MAX_DEPTH: 256,
+ 
+   // Digits
+   CHAR_0: '0', /* 0 */
+diff --git a/lib/parse.js b/lib/parse.js
+index 3a6988e629f52aee6609dc5ec290a5e9ff47cecb..61474ba98992cb0f4c35d5d31c64c3ea9970639f 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -7,6 +7,7 @@ const stringify = require('./stringify');
+  */
+ 
+ const {
++  MAX_DEPTH,
+   MAX_LENGTH,
+   CHAR_BACKSLASH, /* \ */
+   CHAR_BACKTICK, /* ` */
+@@ -41,6 +42,13 @@ const parse = (input, options = {}) => {
+ 
+   const ast = { type: 'root', input, nodes: [] };
+   const stack = [ast];
++  const maxDepth = typeof opts.maxDepth === 'number' ? Math.min(MAX_DEPTH, opts.maxDepth) : MAX_DEPTH;
++  const enter = node => {
++    stack.push(node);
++    if (stack.length > maxDepth) {
++      throw new SyntaxError(`Input nesting exceeds max depth (${maxDepth})`);
++    }
++  };
+   let block = ast;
+   let prev = ast;
+   let brackets = 0;
+@@ -144,7 +152,7 @@ const parse = (input, options = {}) => {
+ 
+     if (value === CHAR_LEFT_PARENTHESES) {
+       block = push({ type: 'paren', nodes: [] });
+-      stack.push(block);
++      enter(block);
+       push({ type: 'text', value });
+       continue;
+     }
+@@ -210,7 +218,7 @@ const parse = (input, options = {}) => {
+       };
+ 
+       block = push(brace);
+-      stack.push(block);
++      enter(block);
+       push({ type: 'open', value });
+       continue;
+     }

@@ -1,0 +1,73 @@
+--- a/internal/streams/consumer_api.go
++++ b/internal/streams/consumer_api.go
+@@ -0,0 +1,60 @@
++package streams
++
++import (
++	"encoding/json"
++	"net/http"
++	"strconv"
++
++	"github.com/AlexxIT/go2rtc/pkg/core"
++)
++
++type consumerID struct {
++	ID uint32 `json:"id"`
++}
++
++func idOf(cons core.Consumer) uint32 {
++	b, err := json.Marshal(cons)
++	if err != nil {
++		return 0
++	}
++	var v consumerID
++	if err = json.Unmarshal(b, &v); err != nil {
++		return 0
++	}
++	return v.ID
++}
++
++func (s *Stream) consumerByID(id uint32) core.Consumer {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	for _, cons := range s.consumers {
++		if idOf(cons) == id {
++			return cons
++		}
++	}
++	return nil
++}
++
++func apiConsumer(w http.ResponseWriter, r *http.Request) {
++	if r.Method != "DELETE" {
++		http.Error(w, "", http.StatusMethodNotAllowed)
++		return
++	}
++	query := r.URL.Query()
++	stream := Get(query.Get("src"))
++	if stream == nil {
++		http.Error(w, "", http.StatusNotFound)
++		return
++	}
++	id, err := strconv.ParseUint(query.Get("id"), 10, 32)
++	if err != nil {
++		http.Error(w, err.Error(), http.StatusBadRequest)
++		return
++	}
++	cons := stream.consumerByID(uint32(id))
++	if cons == nil {
++		http.Error(w, "", http.StatusNotFound)
++		return
++	}
++	stream.RemoveConsumer(cons)
++}
+--- a/internal/streams/streams.go
++++ b/internal/streams/streams.go
+@@ -27,6 +27,7 @@
+ 	}
+ 
+ 	api.HandleFunc("api/streams", apiStreams)
++	api.HandleFunc("api/streams/consumer", apiConsumer)
+ 	api.HandleFunc("api/streams.dot", apiStreamsDOT)
+ 	api.HandleFunc("api/preload", apiPreload)
+ 	api.HandleFunc("api/schemes", apiSchemes)

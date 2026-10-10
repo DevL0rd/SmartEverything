@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "package.json"],
+  "references": [
+    {
+      "path": "../../packages/logging"
+    },
+    {
+      "path": "../../packages/domain"
+    },
+    {
+      "path": "../../packages/xiaomi"
+    },
+    {
+      "path": "../../packages/ble"
+    },
+    {
+      "path": "../../packages/tuya"
+    },
+    {
+      "path": "../../packages/smartthings"
+    }
+  ]
+}

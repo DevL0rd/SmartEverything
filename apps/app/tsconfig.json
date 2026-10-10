@@ -1,0 +1,35 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM"],
+    "moduleResolution": "bundler",
+    "composite": true,
+    "rootDir": ".",
+    "outDir": "./dist-types",
+    "types": ["react", "node", "expo/types"]
+  },
+  "include": [
+    "app-identity.json",
+    "package.json",
+    "assets/licences.json",
+    "app.config.ts",
+    "types/**/*.d.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "modules/health-connect/index.ts",
+    "modules/health-connect/src/**/*.ts",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/logging"
+    },
+    {
+      "path": "../../packages/domain"
+    }
+  ]
+}

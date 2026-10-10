@@ -1,0 +1,48 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/logging"
+    },
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/xiaomi"
+    },
+    {
+      "path": "./packages/ble"
+    },
+    {
+      "path": "./packages/tuya"
+    },
+    {
+      "path": "./packages/smartthings"
+    },
+    {
+      "path": "./apps/hub"
+    },
+    {
+      "path": "./apps/desktop"
+    },
+    {
+      "path": "./tooling/dependency-contracts"
+    },
+    {
+      "path": "./tooling/guards"
+    },
+    {
+      "path": "./apps/app/modules/health-connect"
+    },
+    {
+      "path": "./apps/app"
+    },
+    {
+      "path": "./tooling"
+    },
+    {
+      "path": "./tooling/go2rtc"
+    }
+  ]
+}

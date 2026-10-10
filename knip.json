@@ -1,0 +1,54 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["vitest.mutation.config.ts", "tooling/*.ts"],
+      "project": ["**/*.{ts,js,mjs}"]
+    },
+    "packages/logging": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "tooling/dependency-contracts": {
+      "entry": ["**/*.contract.test.ts"],
+      "project": ["**/*.ts"]
+    },
+    "tooling/guards": {
+      "entry": ["**/*.test.ts"],
+      "project": ["**/*.ts"]
+    },
+    "apps/app": {
+      "entry": ["app/**/*.tsx", "*.config.js", "src/**/*.test.ts"],
+      "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "*.css"]
+    },
+    "packages/domain": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/xiaomi": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/ble": {
+      "project": ["src/**/*.ts"]
+    },
+    "packages/tuya": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "packages/smartthings": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "apps/hub": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "apps/desktop": {
+      "entry": ["forge.config.ts", "test/**/*.test.ts"],
+      "project": ["src/**/*.{ts,cts}", "test/**/*.ts", "*.ts", "packaging/**/*.ts"]
+    }
+  },
+  "ignoreBinaries": ["gitleaks"],
+  "ignoreDependencies": ["babel-plugin-react-compiler"]
+}

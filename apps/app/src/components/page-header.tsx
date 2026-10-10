@@ -1,0 +1,314 @@
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
+import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
+import { useNavigation, type Href } from 'expo-router';
+import Head from 'expo-router/head';
+import { useNavigationState } from 'expo-router/react-navigation';
+import { useSizeClass, type HeaderKind } from '../design/size-class';
+import { Breadcrumbs, type Crumb } from './breadcrumbs';
+import { useHeaderSearchHandler } from './header-search';
+import { Button } from './button';
+import type { IconName } from './icon';
+import { IconButton } from './icon-button';
+import { Interactive } from './interactive';
+import { OverflowButton, type MenuItem } from './menu';
+import { usePrimaryActionPlacement } from './primary-action';
+import { useHeaderSlot, useScreen } from './screen-context';
+import { Text } from './text';
+
+export interface HeaderAction {
+  readonly icon: IconName;
+  readonly label: string;
+  readonly onPress?: () => void;
+  readonly href?: Href;
+  readonly primary?: boolean;
+  readonly selected?: boolean;
+  readonly shortcut?: string;
+  readonly iconOnly?: boolean;
+}
+
+export interface HeaderEditing {
+  readonly onDone: () => void;
+  readonly onCancel: () => void;
+  readonly dirty: boolean;
+}
+
+export interface PageHeaderProps {
+  readonly title: string;
+  readonly subtitle?: string;
+  readonly back?: boolean;
+  readonly actions?: readonly HeaderAction[];
+  readonly overflow?: readonly MenuItem[];
+  readonly below?: ReactNode;
+  readonly editing?: HeaderEditing | null;
+  readonly breadcrumbs?: readonly Crumb[];
+  readonly search?: boolean;
+  readonly onTitlePress?: () => void;
+}
+
+const COLLAPSE_AT = 48;
+
+function useBack(back: boolean | undefined): (() => void) | null {
+  const navigation = useNavigation();
+  const depth = useNavigationState((state) => state.index);
+  const shown = back ?? (depth > 0 || navigation.canGoBack());
+  return shown
+    ? (): void => {
+        navigation.goBack();
+      }
+    : null;
+}
+
+function overflowItems(
+  actions: readonly HeaderAction[],
+  overflow: readonly MenuItem[],
+): readonly MenuItem[] {
+  return [
+    ...actions.map((action) => ({
+      label: action.label,
+      icon: action.icon,
+      onPress: action.onPress ?? ((): void => undefined),
+    })),
+    ...overflow,
+  ];
+}
+
+function SearchAction(): ReactNode {
+  const openSearch = useHeaderSearchHandler();
+  const { chromeSearch } = useSizeClass();
+  if (chromeSearch || openSearch === null) {
+    return null;
+  }
+  return <IconButton icon="search" label="Search" onPress={openSearch} />;
+}
+
+function TouchActions({
+  actions,
+  overflow,
+  search,
+}: {
+  readonly actions: readonly HeaderAction[];
+  readonly overflow: readonly MenuItem[];
+  readonly search: boolean;
+}): ReactNode {
+  const shown = actions.slice(0, 2);
+  const rest = overflowItems(actions.slice(2), overflow);
+  const { primaryAction } = useScreen();
+  const placed = usePrimaryActionPlacement() === 'header' ? primaryAction : null;
+  return (
+    <View className="flex-row items-center">
+      {search ? <SearchAction /> : null}
+      {placed === null ? null : (
+        <IconButton icon={placed.icon} label={placed.label} onPress={placed.onPress} />
+      )}
+      {shown.map((action) => (
+        <IconButton
+          key={action.label}
+          icon={action.icon}
+          label={action.label}
+          selected={action.selected ?? false}
+          {...(action.onPress === undefined ? {} : { onPress: action.onPress })}
+          {...(action.href === undefined ? {} : { href: action.href })}
+        />
+      ))}
+      {rest.length === 0 ? null : <OverflowButton items={rest} />}
+    </View>
+  );
+}
+
+function PointerAction({ action }: { readonly action: HeaderAction }): ReactNode {
+  const press = {
+    ...(action.onPress === undefined ? {} : { onPress: action.onPress }),
+    ...(action.href === undefined ? {} : { href: action.href }),
+  };
+  if (action.iconOnly === true) {
+    return (
+      <IconButton
+        icon={action.icon}
+        label={action.label}
+        selected={action.selected ?? false}
+        {...(action.shortcut === undefined ? {} : { shortcut: action.shortcut })}
+        {...press}
+      />
+    );
+  }
+  return (
+    <Button
+      label={action.label}
+      icon={action.icon}
+      variant={action.primary === true ? 'filled' : 'tonal'}
+      {...press}
+    />
+  );
+}
+
+function PointerActions({
+  actions,
+  overflow,
+}: {
+  readonly actions: readonly HeaderAction[];
+  readonly overflow: readonly MenuItem[];
+}): ReactNode {
+  const { primaryAction } = useScreen();
+  return (
+    <View className="flex-row flex-wrap items-center justify-end gap-2">
+      {actions.map((action) => (
+        <PointerAction key={action.label} action={action} />
+      ))}
+      {primaryAction === null ? null : (
+        <Button
+          label={primaryAction.label}
+          icon={primaryAction.icon}
+          onPress={primaryAction.onPress}
+        />
+      )}
+      {overflow.length === 0 ? null : <OverflowButton items={overflow} />}
+    </View>
+  );
+}
+
+function EditBar({ editing }: { readonly editing: HeaderEditing }): ReactNode {
+  return (
+    <View className="flex-row items-center gap-2">
+      <Button label="Cancel" variant="text" onPress={editing.onCancel} />
+      <Button label="Done" onPress={editing.onDone} />
+    </View>
+  );
+}
+
+function Trailing(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNode {
+  if (props.editing !== undefined && props.editing !== null) {
+    return <EditBar editing={props.editing} />;
+  }
+  const actions = props.actions ?? [];
+  const overflow = props.overflow ?? [];
+  return props.kind === 'desktop' ? (
+    <PointerActions actions={actions} overflow={overflow} />
+  ) : (
+    <TouchActions actions={actions} overflow={overflow} search={props.search ?? true} />
+  );
+}
+
+function AppBarTitle({
+  title,
+  onPress,
+}: {
+  readonly title: string;
+  readonly onPress: (() => void) | undefined;
+}): ReactNode {
+  const text = (
+    <Text variant="title-3" numberOfLines={1} accessibilityRole="header">
+      {title}
+    </Text>
+  );
+  if (onPress === undefined) {
+    return text;
+  }
+  return (
+    <Interactive
+      label={`${title}, details`}
+      onPress={onPress}
+      className="min-h-touch-min justify-center rounded-md px-1"
+      layerClassName="rounded-md"
+    >
+      {text}
+    </Interactive>
+  );
+}
+
+function AppBar(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNode {
+  const back = useBack(props.back);
+  const { scrollY, scrollRef } = useScreen();
+  const large = props.kind === 'large' && scrollRef !== null;
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: large
+      ? interpolate(scrollY.get(), [COLLAPSE_AT - 16, COLLAPSE_AT], [0, 1], 'clamp')
+      : 1,
+  }));
+  const surfaceStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.get(), [0, COLLAPSE_AT], [0, 1], 'clamp'),
+  }));
+  return (
+    <View className="z-10 pt-safe">
+      <Animated.View
+        pointerEvents="none"
+        style={surfaceStyle}
+        className="absolute inset-0 border-b border-outline-variant bg-chrome"
+      />
+      <View className="h-app-bar flex-row items-center gap-1 px-1">
+        {back === null ? (
+          <View className="w-3" />
+        ) : (
+          <IconButton icon="arrowLeft" label="Back" onPress={back} />
+        )}
+        <Animated.View style={titleStyle} className="min-w-0 flex-1 px-1">
+          <AppBarTitle title={props.title} onPress={props.onTitlePress} />
+        </Animated.View>
+        <Trailing {...props} />
+      </View>
+      {large ? null : props.below}
+    </View>
+  );
+}
+
+function LargeTitle(props: PageHeaderProps): ReactNode {
+  return (
+    <View className="gap-1 pb-4 pt-2">
+      <Text variant="large-title" accessibilityRole="header" numberOfLines={2}>
+        {props.title}
+      </Text>
+      {props.subtitle === undefined ? null : (
+        <Text variant="callout" tone="variant" numberOfLines={2}>
+          {props.subtitle}
+        </Text>
+      )}
+      {props.below === undefined ? null : <View className="pt-3">{props.below}</View>}
+    </View>
+  );
+}
+
+function DesktopHeader(props: PageHeaderProps): ReactNode {
+  const back = useBack(props.back);
+  return (
+    <View className="gap-3 pb-2 pt-6">
+      <View className="min-h-page-header flex-row flex-wrap items-center gap-x-4 gap-y-2">
+        {back === null ? null : (
+          <IconButton icon="arrowLeft" label="Back" onPress={back} shortcut="Alt ←" />
+        )}
+        <View className="min-w-0 flex-1 gap-0.5">
+          {props.breadcrumbs === undefined ? null : <Breadcrumbs crumbs={props.breadcrumbs} />}
+          <Text variant="title-1" accessibilityRole="header" numberOfLines={1}>
+            {props.title}
+          </Text>
+          {props.subtitle === undefined ? null : (
+            <Text variant="callout" tone="variant" numberOfLines={1}>
+              {props.subtitle}
+            </Text>
+          )}
+        </View>
+        <Trailing {...props} kind="desktop" />
+      </View>
+      {props.below}
+    </View>
+  );
+}
+
+export function PageHeader(props: PageHeaderProps): ReactNode {
+  const slot = useHeaderSlot();
+  const { header } = useSizeClass();
+  const { scrollRef } = useScreen();
+  if (slot === 'large') {
+    if (header === 'large' && scrollRef !== null) {
+      return <LargeTitle {...props} />;
+    }
+    return header === 'desktop' ? <DesktopHeader {...props} /> : null;
+  }
+  return (
+    <>
+      <Head>
+        <title>{`${props.title} · SmartEverything`}</title>
+      </Head>
+      {header === 'desktop' ? null : <AppBar {...props} kind={header} />}
+    </>
+  );
+}

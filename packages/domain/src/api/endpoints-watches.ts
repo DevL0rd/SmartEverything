@@ -1,0 +1,136 @@
+import { z } from 'zod';
+import {
+  PHONE_WATCHES,
+  WATCH_CANDIDATES,
+  WATCH_DAYS,
+  WATCH_RECORDS,
+  WATCH_RECORDS_SAVED,
+  WATCH_STATE,
+} from '../watches';
+import {
+  WATCH_ACTION,
+  WATCH_ACTION_ANSWER,
+  WATCH_ACTION_RESULT,
+  WATCH_CONFIG_REPORT,
+} from '../watch-control';
+import { WATCH_WORKOUT_REPORT, WATCH_WORKOUT_START } from '../watch-workouts';
+import { NO_BODY, endpoint } from './endpoint';
+import { DAY, DONE, ID, NOTHING } from './primitives';
+
+export const WATCH_AREA_ENDPOINTS = {
+  listWatchCandidates: endpoint({
+    method: 'GET',
+    path: '/api/watches/candidates',
+    access: 'owner',
+    summary: 'Watches bound to the linked Xiaomi account that can be added',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: WATCH_CANDIDATES,
+  }),
+  readPhoneWatches: endpoint({
+    method: 'GET',
+    path: '/api/watches/mine',
+    access: 'member',
+    summary: 'The watches of this app’s person, with the keys this phone needs to connect',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: PHONE_WATCHES,
+  }),
+  reportWatchState: endpoint({
+    method: 'POST',
+    path: '/api/watches/:deviceId/state',
+    access: 'member',
+    summary: 'What the phone connected to a watch currently sees',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: WATCH_STATE,
+    response: DONE,
+  }),
+  saveWatchRecords: endpoint({
+    method: 'POST',
+    path: '/api/watches/:deviceId/records',
+    access: 'member',
+    summary: 'Health data a phone read from its person’s watch',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: WATCH_RECORDS,
+    response: WATCH_RECORDS_SAVED,
+  }),
+  readWatchDays: endpoint({
+    method: 'GET',
+    path: '/api/watches/days',
+    access: 'member',
+    summary: 'Stress and vitality from the watches of this app’s person, per day',
+    params: NOTHING,
+    query: z.strictObject({ from: DAY, to: DAY }),
+    body: NO_BODY,
+    response: WATCH_DAYS,
+  }),
+  runWatchAction: endpoint({
+    method: 'POST',
+    path: '/api/watches/:deviceId/actions',
+    access: 'member',
+    summary:
+      'Ask the phone connected to a watch to do something on it (find, sync, change a setting, save or delete an alarm, switch or remove a face, and start, pause, resume or finish a workout or exercise such as treadmill, run, walk or cycling) and wait for the answer; read_watch view config lists the setting keys, allowed values, alarm ids and face ids, and view workout lists the sports this watch offers',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: WATCH_ACTION,
+    response: WATCH_ACTION_RESULT,
+  }),
+  readWatchConfig: endpoint({
+    method: 'GET',
+    path: '/api/watches/:deviceId/config',
+    access: 'member',
+    summary:
+      'The watch’s current settings (keys, values, allowed choices), alarms with ids, faces with ids and daily goals (sent from the profile, and what the watch reports if it changed one), as its phone last read them',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: WATCH_CONFIG_REPORT,
+  }),
+  startWatchWorkout: endpoint({
+    method: 'POST',
+    path: '/api/watches/:deviceId/workout',
+    access: 'member',
+    summary:
+      'Start a workout of the given sport on the watch (treadmill, indoor walk, run, cycling and more; read_watch view workout lists the sports this watch offers) and wait for the watch to answer',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: WATCH_WORKOUT_START,
+    response: WATCH_ACTION_RESULT,
+  }),
+  stopWatchWorkout: endpoint({
+    method: 'POST',
+    path: '/api/watches/:deviceId/workout/stop',
+    access: 'member',
+    summary:
+      'Finish the workout running on the watch; the watch saves it and the phone syncs it to the person’s workouts',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: WATCH_ACTION_RESULT,
+  }),
+  readWatchWorkout: endpoint({
+    method: 'GET',
+    path: '/api/watches/:deviceId/workout',
+    access: 'member',
+    summary:
+      'The workout on the watch right now or the last one (sport, running, paused or finished, start time, heart rate, kcal, steps, distance) and the sports this watch can start',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: WATCH_WORKOUT_REPORT,
+  }),
+  answerWatchAction: endpoint({
+    method: 'POST',
+    path: '/api/watches/action-results',
+    access: 'member',
+    summary: 'A phone answers a watch action the hub sent it',
+    params: NOTHING,
+    query: NOTHING,
+    body: WATCH_ACTION_ANSWER,
+    response: DONE,
+  }),
+} as const;

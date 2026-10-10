@@ -1,0 +1,6 @@
+sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01 (int8 encoder, decoder and joiner, tokens.txt)
+Keyword-spotting model by the k2-fsa / icefall team (Fangjun Kuang, Wei Kang), trained on GigaSpeech XL.
+Source: https://github.com/k2-fsa/sherpa-onnx/releases/tag/kws-models
+Licence: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+bpe.vocab is the model's own SentencePiece vocabulary (piece and score), exported from its bpe.model with the
+official sentencepiece library.

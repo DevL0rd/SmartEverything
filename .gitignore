@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+coverage/
+.expo/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+.stryker-tmp/
+reports/
+**/dist-types/
+.cache/
+out/
