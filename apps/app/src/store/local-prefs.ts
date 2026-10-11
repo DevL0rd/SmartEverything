@@ -18,6 +18,7 @@ const LOCAL_PREFS = z.strictObject({
   chatListOpen: z.boolean(),
   lastChat: z.string().nullable(),
   chatPanelOpen: z.boolean(),
+  developerFlags: z.record(z.string(), z.boolean()),
 });
 
 type Values = z.infer<typeof LOCAL_PREFS>;
@@ -42,6 +43,7 @@ const defaults: Values = {
   chatListOpen: true,
   lastChat: null,
   chatPanelOpen: false,
+  developerFlags: {},
 };
 
 const values = new ValueStore<Values>(defaults);
@@ -64,7 +66,7 @@ async function readStored(): Promise<void> {
   values.set(LOCAL_PREFS.parse({ ...defaults, ...parsed.data }));
 }
 
-export async function loadLocalPrefs(): Promise<void> {
+async function loadOnce(): Promise<void> {
   try {
     await readStored();
     status.set('ready');
@@ -72,6 +74,13 @@ export async function loadLocalPrefs(): Promise<void> {
     status.set('failed');
     throw error;
   }
+}
+
+let loading: Promise<void> | null = null;
+
+export function loadLocalPrefs(): Promise<void> {
+  loading ??= loadOnce();
+  return loading;
 }
 
 export function useLocalPrefsStatus(): LocalPrefsStatus {

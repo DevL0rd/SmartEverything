@@ -67,15 +67,18 @@ function Ghost({ translation }: { readonly translation: SharedValue<number> }): 
 
 export function SwipeToQuote({
   onQuote,
+  enabled = true,
   children,
 }: {
   readonly onQuote: () => void;
+  readonly enabled?: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   const ref = useRef<SwipeableMethods>(null);
   return (
     <ReanimatedSwipeable
       ref={ref}
+      enabled={enabled}
       leftThreshold={ARM_PX}
       overshootLeft={false}
       overshootRight={false}

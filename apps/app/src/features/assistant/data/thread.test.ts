@@ -127,4 +127,26 @@ describe('statusRequestOf', () => {
       ]),
     ).toBeNull();
   });
+  it('keeps the reply row key and slot when it settles from working', () => {
+    const request = row('a', 'person', 'delivered', { at: '1' });
+    const working = row('b', 'responder', 'working', { at: '2', replyTo: 'a' });
+    const settled = { ...working, state: 'answered' as const, text: 'the full answer' };
+    const during = threadOf([request, working], OPTIONS);
+    const after = threadOf([request, settled], OPTIONS);
+    expect(after.map((item) => item.key)).toEqual(during.map((item) => item.key));
+    expect(after.findIndex((item) => item.key === 'b')).toBe(
+      during.findIndex((item) => item.key === 'b'),
+    );
+  });
+
+  it('keeps the reply key when an older working row exists in the same thread', () => {
+    const earlier = row('a', 'person', 'answered', { at: '0' });
+    const reply = row('r', 'responder', 'answered', { at: '1', replyTo: 'a' });
+    const request = row('b', 'person', 'delivered', { at: '2' });
+    const working = row('c', 'responder', 'working', { at: '3', replyTo: 'b' });
+    const settled = { ...working, state: 'answered' as const, text: 'done' };
+    const during = threadOf([earlier, reply, request, working], OPTIONS);
+    const after = threadOf([earlier, reply, request, settled], OPTIONS);
+    expect(after.map((item) => item.key)).toEqual(during.map((item) => item.key));
+  });
 });

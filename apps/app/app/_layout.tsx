@@ -13,6 +13,8 @@ import { isNative } from '../src/design/platform';
 import { AppRoot } from '../src/features/root/app-root';
 import { CrashTrailHost } from '../src/features/root/crash-trail-host';
 import { FontFailure } from '../src/features/root/font-failure';
+import { startDeveloper, useDeveloperReady } from '../src/developer/boot';
+import { developerFlags } from '../src/developer/flags';
 import { startPerf } from '../src/perf/install';
 import { PerfHost } from '../src/perf/perf-host';
 import { probedScreen } from '../src/perf/screen-probe';
@@ -22,7 +24,11 @@ const SEE_THROUGH = { ...DarkTheme, colors: { ...DarkTheme.colors, background: '
 
 startLogging();
 installCrashGuard();
-startPerf();
+startDeveloper()
+  .then(startPerf)
+  .catch((error: unknown) => {
+    new Logger('app.developer').warn('developer.not_started', { reason: String(error) });
+  });
 provideRandomValues();
 restoreTrail().catch((error: unknown) => {
   new Logger('app.crash-trail').warn('trail.not_restored', { reason: String(error) });
@@ -32,10 +38,11 @@ export { RouteErrorBoundary as ErrorBoundary } from '../src/app-shell/route-erro
 
 export default function RootLayout(): ReactNode {
   const [loaded, failure] = useFonts(APP_FONTS);
+  const developerReady = useDeveloperReady();
   if (failure !== null) {
     return <FontFailure reason={failure.message} />;
   }
-  if (!loaded) {
+  if (!loaded || !developerReady) {
     return null;
   }
   return (
@@ -45,7 +52,7 @@ export default function RootLayout(): ReactNode {
       </Head>
       <StatusBar style="auto" />
       <CrashTrailHost />
-      {__DEV__ ? <PerfHost /> : null}
+      {developerFlags['perf.sampling'] ? <PerfHost /> : null}
       <ThemeProvider value={SEE_THROUGH}>
         <Stack
           screenLayout={probedScreen}

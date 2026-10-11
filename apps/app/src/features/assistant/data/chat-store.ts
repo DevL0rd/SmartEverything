@@ -66,16 +66,34 @@ export function useFooterFacts(chatId: string): FooterFacts | null {
   );
 }
 
-export function useThrottledTurnText(chatId: string, intervalMs: number): string {
+export interface LiveTurnView {
+  readonly text: string;
+  readonly working: boolean;
+}
+
+const NO_TURN: LiveTurnView = { text: '', working: false };
+
+function viewOf(turns: Turns, chatId: string): LiveTurnView {
+  const turn = liveTurnOf(turns, chatId);
+  return turn === null ? NO_TURN : { text: turn.text, working: turn.state !== 'failed' };
+}
+
+export function useLiveTurn(chatId: string, intervalMs: number, enabled: boolean): LiveTurnView {
   const store = useEntityStore();
-  const [text, setText] = useState('');
+  const [view, setView] = useState(NO_TURN);
   useEffect(() => {
+    if (!enabled) {
+      return undefined;
+    }
     let timer: ReturnType<typeof setTimeout> | null = null;
     let flushedAt = 0;
     const flush = (): void => {
       timer = null;
       flushedAt = Date.now();
-      setText(liveTurnOf(store.get().turns, chatId)?.text ?? '');
+      const next = viewOf(store.get().turns, chatId);
+      setView((current) =>
+        current.text === next.text && current.working === next.working ? current : next,
+      );
     };
     flush();
     const unsubscribe = store.subscribe(() => {
@@ -87,8 +105,8 @@ export function useThrottledTurnText(chatId: string, intervalMs: number): string
         clearTimeout(timer);
       }
     };
-  }, [store, chatId, intervalMs]);
-  return text;
+  }, [store, chatId, intervalMs, enabled]);
+  return enabled ? view : NO_TURN;
 }
 
 export function useChatTurnField<T>(chatId: string, pick: (turn: Turn) => T): T | null {

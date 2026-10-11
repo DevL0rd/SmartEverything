@@ -3,6 +3,7 @@ import { SETTINGS as AUTOMATIONS } from '../features/automations/settings';
 import { SETTINGS as CAMERAS } from '../features/cameras/settings';
 import { SETTINGS as CLIMATE } from '../features/climate/settings';
 import { SETTINGS as CONNECTIONS } from '../features/connections/settings';
+import { SETTINGS as DEVELOPER } from '../features/developer';
 import { SETTINGS as DEVICES } from '../features/devices/settings';
 import { SETTINGS as FITNESS } from '../features/fitness/settings';
 import { SETTINGS as HOME } from '../features/home/settings';
@@ -31,6 +32,7 @@ const SETTINGS: readonly SettingDefinition[] = [
   ...ASSISTANT,
   ...SETTINGS_PAGES,
   ...REGION,
+  ...DEVELOPER,
   ...CONNECTIONS,
 ];
 

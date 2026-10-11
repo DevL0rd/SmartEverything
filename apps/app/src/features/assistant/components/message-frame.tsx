@@ -57,6 +57,7 @@ interface FrameProps {
   readonly align: 'start' | 'end';
   readonly bar: ReactNode;
   readonly swipeable: boolean;
+  readonly swipeEnabled?: boolean;
   readonly reserve: boolean;
   readonly onQuote: () => void;
   readonly children: ReactNode;
@@ -91,6 +92,7 @@ export function MessageFrame({
   align,
   bar,
   swipeable,
+  swipeEnabled = swipeable,
   reserve,
   onQuote,
   children,
@@ -113,7 +115,15 @@ export function MessageFrame({
       {...contextProps(menu.onContextMenu)}
       className="relative"
     >
-      <View>{quotable ? <SwipeToQuote onQuote={onQuote}>{children}</SwipeToQuote> : children}</View>
+      <View>
+        {quotable ? (
+          <SwipeToQuote onQuote={onQuote} enabled={swipeEnabled}>
+            {children}
+          </SwipeToQuote>
+        ) : (
+          children
+        )}
+      </View>
       {pointer && bar !== null ? (
         <Bar actions={actions} align={align} bar={bar} reserve={reserve} visible={hover.hovered} />
       ) : null}

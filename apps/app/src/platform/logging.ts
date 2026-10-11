@@ -13,7 +13,7 @@ function releaseOfBuild(): string {
 
 export function startLogging(): void {
   Logger.configure({
-    level: __DEV__ ? 'debug' : 'info',
+    level: 'info',
     style: __DEV__ && isNative() ? 'pretty' : __DEV__ ? 'plain' : 'json',
     consoleRouting: __DEV__ ? 'log-only' : 'by-level',
     tap: recordLog,

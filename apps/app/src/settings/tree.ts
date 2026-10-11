@@ -8,6 +8,7 @@ import { talkLinked } from '../../modules/health-connect';
 import type { StoreState } from '../store/state';
 import { ASSISTANT_PAGES } from './tree-assistant';
 import { PLUGIN_PAGES } from './tree-plugins';
+import { DEVELOPER_PAGES } from './tree-developer';
 import { REGION_PAGES } from './tree-region';
 import { mountOf } from './mounts';
 import type { SettingEnv, SettingsPageDefinition } from './types';
@@ -288,6 +289,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     keywords: ['firebase', 'service account', 'fcm'],
     visible: ownerOnly,
   },
+  ...DEVELOPER_PAGES,
   {
     id: 'server',
     title: 'Server & remote access',

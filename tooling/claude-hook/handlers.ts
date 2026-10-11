@@ -116,11 +116,15 @@ function changesDependencies(command: string): boolean {
 }
 
 async function typecheck(rel: string, input: AgentInput): Promise<readonly Section[]> {
-  const project = affectsTypes(rel) ? owningProject(rel) : null;
-  if (project === null) return [];
-  const check = `tsc -b ${project}`;
-  const result = await runTool('tsc', ['-b', project, '--pretty', 'false'], PROJECT_TSC_MS);
-  if (result.timedOut) return [timedOut(check, PROJECT_TSC_MS)];
+  if (!affectsTypes(rel)) return [];
+  const project = owningProject(rel);
+  const check = project === null ? 'tsc -b' : `tsc -b ${project}`;
+  const limit = project === null ? WORKSPACE_TSC_MS : PROJECT_TSC_MS;
+  const result =
+    project === null
+      ? await workspaceTsc()
+      : await runTool('tsc', ['-b', project, '--pretty', 'false'], limit);
+  if (result.timedOut) return [timedOut(check, limit)];
   const graph = await loadGraph();
   if (!graph.ok) return [{ check: `${check} (project setup)`, lines: [graph.reason] }];
   const agent = agentName(input);
@@ -134,14 +138,15 @@ async function typecheck(rel: string, input: AgentInput): Promise<readonly Secti
 
 export async function onEdit(raw: unknown): Promise<number> {
   const input = parseInput('edit', editInput, raw);
-  const rel = await repoPath(input.tool_input.file_path, true);
+  const rel = await repoPath(input.tool_input.file_path, false);
   if (rel === null) return 0;
   await addLines(agentFile(input.session_id, agentName(input), 'edited'), [rel]);
   await addLines(agentFile(input.session_id, agentName(input), 'window'), [rel]);
+  const present = existsSync(join(ROOT, rel));
   const [linted, formatted, spelled, typed] = await Promise.all([
-    lint(rel),
-    format(rel),
-    spell(rel),
+    present ? lint(rel) : null,
+    present ? format(rel) : null,
+    present ? spell(rel) : null,
     typecheck(rel, input),
   ]);
   return report(`Checks failed for ${rel}:`, [linted, formatted, spelled, ...typed]);
@@ -198,7 +203,7 @@ export async function onSnapshot(raw: unknown): Promise<number> {
   return lockedCommand(input.tool_input, command);
 }
 
-export async function onBashDone(raw: unknown): Promise<number> {
+export async function onBashDone(raw: unknown, checkChanges = false): Promise<number> {
   const input = parseInput('bash-done', bashInput, raw);
   const agent = agentName(input);
   const path = agentFile(input.session_id, agent, 'manifests.json');
@@ -213,7 +218,14 @@ export async function onBashDone(raw: unknown): Promise<number> {
   await rm(marker, { force: true });
   await addLines(agentFile(input.session_id, agent, 'edited'), changed);
   await addLines(agentFile(input.session_id, agent, 'window'), changed);
-  return 0;
+  let code = 0;
+  if (checkChanges) {
+    for (const file of changed) {
+      const result = await onEdit({ ...input, tool_input: { file_path: file } });
+      if (result !== 0) code = result;
+    }
+  }
+  return code;
 }
 
 export async function onEnd(raw: unknown): Promise<number> {

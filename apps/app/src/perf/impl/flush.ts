@@ -15,7 +15,7 @@ function bootId(): string {
     .padStart(4, '0');
 }
 
-export function makeFlush(probe: Probe): () => void {
+export function makeFlush(probe: Probe, upload: boolean): () => void {
   const boot = bootId();
   let seq = 0;
   let before = readMemory();
@@ -40,9 +40,15 @@ export function makeFlush(probe: Probe): () => void {
     seq += 1;
     before = memory;
     lines.forEach((reason) => {
-      log.warn('perf.sample', { reason });
+      if (upload) {
+        log.warn('perf.sample', { reason });
+      } else {
+        log.debug('perf.sample', { reason });
+      }
     });
-    void sendTrail();
+    if (upload) {
+      void sendTrail();
+    }
     probe.reset();
   };
 }

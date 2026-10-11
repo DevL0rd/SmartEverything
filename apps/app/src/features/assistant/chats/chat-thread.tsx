@@ -12,7 +12,6 @@ import { useFileDrop } from '../../../platform/file-drop';
 import { EmptyChat } from '../components/chat-states';
 import { DropOverlay } from '../components/drop-overlay';
 import { PerfProbe } from '../../../perf/probe-kit';
-import { StreamingProvider, type StreamingRenderers } from '../components/streaming-context';
 import { ThreadBanners } from '../components/thread-banners';
 import { ThreadList } from '../components/thread-list';
 import { useAssistantName } from '../data/assistant-data';
@@ -27,7 +26,6 @@ import { ChatPanel, ChatSheet } from './chat-sheet';
 import { ThreadFooter } from './chat-thread-footer';
 import { useThreadKeys } from './chat-thread-keys';
 import { ChatStatusDock } from './chat-status-box';
-import { StreamingBubble } from './streaming-bubble';
 
 export interface ChatThreadProps {
   readonly chat: AiChatRow;
@@ -164,24 +162,13 @@ function DockedPanel({
   );
 }
 
-function renderersOf(chatId: string): StreamingRenderers {
-  return {
-    working: (row) => (
-      <PerfProbe id="stream">
-        <StreamingBubble chatId={chatId} fallback={row.text} />
-      </PerfProbe>
-    ),
-  };
-}
-
 export function ChatThread(props: ChatThreadProps): ReactNode {
   const { chat, rows, back, onDeleted, leading = [] } = props;
   const panel = usePanelState();
   const motion = useMotion();
   useThreadKeys(chat.id, rows, panel);
-  const renderers = useMemo(() => renderersOf(chat.id), [chat.id]);
   return (
-    <StreamingProvider value={renderers}>
+    <>
       {back ? <HiddenNavigation /> : null}
       <View
         className="min-h-0 flex-1 flex-row"
@@ -203,6 +190,6 @@ export function ChatThread(props: ChatThreadProps): ReactNode {
           <DockedPanel chat={chat} rows={rows} onClose={panel.hide} onDeleted={onDeleted} />
         ) : null}
       </View>
-    </StreamingProvider>
+    </>
   );
 }

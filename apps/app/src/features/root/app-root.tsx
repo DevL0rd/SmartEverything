@@ -13,6 +13,7 @@ import { notify } from '../../components/toast-store';
 import { Toasts } from '../../components/toasts';
 import { ConnectionProvider } from '../../api/transport';
 import { startTheme } from '../../design/theme';
+import { developerFlags } from '../../developer/flags';
 import { perfTouch } from '../../perf/touch';
 import { makeQueryClient, watchDevice } from '../../queries/client';
 import { startClock } from '../../store/clock';
@@ -57,12 +58,16 @@ export function AppRoot({ children }: { readonly children: ReactNode }): ReactNo
                     perfTouch('start');
                     preloader.interacted();
                   }}
-                  onTouchMove={() => {
-                    perfTouch('move');
-                  }}
-                  onTouchEnd={() => {
-                    perfTouch('end');
-                  }}
+                  {...(developerFlags['perf.stalls']
+                    ? {
+                        onTouchMove: (): void => {
+                          perfTouch('move');
+                        },
+                        onTouchEnd: (): void => {
+                          perfTouch('end');
+                        },
+                      }
+                    : {})}
                 >
                   <HomeHost>{children}</HomeHost>
                   <Toasts />

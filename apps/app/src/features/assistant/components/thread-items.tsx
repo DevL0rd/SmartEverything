@@ -1,6 +1,12 @@
 import type { ReactElement, ReactNode, RefObject } from 'react';
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
-import { ActivityIndicator, FlatList, View, type ListRenderItem } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  View,
+  useWindowDimensions,
+  type ListRenderItem,
+} from 'react-native';
 import type { AssistantMessageRow } from '@smarteverything/domain';
 import { useColour } from '../../../design/colour';
 import { FloatingDay, JumpPill } from './jump-pill';
@@ -10,6 +16,7 @@ import { useListProbe } from '../../../perf/list-probe';
 import { PerfProbe } from '../../../perf/probe-kit';
 import { StatusAnnouncer } from './status-announcer';
 import type { MessageItem } from '../data/thread';
+import { initialRowCount, type RowShape } from '../model/initial-rows';
 import type { ThreadRow } from './thread-rows';
 import { useFocusedMessage } from './use-focused-message';
 import {
@@ -36,10 +43,41 @@ export interface ThreadItemsProps {
 
 const TOP_THIRD = 0.33;
 
-const WINDOWING = {
-  initialNumToRender: 8,
-  maxToRenderPerBatch: 6,
-} as const;
+const BATCH = 6;
+
+const OPEN_WINDOW = 3;
+
+const WARM_MS = 700;
+
+function shapeOf(row: ThreadRow): RowShape {
+  return row.type === 'message'
+    ? { text: row.row.text, attachments: row.row.attachments.length, embeds: row.row.embeds.length }
+    : { text: row.message.text, attachments: row.message.attachments.length, embeds: 0 };
+}
+
+function useWindowSize(wanted: number): number {
+  const [warm, setWarm] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setWarm(true);
+    }, WARM_MS);
+    return (): void => {
+      clearTimeout(timer);
+    };
+  }, []);
+  return warm ? wanted : Math.min(wanted, OPEN_WINDOW);
+}
+
+function useListWindow(
+  rows: readonly ThreadRow[],
+  wanted: number,
+): { readonly initialNumToRender: number; readonly windowSize: number } {
+  const { height } = useWindowDimensions();
+  const [initialNumToRender] = useState(() =>
+    initialRowCount(rows.slice(0, 10).map(shapeOf), height),
+  );
+  return { initialNumToRender, windowSize: useWindowSize(wanted) };
+}
 
 function Loader({ loading }: { readonly loading: boolean }): ReactNode {
   const tint = useColour('primary');
@@ -212,14 +250,15 @@ export function ThreadItems(props: ThreadItemsProps): ReactNode {
   const { scroll } = model;
   const renderItem = useRenderRow(model);
   const probe = useListProbe('chat', rows.length);
+  const listWindow = useListWindow(rows, scroll.windowSize);
   return (
     <View className="flex-1" onLayout={scroll.onViewportLayout}>
       <PerfProbe id="flat">
         <FlatList
           ref={list}
           inverted
-          {...WINDOWING}
-          windowSize={scroll.windowSize}
+          {...listWindow}
+          maxToRenderPerBatch={BATCH}
           data={rows}
           keyExtractor={keyOf}
           keyboardShouldPersistTaps="handled"

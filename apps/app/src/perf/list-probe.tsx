@@ -7,6 +7,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
+import { developerFlags } from '../developer/flags';
 import { sinkOf } from './sink';
 
 type ScrollHandler = (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -65,7 +66,7 @@ const OFF = {
 };
 
 export function useListProbe<T>(list: string, total: number): ListProbe<T> {
-  if (!__DEV__) {
+  if (!__DEV__ || !developerFlags['perf.lists']) {
     return OFF;
   }
   sinkOf()?.listRows(list, 0, total);

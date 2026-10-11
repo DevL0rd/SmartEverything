@@ -11,10 +11,18 @@ export interface StreamView {
 }
 
 function splitSettled(text: string): readonly [string, string] {
-  const fences = text.match(FENCE)?.length ?? 0;
-  const open = fences % 2 === 1 ? text.lastIndexOf('```') : -1;
-  const searchEnd = open === -1 ? text.length : open;
-  const cut = text.lastIndexOf('\n\n', searchEnd);
+  let fenced = false;
+  let offset = 0;
+  let cut = -1;
+  for (const line of text.split('\n')) {
+    if (line.startsWith('```')) {
+      fenced = !fenced;
+    }
+    if (!fenced && line === '' && offset > 0) {
+      cut = offset - 1;
+    }
+    offset += line.length + 1;
+  }
   return cut <= 0 ? ['', text] : [text.slice(0, cut), text.slice(cut + 2)];
 }
 
@@ -43,4 +51,9 @@ export function streamView(text: string): StreamView {
   const [settled, tail] = splitSettled(table.text);
   const pending: PendingBlock = code.open ? 'code' : table.open ? 'table' : null;
   return { settled, tail, pending };
+}
+
+export function finalView(text: string): StreamView {
+  const [settled, tail] = splitSettled(text);
+  return { settled, tail, pending: null };
 }
