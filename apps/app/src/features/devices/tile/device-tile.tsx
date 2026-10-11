@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Interactive } from '../../../components/interactive';
 import { useContextMenu } from '../../../components/menu';
@@ -57,7 +57,7 @@ function TileText({
   );
 }
 
-export function DeviceTile({ device, showRoom = true, inset = false }: DeviceTileProps): ReactNode {
+function DeviceTileBase({ device, showRoom = true, inset = false }: DeviceTileProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const name = useDisplayName(device.id);
   const model = useDeviceModel(device);
@@ -93,3 +93,5 @@ export function DeviceTile({ device, showRoom = true, inset = false }: DeviceTil
     </View>
   );
 }
+
+export const DeviceTile = memo(DeviceTileBase);

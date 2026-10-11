@@ -11,14 +11,26 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { hostOf } from '../../../format/text';
 
-export function webSourcesOf(row: AssistantMessageRow): WebSourcesEmbed | null {
-  for (const embed of row.embeds) {
+const PARSED = new WeakMap<object, WebSourcesEmbed | null>();
+
+function parsedSources(embeds: AssistantMessageRow['embeds']): WebSourcesEmbed | null {
+  for (const embed of embeds) {
     const parsed = WEB_SOURCES_EMBED.safeParse(embed);
     if (parsed.success) {
       return parsed.data;
     }
   }
   return null;
+}
+
+export function webSourcesOf(row: AssistantMessageRow): WebSourcesEmbed | null {
+  const known = PARSED.get(row.embeds);
+  if (known !== undefined) {
+    return known;
+  }
+  const found = parsedSources(row.embeds);
+  PARSED.set(row.embeds, found);
+  return found;
 }
 
 function nameOf(source: WebSource): string {

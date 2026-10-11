@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateFormat } from './locale';
 import { twoDigits } from './number';
 
 export const MINUTE_MS = 60_000;
@@ -13,24 +14,8 @@ function zoned(timeZone: string | null): Intl.DateTimeFormatOptions {
   return timeZone === null ? {} : { timeZone };
 }
 
-const formatters = new Map<string, Intl.DateTimeFormat>();
-
-function formatterFor(
-  locale: string | undefined,
-  options: Intl.DateTimeFormatOptions,
-): Intl.DateTimeFormat {
-  const key = JSON.stringify([locale, options]);
-  const known = formatters.get(key);
-  if (known !== undefined) {
-    return known;
-  }
-  const made = new Intl.DateTimeFormat(locale, options);
-  formatters.set(key, made);
-  return made;
-}
-
 export function clock(moment: Date | string | number, timeZone: string | null = null): string {
-  return formatterFor(undefined, {
+  return dateFormat({
     hour: 'numeric',
     minute: '2-digit',
     ...zoned(timeZone),
@@ -41,12 +26,15 @@ export function localDayKey(
   moment: Date | string | number,
   timeZone: string | null = null,
 ): string {
-  return formatterFor('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    ...zoned(timeZone),
-  }).format(new Date(moment));
+  return dateFormat(
+    {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      ...zoned(timeZone),
+    },
+    'en-CA',
+  ).format(new Date(moment));
 }
 
 export function dayLabel(
@@ -61,7 +49,7 @@ export function dayLabel(
   if (key === localDayKey(new Date(now - DAY_MS), timeZone)) {
     return 'Yesterday';
   }
-  return formatterFor(undefined, {
+  return dateFormat({
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -150,15 +138,15 @@ export function shiftDay(day: string, by: number): string {
 }
 
 export function shortDate(moment: Date | string | number): string {
-  return new Date(moment).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  return dateFormat({ day: 'numeric', month: 'short' }).format(new Date(moment));
 }
 
 export function weekdayShort(moment: number): string {
-  return new Date(moment).toLocaleDateString(undefined, { weekday: 'short' });
+  return dateFormat({ weekday: 'short' }).format(new Date(moment));
 }
 
 export function monthShort(moment: number): string {
-  return new Date(moment).toLocaleDateString(undefined, { month: 'short' });
+  return dateFormat({ month: 'short' }).format(new Date(moment));
 }
 
 export function shortClock(moment: Date | string, timeZone: string | null = null): string {
@@ -166,25 +154,28 @@ export function shortClock(moment: Date | string, timeZone: string | null = null
   if (at.getMinutes() !== 0) {
     return clock(at, timeZone);
   }
-  return at.toLocaleTimeString(undefined, { hour: 'numeric', ...zoned(timeZone) });
+  return dateFormat({ hour: 'numeric', ...zoned(timeZone) }).format(at);
 }
 
 export function longDate(moment: Date | string, timeZone: string | null = null): string {
-  return new Date(moment).toLocaleDateString(undefined, {
+  return dateFormat({
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     ...zoned(timeZone),
-  });
+  }).format(new Date(moment));
 }
 
 export function hourOf(moment: Date | string, timeZone: string | null = null): number {
   return Number(
-    new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      hourCycle: 'h23',
-      ...zoned(timeZone),
-    }).format(new Date(moment)),
+    dateFormat(
+      {
+        hour: '2-digit',
+        hourCycle: 'h23',
+        ...zoned(timeZone),
+      },
+      'en-GB',
+    ).format(new Date(moment)),
   );
 }
 

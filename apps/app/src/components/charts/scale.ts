@@ -1,3 +1,4 @@
+import { dateFormat } from '../../format/locale';
 import { clock, shortClock } from '../../format/time';
 import { fitTicks, fitWindow } from './fit-window';
 
@@ -181,12 +182,12 @@ function tickLabel(at: number, style: TickRule['style']): string {
     return shortClock(date);
   }
   if (style === 'weekday') {
-    return date.toLocaleDateString(undefined, { weekday: 'short' });
+    return dateFormat({ weekday: 'short' }).format(date);
   }
   if (style === 'date') {
-    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    return dateFormat({ day: 'numeric', month: 'short' }).format(date);
   }
-  return date.toLocaleDateString(undefined, { month: 'short' });
+  return dateFormat({ month: 'short' }).format(date);
 }
 
 function timeTicks(window: Extent, range: ChartRange): Tick[] {
@@ -228,11 +229,11 @@ export function pointLabel(at: number, range: ChartRange): string {
   if (range === '24h' || range === 'day') {
     return clock(date);
   }
-  const day = date.toLocaleDateString(undefined, {
+  const day = dateFormat({
     weekday: 'short',
     day: 'numeric',
     month: 'short',
-  });
+  }).format(date);
   return range === 'year' ? day : `${day} ${clock(date)}`;
 }
 

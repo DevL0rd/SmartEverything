@@ -1,8 +1,10 @@
+import { numberFormat } from './locale';
+
 export function decimal(value: number, digits = 0): string {
-  return value.toLocaleString(undefined, {
+  return numberFormat({
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
-  });
+  }).format(value);
 }
 
 export function percent(share: number, digits = 0): string {
@@ -10,7 +12,7 @@ export function percent(share: number, digits = 0): string {
 }
 
 export function count(value: number): string {
-  return Math.round(value).toLocaleString();
+  return numberFormat().format(Math.round(value));
 }
 
 export function withUnit(value: string, unit: string | null | undefined): string {

@@ -2,8 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { columnsFor } from '../../../components/grid';
-
-const GAP = 16;
+import { fittingRows, GAP, SAME_PX, withHeight } from './fit-math';
 
 export interface FitGridProps<T> {
   readonly items: readonly T[];
@@ -19,27 +18,18 @@ interface Box {
   readonly height: number;
 }
 
+function sameBox(left: Box, right: Box): boolean {
+  return (
+    Math.abs(left.width - right.width) < SAME_PX && Math.abs(left.height - right.height) < SAME_PX
+  );
+}
+
 function chunk<T>(items: readonly T[], size: number): T[][] {
   const rows: T[][] = [];
   for (let index = 0; index < items.length; index += size) {
     rows.push(items.slice(index, index + size));
   }
   return rows;
-}
-
-function fittingRows(heights: ReadonlyMap<number, number>, count: number, room: number): number {
-  let used = 0;
-  for (let index = 0; index < count; index += 1) {
-    const height = heights.get(index);
-    if (height === undefined) {
-      return count;
-    }
-    used += height + (index === 0 ? 0 : GAP);
-    if (used > room) {
-      return Math.max(1, index);
-    }
-  }
-  return count;
 }
 
 export function FitGrid<T>(props: FitGridProps<T>): ReactNode {
@@ -55,7 +45,9 @@ export function FitGrid<T>(props: FitGridProps<T>): ReactNode {
       className="flex-1 gap-grid-gap overflow-hidden"
       onLayout={(event) => {
         const { width, height } = event.nativeEvent.layout;
-        setBox({ width, height });
+        setBox((current) =>
+          current !== null && sameBox(current, { width, height }) ? current : { width, height },
+        );
       }}
     >
       {rows.slice(0, shown).map((row, index) => (
@@ -64,9 +56,7 @@ export function FitGrid<T>(props: FitGridProps<T>): ReactNode {
           className={stretch ? 'flex-1 flex-row gap-grid-gap' : 'flex-row gap-grid-gap'}
           onLayout={(event) => {
             const height = event.nativeEvent.layout.height;
-            if (heights.get(index) !== height) {
-              setHeights((current) => new Map(current).set(index, height));
-            }
+            setHeights((current) => withHeight(current, index, height, stretch));
           }}
         >
           {Array.from({ length: columns }, (_, column) => {

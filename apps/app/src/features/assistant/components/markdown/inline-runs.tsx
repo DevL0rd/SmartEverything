@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
+import { memo } from 'react';
 import { Linking, Text as NativeText } from 'react-native';
 import { Text, type TextVariant } from '../../../../components/text';
 import type { Tone } from '../../../../components/tone';
 import { cn } from '../../../../design/cn';
 import { breakableUrl, hostOf } from '../../../../format/text';
+import { sameJson } from '../../../../store/same-json';
 import type { Inline } from './parse';
 
 const THIN_SPACE = ' ';
@@ -28,7 +30,7 @@ function LinkRun({ text, url }: { readonly text: string; readonly url: string })
   );
 }
 
-function InlineRun({ part }: { readonly part: Inline }): ReactNode {
+function InlineRunBase({ part }: { readonly part: Inline }): ReactNode {
   switch (part.kind) {
     case 'strong':
       return <NativeText className="font-sans-semibold">{part.text}</NativeText>;
@@ -46,6 +48,8 @@ function InlineRun({ part }: { readonly part: Inline }): ReactNode {
       return part.text;
   }
 }
+
+const InlineRun = memo(InlineRunBase, (left, right) => sameJson(left.part, right.part));
 
 export function Runs({
   inline,

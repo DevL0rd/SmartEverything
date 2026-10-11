@@ -17,6 +17,8 @@ import {
   type Tables,
 } from './state';
 import { turnsOf } from './chat-turns';
+import { sameJson } from './same-json';
+import { shareOf, shareTables, shareValues } from './share';
 import { RULES, type TableRule } from './table-rules';
 
 export class UnreadableChangeError extends Error {
@@ -41,6 +43,10 @@ function tableOf<R>(rows: readonly R[], rule: TableRule<R>, version: number): Ta
 
 function upsert<R>(table: Table<R>, row: R, rule: TableRule<R>): Table<R> {
   const id = rule.idOf(row);
+  const known = table.byId[id];
+  if (known !== undefined && sameJson(known, row)) {
+    return table;
+  }
   const others = table.ids.flatMap((other) => {
     const existing = table.byId[other];
     return other === id || existing === undefined ? [] : [existing];
@@ -81,7 +87,11 @@ function applyList<R>(table: Table<R>, change: Change<R>, rule: TableRule<R>): T
 }
 
 function withTable<T extends ListTable>(tables: Tables, name: T, table: Table<RowOf<T>>): Tables {
-  return { ...tables, [name]: table };
+  return table === tables[name] ? tables : { ...tables, [name]: table };
+}
+
+function withTables(state: StoreState, tables: Tables): StoreState {
+  return tables === state.tables ? state : { ...state, tables };
 }
 
 function valuesWith(
@@ -90,6 +100,10 @@ function valuesWith(
   removed: boolean,
 ): Readonly<Record<string, DeviceValues>> {
   const current = values[row.device_id] ?? {};
+  const known = current[row.capability];
+  if (!removed && known?.observedAt === row.observed_at && sameJson(known.value, row.value)) {
+    return values;
+  }
   if (removed) {
     const next = Object.fromEntries(
       Object.entries(current).filter(([capability]) => capability !== row.capability),
@@ -113,10 +127,8 @@ function applyState(
   if (row === null) {
     throw new UnreadableChangeError(change.table, `a ${change.operation} arrived without a row`);
   }
-  return {
-    ...state,
-    deviceValues: valuesWith(state.deviceValues, row, change.operation === 'DELETE'),
-  };
+  const deviceValues = valuesWith(state.deviceValues, row, change.operation === 'DELETE');
+  return deviceValues === state.deviceValues ? state : { ...state, deviceValues };
 }
 
 function applySettings(
@@ -126,7 +138,7 @@ function applySettings(
   if (change.record === null) {
     throw new UnreadableChangeError(change.table, 'the settings row arrived empty');
   }
-  return { ...state, settings: change.record };
+  return sameJson(state.settings, change.record) ? state : { ...state, settings: change.record };
 }
 
 function applyWeather(
@@ -136,7 +148,7 @@ function applyWeather(
   if (change.record === null) {
     throw new UnreadableChangeError(change.table, 'the weather row arrived empty');
   }
-  return { ...state, weather: change.record };
+  return sameJson(state.weather, change.record) ? state : { ...state, weather: change.record };
 }
 
 function applyExchangeRates(
@@ -146,7 +158,9 @@ function applyExchangeRates(
   if (change.record === null) {
     throw new UnreadableChangeError(change.table, 'the exchange rates row arrived empty');
   }
-  return { ...state, exchangeRates: change.record };
+  return sameJson(state.exchangeRates, change.record)
+    ? state
+    : { ...state, exchangeRates: change.record };
 }
 
 function applyClient(
@@ -174,14 +188,10 @@ function applyDevice(
     record: change.record === null ? null : deviceOf(change.record),
     oldRecord: change.oldRecord === null ? null : deviceOf(change.oldRecord),
   };
-  return {
-    ...state,
-    tables: withTable(
-      state.tables,
-      'devices',
-      applyList(state.tables.devices, mapped, RULES.devices),
-    ),
-  };
+  return withTables(
+    state,
+    withTable(state.tables, 'devices', applyList(state.tables.devices, mapped, RULES.devices)),
+  );
 }
 
 function applyListChange<T extends ListTable>(
@@ -189,10 +199,10 @@ function applyListChange<T extends ListTable>(
   name: T,
   change: Change<RowOf<T>>,
 ): StoreState {
-  return {
-    ...state,
-    tables: withTable(state.tables, name, applyList(state.tables[name], change, RULES[name])),
-  };
+  return withTables(
+    state,
+    withTable(state.tables, name, applyList(state.tables[name], change, RULES[name])),
+  );
 }
 
 function grantedClient(row: TableRow<'oauth_clients'> | null): TableRow<'oauth_clients'> | null {
@@ -385,20 +395,21 @@ function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
 }
 
 export function replaceWith(state: StoreState, snapshot: Snapshot): StoreState {
-  return relabel({
+  const next = relabel({
     ...state,
     loaded: true,
     tables: tablesOf(snapshot, state.tables),
-    settings: snapshot.tables.settings,
-    weather: snapshot.tables.weather ?? null,
-    exchangeRates: snapshot.tables.exchange_rates ?? null,
-    talkPresence: snapshot.tables.talk_presence ?? state.talkPresence,
-    assistant: snapshot.tables.assistant_status ?? null,
-    turns: turnsOf(snapshot.tables.chat_activity ?? []),
-    session: snapshot.session,
-    deviceValues: valuesOf(snapshot.tables.device_state),
-    hub: snapshot.session.hub,
-    firewall: snapshot.firewall,
+    settings: shareOf(state.settings, snapshot.tables.settings),
+    weather: shareOf(state.weather, snapshot.tables.weather ?? null),
+    exchangeRates: shareOf(state.exchangeRates, snapshot.tables.exchange_rates ?? null),
+    talkPresence: shareOf(state.talkPresence, snapshot.tables.talk_presence ?? state.talkPresence),
+    assistant: shareOf(state.assistant, snapshot.tables.assistant_status ?? null),
+    turns: shareOf(state.turns, turnsOf(snapshot.tables.chat_activity ?? [])),
+    session: shareOf(state.session, snapshot.session),
+    deviceValues: shareValues(state.deviceValues, valuesOf(snapshot.tables.device_state)),
+    hub: shareOf(state.hub, snapshot.session.hub),
+    firewall: shareOf(state.firewall, snapshot.firewall),
     sync: { ...state.sync, seq: snapshot.seq },
   });
+  return { ...next, tables: shareTables(state.tables, next.tables) };
 }

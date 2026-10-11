@@ -25,13 +25,17 @@ function megabytes(bytes: number | null): number | null {
   return bytes === null ? null : Math.round((bytes / MEGABYTE) * 10) / 10;
 }
 
+function millis(seconds: number | null): number | null {
+  return seconds === null ? null : seconds * 1000;
+}
+
 export function readMemory(): Memory {
   const stats = hermesStats();
   if (stats !== null) {
     return {
       heapMb: megabytes(numberAt(stats, 'js_heapSize')),
       gcCount: numberAt(stats, 'js_numGCs'),
-      gcMs: numberAt(stats, 'js_gcTime'),
+      gcMs: millis(numberAt(stats, 'js_gcTime')),
     };
   }
   const memory: unknown = Reflect.get(performance, 'memory');

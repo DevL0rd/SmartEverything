@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateFormat } from '../../../format/locale';
 import { twoDigits } from '../../../format/number';
 import {
   DAY_MS,
@@ -143,7 +144,7 @@ export function windowLabel(window: Window, today: string): string {
     case 'week':
       return `${shortDate(window.start)} – ${shortDate(window.end - 1)}`;
     case 'month':
-      return first.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+      return dateFormat({ month: 'short', year: 'numeric' }).format(first);
     case 'year':
       return String(first.getFullYear());
   }

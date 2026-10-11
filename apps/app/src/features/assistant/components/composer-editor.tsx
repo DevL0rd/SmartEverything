@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
+import { memo } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { Sheet } from '../../../components/sheet';
 import { useFocusOnMount } from '../../../components/use-focus-on-mount';
 import { ComposerField } from './composer-field';
 
-export function ComposerEditor({
+function ComposerEditorBase({
   open,
   onClose,
   text,
@@ -50,3 +51,5 @@ export function ComposerEditor({
     </Sheet>
   );
 }
+
+export const ComposerEditor = memo(ComposerEditorBase, (left, right) => !left.open && !right.open);

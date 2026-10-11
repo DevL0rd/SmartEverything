@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
 import { View } from 'react-native';
 import { Text } from '../../../../components/text';
+import { sameJson } from '../../../../store/same-json';
 import { PerfProbe, timed } from '../../../../perf/probe-kit';
 import { CodeCard } from './code-card';
 import { Runs } from './inline-runs';
@@ -43,7 +44,7 @@ function ListBlock({
   );
 }
 
-function BlockView({
+function BlockViewBase({
   block,
   selectable,
   endMark,
@@ -80,6 +81,14 @@ function BlockView({
       return <TableCard table={block} />;
   }
 }
+
+const BlockView = memo(
+  BlockViewBase,
+  (left, right) =>
+    left.selectable === right.selectable &&
+    left.endMark === right.endMark &&
+    sameJson(left.block, right.block),
+);
 
 function MarkdownBase({
   text,

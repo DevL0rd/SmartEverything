@@ -4,6 +4,7 @@ import { Modal, View } from 'react-native';
 import { cn } from '../design/cn';
 import { useMotion } from '../design/motion';
 import { useIdiom } from '../design/platform';
+import { dateFormat } from '../format/locale';
 import { dayLabel, localDayKey } from '../format/time';
 import { startOf } from './charts/scale';
 import { Icon } from './icon';
@@ -53,10 +54,10 @@ function chipLabel(value: Date, range: DateRange, today: Date): string {
   }
   if (range === 'week') {
     const start = startOf(value.getTime(), 'week');
-    return `Week of ${start.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
+    return `Week of ${dateFormat({ day: 'numeric', month: 'short' }).format(start)}`;
   }
   return range === 'month'
-    ? value.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    ? dateFormat({ month: 'long', year: 'numeric' }).format(value)
     : String(value.getFullYear());
 }
 
@@ -84,7 +85,7 @@ function monthCells(month: Date): (Date | null)[] {
 
 function weekdayLabels(): string[] {
   return Array.from({ length: 7 }, (_, index) =>
-    new Date(2024, 0, 1 + index).toLocaleDateString(undefined, { weekday: 'narrow' }),
+    dateFormat({ weekday: 'narrow' }).format(new Date(2024, 0, 1 + index)),
   );
 }
 
@@ -99,7 +100,7 @@ interface DayCellProps {
 function DayCell({ day, selected, today, disabled, onPick }: DayCellProps): ReactNode {
   return (
     <Interactive
-      label={day.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}
+      label={dateFormat({ weekday: 'long', day: 'numeric', month: 'long' }).format(day)}
       selected={selected}
       disabled={disabled}
       onPress={() => {
@@ -145,9 +146,7 @@ function MonthHeader({
           onMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1));
         }}
       />
-      <Text variant="title-3">
-        {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-      </Text>
+      <Text variant="title-3">{dateFormat({ month: 'long', year: 'numeric' }).format(month)}</Text>
       <IconButton
         icon="chevronRight"
         label="Next month"

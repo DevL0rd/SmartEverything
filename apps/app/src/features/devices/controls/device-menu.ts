@@ -8,8 +8,7 @@ import { useScheduleItems } from '../../automations';
 import { usePowerAction } from './power-toggle';
 import { settingsItem } from '../../../settings/settings-item';
 
-function usePowerItem(device: Device): readonly MenuItem[] {
-  const power = usePowerAction(device);
+function powerItems(power: ReturnType<typeof usePowerAction>): readonly MenuItem[] {
   if (power.state !== 'on' && power.state !== 'off') {
     return [];
   }
@@ -26,9 +25,9 @@ export function useDeviceMenu(
   device: Device,
   options: { readonly quickControls: boolean },
 ): readonly MenuItem[] {
-  const power = usePowerItem(device);
-  const state = usePowerAction(device).state;
-  const schedule = useScheduleItems(device.id, state);
+  const powerAction = usePowerAction(device);
+  const power = powerItems(powerAction);
+  const schedule = useScheduleItems(device.id, powerAction.state);
   const toggleFavourite = (): void => {
     updateDevice(device.id, { favourite: !device.favourite }).catch((error: unknown) => {
       notify({ message: `${device.label} was not changed`, error, tone: 'critical' });

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { Brand } from '../../../components/brand-glyphs';
 import { BrandMark } from '../../../components/brand-mark';
@@ -37,7 +37,7 @@ const MAKER_BRANDS: Readonly<Record<string, Brand>> = {
   qwen: 'qwen',
 };
 
-export function ProviderLogo({
+function ProviderLogoBase({
   provider,
   name,
   size = 'm',
@@ -65,3 +65,5 @@ export function ProviderLogo({
     </View>
   );
 }
+
+export const ProviderLogo = memo(ProviderLogoBase);
