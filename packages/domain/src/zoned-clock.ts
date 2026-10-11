@@ -17,8 +17,14 @@ const CLOCK_PARTS = z.object({
   weekday: z.enum(WEEKDAY_NAMES),
 });
 
-export function localClock(instant: Date, timeZone: string): LocalClock {
-  const parts = new Intl.DateTimeFormat('en-US', {
+const clockFormats = new Map<string, Intl.DateTimeFormat>();
+
+function clockFormat(timeZone: string): Intl.DateTimeFormat {
+  const known = clockFormats.get(timeZone);
+  if (known !== undefined) {
+    return known;
+  }
+  const made = new Intl.DateTimeFormat('en-US', {
     timeZone,
     hourCycle: 'h23',
     year: 'numeric',
@@ -27,7 +33,13 @@ export function localClock(instant: Date, timeZone: string): LocalClock {
     hour: 'numeric',
     minute: 'numeric',
     weekday: 'short',
-  }).formatToParts(instant);
+  });
+  clockFormats.set(timeZone, made);
+  return made;
+}
+
+export function localClock(instant: Date, timeZone: string): LocalClock {
+  const parts = clockFormat(timeZone).formatToParts(instant);
   const clock = CLOCK_PARTS.parse(Object.fromEntries(parts.map((part) => [part.type, part.value])));
   return {
     year: clock.year,

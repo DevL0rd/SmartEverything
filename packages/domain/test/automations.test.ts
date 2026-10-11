@@ -512,6 +512,17 @@ describe('clock helpers', () => {
     expect(localClock(new Date('2024-01-01T00:00:00Z'), 'UTC').minuteOfDay).toBe(0);
   });
 
+  it('keeps zones apart when the same formatter cache serves several of them', () => {
+    const instant = new Date('2024-06-03T22:15:00Z');
+    const berlin = localClock(instant, 'Europe/Berlin');
+    const tokyo = localClock(instant, 'Asia/Tokyo');
+    expect(localClock(instant, 'Europe/Berlin')).toStrictEqual(berlin);
+    expect(tokyo.day).toBe(4);
+    expect(tokyo.minuteOfDay).toBe(7 * 60 + 15);
+    expect(() => localClock(instant, 'Not/AZone')).toThrow(RangeError);
+    expect(() => localClock(instant, 'Not/AZone')).toThrow(RangeError);
+  });
+
   it('turns a local date and time into the right instant on both sides of a DST change', () => {
     expect(
       zonedInstant({ year: 2024, month: 3, day: 30 }, 450, 'Europe/Berlin').toISOString(),
