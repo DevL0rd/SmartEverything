@@ -1,3 +1,6 @@
+import { attachHarnessReferences } from '../harness/reference-delivery';
+import { replayClient, type ReferenceSubmissions, type ReplayActor } from './reference-submission';
+import { ReferenceService } from '../references/service';
 import { ProjectFilesService } from '../projects/service';
 import { removeChatTree, type RemovalAdmission } from './remove-chat-tree';
 import {
@@ -81,11 +84,13 @@ export class AssistantService {
   readonly chats: ChatDirectory;
   readonly branches: ChatBranches;
   readonly projects: ProjectFilesService;
+  readonly references: ReferenceService;
   readonly coordination: Coordination;
   private readonly conversation: ConversationLog;
   private readonly delivery: AssistantDelivery;
   private readonly engines: EngineRegistry;
   private readonly requests: AssistantRequests;
+  readonly submissions: ReferenceSubmissions;
   selections: EngineSelections | null = null;
   claude: ClaudeRunner | null = null;
   readonly computerProviders = new ComputerProviders();
@@ -100,6 +105,7 @@ export class AssistantService {
   constructor(private readonly options: AssistantServiceOptions) {
     const { store } = options;
     this.projects = new ProjectFilesService(store, options.dataDirectory);
+    this.references = new ReferenceService(store, options.dataDirectory);
     this.files = assistantFiles(options, this.projects);
     this.conversation = new ConversationLog(store);
     this.chats = assistantChats(options, this.files, () => this.selections, this.projects);
@@ -136,6 +142,7 @@ export class AssistantService {
         },
       },
     );
+    this.submissions = this.requests.referenceSubmissions(this.references, this.engines);
     this.voice = this.voiceOf();
   }
   private voiceOf(): VoiceResponder {
@@ -195,7 +202,7 @@ export class AssistantService {
     this.delivery.pump();
   }
   attachHarness(service: HarnessService, dispatcher: HarnessDispatcher): void {
-    this.harness = service;
+    this.harness = attachHarnessReferences(service, this.references);
     this.selections?.attachHarness(service);
     this.engines.attach(
       harnessEngine({ service, dispatcher, conversation: this.conversation }, this.options, {
@@ -242,6 +249,7 @@ export class AssistantService {
     );
   }
   stop(): void {
+    this.references.stop();
     this.delivery.stop();
     for (const runner of this.computerProviders.values()) runner.stop();
     this.selections?.stop();
@@ -351,42 +359,35 @@ export class AssistantService {
   }
 
   send(sender: Sender, body: AssistantNewMessage, chatId?: string): AssistantMessageRow {
-    const owner = {
-      profileId: sender.profileId,
-      role: this.options.store.clients.byId(sender.clientId).role,
-    };
-    const chat =
-      chatId === undefined
-        ? this.chats.defaultChat(sender.profileId)
-        : this.chats.own(owner, chatId);
-    this.engines.forMutation(chat, owner.role);
-    return this.requests.send(sender, body, chat);
+    return this.submissions.plain(sender, body, chatId);
   }
-
   async retry(
     owner: ChatOwner,
     target: { readonly chatId: string; readonly messageId: string },
     from: AiRetryFrom,
-    clientId?: string | null,
+    actor?: ReplayActor,
   ): Promise<AssistantMessageRow> {
     const chat = mutableChat(this.chats, this.engines, owner, target.chatId);
     const message = this.options.store.assistantChat.message(target.messageId);
-    if (message.chat_id === chat.id && message.state === from)
+    if (message.chat_id === chat.id && message.state === from) {
+      await this.submissions.replay(actor, chat, message);
       await this.rewriteAsked(owner, chat, message);
-    return this.requests.retry(chat, target.messageId, from, clientId);
+    }
+    return this.requests.retry(chat, target.messageId, from, replayClient(actor));
   }
 
   async edit(
     owner: ChatOwner,
     target: { readonly chatId: string; readonly messageId: string },
     body: AiEdit,
-    clientId?: string | null,
+    actor?: ReplayActor,
   ): Promise<AssistantMessageRow> {
     const chat = mutableChat(this.chats, this.engines, owner, target.chatId);
     const message = this.options.store.assistantChat.message(target.messageId);
+    const changed = await this.submissions.edit(actor, chat, message, body);
     if (message.chat_id === chat.id && (message.state === 'answered' || message.state === 'failed'))
-      await this.rewriteAsked(owner, chat, message, body);
-    return this.requests.edit(chat, target.messageId, body, clientId);
+      await this.rewriteAsked(owner, chat, message, changed);
+    return this.requests.edit(chat, target.messageId, changed, replayClient(actor));
   }
 
   private async rewriteAsked(

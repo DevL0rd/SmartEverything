@@ -1,3 +1,4 @@
+import type { GatewayPages } from './gateway-pages';
 import { previewPath, previewRequester, upgradePreview } from './websocket';
 import { servePreviewHtml } from './html-response';
 import { isHtmlPreview } from './sources';
@@ -31,6 +32,10 @@ export class PreviewGateway {
   private server: Server | null = null;
   private ready = false;
   private reason = 'No isolated HTTPS preview gateway is configured.';
+  private pages: GatewayPages | undefined;
+  configurePages(pages: GatewayPages): void {
+    this.pages = pages;
+  }
   private probe: { readonly host: string; readonly nonce: string } | null = null;
   constructor(
     readonly config: PreviewGatewayConfig | undefined,
@@ -161,6 +166,7 @@ export class PreviewGateway {
       res.end(this.probe.nonce);
       return;
     }
+    if (await this.servePage(req, res, host, path)) return;
     const url = new URL(path, `https://${host}`);
     if (url.pathname === '/.se-preview/bootstrap') {
       this.bootstrap(req, res, host, url);
@@ -170,10 +176,24 @@ export class PreviewGateway {
       throw new ApiError('not_found', 'Reserved preview gateway path.');
     const lease = this.leases.authenticate(host, req.headers.cookie);
     this.requestOrigin(req, lease);
-    if (!['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(req.method ?? ''))
+    if (!gatewayMethod(req.method))
       throw new ApiError('forbidden', 'This HTTP method cannot use a preview relay.');
     if (await servePreviewHtml(req, res, { path, lease, ancestors: this.ancestors() })) return;
     await this.relayHttp(req, res, path, lease);
+  }
+  private servePage(
+    req: IncomingMessage,
+    res: ServerResponse,
+    host: string,
+    path: string,
+  ): Promise<boolean> {
+    if (this.config === undefined || this.pages === undefined) return Promise.resolve(false);
+    return this.pages.handle(req, res, {
+      host,
+      path,
+      domain: this.config.base_domain,
+      ancestors: this.ancestors(),
+    });
   }
   private async relayHttp(
     req: IncomingMessage,
@@ -325,4 +345,8 @@ export class PreviewGateway {
       server.closeAllConnections();
     });
   }
+}
+
+function gatewayMethod(method: string | undefined): boolean {
+  return ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(method ?? '');
 }

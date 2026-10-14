@@ -95,6 +95,7 @@ function assetHeaders(
     readonly range: AssetRange;
     readonly size: number;
     readonly ancestors: readonly string[];
+    readonly ordinaryPage?: boolean;
   },
 ): void {
   const { range } = input;
@@ -112,7 +113,10 @@ function assetHeaders(
     'cache-control': 'no-store',
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
-    'content-security-policy': projectCsp(input.ancestors),
+    'content-security-policy':
+      input.ordinaryPage === true
+        ? `frame-ancestors ${input.ancestors.join(' ')}`
+        : projectCsp(input.ancestors),
   });
 }
 async function streamAsset(
@@ -161,6 +165,8 @@ export async function serveProjectAsset(
     readonly path: string;
     readonly signal: AbortSignal;
     readonly ancestors: readonly string[];
+    readonly prefix?: string;
+    readonly ordinaryPage?: boolean;
   },
 ): Promise<void> {
   if (!['GET', 'HEAD'].includes(request.method ?? ''))
@@ -169,8 +175,12 @@ export async function serveProjectAsset(
   if (read === undefined)
     throw new ApiError('not_found', 'This publication has no project assets.');
   const entry = input.publication.view.project_source?.entry;
-  if (input.path === '/' && entry !== undefined) {
-    response.writeHead(307, { location: projectEntryUrl(entry), 'cache-control': 'no-store' });
+  const redirect = entryRedirect(input.path, input.prefix, entry);
+  if (redirect !== null) {
+    response.writeHead(307, {
+      location: redirect,
+      'cache-control': 'no-store',
+    });
     response.end();
     return;
   }
@@ -180,10 +190,26 @@ export async function serveProjectAsset(
   signal.throwIfAborted();
   const range = requestedRange(request, response, first.size);
   if (range === null) return;
-  assetHeaders(response, { path: input.path, range, size: first.size, ancestors: input.ancestors });
+  assetHeaders(response, {
+    path: input.path,
+    range,
+    size: first.size,
+    ancestors: input.ancestors,
+    ordinaryPage: input.ordinaryPage === true,
+  });
   if (request.method === 'HEAD') {
     response.end();
     return;
   }
   await streamAsset(response, read, { path: input.path, range, version: first.version, signal });
+}
+
+function entryRedirect(
+  path: string,
+  prefix: string | undefined,
+  entry: string | undefined,
+): string | null {
+  if (entry === undefined) return null;
+  const url = new URL(path, 'http://page.invalid');
+  return url.pathname === '/' ? `${prefix ?? ''}${projectEntryUrl(entry)}${url.search}` : null;
 }

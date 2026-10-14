@@ -1,5 +1,12 @@
+import type {
+  PluginTranscriptPage,
+  PluginTranscriptPageQuery,
+} from '../store/repositories/plugin-transcript-page';
+import type { TranscriptFeedQuery, TranscriptScope } from '../store/repositories/transcript-reader';
 import {
   ApiError,
+  type TranscriptPage,
+  type TranscriptRange,
   type TranscriptDetail,
   type TranscriptHit,
   type TranscriptLine,
@@ -32,6 +39,7 @@ export interface TranscriptOpening {
 export interface TranscriptFilter {
   readonly source?: TranscriptSource | undefined;
   readonly sourceId?: string | undefined;
+  readonly pluginId?: string | undefined;
 }
 
 export class Transcripts {
@@ -111,6 +119,22 @@ export class Transcripts {
     filter: TranscriptFilter & { readonly words: string; readonly limit: number },
   ): TranscriptHit[] {
     return this.options.store.transcripts.search(filter);
+  }
+
+  feed(scope: TranscriptScope, query: TranscriptFeedQuery): TranscriptPage {
+    return this.options.store.transcripts.reader.feed(scope, query);
+  }
+
+  range(scope: TranscriptScope, anchor: number, limit: number): TranscriptRange {
+    return this.options.store.transcripts.reader.range(scope, anchor, limit);
+  }
+
+  pluginPage(
+    pluginId: string,
+    sessionId: string,
+    query: PluginTranscriptPageQuery,
+  ): PluginTranscriptPage {
+    return this.options.store.transcripts.pluginPage.read(pluginId, sessionId, query);
   }
 
   remove(sessionId: string): void {

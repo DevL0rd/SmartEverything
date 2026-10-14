@@ -31,6 +31,7 @@ export interface ScreenProps {
   readonly header?: ReactElement;
   readonly maxWidth?: ScreenWidth;
   readonly scroll?: boolean;
+  readonly externalScroll?: boolean;
   readonly onRefresh?: () => void;
   readonly refreshing?: boolean;
   readonly primaryAction?: PrimaryActionProps;
@@ -121,10 +122,57 @@ function useScreenValue(
   scrollY: ScreenValue['scrollY'],
   scrollRef: ScreenValue['scrollRef'],
   primaryAction: PrimaryActionProps | undefined,
+  scrollable: boolean,
 ): ScreenValue {
   return useMemo(
-    () => ({ scrollY, scrollRef, primaryAction: primaryAction ?? null }),
-    [scrollY, scrollRef, primaryAction],
+    () => ({ scrollY, scrollRef, scrollable, primaryAction: primaryAction ?? null }),
+    [scrollY, scrollRef, scrollable, primaryAction],
+  );
+}
+
+function StaticBody({
+  header,
+  banner,
+  externalScroll,
+  maxWidth,
+  children,
+}: {
+  readonly header: ReactElement | undefined;
+  readonly banner: ReactNode;
+  readonly externalScroll: boolean;
+  readonly maxWidth: ScreenWidth;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <View className="flex-1">
+      {externalScroll ? null : (
+        <View className={cn('w-full self-center px-gutter', WIDTH[maxWidth])}>
+          <HeaderSlotContext.Provider value="large">{header}</HeaderSlotContext.Provider>
+          {banner}
+        </View>
+      )}
+      {children}
+    </View>
+  );
+}
+
+type ContentBodyProps = Parameters<typeof ScrollBody>[0] & {
+  readonly scroll: boolean;
+  readonly externalScroll: boolean;
+};
+
+function ContentBody({ scroll, externalScroll, ...content }: ContentBodyProps): ReactNode {
+  return scroll ? (
+    <ScrollBody {...content} />
+  ) : (
+    <StaticBody
+      header={content.header}
+      banner={content.banner}
+      externalScroll={externalScroll}
+      maxWidth={content.maxWidth}
+    >
+      {content.children}
+    </StaticBody>
   );
 }
 
@@ -132,6 +180,7 @@ export function Screen({
   header,
   maxWidth = 'dashboard',
   scroll = true,
+  externalScroll = false,
   onRefresh,
   refreshing = false,
   primaryAction,
@@ -143,33 +192,30 @@ export function Screen({
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
   const placement = usePrimaryActionPlacement();
   const fab = primaryAction !== undefined && placement === 'fab';
-  const value = useScreenValue(scrollY, scroll ? scrollRef : null, primaryAction);
+  const value = useScreenValue(
+    scrollY,
+    scroll ? scrollRef : null,
+    primaryAction,
+    scroll || externalScroll,
+  );
   return (
     <ScreenContext.Provider value={value}>
       <KeyboardViewport>
         <Ambient />
         {header}
-        {scroll ? (
-          <ScrollBody
-            scrollRef={scrollRef}
-            header={header}
-            banner={banner}
-            maxWidth={maxWidth}
-            onRefresh={onRefresh}
-            refreshing={refreshing}
-            fab={fab}
-          >
-            {children}
-          </ScrollBody>
-        ) : (
-          <View className="flex-1">
-            <View className={cn('w-full self-center px-gutter', WIDTH[maxWidth])}>
-              <HeaderSlotContext.Provider value="large">{header}</HeaderSlotContext.Provider>
-              {banner}
-            </View>
-            {children}
-          </View>
-        )}
+        <ContentBody
+          scroll={scroll}
+          externalScroll={externalScroll}
+          scrollRef={scrollRef}
+          header={header}
+          banner={banner}
+          maxWidth={maxWidth}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          fab={fab}
+        >
+          {children}
+        </ContentBody>
         <Footer>{footer}</Footer>
         {primaryAction !== undefined && fab ? <PrimaryAction {...primaryAction} /> : null}
       </KeyboardViewport>

@@ -9,7 +9,7 @@ import {
   COMPUTER_RUNTIME_CAPABILITIES,
   PROVIDER_EXECUTION_CONTEXT,
 } from './computer-ai-runtime';
-import { CLAUDE_PROVIDER_OPTIONS } from './computer-ai';
+import { CLAUDE_PROVIDER_OPTIONS, NATIVE_MANAGED_PROJECT } from './computer-ai';
 import { CODEX_PROVIDER_OPTIONS, CODEX_LIFECYCLE } from './codex';
 import { CODEX_PROMPT } from './codex-prompts';
 import { AI_CHAT_PROVIDER } from './ai-provider';
@@ -52,6 +52,7 @@ export const AI_RUNTIME_ENGINE_CATALOGUE = z.strictObject({
 });
 export type AiRuntimeEngineCatalogue = z.infer<typeof AI_RUNTIME_ENGINE_CATALOGUE>;
 export const AI_CHAT_CODEX_PROVIDER = z.strictObject({
+  managed_project: NATIVE_MANAGED_PROJECT.optional(),
   subscription_usage: AI_SUBSCRIPTION_USAGE.optional(),
   runtime: z.literal('codex'),
   device_id: z.uuid(),
@@ -66,6 +67,7 @@ export const AI_CHAT_CODEX_PROVIDER = z.strictObject({
 });
 export const AI_CHAT_RUNTIME_PROVIDER = z.discriminatedUnion('runtime', [
   AI_CHAT_PROVIDER.extend({
+    managed_project: NATIVE_MANAGED_PROJECT.optional(),
     runtime: z.literal('claude'),
     context: PROVIDER_EXECUTION_CONTEXT.nullable().default(null),
   }),

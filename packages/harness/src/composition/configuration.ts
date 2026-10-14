@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import { HarnessRuntimeError } from '../host/errors';
+import {
+  harnessMountRevision,
+  harnessMountRevisionBinding,
+  withHarnessMountRevision,
+  type HarnessMountRevisionBinding,
+} from './mount-revision';
 import { createHash } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
 import type { AiHarnessManifest, HarnessPluginMetadata } from '@smarteverything/domain';
@@ -43,12 +50,14 @@ export interface InstalledHarnessPlugin {
 }
 
 interface MountedPlugin {
+  readonly revision: HarnessMountRevisionBinding;
   readonly signature: string;
   readonly entry: HarnessDesiredEntry;
   readonly restoreSchemas: readonly HarnessRestoreSchema[];
   readonly provenance: string;
   readonly metadata: HarnessPluginMetadata | null;
   readonly dispose: () => Promise<void>;
+  readonly restore: () => Promise<{ readonly dispose: () => Promise<void> }>;
 }
 
 export class HarnessConfiguration {
@@ -151,7 +160,10 @@ export class HarnessConfiguration {
       this.mounted.delete(id);
     }
     const readiness: HarnessPluginReadiness[] = [];
-    for (const entry of desired.entries) readiness.push(await this.reconcileEntry(entry));
+    for (const entry of desired.entries)
+      readiness.push(
+        await withHarnessMountRevision(desired.revision, () => this.reconcileEntry(entry)),
+      );
     this.readiness = deepFreeze(readiness);
     this.current = desired;
     this.changed(desired.revision, this.readiness);
@@ -164,9 +176,8 @@ export class HarnessConfiguration {
   }
 
   private async reconcileEntry(entry: HarnessDesiredEntry): Promise<HarnessPluginReadiness> {
-    await this.unmountChanged(entry);
     const plugin = this.installed.find((item) => item.package === entry.package);
-    const base = readinessIdentity(entry, plugin);
+    const base = this.retainedIdentity(entry, plugin);
     if (!entry.enabled) return { ...base, state: 'disabled', reason: null };
     if (plugin === undefined)
       return { ...base, state: 'missing', reason: 'Package is not installed on this host.' };
@@ -198,18 +209,44 @@ export class HarnessConfiguration {
         };
       return await this.mountEntry(entry, plugin, readinessIdentity(entry, plugin));
     } catch (error) {
+      assertSettledConfigurationFailure(error);
       return {
-        ...readinessIdentity(entry, installed),
+        ...this.retainedIdentity(entry, installed),
         state: 'failed',
         reason: error instanceof Error ? error.message : String(error),
       };
     }
   }
 
+  private retainedIdentity(
+    entry: HarnessDesiredEntry,
+    plugin?: InstalledHarnessPlugin,
+  ): Omit<HarnessPluginReadiness, 'state' | 'reason'> {
+    const previous = this.mounted.get(entry.id);
+    return {
+      ...readinessIdentity(entry, plugin),
+      ...(previous === undefined
+        ? {}
+        : {
+            installedVersion: previous.entry.version,
+            provenance: previous.provenance,
+            installedMetadata: previous.metadata,
+          }),
+    };
+  }
   private async unmountChanged(entry: HarnessDesiredEntry): Promise<void> {
     const previous = this.mounted.get(entry.id);
     if (previous === undefined || previous.signature === JSON.stringify(entry)) return;
-    await previous.dispose();
+    try {
+      await previous.dispose();
+    } catch (cause) {
+      throw new HarnessRuntimeError(
+        'source_outcome_unknown',
+        'Previous extension cleanup is unconfirmed; replacement was not activated.',
+        null,
+        { cause },
+      );
+    }
     this.mounted.delete(entry.id);
   }
 
@@ -220,25 +257,39 @@ export class HarnessConfiguration {
   ): Promise<HarnessPluginReadiness> {
     const signature = JSON.stringify(entry);
     const previous = this.mounted.get(entry.id);
-    if (previous?.signature === signature) return { ...base, state: 'ready', reason: null };
+    if (previous?.signature === signature) {
+      previous.revision.refresh(harnessMountRevision());
+      return { ...base, state: 'ready', reason: null };
+    }
     try {
       const provenance = z.string().min(1).parse(plugin.provenance);
       const metadata =
         plugin.metadata === undefined ? null : HARNESS_PLUGIN_METADATA.parse(plugin.metadata);
       const restoreSchemas = deepFreeze(z.array(RESTORE_SCHEMA).parse(plugin.restoreSchemas ?? []));
-      const mounted = await plugin.mount(this.ctx, entry.config);
+      await this.unmountChanged(entry);
+      const revision = harnessMountRevisionBinding();
+      const restore = (): Promise<{ readonly dispose: () => Promise<void> }> =>
+        withHarnessMountRevision(revision, () => plugin.mount(this.ctx, entry.config));
+      const mounted = await restore();
       this.mounted.set(entry.id, {
+        revision,
         signature,
         entry,
         restoreSchemas,
         provenance,
         metadata,
         dispose: mounted.dispose,
+        restore,
       });
       return { ...base, state: 'ready', reason: null };
     } catch (error) {
+      assertSettledConfigurationFailure(error);
+      if (previous !== undefined) {
+        const retained = await previous.restore();
+        this.mounted.set(entry.id, { ...previous, dispose: retained.dispose });
+      }
       return {
-        ...base,
+        ...this.retainedIdentity(entry, plugin),
         state: 'failed',
         reason: error instanceof Error ? error.message : String(error),
       };
@@ -284,4 +335,8 @@ function eligiblePlugin(
     plugin.platforms.includes(host.platform) &&
     (!host.server || plugin.serverSafe === true)
   );
+}
+
+function assertSettledConfigurationFailure(error: unknown): void {
+  if (error instanceof HarnessRuntimeError && error.code === 'source_outcome_unknown') throw error;
 }

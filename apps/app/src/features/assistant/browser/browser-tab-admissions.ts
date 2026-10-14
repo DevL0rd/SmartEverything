@@ -19,7 +19,7 @@ export class BrowserTabAdmissions {
     this.generations.delete(id);
   }
   expire(id: BrowserTabId, selection: BrowserSelection, unavailable: () => void): void {
-    if (selection.kind === 'public' || selection.lease.expires_at === null) return;
+    if (selection.kind !== 'preview' || selection.lease.expires_at === null) return;
     this.timers.set(
       id,
       setTimeout(unavailable, Math.max(0, Date.parse(selection.lease.expires_at) - Date.now())),

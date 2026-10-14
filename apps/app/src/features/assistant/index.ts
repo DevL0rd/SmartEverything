@@ -14,6 +14,7 @@ export { refreshImageOperations, reconcileImageMessages } from './images/data/im
 export { IMAGE_QUERY_PREFIX } from './images/data/image-queries';
 export { clearImageSession } from './images/data/image-session';
 export { clearUploads } from './data/uploads';
+export { forgetOlderMessages } from './data/history';
 
 export { useExtensions, useExtensionConfiguration } from './extensions/queries';
 export { useHarnessCatalogue } from './data/harness';

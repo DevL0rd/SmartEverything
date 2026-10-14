@@ -1,3 +1,4 @@
+import { AI_MESSAGE_REFERENCES, referencesMatchText } from '../ai-references';
 import { z } from 'zod';
 import {
   AI_CHAT_BRANCH,
@@ -26,14 +27,19 @@ const AI_RETRY = z.strictObject({
 
 export type AiRetryFrom = z.output<typeof AI_RETRY>['from'];
 
-const AI_EDIT = z.strictObject({
-  text: z.string().trim().min(1).max(ASSISTANT_TEXT_MAX),
-  attachments: z
-    .array(ID)
-    .max(ASSISTANT_ATTACHMENTS_MAX)
-    .optional()
-    .describe('Unsent uploads that replace the message’s files; left out, its files stay'),
-});
+const AI_EDIT = z
+  .strictObject({
+    references: AI_MESSAGE_REFERENCES.optional(),
+    text: z.string().trim().min(1).max(ASSISTANT_TEXT_MAX),
+    attachments: z
+      .array(ID)
+      .max(ASSISTANT_ATTACHMENTS_MAX)
+      .optional()
+      .describe('Unsent uploads that replace the message’s files; left out, its files stay'),
+  })
+  .refine((message) => referencesMatchText(message.text, message.references ?? []), {
+    message: 'Reference spans must match the submitted text.',
+  });
 
 export type AiEdit = z.output<typeof AI_EDIT>;
 

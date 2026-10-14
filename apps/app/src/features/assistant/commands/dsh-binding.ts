@@ -1,3 +1,4 @@
+import { useCommandPreparation } from './preparation';
 import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import type { Engine, AiHarnessCatalogue } from '@smarteverything/domain';
 import { randomUUID } from 'expo-crypto';
@@ -36,35 +37,70 @@ export interface DshCommandBinding {
   readonly reason: string | null;
   readonly retry: () => void;
 }
-export function useDshCommandBinding(chat: AiChatRow | undefined): DshCommandBinding {
+export function useDshCommandBinding(
+  chat: AiChatRow | undefined,
+  opened: boolean,
+): DshCommandBinding {
   const profile = useActiveProfile();
   const live = useSyncStatus().status === 'live';
   const own = ownEngine(chat);
   const session = useChatHarness(chat?.id ?? '', hasSession(own));
+  const preparation = useCommandPreparation(chat, opened, connectionId(live));
   const catalogue = useHarnessCatalogue();
-  const host = selectedHost(catalogue.data, own);
-  const input = { chat, state: session.data, host, live, profileId: profile?.id };
+  const host = selectedHost(catalogue.data, own, preparation.data);
+  const input = {
+    chat,
+    state: session.data ?? preparation.data,
+    host,
+    live,
+    profileId: profile?.id,
+  };
   const scope = boundScope(input);
   return {
     key: scopeKey(input, scope),
     chatId: chat?.id ?? null,
     scope,
-    reason: bindingProblem(input, scope, session.error, catalogue.error),
+    reason: preparation.isFetching
+      ? 'Finding commands…'
+      : bindingProblem(input, scope, session.error ?? preparation.error, catalogue.error),
     retry: (): void => {
-      void session.refetch();
+      void preparation.refetch();
+      if (hasSession(own)) void session.refetch();
       void catalogue.refetch();
     },
   };
 }
 function boundScope(input: BindingInput): AiHarnessCommandScope | null {
   const { chat, state, profileId } = input;
-  if (chat?.engine.kind !== 'dsh' || state === undefined) return null;
-  if (state.epoch === null) return null;
-  if (state.session_id !== chat.engine.session_id || state.metadata.profile_id !== profileId)
-    return null;
-  if (harnessTargetKey(state.target) !== harnessTargetKey(chat.engine.execution_target))
-    return null;
+  if (chat === undefined || state?.epoch === undefined || state.epoch === null) return null;
+  if (state.metadata.chat_id !== chat.id || state.metadata.profile_id !== profileId) return null;
+  if (!sameSelection(chat.engine, state)) return null;
   return { session_id: state.session_id, expected_epoch: state.epoch };
+}
+function sameSelection(engine: Engine, state: AiHarnessSession): boolean {
+  if (engine.kind === 'openrouter')
+    return (
+      state.target.kind === 'server' &&
+      (engine.model === null || engine.model === state.route.model)
+    );
+  if (engine.kind !== 'dsh') return false;
+  if (engine.session_id !== null && state.session_id !== engine.session_id) return false;
+  return (
+    JSON.stringify([
+      harnessTargetKey(state.target),
+      state.route.route_id,
+      state.route.model,
+      state.route.effort,
+      state.permission,
+    ]) ===
+    JSON.stringify([
+      harnessTargetKey(engine.execution_target),
+      engine.model_route_id,
+      engine.model,
+      engine.effort,
+      engine.permission,
+    ])
+  );
 }
 function scopeKey(input: BindingInput, scope: AiHarnessCommandScope | null): string {
   const { chat, host, state } = input;
@@ -82,11 +118,8 @@ function scopeKey(input: BindingInput, scope: AiHarnessCommandScope | null): str
 function unavailable(input: BindingInput, scope: AiHarnessCommandScope | null): string | null {
   const { chat, host, state } = input;
   if (!input.live) return 'Reconnect to see commands for this chat.';
-  if (chat === undefined) return 'Commands become available when this chat has a session.';
-  if (chat.engine.kind !== 'dsh')
-    return 'Direct commands are not available for this provider. Use its execution host.';
-  if (chat.engine.session_id === null)
-    return 'Commands become available when this chat has a session.';
+  if (chat === undefined) return 'Finding commands…';
+  if (chat.engine.kind !== 'dsh' && chat.engine.kind !== 'openrouter') return 'Finding commands…';
   if (host === undefined || state === undefined) return 'Finding commands…';
   return hostUnavailable(host) ?? sessionUnavailable(state, scope);
 }
@@ -113,10 +146,12 @@ function ownEngine(chat: AiChatRow | undefined): Extract<Engine, { kind: 'dsh' }
 function selectedHost(
   catalogue: AiHarnessCatalogue | undefined,
   engine: Extract<Engine, { kind: 'dsh' }> | null,
+  session: AiHarnessSession | undefined,
 ): AiHarnessHost | undefined {
-  if (engine === null) return undefined;
+  const target = engine?.execution_target ?? session?.target;
+  if (target === undefined) return undefined;
   return catalogue?.hosts.find(
-    (host) => harnessTargetKey(host.target) === harnessTargetKey(engine.execution_target),
+    (host) => harnessTargetKey(host.target) === harnessTargetKey(target),
   );
 }
 function pendingPermission(state: AiHarnessSession): boolean {

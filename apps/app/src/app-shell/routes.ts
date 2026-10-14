@@ -1,5 +1,5 @@
 import { ROUTES as AUTOMATIONS } from '../features/automations/routes';
-import { ROUTES as CAMERAS, preloadCameras } from '../features/cameras/routes';
+import { ROUTES as CAMERAS, preloadCameras, TRANSCRIPT_ACTIONS } from '../features/cameras/routes';
 import { ROUTES as CONNECTIONS } from '../features/connections/routes';
 import { ROUTES as DEVICE_LIST } from '../features/device-list/routes';
 import { ROUTES as DEVICES } from '../features/devices/routes';
@@ -66,7 +66,8 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     icon: 'cameras',
     tab: 'cameras',
     parent: null,
-    keywords: ['video', 'live', 'doorbell'],
+    keywords: ['video', 'live', 'doorbell', 'transcripts', 'what was said'],
+    actions: TRANSCRIPT_ACTIONS,
     available: (a) => a.hasCameras,
     preload: preloadCameras,
     searchable: true,

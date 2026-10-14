@@ -68,7 +68,10 @@ export function ScrubPreview({
     <View className="flex-row items-center gap-3 rounded-lg bg-surface-2 p-2">
       <View className="aspect-video w-24 items-center justify-center overflow-hidden rounded-sm bg-surface-3">
         {item?.thumb === null || item === null ? (
-          <Icon name={item === null ? 'clock' : eventLook(item.kind).icon} size={20} />
+          <Icon
+            name={item === null ? 'clock' : eventLook(item.kind, item.details).icon}
+            size={20}
+          />
         ) : (
           <Image
             source={{ uri: item.thumb }}
@@ -80,7 +83,9 @@ export function ScrubPreview({
       </View>
       <View className="min-w-0 flex-1">
         <Text variant="body-strong" numberOfLines={1}>
-          {item === null ? fractionTime(fraction) : `${eventLook(item.kind).label} · ${item.time}`}
+          {item === null
+            ? fractionTime(fraction)
+            : `${eventLook(item.kind, item.details).label} · ${item.time}`}
         </Text>
         <Text variant="footnote" tone="variant" numberOfLines={1}>
           {item === null ? 'Nothing here' : 'Let go to open'}

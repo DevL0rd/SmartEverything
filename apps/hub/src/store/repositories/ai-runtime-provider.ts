@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {
   AI_CHAT_RUNTIME_PROVIDER,
+  NATIVE_MANAGED_PROJECT,
+  ApiError,
   AI_RUNTIME_ENGINE_PREFERENCE,
   COMPUTER_RUNTIME_PROVIDER_EVENT,
   type AiChatRuntimeProvider,
@@ -28,6 +30,8 @@ const ROW = z.strictObject({
   prompts: SQL_JSON,
   effective_cwd: z.string().nullable(),
   process_generation: z.uuid().nullable(),
+  managed_project: SQL_JSON.pipe(NATIVE_MANAGED_PROJECT).nullable(),
+  context_managed_project: SQL_JSON.pipe(NATIVE_MANAGED_PROJECT).nullable(),
 });
 const EVENT = z.strictObject({ event: SQL_JSON });
 export class AiRuntimeProviderRepository {
@@ -35,14 +39,19 @@ export class AiRuntimeProviderRepository {
   read(chatId: string, includeEvents = true): AiChatRuntimeProvider | null {
     const row = this.context.sql.get(
       ROW,
-      'select runtime,device_id,session_id,job_id,state,reason,metadata,prompts,effective_cwd,process_generation from ai_provider_chats where chat_id=$chat',
+      'select runtime,device_id,session_id,job_id,state,reason,metadata,prompts,effective_cwd,process_generation,managed_project,context_managed_project from ai_provider_chats where chat_id=$chat',
       { chat: chatId },
     );
     if (row === undefined) return null;
     if (row.runtime === 'claude') {
       const legacy = new AiProviderRepository(this.context).read(chatId, includeEvents);
       if (legacy === null) return null;
-      return { ...legacy, runtime: 'claude', context: this.contextOf(row) };
+      return {
+        ...legacy,
+        runtime: 'claude',
+        context: this.contextOf(row),
+        ...(row.managed_project === null ? {} : { managed_project: row.managed_project }),
+      };
     }
     const events = includeEvents
       ? this.context.sql
@@ -64,6 +73,7 @@ export class AiRuntimeProviderRepository {
       metadata: row.metadata,
       prompts: row.prompts,
       context: this.contextOf(row),
+      ...(row.managed_project === null ? {} : { managed_project: row.managed_project }),
       events,
       ...new AiProviderRepository(this.context).subscriptionUsage(chatId),
     });
@@ -77,7 +87,7 @@ export class AiRuntimeProviderRepository {
   private saveBinding(chatId: string, row: AiChatRuntimeProvider): void {
     this.context.sql.run(
       'save runtime provider binding',
-      `insert into ai_provider_chats(chat_id,runtime,device_id,session_id,job_id,state,reason,metadata,prompts,effective_cwd,process_generation,updated_at) values($chat,$runtime,$device,$session,$job,$state,$reason,$metadata,$prompts,$cwd,$generation,$now) on conflict(chat_id) do update set runtime=excluded.runtime,device_id=excluded.device_id,session_id=excluded.session_id,event_seq=case when ai_provider_chats.job_id is excluded.job_id and ai_provider_chats.runtime is excluded.runtime then ai_provider_chats.event_seq else 0 end,job_id=excluded.job_id,state=excluded.state,reason=excluded.reason,metadata=excluded.metadata,prompts=excluded.prompts,effective_cwd=excluded.effective_cwd,process_generation=excluded.process_generation,updated_at=excluded.updated_at`,
+      `insert into ai_provider_chats(chat_id,runtime,device_id,session_id,job_id,state,reason,metadata,prompts,effective_cwd,process_generation,managed_project,context_managed_project,updated_at) values($chat,$runtime,$device,$session,$job,$state,$reason,$metadata,$prompts,$cwd,$generation,$project,$contextProject,$now) on conflict(chat_id) do update set runtime=excluded.runtime,device_id=excluded.device_id,session_id=excluded.session_id,event_seq=case when ai_provider_chats.job_id is excluded.job_id and ai_provider_chats.runtime is excluded.runtime then ai_provider_chats.event_seq else 0 end,job_id=excluded.job_id,state=excluded.state,reason=excluded.reason,metadata=excluded.metadata,prompts=excluded.prompts,effective_cwd=excluded.effective_cwd,process_generation=excluded.process_generation,managed_project=excluded.managed_project,context_managed_project=excluded.context_managed_project,updated_at=excluded.updated_at`,
       {
         chat: chatId,
         runtime: row.runtime,
@@ -90,6 +100,8 @@ export class AiRuntimeProviderRepository {
         prompts: jsonText(row.prompts),
         cwd: row.context?.cwd ?? null,
         generation: row.context?.process_generation ?? null,
+        project: this.projectOf(chatId, row),
+        contextProject: this.contextProjectOf(row),
         now: this.context.now(),
       },
     );
@@ -146,6 +158,17 @@ export class AiRuntimeProviderRepository {
     );
     return row;
   }
+  private projectOf(chatId: string, row: AiChatRuntimeProvider): string | null {
+    const project = row.managed_project ?? row.context?.managed_project;
+    if (project === undefined) return null;
+    if (project.chat_id !== chatId)
+      throw new ApiError('forbidden', 'The native managed project belongs to another chat.');
+    return jsonText(project);
+  }
+  private contextProjectOf(row: AiChatRuntimeProvider): string | null {
+    const project = row.context?.managed_project;
+    return project === undefined ? null : jsonText(project);
+  }
   private contextOf(row: z.infer<typeof ROW>): AiChatRuntimeProvider['context'] {
     if (row.effective_cwd === null || row.process_generation === null) return null;
     return {
@@ -154,6 +177,9 @@ export class AiRuntimeProviderRepository {
       session_id: row.session_id,
       cwd: row.effective_cwd,
       process_generation: row.process_generation,
+      ...(row.context_managed_project === null
+        ? {}
+        : { managed_project: row.context_managed_project }),
     };
   }
 }

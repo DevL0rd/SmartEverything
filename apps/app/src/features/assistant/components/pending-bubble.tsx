@@ -4,7 +4,7 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { clock } from '../../../format/time';
-import { cancelPending, type PendingMessage } from '../data/outbox';
+import { cancelPending, retryPending, type PendingMessage } from '../data/outbox';
 
 export function PendingBubble({ message }: { readonly message: PendingMessage }): ReactNode {
   const files = message.attachments.length;
@@ -13,7 +13,7 @@ export function PendingBubble({ message }: { readonly message: PendingMessage })
   return (
     <View
       accessible
-      accessibilityLabel={`You, ${clock(message.queuedAt)}, waiting to send: ${body}`}
+      accessibilityLabel={`You, ${clock(message.queuedAt)}, ${message.state === 'failed' ? 'failed to send' : 'waiting to send'}: ${body}`}
       className="items-end gap-1 pt-1"
     >
       <View className="max-w-full rounded-xl rounded-br-sm bg-primary-container px-4 py-2.5 opacity-80">
@@ -25,8 +25,21 @@ export function PendingBubble({ message }: { readonly message: PendingMessage })
         </Text>
         <Icon name="clock" size={16} tone="variant" />
         <Text variant="caption" tone="variant">
-          Waiting to send
+          {message.state === 'failed' ? 'Not sent' : 'Waiting to send'}
         </Text>
+        {message.state === 'failed' ? (
+          <Interactive
+            label="Retry this message"
+            onPress={(): void => {
+              void retryPending(message.id);
+            }}
+            className="min-h-touch-min justify-center rounded-sm px-2"
+          >
+            <Text variant="caption" tone="primary">
+              Retry
+            </Text>
+          </Interactive>
+        ) : null}
         <Interactive
           label="Cancel this message"
           onPress={() => {

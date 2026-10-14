@@ -18,5 +18,6 @@ export type AssistantMessageChange = Partial<
     | 'model'
     | 'embeds'
     | 'attachments'
+    | 'references'
   >
 >;

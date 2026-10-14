@@ -14,7 +14,7 @@ export function registerHtmlPreviewIpc(window: BrowserWindow, startUrl: string):
       event.senderFrame !== window.webContents.mainFrame ||
       !valid()
     )
-      throw new BrowserPolicyError('HTML claims require the app main frame.');
+      throw new BrowserPolicyError('HTML pages require the app main frame.');
     const projection = desktopHtml();
     if (projection === null) throw new BrowserPolicyError('Native HTML projection is unavailable.');
     const current = epoch;
@@ -48,10 +48,21 @@ export function registerHtmlPreviewIpc(window: BrowserWindow, startUrl: string):
     ipcMain.removeAllListeners('desktop:html-supported');
     ipcMain.removeAllListeners('desktop:html-lifetime-version');
     ipcMain.removeAllListeners('desktop:html-project-version');
+    ipcMain.removeAllListeners('desktop:html-page-version');
   });
 }
 
 function supportHtml(window: BrowserWindow, valid: () => boolean): void {
+  ipcMain.on('desktop:html-page-version', (event) => {
+    const response = event;
+    response.returnValue =
+      event.sender === window.webContents &&
+      event.senderFrame === window.webContents.mainFrame &&
+      valid() &&
+      desktopHtml() !== null
+        ? 2
+        : 0;
+  });
   ipcMain.on('desktop:html-project-version', (event) => {
     const response = event;
     response.returnValue =

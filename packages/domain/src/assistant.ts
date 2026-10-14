@@ -1,3 +1,4 @@
+import { AI_MESSAGE_REFERENCES } from './ai-references';
 import { z } from 'zod';
 export * from './assistant-response-style';
 export * from './assistant-settings-patch';
@@ -130,6 +131,7 @@ export const ASSISTANT_MESSAGE_ROW = z.strictObject({
   author: z.string().min(1).max(120),
   text: z.string().max(ASSISTANT_TEXT_MAX),
   attachments: z.array(ASSISTANT_ATTACHMENT).max(ASSISTANT_ATTACHMENTS_MAX),
+  references: AI_MESSAGE_REFERENCES.default([]).optional(),
   state: z.enum(ASSISTANT_REQUEST_STATES).nullable(),
   reason: z.string().max(400).nullable(),
   reason_code: z

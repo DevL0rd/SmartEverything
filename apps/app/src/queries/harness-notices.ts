@@ -8,6 +8,8 @@ import {
 } from './extension-keys';
 import { AGENT_RUN_PREFIX, AI_MODELS_PREFIX } from './keys';
 
+const REFERENCE_QUERY_PREFIX = ['window', 'ai-references'] as const;
+
 const COMMAND_QUERY_PREFIX = ['window', 'ai-harness-commands'] as const;
 
 export const HARNESS_CATALOGUE_KEY = ['window', 'ai-harness'] as const;
@@ -50,6 +52,7 @@ export class HarnessNotices {
     this.enqueue(SKILL_UPDATES_KEY);
     this.enqueue(DISCOVERY_KEY);
     this.enqueue(COMMAND_QUERY_PREFIX);
+    this.enqueue(REFERENCE_QUERY_PREFIX);
     this.enqueue(HARNESS_CATALOGUE_KEY);
     this.enqueue(AI_MODELS_PREFIX);
   }
@@ -60,6 +63,7 @@ export class HarnessNotices {
     this.noticeRevisions.set(event.chat_id, (this.noticeRevisions.get(event.chat_id) ?? 0) + 1);
     this.enqueue(harnessKey(event.chat_id));
     this.enqueue(COMMAND_QUERY_PREFIX);
+    this.enqueue(REFERENCE_QUERY_PREFIX);
     if (event.kind === 'usage' || event.kind === 'state' || event.kind === 'failed')
       this.enqueue(HARNESS_CATALOGUE_KEY);
     if (event.kind === 'agent') this.enqueue([...AGENT_RUN_PREFIX, event.chat_id]);
@@ -112,5 +116,6 @@ export class HarnessNotices {
     void this.client.cancelQueries({ queryKey: HARNESS_CATALOGUE_KEY });
     void this.client.cancelQueries({ queryKey: HARNESS_SESSION_PREFIX });
     void this.client.cancelQueries({ queryKey: COMMAND_QUERY_PREFIX });
+    void this.client.cancelQueries({ queryKey: REFERENCE_QUERY_PREFIX });
   }
 }

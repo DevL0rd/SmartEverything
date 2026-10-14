@@ -1,11 +1,6 @@
-import {
-  API_ENDPOINTS as E,
-  HEALTH_RECORD_TYPES,
-  type HealthRecordType,
-} from '@smarteverything/domain';
+import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import {
-  DEFAULT_INTERVAL_MINUTES,
   addSyncProgressListener,
   cancelSchedule,
   configure,
@@ -14,7 +9,7 @@ import {
   grantedPermissions,
   isHealthConnectLinked,
   lastSync,
-  requestPermissions,
+  requestAllPermissions,
   schedule,
   syncNow,
   type HealthConnectGrants,
@@ -24,20 +19,10 @@ import {
   type SyncReport,
 } from '../../../../modules/health-connect';
 import { createHealthSource } from '../../../api/health';
-import { SERIES } from '../model/catalogue';
-import type { SeriesGroup } from '../model/series-spec';
 
 const log = new Logger('app.health-connect');
 
 const OPEN_SYNC_GAP_MS = 10 * 60 * 1000;
-
-const ASKED_LATER: ReadonlySet<SeriesGroup> = new Set(['cycle', 'mindfulness']);
-
-function typesOfGroups(groups: ReadonlySet<SeriesGroup>): ReadonlySet<HealthRecordType> {
-  return new Set(SERIES.filter((spec) => groups.has(spec.group)).map((spec) => spec.type));
-}
-
-const LATER_TYPES = typesOfGroups(ASKED_LATER);
 
 export const HEALTH_CONNECT_ON_DEVICE = isHealthConnectLinked;
 
@@ -71,20 +56,25 @@ function ingestEndpoint(publicUrl: string | null): string {
 export async function connectPhone(
   deviceName: string,
   publicUrl: string | null,
+  intervalMinutes: number,
+  connected: boolean,
 ): Promise<HealthConnectGrants> {
   const run = log.operation('health.connect');
   const status = await getStatus();
   if (status.sdk !== 'available') {
     throw new HealthConnectUnavailableError(status.sdk);
   }
-  const endpoint = ingestEndpoint(publicUrl);
-  const token = await createHealthSource(deviceName);
-  await configure({ endpoint, token });
-  const readable = HEALTH_RECORD_TYPES.filter(
-    (type) => status.readableTypes.includes(type) && !LATER_TYPES.has(type),
-  );
-  const grants = await requestPermissions({ types: readable, background: true, history: true });
-  await schedule({ intervalMinutes: DEFAULT_INTERVAL_MINUTES });
+  const grants = await requestAllPermissions();
+  if (grants.types.length === 0 && grants.writeTypes?.length === 0) {
+    run.succeeded({ types: 0, background: false });
+    return grants;
+  }
+  if (!connected || !(await healthConnectConfigured())) {
+    const endpoint = ingestEndpoint(publicUrl);
+    const token = await createHealthSource(deviceName);
+    await configure({ endpoint, token });
+  }
+  await scheduleSync(intervalMinutes);
   run.succeeded({ types: grants.types.length, background: grants.background });
   return grants;
 }
@@ -124,17 +114,6 @@ export async function applySyncSchedule(intervalMinutes: number): Promise<void> 
     return;
   }
   await scheduleSync(intervalMinutes);
-}
-
-export async function askForAccess(
-  types: readonly HealthRecordType[],
-): Promise<HealthConnectGrants> {
-  const grants = await requestPermissions({ types: [...types], background: true, history: true });
-  log.info('health.permissions_requested', {
-    requested: types.length,
-    granted: grants.types.length,
-  });
-  return grants;
 }
 
 export async function scheduleSync(intervalMinutes: number): Promise<void> {

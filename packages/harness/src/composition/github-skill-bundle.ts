@@ -51,6 +51,14 @@ export async function githubSkillBundle(
       'composition_incompatible',
       'A shared skill must have its own confined repository folder.',
     );
+  return encodeSkillBundle(await githubFolderFiles(identity, prefix, signal));
+}
+
+export async function githubFolderFiles(
+  identity: GithubSkillSourceIdentity,
+  prefix: string,
+  signal: AbortSignal,
+): Promise<HarnessSkillAssetBundle['files']> {
   const treeUrl = `https://api.github.com/repos/${identity.owner}/${identity.repository}/git/trees/${identity.commit}?recursive=1`;
   const tree = GITHUB_TREE.parse(
     JSON.parse(
@@ -84,10 +92,10 @@ export async function githubSkillBundle(
       );
     files.push({ path: member.path.slice(prefix.length), base64: bytes.toString('base64') });
   }
-  return encodeSkillBundle(files);
+  return files;
 }
 
-function encodeSkillBundle(files: HarnessSkillAssetBundle['files']): Buffer {
+export function encodeSkillBundle(files: HarnessSkillAssetBundle['files']): Buffer {
   const bytes = Buffer.from(JSON.stringify(HARNESS_SKILL_ASSET_BUNDLE.parse({ files })));
   if (bytes.byteLength > MAX_SKILL_ASSET_BYTES)
     throw new HarnessRuntimeError(

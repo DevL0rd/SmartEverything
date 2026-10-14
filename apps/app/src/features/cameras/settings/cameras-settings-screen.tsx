@@ -6,8 +6,9 @@ import { EmptyState } from '../../../components/empty-state';
 import { PageHeader } from '../../../components/page-header';
 import { NavRow } from '../../../components/rows';
 import { Screen } from '../../../components/screen';
-import { useIsOwner } from '../../../store/selectors';
 import { List } from '../../../components/section';
+import { useIsOwner } from '../../../store/selectors';
+import { BudgetRow, RetentionRow } from '../transcripts/keep-rows';
 import { joinParts } from '../../../format/text';
 import { useCameraEntries, useCameraReaches } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
@@ -34,7 +35,6 @@ function firewallSummary(reaches: readonly CameraReach[]): string {
 
 function WatchingList(): ReactNode {
   const reaches = useCameraReaches();
-  const owner = useIsOwner();
   return (
     <List title="Watching" inset>
       <NavRow
@@ -51,13 +51,6 @@ function WatchingList(): ReactNode {
           href={href.settings.page('server/firewall')}
         />
       )}
-      {owner ? (
-        <NavRow
-          title="Transcripts"
-          icon="fileText"
-          href={href.settings.page('cameras/transcripts')}
-        />
-      ) : null}
       <NavRow title="Doorbell and calls" icon="bell" href={href.settings.page('notifications')} />
     </List>
   );
@@ -65,6 +58,7 @@ function WatchingList(): ReactNode {
 
 export function CamerasSettingsScreen(): ReactNode {
   const entries = useCameraEntries();
+  const owner = useIsOwner();
   return (
     <Screen
       header={
@@ -88,6 +82,12 @@ export function CamerasSettingsScreen(): ReactNode {
         </List>
       )}
       <WatchingList />
+      {owner ? (
+        <List title="Keep and spend">
+          <RetentionRow />
+          <BudgetRow />
+        </List>
+      ) : null}
     </Screen>
   );
 }

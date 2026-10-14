@@ -10,7 +10,8 @@ import {
   ANTHROPIC_SKILLS_SOURCE,
   type AnthropicSkillSnapshot,
 } from './anthropic-skills';
-import { communityExtensionPage } from './community-extensions';
+import { extensionDiscoveryPage } from './extension-discovery';
+import { ClaudePlugins } from './claude-plugins';
 import { HarnessDiscoverySourceError } from './discovery-http';
 import type { HarnessConfigurationService } from './configuration';
 
@@ -18,6 +19,7 @@ const CACHE_MS = 5 * 60 * 1000;
 const MAX_CACHED_PAGES = 64;
 export class HarnessDiscovery {
   readonly skills = new AnthropicSkills();
+  readonly plugins = new ClaudePlugins();
   private readonly pages = new Map<string, HarnessDiscoveryPage>();
   private readonly pending = new Map<string, Promise<HarnessDiscoveryPage>>();
 
@@ -25,8 +27,8 @@ export class HarnessDiscovery {
 
   async browse(input: unknown): Promise<HarnessDiscoveryPage> {
     const request = HARNESS_DISCOVERY_REQUEST.parse(input);
-    if (request.kind === 'skill' && !request.refresh && request.snapshot !== undefined)
-      this.skills.retainedSnapshot(request.snapshot);
+    if (!request.refresh && request.snapshot !== undefined)
+      (request.kind === 'skill' ? this.skills : this.plugins).retainedSnapshot(request.snapshot);
     const key = JSON.stringify({ ...request, refresh: false });
     const current = this.pages.get(key);
     const inFlight = this.pending.get(key);
@@ -55,22 +57,14 @@ export class HarnessDiscovery {
     )
       return Promise.resolve(current);
     const work = this.fetchPage(request)
-      .then((page) => {
-        this.pages.delete(key);
-        this.pages.set(key, page);
-        while (this.pages.size > MAX_CACHED_PAGES) {
-          const oldest = this.pages.keys().next().value;
-          if (oldest !== undefined) this.pages.delete(oldest);
-        }
-        return page;
-      })
+      .then((page) => this.remember(key, page, current))
       .catch((cause: unknown) => {
         if (cause instanceof ApiError) throw cause;
         const warning =
           cause instanceof HarnessDiscoverySourceError
             ? cause.message
             : 'The online source failed its bounded response, network or schema checks.';
-        if (current !== undefined) return { ...current, stale: true, warning };
+        if (current !== undefined) return this.remember(key, { ...current, stale: true, warning });
         throw new ApiError('conflict', warning);
       })
       .finally(() => {
@@ -80,8 +74,26 @@ export class HarnessDiscovery {
     return work;
   }
 
+  private remember(
+    key: string,
+    page: HarnessDiscoveryPage,
+    current?: HarnessDiscoveryPage,
+  ): HarnessDiscoveryPage {
+    const retained =
+      page.stale && current !== undefined
+        ? { ...current, stale: true, warning: page.warning }
+        : page;
+    this.pages.delete(key);
+    this.pages.set(key, retained);
+    while (this.pages.size > MAX_CACHED_PAGES) {
+      const oldest = this.pages.keys().next().value;
+      if (oldest !== undefined) this.pages.delete(oldest);
+    }
+    return retained;
+  }
+
   private async fetchPage(request: HarnessDiscoveryRequest): Promise<HarnessDiscoveryPage> {
-    if (request.kind === 'extension') return communityExtensionPage(request);
+    if (request.kind === 'extension') return extensionDiscoveryPage(this.plugins, request);
     try {
       const snapshot = await this.skills.snapshot(
         request.refresh,

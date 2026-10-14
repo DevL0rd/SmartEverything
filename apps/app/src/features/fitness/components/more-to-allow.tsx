@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { HealthRecordType } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
+import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { HEALTH_CONNECT_ON_DEVICE } from '../data/health-connect';
@@ -46,7 +46,7 @@ function Allow(): ReactNode {
     <List
       title="More you can add"
       inset
-      footer="Share more kinds of data from Health Connect when you want them here."
+      footer="Review Health Connect access in Fitness settings to share more kinds of data."
     >
       {groups.map((group) => (
         <ListRow
@@ -54,16 +54,8 @@ function Allow(): ReactNode {
           icon={group.icon}
           title={group.label}
           subtitle="Not shared yet"
-          trailing={
-            <Button
-              label="Allow"
-              variant="tonal"
-              loading={controls.busy === 'permissions'}
-              onPress={() => {
-                controls.askAgain(group.types);
-              }}
-            />
-          }
+          href={href.settings.focus('health', 'health-connect')}
+          chevron
         />
       ))}
     </List>

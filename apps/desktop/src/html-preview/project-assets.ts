@@ -1,11 +1,7 @@
 import { request as requestHttps } from 'node:https';
 import { request as requestHttp, type IncomingMessage } from 'node:http';
-import {
-  BrowserPolicyError,
-  NATIVE_PROJECT_ASSET_PATH,
-  type NativeProjectDocument,
-} from '@smarteverything/domain';
-import type { ClaimedHtml, NativeHtmlClaimPort } from './claim.js';
+import { BrowserPolicyError, chatPageAssetUrl } from '@smarteverything/domain';
+import type { NativeHtmlPage, NativeHtmlTransportPort } from './page.js';
 
 const HEADERS = [
   'content-type',
@@ -19,18 +15,16 @@ const HEADERS = [
   'x-content-type-options',
 ];
 export function projectAsset(
-  port: NativeHtmlClaimPort,
-  claim: ClaimedHtml,
-  document: NativeProjectDocument,
+  port: NativeHtmlTransportPort,
+  page: NativeHtmlPage,
   request: Request,
 ): Promise<Response> {
-  const { input } = claim;
-  const url = new URL(
-    `${input.binding.canonicalOrigin}${NATIVE_PROJECT_ASSET_PATH.replace(':leaseId', document.leaseId)}`,
-  );
-  url.searchParams.set('path', assetPath(request.url));
-  const lease = port.lease(input.scopeId, url.href, input.binding, input.routeGeneration);
-  const signals = [claim.signal, request.signal];
+  const { input } = page;
+  port.authorize(input.scopeId, input.authorization, page.owner);
+  const prefix = chatPageAssetUrl(input.page.chatId, input.page.publicationId, '');
+  const url = new URL(`${input.binding.canonicalOrigin}${prefix}${assetPath(request.url)}`);
+  const lease = port.lease(input.scopeId, url.href, input.binding);
+  const signals = [page.signal, request.signal];
   if (lease.signal !== undefined) signals.push(lease.signal);
   const signal = AbortSignal.any(signals);
   signal.throwIfAborted();
@@ -44,14 +38,13 @@ export function projectAsset(
       ...{ hubAbortSignal: signal },
       headers: {
         authorization: input.authorization,
-        'x-se-preview-read-capability': document.assetToken,
         'accept-encoding': 'identity',
         ...(range === null ? {} : { range }),
       },
     });
     upstream.on('response', (response) => {
       try {
-        resolve(assetResponse(response, request.method, signal));
+        resolve(assetResponse(response, request.method, signal, prefix));
       } catch (cause) {
         response.destroy();
         reject(
@@ -62,7 +55,7 @@ export function projectAsset(
       }
     });
     upstream.on('error', (cause: Error) => {
-      if (!signal.aborted) port.failed?.(input.scopeId, input.routeGeneration);
+      if (!signal.aborted) port.failed?.(input.scopeId, undefined);
       reject(cause);
     });
     upstream.end();
@@ -72,7 +65,12 @@ function assetPath(value: string): string {
   const url = new URL(value);
   return `${url.pathname}${url.search}`;
 }
-function assetResponse(response: IncomingMessage, method: string, signal: AbortSignal): Response {
+function assetResponse(
+  response: IncomingMessage,
+  method: string,
+  signal: AbortSignal,
+  prefix: string,
+): Response {
   const status = response.statusCode;
   if (status === undefined) throw new BrowserPolicyError('Project asset response has no status.');
   const headers = new Headers();
@@ -81,11 +79,15 @@ function assetResponse(response: IncomingMessage, method: string, signal: AbortS
     if (typeof value === 'string') headers.set(name, value);
   }
   const location = headers.get('location');
-  if (
-    location !== null &&
-    (!location.startsWith('/') || location.startsWith('//') || /[\\\r\n]/u.test(location))
-  )
-    throw new BrowserPolicyError('Project asset redirect must remain within its isolated origin.');
+  if (location !== null) {
+    if (
+      !location.startsWith(`${prefix}/`) ||
+      location.startsWith(`${prefix}//`) ||
+      /[\\\r\n]/u.test(location)
+    )
+      throw new BrowserPolicyError('Page asset redirect must remain within its publication.');
+    headers.set('location', location.slice(prefix.length));
+  }
   if (method === 'HEAD' || [204, 205, 304].includes(status)) {
     response.resume();
     return new Response(null, { status, headers });

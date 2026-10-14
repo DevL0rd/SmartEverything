@@ -9,7 +9,6 @@ import { List } from '../../components/section';
 import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
 import {
-  allowHealthConnectWrites,
   keepInBackground,
   openVendorSettings,
   reconnect,
@@ -136,12 +135,10 @@ function ControlRows({ watch }: { readonly watch: PhoneWatchStatus }): ReactNode
       />
       <ListRow
         title="Save watch data to Health Connect"
-        subtitle="Lets other apps see it too"
+        subtitle="Manage access in Fitness settings"
         icon="fitness"
         chevron
-        onPress={() => {
-          void allowHealthConnectWrites();
-        }}
+        href={href.settings.focus('health', 'health-connect')}
       />
       {watch.paused ? null : (
         <ListRow

@@ -1,3 +1,4 @@
+import { assetProviderName } from './items';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -149,7 +150,8 @@ function DevicesHeader({
       ) : null}
       {item?.selection.kind === 'skill_asset' ? (
         <Text variant="footnote" tone="variant">
-          Status is for Workspace skills. Individual skill readiness is not reported.
+          Status is for {assetProviderName(item.selection.parent_id)}. Individual asset readiness is
+          not reported.
         </Text>
       ) : null}
     </>

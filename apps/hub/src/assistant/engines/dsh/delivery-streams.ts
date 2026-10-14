@@ -166,7 +166,6 @@ export class NativeDeliveryStreams {
         this.tool(turn, event);
         return;
       case 'usage':
-        this.usageEvent(event);
         return;
       case 'completed':
       case 'failed':
@@ -212,10 +211,6 @@ export class NativeDeliveryStreams {
     const message = this.service.store.assistantChat.message(messageId);
     if (message.state !== 'queued' && message.state !== 'delivered') return;
     this.conversation.stateOf(messageId, 'working');
-  }
-  private usageEvent(event: Extract<AiHarnessEvent, { kind: 'usage' }>): void {
-    if (event.context_percent !== null)
-      this.service.store.aiChats.noteContext(event.chat_id, Math.round(event.context_percent));
   }
   private completedEvent(
     turn: ActiveTurn,

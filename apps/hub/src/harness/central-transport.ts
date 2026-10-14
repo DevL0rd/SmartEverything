@@ -1,3 +1,6 @@
+import { validateNativeReferences } from './reference-delivery';
+import { pluginAgentTransport } from './plugin-agents';
+import type { AssistantService } from '../assistant/service';
 import { nativeProjectFile } from './project-files';
 import type { z } from 'zod';
 import { ApiError, HARNESS_CENTRAL_CONTEXT, HARNESS_CENTRAL_RESULT } from '@smarteverything/domain';
@@ -12,14 +15,17 @@ import { admitCanonicalTool, type CentralToolRequest } from './canonical-tools';
 interface CentralPorts {
   readonly access: HarnessHubTools;
   readonly now: () => Date;
+  readonly assistant: AssistantService;
+  readonly stateDirectory: string;
 }
 const ports = new WeakMap<HarnessService, CentralPorts>();
 export function bindCentralHarness(
   service: HarnessService,
   access: HarnessHubTools,
   now: () => Date,
+  pluginAgents: { readonly assistant: AssistantService; readonly stateDirectory: string },
 ): void {
-  ports.set(service, { access, now });
+  ports.set(service, { access, now, ...pluginAgents });
   bindNativeExecutionTarget(service.store, (device, authority) =>
     nativeTarget(service, device, authority),
   );
@@ -54,10 +60,26 @@ export async function centralTransport(
   input: HarnessTransportRequest,
 ): Promise<unknown> {
   const request = input.request;
+  if (request.operation === 'reference_validate') {
+    service.storage.verify(request.claim, input);
+    await validateNativeReferences(service, request.claim.session_id, {
+      deliveryId: request.delivery_id,
+      selected: request.references,
+    });
+    service.storage.verify(request.claim, input);
+    return { ok: true };
+  }
   if (request.operation === 'project_file')
     return nativeProjectFile(service, request, () => {
       service.storage.verify(request.claim, input);
     });
+  if (request.operation === 'plugin_agent') {
+    service.storage.verify(request.claim, input);
+    const installed = centralPorts(service);
+    const result = await pluginAgentTransport({ service, ...installed }, request);
+    service.storage.verify(request.claim, input);
+    return result;
+  }
   if (request.operation !== 'context' && request.operation !== 'tool')
     throw new ApiError('invalid_request', 'Expected scoped central native access.');
   service.storage.verify(request.claim, input);
@@ -71,6 +93,7 @@ export async function centralTransport(
         role: access.caller(id).role,
       }),
       tools: access.catalogue(id),
+      declared_tool_names: access.declarationNames(id),
       compact_at_percent: service.store.assistantChat.settings().compact_at_percent,
     });
   admitCanonicalTool(service, request);

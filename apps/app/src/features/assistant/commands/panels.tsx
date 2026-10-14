@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import type { ReactNode } from 'react';
+import { ScrollView, View } from 'react-native';
 import type { CommandDescriptor, CommandCompletion } from './types';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
+import { SuggestionPanel } from '../components/suggestion-panel';
 import { Button } from '../../../components/button';
 export interface CommandReceipt {
   readonly name: string;
@@ -42,47 +43,24 @@ interface SuggestionProps {
   readonly reason: string | null;
   readonly retry: (() => void) | null;
 }
-function usePanelRoom(): {
-  readonly ref: RefObject<View | null>;
-  readonly frame: { readonly maxHeight: number };
-  readonly measure: () => void;
-} {
-  const ref = useRef<View>(null);
-  const { height } = useWindowDimensions();
-  const [room, setRoom] = useState(320);
-  const measure = (): void => {
-    ref.current?.measureInWindow((_x, y) => {
-      setRoom(Math.max(0, y - 8));
-    });
-  };
-  useEffect(measure, [height]);
-  return { ref, frame: { maxHeight: Math.min(320, room) }, measure };
-}
 export function CommandSuggestions(props: SuggestionProps): ReactNode {
-  const { ref, frame, measure } = usePanelRoom();
   const matches = props.commands.filter((command) => command.id === props.selected);
   const detail = matches.length === 1 ? matches[0] : undefined;
   return (
-    <View className="absolute bottom-full left-0 right-0 mb-2">
-      <View ref={ref} onLayout={measure} className="absolute bottom-0 h-0 w-full" />
-      <View
-        style={frame}
-        className="overflow-hidden rounded-xl border-hairline border-outline-variant bg-surface-raised elevation-2"
-      >
-        <ScrollView keyboardShouldPersistTaps="always">
-          <CommandRows {...props} />
-          {detail === undefined ? null : (
-            <View className="gap-1 border-t-hairline border-outline-variant px-4 py-2">
-              <Text variant="footnote" selectable>
-                {detail.description}
-              </Text>
-              <CommandIdentity command={detail} />
-              <CommandHint command={detail} />
-            </View>
-          )}
-        </ScrollView>
-      </View>
-    </View>
+    <SuggestionPanel>
+      <ScrollView keyboardShouldPersistTaps="always">
+        <CommandRows {...props} />
+        {detail === undefined ? null : (
+          <View className="gap-1 border-t-hairline border-outline-variant px-4 py-2">
+            <Text variant="footnote" selectable>
+              {detail.description}
+            </Text>
+            <CommandIdentity command={detail} />
+            <CommandHint command={detail} />
+          </View>
+        )}
+      </ScrollView>
+    </SuggestionPanel>
   );
 }
 function CommandRows({ commands, selected, choose, reason, retry }: SuggestionProps): ReactNode {

@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import { PREVIEW_VIEW_SCOPE, type PreviewDiagnosticScope } from '@smarteverything/domain';
+import {
+  PREVIEW_VIEW_SCOPE,
+  PREVIEW_CONSOLE_RECORD,
+  type PreviewConsoleRecord,
+  type PreviewDiagnosticScope,
+} from '@smarteverything/domain';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import { z } from 'zod';
 export const PREVIEW_REPORT_PREFIX =
@@ -30,4 +35,16 @@ export function previewReportScope(event: StoredEvent): PreviewDiagnosticScope |
     if (cause instanceof SyntaxError) return null;
     throw cause;
   }
+}
+
+export function previewReportError(event: StoredEvent): PreviewConsoleRecord | null {
+  if (previewReportScope(event) === null) return null;
+  const raw: unknown = JSON.parse(event.text.slice(PREVIEW_REPORT_PREFIX.length));
+  const parsed = REPORT.extend({
+    errorId: z.int().positive(),
+    records: z.array(PREVIEW_CONSOLE_RECORD),
+  }).safeParse(raw);
+  return parsed.success
+    ? (parsed.data.records.find((record) => record.id === parsed.data.errorId) ?? null)
+    : null;
 }

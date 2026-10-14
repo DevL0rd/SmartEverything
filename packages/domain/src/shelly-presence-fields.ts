@@ -58,4 +58,5 @@ export interface ShellyPresenceOperationDescriptor {
   readonly keywords: readonly string[];
   readonly method: string;
   readonly permission: ShellyPresenceField['permission'];
+  readonly possiblePermissions?: readonly ShellyPresenceField['permission'][];
 }

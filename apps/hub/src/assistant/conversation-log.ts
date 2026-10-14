@@ -9,6 +9,7 @@ import {
   assistantLabel,
   isChatActivity,
   type AiChatRow,
+  type AiMessageReference,
   type ChatStepOutcome,
   type SettledStep,
   type AssistantMessageRow,
@@ -31,6 +32,7 @@ export interface PersonMessage {
   readonly files: readonly StoredAttachment[];
   readonly origin: MessageOrigin;
   readonly clientMessageId?: string;
+  readonly references?: readonly AiMessageReference[];
 }
 
 export interface ResponderMessage {
@@ -97,6 +99,7 @@ export class ConversationLog {
         author: input.author,
         text: input.text,
         attachments: input.files.map(summaryOf),
+        references: [...(input.references ?? [])],
         state: 'queued',
         reason: null,
         steps: [],

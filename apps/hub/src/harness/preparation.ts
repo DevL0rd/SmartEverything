@@ -1,4 +1,6 @@
+import { compatibleHarnessContext } from './context-projection';
 import { issueProjectGrant } from './project-grant';
+import { pluginChildPolicy } from './plugin-agents';
 import { projectBinding } from './project-binding';
 import { legacyHistory, admitLegacyImport } from './legacy-history';
 import { acquireNative } from './acquisition';
@@ -60,6 +62,7 @@ export function prepareConversation(
   bindOpening(service, { request, chat, host: connection.host, opened, selection, id, cwd });
   const opening: Extract<HarnessRuntimeRequest, { kind: 'open' }> = {
     kind: 'open',
+    ...childOpeningPolicy(service, chat),
     chat_id: chat.id,
     claim: opened.claim,
     route: selection,
@@ -214,15 +217,31 @@ export function projectOpened(
     readonly cwd: string;
   },
 ): void {
+  const grant = service.storage.grant(opened.metadata.header.id);
+  const route = service.routes.selected(
+    input.chat.profile_id,
+    input.selection,
+    grant.authority.kind === 'trigger',
+  );
+  const model = route.models.find((entry) => entry.id === input.selection.model);
+  if (model === undefined)
+    throw new ApiError('conflict', 'Native reopening lost its selected model.');
+  const retained = service.store.harnessCoordination.state(opened.metadata.header.id)?.context;
+  const context = compatibleHarnessContext(
+    retained,
+    input.selection,
+    model.capabilities.context_tokens,
+  );
   service.store.harnessCoordination.project(
     AI_HARNESS_SESSION.parse({
       chat_id: input.chat.id,
       session_id: opened.metadata.header.id,
       metadata: opened.metadata,
+      context,
       target: input.host.target,
       epoch: opened.claim.epoch,
       directory: { target: input.host.target, path: input.cwd },
-      storage_binding: service.storage.grant(opened.metadata.header.id).storage_binding,
+      storage_binding: grant.storage_binding,
       permission: service.binding(input.chat).permission,
       route: input.selection,
       state: 'idle',
@@ -233,4 +252,12 @@ export function projectOpened(
     }),
     0,
   );
+}
+
+function childOpeningPolicy(
+  service: HarnessService,
+  chat: AiChatRow,
+): Pick<Extract<HarnessRuntimeRequest, { kind: 'open' }>, 'plugin_agent_policy'> {
+  const policy = pluginChildPolicy(service, chat);
+  return policy === undefined ? {} : { plugin_agent_policy: policy };
 }

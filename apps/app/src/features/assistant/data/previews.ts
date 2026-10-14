@@ -1,9 +1,10 @@
+import * as Crypto from 'expo-crypto';
 import { ownGatewayLease, closeGatewayLease, previewOwnerConnection } from './preview-owner';
 import { Logger } from '@smarteverything/logging';
 import {
-  nativeHtmlPreviewAvailable,
-  nativeProjectPreviewAvailable,
-  nativeHtmlPersistenceAvailable,
+  htmlPreviewBridge,
+  nativeChatPageAvailable,
+  projectHtmlTarget,
 } from '../../../platform/browser-html-projection';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -13,6 +14,10 @@ import {
   type AiPreviewCatalogue,
   type AiHtmlPreviewPublication,
   type HtmlPresentationLease,
+  type NativePageDescriptor,
+  type BrowserTarget,
+  NATIVE_PAGE_DESCRIPTOR,
+  BrowserPolicyError,
 } from '@smarteverything/domain';
 import { api, useConnection } from '../../../api/transport';
 import {
@@ -51,29 +56,47 @@ export async function createPreviewLease(
   return ownGatewayLease(connection, chatId, lease);
 }
 
-export async function createHtmlPreviewLease(
-  chatId: string,
+export async function openChatPage(
   publication: AiHtmlPreviewPublication,
-): Promise<HtmlPresentationLease> {
-  if (
-    nativeHtmlPreviewAvailable() &&
-    (publication.project_source?.standalone !== false || nativeProjectPreviewAvailable())
-  )
-    return api().call(E.createAiNativeHtmlPreviewLease, {
-      params: { chatId },
-      body: {
-        ...previewLifetime(nativeHtmlPersistenceAvailable()),
-        purpose: 'native-html',
-        publication_id: publication.id,
-        revision: publication.revision,
-      },
+): Promise<{ readonly page: NativePageDescriptor; readonly target: BrowserTarget }> {
+  const native = htmlPreviewBridge();
+  const id = `${publication.id}:page:${publication.profile_id}:${Crypto.randomUUID()}`;
+  if (native !== null) {
+    if (!nativeChatPageAvailable())
+      throw new BrowserPolicyError('Update the app and server to open saved chat pages.');
+    const entry = publication.project_source?.entry;
+    const page = NATIVE_PAGE_DESCRIPTOR.parse({
+      version: 2,
+      chatId: publication.chat_id,
+      publicationId: publication.id,
+      profileId: publication.profile_id,
+      entryPath:
+        entry === undefined ? '/' : `/${entry.split('/').map(encodeURIComponent).join('/')}`,
     });
+    return { page, target: await projectHtmlTarget(page, id) };
+  }
   const connection = previewOwnerConnection();
-  const lease = await api().call(E.createAiHtmlPreviewLease, {
-    params: { chatId },
-    body: { publication_id: publication.id, revision: publication.revision, ...previewLifetime() },
+  const view = await api().call(E.readAiHtmlPage, {
+    params: { chatId: publication.chat_id, publicationId: publication.id },
   });
-  return ownGatewayLease(connection, chatId, lease);
+  const response = await fetch(`${view.origin}/.se-preview/session`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Authorization: `Bearer ${connection.token}` },
+  });
+  if (!response.ok) throw new BrowserPolicyError('Reconnect your browser to open this chat page.');
+  return {
+    page: view.page,
+    target: {
+      kind: 'preview',
+      id,
+      origin: view.origin,
+      url: view.url,
+      initialPath: view.page.entryPath,
+      page: view.page,
+      profileId: view.page.profileId,
+    },
+  };
 }
 
 export async function releasePreviewLease(

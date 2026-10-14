@@ -7,6 +7,8 @@ import {
 } from '@smarteverything/domain';
 
 export const htmlPreview: NativeHtmlPreview = {
+  pageVersion: (): number =>
+    z.int().min(0).max(2).parse(ipcRenderer.sendSync('desktop:html-page-version')),
   projectVersion: (): number =>
     z.int().min(0).max(1).parse(ipcRenderer.sendSync('desktop:html-project-version')),
   lifetimeVersion: (): number =>

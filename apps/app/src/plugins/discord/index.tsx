@@ -8,5 +8,13 @@ export const discordAppPlugin: AppPlugin = {
   widgets: DISCORD_WIDGETS,
   deviceSections: [],
   deviceSettings: [],
+  settingsSearch: [
+    {
+      id: 'call-transcripts',
+      title: 'Call transcripts',
+      focus: 'call-transcripts',
+      keywords: ['voice', 'history', 'search', 'speech', 'transcription'],
+    },
+  ],
   settings: () => <DiscordStatusSection />,
 };

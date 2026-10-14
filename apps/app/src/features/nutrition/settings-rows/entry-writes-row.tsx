@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
-import { Button } from '../../../components/button';
+import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
-import { notify } from '../../../components/toast-store';
-import { allowEntryWrites, useEntryWriteState } from '../../health-log';
+import { useEntryWriteState } from '../../health-log';
 
 export function EntryWritesRow(): ReactNode {
   const state = useEntryWriteState();
@@ -11,23 +10,10 @@ export function EntryWritesRow(): ReactNode {
       <ListRow
         icon="fitness"
         title="Save what you log to Health Connect"
-        subtitle={`Needs permission · ${String(state.waiting)} waiting`}
+        subtitle={`Review access in Fitness settings · ${String(state.waiting)} waiting`}
         subtitleTone="warning"
-        trailing={
-          <Button
-            label="Allow"
-            variant="tonal"
-            onPress={() => {
-              allowEntryWrites(state.types).catch((error: unknown) => {
-                notify({
-                  message: 'Health Connect permission not changed',
-                  error,
-                  tone: 'critical',
-                });
-              });
-            }}
-          />
-        }
+        href={href.settings.focus('health', 'health-connect')}
+        chevron
       />
     );
   }

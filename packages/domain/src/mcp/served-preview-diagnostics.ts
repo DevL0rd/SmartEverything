@@ -1,6 +1,22 @@
 import type { Served } from './served-types';
 export const SERVED_PREVIEW_DIAGNOSTICS = [
   [
+    'read_preview_error_policy',
+    'assistant',
+    'read',
+    'Read ignored browser errors',
+    'List the captured recurring error fingerprints ignored for automatic wakes in this chat. Raw console logs remain readable and searchable.',
+    { part: 'read_preview_error_policy' },
+  ],
+  [
+    'write_preview_error_policy',
+    'assistant',
+    'control',
+    'Change browser error notifications',
+    'Ignore one captured console error by record ID with a reason when its cause cannot be prevented, restore its exact scoped fingerprint, or clear these chat rules. No blanket error-type or regex filters. Warnings never wake; raw logs remain unchanged.',
+    { part: 'write_preview_error_policy' },
+  ],
+  [
     'read_embedded_browser',
     'assistant',
     'read',

@@ -1,12 +1,18 @@
 import { router } from 'expo-router';
-import { isChatActivity, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
+import {
+  isChatActivity,
+  type AiChatRow,
+  type AssistantMessageRow,
+  type AiMessageReference,
+} from '@smarteverything/domain';
 import { branchAiChat } from '../../../api/ai';
 import { href } from '../../../app-shell/hrefs';
 import { notify } from '../../../components/toast-store';
-import { setDraft } from '../data/drafts';
+import { setReferenceDraft } from '../data/drafts';
 
 export interface BranchOptions {
   readonly prefill?: string;
+  readonly references?: readonly AiMessageReference[];
 }
 
 export function latestBranchPoint(rows: readonly AssistantMessageRow[]): string | null {
@@ -28,7 +34,7 @@ export async function branchChat(
   try {
     const branch = await branchAiChat(chatId, messageId);
     if (options.prefill !== undefined) {
-      setDraft(branch.id, options.prefill);
+      setReferenceDraft(branch.id, { text: options.prefill, references: options.references ?? [] });
     }
     router.push(href.assistantChat(branch.id));
     return branch;

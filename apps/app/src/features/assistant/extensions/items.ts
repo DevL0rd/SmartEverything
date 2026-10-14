@@ -57,35 +57,41 @@ export function installedItems(
       ? pinnedItem(entry)
       : { ...item, selection: { kind: 'entry', entry } };
   });
-  const skills = desired.entries.flatMap((entry) =>
-    (entry.metadata?.skill_assets ?? []).map(
+  const assets = desired.entries.flatMap((entry) => {
+    if (entry.id !== 'skills' && entry.id !== 'claude-plugins') return [];
+    const parent_id = entry.id;
+    return (entry.metadata?.skill_assets ?? []).map(
       (asset): HarnessExtensionItem =>
         items.find(
           (item) => item.selection.kind === 'skill_asset' && item.selection.asset.id === asset.id,
         ) ?? {
           id: `skill-asset:${asset.id}`,
-          kind: 'skill',
+          kind: parent_id === 'skills' ? 'skill' : 'extension',
           included: false,
           name: asset.id,
-          description: 'Included in Workspace skills.',
+          description: `Included in ${assetProviderName(parent_id)}.`,
           publisher: 'Publisher not reported',
           capabilities: [],
-          requirements: ['Workspace skills must be enabled on a compatible device.'],
+          requirements: [`${assetProviderName(parent_id)} must be enabled on a compatible device.`],
           runtimes: ['smarteverything'],
           platforms: entry.metadata?.platforms ?? [],
-          selection: { kind: 'skill_asset', parent_id: 'skills', asset },
+          selection: { kind: 'skill_asset', parent_id, asset },
           acquisition: {
             state: 'unsupported',
-            reason: 'This pinned skill is not available in the current catalogue.',
+            reason: 'This pinned asset is not available in the current catalogue.',
           },
         },
-    ),
-  );
-  return [...entries, ...skills];
+    );
+  });
+  return [...entries, ...assets];
 }
 
 export function matchesExtension(item: HarnessExtensionItem, query: string): boolean {
   return `${item.name} ${item.description} ${item.publisher} ${item.kind} ${item.acquisition.state === 'available' ? item.acquisition.format : ''}`
     .toLowerCase()
     .includes(query.toLowerCase());
+}
+
+export function assetProviderName(parentId: 'skills' | 'claude-plugins'): string {
+  return parentId === 'skills' ? 'Workspace skills' : 'Coding plugins';
 }

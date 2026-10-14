@@ -12,6 +12,7 @@ import { eventLook } from '../../activity';
 import { saveRecording } from '../data/save-clip';
 import { recordingTarget, type EventEntry } from '../logic/event-entries';
 import { EventThumb } from './event-thumb';
+import { joinParts } from '../../../format/text';
 import { subtitleOf } from './event-row';
 
 export interface EventCardProps {
@@ -66,7 +67,7 @@ function PlayGlyph({ shown }: { readonly shown: boolean }): ReactNode {
 export function EventCard(props: EventCardProps): ReactNode {
   const { entry, cameraName, thumb, timeZone } = props;
   const [hovered, setHovered] = useState(false);
-  const look = eventLook(entry.kind);
+  const look = eventLook(entry.kind, entry.details);
   const target = recordingTarget(entry);
   const menu = useContextMenu(useCardMenu(entry, props.onDelete), cameraName ?? look.label);
   return (
@@ -97,7 +98,7 @@ export function EventCard(props: EventCardProps): ReactNode {
             {cameraName ?? look.label}
           </Text>
           <Text variant="footnote" tone="variant" numberOfLines={1}>
-            {subtitleOf(entry, timeZone)}
+            {joinParts([cameraName === null ? null : look.label, subtitleOf(entry, timeZone)])}
           </Text>
         </View>
       </Interactive>

@@ -15,6 +15,25 @@ import type {
 import type { HarnessService } from '../harness/service';
 
 const CONTROL_TIMEOUT_MS = 120_000;
+const RECEIPT_STATES = {
+  open: 'ready',
+  prompt: 'accepted',
+  steer: 'completed',
+  auxiliary: 'completed',
+  preflight: 'preflighted',
+  interrupt: 'completed',
+  compact: 'completed',
+  command_list: 'completed',
+  configuration_prepare: 'preflighted',
+  command: 'completed',
+  answer: 'completed',
+  drain: 'drained',
+  close: 'closed',
+  workspace: 'completed',
+  permission: 'completed',
+} as const satisfies Readonly<
+  Record<HarnessRuntimeRequest['kind'], HarnessRuntimeReceipt['state']>
+>;
 interface Pending {
   readonly request: HarnessRuntimeRequest;
   readonly resolve: (receipt: HarnessRuntimeReceipt) => void;
@@ -142,7 +161,7 @@ export class RemoteHarness {
       receipt.operation_id !== id ||
       receipt.session_id !== session ||
       receipt.epoch !== epoch ||
-      receipt.state !== receiptState(request.kind)
+      receipt.state !== RECEIPT_STATES[request.kind]
     )
       throw new ApiError(
         'forbidden',
@@ -234,12 +253,4 @@ export class RemoteHarness {
       this.binding.runtime_instance,
     );
   }
-}
-function receiptState(kind: HarnessRuntimeRequest['kind']): HarnessRuntimeReceipt['state'] {
-  if (kind === 'open') return 'ready';
-  if (kind === 'prompt') return 'accepted';
-  if (kind === 'preflight') return 'preflighted';
-  if (kind === 'drain') return 'drained';
-  if (kind === 'close') return 'closed';
-  return 'completed';
 }

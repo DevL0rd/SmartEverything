@@ -1,4 +1,11 @@
 import {
+  referenceTitles,
+  ownsReferenceMessage,
+  type ChatReferenceMessage,
+  type ChatReferenceTitle,
+  type ChatReferenceTitleQuery,
+} from './ai-chat-references';
+import {
   AI_CHAT_ROW,
   type AiChatChange,
   type AiChatKind,
@@ -144,6 +151,14 @@ export class AiChatsRepository {
     );
   }
 
+  referenceTitles(query: ChatReferenceTitleQuery): ChatReferenceTitle[] {
+    return referenceTitles(this.context, query);
+  }
+
+  ownsReferenceMessage(query: ChatReferenceMessage): boolean {
+    return ownsReferenceMessage(this.context, query);
+  }
+
   activeSince(since: string): AiChatRow[] {
     return this.context.sql.all(
       STORED_CHAT,
@@ -274,7 +289,7 @@ export class AiChatsRepository {
     );
   }
 
-  noteContext(id: string, percent: number): void {
+  noteContext(id: string, percent: number | null): void {
     this.context.write(() => {
       const before = this.chat(id);
       if (before.context_percent === percent) {

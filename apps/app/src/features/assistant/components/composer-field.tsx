@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from 'react';
 import { TextInput, type TextInputKeyPressEvent } from 'react-native';
 import { ASSISTANT_TEXT_MAX } from '@smarteverything/domain';
+import type { ComposerSelection } from '../references/intent';
 import { useIdiom } from '../../../design/platform';
 
 export interface FieldKeys {
@@ -17,6 +18,8 @@ export interface ComposerFieldProps extends FieldKeys {
   readonly disabled: boolean;
   readonly placeholder: string;
   readonly tall?: boolean;
+  readonly selection?: ComposerSelection;
+  readonly onSelection?: (selection: ComposerSelection) => void;
 }
 
 function handleKey(event: TextInputKeyPressEvent, text: string, keys: FieldKeys): void {
@@ -45,6 +48,8 @@ export function ComposerField({
   disabled,
   placeholder,
   tall = false,
+  selection,
+  onSelection,
   ...keys
 }: ComposerFieldProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
@@ -52,6 +57,10 @@ export function ComposerField({
     <TextInput
       ref={input}
       value={text}
+      selection={selection}
+      onSelectionChange={(event): void => {
+        onSelection?.(event.nativeEvent.selection);
+      }}
       onChangeText={setText}
       onKeyPress={(event) => {
         if (pointer) {

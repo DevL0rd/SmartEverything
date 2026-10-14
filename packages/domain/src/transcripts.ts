@@ -72,6 +72,8 @@ export type TranscriptSession = z.output<typeof TRANSCRIPT_SESSION>;
 
 export const TRANSCRIPT_LINE_INPUT = z.strictObject({
   at: MOMENT,
+  ended_at: MOMENT.nullable().optional(),
+  timing: z.literal('wall_clock').nullable().optional(),
   speaker_id: z.string().min(1).max(200).nullable(),
   speaker: SPEAKER,
   text: z.string().trim().min(1).max(TRANSCRIPT_TEXT_MAX),

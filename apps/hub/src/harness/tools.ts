@@ -18,18 +18,20 @@ import {
 } from '../assistant/execution-authority';
 import { ServerToolPolicy } from './server-tool-policy';
 import { z } from 'zod';
-import {
-  JSON_VALUE,
-  ApiError,
-  HARNESS_CENTRAL_CATALOGUE,
-  HARNESS_CENTRAL_RESULT,
-} from '@smarteverything/domain';
+import { JSON_VALUE, ApiError, HARNESS_CENTRAL_RESULT } from '@smarteverything/domain';
+import type { HARNESS_CENTRAL_CATALOGUE } from '@smarteverything/domain';
 import type { Context } from '@deepseek-ai/cordis';
 import { harnessToolSchema } from './tool-schema';
 import type { ToolCallId, ContentBlock } from '@deepseek-ai/dsh-llm';
 import type { HarnessServerToolAccess, HarnessAuthority } from '@smarteverything/harness';
 import type { ToolHub } from '../ai-tools/tool-hub';
-import type { ToolCaller, HubTool, HubToolResult } from '../ai-tools/hub-tool';
+import type { ToolCaller, ToolSpec, HubToolResult } from '../ai-tools/hub-tool';
+import { META_TOOL_NAMES } from '../ai-tools/tool-sets';
+import {
+  centralToolSpecs,
+  centralToolCatalogue,
+  centralToolDeclarationNames,
+} from './tool-declarations';
 import { effectiveTools } from '../assistant/coordination/grants';
 import { DISCOVERY_NAMES } from '../ai-tools/tool-discovery';
 import { scopedHub } from '../assistant/coordination/scoped-tools';
@@ -156,7 +158,7 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     }
   }
   hubToolNames(_authority: HarnessAuthority): readonly string[] {
-    return this.tools.list().map((tool) => tool.name);
+    return centralToolSpecs(this.tools).map((tool) => tool.name);
   }
   deny(
     authority: HarnessAuthority,
@@ -181,12 +183,15 @@ export class HarnessHubTools implements HarnessServerToolAccess {
   install(ctx: Context): void {
     limitSearchToolSchemas(ctx, this.service);
     const disposers = new Map<string, () => void>();
+    const registered = new Set<string>();
     const contents = new Map<ToolCallId, ContentBlock[]>();
     const update = (): void => {
       for (const dispose of disposers.values()) dispose();
       disposers.clear();
-      for (const tool of this.tools.list())
+      for (const tool of centralToolSpecs(this.tools)) {
+        registered.add(tool.name);
         disposers.set(tool.name, ctx.tools.register(this.definition(ctx, tool, contents)));
+      }
     };
     update();
     ctx.effect(() => this.tools.changes(update));
@@ -196,10 +201,19 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     ctx.on('tools/result', (execution) => {
       contents.delete(execution.callId);
     });
+    ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
+      const result = await next();
+      if (context.agent === undefined) return result;
+      const declared = new Set(this.declarationNames(context.agent.id));
+      result.tools = result.tools.filter(
+        (tool) => !registered.has(tool.name) || declared.has(tool.name),
+      );
+      return result;
+    });
   }
   private definition(
     ctx: Context,
-    tool: HubTool,
+    tool: ToolSpec,
     contents: Map<ToolCallId, ContentBlock[]>,
   ): Parameters<Context['tools']['register']>[0] {
     const parameters = harnessToolSchema(tool.inputSchema);
@@ -234,17 +248,10 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     };
   }
   catalogue(id?: string): z.infer<typeof HARNESS_CENTRAL_CATALOGUE> {
-    const hub = id === undefined ? this.tools : this.scoped(id);
-    return HARNESS_CENTRAL_CATALOGUE.parse(
-      hub
-        .list()
-        .filter((tool) => tool.name !== 'ask_user_question')
-        .map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          parameters: harnessToolSchema(tool.inputSchema),
-        })),
-    );
+    return centralToolCatalogue(id === undefined ? this.tools : this.scoped(id));
+  }
+  declarationNames(id: string): readonly string[] {
+    return centralToolDeclarationNames(this.scoped(id));
   }
   authorizeCall(
     id: string,
@@ -275,7 +282,8 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     name: string,
     args: Readonly<Record<string, unknown>>,
   ): Promise<z.infer<typeof HARNESS_CENTRAL_RESULT>> {
-    const result = await this.call(id, name, args);
+    const { caller, hub } = this.authorizeCall(id, name, args);
+    const result = await hub.call(name, args, caller);
     return HARNESS_CENTRAL_RESULT.parse({
       response: result.response,
       pictures: result.pictures.map((picture) => ({
@@ -305,7 +313,7 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     return hub;
   }
   private scopeAllows(authority: NonNullable<ToolCaller['authority']>, name: string): boolean {
-    if (name === 'call_tool' || DISCOVERY_NAMES.has(name)) return true;
+    if (name === META_TOOL_NAMES.call || DISCOVERY_NAMES.has(name)) return true;
     const event = this.service.store.assistantEvents.event(authority.event_id);
     const allowed = effectiveTools(
       this.service.store,

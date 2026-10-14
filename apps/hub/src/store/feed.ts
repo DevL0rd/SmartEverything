@@ -1,10 +1,21 @@
-import { ROW_CHANGE, type LiveChange, type RowChange } from '@smarteverything/domain';
+import {
+  LIVE_NOTICE,
+  ROW_CHANGE,
+  type CommittedNotice,
+  type LiveChange,
+  type RowChange,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 
 export type ChangeListener = (change: LiveChange) => void;
 
 export type Unsubscribe = () => void;
 export type CommitListener = () => void;
+
+type Pending =
+  | { readonly kind: 'row'; readonly row: RowChange }
+  | { readonly kind: 'notice'; readonly notice: CommittedNotice };
+export type NoticeListener = (notice: CommittedNotice) => void;
 
 interface ChangeSource {
   readonly subscribe: (listener: ChangeListener) => Unsubscribe;
@@ -13,7 +24,8 @@ interface ChangeSource {
 export class ChangeFeed implements ChangeSource {
   private readonly listeners = new Set<ChangeListener>();
   private readonly commitListeners = new Set<CommitListener>();
-  private pending: RowChange[] | null = null;
+  private readonly noticeListeners = new Set<NoticeListener>();
+  private pending: Pending[] | null = null;
   private delivered = 0;
 
   constructor(private readonly log: Logger) {}
@@ -27,6 +39,19 @@ export class ChangeFeed implements ChangeSource {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  subscribeNotices(listener: NoticeListener): Unsubscribe {
+    this.noticeListeners.add(listener);
+    return (): void => {
+      this.noticeListeners.delete(listener);
+    };
+  }
+
+  notice(raw: unknown): void {
+    const notice = LIVE_NOTICE.parse(raw);
+    if (this.pending === null) this.deliverNotice(notice);
+    else this.pending.push({ kind: 'notice', notice });
   }
 
   subscribeCommitted(listener: CommitListener): Unsubscribe {
@@ -54,7 +79,8 @@ export class ChangeFeed implements ChangeSource {
     const changes = this.pending ?? [];
     this.pending = null;
     for (const change of changes) {
-      this.deliver(change);
+      if (change.kind === 'row') this.deliver(change.row);
+      else this.deliverNotice(change.notice);
     }
   }
 
@@ -68,7 +94,17 @@ export class ChangeFeed implements ChangeSource {
       this.deliver(parsed);
       return;
     }
-    this.pending.push(parsed);
+    this.pending.push({ kind: 'row', row: parsed });
+  }
+
+  private deliverNotice(notice: CommittedNotice): void {
+    for (const listener of this.noticeListeners) {
+      try {
+        listener(notice);
+      } catch (cause) {
+        this.log.error('change.notice_listener_failed', cause, { type: notice.type });
+      }
+    }
   }
 
   private deliver(row: RowChange): void {

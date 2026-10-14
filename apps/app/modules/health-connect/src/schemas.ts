@@ -29,6 +29,7 @@ export type HealthConnectStatus = z.infer<typeof HEALTH_CONNECT_STATUS>;
 
 export const HEALTH_CONNECT_GRANTS = z.object({
   types: z.array(HEALTH_RECORD_TYPE),
+  writeTypes: z.array(HEALTH_RECORD_TYPE).optional(),
   background: z.boolean(),
   history: z.boolean(),
 });

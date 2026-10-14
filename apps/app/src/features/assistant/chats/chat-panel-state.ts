@@ -1,6 +1,6 @@
 import { rememberBrowserFocus, restoreBrowserFocus } from '../../../platform/browser-focus';
 import { useEffect, useState } from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, Platform } from 'react-native';
 import { router, useLocalSearchParams, useIsFocused } from 'expo-router';
 import { setLocalPref, useLocalPref } from '../../../store/local-prefs';
 
@@ -34,7 +34,7 @@ export function usePanelState(): PanelState {
     router.setParams({ section: undefined, sheet: undefined });
   }, [section, focused]);
   useEffect(() => {
-    if (!focused || !open) return;
+    if (Platform.OS !== 'android' || !focused || !open) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       setLocalPref('chatPanelOpen', false);
       return true;

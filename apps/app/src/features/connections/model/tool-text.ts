@@ -6,6 +6,18 @@ interface ToolText {
 }
 
 const TEXT: Readonly<Record<McpToolName, ToolText>> = {
+  search_chat_references: {
+    title: 'Find chat references',
+    line: 'Finds available files, folders, skills, plugins and owned chats without loading their contents',
+  },
+  read_preview_error_policy: {
+    title: 'Read ignored browser errors',
+    line: 'Lists recurring errors excluded from automatic notifications in this chat',
+  },
+  write_preview_error_policy: {
+    title: 'Change browser error notifications',
+    line: 'Ignores a captured recurring error or restores its notifications; raw logs stay visible',
+  },
   read_embedded_browser: {
     title: 'Read browser tabs',
     line: 'Reads tabs and available actions on the connected viewing device',

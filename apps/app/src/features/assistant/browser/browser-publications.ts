@@ -1,6 +1,6 @@
 import { gatewayBrowserAvailable } from '../../../platform/browser-surface';
 import {
-  nativeHtmlPreviewAvailable,
+  nativeChatPageAvailable,
   nativeProjectPreviewAvailable,
 } from '../../../platform/browser-html-projection';
 import { isHtmlPublication } from './browser-selection';
@@ -15,7 +15,7 @@ export function browserPublicationAvailability(
   catalogue: AiPreviewCatalogue | undefined,
 ): (publication: BrowserPublication) => boolean {
   const gateway = catalogue?.gateway.ready === true && gatewayBrowserAvailable();
-  const nativeHtml = !gateway && nativeHtmlPreviewAvailable();
+  const nativeHtml = !gateway && nativeChatPageAvailable();
   return (publication): boolean =>
     gateway ||
     (nativeHtml &&

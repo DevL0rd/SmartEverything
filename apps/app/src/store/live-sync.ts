@@ -4,7 +4,9 @@ import {
   AI_ENGINE_CAPABILITY,
   AI_ENGINE_CAPABILITY_V2,
   AI_HARNESS_CAPABILITY,
+  AI_REFERENCE_CAPABILITY,
   HARNESS_CONFIGURATION_NOTICE_CAPABILITY,
+  TRANSCRIPT_NOTICE_CAPABILITY,
   LIVE_TABLES,
   type LiveChange,
   type LiveMessage,
@@ -160,12 +162,15 @@ export class LiveSync {
           tables: deployed(LIVE_TABLES),
           streams: deployed(platformStreams()),
           capabilities: [
+            TRANSCRIPT_NOTICE_CAPABILITY,
+            AI_REFERENCE_CAPABILITY,
             ...(this.computerAiAdvertised ? [AI_ENGINE_CAPABILITY] : []),
             ...(this.computerAiV2Advertised ? [AI_ENGINE_CAPABILITY_V2] : []),
             ...(this.harnessAdvertised
               ? [
                   AI_HARNESS_CAPABILITY,
                   HARNESS_CONFIGURATION_NOTICE_CAPABILITY,
+                  TRANSCRIPT_NOTICE_CAPABILITY,
                   AI_PREVIEW_CAPABILITY,
                 ]
               : []),

@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
+import type { HarnessDesiredConfiguration } from '@smarteverything/domain';
 import { useState } from 'react';
 import { Banner } from '../../../components/banner';
 import { Sheet } from '../../../components/sheet';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
-import { selectionSummary, type ExtensionChange } from './selection';
+import { selectedEntry, selectionSummary, type ExtensionChange } from './selection';
 import type { ExtensionChangeState, useExtensionWriter } from './change';
 
 type Review = Extract<ExtensionChangeState, { kind: 'review' }>;
@@ -12,6 +13,10 @@ type Writer = ReturnType<typeof useExtensionWriter>;
 
 function intentLabel(change: ExtensionChange): string {
   if (change.kind === 'switch') return change.enabled ? 'Turn on' : 'Turn off';
+  if (change.kind === 'setting')
+    return typeof change.value === 'boolean'
+      ? `${change.value ? 'Turn on' : 'Turn off'} ${change.label}`
+      : `Set ${change.label} to ${JSON.stringify(change.value)}`;
   return change.kind === 'install'
     ? 'Add the inspected version'
     : 'Remove from the shared selection';
@@ -53,10 +58,10 @@ function ReviewBody({ state }: { readonly state: Review }): ReactNode {
     <>
       <Text>{state.change.item.name}</Text>
       <Text variant="callout" tone="variant">
-        Previously: {selectionSummary(state.change.item, state.before)}
+        Previously: {reviewedSelection(state.change, state.before)}
       </Text>
       <Text variant="callout" tone="variant">
-        Now: {selectionSummary(state.change.item, state.current)}
+        Now: {reviewedSelection(state.change, state.current)}
       </Text>
       <Text variant="callout">Your change: {intentLabel(state.change)}</Text>
       <Text variant="footnote" tone="variant">
@@ -99,4 +104,11 @@ export function ExtensionChangeReview({ writer }: { readonly writer: Writer }): 
       </Sheet>
     </>
   );
+}
+
+function reviewedSelection(change: ExtensionChange, desired: HarnessDesiredConfiguration): string {
+  if (change.kind !== 'setting') return selectionSummary(change.item, desired);
+  const saved = selectedEntry(change.item, desired)?.config[change.key];
+  const value = saved === undefined ? change.defaultValue : saved;
+  return `${change.label}: ${value === true ? 'On' : value === false ? 'Off' : JSON.stringify(value)}`;
 }

@@ -1,7 +1,7 @@
 import { ApiError, type PreviewDiagnosticScope } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { profileIdOf, type Caller } from '../server/auth';
-import type { PreviewSources } from './sources';
+import { isHtmlPreview, type PreviewSources } from './sources';
 import type { PreviewLeases } from './leases';
 export class PreviewDiagnosticAuthority {
   constructor(
@@ -31,12 +31,28 @@ export class PreviewDiagnosticAuthority {
       this.store.aiChats.chat(scope.chatId).profile_id !== scope.profileId
     )
       throw new ApiError('forbidden', 'The viewer chat or active profile changed.');
+    if (this.stablePage(scope)) return;
     if (scope.revision === null) {
       if (!scope.browserId.startsWith('public:') || scope.documentId !== scope.browserId)
         throw new ApiError('forbidden', 'The public browser identity is invalid.');
       return;
     }
     this.publication(scope);
+  }
+  private stablePage(scope: PreviewDiagnosticScope): boolean {
+    if (
+      scope.revision !== null ||
+      !scope.browserId.startsWith(`${scope.documentId}:page:${scope.profileId}:`)
+    )
+      return false;
+    const page = this.sources.require(scope.documentId);
+    if (
+      !isHtmlPreview(page) ||
+      page.view.chat_id !== scope.chatId ||
+      page.view.profile_id !== scope.profileId
+    )
+      throw new ApiError('forbidden', 'This page belongs to another chat.');
+    return true;
   }
   private publication(scope: PreviewDiagnosticScope): void {
     const current = this.sources.require(scope.documentId);

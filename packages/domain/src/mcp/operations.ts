@@ -213,6 +213,7 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/history', 'history'],
   ['/api/events', 'history'],
   ['/api/cameras', 'cameras'],
+  ['/api/camera-transcripts', 'cameras'],
   ['/api/transcript', 'cameras'],
   ['/api/recordings', 'cameras'],
   ['/api/talk', 'talk'],

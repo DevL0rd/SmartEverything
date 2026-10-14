@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/lengdanran/dsh-claude-plugin-loader",
+  "commit": "2e7b593e715e1f945f27b4c1c9ef1b8ab0f4f8e2",
+  "license": "MIT",
+  "source_files": {
+    "src/manifest.ts": "be364070c54e969f773ab6881a0e9279c7386b3e283430036cbd75f250277e5a",
+    "src/skills.ts": "77c55616e21df572d1211054a288e89502843eb3676ecf4b401ff7067e2e4060",
+    "src/mapping.ts": "5ad27b9d693752d2496855c292da5cacc0049ce515f24dfe03c38aa7d6716be1"
+  },
+  "adaptation": "Transpiled unchanged source parser/provider/mapping to local ESM and reused via a pinned API adapter. Original entry/invariant cannot use current absent incompatible invariants peer; adapter preserves or explicitly refuses restrictions/model requirements instead of ignoring them."
+}

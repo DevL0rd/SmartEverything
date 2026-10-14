@@ -236,6 +236,7 @@ function automationEntry(automation: SearchAutomation): SearchEntry {
     keywords: [
       'automation',
       'rule',
+      ...(automation.triggerKeywords ?? []),
       ...(automation.enabled
         ? ['disable', 'pause', 'stop', 'turn off']
         : ['enable', 'resume', 'start', 'turn on']),

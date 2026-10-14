@@ -5,9 +5,20 @@ export function previewDiagnosticRoutes(
   preview: PreviewService,
 ): Pick<
   Record<keyof typeof E, Bound>,
-  'readPreviewLogs' | 'searchPreviewLogs' | 'capturePreviewViewport' | 'clearPreviewWebsiteData'
+  | 'readPreviewErrorPolicy'
+  | 'writePreviewErrorPolicy'
+  | 'readPreviewLogs'
+  | 'searchPreviewLogs'
+  | 'capturePreviewViewport'
+  | 'clearPreviewWebsiteData'
 > {
   return {
+    readPreviewErrorPolicy: bound(E.readPreviewErrorPolicy, ({ caller, params }) => [
+      ...preview.diagnostics.readErrorPolicy(caller, params.chatId),
+    ]),
+    writePreviewErrorPolicy: bound(E.writePreviewErrorPolicy, ({ caller, params, body }) => [
+      ...preview.diagnostics.writeErrorPolicy(caller, params.chatId, body),
+    ]),
     clearPreviewWebsiteData: bound(E.clearPreviewWebsiteData, ({ caller, params, body }) =>
       preview.diagnostics.clear(caller, params.chatId, body),
     ),

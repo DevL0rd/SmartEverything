@@ -412,7 +412,10 @@
     "doas",
     "wasms",
     "codegraph",
-    "fedramp"
+    "fedramp",
+    "lengdanran",
+    "anthropics",
+    "tunables"
   ],
   "ignorePaths": [
     "node_modules/**",

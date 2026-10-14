@@ -13,7 +13,9 @@ export function harnessManifest(
 ): AiHarnessManifest {
   return {
     protocol: 1,
+    references: { protocol: 1 },
     human_commands: true,
+    configuration_prepare: true,
     delivery_correlation: true,
     history_import: true,
     revision: HARNESS_RUNTIME_REVISION,

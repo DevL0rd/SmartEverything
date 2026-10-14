@@ -1,3 +1,5 @@
+import { AI_NATIVE_REFERENCE_ACTION, AI_NATIVE_REFERENCE_RESULT } from '../ai-reference-runtime';
+import { AI_MESSAGE_REFERENCES } from '../ai-references';
 import {
   SUBSCRIPTION_INFERENCE_REQUEST,
   SUBSCRIPTION_INFERENCE_RESULT,
@@ -80,10 +82,17 @@ export const HARNESS_RUNTIME_REQUEST = z.discriminatedUnion('kind', [
     storage_binding: AI_HARNESS_STORAGE_BINDING.optional(),
     mode: z.enum(['create', 'resume']),
     history_import: z.array(ASSISTANT_MESSAGE_ROW).optional(),
+    plugin_agent_policy: z
+      .strictObject({
+        persona: z.string().min(1).max(100_000),
+        tools: z.array(z.string().min(1).max(200)).max(2000).optional(),
+      })
+      .optional(),
   }),
   z.strictObject({
     ...SESSION,
     kind: z.literal('prompt'),
+    references: AI_MESSAGE_REFERENCES.optional(),
     delivery_id: z.uuid(),
     text: z.string().max(200_000),
     attachments: z.array(z.uuid()).max(20),
@@ -112,9 +121,15 @@ export const HARNESS_RUNTIME_REQUEST = z.discriminatedUnion('kind', [
     cwd: z.string().min(1).max(4096),
     storage_binding: AI_HARNESS_STORAGE_BINDING.optional(),
   }),
+  z.strictObject({ ...SESSION, kind: z.literal('reference'), input: AI_NATIVE_REFERENCE_ACTION }),
   z.strictObject({ ...SESSION, kind: z.literal('interrupt') }),
   z.strictObject({ ...SESSION, kind: z.literal('compact') }),
   z.strictObject({ ...SESSION, kind: z.literal('command_list') }),
+  z.strictObject({
+    ...SESSION,
+    kind: z.literal('configuration_prepare'),
+    protected_sessions: z.array(DSH_SESSION_ID).max(10_000).default([]),
+  }),
   z.strictObject({
     ...SESSION,
     kind: z.literal('command'),
@@ -139,8 +154,10 @@ export const HARNESS_RUNTIME_REQUEST = z.discriminatedUnion('kind', [
 export type HarnessRuntimeRequest = z.infer<typeof HARNESS_RUNTIME_REQUEST>;
 
 export const HARNESS_RUNTIME_RECEIPT = z.object({
+  references: AI_NATIVE_REFERENCE_RESULT.optional(),
   commands: AI_HARNESS_COMMAND_DESCRIPTORS.optional(),
   command_outcome: AI_HARNESS_COMMAND_OUTCOME.optional(),
+  compacted: z.boolean().optional(),
   operation_id: z.uuid(),
   session_id: DSH_SESSION_ID,
   epoch: z.int().positive(),
@@ -274,6 +291,7 @@ export const HARNESS_CENTRAL_CATALOGUE = z.array(HARNESS_CENTRAL_TOOL).max(2000)
 export const HARNESS_CENTRAL_CONTEXT = z.object({
   text: z.string().max(200_000),
   tools: HARNESS_CENTRAL_CATALOGUE,
+  declared_tool_names: z.array(z.string().min(1).max(200)).max(2000).optional(),
   compact_at_percent: z.number().int().min(50).max(95).optional(),
 });
 export const HARNESS_CENTRAL_RESULT = z.object({
@@ -286,6 +304,16 @@ export const HARNESS_CENTRAL_RESULT = z.object({
       }),
     )
     .max(100),
+});
+export const HARNESS_PLUGIN_AGENT_POLICY = z.strictObject({
+  persona: z.string().min(1).max(100_000),
+  tools: z.array(z.string().min(1).max(200)).max(2000).optional(),
+});
+export const HARNESS_PLUGIN_AGENT_RESULT = z.strictObject({
+  child_id: z.uuid(),
+  run_id: z.uuid(),
+  state: z.enum(['queued', 'running', 'completed', 'interrupted', 'failed']),
+  text: z.string().max(200_000).nullable(),
 });
 export const HARNESS_TRANSPORT_REQUEST = z.strictObject({
   ...BOUND,
@@ -324,6 +352,24 @@ export const HARNESS_TRANSPORT_REQUEST = z.strictObject({
     z.strictObject({ operation: z.literal('catalogue') }),
     z.strictObject({ operation: z.literal('tools') }),
     z.strictObject({ operation: z.literal('context'), claim: DSH_WRITER_CLAIM_WRITE }),
+    z.strictObject({
+      operation: z.literal('reference_validate'),
+      claim: DSH_WRITER_CLAIM_WRITE,
+      delivery_id: z.uuid(),
+      references: AI_MESSAGE_REFERENCES,
+    }),
+    z.strictObject({
+      operation: z.literal('plugin_agent'),
+      claim: DSH_WRITER_CLAIM_WRITE,
+      action: z.enum(['start', 'result', 'cancel']),
+      call_id: z.string().min(1).max(200),
+      call_seq: z.int().nonnegative(),
+      name: z.string().min(1).max(200),
+      arguments: z.record(z.string(), JSON_VALUE),
+      configuration_revision: z.string().min(1).max(200),
+      asset_id: z.string().regex(/^github-plugin:[a-f0-9]{64}$/u),
+      helper: z.string().min(1).max(200),
+    }),
     z.strictObject({
       operation: z.literal('project_file'),
       claim: DSH_WRITER_CLAIM_WRITE,

@@ -1,7 +1,9 @@
+import { deliveryReferences } from '../../../harness/reference-delivery';
 import { ensureNativeControlSession } from './session-control';
 import { rewriteNativeHistory } from '../../../harness/history-mutation';
 import { OwnEngineSelections } from '../../../harness/own-selection';
 import { NativeDeliveryStreams } from './delivery-streams';
+import { NativeWriterRecovery } from './writer-recovery';
 import {
   followDisconnectedTurns,
   nativeSessionReusable,
@@ -21,7 +23,11 @@ import { openConversation } from '../../../harness/opening';
 import type { SideRequest } from '../../side-completion';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '@smarteverything/domain';
-import type { AiChatRow, HarnessRuntimeRequest } from '@smarteverything/domain';
+import type {
+  AiChatRow,
+  HarnessRuntimeRequest,
+  HarnessRuntimeReceipt,
+} from '@smarteverything/domain';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import type { ConversationLog } from '../../conversation-log';
 import type { Engine } from '../engine';
@@ -31,6 +37,7 @@ import type { StreamEmit } from '../../conversation/stream';
 
 export class DshRunner {
   private readonly turns: NativeDeliveryStreams;
+  private readonly recovery: NativeWriterRecovery;
   constructor(
     private readonly options: {
       readonly service: HarnessService;
@@ -44,6 +51,7 @@ export class DshRunner {
       options.dispatcher.runtime.pendingInput(input),
     );
     this.turns = new NativeDeliveryStreams(options, this.authorizeEvent.bind(this));
+    this.recovery = new NativeWriterRecovery(options);
     for (const delivery of options.service.store.harnessDeliveries.pending()) {
       const event = options.service.store.assistantEvents.event(delivery.delivery_id);
       void this.turns.start(
@@ -81,17 +89,27 @@ export class DshRunner {
     return {
       kind: 'dsh',
       activity: (profileId) =>
-        [...this.turns.active.values()]
-          .filter((turn) => turn.chat.profile_id === profileId)
+        [...this.turns.active.values(), ...this.recovery.active.values()]
+          .filter((turn) => turn.event.profile_id === profileId)
           .map((turn) => turn.stream.current()),
       auxiliary: (request) => this.auxiliary(request),
       ownerOnly: false,
-      status: (chat) => nativeEngineStatus(this.service, chat, this.turns.hasChat(chat.id)),
+      status: (chat) =>
+        nativeEngineStatus(
+          this.service,
+          chat,
+          this.turns.hasChat(chat.id) || this.recovery.hasChat(chat.id),
+        ),
       deliver: (event, chat) => this.deliver(event, chat),
-      interrupt: (chat) => this.control(chat, 'interrupt'),
+      interrupt: async (chat): Promise<void> => {
+        if (this.recovery.interrupt(chat.id)) return;
+        await this.control(chat, 'interrupt');
+      },
       compact: async (chat): Promise<boolean> => {
-        await this.control(chat, 'compact');
-        return true;
+        const receipt = await this.control(chat, 'compact');
+        if (receipt.compacted === undefined)
+          throw new ApiError('conflict', 'Native compaction returned no confirmed outcome.');
+        return receipt.compacted;
       },
       historyChanged: (chat, owner): Promise<void> =>
         chat.engine.kind === 'openrouter'
@@ -107,15 +125,13 @@ export class DshRunner {
     return withExecutionAuthority(authority, () => this.deliverAdmitted(event, original));
   }
   private async deliverAdmitted(event: StoredEvent, original: AiChatRow): Promise<void> {
-    if (this.turns.hasChat(original.id, true))
+    if (this.turns.hasChat(original.id, true) || this.recovery.hasChat(original.id))
       throw new ApiError(
         'conflict',
         'This native conversation already has an admitted turn; use steer to send information while tools run.',
       );
     const admitted = this.admittedChat(event, original);
     this.admitRestoredInput(admitted);
-    const sessionId = await this.session(event, admitted);
-    this.authorizeEvent(event, admitted, sessionId);
     const existing = this.service.store.harnessDeliveries.find(event.id);
     if (existing !== undefined) {
       if (existing.state === 'completed') return;
@@ -124,6 +140,9 @@ export class DshRunner {
         'This delivery was already admitted; its disconnected native outcome requires reconciliation, so it was not submitted again.',
       );
     }
+    const sessionId = await this.session(event, admitted);
+    if (sessionId === null) return;
+    this.authorizeEvent(event, admitted, sessionId);
     const chat = this.service.store.aiChats.chat(original.id);
     const delivery = this.service.store.harnessDeliveries.admit(
       event.id,
@@ -231,12 +250,13 @@ export class DshRunner {
   private reusable(id: string | null, profile: string): boolean {
     return nativeSessionReusable(this.service, this.options.dispatcher, id, profile);
   }
-  private async session(event: StoredEvent, original: AiChatRow): Promise<string> {
+  private async session(event: StoredEvent, original: AiChatRow): Promise<string | null> {
     const binding = this.service.binding(original);
     const authority = eventAuthority(this.service.store, event);
     let sessionId = binding.session_id;
     const reusable = this.reusable(sessionId, event.profile_id);
     if (!reusable) {
+      if (!(await this.recovery.wait(event, original))) return null;
       const open = await openConversation(this.service, {
         owner: { profileId: event.profile_id, role: executionRole(this.service.store, authority) },
         chatId: original.id,
@@ -260,6 +280,7 @@ export class DshRunner {
     );
     if (state.epoch === null)
       throw new ApiError('conflict', 'Native writer authority is unavailable.');
+    const references = await deliveryReferences(this.service, event);
     this.service.store.harnessDeliveries.cut(event.id, state.metadata.next_seq);
     await this.service.directory.execute(state.target, event.id, {
       kind: 'prompt',
@@ -267,6 +288,7 @@ export class DshRunner {
       expected_epoch: state.epoch,
       delivery_id: event.id,
       text: event.text,
+      ...(references.length === 0 ? {} : { references: [...references] }),
       attachments:
         event.message_id === null
           ? []
@@ -306,15 +328,23 @@ export class DshRunner {
       );
     return receipt.text;
   }
-  private async control(chat: AiChatRow, kind: 'interrupt' | 'compact' | 'close'): Promise<void> {
-    const admitted = await ensureNativeControlSession(this.service, this.options.dispatcher, chat);
+  private async control(
+    chat: AiChatRow,
+    kind: 'interrupt' | 'compact' | 'close',
+  ): Promise<HarnessRuntimeReceipt> {
+    const admitted = await ensureNativeControlSession(
+      this.service,
+      this.options.dispatcher,
+      chat,
+      kind !== 'interrupt',
+    );
     const state = this.service.state(
       { profileId: admitted.profile_id, role: 'member' },
       admitted.id,
     );
     if (state.epoch === null)
       throw new ApiError('conflict', 'Native writer authority is unavailable.');
-    await this.service.directory.execute(state.target, randomUUID(), {
+    return this.service.directory.execute(state.target, randomUUID(), {
       kind,
       session_id: state.session_id,
       expected_epoch: state.epoch,

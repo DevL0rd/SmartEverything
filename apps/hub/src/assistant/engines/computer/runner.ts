@@ -220,6 +220,11 @@ export class ComputerRunner {
     this.state.save(chat, {
       ...previous,
       job_id: turn.jobId,
+      managed_project: input.turn.managed_project,
+      context:
+        input.turn.managed_project === undefined && previous.managed_project !== undefined
+          ? null
+          : previous.context,
       state: 'working',
       reason: null,
       prompts: [],

@@ -130,7 +130,9 @@ export const AI_CHAT_ROW = z.object({
     .max(100)
     .nullable()
     .default(null)
-    .describe('How full the chat’s context window is after its latest turn; null when unknown'),
+    .describe(
+      'Measured input pressure of the latest ordinary model request; retained after compaction until the next measurement; null when unknown',
+    ),
   branch_message_id: ID.nullable()
     .default(null)
     .describe('The message of the parent chat this chat was branched from; null when not a branch'),

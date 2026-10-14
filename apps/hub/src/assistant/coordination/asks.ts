@@ -115,7 +115,12 @@ export class Coordination {
     });
   }
 
-  async subagent(sender: AskSender, parentId: string, body: AiSubagent): Promise<AiAskResult> {
+  async subagent(
+    sender: AskSender,
+    parentId: string,
+    body: AiSubagent,
+    prepared?: (child: AiChatRow, eventId: string) => void,
+  ): Promise<AiAskResult> {
     if (sender.chatId !== null && sender.chatId !== parentId)
       throw new ApiError(
         'forbidden',
@@ -152,8 +157,16 @@ export class Coordination {
       this.refuse(relay, hops);
       const eventId = this.post(sender, relay, hops);
       this.lifecycle.queued(parent, target, eventId, body.task);
+      prepared?.(target, eventId);
       return { target, eventId };
     });
+    return this.acceptedChild(parent, accepted, body);
+  }
+  private async acceptedChild(
+    parent: AiChatRow,
+    accepted: { readonly target: AiChatRow; readonly eventId: string },
+    body: AiSubagent,
+  ): Promise<AiAskResult> {
     const waiting = body.wait
       ? this.waiters.wait(accepted.eventId, parent.id, accepted.target.id, body.timeoutSeconds)
       : null;
@@ -163,6 +176,16 @@ export class Coordination {
       eventId: accepted.eventId,
       ...(waiting === null ? { state: 'queued' as const, text: null } : await waiting),
     };
+  }
+  cancelQueuedChild(eventId: string): boolean {
+    const event = this.deps.store.assistantEvents.event(eventId);
+    if (event.delivered_at !== null || event.answered_at !== null) return false;
+    this.deps.store.durableWrite(() => {
+      this.deps.store.assistantEvents.mark(event.id, 'answered_at');
+      this.deps.conversation.failedMessage(event.message_id, 'Stopped.', 'interrupted');
+      this.finished(event, 'Stopped.', false);
+    });
+    return true;
   }
   private writeSubagent<T>(parent: AiChatRow, work: () => T): T {
     const write =

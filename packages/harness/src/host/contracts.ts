@@ -27,6 +27,12 @@ export const HARNESS_SESSION_OPTIONS = z.strictObject({
   storageBinding: AI_HARNESS_STORAGE_BINDING.optional(),
   permission: AI_HARNESS_PERMISSION.optional(),
   authority: HARNESS_AUTHORITY.optional(),
+  pluginAgentPolicy: z
+    .strictObject({
+      persona: z.string().min(1).max(100_000),
+      tools: z.array(z.string().min(1).max(200)).max(2000).optional(),
+    })
+    .optional(),
 });
 export type HarnessSessionOptions = z.infer<typeof HARNESS_SESSION_OPTIONS>;
 

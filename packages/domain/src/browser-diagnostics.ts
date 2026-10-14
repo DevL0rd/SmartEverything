@@ -147,6 +147,26 @@ export const PREVIEW_LOG_SEARCH = PREVIEW_LOG_READ.extend({
   after: z.int().min(0).max(20).default(0),
 });
 export const PREVIEW_CAPTURE_SELECTOR = SELECTOR;
+export const PREVIEW_ERROR_RULE = z.strictObject({
+  scopeKey: z.string().min(1).max(512),
+  fingerprint: z.string().regex(/^[a-f0-9]{64}$/u),
+  reason: z.string().min(1).max(1024),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type PreviewErrorRule = z.infer<typeof PREVIEW_ERROR_RULE>;
+export const PREVIEW_ERROR_POLICY_WRITE = z.discriminatedUnion('operation', [
+  PREVIEW_CAPTURE_SELECTOR.extend({
+    operation: z.literal('ignore'),
+    recordId: z.int().positive(),
+    reason: PREVIEW_ERROR_RULE.shape.reason,
+  }),
+  z.strictObject({
+    operation: z.literal('restore'),
+    scopeKey: PREVIEW_ERROR_RULE.shape.scopeKey,
+    fingerprint: PREVIEW_ERROR_RULE.shape.fingerprint,
+  }),
+  z.strictObject({ operation: z.literal('clear') }),
+]);
 export const PREVIEW_LOG_PAGE = z.strictObject({
   scope: PREVIEW_VIEW_SCOPE,
   records: z.array(PREVIEW_CONSOLE_RECORD),

@@ -23,7 +23,7 @@ class HubHtmlViewClient(private val owner: HubHtmlView) : WebViewClient() {
   @Deprecated("Android compatibility navigation callback")
   override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean = !owner.allows(url)
   override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-    if (owner.allowsRequest(request.url.toString(), request.method)) {
+    if (owner.allowsRequest(request.url.toString(), request.method, request.isForMainFrame)) {
       if (request.isForMainFrame) owner.requested(request.url.toString())
       return null
     }
@@ -42,7 +42,7 @@ class HubHtmlViewClient(private val owner: HubHtmlView) : WebViewClient() {
     if (request.isForMainFrame) owner.status(false, "The HTML preview could not be loaded.")
   }
   override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
-    if (request.isForMainFrame) owner.status(false, "The HTML lease is unavailable.")
+    if (request.isForMainFrame) owner.status(false, "The HTML page is unavailable.")
   }
   override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) { handler.cancel() }
   override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String, realm: String) { handler.cancel() }

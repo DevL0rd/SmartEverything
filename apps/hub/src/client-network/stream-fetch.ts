@@ -107,43 +107,73 @@ function responseBody(
   failed: (() => void) | undefined,
 ): ReadableStream<Uint8Array> {
   let finished = false;
+  let cleanup: (() => void) | undefined;
+  const finish = (): boolean => {
+    if (finished) return false;
+    finished = true;
+    cleanup?.();
+    return true;
+  };
   incoming.pause();
   return new ReadableStream<Uint8Array>(
     {
       start(controller): void {
-        incoming.on('data', (chunk: Buffer) => {
-          controller.enqueue(chunk);
-          incoming.pause();
-        });
-        incoming.once('end', () => {
-          finished = true;
-          controller.close();
-        });
-        incoming.once('error', (cause) => {
-          if (!finished) {
-            finished = true;
-            failed?.();
-            controller.error(cause);
-          }
-        });
-        incoming.once('aborted', () => {
-          if (!finished) {
-            finished = true;
-            failed?.();
-            controller.error(new HubTransportError('Hub response interrupted'));
-          }
-        });
+        cleanup = listenToResponseBody(
+          incoming,
+          controller,
+          { finished: (): boolean => finished, finish },
+          failed,
+        );
       },
       pull(): void {
-        incoming.resume();
+        if (!finished) incoming.resume();
       },
       cancel(): void {
-        finished = true;
-        incoming.destroy();
+        if (finish()) incoming.destroy();
       },
     },
     { highWaterMark: HUB_STREAM_QUEUE_BYTES, size: (chunk): number => chunk.byteLength },
   );
+}
+interface ResponseBodyLifecycle {
+  readonly finished: () => boolean;
+  readonly finish: () => boolean;
+}
+function listenToResponseBody(
+  incoming: IncomingMessage,
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  lifecycle: ResponseBodyLifecycle,
+  failed: (() => void) | undefined,
+): () => void {
+  const data = (chunk: Buffer): void => {
+    if (lifecycle.finished()) return;
+    controller.enqueue(chunk);
+    incoming.pause();
+  };
+  const end = (): void => {
+    if (lifecycle.finish()) controller.close();
+  };
+  const error = (cause: Error): void => {
+    if (!lifecycle.finish()) return;
+    failed?.();
+    controller.error(cause);
+  };
+  const aborted = (): void => {
+    error(new HubTransportError('Hub response interrupted'));
+  };
+  incoming.on('data', data);
+  incoming.once('end', end);
+  incoming.on('error', error);
+  incoming.once('aborted', aborted);
+  incoming.once('close', () => {
+    aborted();
+    incoming.removeListener('error', error);
+  });
+  return (): void => {
+    incoming.removeListener('data', data);
+    incoming.removeListener('end', end);
+    incoming.removeListener('aborted', aborted);
+  };
 }
 
 function responseHeaders(incoming: IncomingMessage): Headers {

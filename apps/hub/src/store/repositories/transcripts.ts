@@ -1,3 +1,6 @@
+import { PluginTranscriptPageRepository } from './plugin-transcript-page';
+import { transcriptMatch } from './transcript-reader-scope';
+import { TranscriptReaderRepository } from './transcript-reader';
 import {
   TRANSCRIPT_LINE,
   TRANSCRIPT_LINES_MAX,
@@ -21,7 +24,7 @@ const STORED_LINE = storedRow(TRANSCRIPT_LINE, { flags: ['bot'] });
 const SESSION_COLUMNS =
   'id, source, source_id, plugin_id, title, retention_days, started_at, ended_at, last_line_at, line_count, participants';
 
-const LINE_COLUMNS = 'id, session_id, at, speaker_id, speaker, text, bot';
+const LINE_COLUMNS = 'id, session_id, at, ended_at, timing, speaker_id, speaker, text, bot';
 
 const SPENT = z.strictObject({ spent: z.int().min(0) });
 
@@ -42,6 +45,7 @@ export interface NewTranscriptSession {
 export interface TranscriptListQuery {
   readonly source?: TranscriptSource | undefined;
   readonly sourceId?: string | undefined;
+  readonly pluginId?: string | undefined;
   readonly before?: string | undefined;
   readonly limit: number;
 }
@@ -50,12 +54,14 @@ export interface TranscriptSearchQuery {
   readonly words: string;
   readonly source?: TranscriptSource | undefined;
   readonly sourceId?: string | undefined;
+  readonly pluginId?: string | undefined;
   readonly limit: number;
 }
 
 function sourceFilter(query: {
   readonly source?: TranscriptSource | undefined;
   readonly sourceId?: string | undefined;
+  readonly pluginId?: string | undefined;
 }): { readonly clause: string; readonly parameters: Record<string, SQLInputValue> } {
   const clauses: string[] = [];
   const parameters: Record<string, SQLInputValue> = {};
@@ -67,21 +73,21 @@ function sourceFilter(query: {
     clauses.push('s.source_id = $sourceId');
     parameters['sourceId'] = query.sourceId;
   }
+  if (query.pluginId !== undefined) {
+    clauses.push('s.plugin_id = $pluginId');
+    parameters['pluginId'] = query.pluginId;
+  }
   return { clause: clauses.map((clause) => ` and ${clause}`).join(''), parameters };
 }
 
-function matchOf(words: string): string | null {
-  const tokens = words.match(/[\p{L}\p{N}]+/gu) ?? [];
-  if (tokens.length === 0) {
-    return null;
-  }
-  return tokens
-    .map((token, index) => `"${token}"${index === tokens.length - 1 ? '*' : ''}`)
-    .join(' ');
-}
-
 export class TranscriptsRepository {
-  constructor(private readonly context: StoreContext) {}
+  readonly reader: TranscriptReaderRepository;
+  readonly pluginPage: PluginTranscriptPageRepository;
+
+  constructor(private readonly context: StoreContext) {
+    this.reader = new TranscriptReaderRepository(context);
+    this.pluginPage = new PluginTranscriptPageRepository(context);
+  }
 
   open(session: NewTranscriptSession): TranscriptSession {
     return this.context.write(() => {
@@ -100,7 +106,9 @@ export class TranscriptsRepository {
           startedAt: moment(session.startedAt),
         },
       );
-      return this.byId(id);
+      const saved = this.byId(id);
+      this.notify(saved, 'insert');
+      return saved;
     });
   }
 
@@ -138,16 +146,23 @@ export class TranscriptsRepository {
       const session = this.byId(sessionId);
       this.context.sql.run(
         'add the transcript line',
-        `insert into transcript_lines (session_id, at, speaker_id, speaker, text, bot)
-         values ($sessionId, $at, $speakerId, $speaker, $text, $bot)`,
+        `insert into transcript_lines (id, session_id, at, ended_at, timing, speaker_id, speaker, text, bot)
+         values ((select next_id from transcript_line_sequence where singleton = 1), $sessionId, $at, $endedAt, $timing, $speakerId, $speaker, $text, $bot)`,
         {
           sessionId,
           at: moment(line.at),
+          endedAt:
+            line.ended_at === undefined || line.ended_at === null ? null : moment(line.ended_at),
+          timing: line.timing ?? null,
           speakerId: line.speaker_id,
           speaker: line.speaker,
           text: line.text,
           bot: line.bot ? 1 : 0,
         },
+      );
+      this.context.sql.run(
+        'advance the transcript line identity',
+        'update transcript_line_sequence set next_id = next_id + 1 where singleton = 1',
       );
       const added = found(
         this.context.sql.get(
@@ -159,6 +174,7 @@ export class TranscriptsRepository {
         sessionId,
       );
       this.touch(session, added);
+      this.notify(session, 'update');
       return added;
     });
   }
@@ -184,7 +200,7 @@ export class TranscriptsRepository {
   }
 
   search(query: TranscriptSearchQuery): { session: TranscriptSession; line: TranscriptLine }[] {
-    const match = matchOf(query.words);
+    const match = transcriptMatch(query.words);
     if (match === null) {
       return [];
     }
@@ -210,19 +226,29 @@ export class TranscriptsRepository {
         'update transcript_sessions set ended_at = coalesce(ended_at, $at) where id = $id',
         { id, at: moment(at) },
       );
-      return this.byId(id);
+      const saved = this.byId(id);
+      this.notify(saved, 'update');
+      return saved;
     });
   }
 
   closeOpen(source: TranscriptSource, at: string): number {
-    return this.context.write(() =>
-      this.context.sql.run(
+    return this.context.write(() => {
+      const parameters = { source, at: moment(at) };
+      const predicate = 'ended_at is null and source = $source and started_at <= $at';
+      const sessions = this.context.sql.all(
+        STORED_SESSION,
+        `select ${SESSION_COLUMNS} from transcript_sessions where ${predicate}`,
+        parameters,
+      );
+      const changed = this.context.sql.run(
         'close the unfinished transcripts',
-        `update transcript_sessions set ended_at = coalesce(last_line_at, started_at)
-         where ended_at is null and source = $source and started_at <= $at`,
-        { source, at: moment(at) },
-      ),
-    );
+        `update transcript_sessions set ended_at = coalesce(last_line_at, started_at) where ${predicate}`,
+        parameters,
+      );
+      for (const session of sessions) this.notify(session, 'update');
+      return changed;
+    });
   }
 
   remove(id: string): TranscriptSession {
@@ -242,6 +268,7 @@ export class TranscriptsRepository {
           id,
         },
       );
+      this.notify(session, 'delete');
       return session;
     });
   }
@@ -249,17 +276,26 @@ export class TranscriptsRepository {
   prune(now: string, standardDays: number): number {
     return this.context.write(() => {
       const parameters = { now: moment(now), days: standardDays };
+      const sessions = this.context.sql.all(
+        STORED_SESSION,
+        `select ${SESSION_COLUMNS} from transcript_sessions where ${EXPIRY_AT} <= $now`,
+        parameters,
+      );
       const expired = `select id from transcript_sessions where ${EXPIRY_AT} <= $now`;
       this.context.sql.run(
         'remove the expired transcript lines',
         `delete from transcript_lines where session_id in (${expired})`,
         parameters,
       );
-      return this.context.sql.run(
+      const removed = this.context.sql.run(
         'remove the expired transcripts',
         `delete from transcript_sessions where id in (${expired})`,
         parameters,
       );
+      sessions.forEach((session) => {
+        this.notify(session, 'delete');
+      });
+      return removed;
     });
   }
 
@@ -283,6 +319,17 @@ export class TranscriptsRepository {
       throw new Error('The transcribing spend query returned no row.');
     }
     return row.spent;
+  }
+
+  private notify(session: TranscriptSession, operation: 'insert' | 'update' | 'delete'): void {
+    this.context.notice({
+      type: 'transcript_changed',
+      source: session.source,
+      source_id: session.source_id,
+      plugin_id: session.plugin_id,
+      session_id: session.id,
+      operation,
+    });
   }
 
   private touch(session: TranscriptSession, line: TranscriptLine): void {

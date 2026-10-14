@@ -8,6 +8,7 @@ export interface TrackItem {
   readonly id: string;
   readonly fraction: number;
   readonly kind: TimelineKind;
+  readonly details?: Readonly<Record<string, unknown>>;
   readonly time: string;
   readonly thumb: string | null;
 }
@@ -39,6 +40,7 @@ export interface TrackMark {
   readonly id: string;
   readonly x: number;
   readonly kind: TimelineKind;
+  readonly details?: Readonly<Record<string, unknown>>;
   readonly ids: readonly string[];
 }
 
@@ -59,7 +61,7 @@ export function marksAlong(
     if (last !== undefined && x - last.x < minGap) {
       marks[marks.length - 1] = { ...last, ids: [...last.ids, item.id] };
     } else {
-      marks.push({ id: item.id, x, kind: item.kind, ids: [item.id] });
+      marks.push({ id: item.id, x, kind: item.kind, details: item.details ?? {}, ids: [item.id] });
     }
   }
   return marks;

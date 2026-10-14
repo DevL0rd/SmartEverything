@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { JSON_VALUE } from '@smarteverything/domain';
-import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools';
+import {
+  assertObjectJsonSchema,
+  assertSupportedJsonSchema,
+  JsonSchemaError,
+} from '@deepseek-ai/dsh-tools';
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools';
 import { portableSchemaOf } from '../ai-tools/portable-schema';
 import type { JsonSchema } from '../ai-tools/hub-tool';
@@ -27,6 +31,12 @@ function project(input: unknown): Record<string, unknown> {
   const shape: Record<string, unknown> = {};
   const constraints: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
+    if (key === 'anyOf') {
+      const union = projectUnion(value);
+      if (union === null) constraints[key] = value;
+      else Object.assign(shape, union);
+      continue;
+    }
     if (ANNOTATIONS.has(key)) {
       shape[key] = value;
       continue;
@@ -39,11 +49,10 @@ function project(input: unknown): Record<string, unknown> {
     if (transformed.shape !== undefined) shape[key] = transformed.shape;
     if (transformed.constraint !== undefined) constraints[key] = transformed.constraint;
   }
-  if (node['anyOf'] !== undefined) Object.assign(shape, projectUnion(node['anyOf']));
   if (Object.keys(constraints).length > 0)
     shape['description'] = [
       typeof node['description'] === 'string' ? node['description'] : '',
-      `The hub validates these additional original JSON Schema constraints before execution: ${JSON.stringify(constraints)}`,
+      `Hub validates: ${JSON.stringify(constraints)}`,
     ]
       .filter((text) => text !== '')
       .join('\n');
@@ -66,24 +75,48 @@ function structural(
   if (key === 'type' && Array.isArray(value)) return { shape: undefined, constraint: value };
   return { shape: value };
 }
-function projectUnion(value: unknown): Record<string, unknown> {
+function projectUnion(value: unknown): Record<string, unknown> | null {
   const branches = z.array(RECORD).min(2).parse(value);
   const types = branches.map((branch) => branch['type']);
-  if (types.every((type) => typeof type === 'string') && new Set(types).size === types.length) {
-    return { oneOf: branches.map(project) };
+  if (distinctTypes(types)) {
+    return projectedUnion(branches);
   }
-  const tags = branches.map((branch) => tag(branch));
-  if (tags.every((tag) => tag !== null) && new Set(tags).size === tags.length)
-    return { oneOf: branches.map(project) };
-  return {};
+  const first = branches[0];
+  const required = z.array(z.string()).safeParse(first?.['required']);
+  if (required.success && required.data.some((key) => distinctTags(branches, key)))
+    return projectedUnion(branches);
+  return null;
 }
-function tag(branch: z.infer<typeof RECORD>): string | null {
+function projectedUnion(
+  branches: readonly z.infer<typeof RECORD>[],
+): Record<string, unknown> | null {
+  const union = { oneOf: branches.map(project) };
+  try {
+    assertSupportedJsonSchema(union);
+    return union;
+  } catch (cause) {
+    if (cause instanceof JsonSchemaError) return null;
+    throw cause;
+  }
+}
+function distinctTypes(types: readonly unknown[]): boolean {
+  return (
+    types.every((type) => typeof type === 'string') &&
+    new Set(types).size === types.length &&
+    !(types.includes('number') && types.includes('integer'))
+  );
+}
+function distinctTags(branches: readonly z.infer<typeof RECORD>[], key: string): boolean {
+  const tags = branches.map((branch) => tag(branch, key));
+  return tags.every((tag) => tag !== null) && new Set(tags).size === tags.length;
+}
+function tag(branch: z.infer<typeof RECORD>, key: string): string | null {
   if (branch['type'] !== 'object') return null;
   const properties = RECORD.safeParse(branch['properties']);
   if (!properties.success) return null;
-  const type = RECORD.safeParse(properties.data['type']);
-  if (!type.success || typeof type.data['const'] !== 'string') return null;
+  const property = RECORD.safeParse(properties.data[key]);
+  if (!property.success || property.data['const'] === undefined) return null;
   const required = z.array(z.string()).safeParse(branch['required']);
-  if (!required.success || !required.data.includes('type')) return null;
-  return type.data['const'];
+  if (!required.success || !required.data.includes(key)) return null;
+  return JSON.stringify(property.data['const']);
 }

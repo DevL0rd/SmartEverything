@@ -1,3 +1,4 @@
+import { AI_MESSAGE_REFERENCES, referencesMatchText } from '../ai-references';
 import { z } from 'zod';
 import {
   ASSISTANT_ATTACHMENT,
@@ -20,12 +21,16 @@ export const ASSISTANT_NEW_MESSAGE = z
   .strictObject({
     text: z.string().trim().max(ASSISTANT_TEXT_MAX).default(''),
     attachments: ATTACHMENT_IDS,
+    references: AI_MESSAGE_REFERENCES.optional(),
     client_message_id: ID.optional().describe(
       'An id the sender makes up for this message; sending the same id again returns the first message instead of adding another',
     ),
   })
   .refine((message) => message.text !== '' || message.attachments.length > 0, {
     message: 'send some text or at least one attachment',
+  })
+  .refine((message) => referencesMatchText(message.text, message.references ?? []), {
+    message: 'Reference spans must match the submitted text.',
   });
 
 export type AssistantNewMessage = z.output<typeof ASSISTANT_NEW_MESSAGE>;

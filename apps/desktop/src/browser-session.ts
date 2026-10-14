@@ -1,26 +1,14 @@
 import { desktopHtml } from './html-preview/projections.js';
 import { BrowserPolicyError } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
-import { WebContentsView, session } from 'electron';
-import { browserAllows, type BrowserTarget } from '@smarteverything/domain';
+import { WebContentsView, session, type Session } from 'electron';
+import { browserAllows, publicBrowserUrl, type BrowserTarget } from '@smarteverything/domain';
 
+const targets = new Map<number, BrowserTarget>();
+const configured = new WeakSet<Session>();
 export function createBrowserView(target: BrowserTarget, owner: number): WebContentsView {
   const isolated = browserSession(target);
-  isolated.setPermissionRequestHandler((_contents, _permission, answer) => {
-    answer(false);
-  });
-  isolated.setPermissionCheckHandler(() => false);
-  isolated.setDevicePermissionHandler(() => false);
-  isolated.on('will-download', (event) => {
-    event.preventDefault();
-  });
-  isolated.webRequest.onBeforeRequest((details, answer) => {
-    const value = details.url.replace(/^wss:/, 'https:');
-    const inline =
-      target.kind === 'native-html' &&
-      ['data:', 'blob:'].some((scheme) => value.startsWith(scheme));
-    answer({ cancel: !inline && !browserAllows(target, value) });
-  });
+  configureSession(isolated);
   const view = new WebContentsView({
     webPreferences: {
       session: isolated,
@@ -32,6 +20,11 @@ export function createBrowserView(target: BrowserTarget, owner: number): WebCont
       spellcheck: false,
       backgroundThrottling: true,
     },
+  });
+  const contentsId = view.webContents.id;
+  targets.set(contentsId, target);
+  view.webContents.once('destroyed', () => {
+    targets.delete(contentsId);
   });
   if (target.kind === 'native-html') {
     const projection = desktopHtml();
@@ -53,10 +46,39 @@ export function createBrowserView(target: BrowserTarget, owner: number): WebCont
   });
   return view;
 }
-
-function browserSession(target: BrowserTarget): Electron.Session {
+function configureSession(isolated: Session): void {
+  if (configured.has(isolated)) return;
+  isolated.setPermissionRequestHandler((_contents, _permission, answer) => {
+    answer(false);
+  });
+  isolated.setPermissionCheckHandler(() => false);
+  isolated.setDevicePermissionHandler(() => false);
+  isolated.on('will-download', (event) => {
+    event.preventDefault();
+  });
+  isolated.webRequest.onBeforeRequest((details, answer) => {
+    const target =
+      details.webContentsId === undefined ? undefined : targets.get(details.webContentsId);
+    const value = details.url.replace(/^wss:/, 'https:');
+    const inline =
+      target?.kind === 'native-html' &&
+      ['data:', 'blob:'].some((scheme) => value.startsWith(scheme));
+    const external =
+      target?.kind === 'native-html' &&
+      details.resourceType !== 'mainFrame' &&
+      publicBrowserUrl(value);
+    answer({
+      cancel:
+        target === undefined
+          ? !publicBrowserUrl(value)
+          : !inline && !external && !browserAllows(target, value),
+    });
+  });
+  configured.add(isolated);
+}
+function browserSession(target: BrowserTarget): Session {
   const partition =
-    target.kind === 'public' && target.profileId !== undefined
+    target.kind !== 'preview' && target.profileId !== undefined
       ? `persist:smarteverything-public-${target.profileId}`
       : `browser-${target.kind}-${randomUUID()}`;
   return session.fromPartition(partition);

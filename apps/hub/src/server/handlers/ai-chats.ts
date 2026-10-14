@@ -108,27 +108,24 @@ function messageRoutes(
       return assistant.messages(params.chatId, query.before, query.limit);
     }),
     sendAiChatMessage: bound(E.sendAiChatMessage, ({ params, body, caller }) =>
-      assistant.send(
+      assistant.submissions.send(
+        caller,
         { clientId: clientOf(caller).id, profileId: profileIdOf(store, caller) },
         body,
         params.chatId,
       ),
     ),
     retryAiChatMessage: bound(E.retryAiChatMessage, ({ params, body, caller }) => {
-      return assistant.retry(
-        ownerOf(context, caller),
-        params,
-        body.from,
-        caller.kind === 'service' ? null : clientOf(caller).id,
-      );
+      return assistant.retry(ownerOf(context, caller), params, body.from, {
+        clientId: caller.kind === 'service' ? null : clientOf(caller).id,
+        caller,
+      });
     }),
     editAiChatMessage: bound(E.editAiChatMessage, ({ params, body, caller }) => {
-      return assistant.edit(
-        ownerOf(context, caller),
-        params,
-        body,
-        caller.kind === 'service' ? null : clientOf(caller).id,
-      );
+      return assistant.edit(ownerOf(context, caller), params, body, {
+        clientId: caller.kind === 'service' ? null : clientOf(caller).id,
+        caller,
+      });
     }),
     compactAiChat: compactionRoute(context),
     interruptAiChat: bound(E.interruptAiChat, async ({ params, caller }) => {

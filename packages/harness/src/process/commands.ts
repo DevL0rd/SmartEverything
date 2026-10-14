@@ -5,9 +5,14 @@ import {
 import type { HarnessRuntimeRequest, HarnessRuntimeReceipt } from '@smarteverything/domain';
 import type { HarnessSession } from '../host/session';
 
-type CommandRequest = Extract<HarnessRuntimeRequest, { kind: 'command' | 'command_list' }>;
+type CommandRequest = Extract<
+  HarnessRuntimeRequest,
+  { kind: 'command' | 'command_list' | 'compact' }
+>;
 export function isNativeCommandRequest(request: HarnessRuntimeRequest): request is CommandRequest {
-  return request.kind === 'command' || request.kind === 'command_list';
+  return (
+    request.kind === 'command' || request.kind === 'command_list' || request.kind === 'compact'
+  );
 }
 export async function nativeCommandReceipt(
   session: HarnessSession,
@@ -15,6 +20,11 @@ export async function nativeCommandReceipt(
   receipt: () => Promise<HarnessRuntimeReceipt>,
   flush: () => Promise<void>,
 ): Promise<HarnessRuntimeReceipt> {
+  if (request.kind === 'compact') {
+    const compacted = (await session.compact()) !== null;
+    await flush();
+    return { ...(await receipt()), compacted };
+  }
   if (request.kind === 'command_list')
     return {
       ...(await receipt()),

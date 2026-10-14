@@ -6,6 +6,8 @@ import { ListRow } from '../../components/list-row';
 import { List } from '../../components/section';
 import { count } from '../../format/number';
 import { plural } from '../../format/text';
+import { useLocalSearchParams } from 'expo-router';
+import { DISCORD_PLUGIN } from './discord-data';
 
 export const NO_CALL_HINT =
   'It joins when an approved person enters a voice channel, or with /join.';
@@ -41,6 +43,7 @@ function CallRow({ call }: { readonly call: DiscordCall }): ReactNode {
 }
 
 export function VoiceCalls({ calls }: { readonly calls: readonly DiscordCall[] }): ReactNode {
+  const { focus } = useLocalSearchParams<{ focus?: string }>();
   return (
     <List inset title="Voice calls">
       {calls.length === 0 ? (
@@ -49,11 +52,12 @@ export function VoiceCalls({ calls }: { readonly calls: readonly DiscordCall[] }
         calls.map((call) => <CallRow key={call.id} call={call} />)
       )}
       <ListRow
+        selected={focus === 'call-transcripts'}
         icon="messageCircle"
         title="Call transcripts"
-        subtitle="Everything said in a call is written down and kept"
+        subtitle="Read and search an approved call’s saved transcript"
         chevron
-        href={href.settings.page('cameras/transcripts')}
+        href={href.settings.page(`plugins/${DISCORD_PLUGIN}/transcripts`)}
       />
     </List>
   );

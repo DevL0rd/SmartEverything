@@ -1,16 +1,11 @@
 import type { ReactNode } from 'react';
 import type { ScaleRelayStatus } from '../../../modules/health-connect';
+import { href } from '../../app-shell/hrefs';
 import { ListRow } from '../../components/list-row';
 import { joinParts } from '../../format/text';
 import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
-import {
-  allowWritesAndSave,
-  listenAgain,
-  useRelayState,
-  useWriteState,
-  type RelayState,
-} from './scale-listener';
+import { listenAgain, useRelayState, useWriteState, type RelayState } from './scale-listener';
 
 function since(label: string, at: string | null, now: number): string | null {
   return at === null ? null : `${label} ${relative(at, now)}`;
@@ -112,12 +107,11 @@ export function PhoneListeningRows({ health = true }: { readonly health?: boolea
       {health && write.kind === 'needs_permission' ? (
         <ListRow
           title="Save weigh-ins to Health Connect"
-          subtitle={`${String(write.waiting)} waiting · Allow access`}
+          subtitle={`${String(write.waiting)} waiting · Review access in Fitness settings`}
           subtitleTone="warning"
           icon="heartPulse"
-          onPress={() => {
-            void allowWritesAndSave();
-          }}
+          href={href.settings.focus('health', 'health-connect')}
+          chevron
         />
       ) : null}
       {health && write.kind === 'failed' ? (

@@ -3,6 +3,9 @@ import type { ImageNotice } from '../features/assistant';
 
 export interface LiveSyncHooks {
   readonly onAiPreviewNotice?: (message: Extract<LiveMessage, { type: 'ai_preview' }>) => void;
+  readonly onTranscriptNotice?: (
+    message: Extract<LiveMessage, { type: 'transcript_changed' }>,
+  ) => void;
   readonly onChanges: (changes: readonly LiveChange[]) => void;
   readonly onProfileChanged: () => void;
   readonly onSynchronized?: () => void;

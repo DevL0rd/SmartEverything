@@ -29,8 +29,11 @@ export function diagnosticScope(scope: PreviewViewScope, epoch: string): Preview
     chatId: scope.chatId,
     viewerId: scope.viewerId,
     browserId: scope.target.id,
-    documentId: scope.target.kind === 'public' ? scope.target.id : parts[0],
-    revision: scope.target.kind === 'public' ? null : parts[1],
+    documentId:
+      scope.target.kind === 'public'
+        ? scope.target.id
+        : (scope.target.page?.publicationId ?? parts[0]),
+    revision: scope.target.kind === 'public' || scope.target.page !== undefined ? null : parts[1],
     epoch,
   });
 }

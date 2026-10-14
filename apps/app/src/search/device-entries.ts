@@ -175,7 +175,13 @@ function addCameraOptions(builder: Builder): void {
         title: option.title,
         keywords: option.keywords,
         parent: page.id,
-        link: page.link,
+        link:
+          option.key === 'transcribe'
+            ? {
+                pathname: '/cameras/[cameraId]',
+                params: { cameraId: named.device.id, focus: 'transcripts' },
+              }
+            : page.link,
         icon: page.icon,
       },
       'setting',

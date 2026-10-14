@@ -16,3 +16,7 @@ export { MeteredUsageStream, SUPPLIER_USAGE } from './metered-usage';
 export type { SupplierUsage, SupplierUsageSnapshot } from './metered-usage';
 export { HARNESS_BOOT } from './boot';
 export { connectionDiagnosticFetch } from './connection-diagnostics';
+
+export { DurablePluginAgents } from './plugin-agents';
+
+export { ordinaryModelRequest } from '../host/model-request-context';

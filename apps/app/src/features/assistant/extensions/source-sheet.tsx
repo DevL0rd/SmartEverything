@@ -46,8 +46,8 @@ export function ExtensionSourceSheet({
         )}
       </List>
       <Text variant="footnote" tone="variant">
-        The pinned source does not update automatically. Installing it does not grant file, shell or
-        account access.
+        Shared updates replace approved official sources with verified pinned versions. Installing
+        does not grant file, shell or account access.
       </Text>
     </Sheet>
   );

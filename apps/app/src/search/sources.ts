@@ -1,7 +1,11 @@
+import { cameraTranscriptPages } from './camera-transcript-pages';
 import { APP_PLUGINS } from '../plugins/registry';
 import type { Href } from 'expo-router';
 import {
   displayName,
+  triggerSearchKeywords,
+  AUTOMATION_DEFINITION,
+  CAMERA_EVENT_SEARCH_WORDS,
   isCamera,
   isScheduleActive,
   roomNameOf,
@@ -311,9 +315,40 @@ function routinesOf(tables: SearchTables): Pick<SearchSources, 'scenes' | 'autom
       id: automation.id,
       name: automation.name,
       enabled: automation.enabled,
+      triggerKeywords: triggerSearchKeywords(
+        AUTOMATION_DEFINITION.parse(automation.definition).triggers,
+      ),
       path: '',
     })),
   };
+}
+
+function cameraTimelinePages(
+  devices: readonly NamedDevice[],
+  out: SourceLinks,
+): SearchSources['pages'] {
+  return devices
+    .filter((named) => isCamera(named.device))
+    .map((named) => {
+      const path = `camera-timeline:${named.device.id}`;
+      out.links.set(pageKey(path), href.camera(named.device.id));
+      out.icons.set(pageKey(path), 'film');
+      out.parents.set(pageKey(path), `device:${named.device.id}`);
+      return {
+        path,
+        title: `Timeline — ${named.name}`,
+        description: 'Camera events',
+        keywords: [
+          'camera',
+          'event',
+          'events',
+          'history',
+          'timeline',
+          named.name,
+          ...CAMERA_EVENT_SEARCH_WORDS,
+        ],
+      };
+    });
 }
 
 export function sourcesOf(
@@ -331,6 +366,8 @@ export function sourcesOf(
     })),
     pages: [
       ...pagesOf(env, out),
+      ...cameraTimelinePages(devices, out),
+      ...cameraTranscriptPages(devices, out),
       ...extensionPages(tables, env.owner, out),
       ...scheduledPages(tables, out),
       ...pluginPages(tables, env, out),

@@ -28,7 +28,7 @@ class HubNetworkModule : Module() {
     { appContext.reactContext ?: throw Exceptions.ReactContextLost() },
     { appContext.currentActivity }, ::authority)
   private val inspection = HubPairingInspection()
-  private val html = HubHtmlRegistrar(::authority, ::htmlEnrollment) { sendEvent("onHtmlRetired", mapOf("id" to it)) }
+  private val html = HubHtmlRegistrar({ appContext.reactContext ?: throw Exceptions.ReactContextLost() }, ::authority, ::htmlEnrollment) { sendEvent("onHtmlRetired", mapOf("id" to it)) }
   private var discovery: HubDiscovery? = null
   private var connectivity: HubConnectivity? = null
   private val sockets = HubSockets({ sendEvent("onSocket", it) }, ::authority)

@@ -1,6 +1,7 @@
+import { validateNativeReferences } from '../harness/reference-delivery';
+import { hubPluginAgents, hubImageDescription } from './harness-native-ports';
 import { NativeProjectFiles } from '@smarteverything/harness/process';
 import { bindProjectFiles, nativeProjectFile } from '../harness/project-files';
-import { nativeMediaNote } from '../harness/native-media-notes';
 import { resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
 import type { SubscriptionInferencePort } from '@smarteverything/harness';
 import {
@@ -11,12 +12,14 @@ import { HubHarnessConfiguration } from './harness-configuration';
 import {
   bindCompactionPolicy,
   installedHarnessBuiltins,
+  sharedHarnessSkillAssets,
   type HarnessHost,
   RemoteSubscriptionAdapter,
 } from '@smarteverything/harness';
 import type { Operations } from './operations';
 import { installHubPrompt } from '../harness/prompt';
 import { bindCentralHarness } from '../harness/central-transport';
+import { ordinaryModelRequest } from '@smarteverything/harness/process';
 import { meteredAccountingFetch } from '../harness/metered-accounting';
 import { HarnessAttachments } from '../harness/attachments';
 import { randomUUID } from 'node:crypto';
@@ -50,7 +53,10 @@ export async function startHubHarness(
   const service = context.harness;
   const persistence = new LocalHarnessPersistence(service);
   const access = new HarnessHubTools(service, tools, (id) => context.computerAi.status(id).local);
-  bindCentralHarness(service, access, () => options.clock.now());
+  bindCentralHarness(service, access, () => options.clock.now(), {
+    assistant: context.assistant,
+    stateDirectory: join(options.dataDirectory, 'harness'),
+  });
   bindProjectFiles(service, context.assistant.projects);
   operations.bindServiceAuthority(service.store);
   operations.bindExecutionAdmission((name, args): void => {
@@ -94,12 +100,19 @@ function composeHub(ports: {
 }): Promise<HarnessDispatcher> {
   const { options, context, tools, persistence, access, host, configuration } = ports;
   const projectFiles = hubProjectFiles(context, persistence);
+  const pluginAgents = hubPluginAgents(ports);
   return createHarnessDispatcher({
     projectFiles: projectFiles.execute,
+    validateReferences: (id, deliveryId, references, signal) =>
+      validateNativeReferences(context.harness, id, deliveryId, references, signal),
     host,
     persistence,
     desiredConfiguration: context.harness.configuration.desired(),
-    installedPlugins: installedHarnessBuiltins(host),
+    installedPlugins: installedHarnessBuiltins(
+      host,
+      sharedHarnessSkillAssets(host.stateDirectory),
+      pluginAgents,
+    ),
     configurationChanged: (): void => {
       configuration.changed();
     },
@@ -109,18 +122,7 @@ function composeHub(ports: {
     serverToolAccess: access,
     loadAttachments: (id, ids) =>
       new HarnessAttachments(context.harness, context.assistant.files).load(id, ids),
-    describeImage: async (input): Promise<string> => {
-      const claim = persistence.claim(input.sessionId);
-      await persistence.verify(claim);
-      const text = await nativeMediaNote(context.harness, context.assistant.files, claim, {
-        seq: input.seq,
-        image_index: input.imageIndex,
-        attachment_id: input.image.attachment.attachmentId,
-        data: Buffer.from(input.data).toString('base64'),
-      });
-      await persistence.verify(claim);
-      return text;
-    },
+    describeImage: hubImageDescription(context, persistence),
     authority: (id) => context.harness.storage.grant(id).authority,
     route: (id) => supplierRoute(context, id),
     publish: (event) => {
@@ -129,6 +131,7 @@ function composeHub(ports: {
     },
     installModelRoutes: (ctx) => {
       projectFiles.install(ctx);
+      pluginAgents.install(ctx);
       return installRoutes(ctx, { options, context, persistence, access, tools });
     },
   });
@@ -306,15 +309,18 @@ function accountingFetch(
     context.harness,
     sessionId,
     connectionDiagnosticFetch('hub_supplier', options.fetch),
-    (): void => {
-      const claim = persistence.claim(sessionId);
-      context.store.dshSessions.verifyWriter(
-        claim,
-        context.harness.hostPrincipal(
-          route.profile_id,
-          context.harness.directory.get({ kind: 'server' }).host,
-        ),
-      );
+    {
+      verify: (): void => {
+        const claim = persistence.claim(sessionId);
+        context.store.dshSessions.verifyWriter(
+          claim,
+          context.harness.hostPrincipal(
+            route.profile_id,
+            context.harness.directory.get({ kind: 'server' }).host,
+          ),
+        );
+      },
+      ordinary_request: ordinaryModelRequest(),
     },
   );
 }

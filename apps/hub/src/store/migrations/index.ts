@@ -1,3 +1,7 @@
+import { TRANSCRIPT_READER_COLUMNS } from './transcript-reader';
+import { AI_REFERENCE_COLUMNS } from './ai-references';
+import { PREVIEW_ERROR_RULE_TABLES } from './preview-error-rules';
+import { NATIVE_MANAGED_PROJECT_COLUMNS } from './native-managed-projects';
 import { HARNESS_SKILL_UPDATE_TABLES } from './harness-skill-updates';
 import { PREVIEW_PROJECT_TABLES } from './preview-projects';
 import { AI_PROJECT_TABLES } from './ai-projects';
@@ -199,6 +203,10 @@ export const MIGRATIONS: readonly Migration[] = inOrder(
     { version: 71, name: 'ai_projects', statements: AI_PROJECT_TABLES },
     { version: 72, name: 'preview_projects', statements: PREVIEW_PROJECT_TABLES },
     { version: 73, name: 'harness_skill_updates', statements: HARNESS_SKILL_UPDATE_TABLES },
+    { version: 74, name: 'native_managed_projects', statements: NATIVE_MANAGED_PROJECT_COLUMNS },
+    { version: 75, name: 'preview_error_rules', statements: PREVIEW_ERROR_RULE_TABLES },
+    { version: 76, name: 'ai_message_references', statements: AI_REFERENCE_COLUMNS },
+    { version: 77, name: 'transcript_reader', statements: TRANSCRIPT_READER_COLUMNS },
   ],
   RESERVED_MIGRATION_VERSIONS,
 );

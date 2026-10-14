@@ -14,7 +14,7 @@ import { AppRoot } from '../src/features/root/app-root';
 import { CrashTrailHost } from '../src/features/root/crash-trail-host';
 import { FontFailure } from '../src/features/root/font-failure';
 import { startDeveloper } from '../src/developer/boot';
-import { developerFlags } from '../src/developer/flags';
+import { useDeveloperFlags } from '../src/developer/flags';
 import { startPerf } from '../src/perf/install';
 import { PerfHost } from '../src/perf/perf-host';
 import { probedScreen } from '../src/perf/screen-probe';
@@ -38,6 +38,7 @@ export { RouteErrorBoundary as ErrorBoundary } from '../src/app-shell/route-erro
 
 export default function RootLayout(): ReactNode {
   const [loaded, failure] = useFonts(APP_FONTS);
+  const flags = useDeveloperFlags();
   if (failure !== null) {
     return <FontFailure reason={failure.message} />;
   }
@@ -51,7 +52,7 @@ export default function RootLayout(): ReactNode {
       </Head>
       <StatusBar style="auto" />
       <CrashTrailHost />
-      {developerFlags['perf.sampling'] ? <PerfHost /> : null}
+      {flags['perf.sampling'] ? <PerfHost /> : null}
       <ThemeProvider value={SEE_THROUGH}>
         <Stack
           screenLayout={probedScreen}

@@ -1,3 +1,4 @@
+import { chatPageRoutes } from '../preview/chat-pages';
 import { nativeHtmlClaimRoute, nativeProjectAssetRoutes } from '../preview/native-html';
 import { nodeConnectionRoute } from './handlers/node-connection';
 import type { HubConnections } from '../network/connections';
@@ -309,6 +310,7 @@ function rawRoutesOf(
     ...routes,
     nativeHtmlClaimRoute(context.store, context.preview),
     ...nativeProjectAssetRoutes(context.store, context.preview),
+    ...chatPageRoutes(context.store, context.preview),
     computerMcpGrantRoute(context),
     computerMcpGrantRoute(context, true),
     computerMcpPolicyRoute(context),

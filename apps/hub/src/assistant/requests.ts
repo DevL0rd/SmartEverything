@@ -1,3 +1,6 @@
+import { referenceSubmissions, type ReferenceSubmissions } from './reference-submission';
+import type { ReferenceService } from '../references/service';
+import type { EngineRegistry } from './engines/registry';
 import { outputAuthority } from './output-authority';
 import { issueEventAuthority, eventAuthority } from './execution-authority';
 import { randomUUID } from 'node:crypto';
@@ -71,6 +74,13 @@ interface Rearmed {
 export class AssistantRequests {
   constructor(private readonly deps: RequestsDeps) {}
 
+  referenceSubmissions(
+    references: ReferenceService,
+    engines: EngineRegistry,
+  ): ReferenceSubmissions {
+    return referenceSubmissions(this.deps, references, engines, this);
+  }
+
   send(sender: Sender, body: AssistantNewMessage, chat: AiChatRow): AssistantMessageRow {
     const { store } = this.deps;
     const sent =
@@ -94,6 +104,7 @@ export class AssistantRequests {
       author: store.profiles.byId(sender.profileId).name,
       text: body.text,
       files,
+      ...(body.references === undefined ? {} : { references: body.references }),
       origin: { source: 'app', plugin_id: null, device_id: null, name: null },
       ...(body.client_message_id === undefined ? {} : { clientMessageId: body.client_message_id }),
     });
@@ -172,6 +183,7 @@ export class AssistantRequests {
       body.attachments === undefined ? KEPT_FILES : this.replaceFiles(message, body.attachments);
     const change: AssistantMessageChange = {
       text: body.text,
+      references: body.references ?? [],
       ...(body.attachments === undefined ? {} : { attachments: replaced.kept.map(summaryOf) }),
     };
     const done = this.replay(chat, { message, event }, change, clientId);

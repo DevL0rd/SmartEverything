@@ -1,3 +1,4 @@
+import { centralCallKey } from './central-call-key';
 import { z } from 'zod';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
@@ -12,7 +13,7 @@ export class CentralToolFailures {
   install(ctx: Context): void {
     ctx.on('tools/execute', async (execution, next) => {
       const result = await next();
-      const failure = this.failures.get(this.key(execution));
+      const failure = this.failures.get(centralCallKey(execution));
       if (failure === undefined || !result.isError || result.error.message !== failure.message)
         return result;
       return {
@@ -25,7 +26,7 @@ export class CentralToolFailures {
       };
     });
     ctx.on('tools/result', (execution) => {
-      this.failures.delete(this.key(execution));
+      this.failures.delete(centralCallKey(execution));
     });
     ctx.effect(() => (): void => {
       this.failures.clear();
@@ -34,10 +35,7 @@ export class CentralToolFailures {
   capture(execution: ToolRunContext, response: Record<string, JsonValue>): void {
     const message = response['error'];
     if (typeof message !== 'string') return;
-    this.failures.set(this.key(execution), { response, message });
+    this.failures.set(centralCallKey(execution), { response, message });
     throw new HarnessRuntimeError('operation_failed', message);
-  }
-  private key(execution: Pick<ToolRunContext, 'agent' | 'callId'>): string {
-    return `${execution.agent?.id ?? ''}:${execution.callId}`;
   }
 }

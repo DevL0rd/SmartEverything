@@ -96,3 +96,21 @@ export type { SubscriptionInferencePort } from './providers/remote-adapter';
 
 export { LocalFileSystem as HarnessLocalFileSystem } from '@deepseek-ai/dsh-fs-local';
 export { FsVersion as HarnessFsVersion, FsError as HarnessFsError } from '@deepseek-ai/dsh-fs';
+
+export {
+  HARNESS_CLAUDE_PLUGINS_PACKAGE,
+  HARNESS_CLAUDE_PLUGINS_VERSION,
+  HARNESS_CLAUDE_PLUGINS_METADATA,
+} from './composition/claude-plugin-metadata';
+export {
+  OFFICIAL_CLAUDE_PLUGINS,
+  officialClaudePlugin,
+  officialClaudePluginId,
+} from './composition/github-plugin-bundle';
+export type { OfficialClaudePlugin } from './composition/github-plugin-bundle';
+export { inspectHarnessClaudePluginBundle } from './composition/claude-plugin-inspection';
+export { skillSourceChunks } from './composition/github-skill-source';
+
+export { sharedHarnessSkillAssets } from './composition/github-skill-source';
+export { readHarnessPluginAgent } from './composition/plugin-agent-source';
+export type { PluginAgentPort } from './composition/plugin-agent-port';

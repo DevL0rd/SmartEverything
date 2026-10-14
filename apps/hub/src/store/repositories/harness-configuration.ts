@@ -15,6 +15,7 @@ import {
 import { found, type StoreContext } from '../context';
 import { jsonText, SQL_JSON } from '../sql';
 
+const CONFIGURATION_REVISION = z.strictObject({ revision: z.string().min(1).max(200) });
 const CONFIGURATION_ROW = z.strictObject({
   configuration: SQL_JSON.pipe(HARNESS_DESIRED_CONFIGURATION),
 });
@@ -41,6 +42,17 @@ export class HarnessConfigurationStorageError extends Error {
 
 export class HarnessConfigurationRepository {
   constructor(private readonly context: StoreContext) {}
+
+  currentRevision(): string {
+    return found(
+      this.context.sql.get(
+        CONFIGURATION_REVISION,
+        'select revision from harness_configuration_current where singleton=1',
+      ),
+      'central harness configuration',
+      'current',
+    ).revision;
+  }
 
   desired(): HarnessDesiredConfiguration {
     return found(
@@ -133,6 +145,10 @@ export class HarnessConfigurationRepository {
           received_at: row.received_at,
         }),
       );
+  }
+
+  readRevision(revision: string): HarnessDesiredConfiguration | undefined {
+    return this.revision(revision);
   }
 
   private revision(revision: string): HarnessDesiredConfiguration | undefined {

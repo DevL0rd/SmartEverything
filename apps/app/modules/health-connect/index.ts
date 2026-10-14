@@ -14,6 +14,7 @@ export {
   grantedPermissions,
   isHealthConnectLinked,
   lastSync,
+  requestAllPermissions,
   requestEntryWrites,
   requestPermissions,
   requestWritePermissions,

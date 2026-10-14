@@ -12,6 +12,10 @@ export class HarnessHumanCommands {
     private readonly agent: Agent,
   ) {}
 
+  active(): boolean {
+    return this.pending !== undefined;
+  }
+
   execute(
     line: string,
     attachments: readonly CommandSubmitAttachment[],

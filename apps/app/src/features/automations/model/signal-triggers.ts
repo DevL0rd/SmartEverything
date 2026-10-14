@@ -4,6 +4,7 @@ import {
   SIGNAL_SOURCES,
   SIGNAL_TRIGGER,
   kindSpecOf,
+  compatibleSignalMatch,
   type SignalKindSpec,
   type SignalSourceSpec,
   type SignalTrigger,
@@ -41,10 +42,13 @@ export function genericSources(): readonly SignalSourceSpec[] {
 }
 
 export function withKind(
-  trigger: Pick<SignalTrigger, 'type'>,
+  trigger: Pick<SignalTrigger, 'type'> & Partial<SignalTrigger>,
   source: string,
   kind: SignalKindSpec,
 ): SignalTrigger {
+  if (trigger.source === source && trigger.kind === kind.kind) {
+    return SIGNAL_TRIGGER.parse(trigger);
+  }
   const first = kind.fields === 'capabilities' ? undefined : kind.fields[0];
   return SIGNAL_TRIGGER.parse({
     type: trigger.type,
@@ -52,6 +56,14 @@ export function withKind(
     kind: kind.kind,
     field: kind.pulse || first === undefined ? null : first.field,
     comparison: kind.pulse ? null : { operator: 'changed' },
+    match: compatibleSignalMatch(
+      kindSpecOf(SIGNAL_SOURCES, {
+        source: trigger.source ?? source,
+        kind: trigger.kind ?? kind.kind,
+      }),
+      kind,
+      trigger.match ?? {},
+    ),
   });
 }
 
@@ -147,15 +159,10 @@ function compatibleMatch(base: TimedBase, original: SignalTrigger | null): Signa
   if (base.type === 'state' || base.kind === original.kind) {
     return original.match;
   }
-  const allowed = kindSpecOf(SIGNAL_SOURCES, { source: 'event', kind: base.kind })?.match;
-  return Object.fromEntries(
-    Object.entries(original.match).filter(([key, value]) => {
-      const spec = allowed?.find((entry) => entry.key === key);
-      return (
-        spec !== undefined &&
-        (spec.values === null || (typeof value === 'string' && spec.values.includes(value)))
-      );
-    }),
+  return compatibleSignalMatch(
+    kindSpecOf(SIGNAL_SOURCES, original),
+    kindSpecOf(SIGNAL_SOURCES, { source: 'event', kind: base.kind }),
+    original.match,
   );
 }
 

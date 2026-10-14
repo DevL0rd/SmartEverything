@@ -1,4 +1,4 @@
-import { nativeProjectResponse } from './native-project-compatibility';
+import { clientResponse } from './response-compatibility';
 import { withRequestSignal } from './request-signal';
 import { withControlCaller } from './local-control-context';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -18,7 +18,6 @@ import type { PhoneEndpointName } from '../phones/phone-routes';
 import type { Store } from '../store/store';
 import {
   assertReaderEngineWrite,
-  engineProjection,
   engineReader,
   memberEngineProjection,
   legacyTargetChat,
@@ -229,11 +228,7 @@ export class Router {
         'Computer AI chats require an updated app; computer chats are unavailable in this app.',
       );
     response.setHeader('vary', 'origin, accept');
-    sendJson(
-      response,
-      200,
-      engineProjection(nativeProjectResponse(result, request.headers), reader),
-    );
+    sendJson(response, 200, clientResponse(result, request.headers, matched.route.name, reader));
   }
 }
 

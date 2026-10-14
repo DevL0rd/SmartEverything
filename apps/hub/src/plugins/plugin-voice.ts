@@ -334,7 +334,7 @@ export function voiceOf(
       }
       return work(...args);
     };
-  const own = transcriptsOf(services.transcripts, scope.pluginId);
+  const own = transcriptsOf(services.transcripts, scope.pluginId, services.store);
   return {
     host: guarded((request) => hostCall(services, scope, request)),
     turn: guarded((request) => openTurn(services, scope, request)),
@@ -342,7 +342,12 @@ export function voiceOf(
     transcript: guarded((request) => openTranscript(services, scope, request)),
     transcribe: guarded((request) => transcribeFor(services, scope, request)),
     transcripts: {
-      list: guarded((limit: number) => own.list(limit)),
+      list: guarded(own.list),
+      find: guarded(own.find),
+      page: guarded(own.page),
+      scope: guarded(own.scope),
+      feed: guarded(own.feed),
+      range: guarded(own.range),
       read: guarded((id: string, after: number, limit: number) => own.read(id, after, limit)),
       remove: guarded((id: string) => own.remove(id)),
     },

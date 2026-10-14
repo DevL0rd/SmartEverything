@@ -63,7 +63,7 @@ function UpdateControls({
     <List inset>
       <SwitchRow
         title="Automatic updates"
-        subtitle="Keep added Anthropic skills up to date."
+        subtitle="Keep approved official skills and plugins up to date."
         value={query.data?.automatic ?? true}
         disabled={disabled}
         onChange={(automatic) => {
@@ -80,13 +80,13 @@ function UpdateControls({
         disabled={disabled}
         onPress={() => {
           update.run(() => api().call(E.updateAiHarnessSkills, {}), {
-            failure: 'Skills could not be updated',
+            failure: 'Skills and plugins could not be updated',
             onDone: (result) => {
               notify({
                 message:
                   result.updated === 0
-                    ? 'Skills are up to date'
-                    : `${String(result.updated)} ${result.updated === 1 ? 'skill updated' : 'skills updated'}`,
+                    ? 'Skills and plugins are up to date'
+                    : `${String(result.updated)} ${result.updated === 1 ? 'asset updated' : 'assets updated'}`,
               });
             },
           });

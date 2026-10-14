@@ -56,6 +56,7 @@ function DayStrip({ entry, items, today }: DayStripProps): ReactNode {
       items={items.map((item) => ({
         id: item.id,
         kind: item.kind,
+        details: item.event?.details ?? {},
         fraction: dayFraction(item.at, timeZone),
         time: clock(item.at, timeZone),
         thumb: item.snapshot === null ? null : (thumbs.data?.[item.snapshot.id]?.url ?? null),

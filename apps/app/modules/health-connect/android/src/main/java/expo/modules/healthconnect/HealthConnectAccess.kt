@@ -11,9 +11,15 @@ import androidx.health.connect.client.permission.HealthPermission
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 
-class Access(val types: List<RecordType>, val background: Boolean, val history: Boolean) {
+class Access(
+  val types: List<RecordType>,
+  val writeTypes: List<RecordType>,
+  val background: Boolean,
+  val history: Boolean
+) {
   fun toMap(): Map<String, Any> = mapOf(
     "types" to types.map { it.name },
+    "writeTypes" to writeTypes.map { it.name },
     "background" to background,
     "history" to history
   )
@@ -72,11 +78,23 @@ object HealthConnectAccess {
     val granted = call { client.permissionController.getGrantedPermissions() }
     return Access(
       types = readableTypes(client).filter { it.readPermission in granted },
+      writeTypes = readableTypes(client).filter { it.writePermission in granted },
       background = BACKGROUND in granted &&
         offers(client, HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND),
       history = HISTORY in granted &&
         offers(client, HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY)
     )
+  }
+
+  fun allPermissionsFor(client: HealthConnectClient): Set<String> {
+    val types = readableTypes(client)
+    val reads = permissionsFor(
+      client,
+      types,
+      offers(client, HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_IN_BACKGROUND),
+      offers(client, HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY)
+    )
+    return reads + types.map { it.writePermission }
   }
 
   fun permissionsFor(

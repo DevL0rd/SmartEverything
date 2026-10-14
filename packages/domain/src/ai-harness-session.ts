@@ -123,6 +123,28 @@ export const AI_HARNESS_SESSION = z
     route: AI_MODEL_ROUTE_SELECTION,
     state: z.enum(['idle', 'working', 'waiting', 'switching', 'unavailable', 'failed']),
     reconnecting: z.boolean().optional(),
+    context_request: z
+      .object({
+        id: z.uuid(),
+        epoch: z.int().positive(),
+        provider: z.string().min(1),
+        model: z.string().min(1),
+        capacity_tokens: z.int().positive(),
+      })
+      .optional(),
+    context: z
+      .object({
+        provider: z.string().min(1).optional(),
+        model: z.string().min(1).optional(),
+        capacity_tokens: z.int().positive().nullable(),
+        input_tokens: z.int().nonnegative().nullable(),
+        state: z.enum(['unmeasured', 'measured', 'compacting', 'stale']),
+      })
+      .optional(),
+    commands_revision: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .optional(),
     interactions: z.array(AI_HARNESS_INTERACTION).max(200),
     work: z.array(AI_HARNESS_WORK).max(200),
     handoff: AI_HARNESS_HANDOFF.nullable(),
@@ -135,6 +157,12 @@ export const AI_HARNESS_SESSION = z
     'The native session metadata must belong to this session and chat.',
   );
 export type AiHarnessSession = z.infer<typeof AI_HARNESS_SESSION>;
+
+export function harnessContextPercent(context: AiHarnessSession['context']): number | null {
+  if (context === undefined) return null;
+  if (context.capacity_tokens === null || context.input_tokens === null) return null;
+  return Math.min(100, (context.input_tokens / context.capacity_tokens) * 100);
+}
 
 const EVENT_FIELDS = {
   session_id: DSH_SESSION_ID,
@@ -168,6 +196,7 @@ export const AI_HARNESS_EVENT = z.discriminatedUnion('kind', [
     kind: z.literal('state'),
     session: AI_HARNESS_SESSION,
     permission_operation_id: z.uuid().optional(),
+    context_update: z.enum(['measured', 'changed', 'restored']).optional(),
     assistant_attempt: z
       .object({
         id: z.string().min(1).max(200),

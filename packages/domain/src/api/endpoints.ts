@@ -1,3 +1,4 @@
+import { AI_REFERENCE_ENDPOINTS } from './endpoints-ai-references';
 import { AI_PROJECT_ENDPOINTS } from './endpoints-ai-projects';
 import { AI_NATIVE_COMMAND_ENDPOINTS } from './endpoints-ai-native-commands';
 import { AI_PREVIEW_ENDPOINTS } from './endpoints-ai-previews';
@@ -48,7 +49,8 @@ import { SIGNAL_ENDPOINTS } from './endpoints-signals';
 import { REACH_ENDPOINTS } from './endpoints-reach';
 import { TRANSCRIPT_ENDPOINTS } from './endpoints-transcripts';
 
-type ApiEndpointRegistry = typeof AI_PROJECT_ENDPOINTS &
+type ApiEndpointRegistry = typeof AI_REFERENCE_ENDPOINTS &
+  typeof AI_PROJECT_ENDPOINTS &
   typeof AI_NATIVE_COMMAND_ENDPOINTS &
   typeof AI_PREVIEW_ENDPOINTS &
   typeof AI_HARNESS_COMMAND_ENDPOINTS &
@@ -99,6 +101,7 @@ type ApiEndpointRegistry = typeof AI_PROJECT_ENDPOINTS &
   typeof COMPUTER_SESSION_ENDPOINTS;
 
 export const API_ENDPOINTS: ApiEndpointRegistry = {
+  ...AI_REFERENCE_ENDPOINTS,
   ...AI_PROJECT_ENDPOINTS,
   ...AI_NATIVE_COMMAND_ENDPOINTS,
   ...AI_PREVIEW_ENDPOINTS,

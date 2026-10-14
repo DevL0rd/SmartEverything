@@ -6,12 +6,18 @@ import type { PrimaryActionProps } from './primary-action';
 export type HeaderSlot = 'bar' | 'large';
 
 export interface ScreenValue {
+  readonly scrollable: boolean;
   readonly scrollY: SharedValue<number>;
   readonly scrollRef: AnimatedRef<Animated.ScrollView> | null;
   readonly primaryAction: PrimaryActionProps | null;
 }
 
-const IDLE: ScreenValue = { scrollY: makeMutable(0), scrollRef: null, primaryAction: null };
+const IDLE: ScreenValue = {
+  scrollable: false,
+  scrollY: makeMutable(0),
+  scrollRef: null,
+  primaryAction: null,
+};
 
 export const ScreenContext = createContext<ScreenValue>(IDLE);
 

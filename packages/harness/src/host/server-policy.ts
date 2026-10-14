@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import type { Context } from '@deepseek-ai/cordis';
+import {
+  managedPluginAgentNames,
+  isManagedPluginSkillRequest,
+} from '../composition/managed-plugin-registry';
 import type { ToolExecution } from '@deepseek-ai/dsh-tools';
 import { HarnessRuntimeError } from './errors';
 import { isProductSkillRequest } from '../composition/product-skills';
@@ -34,6 +39,7 @@ export class HarnessServerPolicy {
   constructor(
     private readonly server: boolean,
     private readonly access: HarnessServerToolAccess | undefined,
+    private readonly ctx: Context,
   ) {}
 
   bind(id: string, authority?: HarnessAuthority): void {
@@ -67,9 +73,35 @@ export class HarnessServerPolicy {
         'Hub tool registry attempted to expose a server-local system tool.',
         id,
       );
-    return [...CONVERSATION_TOOLS, ...MANAGED_FILE_TOOLS, ...names];
+    return [
+      ...CONVERSATION_TOOLS,
+      ...MANAGED_FILE_TOOLS,
+      ...managedPluginAgentNames(this.ctx),
+      ...names,
+    ];
   }
 
+  private conversationRefusal(execution: Readonly<ToolExecution>): string | undefined {
+    if (execution.name !== 'skill' || isManagedPluginSkillRequest(this.ctx, execution.arguments))
+      return undefined;
+    return skillRefusal(execution.arguments);
+  }
+  private helperRefusal(
+    authority: HarnessAuthority,
+    execution: Readonly<ToolExecution>,
+  ): string | undefined {
+    return this.access === undefined
+      ? 'Durable helper access is unavailable.'
+      : this.access.deny(authority, {
+          ...execution,
+          name: 'subagent_run',
+          arguments: {
+            task: z.object({ prompt: z.string() }).parse(execution.arguments).prompt,
+            wait: false,
+            timeoutSeconds: 300,
+          },
+        });
+  }
   guard(execution: Readonly<ToolExecution>): string | undefined {
     if (!this.server) return undefined;
     if (localSystemTool(execution.name))
@@ -79,10 +111,11 @@ export class HarnessServerPolicy {
       return 'Server tools require an owned conversation and initiating profile.';
     const authority = this.authorities.get(agent.id);
     if (authority === undefined) return 'Server session authority is unavailable.';
-    if (MANAGED_FILE_TOOLS.includes(execution.name)) return undefined;
-    if (execution.name === 'skill') return skillRefusal(execution.arguments);
-    if (CONVERSATION_TOOLS.includes(execution.name)) return undefined;
+    if (MANAGED_FILE_TOOLS.includes(execution.name) || CONVERSATION_TOOLS.includes(execution.name))
+      return this.conversationRefusal(execution);
     const access = this.access;
+    if (managedPluginAgentNames(this.ctx).includes(execution.name))
+      return this.helperRefusal(authority, execution);
     if (access?.hubToolNames(authority).includes(execution.name) !== true)
       return 'This initiating profile or trigger grant does not expose the requested hub tool.';
     return access.deny(authority, execution);

@@ -1,3 +1,5 @@
+import { projectHarnessContext, projectContextRequest } from './context-projection';
+import { harnessContextPercent } from '@smarteverything/domain';
 import { switchConversation } from './switch-conversation';
 import { HarnessDiscovery } from './discovery';
 import { HarnessSkillUpdatesService } from './skill-updates';
@@ -67,7 +69,11 @@ export class HarnessService {
       store.harnessSkillUpdates,
       this.configuration,
       this.extensions,
-      { source: this.discovery.skills, clock: options?.clock ?? systemClock },
+      {
+        source: this.discovery.skills,
+        plugins: this.discovery.plugins,
+        clock: options?.clock ?? systemClock,
+      },
     );
   }
   own(owner: ChatOwner, chatId: string): AiChatRow {
@@ -224,10 +230,21 @@ export class HarnessService {
           });
         }
         this.store.harnessRecovery.keep(published, event);
+        this.noteContext(published);
       },
       policy,
     );
     this.replay(event.session_id);
+  }
+  private noteContext(event: AiHarnessEvent): void {
+    if (event.kind === 'usage') {
+      if (event.context_percent !== null)
+        this.store.aiChats.noteContext(event.chat_id, Math.round(event.context_percent));
+      return;
+    }
+    if (event.kind !== 'state' || event.session.context === undefined) return;
+    const percent = harnessContextPercent(event.session.context);
+    this.store.aiChats.noteContext(event.chat_id, percent === null ? null : Math.round(percent));
   }
   replay(sessionId?: string): void {
     for (const [consumer, listener] of this.listeners) {
@@ -305,6 +322,8 @@ export class HarnessService {
     projectNativeWorkspace(this, event, grant);
     return AI_HARNESS_SESSION.parse({
       ...event.session,
+      context: projectHarnessContext(event, prior.context),
+      context_request: projectContextRequest(event, prior.context_request),
       metadata,
       target: grant.target,
       route: grant.route,

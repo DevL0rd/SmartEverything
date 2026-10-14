@@ -60,7 +60,13 @@ export function activeModelFilters(filters: ModelSearchFilters): number {
 export function nativeMatches(model: ModelChoice, query: SearchQuery): boolean {
   if (
     !matchesModelSearchWords(
-      { id: model.id, name: model.name, author_name: model.providerLabel },
+      {
+        id: model.id,
+        name: model.name,
+        author_name: [model.providerLabel, model.supplierLabel, model.billing]
+          .filter((label) => label !== undefined)
+          .join(' '),
+      },
       query.q ?? '',
     )
   )

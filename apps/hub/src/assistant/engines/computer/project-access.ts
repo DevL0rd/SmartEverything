@@ -30,7 +30,8 @@ export function managedProviderProject(
 }
 
 function managedBinding(deps: ComputerRunnerDeps, chat: string): NativeManagedProject | undefined {
-  return deps.store.aiRuntimeProvider.read(chat, false)?.context?.managed_project;
+  const retained = deps.store.aiRuntimeProvider.read(chat, false);
+  return retained?.managed_project ?? retained?.context?.managed_project;
 }
 function hasManagedSession(
   bound: NativeManagedProject | undefined,

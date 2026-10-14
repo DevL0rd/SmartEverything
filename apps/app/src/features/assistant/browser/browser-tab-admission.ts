@@ -1,19 +1,13 @@
 import { closeBrowserSurface } from './browser-runtime';
 import { Logger } from '@smarteverything/logging';
-import {
-  AI_PREVIEW_LEASE,
-  NATIVE_HTML_LEASE,
-  type AiPreviewLease,
-  type HtmlPresentationLease,
-} from '@smarteverything/domain';
+import { AI_PREVIEW_LEASE } from '@smarteverything/domain';
 import { trustedHubOrigins } from '../../../api/connection/route-consumers';
-import { projectHtmlTarget, releaseHtmlTarget } from '../../../platform/browser-html-projection';
-import { createPreviewLease, createHtmlPreviewLease, releasePreviewLease } from '../data/previews';
+import { releaseHtmlTarget } from '../../../platform/browser-html-projection';
+import { createPreviewLease, openChatPage, releasePreviewLease } from '../data/previews';
 import { previewRevisions } from '../../../queries/preview-notices';
 import {
-  htmlSelection,
   isHtmlPublication,
-  nativeHtmlSelection,
+  chatPageSelection,
   previewSelection,
   type BrowserPublication,
   type BrowserSelection,
@@ -24,43 +18,29 @@ export async function admitBrowserPublication(
   publication: BrowserPublication,
 ): Promise<BrowserSelection> {
   const notice = previewRevisions.get().get(publication.id) ?? 0;
-  const lease = isHtmlPublication(publication)
-    ? await createHtmlPreviewLease(chatId, publication)
-    : await createPreviewLease(chatId, publication);
-  try {
-    return await authorizeBrowserPublication(publication, lease, notice);
-  } catch (error: unknown) {
-    await releasePreviewLease(chatId, lease);
-    throw error;
+  if (isHtmlPublication(publication)) {
+    const { page, target } = await openChatPage(publication);
+    return chatPageSelection(publication, page, target, notice);
   }
-}
-async function authorizeBrowserPublication(
-  publication: BrowserPublication,
-  lease: AiPreviewLease | HtmlPresentationLease,
-  notice: number,
-): Promise<BrowserSelection> {
-  if (!isHtmlPublication(publication))
+  const lease = await createPreviewLease(chatId, publication);
+  try {
     return previewSelection(
       publication,
       AI_PREVIEW_LEASE.parse(lease),
       notice,
       trustedHubOrigins(),
     );
-  if (!('purpose' in lease)) return htmlSelection(publication, lease, notice, trustedHubOrigins());
-  const nativeLease = NATIVE_HTML_LEASE.parse(lease);
-  const target = await projectHtmlTarget(
-    publication.chat_id,
-    nativeLease,
-    `${publication.id}:${publication.revision}:native:${nativeLease.id}`,
-  );
-  return nativeHtmlSelection(publication, nativeLease, notice, target);
+  } catch (error: unknown) {
+    await releasePreviewLease(chatId, lease);
+    throw error;
+  }
 }
 export async function retireBrowserSelection(selection: BrowserSelection): Promise<void> {
   closeBrowserSurface(selection.target.id);
   try {
     await releaseHtmlTarget(selection.target);
   } finally {
-    if (selection.kind !== 'public')
+    if (selection.kind === 'preview')
       await releasePreviewLease(selection.publication.chat_id, selection.lease);
   }
 }

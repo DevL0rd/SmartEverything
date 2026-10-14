@@ -19,6 +19,20 @@ import {
 } from '@smarteverything/domain';
 
 const RECORD = z.record(z.string(), z.unknown());
+const MANAGED_RESOURCE_OPERATIONS = new Set([
+  'readAiProjectFiles',
+  'writeAiProjectFiles',
+  'removeAiProjectFiles',
+  'publishAiHtmlPreview',
+  'publishAiProjectPreview',
+  'revokeAiPreview',
+  'readEmbeddedBrowser',
+  'editEmbeddedBrowser',
+  'clearPreviewWebsiteData',
+  'readPreviewLogs',
+  'searchPreviewLogs',
+  'capturePreviewViewport',
+]);
 const CONTROL = new Set([
   'control_devices',
   'sendCommand',
@@ -77,6 +91,7 @@ export class ServerToolPolicy {
     const authority = currentExecutionAuthority();
     if (authority === undefined) return;
     const operation = mcpToolOperation(name);
+    if (MANAGED_RESOURCE_OPERATIONS.has(operation ?? name)) return;
     if (operation !== undefined && API_ENDPOINTS[operation].method === 'GET') return;
     this.targets(args, authority);
   }

@@ -21,7 +21,14 @@ import {
   bundledHarnessSkills,
   inspectHarnessSkillBundle,
   HarnessRuntimeError,
+  officialClaudePlugin,
 } from '@smarteverything/harness';
+import { ClaudePluginAssets } from './claude-plugin-assets';
+import {
+  claudePluginsEntry,
+  claudePluginProvider,
+  claudePluginExtension,
+} from './claude-plugin-selection';
 import type { HarnessConfigurationService } from './configuration';
 import {
   HarnessSkillPresentationStorageError,
@@ -32,16 +39,28 @@ const RESOLVE_TIMEOUT_MS = 30_000;
 
 export class HarnessExtensions {
   private readonly source = new GithubHarnessSkillSource();
+  private readonly plugins: ClaudePluginAssets;
 
   constructor(
     private readonly configuration: HarnessConfigurationService,
     private readonly presentations: HarnessSkillPresentationsRepository,
     private readonly stateDirectory?: string,
-  ) {}
+  ) {
+    this.plugins = new ClaudePluginAssets(this.source, presentations, stateDirectory);
+  }
+
+  resolvePlugin(
+    url: string,
+    previous?: HarnessSkillAsset,
+    integrity?: string,
+  ): Promise<HarnessSkillAsset> {
+    return this.plugins.resolve(url, previous, integrity);
+  }
 
   catalogue(): AiHarnessExtensions {
     const desired = this.configuration.desired();
-    const included = includedHarnessExtensions();
+    const plugins = claudePluginsEntry(desired);
+    const included = [...includedHarnessExtensions(), claudePluginProvider(plugins)];
     const skills = desired.entries.find((entry) => entry.id === 'skills');
     const added = desired.entries.filter((entry) => !included.some((item) => item.id === entry.id));
     return {
@@ -49,6 +68,9 @@ export class HarnessExtensions {
         ...included,
         ...(skills?.metadata?.skill_assets.map((asset) =>
           harnessSkillExtension(asset, this.presentations.read(asset)),
+        ) ?? []),
+        ...(plugins.metadata?.skill_assets.map((asset) =>
+          claudePluginExtension(asset, this.presentations.read(asset)),
         ) ?? []),
         ...added.map(unavailableExtension),
       ],
@@ -65,14 +87,20 @@ export class HarnessExtensions {
     if (role !== 'owner')
       throw new ApiError('forbidden', 'Only an owner may inspect shared skill sources.');
     const request = HARNESS_SKILL_RESOLVE.parse(input);
-    if (request.url.endsWith('.json') && request.integrity === undefined)
-      throw new ApiError(
-        'invalid_request',
-        'JSON skill bundles require the publisher’s pinned SHA integrity.',
-      );
     try {
+      const plugin = officialClaudePlugin(githubSkillIdentity(request.url));
+      if (plugin === undefined && request.url.endsWith('.json') && request.integrity === undefined)
+        throw new ApiError(
+          'invalid_request',
+          'JSON skill bundles require the publisher’s pinned SHA integrity.',
+        );
+      if (plugin !== undefined) {
+        const asset = await this.resolvePlugin(request.url, previous, request.integrity);
+        return claudePluginExtension(asset, this.presentations.read(asset));
+      }
       return await this.inspect(request.url, request.integrity, previous);
     } catch (cause) {
+      if (cause instanceof ApiError) throw cause;
       if (cause instanceof HarnessSkillPresentationStorageError)
         throw new ApiError('conflict', cause.reason);
       throw new ApiError(

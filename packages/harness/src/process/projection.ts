@@ -1,17 +1,19 @@
+import { ProcessContextProjection, contextInput } from './projection-context';
+import { projectNativeSessionChange } from './projection-session-change';
 import { projectAssistantStream } from './assistant-stream';
 import { ProcessTurnCorrelation } from './turn-correlation';
 import { nativeToolText, nativeToolOutput, toolSummary } from './tool-result-output';
 import { ProcessPublication } from './publication';
 import { HarnessRuntimeError } from '../host/errors';
 import { ProcessTaskQueue } from './task-queue';
-import { SUPPLIER_USAGE } from './metered-usage';
-import type { SupplierUsage } from './metered-usage';
+import { supplierFacts, cacheFacts } from './projection-usage';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import { z } from 'zod';
 import { SessionId, isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session';
 import { readNativeHistory } from './history';
 import {
   JSON_VALUE,
+  harnessContextPercent,
   AI_HARNESS_EVENT,
   AI_HARNESS_SESSION,
   DSH_SESSION_ID,
@@ -30,7 +32,7 @@ export class ProcessProjection {
   private readonly sessions = new Map<string, AiHarnessSession>();
   private readonly seqs = new Map<string, number>();
   private readonly tools = new Map<string, string>();
-  private readonly capacities = new Map<string, number>();
+  private readonly contexts = new Map<string, ProcessContextProjection>();
   private readonly tasks: ProcessTaskQueue;
   private readonly publication: ProcessPublication;
   idle: (id: string) => Promise<void> = () => Promise.resolve();
@@ -65,16 +67,20 @@ export class ProcessProjection {
       }),
     );
     this.seqs.set(input.claim.session_id, 0);
+    const context = new ProcessContextProjection();
+    this.contexts.set(input.claim.session_id, context);
     for (const event of readNativeHistory(
       metadata.header,
       await this.persistence.read(SessionId(input.claim.session_id)),
     )) {
+      context.record(event);
       this.correlation.record(input.claim.session_id, event);
       if (event.type === 'tool/call') {
         const call = z.object({ callId: z.string(), name: z.string() }).parse(event.data);
         this.tools.set(call.callId, call.name);
       }
     }
+    await this.contextState(input.claim.session_id, 'restored');
   }
   deviceWorkspace(id: string, binding: AiHarnessSession['storage_binding']): void {
     this.tasks.keep(id, () => {
@@ -114,9 +120,8 @@ export class ProcessProjection {
     await this.send(id, { kind: 'state', session: updated, permission_operation_id: operationId });
   }
   async flush(id?: string): Promise<void> {
-    const ids = id === undefined ? this.tasks.ids() : [id];
     const results = await Promise.allSettled(
-      ids.map(async (sessionId): Promise<void> => {
+      (id === undefined ? this.tasks.ids() : [id]).map(async (sessionId): Promise<void> => {
         await this.tasks.flush(sessionId);
         await this.publication.flush(sessionId);
       }),
@@ -133,12 +138,14 @@ export class ProcessProjection {
     this.correlation.close(id);
     this.publication.close(id);
     this.seqs.delete(id);
+    this.contexts.delete(id);
   }
   private project(event: HarnessRuntimeEvent): Promise<void> {
     if (!this.sessions.has(event.sessionId)) return Promise.resolve();
     switch (event.kind) {
       case 'session':
-        return this.native(event);
+        return this.projectSession(event);
+
       case 'input':
         return this.claimed(event);
       case 'discarded':
@@ -147,6 +154,13 @@ export class ProcessProjection {
         return this.stream(event);
       case 'status':
         return this.status(event);
+      case 'commands': {
+        const session = this.sessions.get(event.sessionId);
+        if (session === undefined) return Promise.resolve();
+        const updated = { ...session, commands_revision: event.revision };
+        this.sessions.set(event.sessionId, updated);
+        return this.send(event.sessionId, { kind: 'state', session: updated });
+      }
       case 'error':
         return this.send(event.sessionId, {
           kind: 'failed',
@@ -158,6 +172,34 @@ export class ProcessProjection {
         });
     }
   }
+  private async projectSession(
+    event: Extract<HarnessRuntimeEvent, { kind: 'session' }>,
+  ): Promise<void> {
+    if (this.contexts.get(event.sessionId)?.record(event.event) === true)
+      await this.contextState(
+        event.sessionId,
+        event.event.type === 'assistant/message' || event.event.type === 'assistant/attempt'
+          ? 'measured'
+          : 'changed',
+      );
+    await this.sessionChange(event);
+  }
+  private sessionChange(event: Extract<HarnessRuntimeEvent, { kind: 'session' }>): Promise<void> {
+    return projectNativeSessionChange(
+      event,
+      this.workFor,
+      (record) => this.native(record),
+      (status) => this.status(status),
+    );
+  }
+  private contextState(id: string, update: 'measured' | 'changed' | 'restored'): Promise<void> {
+    const session = this.sessions.get(id);
+    const context = this.contexts.get(id);
+    if (session === undefined || context === undefined) return Promise.resolve();
+    const updated = { ...session, context: context.value };
+    this.sessions.set(id, updated);
+    return this.send(id, { kind: 'state', session: updated, context_update: update });
+  }
   private native(event: Extract<HarnessRuntimeEvent, { kind: 'session' }>): Promise<void> {
     const record = event.event;
     if (isReplacementSurfaceEvent(record)) return Promise.resolve();
@@ -165,8 +207,6 @@ export class ProcessProjection {
     if (record.type === 'turn/end') return this.ended(event.sessionId, record);
     if (record.type === 'llm/retry' || record.type === 'llm/retry-started')
       return this.reconnecting(event.sessionId, record.type === 'llm/retry');
-    if (record.type === 'request/context' && record.data.contextWindow !== undefined)
-      this.capacities.set(event.sessionId, record.data.contextWindow);
     if (record.type === 'working-directory/change')
       return this.directory(event.sessionId, record.data.cwd);
     if (record.type === 'tool/call') {
@@ -271,10 +311,12 @@ export class ProcessProjection {
       usage: (usage): Promise<void> => this.usage(event.sessionId, usage),
     });
   }
-  private usage(id: string, usage: TokenUsage): Promise<void> {
-    const input = usage.inputTokens + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
-    const capacity = this.capacities.get(id);
-    return this.send(id, {
+  private async usage(id: string, usage: TokenUsage): Promise<void> {
+    const input = contextInput(usage);
+    const context = this.contexts.get(id);
+    context?.measure(usage);
+    await this.contextState(id, 'measured');
+    await this.send(id, {
       kind: 'usage',
       usage: {
         input_tokens: input,
@@ -285,7 +327,7 @@ export class ProcessProjection {
         duration_ms: null,
         tool_uses: null,
       },
-      context_percent: capacity === undefined ? null : Math.min(100, (input / capacity) * 100),
+      context_percent: context === undefined ? null : harnessContextPercent(context.value),
     });
   }
   private async status(event: Extract<HarnessRuntimeEvent, { kind: 'status' }>): Promise<void> {
@@ -351,38 +393,3 @@ export class ProcessProjection {
   }
 }
 export { projectHarnessWork } from './work-projection';
-function supplierFacts(
-  usage: TokenUsage,
-): Pick<Extract<AiHarnessEvent, { kind: 'usage' }>['usage'], 'cost_usd' | 'generation_id'> {
-  const supplier = z
-    .object({
-      supplier: z.object({ generationId: z.string(), usage: SUPPLIER_USAGE.nullable() }).optional(),
-    })
-    .parse(usage).supplier;
-  return { cost_usd: supplier?.usage?.cost ?? null, generation_id: supplier?.generationId ?? null };
-}
-function cacheFacts(
-  usage: TokenUsage,
-): Pick<
-  Extract<AiHarnessEvent, { kind: 'usage' }>['usage'],
-  'cache_read_tokens' | 'cache_write_tokens' | 'reasoning_tokens'
-> {
-  const supplier = z
-    .object({ supplier: z.object({ usage: SUPPLIER_USAGE.nullable() }).optional() })
-    .parse(usage).supplier;
-  if (supplier?.usage !== undefined && supplier.usage !== null)
-    return suppliedCacheFacts(supplier.usage);
-  return {
-    cache_read_tokens: usage.cacheReadTokens ?? null,
-    cache_write_tokens: usage.cacheWriteTokens ?? null,
-    reasoning_tokens: usage.reasoningTokens ?? null,
-  };
-}
-
-function suppliedCacheFacts(usage: SupplierUsage): ReturnType<typeof cacheFacts> {
-  return {
-    cache_read_tokens: usage.prompt_tokens_details?.cached_tokens ?? null,
-    cache_write_tokens: usage.prompt_tokens_details?.cache_write_tokens ?? null,
-    reasoning_tokens: usage.completion_tokens_details?.reasoning_tokens ?? null,
-  };
-}

@@ -240,3 +240,9 @@
 @utility elevation-3 {
   box-shadow: var(--elevation-3);
 }
+
+@layer base {
+  * {
+    scrollbar-color: var(--color-primary) color-mix(in srgb, var(--color-bg) 90%, black);
+  }
+}

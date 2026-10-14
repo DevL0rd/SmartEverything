@@ -11,7 +11,7 @@ import type { MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { useIsOwner, useRow } from '../../../store/selectors';
-import { quoteInto, setDraft } from '../data/drafts';
+import { quoteInto, setReferenceDraft } from '../data/drafts';
 import { startEditing } from '../data/editing';
 import { deleteMessageWithUndo } from '../data/pending-deletes';
 import { useCanEdit, useRetryFrom } from '../data/retry';
@@ -66,7 +66,7 @@ async function branch(item: MessageItem): Promise<void> {
     return;
   }
   if (item.speaker.kind === 'me') {
-    setDraft(created.id, item.row.text);
+    setReferenceDraft(created.id, { text: item.row.text, references: item.row.references ?? [] });
   }
   router.push(href.assistantChat(created.id));
 }

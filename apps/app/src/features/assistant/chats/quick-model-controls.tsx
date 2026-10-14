@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { FlatList, View } from 'react-native';
 import type { Engine } from '@smarteverything/domain';
 import { Text } from '../../../components/text';
@@ -18,7 +18,7 @@ function QuickFavorite({
 }): ReactNode {
   return (
     <Interactive
-      label={`${item.model.name}, ${item.model.providerLabel}`}
+      label={`${item.model.name}, ${favoriteSource(item.model)}`}
       disabled={item.pick === null}
       onPress={(): void => {
         item.pick?.();
@@ -33,33 +33,52 @@ function QuickFavorite({
           {item.model.name}
         </Text>
         <Text variant="caption" tone="variant" numberOfLines={1}>
-          {item.model.providerLabel}
+          {favoriteSource(item.model)}
         </Text>
       </View>
     </Interactive>
   );
 }
-export function QuickFavorites({
+export function QuickMenuList({
   rows,
   close,
+  header,
+  footer,
+  height,
+  showFavorites,
 }: {
   readonly rows: readonly ModelCandidate[];
   readonly close: () => void;
+  readonly header: ReactElement;
+  readonly footer: ReactElement | null;
+  readonly height: number;
+  readonly showFavorites: boolean;
 }): ReactNode {
+  const frame = { maxHeight: height };
   return (
     <FlatList
       data={rows}
       keyExtractor={(row) => row.key}
-      className="max-h-56 shrink"
+      className="min-h-0 grow-0 shrink-0"
+      style={frame}
       keyboardShouldPersistTaps="handled"
+      ListHeaderComponent={header}
+      ListFooterComponent={footer}
       renderItem={({ item }) => <QuickFavorite item={item} close={close} />}
       ListEmptyComponent={
-        <Text variant="caption" tone="variant" className="px-3 py-2">
-          Star models to keep them here.
-        </Text>
+        showFavorites ? (
+          <Text variant="caption" tone="variant" className="px-3 py-2">
+            Star models to keep them here.
+          </Text>
+        ) : null
       }
     />
   );
+}
+function favoriteSource(model: ModelCandidate['model']): string {
+  return [model.providerLabel, model.supplierLabel, model.billing]
+    .filter((label) => label !== undefined)
+    .join(' · ');
 }
 export function QuickThinking({
   engine,

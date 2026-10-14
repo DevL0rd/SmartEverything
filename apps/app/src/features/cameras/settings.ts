@@ -1,9 +1,7 @@
 import { createElement } from 'react';
 import { href } from '../../app-shell/hrefs';
 import type { SettingDefinition } from '../../settings/types';
-import { ListeningRows } from './transcripts/listening-rows';
 import { BudgetRow, RetentionRow } from './transcripts/keep-rows';
-import { TranscriptList } from './transcripts/transcript-list';
 
 const hasCameras = (env: { readonly availability: { readonly hasCameras: boolean } }): boolean =>
   env.availability.hasCameras;
@@ -46,43 +44,27 @@ export const SETTINGS: readonly SettingDefinition[] = [
     visible: hasCameras,
   },
   {
-    id: 'cameras.transcripts.listening',
-    page: 'cameras/transcripts',
-    title: 'What cameras hear',
-    keywords: ['transcribe what it hears', 'listening', 'microphone', 'paused', 'privacy'],
-    scope: 'server',
-    control: 'custom',
-    render: () => createElement(ListeningRows),
-  },
-  {
     id: 'cameras.transcripts.retention',
-    page: 'cameras/transcripts',
+    page: 'cameras',
     section: 'Keep and spend',
     title: 'Keep camera transcripts',
     keywords: ['retention', 'delete after', 'days', 'history', 'how long'],
     scope: 'server',
     control: 'custom',
     row: true,
+    visible: (env) => hasCameras(env) && env.owner,
     render: () => createElement(RetentionRow),
   },
   {
     id: 'cameras.transcripts.budget',
-    page: 'cameras/transcripts',
+    page: 'cameras',
     section: 'Keep and spend',
     title: 'Daily transcribing budget',
     keywords: ['cap', 'limit', 'cost', 'spend', 'dollars', 'money', 'budget'],
     scope: 'server',
     control: 'custom',
     row: true,
+    visible: (env) => hasCameras(env) && env.owner,
     render: () => createElement(BudgetRow),
-  },
-  {
-    id: 'cameras.transcripts.list',
-    page: 'cameras/transcripts',
-    title: 'Transcripts',
-    keywords: ['what was said', 'search', 'speech to text', 'captions', 'conversation', 'delete'],
-    scope: 'server',
-    control: 'custom',
-    render: () => createElement(TranscriptList),
   },
 ];

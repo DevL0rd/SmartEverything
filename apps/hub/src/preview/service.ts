@@ -1,3 +1,4 @@
+import { GatewayPages } from './gateway-pages';
 import { EmbeddedBrowserAuthority } from './embedded-browser-authority';
 import { EmbeddedBrowserControllers } from './embedded-browser-controllers';
 import { EmbeddedBrowserSockets } from './embedded-browser-socket';
@@ -69,6 +70,7 @@ export class PreviewService {
     this.diagnosticSockets = new PreviewDiagnosticSockets(harness.store, this.diagnostics);
     this.data = new PreviewDataSockets(access, this.leases);
     this.gateway = new PreviewGateway(options.config, this.leases, this.data, log);
+    this.gateway.configurePages(new GatewayPages(harness.store, this.documents));
   }
   async stop(): Promise<void> {
     this.browserControllers.stop();

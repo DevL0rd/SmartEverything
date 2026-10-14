@@ -9,6 +9,7 @@ export function routeFeatureNotice(
   message: FeatureNotice,
   live: boolean,
 ): boolean {
+  if (routeTranscriptNotice(hooks, message)) return true;
   if (isProviderNotice(message)) {
     hooks.onAiProviderNotice?.(message);
     return true;
@@ -51,4 +52,10 @@ function routeHarnessNotice(hooks: LiveSyncHooks, message: FeatureNotice): boole
     return true;
   }
   return false;
+}
+
+function routeTranscriptNotice(hooks: LiveSyncHooks, message: FeatureNotice): boolean {
+  if (message.type !== 'transcript_changed') return false;
+  hooks.onTranscriptNotice?.(message);
+  return true;
 }

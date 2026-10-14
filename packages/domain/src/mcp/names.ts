@@ -51,12 +51,15 @@ export const MCP_CORE_TOOL_NAMES = [
 export type McpCoreToolName = (typeof MCP_CORE_TOOL_NAMES)[number];
 
 export const MCP_OPERATION_TOOLS = [
+  ['search_chat_references', 'searchAiChatReferences'],
   ['read_project_files', 'readAiProjectFiles'],
   ['write_project_files', 'writeAiProjectFiles'],
   ['remove_project_files', 'removeAiProjectFiles'],
   ['read_embedded_browser', 'readEmbeddedBrowser'],
   ['edit_embedded_browser', 'editEmbeddedBrowser'],
   ['clear_preview_data', 'clearPreviewWebsiteData'],
+  ['read_preview_error_policy', 'readPreviewErrorPolicy'],
+  ['write_preview_error_policy', 'writePreviewErrorPolicy'],
   ['read_preview_logs', 'readPreviewLogs'],
   ['search_preview_logs', 'searchPreviewLogs'],
   ['capture_preview_viewport', 'capturePreviewViewport'],
@@ -99,6 +102,9 @@ export const MCP_OPERATION_TOOLS = [
   ['update_food', 'updateFood'],
   ['delete_food', 'deleteFood'],
   ['update_camera', 'updateCamera'],
+  ['read_camera_transcript_feed', 'readCameraTranscriptFeed'],
+  ['search_camera_transcript_feed', 'searchCameraTranscriptFeed'],
+  ['read_camera_transcript_range', 'readCameraTranscriptRange'],
   ['list_transcripts', 'listTranscripts'],
   ['read_transcript', 'readTranscript'],
   ['search_transcripts', 'searchTranscripts'],

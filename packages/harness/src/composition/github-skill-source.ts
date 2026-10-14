@@ -6,6 +6,7 @@ import { MAX_SKILL_ASSET_BYTES } from './skill-asset-format';
 import { readSkillSourceHttp } from './skill-source-http';
 import { githubSkillBundle, githubSkillIdentity } from './github-skill-bundle';
 import { HarnessRuntimeError } from '../host/errors';
+import { githubPluginBundle, officialClaudePlugin } from './github-plugin-bundle';
 
 const SOURCE_CHUNK_BYTES = 64 * 1024;
 
@@ -20,6 +21,8 @@ export class GithubHarnessSkillSource implements HarnessSkillAssetSource {
   async load(url: string, signal: AbortSignal): Promise<Buffer> {
     const source = HARNESS_SKILL_SOURCE_URL.parse(url);
     const identity = githubSkillIdentity(source);
+    const plugin = officialClaudePlugin(identity);
+    if (plugin !== undefined) return githubPluginBundle(identity, plugin, signal);
     if (identity.path.endsWith('SKILL.md')) return githubSkillBundle(identity, signal);
     return readSkillSourceHttp(source, MAX_SKILL_ASSET_BYTES, signal);
   }

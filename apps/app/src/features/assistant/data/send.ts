@@ -1,7 +1,13 @@
-import type { AiChatRow, AiRetryFrom, AssistantMessageRow } from '@smarteverything/domain';
+import type {
+  AiChatRow,
+  AiRetryFrom,
+  AssistantMessageRow,
+  AiMessageReference,
+} from '@smarteverything/domain';
 import { branchAiChat, editAiChatMessage, retryAiChatMessage } from '../../../api/ai';
 import { sendAssistantMessage } from '../../../api/assistant';
 import { notify } from '../../../components/toast-store';
+import { trimmedReferences } from '../references/spans';
 import { clearUploads } from './uploads';
 
 export async function sendMessageRow(
@@ -38,9 +44,16 @@ export async function retryMessage(request: AssistantMessageRow, from: AiRetryFr
   }
 }
 
-export async function editMessage(request: AssistantMessageRow, text: string): Promise<boolean> {
+export async function editMessage(
+  request: AssistantMessageRow,
+  text: string,
+  references: readonly AiMessageReference[] = [],
+): Promise<boolean> {
   try {
-    await editAiChatMessage(request.chat_id, request.id, text.trim());
+    const message = trimmedReferences({ text, references });
+    await editAiChatMessage(request.chat_id, request.id, message.text, {
+      references: message.references,
+    });
     return true;
   } catch (error) {
     notify({ message: 'Message not edited', error, tone: 'critical' });

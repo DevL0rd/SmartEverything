@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import { randomUUID } from 'expo-crypto';
+import type { AiMessageReference } from '@smarteverything/domain';
+import { trimmedReferences } from '../references/spans';
+import type { MessageSender } from '../components/composer';
 import { Logger } from '@smarteverything/logging';
 import { sendAiChatMessage } from '../../../api/ai';
 import { notify } from '../../../components/toast-store';
@@ -14,12 +17,15 @@ export interface PendingMessage {
   readonly text: string;
   readonly attachments: readonly string[];
   readonly queuedAt: string;
+  readonly references: readonly AiMessageReference[];
+  readonly state: 'waiting' | 'failed';
 }
 
 const pending = new ValueStore<readonly PendingMessage[]>([]);
 const sending = new ValueStore<ReadonlySet<string>>(new Set());
 
 let flushing = false;
+const delivering = new Set<string>();
 
 export function useSendingMessage(chatId: string): boolean {
   return useValue(sending).has(chatId);
@@ -38,26 +44,42 @@ export function cancelPending(id: string): void {
   pending.update((all) => all.filter((message) => message.id !== id));
 }
 
-function queue(chatId: string, text: string, attachments: readonly string[]): void {
+function queue(
+  chatId: string,
+  text: string,
+  attachments: readonly string[],
+  input: { readonly references: readonly AiMessageReference[]; readonly id: string },
+): void {
   const message: PendingMessage = {
-    id: randomUUID(),
+    id: input.id,
     chatId,
     text,
     attachments,
     queuedAt: new Date().toISOString(),
+    references: input.references,
+    state: 'waiting',
   };
   pending.update((all) => [...all, message]);
   log.info('outbox.queued', { chatId, attachments: attachments.length });
 }
 
 async function deliver(message: PendingMessage): Promise<void> {
+  if (delivering.has(message.id)) return;
+  delivering.add(message.id);
   try {
-    await sendAiChatMessage(message.chatId, message.text, message.attachments, message.id);
+    await sendAiChatMessage(message.chatId, message.text, message.attachments, {
+      clientMessageId: message.id,
+      references: message.references,
+    });
     cancelPending(message.id);
     log.info('outbox.sent', { chatId: message.chatId });
   } catch (error) {
-    cancelPending(message.id);
+    pending.update((all) =>
+      all.map((row) => (row.id === message.id ? { ...row, state: 'failed' } : row)),
+    );
     notify({ message: 'A waiting message wasn’t sent', error, tone: 'critical' });
+  } finally {
+    delivering.delete(message.id);
   }
 }
 
@@ -68,7 +90,7 @@ export async function flushOutbox(): Promise<void> {
   flushing = true;
   try {
     for (const message of pending.get()) {
-      await deliver(message);
+      if (message.state === 'waiting') await deliver(message);
     }
   } finally {
     flushing = false;
@@ -79,10 +101,12 @@ async function sendNow(
   chatId: string,
   text: string,
   attachments: readonly string[],
+  input: { readonly references: readonly AiMessageReference[]; readonly id: string },
 ): Promise<boolean> {
+  const { references, id } = input;
   sending.update((all) => new Set([...all, chatId]));
   try {
-    await sendAiChatMessage(chatId, text, attachments, randomUUID());
+    await sendAiChatMessage(chatId, text, attachments, { clientMessageId: id, references });
     clearUploads();
     return true;
   } catch (error) {
@@ -93,16 +117,20 @@ async function sendNow(
   }
 }
 
-export function outboxSender(
-  chatId: string,
-  online: boolean,
-): (text: string, attachments: readonly string[]) => Promise<boolean> {
-  return (text, attachments) => {
+export function outboxSender(chatId: string, online: boolean): MessageSender {
+  return (text, attachments, references = [], clientMessageId) => {
+    const message = trimmedReferences({ text, references });
+    const input = { references: message.references, id: clientMessageId ?? randomUUID() };
     if (online) {
-      return sendNow(chatId, text.trim(), attachments);
+      return sendNow(chatId, message.text, attachments, input);
     }
-    queue(chatId, text.trim(), attachments);
+    queue(chatId, message.text, attachments, input);
     clearUploads();
     return Promise.resolve(true);
   };
+}
+
+export async function retryPending(id: string): Promise<void> {
+  const message = pending.get().find((row) => row.id === id && row.state === 'failed');
+  if (message !== undefined) await deliver(message);
 }

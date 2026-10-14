@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
+import { CAMERA_DETECTION_PRESENTATIONS, cameraDetectionsOf } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/checkbox';
 import { Section } from '../../../components/section';
@@ -69,6 +70,37 @@ function KindChoices({ filter, onChange }: Omit<FilterButtonProps, 'cameras'>): 
   );
 }
 
+function SoundChoices({ filter, onChange }: Omit<FilterButtonProps, 'cameras'>): ReactNode {
+  const chosen = filter.soundDetections ?? null;
+  return (
+    <Section title="Sound details">
+      <Checkbox
+        label="Any sound"
+        checked={chosen === null}
+        onChange={(on) => {
+          onChange({ ...filter, soundDetections: on ? null : [] });
+        }}
+      />
+      {cameraDetectionsOf('sound').map((detection) => (
+        <Checkbox
+          key={detection}
+          label={CAMERA_DETECTION_PRESENTATIONS[detection].label}
+          checked={chosen?.includes(detection) ?? false}
+          onChange={(on) => {
+            const current = chosen ?? [];
+            onChange({
+              ...filter,
+              soundDetections: on
+                ? [...current, detection]
+                : current.filter((entry) => entry !== detection),
+            });
+          }}
+        />
+      ))}
+    </Section>
+  );
+}
+
 export function FilterButton(props: FilterButtonProps): ReactNode {
   const [open, setOpen] = useState(false);
   const count = filterCount(props.filter);
@@ -111,6 +143,7 @@ export function FilterButton(props: FilterButtonProps): ReactNode {
         <View className="gap-section-gap px-4 pb-4">
           {props.cameras.length > 1 ? <CameraChoices {...props} /> : null}
           <KindChoices filter={props.filter} onChange={props.onChange} />
+          <SoundChoices filter={props.filter} onChange={props.onChange} />
         </View>
       </Sheet>
     </>

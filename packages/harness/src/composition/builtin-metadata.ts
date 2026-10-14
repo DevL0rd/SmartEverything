@@ -95,10 +95,10 @@ function builtinMetadata(
         )
         .digest('base64')}`,
       provenance: identity.provenance,
-      platforms: ['linux'],
+      platforms: identity.id === 'skills' ? ['linux', 'macos', 'windows'] : ['linux'],
       dsh_version: '0.2.1-alpha.2',
       runtime_version: HARNESS_RUNTIME_REVISION,
-      server_safe: false,
+      server_safe: identity.id === 'skills',
       adapter: { id: identity.id, version: identity.version, kind: identity.kind },
       skill_assets: [],
     }),

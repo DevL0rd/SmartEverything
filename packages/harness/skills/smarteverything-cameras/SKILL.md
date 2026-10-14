@@ -15,7 +15,7 @@ A sound event can identify Baby crying, Unusual sound or Loud sound in its detec
 
 ## Read or change listening
 
-`read_transcripts` offers list, session, search, status and settings views. These owner-only records include camera listening and plugin conversations; query a bounded period or specific session rather than dumping all private speech. `delete_transcripts` removes a finished transcript and its lines, while an active conversation stays. Deletion requires the requested transcript identity.
+`read_transcripts` offers camera feed, search, exact-line range, listening status and settings views. Readers use the same camera-view authority as the app. Use bounded cursor chunks, optionally scoped to one camera; search returns timestamped lines, and range loads context around that exact line identity. Keep Discord and other plugin conversation history in their plugin tools. A missing anchor may have expired or been deleted. Segment start/end are server wall clock, not a proven video playback timebase; do not claim precise captions from them. Legacy list and session views remain for compatibility. `delete_transcripts` removes a finished transcript and its lines, while an active conversation stays. Deletion requires the requested transcript identity.
 
 Use `update_device` what camera for event recording, wake sensitivity or transcription. Use `update_transcript_settings` for retention and the daily transcription cap. Read the current values and the exact schema first; changing listening is distinct from reading an existing recording.
 

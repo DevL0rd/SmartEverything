@@ -9,6 +9,7 @@ export function aiPreviewRoutes(preview: PreviewService): Record<keyof typeof E,
     ...previewDiagnosticRoutes(preview),
     ...embeddedBrowserRoutes(preview),
     ...htmlPublicationRoutes(preview),
+    ...chatPageAddressRoutes(preview),
     createAiHtmlPreviewLease: bound(E.createAiHtmlPreviewLease, ({ caller, params, body }) => {
       const publication = preview.documents.visible(caller, params.chatId, body.publication_id);
       if (publication.view.revision !== body.revision)
@@ -80,5 +81,30 @@ function htmlPublicationRoutes(
         query.lifetime,
       ),
     ),
+  };
+}
+
+function chatPageAddressRoutes(
+  preview: PreviewService,
+): Pick<Record<keyof typeof E, Bound>, 'readAiHtmlPage'> {
+  return {
+    readAiHtmlPage: bound(E.readAiHtmlPage, ({ caller, params }) => {
+      const publication = preview.documents.visible(caller, params.chatId, params.publicationId);
+      const entry = publication.view.project_source?.entry;
+      const entryPath =
+        entry === undefined ? '/' : `/${entry.split('/').map(encodeURIComponent).join('/')}`;
+      const origin = `https://${publication.view.id.replaceAll('-', '')}.${preview.gateway.domain()}`;
+      return {
+        page: {
+          version: 2 as const,
+          chatId: params.chatId,
+          publicationId: publication.view.id,
+          profileId: publication.view.profile_id,
+          entryPath,
+        },
+        origin,
+        url: `${origin}${entryPath}`,
+      };
+    }),
   };
 }

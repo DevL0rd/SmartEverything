@@ -14,11 +14,13 @@ import {
   type AiModelSuggested,
   type AiProviderCount,
   type AiRetryFrom,
+  type AiMessageReference,
   type AssistantMessageRow,
   type MessageSource,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
+import { serverSupportsAiReferences } from './connection/server-capabilities';
 
 const log = new Logger('app.assistant');
 
@@ -128,13 +130,19 @@ export async function sendAiChatMessage(
   chatId: string,
   text: string,
   attachments: readonly string[],
-  clientMessageId?: string,
+  options: {
+    readonly clientMessageId?: string;
+    readonly references?: readonly AiMessageReference[];
+  } = {},
 ): Promise<AssistantMessageRow> {
+  const { clientMessageId, references = [] } = options;
+  assertReferencesSupported(references);
   const row = await api().call(C.sendAiChatMessage, {
     params: { chatId },
     body: {
       text,
       attachments: [...attachments],
+      ...(references.length === 0 ? {} : { references: [...references] }),
       ...(clientMessageId === undefined ? {} : { client_message_id: clientMessageId }),
     },
   });
@@ -159,11 +167,20 @@ export async function editAiChatMessage(
   chatId: string,
   messageId: string,
   text: string,
-  attachments?: readonly string[],
+  options: {
+    readonly attachments?: readonly string[];
+    readonly references?: readonly AiMessageReference[];
+  } = {},
 ): Promise<AssistantMessageRow> {
+  const { attachments, references } = options;
+  assertReferencesSupported(references ?? []);
   const row = await api().call(C.editAiChatMessage, {
     params: { chatId, messageId },
-    body: attachments === undefined ? { text } : { text, attachments: [...attachments] },
+    body: {
+      text,
+      ...(attachments === undefined ? {} : { attachments: [...attachments] }),
+      ...(references === undefined ? {} : { references: [...references] }),
+    },
   });
   log.info('chat.edited', { chatId, messageId });
   return row;
@@ -178,4 +195,15 @@ export async function compactAiChat(chatId: string): Promise<boolean> {
   const result = await api().call(C.compactAiChat, { params: { chatId } });
   log.info('chat.compacted', { chatId, compacted: result.compacted });
   return result.compacted;
+}
+
+function assertReferencesSupported(references: readonly AiMessageReference[]): void {
+  if (references.length > 0 && !serverSupportsAiReferences(api().baseUrl))
+    throw new AiReferencesUnavailableError();
+}
+export class AiReferencesUnavailableError extends Error {
+  override readonly name = 'AiReferencesUnavailableError';
+  constructor() {
+    super('Update the hub to send selected references. Your draft has been kept.');
+  }
 }

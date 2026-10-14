@@ -1,5 +1,7 @@
 import {
   localClock,
+  cameraDetectionOf,
+  type CameraDetection,
   zonedInstant,
   type CalendarDate,
   type EventKind,
@@ -27,6 +29,7 @@ export interface TimelineEvent {
   readonly device_id: string | null;
   readonly kind: EventKind;
   readonly occurred_at: string;
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface TimelineRecording {
@@ -40,12 +43,17 @@ export interface TimelineRecording {
 export interface TimelineFilter {
   readonly deviceIds: readonly string[] | null;
   readonly kinds: readonly TimelineKind[] | null;
+  readonly soundDetections?: readonly CameraDetection[] | null;
 }
 
-export const NO_FILTER: TimelineFilter = { deviceIds: null, kinds: null };
+export const NO_FILTER: TimelineFilter = { deviceIds: null, kinds: null, soundDetections: null };
 
 export function filterCount(filter: TimelineFilter): number {
-  return (filter.deviceIds === null ? 0 : 1) + (filter.kinds === null ? 0 : 1);
+  return (
+    (filter.deviceIds === null ? 0 : 1) +
+    (filter.kinds === null ? 0 : 1) +
+    (filter.soundDetections === undefined || filter.soundDetections === null ? 0 : 1)
+  );
 }
 
 export interface TimelineItem<E extends TimelineEvent, R extends TimelineRecording> {
@@ -54,6 +62,7 @@ export interface TimelineItem<E extends TimelineEvent, R extends TimelineRecordi
   readonly kind: TimelineKind;
   readonly deviceId: string;
   readonly event: E | null;
+  readonly details?: Readonly<Record<string, unknown>>;
   readonly snapshot: R | null;
   readonly clip: R | null;
 }
@@ -101,6 +110,15 @@ function shown(filter: TimelineFilter, deviceId: string, kind: TimelineKind): bo
   );
 }
 
+function soundShown(filter: TimelineFilter, event: TimelineEvent): boolean {
+  const detections = filter.soundDetections;
+  if (event.kind !== 'sound' || detections === undefined || detections === null) {
+    return true;
+  }
+  const detection = cameraDetectionOf(event.kind, event.details ?? {});
+  return detection !== null && detections.includes(detection);
+}
+
 function byNewest(left: { readonly at: string }, right: { readonly at: string }): number {
   return right.at.localeCompare(left.at);
 }
@@ -128,12 +146,23 @@ export function timelineItems<E extends TimelineEvent, R extends TimelineRecordi
       deviceId === null ||
       !cameraIds.includes(deviceId) ||
       !CAMERA_EVENT_KINDS.includes(event.kind) ||
-      !shown(filter, deviceId, event.kind)
+      !shown(filter, deviceId, event.kind) ||
+      !soundShown(filter, event)
     ) {
       return [];
     }
     const own = recordingsOf(recordings, event.id);
-    return [{ id: event.id, at: event.occurred_at, kind: event.kind, deviceId, event, ...own }];
+    return [
+      {
+        id: event.id,
+        at: event.occurred_at,
+        kind: event.kind,
+        deviceId,
+        event,
+        details: event.details ?? {},
+        ...own,
+      },
+    ];
   });
   const known = new Set(events.map((event) => event.id));
   const loose = recordings.filter(

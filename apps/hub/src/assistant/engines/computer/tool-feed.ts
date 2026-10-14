@@ -31,7 +31,8 @@ export function bridgeTool(
       grant: turn.grant,
       caller: turn.caller,
       validate: providerToolValidation(deps, state, turn, current),
-      hubOsBan: binding.context?.managed_project !== undefined,
+      hubOsBan:
+        binding.managed_project !== undefined || binding.context?.managed_project !== undefined,
     },
     event,
   )

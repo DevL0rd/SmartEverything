@@ -1,46 +1,47 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
-import { Button } from '../../../components/button';
 import { List } from '../../../components/section';
 import { ListRow } from '../../../components/list-row';
 import { isLocalScale } from '../../../store/people';
 import { useDevices } from '../../../store/selectors';
-import { HEALTH_CONNECT_ON_DEVICE } from '../data/health-connect';
+import { HEALTH_CONNECT_ON_DEVICE, type HealthConnectStatus } from '../data/health-connect';
+import { useThisPhoneSource } from '../data/this-phone';
 import { useHealthConnect } from '../data/use-health-connect';
+
+function healthConnectText(status: HealthConnectStatus, connected: boolean): string {
+  switch (status.sdk) {
+    case 'unavailable':
+      return 'Not available on this phone';
+    case 'provider_update_required':
+      return 'Update Health Connect from the Play Store';
+    case 'available':
+      return connected
+        ? 'Connected · manage access in Fitness settings'
+        : 'Connect and manage access in Fitness settings';
+  }
+}
 
 function HealthConnectRow(): ReactNode {
   const controls = useHealthConnect();
-  const grants = controls.grants.data;
-  if (grants === undefined) {
+  const connected = useThisPhoneSource() !== null;
+  const status = controls.status.data;
+  if (status === undefined) {
     return (
       <ListRow
         title="Health Connect"
-        subtitle={controls.grants.error === null ? 'Checking…' : 'Couldn’t check Health Connect'}
+        subtitle={controls.status.error === null ? 'Checking…' : 'Couldn’t check Health Connect'}
         icon="heartPulse"
       />
     );
   }
-  const connected = grants.types.length > 0;
   return (
     <ListRow
       title="Health Connect"
-      subtitle={
-        connected
-          ? 'Connected · steps, sleep, heart and workouts'
-          : 'Bring in steps, sleep, heart and workouts'
-      }
+      subtitle={healthConnectText(status, connected)}
       icon="heartPulse"
-      trailing={
-        connected ? null : (
-          <Button
-            label="Connect"
-            variant="tonal"
-            loading={controls.busy === 'connect'}
-            onPress={controls.connect}
-          />
-        )
-      }
+      href={href.settings.focus('health', 'health-connect')}
+      chevron
     />
   );
 }

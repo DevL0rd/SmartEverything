@@ -1,12 +1,12 @@
+import { SERVED_REFERENCES } from './served-references';
 import { SERVED_PROJECT_PREVIEWS } from './served-project-previews';
 import { SERVED_PROJECTS } from './served-projects';
 import { SERVED_PREVIEW_DIAGNOSTICS } from './served-preview-diagnostics';
 import { SHOW_WIDGETS_TEXT } from '../chat-widgets';
 import type { Served } from './served-types';
 
-const CUSTOM = { custom: true } as const;
-
 export const SERVED_AI = [
+  ...SERVED_REFERENCES,
   ...SERVED_PROJECTS,
   ...SERVED_PREVIEW_DIAGNOSTICS,
   ...SERVED_PROJECT_PREVIEWS,
@@ -388,7 +388,7 @@ export const SERVED_AI = [
     'read',
     'Search tools',
     'Tools of this server matching some words, with one line each.',
-    CUSTOM,
+    { custom: true },
   ],
   [
     'tool_details',
@@ -396,6 +396,6 @@ export const SERVED_AI = [
     'read',
     'Tool details',
     'The full description and input schema of one tool.',
-    CUSTOM,
+    { custom: true },
   ],
 ] as const satisfies readonly Served[];

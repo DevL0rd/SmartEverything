@@ -44,7 +44,8 @@ function chatRoutes(
       ),
     ),
     sendAssistantMessage: bound(E.sendAssistantMessage, ({ body, caller }) =>
-      assistant.send(
+      assistant.submissions.send(
+        caller,
         { clientId: clientOf(caller).id, profileId: profileIdOf(store, caller) },
         body,
       ),

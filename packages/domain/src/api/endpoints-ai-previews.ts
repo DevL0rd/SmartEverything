@@ -1,6 +1,6 @@
 import { EMBEDDED_BROWSER_ENDPOINTS } from './endpoints-embedded-browser';
 import { PREVIEW_DIAGNOSTIC_ENDPOINTS } from './endpoints-preview-diagnostics';
-import { NATIVE_HTML_LEASE } from '../native-html-preview';
+import { NATIVE_HTML_LEASE, HTML_PAGE_VIEW } from '../native-html-preview';
 import { z } from 'zod';
 import { AI_PREVIEW_CATALOGUE, AI_PREVIEW_LEASE, AI_PREVIEW_LIFETIME } from '../ai-previews';
 import {
@@ -13,6 +13,16 @@ import { endpoint, NO_BODY } from './endpoint';
 import { NOTHING, DONE } from './primitives';
 const CHAT = z.strictObject({ chatId: z.uuid() });
 export const AI_PREVIEW_ENDPOINTS = {
+  readAiHtmlPage: endpoint({
+    method: 'GET',
+    path: '/api/ai/chats/:chatId/page-address/:publicationId',
+    access: 'member',
+    summary: 'Read the stable authenticated page URL for this chat publication',
+    params: CHAT.extend({ publicationId: z.uuid() }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: HTML_PAGE_VIEW,
+  }),
   ...PREVIEW_DIAGNOSTIC_ENDPOINTS,
   ...EMBEDDED_BROWSER_ENDPOINTS,
   publishAiProjectPreview: endpoint({

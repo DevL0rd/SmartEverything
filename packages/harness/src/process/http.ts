@@ -41,6 +41,8 @@ export class HarnessHttp {
     request: HarnessTransportRequest['request'],
     response: Response,
   ): Promise<ApiError | undefined> {
+    if (request.operation === 'plugin_agent')
+      return apiErrorOf(response.status, await response.json());
     if (
       response.status !== 422 ||
       request.operation !== 'publish' ||
@@ -67,6 +69,7 @@ export async function harnessInference(
     readonly boot: HarnessBoot;
     readonly claim: unknown;
     readonly routeId: string;
+    readonly ordinary_request?: boolean;
     readonly fetcher?: typeof fetch;
   },
   input: Parameters<typeof fetch>[0],
@@ -86,6 +89,9 @@ export async function harnessInference(
       headers: {
         authorization: `Bearer ${options.boot.token}`,
         'content-type': 'application/json',
+        ...(options.ordinary_request === true
+          ? { 'x-smarteverything-ordinary-request': 'true' }
+          : {}),
       },
       redirect: 'error',
       signal: request.signal,

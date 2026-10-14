@@ -1,5 +1,10 @@
 import {
-  ASSISTANT_MESSAGE_ROW,
+  STORED_MESSAGE,
+  STORED_MESSAGE_COLUMNS,
+  MESSAGE_COLUMNS,
+} from './assistant-message-storage';
+export { STORED_MESSAGE, MESSAGE_COLUMNS } from './assistant-message-storage';
+import {
   ASSISTANT_SETTINGS,
   ASSISTANT_SETTINGS_WRITE,
   type AssistantMessageRow,
@@ -13,7 +18,6 @@ export type { CallText } from './assistant-call-text';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
-import { UNKNOWN_COST_SQL } from '../../ledger/usage-queries';
 import {
   FILE_COLUMNS,
   STORED_FILE,
@@ -24,20 +28,9 @@ import {
 export type { NewAttachment, StoredAttachment };
 export { summaryOf } from './assistant-files';
 
-export const STORED_MESSAGE = storedRow(ASSISTANT_MESSAGE_ROW, {
-  json: ['attachments', 'steps', 'step_states', 'origin', 'embeds'],
-  flags: ['cost_incomplete'],
-});
-
 const STORED_SETTINGS = storedRow(z.strictObject({ settings: ASSISTANT_SETTINGS }), {
   json: ['settings'],
 });
-
-const STORED_MESSAGE_COLUMNS =
-  'id, profile_id, client_id, role, kind, author, text, attachments, state, reason, reason_code, client_message_id, steps, step_states, reply_to, chat_id, origin, embeds, cost_micros, model, created_at, updated_at';
-
-export const MESSAGE_COLUMNS = `${STORED_MESSAGE_COLUMNS},
-  exists(select 1 from ai_usage where message_id = assistant_messages.id and ${UNKNOWN_COST_SQL}) as cost_incomplete`;
 
 import type { NewAssistantMessage, AssistantMessageChange } from './assistant-message-contract';
 export type { NewAssistantMessage, AssistantMessageChange } from './assistant-message-contract';
@@ -187,7 +180,7 @@ export class AssistantChatRepository {
       this.context.sql.run(
         'add the assistant message',
         `insert into assistant_messages (${STORED_MESSAGE_COLUMNS})
-         values ($id, $profile, $client, $role, $kind, $author, $text, $attachments, $state,
+         values ($id, $profile, $client, $role, $kind, $author, $text, $attachments, $references, $state,
                  $reason, $reasonCode, $clientMessage, $steps, $stepStates, $replyTo, $chat, $origin, $embeds, $cost,
                  $model, $createdAt, $updatedAt)`,
         {
@@ -199,6 +192,7 @@ export class AssistantChatRepository {
           author: input.author,
           text: input.text,
           attachments: jsonText(input.attachments),
+          references: jsonText(input.references ?? []),
           state: input.state,
           reason: input.reason,
           reasonCode: input.reason_code ?? null,
@@ -242,6 +236,7 @@ export class AssistantChatRepository {
         reason: change.reason,
         reason_code: change.reason_code,
         text: change.text,
+        references_json: change.references === undefined ? undefined : jsonText(change.references),
         model: change.model,
         attachments: change.attachments === undefined ? undefined : jsonText(change.attachments),
         steps: change.steps === undefined ? undefined : jsonText(change.steps),

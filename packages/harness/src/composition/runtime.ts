@@ -56,6 +56,7 @@ export async function initializeRuntime(
   const serverPolicy = new HarnessServerPolicy(
     host.target.kind === 'server',
     options.serverToolAccess,
+    ctx,
   );
   ctx.tools.guard((execution) => serverPolicy.guard(execution));
   mountProjectGuards(ctx, host.target.kind === 'server');
@@ -66,6 +67,9 @@ export async function initializeRuntime(
     serverPolicy,
     generation,
     notify: options.onEvent,
+    ...(options.validateReferences === undefined
+      ? {}
+      : { validateReferences: options.validateReferences }),
     ...(options.configurationPending === undefined
       ? {}
       : { configurationPending: options.configurationPending }),

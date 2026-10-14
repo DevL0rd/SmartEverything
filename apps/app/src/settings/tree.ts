@@ -144,15 +144,6 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     visible: (env) => env.availability.hasCameras,
   },
   {
-    id: 'cameras/transcripts',
-    title: 'Transcripts',
-    icon: 'fileText',
-    parent: 'cameras',
-    group: null,
-    keywords: ['transcribe', 'speech to text', 'what was said', 'captions', 'listening'],
-    visible: (env) => env.availability.hasCameras && env.owner,
-  },
-  {
     id: 'talk',
     title: 'Walkie-talkie settings',
     icon: 'radio',

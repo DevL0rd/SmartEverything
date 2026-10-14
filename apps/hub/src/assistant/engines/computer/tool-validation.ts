@@ -1,5 +1,6 @@
 import { ApiError, type AiChatRow } from '@smarteverything/domain';
 import type { ComputerRunnerDeps, Turn } from './ports';
+import { eventAuthority, executionRole } from '../../execution-authority';
 import type { ProviderState } from './provider-state';
 export function providerToolValidation(
   deps: ComputerRunnerDeps,
@@ -8,7 +9,14 @@ export function providerToolValidation(
   current: () => boolean,
 ): (write: boolean) => void {
   return (write): void => {
+    const authority = eventAuthority(deps.store, turn.event);
+    if (executionRole(deps.store, authority) !== 'owner')
+      throw new ApiError(
+        'forbidden',
+        'Native project work requires its current initiating owner authority.',
+      );
     const binding = state.bound(turn.chat);
+    validateManagedContext(binding);
     const engine = deps.store.aiChats.chat(turn.chat.id).engine;
     if (JSON.stringify(engine) !== JSON.stringify(turn.chat.engine))
       throw new ApiError('forbidden', 'The native tool execution binding changed.');
@@ -46,4 +54,13 @@ export function nativeProjectReadOnly(deps: ComputerRunnerDeps, chat: AiChatRow)
         ?.type === 'readOnly'
     );
   throw new ApiError('forbidden', 'The native runtime permission binding changed.');
+}
+
+function validateManagedContext(binding: ReturnType<ProviderState['bound']>): void {
+  if (binding.managed_project === undefined) return;
+  if (JSON.stringify(binding.context?.managed_project) !== JSON.stringify(binding.managed_project))
+    throw new ApiError(
+      'forbidden',
+      'The admitted native managed project has no matching execution context.',
+    );
 }

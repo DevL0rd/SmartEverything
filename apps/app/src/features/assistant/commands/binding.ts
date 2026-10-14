@@ -17,12 +17,12 @@ function connectionId(live: boolean): string {
   connections.set(client, id);
   return id;
 }
-export function useCommandBinding(chat: AiChatRow | undefined): CommandBinding {
+export function useCommandBinding(chat: AiChatRow | undefined, opened: boolean): CommandBinding {
   const profile = useActiveProfile();
   const live = useSyncStatus().status === 'live';
-  const dsh = useDshCommandBinding(chat);
+  const dsh = useDshCommandBinding(chat, opened);
   const native = useNativeCommandBinding(chat);
-  if (chat?.engine.kind === 'dsh') return harnessBinding(dsh);
+  if (chat?.engine.kind === 'dsh' || chat?.engine.kind === 'openrouter') return harnessBinding(dsh);
   const key = JSON.stringify([connectionId(live), profile?.id, chat?.id, native.key]);
   return otherBinding(chat, native, key, live);
 }
@@ -50,7 +50,7 @@ function otherBinding(
     discoveryKey: key,
     chatId: chat?.id ?? null,
     target: null,
-    reason: 'Direct commands are not available for this provider. Use its execution host.',
+    reason: 'Finding commands…',
     retry: (): void => undefined,
   };
 }

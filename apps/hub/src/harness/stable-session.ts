@@ -1,11 +1,11 @@
-import { setTimeout } from 'node:timers/promises';
+import { waitForWriterExpiry } from './writer-expiry';
+import { prepareHostConfiguration } from './configuration-preparation';
 import { ApiError, harnessTargetKey } from '@smarteverything/domain';
 import type { AiHarnessSession, AiHarnessHost, DshWriterClaim } from '@smarteverything/domain';
 import type { ChatOwner } from '../assistant/chat-directory';
 import type { HarnessService } from './service';
 import { openConversation } from './opening';
 
-const MAX_LEASE_WAIT_MS = 125_000;
 const refreshing = new WeakMap<HarnessService, Map<string, Promise<AiHarnessSession>>>();
 interface SessionContext {
   readonly owner: ChatOwner;
@@ -22,6 +22,7 @@ export async function stableHumanSession(
     throw new ApiError('conflict', 'Human recovery requires the exact stable session epoch.');
   const connection = service.directory.get(session.target);
   service.admitTarget(context.owner, connection.host, connection.actor.id, context.clientId);
+  await prepareHostConfiguration(service, session);
   if (currentSession(service, context, session, connection.host)) return session;
   const active = refreshing.get(service) ?? new Map<string, Promise<AiHarnessSession>>();
   refreshing.set(service, active);
@@ -75,12 +76,7 @@ async function refreshSession(
     original.session_id,
     context.owner.profileId,
   );
-  if (writer.state === 'active' && writer.claim !== null) {
-    const delay = Math.max(0, Date.parse(writer.claim.expires_at) - Date.now());
-    if (delay > MAX_LEASE_WAIT_MS)
-      throw new ApiError('conflict', 'The existing writer lease exceeds the safe recovery window.');
-    await setTimeout(delay);
-  }
+  if (writer.state === 'active' && writer.claim !== null) await waitForWriterExpiry(writer.claim);
   const session = service.state(context.owner, context.chatId);
   if (
     session.session_id !== original.session_id ||

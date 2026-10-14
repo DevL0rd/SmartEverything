@@ -3,7 +3,11 @@ import type { TimelineKind } from './timeline';
 
 export interface RecordedItem {
   readonly id: string;
-  readonly event: { readonly id: string } | null;
+  readonly event: {
+    readonly id: string;
+    readonly details?: Readonly<Record<string, unknown>>;
+  } | null;
+  readonly details?: Readonly<Record<string, unknown>>;
   readonly at: string;
   readonly kind: TimelineKind;
   readonly deviceId: string;
@@ -17,6 +21,7 @@ export interface EventEntry {
   readonly deviceId: string;
   readonly at: string;
   readonly oldest: string;
+  readonly details?: Readonly<Record<string, unknown>>;
   readonly count: number;
   readonly snapshotId: string | null;
   readonly clipId: string | null;
@@ -35,10 +40,15 @@ function recordingIdsOf(item: RecordedItem): string[] {
   return [item.clip?.id, item.snapshot?.id].filter((id): id is string => id !== undefined);
 }
 
+function detailsOf(item: RecordedItem): Readonly<Record<string, unknown>> {
+  return item.details ?? item.event?.details ?? {};
+}
+
 export function entryOf(item: RecordedItem): EventEntry {
   return {
     id: item.id,
     kind: item.kind,
+    details: detailsOf(item),
     deviceId: item.deviceId,
     at: item.at,
     oldest: item.at,

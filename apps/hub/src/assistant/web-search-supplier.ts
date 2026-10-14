@@ -68,7 +68,7 @@ async function search(
 ): Promise<HubToolResult> {
   const { id, model, effort, verify } = searchAdmission(service, caller);
   const scoped = client.usingFetch((fetcher) =>
-    meteredAccountingFetch(service, id, fetcher, verify),
+    meteredAccountingFetch(service, id, fetcher, { verify }),
   );
   const turn = new TurnAccumulator();
   for await (const chunk of scoped.chat(

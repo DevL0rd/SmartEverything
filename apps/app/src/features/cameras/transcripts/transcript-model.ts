@@ -2,11 +2,9 @@ import {
   TRANSCRIPT_PAUSE_LABELS,
   transcriptRetentionLabel,
   type TranscriptListening,
-  type TranscriptSession,
   type TranscriptSettings,
 } from '@smarteverything/domain';
 import type { SelectOption } from '../../../components/select';
-import { count } from '../../../format/number';
 import type { Money } from '../../region';
 
 const RETENTION_DAYS: readonly number[] = [1, 3, 7, 14, 30, 90, 180, 365];
@@ -44,9 +42,4 @@ export function listeningLabel(listening: TranscriptListening): string {
 
 export function listeningDetail(listening: TranscriptListening): string | null {
   return listening.state === 'paused' ? TRANSCRIPT_PAUSE_LABELS[listening.reason] : null;
-}
-
-export function sessionSubtitle(session: TranscriptSession, last: string): string {
-  const lines = `${count(session.line_count)} ${session.line_count === 1 ? 'line' : 'lines'}`;
-  return [lines, last].filter((part) => part !== '').join(' · ');
 }

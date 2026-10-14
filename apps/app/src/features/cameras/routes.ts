@@ -1,5 +1,5 @@
 import { Image } from 'react-native';
-import { API_ENDPOINTS as E } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, CAMERA_EVENT_SEARCH_WORDS } from '@smarteverything/domain';
 import { api } from '../../api/transport';
 import type { PreloadContext, RouteDefinition } from '../../app-shell/route-types';
 import { snapshotQuery } from '../device-visuals';
@@ -26,7 +26,15 @@ export const ROUTES: readonly RouteDefinition[] = [
     icon: 'film',
     tab: 'cameras',
     parent: 'cameras',
-    keywords: ['motion', 'clips', 'recordings', 'calls', 'doorbell', 'history'],
+    keywords: [
+      'motion',
+      'clips',
+      'recordings',
+      'calls',
+      'doorbell',
+      'history',
+      ...CAMERA_EVENT_SEARCH_WORDS,
+    ],
     available: hasCameras,
     preload: preloadCameras,
     searchable: true,
@@ -44,3 +52,20 @@ export const ROUTES: readonly RouteDefinition[] = [
     searchable: true,
   },
 ];
+
+export const TRANSCRIPT_ACTIONS = [
+  {
+    key: 'transcripts',
+    title: 'Camera transcripts',
+    icon: 'fileText',
+    href: { pathname: '/cameras', params: { focus: 'transcripts' } },
+    keywords: ['speech', 'what was said', 'transcribe', 'history', 'text'],
+  },
+  {
+    key: 'transcript-search',
+    title: 'Search camera transcripts',
+    icon: 'search',
+    href: { pathname: '/cameras', params: { focus: 'transcript-search' } },
+    keywords: ['find speech', 'conversation', 'what was said', 'text'],
+  },
+] as const;

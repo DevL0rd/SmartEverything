@@ -1,4 +1,4 @@
-import type { HealthRecordType, LoggableType } from '@smarteverything/domain';
+import type { HealthRecordType } from '@smarteverything/domain';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -62,56 +62,9 @@ const READ_PERMISSION_OF: Readonly<Record<HealthRecordType, string>> = {
 
 const ACCESS_PERMISSIONS = ['READ_HEALTH_DATA_IN_BACKGROUND', 'READ_HEALTH_DATA_HISTORY'];
 
-const SCALE_WRITE_PERMISSIONS = [
-  'WRITE_WEIGHT',
-  'WRITE_BODY_FAT',
-  'WRITE_BASAL_METABOLIC_RATE',
-  'WRITE_LEAN_BODY_MASS',
-  'WRITE_BONE_MASS',
-  'WRITE_BODY_WATER_MASS',
-  'WRITE_HEART_RATE',
-];
-
-const ENTRY_WRITE_PERMISSIONS: Readonly<Record<LoggableType, string>> = {
-  Weight: 'WRITE_WEIGHT',
-  Height: 'WRITE_HEIGHT',
-  BodyFat: 'WRITE_BODY_FAT',
-  BloodPressure: 'WRITE_BLOOD_PRESSURE',
-  BloodGlucose: 'WRITE_BLOOD_GLUCOSE',
-  BodyTemperature: 'WRITE_BODY_TEMPERATURE',
-  BasalBodyTemperature: 'WRITE_BASAL_BODY_TEMPERATURE',
-  OxygenSaturation: 'WRITE_OXYGEN_SATURATION',
-  RestingHeartRate: 'WRITE_RESTING_HEART_RATE',
-  RespiratoryRate: 'WRITE_RESPIRATORY_RATE',
-  Hydration: 'WRITE_HYDRATION',
-  Nutrition: 'WRITE_NUTRITION',
-  ExerciseSession: 'WRITE_EXERCISE',
-  SleepSession: 'WRITE_SLEEP',
-  MindfulnessSession: 'WRITE_MINDFULNESS',
-  MenstruationFlow: 'WRITE_MENSTRUATION',
-  MenstruationPeriod: 'WRITE_MENSTRUATION',
-  IntermenstrualBleeding: 'WRITE_INTERMENSTRUAL_BLEEDING',
-  CervicalMucus: 'WRITE_CERVICAL_MUCUS',
-  OvulationTest: 'WRITE_OVULATION_TEST',
-  SexualActivity: 'WRITE_SEXUAL_ACTIVITY',
-};
-
-const WATCH_WRITE_PERMISSIONS = [
-  'WRITE_STEPS',
-  'WRITE_DISTANCE',
-  'WRITE_ACTIVE_CALORIES_BURNED',
-  'WRITE_HEART_RATE',
-  'WRITE_OXYGEN_SATURATION',
-  'WRITE_RESTING_HEART_RATE',
-  'WRITE_SLEEP',
-  'WRITE_EXERCISE',
-];
-
-const WRITE_PERMISSIONS = [
-  ...SCALE_WRITE_PERMISSIONS,
-  ...Object.values(ENTRY_WRITE_PERMISSIONS),
-  ...WATCH_WRITE_PERMISSIONS,
-];
+const WRITE_PERMISSIONS = Object.values(READ_PERMISSION_OF).map((name) =>
+  name.replace(/^READ_/, 'WRITE_'),
+);
 
 export const HEALTH_CONNECT_PERMISSIONS: readonly string[] = [
   ...new Set([...Object.values(READ_PERMISSION_OF), ...ACCESS_PERMISSIONS, ...WRITE_PERMISSIONS]),

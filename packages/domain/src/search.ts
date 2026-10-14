@@ -82,6 +82,7 @@ export interface SearchScene {
 }
 
 export interface SearchAutomation {
+  readonly triggerKeywords?: readonly string[];
   readonly id: string;
   readonly name: string;
   readonly enabled: boolean;

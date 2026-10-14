@@ -13,7 +13,7 @@ import { notify } from '../../components/toast-store';
 import { Toasts } from '../../components/toasts';
 import { ConnectionProvider } from '../../api/transport';
 import { startTheme } from '../../design/theme';
-import { developerFlags } from '../../developer/flags';
+import { useDeveloperFlags } from '../../developer/flags';
 import { perfTouch } from '../../perf/touch';
 import { makeQueryClient, watchDevice } from '../../queries/client';
 import { startClock } from '../../store/clock';
@@ -36,6 +36,7 @@ function useStartup(): void {
 
 export function AppRoot({ children }: { readonly children: ReactNode }): ReactNode {
   const [client] = useState(makeQueryClient);
+  const flags = useDeveloperFlags();
   useStartup();
   return (
     <GestureHandlerRootView className="flex-1 bg-bg">
@@ -58,7 +59,7 @@ export function AppRoot({ children }: { readonly children: ReactNode }): ReactNo
                     perfTouch('start');
                     preloader.interacted();
                   }}
-                  {...(developerFlags['perf.stalls']
+                  {...(flags['perf.stalls']
                     ? {
                         onTouchMove: (): void => {
                           perfTouch('move');

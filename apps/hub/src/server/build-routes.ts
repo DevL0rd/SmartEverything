@@ -1,3 +1,4 @@
+import { aiReferenceRoutes } from './handlers/ai-references';
 import { aiProjectRoutes } from './handlers/ai-projects';
 import { aiPreviewRoutes } from './handlers/ai-previews';
 import { imageRoutes } from './handlers/images';
@@ -139,11 +140,13 @@ function assistantMediaRoutes(
   | keyof ReturnType<typeof imageApiRoutes>
   | keyof ReturnType<typeof aiPreviewRoutes>
   | keyof ReturnType<typeof aiProjectRoutes>
+  | keyof ReturnType<typeof aiReferenceRoutes>
 > {
   return {
     ...imageApiRoutes(context),
     ...aiPreviewRoutes(context.preview),
     ...aiProjectRoutes(context.store, context.assistant.projects),
+    ...aiReferenceRoutes(context.assistant.references),
   };
 }
 

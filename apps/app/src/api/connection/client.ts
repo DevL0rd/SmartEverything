@@ -4,6 +4,7 @@ import {
   AI_ENGINE_HEADER_VALUE,
   AI_ENGINE_HEADER_VALUE_V2,
   AI_HARNESS_HEADER_VALUE,
+  AI_REFERENCE_HEADER_VALUE,
   AI_ENGINE_CAPABILITIES_HEADER,
   apiErrorOf,
   buildPath,
@@ -189,8 +190,9 @@ export class ApiClient {
   async call<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType, R extends z.ZodType>(
     endpoint: TypedEndpoint<P, Q, B, R>,
     input: CallInput<P, Q, B>,
+    options: { readonly signal?: AbortSignal } = {},
   ): Promise<z.output<R>> {
-    const answer = await this.answerOf(endpoint, input);
+    const answer = await this.answerOf(endpoint, input, options.signal);
     return answered(routeOf(endpoint), endpoint.response, answer);
   }
 
@@ -213,31 +215,41 @@ export class ApiClient {
     Q extends z.ZodType,
     B extends z.ZodType,
     R extends z.ZodType,
-  >(endpoint: TypedEndpoint<P, Q, B, R>, input: CallInput<P, Q, B>): Promise<unknown> {
+  >(
+    endpoint: TypedEndpoint<P, Q, B, R>,
+    input: CallInput<P, Q, B>,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     const route = routeOf(endpoint);
     const params = PATH_PARAMS.parse(checked(route, 'path', endpoint.params, input.params ?? {}));
     const query = wireQueryOf(WIRE_QUERY.parse(input.query ?? {}));
     checked(route, 'query', endpoint.query, query);
     const body: unknown = checked(route, 'body', endpoint.body, input.body);
     const path = `${buildPath(endpoint.path, params)}${encodeQuery(query)}`;
-    return this.exchange(path, endpoint.method, body, endpoint.access !== 'public');
+    return this.exchange(path, endpoint.method, body, {
+      authenticated: endpoint.access !== 'public',
+      signal,
+    });
   }
 
   private async exchange(
     path: string,
     method: string,
     body: unknown,
-    authenticated: boolean,
+    options: { readonly authenticated: boolean; readonly signal: AbortSignal | undefined },
   ): Promise<unknown> {
     await this.options.ready?.();
     const lease = this.options.route?.();
     const baseUrl = lease?.baseUrl ?? this.options.baseUrl;
-    const response = await this.send(`${baseUrl}${path}`, method, body, lease);
+    const response = await this.send(`${baseUrl}${path}`, method, body, {
+      lease,
+      signal: options.signal,
+    });
     const answer = await bodyOf(response);
     if (lease !== undefined) assertHubLease(lease, method);
     if (!response.ok) {
       const refusal = apiErrorOf(response.status, answer);
-      if (refusal.code === 'unauthorized' && authenticated) {
+      if (refusal.code === 'unauthorized' && options.authenticated) {
         this.options.onUnauthorized();
       }
       throw refusal;
@@ -249,15 +261,20 @@ export class ApiClient {
     url: string,
     method: string,
     body: unknown,
-    lease: HubRouteLease | undefined,
+    options: {
+      readonly lease: HubRouteLease | undefined;
+      readonly signal: AbortSignal | undefined;
+    },
   ): Promise<Response> {
+    const { lease, signal } = options;
     const token = this.options.token;
     try {
       const response = await (lease?.fetch ?? this.options.fetch)(url, {
         method,
         redirect: 'error',
+        ...(signal === undefined ? {} : { signal }),
         headers: {
-          [AI_ENGINE_HEADER]: `${AI_HARNESS_HEADER_VALUE}, ${AI_ENGINE_HEADER_VALUE_V2}, ${AI_ENGINE_HEADER_VALUE}`,
+          [AI_ENGINE_HEADER]: `${AI_REFERENCE_HEADER_VALUE}, ${AI_HARNESS_HEADER_VALUE}, ${AI_ENGINE_HEADER_VALUE_V2}, ${AI_ENGINE_HEADER_VALUE}`,
           ...(token === null ? {} : { authorization: `Bearer ${token}` }),
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
@@ -270,6 +287,7 @@ export class ApiClient {
       );
       return response;
     } catch (error) {
+      assertNotAborted(signal, error);
       if (lease !== undefined) {
         assertHubLease(lease, method);
         lease.failed();
@@ -277,4 +295,8 @@ export class ApiClient {
       throw new ServerUnreachableError(this.options.baseUrl, rawErrorText(error));
     }
   }
+}
+
+function assertNotAborted(signal: AbortSignal | undefined, error: unknown): void {
+  if (signal?.aborted === true) throw error;
 }

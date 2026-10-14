@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { LiveTable, RowOperation, TableRow } from '@smarteverything/domain';
+import type { CommittedNotice, LiveTable, RowOperation, TableRow } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
 import type { ChangeFeed } from './feed';
 import type { Sql, SqlParameters } from './sql';
@@ -91,6 +91,10 @@ export class StoreContext {
       this.feed.discard();
       throw cause;
     }
+  }
+
+  notice(notice: CommittedNotice): void {
+    this.feed.notice(notice);
   }
 
   changed<T extends LiveTable>(

@@ -1,9 +1,18 @@
 import type { ReactElement, ReactNode } from 'react';
-import { useEffect, useEffectEvent } from 'react';
+import { useContext, useEffect, useEffectEvent } from 'react';
 import { ScrollView, View } from 'react-native';
 import type { AssistantMessageRow } from '@smarteverything/domain';
 import { useRow } from '../../../store/selectors';
-import { loadOlderMessages, type OlderLoader } from '../data/history';
+import {
+  historyRevision,
+  historySessionKey,
+  loadOlderMessages,
+  ownOlderMessages,
+  type OlderLoader,
+} from '../data/history';
+import { useEntityStore, useStoreSelector } from '../../../store/store-context';
+import { ScreenPausedContext } from '../../../design/screen-pause';
+import { useValue } from '../../../design/external-store';
 import { ChatIntro } from './chat-intro';
 import { ThreadItems } from './thread-items';
 import { useThreadRows } from './thread-rows';
@@ -19,14 +28,22 @@ function useFillFirstPage(
   loadOlder: OlderLoader,
 ): void {
   const short = rows.length < FIRST_PAGE;
+  const store = useEntityStore();
+  const session = useStoreSelector(historySessionKey);
+  const revision = useValue(historyRevision);
+  const paused = useContext(ScreenPausedContext);
+  const fetchOlder = useEffectEvent(loadOlder);
   const load = useEffectEvent(() => {
     void loadOlderMessages(historyKey, rows, loadOlder);
   });
   useEffect(() => {
+    if (paused || session === null) return undefined;
+    const release = ownOlderMessages(historyKey, fetchOlder, store);
     if (short) {
       load();
     }
-  }, [historyKey, short]);
+    return release;
+  }, [historyKey, short, store, session, revision, paused]);
 }
 
 function latestResponder(rows: readonly AssistantMessageRow[]): AssistantMessageRow | null {

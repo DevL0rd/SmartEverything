@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
-import type { AiChatRow } from '@smarteverything/domain';
+import type { AiChatRow, AiMessageReference } from '@smarteverything/domain';
 import { useComposerState, type ComposerState } from './use-composer-state';
 import { CommandTransientProvider } from '../commands/transient';
 import { useRef, useState } from 'react';
@@ -15,9 +15,15 @@ import { ComposerEditor } from './composer-editor';
 import { ComposerField } from './composer-field';
 import { AttachButton, Counter, ExpandButton, QuoteChip } from './composer-extras';
 import { SendButton } from './composer-send';
+import { ReferenceChips } from '../references/chips';
 import { UploadChips } from './upload-chips';
 
-export type MessageSender = (text: string, attachments: readonly string[]) => Promise<boolean>;
+export type MessageSender = (
+  text: string,
+  attachments: readonly string[],
+  references?: readonly AiMessageReference[],
+  clientMessageId?: string,
+) => Promise<boolean>;
 
 const EXPAND_LINES = 4;
 
@@ -78,7 +84,11 @@ function Field({ config, state }: PartProps): ReactNode {
       setText={state.setText}
       disabled={config.disabled}
       placeholder={config.placeholder}
-      onCommandKey={state.commands.handleKey}
+      selection={state.mentions.selection}
+      onSelection={state.mentions.select}
+      onCommandKey={(key): boolean =>
+        state.mentions.handleKey(key) || state.commands.handleKey(key)
+      }
       onSend={state.send}
       onEscape={() => {
         if (state.text === '' && stop !== null) {
@@ -248,9 +258,17 @@ export function Composer(props: ComposerProps): ReactNode {
       {state.commands.result}
       {state.commands.hint}
       <UploadChips />
+      <ReferenceChips references={state.references} remove={state.mentions.remove} />
       <View className="relative">
+        {state.editor ? null : state.mentions.panel}
         {state.commands.panel}
-        <CommandTransientProvider opened={state.commands.opened} dismiss={state.commands.dismiss}>
+        <CommandTransientProvider
+          opened={state.commands.opened || state.mentions.opened}
+          dismiss={(): void => {
+            state.commands.dismiss();
+            state.mentions.dismiss();
+          }}
+        >
           <ChatComposerBody config={props} state={state} />
         </CommandTransientProvider>
       </View>
@@ -264,6 +282,11 @@ export function Composer(props: ComposerProps): ReactNode {
         placeholder={props.placeholder}
         ready={ready}
         onSend={state.send}
+        mentions={state.mentions}
+        onCommandKey={(key): boolean =>
+          state.mentions.handleKey(key) || state.commands.handleKey(key)
+        }
+        references={state.references}
       />
     </View>
   );

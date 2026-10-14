@@ -101,7 +101,11 @@ async function transport(
   if (request.operation.startsWith('preview_')) return previewTransport(context, input);
   if (request.operation === 'configuration_report')
     return service.configuration.report(request.report, request.manifest, connection);
-  if (['context', 'tool', 'project_file'].includes(request.operation))
+  if (
+    ['context', 'tool', 'project_file', 'plugin_agent', 'reference_validate'].includes(
+      request.operation,
+    )
+  )
     return centralTransport(service, input);
   if (MEDIA_OPERATIONS.has(request.operation)) return mediaTransport(context, service, input);
   if (request.operation === 'unregister')
@@ -236,6 +240,9 @@ async function inference(
   const { context, service, fetcher } = ports;
   const body = INFERENCE.parse(parseJsonBody(request, await readBody(request, BODY_LIMIT)));
   authenticate(context, request, body.device_id);
+  const ordinaryRequest =
+    z.literal('true').optional().parse(request.headers['x-smarteverything-ordinary-request']) ===
+    'true';
   service.storage.verify(body.claim, body);
   const grant = service.storage.grant(body.claim.session_id);
   const route = service.routes.selected(
@@ -256,7 +263,7 @@ async function inference(
     );
   await streamInference(
     { context, service, fetcher },
-    { request: body.request, claim: body.claim, identity: body },
+    { request: body.request, claim: body.claim, identity: body, ordinaryRequest },
     response,
   );
 }
@@ -266,6 +273,7 @@ async function streamInference(
     readonly request: z.infer<typeof INFERENCE>['request'];
     readonly claim: z.infer<typeof INFERENCE>['claim'];
     readonly identity: z.infer<typeof INFERENCE>;
+    readonly ordinaryRequest: boolean;
   },
   response: ServerResponse,
 ): Promise<void> {
@@ -283,9 +291,7 @@ async function streamInference(
       service,
       body.claim.session_id,
       connectionDiagnosticFetch('hub_supplier', fetcher),
-      (): void => {
-        service.storage.verify(body.claim, body.identity);
-      },
+      inferenceAccounting(service, body),
     );
     const upstream = await meteredFetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -327,4 +333,20 @@ function previewReceipt(
   value: AiHtmlPreviewPublication | AiPreviewPublication | { readonly ok: true },
 ): unknown {
   return 'ok' in value ? value : previewPublicationView(value, undefined);
+}
+
+function inferenceAccounting(
+  service: HarnessService,
+  body: {
+    readonly claim: z.infer<typeof INFERENCE>['claim'];
+    readonly identity: z.infer<typeof INFERENCE>;
+    readonly ordinaryRequest: boolean;
+  },
+): Parameters<typeof meteredAccountingFetch>[3] {
+  return {
+    verify: (): void => {
+      service.storage.verify(body.claim, body.identity);
+    },
+    ordinary_request: body.ordinaryRequest,
+  };
 }

@@ -1,8 +1,14 @@
 import {
   serverSupportsNativeHtml,
   serverSupportsNativeProject,
+  serverSupportsChatPages,
 } from '../api/connection/server-capabilities';
-import type { NativeHtmlLease, BrowserTarget, NativeHtmlPreview } from '@smarteverything/domain';
+import {
+  BrowserPolicyError,
+  type NativePageDescriptor,
+  type BrowserTarget,
+  type NativeHtmlPreview,
+} from '@smarteverything/domain';
 import { desktopBridge } from '../design/platform';
 import { androidHtmlPreview } from '../../modules/health-connect/src/html-preview';
 import { routeFor, assertHubLease } from '../api/connection/active-route';
@@ -30,53 +36,45 @@ export function nativeProjectPreviewAvailable(): boolean {
     (htmlPreviewBridge()?.projectVersion?.() ?? 0) >= 1
   );
 }
+export function nativeChatPageAvailable(): boolean {
+  const connection = connectionState.get();
+  return (
+    connection.status === 'paired' &&
+    serverSupportsChatPages(connection.connection.url) &&
+    (htmlPreviewBridge()?.pageVersion?.() ?? 0) >= 2
+  );
+}
 export async function projectHtmlTarget(
-  chatId: string,
-  lease: NativeHtmlLease,
+  page: NativePageDescriptor,
   id: string,
 ): Promise<BrowserTarget> {
   const bridge = htmlPreviewBridge();
-  if (bridge === null)
-    throw new Error('This native HTML lease requires its registered native presenter.');
+  if (bridge === null || (bridge.pageVersion?.() ?? 0) < 2)
+    throw new BrowserPolicyError('Update the app to open saved chat pages.');
   const connection = connectionState.get();
   if (connection.status !== 'paired')
-    throw new Error('HTML projection requires the active paired server.');
+    throw new BrowserPolicyError('Reconnect to open this chat page.');
   const route = routeFor(connection.connection).lease();
-  if (
-    route.nativeAuthority !== true ||
-    route.binding === undefined ||
-    route.nativeRouteGeneration === undefined
-  )
-    throw new Error('HTML projection requires the independently bound native route.');
-  assertHubLease(route, 'POST');
+  if (route.nativeAuthority !== true || route.binding === undefined)
+    throw new BrowserPolicyError('Reconnect this app to its paired server.');
+  assertHubLease(route, 'GET');
   const projection = await bridge.open({
     scopeId: route.scopeId,
     binding: route.binding,
-    routeGeneration: route.nativeRouteGeneration,
     authorization: `Bearer ${connection.connection.token}`,
-    claim: {
-      chatId,
-      lease,
-      ...(nativeProjectPreviewAvailable() ? { capability: 'native-project-v1' as const } : {}),
-    },
+    page,
   });
-  if (!route.isCurrent()) {
-    await bridge.release(projection.id);
-    assertHubLease(route, 'POST');
-  }
   return {
     kind: 'native-html',
     id,
     projectionId: projection.id,
     url: projection.url,
-    ...(projection.project === true ? { project: true as const } : {}),
+    project: true,
+    page,
+    profileId: page.profileId,
   };
 }
 export async function releaseHtmlTarget(target: BrowserTarget): Promise<void> {
   if (target.kind !== 'native-html') return;
   await htmlPreviewBridge()?.release(target.projectionId);
-}
-
-export function nativeHtmlPersistenceAvailable(): boolean {
-  return (htmlPreviewBridge()?.lifetimeVersion?.() ?? 1) >= 2;
 }

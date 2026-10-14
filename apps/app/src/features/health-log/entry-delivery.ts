@@ -1,11 +1,7 @@
 import { useEffect } from 'react';
 import type { HealthRecordType } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import {
-  deliverEntries,
-  isHealthConnectLinked,
-  requestEntryWrites,
-} from '../../../modules/health-connect';
+import { deliverEntries, isHealthConnectLinked } from '../../../modules/health-connect';
 import { ValueStore, useValue } from '../../design/external-store';
 import { entryChanges } from '../../queries/health-entries';
 import { useRows, useSession } from '../../store/selectors';
@@ -29,7 +25,7 @@ export function useEntryWriteState(): EntryWriteState {
   return useValue(writeState);
 }
 
-async function saveEntriesToHealthConnect(): Promise<void> {
+export async function retryHealthConnectEntries(): Promise<void> {
   try {
     const report = await deliverEntries();
     writeState.set(
@@ -46,11 +42,6 @@ async function saveEntriesToHealthConnect(): Promise<void> {
   }
 }
 
-export async function allowEntryWrites(types: readonly HealthRecordType[]): Promise<void> {
-  await requestEntryWrites(types);
-  await saveEntriesToHealthConnect();
-}
-
 function useThisPhoneConnected(): boolean {
   const clientId = useSession().client.id;
   return useRows('health_sources').some(
@@ -63,7 +54,7 @@ export function EntryDeliveryHost(): null {
   const connected = useThisPhoneConnected();
   useEffect(() => {
     if (isHealthConnectLinked && connected) {
-      void saveEntriesToHealthConnect();
+      void retryHealthConnectEntries();
     }
   }, [changes, connected]);
   return null;

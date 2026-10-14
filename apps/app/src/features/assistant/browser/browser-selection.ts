@@ -3,10 +3,8 @@ import type {
   AiPreviewLease,
   AiPreviewPublication,
   AiHtmlPreviewPublication,
-  AiHtmlPreviewLease,
-  NativeHtmlLease,
-  HtmlPresentationLease,
   BrowserTarget,
+  NativePageDescriptor,
 } from '@smarteverything/domain';
 class PreviewAuthorizationError extends Error {
   constructor(readonly publicationId: string) {
@@ -25,7 +23,7 @@ export type BrowserSelection =
       readonly kind: 'html';
       readonly target: BrowserTarget;
       readonly publication: AiHtmlPreviewPublication;
-      readonly lease: HtmlPresentationLease;
+      readonly page: NativePageDescriptor;
       readonly notice: number;
     }
   | { readonly kind: 'public'; readonly target: BrowserTarget }
@@ -79,7 +77,7 @@ export function selectionProblem(
   _live?: boolean,
 ): string | null {
   if (selection === null || selection.kind === 'public') return null;
-  if (selection.kind === 'html') return htmlSelectionProblem(selection, catalogue, notices);
+  if (selection.kind === 'html') return stablePageProblem(selection.publication.id, catalogue);
   if ((notices.get(selection.publication.id) ?? 0) !== selection.notice)
     return 'Sharing changed or was revoked. Choose a currently shared service to continue.';
   if (previewExpired(selection.lease))
@@ -105,76 +103,27 @@ function publicationProblem(
     : 'This service restarted or was replaced. Choose it again to open a new preview.';
 }
 
-export function htmlSelection(
-  publication: AiHtmlPreviewPublication,
-  lease: AiHtmlPreviewLease,
-  notice: number,
-  applicationOrigins: readonly string[],
-): BrowserSelection {
-  const url = new URL(lease.url);
-  const origin = new URL(lease.origin);
-  if (
-    lease.publication_id !== publication.id ||
-    lease.revision !== publication.revision ||
-    lease.profile_id !== publication.profile_id ||
-    origin.protocol !== 'https:' ||
-    origin.origin !== lease.origin ||
-    url.origin !== lease.origin ||
-    url.username !== '' ||
-    url.password !== '' ||
-    applicationOrigins.some((value) => new URL(value).origin === lease.origin)
-  )
-    throw new PreviewAuthorizationError(publication.id);
-  return {
-    kind: 'html',
-    publication,
-    lease,
-    notice,
-    target: {
-      kind: 'preview',
-      id: `${publication.id}:${publication.revision}:${lease.origin}`,
-      url: lease.url,
-      origin: lease.origin,
-      initialPath: '/',
-    },
-  };
-}
-function htmlSelectionProblem(
-  selection: Extract<BrowserSelection, { kind: 'html' }>,
-  catalogue: AiPreviewCatalogue | undefined,
-  notices: ReadonlyMap<string, number>,
-): string | null {
-  if (previewExpired(selection.lease)) return 'Preview access expired. Select the HTML again.';
-  if (catalogue === undefined) return null;
-  if (selection.target.kind !== 'native-html' && !catalogue.gateway.ready)
-    return 'The preview connection is unavailable.';
-  const current = catalogue.documents.find((document) => document.id === selection.publication.id);
-  if (current === undefined) return 'This HTML is no longer shared with this chat.';
-  if (
-    current.revision !== selection.publication.revision ||
-    (notices.get(current.id) ?? 0) !== selection.notice
-  )
-    return 'The HTML changed. Loading its current revision.';
-  return null;
-}
-
-export function nativeHtmlSelection(
-  publication: AiHtmlPreviewPublication,
-  lease: NativeHtmlLease,
-  notice: number,
-  target: BrowserTarget,
-): BrowserSelection {
-  if (
-    target.kind !== 'native-html' ||
-    lease.publication_id !== publication.id ||
-    lease.revision !== publication.revision ||
-    lease.profile_id !== publication.profile_id ||
-    previewExpired(lease)
-  )
-    throw new PreviewAuthorizationError(publication.id);
-  return { kind: 'html', publication, lease, notice, target };
-}
-
-function previewExpired(lease: HtmlPresentationLease | AiPreviewLease): boolean {
+function previewExpired(lease: AiPreviewLease): boolean {
   return lease.expires_at !== null && Date.parse(lease.expires_at) <= Date.now();
+}
+
+export function chatPageSelection(
+  publication: AiHtmlPreviewPublication,
+  page: NativePageDescriptor,
+  target: BrowserTarget,
+  notice: number,
+): BrowserSelection {
+  if (
+    page.chatId !== publication.chat_id ||
+    page.profileId !== publication.profile_id ||
+    page.publicationId !== publication.id
+  )
+    throw new PreviewAuthorizationError(publication.id);
+  return { kind: 'html', publication, page, target, notice };
+}
+
+function stablePageProblem(id: string, catalogue: AiPreviewCatalogue | undefined): string | null {
+  return catalogue === undefined || catalogue.documents.some((document) => document.id === id)
+    ? null
+    : 'This page is no longer available in this chat.';
 }

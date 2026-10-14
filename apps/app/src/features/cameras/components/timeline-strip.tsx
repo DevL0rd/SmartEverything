@@ -52,7 +52,7 @@ function Mark({
   readonly size: number;
   readonly onOpen: (id: string) => void;
 }): ReactNode {
-  const look = eventLook(mark.kind);
+  const look = eventLook(mark.kind, mark.details);
   const count = mark.ids.length;
   return (
     <View style={placeOf(mark.x - size / 2, size)} className="absolute top-2">

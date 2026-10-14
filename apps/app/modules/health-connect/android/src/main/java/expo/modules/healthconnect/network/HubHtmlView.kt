@@ -46,11 +46,11 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     page.webChromeClient = HubHtmlViewChrome(diagnostics)
     page.setDownloadListener { _, _, _, _, _ -> status(false, "Downloads are blocked in this HTML preview.") }
   }
-  fun bind(id: String, url: String, origin: String?, check: () -> Unit, detached: () -> Unit) {
+  fun bind(id: String, url: String, origin: String, profileId: String, check: () -> Unit, detached: () -> Unit) {
     check(!active) { "HTML view is already bound" }
     check.invoke()
     check(projectProfile == null) { "Project preview profile is already owned" }
-    if (origin != null || HubBrowserPolicy.supported()) projectProfile = HubHtmlProfile(page)
+    projectProfile = HubHtmlProfile(page, profileId)
     try {
       configurePage()
       browserId = id
@@ -82,7 +82,22 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
   fun navigating(url: String, redirect: Boolean) { diagnostics.navigating(url, redirect) }
   fun started(url: String): Boolean = diagnostics.started(url)
   fun finished(url: String): Boolean = diagnostics.finished(url)
-  fun allowsRequest(url: String, method: String): Boolean = allows(url) && (policy != null || method in listOf("GET", "HEAD"))
+  fun allowsRequest(url: String, method: String, mainFrame: Boolean): Boolean {
+    if (allows(url)) return policy != null || method in listOf("GET", "HEAD")
+    if (!active || mainFrame || projectOrigin == null || method !in listOf("GET", "HEAD")) return false
+    return runCatching {
+      (projectProfile ?: error("HTML page has no owned profile")).check()
+      (fence ?: error("HTML page has no ownership fence")).invoke()
+      publicAsset(url)
+    }.getOrDefault(false)
+  }
+  private fun publicAsset(url: String): Boolean {
+    val parsed = java.net.URI(url)
+    val host = parsed.host?.lowercase() ?: return false
+    return parsed.scheme == "https" && parsed.rawUserInfo == null && host.contains('.') &&
+      !Regex("[0-9.]+").matches(host) && !host.contains(':') &&
+      listOf("localhost", "local", "internal", "test", "invalid", "home").none { host == it || host.endsWith(".$it") }
+  }
   fun allows(url: String): Boolean {
     val browser = policy
     if (browser != null) return active && browser.allows(url)
@@ -92,7 +107,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     if (origin != null && !sameProjectOrigin(url, origin)) return false
     return runCatching {
       if (origin != null) (projectProfile ?: error("Project preview has no owned profile")).check()
-      fence?.invoke() ?: error("HTML view has no lease fence")
+      fence?.invoke() ?: error("HTML view has no ownership fence")
     }.isSuccess
   }
   private fun sameProjectOrigin(url: String, origin: String): Boolean = runCatching {
@@ -107,7 +122,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     require(sequence > 0)
     if (sequence <= commandSequence) return
     commandSequence = sequence
-    check(allows(authorizedUrl)) { "HTML view lease was withdrawn" }
+    check(allows(authorizedUrl)) { "HTML view ownership was withdrawn" }
     when (input.getString("action")) {
       "navigate" -> { val value = input.getString("url"); check(allows(value)); if (value == authorizedUrl || value.substringBefore('#') != authorizedUrl.substringBefore('#')) diagnostics.prepare(value); authorizedUrl = value; page.loadUrl(value) }
       "reload" -> { val value = page.url ?: authorizedUrl; check(allows(value)); diagnostics.prepare(value); page.reload() }
@@ -133,7 +148,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
       page.stopLoading()
       page.visibility = android.view.View.GONE
       try { page.loadData("", "text/html", "UTF-8") } finally { closeProjectProfile() }
-      status(false, "This HTML lease was withdrawn. Choose its current publication.")
+      status(false, "This HTML page ownership was withdrawn. Reload its publication.")
     }
   }
   private fun closeProjectProfile() {

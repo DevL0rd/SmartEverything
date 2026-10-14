@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ScrollView, View } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
 import { href } from '../../../app-shell/hrefs';
@@ -15,6 +15,7 @@ import { InCallBar, PresetsRow, RecentForCamera, useAnswering } from '../viewer/
 import { QuickToggles } from '../components/quick-toggles';
 import { TimelineSection } from '../viewer/timeline-section';
 import { ViewerPlayer } from '../viewer/viewer-player';
+import { CameraTranscriptFeed } from '../transcripts/camera-transcript-feed';
 
 function Panels({
   viewer,
@@ -48,10 +49,15 @@ function CompactViewer({
       <View className="bg-black pt-safe">
         <ViewerPlayer viewer={viewer} topBar rounded={false} />
       </View>
-      <ScrollView contentContainerClassName="gap-section-gap px-gutter py-section-gap">
-        <Panels viewer={viewer} answering={answering} />
-        <RecentForCamera entry={viewer.entry} />
-      </ScrollView>
+      <CameraTranscriptFeed
+        entry={viewer.entry}
+        header={
+          <View className="gap-section-gap pt-section-gap">
+            <Panels viewer={viewer} answering={answering} />
+            <RecentForCamera entry={viewer.entry} />
+          </View>
+        }
+      />
     </View>
   );
 }
@@ -85,16 +91,30 @@ function MediumViewer({
 }): ReactNode {
   const columns = atLeast(useSizeClass().width, 'expanded');
   return (
-    <Screen header={<ViewerHeader entry={viewer.entry} />} maxWidth="detail">
-      <ViewerPlayer viewer={viewer} topBar={false} rounded />
-      <View className={columns ? 'flex-row items-start gap-section-gap' : 'gap-section-gap'}>
-        <View className={columns ? 'min-w-0 flex-1 gap-section-gap' : 'gap-section-gap'}>
-          <Panels viewer={viewer} answering={answering} />
-        </View>
-        <View className={columns ? 'min-w-0 flex-1' : ''}>
-          <RecentForCamera entry={viewer.entry} />
-        </View>
-      </View>
+    <Screen
+      header={<ViewerHeader entry={viewer.entry} />}
+      maxWidth="detail"
+      scroll={false}
+      externalScroll
+    >
+      <CameraTranscriptFeed
+        entry={viewer.entry}
+        pageHeader={<ViewerHeader entry={viewer.entry} />}
+        maxWidth="detail"
+        header={
+          <View className="gap-section-gap">
+            <ViewerPlayer viewer={viewer} topBar={false} rounded />
+            <View className={columns ? 'flex-row items-start gap-section-gap' : 'gap-section-gap'}>
+              <View className={columns ? 'min-w-0 flex-1 gap-section-gap' : 'gap-section-gap'}>
+                <Panels viewer={viewer} answering={answering} />
+              </View>
+              <View className={columns ? 'min-w-0 flex-1' : ''}>
+                <RecentForCamera entry={viewer.entry} />
+              </View>
+            </View>
+          </View>
+        }
+      />
     </Screen>
   );
 }
@@ -107,19 +127,30 @@ function WideViewer({
   readonly answering: boolean;
 }): ReactNode {
   return (
-    <Screen header={<ViewerHeader entry={viewer.entry} />} maxWidth="dashboard">
-      <View className="flex-row items-start gap-section-gap">
-        <View className="min-w-0 flex-1 gap-section-gap">
-          <ViewerPlayer viewer={viewer} topBar={false} rounded />
-          <TimelineSection entry={viewer.entry} />
-        </View>
-        <View className="w-inspector gap-section-gap">
-          {answering ? <InCallBar entry={viewer.entry} /> : null}
-          <PresetsRow viewer={viewer} />
-          <QuickToggles entry={viewer.entry} />
-          <RecentForCamera entry={viewer.entry} />
-        </View>
-      </View>
+    <Screen
+      header={<ViewerHeader entry={viewer.entry} />}
+      maxWidth="dashboard"
+      scroll={false}
+      externalScroll
+    >
+      <CameraTranscriptFeed
+        entry={viewer.entry}
+        pageHeader={<ViewerHeader entry={viewer.entry} />}
+        header={
+          <View className="flex-row items-start gap-section-gap">
+            <View className="min-w-0 flex-1 gap-section-gap">
+              <ViewerPlayer viewer={viewer} topBar={false} rounded />
+              <TimelineSection entry={viewer.entry} />
+            </View>
+            <View className="w-inspector gap-section-gap">
+              {answering ? <InCallBar entry={viewer.entry} /> : null}
+              <PresetsRow viewer={viewer} />
+              <QuickToggles entry={viewer.entry} />
+              <RecentForCamera entry={viewer.entry} />
+            </View>
+          </View>
+        }
+      />
     </Screen>
   );
 }

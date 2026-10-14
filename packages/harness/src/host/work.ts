@@ -29,16 +29,20 @@ export function sessionWork(
 }
 
 export function assertDrained(work: HarnessWork): void {
-  if (
+  if (!workDrained(work))
+    throw new HarnessRuntimeError(
+      'operation_failed',
+      'Session still has active turns, interactions, shells or queued messages.',
+    );
+}
+
+export function workDrained(work: HarnessWork): boolean {
+  return !(
     work.cleanup.state === 'running' ||
     work.cleanup.state === 'unknown' ||
     work.turn ||
     work.interactions > 0 ||
     work.shells.length > 0 ||
     work.queuedMessages > 0
-  )
-    throw new HarnessRuntimeError(
-      'operation_failed',
-      'Session still has active turns, interactions, shells or queued messages.',
-    );
+  );
 }

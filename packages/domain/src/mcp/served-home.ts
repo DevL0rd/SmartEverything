@@ -185,13 +185,15 @@ export const SERVED_HOME = [
     'cameras',
     'read',
     'Read transcripts',
-    'What cameras heard and what plugin conversations said, as text: the transcripts newest first, one transcript with its lines, a search through every line, the camera listening status or the retention and daily cap. Only the owner reads them.',
+    'Read view-authorized camera speech in bounded chronological cursor chunks, search timestamped lines, load exact hit context, or read listening status and shared retention and budget. Plugin conversation history stays in its plugin.',
     {
       key: 'view',
       parts: {
+        feed: 'read_camera_transcript_feed',
+        range: 'read_camera_transcript_range',
+        search: 'search_camera_transcript_feed',
         list: 'list_transcripts',
         session: 'read_transcript',
-        search: 'search_transcripts',
         status: 'read_transcript_status',
         settings: 'read_transcript_settings',
       },

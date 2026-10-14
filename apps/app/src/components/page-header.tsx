@@ -239,8 +239,8 @@ function AppBarTitle({
 
 function AppBar(props: PageHeaderProps & { readonly kind: HeaderKind }): ReactNode {
   const back = useBack(props.back);
-  const { scrollY, scrollRef } = useScreen();
-  const large = props.kind === 'large' && scrollRef !== null;
+  const { scrollY, scrollable } = useScreen();
+  const large = props.kind === 'large' && scrollable;
   const titleStyle = useAnimatedStyle(() => ({
     opacity: large
       ? interpolate(scrollY.get(), [COLLAPSE_AT - 16, COLLAPSE_AT], [0, 1], 'clamp')
@@ -317,9 +317,9 @@ function DesktopHeader(props: PageHeaderProps): ReactNode {
 export function PageHeader(props: PageHeaderProps): ReactNode {
   const slot = useHeaderSlot();
   const { header } = useSizeClass();
-  const { scrollRef } = useScreen();
+  const { scrollable } = useScreen();
   if (slot === 'large') {
-    if (header === 'large' && scrollRef !== null) {
+    if (header === 'large' && scrollable) {
       return <LargeTitle {...props} />;
     }
     return header === 'desktop' ? <DesktopHeader {...props} /> : null;

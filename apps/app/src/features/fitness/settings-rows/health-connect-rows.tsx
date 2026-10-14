@@ -35,16 +35,24 @@ function StatusRow({
       title="Health Connect"
       subtitle={statusText(controls, connected)}
       trailing={
-        ready && !connected ? (
+        ready ? (
           <Button
-            label="Connect"
+            label={connected ? 'Review access' : 'Connect'}
             loading={controls.busy === 'connect'}
+            disabled={controls.busy !== null}
             onPress={controls.connect}
           />
         ) : undefined
       }
     />
   );
+}
+
+function featureAccess(availability: 'available' | 'unavailable', granted: boolean): string {
+  if (availability === 'unavailable') {
+    return 'not supported';
+  }
+  return granted ? 'allowed' : 'not allowed';
 }
 
 function PermissionsRow({ controls }: { readonly controls: HealthConnectControls }): ReactNode {
@@ -55,19 +63,19 @@ function PermissionsRow({ controls }: { readonly controls: HealthConnectControls
   }
   const summary = grantSummary(status.readableTypes, grants.types);
   const total = summary.granted.length + summary.missing.length;
-  const allowed = `${String(summary.granted.length)} of ${String(total)} allowed`;
-  return summary.missing.length === 0 ? (
-    <ListRow icon="shield" title="Permissions" value="All allowed" />
-  ) : (
+  const reads = `Read ${String(summary.granted.length)} of ${String(total)}`;
+  const writes =
+    grants.writeTypes === undefined
+      ? 'Update the app to review write access'
+      : `Write ${String(grants.writeTypes.length)} of ${String(total)}`;
+  const background = featureAccess(status.features.backgroundRead, grants.background);
+  const history = featureAccess(status.features.historyRead, grants.history);
+  return (
     <ListRow
       icon="shield"
-      title="Permissions"
-      subtitle={allowed}
-      value="Review"
-      chevron
-      onPress={() => {
-        controls.askAgain(summary.missing);
-      }}
+      title="Data access"
+      subtitle={`${reads} · ${writes}`}
+      caption={`Background ${background} · History ${history}`}
     />
   );
 }
@@ -94,6 +102,7 @@ function SyncRow({
           label="Sync now"
           variant="tonal"
           loading={controls.busy === 'sync' || controls.syncing}
+          disabled={controls.busy !== null}
           onPress={controls.syncNow}
         />
       }

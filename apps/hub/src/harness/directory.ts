@@ -145,6 +145,7 @@ export class HarnessDirectory {
   ): Promise<HarnessRuntimeReceipt> {
     this.admit?.(request);
     const connection = this.get(target);
+    requireReferenceCapability(connection.host, request);
     if (!connection.host.inbound_execution || connection.execute === undefined)
       throw new ApiError(
         'forbidden',
@@ -162,4 +163,15 @@ export class HarnessDirectory {
     this.bound(frame.device_id, frame.generation, frame.runtime_instance);
     for (const listener of this.listeners) listener(frame);
   }
+}
+
+function requireReferenceCapability(host: AiHarnessHost, request: HarnessRuntimeRequest): void {
+  const referenced =
+    request.kind === 'reference' ||
+    (request.kind === 'prompt' && (request.references?.length ?? 0) > 0);
+  if (referenced && host.manifest?.references?.protocol !== 1)
+    throw new ApiError(
+      'conflict',
+      'The selected host cannot consume structured references; no referenced turn was delivered.',
+    );
 }

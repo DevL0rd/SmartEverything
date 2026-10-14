@@ -59,10 +59,14 @@ object HubTransport {
   fun clear(scopeId: String) { synchronized(this) { retire(scopeId) }.close() }
   private data class Retired(val policy: Policy?, val sockets: Set<okhttp3.WebSocket>) {
     fun close() {
-      sockets.forEach { it.cancel() }
-      policy?.dispatcher?.cancelAll()
-      policy?.pool?.evictAll()
-      policy?.dispatcher?.executorService?.shutdown()
+      val retired = policy ?: return
+      retired.dispatcher.executorService.execute {
+        try {
+          sockets.forEach { it.cancel() }
+          retired.dispatcher.cancelAll()
+          retired.pool.evictAll()
+        } finally { retired.dispatcher.executorService.shutdown() }
+      }
     }
   }
   private fun retire(scopeId: String): Retired {

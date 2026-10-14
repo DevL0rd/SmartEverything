@@ -56,6 +56,9 @@ class RecordType(
 ) {
   val readPermission: String
     get() = HealthPermission.getReadPermission(recordClass)
+
+  val writePermission: String
+    get() = HealthPermission.getWritePermission(recordClass)
 }
 
 object RecordTypes {

@@ -8,6 +8,7 @@ import {
 } from '@smarteverything/domain';
 import type { Tone } from '../../../components/tone';
 import { entryId, selectedEntry } from './selection';
+import { assetProviderName } from './items';
 
 export interface ExtensionDeviceStatus {
   readonly title: string;
@@ -81,7 +82,7 @@ export function itemSummary(
   configuration: AiHarnessConfigurationCatalogue,
 ): string {
   if (item.selection.kind === 'skill_asset')
-    return 'Included in Workspace skills · device status is for the provider';
+    return `Included in ${assetProviderName(item.selection.parent_id)} · device status is for the provider`;
   if (selectedEntry(item, configuration.desired)?.enabled === false) return 'Off · saved choice';
   const statuses = configuration.hosts.map((host) => deviceStatus(host, item));
   const ready = statuses.filter((status) => status.current).length;

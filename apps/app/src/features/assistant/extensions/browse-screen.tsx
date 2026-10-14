@@ -38,7 +38,7 @@ function DiscoveryStatus({
   readonly kind: 'skill' | 'extension';
   readonly reset: () => void;
 }): ReactNode {
-  const label = kind === 'skill' ? 'Anthropic skills' : 'Community extensions';
+  const label = kind === 'skill' ? 'Anthropic skills' : 'Official plugins and community extensions';
   const error = discovery.error;
   if (error !== null)
     return (
@@ -108,7 +108,7 @@ function BrowseHeader({
         placeholder={kind === 'skill' ? 'Search skills' : 'Search extensions'}
       />
       <Text variant="caption" tone="variant">
-        {kind === 'skill' ? 'Anthropic skills' : 'Community extensions'}
+        {kind === 'skill' ? 'Anthropic skills' : 'Official plugins and community extensions'}
       </Text>
       <ExtensionReadStatus
         kind={kind}

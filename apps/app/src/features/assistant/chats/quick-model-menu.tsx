@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
-import { ScrollView, type TextInput, View, useWindowDimensions } from 'react-native';
+import { type TextInput, View, useWindowDimensions } from 'react-native';
 import {
   AUTO_LATEST_GEMINI_FLASH,
   type Engine,
@@ -24,7 +24,7 @@ import { EMPTY_MODEL_FILTERS, type ModelSearchFilters } from '../picker/model-se
 import { usePickerSession } from '../picker/model-search-session';
 import { NATIVE_OWNER_REASON } from '../provider/provider-access';
 import { useModelPickAuthority } from './model-pick-authority';
-import { QuickFavorites, QuickThinking } from './quick-model-controls';
+import { QuickMenuList, QuickThinking } from './quick-model-controls';
 const EXPANDED_WIDTH = 500;
 const EXPANDED_HEIGHT = 720;
 const VIEWPORT_MARGIN_AND_GAP = 12;
@@ -184,14 +184,18 @@ function QuickResults({
     />
   );
 }
-function QuickCompact({
+function QuickList({
   state,
   data,
   close,
+  chrome,
+  height,
 }: {
   readonly state: MenuState;
   readonly data: ReturnType<typeof useSearchPickerData>;
   readonly close: () => void;
+  readonly chrome: ReactElement;
+  readonly height: number;
 }): ReactNode {
   const favorites = [
     ...new Map(
@@ -199,11 +203,39 @@ function QuickCompact({
     ).values(),
   ];
   return (
-    <>
-      <Text variant="caption" tone="variant" className="px-6">
-        Favorites
-      </Text>
-      <QuickFavorites rows={favorites} close={close} />
+    <QuickMenuList
+      rows={state.expanded ? [] : favorites}
+      close={close}
+      height={state.expanded ? height * CHROME_HEIGHT_FRACTION : height}
+      showFavorites={!state.expanded}
+      header={<QuickHeader chrome={chrome} expanded={state.expanded} />}
+      footer={state.expanded ? null : <QuickFooter state={state} />}
+    />
+  );
+}
+function QuickHeader({
+  chrome,
+  expanded,
+}: {
+  readonly chrome: ReactElement;
+  readonly expanded: boolean;
+}): ReactNode {
+  return (
+    <View>
+      {chrome}
+      {expanded ? null : (
+        <View className="pb-3 pt-3">
+          <Text variant="caption" tone="variant" className="px-6">
+            Favorites
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+function QuickFooter({ state }: { readonly state: MenuState }): ReactNode {
+  return (
+    <View className="py-3">
       <Button
         label="All models"
         variant="text"
@@ -211,7 +243,7 @@ function QuickCompact({
           state.expand(true);
         }}
       />
-    </>
+    </View>
   );
 }
 function QuickBody({ state, height, ...props }: BodyProps): ReactNode {
@@ -220,18 +252,17 @@ function QuickBody({ state, height, ...props }: BodyProps): ReactNode {
   const picker = useQuickPicker(props);
   const data = useSearchPickerData(picker, state);
   const editable = !props.blocked && (!isComputerEngine(props.engine) || owner) && session.ready;
-  const chromeFrame = { maxHeight: Math.max(0, height * CHROME_HEIGHT_FRACTION) };
   const bodyFrame = { maxHeight: height };
   return (
-    <View className={state.expanded ? 'min-h-0 flex-1' : 'min-h-0 gap-3 pb-3'} style={bodyFrame}>
-      <ScrollView style={chromeFrame} className="shrink-0" keyboardShouldPersistTaps="handled">
-        <QuickChrome {...props} state={state} editable={editable} />
-      </ScrollView>
-      {state.expanded ? (
-        <QuickResults state={state} data={data} />
-      ) : (
-        <QuickCompact state={state} data={data} close={props.close} />
-      )}
+    <View className={state.expanded ? 'min-h-0 flex-1' : 'min-h-0 shrink'} style={bodyFrame}>
+      <QuickList
+        state={state}
+        data={data}
+        close={props.close}
+        height={height}
+        chrome={<QuickChrome {...props} state={state} editable={editable} />}
+      />
+      {state.expanded ? <QuickResults state={state} data={data} /> : null}
     </View>
   );
 }

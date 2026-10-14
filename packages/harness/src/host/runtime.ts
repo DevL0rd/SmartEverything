@@ -1,12 +1,19 @@
+import { NativeReferences } from '../references/runtime';
+import { mountReferencePrompts, type ValidateCentralReferences } from '../references/prompt';
+import type {
+  AiNativeReferenceAction,
+  AiNativeReferenceResult,
+  AiReference,
+} from '@smarteverything/domain';
+import { mountManagedPackageExecution } from '../composition/plugin-execution';
 import { projectWorkspaceContext } from '../composition/workspace-context';
-import { bootComposition, initializeRuntime } from '../composition/runtime';
 import { HarnessRuntimeError } from './errors';
 import { installManagedImage } from '../composition/project-image';
 import { ProjectFileSystem } from '../composition/project-filesystem';
 import type { AiHarnessStorageBinding } from '@smarteverything/domain';
 import type { ProjectFilePort } from '../composition/project-files';
 import { nativePendingInput, type NativeInputHistory } from './input-history';
-import { Context } from '@deepseek-ai/cordis';
+import type { Context } from '@deepseek-ai/cordis';
 import { createHash } from 'node:crypto';
 import type {
   AdmittedPromptContentPart,
@@ -27,7 +34,7 @@ import type {
 } from '../composition/configuration';
 import type { NativeSessionPersistencePort } from '../persistence/port';
 import type { HarnessInteractions, HarnessInteractionPort } from './interactions';
-import { HARNESS_HOST, HARNESS_SESSION_OPTIONS, agentOptions } from './contracts';
+import { HARNESS_SESSION_OPTIONS, agentOptions } from './contracts';
 import type { HarnessHost, HarnessSessionOptions } from './contracts';
 import { HarnessSession } from './session';
 import { initializeSessionPermission } from './permission';
@@ -35,6 +42,7 @@ import type { HarnessServerPolicy } from './server-policy';
 import type { HarnessServerToolAccess } from './server-policy';
 import type { HarnessRuntimeEvent } from './events';
 import { HarnessAdmission } from './admission';
+import { freezeConfigurationSessions } from './configuration-sessions';
 import { HarnessRuntimeConfiguration } from './runtime-configuration';
 import type {
   HarnessConfigurationPending,
@@ -54,6 +62,7 @@ export interface HarnessRuntimeOptions {
   readonly configurationPending?: HarnessConfigurationPending;
   readonly serverToolAccess?: HarnessServerToolAccess;
   readonly projectFiles?: ProjectFilePort;
+  readonly validateReferences?: ValidateCentralReferences;
   readonly onEvent: (event: HarnessRuntimeEvent) => void;
   readonly beforeStep?: (id: string) => Promise<void>;
   readonly installModelRoutes: (ctx: Context) => Promise<void>;
@@ -64,6 +73,7 @@ export class HarnessRuntime {
   private readonly opening = new Set<string>();
   private readonly admission = new HarnessAdmission();
   private readonly composition: HarnessRuntimeConfiguration;
+  private readonly references: NativeReferences;
   private readonly log = new Logger('hub.harness');
 
   constructor(
@@ -77,12 +87,29 @@ export class HarnessRuntime {
       readonly generation: string;
       readonly notify: (event: HarnessRuntimeEvent) => void;
       readonly configurationPending?: HarnessConfigurationPending;
+      readonly validateReferences?: ValidateCentralReferences;
     },
   ) {
+    this.references = new NativeReferences(
+      ctx,
+      (id) => this.storageBinding(id),
+      () => this.configurationStatus(),
+    );
+    mountReferencePrompts(ctx, this.references, lifecycle.validateReferences);
     this.composition = new HarnessRuntimeConfiguration(
       configuration,
       lifecycle.configurationPending,
     );
+  }
+
+  referenceOperation(id: string, input: AiNativeReferenceAction): Promise<AiNativeReferenceResult> {
+    this.get(id);
+    return this.references.execute(id, input);
+  }
+
+  resolveReferences(id: string, references: readonly AiReference[]): Promise<void> {
+    this.get(id);
+    return this.references.resolve(id, references);
   }
 
   create(input: HarnessSessionOptions): Promise<HarnessSession> {
@@ -141,7 +168,10 @@ export class HarnessRuntime {
       const closed = await Promise.allSettled(
         [...this.sessions.keys()].map((id) => this.closeSession(id)),
       );
-      const configured = await Promise.allSettled([this.configuration.dispose()]);
+      const configured = await Promise.allSettled([
+        this.references.close(),
+        this.configuration.dispose(),
+      ]);
       const disposed = await Promise.allSettled([this.lifecycle.dispose()]);
       const failures: unknown[] = [];
       for (const result of [...closed, ...configured, ...disposed]) {
@@ -217,6 +247,22 @@ export class HarnessRuntime {
     return this.composition.state();
   }
 
+  configurationSessions(protectedSessions: readonly string[]): readonly HarnessSession[] {
+    if (this.composition.state().pendingRevision === null) return [];
+    return freezeConfigurationSessions([...this.sessions.values()], protectedSessions);
+  }
+
+  reconcileConfiguration(): Promise<void> {
+    return this.admission.run(async (): Promise<void> => {
+      if (this.composition.state().pendingRevision !== null && this.sessions.size > 0)
+        throw new HarnessRuntimeError(
+          'composition_incompatible',
+          'Configuration still has opened native sessions.',
+        );
+      await this.composition.applyPending();
+    });
+  }
+
   private async open(input: HarnessSessionOptions, resume: boolean): Promise<HarnessSession> {
     this.composition.assertReady();
     const options = HARNESS_SESSION_OPTIONS.parse(input);
@@ -260,6 +306,11 @@ export class HarnessRuntime {
         text: () => this.hostContext(agent),
       });
       initializeSessionPermission(this.ctx, agent, options.permission, resume);
+      await mountManagedPackageExecution(this.ctx, agentCtx, this.host, {
+        binding: options.storageBinding,
+        permission: options.permission,
+      });
+      this.setupHelper(agentCtx, options);
     };
     const shared = { agentOptions: agentOptions(options), setup };
     const handle = resume
@@ -279,6 +330,19 @@ export class HarnessRuntime {
       await handle.dispose();
       throw error;
     }
+  }
+
+  private setupHelper(agentCtx: Context, options: HarnessSessionOptions): void {
+    const policy = options.pluginAgentPolicy;
+    if (policy === undefined) return;
+    if (policy.tools !== undefined) agentCtx.tools.restrict({ allow: policy.tools });
+    agentCtx.systemPrompt.context({
+      name: 'smarteverything-helper',
+      order: 10,
+      required: true,
+      interpolate: false,
+      text: policy.persona,
+    });
   }
 
   private hostContext(agent: Agent): string {
@@ -315,48 +379,4 @@ export class HarnessRuntime {
   }
 }
 
-export async function createHarnessRuntime(
-  options: HarnessRuntimeOptions,
-): Promise<HarnessRuntime> {
-  const host = HARNESS_HOST.parse(options.host);
-  if (host.platform === 'windows')
-    throw new HarnessRuntimeError(
-      'operation_failed',
-      'The current composition requires Bash; Windows PowerShell composition is not ready.',
-    );
-  const root = new Context();
-  const fiber = bootComposition(root, host, options);
-  try {
-    await fiber;
-    let runtime: HarnessRuntime | undefined;
-    await fiber.ctx.inject(
-      [
-        'agents',
-        'sessions',
-        'sessionPersistence',
-        'jobs',
-        'tools',
-        'workingDirectory',
-        'permissionPresets',
-        'sessionProjections',
-        'compaction',
-        'commands',
-        'systemPrompt',
-        'llm',
-        'attachments',
-      ],
-      async (ctx: Context): Promise<void> => {
-        runtime = await initializeRuntime(ctx, host, options, fiber.dispose);
-      },
-    );
-    if (runtime === undefined)
-      throw new HarnessRuntimeError(
-        'operation_failed',
-        'Harness runtime consumer did not activate.',
-      );
-    return runtime;
-  } catch (error) {
-    await fiber.dispose();
-    throw error;
-  }
-}
+export { createHarnessRuntime } from './create-runtime';

@@ -1,6 +1,6 @@
 import type { NativeBrowserDiagnostics } from './browser-diagnostics';
 import { z } from 'zod';
-import { NATIVE_HTML_PROJECTION } from './native-html-preview';
+import { NATIVE_HTML_PROJECTION, NATIVE_PAGE_DESCRIPTOR } from './native-html-preview';
 export * from './native-html-preview';
 export * from './browser-diagnostics';
 export * from './embedded-browser';
@@ -23,6 +23,8 @@ export const BROWSER_TARGET = z.discriminatedUnion('kind', [
     url: z.url(),
     origin: z.url(),
     initialPath: z.string().regex(/^\/(?!\/)/),
+    page: NATIVE_PAGE_DESCRIPTOR.optional(),
+    profileId: z.uuid().optional(),
   }),
   z.strictObject({
     kind: z.literal('public'),
@@ -36,6 +38,8 @@ export const BROWSER_TARGET = z.discriminatedUnion('kind', [
     url: NATIVE_HTML_PROJECTION.shape.url,
     projectionId: NATIVE_HTML_PROJECTION.shape.id,
     project: NATIVE_HTML_PROJECTION.shape.project,
+    profileId: z.uuid().optional(),
+    page: NATIVE_PAGE_DESCRIPTOR.optional(),
   }),
 ]);
 export type BrowserTarget = z.infer<typeof BROWSER_TARGET>;

@@ -1,15 +1,19 @@
 import { HANDOFF_PROGRESS, HANDOFF_RESUME_CONTEXT } from '../../harness/handoff-context';
 import type { HandoffResumeContext } from '../../harness/handoff-context';
+import { writerIdentity } from './dsh-session-claims';
 import { HARNESS_GRANT } from '../../harness/grant';
 import type { HarnessGrant } from '../../harness/grant';
 import { z } from 'zod';
 import {
   AI_HARNESS_SESSION,
+  ApiError,
+  DSH_WRITER_CLAIM,
   AI_HARNESS_HANDOFF,
   AI_HARNESS_PERMISSION_CHANGE,
 } from '@smarteverything/domain';
 import type {
   AiHarnessSession,
+  DshWriterClaim,
   AiHarnessHandoff,
   AiHarnessEvent,
   AiHarnessPermission,
@@ -78,6 +82,64 @@ export class HarnessCoordinationRepository {
       { id },
     )?.projection;
   }
+  admitContextRequest(
+    claim: DshWriterClaim,
+    request: NonNullable<AiHarnessSession['context_request']>,
+  ): void {
+    durableSessionWrite(this.context, () => {
+      if (!this.currentContextWriter(claim))
+        throw new ApiError('conflict', 'Ordinary context request has no current admitted writer.');
+      const session = this.state(claim.session_id);
+      if (session?.epoch !== claim.epoch || request.epoch !== claim.epoch)
+        throw new ApiError(
+          'conflict',
+          'Ordinary context request has no current native projection.',
+        );
+      const updated = AI_HARNESS_SESSION.parse({
+        ...session,
+        context_request: request,
+      });
+      this.context.sql.run(
+        'admit ordinary context measurement request',
+        'update harness_projections set projection=$projection where session_id=$id',
+        { id: claim.session_id, projection: jsonText(updated) },
+      );
+    });
+  }
+  currentContextRequest(claim: DshWriterClaim, requestId: string): boolean {
+    const request = this.state(claim.session_id)?.context_request;
+    return (
+      request?.id === requestId && request.epoch === claim.epoch && this.currentContextWriter(claim)
+    );
+  }
+  private currentContextWriter(claim: DshWriterClaim): boolean {
+    const writer = this.context.sql.get(
+      z.object({
+        claim: SQL_JSON.pipe(DSH_WRITER_CLAIM).nullable(),
+        claim_state: z.enum(['active', 'released']).nullable(),
+      }),
+      'select claim,claim_state from dsh_sessions where session_id=$id',
+      { id: claim.session_id },
+    );
+    if (writer?.claim_state !== 'active' || writer.claim === null) return false;
+    return (
+      Date.parse(writer.claim.expires_at) > Date.parse(this.context.now()) &&
+      writerIdentity(writer.claim) === writerIdentity(claim)
+    );
+  }
+  noteContext(id: string, context: NonNullable<AiHarnessSession['context']>): void {
+    durableSessionWrite(this.context, () => {
+      const session = this.state(id);
+      if (session === undefined)
+        throw new ApiError('conflict', 'Measured context has no retained native projection.');
+      const updated = AI_HARNESS_SESSION.parse({ ...session, context });
+      this.context.sql.run(
+        'retain measured native request context',
+        'update harness_projections set projection=$projection where session_id=$id',
+        { id, projection: jsonText(updated) },
+      );
+    });
+  }
   project(input: AiHarnessSession, eventSeq: number): boolean {
     return durableSessionWrite(this.context, () => this.projectStored(input, eventSeq));
   }
@@ -104,6 +166,14 @@ export class HarnessCoordinationRepository {
         { id },
       )?.request ?? null
     );
+  }
+  unsettledSessions(): readonly string[] {
+    return this.context.sql
+      .all(
+        z.object({ session_id: z.uuid() }),
+        "select distinct session_id from harness_operations where state!='completed'",
+      )
+      .map((row) => row.session_id);
   }
   operation(id: string): z.infer<typeof RECEIPT> | undefined {
     return this.context.sql.get(

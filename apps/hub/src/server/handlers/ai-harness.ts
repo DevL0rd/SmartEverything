@@ -1,3 +1,4 @@
+import { OwnEngineSelections } from '../../harness/own-selection';
 import { staleHumanSession, stableHumanSession } from '../../harness/stable-session';
 import { harnessCommandRoutes } from './ai-harness-commands';
 import { openConversation } from '../../harness/opening';
@@ -166,6 +167,9 @@ function openChat(
   chatId: string,
 ): ReturnType<typeof openConversation> {
   const owner = { profileId: profileIdOf(service.store, caller), role: roleOfCaller(caller) };
+  const chat = service.own(owner, chatId);
+  if (chat.engine.kind === 'openrouter')
+    new OwnEngineSelections(service).migrate(chatId, false, clientOf(caller).id);
   const authority = { kind: 'manual', profileId: owner.profileId } as const;
   return openConversation(service, { owner, chatId, authority, clientId: clientOf(caller).id });
 }

@@ -1,7 +1,13 @@
 import { MeteredUsageStream } from '@smarteverything/harness/process';
 import type { SupplierUsage, SupplierUsageSnapshot } from '@smarteverything/harness/process';
-import { ApiError, JSON_VALUE, microsOfUsd } from '@smarteverything/domain';
-import type { AiUsageRow, UsageEntry, UsageWork } from '@smarteverything/domain';
+import { ApiError, JSON_VALUE, microsOfUsd, harnessContextPercent } from '@smarteverything/domain';
+import type {
+  AiUsageRow,
+  UsageEntry,
+  UsageWork,
+  DshWriterClaim,
+  AiHarnessSession,
+} from '@smarteverything/domain';
 import type { HarnessService } from './service';
 import type { HarnessGrant } from './grant';
 import type { Store } from '../store/store';
@@ -16,10 +22,10 @@ export function meteredAccountingFetch(
   service: HarnessService,
   sessionId: string,
   fetcher: typeof fetch,
-  verify: () => void,
+  options: { readonly verify: () => void; readonly ordinary_request?: boolean },
 ): typeof fetch {
   return async (input, init): Promise<Response> => {
-    verify();
+    options.verify();
     const grant = service.storage.grant(sessionId);
     const entry = entryOf(service, grant);
     const budget = budgets.get(service.store);
@@ -27,11 +33,50 @@ export function meteredAccountingFetch(
       throw new ApiError('conflict', 'Metered spending admission is not ready.');
     budget.check(entry.work, grant.authority.kind === 'trigger' ? { background: true } : undefined);
     const row = service.store.ledger.record(entry, true);
+    const request =
+      options.ordinary_request === true ? admitContextRequest(service, grant, row.id) : undefined;
     const observation = new MeteredUsageStream((snapshot): void => {
-      service.store.ledger.amend(row.id, changeOf(snapshot, service.store.ledger.get(row.id)));
+      service.store.durableWrite(() => {
+        service.store.ledger.amend(row.id, changeOf(snapshot, service.store.ledger.get(row.id)));
+        if (
+          request !== undefined &&
+          snapshot.usage !== null &&
+          service.store.harnessCoordination.currentContextRequest(request.claim, row.id)
+        )
+          noteSupplierContext(service, grant, snapshot.usage, request.context);
+      });
     });
     return observation.response(await fetcher(input, init));
   };
+}
+function admitContextRequest(
+  service: HarnessService,
+  grant: HarnessGrant,
+  requestId: string,
+): {
+  readonly claim: DshWriterClaim;
+  readonly context: NonNullable<AiHarnessSession['context_request']>;
+} {
+  const writer = service.store.dshSessions.writerState(grant.session_id, grant.profile_id);
+  if (writer.state !== 'active' || writer.claim === null)
+    throw new ApiError('conflict', 'Ordinary supplier context request has no active writer.');
+  if (
+    writer.claim.runtime_instance !== grant.runtime_instance ||
+    writer.claim.connection_generation !== grant.generation
+  )
+    throw new ApiError(
+      'conflict',
+      'Ordinary supplier context request belongs to another execution host.',
+    );
+  const context = {
+    id: requestId,
+    epoch: writer.claim.epoch,
+    provider: grant.route.route_id,
+    model: grant.route.model,
+    capacity_tokens: supplierContextCapacity(service, grant),
+  };
+  service.store.harnessCoordination.admitContextRequest(writer.claim, context);
+  return { claim: writer.claim, context };
 }
 function entryOf(service: HarnessService, grant: HarnessGrant): UsageEntry {
   const metadata = service.store.dshSessions.stat(grant.session_id, grant.profile_id);
@@ -121,4 +166,40 @@ function costOf(
     state: cost === null ? previous.cost_state : 'reported',
     available: cost !== null || previous.meta['cost_available'] === true,
   };
+}
+
+function supplierContextCapacity(service: HarnessService, grant: HarnessGrant): number {
+  const route = service.routes.selected(
+    grant.profile_id,
+    grant.route,
+    grant.authority.kind === 'trigger',
+  );
+  const model = route.models.find((entry) => entry.id === grant.route.model);
+  if (model === undefined)
+    throw new ApiError('conflict', 'Ordinary supplier request lost its exact model.');
+  if (model.capabilities.context_tokens === null)
+    throw new ApiError('conflict', 'Ordinary supplier request lost its exact context capacity.');
+  return model.capabilities.context_tokens;
+}
+function noteSupplierContext(
+  service: HarnessService,
+  grant: HarnessGrant,
+  usage: SupplierUsage,
+  request: NonNullable<AiHarnessSession['context_request']>,
+): void {
+  const metadata = service.store.dshSessions.stat(grant.session_id, grant.profile_id);
+  if (metadata === undefined)
+    throw new ApiError('conflict', 'Ordinary supplier usage lost its native conversation.');
+  const context = {
+    provider: request.provider,
+    model: request.model,
+    capacity_tokens: request.capacity_tokens,
+    input_tokens: usage.prompt_tokens,
+    state: 'measured' as const,
+  };
+  service.store.harnessCoordination.noteContext(grant.session_id, context);
+  const percent = harnessContextPercent(context);
+  if (percent === null)
+    throw new ApiError('conflict', 'Ordinary supplier context pressure is unavailable.');
+  service.store.aiChats.noteContext(metadata.chat_id, Math.round(percent));
 }

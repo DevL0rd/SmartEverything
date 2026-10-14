@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { ApiError } from '@smarteverything/domain';
 import { facts } from '../assistant/prompt-facts';
 import { toolGuide } from '../ai-tools/tool-guide';
+import { discoveryAvailable } from '../ai-tools/tool-sets';
 import { stablePrompt, turnPrompt } from '../assistant/conversation/prompt';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { HarnessService } from './service';
@@ -48,7 +49,7 @@ export function harnessPrompt(
     ...facts(service.store, chat, scoped, context.now),
     guide: toolGuide(
       scoped.list().map((tool) => tool.name),
-      'declarations',
+      discoveryAvailable(scoped.list()) ? 'discovery' : 'declarations',
     ),
     executionHost:
       grant.target.kind === 'server'

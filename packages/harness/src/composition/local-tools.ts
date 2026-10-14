@@ -24,12 +24,13 @@ export async function mountLocalServices(
 ): Promise<void> {
   const { server, projectFiles } = options;
   await ctx.plugin(LocalSandbox);
-  if (projectFiles === undefined) await ctx.plugin(FsSandbox, { cwd });
-  else {
-    const local = ctx.isolate('fs');
-    await local.plugin(FsSandbox, { cwd });
-    await local.inject(['fs'], (active): void => {
-      new ProjectFileSystem(ctx, active.fs, new ProjectFileScopes(ctx), projectFiles);
+  const runtime = projectFiles === undefined ? ctx : ctx.isolate('fs');
+  await runtime.plugin(FsSandbox, { cwd });
+  if (projectFiles !== undefined) {
+    await runtime.inject(['fs'], async (active: Context): Promise<void> => {
+      await ctx.plugin((owner: Context): void => {
+        new ProjectFileSystem(owner, active.fs, new ProjectFileScopes(owner), projectFiles);
+      });
     });
   }
   if (server) await ctx.plugin(ServerShellExecutor);
@@ -40,8 +41,6 @@ export async function mountLocalServices(
   }
   await ctx.plugin(Jobs);
   await ctx.plugin(LocalAttachments, { dshHome: home });
-  const runtime = ctx.fs instanceof ProjectFileSystem ? ctx.fs.runtimeFileContext(ctx) : ctx;
-  if (runtime !== ctx) await runtime.fiber.await();
   await runtime.plugin(WorkingDirectory, { defaultDirectory: cwd });
 }
 

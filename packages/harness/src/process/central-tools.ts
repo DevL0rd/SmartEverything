@@ -1,8 +1,9 @@
+import { centralCallKey } from './central-call-key';
 import { CentralToolFailures } from './central-failures';
 import { toolMediaReferences } from './media-reference';
 import { z } from 'zod';
 import type { Context } from '@deepseek-ai/cordis';
-import type { ContentBlock, ToolCallId } from '@deepseek-ai/dsh-llm';
+import type { ContentBlock } from '@deepseek-ai/dsh-llm';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools';
 import {
@@ -28,7 +29,7 @@ export class CentralHarnessTools {
     string,
     { readonly seq: number; readonly name: string; readonly arguments: string }
   >();
-  private readonly contents = new Map<ToolCallId, ContentBlock[]>();
+  private readonly contents = new Map<string, ContentBlock[]>();
   constructor(
     private readonly http: HarnessHttp,
     private readonly persistence: HttpHarnessPersistence,
@@ -47,7 +48,7 @@ export class CentralHarnessTools {
       });
     });
     ctx.on('tools/result', (execution) => {
-      this.contents.delete(execution.callId);
+      this.contents.delete(centralCallKey(execution));
       if (execution.agent !== undefined)
         this.calls.delete(`${execution.agent.id}:${execution.callId}`);
     });
@@ -60,7 +61,9 @@ export class CentralHarnessTools {
       );
       this.update(ctx, current.tools);
       const result = await next();
-      const allowed = new Set(current.tools.map((tool) => tool.name));
+      const allowed = new Set(
+        current.declared_tool_names ?? current.tools.map((tool) => tool.name),
+      );
       result.tools = ctx.tools
         .schemas(context.agent)
         .filter((tool) => !this.registrations.has(tool.name) || allowed.has(tool.name));
@@ -120,7 +123,7 @@ export class CentralHarnessTools {
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
       },
       execute: (raw, execution) => this.execute(ctx, tool.name, raw, execution),
-      projectContent: (execution) => this.contents.get(execution.callId),
+      projectContent: (execution) => this.contents.get(centralCallKey(execution)),
     };
   }
   private async execute(
@@ -162,7 +165,7 @@ export class CentralHarnessTools {
           { type: 'image', mediaType: picture.mime, data: picture.data },
         ])),
       );
-    this.contents.set(execution.callId, toolMediaReferences(blocks, result.response));
+    this.contents.set(centralCallKey(execution), toolMediaReferences(blocks, result.response));
     this.failures.capture(execution, result.response);
     return result.response;
   }

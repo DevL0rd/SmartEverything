@@ -115,12 +115,13 @@ function useTabAuthority(
   const notices = useValue(previewRevisions);
   useEffect(() => {
     const ownerLost = !profileMatches || connection.status !== 'paired';
-    for (const tab of snapshot.tabs) {
+    for (const tab of tabs.read().tabs) {
       if (tab.selection === null && (!ownerLost || tab.phase !== 'opening')) continue;
       const problem = ownerLost
         ? 'This browser viewer’s profile or paired connection changed.'
         : selectionProblem(tab.selection, catalogue, notices);
-      if (problem !== null) browserTabOperation(tabs.unavailable(tab.id, problem));
+      if (problem !== null && tabs.read().tabs.includes(tab))
+        browserTabOperation(tabs.unavailable(tab.id, problem));
     }
   }, [tabs, snapshot, catalogue, notices, profileMatches, connection]);
 }

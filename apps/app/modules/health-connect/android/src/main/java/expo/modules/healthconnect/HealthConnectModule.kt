@@ -94,6 +94,17 @@ class HealthConnectModule : Module() {
       HealthConnectAccess.grants(client).toMap()
     }
 
+    AsyncFunction("requestAllPermissions") Coroutine { ->
+      val client = HealthConnectAccess.client(context)
+      val wanted = HealthConnectAccess.allPermissionsFor(client)
+      val granted = HealthConnectAccess.call { client.permissionController.getGrantedPermissions() }
+      if (!granted.containsAll(wanted)) {
+        val launcher = permissionLauncher ?: throw PermissionScreenUnavailable()
+        withContext(Dispatchers.Main) { launcher.launch(PermissionSet(ArrayList(wanted))) }
+      }
+      HealthConnectAccess.grants(client).toMap()
+    }
+
     AsyncFunction("requestWritePermissions") Coroutine { ->
       val client = HealthConnectAccess.client(context)
       val launcher = permissionLauncher ?: throw PermissionScreenUnavailable()

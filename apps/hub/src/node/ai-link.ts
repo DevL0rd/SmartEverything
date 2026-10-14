@@ -119,7 +119,11 @@ export class NodeAiLink {
     if (this.socket?.readyState !== WebSocket.OPEN || this.generation === null) return false;
     const parsed = runtimeProtocol(this.socket.protocol)
       ? NODE_AI_FRAME_V2.parse(
-          nativeProjectProjection(frame, this.socket.protocol === NODE_AI_MANAGED_PROJECT_PROTOCOL),
+          nativeProjectProjection(
+            frame,
+            this.socket.protocol === NODE_AI_MANAGED_PROJECT_PROTOCOL,
+            'node',
+          ),
         )
       : NODE_AI_FRAME.parse(frame);
     if (

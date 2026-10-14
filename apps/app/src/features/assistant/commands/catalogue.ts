@@ -21,7 +21,7 @@ async function discover(binding: CommandBinding): Promise<DiscoveredCommands> {
   return commandAdapter(binding.target.kind).discover(binding);
 }
 export function useCommands(chat: AiChatRow | undefined, opened: boolean): CommandCatalogue {
-  const binding = useCommandBinding(chat);
+  const binding = useCommandBinding(chat, opened);
   const query = useQuery({
     queryKey: [...COMMAND_QUERY_PREFIX, binding.key, binding.discoveryKey],
     enabled: opened && binding.reason === null,

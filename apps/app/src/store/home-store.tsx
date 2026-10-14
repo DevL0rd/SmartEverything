@@ -1,3 +1,8 @@
+import {
+  receiveTranscriptNotice,
+  refreshTranscriptReaders,
+  transcriptCameraChanges,
+} from '../queries/transcript-notices';
 import { receivePreviewNotice } from '../queries/preview-notices';
 import { HarnessNotices } from '../queries/harness-notices';
 import { CodexProviderNotices } from '../queries/codex-provider-notices';
@@ -25,6 +30,7 @@ import { StoreProvider, type StoreRuntime } from './store-context';
 import {
   clearImageSession,
   clearUploads,
+  forgetOlderMessages,
   IMAGE_QUERY_PREFIX,
   receiveImageNotice,
   refreshImageOperations,
@@ -32,6 +38,12 @@ import {
 } from '../features/assistant';
 
 const log = new Logger('app.store');
+
+function clearAssistantSession(): void {
+  clearImageSession();
+  clearUploads();
+  forgetOlderMessages();
+}
 
 function followAppState(sync: LiveSync, client: QueryClient): () => void {
   if (appPlatform() !== 'android') {
@@ -135,9 +147,11 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
     onChanges: (changes): void => {
       ledger.noteChanges(changes);
       applyToWindows(client, changes);
+      transcriptCameraChanges(client, changes);
       reconcileImageMessages(client, changes);
       notifyDesktop(store, changes);
     },
+    onTranscriptNotice: receiveTranscriptNotice.bind(null, client),
     onAiProviderNotice: (message): void => {
       if (message.type === 'ai_chat_runtime_provider') codex.receive(message);
       else providers.receive(message);
@@ -145,9 +159,7 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
     onImageNotice: (message): void => {
       receiveImageNotice(client, store.get().session?.client.profile_id ?? null, message);
     },
-    onAiHarnessConfigurationNotice: (): void => {
-      harness.configurationChanged();
-    },
+    onAiHarnessConfigurationNotice: harness.configurationChanged.bind(harness),
     onAiPreviewNotice: (message): void => {
       receivePreviewNotice(client, message);
     },
@@ -159,8 +171,7 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
     },
     onProfileChanged: (): void => {
       routeFor(connection).invalidate();
-      clearImageSession();
-      clearUploads();
+      clearAssistantSession();
       harness.clear();
       providers.clear();
       codex.clear();
@@ -168,6 +179,7 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
     },
     onSynchronized: (): void => {
       harness.synchronized();
+      refreshTranscriptReaders(client);
       refreshImageOperations(client);
     },
   });
@@ -201,8 +213,7 @@ interface RuntimeStartup {
 }
 function startRuntime(ports: RuntimeStartup): () => void {
   const { connection, client, store, sync, ledger, providers, codex, harness } = ports;
-  clearImageSession();
-  clearUploads();
+  clearAssistantSession();
   client.removeQueries({ queryKey: IMAGE_QUERY_PREFIX });
   harness.start();
   providers.start();
@@ -224,8 +235,7 @@ function startRuntime(ports: RuntimeStartup): () => void {
     following();
     persisting();
     sync.stop();
-    clearImageSession();
-    clearUploads();
+    clearAssistantSession();
     client.removeQueries({ queryKey: IMAGE_QUERY_PREFIX });
     ledger.stop();
     harness.stop();

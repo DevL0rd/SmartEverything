@@ -3,11 +3,14 @@ import { createLazyRequire } from '@deepseek-ai/dsh-lazy-require';
 import type * as Skills from '@deepseek-ai/dsh-skill';
 import type * as SkillTool from '@deepseek-ai/dsh-tool-skill';
 import { NativeWorkspaceSkills } from './skill-filesystem';
+import { registerManagedPluginSurfaces } from './managed-plugin-registry';
 import { registerProductSkills } from './product-skills';
 import { verifyNativeSkillPackages } from './builtin-metadata';
 import { z } from 'zod';
+import { createHash } from 'node:crypto';
 import type { HarnessHost } from '../host/contracts';
 import type { InstalledHarnessSkillAsset } from './skill-assets';
+import { githubSkillIdentity } from './github-skill-bundle';
 
 const loadSkills = createLazyRequire<typeof Skills>('@deepseek-ai/dsh-skill', import.meta.url);
 const loadSkillTool = createLazyRequire<typeof SkillTool>(
@@ -16,6 +19,7 @@ const loadSkillTool = createLazyRequire<typeof SkillTool>(
 );
 
 const SKILLS_CONFIG = z.strictObject({
+  claude_skills_enabled: z.boolean().default(true),
   coding_process_assets: z
     .array(z.string().regex(/^github-skill:[a-f0-9]{64}$/u))
     .max(32)
@@ -35,20 +39,26 @@ export async function mountNativeSkills(
   const skills = loadSkills();
   const tool = loadSkillTool();
   const fiber = ctx.plugin(async (scope: Context): Promise<void> => {
-    await scope.plugin(skills.default);
+    const names = new Set<string>();
+    scope.effect(() => registerManagedPluginSurfaces(ctx, [], names));
+    if (host.target.kind !== 'server') await scope.plugin(skills.default);
     await scope.inject(['skills', 'fs'], (active: Context): void => {
-      registerProductSkills(active);
+      if (host.target.kind !== 'server') registerProductSkills(active);
       active.skills.registerProvider(
         (control) =>
           new NativeWorkspaceSkills(active, host, control, {
-            assets,
+            assets: config.claude_skills_enabled
+              ? assets
+              : assets.filter((asset) => !officialClaudeSkill(asset)),
             codingProcessAssets: config.coding_process_assets,
+            visibleNames: names,
           }),
       );
     });
-    await scope.plugin(tool, {
-      catalogDescriptionMaxLength: config.catalog_description_max_length,
-    });
+    if (host.target.kind !== 'server')
+      await scope.plugin(tool, {
+        catalogDescriptionMaxLength: config.catalog_description_max_length,
+      });
   });
   try {
     await fiber;
@@ -57,4 +67,22 @@ export async function mountNativeSkills(
     await fiber.dispose();
     throw error;
   }
+}
+
+function officialClaudeSkill(installed: InstalledHarnessSkillAsset): boolean {
+  const asset = installed.asset;
+  if (
+    asset.source.kind !== 'artifact' ||
+    new URL(asset.source.url).hostname !== 'raw.githubusercontent.com'
+  )
+    return false;
+  const identity = githubSkillIdentity(asset.source.url);
+  return (
+    identity.owner === 'anthropics' &&
+    identity.repository === 'skills' &&
+    /^skills\/[a-z0-9-]+\/SKILL\.md$/u.test(identity.path) &&
+    asset.version === identity.commit &&
+    asset.id ===
+      `github-skill:${createHash('sha256').update(`anthropics/skills/${identity.path}`).digest('hex')}`
+  );
 }

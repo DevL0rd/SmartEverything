@@ -17,6 +17,7 @@ const MANIFEST = z.object({
     .min(1)
     .max(32),
 });
+const EXCLUDED_SKILL_PATHS: ReadonlySet<string> = new Set(['skills/skill-creator']);
 const CACHE_MS = 60 * 60 * 1000;
 const MAX_SNAPSHOTS = 4;
 const MAX_MANIFEST_BYTES = 256 * 1024;
@@ -107,9 +108,10 @@ async function loadSkillItems(commit: string): Promise<readonly HarnessDiscovery
       'conflict',
       'Anthropic skill manifest must contain at most 32 unique skill folders.',
     );
+  const selected = paths.filter((entry) => !EXCLUDED_SKILL_PATHS.has(entry.path));
   const items: HarnessDiscoveryItem[] = [];
-  for (let offset = 0; offset < paths.length; offset += METADATA_CONCURRENCY) {
-    const batch = paths.slice(offset, offset + METADATA_CONCURRENCY);
+  for (let offset = 0; offset < selected.length; offset += METADATA_CONCURRENCY) {
+    const batch = selected.slice(offset, offset + METADATA_CONCURRENCY);
     items.push(...(await Promise.all(batch.map((entry) => skillItem(commit, entry)))));
   }
   return items.sort((left, right) => left.name.localeCompare(right.name));
@@ -194,4 +196,8 @@ async function skillPresentation(
     integrity: `sha256-${createHash('sha256').update(bundle).digest('base64')}`,
   });
   return inspectHarnessSkillBundle(asset, bundle, AbortSignal.timeout(30_000));
+}
+
+export function excludedAnthropicSkill(id: string): boolean {
+  return [...EXCLUDED_SKILL_PATHS].some((path) => anthropicSkillId(`${path}/SKILL.md`) === id);
 }

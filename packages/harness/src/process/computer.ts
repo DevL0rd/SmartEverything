@@ -1,3 +1,4 @@
+import type { HarnessDispatcherOptions } from './dispatcher-options';
 import { transferNativeImageNote } from './native-media-note';
 import { SubscriptionInferenceSupplier } from '../providers/inference-supplier';
 import type {
@@ -15,6 +16,7 @@ import {
   AI_PREVIEW_CAPABILITY,
   AI_PREVIEW_FILE_CAPABILITY,
   NODE_HARNESS_FRAME,
+  HARNESS_PLUGIN_AGENT_RESULT,
 } from '@smarteverything/domain';
 import type {
   AiModelRoute,
@@ -33,6 +35,7 @@ import { HarnessHttp } from './http';
 import { ProcessHarnessConfiguration } from './configuration';
 import { installedHarnessBuiltins } from '../composition/builtins';
 import { sharedHarnessSkillAssets } from '../composition/github-skill-source';
+import { DurablePluginAgents } from './plugin-agents';
 import { CentralHarnessTools } from './central-tools';
 import { NativeProjectFiles } from './project-files';
 import { AI_PROJECT_RESULT } from '@smarteverything/domain';
@@ -201,22 +204,31 @@ function composeComputer(input: {
 }): Promise<HarnessDispatcher> {
   const { boot, http, persistence, models, configuration } = input;
   const host = processHarnessHost(boot);
+  const pluginAgents = new DurablePluginAgents(persistence, (request, signal) =>
+    http.call(request, HARNESS_PLUGIN_AGENT_RESULT, signal),
+  );
   const projectFiles = new NativeProjectFiles(persistence, (request, signal) =>
     http.call(request, AI_PROJECT_RESULT, signal),
   );
   return createHarnessDispatcher({
     projectFiles: projectFiles.execute,
+    validateReferences: computerReferenceValidation(http, persistence),
     host,
     persistence,
     loadAttachments: (id, ids) => transferAttachments(http, persistence, id, ids),
     describeImage: (input) => transferNativeImageNote(http, persistence, input),
     desiredConfiguration: boot.configuration ?? { revision: 'initial', entries: [] },
-    installedPlugins: installedHarnessBuiltins(host, sharedHarnessSkillAssets(host.stateDirectory)),
+    installedPlugins: installedHarnessBuiltins(
+      host,
+      sharedHarnessSkillAssets(host.stateDirectory),
+      pluginAgents,
+    ),
     configurationChanged: configuration.changed,
     configurationPending: configuration.pending,
     route: (id): AiModelRoute => models.get(id),
     installModelRoutes: (ctx): Promise<void> => {
       models.bind(ctx);
+      pluginAgents.install(ctx);
       if (input.preview !== undefined) {
         new NativePreviewTools(http, persistence, input.preview).install(ctx);
         new NativePreviewFileTools(http, persistence, input.preview).install(ctx);
@@ -275,5 +287,26 @@ function subscriptionPublisher(
       },
       DONE,
     );
+  };
+}
+
+function computerReferenceValidation(
+  http: HarnessHttp,
+  persistence: HttpHarnessPersistence,
+): NonNullable<HarnessDispatcherOptions['validateReferences']> {
+  return async (id, deliveryId, references, signal): Promise<void> => {
+    const claim = persistence.claim(id);
+    await persistence.verify(claim);
+    await http.call(
+      {
+        operation: 'reference_validate',
+        claim,
+        delivery_id: deliveryId,
+        references: [...references],
+      },
+      DONE,
+      signal,
+    );
+    await persistence.verify(claim);
   };
 }

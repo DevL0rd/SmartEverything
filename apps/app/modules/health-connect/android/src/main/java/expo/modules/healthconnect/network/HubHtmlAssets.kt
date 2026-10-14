@@ -9,7 +9,7 @@ import okhttp3.Call
 import okhttp3.Request
 import okhttp3.Response
 
-class HubHtmlAssets(private val input: HubHtmlInput, private val document: HubHtmlProject, private val policy: HubRoutePolicy, private val check: () -> Unit) : AutoCloseable {
+class HubHtmlAssets(private val input: HubHtmlInput, private val policy: HubRoutePolicy, private val check: () -> Unit) : AutoCloseable {
   private val calls = java.util.concurrent.ConcurrentHashMap.newKeySet<Call>()
   private val io = java.util.concurrent.ThreadPoolExecutor(0, 8, 30, TimeUnit.SECONDS, java.util.concurrent.SynchronousQueue())
   @Volatile private var closed = false
@@ -21,10 +21,10 @@ class HubHtmlAssets(private val input: HubHtmlInput, private val document: HubHt
     var sent = false
     try {
       check(!closed); check.invoke()
-      val url = input.binding.canonicalOrigin + "/api/ai/previews/html/native/assets/${document.leaseId}?path=" + java.net.URLEncoder.encode(path, "UTF-8")
-      val lease = policy.lease(input.binding, url, input.generation)
+      val url = input.binding.canonicalOrigin + input.page.assetPrefix() + path
+      val lease = policy.lease(input.binding, url)
       val request = Request.Builder().url(lease.url).method(method, null)
-        .header("Authorization", input.authorization).header("x-se-preview-read-capability", document.assetToken)
+        .header("Authorization", input.authorization)
         .header("Accept-Encoding", "identity").apply { if (range != null) header("Range", range) }.build()
       val active = lease.client.newBuilder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build().newCall(request)
       call = active
@@ -41,15 +41,16 @@ class HubHtmlAssets(private val input: HubHtmlInput, private val document: HubHt
       }
     } catch (failure: Exception) {
       if (failure is java.io.IOException && call?.isCanceled() != true && !closed && runCatching(check).isSuccess)
-        policy.failed(input.binding, input.generation)
+        policy.failed(input.binding, null)
       if (sent) context.close() else unavailable(context)
     } finally { call?.let { calls.remove(it); it.cancel() } }
   }
   private fun responseHeaders(response: Response): HttpResponse {
     val location = response.header("Location")
-    require(location == null || (location.startsWith("/") && !location.startsWith("//") && !location.contains('\\') && !location.contains('\r') && !location.contains('\n')))
+    require(location == null || (location.startsWith(input.page.assetPrefix() + "/") && !location.startsWith(input.page.assetPrefix() + "//") && !location.contains('\\') && !location.contains('\r') && !location.contains('\n')))
     val result = DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(response.code))
     HEADERS.forEach { name -> response.header(name)?.let { result.headers().set(name, it) } }
+    if (location != null) result.headers().set("Location", location.removePrefix(input.page.assetPrefix()))
     result.headers().set("Connection", "close")
     if (!result.headers().contains("Content-Length")) HttpUtil.setTransferEncodingChunked(result, true)
     return result

@@ -43,12 +43,17 @@ export class ProviderState {
   read(chat: AiChatRow): AiChatRuntimeProvider {
     if (chat.engine.kind !== this.runtime)
       throw new ApiError('invalid_request', 'This chat has a different runtime binding.');
-    if (this.runtime === 'claude')
+    if (this.runtime === 'claude') {
+      const retained = this.store.aiRuntimeProvider.read(chat.id, false);
       return {
         ...this.claude.read(chat),
         runtime: 'claude',
-        context: this.store.aiRuntimeProvider.read(chat.id, false)?.context ?? null,
+        context: retained?.context ?? null,
+        ...(retained?.managed_project === undefined
+          ? {}
+          : { managed_project: retained.managed_project }),
       };
+    }
     const saved = this.store.aiRuntimeProvider.read(chat.id);
     if (saved?.runtime === 'codex' && saved.device_id === chat.engine.device_id) return saved;
     return {

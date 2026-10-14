@@ -22,6 +22,7 @@ function setHub(store: EntityStore, message: NoticeMap['ready' | 'presence']): v
 
 const NOTICES: { readonly [K in Notice['type']]: NoticeHandler<K> } = {
   ready: setHub,
+  transcript_changed: ignoreNotice,
   ai_preview: ignoreNotice,
   ai_harness: ignoreNotice,
   ai_harness_configuration: ignoreNotice,

@@ -1,3 +1,4 @@
+import type { CompactionResult } from '@deepseek-ai/dsh-compaction';
 import { HarnessHumanCommands } from './human-commands';
 import type {
   CommandDescriptor,
@@ -15,7 +16,7 @@ import { cancelOwnedJobs, JOB_CLEANUP_TIMEOUT_MS } from './job-cleanup';
 import type { HarnessCleanup } from './job-cleanup';
 import { setSessionPermission } from './permission';
 import type { HarnessInteractions } from './interactions';
-import { assertDrained, sessionWork } from './work';
+import { assertDrained, sessionWork, workDrained } from './work';
 import type { HarnessWork } from './work';
 
 export class HarnessSession {
@@ -26,6 +27,7 @@ export class HarnessSession {
   private lostOwnership = false;
   private ownershipCleanup: Promise<void> | undefined;
   private stopping: Promise<void> | undefined;
+  private compacting = false;
   private cleanup: HarnessCleanup = { state: 'idle' };
   private readonly persistence: HubSessionPersistence;
   private readonly humanCommands: HarnessHumanCommands;
@@ -51,6 +53,18 @@ export class HarnessSession {
 
   work(): HarnessWork {
     return sessionWork(this.ctx, this.handle.agent, this.interactions, this.cleanup);
+  }
+
+  configurationIdle(): boolean {
+    return (
+      !this.frozen &&
+      !this.lostOwnership &&
+      this.closing === undefined &&
+      this.stopping === undefined &&
+      !this.compacting &&
+      !this.humanCommands.active() &&
+      workDrained(this.work())
+    );
   }
 
   prompt(message: UserMessage): void {
@@ -115,9 +129,15 @@ export class HarnessSession {
     }
   }
 
-  compact(): Promise<unknown> {
+  async compact(): Promise<CompactionResult | null> {
     this.assertAdmitted();
-    return this.ctx.compaction.compactNow(this.handle.agent, new AbortController().signal);
+    this.compacting = true;
+    try {
+      return await this.ctx.compaction.compactNow(this.handle.agent, new AbortController().signal);
+    } finally {
+      this.compacting = false;
+      await this.flush();
+    }
   }
 
   directory(path: string): Promise<string> {

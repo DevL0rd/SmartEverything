@@ -74,6 +74,18 @@ why it is the way it is. Never edit what you have not read.
   search, nested under the page, section or device where it appears, with keywords and synonyms for the words people
   use.
 
+- **Chat tool declarations**: keep one small shared common set for frequent home/device, people/health,
+  communication and weather actions, alongside tool search, details and invocation. Reuse the common-tool registry;
+  do not create separate lists per chat provider. Keep native harness core tools directly available.
+- Discover specialized tools on demand and fetch their complete current input schemas before calling them.
+  Preserve the full enabled catalogue, capability coverage, validation and permission checks; reducing declarations
+  must never remove access to a tool. General MCP listings remain complete. Retain the compatible full-declaration
+  path where discovery is unavailable.
+- Keep declarations and descriptions concise without losing necessary constraints. Avoid repeated schemas or
+  embedding full schemas in instructions or skills. Skills explain tool selection and workflows, using live schema
+  discovery for exact inputs. When changing declaration selection or schema conversion, measure the assembled
+  request and verify discovery, normal calls and access checks; size reduction alone does not prove model quality.
+
 ## Product skills
 
 - SmartEverything's AI skills live in `packages/harness/skills/`; they are product capabilities, separate from development-agent skills.

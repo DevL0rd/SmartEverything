@@ -12,6 +12,7 @@ import { useIsOwner } from '../../../store/selectors';
 import { useHarnessCatalogue } from '../data/harness';
 import { isSelected, selectedEntry, requiresSkillUpdate } from './selection';
 import { canInstall, itemSummary } from './status';
+import { assetProviderName } from './items';
 import type { useExtensionWriter } from './change';
 
 interface Props {
@@ -40,7 +41,8 @@ function SelectionRows({
   if (item.selection.kind === 'skill_asset')
     return (
       <Text variant="footnote" tone="variant">
-        Included in Workspace skills. Use its On switch to enable the collection.
+        Included in {assetProviderName(item.selection.parent_id)}. Use its On switch to enable the
+        collection.
       </Text>
     );
   return (

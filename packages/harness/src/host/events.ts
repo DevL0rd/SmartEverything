@@ -1,4 +1,6 @@
+import { observeModelRequestContext } from './model-request-context';
 import { addAbortListener } from 'node:events';
+import { createHash } from 'node:crypto';
 import { HarnessRuntimeError } from './errors';
 import type { Context } from '@deepseek-ai/cordis';
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent';
@@ -17,6 +19,7 @@ export type HarnessRuntimeEvent =
   | { readonly kind: 'discarded'; readonly sessionId: string; readonly messageId: string }
   | { readonly kind: 'stream'; readonly sessionId: string; readonly frame: AssistantStreamFrame }
   | { readonly kind: 'status'; readonly sessionId: string; readonly status: 'idle' | 'running' }
+  | { readonly kind: 'commands'; readonly sessionId: string; readonly revision: string }
   | { readonly kind: 'error'; readonly sessionId: string; readonly failure: FailureDetail };
 
 export function observeHarness(
@@ -24,7 +27,18 @@ export function observeHarness(
   emit: (event: HarnessRuntimeEvent) => void,
   beforeStep?: (id: string) => Promise<void>,
 ): void {
+  observeModelRequestContext(ctx);
   const log = new Logger('hub.harness');
+  ctx.on('commands/change', () => {
+    for (const agent of ctx.agents.list())
+      emit({
+        kind: 'commands',
+        sessionId: agent.id,
+        revision: createHash('sha256')
+          .update(JSON.stringify(ctx.commands.list(agent)))
+          .digest('hex'),
+      });
+  });
   ctx.on('session/event', (session, event) => {
     if (event.type === 'llm/retry')
       log.warn('model.retry_scheduled', { session_id: session.id, ...event.data });

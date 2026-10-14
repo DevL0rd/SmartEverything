@@ -2,6 +2,7 @@ import type { ShellyPresenceOperationDescriptor } from './shelly-presence-fields
 export const SHELLY_OPERATIONS_0: readonly ShellyPresenceOperationDescriptor[] = [
   {
     action: 'set_component',
+    possiblePermissions: ['privileged', 'access'],
     title: 'Save component settings',
     page: 'presence-connectivity',
     focus: 'settings',
@@ -11,6 +12,7 @@ export const SHELLY_OPERATIONS_0: readonly ShellyPresenceOperationDescriptor[] =
   },
   {
     action: 'schedule_create',
+    possiblePermissions: ['privileged', 'destructive', 'access'],
     title: 'Create on-device schedule',
     page: 'presence-schedules',
     focus: 'create',
@@ -20,6 +22,7 @@ export const SHELLY_OPERATIONS_0: readonly ShellyPresenceOperationDescriptor[] =
   },
   {
     action: 'schedule_update',
+    possiblePermissions: ['privileged', 'destructive', 'access'],
     title: 'Update on-device schedule',
     page: 'presence-schedules',
     focus: 'edit',

@@ -243,20 +243,13 @@ class DiagnosticsController implements PreviewDiagnostics {
     this.recovery.activity();
     const socket = this.socket;
     const scope = this.current;
-    if (
-      this.transferRefused ||
-      socket === null ||
-      scope === null ||
-      socket.readyState !== WebSocket.OPEN
-    )
-      return;
+    if (socket === null || scope === null || socket.readyState !== WebSocket.OPEN) return;
     do {
-      const records = this.pending.slice(0, 64);
-      if (!BrowserDiagnosticsApi.transferableConsoleRecords(records)) {
+      let records = this.pending.slice(0, 64);
+      if (this.transferRefused || !BrowserDiagnosticsApi.transferableConsoleRecords(records)) {
         this.transferRefused = true;
-        return;
-      }
-      this.pending.splice(0, 64);
+        records = [];
+      } else this.pending.splice(0, 64);
       socket.send(
         JSON.stringify(
           PREVIEW_VIEW_MESSAGE.parse({
@@ -266,7 +259,7 @@ class DiagnosticsController implements PreviewDiagnostics {
               visible: this.visible(),
               records,
               ...BrowserDiagnosticsApi.browserRecordMetadata(
-                this.pending.length === 0,
+                !this.transferRefused && this.pending.length === 0,
                 this.sequence,
                 this.refusedRecords,
               ),
@@ -274,7 +267,7 @@ class DiagnosticsController implements PreviewDiagnostics {
           }),
         ),
       );
-    } while (this.pending.length > 0);
+    } while (!this.transferRefused && this.pending.length > 0);
   }
   private fence(scope: PreviewDiagnosticScope): void {
     if (!this.visible() || this.current !== scope || this.socket?.readyState !== WebSocket.OPEN)

@@ -117,11 +117,16 @@ export function bundledHarnessSkills(): NonNullable<AiHarnessExtensions['bundled
     HARNESS_BUNDLED_SKILL.parse({
       id: skill.name,
       kind: 'bundled_skill',
-      name: skill.name,
+      name: bundledSkillTitle(skill),
       description: skill.description,
       publisher: 'SmartEverything',
       revision: PRODUCT_SKILLS.revision,
       content: skill.content,
     }),
   );
+}
+
+function bundledSkillTitle(skill: { readonly name: string; readonly content: string }): string {
+  const title = /^#(?:[ \t]+([^\r\n]*))?$/mu.exec(skill.content)?.[1]?.trim();
+  return title === undefined || title.length === 0 ? skill.name : title;
 }

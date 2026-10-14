@@ -313,7 +313,7 @@ export class DesktopRouteAuthority implements HubLeasePort {
       scopeId,
       `${selected.origin}${url.pathname}${url.search}`,
       binding,
-      routeGeneration,
+      routeGeneration ?? client.snapshot.routeGeneration,
     );
   }
   close(): void {

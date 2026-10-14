@@ -46,6 +46,7 @@ declare class HealthConnectNative extends NativeModule<HealthConnectEvents> {
     history: boolean,
   ): Promise<unknown>;
   grantedPermissions(): Promise<unknown>;
+  requestAllPermissions(): Promise<unknown>;
   configure(endpoint: string, token: string): Promise<void>;
   syncNow(): Promise<unknown>;
   schedule(intervalMinutes: number): Promise<void>;
@@ -139,6 +140,16 @@ export async function requestPermissions(request: PermissionRequest): Promise<He
 
 export async function grantedPermissions(): Promise<HealthConnectGrants> {
   return HEALTH_CONNECT_GRANTS.parse(await nativeFor('grantedPermissions').grantedPermissions());
+}
+
+export async function requestAllPermissions(): Promise<HealthConnectGrants> {
+  const grants = HEALTH_CONNECT_GRANTS.parse(
+    await nativeFor('requestAllPermissions').requestAllPermissions(),
+  );
+  if (grants.writeTypes === undefined) {
+    throw new AppUpdateNeededError('Health Connect read and write access');
+  }
+  return grants;
 }
 
 export async function configure(target: SyncTarget): Promise<void> {

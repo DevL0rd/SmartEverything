@@ -15,6 +15,8 @@ import {
 } from '../../../api/ai';
 import { confirm } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
+import type { MessageSender } from '../components/composer';
+import { trimmedReferences } from '../references/spans';
 import { clearUploads } from '../data/uploads';
 
 async function attempt<T>(work: () => Promise<T>, failure: string): Promise<T | null> {
@@ -76,12 +78,15 @@ export async function stopChat(chatId: string): Promise<void> {
   await attempt(() => interruptAiChat(chatId), 'Couldn’t stop it');
 }
 
-export function chatSender(
-  chatId: string,
-): (text: string, attachments: readonly string[]) => Promise<boolean> {
-  return async (text, attachments) => {
+export function chatSender(chatId: string): MessageSender {
+  return async (text, attachments, references = [], clientMessageId) => {
+    const message = trimmedReferences({ text, references });
     const sent = await attempt(
-      () => sendAiChatMessage(chatId, text.trim(), attachments),
+      () =>
+        sendAiChatMessage(chatId, message.text, attachments, {
+          references: message.references,
+          ...(clientMessageId === undefined ? {} : { clientMessageId }),
+        }),
       'Message not sent',
     );
     if (sent !== null) {
@@ -95,8 +100,8 @@ export function chatStarter(
   engine: Engine,
   opened: (chatId: string) => void,
   resolve?: () => Engine | null,
-): (text: string, attachments: readonly string[]) => Promise<boolean> {
-  return async (text, attachments) => {
+): MessageSender {
+  return async (text, attachments, references = [], clientMessageId) => {
     const selected = resolve === undefined ? engine : resolve();
     if (selected === null) {
       notify({
@@ -109,7 +114,7 @@ export function chatStarter(
     if (chat === null) {
       return false;
     }
-    const sent = await chatSender(chat.id)(text, attachments);
+    const sent = await chatSender(chat.id)(text, attachments, references, clientMessageId);
     opened(chat.id);
     return sent;
   };
@@ -118,5 +123,5 @@ export function chatStarter(
 export async function compactChat(chatId: string): Promise<void> {
   const result = await attempt(() => compactAiChat(chatId), 'Chat could not be compacted');
   if (result === null) return;
-  notify({ message: result ? 'Compaction requested' : 'Nothing needed compacting' });
+  notify({ message: result ? 'Chat compacted' : 'Nothing needed compacting' });
 }

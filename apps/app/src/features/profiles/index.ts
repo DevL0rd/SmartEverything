@@ -3,7 +3,7 @@ export { ProfileEditorScreen } from './profile-editor';
 export { ProfileSwitcher } from './profile-switcher';
 export {
   ScaleListenerHost,
-  allowWritesAndSave,
+  retryHealthConnectWrites,
   usePairedServer,
   useWriteState,
 } from './scale-listener';

@@ -6,6 +6,7 @@ import { EmptyState } from '../../../components/empty-state';
 import { WidgetBoard, useBoardEditor } from '../../../components/widget-board';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
+import { CameraTranscriptFeed } from '../transcripts/camera-transcript-feed';
 import { atLeast, useSizeClass } from '../../../design/size-class';
 import { usePageLayout, useSavePageLayout } from '../../../store/layouts';
 import { useCameraBanners } from '../components/camera-banners';
@@ -67,27 +68,36 @@ export function LiveScreen(): ReactNode {
     defaults: cameraDefaults(entries),
     onSave: useSavePageLayout(CAMERAS_PAGE),
   });
+  const header = (
+    <PageHeader
+      title="Cameras"
+      settings={mainPageSettings('cameras')}
+      actions={editor.editing ? [] : [editor.editAction, ...actions]}
+      editing={editor.header}
+    />
+  );
+  const board = (
+    <WidgetBoard
+      editor={editor}
+      catalogue={CAMERA_WIDGETS}
+      available={AVAILABLE}
+      instanceAvailable={cameraInstanceAvailable(entries)}
+    />
+  );
+  const listMode = !editor.editing && entries.length > 0;
   return (
     <Screen
-      header={
-        <PageHeader
-          title="Cameras"
-          settings={mainPageSettings('cameras')}
-          actions={editor.editing ? [] : [editor.editAction, ...actions]}
-          editing={editor.header}
-        />
-      }
+      header={header}
+      scroll={!listMode}
+      externalScroll={listMode}
       {...(banner === undefined ? {} : { banner })}
     >
       {entries.length === 0 ? (
         <NoCameras />
+      ) : editor.editing ? (
+        board
       ) : (
-        <WidgetBoard
-          editor={editor}
-          catalogue={CAMERA_WIDGETS}
-          available={AVAILABLE}
-          instanceAvailable={cameraInstanceAvailable(entries)}
-        />
+        <CameraTranscriptFeed pageHeader={header} banner={banner} header={board} />
       )}
     </Screen>
   );

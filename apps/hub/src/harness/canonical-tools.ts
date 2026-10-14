@@ -5,7 +5,10 @@ import type { HarnessTransportRequest, DshSessionEvent } from '@smarteverything/
 import { eventAuthority } from '../assistant/execution-authority';
 import type { HarnessService } from './service';
 
-export type CentralToolRequest = Extract<HarnessTransportRequest['request'], { operation: 'tool' }>;
+export type CentralToolRequest = Extract<
+  HarnessTransportRequest['request'],
+  { operation: 'tool' | 'plugin_agent' }
+>;
 const CALL = z.object({
   callId: z.string(),
   name: z.string(),

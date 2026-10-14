@@ -68,10 +68,12 @@ export const AI_HARNESS_STORAGE_BINDING = z.discriminatedUnion('kind', [
 export type AiHarnessStorageBinding = z.infer<typeof AI_HARNESS_STORAGE_BINDING>;
 
 export const AI_HARNESS_MANIFEST = z.object({
+  references: z.object({ protocol: z.literal(1) }).optional(),
   project_files: z.object({ protocol: z.literal(1) }).optional(),
   subscription_inference: z.object({ protocol: z.literal(1) }).optional(),
   subscription_consumer: z.object({ protocol: z.literal(1) }).optional(),
   human_commands: z.boolean().optional(),
+  configuration_prepare: z.boolean().optional(),
   delivery_correlation: z.boolean().optional(),
   history_import: z.boolean().optional(),
   protocol: z.literal(AI_HARNESS_PROTOCOL_VERSION),

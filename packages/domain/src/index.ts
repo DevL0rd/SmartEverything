@@ -8,6 +8,8 @@ export * from './commands';
 
 export * from './events';
 
+export * from './search-triggers';
+
 export type { AdapterFailure, AdapterSink, ProviderAdapter, Unsubscribe } from './adapter';
 
 export { SEALED, UnsealError, createSealingKeys, seal, unseal } from './sealed';
@@ -404,3 +406,10 @@ export * from './ai-project-files';
 export * from './api/endpoints-ai-projects';
 
 export * from './native-project-compatibility';
+
+export * from './ai-references';
+export * from './api/endpoints-ai-references';
+
+export * from './ai-reference-compatibility';
+
+export * from './ai-reference-runtime';

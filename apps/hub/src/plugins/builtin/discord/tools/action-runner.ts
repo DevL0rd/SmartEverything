@@ -18,9 +18,12 @@ export interface ParsedCall {
   readonly args: Readonly<Record<string, unknown>>;
 }
 
+export function resultFits(value: unknown): boolean {
+  return Buffer.byteLength(JSON.stringify(value)) <= OUTPUT_LIMIT;
+}
+
 export function boundedResult(value: unknown): Readonly<Record<string, unknown>> {
-  const encoded = JSON.stringify(value);
-  if (Buffer.byteLength(encoded) > OUTPUT_LIMIT) {
+  if (!resultFits(value)) {
     throw new DiscordInputError('Result exceeds the output limit; request a smaller page');
   }
   return { result: value };

@@ -208,6 +208,7 @@ export {
   LIVE_CHANGE,
   LIVE_CLIENT_MESSAGE,
   LIVE_MESSAGE,
+  LIVE_NOTICE,
   LIVE_SERVER_MESSAGE,
   LIVE_STREAMS,
   LIVE_TABLES,
@@ -222,6 +223,7 @@ export type {
   LiveClientMessage,
   LiveClientMessageInput,
   LiveMessage,
+  CommittedNotice,
   LiveServerMessage,
   LiveStream,
   PushCommandNotice,
@@ -233,6 +235,7 @@ export type {
 } from './live';
 
 export * from '../transcripts';
+export * from '../transcript-reader';
 
 export * from './endpoints-transcripts';
 

@@ -1,3 +1,4 @@
+import { TRANSCRIPT_CHANGED_NOTICE } from '../transcript-reader';
 import { AI_PREVIEW_NOTICE, AI_PREVIEW_LEASE } from '../ai-previews';
 import { AI_HTML_PREVIEW_LEASE } from '../ai-preview-documents';
 import { IMAGE_OPERATION_NOTICE, IMAGE_OPERATION_PREVIEW } from '../image-operations';
@@ -252,7 +253,11 @@ const NOTICES = [
   AI_CHAT_RUNTIME_PROVIDER_NOTICE,
   COMPUTER_RUNTIME_STATUS_NOTICE,
   COMPUTER_RUNTIME_NATIVE_NOTICE,
+  TRANSCRIPT_CHANGED_NOTICE,
 ] as const;
+
+export const LIVE_NOTICE = z.union(NOTICES);
+export type CommittedNotice = z.output<typeof LIVE_NOTICE>;
 
 const READY = z.strictObject({
   type: z.literal('ready'),

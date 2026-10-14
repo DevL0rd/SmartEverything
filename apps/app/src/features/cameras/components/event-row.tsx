@@ -39,7 +39,7 @@ export function subtitleOf(entry: EventEntry, timeZone: string): string {
 
 function rowSubtitle(entry: EventEntry, cameraName: string | null, timeZone: string): string {
   const when = subtitleOf(entry, timeZone);
-  return cameraName === null ? when : joinParts([eventLook(entry.kind).label, when]);
+  return cameraName === null ? when : joinParts([eventLook(entry.kind, entry.details).label, when]);
 }
 
 function DeleteAction(): ReactNode {
@@ -82,7 +82,7 @@ function Trailing({
 export function EventRow(props: EventRowProps): ReactNode {
   const { entry, cameraName, onDelete } = props;
   const pointer = useIdiom() === 'pointer';
-  const look = eventLook(entry.kind);
+  const look = eventLook(entry.kind, entry.details);
   const target = recordingTarget(entry);
   const burst = entry.count > 1 && props.onToggle !== undefined;
   const link = burst || target === null ? undefined : href.clip(entry.deviceId, target);

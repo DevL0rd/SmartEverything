@@ -16,6 +16,7 @@ import { useRows } from '../../../store/selectors';
 import type { DeviceLike } from '../model/capability-choices';
 import { signalFieldOf } from '../model/signal-text';
 import { countComparison, genericSources, timingOf, withKind } from '../model/signal-triggers';
+import { SignalMatchFields } from './signal-match-fields';
 import { SignalAmountFields } from './signal-amount-fields';
 import { deviceOptions } from './target-fields';
 import { TimingSection } from './timing-section';
@@ -159,6 +160,12 @@ export function GenericSignalFields(props: SignalProps): ReactNode {
   return (
     <View className="gap-3">
       <SignalPickers {...props} />
+      <SignalMatchFields
+        {...trigger}
+        onChange={(match) => {
+          onChange({ ...trigger, match });
+        }}
+      />
       {pulse || trigger.comparison === null ? null : (
         <SignalAmountFields
           comparison={trigger.comparison}

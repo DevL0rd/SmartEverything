@@ -23,6 +23,7 @@ import { extensionBrowseHref } from './links';
 import { EmptyState } from '../../../components/empty-state';
 import { devicesSummary, itemSummary } from './status';
 import { ExtensionDevicesSheet } from './devices-sheet';
+import { ClaudeCollectionControl } from './collection-control';
 
 type ConfigurationQuery = ReturnType<typeof useExtensionConfiguration>;
 
@@ -61,6 +62,7 @@ function InstalledHeader({
             : 'This hub does not list its included skills yet. Imported workspace skills are shown below.'
           : 'Choose once for your compatible devices. File access and sign-ins stay on each device.'}
       </Text>
+      <ClaudeCollectionControl kind={kind} />
       <DeviceLink configuration={configuration} onDevices={onDevices} />
       {searchable ? (
         <SearchField

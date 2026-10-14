@@ -2,14 +2,14 @@ package expo.modules.healthconnect.network
 
 import android.webkit.WebView
 
-class HubHtmlProfile(view: WebView) : AutoCloseable {
+class HubHtmlProfile(view: WebView, profileId: String) : AutoCloseable {
   private val lifecycle: HubBrowserProfile
   private val type = Class.forName("androidx.webkit.Profile")
   private val owned: Any
   @Volatile private var closed = false
   init {
     check(HubBrowserPolicy.supported()) { "Project previews require isolated WebView profiles" }
-    lifecycle = HubBrowserProfile(view.context)
+    lifecycle = HubBrowserProfile(view.context, profileId)
     try {
       val compat = Class.forName("androidx.webkit.WebViewCompat")
       compat.getMethod("setProfile", WebView::class.java, String::class.java).invoke(null, view, lifecycle.name)
@@ -26,6 +26,8 @@ class HubHtmlProfile(view: WebView) : AutoCloseable {
   fun profile(): Any { check(); return owned }
   override fun close() {
     if (closed) return
+    val manager = requireNotNull(android.webkit.CookieManager::class.java.cast(type.getMethod("getCookieManager").invoke(owned)))
+    manager.flush()
     closed = true
     lifecycle.close()
   }

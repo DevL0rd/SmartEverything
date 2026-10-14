@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   ApiError,
-  type HarnessSkillAsset,
   type HarnessDesiredConfiguration,
-  type HarnessDesiredEntry,
+  type HarnessDiscoveryItem,
   type HarnessSkillUpdates,
   type HarnessSkillUpdateResult,
 } from '@smarteverything/domain';
@@ -12,7 +11,10 @@ import type { Clock, Cancel } from '../clock';
 import type { HarnessSkillUpdatesRepository } from '../store/repositories/harness-skill-updates';
 import type { HarnessConfigurationService } from './configuration';
 import type { HarnessExtensions } from './extensions';
-import type { AnthropicSkills } from './anthropic-skills';
+import { excludedAnthropicSkill, type AnthropicSkills } from './anthropic-skills';
+import type { ClaudePlugins } from './claude-plugins';
+import { prepareOfficialAssetUpdate } from './official-asset-updates';
+import { claudePluginsEntry } from './claude-plugin-selection';
 
 const UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export class HarnessSkillUpdatesService {
@@ -25,7 +27,11 @@ export class HarnessSkillUpdatesService {
     private readonly repository: HarnessSkillUpdatesRepository,
     private readonly configuration: HarnessConfigurationService,
     private readonly extensions: HarnessExtensions,
-    private readonly ports: { readonly source: AnthropicSkills; readonly clock: Clock },
+    private readonly ports: {
+      readonly source: AnthropicSkills;
+      readonly plugins: ClaudePlugins;
+      readonly clock: Clock;
+    },
   ) {}
 
   read(): HarnessSkillUpdates {
@@ -88,43 +94,48 @@ export class HarnessSkillUpdatesService {
     const entry = original.entries.find((item) => item.id === 'skills');
     if (entry?.metadata === undefined)
       throw new ApiError('conflict', 'Shared skills require registered metadata before updating.');
-    const snapshot = await this.ports.source.snapshot(true);
-    const replacements: HarnessSkillAsset[] = [];
-    let unchanged = 0;
-    let skipped = 0;
-    for (const item of snapshot.items) {
-      if (item.acquisition.state !== 'available') {
-        skipped += 1;
-        continue;
-      }
-      const current = entry.metadata.skill_assets.find((asset) => asset.id === item.id);
-      if (sameSkillVersion(current, snapshot.commit)) {
-        unchanged += 1;
-        continue;
-      }
-      const resolved = await this.extensions.resolve(
-        { url: item.acquisition.url },
-        'owner',
-        current,
-      );
-      if (resolved.selection.kind !== 'skill_asset')
-        throw new ApiError(
-          'conflict',
-          'Anthropic update inspection did not return a verified skill asset.',
-        );
-      if (sameSkillVersion(current, resolved.selection.asset.version)) unchanged += 1;
-      else replacements.push(resolved.selection.asset);
-    }
-    if (replacements.length === 0)
-      return { updated: 0, unchanged, skipped, revision: original.revision };
+    const selectedSkills = retainedSkills(entry);
+    const pluginEntry = claudePluginsEntry(original);
+    const [skills, plugins] = await Promise.all([
+      this.ports.source.snapshot(true),
+      this.ports.plugins.snapshot(true),
+    ]);
+    const skillUpdate = await prepareOfficialAssetUpdate(
+      selectedSkills.entry,
+      skills,
+      async (url, previous) => {
+        const inspected = await this.extensions.resolve({ url }, 'owner', previous);
+        if (inspected.selection.kind !== 'skill_asset')
+          throw new ApiError('conflict', 'Skill inspection did not return a verified skill asset.');
+        return inspected.selection.asset;
+      },
+    );
+    const pluginUpdate = await prepareOfficialAssetUpdate(
+      pluginEntry,
+      { ...plugins, items: selectedPluginItems(original, pluginEntry, plugins.items) },
+      (url, previous) => this.extensions.resolvePlugin(url, previous),
+    );
+    const updated = skillUpdate.updated + pluginUpdate.updated + selectedSkills.removed;
+    if (updated === 0)
+      return {
+        updated,
+        unchanged: skillUpdate.unchanged + pluginUpdate.unchanged,
+        skipped: skillUpdate.skipped + pluginUpdate.skipped,
+        revision: original.revision,
+      };
     const desired = this.configuration.replace(
       {
         expected_revision: original.revision,
-        configuration: replacedSkills(original, entry, replacements),
+        configuration: replacedAssets(original, [skillUpdate.entry, pluginUpdate.entry]),
       },
       'owner',
     );
-    return { updated: replacements.length, unchanged, skipped, revision: desired.revision };
+    return {
+      updated,
+      unchanged: skillUpdate.unchanged + pluginUpdate.unchanged,
+      skipped: skillUpdate.skipped + pluginUpdate.skipped,
+      revision: desired.revision,
+    };
   }
 
   private requireOwner(role: 'owner' | 'member'): void {
@@ -133,32 +144,42 @@ export class HarnessSkillUpdatesService {
   }
 }
 
-function replacedSkills(
+function replacedAssets(
   original: HarnessDesiredConfiguration,
-  entry: HarnessDesiredEntry,
-  replacements: readonly HarnessSkillAsset[],
+  replacements: HarnessDesiredConfiguration['entries'],
 ): HarnessDesiredConfiguration {
-  if (entry.metadata === undefined)
-    throw new ApiError('conflict', 'Shared skill metadata is absent.');
-  const replacement = {
-    ...entry,
-    metadata: {
-      ...entry.metadata,
-      skill_assets: [
-        ...entry.metadata.skill_assets.filter(
-          (asset) => !replacements.some((next) => next.id === asset.id),
-        ),
-        ...replacements,
-      ],
-    },
-  };
   return {
     ...original,
-    revision: `anthropic-skills-${randomUUID()}`,
-    entries: original.entries.map((item) => (item.id === entry.id ? replacement : item)),
+    revision: `official-assets-${randomUUID()}`,
+    entries: [
+      ...original.entries.map(
+        (entry) => replacements.find((next) => next.id === entry.id) ?? entry,
+      ),
+      ...replacements.filter((next) => !original.entries.some((entry) => entry.id === next.id)),
+    ],
   };
 }
 
-function sameSkillVersion(asset: HarnessSkillAsset | undefined, version: string): boolean {
-  return asset?.version === version;
+function selectedPluginItems(
+  desired: HarnessDesiredConfiguration,
+  entry: HarnessDesiredConfiguration['entries'][number],
+  items: readonly HarnessDiscoveryItem[],
+): readonly HarnessDiscoveryItem[] {
+  if (!desired.entries.some((candidate) => candidate.id === entry.id)) return items;
+  return items.filter(
+    (item) => entry.metadata?.skill_assets.some((asset) => asset.id === item.id) === true,
+  );
+}
+
+function retainedSkills(entry: HarnessDesiredConfiguration['entries'][number]): {
+  readonly entry: HarnessDesiredConfiguration['entries'][number];
+  readonly removed: number;
+} {
+  if (entry.metadata === undefined)
+    throw new ApiError('conflict', 'Shared skill metadata is absent.');
+  const assets = entry.metadata.skill_assets.filter((asset) => !excludedAnthropicSkill(asset.id));
+  return {
+    entry: { ...entry, metadata: { ...entry.metadata, skill_assets: assets } },
+    removed: entry.metadata.skill_assets.length - assets.length,
+  };
 }

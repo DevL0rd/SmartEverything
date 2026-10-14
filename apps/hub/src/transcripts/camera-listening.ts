@@ -73,9 +73,12 @@ export class CameraListening {
     this.chains.set(cameraId, chain);
   }
 
-  async status(): Promise<TranscriptStatus> {
+  async status(cameraIds?: readonly string[]): Promise<TranscriptStatus> {
     const cameras = await Promise.all(
-      this.options.store.cameras.list().map((camera) => this.listeningOf(camera)),
+      this.options.store.cameras
+        .list()
+        .filter((camera) => cameraIds === undefined || cameraIds.includes(camera.device_id))
+        .map((camera) => this.listeningOf(camera)),
     );
     return {
       cameras,
@@ -144,6 +147,8 @@ export class CameraListening {
     const session = this.sessionOf(cameraId);
     this.options.transcripts.add(session.id, {
       at: new Date(segment.startedAt).toISOString(),
+      ended_at: new Date(segment.endedAt).toISOString(),
+      timing: 'wall_clock',
       speaker_id: null,
       speaker: this.nameOf(cameraId),
       text,

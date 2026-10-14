@@ -10,6 +10,8 @@ import {
   type SignalTiming,
   type TimedBase,
 } from '../model/signal-triggers';
+import { withEventMatch } from '../model/signal-match';
+import { SignalMatchFields } from './signal-match-fields';
 import { EventFields, StateFields } from './device-trigger-fields';
 import { targetOf } from './target-fields';
 import { TimingSection } from './timing-section';
@@ -52,7 +54,17 @@ export function TimedFields({
       {base.type === 'state' ? (
         <StateFields trigger={base} devices={devices} onChange={changeBase} />
       ) : (
-        <EventFields trigger={base} devices={devices} onChange={changeBase} />
+        <View className="gap-3">
+          <EventFields trigger={base} devices={devices} onChange={changeBase} />
+          <SignalMatchFields
+            source="event"
+            kind={base.kind}
+            match={trigger.type === 'signal' ? trigger.match : {}}
+            onChange={(match) => {
+              onChange(withEventMatch(base, timing, trigger, match));
+            }}
+          />
+        </View>
       )}
       <TimingSection
         timing={timing}

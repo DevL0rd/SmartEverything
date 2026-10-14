@@ -11,6 +11,7 @@ import { setDraft } from '../data/drafts';
 import { useOpenRouterStatus } from '../data/openrouter';
 import { attachFiles } from '../data/uploads';
 import { useFileDrop } from '../../../platform/file-drop';
+import { useDraftCommands } from './draft-commands';
 import { chatStarter } from './chat-actions';
 import { Text } from '../../../components/text';
 import { useEngineUnavailableReason } from '../provider/engine-availability';
@@ -40,17 +41,21 @@ export function StartChat({
   const execution = useDraftExecution(engine);
   const unavailable = useEngineUnavailableReason(execution.engine ?? engine);
   const keyed = useOpenRouterStatus().data?.key !== 'missing' || engine.kind !== 'openrouter';
+  const canStart = ready && unavailable === null && execution.engine !== null;
   const ref = useRef<View>(null);
   const [dragging, setDragging] = useState(false);
   useFileDrop(ref, { onFiles: attachFiles, onHover: setDragging });
-  const start = chatStarter(
-    engine,
-    (chatId) => {
-      resetDraftEngine();
-      onStarted(chatId);
-    },
-    execution.resolve,
+  const opened = (chatId: string): void => {
+    resetDraftEngine();
+    onStarted(chatId);
+  };
+  const commandProblem = useDraftCommands(
+    DRAFT_KEY,
+    execution.engine,
+    ready && unavailable === null,
+    { resolve: execution.resolve, opened },
   );
+  const start = chatStarter(engine, opened, execution.resolve);
   return (
     <View ref={ref} className="min-h-0 flex-1 justify-between pb-safe-offset-3">
       <View className="flex-1 justify-center">
@@ -59,8 +64,9 @@ export function StartChat({
       <View className="w-full max-w-reading gap-2 self-center px-gutter">
         {ready ? null : <DraftAvailability />}
         {execution.reason === null ? null : <Text tone="variant">{execution.reason}</Text>}
+        <CommandProblem reason={commandProblem} />
         <Composer
-          disabled={!ready || unavailable !== null || execution.engine === null}
+          disabled={!canStart}
           placeholder={`Message ${name}`}
           draftKey={DRAFT_KEY}
           send={start}
@@ -92,4 +98,8 @@ function DraftGreeting({
   ) : (
     <NoKeyChat name={name} />
   );
+}
+
+function CommandProblem({ reason }: { readonly reason: string | null }): ReactNode {
+  return reason === null ? null : <Text tone="variant">{reason}</Text>;
 }

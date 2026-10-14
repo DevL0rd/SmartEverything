@@ -4,7 +4,6 @@ import {
   WAKE_SENSITIVITY_HINTS,
   WAKE_SENSITIVITY_LABELS,
   type CameraChange,
-  type CameraRow,
   type WakeSensitivity,
 } from '@smarteverything/domain';
 import { changeCamera } from '../../../api/media';
@@ -15,12 +14,10 @@ import type { SelectOption } from '../../../components/select';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
 import { notify } from '../../../components/toast-store';
-import { useIsOwner } from '../../../store/selectors';
 import { CapabilityRow, offlineReason } from '../../devices';
 import { PrivacyRow, hasPrivacySwitch } from '../components/privacy-row';
 import { useCameraEntry } from '../data/use-cameras';
-import { useTranscriptActions, useTranscriptStatus } from '../data/use-transcripts';
-import { listeningDetail } from '../transcripts/transcript-model';
+import { TranscribeRow } from '../transcripts/transcribe-row';
 import type { CameraEntry } from '../logic/cameras';
 import { cameraSections } from './camera-groups';
 import { DeviceSettingsFrame } from '../../devices';
@@ -37,30 +34,6 @@ function change(deviceId: string, update: CameraChange, failure: string): void {
   changeCamera(deviceId, update).catch((error: unknown) => {
     notify({ message: failure, error, tone: 'critical' });
   });
-}
-
-function TranscribeRow({ camera }: { readonly camera: CameraRow }): ReactNode {
-  const owner = useIsOwner();
-  const status = useTranscriptStatus();
-  const actions = useTranscriptActions();
-  const listening = status.data?.cameras.find((one) => one.camera_id === camera.device_id);
-  const detail = camera.transcribe && listening !== undefined ? listeningDetail(listening) : null;
-  return (
-    <SwitchRow
-      title="Transcribe what it hears"
-      icon="fileText"
-      value={camera.transcribe}
-      disabled={!owner && !camera.transcribe}
-      {...(detail === null ? {} : { subtitle: detail })}
-      onChange={(transcribe) => {
-        changeCamera(camera.device_id, { transcribe })
-          .then(actions.refreshStatus)
-          .catch((error: unknown) => {
-            notify({ message: 'Transcribing wasn’t changed', error, tone: 'critical' });
-          });
-      }}
-    />
-  );
 }
 
 function CameraRows({ entry }: { readonly entry: CameraEntry }): ReactNode {
@@ -95,7 +68,7 @@ function CameraRows({ entry }: { readonly entry: CameraEntry }): ReactNode {
           }}
         />
       </List>
-      <List footer="Turns what this camera hears into text that only you can read, kept for the time you choose on the Transcripts page. The sound itself is never saved. It pauses in privacy mode, when the camera is offline and once the day’s budget is used.">
+      <List footer="Turns what this camera hears into text anyone who can view it can read, kept for the time you choose in Camera settings. The sound itself is never saved. It pauses in privacy mode, when the camera is offline and once the day’s budget is used.">
         <TranscribeRow camera={camera} />
       </List>
     </>

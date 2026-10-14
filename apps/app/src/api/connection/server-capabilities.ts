@@ -6,9 +6,11 @@ import {
   PREVIEW_BROWSER_DATA_CAPABILITY,
   AI_NATIVE_HTML_CAPABILITY,
   AI_NATIVE_PROJECT_CAPABILITY,
+  AI_CHAT_PAGES_CAPABILITY,
   AI_ENGINE_CAPABILITY,
   AI_ENGINE_CAPABILITY_V2,
   AI_HARNESS_CAPABILITY,
+  AI_REFERENCE_CAPABILITY,
 } from '@smarteverything/domain';
 import { ValueStore, useValue } from '../../design/external-store';
 
@@ -101,4 +103,16 @@ export function useServerEmbeddedBrowser(url: string | null): boolean {
 
 export function serverSupportsBrowserData(url: string): boolean {
   return capabilities.get().get(url)?.includes(PREVIEW_BROWSER_DATA_CAPABILITY) === true;
+}
+
+export function serverSupportsChatPages(url: string): boolean {
+  return capabilities.get().get(url)?.includes(AI_CHAT_PAGES_CAPABILITY) === true;
+}
+
+export function serverSupportsAiReferences(url: string): boolean {
+  return capabilities.get().get(url)?.includes(AI_REFERENCE_CAPABILITY) === true;
+}
+export function useServerAiReferences(url: string | null): boolean {
+  const known = useValue(capabilities);
+  return url !== null && known.get(url)?.includes(AI_REFERENCE_CAPABILITY) === true;
 }

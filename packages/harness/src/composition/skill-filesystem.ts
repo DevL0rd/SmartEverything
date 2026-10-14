@@ -1,3 +1,6 @@
+import { readSkillCacheFile } from './skill-asset-paths';
+import { parseMarkdownFile } from 'dsh-claude-plugin-loader-compat';
+import { HarnessRuntimeError } from '../host/errors';
 import { withCodingProcess } from './coding-process';
 import { ProjectFileSystem } from './project-filesystem';
 import type { Context } from '@deepseek-ai/cordis';
@@ -28,12 +31,14 @@ const loadSkillFilesystem = createLazyRequire<typeof SkillFilesystem>(
 interface WorkspaceSkillSelection {
   readonly assets: readonly InstalledHarnessSkillAsset[];
   readonly codingProcessAssets: readonly string[];
+  readonly visibleNames?: Set<string>;
 }
 
 export class NativeWorkspaceSkills implements SkillProvider {
   readonly name = 'smarteverything-local-filesystem';
   private readonly assets: readonly InstalledHarnessSkillAsset[];
   private readonly codingProcessAssets: readonly string[];
+  private readonly visibleNames: Set<string> | undefined;
   private readonly native: FileSystemSkillProvider;
   private readonly watchers = new Map<string, FSWatcher[]>();
   private incomplete = false;
@@ -48,13 +53,14 @@ export class NativeWorkspaceSkills implements SkillProvider {
     const selected = workspaceSkillSelection(selection);
     this.assets = selected.assets;
     this.codingProcessAssets = selected.codingProcessAssets;
+    this.visibleNames = selected.visibleNames;
     const { FileSystemSkillProvider } = loadSkillFilesystem();
     const assetContext = ctx.fs instanceof ProjectFileSystem ? ctx.fs.runtimeFileContext(ctx) : ctx;
     this.native = new FileSystemSkillProvider(assetContext, control, {
       providerName: this.name,
       dshHome: host.stateDirectory,
       agentsHome: join(host.homeDirectory, '.agents'),
-      includeDefaultRoots: true,
+      includeDefaultRoots: host.target.kind !== 'server',
       watch: false,
       customSkillDirs: this.assets.map((asset) => asset.directory),
     });
@@ -78,6 +84,8 @@ export class NativeWorkspaceSkills implements SkillProvider {
         candidate.source !== 'custom' ||
         this.assets.some((asset) => asset.entrypoint === candidate.path),
     );
+    this.visibleNames?.clear();
+    for (const candidate of candidates) this.visibleNames?.add(candidate.name);
     const roots = this.roots(options.cwd, candidates);
     const complete = await this.observe(roots);
     return {
@@ -96,7 +104,10 @@ export class NativeWorkspaceSkills implements SkillProvider {
         : undefined;
     if (candidate.source === 'custom' && asset === undefined)
       throw new Error('Distributed skill candidate has no verified immutable asset.');
-    if (asset !== undefined) await asset.verify();
+    if (asset !== undefined) {
+      await asset.verify();
+      await sharedSkillRestrictions(asset);
+    }
     const definition = await this.native.get(candidate, options);
     if (
       definition === undefined ||
@@ -108,6 +119,7 @@ export class NativeWorkspaceSkills implements SkillProvider {
   }
 
   private roots(cwd: string | undefined, candidates: readonly SkillCandidate[]): readonly string[] {
+    if (this.host.target.kind === 'server') return this.assets.map((asset) => asset.directory);
     const project =
       cwd === undefined ? [] : [join(cwd, '.dsh/skills'), join(cwd, '.agents/skills')];
     const discovered = candidates.flatMap((candidate) =>
@@ -195,4 +207,17 @@ function workspaceSkillSelection(
 ): WorkspaceSkillSelection {
   if ('assets' in selection) return selection;
   return { assets: selection, codingProcessAssets: [] };
+}
+
+async function sharedSkillRestrictions(asset: InstalledHarnessSkillAsset): Promise<void> {
+  const source = parseMarkdownFile(
+    (await readSkillCacheFile(asset.entrypoint)).toString('utf8'),
+    asset.entrypoint,
+  );
+  const unsupported = ['allowed-tools', 'context', 'agent', 'hooks', 'permissionMode'];
+  if (unsupported.some((key) => source.frontmatter[key] !== undefined))
+    throw new HarnessRuntimeError(
+      'capability_unsupported',
+      'This shared instruction requires unsupported invocation or permission semantics.',
+    );
 }

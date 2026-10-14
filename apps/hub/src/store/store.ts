@@ -1,3 +1,4 @@
+import { PreviewErrorRulesRepository } from './repositories/preview-error-rules';
 import { HarnessSkillUpdatesRepository } from './repositories/harness-skill-updates';
 import { PreviewProjectsRepository } from './repositories/preview-projects';
 import { AiProjectsRepository } from './repositories/ai-projects';
@@ -124,6 +125,7 @@ export interface Store {
   readonly assistantSearch: AssistantMessageSearchRepository;
   readonly aiChats: AiChatsRepository;
   readonly aiProjects: AiProjectsRepository;
+  readonly previewErrorRules: PreviewErrorRulesRepository;
   readonly previewProjects: PreviewProjectsRepository;
   readonly aiRuntimeProvider: AiRuntimeProviderRepository;
   readonly aiProvider: AiProviderRepository;
@@ -233,6 +235,16 @@ function localRepositories(
   };
 }
 
+function projectRepositories(
+  context: StoreContext,
+): Pick<Store, 'aiProjects' | 'previewErrorRules' | 'previewProjects'> {
+  return {
+    aiProjects: new AiProjectsRepository(context),
+    previewErrorRules: new PreviewErrorRulesRepository(context),
+    previewProjects: new PreviewProjectsRepository(context),
+  };
+}
+
 function assistantRepositories(
   context: StoreContext,
 ): Pick<
@@ -257,6 +269,7 @@ function assistantRepositories(
   | 'harnessDeliveries'
   | 'assistantEvents'
   | 'aiProjects'
+  | 'previewErrorRules'
   | 'previewProjects'
 > {
   return {
@@ -267,8 +280,7 @@ function assistantRepositories(
     nativeCommandOperations: new NativeCommandOperationsRepository(context),
     assistantSearch: new AssistantMessageSearchRepository(context),
     aiChats: new AiChatsRepository(context),
-    aiProjects: new AiProjectsRepository(context),
-    previewProjects: new PreviewProjectsRepository(context),
+    ...projectRepositories(context),
     aiProvider: new AiProviderRepository(context),
     aiRuntimeProvider: new AiRuntimeProviderRepository(context),
     aiAgentRuns: new AiAgentRunsRepository(context),

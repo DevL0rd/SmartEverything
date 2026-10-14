@@ -15,6 +15,7 @@ import { attemptTool, DANGER_HINTS, READ_HINTS, WRITE_HINTS } from '../tool-kit'
 import { SHELLY_ENROLL_INPUT } from './enrollment';
 import { shellyActionPermission } from './action-rules';
 import type { ShellyResource } from './read-resources';
+import { shellyActionInput } from './tool-input';
 
 const READ_RESOURCE = z.strictObject({
   externalId: z.string().min(1).max(200).nullable().default(null),
@@ -26,7 +27,7 @@ const READ_INPUT = z
   .strictObject({
     externalId: READ_RESOURCE.shape.externalId.unwrap().optional(),
     resource: READ_RESOURCE.shape.resource.unwrap().optional(),
-    operation: SHELLY_PRESENCE_ACTION_REQUEST.shape.operation.optional(),
+    operation: shellyActionInput('read').shape.operation.optional(),
   })
   .transform((input, context) => {
     const parsed = z.union([SHELLY_PRESENCE_ACTION_REQUEST, READ_RESOURCE]).safeParse(input);
@@ -126,7 +127,7 @@ function operationTools(ports: ShellyToolPorts): PluginTool[] {
       name: group.name,
       title: 'Shelly sensor operation',
       description: `Run a typed ${group.permission} operation on one configured Shelly Presence sensor; the actual firmware method and current revision are validated.`,
-      input: SHELLY_PRESENCE_ACTION_REQUEST,
+      input: shellyActionInput(group.permission),
       annotations: { ...group.hints, openWorldHint: true },
       humanOnly: group.permission === 'access',
       run: (input, caller) => attemptTool(() => execute(ports, input, group.permission, caller)),

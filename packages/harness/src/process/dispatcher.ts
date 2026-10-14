@@ -1,4 +1,12 @@
-import type { NativeMediaNote } from './native-media-note';
+import { submitNativePrompt } from './native-prompt';
+import { ProcessControls } from './controls';
+import {
+  prepareRuntimeConfiguration,
+  configurationPreparationReceipt,
+  isConfigurationPreparation,
+} from './configuration-preparation';
+import type { HarnessDispatcherOptions } from './dispatcher-options';
+export type { HarnessDispatcherOptions } from './dispatcher-options';
 import { isNativeCommandRequest, nativeCommandReceipt } from './commands';
 import { runtimeReceipt } from './receipts';
 import { importLegacyHistory } from './legacy-history';
@@ -13,67 +21,49 @@ import {
   cleanupFailedOpen,
 } from './cleanup';
 import { installDispatcherModels } from './model-installation';
-import { nativePromptContent } from './prompt-content';
-import type { HarnessAttachment } from './attachments';
 import { ProcessStreams } from './streams';
 import type { HarnessModelStreamEvent, HarnessOpenRequest } from './streams';
 import { auxiliaryText, preflightRoute, admitRuntimeRoute } from './model-controls';
-import { createHash } from 'node:crypto';
 import { updateWorkspace } from './workspace';
 import { updatePermission } from './permission';
-import { MessageId, createUserMessage } from '@deepseek-ai/dsh-llm';
+import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { Context } from '@deepseek-ai/cordis';
-import { HARNESS_RUNTIME_REQUEST, HARNESS_RUNTIME_RECEIPT } from '@smarteverything/domain';
+import { HARNESS_RUNTIME_RECEIPT } from '@smarteverything/domain';
 import type {
   HarnessRuntimeRequest,
   HarnessRuntimeReceipt,
-  AiModelRoute,
-  AiHarnessEvent,
   DshWriterClaim,
 } from '@smarteverything/domain';
 import { createHarnessRuntime } from '../host/runtime';
-import type { HarnessRuntime, HarnessRuntimeOptions } from '../host/runtime';
+import type { HarnessRuntime } from '../host/runtime';
 import type { HarnessSession } from '../host/session';
-import type { HarnessAuthority } from '../host/server-policy';
 import { HarnessRuntimeError } from '../host/errors';
 import { sessionOpenOptions } from './open-options';
 import { ProcessProjection } from './projection';
 import { ProcessInteractions } from './interactions';
-import type { HarnessControlPersistence } from './contracts';
 
 type NativeOperationRequest = Exclude<
   HarnessRuntimeRequest,
-  { kind: 'open' | 'prompt' | 'auxiliary' | 'preflight' | 'command' | 'command_list' }
+  {
+    kind:
+      | 'open'
+      | 'prompt'
+      | 'auxiliary'
+      | 'preflight'
+      | 'command'
+      | 'command_list'
+      | 'compact'
+      | 'configuration_prepare'
+      | 'reference';
+  }
 >;
 export type { HarnessAttachment } from './attachments';
-export interface HarnessDispatcherOptions extends Pick<
-  HarnessRuntimeOptions,
-  | 'host'
-  | 'desiredConfiguration'
-  | 'installedPlugins'
-  | 'configurationChanged'
-  | 'serverToolAccess'
-  | 'projectFiles'
-> {
-  readonly configurationPending?: NonNullable<HarnessRuntimeOptions['configurationPending']>;
-  readonly persistence: HarnessControlPersistence;
-  readonly installModelRoutes: (ctx: Context) => Promise<void>;
-  readonly publish: (event: AiHarnessEvent) => Promise<void>;
-  readonly route: (id: string) => AiModelRoute;
-  readonly loadAttachments?: (
-    sessionId: string,
-    ids: readonly string[],
-  ) => AsyncIterable<HarnessAttachment>;
-  readonly describeImage?: NativeMediaNote;
-  readonly authority?: (id: string) => HarnessAuthority;
-}
 export class HarnessDispatcher {
   private readonly openings = new ProcessOpenings();
+  private readonly admission = new ProcessControls(
+    () => this.runtime.configurationState().pendingRevision !== null,
+  );
   private readonly closed: Map<string, DshWriterClaim>;
-  private readonly receipts = new Map<
-    string,
-    { readonly signature: string; readonly result: Promise<HarnessRuntimeReceipt> }
-  >();
   constructor(
     readonly runtime: HarnessRuntime,
     private readonly options: HarnessDispatcherOptions,
@@ -90,23 +80,7 @@ export class HarnessDispatcher {
     this.closed = ports.closed;
   }
   execute(id: string, raw: HarnessRuntimeRequest): Promise<HarnessRuntimeReceipt> {
-    const request = HARNESS_RUNTIME_REQUEST.parse(raw);
-    const signature = createHash('sha256').update(JSON.stringify(request)).digest('hex');
-    const existing = this.receipts.get(id);
-    if (existing !== undefined) {
-      if (existing.signature !== signature)
-        throw new HarnessRuntimeError(
-          'operation_failed',
-          'Operation identity was reused with different input.',
-        );
-      return existing.result;
-    }
-    const result = this.run(id, request).catch((cause: unknown) => {
-      if (request.kind === 'close' || request.kind === 'permission') this.receipts.delete(id);
-      throw cause;
-    });
-    this.receipts.set(id, { signature, result });
-    return result;
+    return this.admission.execute(id, raw, (request) => this.run(id, request));
   }
   hasSession(id: string, epoch: number): boolean {
     return (
@@ -123,13 +97,13 @@ export class HarnessDispatcher {
     return this.ports.streams.observe(input, listener);
   }
   async dispose(): Promise<void> {
-    await this.runtime.dispose();
-    await this.ports.projection.flush();
+    await this.admission.shutdown(async (): Promise<void> => {
+      await this.runtime.dispose();
+      await this.ports.projection.flush();
+    });
   }
   private async run(id: string, request: HarnessRuntimeRequest): Promise<HarnessRuntimeReceipt> {
-    if (request.kind === 'open')
-      return this.openings.run(id, request, () => this.open(id, request));
-    if (request.kind === 'preflight') return this.preflight(id, request);
+    if (isConfigurationPreparation(request)) return this.prepareControl(id, request);
     if (request.kind === 'close') {
       const closed = await this.cleanup(id, request);
       if (closed !== undefined) return closed;
@@ -149,6 +123,11 @@ export class HarnessDispatcher {
         () => this.receipt(id, request.session_id, claim.epoch, 'completed'),
         () => this.ports.projection.flush(request.session_id),
       );
+    if (request.kind === 'reference')
+      return {
+        ...(await this.receipt(id, request.session_id, claim.epoch, 'completed')),
+        references: await this.runtime.referenceOperation(request.session_id, request.input),
+      };
     if (request.kind === 'auxiliary') return this.auxiliary(id, request);
     if (request.kind === 'prompt') {
       await this.prompt(session, request);
@@ -158,6 +137,41 @@ export class HarnessDispatcher {
     if (request.kind === 'close') this.closed.set(request.session_id, claim);
     await this.ports.projection.flush(request.session_id);
     return this.receipt(id, request.session_id, claim.epoch, lifecycleReceipt(request.kind));
+  }
+  private prepareControl(
+    id: string,
+    request: Extract<
+      HarnessRuntimeRequest,
+      { kind: 'open' | 'preflight' | 'configuration_prepare' }
+    >,
+  ): Promise<HarnessRuntimeReceipt> {
+    switch (request.kind) {
+      case 'open':
+        return this.openings.run(id, request, () => this.open(id, request));
+      case 'preflight':
+        return this.preflight(id, request);
+      case 'configuration_prepare':
+        return this.prepareReceipt(id, request);
+    }
+  }
+  private async prepareReceipt(
+    id: string,
+    request: Extract<HarnessRuntimeRequest, { kind: 'configuration_prepare' }>,
+  ): Promise<HarnessRuntimeReceipt> {
+    const claim = this.options.persistence.boundClaim(request.session_id);
+    return configurationPreparationReceipt(id, request, claim, () =>
+      this.prepareConfiguration(request.protected_sessions),
+    );
+  }
+  private prepareConfiguration(protectedSessions: readonly string[]): Promise<void> {
+    return prepareRuntimeConfiguration(
+      this.runtime,
+      this.options.persistence,
+      async (id): Promise<void> => {
+        await this.closeNative(this.runtime.get(id), id);
+      },
+      protectedSessions,
+    );
   }
   private async cleanup(
     id: string,
@@ -183,12 +197,10 @@ export class HarnessDispatcher {
     request: Extract<HarnessRuntimeRequest, { kind: 'prompt' }>,
   ): Promise<void> {
     await this.ports.projection.flush(request.session_id);
-    const content = await nativePromptContent(this.runtime, request, {
+    await submitNativePrompt(this.runtime, session, request, {
       ctx: this.ports.ctx,
-      load: this.options.loadAttachments,
+      options: this.options,
     });
-    const message = createUserMessage({ content, source: { kind: 'user' } });
-    session.prompt({ ...message, id: MessageId(request.delivery_id) });
   }
   private async operation(
     session: HarnessSession,
@@ -214,9 +226,6 @@ export class HarnessDispatcher {
       case 'interrupt':
         await this.ports.children.settle(request.session_id, 'interrupt');
         await session.interrupt();
-        return;
-      case 'compact':
-        await session.compact();
         return;
       case 'answer':
         this.ports.interactions.answer(request.session_id, request.answer);

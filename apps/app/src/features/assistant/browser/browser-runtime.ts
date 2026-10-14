@@ -169,7 +169,7 @@ export function followGatewayRetirements(): () => void {
       for (const tab of workspace.tabs.read().tabs) {
         if (
           tab.selection !== null &&
-          tab.selection.kind !== 'public' &&
+          tab.selection.kind === 'preview' &&
           !('purpose' in tab.selection.lease) &&
           tab.selection.lease.origin === origin
         )

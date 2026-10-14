@@ -10,7 +10,6 @@ import {
   openAppSettings,
   pauseWatch,
   refreshWatches,
-  requestWatchWrites,
   setWatchLive,
   startWatches,
   syncWatchNow,
@@ -189,13 +188,6 @@ export async function takeOverBridge(deviceId: string): Promise<void> {
 export async function syncNow(): Promise<void> {
   log.info('watch.sync_requested');
   await run('watch.sync_failed', syncWatchNow);
-}
-
-export async function allowHealthConnectWrites(): Promise<void> {
-  await run('watch.health_connect_refused', async () => {
-    const granted = await requestWatchWrites();
-    log.info('watch.health_connect_answered', { granted });
-  });
 }
 
 export async function openVendorSettings(packageName: string): Promise<void> {

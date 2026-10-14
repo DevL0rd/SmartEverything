@@ -13,6 +13,9 @@ export function sessionOpenOptions(
     directory: input.cwd,
     storageBinding: input.storage_binding,
     permission: input.permission,
+    ...(input.plugin_agent_policy === undefined
+      ? {}
+      : { pluginAgentPolicy: input.plugin_agent_policy }),
     ...(authority === undefined ? {} : { authority }),
   };
 }

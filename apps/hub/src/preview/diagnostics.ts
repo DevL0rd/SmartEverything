@@ -1,9 +1,11 @@
+import { previewErrorFingerprint, previewErrorScope } from './error-fingerprint';
 import { registerDeliveryAdmission } from '../assistant/delivery-admission';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import {
   diagnosticIdentity,
   previewErrorId,
   previewReportScope,
+  previewReportError,
   PREVIEW_REPORT_PREFIX,
 } from './diagnostic-report';
 import { randomUUID } from 'node:crypto';
@@ -13,6 +15,9 @@ import {
   PREVIEW_LOG_SEARCH,
   PREVIEW_CAPTURE_MAX_BYTES,
   type PreviewDiagnosticScope,
+  type PreviewConsoleRecord,
+  type PreviewErrorRule,
+  type PREVIEW_ERROR_POLICY_WRITE,
   type PreviewPixels,
   type PreviewLogPage,
   type PREVIEW_VIEW_WRITE,
@@ -84,7 +89,7 @@ export class PreviewDiagnostics {
     viewer.visible = value.visible;
     viewer.records.append(value.records);
     viewer.records.observe(value.lastRecordId, value.refusedRecords);
-    const error = value.records.find((record) => record.level === 'error');
+    const error = value.records.find((record) => this.wakeAllowed(viewer.scope, record));
     if (!viewer.shared && viewer.visible && error !== undefined) this.report(viewer, error.id);
     return viewer;
   }
@@ -151,6 +156,52 @@ export class PreviewDiagnostics {
   search(caller: Caller, chat: string, input: z.infer<typeof PREVIEW_LOG_SEARCH>): PreviewLogPage {
     const viewer = this.select(caller, chat, input);
     return viewer.records.read(viewer.scope, input, viewer.shared, PREVIEW_LOG_SEARCH.parse(input));
+  }
+  readErrorPolicy(caller: Caller, chat: string): readonly PreviewErrorRule[] {
+    this.authority.caller(caller, chat);
+    this.store.aiChats.assertWorkAllowed(chat);
+    return this.store.previewErrorRules.list(chat);
+  }
+  writeErrorPolicy(
+    caller: Caller,
+    chat: string,
+    input: z.infer<typeof PREVIEW_ERROR_POLICY_WRITE>,
+  ): readonly PreviewErrorRule[] {
+    this.readErrorPolicy(caller, chat);
+    switch (input.operation) {
+      case 'ignore': {
+        const viewer = this.select(caller, chat, input);
+        const record = viewer.records.records.find((entry) => entry.id === input.recordId);
+        if (record?.level !== 'error' || record.truncatedBytes !== 0)
+          throw new ApiError(
+            'invalid_request',
+            'Choose a complete captured error record from this viewer.',
+          );
+        this.store.previewErrorRules.put(chat, {
+          scopeKey: previewErrorScope(viewer.scope, record),
+          fingerprint: previewErrorFingerprint(record),
+          reason: input.reason,
+        });
+        break;
+      }
+      case 'restore':
+        this.store.previewErrorRules.remove(chat, input.scopeKey, input.fingerprint);
+        break;
+      case 'clear':
+        this.store.previewErrorRules.clear(chat);
+        break;
+    }
+    return this.store.previewErrorRules.list(chat);
+  }
+  private wakeAllowed(scope: PreviewDiagnosticScope, record: PreviewConsoleRecord): boolean {
+    return (
+      record.level === 'error' &&
+      !this.store.previewErrorRules.ignored(
+        scope.chatId,
+        previewErrorScope(scope, record),
+        previewErrorFingerprint(record),
+      )
+    );
   }
   async capture(
     caller: Caller,
@@ -233,9 +284,14 @@ export class PreviewDiagnostics {
         'The initiating preview became hidden, disconnected or stale.',
       );
   }
+  private reportedErrorAllowed(scope: PreviewDiagnosticScope, event: StoredEvent): boolean {
+    const error = previewReportError(event);
+    return error !== null && this.wakeAllowed(scope, error);
+  }
   private admit(event: StoredEvent): boolean {
     const scope = previewReportScope(event);
     if (scope === null) return true;
+    if (!this.reportedErrorAllowed(scope, event)) return false;
     const viewer = this.viewers.get(diagnosticIdentity(scope));
     if (
       viewer === undefined ||

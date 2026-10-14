@@ -1,6 +1,11 @@
+import { LiveTranscripts } from './live-transcripts';
 import { hears, readSubscribe } from './live-subscribe';
 import { LivePreviewOwners } from './live-preview-owners';
-import { AI_PREVIEW_CAPABILITY } from '@smarteverything/domain';
+import {
+  AI_PREVIEW_CAPABILITY,
+  AI_REFERENCE_CAPABILITY,
+  aiReferenceChange,
+} from '@smarteverything/domain';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
@@ -74,6 +79,7 @@ export class LiveHub {
   readonly previewOwners = new LivePreviewOwners();
   private readonly connections = new Set<Connection>();
   private readonly harnessEngines = new Set<Connection>();
+  private readonly referenceObservers = new Set<Connection>();
   private readonly previewObservers = new Set<Connection>();
   private readonly configurationObservers = new Set<Connection>();
   private readonly runtimeEngines = new Set<Connection>();
@@ -82,8 +88,12 @@ export class LiveHub {
   private readonly primers = new Map<LiveStream, (profileId: string) => readonly LiveNotice[]>();
   private readonly heartbeat: NodeJS.Timeout;
   private readonly unsubscribe: () => void;
+  private readonly transcriptNotices: LiveTranscripts;
 
   constructor(private readonly options: LiveOptions) {
+    this.transcriptNotices = new LiveTranscripts(options.store, (connection, notice) => {
+      this.send(connection, notice);
+    });
     this.unsubscribe = options.store.feed.subscribe((change) => {
       this.broadcast(change);
     });
@@ -178,6 +188,7 @@ export class LiveHub {
   stop(): void {
     clearInterval(this.heartbeat);
     this.unsubscribe();
+    this.transcriptNotices.stop();
     for (const connection of this.connections) {
       connection.socket.terminate();
     }
@@ -201,10 +212,12 @@ export class LiveHub {
     });
     socket.once('close', () => {
       this.previewOwners.close(connection);
+      this.transcriptNotices.remove(connection);
       this.connections.delete(connection);
       this.harnessEngines.delete(connection);
       this.configurationObservers.delete(connection);
       this.previewObservers.delete(connection);
+      this.referenceObservers.delete(connection);
       this.dialects.delete(connection);
       this.computerEngines.delete(connection);
       this.runtimeEngines.delete(connection);
@@ -259,6 +272,7 @@ export class LiveHub {
   ): void {
     if (!this.previewOwners.receive(connection, message)) return;
     this.observeConfiguration(connection, message);
+    this.transcriptNotices.observe(connection, message);
     this.observeEngines(connection, message);
     const tables = allowedTables(connection.client, message.tables);
     const streams = allowedStreams(connection.client, message.streams);
@@ -314,6 +328,9 @@ export class LiveHub {
   }
 
   private observeConfiguration(connection: Connection, message: Subscription['message']): void {
+    if (message.capabilities?.includes(AI_REFERENCE_CAPABILITY) === true)
+      this.referenceObservers.add(connection);
+    else this.referenceObservers.delete(connection);
     if (message.capabilities?.includes(AI_PREVIEW_CAPABILITY) === true)
       this.previewObservers.add(connection);
     else this.previewObservers.delete(connection);
@@ -369,7 +386,11 @@ export class LiveHub {
     const computerNotice = COMPUTER_NOTICES.has(message.type);
     if (connection.client.role !== 'owner' && (runtimeNotice || computerNotice)) return null;
     if (runtimeNotice) return this.runtimeEngines.has(connection) ? message : null;
-    if (message.type === 'change') return readerEngineChange(message, this.reader(connection));
+    if (message.type === 'change')
+      return aiReferenceChange(
+        readerEngineChange(message, this.reader(connection)),
+        this.referenceObservers.has(connection),
+      );
     if (computerNotice && !this.computerEngines.has(connection)) return null;
     return message;
   }

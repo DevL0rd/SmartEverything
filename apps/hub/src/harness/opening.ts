@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { prepareHostConfiguration } from './configuration-preparation';
 import { ApiError, DSH_SESSION_ID } from '@smarteverything/domain';
 import type { ChatOwner } from '../assistant/chat-directory';
 import type { HarnessAuthority } from '@smarteverything/harness';
@@ -13,6 +14,9 @@ export async function openConversation(
     readonly clientId?: string;
   },
 ): Promise<Extract<HarnessRuntimeRequest, { kind: 'open' }>> {
+  const chat = service.own(input.owner, input.chatId);
+  if (service.binding(chat).session_id !== null)
+    await prepareHostConfiguration(service, service.state(input.owner, input.chatId));
   const request = service.prepare(input.owner, input.chatId, input.authority, input.clientId);
   return joinOpening(service, request, () => performOpen(service, input, request)).then(
     () => request,
@@ -53,6 +57,7 @@ async function performOpen(
   request: Extract<HarnessRuntimeRequest, { kind: 'open' }>,
 ): Promise<void> {
   try {
+    await prepareHostConfiguration(service, service.state(input.owner, input.chatId));
     await service.directory.execute(request.claim.target, randomUUID(), request);
     service.store.harnessRecovery.openingOutcome(input.chatId, 'ready');
     return;

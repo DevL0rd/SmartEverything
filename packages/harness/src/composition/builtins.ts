@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { HarnessHost } from '../host/contracts';
 import type {
   HarnessDesiredConfiguration,
@@ -5,6 +7,13 @@ import type {
   InstalledHarnessPlugin,
 } from './configuration';
 import { mountCodeIndexer } from './indexer';
+import {
+  HARNESS_CLAUDE_PLUGINS_METADATA,
+  HARNESS_CLAUDE_PLUGINS_PACKAGE,
+  HARNESS_CLAUDE_PLUGINS_VERSION,
+} from './claude-plugin-metadata';
+import { mountManagedPlugins } from './claude-plugins';
+import type { PluginAgentPort } from './plugin-agent-port';
 import { mountNativeSkills } from './skills';
 import {
   HARNESS_CODEGRAPH_METADATA,
@@ -28,6 +37,7 @@ const DEFAULT_REVISION = 'builtin-indexer-skills-browser-v1';
 export function installedHarnessBuiltins(
   host: HarnessHost,
   assets?: HarnessSkillAssets,
+  pluginAgents?: PluginAgentPort,
 ): readonly InstalledHarnessPlugin[] {
   return [
     {
@@ -40,6 +50,7 @@ export function installedHarnessBuiltins(
       mount: mountCodeIndexer,
     },
     installedSkills(host, assets),
+    installedManagedPlugins(host, assets, pluginAgents),
     {
       package: HARNESS_BROWSER_PACKAGE,
       version: HARNESS_BROWSER_VERSION,
@@ -88,14 +99,14 @@ export function defaultHarnessBuiltins(): HarnessDesiredConfiguration {
 export function upgradeHarnessBuiltins(
   current: HarnessDesiredConfiguration,
 ): HarnessDesiredConfiguration {
-  if (
-    current.revision !== PRE_BROWSER_DEFAULT_REVISION ||
-    current.entries.some(
+  const previous =
+    current.revision === PRE_BROWSER_DEFAULT_REVISION &&
+    !current.entries.some(
       (entry) => entry.id === 'browser' || entry.package === HARNESS_BROWSER_PACKAGE,
     )
-  )
-    return current;
-  return { revision: DEFAULT_REVISION, entries: [...current.entries, browserDefault()] };
+      ? { revision: DEFAULT_REVISION, entries: [...current.entries, browserDefault()] }
+      : current;
+  return upgradeSharedSkillEligibility(previous);
 }
 
 function browserDefault(): HarnessDesiredEntry {
@@ -118,8 +129,8 @@ function installedSkills(
     version: HARNESS_SKILLS_VERSION,
     provenance: HARNESS_SKILLS_METADATA.provenance,
     metadata: HARNESS_SKILLS_METADATA,
-    platforms: ['linux'],
-    serverSafe: false,
+    platforms: ['linux', 'macos', 'windows'],
+    serverSafe: true,
     mount: (ctx, config) => mountNativeSkills(ctx, host, config),
     resolve: (entry) => resolveSkills(host, assets, entry),
   };
@@ -155,4 +166,75 @@ async function resolveSkills(
     metadata,
     mount: (ctx, config) => mountNativeSkills(ctx, host, config, acquired),
   };
+}
+
+function installedManagedPlugins(
+  host: HarnessHost,
+  assets: HarnessSkillAssets | undefined,
+  pluginAgents?: PluginAgentPort,
+): InstalledHarnessPlugin {
+  return {
+    package: HARNESS_CLAUDE_PLUGINS_PACKAGE,
+    version: HARNESS_CLAUDE_PLUGINS_VERSION,
+    provenance: HARNESS_CLAUDE_PLUGINS_METADATA.provenance,
+    metadata: HARNESS_CLAUDE_PLUGINS_METADATA,
+    platforms: ['linux', 'macos', 'windows'],
+    serverSafe: true,
+    mount: (ctx, config) => mountManagedPlugins(ctx, config, [], pluginAgents),
+    resolve: async (entry): Promise<InstalledHarnessPlugin> => {
+      if (
+        entry.metadata === undefined ||
+        JSON.stringify({ ...entry.metadata, skill_assets: [] }) !==
+          JSON.stringify(HARNESS_CLAUDE_PLUGINS_METADATA)
+      )
+        throw new HarnessRuntimeError(
+          'composition_incompatible',
+          'Managed package metadata differs from its pinned adapter.',
+        );
+      if (assets === undefined)
+        throw new HarnessRuntimeError(
+          'runtime_unavailable',
+          'Managed package assets are unavailable on this host.',
+        );
+      const acquired = await assets.acquireAll(entry.metadata.skill_assets);
+      return {
+        ...installedManagedPlugins(host, assets, pluginAgents),
+        metadata: entry.metadata,
+        mount: (ctx, config) => mountManagedPlugins(ctx, config, acquired, pluginAgents),
+      };
+    },
+  };
+}
+
+function upgradeSharedSkillEligibility(
+  current: HarnessDesiredConfiguration,
+): HarnessDesiredConfiguration {
+  const entries = current.entries.map((entry): HarnessDesiredEntry => {
+    if (
+      entry.id !== 'skills' ||
+      entry.package !== HARNESS_SKILLS_PACKAGE ||
+      entry.version !== HARNESS_SKILLS_VERSION ||
+      entry.metadata === undefined
+    )
+      return entry;
+    const previous = {
+      ...HARNESS_SKILLS_METADATA,
+      platforms: ['linux'],
+      server_safe: false,
+      skill_assets: entry.metadata.skill_assets,
+    };
+    if (!isDeepStrictEqual(entry.metadata, previous)) return entry;
+    return {
+      ...entry,
+      metadata: { ...HARNESS_SKILLS_METADATA, skill_assets: entry.metadata.skill_assets },
+    };
+  });
+  return entries.some((entry, index) => entry !== current.entries[index])
+    ? {
+        revision: `shared-skills-${createHash('sha256')
+          .update(JSON.stringify({ previous: current.revision, entries }))
+          .digest('hex')}`,
+        entries,
+      }
+    : current;
 }

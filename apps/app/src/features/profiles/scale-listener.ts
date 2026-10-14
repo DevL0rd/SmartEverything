@@ -8,7 +8,6 @@ import {
   deliverBodyReadings,
   healthConnectConfigured,
   isHealthConnectLinked,
-  requestWritePermissions,
   scaleRelayStatus,
   startScaleLiveScan,
   startScaleRelay,
@@ -129,7 +128,7 @@ export function useWriteState(): WriteState {
   return useValue(writeState);
 }
 
-async function saveToHealthConnect(): Promise<void> {
+export async function retryHealthConnectWrites(): Promise<void> {
   try {
     if (!(await healthConnectConfigured())) {
       log.info('scale.health_connect_not_set_up', { reason: 'weigh-ins stay on your server' });
@@ -152,12 +151,6 @@ async function saveToHealthConnect(): Promise<void> {
       kind: 'failed',
       reason: friendlyError(error) ?? rawErrorText(error),
     });
-  }
-}
-
-export async function allowWritesAndSave(): Promise<void> {
-  if (await requestWritePermissions()) {
-    await saveToHealthConnect();
   }
 }
 
@@ -247,7 +240,7 @@ export function ScaleListenerHost(): null {
   useListening(addresses);
   useEffect(() => {
     if (isHealthConnectLinked && unsaved !== '') {
-      void saveToHealthConnect();
+      void retryHealthConnectWrites();
     }
   }, [unsaved]);
   return null;

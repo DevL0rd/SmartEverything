@@ -375,6 +375,36 @@
     "licence": "MIT"
   },
   {
+    "name": "@deepseek-ai/dsh-chunked-list",
+    "version": "0.2.1-alpha.2",
+    "licence": "MIT"
+  },
+  {
+    "name": "@deepseek-ai/dsh-hook-protocol",
+    "version": "0.2.1-alpha.2",
+    "licence": "MIT"
+  },
+  {
+    "name": "@deepseek-ai/dsh-hooks-claude-code",
+    "version": "0.2.1-alpha.2",
+    "licence": "MIT"
+  },
+  {
+    "name": "@deepseek-ai/dsh-subagent",
+    "version": "0.2.1-alpha.2",
+    "licence": "MIT"
+  },
+  {
+    "name": "@deepseek-ai/dsh-tool-subagent",
+    "version": "0.2.1-alpha.2",
+    "licence": "MIT"
+  },
+  {
+    "name": "@deepseek-ai/dsh-util-time",
+    "version": "0.2.1-alpha.2",
+    "licence": "MIT"
+  },
+  {
     "name": "@discordjs/collection",
     "version": "2.1.1",
     "licence": "Apache-2.0"
@@ -1783,6 +1813,11 @@
     "name": "domutils",
     "version": "3.2.2",
     "licence": "BSD-2-Clause"
+  },
+  {
+    "name": "dsh-claude-plugin-loader-compat",
+    "version": "0.1.0-smarteverything.2",
+    "licence": "MIT"
   },
   {
     "name": "dunder-proto",

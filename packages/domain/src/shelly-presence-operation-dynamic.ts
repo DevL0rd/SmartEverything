@@ -65,6 +65,7 @@ export const SHELLY_DYNAMIC_OPERATIONS: readonly ShellyPresenceOperationDescript
   },
   {
     action: 'bthome_add_device',
+    possiblePermissions: ['privileged', 'access'],
     title: 'Add BTHome device',
     method: 'BTHome.AddDevice',
     permission: 'privileged',
@@ -83,6 +84,7 @@ export const SHELLY_DYNAMIC_OPERATIONS: readonly ShellyPresenceOperationDescript
   },
   {
     action: 'bthome_device_config',
+    possiblePermissions: ['privileged', 'access'],
     title: 'Edit BTHome device',
     method: 'BTHomeDevice.SetConfig',
     permission: 'privileged',

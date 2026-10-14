@@ -18,6 +18,7 @@ import { routeFor } from '../../../../api/connection/active-route';
 import type { ServerConnection } from '../../../../api/connection/storage';
 import { DiagnosticsRecovery } from '../browser-diagnostics-recovery';
 import { embeddedBrowserSnapshot } from '../browser-embedded-snapshot';
+import { BrowserTabError } from '../browser-tab-errors';
 import type { BrowserTabs } from '../browser-tabs';
 const log = new Logger('app.embedded-browser');
 const MAX_PENDING = 8;
@@ -144,10 +145,10 @@ export class EmbeddedBrowserChannel {
     request: EmbeddedBrowserRequest,
     signal: AbortSignal,
   ): Promise<EmbeddedBrowserResult> {
-    signal.throwIfAborted();
+    assertBrowserCommandActive(signal);
     const tabId =
       request.operation.kind === 'edit' ? await this.edit(request.operation.action, signal) : null;
-    signal.throwIfAborted();
+    assertBrowserCommandActive(signal);
     const snapshot = {
       ...request.scope,
       ...embeddedBrowserSnapshot(this.tabs),
@@ -230,4 +231,8 @@ export class EmbeddedBrowserChannel {
 }
 class BrowserControllerError extends Error {
   override readonly name = 'BrowserControllerError';
+}
+
+function assertBrowserCommandActive(signal: AbortSignal): void {
+  if (signal.aborted) throw new BrowserTabError('The browser command was cancelled.');
 }

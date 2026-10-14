@@ -1,5 +1,6 @@
 import { CAPABILITY_KEY } from '../capabilities';
 import type { SignalInput } from '../signals';
+import type { JsonValue } from '../values';
 
 export const SIGNAL_SUBJECTS = [
   'device',
@@ -51,6 +52,25 @@ export function kindSpecOf(
   return sources
     .find((spec) => spec.source === signal.source)
     ?.kinds.find((kind) => kind.kind === signal.kind);
+}
+
+export function compatibleSignalMatch(
+  previous: SignalKindSpec | undefined,
+  next: SignalKindSpec | undefined,
+  match: Readonly<Record<string, JsonValue>>,
+): Record<string, JsonValue> {
+  return Object.fromEntries(
+    Object.entries(match).filter(([key, value]) => {
+      if (previous?.match.some((entry) => entry.key === key) !== true) {
+        return true;
+      }
+      const spec = next?.match.find((entry) => entry.key === key);
+      return (
+        spec !== undefined &&
+        (spec.values === null || spec.values.some((allowed) => allowed === value))
+      );
+    }),
+  );
 }
 
 function fieldAllowed(spec: SignalKindSpec, field: string | null): boolean {

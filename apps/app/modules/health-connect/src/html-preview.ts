@@ -14,6 +14,7 @@ interface HtmlEvents {
 declare class HtmlNative extends NativeModule<HtmlEvents> {
   htmlReady(): boolean;
   htmlLifetimeVersion?(): number;
+  htmlPageVersion?(): number;
   htmlProjectVersion?(): number;
   htmlCurrent(id: string): boolean;
   htmlViewReady(): boolean;
@@ -22,6 +23,7 @@ declare class HtmlNative extends NativeModule<HtmlEvents> {
 }
 const native = requireOptionalNativeModule<HtmlNative>('HubNetwork');
 export const androidHtmlPreview: NativeHtmlPreview = {
+  pageVersion: (): number => native?.htmlPageVersion?.() ?? 0,
   projectVersion: (): number => native?.htmlProjectVersion?.() ?? 0,
   lifetimeVersion: (): number => native?.htmlLifetimeVersion?.() ?? 1,
   supported: (): boolean =>

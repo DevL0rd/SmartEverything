@@ -45,12 +45,18 @@ export function matchPath(
   pathname: string,
 ): Readonly<Record<string, string>> | null {
   const expected = segmentsOf(pattern);
-  const received = segmentsOf(pathname);
-  if (expected.length !== received.length) {
+  const rest = expected.at(-1);
+  const trailing = rest?.startsWith('*') === true;
+  const received = trailing ? pathname.replace(/^\//u, '').split('/') : segmentsOf(pathname);
+  if (trailing ? received.length < expected.length - 1 : expected.length !== received.length) {
     return null;
   }
   const params: Record<string, string> = {};
   for (const [index, segment] of expected.entries()) {
+    if (segment.startsWith('*')) {
+      params[segment.slice(1)] = received.slice(index).join('/');
+      return params;
+    }
     const actual = String(received[index]);
     if (segment.startsWith(':')) {
       params[segment.slice(1)] = decodeURIComponent(actual);

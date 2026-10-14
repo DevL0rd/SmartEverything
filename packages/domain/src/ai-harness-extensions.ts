@@ -39,7 +39,7 @@ export const HARNESS_EXTENSION_ITEM = z.object({
     z.object({ kind: z.literal('entry'), entry: HARNESS_DESIRED_ENTRY }),
     z.object({
       kind: z.literal('skill_asset'),
-      parent_id: z.literal('skills'),
+      parent_id: z.enum(['skills', 'claude-plugins']),
       asset: HARNESS_SKILL_ASSET,
     }),
   ]),
