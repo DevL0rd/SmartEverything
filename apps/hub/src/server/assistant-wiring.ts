@@ -1,12 +1,12 @@
+import { webFetchSource } from '../assistant/web-fetch';
+import { webSearchSource } from '../assistant/web-search-supplier';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Logger } from '@smarteverything/logging';
+import type { ComputerAiDirectory } from '../computers/ai-directory';
 import type { ToolHub } from '../ai-tools/tool-hub';
-import { ConversationLog } from '../assistant/conversation-log';
 import { AssistantService } from '../assistant/service';
-import { ToolChanges } from '../assistant/tool-changes';
 import type { Clock } from '../clock';
-import { TurnAccumulator } from '../openrouter/turn';
 import type { AiTurns } from '../schedules/steps';
 import type { Store } from '../store/store';
 import type { ServerContext } from './context';
@@ -31,7 +31,11 @@ export function localUrlOf(listening: Listening): string {
   return `http://127.0.0.1:${String(address.port)}`;
 }
 
-export function assistantOf(options: AssistantWiring, live: LiveHub): AssistantService {
+export function assistantOf(
+  options: AssistantWiring,
+  live: LiveHub,
+  directory?: ComputerAiDirectory,
+): AssistantService {
   const service = new AssistantService({
     store: options.store,
     dataDirectory: options.dataDirectory,
@@ -41,35 +45,25 @@ export function assistantOf(options: AssistantWiring, live: LiveHub): AssistantS
     emit: (notice, profileId): void => {
       live.profileNotice(notice, profileId, 'assistant');
     },
+    runtimeNotice: (notice, profileId): void => {
+      live.profileNotice(notice, profileId, 'assistant');
+    },
+    providerNotice: (notice, profileId): void => {
+      live.profileNotice(notice, profileId, 'assistant');
+    },
     now: options.clock.now,
     log: options.log.forArea('hub.assistant'),
   });
+  if (directory !== undefined) service.attachComputerAi(directory);
   live.prime('assistant', (profileId) => service.activity(profileId));
   return service;
 }
 
-export function attachAssistant(
-  options: AssistantWiring,
-  context: ServerContext,
-  tools: ToolHub,
-): ToolChanges {
+export function attachAssistant(context: ServerContext, tools: ToolHub): void {
+  tools.add(webSearchSource(context.harness, context.openRouter.client));
+  tools.add(webFetchSource(context.harness));
   context.assistant.attachTools(tools);
-  const changes = new ToolChanges({
-    store: options.store,
-    conversation: new ConversationLog(options.store),
-    now: options.clock.now,
-    log: options.log.forArea('hub.assistant'),
-  });
-  changes.attach(tools);
-  context.assistant.attachOpenRouter({
-    client: context.openRouter.client,
-    catalogue: context.openRouter.catalogue,
-    newTurn: () => new TurnAccumulator(),
-    ledger: options.store.ledger,
-    notes: context.mediaNotes,
-  });
-  context.assistant.attachLedger(options.store.ledger);
-  return changes;
+  context.assistant.attachAuxiliaries();
 }
 
 export function aiTurnsOf(context: ServerContext): AiTurns {

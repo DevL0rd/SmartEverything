@@ -8,6 +8,11 @@ import {
 import { Logger } from '@smarteverything/logging';
 import type { SignedLink } from './media';
 import { api } from './transport';
+import {
+  assertAssistantWriteCurrent,
+  responseStyleSupported,
+  type AssistantWriteScope,
+} from '../store/assistant-response-style';
 
 const log = new Logger('app.assistant');
 
@@ -62,16 +67,35 @@ export async function finishAssistantUpload(uploadId: string): Promise<Assistant
 export async function assistantAttachmentLinks(
   ids: readonly string[],
 ): Promise<Readonly<Record<string, SignedLink>>> {
-  const links = await api().call(E.assistantAttachmentLinks, { body: { ids: [...ids] } });
+  const client = api().forMedia();
+  const links = await client.call(E.assistantAttachmentLinks, { body: { ids: [...ids] } });
   return Object.fromEntries(
-    links.map((link) => [link.id, { url: api().urlOf(link.url), expiresAt: link.expiresAt }]),
+    await Promise.all(
+      links.map(
+        async (link) =>
+          [
+            link.id,
+            {
+              url: await client.resourceUrl(link.url, link.expiresAt, 'attachment'),
+              expiresAt: link.expiresAt,
+            },
+          ] as const,
+      ),
+    ),
   );
 }
 
 export async function updateAssistantSettings(
   change: AssistantSettingsChange,
+  scope?: AssistantWriteScope,
 ): Promise<AssistantStatus> {
-  const status = await api().call(E.updateAssistantSettings, { body: change });
+  const client = scope?.client ?? api();
+  const enrich = change.response_style !== undefined || responseStyleSupported();
+  const status = await client.call(E.updateAssistantSettings, { body: change });
+  if (scope !== undefined) assertAssistantWriteCurrent(scope);
   log.info('assistant.settings_updated', { fields: Object.keys(change) });
-  return status;
+  if (!enrich) return status;
+  const style = await client.call(E.readAssistantResponseStyle, {});
+  if (scope !== undefined) assertAssistantWriteCurrent(scope);
+  return { ...status, settings: { ...status.settings, response_style: style } };
 }

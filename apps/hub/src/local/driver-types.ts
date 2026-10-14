@@ -4,12 +4,14 @@ import type {
   DiscoveredDevice,
   JsonValue,
   LocalDriver,
+  Provider,
 } from '@smarteverything/domain';
 import type { ScaleMeasurement } from '../store/repositories/body-readings';
 import type { LocalDeviceEntry } from '../store/repositories/local-devices';
 
 export type DecodedAdvert =
   | { readonly kind: 'measurement'; readonly measurement: Omit<ScaleMeasurement, 'deviceId'> }
+  | { readonly kind: 'state'; readonly counter: number; readonly contact: boolean | null }
   | { readonly kind: 'idle' };
 
 export type WatchEntry = BleWatch['devices'][number];
@@ -23,6 +25,7 @@ export interface AdvertHooks {
 
 export interface LocalDriverDefinition {
   readonly id: LocalDriver;
-  readonly describe: (entry: LocalDeviceEntry, observed: Observed) => DiscoveredDevice;
+  readonly provider: Provider;
+  readonly describe: (entry: LocalDeviceEntry, observed: Observed) => DiscoveredDevice | null;
   readonly adverts: AdvertHooks | null;
 }

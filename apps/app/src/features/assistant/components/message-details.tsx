@@ -1,5 +1,7 @@
+import { isComputerEngine } from '../provider/computer-engine';
+import { ChatSubscriptionUsage } from '../provider/subscription-usage';
 import type { ReactNode } from 'react';
-import type { AssistantMessageRow } from '@smarteverything/domain';
+import type { AssistantMessageRow, AiChatRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
@@ -68,16 +70,21 @@ function Rows({ row }: { readonly row: AssistantMessageRow }): ReactNode {
       />
       {source === null ? null : <ListRow title="From" value={`${source} · ${row.author}`} />}
       {row.model === null ? null : <ModelValue model={row.model} />}
-      {costRowsOf(row.cost_micros, chat?.cost_micros ?? 0, money)}
+      <ChatCostRows chat={chat} row={row} money={money} />
       {took === null ? null : <ListRow title="Took" value={took} />}
       {row.steps.length === 0 ? null : (
         <ListRow title="Tools" value={plural(row.steps.length, 'step')} />
       )}
-      <ListRow
-        title="See costs for this chat"
-        chevron
-        href={href.assistantCosts({ chat: row.chat_id })}
-      />
+      {subscriptionChat(chat) ? null : (
+        <>
+          {' '}
+          <ListRow
+            title="See costs for this chat"
+            chevron
+            href={href.assistantCosts({ chat: row.chat_id })}
+          />
+        </>
+      )}
     </List>
   );
 }
@@ -95,5 +102,51 @@ export function MessageDetails({
     <Sheet open={open} onClose={onClose} title="Message details" detents={['fit']}>
       <Rows row={row} />
     </Sheet>
+  );
+}
+
+function subscriptionChat(chat: AiChatRow | null): boolean {
+  return chat !== null && isComputerEngine(chat.engine);
+}
+function ChatCostRows({
+  chat,
+  row,
+  money,
+}: {
+  readonly chat: AiChatRow | null;
+  readonly row: AssistantMessageRow;
+  readonly money: Money;
+}): ReactNode {
+  if (row.cost_incomplete === true || chat?.cost_incomplete === true)
+    return <IncompleteCostRows chat={chat} row={row} money={money} />;
+  return chat !== null && isComputerEngine(chat.engine) ? (
+    <ChatSubscriptionUsage chat={chat} />
+  ) : (
+    costRowsOf(row.cost_micros, chat?.cost_micros ?? 0, money)
+  );
+}
+
+function IncompleteCostRows({
+  chat,
+  row,
+  money,
+}: {
+  readonly chat: AiChatRow | null;
+  readonly row: AssistantMessageRow;
+  readonly money: Money;
+}): ReactNode {
+  return (
+    <>
+      <ListRow
+        title="Cost"
+        value={
+          row.cost_incomplete === true ? 'Supplier cost unavailable' : money.cost(row.cost_micros)
+        }
+      />
+      <ListRow
+        title="Chat total"
+        value={`${money.cost(chat?.cost_micros ?? 0)} known${chat?.cost_incomplete === true ? ' + unavailable' : ''}`}
+      />
+    </>
   );
 }

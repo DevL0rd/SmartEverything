@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { McpToolSummary } from './areas';
 import type { McpPartName } from './names';
+import { SERVED_CLAUDE } from './served-claude';
 import { SERVED_AI } from './served-ai';
 import { SERVED_HOME } from './served-home';
 import { SERVED_LIFE } from './served-life';
@@ -8,7 +9,7 @@ import type { McpRoute } from './served-types';
 
 export type { McpRoute } from './served-types';
 
-const SERVED = [...SERVED_HOME, ...SERVED_LIFE, ...SERVED_AI] as const;
+const SERVED = [...SERVED_HOME, ...SERVED_LIFE, ...SERVED_AI, ...SERVED_CLAUDE] as const;
 
 export type McpToolName = (typeof SERVED)[number][0];
 

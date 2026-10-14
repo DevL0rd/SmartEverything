@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { ASSISTANT_TEXT_MAX } from '@smarteverything/domain';
-import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
@@ -93,17 +92,6 @@ export function QuoteChip({
         </Text>
       </View>
       <IconButton icon="close" label="Remove the quote" onPress={onRemove} />
-    </View>
-  );
-}
-
-export function OfflineHint(): ReactNode {
-  return (
-    <View accessibilityLiveRegion="polite" className="flex-row items-center gap-1.5 px-2 pb-1">
-      <Icon name="clock" size={16} tone="variant" />
-      <Text variant="caption" tone="variant" className="flex-1">
-        Messages wait here and send when your server is back
-      </Text>
     </View>
   );
 }

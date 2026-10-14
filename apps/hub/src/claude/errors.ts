@@ -118,7 +118,9 @@ export class ClaudeControlTimeoutError extends Error {
     readonly via: string,
     readonly seconds: number,
   ) {
-    super(`Claude ${action} through the ${via} was not answered within ${String(seconds)} s.`);
+    super(
+      `Claude ${action} through the ${via} has an uncertain outcome after ${String(seconds)} s; it may still finish. Inspect its receipt and native session before submitting another action.`,
+    );
   }
 }
 
@@ -146,5 +148,17 @@ export class ClaudeSendRefusedError extends Error {
 
   constructor(readonly reason: string) {
     super(`Sending to this Claude session is refused: ${reason}.`);
+  }
+}
+
+export class ClaudeControlUncertainError extends Error {
+  override readonly name = 'ClaudeControlUncertainError';
+  constructor(
+    readonly action: string,
+    readonly reason: string,
+  ) {
+    super(
+      `Claude ${action} has an uncertain outcome: ${reason}. Inspect its receipt and native session before submitting another action.`,
+    );
   }
 }

@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
-import { HSV_COLOR, type HsvColor, type PresentedCapability } from '@smarteverything/domain';
+import {
+  readPresentedColor,
+  writePresentedColor,
+  type HsvColor,
+  type JsonValue,
+  type PresentedCapability,
+} from '@smarteverything/domain';
 import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
@@ -38,11 +44,13 @@ function Swatch({
   name,
   colour,
   selected,
+  disabled,
   onPick,
 }: {
   readonly name: string;
   readonly colour: HsvColor;
   readonly selected: boolean;
+  readonly disabled: boolean;
   readonly onPick: (colour: HsvColor) => void;
 }): ReactNode {
   const fill = { backgroundColor: cssOfHsv(colour) };
@@ -50,51 +58,86 @@ function Swatch({
     <Pressable
       accessibilityRole="radio"
       accessibilityLabel={name}
-      accessibilityState={{ checked: selected }}
+      accessibilityState={{ checked: selected, disabled }}
+      disabled={disabled}
       onPress={() => {
         selectionTick();
         onPick(colour);
       }}
       style={fill}
       className={cn(
-        'size-touch-min rounded-full border-2',
+        'size-touch-min rounded-full border-2 focus:outline-2 focus:outline-offset-2 focus:outline-focus',
+        disabled && 'opacity-40',
         selected ? 'border-on-surface' : 'border-transparent',
       )}
     />
   );
 }
 
+function Swatches({
+  presented,
+  value,
+  current,
+  disabled,
+  pick,
+}: {
+  readonly presented: PresentedCapability;
+  readonly value: JsonValue | undefined;
+  readonly current: HsvColor | null;
+  readonly disabled: boolean;
+  readonly pick: (colour: HsvColor) => void;
+}): ReactNode {
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={presented.label}
+      className="flex-row flex-wrap gap-2"
+    >
+      {SWATCHES.map((swatch) => (
+        <Swatch
+          key={swatch.name}
+          name={swatch.name}
+          colour={swatch.colour}
+          selected={
+            same(current, swatch.colour) ||
+            (presented.colorEncoding === 'packed_rgb' &&
+              value === writePresentedColor(presented, swatch.colour))
+          }
+          disabled={disabled}
+          onPick={pick}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function ColourBlock({
   deviceId,
   presented,
+  disabled,
 }: {
   readonly deviceId: string;
   readonly presented: PresentedCapability;
+  readonly disabled: boolean;
 }): ReactNode {
   const control = useControl(deviceId, presented.key);
-  const parsed = HSV_COLOR.safeParse(control.value);
-  const current = parsed.success ? parsed.data : null;
+  const current = readPresentedColor(presented, control.value);
+  const blocked = disabled || control.pending || control.offline;
   const pick = (colour: HsvColor): void => {
-    void control.set(colour);
+    if (!blocked) {
+      void control.set(writePresentedColor(presented, colour));
+    }
   };
   return (
     <View className="gap-3">
       <Text variant="body">{presented.label}</Text>
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel={presented.label}
-        className="flex-row flex-wrap gap-2"
-      >
-        {SWATCHES.map((swatch) => (
-          <Swatch
-            key={swatch.name}
-            name={swatch.name}
-            colour={swatch.colour}
-            selected={same(current, swatch.colour)}
-            onPick={pick}
-          />
-        ))}
-      </View>
+      <Swatches
+        presented={presented}
+        value={control.value}
+        current={current}
+        disabled={blocked}
+        pick={pick}
+      />
       {current === null ? null : (
         <Slider
           label={`${presented.label} hue`}
@@ -102,6 +145,7 @@ export function ColourBlock({
           min={0}
           max={360}
           step={1}
+          disabled={blocked}
           formatValue={(hue) => `${String(hue)}°`}
           onCommit={(hue) => {
             pick({ ...current, hue });

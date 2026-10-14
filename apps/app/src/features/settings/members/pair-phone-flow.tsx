@@ -1,26 +1,24 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Logger } from '@smarteverything/logging';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { type ClientRow, type Pairing, type Role } from '@smarteverything/domain';
-import { pairingQrText } from '../../../api/pairing-input';
 import { startPairing } from '../../../api/settings';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
-import { CopyField } from '../../../components/copy-field';
 import { EmptyState } from '../../../components/empty-state';
 import { FlowFrame } from '../../../components/flow-frame';
 import { Icon } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
-import { QrCode } from '../../../components/qr-code';
 import { List } from '../../../components/section';
-import { Text } from '../../../components/text';
-import { clock } from '../../../format/time';
-import { useRows, useSettings } from '../../../store/selectors';
+import { useRows } from '../../../store/selectors';
+import { href } from '../../../app-shell/hrefs';
+import { PairingCodeView } from './pairing-code-view';
 import { ClientProfile } from './client-profile';
 import { ROLE_HELP, ROLE_LABEL, newlyPaired } from './clients';
-import { rawErrorText } from '../../../format/errors';
-import { RemoteAccessGate, verifiedPublicUrl } from '../../connections';
+
+const log = new Logger('app.pairing');
 
 const CHOICE_ORDER: readonly Role[] = ['member', 'owner'];
 
@@ -56,19 +54,6 @@ function RoleChoice({
         />
       ))}
     </List>
-  );
-}
-
-function CodeView({ pairing }: { readonly pairing: Shown }): ReactNode {
-  return (
-    <View className="gap-4">
-      <QrCode text={pairingQrText(pairing.qr)} size={232} label="Pairing code to scan" />
-      <Text variant="callout" tone="variant" align="center">
-        {`On the phone, open SmartEverything and scan this. Expires at ${clock(pairing.expiresAt)}.`}
-      </Text>
-      <CopyField label="Or enter this code" value={pairing.code} />
-      <CopyField label="Server address" value={pairing.qr.url} />
-    </View>
   );
 }
 
@@ -108,23 +93,33 @@ function usePairPhone(): {
   const clients = useRows('clients');
   const [step, setStep] = useState<Step>({ kind: 'choose' });
   const [busy, setBusy] = useState(false);
+  const pending = useRef(false);
   const [problem, setProblem] = useState<string | null>(null);
   useExpiry(step, () => {
     setStep({ kind: 'expired' });
   });
   const paired = step.kind === 'showing' ? newlyPaired(clients, step.pairing.known) : null;
   const start = (role: Role): void => {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setProblem(null);
     const known = new Set(clients.map((client) => client.id));
     startPairing(role).then(
       (pairing) => {
+        pending.current = false;
         setBusy(false);
         setStep({ kind: 'showing', pairing: { ...pairing, known } });
       },
       (error: unknown) => {
+        pending.current = false;
+        log.warn('pairing.invitation_creation_failed', {
+          failure: error instanceof Error ? error.name : 'ServerFailure',
+        });
         setBusy(false);
-        setProblem(rawErrorText(error));
+        setProblem(
+          'A pairing code could not be created. Check your home connection or set up Remote access.',
+        );
       },
     );
   };
@@ -147,7 +142,7 @@ function Body({
     case 'choose':
       return <RoleChoice role={role} onRole={onRole} />;
     case 'showing':
-      return <CodeView pairing={flow.step.pairing} />;
+      return <PairingCodeView pairing={flow.step.pairing} />;
     case 'expired':
       return <EmptyState icon="clock" title="The code expired" body="Show a new one to pair." />;
   }
@@ -155,7 +150,6 @@ function Body({
 
 export function PairPhoneFlow(): ReactNode {
   const router = useRouter();
-  const verified = verifiedPublicUrl(useSettings()) !== null;
   const flow = usePairPhone();
   const [role, setRole] = useState<Role>('member');
   const close = (): void => {
@@ -178,7 +172,6 @@ export function PairPhoneFlow(): ReactNode {
             <Button
               label={flow.step.kind === 'expired' ? 'Show a new code' : 'Show code'}
               loading={flow.busy}
-              disabled={!verified}
               onPress={() => {
                 flow.start(role);
               }}
@@ -187,12 +180,14 @@ export function PairPhoneFlow(): ReactNode {
         </>
       }
     >
-      {flow.problem === null ? null : <Banner tone="critical" title={flow.problem} />}
-      {verified ? (
-        <Body flow={flow} role={role} onRole={setRole} />
-      ) : (
-        <RemoteAccessGate who="A phone" />
+      {flow.problem === null ? null : (
+        <Banner
+          tone="critical"
+          title={flow.problem}
+          action={{ label: 'Connection setup', href: href.settings.page('server') }}
+        />
       )}
+      <Body flow={flow} role={role} onRole={setRole} />
     </FlowFrame>
   );
 }

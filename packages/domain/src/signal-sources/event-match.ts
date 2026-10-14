@@ -1,4 +1,5 @@
 import { cameraDetectionsOf, miotDeviceEventsOf, type EventKind } from '../events';
+import { CAMERA_DETECTION_PRESENTATIONS } from '../event-labels';
 import { COMPUTER_ACTIONS } from '../node/node-requests';
 import { PHONE_CONTEXT_STATES } from '../phones';
 import type { SignalMatchSpec } from './spec';
@@ -12,7 +13,15 @@ const CODE: SignalMatchSpec = { key: 'code', label: 'Tuya data point code', valu
 const PLACE: SignalMatchSpec = { key: 'place', label: 'Place', values: ANY };
 
 function cameraDetection(kind: EventKind): SignalMatchSpec {
-  return { key: 'detection', label: 'What the camera detected', values: cameraDetectionsOf(kind) };
+  const values = cameraDetectionsOf(kind);
+  return {
+    key: 'detection',
+    label: 'What the camera detected',
+    values,
+    valueLabels: Object.fromEntries(
+      values.map((value) => [value, CAMERA_DETECTION_PRESENTATIONS[value].label]),
+    ),
+  };
 }
 
 function xiaomiEvent(kind: EventKind): SignalMatchSpec[] {
@@ -85,4 +94,6 @@ export const EVENT_MATCH: Readonly<Record<EventKind, readonly SignalMatchSpec[]>
   place_left: [PLACE],
   parked: [PLACE],
   phone_unlocked: [],
+  zone_enter: [COMPONENT, { key: 'parentExternalId', label: 'Physical sensor', values: ANY }],
+  zone_leave: [COMPONENT, { key: 'parentExternalId', label: 'Physical sensor', values: ANY }],
 };

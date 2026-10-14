@@ -27,12 +27,20 @@ export interface PluginPortNeed {
   readonly port: number;
 }
 
+export interface ConnectionPortNeed {
+  readonly purpose: 'hub' | 'discovery';
+  readonly protocol: 'tcp' | 'udp';
+  readonly port: number;
+  readonly networks: readonly string[];
+}
+
 export interface OpeningNeeds {
   readonly cameras: readonly DeviceAddress[];
   readonly pushing: readonly DeviceAddress[];
   readonly plugins: readonly PluginPortNeed[];
   readonly networks: readonly string[];
   readonly webrtcPort: number;
+  readonly connections?: readonly ConnectionPortNeed[];
 }
 
 type WithoutRevision<T> = T extends unknown ? Omit<T, 'revision'> : never;
@@ -101,6 +109,7 @@ export function requiredOpenings({
   plugins,
   networks,
   webrtcPort,
+  connections = [],
 }: OpeningNeeds): readonly RequiredOpening[] {
   const webrtc = (['tcp', 'udp'] as const).map((protocol): RequiredOpening => ({
     id: `webrtc:${protocol}:${String(webrtcPort)}`,
@@ -112,6 +121,7 @@ export function requiredOpenings({
     ...sourceOpenings('camera', cameras),
     ...sourceOpenings('device', pushing),
     ...pluginOpenings(plugins, networks),
+    ...connectionOpenings(connections),
     ...webrtc,
   ];
 }
@@ -163,4 +173,15 @@ export function portIn(list: string, port: number): boolean {
 
 export function always(state: OpeningState): (rule: PortRule) => OpeningState {
   return () => state;
+}
+
+function connectionOpenings(needs: readonly ConnectionPortNeed[]): readonly RequiredOpening[] {
+  return needs.flatMap((need) =>
+    need.networks.map((source) => ({
+      id: `${need.purpose}:${need.protocol}:${String(need.port)}:${source}`,
+      deviceIds: [],
+      pluginIds: [],
+      rule: { purpose: need.purpose, protocol: need.protocol, port: need.port, source },
+    })),
+  );
 }

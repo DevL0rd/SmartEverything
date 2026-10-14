@@ -11,6 +11,7 @@ import { useIdiom } from '../../../design/platform';
 import { useControl, type Control } from '../../../store/control';
 import type { Device } from '../../../store/state';
 import { Guard } from '../controls/guard';
+import { ActionButton } from '../controls/action-button';
 import {
   SEGMENTED_MOST_OPTIONS,
   usesStepper,
@@ -36,6 +37,7 @@ function segmentsFit(
 
 interface Props {
   readonly presented: PresentedCapability;
+  readonly device: Device;
   readonly control: Control;
   readonly disabled: boolean;
   readonly width: number;
@@ -199,9 +201,12 @@ function Body(props: Props): ReactNode {
       return <NumberControl {...props} descriptor={descriptor} />;
     case 'boolean':
       return <SwitchControl {...props} />;
+    case 'action':
+      return (
+        <ActionButton device={props.device} presented={props.presented} disabled={props.disabled} />
+      );
     case 'color':
     case 'text':
-    case 'action':
       return null;
   }
 }
@@ -220,11 +225,13 @@ export function CompactControl({
   readonly labels: LabelMode;
 }): ReactNode {
   const control = useControl(device.id, presented.key);
-  const inline = labels === 'inline' && presented.capability.value.kind !== 'boolean';
+  const kind = presented.capability.value.kind;
+  const inline = labels === 'inline' && kind !== 'boolean' && kind !== 'action';
   return (
     <Guard reason={reason}>
       <Labelled presented={presented} labels={inline ? 'inline' : 'caption'}>
         <Body
+          device={device}
           presented={presented}
           control={control}
           disabled={reason !== null}

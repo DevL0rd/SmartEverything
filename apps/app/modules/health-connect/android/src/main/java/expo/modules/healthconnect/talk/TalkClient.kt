@@ -39,7 +39,7 @@ class TalkClient(context: Context) : VoiceSocketListener {
   fun start() {
     val target = credentials.load()
     val url = URL(URL(target.endpoint), TALK_PATH).toString().replaceFirst("http", "ws")
-    socket = VoiceSocket(url, listOf(PROTOCOL, "bearer.${target.token}"), this, HEARTBEAT_SECONDS).also { it.open() }
+    socket = VoiceSocket(url, listOf(PROTOCOL, "bearer.${target.token}"), this, HEARTBEAT_SECONDS, target).also { it.open() }
     update { it.copy(link = "connecting", problem = null) }
   }
 

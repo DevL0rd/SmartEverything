@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
+import { assertQueuedChatWork, holdQueuedChatWork } from './ai-chat-removal-hold';
+import { chatHasUnsettledWork } from './ai-chat-work';
 
 export const ASSISTANT_EVENT_KINDS = ['chat', 'voice', 'plugin', 'wake', 'report'] as const;
 
@@ -49,6 +51,7 @@ export class AssistantEventsRepository {
 
   add(input: NewEvent): StoredEvent {
     return this.context.write(() => {
+      assertQueuedChatWork(this.context, input.chat_id);
       this.context.sql.run(
         'queue the assistant request',
         `insert into assistant_events
@@ -69,6 +72,22 @@ export class AssistantEventsRepository {
       );
       return this.event(input.id);
     });
+  }
+
+  holdQueuedWork(ids: readonly string[], work: () => Promise<void>): Promise<void> {
+    return holdQueuedChatWork(this.context, ids, work);
+  }
+
+  hasUnsettledChatWork(chatId: string): boolean {
+    return chatHasUnsettledWork(this.context, chatId);
+  }
+
+  find(id: string): StoredEvent | undefined {
+    return this.context.sql.get(
+      STORED_EVENT,
+      `select ${EVENT_COLUMNS} from assistant_events where id = $id`,
+      { id },
+    );
   }
 
   event(id: string): StoredEvent {

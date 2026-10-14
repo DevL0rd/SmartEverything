@@ -185,6 +185,7 @@ export type UsageFilter = z.output<typeof USAGE_FILTER>;
 export const USAGE_SUM = z.strictObject({
   ...USAGE_METER,
   count: COUNT,
+  unknown_count: COUNT.optional(),
   cost_micros: COUNT,
   pending_micros: COUNT,
 });
@@ -195,6 +196,7 @@ export const USAGE_PART = z.strictObject({
   key: KEY,
   label: z.string().min(1).max(200).optional(),
   count: COUNT,
+  unknown_count: COUNT.optional(),
   cost_micros: COUNT,
 });
 
@@ -223,6 +225,7 @@ export const USAGE_POINT = z.strictObject({
   start: MOMENT,
   end: MOMENT,
   count: COUNT,
+  unknown_count: COUNT.optional(),
   cost_micros: COUNT,
   parts: z.array(USAGE_PART),
 });
@@ -269,6 +272,8 @@ export const USAGE_LEDGER_ROW = z.strictObject({
   source: USAGE_SOURCE,
   cost_micros: COUNT,
   cost_state: COST_STATE,
+  cost_available: z.boolean().optional(),
+  usage_available: z.boolean().optional(),
   tokens_in: COUNT,
   tokens_out: COUNT,
   tokens_reasoning: COUNT,

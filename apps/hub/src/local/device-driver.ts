@@ -1,9 +1,17 @@
-import type { AdapterSink, DeviceCommand, JsonValue } from '@smarteverything/domain';
+import type {
+  AdapterSink,
+  DeviceCommand,
+  DeviceEvent,
+  DiscoveredDevice,
+  JsonValue,
+} from '@smarteverything/domain';
 
 export const DRIVER_ID_SEPARATOR = ':';
 
 export interface DeviceDriverContext {
   readonly sink: AdapterSink;
+  readonly publishEvent: (event: DeviceEvent) => Promise<string>;
+  readonly publishDevices: (devices: readonly DiscoveredDevice[]) => Promise<void>;
   readonly signal: AbortSignal;
   readonly forget: (ids: readonly string[]) => Promise<void>;
 }

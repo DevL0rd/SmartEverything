@@ -10,6 +10,7 @@ import { useAppliedTheme } from '../../design/theme';
 import { heavyThud } from '../../platform/haptics';
 import { Button } from '../button';
 import { ErrorState } from '../error-state';
+import { longPressHandler } from '../long-press';
 import { notify } from '../toast-store';
 import { useMeasuredWidth } from '../use-measured-width';
 import { useStableValue } from '../use-stable-value';
@@ -129,10 +130,10 @@ function StaticBoard({
     <Pressable
       accessible={false}
       disabled={!touch}
-      onLongPress={() => {
+      onLongPress={longPressHandler(() => {
         heavyThud();
         editor.begin();
-      }}
+      })}
       style={boxOf(placements, cell)}
     >
       <StaticTiles placements={placements} cell={cell} catalogue={catalogue} />

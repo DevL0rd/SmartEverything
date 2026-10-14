@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -47,6 +47,22 @@ async function stageGo2rtc(platform: string, arch: string): Promise<void> {
     path.join(go2rtcBuilds, GO2RTC_LICENSE_FILE),
     path.join(go2rtcStage, GO2RTC_LICENSE_FILE),
   );
+}
+
+async function checkClaudeRuntime(platform: string, arch: string): Promise<void> {
+  const name = `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
+  const directory = path.join(serviceDirectory, 'node_modules', name);
+  const manifest = z.object({ name: z.literal(name), version: z.literal('0.3.296') });
+  try {
+    manifest.parse(JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')));
+    const binary = path.join(directory, platform === 'win32' ? 'claude.exe' : 'claude');
+    if (!(await stat(binary)).isFile()) throw new Error('The installed SDK binary is missing.');
+  } catch (cause) {
+    throw new Error(
+      `Install the pinned official Claude SDK optional package ${name} for this packaging target before building its installer.`,
+      { cause },
+    );
+  }
 }
 
 function isLeftOut(file: string): boolean {
@@ -99,6 +115,7 @@ const config: ForgeConfig = {
   ],
   hooks: {
     generateAssets: async (_config, platform, arch) => {
+      if (isRelease) await checkClaudeRuntime(platform, arch);
       await generateIcons(icon, iconDirectory);
       if (isRelease) {
         await stageGo2rtc(platform, arch);

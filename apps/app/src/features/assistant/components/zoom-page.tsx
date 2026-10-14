@@ -15,6 +15,7 @@ import { useMotion } from '../../../design/motion';
 
 const ZOOM_MAX = 5;
 const ZOOM_TAP = 2.5;
+const IMAGE_SIZE = { width: '100%', height: '100%' } as const;
 
 export interface PageSize {
   readonly width: number;
@@ -104,6 +105,7 @@ export function ZoomPage({
             <Image
               source={{ uri: url }}
               resizeMode="contain"
+              style={IMAGE_SIZE}
               accessibilityLabel={image.name}
               className="size-full"
             />

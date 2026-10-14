@@ -55,6 +55,29 @@ export class Probe implements PerfSink {
   private dragUntil = 0;
   private moved = false;
   private trigger: Trigger | null = null;
+  private stopped = false;
+  private readonly frames = new Set<number>();
+
+  stop(): void {
+    this.stopped = true;
+    this.frames.forEach((handle) => {
+      cancelAnimationFrame(handle);
+    });
+    this.frames.clear();
+  }
+
+  private afterFrame(work: () => void): void {
+    if (this.stopped) {
+      return;
+    }
+    const handle = requestAnimationFrame(() => {
+      this.frames.delete(handle);
+      if (!this.stopped) {
+        work();
+      }
+    });
+    this.frames.add(handle);
+  }
 
   private now(): number {
     return performance.now();
@@ -80,7 +103,9 @@ export class Probe implements PerfSink {
     }
   }
 
-  fiberCommit(report: CommitReport): void {
+  fiberCommit(report: CommitReport, collectionMs = 0): void {
+    this.fibers = report.timed ? 2 : 1;
+    this.data.probeMs += collectionMs;
     const start = this.now();
     this.noteCommit(report.rootMs, report.top);
     this.data.roots += 1;
@@ -138,8 +163,8 @@ export class Probe implements PerfSink {
       return;
     }
     const arrival = this.nav.arrive(this.now(), from);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    this.afterFrame(() => {
+      this.afterFrame(() => {
         this.finishNav(arrival.start, arrival.from, arrival.toMount);
       });
     });

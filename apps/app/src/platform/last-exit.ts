@@ -1,14 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { z } from 'zod';
-import { Logger } from '@smarteverything/logging';
+import { Logger, redactText } from '@smarteverything/logging';
+import { CLIENT_NATIVE_TRACE, CLIENT_PROCESS_EXIT } from '@smarteverything/domain';
 import { isNative } from '../design/platform';
 
 const log = new Logger('app.process');
 
-const SEEN_KEY = 'smarteverything.last-exit-seen';
+const SEEN_KEY = 'smarteverything.last-exit-diagnostics-seen';
 
 const NORMAL_EXITS: readonly string[] = ['exit_self', 'user_requested', 'user_stopped', 'unknown'];
+const CREDENTIAL_ASSIGNMENT =
+  /\b[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|credential|key|authorization|ssecurity|(?:one[_. -]?time|verification)[_. -]?code)[A-Za-z0-9_.-]*\b["']?\s*[:=]\s*(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^\s,;)}\]]+)/gi;
+const AUTHORIZATION_VALUE = /\b(?:bearer|basic)\s+(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^\s,;)}\]]+)/gi;
 
 const EXIT = z.object({
   reason: z.string(),
@@ -19,6 +23,7 @@ const EXIT = z.object({
   processName: z.string(),
   pssKb: z.number(),
   rssKb: z.number(),
+  nativeTrace: CLIENT_NATIVE_TRACE.optional(),
 });
 
 const EXITS = z.array(EXIT);
@@ -46,13 +51,21 @@ export async function reportProcessExits(): Promise<void> {
   for (const exit of fresh) {
     const detail = {
       reason: exit.reason,
-      description: exit.description ?? '',
+      description: exit.description === null ? '' : description(exit.description),
       at: new Date(exit.at).toISOString(),
       importance: exit.importance,
       status: exit.status,
       process: exit.processName,
       pssKb: exit.pssKb,
       rssKb: exit.rssKb,
+      processExit: CLIENT_PROCESS_EXIT.parse({
+        reason: exit.reason,
+        description: exit.description === null ? null : description(exit.description),
+        at: new Date(exit.at).toISOString(),
+        status: exit.status,
+        process: exit.processName,
+        ...(exit.nativeTrace === undefined ? {} : { nativeTrace: exit.nativeTrace }),
+      }),
     };
     if (NORMAL_EXITS.includes(exit.reason)) {
       log.info('process.exited', detail);
@@ -68,4 +81,12 @@ export async function reportProcessExits(): Promise<void> {
   if (newest !== undefined) {
     await AsyncStorage.setItem(SEEN_KEY, String(newest.at));
   }
+}
+
+function description(value: string): string {
+  const safe = value
+    .replace(AUTHORIZATION_VALUE, '[redacted]')
+    .replace(CREDENTIAL_ASSIGNMENT, '[redacted]')
+    .replace(/(?:\/[^\s,;)]+)+|["'][^"']*["']/g, '[redacted]');
+  return redactText(safe, 240);
 }

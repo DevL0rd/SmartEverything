@@ -1,3 +1,4 @@
+import { nativeMediaFile } from '../../../api/connection/media-resources';
 import { cameraSnapshotLink } from '../../../api/media';
 import { notify } from '../../../components/toast-store';
 import type { CaptureMode, FrameCapture, MediaHandle, Transport } from './peer-types';
@@ -11,13 +12,16 @@ export interface SnapshotSource {
   readonly name: string;
 }
 
-async function capture(source: SnapshotSource, mode: CaptureMode): Promise<FrameCapture> {
+async function capture(source: SnapshotSource, mode: CaptureMode): Promise<FrameCapture | null> {
   const name = snapshotNameOf(source.name, new Date());
   const picture = pictureSourceOf(source.transport, source.media, capturesVideoFrames());
   if (picture.kind === 'video') {
     return captureFrame(picture.media, name, mode);
   }
   const link = await cameraSnapshotLink(source.deviceId, 'full');
+  const native = await nativeMediaFile(link.url, mode === 'download' ? 'save' : 'open');
+  if (native === 'cancelled') return null;
+  if (native === 'completed') return { kind: mode === 'download' ? 'saved' : 'opened', name };
   return saveServerPicture(link.url, name, mode);
 }
 
@@ -38,11 +42,16 @@ function told(captured: FrameCapture): void {
 }
 
 export function takeSnapshot(source: SnapshotSource, mode: CaptureMode): void {
-  capture(source, mode).then(told, (error: unknown) => {
-    notify({
-      message: 'The snapshot didn’t save',
-      error,
-      tone: 'critical',
-    });
-  });
+  capture(source, mode).then(
+    (captured) => {
+      if (captured !== null) told(captured);
+    },
+    (error: unknown) => {
+      notify({
+        message: 'The snapshot didn’t save',
+        error,
+        tone: 'critical',
+      });
+    },
+  );
 }

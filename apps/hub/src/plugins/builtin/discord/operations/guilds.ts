@@ -20,7 +20,7 @@ const EMOJI_IMAGE = z
   .regex(/^data:image\/(png|jpeg|gif);base64,[A-Za-z0-9+/]+={0,2}$/);
 
 export const ASK_COMMAND = 'ask';
-export const ASK_COMMANDS: ReadonlySet<string> = new Set([ASK_COMMAND, 'discordinator']);
+export const ASK_COMMANDS: ReadonlySet<string> = new Set([ASK_COMMAND]);
 
 export const GUILD_OPERATIONS: readonly Operation[] = [
   define(

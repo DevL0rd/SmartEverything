@@ -9,7 +9,6 @@ import { Screen } from '../../../components/screen';
 import { useIsOwner } from '../../../store/selectors';
 import { List } from '../../../components/section';
 import { joinParts } from '../../../format/text';
-import { useCameraPrefs } from '../data/use-camera-condition';
 import { useCameraEntries, useCameraReaches } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
 
@@ -35,14 +34,13 @@ function firewallSummary(reaches: readonly CameraReach[]): string {
 
 function WatchingList(): ReactNode {
   const reaches = useCameraReaches();
-  const prefs = useCameraPrefs();
   const owner = useIsOwner();
   return (
     <List title="Watching" inset>
       <NavRow
-        title="Remote viewing"
+        title="Camera connection"
         icon="globe"
-        value={prefs.value.awayMode === 'server' ? 'Through your server' : 'Direct'}
+        value="Automatic"
         href={href.settings.remoteViewing()}
       />
       {reaches.length === 0 ? null : (

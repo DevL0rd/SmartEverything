@@ -3,7 +3,7 @@ import { ApiError, jsonEquals } from '@smarteverything/domain';
 import { XiaomiAdapter } from './adapters/xiaomi';
 import { onlyRunBookkeeping } from './automations/changes';
 import { areaOf, assemble, reportFailure, type Core, type HubParts } from './hub-assembly';
-import { LocalDevices } from './local/local-devices';
+import { LocalDevices, type LocalDevicesOptions } from './local/local-devices';
 import { startDrivers, type RunningDrivers } from './local/driver-runtime';
 import type { AutomationAiSlot } from './automations/automation-ai';
 import type { SignalBus } from './signals/bus';
@@ -103,6 +103,43 @@ function xiaomiOf(core: Core, purpose: string): XiaomiAdapter {
   return adapter;
 }
 
+function passiveHooks(
+  parts: HubParts,
+  core: Core,
+): Pick<LocalDevicesOptions, 'eligible' | 'sourceChanged'> {
+  return {
+    eligible: (entry): boolean => {
+      const adapter = core.providers.adapterFor('xiaomi');
+      const model = entry.config['model'];
+      const scope = entry.config['accountScope'];
+      const deviceId = entry.config['deviceId'];
+      const device = typeof deviceId === 'string' ? parts.store.devices.find(deviceId) : undefined;
+      return (
+        device?.provider === 'xiaomi' &&
+        device.external_id === entry.externalId &&
+        device.model === model &&
+        adapter instanceof XiaomiAdapter &&
+        typeof model === 'string' &&
+        typeof scope === 'string' &&
+        adapter.passiveEligible(entry.externalId, model, entry.address, scope)
+      );
+    },
+    sourceChanged: (externalId, source): void => {
+      const adapter = core.providers.adapterFor('xiaomi');
+      if (adapter instanceof XiaomiAdapter) {
+        const entry = parts.store.localDevices
+          .list()
+          .find((candidate) => candidate.externalId === externalId);
+        if (source !== null && entry?.config['accountScope'] !== adapter.passiveAccountScope()) {
+          return;
+        }
+        const address = entry?.address ?? null;
+        adapter.observePassive(externalId, source, address);
+      }
+    },
+  };
+}
+
 function startLocal(parts: HubParts, core: Core): LocalParts {
   const readings = new ScaleReadings({
     store: parts.store,
@@ -115,8 +152,10 @@ function startLocal(parts: HubParts, core: Core): LocalParts {
     store: parts.store,
     secrets: parts.secrets,
     readings,
-    identities: (did): Promise<BluetoothIdentity> =>
-      xiaomiOf(core, 'the scale’s key').bluetoothIdentity(did),
+    identities: (did, model): Promise<BluetoothIdentity> =>
+      xiaomiOf(core, 'the device’s Bluetooth key').bluetoothIdentity(did, model),
+    state: core.state,
+    ...passiveHooks(parts, core),
     wearables,
     apply: (devices): Promise<readonly DeviceRecord[]> => core.inventory.apply('local', devices),
     forget: (externalIds): Promise<void> => core.inventory.remove('local', externalIds),
@@ -134,6 +173,14 @@ function startLocal(parts: HubParts, core: Core): LocalParts {
   return { local, watches, readings, phones: phoneNodesOf(parts, core) };
 }
 
+async function flushWrites(core: Core, closing: boolean): Promise<void> {
+  await core.executor.settled();
+  await Promise.all([
+    closing ? core.state.close() : core.state.settled(),
+    closing ? core.events.close() : core.events.settled(),
+  ]);
+}
+
 export async function startHub(parts: HubParts): Promise<RunningHub> {
   const core = assemble(parts);
   await core.inventory.load();
@@ -149,10 +196,6 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   readings.recomputeOutdated();
   const caughtUp = await core.executor.catchUp();
   areaOf(parts, 'commands').info('commands.caught_up', { count: caughtUp });
-  const settled = async (): Promise<void> => {
-    await core.executor.settled();
-    await Promise.all([core.state.settled(), core.events.settled()]);
-  };
   return {
     submit: (commands): CommandRow[] => {
       const rows = parts.store.commands.insert(commands);
@@ -166,7 +209,7 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     snapshot: (deviceId, size) => core.cameras.snapshot(deviceId, size),
     streamReady: (deviceId) => core.cameras.streamReady(deviceId),
     runAutomation: (automationId) => core.engine.runNow(automationId),
-    settled,
+    settled: (): Promise<void> => flushWrites(core, false),
     local,
     watches,
     readings,
@@ -180,7 +223,7 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
       core.automationAi.stop();
       await drivers.stop();
       await core.providers.stopAll();
-      await settled();
+      await flushWrites(core, true);
     },
   };
 }

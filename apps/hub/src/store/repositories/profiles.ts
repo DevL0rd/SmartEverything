@@ -115,8 +115,24 @@ export class ProfilesRepository {
     });
   }
 
+  assertRemovable(id: string): void {
+    this.byId(id);
+    if (this.list().every((profile) => profile.id === id))
+      throw new StoreConflictError('remove the profile', 'the home needs at least one profile');
+  }
   remove(id: string): void {
     this.context.write(() => {
+      this.assertRemovable(id);
+      const chats = this.context.sql.get(
+        z.strictObject({ count: z.int().nonnegative() }),
+        'select count(*) as count from ai_chats where profile_id=$id',
+        { id },
+      );
+      if (chats?.count !== 0)
+        throw new StoreConflictError(
+          'remove the profile',
+          'delete all conversations and their managed files before removing this profile',
+        );
       const before = this.byId(id);
       const rest = this.list().filter((profile) => profile.id !== id);
       const [heir] = rest;

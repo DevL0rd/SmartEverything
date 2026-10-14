@@ -3,7 +3,59 @@ import type { EndpointShape } from '../api/endpoint';
 import type { McpToolArea } from './areas';
 import { MCP_OPERATION_TOOLS, type McpCoreToolName } from './names';
 
+export const MCP_UNAVAILABLE_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
+  startClaudeSession:
+    'Legacy standalone start is retired; use startClaudeCliSession for an owned actual CLI turn.',
+  startComputerClaudeSession:
+    'Legacy standalone start is retired; use startClaudeCliSession for an owned actual CLI turn.',
+  controlClaudeSession:
+    'Legacy session IDs have no managed ownership; use controlClaudeCliSession with the owned chat, computer, session and job.',
+  controlComputerClaudeSession:
+    'Legacy session IDs have no managed ownership; use controlClaudeCliSession with the owned chat, computer, session and job.',
+  answerClaudePrompt:
+    'Legacy prompts have no managed chat binding; use answerClaudeCliPrompt for the exact owned current CLI request.',
+  answerComputerClaudePrompt:
+    'Legacy prompts have no managed chat binding; use answerClaudeCliPrompt for the exact owned current CLI request.',
+  registerClaudeController:
+    'Desktop controller registration is replaced by owned CLI sessions and native provider execution.',
+  registerComputerClaudeController:
+    'Desktop controller registration is replaced by owned CLI sessions and native provider execution.',
+  removeClaudeController:
+    'Desktop controller management is retained only for legacy app compatibility.',
+  removeComputerClaudeController:
+    'Desktop controller management is retained only for legacy app compatibility.',
+};
+
 export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
+  previewAssistantVoice:
+    'Live audio audition is an explicit person-operated Play control in voice settings.',
+  cancelAssistantVoicePreview: 'Stops the live audio audition owned by the person’s paired app.',
+  updateComputerNativeMcpPolicy:
+    'Grants native computer/runtime tool access; only a person changes this policy in the app.',
+  createAiHtmlPreviewLease:
+    'Issues an isolated document browser credential to the current paired viewer; assistants publish content without reading viewer credentials.',
+  createAiPreviewLease:
+    'Issues a single-publication browser credential to the current paired viewer; assistants read and revoke publications through the normal operations.',
+  listAiChatHarnessCommands:
+    'Discovers the person’s native slash-command surface; AI tools use their own live capability catalogue.',
+  controlAiHarnessSubscription:
+    'Subscription sign-in grants provider account access and reveals short-lived authorization URLs/codes; only a person manages it in computer settings.',
+  executeAiChatHarnessCommand:
+    'Native slash commands are direct human controls; AI tools use the underlying capabilities instead.',
+  readImageOperation:
+    'Image receipt status belongs to the person in the app; the UI automatically displays completion and AI must not wait, check or poll it.',
+  listImageOperations:
+    'Image receipt history belongs to the person in the app; the UI automatically displays completion and AI must not wait, check or poll it.',
+  pairComputerNode:
+    'Issues a computer-service credential grant; only a person pairs a computer in the app.',
+  claimComputerNode: 'Consumes an access-granting pairing code on the computer being paired.',
+  installComputerClaudeLink:
+    'Installs a trusted native Claude plugin and provisions its computer-scoped access; only a person does that in the app.',
+  registerComputerClaudeController:
+    'Registers a trusted native controller session; the person opens and sends its one-time registration prompt.',
+
+  hubIdentity:
+    'Public untrusted discovery probe for app transport bootstrap; read_server_connections provides authenticated metadata.',
   status:
     'Public health check for clients that are not signed in; readSnapshot and session cover it.',
   claimPairing: 'A new phone exchanges its own pairing code; an assistant is never a phone.',
@@ -50,8 +102,6 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Copies a credential between apps on the computer; the person does it in Settings.',
   setGeminiKey: 'Stores a credential for the voice assistant; the person enters it in Settings.',
   removeGeminiKey: 'Removes the voice assistant’s credential; the person does it in Settings.',
-  importOpenRouterKey:
-    'Copies a credential between apps on the computer; the person does it in Settings.',
   setOpenRouterKey: 'Stores the OpenRouter credential; the person enters it in Settings.',
   removeOpenRouterKey: 'Removes the OpenRouter credential; the person does it in Settings.',
   declineOutreach: 'A person declines a ringing AI call on their own device.',
@@ -110,7 +160,7 @@ const MCP_ADMIN_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
   authorizeSmartThings:
     'Links a provider account with its credentials; only a person in the app does that.',
   addLocalDevice:
-    'Adds a device on the local network with its keys; only a person in the app does that.',
+    'Adds a device or attaches Bluetooth observation with its account key; credential access stays with the owner in the app.',
   removeLocalDevice: 'Removes a device on the local network; only a person in the app does that.',
   sendAssistantMessage:
     'Writes a message in the person’s own words and starts a turn as them; a plugin’s request uses chat_send.',

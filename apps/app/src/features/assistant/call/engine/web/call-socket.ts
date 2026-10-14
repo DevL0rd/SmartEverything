@@ -1,3 +1,4 @@
+import { openHubSocket } from '../../../../../api/connection/hub-socket';
 import {
   ASSISTANT_VOICE_PATH,
   ASSISTANT_VOICE_SERVER_MESSAGE,
@@ -25,10 +26,6 @@ export interface CallSocket {
   readonly close: () => void;
 }
 
-function socketUrl(connection: CallConnection): string {
-  return `${connection.url.replace(/\/$/, '').replace(/^http/, 'ws')}${ASSISTANT_VOICE_PATH}`;
-}
-
 function readText(text: string, handlers: CallSocketHandlers): void {
   const read = jsonText(text);
   const parsed = read.ok ? ASSISTANT_VOICE_SERVER_MESSAGE.safeParse(read.value) : null;
@@ -45,20 +42,21 @@ export function openCallSocket(
   connection: CallConnection,
   handlers: CallSocketHandlers,
 ): CallSocket {
-  const socket = new WebSocket(socketUrl(connection), [
-    ...assistantVoiceProtocols(connection.token),
-  ]);
-  socket.binaryType = 'arraybuffer';
-  socket.addEventListener('message', (event: MessageEvent<unknown>) => {
+  const socket = openHubSocket(
+    connection,
+    ASSISTANT_VOICE_PATH,
+    assistantVoiceProtocols(connection.token),
+  );
+  socket.onmessage = (event): void => {
     if (typeof event.data === 'string') {
       readText(event.data, handlers);
     } else if (event.data instanceof ArrayBuffer) {
       handlers.onAudio(packetOfFrame(new Uint8Array(event.data)));
     }
-  });
-  socket.addEventListener('close', (event) => {
+  };
+  socket.onclose = (event): void => {
     handlers.onClose(event.code, event.reason);
-  });
+  };
   return {
     send: (message): void => {
       if (socket.readyState === WebSocket.OPEN) {

@@ -1,0 +1,5 @@
+export const COMPUTER_NATIVE_MCP_POLICY_TABLES: readonly string[] = [
+  `create table computer_native_mcp_policy (device_id text not null references devices(id) on delete cascade, runtime text not null check(runtime in ('claude','codex')), policy text not null, updated_at text not null, primary key(device_id,runtime)) strict`,
+  `insert into computer_native_mcp_policy(device_id,runtime,policy,updated_at) select device_id,runtime,json_object('enabled',json(case json_type(settings,'$.control.enabled') when 'true' then 'true' when 'false' then 'false' else 'invalid-native-mcp-enabled' end),'areas',json(coalesce(json_extract(settings,'$.control.mcp_areas'),'null'))),updated_at from computer_ai`,
+  `create table computer_local_mcp_grants (device_id text not null references devices(id) on delete cascade, runtime text not null check(runtime in ('claude','codex')), token_hash text not null references mcp_tokens(token_hash) on delete cascade, primary key(device_id,runtime,token_hash)) strict`,
+];

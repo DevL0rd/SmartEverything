@@ -52,8 +52,7 @@ export function editTarget(
   if (data === null || portion === null) {
     return null;
   }
-  const waterPercent =
-    portion.unit === 'ml' ? Math.min(100, Math.round((portion.waterMl / portion.amount) * 100)) : 0;
+  const waterPercent = Math.min(100, Math.round((portion.waterMl / portion.amount) * 100));
   const snapshot: FoodCandidate = {
     name: portion.name,
     brand: null,

@@ -24,6 +24,7 @@ export interface VisualState {
   readonly oscillating: boolean;
   readonly angle: number | null;
   readonly colour: string | null;
+  readonly ambientLight: boolean | null;
   readonly waterLow: boolean;
   readonly waterLevel: number | null;
   readonly thermal: ThermalMode;

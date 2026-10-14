@@ -7,6 +7,9 @@ export {
   MEDIA_SIZES,
   PAIRING_CODE,
   PAIRING_QR,
+  PAIRING_INVITATION_MAX_LENGTH,
+  parsePairingInvitation,
+  pairingInvitationText,
   SIGNED_IMAGE_LINK,
   SIGNED_LINK,
   THUMBNAIL_WIDTH,
@@ -16,7 +19,14 @@ export {
   hashPairingCode,
   liveProtocols,
 } from './access';
-export type { MediaSize, PairingQr, SignedImageLink, SignedLink } from './access';
+export type {
+  MediaSize,
+  PairingQr,
+  PairingInvitation,
+  PairingInvitationParse,
+  SignedImageLink,
+  SignedLink,
+} from './access';
 
 export {
   BIND_KEY,
@@ -227,3 +237,17 @@ export * from '../transcripts';
 export * from './endpoints-transcripts';
 
 export * from '../robot';
+
+export * from './endpoints-computer-ai';
+export * from './endpoints-computer-nodes';
+
+export * from './endpoints-ai-provider';
+
+export * from './endpoints-ai-harness';
+export * from './endpoints-images';
+export * from './endpoints-ai-harness-extensions';
+export * from '../ai-harness-extensions';
+
+export { CONNECTION_ENDPOINTS } from './endpoints-connections';
+
+export * from '../ai-harness-discovery';

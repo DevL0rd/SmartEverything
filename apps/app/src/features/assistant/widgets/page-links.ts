@@ -39,14 +39,14 @@ const PAGES: Readonly<Record<ChatLinkPage, PageKind>> = {
     trail: 'Plugin',
     title: (tables, id) =>
       id === null ? null : titled(tables.plugins.byId[id], (row) => row.manifest.name),
-    to: (id) => (id === null ? href.more() : href.pluginSettings(id)),
+    to: (id) => (id === null ? href.settings.page('plugins') : href.pluginSettings(id)),
   },
   person: {
     icon: 'user',
     trail: 'Person',
     title: (tables, id) =>
       id === null ? null : titled(tables.profiles.byId[id], (row) => row.name),
-    to: (id) => (id === null ? href.more() : href.settings.profile(id)),
+    to: (id) => (id === null ? href.settings.page('profiles') : href.settings.profile(id)),
   },
 };
 

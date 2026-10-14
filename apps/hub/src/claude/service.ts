@@ -1,4 +1,4 @@
-import { platform } from 'node:process';
+import { join } from 'node:path';
 import {
   type ClaudeAnswer,
   type ClaudeControl,
@@ -17,21 +17,13 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
-import type { ClaudeControlPlane, ControlTarget } from './control-plane';
-import { SINGLETON_LOCK, desktopStateOf } from './desktop-state';
+import type { ClaudeControlPlane } from './control-plane';
 import { Diagnostics } from './diagnostics';
 import { ClaudeNotReadyError } from './errors';
 import type { Requester } from './prompt-broker';
-import { PathWatch } from './fs-watch';
-import { JsonFiles } from './json-files';
+import { JsonSnapshots } from './json-snapshots';
 import type { ClaudeLocations } from './locations';
-import {
-  PLAN_USAGE_FILE,
-  PLAN_USAGE_FILE_NAME,
-  NO_USAGE,
-  usageOf,
-  type PlanUsageFile,
-} from './plan-usage';
+import { PLAN_USAGE_FILE, PLAN_USAGE_FILE_NAME, usageOf, type PlanUsageFile } from './plan-usage';
 import { SessionDirectory } from './session-directory';
 
 const SETTLE_MS = 75;
@@ -49,6 +41,7 @@ export interface ThreadQuery {
 
 export interface ClaudeServiceOptions {
   readonly locations: ClaudeLocations;
+  readonly historyDirectory: string;
   readonly plane: ClaudeControlPlane;
   readonly clock: Clock;
   readonly publish: (notice: ClaudeNotice) => void;
@@ -57,8 +50,7 @@ export interface ClaudeServiceOptions {
 
 interface Watching {
   readonly directory: SessionDirectory;
-  readonly plan: JsonFiles<PlanUsageFile>;
-  readonly lock: PathWatch;
+  readonly plan: JsonSnapshots<PlanUsageFile>;
 }
 
 function byRecency(left: ClaudeSession, right: ClaudeSession): number {
@@ -66,27 +58,30 @@ function byRecency(left: ClaudeSession, right: ClaudeSession): number {
   return running === 0 ? (right.updated_at ?? '').localeCompare(left.updated_at ?? '') : running;
 }
 
-function usageFrom(plan: JsonFiles<PlanUsageFile>): ClaudeUsage {
+function usageFrom(plan: JsonSnapshots<PlanUsageFile>): ClaudeUsage {
   return usageOf([...plan.all().values()].find((entry) => entry.present)?.value);
 }
 
 export class ClaudeService {
-  private readonly watching: Watching | null;
+  private readonly watching: Watching;
   private readonly diagnostics: Diagnostics;
   private booted: Promise<void> = Promise.resolve();
   private unsubscribe: (() => void) | null = null;
   private lastStatus: string | null = null;
+  private readonly listeners = new Set<(notice: ClaudeNotice) => void>();
 
   constructor(private readonly options: ClaudeServiceOptions) {
     this.diagnostics = new Diagnostics(options.log);
-    this.watching = platform === 'linux' ? this.watch() : null;
+    this.diagnostics.report(
+      'desktop_index',
+      'runtime',
+      'Claude Desktop runtime control is retired. Legacy metadata and transcripts remain readable; use owned CLI chats.',
+    );
+    this.watching = this.watch();
   }
 
   start(): void {
     const { watching } = this;
-    if (watching === null) {
-      return;
-    }
     this.unsubscribe = this.options.plane.onChange(() => {
       watching.directory.reevaluate();
     });
@@ -98,18 +93,31 @@ export class ClaudeService {
 
   stop(): void {
     this.unsubscribe?.();
-    this.watching?.directory.stop();
-    this.watching?.plan.stop();
-    this.watching?.lock.stop();
+    this.watching.directory.stop();
+    this.listeners.clear();
+  }
+
+  onNotice(listener: (notice: ClaudeNotice) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private publish(notice: ClaudeNotice): void {
+    this.options.publish(notice);
+    for (const listener of this.listeners) {
+      listener(notice);
+    }
   }
 
   async status(): Promise<ClaudeStatus> {
-    await this.booted;
+    await this.ready();
     return this.statusNow();
   }
 
   async sessions(query: SessionQuery): Promise<ClaudeSession[]> {
-    const { directory } = await this.ready('sessions');
+    const { directory } = await this.ready();
     return directory
       .sessions()
       .filter(
@@ -122,11 +130,11 @@ export class ClaudeService {
   }
 
   async session(id: string): Promise<ClaudeSession> {
-    return (await this.ready('sessions')).directory.session(id);
+    return (await this.ready()).directory.session(id);
   }
 
   async thread(id: string, query: ThreadQuery): Promise<ClaudeThreadPage> {
-    const { directory } = await this.ready('messages');
+    const { directory } = await this.ready();
     return directory.thread(
       id,
       query.before === undefined ? null : Number(query.before),
@@ -135,7 +143,9 @@ export class ClaudeService {
   }
 
   async usage(): Promise<ClaudeUsage> {
-    const file = usageFrom((await this.ready('usage')).plan);
+    const { plan } = await this.ready();
+    await plan.refresh();
+    const file = usageFrom(plan);
     const live = this.options.plane.usage();
     return (live.sampled_at ?? '') > (file.sampled_at ?? '') ? live : file;
   }
@@ -146,30 +156,26 @@ export class ClaudeService {
       .filter((prompt) => sessionId === undefined || prompt.session_id === sessionId);
   }
 
-  async control(id: string, body: ClaudeControl): Promise<ClaudeControlled> {
-    const { directory } = await this.ready('control');
-    const target: ControlTarget = {
-      session: directory.session(id),
-      socket: directory.socketOf(id),
-      ops: {
-        socketOf: (sessionId) => directory.socketOf(sessionId),
-        whenRunning: (sessionId, ms) => directory.whenRunning(sessionId, ms),
-        userMessages: (sessionId) => directory.userMessages(sessionId),
-        whenUserMessage: (sessionId, after, ms) => directory.whenUserMessage(sessionId, after, ms),
-      },
-    };
-    const delivery = await this.options.plane.control(target, body);
-    const session = directory.session(id);
-    return delivery === null ? session : { ...session, delivery };
+  control(_id: string, _body: ClaudeControl): Promise<ClaudeControlled> {
+    return Promise.reject(
+      new ClaudeNotReadyError(
+        'control',
+        'Legacy sessions are read-only. Use the owned Claude CLI chat controls.',
+      ),
+    );
   }
 
   answer(promptId: string, body: ClaudeAnswer, requester: Requester): Promise<ClaudePrompt> {
     return this.options.plane.answer(promptId, body, requester);
   }
 
-  async startSession(body: ClaudeStart): Promise<ClaudeStarted> {
-    await this.ready('start');
-    return this.options.plane.start(body);
+  startSession(_body: ClaudeStart): Promise<ClaudeStarted> {
+    return Promise.reject(
+      new ClaudeNotReadyError(
+        'start',
+        'Update the app and start an owned Claude CLI chat from computer settings.',
+      ),
+    );
   }
 
   installLink(): Promise<ClaudeLink> {
@@ -197,65 +203,52 @@ export class ClaudeService {
     };
     const directory = new SessionDirectory({
       locations,
+      historyDirectory: this.options.historyDirectory,
       plane: this.options.plane,
       diagnostics: this.diagnostics,
       sleep: clock.sleep,
       settleMs: SETTLE_MS,
       log,
       publish: (notice): void => {
-        this.options.publish(notice);
+        this.publish(notice);
         announce();
       },
     });
-    const plan = new JsonFiles({
+    const plan = new JsonSnapshots({
       source: 'plan_usage',
       directory: locations.desktop,
       recursive: false,
       accepts: (name): boolean => name === PLAN_USAGE_FILE_NAME,
       schema: PLAN_USAGE_FILE,
-      settleMs: SETTLE_MS,
-      sleep: clock.sleep,
       diagnostics: this.diagnostics,
-      log,
-      changed: announce,
+      snapshot: join(this.options.historyDirectory, 'legacy-plan-usage.json'),
     });
-    const lock = new PathWatch({
-      directory: locations.desktop,
-      recursive: false,
-      settleMs: SETTLE_MS,
-      accepts: (name): boolean => name === SINGLETON_LOCK,
-      changed: announce,
-      log,
-    });
-    return { directory, plan, lock };
+    return { directory, plan };
   }
 
   private async boot(watching: Watching): Promise<void> {
-    await Promise.all([watching.directory.start(), watching.plan.start()]);
-    watching.lock.start();
+    await Promise.all([watching.directory.start(), watching.plan.refresh()]);
     this.lastStatus = JSON.stringify(this.statusNow());
   }
 
-  private async ready(feature: string): Promise<Watching> {
-    if (this.watching === null) {
-      throw new ClaudeNotReadyError(feature, 'watching Claude Desktop is only supported on Linux');
-    }
+  private async ready(): Promise<Watching> {
     await this.booted;
+    await this.watching.directory.refreshHistory();
     return this.watching;
   }
 
   private statusNow(): ClaudeStatus {
     const { watching } = this;
-    const summary = watching?.directory.summary();
+    const summary = watching.directory.summary();
     return {
       desktop: {
-        state: desktopStateOf(this.options.locations.desktop),
-        cli_version: summary?.cliVersion ?? null,
+        state: 'unsupported_platform',
+        cli_version: summary.cliVersion,
       },
       link: { state: this.options.plane.link(), problem: this.options.plane.linkProblem() },
       controller: { state: this.options.plane.controller() },
-      sessions: { live: summary?.live ?? 0, total: summary?.total ?? 0 },
-      usage: watching === null ? NO_USAGE : usageFrom(watching.plan),
+      sessions: { live: summary.live, total: summary.total },
+      usage: usageFrom(watching.plan),
       diagnostics: this.diagnostics.list(),
     };
   }
@@ -269,7 +262,7 @@ export class ClaudeService {
     if (text !== this.lastStatus) {
       this.lastStatus = text;
       this.options.log.info('status.changed', { desktop: status.desktop.state });
-      this.options.publish({ type: 'claude_status', status });
+      this.publish({ type: 'claude_status', status });
     }
   }
 }

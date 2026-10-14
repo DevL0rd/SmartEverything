@@ -6,6 +6,7 @@ import {
   type Engine,
 } from '@smarteverything/domain';
 import {
+  compactAiChat,
   createAiChat,
   interruptAiChat,
   removeAiChat,
@@ -61,7 +62,7 @@ export async function setChatArchived(chatId: string, archived: boolean): Promis
 export async function deleteChat(chat: Pick<AiChatRow, 'id' | 'title'>): Promise<boolean> {
   const sure = await confirm({
     title: `Delete “${chat.title}”?`,
-    body: 'Its messages and attachments are deleted too.',
+    body: 'Its messages, attachments and spawned subagent chats are deleted too.',
     confirmLabel: 'Delete',
     tone: 'destructive',
   });
@@ -93,9 +94,18 @@ export function chatSender(
 export function chatStarter(
   engine: Engine,
   opened: (chatId: string) => void,
+  resolve?: () => Engine | null,
 ): (text: string, attachments: readonly string[]) => Promise<boolean> {
   return async (text, attachments) => {
-    const chat = await newChat({ title: NEW_CHAT_TITLE, engine });
+    const selected = resolve === undefined ? engine : resolve();
+    if (selected === null) {
+      notify({
+        message: 'The selected device is unavailable. Check Machine before sending.',
+        tone: 'critical',
+      });
+      return false;
+    }
+    const chat = await newChat({ title: NEW_CHAT_TITLE, engine: selected });
     if (chat === null) {
       return false;
     }
@@ -103,4 +113,10 @@ export function chatStarter(
     opened(chat.id);
     return sent;
   };
+}
+
+export async function compactChat(chatId: string): Promise<void> {
+  const result = await attempt(() => compactAiChat(chatId), 'Chat could not be compacted');
+  if (result === null) return;
+  notify({ message: result ? 'Compaction requested' : 'Nothing needed compacting' });
 }

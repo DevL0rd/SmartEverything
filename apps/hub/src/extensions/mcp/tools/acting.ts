@@ -1,5 +1,6 @@
 import {
   API_ENDPOINTS,
+  MCP_UNAVAILABLE_OPERATIONS,
   mcpOperationArea,
   type ClientRow,
   type EndpointName,
@@ -46,7 +47,43 @@ function pluginOrigin(
   };
 }
 
+function serviceCaller(context: ToolContext, as: ActingAs): Caller | null {
+  const authority = context.actor?.authority;
+  if (authority?.kind === 'service') {
+    if (
+      as.clientId !== undefined ||
+      (as.profileId !== undefined && as.profileId !== authority.profile_id)
+    )
+      throw new ToolError(
+        'Service actions cannot impersonate a paired app or another profile.',
+        'forbidden',
+      );
+    return {
+      kind: 'service',
+      authority,
+      profileId: authority.profile_id,
+      chatId: context.actor?.chatId ?? null,
+      ...pluginOrigin(context),
+    };
+  }
+  return null;
+}
+function admitActor(context: ToolContext, as: ActingAs): void {
+  const authority = context.actor?.authority;
+  if (
+    authority !== undefined &&
+    ((as.clientId !== undefined && as.clientId !== authority.client_id) ||
+      (as.profileId !== undefined && as.profileId !== authority.profile_id))
+  )
+    throw new ToolError(
+      'Initiating grants cannot impersonate another app or profile.',
+      'forbidden',
+    );
+}
 export function callerFor(context: ToolContext, as: ActingAs = {}): Caller {
+  admitActor(context, as);
+  const service = serviceCaller(context, as);
+  if (service !== null) return service;
   const client = clientFor(context, as.clientId);
   const local = context.caller?.localOnly === true;
   const chatId = context.actor?.chatId ?? null;
@@ -56,6 +93,7 @@ export function callerFor(context: ToolContext, as: ActingAs = {}): Caller {
     via: 'assistant',
     local,
     ...pluginOrigin(context),
+    ...assistantOrigin(context),
   } as const;
   const acting = chatId === null ? base : { ...base, chatId };
   return as.profileId === undefined && context.actor === null
@@ -69,10 +107,12 @@ export function operate(
   input: OperationInput,
   as: ActingAs = {},
 ): Promise<unknown> {
+  const unavailable = MCP_UNAVAILABLE_OPERATIONS[name];
+  if (unavailable !== undefined)
+    throw new ToolError(`${name} is unavailable to AI: ${unavailable}`, 'unsupported_operation');
   const caller = callerFor(context, as);
   if (
-    caller.kind === 'client' &&
-    caller.client.role !== 'owner' &&
+    (caller.kind === 'service' || (caller.kind === 'client' && caller.client.role !== 'owner')) &&
     API_ENDPOINTS[name].access === 'owner'
   ) {
     throw new ToolError(`Only an owner may use ${name}`, 'forbidden');
@@ -85,4 +125,15 @@ export function operate(
     );
   }
   return context.operations.run(name, caller, input);
+}
+
+function assistantOrigin(
+  context: ToolContext,
+): Pick<Extract<Caller, { kind: 'client' }>, 'authority' | 'mcpOrigin'> {
+  return {
+    ...(context.actor?.authority === undefined ? {} : { authority: context.actor.authority }),
+    ...(context.caller === null || context.caller.via === 'plugin'
+      ? {}
+      : { mcpOrigin: context.caller.via }),
+  };
 }

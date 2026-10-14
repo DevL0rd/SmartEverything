@@ -5,12 +5,12 @@ import Animated from 'react-native-reanimated';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { SearchField } from '../components/search-field';
 import { useValue } from '../design/external-store';
-import { ResultList, type SearchListModel } from '../search/result-list';
-import { useSearchPanel } from '../search/search-panel';
+import { useIdiom } from '../design/platform';
+import { useSearchQuery } from '../search/search-panel';
 import { NavDirectory } from './nav-directory';
 import { useListDismiss, useNavSheetPan, type ListDismiss } from './nav-sheet-gesture';
+import { NavSheetSearch, type NavSheetSearchHandle } from './nav-sheet-search';
 import {
-  closeNavSheet,
   expandNavSheet,
   navSheetFocus,
   navSheetPhase,
@@ -44,19 +44,21 @@ function Grabber(): ReactNode {
 
 interface SheetContentProps {
   readonly query: string;
-  readonly model: SearchListModel;
+  readonly settled: string;
+  readonly search: RefObject<NavSheetSearchHandle | null>;
   readonly onScroll: ListDismiss['onScroll'];
   readonly spacer: ReactElement;
 }
 
-function SheetContent({ query, model, onScroll, spacer }: SheetContentProps): ReactNode {
+function SheetContent({ query, settled, search, onScroll, spacer }: SheetContentProps): ReactNode {
   if (query !== '') {
     return (
-      <ResultList
-        model={model}
+      <NavSheetSearch
+        query={query}
+        settled={settled}
+        ref={search}
         onScroll={onScroll}
-        contentClassName="px-4 pb-safe-offset-6"
-        footer={spacer}
+        spacer={spacer}
       />
     );
   }
@@ -77,19 +79,15 @@ function SheetContent({ query, model, onScroll, spacer }: SheetContentProps): Re
 
 export function NavSheetBody({ stops }: { readonly stops: NavSheetStops }): ReactNode {
   const query = useValue(navSheetQuery);
+  const settled = useSearchQuery(query);
   const phase = useValue(navSheetPhase);
   const input = useRef<TextInput>(null);
+  const search = useRef<NavSheetSearchHandle>(null);
+  const pointer = useIdiom() === 'pointer';
   const pan = useNavSheetPan('sheet');
   const list = useListDismiss();
   const hidden = { height: phase === 'open' ? stops.full - stops.half : 0 };
   useFieldFocus(input, phase);
-  const panel = useSearchPanel({
-    query,
-    onQuery: navSheetQuery.set,
-    look: 'page',
-    onDone: closeNavSheet,
-    onEscape: closeNavSheet,
-  });
   return (
     <>
       <GestureDetector gesture={pan}>
@@ -100,7 +98,7 @@ export function NavSheetBody({ stops }: { readonly stops: NavSheetStops }): Reac
             value={query}
             onChange={navSheetQuery.set}
             onFocus={expandNavSheet}
-            {...(panel.submit === null ? {} : { onSubmit: panel.submit })}
+            {...(pointer ? {} : { onSubmit: () => search.current?.submit?.() })}
             placeholder="Search your home"
             variant="bar"
           />
@@ -109,7 +107,8 @@ export function NavSheetBody({ stops }: { readonly stops: NavSheetStops }): Reac
       <GestureDetector gesture={list.gesture}>
         <SheetContent
           query={query}
-          model={panel.model}
+          settled={settled}
+          search={search}
           onScroll={list.onScroll}
           spacer={<View style={hidden} />}
         />

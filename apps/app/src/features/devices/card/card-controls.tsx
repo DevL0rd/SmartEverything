@@ -14,6 +14,7 @@ import { useIdiom } from '../../../design/platform';
 import { useControl } from '../../../store/control';
 import { useDeviceValues, useIrCodes } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
+import { FAMILY_CONTROLS } from '../controls/family-controls';
 import { poweredOffReason } from '../controls/guard';
 import { usePrimaryControls } from '../controls/primary-controls';
 import { cardControls, settingControls } from '../model/card-facts';
@@ -53,7 +54,10 @@ function capacity(
 const NONE: ReadonlySet<CapabilityRole> = new Set();
 
 function itemHeight(presented: PresentedCapability, dense: boolean, pointer: boolean): number {
-  if (presented.capability.value.kind === 'boolean') {
+  if (
+    presented.capability.value.kind === 'boolean' ||
+    presented.capability.value.kind === 'action'
+  ) {
     return pointer ? 36 : 48;
   }
   return rowHeight(dense, pointer);
@@ -124,6 +128,7 @@ function CuratedControls({
   dense,
   labels = dense ? 'inline' : 'caption',
 }: AreaProps & { readonly box: Box }): ReactNode {
+  const Custom = FAMILY_CONTROLS[useDeviceModel(device).family]?.card;
   const inline = labels === 'inline';
   const model = useDeviceModel(device);
   const values = useDeviceValues(device.id);
@@ -139,6 +144,13 @@ function CuratedControls({
     (presented) => itemHeight(presented, inline, pointer),
   );
   const columns = Math.max(1, Math.min(room.columns, controls.length));
+  if (Custom !== undefined) {
+    return box.height < 72 ? (
+      <Button label="Cooking" variant="tonal" href={href.deviceSection(device.id, 'controls')} />
+    ) : (
+      <Custom device={device} />
+    );
+  }
   if (controls.length === 0 && !off) {
     return <NoControls device={device} box={box} dense={dense} />;
   }

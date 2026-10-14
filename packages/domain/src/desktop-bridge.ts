@@ -1,3 +1,25 @@
+import { z } from 'zod';
+import type {
+  NativeHubNetwork,
+  NativeHubTrust,
+  NativeHubRequest,
+  NativeHubResponse,
+  NativeHubDiscovery,
+  NativeHubSocketOpen,
+  NativeHubSocketSend,
+  NativeHubNetworkChange,
+} from './hub-native';
+import type { HubConnectionMetadata } from './hub-connections';
+import type { NativeHtmlPreview } from './native-html-preview';
+import type { DesktopBrowser } from './desktop-browser';
+export const DESKTOP_COMPUTER_IDENTITY = z.object({
+  device_id: z.uuid().nullable(),
+  machine_id: z
+    .string()
+    .regex(/^[0-9a-f]{32}$/)
+    .nullable(),
+});
+export type DesktopComputerIdentity = z.infer<typeof DESKTOP_COMPUTER_IDENTITY>;
 export type DesktopPlatform = 'linux' | 'darwin' | 'win32';
 
 interface DesktopNotification {
@@ -6,6 +28,7 @@ interface DesktopNotification {
 }
 
 export interface DesktopServer {
+  readonly connection?: HubConnectionMetadata;
   readonly url: string;
   readonly token: string;
 }
@@ -102,6 +125,10 @@ export interface DesktopStill {
 }
 
 export interface SmartEverythingDesktop {
+  readonly browser?: DesktopBrowser;
+  readonly htmlPreview?: NativeHtmlPreview;
+  readonly hubNetwork?: NativeHubNetwork;
+  computerIdentity?(): Promise<DesktopComputerIdentity>;
   readonly platform: DesktopPlatform;
   readonly version: string;
   notify(notification: DesktopNotification): Promise<void>;
@@ -132,6 +159,40 @@ export interface SmartEverythingDesktop {
 }
 
 export interface DesktopInvokeChannels {
+  readonly 'desktop:hub-configure-trust': {
+    readonly request: NativeHubTrust;
+    readonly response: undefined;
+  };
+  readonly 'desktop:hub-clear-trust': { readonly request: string; readonly response: undefined };
+  readonly 'desktop:hub-request': {
+    readonly request: NativeHubRequest;
+    readonly response: NativeHubResponse;
+  };
+  readonly 'desktop:hub-discovery-start': {
+    readonly request: undefined;
+    readonly response: NativeHubDiscovery;
+  };
+  readonly 'desktop:hub-discovery-stop': {
+    readonly request: undefined;
+    readonly response: undefined;
+  };
+  readonly 'desktop:hub-network-start': {
+    readonly request: undefined;
+    readonly response: NativeHubNetworkChange;
+  };
+  readonly 'desktop:hub-network-stop': {
+    readonly request: undefined;
+    readonly response: undefined;
+  };
+  readonly 'desktop:hub-socket-open': {
+    readonly request: NativeHubSocketOpen;
+    readonly response: undefined;
+  };
+  readonly 'desktop:hub-socket-send': {
+    readonly request: NativeHubSocketSend;
+    readonly response: undefined;
+  };
+  readonly 'desktop:hub-socket-close': { readonly request: string; readonly response: undefined };
   readonly 'desktop:notify': {
     readonly request: DesktopNotification;
     readonly response: undefined;
@@ -144,6 +205,10 @@ export interface DesktopInvokeChannels {
   readonly 'desktop:take-deep-links': {
     readonly request: undefined;
     readonly response: readonly string[];
+  };
+  readonly 'desktop:computer-identity': {
+    readonly request: undefined;
+    readonly response: DesktopComputerIdentity;
   };
   readonly 'desktop:server': { readonly request: undefined; readonly response: DesktopServer };
   readonly 'desktop:service-status': ServiceCall;
@@ -197,7 +262,12 @@ interface ServiceCall {
 export type DesktopInvokeChannel = keyof DesktopInvokeChannels;
 
 export type DesktopEventChannel =
-  'desktop:deep-link' | 'desktop:service-status-changed' | 'desktop:talk-command';
+  | 'desktop:deep-link'
+  | 'desktop:service-status-changed'
+  | 'desktop:talk-command'
+  | 'desktop:hub-discovery'
+  | 'desktop:hub-socket'
+  | 'desktop:hub-network';
 
 export type DesktopGlobalName = 'smartEverythingDesktop';
 

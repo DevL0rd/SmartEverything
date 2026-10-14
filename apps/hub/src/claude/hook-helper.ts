@@ -36,7 +36,18 @@ async function tokenOf(data: string): Promise<string> {
 }
 
 async function endpointOf(data: string): Promise<Endpoint> {
-  const url = new URL(stringField(await readFile(join(data, 'service-ready.json'), 'utf8'), 'url'));
+  const ready = await readFile(join(data, 'claude', 'link-endpoint.json'), 'utf8').catch(
+    (cause: unknown) => {
+      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
+        return readFile(join(data, 'service-ready.json'), 'utf8');
+      }
+      throw cause;
+    },
+  );
+  const url = new URL(stringField(ready, 'url'));
+  if (url.protocol !== 'http:' || !['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname)) {
+    throw new HelperError('the hook endpoint must be this computer loopback HTTP listener');
+  }
   const token = await tokenOf(data);
   return { host: url.hostname, port: Number(url.port), token };
 }
@@ -112,8 +123,8 @@ async function runDiscarding(data: string, path: string): Promise<void> {
   await post(data, path);
 }
 
-async function streamOnce(endpoint: Endpoint, session: string): Promise<void> {
-  const path = `${LINK_PATHS.stream}?session=${encodeURIComponent(session)}`;
+async function streamOnce(endpoint: Endpoint, session: string, poll = false): Promise<void> {
+  const path = `${LINK_PATHS.stream}?session=${encodeURIComponent(session)}${poll ? '&poll=1' : ''}`;
   await send(endpoint, {
     method: 'GET',
     path,
@@ -156,8 +167,21 @@ async function runFloor(data: string): Promise<void> {
   }
 }
 
-async function runHeaders(data: string): Promise<void> {
-  stdout.write(JSON.stringify({ Authorization: `Bearer ${await tokenOf(data)}` }));
+async function runHeaders(data: string, remote: boolean): Promise<void> {
+  const token = remote
+    ? (await readFile(join(data, 'claude', 'mcp.token'), 'utf8')).trim()
+    : await tokenOf(data);
+  stdout.write(JSON.stringify({ Authorization: `Bearer ${token}` }));
+}
+
+async function streamCommand(
+  command: string,
+  data: string,
+  session: string | undefined,
+): Promise<void> {
+  if (session === undefined) throw new HelperError('--session <id> is required');
+  if (command === 'poll') await streamOnce(await endpointOf(data), session, true);
+  else await runStream(data, session);
 }
 
 async function main(): Promise<void> {
@@ -177,12 +201,12 @@ async function main(): Promise<void> {
     await runDiscarding(data, LINK_PATHS.observed);
   } else if (command === 'floor') {
     await runFloor(data);
-  } else if (command === 'headers') {
-    await runHeaders(data);
+  } else if (command === 'headers' || command === 'mcp-headers') {
+    await runHeaders(data, command === 'mcp-headers');
   } else if (command === 'report') {
     await runDiscarding(data, LINK_PATHS.reports);
-  } else if (command === 'stream' && values.session !== undefined) {
-    await runStream(data, values.session);
+  } else if (command === 'poll' || command === 'stream') {
+    await streamCommand(command, data, values.session);
   } else {
     throw new HelperError('use hook, observe, floor, report, headers or stream --session <id>');
   }

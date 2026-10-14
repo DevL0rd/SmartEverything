@@ -86,9 +86,7 @@ export function defaultValue(descriptor: ValueDescriptor): JsonValue {
     case 'text':
       return '';
     case 'action':
-      return descriptor.arguments === undefined
-        ? null
-        : Object.fromEntries(descriptor.arguments.map((name) => [name, '']));
+      return actionDefault(descriptor);
   }
 }
 
@@ -136,4 +134,13 @@ export function comparisonFor(
   previous: Comparison | null,
 ): Comparison {
   return operator === 'changed' ? { operator } : valueComparisonFor(operator, descriptor, previous);
+}
+
+function actionDefault(descriptor: Extract<ValueDescriptor, { kind: 'action' }>): JsonValue {
+  if (descriptor.argumentSchema !== undefined) {
+    return {};
+  }
+  return descriptor.arguments === undefined
+    ? null
+    : Object.fromEntries(descriptor.arguments.map((name) => [name, '']));
 }

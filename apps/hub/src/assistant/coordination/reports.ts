@@ -1,3 +1,4 @@
+import { issueEventAuthority } from '../execution-authority';
 import { randomUUID } from 'node:crypto';
 import {
   AI_HOPS_MAX,
@@ -21,6 +22,8 @@ export interface ReportBack {
   readonly hops: number;
   readonly clientId: string | null;
   readonly plugin: PluginOrigin | null;
+  readonly deliveryId?: string;
+  readonly operationId?: string;
 }
 
 export interface ReportDeps {
@@ -56,10 +59,16 @@ export class Reports {
 
   finished(event: StoredEvent, text: string, ok: boolean): void {
     const state = ok ? 'answered' : 'failed';
-    if (this.deps.waiters.settle(event.id, { state, text })) {
+    if (this.deps.waiters.has(event.id)) {
+      if (this.claim(event, 'waiter')) {
+        this.deps.waiters.settle(event.id, { state, text });
+        this.deps.store.harnessChildren.delivered(event.id);
+      }
       return;
     }
-    if (event.report_to !== null) {
+    this.deps.store.write(() => {
+      if (!this.claim(event, 'parent') || event.report_to === null) return;
+      const child = this.deps.store.harnessChildren.find(event.id);
       this.report({
         fromChatId: event.chat_id,
         toChatId: event.report_to,
@@ -68,8 +77,13 @@ export class Reports {
         hops: event.hops + 1,
         clientId: event.client_id,
         plugin: this.pluginOf(event),
+        ...(child === undefined ? {} : { deliveryId: child.delivery_id, operationId: event.id }),
       });
-    }
+    });
+  }
+  private claim(event: StoredEvent, destination: 'parent' | 'waiter'): boolean {
+    const run = this.deps.store.aiAgentRuns.find(event.id);
+    return run === undefined || this.deps.store.aiAgentRuns.claimDelivery(run.id, destination);
   }
 
   report(back: ReportBack): void {
@@ -91,7 +105,7 @@ export class Reports {
     if (!this.deps.guard.admits(target)) {
       return;
     }
-    const eventId = randomUUID();
+    const eventId = back.deliveryId ?? randomUUID();
     store.assistantEvents.add({
       id: eventId,
       kind: 'report',
@@ -102,6 +116,13 @@ export class Reports {
       text: body,
       hops,
     });
+    issueEventAuthority(
+      store,
+      store.assistantEvents.event(eventId),
+      true,
+      store.harnessRecovery.latestAuthority(from.id),
+    );
+    if (back.operationId !== undefined) store.harnessChildren.delivered(back.operationId);
     this.deps.added();
   }
 

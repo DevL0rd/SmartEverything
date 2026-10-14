@@ -9,8 +9,9 @@ import type { Device } from '../../../store/state';
 import { DeviceVisual, useDeviceVisualState, type VisualSize } from '../../device-visuals';
 import { useDeviceModel } from '../model/device-model';
 
-const FAMILY_ROLE: Readonly<Partial<Record<DeviceFamily, ColourRole>>> = {
+const FAMILY_ROLE: Readonly<Partial<Record<DeviceFamily, ColourRole | null>>> = {
   humidifier: 'humidity',
+  diffuser: null,
   dehumidifier: 'humidity',
   tower_fan: 'temp-cool',
   fan: 'temp-cool',
@@ -23,12 +24,14 @@ const FAMILY_ROLE: Readonly<Partial<Record<DeviceFamily, ColourRole>>> = {
 function useGlowRole(device: Device): ColourRole | null {
   const model = useDeviceModel(device);
   const state = useDeviceVisualState(device);
+  const role = FAMILY_ROLE[model.family];
+  if (role === null) {
+    return null;
+  }
   if (!state.online || state.power === 'off') {
     return null;
   }
-  return state.band === null
-    ? (FAMILY_ROLE[model.family] ?? 'primary')
-    : AIR_BAND_COLOUR[state.band];
+  return state.band === null ? (role ?? 'primary') : AIR_BAND_COLOUR[state.band];
 }
 
 export function Visual({

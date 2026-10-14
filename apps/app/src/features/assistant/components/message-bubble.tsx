@@ -26,7 +26,13 @@ function isFresh(row: AssistantMessageRow): boolean {
   return true;
 }
 
-function Row({ item }: { readonly item: MessageItem }): ReactNode {
+function Row({
+  item,
+  hideText,
+}: {
+  readonly item: MessageItem;
+  readonly hideText: boolean;
+}): ReactNode {
   const { row, speaker } = item;
   if (row.kind === 'call') {
     return <CallCard row={row} />;
@@ -41,7 +47,7 @@ function Row({ item }: { readonly item: MessageItem }): ReactNode {
     case 'person':
       return <PersonMessage item={item} />;
     case 'ai':
-      return <AiMessage item={item} />;
+      return <AiMessage item={item} hideText={hideText} />;
     case 'system':
       return <SystemEvent event={{ kind: 'note', icon: 'sparkles', text: row.text }} />;
   }
@@ -106,9 +112,11 @@ function Entry({
 export function MessageBubble({
   item,
   flash,
+  hideText = false,
 }: {
   readonly item: MessageItem;
   readonly flash: boolean;
+  readonly hideText?: boolean;
 }): ReactNode {
   const [fresh] = useState(() => isFresh(item.row));
   return (
@@ -116,7 +124,7 @@ export function MessageBubble({
       <Markers item={item} />
       <View className="relative">
         {flash ? <Flash /> : null}
-        <Row item={item} />
+        <Row item={item} hideText={hideText} />
       </View>
     </Entry>
   );

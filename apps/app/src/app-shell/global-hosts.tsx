@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { appPlatform } from '../design/platform';
 import {
   AiCallHost,
+  BrowserRuntimeHost,
   AiSpeechHost,
   AssistantPushHost,
   CallAudioSync,
@@ -40,6 +41,7 @@ export function GlobalHosts(): ReactNode {
   usePreloading();
   return (
     <>
+      <BrowserRuntimeHost />
       <SearchPopover />
       <QuickControlsHost />
       <ScheduleSheetHost />

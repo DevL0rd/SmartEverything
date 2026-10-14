@@ -1,3 +1,4 @@
+import { captureNativeServerEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { PHONE_CONTEXT_STATE, PHONE_PLACE_NAME } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -73,7 +74,7 @@ interface PhoneEvents {
 }
 
 declare class PhoneNative extends NativeModule<PhoneEvents> {
-  startPhoneNode(serverUrl: string, token: string): Promise<unknown>;
+  startPhoneNode(serverUrl: string, token: string, enrollment?: string): Promise<unknown>;
   stopPhoneNode(): Promise<unknown>;
   phoneStatus(): Promise<unknown>;
   setPhoneSensor(sensor: PhoneSensor, on: boolean): Promise<unknown>;
@@ -100,7 +101,10 @@ function phoneFor(operation: PhoneOperation): PhoneNative {
 }
 
 export async function startPhoneNode(serverUrl: string, token: string): Promise<void> {
-  await phoneFor('startPhoneNode').startPhoneNode(serverUrl, token);
+  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
+  const source = phoneFor('startPhoneNode');
+  if (enrollment === null) await source.startPhoneNode(serverUrl, token);
+  else await source.startPhoneNode(serverUrl, token, enrollment);
 }
 
 export async function stopPhoneNode(): Promise<void> {

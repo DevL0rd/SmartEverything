@@ -1,26 +1,60 @@
 import { z } from 'zod';
+import { DSH_ENGINE, DSH_ENGINE_WRITE } from './ai-harness-session';
+import { CLAUDE_PROVIDER_OPTIONS } from './computer-ai';
+import { CODEX_PROVIDER_OPTIONS } from './codex';
 import { PLUGIN_REQUESTERS } from './plugin-people';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
 
-export const ENGINE_KINDS = ['openrouter'] as const;
+export const ENGINE_KINDS = ['openrouter', 'claude', 'codex', 'dsh'] as const;
 
 export type EngineKind = (typeof ENGINE_KINDS)[number];
 
 export const ENGINE_KIND = z.enum(ENGINE_KINDS);
 
-export const ENGINE = z.strictObject({
-  kind: ENGINE_KIND,
+const OPENROUTER_ENGINE_FIELDS = {
+  kind: z.literal('openrouter'),
   model: z.string().trim().min(1).max(200).nullable().default(null),
   effort: z.string().trim().min(1).max(32).nullable().default(null),
-});
-
+};
+const CLAUDE_ENGINE_FIELDS = {
+  kind: z.literal('claude'),
+  device_id: ID,
+  model: z.string().trim().min(1).max(200),
+  effort: z.string().trim().min(1).max(32).nullable().default(null),
+  settings: CLAUDE_PROVIDER_OPTIONS.default({ builtin_tools: [] }),
+};
+const CODEX_ENGINE_FIELDS = {
+  kind: z.literal('codex'),
+  device_id: ID,
+  model: z.string().trim().min(1).max(200),
+  effort: z.string().trim().min(1).max(32).nullable().default(null),
+  settings: CODEX_PROVIDER_OPTIONS.default({}),
+};
+export const ENGINE = z.discriminatedUnion('kind', [
+  z.object(OPENROUTER_ENGINE_FIELDS),
+  z.object(CLAUDE_ENGINE_FIELDS),
+  z.object(CODEX_ENGINE_FIELDS),
+  DSH_ENGINE,
+]);
+export const ENGINE_WRITE = z.discriminatedUnion('kind', [
+  z.strictObject(OPENROUTER_ENGINE_FIELDS),
+  z.strictObject(CLAUDE_ENGINE_FIELDS),
+  z.strictObject(CODEX_ENGINE_FIELDS),
+  DSH_ENGINE_WRITE,
+]);
 export type Engine = z.output<typeof ENGINE>;
-
-export const ENGINE_REQUEST = ENGINE.extend({
-  worker_id: z.string().nullable().optional(),
-}).transform(({ kind, model, effort }): Engine => ({ kind, model, effort }));
+export const ENGINE_REQUEST = z.discriminatedUnion('kind', [
+  z
+    .strictObject({ ...OPENROUTER_ENGINE_FIELDS, worker_id: z.string().nullable().optional() })
+    .transform(({ kind, model, effort }): Engine => ({ kind, model, effort })),
+  z.strictObject(CLAUDE_ENGINE_FIELDS),
+  z.strictObject(CODEX_ENGINE_FIELDS),
+  DSH_ENGINE_WRITE,
+]);
+export const AI_ENGINE_DEFAULT = z.strictObject({ engine: ENGINE.nullable() });
+export const AI_ENGINE_DEFAULT_CHANGE = z.strictObject({ engine: ENGINE_WRITE.nullable() });
 
 export const DEFAULT_ENGINE: Engine = {
   kind: 'openrouter',
@@ -63,9 +97,11 @@ export const MESSAGE_ORIGIN = z.strictObject({
 
 export type MessageOrigin = z.output<typeof MESSAGE_ORIGIN>;
 
-export const AI_CHAT_ROW = z.strictObject({
+export const AI_CHAT_ROW = z.object({
   id: ID,
   profile_id: ID,
+  deletion_state: z.enum(['deleting', 'failed']).nullable().default(null),
+  deletion_error: z.string().nullable().default(null),
   kind: z.enum(AI_CHAT_KINDS),
   title: z.string().min(1).max(AI_CHAT_TITLE_MAX),
   icon: z.string().min(1).max(40).nullable(),
@@ -73,14 +109,10 @@ export const AI_CHAT_ROW = z.strictObject({
   source_key: z.string().min(1).max(300).nullable(),
   engine: ENGINE,
   tools: z.array(z.string().min(1).max(200)).nullable(),
-  web_search: z
-    .boolean()
-    .nullable()
-    .default(null)
-    .describe('Whether the AI may search the web in this chat; null follows web_search_default'),
   pinned: z.boolean(),
   archived_at: MOMENT.nullable(),
   cost_micros: z.int().min(0),
+  cost_incomplete: z.boolean().optional(),
   origin: MESSAGE_ORIGIN.nullable()
     .default(null)
     .describe('How the chat began: the origin of its first message; null while it has none'),
@@ -127,10 +159,6 @@ export const WEB_SOURCES_EMBED = z.strictObject({
 
 export type WebSourcesEmbed = z.infer<typeof WEB_SOURCES_EMBED>;
 
-export function chatSearchesWeb(chat: Pick<AiChatRow, 'web_search'>, byDefault: boolean): boolean {
-  return chat.web_search ?? byDefault;
-}
-
 export const MESSAGE_EMBED = z.looseObject({ kind: z.string().min(1).max(40) });
 
 export const COMPACTION_EMBED = z.strictObject({
@@ -139,14 +167,6 @@ export const COMPACTION_EMBED = z.strictObject({
 });
 
 export type CompactionEmbed = z.infer<typeof COMPACTION_EMBED>;
-
-export const TOOLS_CHANGED_EMBED = z.strictObject({
-  kind: z.literal('tools_changed'),
-  added: z.array(z.string().min(1).max(200)).max(500),
-  removed: z.array(z.string().min(1).max(200)).max(500),
-});
-
-export type ToolsChangedEmbed = z.infer<typeof TOOLS_CHANGED_EMBED>;
 
 export const REPLY_SUGGESTIONS_MAX = 3;
 
@@ -184,6 +204,7 @@ export const AI_MESSAGE_FIELDS = {
   origin: MESSAGE_ORIGIN.nullable(),
   embeds: z.array(MESSAGE_EMBED).max(20),
   cost_micros: z.int().min(0),
+  cost_incomplete: z.boolean().optional(),
   model: z.string().max(200).nullable(),
 };
 
@@ -264,11 +285,6 @@ export const AI_CHAT_CHANGE = z
       ),
     engine: ENGINE_REQUEST,
     tools: z.array(z.string().min(1).max(200)).max(500).nullable(),
-    web_search: z
-      .boolean()
-      .describe(
-        'true lets the AI search the web in this chat, false stops it; the AI itself may set this for its own chat',
-      ),
   })
   .partial()
   .refine((change) => Object.keys(change).length > 0, {
@@ -311,7 +327,7 @@ export const AI_SUBAGENT = z.strictObject({
   task: z.string().trim().min(1).max(AI_ASK_TEXT_MAX),
   title: z.string().trim().min(1).max(AI_CHAT_TITLE_MAX).optional(),
   engine: ENGINE.optional(),
-  tools: z.array(z.string().min(1).max(200)).min(1).max(200).optional(),
+  tools: z.array(z.string().min(1).max(200)).max(200).optional(),
   wait: z.boolean().default(true),
   timeoutSeconds: z.int().min(5).max(300).default(120),
 });

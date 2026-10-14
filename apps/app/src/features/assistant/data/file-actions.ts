@@ -1,3 +1,4 @@
+import { nativeMediaFile } from '../../../api/connection/media-resources';
 import { Linking, Share } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { notify } from '../../../components/toast-store';
@@ -15,19 +16,34 @@ function failed(message: string, error: unknown): void {
 }
 
 export function previewFile(url: string, name: string): void {
-  WebBrowser.openBrowserAsync(url).catch((error: unknown) => {
-    failed(`${name} could not be opened`, error);
-  });
+  nativeMediaFile(url, 'open')
+    .then((handled) => {
+      if (handled === 'external') return WebBrowser.openBrowserAsync(url);
+      return undefined;
+    })
+    .catch((error: unknown) => {
+      failed(`${name} could not be opened`, error);
+    });
 }
 
 export function downloadFile(url: string, name: string): void {
-  Linking.openURL(url).catch((error: unknown) => {
-    failed(`${name} could not be downloaded`, error);
-  });
+  nativeMediaFile(url, 'save')
+    .then((handled) => {
+      if (handled === 'external') return Linking.openURL(url);
+      return undefined;
+    })
+    .catch((error: unknown) => {
+      failed(`${name} could not be downloaded`, error);
+    });
 }
 
 export function shareFile(url: string, name: string): void {
-  Share.share({ message: url, title: name }).catch((error: unknown) => {
-    failed(`${name} could not be shared`, error);
-  });
+  nativeMediaFile(url, 'open')
+    .then((handled) => {
+      if (handled === 'external') return Share.share({ message: url, title: name });
+      return undefined;
+    })
+    .catch((error: unknown) => {
+      failed(`${name} could not be shared`, error);
+    });
 }

@@ -67,11 +67,16 @@ const PLUGIN_RULE = z.strictObject({
   source: FIREWALL_NETWORK,
 });
 
+const HUB_RULE = PLUGIN_RULE.extend({ purpose: z.literal('hub') });
+const DISCOVERY_RULE = PLUGIN_RULE.extend({ purpose: z.literal('discovery') });
+
 const PORT_RULE = z.discriminatedUnion('purpose', [
   CAMERA_RULE,
   WEBRTC_RULE,
   DEVICE_RULE,
   PLUGIN_RULE,
+  HUB_RULE,
+  DISCOVERY_RULE,
 ]);
 
 export type PortRule = z.infer<typeof PORT_RULE>;
@@ -81,7 +86,7 @@ export function ruleSource(rule: PortRule): string | null {
 }
 
 export function rulePort(rule: PortRule): number | null {
-  return rule.purpose === 'webrtc' || rule.purpose === 'plugin' ? rule.port : null;
+  return 'port' in rule ? rule.port : null;
 }
 
 const FIREWALL_OPENING = z.strictObject({

@@ -21,6 +21,7 @@ export function AutomationsLayout(): ReactNode {
   const master = isMasterWidth(width);
   const stack = (
     <Stack
+      initialRouteName="index"
       screenLayout={screenPause}
       screenOptions={master ? { ...options, animation: 'none' } : options}
     >

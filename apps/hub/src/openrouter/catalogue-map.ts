@@ -129,6 +129,9 @@ export function kindsOf(input: readonly string[], output: readonly string[]): Ai
   if (output.includes('video')) {
     kinds.push('video');
   }
+  if (output.includes('transcription')) {
+    kinds.push('transcribe');
+  }
   if (output.includes('embeddings')) {
     kinds.push('embed');
   }
@@ -154,7 +157,9 @@ export function chatModelRow(model: OrModel, syncedAt: string, efforts: Efforts)
     default_effort: efforts.defaultEffort,
     tools: model.supported_parameters.includes('tools'),
     alias_of: model.alias_target?.slug ?? null,
-    pricing: pricingOf(model.pricing),
+    pricing: output.includes('transcription')
+      ? { ...NO_PRICES, variable: true }
+      : pricingOf(model.pricing),
     kinds: kindsOf(input, output),
     expires_at: model.expiration_date ?? null,
     synced_at: syncedAt,

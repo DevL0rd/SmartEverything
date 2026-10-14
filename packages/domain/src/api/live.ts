@@ -1,3 +1,14 @@
+import { AI_PREVIEW_NOTICE, AI_PREVIEW_LEASE } from '../ai-previews';
+import { AI_HTML_PREVIEW_LEASE } from '../ai-preview-documents';
+import { IMAGE_OPERATION_NOTICE, IMAGE_OPERATION_PREVIEW } from '../image-operations';
+import {
+  AI_CHAT_RUNTIME_PROVIDER_NOTICE,
+  COMPUTER_RUNTIME_STATUS_NOTICE,
+  COMPUTER_RUNTIME_NATIVE_NOTICE,
+} from '../ai-runtime-provider';
+import { AI_HARNESS_NOTICE } from '../ai-harness-session';
+import { AI_HARNESS_CONFIGURATION_NOTICE } from '../ai-harness-extensions';
+import { AI_CHAT_PROVIDER_NOTICE } from '../ai-provider';
 import { z } from 'zod';
 import { BODY_READING_ROW } from '../body-readings';
 import { FOOD_ROW } from '../foods';
@@ -8,6 +19,7 @@ import { EXCHANGE_RATES_ROW } from '../exchange-rates';
 import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE, CHAT_STREAM_NOTICE } from '../ai-chats';
 import { ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS_NOTICE } from '../assistant';
 import { AI_USAGE_ROW } from '../ai-usage';
+import { COMPUTER_AI_NOTICES } from '../computer-ai-notices';
 import { CLAUDE_NOTICES } from '../claude';
 import { WATCH_ACTION_NOTICE } from '../watch-control';
 import { HEALTH_ENTRY_ROW } from '../health-entries';
@@ -227,9 +239,19 @@ const NOTICES = [
   ASSISTANT_STATUS_NOTICE,
   CHAT_ACTIVITY_NOTICE,
   CHAT_STREAM_NOTICE,
+  IMAGE_OPERATION_NOTICE,
+  IMAGE_OPERATION_PREVIEW,
   AI_SPEECH_NOTICE,
   PUSH_COMMAND_NOTICE,
   ...CLAUDE_NOTICES,
+  ...COMPUTER_AI_NOTICES,
+  AI_CHAT_PROVIDER_NOTICE,
+  AI_HARNESS_NOTICE,
+  AI_HARNESS_CONFIGURATION_NOTICE,
+  AI_PREVIEW_NOTICE,
+  AI_CHAT_RUNTIME_PROVIDER_NOTICE,
+  COMPUTER_RUNTIME_STATUS_NOTICE,
+  COMPUTER_RUNTIME_NATIVE_NOTICE,
 ] as const;
 
 const READY = z.strictObject({
@@ -265,6 +287,10 @@ export const LIVE_CLIENT_MESSAGE = z.discriminatedUnion('type', [
     type: z.literal('subscribe'),
     tables: z.array(LIVE_TABLE),
     streams: z.array(LIVE_STREAM),
+    capabilities: z.array(z.string().min(1).max(100)).max(20).optional(),
+    previewOwner: z
+      .strictObject({ chatId: z.uuid(), lease: z.union([AI_PREVIEW_LEASE, AI_HTML_PREVIEW_LEASE]) })
+      .optional(),
   }),
 ]);
 

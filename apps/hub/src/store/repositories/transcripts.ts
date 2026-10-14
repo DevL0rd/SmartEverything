@@ -276,7 +276,7 @@ export class TranscriptsRepository {
     const row = this.context.sql.get(
       SPENT,
       `select coalesce(sum(cost_micros), 0) as spent from ai_usage
-       where work = 'transcribe' and source = 'gemini' and plugin_id is null and at >= $from`,
+       where work = 'transcribe' and source in ('gemini', 'openrouter') and plugin_id is null and at >= $from`,
       { from: moment(from) },
     );
     if (row === undefined) {

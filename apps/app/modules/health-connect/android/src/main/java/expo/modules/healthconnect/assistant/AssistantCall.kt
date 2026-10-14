@@ -1,11 +1,12 @@
 package expo.modules.healthconnect.assistant
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.Network
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import expo.modules.healthconnect.CredentialSlot
+import expo.modules.healthconnect.Credentials
+import expo.modules.healthconnect.configureServer
 import expo.modules.healthconnect.voice.OpusEncoderPipe
 import expo.modules.healthconnect.voice.OpusPlayer
 import expo.modules.healthconnect.voice.PlayerProfile
@@ -19,12 +20,13 @@ import kotlin.math.sqrt
 import org.json.JSONException
 import org.json.JSONObject
 
-class AssistantCall(private val context: Context, serverUrl: String, token: String) : VoiceSocketListener {
+class AssistantCall(private val context: Context, serverUrl: String, token: String, enrollment: String) : VoiceSocketListener {
   private val player = OpusPlayer(context, PlayerProfile.CALL)
+  private val credentials = Credentials(context, CredentialSlot.SERVER).apply { configureServer(context, serverUrl, token, enrollment) }
   private val socket = VoiceSocket(
     serverUrl.trimEnd('/').replaceFirst("http", "ws") + PATH,
     listOf(PROTOCOL, "bearer.$token"),
-    this
+    this, target = credentials.load()
   )
   private val devices = CallDevices(context)
   private val link = CallLink(::lapsed)
@@ -32,7 +34,6 @@ class AssistantCall(private val context: Context, serverUrl: String, token: Stri
   private var capture: AutoCloseable? = null
   private var encoder: OpusEncoderPipe? = null
   private var gate: SpeechGate? = null
-  private var network: ConnectivityManager.NetworkCallback? = null
   private var deviceWatch: AutoCloseable? = null
   private var callId: String? = null
   private var closed = false
@@ -67,7 +68,6 @@ class AssistantCall(private val context: Context, serverUrl: String, token: Stri
       listen(callId)
       configure(CallAudioStore.latest)
       rerouted()
-      watchNetwork()
       deviceWatch = devices.watch(::rerouted)
     } catch (failure: Exception) {
       close()
@@ -107,8 +107,6 @@ class AssistantCall(private val context: Context, serverUrl: String, token: Stri
   fun close() {
     if (closed) return
     closed = true
-    network?.let { context.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) }
-    network = null
     deviceWatch?.close()
     deviceWatch = null
     link.close()
@@ -200,16 +198,6 @@ class AssistantCall(private val context: Context, serverUrl: String, token: Stri
       Log.e(TAG, failure.message.orEmpty())
       AssistantCallEvents.control(ROUTE_FAILED)
     }
-  }
-
-  private fun watchNetwork() {
-    val callback = object : ConnectivityManager.NetworkCallback() {
-      override fun onAvailable(network: Network) {
-        main.post { if (!closed) socket.reconnectNow() }
-      }
-    }
-    context.getSystemService(ConnectivityManager::class.java).registerDefaultNetworkCallback(callback)
-    network = callback
   }
 
   private fun activitySink(callId: String) = object : SpeechGateSink {

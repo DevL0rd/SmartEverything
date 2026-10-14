@@ -1,81 +1,14 @@
-import type { Href } from 'expo-router';
-
-export interface SettingsMount {
+interface SettingsMount {
   readonly root: string;
-  readonly owner: string;
-  readonly ownerHref: Href;
   readonly base: string;
-  readonly href: (rest: readonly string[], focus?: string) => Href;
 }
 
-function withFocus(focus: string | undefined): Readonly<Record<string, string>> {
-  return focus === undefined ? {} : { focus };
-}
-
-export const SETTINGS_MOUNTS: readonly SettingsMount[] = [
-  {
-    root: 'talk',
-    owner: 'Walkie-talkie',
-    ownerHref: '/talk',
-    base: 'talk/settings',
-    href: (rest, focus) =>
-      rest.length === 0
-        ? { pathname: '/talk/settings', params: withFocus(focus) }
-        : {
-            pathname: '/talk/settings/[...page]',
-            params: { ...withFocus(focus), page: [...rest] },
-          },
-  },
-  {
-    root: 'health',
-    owner: 'Fitness',
-    ownerHref: '/fitness',
-    base: 'fitness/settings',
-    href: (rest, focus) =>
-      rest.length === 0
-        ? { pathname: '/fitness/settings', params: withFocus(focus) }
-        : {
-            pathname: '/fitness/settings/[...page]',
-            params: { ...withFocus(focus), page: [...rest] },
-          },
-  },
-  {
-    root: 'cameras',
-    owner: 'Cameras',
-    ownerHref: '/cameras',
-    base: 'cameras/settings',
-    href: (rest, focus) =>
-      rest.length === 0
-        ? { pathname: '/cameras/settings', params: withFocus(focus) }
-        : {
-            pathname: '/cameras/settings/[...page]',
-            params: { ...withFocus(focus), page: [...rest] },
-          },
-  },
-  {
-    root: 'devices',
-    owner: 'Devices',
-    ownerHref: '/devices',
-    base: 'devices/settings',
-    href: (rest, focus) =>
-      rest.length === 0
-        ? { pathname: '/devices/settings', params: withFocus(focus) }
-        : {
-            pathname: '/devices/settings/[...page]',
-            params: { ...withFocus(focus), page: [...rest] },
-          },
-  },
+const SETTINGS_MOUNTS: readonly SettingsMount[] = [
+  { root: 'talk', base: 'talk/settings' },
+  { root: 'health', base: 'fitness/settings' },
+  { root: 'cameras', base: 'cameras/settings' },
+  { root: 'devices', base: 'devices/settings' },
 ];
-
-export function mountOf(id: string): SettingsMount | null {
-  const root = id.split('/')[0];
-  return SETTINGS_MOUNTS.find((mount) => mount.root === root) ?? null;
-}
-
-export function mountedHref(id: string, focus?: string): Href | null {
-  const mount = mountOf(id);
-  return mount === null ? null : mount.href(id.split('/').slice(1), focus);
-}
 
 export function settingsIdOfRoute(route: string): string | null {
   if (route === 'settings') {

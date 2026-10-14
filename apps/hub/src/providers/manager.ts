@@ -34,6 +34,7 @@ export interface ProviderManagerOptions {
   readonly store: Pick<HubDatabase, 'updateProviderLink'>;
   readonly inventory: Pick<Inventory, 'apply' | 'markOffline' | 'devicesOf' | 'setOnline'>;
   readonly state: Pick<StateWriter, 'push'>;
+  readonly prepareAdapter?: (adapter: ProviderAdapter) => void;
   readonly events: Pick<EventRouter, 'fromProvider'>;
   readonly dataDirectory: string;
   readonly accountChanged: (provider: Provider, account: StoredAccount | null) => Promise<void>;
@@ -262,6 +263,7 @@ export class ProviderManager implements AdapterDirectory {
     await mkdir(context.dataDirectory, { recursive: true, mode: 0o700 });
     const starter = starterFor(this.options.registry, provider);
     const adapter = await starter.start(account, context);
+    this.options.prepareAdapter?.(adapter);
     const deviceCount = await this.applyDevices(provider, await adapter.discover());
     const unsubscribe = await adapter.subscribe(this.sink(provider));
     this.running.set(provider, { adapter, unsubscribe });

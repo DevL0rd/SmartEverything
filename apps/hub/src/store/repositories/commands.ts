@@ -1,3 +1,5 @@
+import { HarnessEffectsRepository } from './harness-effects';
+import { currentExecutionAuthorities } from '../../assistant/execution-authority';
 import {
   COMMAND_ROW,
   type CommandRow,
@@ -127,6 +129,7 @@ export class CommandsRepository {
         expiresAt: new Date(Date.parse(now) + COMMAND_LIFETIME_MS).toISOString(),
       },
     );
+    new HarnessEffectsRepository(this.context).keep('command', id, currentExecutionAuthorities());
     const row = this.byId(id);
     this.context.changed('commands', 'INSERT', row, null);
     return row;

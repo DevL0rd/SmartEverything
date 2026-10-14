@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   useInfiniteQuery,
   useQuery,
@@ -9,19 +10,10 @@ import {
   type AiModelKind,
   type AiModelList,
   type AiModelSuggested,
-  type AiProviderCount,
 } from '@smarteverything/domain';
-import {
-  listAiModelProviders,
-  listAiModels,
-  readAiModel,
-  suggestedAiModels,
-  type ModelPageQuery,
-} from '../../../api/ai';
+import { listAiModels, readAiModel, suggestedAiModels, type ModelPageQuery } from '../../../api/ai';
 import { aiModelsKeys } from '../../../queries/keys';
 import { choiceOf, type ModelChoice } from './model-choice';
-
-const PAGES_MAX = 20;
 
 export function useSuggestedModels(
   kind: AiModelKind,
@@ -33,17 +25,6 @@ export function useSuggestedModels(
   return useQuery({
     queryKey: aiModelsKeys.suggested(kind, choice),
     queryFn: () => suggestedAiModels(kind, choice),
-    enabled,
-  });
-}
-
-export function useModelProviders(
-  kind: AiModelKind,
-  enabled: boolean,
-): UseQueryResult<AiProviderCount[]> {
-  return useQuery({
-    queryKey: aiModelsKeys.providers(kind),
-    queryFn: () => listAiModelProviders(kind),
     enabled,
   });
 }
@@ -68,6 +49,7 @@ export function useModelPages(
   query: Omit<ModelPageQuery, 'cursor'>,
   enabled: boolean,
 ): ModelPages {
+  const fetching = useRef(false);
   const result = useInfiniteQuery<
     AiModelList,
     Error,
@@ -79,7 +61,7 @@ export function useModelPages(
     queryFn: ({ pageParam }) =>
       listAiModels(pageParam === null ? query : { ...query, cursor: pageParam }),
     initialPageParam: null,
-    getNextPageParam: (last, all) => (all.length >= PAGES_MAX ? null : (last.next_cursor ?? null)),
+    getNextPageParam: (last) => last.next_cursor ?? null,
     enabled,
   });
   return {
@@ -89,7 +71,13 @@ export function useModelPages(
     error: result.error,
     more:
       result.hasNextPage && !result.isFetchingNextPage
-        ? (): void => void result.fetchNextPage()
+        ? (): void => {
+            if (fetching.current) return;
+            fetching.current = true;
+            void result.fetchNextPage({ cancelRefetch: false }).finally(() => {
+              fetching.current = false;
+            });
+          }
         : null,
     retry: (): void => {
       void result.refetch();

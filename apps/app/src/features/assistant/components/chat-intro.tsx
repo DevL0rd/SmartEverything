@@ -11,7 +11,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import { useChatIdentity } from '../chats/chat-identity';
 import { SourceMark } from '../chats/source-mark';
 import { introLineOf } from '../model/chat-intro';
-import { modelIdName } from '../model/model-name';
+import { useChatModel } from '../chats/chat-model';
 
 function IntroChip({
   icon,
@@ -38,6 +38,7 @@ function IntroChip({
 }
 
 export function ChatIntro({ chat }: { readonly chat: AiChatRow }): ReactNode {
+  const model = useChatModel(chat.engine);
   const now = useMinute();
   const timeZone = useStoreSelector((state) => state.settings?.time_zone ?? null);
   const { source, parent } = useChatIdentity(chat);
@@ -52,7 +53,7 @@ export function ChatIntro({ chat }: { readonly chat: AiChatRow }): ReactNode {
         {introLineOf(source, parent?.title ?? null, when)}
       </Text>
       <View className="flex-row flex-wrap justify-center gap-1.5 pt-1.5">
-        <IntroChip icon="sparkles" label={modelIdName(chat.engine.model)} />
+        <IntroChip icon="sparkles" label={model.name} />
         {chat.pinned ? <IntroChip icon="pin" label="Pinned" /> : null}
       </View>
     </View>

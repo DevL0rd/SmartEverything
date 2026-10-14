@@ -36,7 +36,8 @@ function VisualView({ family, state, size, px: fixed }: VisualViewProps): ReactN
   const px = fixed ?? natural;
   const tone = toneOf(state);
   const onScreen = useOnScreen(frame);
-  const { moving, reduced } = useAnimationGate(tone === 'active', onScreen);
+  const animated = tone === 'active' || (state.online && state.ambientLight === true);
+  const { moving, reduced } = useAnimationGate(animated, onScreen);
   const Visual = VISUALS[family];
   return (
     <View

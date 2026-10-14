@@ -21,7 +21,7 @@ export interface RowFacts {
   readonly capabilities: (running: boolean) => ClaudeCapabilities;
 }
 
-function liveKey(file: LiveFile): string {
+export function liveSessionId(file: LiveFile): string {
   return file.sessionId ?? `pid:${String(file.pid)}:${file.procStart ?? ''}`;
 }
 
@@ -40,7 +40,7 @@ function newerOf(left: LiveSource, right: LiveSource): LiveSource {
 function bestLiveByKey(live: readonly LiveSource[]): Map<string, LiveSource> {
   const best = new Map<string, LiveSource>();
   for (const source of live) {
-    const key = liveKey(source.file);
+    const key = liveSessionId(source.file);
     const known = best.get(key);
     best.set(key, known === undefined ? source : newerOf(known, source));
   }

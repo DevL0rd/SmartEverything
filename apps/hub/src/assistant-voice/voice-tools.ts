@@ -89,10 +89,13 @@ export function voiceSet(
     ...(responder ? [DO_TASK] : []),
     ...(sight ? [SEE, STOP_LOOKING] : []),
     END,
-  ];
+  ].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function hostedSet(set: readonly ToolSpec[], speaking: HostedSpeaking | null): ToolSpec[] {
+export function hostedSet<T extends ToolSpec>(
+  set: readonly T[],
+  speaking: HostedSpeaking | null,
+): T[] {
   if (speaking === null) {
     return [...set];
   }

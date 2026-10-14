@@ -2,6 +2,7 @@ import { ApiError, type IceServer } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { answerCameraOffer, cameraRelayUrl } from '../../../api/media';
 import { ServerUnreachableError } from '../../../api/transport';
+import type { ApiClient } from '../../../api/connection/client';
 import {
   GATHERING_STEP,
   PeerError,
@@ -17,11 +18,13 @@ import { rawErrorText } from '../../../format/errors';
 const log = new Logger('app.camera-session');
 
 export interface SessionTarget {
+  readonly client: ApiClient;
   readonly deviceId: string;
   readonly iceServers: readonly IceServer[];
 }
 
 export interface SessionHooks {
+  readonly active: () => boolean;
   readonly report: (phase: SessionPhase) => void;
   readonly onMedia: (media: MediaHandle) => void;
   readonly onFlow: (flowing: boolean) => void;
@@ -94,10 +97,14 @@ export function startDirect(target: SessionTarget, hooks: SessionHooks): void {
   hooks.report({ kind: 'reaching' });
   peer
     .offer()
-    .then((offer) => answerCameraOffer(target.deviceId, offer))
+    .then((offer) =>
+      hooks.active() ? answerCameraOffer(target.deviceId, offer, target.client) : null,
+    )
     .then(async (answer) => {
-      hooks.report({ kind: 'starting' });
-      await peer.answer(answer);
+      if (answer !== null && hooks.active()) {
+        hooks.report({ kind: 'starting' });
+        await peer.answer(answer);
+      }
     })
     .catch((error: unknown) => {
       failed(hooks, target.deviceId, error);
@@ -110,20 +117,23 @@ export function startRelay(target: SessionTarget, hooks: SessionHooks): void {
     return;
   }
   hooks.report({ kind: 'reaching' });
-  cameraRelayUrl(target.deviceId).then(
-    (url) => {
+  cameraRelayUrl(target.deviceId, target.client)
+    .then((url) => {
+      if (!hooks.active()) {
+        return;
+      }
       log.info('camera.relay_started', { deviceId: target.deviceId });
       wire(createRelayLink(url), 'mse', hooks);
       hooks.report({ kind: 'starting' });
-    },
-    (error: unknown) => {
+    })
+    .catch((error: unknown) => {
       failed(hooks, target.deviceId, error);
-    },
-  );
+    });
 }
 
 export function guarded(hooks: SessionHooks, stopped: () => boolean): SessionHooks {
   return {
+    active: (): boolean => !stopped() && hooks.active(),
     report: (phase): void => {
       if (!stopped()) {
         hooks.report(phase);

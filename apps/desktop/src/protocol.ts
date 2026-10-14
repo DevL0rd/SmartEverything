@@ -1,3 +1,4 @@
+import { NATIVE_HTML_SCHEME } from '@smarteverything/domain';
 import { stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { net, protocol, type Session } from 'electron';
@@ -6,6 +7,16 @@ import { planWebResponse, resolveWebPath } from './web-root.js';
 
 export function registerAppScheme(): void {
   protocol.registerSchemesAsPrivileged([
+    {
+      scheme: NATIVE_HTML_SCHEME,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        corsEnabled: true,
+        stream: true,
+      },
+    },
     {
       scheme: APP_SCHEME,
       privileges: {

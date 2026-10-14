@@ -26,6 +26,7 @@ export interface SignalMatchSpec {
   readonly key: string;
   readonly label: string;
   readonly values: readonly string[] | null;
+  readonly valueLabels?: Readonly<Record<string, string>>;
 }
 
 export interface SignalKindSpec {

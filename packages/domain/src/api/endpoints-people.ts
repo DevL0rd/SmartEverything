@@ -14,7 +14,7 @@ import { SESSION } from './endpoints-access';
 import { DONE, ID, NOTHING } from './primitives';
 import { DEVICE_NAME, DEVICE_ROW } from './rows-home';
 
-export const LOCAL_DRIVERS = ['xiaomi_scale', 'xiaomi_watch'] as const;
+export const LOCAL_DRIVERS = ['xiaomi_scale', 'xiaomi_watch', 'xiaomi_magnet'] as const;
 
 export type LocalDriver = (typeof LOCAL_DRIVERS)[number];
 
@@ -31,6 +31,11 @@ export const BIND_KEY = z
   .regex(/^[0-9a-f]{32}$/, '32 hexadecimal characters');
 
 export const LOCAL_DEVICE_SETUP = z.union([
+  z.strictObject({
+    driver: z.literal('xiaomi_magnet'),
+    source: z.literal('xiaomi'),
+    xiaomiDeviceId: ID,
+  }),
   z.strictObject({
     driver: z.literal('xiaomi_scale'),
     source: z.literal('xiaomi'),
@@ -111,7 +116,7 @@ const LOCAL_DEVICE_ENDPOINTS = {
     method: 'POST',
     path: '/api/local-devices',
     access: 'owner',
-    summary: 'Add a device SmartEverything talks to itself, such as a Bluetooth scale',
+    summary: 'Add a built-in device or enable passive Bluetooth updates on an existing Xiaomi door',
     params: NOTHING,
     query: NOTHING,
     body: LOCAL_DEVICE_SETUP,
@@ -121,11 +126,39 @@ const LOCAL_DEVICE_ENDPOINTS = {
     method: 'DELETE',
     path: '/api/local-devices/:deviceId',
     access: 'owner',
-    summary: 'Remove a built-in device and forget its key',
+    summary: 'Remove a built-in device or disable an existing device’s passive Bluetooth updates',
     params: z.strictObject({ deviceId: ID }),
     query: NOTHING,
     body: NO_BODY,
     response: DONE,
+  }),
+  removeBleObserver: endpoint({
+    method: 'DELETE',
+    path: '/api/ble/devices/:deviceId',
+    access: 'owner',
+    summary:
+      'Disable passive Bluetooth observation and forget its key; preserve the original Xiaomi device',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: DONE,
+  }),
+  readBleDevice: endpoint({
+    method: 'GET',
+    path: '/api/ble/devices/:deviceId',
+    access: 'member',
+    summary:
+      'Read passive Bluetooth setup and authenticated receiver freshness for an existing device',
+    params: z.strictObject({ deviceId: ID }),
+    query: NOTHING,
+    body: NO_BODY,
+    response: z.strictObject({
+      configured: z.boolean(),
+      address: BLUETOOTH_ADDRESS.nullable(),
+      lastSeenAt: z.string().nullable(),
+      freshUntil: z.string().nullable(),
+      blockedReason: z.string().nullable(),
+    }),
   }),
   readBleWatch: endpoint({
     method: 'GET',

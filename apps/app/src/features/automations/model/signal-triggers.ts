@@ -3,6 +3,7 @@ import {
   EVENT_KINDS,
   SIGNAL_SOURCES,
   SIGNAL_TRIGGER,
+  kindSpecOf,
   type SignalKindSpec,
   type SignalSourceSpec,
   type SignalTrigger,
@@ -122,20 +123,70 @@ function untimed(timing: SignalTiming): boolean {
 
 function timingFields(
   timing: SignalTiming,
-): Pick<SignalTrigger, 'window' | 'debounceSeconds' | 'holdSeconds' | 'cooldownSeconds' | 'match'> {
+): Pick<SignalTrigger, 'window' | 'debounceSeconds' | 'holdSeconds' | 'cooldownSeconds'> {
   return {
     window: timing.window,
     debounceSeconds: timing.debounceSeconds,
     holdSeconds: timing.holdSeconds,
     cooldownSeconds: timing.cooldownSeconds,
-    match: {},
   };
 }
 
-export function withTiming(base: TimedBase, timing: SignalTiming): Trigger {
-  if (untimed(timing)) {
+function originalSignal(base: TimedBase, original: Trigger | undefined): SignalTrigger | null {
+  if (original?.type !== 'signal') {
+    return null;
+  }
+  const source = base.type === 'event' ? 'event' : 'device';
+  return original.source === source ? original : null;
+}
+
+function compatibleMatch(base: TimedBase, original: SignalTrigger | null): SignalTrigger['match'] {
+  if (original === null) {
+    return {};
+  }
+  if (base.type === 'state' || base.kind === original.kind) {
+    return original.match;
+  }
+  const allowed = kindSpecOf(SIGNAL_SOURCES, { source: 'event', kind: base.kind })?.match;
+  return Object.fromEntries(
+    Object.entries(original.match).filter(([key, value]) => {
+      const spec = allowed?.find((entry) => entry.key === key);
+      return (
+        spec !== undefined &&
+        (spec.values === null || (typeof value === 'string' && spec.values.includes(value)))
+      );
+    }),
+  );
+}
+
+function eventComparison(
+  timing: SignalTiming,
+  original: SignalTrigger | null,
+): SignalTrigger['comparison'] {
+  if (original !== null) {
+    const previous = timingOf(original);
+    if (previous.window?.mode === timing.window?.mode && previous.atLeast === timing.atLeast) {
+      return original.comparison;
+    }
+  }
+  return countComparison(timing);
+}
+
+function stateComparison(
+  base: Extract<TimedBase, { type: 'state' }>,
+  original: SignalTrigger | null,
+): SignalTrigger['comparison'] {
+  return original !== null && original.comparison === null && base.comparison.operator === 'changed'
+    ? null
+    : base.comparison;
+}
+
+export function withTiming(base: TimedBase, timing: SignalTiming, original?: Trigger): Trigger {
+  const signal = originalSignal(base, original);
+  if (untimed(timing) && signal === null) {
     return base;
   }
+  const match = compatibleMatch(base, signal);
   if (base.type === 'state') {
     return {
       type: 'signal',
@@ -143,7 +194,8 @@ export function withTiming(base: TimedBase, timing: SignalTiming): Trigger {
       kind: 'state',
       subject: base.deviceId,
       field: base.capability,
-      comparison: base.comparison,
+      comparison: stateComparison(base, signal),
+      match,
       ...timingFields(timing),
     };
   }
@@ -152,8 +204,9 @@ export function withTiming(base: TimedBase, timing: SignalTiming): Trigger {
     source: 'event',
     kind: base.kind,
     subject: base.deviceId,
-    field: null,
-    comparison: timing.window === null ? null : { operator: 'gte', value: timing.atLeast },
+    field: signal?.kind === base.kind ? signal.field : null,
+    comparison: eventComparison(timing, signal),
+    match,
     ...timingFields(timing),
   };
 }

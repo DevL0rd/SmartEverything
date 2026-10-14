@@ -57,11 +57,6 @@ export function stepsOfTools(tools: readonly ChatToolItem[]): readonly WorkStep[
   }));
 }
 
-export function elapsedText(milliseconds: number): string {
-  const seconds = Math.max(0, milliseconds) / 1000;
-  return seconds < 10 ? `${seconds.toFixed(1)} s` : `${String(Math.round(seconds))} s`;
-}
-
 function liveSummary(steps: readonly WorkStep[], thinking: boolean): WorkSummary {
   const running = steps.findLast((step) => step.state === 'running');
   return {

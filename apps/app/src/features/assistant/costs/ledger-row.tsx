@@ -19,7 +19,7 @@ export interface LedgerRowProps {
 export function LedgerRow({ row, timeZone, showPerson, onOpen }: LedgerRowProps): ReactNode {
   const money = useMoney();
   const title = titleOfRow(row);
-  const cost = money.cost(row.cost_micros);
+  const cost = row.cost_available === false ? 'Unavailable' : money.cost(row.cost_micros);
   return (
     <Interactive
       label={`${title}, ${cost}, ${clock(row.at, timeZone)}`}
@@ -40,7 +40,7 @@ export function LedgerRow({ row, timeZone, showPerson, onOpen }: LedgerRowProps)
             className="tabular"
             tone={row.cost_state === 'estimated' ? 'variant' : 'default'}
           >
-            {row.cost_state === 'estimated' ? `≈ ${cost}` : cost}
+            {row.cost_available !== false && row.cost_state === 'estimated' ? `≈ ${cost}` : cost}
           </Text>
         </View>
         <View className="flex-row items-baseline gap-2">

@@ -18,11 +18,12 @@ const VERSION_BASE = '2.0.0';
 const VERSION_DIGITS = 12;
 
 const DESCRIPTION =
-  'SmartEverything link: every SmartEverything tool in Claude Code, and the way SmartEverything sees, answers and steers Claude Desktop sessions.';
+  'SmartEverything link: scoped home tools, approvals and direct native tool access for attached Claude Code sessions.';
 
 export interface LinkFileFacts {
   readonly launch: LinkLaunch;
   readonly url: string;
+  readonly mcp?: { readonly url: string | null; readonly headersCommand: string };
 }
 
 function commandHook(
@@ -79,13 +80,16 @@ function contentFiles(facts: LinkFileFacts): Readonly<Record<string, string>> {
     [pluginPath('hooks/commands.json')]: json(hookTable(facts.launch)),
     [pluginPath(`hooks/${MOD_FILE}`)]: modSource(facts.launch),
     [pluginPath('.mcp.json')]: json({
-      mcpServers: {
-        [PLUGIN]: {
-          type: 'http',
-          url: `${facts.url}/mcp`,
-          headersHelper: helperCommand(facts.launch, 'headers'),
-        },
-      },
+      mcpServers:
+        facts.mcp?.url === null
+          ? {}
+          : {
+              [PLUGIN]: {
+                type: 'http',
+                url: facts.mcp?.url ?? `${facts.url}/mcp`,
+                headersHelper: facts.mcp?.headersCommand ?? helperCommand(facts.launch, 'headers'),
+              },
+            },
     }),
   };
 }

@@ -1,3 +1,7 @@
+import { XIAOMI_MAGNET_MODEL } from '@smarteverything/ble';
+import { readBluetoothIdentity } from './bluetooth-identity';
+import { createHash } from 'node:crypto';
+import type { PassiveSource } from '../../local/passive-observations';
 import {
   CommandRefusedError,
   type AdapterSink,
@@ -10,10 +14,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import {
-  BEACON_KEY_PATH,
   DEVICE_LIST_PATH,
-  beaconKeyData,
-  parseBeaconKey,
   cameraFeatures,
   chooseTransport,
   deviceListData,
@@ -73,14 +74,7 @@ class CameraPollerMissingError extends Error {
 export interface BluetoothIdentity {
   readonly mac: string;
   readonly bindKey: string;
-}
-
-class BluetoothAddressMissingError extends Error {
-  override readonly name = 'BluetoothAddressMissingError';
-
-  constructor(did: string) {
-    super(`The Xiaomi device list has no Bluetooth address for ${did}.`);
-  }
+  readonly accountScope?: string;
 }
 
 function virtualDidOf(bytes: Uint8Array): bigint {
@@ -93,6 +87,10 @@ export class XiaomiAdapter implements ProviderAdapter {
   private cameras: { readonly did: string; readonly poller: CameraEventPoller }[] = [];
   private devices = new Map<string, DiscoveredDevice>();
   private sink: AdapterSink | null = null;
+  private readonly passive = new Map<
+    string,
+    { readonly source: PassiveSource; readonly address: string }
+  >();
   private readonly virtualDid: bigint;
 
   constructor(private readonly options: XiaomiAdapterOptions) {
@@ -108,6 +106,14 @@ export class XiaomiAdapter implements ProviderAdapter {
       const runner = new DeviceRunner(entry, opened, this.runnerContext());
       await runner.loadPtzPositions();
       this.runners.set(entry.cloud.did, runner);
+      const passive = this.passive.get(entry.cloud.did);
+      if (
+        passive !== undefined &&
+        entry.cloud.model === XIAOMI_MAGNET_MODEL &&
+        entry.cloud.mac?.toUpperCase() === passive.address
+      ) {
+        runner.observePassive(passive.source.update, passive.source.freshUntil);
+      }
     }
     this.cameras = entries
       .filter((entry) => isCameraModel(entry.cloud.model))
@@ -214,17 +220,37 @@ export class XiaomiAdapter implements ProviderAdapter {
     };
   }
 
-  async bluetoothIdentity(did: string): Promise<BluetoothIdentity> {
-    const page = parseDeviceList(await this.options.cloud.call(DEVICE_LIST_PATH, deviceListData()));
-    const mac = page.devices.find((candidate) => candidate.did === did)?.mac ?? null;
-    if (mac === null) {
-      throw new BluetoothAddressMissingError(did);
-    }
-    const bindKey = parseBeaconKey(
-      did,
-      await this.options.cloud.call(BEACON_KEY_PATH, beaconKeyData(did)),
+  passiveEligible(did: string, model: string, address: string, scope: string): boolean {
+    const device = this.runners.get(did)?.entry.cloud;
+    return (
+      this.passiveAccountScope() === scope &&
+      device?.model === model &&
+      device.mac?.toUpperCase() === address
     );
-    return { mac, bindKey };
+  }
+
+  passiveAccountScope(): string {
+    return createHash('sha256').update(this.options.userId).digest('hex');
+  }
+
+  observePassive(did: string, source: PassiveSource | null, address: string | null): void {
+    if (source === null || address === null) {
+      this.passive.delete(did);
+    } else {
+      this.passive.set(did, { source, address });
+    }
+    this.runners.get(did)?.observePassive(source?.update ?? null, source?.freshUntil ?? 0);
+    this.rebuild();
+    this.sink?.devices([...this.devices.values()]);
+  }
+
+  async bluetoothIdentity(did: string, expectedModel?: string): Promise<BluetoothIdentity> {
+    return readBluetoothIdentity(
+      this.options.cloud,
+      did,
+      this.passiveAccountScope(),
+      expectedModel,
+    );
   }
 
   async wearables(): Promise<SourceList> {
@@ -320,7 +346,12 @@ export class XiaomiAdapter implements ProviderAdapter {
           {
             ...device,
             capabilities: [...device.capabilities, ...runner.ptzCapabilities()],
-            details: { ...device.details, ...events },
+            details: {
+              ...device.details,
+              ...events,
+              bleObserverAddress: this.passive.get(runner.did)?.address ?? null,
+              bleObserverFreshUntil: this.passive.get(runner.did)?.source.freshUntil ?? null,
+            },
           },
         ];
       }),

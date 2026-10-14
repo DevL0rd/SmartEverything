@@ -1,10 +1,25 @@
 import { z } from 'zod';
-import { apiErrorOf, buildPath, encodeQuery, type EndpointShape } from '@smarteverything/domain';
+import {
+  AI_ENGINE_HEADER,
+  AI_ENGINE_HEADER_VALUE,
+  AI_ENGINE_HEADER_VALUE_V2,
+  AI_HARNESS_HEADER_VALUE,
+  AI_ENGINE_CAPABILITIES_HEADER,
+  apiErrorOf,
+  buildPath,
+  encodeQuery,
+  type EndpointShape,
+  type NativeHubResourcePurpose,
+} from '@smarteverything/domain';
 import { jsonText } from '../../format/json-text';
 import { WIRE_QUERY, wireQueryOf, type CallInput, type TypedEndpoint } from './request';
 import { Logger } from '@smarteverything/logging';
 import { rawErrorText } from '../../format/errors';
+import { noteServerCapabilities } from './server-capabilities';
 import { readLeniently, readTablesLeniently } from './readable';
+import { assertHubLease, type HubRouteLease } from './active-route';
+import { hubNetwork } from './route-platform';
+import { presentMediaResource } from './media-resources';
 
 const log = new Logger('app.api');
 
@@ -131,6 +146,9 @@ export interface ApiClientOptions {
   readonly token: string | null;
   readonly fetch: typeof fetch;
   readonly onUnauthorized: () => void;
+  readonly route?: () => HubRouteLease;
+  readonly ready?: () => Promise<void>;
+  readonly mediaRoute?: () => HubRouteLease;
 }
 
 export class ApiClient {
@@ -141,7 +159,31 @@ export class ApiClient {
   }
 
   urlOf(path: string): string {
-    return `${this.options.baseUrl}${path}`;
+    return `${this.options.mediaRoute?.().baseUrl ?? this.baseUrl}${path}`;
+  }
+
+  async resourceUrl(
+    path: string,
+    expiresAt: string,
+    purpose: NativeHubResourcePurpose,
+  ): Promise<string> {
+    const lease = this.options.mediaRoute?.();
+    return presentMediaResource(lease, this.urlOf(path), expiresAt, purpose);
+  }
+
+  forMedia(streamed = true): ApiClient {
+    const select =
+      streamed && hubNetwork().capabilities.httpMedia === true
+        ? this.options.route
+        : this.options.mediaRoute;
+    if (select === undefined) return this;
+    let pinned: HubRouteLease | null = null;
+    const route = (): HubRouteLease => {
+      pinned ??= select();
+      assertHubLease(pinned, 'GET');
+      return pinned;
+    };
+    return new ApiClient({ ...this.options, route, mediaRoute: route });
   }
 
   async call<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType, R extends z.ZodType>(
@@ -187,8 +229,12 @@ export class ApiClient {
     body: unknown,
     authenticated: boolean,
   ): Promise<unknown> {
-    const response = await this.send(this.urlOf(path), method, body);
+    await this.options.ready?.();
+    const lease = this.options.route?.();
+    const baseUrl = lease?.baseUrl ?? this.options.baseUrl;
+    const response = await this.send(`${baseUrl}${path}`, method, body, lease);
     const answer = await bodyOf(response);
+    if (lease !== undefined) assertHubLease(lease, method);
     if (!response.ok) {
       const refusal = apiErrorOf(response.status, answer);
       if (refusal.code === 'unauthorized' && authenticated) {
@@ -199,19 +245,35 @@ export class ApiClient {
     return answer;
   }
 
-  private async send(url: string, method: string, body: unknown): Promise<Response> {
+  private async send(
+    url: string,
+    method: string,
+    body: unknown,
+    lease: HubRouteLease | undefined,
+  ): Promise<Response> {
     const token = this.options.token;
     try {
-      return await this.options.fetch(url, {
+      const response = await (lease?.fetch ?? this.options.fetch)(url, {
         method,
+        redirect: 'error',
         headers: {
-          accept: 'application/json',
+          [AI_ENGINE_HEADER]: `${AI_HARNESS_HEADER_VALUE}, ${AI_ENGINE_HEADER_VALUE_V2}, ${AI_ENGINE_HEADER_VALUE}`,
           ...(token === null ? {} : { authorization: `Bearer ${token}` }),
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
+      if (lease !== undefined) assertHubLease(lease, method);
+      noteServerCapabilities(
+        this.options.baseUrl,
+        response.headers.get(AI_ENGINE_CAPABILITIES_HEADER),
+      );
+      return response;
     } catch (error) {
+      if (lease !== undefined) {
+        assertHubLease(lease, method);
+        lease.failed();
+      }
       throw new ServerUnreachableError(this.options.baseUrl, rawErrorText(error));
     }
   }

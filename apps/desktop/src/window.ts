@@ -1,3 +1,4 @@
+import { registerBrowser } from './browser.js';
 import path from 'node:path';
 import { BrowserWindow, dialog, screen, shell, type WebContents } from 'electron';
 import { reportFailure } from './failure.js';
@@ -98,6 +99,7 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     },
   });
   guardNavigation(window.webContents, options.startUrl);
+  registerBrowser(window, options.startUrl);
   persistOnClose(window, options);
   window.once('ready-to-show', () => {
     if (state.maximized) {

@@ -100,7 +100,7 @@ export class CameraListening {
 
   private async pauseOf(cameraId: string): Promise<TranscriptPauseReason | null> {
     if (!this.options.keyPresent()) {
-      return 'no_gemini_key';
+      return 'no_openrouter_key';
     }
     if (this.budget.capReached()) {
       return 'cap_reached';

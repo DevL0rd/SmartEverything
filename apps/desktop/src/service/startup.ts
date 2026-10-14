@@ -60,21 +60,19 @@ export async function startService(
   mode: StartupMode,
 ): Promise<StartupOutcome> {
   const { controller } = service;
+  const node = (await controller.config()).role === 'node';
   const ffmpeg = service.ffmpeg();
-  if (!ffmpeg.found) {
-    log.warn('desktop.ffmpeg.missing', { path: service.launch.path });
-  }
+  warnMedia(service, node);
   const before = await controller.status();
   const firstRun = before.health === 'not-installed';
   if (firstRun) {
     if (!(await acceptsInstall(platform, service, mode))) {
       return 'declined';
     }
-  } else if (!ffmpeg.found) {
-    showFfmpegMissing(ffmpeg);
   }
+  if (!firstRun && !node && !ffmpeg.found) showFfmpegMissing(ffmpeg);
   try {
-    service.checkResources();
+    if (!node) service.checkResources();
     const status = await controller.ensure();
     log.info('desktop.service.running', { url: status.url, manager: status.manager });
   } catch (error: unknown) {
@@ -85,4 +83,9 @@ export async function startService(
     await lingerOnFirstInstall(service);
   }
   return 'running';
+}
+
+function warnMedia(service: DesktopService, node: boolean): void {
+  if (!node && !service.ffmpeg().found)
+    log.warn('desktop.ffmpeg.missing', { path: service.launch.path });
 }

@@ -1,3 +1,6 @@
+import { currentExecutionAuthorities } from '../assistant/execution-authority';
+import { admitEffectCommand } from '../harness/effect-authority';
+import { describeError } from '../commands/executor';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { CAPABILITY_KEY } from '@smarteverything/domain';
@@ -26,6 +29,7 @@ type InventoryPart = Pick<
   | 'loadState'
   | 'upsertState'
   | 'insertEvents'
+  | 'recordEventOccurrence'
   | 'enrichEvent'
   | 'loadCameras'
   | 'upsertCameras'
@@ -56,6 +60,8 @@ function inventoryPart(store: Store): InventoryPart {
         store.state.write(rows);
       }),
     insertEvents: (rows) => settle(() => store.events.insert(rows).map((row) => row.id)),
+    recordEventOccurrence: (event, occurrence) =>
+      settle(() => store.events.recordOccurrence(event, occurrence)),
     enrichEvent: (id, details) =>
       settle(() => {
         store.events.enrich(id, details);
@@ -81,13 +87,31 @@ type CommandPart = Pick<
 function commandPart(store: Store): CommandPart {
   return {
     pendingCommands: () => settle(() => store.commands.open()),
-    claimCommand: (id, from) => settle(() => store.commands.claim(id, from)),
+    claimCommand: (id, from) =>
+      settle(() => {
+        if (!store.commands.claim(id, from)) return false;
+        try {
+          admitEffectCommand(store, id);
+          return true;
+        } catch (cause) {
+          store.commands.finish(id, { status: 'failed', error: describeError(cause) });
+          return false;
+        }
+      }),
     finishCommand: (id, outcome) =>
       settle(() => {
         store.commands.finish(id, outcome);
       }),
     insertCommands: (rows) =>
-      settle(() => store.commands.insert(rows.map((row) => ({ ...row, requestedBy: null })))),
+      settle(() =>
+        store.commands.insert(
+          rows.map((row) => ({
+            ...row,
+            source: currentExecutionAuthorities().length === 0 ? row.source : 'assistant',
+            requestedBy: null,
+          })),
+        ),
+      ),
     updateProviderLink: (provider, change) =>
       settle(() => {
         store.providers.change(provider, change);

@@ -53,7 +53,7 @@ function pagePlaces(device: Device): readonly DevicePlace[] {
     })),
     { page: 'controls', title: 'More', capabilities: extrasOf(presentation) },
     { page: 'settings', title: 'Device options', capabilities: settingsOf(presentation) },
-    tierPlace(all, 'maintenance', { page: 'settings', title: 'Maintenance' }),
+    tierPlace(all, 'maintenance', { page: 'overview', title: 'Maintenance' }),
     { page: 'overview', title: 'Readings', capabilities: inTier(presentation, 'reading') },
     tierPlace(all, 'diagnostic', { page: 'diagnostics', title: 'Details' }),
   ];

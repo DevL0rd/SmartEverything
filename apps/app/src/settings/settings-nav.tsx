@@ -3,6 +3,7 @@ import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
 import { useNavigation, usePathname, useRouter, type Href } from 'expo-router';
 import { StackActions, useRoute } from 'expo-router/react-navigation';
+import { MAIN_PAGES } from '../app-shell/main-pages';
 import { href } from '../app-shell/hrefs';
 import { useSizeClass } from '../design/size-class';
 import { NavRow } from '../components/rows';
@@ -68,6 +69,15 @@ function TopRow({
   );
 }
 
+function orderedGroupPages(
+  pages: readonly SettingsPageDefinition[],
+  group: string,
+): readonly SettingsPageDefinition[] {
+  if (group !== 'App') return pages;
+  const ordered = MAIN_PAGES.flatMap((main) => pages.filter((page) => page.id === main.settings));
+  return [...ordered, ...pages.filter((page) => !ordered.includes(page))];
+}
+
 function Groups({
   env,
   current,
@@ -81,8 +91,11 @@ function Groups({
   return (
     <>
       {SETTINGS_GROUPS.map((group) => {
-        const pages = SETTINGS_TREE.filter(
-          (page) => page.group === group && pageAvailable(page, { env, built }),
+        const pages = orderedGroupPages(
+          SETTINGS_TREE.filter(
+            (page) => page.group === group && pageAvailable(page, { env, built }),
+          ),
+          group,
         );
         if (pages.length === 0) {
           return null;

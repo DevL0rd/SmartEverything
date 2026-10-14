@@ -4,7 +4,8 @@ import type { TurnSession } from '../assistant-voice/turn-session';
 import { assistantNames } from '../assistant-voice/persona';
 import type { PluginVoiceServices } from '../plugins/plugin-voice';
 import { CameraListening } from '../transcripts/camera-listening';
-import { GeminiTranscription, Transcriber } from '../transcripts/transcriber';
+import { Transcriber } from '../transcripts/transcriber';
+import { OpenRouterTranscription } from '../openrouter/transcription';
 import { Transcripts } from '../transcripts/transcript-service';
 import { Ears } from '../wake-name/ear';
 import { WakeClaims } from '../wake-name/wake-claims';
@@ -31,9 +32,8 @@ export function startTranscribing(
   const transcripts = new Transcripts({ store, clock, log });
   transcripts.start();
   const transcriber = new Transcriber({
-    provider: new GeminiTranscription(() => voice.keys.current()),
+    provider: new OpenRouterTranscription(context.openRouter.client),
     ledger: store.ledger,
-    prices: context.openRouter.catalogue,
     log,
   });
   const claims = new WakeClaims({ clock, log: options.log.forArea('hub.wake-name') });
@@ -43,7 +43,7 @@ export function startTranscribing(
     transcripts,
     transcriber,
     ready: (cameraId): Promise<void> => options.core.hub.streamReady(cameraId),
-    keyPresent: (): boolean => voice.keys.current() !== null,
+    keyPresent: (): boolean => context.openRouter.keys.current() !== null,
     inConversation: (cameraId): boolean =>
       store.aiOutreach.open().some((row) => row.how === 'camera' && row.target === cameraId),
     names,

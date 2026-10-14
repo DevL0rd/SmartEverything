@@ -8,6 +8,7 @@
     "patches/xiaomi-motor.patch",
     "patches/consumer-lifetime.patch",
     "patches/consumer-close.patch",
-    "patches/cs2-talk-payload.patch"
+    "patches/cs2-talk-payload.patch",
+    "patches/writer-lifetime.patch"
   ]
 }

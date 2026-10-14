@@ -1,4 +1,4 @@
-import { EVENT_KIND_LABELS, type EventKind } from '@smarteverything/domain';
+import { eventLabel, type EventKind } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 import type { Tone } from '../../../components/tone';
 
@@ -33,12 +33,17 @@ const LOOKS: Readonly<Record<EventLookKind, Omit<EventLook, 'label'>>> = {
   phone_context_changed: { icon: 'footprints', tone: 'variant' },
   place_arrived: { icon: 'mapPin', tone: 'positive' },
   place_left: { icon: 'mapPin', tone: 'variant' },
+  zone_enter: { icon: 'motion', tone: 'positive' },
+  zone_leave: { icon: 'motion', tone: 'variant' },
   parked: { icon: 'car', tone: 'variant' },
   phone_unlocked: { icon: 'lockOpen', tone: 'faint' },
   recording: { icon: 'film', tone: 'variant' },
 };
 
-export function eventLook(kind: EventLookKind): EventLook {
+export function eventLook(
+  kind: EventLookKind,
+  details: Readonly<Record<string, unknown>> = {},
+): EventLook {
   const look = LOOKS[kind];
-  return { ...look, label: kind === 'recording' ? 'Recording' : EVENT_KIND_LABELS[kind] };
+  return { ...look, label: kind === 'recording' ? 'Recording' : eventLabel(kind, details) };
 }

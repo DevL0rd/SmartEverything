@@ -29,6 +29,10 @@ export class Waiters {
     });
   }
 
+  has(eventId: string): boolean {
+    return this.waiting.has(eventId);
+  }
+
   settle(eventId: string, result: Settled): boolean {
     const waiter = this.waiting.get(eventId);
     if (waiter === undefined) {

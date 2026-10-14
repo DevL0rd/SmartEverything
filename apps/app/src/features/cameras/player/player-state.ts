@@ -19,7 +19,6 @@ export type PlayerState =
   | { readonly kind: 'offline'; readonly lastSeen: string | null }
   | { readonly kind: 'privacy' }
   | { readonly kind: 'blockedByFirewall' }
-  | { readonly kind: 'awayNeedsSetup' }
   | { readonly kind: 'failed'; readonly reason: FailureReason; readonly detail: string };
 
 export type SessionError =
@@ -52,7 +51,6 @@ export interface PlayerInputs extends CameraCondition {
   readonly streamable: boolean;
   readonly phase: SessionPhase;
   readonly video: VideoFlow;
-  readonly remoteConfigured: boolean;
 }
 
 export const NO_VIDEO_AFTER_MS = 5000;
@@ -94,12 +92,7 @@ function failedStateOf(error: SessionError, inputs: PlayerInputs): PlayerState {
     case 'serverUnreachable':
       return { kind: 'failed', reason: 'server', detail: error.message };
     case 'noPath':
-      if (inputs.reach === 'unreachable') {
-        return { kind: 'failed', reason: 'unreachable', detail: '' };
-      }
-      return inputs.remoteConfigured
-        ? { kind: 'failed', reason: 'unreachable', detail: '' }
-        : { kind: 'awayNeedsSetup' };
+      return { kind: 'failed', reason: 'network', detail: '' };
     case 'dropped':
       return { kind: 'failed', reason: 'dropped', detail: '' };
     case 'gathering':

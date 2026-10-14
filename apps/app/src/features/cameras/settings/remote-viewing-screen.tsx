@@ -14,14 +14,11 @@ import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
 import { PageHeader } from '../../../components/page-header';
-import { SelectRow } from '../../../components/rows';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
 import { notify } from '../../../components/toast-store';
 import { useIsOwner, useSettings } from '../../../store/selectors';
-import { useCameraPrefs } from '../data/use-camera-condition';
-import { relaySupported } from '../player/rtc';
 
 const CRUMBS = settingsTrail('cameras');
 
@@ -33,33 +30,6 @@ function saved(change: RemoteViewingChange): void {
       tone: 'critical',
     });
   });
-}
-
-function AwayMode(): ReactNode {
-  const prefs = useCameraPrefs();
-  if (!relaySupported()) {
-    return (
-      <List footer="This device always watches cameras directly.">
-        <ListRow title="When you’re away" value="Direct" icon="globe" />
-      </List>
-    );
-  }
-  return (
-    <List footer="Direct is fastest. Through your server works anywhere but uses more data and has no talk.">
-      <SelectRow
-        title="How to watch"
-        icon="globe"
-        value={prefs.value.awayMode}
-        options={[
-          { value: 'direct', label: 'Direct' },
-          { value: 'server', label: 'Through your server' },
-        ]}
-        onChange={(awayMode) => {
-          prefs.set({ awayMode });
-        }}
-      />
-    </List>
-  );
 }
 
 interface AddFieldProps {
@@ -119,7 +89,7 @@ const CANDIDATE_CHECK = checkedWith(
 
 function IceServers({ servers }: { readonly servers: readonly IceServer[] }): ReactNode {
   return (
-    <List title="Relay servers" footer="Help video reach you when you’re away from home.">
+    <List title="Relay servers" footer="Help WebRTC video connect across networks.">
       {servers.map((server, index) => (
         <ListRow
           key={server.urls.join()}
@@ -208,8 +178,13 @@ export function RemoteViewingScreen(): ReactNode {
   const settings = useSettings();
   const owner = useIsOwner();
   return (
-    <Screen header={<PageHeader title="Remote viewing" breadcrumbs={CRUMBS} />} maxWidth="reading">
-      <AwayMode />
+    <Screen
+      header={<PageHeader title="Camera connection" breadcrumbs={CRUMBS} />}
+      maxWidth="reading"
+    >
+      <List footer="Video connects automatically using WebRTC. On supported devices, it can recover through your server if that path cannot carry video. Talk needs WebRTC.">
+        <ListRow title="Live viewing" value="Automatic" icon="globe" />
+      </List>
       {owner ? <Advanced settings={settings} /> : null}
     </Screen>
   );

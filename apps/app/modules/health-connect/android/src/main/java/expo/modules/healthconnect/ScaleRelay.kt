@@ -58,25 +58,27 @@ class ScaleRelayNotConfigured : SyncFailure(
 
 fun relayTarget(context: Context): IngestTarget = Credentials(context, CredentialSlot.SERVER).load()
 
-fun configureServer(context: Context, serverUrl: String, token: String) {
-  Credentials(context, CredentialSlot.SERVER).save(IngestTarget(serverUrl.trimEnd('/') + ScaleRelay.API_BASE, token))
+fun configureServer(context: Context, serverUrl: String, token: String, enrollment: String) {
+  Credentials(context, CredentialSlot.SERVER).save(IngestTarget(serverUrl.trimEnd('/') + ScaleRelay.API_BASE, token), enrollment)
 }
 
 class ScaleRelay(private val context: Context) {
   private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
   private val status = ScaleStatus(context)
 
-  fun configure(serverUrl: String, token: String) = configureServer(context, serverUrl, token)
+  fun configure(serverUrl: String, token: String, enrollment: String) = configureServer(context, serverUrl, token, enrollment)
 
   suspend fun start(): Int {
     val answer = HubClient(relayTarget(context)).get(WATCH_PATH).getJSONArray("devices")
     val devices = (0 until answer.length()).map { WatchedDevice.of(answer.getJSONObject(it)) }
     preferences.edit().putString(WATCHED, JSONArray(devices.map { it.toJson() }).toString()).apply()
+    ScaleAdverts.resume(context)
     register(devices)
     return devices.size
   }
 
   fun resume() {
+    ScaleAdverts.resume(context)
     register(watched())
   }
 
@@ -104,7 +106,7 @@ class ScaleRelay(private val context: Context) {
     val callback = LiveCallback(context.applicationContext)
     live = callback
     scanner.startScan(devices.map { it.filter() }, settings(ScanSettings.SCAN_MODE_LOW_LATENCY), callback)
-    status.note("live_started", "${devices.size} scale(s)")
+    status.note("live_started", "${devices.size} Bluetooth device(s)")
   }
 
   @SuppressLint("MissingPermission")
@@ -120,7 +122,7 @@ class ScaleRelay(private val context: Context) {
     val scanner = ready()
     scanner.stopScan(pendingIntent(context))
     if (devices.isEmpty()) {
-      status.note("registered", "no scales to listen for")
+      status.note("registered", "no Bluetooth devices to listen for")
       return
     }
     val code = scanner.startScan(devices.map { it.filter() }, settings(ScanSettings.SCAN_MODE_BALANCED), pendingIntent(context))
@@ -128,7 +130,7 @@ class ScaleRelay(private val context: Context) {
       status.note("failed", "Android refused the background scan with code $code")
       return
     }
-    status.note("registered", "${devices.size} scale(s) in the background")
+    status.note("registered", "${devices.size} Bluetooth device(s) in the background")
   }
 
   private fun ready(): BluetoothLeScanner {

@@ -14,9 +14,6 @@ export interface StateActions {
   readonly retry: () => void;
   readonly restart: (() => void) | null;
   readonly fix: FirewallFix;
-  readonly setUpRemote: Href;
-  readonly watchThroughServer: (() => void) | null;
-  readonly watchDirectly: () => void;
   readonly turnOffPrivacy: (() => void) | null;
 }
 
@@ -45,9 +42,6 @@ function failedActions(
   state: Extract<PlayerState, { kind: 'failed' }>,
   actions: StateActions,
 ): readonly Action[] {
-  if (state.reason === 'relayUnsupported') {
-    return [{ label: 'Watch directly', onPress: actions.watchDirectly }];
-  }
   return state.reason === 'noStream' ? [] : [{ label: 'Try again', onPress: actions.retry }];
 }
 
@@ -66,11 +60,6 @@ function actionsOf(state: PlayerState, actions: StateActions): readonly Action[]
       return withAction([optional('Turn off', actions.turnOffPrivacy)]);
     case 'blockedByFirewall':
       return actions.fix.kind === 'here' ? [{ label: 'Fix', href: actions.fix.href }] : [];
-    case 'awayNeedsSetup':
-      return withAction([
-        { label: 'Set up', href: actions.setUpRemote },
-        optional('Watch through your server', actions.watchThroughServer),
-      ]);
     case 'failed':
       return failedActions(state, actions);
     case 'connecting':

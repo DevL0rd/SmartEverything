@@ -1,0 +1,25 @@
+--- a/pkg/core/writebuffer.go
++++ b/pkg/core/writebuffer.go
+@@ -47,12 +47,18 @@
+ }
+ 
+ func (w *WriteBuffer) Close() error {
+-	if closer, ok := w.Writer.(io.Closer); ok {
++	w.mu.Lock()
++	closer, _ := w.Writer.(io.Closer)
++	if closer == nil {
++		if w.err == nil {
++			w.err = io.ErrClosedPipe
++		}
++		w.done()
++	}
++	w.mu.Unlock()
++	if closer != nil {
+ 		return closer.Close()
+ 	}
+-	w.mu.Lock()
+-	w.done()
+-	w.mu.Unlock()
+ 	return nil
+ }
+ 

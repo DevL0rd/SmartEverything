@@ -1,7 +1,14 @@
 package expo.modules.healthconnect
 
 import java.io.IOException
-import java.net.HttpURLConnection
+import expo.modules.healthconnect.network.HubLease
+import expo.modules.healthconnect.network.HubRouteBinding
+import expo.modules.healthconnect.network.HubRoutePolicy
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import java.util.concurrent.TimeUnit
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,31 +32,41 @@ class HubClient(private val target: IngestTarget) {
 
   private fun exchange(url: URL, method: String, body: ByteArray?): JSONObject {
     try {
-      val connection = url.openConnection() as HttpURLConnection
-      try {
-        connection.requestMethod = method
-        connection.connectTimeout = CONNECT_TIMEOUT_MS
-        connection.readTimeout = READ_TIMEOUT_MS
-        connection.setRequestProperty("Authorization", "Bearer ${target.token}")
-        if (body != null) {
-          connection.doOutput = true
-          connection.setFixedLengthStreamingMode(body.size)
-          connection.setRequestProperty("Content-Type", "application/json")
-          connection.outputStream.use { it.write(body) }
-        }
-        return answer(connection)
-      } finally {
-        connection.disconnect()
-      }
+      val binding = target.binding?.invoke() ?: error("HubClient requires an explicit native credential binding")
+      val policy = target.policy?.invoke() ?: error("HubClient requires its native route authority")
+      val lease = policy.lease(binding, url.toString())
+      val request = Request.Builder().url(lease.url).header("Authorization", "Bearer ${target.token}")
+        .method(method, body?.toRequestBody("application/json".toMediaType())).build()
+      return perform(binding, policy, lease, request)
     } catch (failure: IOException) {
       throw IngestUnavailable("${failure.javaClass.simpleName}: ${failure.message}", failure)
+    } catch (failure: JSONException) {
+      throw IngestRejected(502, "Hub bootstrap metadata is unreadable: ${failure.message}")
+    } catch (failure: java.net.URISyntaxException) {
+      throw IngestRejected(502, "Hub bootstrap endpoint is malformed: ${failure.message}")
+    } catch (failure: IllegalArgumentException) {
+      throw IngestRejected(502, "Hub credential or trust metadata was refused: ${failure.message}")
     }
   }
 
-  private fun answer(connection: HttpURLConnection): JSONObject {
-    val status = connection.responseCode
-    val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-    val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+  private fun perform(binding: HubRouteBinding, policy: HubRoutePolicy, lease: HubLease, request: Request): JSONObject {
+    try {
+      lease.client.newBuilder().readTimeout(READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS).build()
+        .newCall(request).execute().use { response ->
+          val result = answer(response)
+          lease.check()
+          return result
+        }
+    } catch (failure: IOException) {
+      if (!policy.bound(binding)) throw NativeCredentialWithdrawn()
+      policy.failed(binding, lease.routeGeneration)
+      throw failure
+    }
+  }
+
+  private fun answer(connection: Response): JSONObject {
+    val status = connection.code
+    val text = connection.body?.string().orEmpty()
     if (status == 429 || status >= 500) {
       throw IngestUnavailable("HTTP $status: $text")
     }
@@ -64,7 +81,6 @@ class HubClient(private val target: IngestTarget) {
   }
 
   private companion object {
-    const val CONNECT_TIMEOUT_MS = 15_000
     const val READ_TIMEOUT_MS = 60_000
   }
 }

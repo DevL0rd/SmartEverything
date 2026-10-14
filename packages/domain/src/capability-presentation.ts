@@ -1,5 +1,6 @@
 import { CAPABILITY_CATALOGUE, isStandardCapability, type CapabilityGroup } from './capabilities';
 import type { DeviceCapability } from './devices';
+import { microwaveReading } from './microwave-readings';
 import { dangerOf } from './presentation/danger';
 import { deviceFamily } from './presentation/device-family';
 import { friendlyUnit, humanizeEnum, providerLabelOf, serviceOf } from './presentation/humanize';
@@ -71,6 +72,9 @@ function groupLabelOf(
   capability: DeviceCapability,
   override: CapabilityOverride | undefined,
 ): string {
+  if (override?.groupLabel !== undefined) {
+    return override.groupLabel;
+  }
   if (override?.group !== undefined || isStandardCapability(capability.key)) {
     return CAPABILITY_GROUP_LABELS[groupOf(capability, override)];
   }
@@ -129,6 +133,15 @@ function roleOf(
   return isStandardCapability(capability.key) ? capability.key : null;
 }
 
+function metadataOf(
+  override: CapabilityOverride | undefined,
+): Pick<CapabilityPresentation, 'colorEncoding' | 'keywords'> {
+  return {
+    ...(override?.colorEncoding === undefined ? {} : { colorEncoding: override.colorEncoding }),
+    ...(override?.keywords === undefined ? {} : { keywords: override.keywords }),
+  };
+}
+
 export function presentCapability(
   device: PresentableDevice,
   capability: DeviceCapability,
@@ -147,6 +160,7 @@ export function presentCapability(
     unit: unitOf(capability, override),
     states: override?.states ?? null,
     clock: override?.clock ?? null,
+    ...metadataOf(override),
   };
 }
 
@@ -226,7 +240,7 @@ function stateOf(presented: PresentedCapability, value: JsonValue): string | nul
   return value ? presented.states[0] : presented.states[1];
 }
 
-export function presentValue(presented: PresentedCapability, value: JsonValue): string {
+function basePresentValue(presented: PresentedCapability, value: JsonValue): string {
   const descriptor = presented.capability.value;
   if (descriptor.kind === 'enum' && typeof value === 'string') {
     return presented.options.find((option) => option.value === value)?.label ?? humanizeEnum(value);
@@ -240,4 +254,10 @@ export function presentValue(presented: PresentedCapability, value: JsonValue): 
   return (
     stateOf(presented, value) ?? formatValue(presented.role ?? presented.key, descriptor, value)
   );
+}
+
+export function presentValue(presented: PresentedCapability, value: JsonValue): string {
+  return value === null && presented.capability.value.kind !== 'action'
+    ? 'Unknown'
+    : (microwaveReading(presented.key, value) ?? basePresentValue(presented, value));
 }

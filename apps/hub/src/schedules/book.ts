@@ -1,3 +1,4 @@
+import { currentExecutionAuthorities } from '../assistant/execution-authority';
 import {
   ApiError,
   SCHEDULED_AI_STEPS_REASON,
@@ -22,7 +23,7 @@ const PROMPT_LINE = 120;
 
 export interface ScheduleAuthor {
   readonly profileId: string;
-  readonly clientId: string;
+  readonly clientId: string | null;
   readonly role: 'owner' | 'member';
   readonly via: ScheduleRow['via'];
   readonly plugin: PluginOrigin | null;
@@ -66,17 +67,21 @@ export class ScheduleBook {
   create(author: ScheduleAuthor, input: NewScheduleInput): ScheduleSaved {
     const checked = this.checkSteps(input.steps, author);
     const now = this.clock.now();
-    const schedule = this.store.schedules.create({
-      profileId: author.profileId,
-      clientId: author.clientId,
-      via: author.via,
-      label: input.label,
-      timing: input.timing,
-      occurrences: occurrencesOf(input.timing, now, this.store.settings.read().time_zone),
-      steps: input.steps,
-      stepLines: checked.lines,
-      deviceIds: checked.deviceIds,
-      origin: author.plugin,
+    const schedule = this.store.write(() => {
+      const saved = this.store.schedules.create({
+        profileId: author.profileId,
+        clientId: author.clientId,
+        via: author.via,
+        label: input.label,
+        timing: input.timing,
+        occurrences: occurrencesOf(input.timing, now, this.store.settings.read().time_zone),
+        steps: input.steps,
+        stepLines: checked.lines,
+        deviceIds: checked.deviceIds,
+        origin: author.plugin,
+      });
+      this.store.harnessRecovery.effects.keep('schedule', saved.id, currentExecutionAuthorities());
+      return saved;
     });
     return { outcome: 'scheduled', schedule };
   }
@@ -94,7 +99,11 @@ export class ScheduleBook {
     if (edit.timing !== undefined) {
       change = { ...change, ...this.timingChange(edit.timing) };
     }
-    return { outcome: 'scheduled', schedule: this.store.schedules.update(id, change) };
+    const schedule = this.store.write(() => {
+      this.store.harnessRecovery.effects.keep('schedule', id, currentExecutionAuthorities());
+      return this.store.schedules.update(id, change);
+    });
+    return { outcome: 'scheduled', schedule };
   }
 
   remove(author: ScheduleAuthor, id: string): void {

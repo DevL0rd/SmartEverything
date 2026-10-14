@@ -1,3 +1,5 @@
+import { perfRuntime } from './runtime';
+
 export interface PerfSink {
   record(id: string, ms: number, mounted: boolean): void;
   screenCommit(label: string, phase: string, ms: number): void;
@@ -14,20 +16,10 @@ export interface PerfSink {
   listScroll(list: string, offset: number): void;
 }
 
-let active: PerfSink | null = null;
-let pendingScreen = '';
-
-export function setSink(sink: PerfSink): void {
-  active = sink;
-  if (pendingScreen !== '') {
-    sink.screen(pendingScreen);
-  }
-}
-
 export function sinkOf(): PerfSink | null {
-  return active;
+  return perfRuntime.state.status === 'running' ? perfRuntime.state.session.sink : null;
 }
 
 export function rememberScreen(screen: string): void {
-  pendingScreen = screen;
+  perfRuntime.screen = screen;
 }

@@ -74,3 +74,11 @@ export function placeNear(anchor: Rect, width: number, window: WindowSize): Plac
 export function centredRect(window: WindowSize): Rect {
   return pointRect(window.width / 2, window.height / 2);
 }
+
+export function placeAbove(anchor: Rect, width: number, window: WindowSize): Placed {
+  return {
+    left: leftOf(anchor, width, window),
+    vertical: { bottom: window.height - anchor.y + GAP },
+    maxHeight: Math.max(0, anchor.y - GAP - MARGIN),
+  };
+}

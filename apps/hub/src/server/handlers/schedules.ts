@@ -1,3 +1,4 @@
+import { commandPrincipal } from '../commands';
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { pluginOriginOf } from '../../ai-tools/plugin-turn';
 import type { ScheduleAuthor } from '../../schedules/book';
@@ -17,11 +18,19 @@ type ScheduleRoutes = Record<
 >;
 
 function authorOf(store: Store, caller: Caller): ScheduleAuthor {
+  if (caller.kind === 'service')
+    return {
+      profileId: caller.profileId,
+      clientId: null,
+      role: 'member',
+      via: 'assistant',
+      plugin: pluginOriginOf(caller),
+    };
   const client = clientOf(caller);
   return {
     profileId: profileIdOf(store, caller),
     clientId: client.id,
-    role: client.role,
+    role: commandPrincipal(store, caller).role,
     via: caller.kind === 'client' && caller.via === 'assistant' ? 'assistant' : 'app',
     plugin: caller.kind === 'client' ? pluginOriginOf(caller) : null,
   };

@@ -1,7 +1,7 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useRef } from 'react';
 import type { TextInput } from 'react-native';
-import { usePathname } from 'expo-router';
+import { router } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { IconButton } from '../components/icon-button';
 import { modifierLabel } from '../design/platform';
@@ -27,6 +27,7 @@ import { Rail } from './rail';
 import type { TabKey } from './route-types';
 import { ShellShortcuts } from './shell-shortcuts';
 import { Sidebar } from './sidebar';
+import { hasSettingsOrigin } from './settings-navigation';
 import { popTabToRoot } from './tab-router';
 
 function useGo({ state, navigation }: BottomTabBarProps): (entry: NavEntry) => void {
@@ -48,23 +49,11 @@ function useGo({ state, navigation }: BottomTabBarProps): (entry: NavEntry) => v
       popTabToRoot(target, (action) => {
         navigation.dispatch(action);
       });
+      if (entry.route.tab === 'settings') router.replace(entry.route.href);
       return;
     }
     navigation.navigate(target.name);
   };
-}
-
-function shownTab(tab: TabKey, pathname: string): TabKey {
-  if (tab !== 'more') {
-    return tab;
-  }
-  if (pathname.startsWith('/settings')) {
-    return 'settings';
-  }
-  if (pathname.startsWith('/talk')) {
-    return 'talk';
-  }
-  return pathname.startsWith('/automations') ? 'automations' : 'more';
 }
 
 function useBack(
@@ -75,7 +64,7 @@ function useBack(
 ): void {
   const focused = props.state.routes[props.state.index];
   useTabRootBack({
-    atTabRoot: atStackRoot(focused?.state),
+    atTabRoot: atStackRoot(focused?.state) && !hasSettingsOrigin(props.state),
     onHome: current === 'home',
     goHome: () => {
       const home = entries.find((entry) => entry.route.tab === 'home');
@@ -139,18 +128,16 @@ export function AdaptiveNav(props: BottomTabBarProps): ReactNode {
   const availability = useAvailability();
   const collapsed = useLocalPref('sidebarCollapsed');
   const hidden = useNavigationHidden();
-  const pathname = usePathname();
   const searchRef = useRef<TextInput>(null);
   const routeTab = tabOfRouteName(props.state.routes[props.state.index]?.name ?? '') ?? 'home';
-  const shown = shownTab(routeTab, pathname);
-  const current = nav === 'bar' ? routeTab : shown;
+  const current = routeTab;
   const unread = useUnreadChatCount();
   const model = navModel(nav, current, availability, unread);
   const go = useGo(props);
   useEffect(() => bindNavGo(go), [go]);
   useEffect(() => {
-    navCurrent.set(shown);
-  }, [shown]);
+    navCurrent.set(current);
+  }, [current]);
   const entries = navEntries(model);
   const pointerCollapsed = collapsed && idiom === 'pointer';
   const toggle = (): void => {

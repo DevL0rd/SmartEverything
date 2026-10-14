@@ -1,7 +1,28 @@
 import type { Href } from 'expo-router';
 import { isCamera } from '@smarteverything/domain';
-import { mountedHref } from '../settings/mounts';
 import type { Device } from '../store/state';
+
+interface AssistantChatOptions {
+  readonly sheet?: 'chat';
+  readonly section?: 'info' | 'branches' | 'files' | 'browser';
+  readonly agent?: string;
+  readonly message?: string;
+  readonly work?: string;
+  readonly operation?: string;
+  readonly browserAction?: string;
+}
+
+function assistantChatParams(options: AssistantChatOptions): Readonly<Record<string, string>> {
+  return {
+    ...(options.sheet === undefined ? {} : { sheet: options.sheet }),
+    ...(options.section === undefined ? {} : { section: options.section }),
+    ...(options.agent === undefined ? {} : { agent: options.agent }),
+    ...(options.message === undefined ? {} : { message: options.message }),
+    ...(options.work === undefined ? {} : { work: options.work }),
+    ...(options.operation === undefined ? {} : { operation: options.operation }),
+    ...(options.browserAction === undefined ? {} : { browserAction: options.browserAction }),
+  };
+}
 
 export const href = {
   home: (): Href => '/',
@@ -36,23 +57,18 @@ export const href = {
     pathname: '/automations/scenes/[sceneId]',
     params: { sceneId },
   }),
-  more: (): Href => '/more',
   assistantCosts: (filters?: { readonly chat?: string }): Href =>
     filters?.chat === undefined
       ? '/settings/assistant/costs'
       : { pathname: '/settings/assistant/costs', params: { chat: filters.chat } },
-  assistantChat: (
-    chatId?: string,
-    options: { readonly sheet?: 'chat'; readonly message?: string } = {},
-  ): Href =>
+  assistantChat: (chatId?: string, options: AssistantChatOptions = {}): Href =>
     chatId === undefined
       ? '/assistant'
       : {
           pathname: '/assistant/chat/[chatId]',
           params: {
             chatId,
-            ...(options.sheet === undefined ? {} : { sheet: options.sheet }),
-            ...(options.message === undefined ? {} : { message: options.message }),
+            ...assistantChatParams(options),
           },
         },
   assistantChats: (filter: 'unread' | 'archived'): Href => ({
@@ -99,32 +115,33 @@ export const href = {
   }),
   settings: {
     index: (): Href => '/settings',
-    page: (path: string): Href =>
-      mountedHref(path) ?? { pathname: '/settings/[...page]', params: { page: path.split('/') } },
-    focus: (path: string, focus: string): Href =>
-      mountedHref(path, focus) ?? {
-        pathname: '/settings/[...page]',
-        params: { page: path.split('/'), focus },
-      },
+    page: (path: string): Href => ({
+      pathname: '/settings/[...page]',
+      params: { page: path.split('/') },
+    }),
+    focus: (path: string, focus: string): Href => ({
+      pathname: '/settings/[...page]',
+      params: { page: path.split('/'), focus },
+    }),
     connections: (): Href => ({
       pathname: '/settings/[...page]',
       params: { page: ['connections'] },
     }),
-    device: (deviceId: string, page?: 'remotes' | 'diagnostics'): Href =>
+    device: (deviceId: string, page?: string): Href =>
       page === undefined
         ? { pathname: '/device/[deviceId]/settings', params: { deviceId } }
         : { pathname: '/device/[deviceId]/settings/[page]', params: { deviceId, page } },
-    cameras: (): Href => '/cameras/settings',
-    talk: (): Href => '/talk/settings',
-    talkChannel: (channelId: string): Href =>
-      channelId === 'new'
-        ? '/talk/settings/channels/new'
-        : { pathname: '/talk/settings/channels/[channelId]', params: { channelId } },
+    cameras: (): Href => '/settings/cameras',
+    talk: (): Href => '/settings/talk',
+    talkChannel: (channelId: string): Href => ({
+      pathname: '/settings/[...page]',
+      params: { page: ['talk', 'channels', channelId] },
+    }),
     camera: (deviceId: string): Href => ({
       pathname: '/device/[deviceId]/settings/[page]',
       params: { deviceId, page: 'camera' },
     }),
-    remoteViewing: (): Href => '/cameras/settings/remote-viewing',
+    remoteViewing: (): Href => '/settings/cameras/remote-viewing',
     assistant: (): Href => '/settings/assistant',
     profile: (profileId: string): Href => ({
       pathname: '/settings/profiles/[profileId]',

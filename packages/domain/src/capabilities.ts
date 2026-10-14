@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import type { ValueDescriptor } from './values';
-
 export const CAPABILITY_GROUPS = [
   'power',
   'lighting',
   'climate',
   'air',
   'water',
+  'fragrance',
   'sensor',
   'security',
   'camera',
@@ -94,6 +94,18 @@ export const CAPABILITY_CATALOGUE = {
   motion: { label: 'Motion', group: 'sensor', kind: 'boolean', keywords: ['movement', 'pir'] },
   contact: { label: 'Contact', group: 'sensor', kind: 'boolean', keywords: ['door', 'window'] },
   occupancy: { label: 'Occupancy', group: 'sensor', kind: 'boolean', keywords: ['presence'] },
+  object_count: {
+    label: 'Detected objects',
+    group: 'sensor',
+    kind: 'number',
+    keywords: ['count', 'presence', 'objects'],
+  },
+  illumination: {
+    label: 'Light category',
+    group: 'sensor',
+    kind: 'enum',
+    keywords: ['dark', 'twilight', 'bright'],
+  },
   illuminance: { label: 'Light level', group: 'sensor', kind: 'number', keywords: ['lux'] },
   leak: { label: 'Water leak', group: 'sensor', kind: 'boolean', keywords: ['flood'] },
   smoke: { label: 'Smoke', group: 'sensor', kind: 'boolean', keywords: ['fire'] },

@@ -7,97 +7,93 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { Tooltip } from '../../../components/tooltip';
 import { cn } from '../../../design/cn';
-import { joinParts } from '../../../format/text';
 import { useMoney } from '../../region';
 import { contextText, pricePerMillionText } from '../data/cost';
 import type { Modality, ModelChoice } from './model-choice';
 import { ProviderLogo } from './provider-logo';
 
 function Price({ model }: { readonly model: ModelChoice }): ReactNode {
-  const { inputPerMillion, outputPerMillion, variable } = model.price;
   const money = useMoney();
-  if (!variable && inputPerMillion === null && outputPerMillion === null) {
-    return null;
-  }
-  if (model.price.variable) {
+  if (model.billing === 'Subscription')
     return (
       <Text variant="caption" tone="variant">
-        Price varies
+        Subscription
       </Text>
     );
-  }
+  const price = (value: number | null): string => {
+    if (model.price.variable) return 'Varies';
+    return value === null ? 'Unknown' : pricePerMillionText(value, money);
+  };
   return (
-    <View className="items-end">
-      <Text variant="caption" tone="variant">
-        {`${pricePerMillionText(model.price.inputPerMillion, money)} in`}
-      </Text>
-      <Text variant="caption" tone="variant">
-        {`${pricePerMillionText(model.price.outputPerMillion, money)} out`}
+    <View className="flex-row flex-wrap items-center gap-x-3 gap-y-0.5">
+      <Text variant="caption" tone="variant">{`Input ${price(model.price.inputPerMillion)}`}</Text>
+      <Text
+        variant="caption"
+        tone="variant"
+      >{`Output ${price(model.price.outputPerMillion)}`}</Text>
+      <Text variant="caption" tone="faint">
+        per 1M tokens
       </Text>
     </View>
   );
 }
-
-function detailsOf(model: ModelChoice): string {
-  return joinParts([
-    model.latest ? 'Latest' : model.providerLabel,
-    contextText(model.contextLength),
-    model.efforts.length === 0 ? null : 'Thinking',
-  ]);
-}
-
-const MODALITY_ICONS: Readonly<Record<Exclude<Modality, 'text'>, IconName>> = {
+const MODALITY_ICONS: Readonly<Record<Modality, IconName>> = {
+  text: 'fileText',
   image: 'image',
   audio: 'mic',
   video: 'film',
   file: 'fileText',
 };
-
-const MODALITY_NAMES: Readonly<Record<Exclude<Modality, 'text'>, string>> = {
-  image: 'Images',
-  audio: 'Audio',
-  video: 'Video',
-  file: 'Files',
-};
-
-function ModalityIcon({ modality }: { readonly modality: Exclude<Modality, 'text'> }): ReactNode {
+function ModalityIcon({
+  modality,
+  direction,
+}: {
+  readonly modality: Modality;
+  readonly direction: 'input' | 'output';
+}): ReactNode {
   const [hovered, setHovered] = useState(false);
+  const label = `${modality} ${direction}`;
   return (
     <View
       accessible
-      accessibilityLabel={MODALITY_NAMES[modality]}
+      accessibilityLabel={label}
       onPointerEnter={() => {
         setHovered(true);
       }}
       onPointerLeave={() => {
         setHovered(false);
       }}
+      className="flex-row items-center gap-0.5"
     >
+      <Icon name={direction === 'input' ? 'arrowRight' : 'arrowLeft'} size={16} tone="faint" />
       <Icon name={MODALITY_ICONS[modality]} size={16} tone="variant" />
-      {hovered ? <Tooltip text={MODALITY_NAMES[modality]} /> : null}
+      {hovered ? <Tooltip text={label} /> : null}
     </View>
   );
 }
-
-function Modalities({ model }: { readonly model: ModelChoice }): ReactNode {
-  const extra = [...new Set([...model.inputs, ...model.outputs])].filter(
-    (modality): modality is Exclude<Modality, 'text'> => modality !== 'text',
-  );
-  if (extra.length === 0) {
-    return null;
-  }
+function Details({ model }: { readonly model: ModelChoice }): ReactNode {
   return (
-    <View
-      className="flex-row items-center gap-1.5"
-      accessibilityLabel={extra.map((modality) => MODALITY_NAMES[modality]).join(', ')}
-    >
-      {extra.map((modality) => (
-        <ModalityIcon key={modality} modality={modality} />
+    <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
+      <Text variant="caption" tone="variant" className="rounded-sm bg-surface-2 px-1.5">
+        {contextText(model.contextLength) ?? 'Context unknown'}
+      </Text>
+      {model.efforts.length === 0 ? null : (
+        <View className="flex-row items-center gap-1">
+          <Icon name="brain" size={16} tone="variant" />
+          <Text variant="caption" tone="variant">
+            Thinking
+          </Text>
+        </View>
+      )}
+      {model.inputs.map((modality) => (
+        <ModalityIcon key={`in:${modality}`} modality={modality} direction="input" />
+      ))}
+      {model.outputs.map((modality) => (
+        <ModalityIcon key={`out:${modality}`} modality={modality} direction="output" />
       ))}
     </View>
   );
 }
-
 interface ModelRowProps {
   readonly model: ModelChoice;
   readonly selected: boolean;
@@ -105,7 +101,6 @@ interface ModelRowProps {
   readonly onPick: (() => void) | null;
   readonly onFavourite: (() => void) | null;
 }
-
 function RowBody({
   model,
   selected,
@@ -116,23 +111,29 @@ function RowBody({
   return (
     <>
       <ProviderLogo provider={model.provider} name={model.providerLabel} />
-      <View className="min-w-0 flex-1">
-        <Text variant="body-strong" numberOfLines={1}>
-          {model.name}
-        </Text>
+      <View className="min-w-0 flex-1 gap-1">
         <View className="flex-row items-center gap-2">
-          <Text variant="caption" tone="variant" numberOfLines={1} className="shrink">
-            {detailsOf(model)}
+          <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
+            {model.name}
           </Text>
-          <Modalities model={model} />
+          {model.latest ? (
+            <Text variant="caption" tone="primary">
+              Default
+            </Text>
+          ) : null}
+          {selected ? <Icon name="check" size={20} tone="primary" /> : null}
         </View>
+        <Text variant="caption" tone="variant" numberOfLines={1}>
+          {model.supplierLabel === undefined
+            ? model.providerLabel
+            : `${model.providerLabel} · ${model.supplierLabel}`}
+        </Text>
+        <Details model={model} />
+        <Price model={model} />
       </View>
-      <Price model={model} />
-      {selected ? <Icon name="check" size={20} tone="primary" /> : null}
     </>
   );
 }
-
 export function ModelRow({
   model,
   selected,
@@ -143,7 +144,7 @@ export function ModelRow({
   return (
     <View
       className={cn(
-        'h-model-row flex-row items-center rounded-lg',
+        'min-h-24 flex-row items-center rounded-lg',
         selected && 'bg-primary-container',
       )}
     >
@@ -151,7 +152,7 @@ export function ModelRow({
         label={model.name}
         selected={selected}
         {...(onPick === null ? { role: 'none' as const } : { onPress: onPick })}
-        className="h-full min-w-0 flex-1 flex-row items-center gap-3 rounded-lg px-3"
+        className="min-h-24 min-w-0 flex-1 flex-row items-center gap-3 rounded-lg px-3 py-2"
         layerClassName="rounded-lg"
       >
         <RowBody model={model} selected={selected} />

@@ -1,6 +1,7 @@
 import type { Href } from 'expo-router';
 import { CLIENT_PREFS } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
+import type { Crumb } from '../components/breadcrumbs';
 import { ACCENT_LABELS } from '../design/tokens';
 import { joinParts, plural } from '../format/text';
 import { zoneLabel } from '../format/time';
@@ -10,7 +11,6 @@ import { ASSISTANT_PAGES } from './tree-assistant';
 import { PLUGIN_PAGES } from './tree-plugins';
 import { DEVELOPER_PAGES } from './tree-developer';
 import { REGION_PAGES } from './tree-region';
-import { mountOf } from './mounts';
 import type { SettingEnv, SettingsPageDefinition } from './types';
 
 const THEME_LABELS = { system: 'System theme', light: 'Light', dark: 'Dark' } as const;
@@ -93,7 +93,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     title: 'Device settings',
     icon: 'bulb',
     parent: null,
-    group: null,
+    group: 'App',
     summary: (state) => countOf(state.tables.devices.ids.length, 'device'),
     keywords: ['hidden', 'add device', 'rename'],
   },
@@ -130,13 +130,13 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     title: 'Camera settings',
     icon: 'cameras',
     parent: null,
-    group: null,
+    group: 'App',
     keywords: ['recording', 'night vision', 'privacy'],
     visible: (env) => env.availability.hasCameras,
   },
   {
     id: 'cameras/remote-viewing',
-    title: 'Remote viewing',
+    title: 'Camera connection',
     icon: 'globe',
     parent: 'cameras',
     group: null,
@@ -157,7 +157,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     title: 'Walkie-talkie settings',
     icon: 'radio',
     parent: null,
-    group: null,
+    group: 'App',
     keywords: ['walkie talkie', 'push to talk', 'intercom', 'channels', 'shortcut', 'headset'],
     visible: (env) => env.platform !== 'android' || talkReady,
   },
@@ -176,7 +176,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     title: 'Fitness settings',
     icon: 'fitness',
     parent: null,
-    group: null,
+    group: 'App',
     keywords: ['health connect', 'goals', 'heart rate', 'sync'],
     visible: healthVisible,
   },
@@ -242,6 +242,14 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     group: null,
     visible: healthVisible,
     keywords: ['apps', 'sources'],
+  },
+  {
+    id: 'automations',
+    title: 'Automation settings',
+    icon: 'automations',
+    parent: null,
+    group: 'App',
+    keywords: ['rules', 'schedule', 'scheduled', 'history'],
   },
   {
     id: 'this-phone',
@@ -354,22 +362,12 @@ export function breadcrumbOf(id: string): readonly SettingsPageDefinition[] {
   return page.parent === null ? [page] : [...breadcrumbOf(page.parent), page];
 }
 
-export interface SettingsCrumb {
-  readonly label: string;
-  readonly href: Href;
-}
-
-export function settingsTrail(id: string): readonly SettingsCrumb[] {
-  const mount = mountOf(id);
-  const start: SettingsCrumb =
-    mount === null
-      ? { label: 'Settings', href: href.settings.index() }
-      : { label: mount.owner, href: mount.ownerHref };
+export function settingsTrail(id: string): readonly Required<Crumb>[] {
   const pages = breadcrumbOf(id).map((page) => ({
-    label: mount !== null && page.parent === null ? 'Settings' : page.title,
+    label: page.title,
     href: pageHref(page),
   }));
-  return [start, ...pages];
+  return [{ label: 'Settings', href: href.settings.index() }, ...pages];
 }
 
 export function onPlatform(page: SettingsPageDefinition, env: SettingEnv): boolean {

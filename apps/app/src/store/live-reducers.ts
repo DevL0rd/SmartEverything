@@ -101,7 +101,12 @@ function valuesWith(
 ): Readonly<Record<string, DeviceValues>> {
   const current = values[row.device_id] ?? {};
   const known = current[row.capability];
-  if (!removed && known?.observedAt === row.observed_at && sameJson(known.value, row.value)) {
+  if (
+    !removed &&
+    known?.optimistic !== true &&
+    known?.observedAt === row.observed_at &&
+    sameJson(known.value, row.value)
+  ) {
     return values;
   }
   if (removed) {

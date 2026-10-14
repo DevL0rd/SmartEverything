@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../../clock';
+import { withRequestSignal } from '../../server/request-signal';
 import { bearerOf, readBody } from '../../server/http';
 import type { Store } from '../../store/store';
 import { callerFor, challenge, type AcceptedCaller, type McpCaller } from './bearer';
@@ -139,7 +140,10 @@ export async function postMcp(
     return;
   }
   options.log.info('request.accepted', { method: message.method });
-  replyJson(response, 200, await answered(message, { ...options.tools, caller }, options.log));
+  const reply = await withRequestSignal(request, response, () =>
+    answered(message, { ...options.tools, caller }, options.log),
+  );
+  replyJson(response, 200, reply);
 }
 
 export function streamMcp(

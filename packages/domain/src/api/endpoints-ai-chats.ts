@@ -109,15 +109,29 @@ const CHAT_ENDPOINTS = {
     method: 'DELETE',
     path: '/api/ai/chats/:chatId',
     access: 'member',
-    summary: 'Delete an AI chat with its messages and files',
+    summary: 'Delete an AI chat with its messages, files and spawned subagent descendants',
     params: CHAT_PARAMS,
-    query: NOTHING,
+    query: z.strictObject({
+      expected_inactive_run_id: ID.optional().describe(
+        'Delete only if this exact child run and its spawned descendants remain inactive',
+      ),
+    }),
     body: NO_BODY,
     response: DONE,
   }),
 } as const;
 
 const MESSAGE_ENDPOINTS = {
+  compactAiChat: endpoint({
+    method: 'POST',
+    path: '/api/ai/chats/:chatId/compact',
+    access: 'member',
+    summary: 'Compact this chat using its actual engine while preserving its canonical history',
+    params: CHAT_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: z.strictObject({ compacted: z.boolean() }),
+  }),
   listAiChatMessages: endpoint({
     method: 'GET',
     path: '/api/ai/chats/:chatId/messages',

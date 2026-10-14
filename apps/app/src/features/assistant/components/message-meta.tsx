@@ -1,3 +1,5 @@
+import { useAiChat } from '../data/chat-store';
+import { isComputerEngine } from '../provider/computer-engine';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AssistantMessageRow } from '@smarteverything/domain';
@@ -19,10 +21,12 @@ export function ReplyMeta({
   readonly onPress: () => void;
 }): ReactNode {
   const timeZone = useTimeZone();
-  const showCost = useAssistantStatus()?.settings.reply_cost !== false;
+  const chat = useAiChat(row.chat_id);
+  const metered = chat === null || !isComputerEngine(chat.engine);
+  const showCost = useAssistantStatus()?.settings.reply_cost !== false && metered;
   const money = useMoney();
   const time = clock(row.created_at, timeZone);
-  const cost = showCost && row.cost_micros > 0 ? money.cost(row.cost_micros) : null;
+  const cost = showCost ? replyCost(row, money.cost) : null;
   return (
     <Interactive
       label={`Message details. ${joinParts([time, cost])}`}
@@ -131,4 +135,10 @@ export function MyMeta({
       )}
     </View>
   );
+}
+
+function replyCost(row: AssistantMessageRow, money: (micros: number) => string): string | null {
+  if (row.cost_incomplete === true)
+    return row.cost_micros === 0 ? 'Cost unavailable' : `${money(row.cost_micros)} + unavailable`;
+  return row.cost_micros > 0 ? money(row.cost_micros) : null;
 }

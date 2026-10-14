@@ -1,3 +1,6 @@
+import { commandPorts } from './plugin-device-command';
+import type { CommandRow } from '@smarteverything/domain';
+import type { NewCommand } from '../store/repositories/commands';
 import type { HealthRecord, PluginManifest } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ToolCaller } from '../ai-tools/hub-tool';
@@ -34,6 +37,7 @@ export interface BuiltinContextOptions {
     change: Partial<PluginConfiguration>,
     by?: ToolCaller,
   ) => Promise<void>;
+  readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -117,6 +121,7 @@ export function builtinContext(
     log,
     tools: { register: session.tools },
     devices: {
+      ...commandPorts(options, session, ownDrivers),
       register: (driver): Unsubscribe => {
         const stop = options.drivers.registry.register(driver);
         ownDrivers.add(driver.id);

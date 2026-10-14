@@ -143,6 +143,7 @@ import ScanBarcodeGlyph from 'lucide-react-native/icons/scan-barcode';
 import CroissantGlyph from 'lucide-react-native/icons/croissant';
 import SandwichGlyph from 'lucide-react-native/icons/sandwich';
 import CookieGlyph from 'lucide-react-native/icons/cookie';
+import TerminalGlyph from 'lucide-react-native/icons/terminal';
 import CupSodaGlyph from 'lucide-react-native/icons/cup-soda';
 import SaladGlyph from 'lucide-react-native/icons/salad';
 import CoffeeGlyph from 'lucide-react-native/icons/coffee';
@@ -336,6 +337,7 @@ export const GLYPHS = {
   croissant: CroissantGlyph,
   sandwich: SandwichGlyph,
   cookie: CookieGlyph,
+  terminal: TerminalGlyph,
   cupSoda: CupSodaGlyph,
   salad: SaladGlyph,
   party: PartyPopperGlyph,

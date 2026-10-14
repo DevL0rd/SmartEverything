@@ -1,14 +1,16 @@
 import { ValueStore, useValue } from '../../../design/external-store';
 import type { Quote } from '../model/composer-state';
-
-const drafts = new ValueStore<Readonly<Record<string, string>>>({});
-
+interface Draft {
+  readonly text: string;
+  readonly revision: number;
+}
+const drafts = new ValueStore<Readonly<Record<string, Draft>>>({});
 const quotes = new ValueStore<Readonly<Record<string, Quote>>>({});
 
 export function useDraft(key: string): readonly [string, (text: string) => void] {
-  const text = useValue(drafts)[key] ?? '';
+  const text = useValue(drafts)[key]?.text ?? '';
   const set = (next: string): void => {
-    drafts.update((all) => ({ ...all, [key]: next }));
+    setDraft(key, next);
   };
   return [text, set];
 }
@@ -29,5 +31,17 @@ export function quoteInto(key: string, quote: Quote): void {
 }
 
 export function setDraft(key: string, text: string): void {
-  drafts.update((all) => ({ ...all, [key]: text }));
+  drafts.update((all) => ({ ...all, [key]: { text, revision: (all[key]?.revision ?? 0) + 1 } }));
+}
+
+export function draftRevision(key: string): number {
+  return drafts.get()[key]?.revision ?? 0;
+}
+
+export function clearSubmittedDraft(key: string, revision: number, quote: Quote | null): void {
+  if (draftRevision(key) === revision) setDraft(key, '');
+  if (quotes.get()[key] === quote)
+    quotes.update((all) =>
+      Object.fromEntries(Object.entries(all).filter(([name]) => name !== key)),
+    );
 }

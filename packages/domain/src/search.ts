@@ -1,4 +1,5 @@
 import { CAPABILITY_CATALOGUE, isStandardCapability } from './capabilities';
+import { presentCapability } from './capability-presentation';
 import { DEVICE_KIND_LABELS } from './device-kinds';
 import type { DeviceCapability, DeviceKind } from './devices';
 import { InvalidValueError, checkValue } from './values';
@@ -188,6 +189,7 @@ export function accepts(descriptor: ValueDescriptor, value: JsonValue): boolean 
 }
 
 export function keywordsOf(device: SearchDevice, capability: DeviceCapability): readonly string[] {
+  const presented = presentCapability(device, capability);
   const catalogued = isStandardCapability(capability.key)
     ? CAPABILITY_CATALOGUE[capability.key].keywords
     : [];
@@ -196,6 +198,9 @@ export function keywordsOf(device: SearchDevice, capability: DeviceCapability): 
     DEVICE_KIND_LABELS[device.kind],
     device.room ?? '',
     capability.label,
+    presented.label,
+    presented.groupLabel,
+    ...(presented.keywords ?? []),
     capability.key.replaceAll('_', ' '),
     ...catalogued,
   ].filter((word) => word !== '');

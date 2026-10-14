@@ -1,3 +1,4 @@
+import { magnetSetup } from './xiaomi-magnet';
 import {
   ApiError,
   BIND_KEY,
@@ -69,6 +70,9 @@ export async function resolveSetup(
   setup: LocalDeviceSetup,
   context: SetupContext,
 ): Promise<ResolvedSetup> {
+  if (setup.driver === 'xiaomi_magnet') {
+    return magnetSetup(setup, context);
+  }
   if (setup.driver === 'xiaomi_watch') {
     return watchSetup(setup, context);
   }

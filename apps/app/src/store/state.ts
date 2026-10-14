@@ -61,6 +61,7 @@ export function makeTable<R>(
 export type Tables = { readonly [T in ListTable]: Table<RowOf<T>> };
 
 export interface DeviceValue {
+  readonly optimistic?: true;
   readonly value: JsonValue;
   readonly observedAt: string;
 }

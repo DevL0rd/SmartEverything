@@ -1,7 +1,5 @@
 import {
   COMPACTION_EMBED,
-  TOOLS_CHANGED_EMBED,
-  type ToolsChangedEmbed,
   ASSISTANT_STEPS_KEPT,
   ASSISTANT_TEXT_MAX,
   WEB_SOURCES_KIND,
@@ -15,6 +13,7 @@ import {
   type SettledStep,
   type AssistantMessageRow,
   type AssistantReasonCode,
+  type ChatTimelineEmbed,
   type AssistantRequestState,
   type MessageOrigin,
 } from '@smarteverything/domain';
@@ -41,6 +40,7 @@ export interface ResponderMessage {
   readonly files?: readonly StoredAttachment[];
   readonly kind?: 'text' | 'update';
   readonly model?: string | null;
+  readonly messageId?: string;
 }
 
 function activityLine(label: string): string {
@@ -67,9 +67,13 @@ export class ConversationLog {
     return this.store.assistantChat;
   }
 
-  private add(row: NewAssistantMessage, files: readonly StoredAttachment[]): AssistantMessageRow {
+  private add(
+    row: NewAssistantMessage,
+    files: readonly StoredAttachment[],
+    messageId?: string,
+  ): AssistantMessageRow {
     return this.store.write(() => {
-      const added = this.messages.addMessage(row);
+      const added = this.messages.addMessage(row, undefined, messageId);
       this.messages.attachTo(
         added.id,
         files.map((file) => file.id),
@@ -131,6 +135,7 @@ export class ConversationLog {
         model: input.model ?? null,
       },
       files,
+      input.messageId,
     );
   }
 
@@ -159,6 +164,11 @@ export class ConversationLog {
 
   flushReply(id: string, text: string): void {
     this.messages.updateMessage(id, { text: text.slice(0, ASSISTANT_TEXT_MAX) });
+  }
+
+  timeline(id: string, timeline: ChatTimelineEmbed): void {
+    const kept = this.messages.message(id).embeds.filter((embed) => embed.kind !== 'chat_timeline');
+    this.messages.updateMessage(id, { embeds: [...kept, timeline] });
   }
 
   finishReply(
@@ -263,29 +273,6 @@ export class ConversationLog {
         kind: 'update',
         author: assistantLabel(this.messages.settings()),
         text: summary.slice(0, ASSISTANT_TEXT_MAX),
-        attachments: [],
-        state: null,
-        reason: null,
-        steps: [],
-        step_states: [],
-        reply_to: null,
-      },
-      [],
-    );
-  }
-
-  toolsChanged(chat: AiChatRow, text: string, embed: ToolsChangedEmbed): AssistantMessageRow {
-    return this.add(
-      {
-        ...NO_EXTRAS,
-        embeds: [TOOLS_CHANGED_EMBED.parse(embed)],
-        profile_id: chat.profile_id,
-        client_id: null,
-        chat_id: chat.id,
-        role: 'system',
-        kind: 'update',
-        author: 'SmartEverything',
-        text: text.slice(0, ASSISTANT_TEXT_MAX),
         attachments: [],
         state: null,
         reason: null,

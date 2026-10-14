@@ -1,22 +1,17 @@
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import type { ReactElement, ReactNode } from 'react';
-import { href } from '../../../app-shell/hrefs';
-import type { MenuItem } from '../../../components/menu';
 import type { PrimaryActionProps } from '../../../components/primary-action';
 import { PageHeader, type HeaderAction, type HeaderEditing } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { HEALTH_CONNECT_ON_DEVICE } from '../data/health-connect';
 import { useHealthConnect } from '../data/use-health-connect';
 import { FitnessTabs, type FitnessTab } from './fitness-tabs';
-import { settingsItem } from '../../../settings/settings-item';
-
-const FITNESS_SETTINGS = settingsItem(href.settings.page('health'));
 
 export interface FitnessFrameProps {
   readonly tab: FitnessTab;
   readonly width: 'dashboard' | 'detail';
   readonly toolbar: ReactNode;
   readonly actions?: readonly HeaderAction[];
-  readonly overflow?: readonly MenuItem[];
   readonly editing?: HeaderEditing | null;
   readonly primaryAction?: PrimaryActionProps | undefined;
   readonly children: ReactNode;
@@ -53,7 +48,6 @@ export function FitnessFrame({
   width,
   toolbar,
   actions = [],
-  overflow = [],
   editing = null,
   primaryAction,
   children,
@@ -61,9 +55,9 @@ export function FitnessFrame({
   const header = (
     <PageHeader
       title="Fitness"
+      settings={mainPageSettings('fitness')}
       back={false}
       actions={actions}
-      overflow={[...overflow, FITNESS_SETTINGS]}
       editing={editing}
       below={<FitnessTabs active={tab} />}
     />

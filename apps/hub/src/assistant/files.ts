@@ -1,3 +1,5 @@
+import { hubFileImportForbidden } from './output-authority';
+import type { ManagedOutputs } from './managed-outputs';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   appendFile,
@@ -22,6 +24,7 @@ import type {
   StoredAttachment,
 } from '../store/repositories/assistant-chat';
 import { imageSize } from './image-size';
+import { mediaKindOf, type MediaNotes } from '../transcripts/media-notes';
 
 const UPLOAD_LIFETIME_MS = 10 * 60_000;
 const UNATTACHED_KEPT_MS = 24 * 60 * 60_000;
@@ -68,6 +71,7 @@ export interface FilesOptions {
   readonly dataDirectory: string;
   readonly chat: AssistantChatRepository;
   readonly now: () => Date;
+  readonly outputs?: ManagedOutputs;
 }
 
 function safeName(name: string): string {
@@ -87,8 +91,25 @@ function within(path: string, root: string): boolean {
 
 export class AssistantFiles {
   private readonly uploads = new Map<string, Upload>();
+  private notes: Pick<MediaNotes, 'ensure' | 'later'> | undefined;
 
   constructor(private readonly options: FilesOptions) {}
+
+  attachMediaNotes(notes: Pick<MediaNotes, 'ensure' | 'later'>): void {
+    this.notes = notes;
+  }
+
+  ensureMediaNote(file: StoredAttachment): Promise<string> {
+    if (file.transcript !== null) return Promise.resolve(file.transcript);
+    if (this.notes === undefined)
+      throw new ApiError('conflict', `The cached description for ${file.name} is unavailable.`);
+    return this.notes.ensure(file);
+  }
+
+  private noted(file: StoredAttachment): StoredAttachment {
+    if (mediaKindOf(file.mime) !== null) this.notes?.later(file);
+    return file;
+  }
 
   get root(): string {
     return join(this.options.dataDirectory, 'assistant');
@@ -159,42 +180,85 @@ export class AssistantFiles {
   async fromOutFile(
     profileId: string,
     file: AssistantOutFile,
-    local: boolean,
+    scope: { readonly local: boolean; readonly chatId: string; readonly authorize: () => void },
   ): Promise<StoredAttachment> {
     if ('uploadId' in file) {
       return this.options.chat.attachment(file.uploadId);
     }
-    if (!local) {
+    if (!scope.local) {
       throw new ApiError(
         'forbidden',
         'Files by path can only be sent from this computer; use the upload operations.',
       );
     }
-    const path = await this.tempFile(file.path);
-    const content = await readFile(path);
-    const name = safeName(basename(path));
-    return this.keep({ id: randomUUID(), profileId, name, mime: mimeOf(name), content });
+    scope.authorize();
+    const managed = /^(workspace|temporary|transfers)(\/|$)/u.test(file.path);
+    if (!managed && hubFileImportForbidden())
+      throw new ApiError(
+        'forbidden',
+        'Hub conversations can attach only files from their admitted managed project.',
+      );
+    const content =
+      managed && this.options.outputs !== undefined
+        ? await this.options.outputs.read({
+            profileId,
+            chatId: scope.chatId,
+            path: file.path,
+            authorize: scope.authorize,
+          })
+        : await readFile(await this.tempFile(file.path));
+    const name = safeName(basename(file.path));
+    return this.keepBytes({
+      profileId,
+      chatId: scope.chatId,
+      authorize: scope.authorize,
+      name,
+      mime: mimeOf(name),
+      content,
+      signal: new AbortController().signal,
+    });
   }
 
   async copy(file: StoredAttachment): Promise<StoredAttachment> {
     const content = await readFile(this.pathOf(file));
-    const copy = await this.keep({
+    return this.keep({
       id: randomUUID(),
       profileId: file.profile_id,
       name: file.name,
       mime: file.mime,
       content,
+      transcript: this.options.chat.attachment(file.id).transcript,
     });
-    if (file.transcript === null) {
-      return copy;
-    }
-    this.options.chat.setTranscript(copy.id, file.transcript);
-    return { ...copy, transcript: file.transcript };
+  }
+
+  async keepBytes(input: {
+    readonly chatId: string;
+    readonly authorize: () => void;
+    readonly id?: string;
+    readonly profileId: string;
+    readonly name: string;
+    readonly mime: string;
+    readonly content: Buffer;
+    readonly signal: AbortSignal;
+  }): Promise<StoredAttachment> {
+    if (this.options.outputs === undefined)
+      throw new ApiError('conflict', 'Managed output storage is unavailable.');
+    return this.noted(
+      await this.options.outputs.keep({
+        ...input,
+        id: input.id ?? randomUUID(),
+        name: safeName(input.name),
+      }),
+    );
   }
 
   async remove(files: readonly StoredAttachment[]): Promise<void> {
     await Promise.all(
-      files.map((file) => rm(join(this.root, 'files', file.id), { recursive: true, force: true })),
+      files.map((file) =>
+        file.storage_path.startsWith('projects/') && this.options.outputs !== undefined
+          ? this.options.outputs.remove(file)
+          : rm(join(this.root, 'files', file.id), { recursive: true, force: true }),
+      ),
     );
   }
 
@@ -219,6 +283,7 @@ export class AssistantFiles {
     readonly name: string;
     readonly mime: string;
     readonly content: Buffer;
+    readonly transcript?: string | null;
   }): Promise<StoredAttachment> {
     const name = safeName(input.name);
     const relative = join('files', input.id, name);
@@ -227,7 +292,7 @@ export class AssistantFiles {
     await writeFile(temporary, input.content, { mode: 0o600 });
     await rename(temporary, join(this.root, relative));
     const size = input.mime.startsWith('image/') ? imageSize(input.content) : null;
-    return this.options.chat.addAttachment({
+    const file = this.options.chat.addAttachment({
       id: input.id,
       profile_id: input.profileId,
       name,
@@ -238,6 +303,11 @@ export class AssistantFiles {
       storage_path: relative,
       sha256: createHash('sha256').update(input.content).digest('hex'),
     });
+    if (input.transcript !== undefined && input.transcript !== null) {
+      this.options.chat.setTranscript(file.id, input.transcript);
+      return { ...file, transcript: input.transcript };
+    }
+    return this.noted(file);
   }
 
   private upload(profileId: string, uploadId: string): Upload {

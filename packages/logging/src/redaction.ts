@@ -5,6 +5,7 @@ export const DENIED_FIELDS: readonly string[] = [
   'accessToken',
   'address',
   'apiKey',
+  'api_key',
   'authorization',
   'clientSecret',
   'code',
@@ -85,4 +86,14 @@ export function redactText(text: string, limit: number): string {
     .replace(ADDRESS_PATTERN, REDACTED)
     .replace(SECRET_PATTERN, (match) => (UUID_PATTERN.test(match) ? match : REDACTED))
     .slice(0, limit);
+}
+
+const PREVIEW_FIELD_PATTERN = new RegExp(
+  `\\b(${DENIED_FIELDS.join('|')})["']?\\s*[:=]\\s*(?:"[^"\\r\\n]*"|'[^'\\r\\n]*'|[^\\s,;]+)`,
+  'gi',
+);
+export function redactPreviewText(text: string, limit: number): string {
+  const sanitized = redactText(text.replace(PREVIEW_FIELD_PATTERN, REDACTED), text.length);
+  const bytes = new TextEncoder().encode(sanitized);
+  return new TextDecoder().decode(bytes.slice(0, limit));
 }

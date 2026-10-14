@@ -13,12 +13,16 @@ import type { ClaudeControlPlane } from './control-plane';
 import { INDEX_FILE, INDEX_FILE_NAME, type IndexFile } from './desktop-index';
 import type { Diagnostics } from './diagnostics';
 import { ClaudeSessionNotFoundError } from './errors';
+import { JsonSnapshots } from './json-snapshots';
+import { join } from 'node:path';
+import { platform } from 'node:process';
 import { JsonFiles } from './json-files';
 import { LIVE_FILE, LIVE_FILE_NAME, type LiveFile } from './live-files';
 import type { ClaudeLocations } from './locations';
 import { pidNamespace, processStart } from './proc';
 import {
   isRunning,
+  liveSessionId,
   mergeSources,
   sessionOf,
   type LiveSource,
@@ -28,10 +32,9 @@ import { readThreadPage } from './transcript-page';
 import { resolveTranscript, transcriptCandidates } from './transcript-path';
 import { TranscriptTails } from './transcripts';
 
-const RESUMABLE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 export interface DirectoryOptions {
   readonly locations: ClaudeLocations;
+  readonly historyDirectory: string;
   readonly plane: ClaudeControlPlane;
   readonly diagnostics: Diagnostics;
   readonly sleep: (milliseconds: number) => Promise<void>;
@@ -61,15 +64,13 @@ function waitingBySession(prompts: readonly ClaudePrompt[]): ReadonlyMap<string,
 
 export class SessionDirectory {
   private readonly live: JsonFiles<LiveFile>;
-  private readonly index: JsonFiles<IndexFile>;
+  private readonly liveHistory: JsonSnapshots<LiveFile>;
+  private readonly index: JsonSnapshots<IndexFile>;
   private readonly tails: TranscriptTails;
   private readonly contexts = new Map<string, number>();
   private readonly published = new Map<string, string>();
   private readonly following = new Set<string>();
-  private readonly userMessageCounts = new Map<string, number>();
-  private readonly watchers = new Set<() => void>();
-  private views: readonly SessionView[] = [];
-  private readonly namespace = pidNamespace();
+  private readonly namespace = platform === 'linux' ? pidNamespace() : null;
   private quiet = true;
 
   constructor(private readonly options: DirectoryOptions) {
@@ -78,9 +79,7 @@ export class SessionDirectory {
       sleep: options.sleep,
       diagnostics: options.diagnostics,
       log: options.log,
-      changed: (): void => {
-        this.refresh();
-      },
+      changed: this.reevaluate.bind(this),
     };
     this.live = new JsonFiles({
       ...shared,
@@ -89,9 +88,22 @@ export class SessionDirectory {
       directory: options.locations.sessions,
       accepts: (name): boolean => LIVE_FILE_NAME.test(name),
       schema: LIVE_FILE,
+      accepted: (name, file): Promise<void> => this.retainLive(name, file),
     });
-    this.index = new JsonFiles({
-      ...shared,
+    this.liveHistory = new JsonSnapshots({
+      source: 'live_session',
+      directory: options.locations.sessions,
+      recursive: false,
+      accepts: (name): boolean => LIVE_FILE_NAME.test(name),
+      schema: LIVE_FILE,
+      diagnostics: options.diagnostics,
+      snapshot: join(options.historyDirectory, 'legacy-live.json'),
+      identity: (_name, file): string => liveSessionId(file),
+      acceptsValue: (name, file): boolean => this.currentNamespace(name, file),
+    });
+    this.index = new JsonSnapshots({
+      diagnostics: options.diagnostics,
+      snapshot: join(options.historyDirectory, 'legacy-index.json'),
       recursive: true,
       source: 'desktop_index',
       directory: options.locations.desktopIndex,
@@ -113,14 +125,13 @@ export class SessionDirectory {
   }
 
   async start(): Promise<void> {
-    await Promise.all([this.live.start(), this.index.start()]);
+    await Promise.all([this.live.start(), this.refreshHistory()]);
     this.refresh();
     this.quiet = false;
   }
 
   stop(): void {
     this.live.stop();
-    this.index.stop();
     this.tails.stop();
   }
 
@@ -136,25 +147,10 @@ export class SessionDirectory {
     this.refresh();
   }
 
-  socketOf(id: string): string | null {
-    return this.viewOf(id).source.live?.file.messagingSocketPath ?? null;
-  }
-
-  userMessages(id: string): number {
-    return this.userMessageCounts.get(id) ?? 0;
-  }
-
-  whenRunning(id: string, milliseconds: number): Promise<boolean> {
-    return this.waitFor(
-      () =>
-        this.tails.followed().has(id) &&
-        this.views.some((view) => view.row.id === id && view.row.state !== 'stopped'),
-      milliseconds,
+  refreshHistory(): Promise<void> {
+    return Promise.all([this.index.refresh(), this.liveHistory.refresh()]).then(
+      (): void => undefined,
     );
-  }
-
-  whenUserMessage(id: string, after: number, milliseconds: number): Promise<boolean> {
-    return this.waitFor(() => this.userMessages(id) > after, milliseconds);
   }
 
   summary(): DirectorySummary {
@@ -174,31 +170,6 @@ export class SessionDirectory {
       : readThreadPage(path, before, limit);
   }
 
-  private waitFor(check: () => boolean, milliseconds: number): Promise<boolean> {
-    if (check()) {
-      return Promise.resolve(true);
-    }
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (value: boolean): void => {
-        if (!settled) {
-          settled = true;
-          this.watchers.delete(look);
-          resolve(value);
-        }
-      };
-      const look = (): void => {
-        if (check()) {
-          finish(true);
-        }
-      };
-      this.watchers.add(look);
-      void this.options.sleep(milliseconds).then(() => {
-        finish(false);
-      });
-    });
-  }
-
   private viewOf(id: string): SessionView {
     const view = this.refresh().find((candidate) => candidate.row.id === id);
     if (view === undefined) {
@@ -216,27 +187,46 @@ export class SessionDirectory {
   }
 
   private aliveOf(file: LiveFile): boolean | null {
-    return file.procStart === undefined ? null : processStart(file.pid) === file.procStart;
+    return platform !== 'linux' || file.procStart === undefined
+      ? null
+      : processStart(file.pid) === file.procStart;
+  }
+
+  private retainLive(name: string, file: LiveFile): Promise<void> {
+    return this.currentNamespace(name, file)
+      ? this.liveHistory.retain(name, file)
+      : Promise.resolve();
+  }
+
+  private currentNamespace(name: string, file: LiveFile): boolean {
+    if (
+      this.namespace === null ||
+      file.pidDomain === undefined ||
+      file.pidDomain.endsWith(this.namespace)
+    )
+      return true;
+    this.options.diagnostics.report('live_session', name, 'belongs to another pid namespace');
+    return false;
   }
 
   private liveSources(): LiveSource[] {
-    const sources: LiveSource[] = [];
+    const retained = [...this.liveHistory.all().values()].map((entry) => ({
+      file: entry.value,
+      present: false,
+      alive: false,
+    }));
+    const current: LiveSource[] = [];
     for (const [name, entry] of this.live.all()) {
-      const file = entry.value;
-      if (file.kind !== undefined && file.kind !== 'interactive') {
-        continue;
-      }
-      if (file.pidDomain !== undefined && !file.pidDomain.endsWith(this.namespace)) {
-        this.options.diagnostics.report('live_session', name, 'belongs to another pid namespace');
-        continue;
-      }
-      sources.push({
-        file,
+      if (!this.currentNamespace(name, entry.value)) continue;
+      current.push({
+        file: entry.value,
         present: entry.present,
-        alive: entry.present ? this.aliveOf(file) : false,
+        alive: entry.present ? this.aliveOf(entry.value) : false,
       });
     }
-    return sources;
+    return [...retained, ...current].filter(
+      (source) => source.file.kind === undefined || source.file.kind === 'interactive',
+    );
   }
 
   private refresh(): readonly SessionView[] {
@@ -255,26 +245,14 @@ export class SessionDirectory {
         capabilities: (running) => this.capabilitiesFor(source, running),
       }),
     }));
-    this.views = views;
     this.syncTails(views);
     this.announce(views);
-    for (const watcher of [...this.watchers]) {
-      watcher();
-    }
     return views;
   }
 
   private capabilitiesFor(source: SessionSources, running: boolean): ClaudeCapabilities {
     const { plane } = this.options;
-    return capabilitiesOf({
-      running,
-      link: plane.link(),
-      controller: plane.controller(),
-      ...plane.sessionLink(source.id),
-      listed: (source.index?.sessionId ?? source.live?.file.hostSessionId) !== undefined,
-      socket: source.live?.file.messagingSocketPath !== undefined,
-      resumable: RESUMABLE_ID.test(source.id),
-    });
+    return capabilitiesOf({ running, ...plane.sessionLink(source.id) });
   }
 
   private syncTails(views: readonly SessionView[]): void {
@@ -307,9 +285,6 @@ export class SessionDirectory {
       }
     } finally {
       this.following.delete(source.id);
-      for (const watcher of [...this.watchers]) {
-        watcher();
-      }
     }
   }
 
@@ -340,13 +315,6 @@ export class SessionDirectory {
   }
 
   private threadAppended(sessionId: string, items: readonly ClaudeThreadItem[]): void {
-    const users = items.filter((item) => item.kind === 'user' && !item.meta).length;
-    if (users > 0) {
-      this.userMessageCounts.set(sessionId, this.userMessages(sessionId) + users);
-      for (const watcher of [...this.watchers]) {
-        watcher();
-      }
-    }
     for (let from = 0; from < items.length; from += CLAUDE_THREAD_LIMIT) {
       this.notify(
         {

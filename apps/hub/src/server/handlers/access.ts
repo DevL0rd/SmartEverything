@@ -1,9 +1,11 @@
-import { API_ENDPOINTS as E } from '@smarteverything/domain';
+import { ApiError, API_ENDPOINTS as E } from '@smarteverything/domain';
 import { clientOf } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type Bound } from '../router';
 
 type AccessRoutes = Record<
+  | 'hubIdentity'
+  | 'hubConnection'
   | 'status'
   | 'session'
   | 'startPairing'
@@ -18,13 +20,15 @@ type AccessRoutes = Record<
 export function accessRoutes(context: ServerContext): AccessRoutes {
   const { store } = context;
   return {
+    hubIdentity: bound(E.hubIdentity, () => connectionsOf(context).publicIdentity()),
+    hubConnection: bound(E.hubConnection, () => connectionsOf(context).metadata()),
     status: bound(E.status, () => context.publicStatus()),
     session: bound(E.session, ({ caller }) => ({
       client: clientOf(caller),
       hub: context.status(),
     })),
     startPairing: bound(E.startPairing, ({ body, caller }) =>
-      context.access.startPairing(body.role, clientOf(caller).id),
+      context.access.startPairing(body.role, clientOf(caller).id, body.connectionProtocolVersion),
     ),
     claimPairing: bound(E.claimPairing, ({ body, remote }) =>
       context.access.claim({ ...body, remote }),
@@ -55,4 +59,11 @@ export function accessRoutes(context: ServerContext): AccessRoutes {
       token: await context.access.rotateOwner(),
     })),
   };
+}
+
+function connectionsOf(context: ServerContext): NonNullable<ServerContext['connections']> {
+  if (context.connections === undefined) {
+    throw new ApiError('conflict', 'This hub has no configured connection identity.');
+  }
+  return context.connections;
 }

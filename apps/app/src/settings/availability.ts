@@ -1,3 +1,4 @@
+import { CUSTOM_SETTINGS_SCREENS } from './custom-screens';
 import { useSitemap, type SitemapType } from 'expo-router';
 import { settingsIdOfRoute } from './mounts';
 import { settingsOn } from './registry';
@@ -24,7 +25,7 @@ function collect(node: SitemapType, into: Set<string>): void {
 
 export function useBuiltSettingsPages(): ReadonlySet<string> {
   const sitemap = useSitemap();
-  const built = new Set<string>();
+  const built = new Set<string>(Object.keys(CUSTOM_SETTINGS_SCREENS));
   if (sitemap !== null) {
     collect(sitemap, built);
   }

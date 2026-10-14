@@ -12,6 +12,8 @@ function group(one: string, many = `${one}s`): FamilyGroup {
 export const FAMILY_GROUPS: Readonly<Record<DeviceFamily, FamilyGroup>> = {
   air_purifier: group('Air purifier'),
   humidifier: group('Humidifier'),
+  diffuser: group('Scent diffuser'),
+  microwave: group('Microwave'),
   dehumidifier: group('Dehumidifier'),
   tower_fan: group('Fan'),
   fan: group('Fan'),

@@ -10,6 +10,7 @@ import {
 import type { DeviceValues } from '../../../store/state';
 import { powerStateOf, type DeviceModel } from './device-model';
 import { heroReadingOf, readingsOf } from './readings';
+import { observedSummary } from './observed-summary';
 
 export const DIAL_ROLES: ReadonlySet<CapabilityRole> = new Set([
   'target_humidity',
@@ -28,6 +29,7 @@ const MEDIA: readonly CapabilityRole[] = [
 const PREFERRED: Partial<Readonly<Record<DeviceFamily, readonly CapabilityRole[]>>> = {
   air_purifier: ['purifier_mode', 'favourite_level', 'fan_mode'],
   humidifier: ['target_humidity', 'mode', 'mist_level'],
+  diffuser: ['spray', 'spray_interval', 'spray_duration', 'ambient_light', 'brightness'],
   tower_fan: FAN,
   fan: FAN,
   light: ['brightness', 'color_temperature'],
@@ -42,9 +44,17 @@ export const LEVEL_ROLES: ReadonlySet<CapabilityRole> = new Set([
   'volume',
 ]);
 
-const CARD_KINDS: ReadonlySet<string> = new Set(['enum', 'number', 'boolean']);
+const CARD_KINDS: ReadonlySet<string> = new Set(['enum', 'number', 'boolean', 'action']);
 
 const FACT_ROLES: readonly CapabilityRole[] = ['filter_life', 'water_level'];
+
+function cardEligible(presented: PresentedCapability): boolean {
+  return (
+    presented.writable &&
+    presented.colorEncoding === undefined &&
+    CARD_KINDS.has(presented.capability.value.kind)
+  );
+}
 
 function rankOf(presented: PresentedCapability, preferred: readonly CapabilityRole[]): number {
   const index = presented.role === null ? -1 : preferred.indexOf(presented.role);
@@ -58,7 +68,7 @@ export function cardControls(
 ): readonly PresentedCapability[] {
   const preferred = PREFERRED[family] ?? [];
   return controls
-    .filter((presented) => CARD_KINDS.has(presented.capability.value.kind))
+    .filter(cardEligible)
     .map((presented, order) => ({ presented, order, rank: rankOf(presented, preferred) }))
     .sort((left, right) => left.rank - right.rank || left.order - right.order)
     .slice(0, count)
@@ -106,8 +116,16 @@ const LEVEL_TEXT_ROLES: readonly CapabilityRole[] = [
   'volume',
 ];
 
+const LEVEL_TEXT_BY_FAMILY: Readonly<Partial<Record<DeviceFamily, readonly CapabilityRole[]>>> = {
+  diffuser: [],
+};
+
 export function levelText(model: DeviceModel, values: DeviceValues): string | null {
-  for (const role of LEVEL_TEXT_ROLES) {
+  const summary = observedSummary(model, values);
+  if (summary !== null) {
+    return summary;
+  }
+  for (const role of LEVEL_TEXT_BY_FAMILY[model.family] ?? LEVEL_TEXT_ROLES) {
     const fact = factOf(withRole(model.presentation, role), values);
     if (fact !== null) {
       return `${fact.label} ${fact.text}`;
@@ -155,9 +173,7 @@ const REMOTE_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['ir_blaster', 'ir_re
 export type CardWeight = 'none' | 'one' | 'many';
 
 function controlCount(model: DeviceModel): number {
-  const primary = curatedControls(model.device).filter((presented) =>
-    CARD_KINDS.has(presented.capability.value.kind),
-  );
+  const primary = curatedControls(model.device).filter(cardEligible);
   return primary.length + settingControls(model).length;
 }
 

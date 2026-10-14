@@ -9,6 +9,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
+import type { ApiClient } from './connection/client';
 
 const log = new Logger('app.media');
 
@@ -37,22 +38,35 @@ export interface DayWindow {
 
 const DAY_ROWS_KEPT = 500;
 
-export async function answerCameraOffer(deviceId: string, sdp: string): Promise<string> {
-  return (await api().call(E.offerCamera, { params: { deviceId }, body: { sdp } })).sdp;
+export async function answerCameraOffer(
+  deviceId: string,
+  sdp: string,
+  client: ApiClient = api(),
+): Promise<string> {
+  return (await client.call(E.offerCamera, { params: { deviceId }, body: { sdp } })).sdp;
 }
 
-export async function answerTalkOffer(deviceId: string, sdp: string): Promise<string> {
-  return (await api().call(E.talkCamera, { params: { deviceId }, body: { sdp } })).sdp;
+export async function answerTalkOffer(
+  deviceId: string,
+  sdp: string,
+  client: ApiClient = api(),
+): Promise<string> {
+  return (await client.call(E.talkCamera, { params: { deviceId }, body: { sdp } })).sdp;
 }
 
-export async function cameraRelayUrl(deviceId: string): Promise<string> {
-  const link = await api().call(E.cameraStream, { params: { deviceId } });
-  return api().urlOf(link.url).replace(/^http/, 'ws');
+export async function cameraRelayUrl(deviceId: string, client: ApiClient = api()): Promise<string> {
+  const media = client.forMedia(false);
+  const link = await media.call(E.cameraStream, { params: { deviceId } });
+  return media.urlOf(link.url).replace(/^http/, 'ws');
 }
 
 export async function cameraSnapshotLink(deviceId: string, size: MediaSize): Promise<SignedLink> {
-  const link = await api().call(E.cameraSnapshot, { params: { deviceId }, query: { size } });
-  return { url: api().urlOf(link.url), expiresAt: link.expiresAt };
+  const client = api().forMedia();
+  const link = await client.call(E.cameraSnapshot, { params: { deviceId }, query: { size } });
+  return {
+    url: await client.resourceUrl(link.url, link.expiresAt, 'image'),
+    expiresAt: link.expiresAt,
+  };
 }
 
 export async function recordingLinks(
@@ -62,9 +76,25 @@ export async function recordingLinks(
   if (ids.length === 0) {
     return {};
   }
-  const links = await api().call(E.recordingLinks, { body: { ids: [...ids], size } });
+  const client = api().forMedia();
+  const links = await client.call(E.recordingLinks, { body: { ids: [...ids], size } });
   return Object.fromEntries(
-    links.map((link) => [link.id, { url: api().urlOf(link.url), expiresAt: link.expiresAt }]),
+    await Promise.all(
+      links.map(
+        async (link) =>
+          [
+            link.id,
+            {
+              url: await client.resourceUrl(
+                link.url,
+                link.expiresAt,
+                size === 'thumb' ? 'image' : 'recording',
+              ),
+              expiresAt: link.expiresAt,
+            },
+          ] as const,
+      ),
+    ),
   );
 }
 

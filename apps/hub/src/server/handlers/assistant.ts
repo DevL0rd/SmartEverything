@@ -1,5 +1,5 @@
-import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
-import { clientOf, profileIdOf, type Caller } from '../auth';
+import { API_ENDPOINTS as E, ApiError, DEFAULT_RESPONSE_STYLE } from '@smarteverything/domain';
+import { clientOf, roleOfCaller, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type Bound } from '../router';
 
@@ -13,6 +13,7 @@ type AssistantChatRoutes = Record<
   | 'sendAssistantUploadChunk'
   | 'finishAssistantUpload'
   | 'assistantAttachmentLinks'
+  | 'readAssistantResponseStyle'
   | 'updateAssistantSettings'
   | 'postAssistant',
   Bound
@@ -49,13 +50,19 @@ function chatRoutes(
       ),
     ),
     removeAssistantMessage: bound(E.removeAssistantMessage, async ({ params, caller }) => {
-      await assistant.remove(profileIdOf(store, caller), [params.messageId]);
+      await assistant.remove(
+        { profileId: profileIdOf(store, caller), role: roleOfCaller(caller) },
+        [params.messageId],
+      );
       return DONE_REPLY;
     }),
     clearAssistantMessages: bound(E.clearAssistantMessages, async ({ caller }) => {
       const profileId = profileIdOf(store, caller);
       const chatId = assistant.chats.defaultChat(profileId).id;
-      await assistant.remove(profileId, store.assistantChat.messageIdsOf(chatId));
+      await assistant.remove(
+        { profileId, role: roleOfCaller(caller) },
+        store.assistantChat.messageIdsOf(chatId),
+      );
       return DONE_REPLY;
     }),
   };
@@ -111,9 +118,16 @@ function fileRoutes(
 
 function settingsRoutes(
   context: ServerContext,
-): Pick<AssistantChatRoutes, 'updateAssistantSettings' | 'postAssistant'> {
+): Pick<
+  AssistantChatRoutes,
+  'readAssistantResponseStyle' | 'updateAssistantSettings' | 'postAssistant'
+> {
   const { assistant } = context;
   return {
+    readAssistantResponseStyle: bound(
+      E.readAssistantResponseStyle,
+      () => assistant.settings().response_style ?? DEFAULT_RESPONSE_STYLE,
+    ),
     updateAssistantSettings: bound(E.updateAssistantSettings, ({ body }) => assistant.update(body)),
     postAssistant: bound(E.postAssistant, ({ body, caller }) =>
       assistant.post(body, local(caller)),

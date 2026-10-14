@@ -19,6 +19,8 @@ const RULE_NAMES: Readonly<Record<PortRule['purpose'], string>> = {
   webrtc: `${FIREWALL_GROUP} live video`,
   device: `${FIREWALL_GROUP} device push`,
   plugin: `${FIREWALL_GROUP} plugin`,
+  hub: `${FIREWALL_GROUP} encrypted LAN`,
+  discovery: `${FIREWALL_GROUP} discovery`,
 };
 
 const SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/;
@@ -31,6 +33,8 @@ function ufwMatch(rule: PortRule): readonly string[] {
   switch (rule.purpose) {
     case 'webrtc':
       return ['proto', rule.protocol, 'from', 'any', 'to', 'any', 'port', String(rule.port)];
+    case 'hub':
+    case 'discovery':
     case 'plugin':
       return ['proto', rule.protocol, 'from', rule.source, 'to', 'any', 'port', String(rule.port)];
     case 'camera':
@@ -57,6 +61,8 @@ function firewalldChange(rule: PortRule): string {
   switch (rule.purpose) {
     case 'webrtc':
       return `--add-port=${String(rule.port)}/${rule.protocol}`;
+    case 'hub':
+    case 'discovery':
     case 'plugin':
       return `--add-rich-rule=rule family="${familyOf(rule.source)}" source address="${rule.source}" port port="${String(rule.port)}" protocol="${rule.protocol}" accept`;
     case 'camera':
@@ -81,10 +87,12 @@ function windowsMatch(rule: PortRule): readonly string[] {
         '-LocalPort',
         String(rule.port),
       ];
+    case 'hub':
+    case 'discovery':
     case 'plugin':
       return [
         '-DisplayName',
-        `${RULE_NAMES.plugin} ${rule.protocol.toUpperCase()} ${String(rule.port)} ${rule.source}`,
+        `${RULE_NAMES[rule.purpose]} ${rule.protocol.toUpperCase()} ${String(rule.port)} ${rule.source}`,
         '-LocalPort',
         String(rule.port),
         '-RemoteAddress',
@@ -108,7 +116,7 @@ type WindowsPrograms = Pick<
 
 function windowsCommand(plan: WindowsPrograms, rule: PortRule): FirewallCommand {
   const program =
-    rule.purpose === 'device' || rule.purpose === 'plugin' ? plan.appProgram : plan.program;
+    rule.purpose === 'camera' || rule.purpose === 'webrtc' ? plan.program : plan.appProgram;
   return {
     program: 'New-NetFirewallRule',
     args: [

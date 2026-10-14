@@ -37,9 +37,9 @@ export const SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'cameras.remote-viewing',
     page: 'cameras/remote-viewing',
-    title: 'How to watch when away',
-    description: 'Direct or through your server',
-    keywords: ['away', 'relay', 'through your server', 'stun', 'turn', 'ice', 'webrtc'],
+    title: 'Camera connection',
+    description: 'Automatic video, relay servers and extra WebRTC addresses',
+    keywords: ['connection', 'automatic', 'relay', 'stun', 'turn', 'ice', 'webrtc'],
     scope: 'client',
     control: 'link',
     href: href.settings.remoteViewing(),

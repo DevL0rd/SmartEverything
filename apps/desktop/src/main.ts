@@ -1,5 +1,5 @@
 import type { DesktopPlatform, DesktopServiceStatus } from '@smarteverything/domain';
-import { serviceUrl } from '@smarteverything/hub/service/configuration';
+import { serviceUrl, type ServiceConfig } from '@smarteverything/hub/service/configuration';
 import { Logger } from '@smarteverything/logging';
 import { app, dialog, session, type BrowserWindow } from 'electron';
 import { currentCaptureMode, DisplayCapture, prepareScreenCapture } from './display-capture.js';
@@ -9,6 +9,7 @@ import { DeepLinkInbox, type DeepLinkRefusal } from './deep-link-inbox.js';
 import { applyFirewall } from './firewall/apply.js';
 import { reportFailure } from './failure.js';
 import { registerDesktopIpc } from './ipc.js';
+import { registerHubNetworkIpc } from './hub-network/ipc.js';
 import { startLinuxSchemeRegistration } from './linux-scheme.js';
 import { logMetroLoadFailure, showMetroUnreachable } from './metro-page.js';
 import { DEEP_LINK_SCHEME, HIDDEN_START_ARGUMENT, INSTALL_SERVICE_ARGUMENT } from './origin.js';
@@ -70,6 +71,7 @@ class DesktopShell {
   #service: DesktopService | undefined;
   readonly #talk = new TalkDesktop();
   #quitting = false;
+  #closeHubNetwork: (() => void) | undefined;
 
   constructor(variant: DesktopVariant, capture: DisplayCapture) {
     this.#variant = variant;
@@ -81,6 +83,7 @@ class DesktopShell {
       this.#quitting = true;
       this.#tray?.destroy();
       this.#talk.stop();
+      this.#closeHubNetwork?.();
       this.#service?.controller.close();
     });
     app.on('open-url', (event, url) => {
@@ -108,7 +111,7 @@ class DesktopShell {
     serveWebExport(paths.webRoot);
     enforceContentSecurityPolicy(
       session.defaultSession,
-      buildContentSecurityPolicy(serviceUrl(config)),
+      buildContentSecurityPolicy(config.role === 'node' ? config.node.hub_url : serviceUrl(config)),
     );
     restrictPermissions(session.defaultSession, variant.startUrl);
     this.#capture.attach(session.defaultSession);
@@ -143,7 +146,26 @@ class DesktopShell {
       app.quit();
       return;
     }
+    await this.#registerHubNetwork(service, config);
     this.#open(paths, service);
+  }
+
+  async #registerHubNetwork(service: DesktopService, config: ServiceConfig): Promise<void> {
+    const directory =
+      config.role === 'node' && process.platform === 'linux'
+        ? service.controller.dataDirectory
+        : undefined;
+    const serverUrl = config.role === 'node' ? config.node.hub_url : serviceUrl(config);
+    this.#closeHubNetwork = await registerHubNetworkIpc(
+      this.#variant.startUrl,
+      directory,
+      (origin): void => {
+        enforceContentSecurityPolicy(
+          session.defaultSession,
+          buildContentSecurityPolicy(serverUrl, origin),
+        );
+      },
+    );
   }
 
   async #serviceDeclined(platform: DesktopPlatform, service: DesktopService): Promise<boolean> {

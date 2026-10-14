@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
@@ -21,7 +22,6 @@ import { cameraInstanceAvailable } from '../../cameras';
 import { useNutritionWidgets, useTodayKey } from '../../nutrition';
 import { useClimateWidgets } from '../../climate';
 import { useWeather, weatherShown } from '../../weather';
-import { settingsItem } from '../../../settings/settings-item';
 import { HeaderBelow, SummaryLine } from '../components/home-header';
 import {
   HomeDataContext,
@@ -36,11 +36,12 @@ import {
 import { spotlightOf } from '../widgets/spotlight';
 import { HOME_PAGE, HOME_RETIRED, HOME_WIDGETS, homeDefaults } from '../widgets';
 
-const HOME_SETTINGS = settingsItem(href.settings.page('home'));
-
 function EmptyHome({ title }: { readonly title: string }): ReactNode {
   return (
-    <Screen header={<PageHeader title={title} back={false} />} maxWidth="reading">
+    <Screen
+      header={<PageHeader title={title} settings={mainPageSettings('home')} back={false} />}
+      maxWidth="reading"
+    >
       <EmptyState
         icon="home"
         title="Let’s add your first devices"
@@ -120,9 +121,9 @@ export function HomeScreen(): ReactNode {
       header={
         <PageHeader
           title={title}
+          settings={mainPageSettings('home')}
           back={false}
           actions={editor.editing ? [] : [editor.editAction]}
-          overflow={editor.editing ? [] : [HOME_SETTINGS]}
           search={header !== 'large'}
           editing={editor.header}
           {...(header === 'standard' ? {} : { below: <HeaderBelow search={header === 'large'} /> })}

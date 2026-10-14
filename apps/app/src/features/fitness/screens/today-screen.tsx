@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useRouter } from 'expo-router';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { href } from '../../../app-shell/hrefs';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
@@ -8,7 +8,6 @@ import { PageHeader } from '../../../components/page-header';
 import { NavRow } from '../../../components/rows';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
-import type { MenuItem } from '../../../components/menu';
 import { WidgetBoard, useBoardEditor, type BoardEditor } from '../../../components/widget-board';
 import { errorText } from '../../../format/errors';
 import { usePageLayout, useSavePageLayout } from '../../../store/layouts';
@@ -24,7 +23,10 @@ import { FITNESS_DEFAULTS, FITNESS_PAGE, FITNESS_WIDGETS } from '../widgets';
 
 function FirstRun(): ReactNode {
   return (
-    <Screen header={<PageHeader title="Fitness" back={false} />} maxWidth="reading">
+    <Screen
+      header={<PageHeader title="Fitness" settings={mainPageSettings('fitness')} back={false} />}
+      maxWidth="reading"
+    >
       {HEALTH_CONNECT_ON_DEVICE ? (
         <EmptyState
           icon="fitness"
@@ -65,26 +67,6 @@ function Board({
   );
 }
 
-function useBrowseItems(): readonly MenuItem[] {
-  const router = useRouter();
-  return [
-    {
-      label: 'Log health data',
-      icon: 'plus',
-      onPress: (): void => {
-        router.push(href.logHealth());
-      },
-    },
-    {
-      label: 'All health data',
-      icon: 'list',
-      onPress: (): void => {
-        router.push(href.fitnessPage('browse'));
-      },
-    },
-  ];
-}
-
 export function TodayScreen(): ReactNode {
   const workout = useStartWorkout(false);
   const { day, today } = useFitnessParams('day');
@@ -96,7 +78,6 @@ export function TodayScreen(): ReactNode {
     defaults: FITNESS_DEFAULTS,
     onSave: useSavePageLayout(FITNESS_PAGE),
   });
-  const browse = useBrowseItems();
   if (presence.loaded && presence.types.size === 0) {
     return <FirstRun />;
   }
@@ -107,7 +88,6 @@ export function TodayScreen(): ReactNode {
       width="dashboard"
       toolbar={<FitnessToolbar day={day} today={today} range="day" />}
       actions={editor.editing ? [] : [editor.editAction]}
-      overflow={browse}
       editing={editor.header}
       primaryAction={editor.editing ? undefined : workout.action}
     >

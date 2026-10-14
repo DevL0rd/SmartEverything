@@ -25,9 +25,10 @@ export interface LinkContext {
   readonly online: (did: string, online: boolean) => void;
 }
 
+export type RefreshTrigger = 'poll' | 'subscription';
+
 export interface LinkHooks {
-  readonly poll: () => Promise<void>;
-  readonly readAll: () => Promise<void>;
+  readonly refresh: (trigger: RefreshTrigger) => Promise<void>;
   readonly uplink: (uplink: Uplink) => void;
   readonly changed: () => void;
 }
@@ -244,7 +245,7 @@ export class DeviceLink {
       { did: this.did, host, client, virtualDid, timing, now, jitter, log },
       {
         subscribed: (): void => {
-          void this.hooks.readAll();
+          void this.hooks.refresh('subscription');
         },
         uplink: this.hooks.uplink,
         changed: (): void => {
@@ -335,7 +336,7 @@ export class DeviceLink {
         this.io.transport === 'lan'
           ? this.context.timing.lanPollMs
           : this.context.timing.cloudPollMs,
-      this.hooks.poll,
+      () => this.hooks.refresh('poll'),
     );
   }
 

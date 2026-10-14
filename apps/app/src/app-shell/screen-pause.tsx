@@ -1,6 +1,5 @@
 import { useContext, type ReactElement } from 'react';
 import { z } from 'zod';
-import { isNative } from '../design/platform';
 import { ScreenPausedContext } from '../design/screen-pause';
 import { probedScreen } from '../perf/screen-probe';
 
@@ -32,7 +31,7 @@ class TransparentRouteInPausedStackError extends Error {
     readonly presentation: string,
   ) {
     super(
-      `The route "${routeName}" uses the "${presentation}" presentation inside a stack that pauses the screens below it. The web stack view keeps those screens visible, so pausing them would freeze what is on screen. Take the pause layer off this stack or the transparent presentation off this route.`,
+      `The route "${routeName}" uses the "${presentation}" presentation inside a stack that pauses the screens below it. That presentation keeps those screens visible, so pausing them would freeze what is on screen. Take the pause layer off this stack or the transparent presentation off this route.`,
     );
   }
 }
@@ -41,7 +40,6 @@ function assertOpaque(state: LayerState, args: ScreenPauseArgs): void {
   const presentation = PRESENTATION.safeParse(args.options).data?.presentation;
   if (
     state.type === 'stack' &&
-    !isNative() &&
     presentation !== undefined &&
     TRANSPARENT_PRESENTATIONS.includes(presentation)
   ) {
@@ -54,7 +52,7 @@ function hiddenInLayer(state: LayerState, routeKey: string): boolean {
   if (state.type === 'tab') {
     return position !== state.index;
   }
-  return state.type === 'stack' && !isNative() && position < state.index;
+  return state.type === 'stack' && position < state.index;
 }
 
 function ScreenPauseLayer(args: ScreenPauseArgs): ReactElement {

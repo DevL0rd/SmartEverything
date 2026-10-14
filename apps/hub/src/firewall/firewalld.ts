@@ -80,9 +80,12 @@ function portOpen(zone: Zone, protocol: string, port: number): boolean {
   });
 }
 
-type SourceRule = Exclude<PortRule, { readonly purpose: 'webrtc' | 'plugin' }>;
+type SourceRule = Exclude<
+  PortRule,
+  { readonly purpose: 'webrtc' | 'plugin' | 'hub' | 'discovery' }
+>;
 
-type PluginRule = Extract<PortRule, { readonly purpose: 'plugin' }>;
+type PluginRule = Extract<PortRule, { readonly purpose: 'plugin' | 'hub' | 'discovery' }>;
 
 function richRuleCovers(text: string, rule: SourceRule): boolean {
   const source = /source address="([^"]+)"/.exec(text)?.[1];
@@ -137,7 +140,7 @@ function firewalldStateOf(zone: Zone, rule: PortRule): OpeningState {
   if (rule.purpose === 'webrtc') {
     return portOpen(zone, rule.protocol, rule.port) ? 'open' : 'missing';
   }
-  return rule.purpose === 'plugin' ? pluginState(zone, rule) : sourceState(zone, rule);
+  return 'port' in rule ? pluginState(zone, rule) : sourceState(zone, rule);
 }
 
 export async function probeFirewalld(system: FirewallSystem): Promise<Probe> {

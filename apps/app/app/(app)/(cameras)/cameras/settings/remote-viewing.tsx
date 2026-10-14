@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { RemoteViewingScreen } from '../../../../../src/features/cameras/settings/remote-viewing-screen';
+import { MountedSettingsRoute } from '../../../../../src/settings/settings-screen';
 
-export default function RemoteViewingRoute(): ReactNode {
-  return <RemoteViewingScreen />;
+export default function SettingsRoute(): ReactNode {
+  return <MountedSettingsRoute root="cameras/remote-viewing" />;
 }

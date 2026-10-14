@@ -1,8 +1,8 @@
+import { createElement } from 'react';
 import {
   CHEAPEST_SPEECH_MODEL,
   SPEECH_MODELS,
   SPEECH_MODEL_LABELS,
-  SPEECH_VOICES,
   type AssistantSettingsChange,
   type SpeechModel,
 } from '@smarteverything/domain';
@@ -10,7 +10,7 @@ import { updateAssistantSettings } from '../../../api/assistant';
 import type { SettingContext, SettingDefinition } from '../../../settings/types';
 import type { StoreState } from '../../../store/state';
 
-const SAME_VOICE = '';
+import { SpokenLineVoiceSettingRow } from './call-voice-setting-row';
 
 class SpeechChoiceError extends Error {
   override readonly name = 'SpeechChoiceError';
@@ -59,11 +59,6 @@ const MODEL_CHOICES = SPEECH_MODELS.map((model) => ({
   label: SPEECH_MODEL_LABELS[model],
 }));
 
-const VOICE_CHOICES = [
-  { value: SAME_VOICE, label: 'Same as the call voice' },
-  ...SPEECH_VOICES.map((voice) => ({ value: voice, label: voice })),
-];
-
 export const SPEECH_SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'assistant.voice.speech-model',
@@ -92,12 +87,10 @@ export const SPEECH_SETTINGS: readonly SettingDefinition[] = [
     description: 'Choose the same voice as calls to keep the AI sounding like itself.',
     keywords: ['announce', 'speak', 'voice', 'text to speech', 'tts'],
     scope: 'server',
-    control: 'select',
-    options: VOICE_CHOICES,
+    control: 'custom',
+    row: true,
     visible: owner,
     when: known,
-    read: (state) => state.assistant?.settings.voice.speech_voice ?? SAME_VOICE,
-    write: (value, context) =>
-      write((voice) => ({ ...voice, speech_voice: value === SAME_VOICE ? null : value }), context),
+    render: () => createElement(SpokenLineVoiceSettingRow),
   },
 ];

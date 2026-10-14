@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { isChatActivity, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { useRow, useRows } from '../../../store/selectors';
@@ -12,6 +12,7 @@ import { sameStatusDock, statusDockOf, type StatusDockView } from '../model/stat
 import type { PluginNames } from '../model/chat-source';
 import { liveTurnOf, type Turn, type Turns } from '../../../store/chat-turns';
 import { callPreviewOf } from './call-transcript';
+import { ScreenPausedContext } from '../../../design/screen-pause';
 
 const SELF_SOURCES: ReadonlySet<string> = new Set(['app', 'voice']);
 
@@ -80,9 +81,10 @@ function viewOf(turns: Turns, chatId: string): LiveTurnView {
 
 export function useLiveTurn(chatId: string, intervalMs: number, enabled: boolean): LiveTurnView {
   const store = useEntityStore();
+  const paused = useContext(ScreenPausedContext);
   const [view, setView] = useState(NO_TURN);
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || paused) {
       return undefined;
     }
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -105,7 +107,7 @@ export function useLiveTurn(chatId: string, intervalMs: number, enabled: boolean
         clearTimeout(timer);
       }
     };
-  }, [store, chatId, intervalMs, enabled]);
+  }, [store, chatId, intervalMs, enabled, paused]);
   return enabled ? view : NO_TURN;
 }
 

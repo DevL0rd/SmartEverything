@@ -9,6 +9,7 @@ import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import type { DeviceLike } from '../model/capability-choices';
+import { SchemaArgumentsInput } from './schema-arguments-input';
 import { optionsOf, unitOf, valueLabel } from '../model/present';
 
 export interface ValueInputProps {
@@ -160,6 +161,10 @@ export function ValueInput(props: ValueInputProps): ReactNode {
         />
       );
     case 'action':
-      return <ArgumentsInput {...props} />;
+      return props.capability.value.argumentSchema === undefined ? (
+        <ArgumentsInput {...props} />
+      ) : (
+        <SchemaArgumentsInput {...props} />
+      );
   }
 }

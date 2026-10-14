@@ -47,6 +47,13 @@
     </intent>
   </queries>
   <application>
+    <provider
+      android:name="expo.modules.healthconnect.network.HubResourceFileProvider"
+      android:authorities="${applicationId}.hub.resources"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/hub_resource_paths" />
+    </provider>
     <service
       android:name="androidx.work.impl.foreground.SystemForegroundService"
       android:foregroundServiceType="dataSync"

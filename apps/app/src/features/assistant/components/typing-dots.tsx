@@ -13,7 +13,7 @@ export function TypingDots({
   tone = 'variant',
 }: {
   readonly moving?: boolean;
-  readonly tone?: 'variant' | 'primary';
+  readonly tone?: 'variant' | 'primary' | 'critical';
 }): ReactNode {
   const { reduced } = useMotion();
   const foreground = useForeground();
@@ -26,7 +26,9 @@ export function TypingDots({
           style={loopStyle({ name: BLINK, ms: 1100, easing: EASE_IN_OUT, delay }, running)}
           className={cn(
             'size-1.5 rounded-full',
-            tone === 'primary' ? 'bg-primary' : 'bg-on-surface-variant',
+            { primary: 'bg-primary', variant: 'bg-on-surface-variant', critical: 'bg-critical' }[
+              tone
+            ],
           )}
         />
       ))}

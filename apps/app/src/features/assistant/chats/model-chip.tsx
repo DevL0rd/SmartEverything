@@ -1,82 +1,62 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { View } from 'react-native';
-import type { AiChatRow, Engine } from '@smarteverything/domain';
-import { Icon } from '../../../components/icon';
-import { Interactive } from '../../../components/interactive';
+import { useCommandTransient, openCommandPicker } from '../commands/transient';
+import { isComputerEngine } from '../provider/computer-engine';
+import type { ReactNode, RefObject } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { View } from 'react-native';
+import type { Engine } from '@smarteverything/domain';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { Tooltip } from '../../../components/tooltip';
-import { useIdiom } from '../../../design/platform';
-import { useSizeClass } from '../../../design/size-class';
-import { ProviderLogo } from '../picker/provider-logo';
-import { changeChat } from './chat-actions';
-import { useChatModel, type ChatModel } from './chat-model';
+import { useIsOwner } from '../../../store/selectors';
+import { NATIVE_OWNER_REASON } from '../provider/provider-access';
+import { useComposerAccessoryLayout } from '../components/composer-accessory-layout';
+import { CompactPickerControl } from '../components/compact-picker-control';
+import { useChatModel } from './chat-model';
 import { ChatModelPicker } from './chat-model-picker';
-
-function ChipFace({
-  model,
-  compact,
-  hovered,
-}: {
-  readonly model: ChatModel;
-  readonly compact: boolean;
-  readonly hovered: boolean;
-}): ReactNode {
-  const name = compact ? model.shortName : model.name;
-  return (
-    <View className="h-10 flex-row items-center gap-1.5 rounded-full bg-surface-1 pl-2 pr-2">
-      {model.provider === null ? null : (
-        <ProviderLogo
-          provider={model.provider}
-          name={model.providerLabel ?? model.provider}
-          size="s"
-        />
-      )}
-      <Text variant="label" numberOfLines={1} className="shrink">
-        {name}
-      </Text>
-      {model.effort === null ? null : (
-        <Text variant="label" tone="variant" numberOfLines={1}>
-          {`· ${model.effort}`}
-        </Text>
-      )}
-      {model.effort === null && model.isDefault && !compact ? (
-        <Text variant="caption" tone="variant" className="shrink-0">
-          Default
-        </Text>
-      ) : null}
-      <Icon name="chevronDown" size={16} tone="variant" />
-      {hovered ? <Tooltip text="Model and thinking" placement="above" /> : null}
-    </View>
-  );
-}
-
-function labelOf(model: ChatModel): string {
-  const effort = model.effort === null ? '' : `, ${model.effort} thinking`;
-  return `Model: ${model.name}${effort}`;
-}
+import { measureAnchor, type Rect } from '../../../components/anchor';
+import { QuickModelMenu } from './quick-model-menu';
+import { useEngineAccessory } from './engine-accessories';
+import { useModelMenuAnchor, focusModelTrigger } from './model-menu-anchor';
 
 export function EngineSheet({
   open,
   onClose,
   engine,
   onChange,
+  blocked = false,
+  initialQuery,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly engine: Engine;
   readonly onChange: (engine: Engine) => void;
+  readonly blocked?: boolean;
+  readonly initialQuery?: string;
 }): ReactNode {
+  const accessory = useEngineAccessory();
+  const owner = useIsOwner();
+  const editable = !blocked && (!isComputerEngine(engine) || owner);
   return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title="Model and thinking"
-      detents={['full']}
-      scroll={false}
-    >
-      <ChatModelPicker engine={engine} onChange={onChange} />
+    <Sheet open={open} onClose={onClose} title="Model" detents={['full']} scroll={false}>
+      <>
+        {editable ? null : (
+          <Text tone="variant">
+            {blocked ? 'Stop active work before changing its model.' : NATIVE_OWNER_REASON}
+          </Text>
+        )}
+        <ChatModelPicker
+          engine={engine}
+          onChange={editable ? onChange : null}
+          {...(initialQuery === undefined ? {} : { initialQuery })}
+          onNativeNeeded={
+            accessory === null || !editable
+              ? undefined
+              : (request): void => {
+                  accessory.request(request);
+                  onClose();
+                }
+          }
+        />
+      </>
     </Sheet>
   );
 }
@@ -84,54 +64,62 @@ export function EngineSheet({
 export function ModelChip({
   engine,
   onChange,
+  blocked = false,
 }: {
   readonly engine: Engine;
   readonly onChange: (engine: Engine) => void;
+  readonly blocked?: boolean;
 }): ReactNode {
-  const [open, setOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
+  const ref = useRef<View>(null);
+  const [anchor, setAnchor] = useState<Rect | null>(null);
+  usePendingMachine(ref, setAnchor);
+  useModelMenuAnchor(ref, anchor, setAnchor);
   const model = useChatModel(engine);
-  const compact = useSizeClass().width === 'compact';
-  const showTip = useIdiom() === 'pointer' && hovered;
+  const layout = useComposerAccessoryLayout();
+  const close = (): void => {
+    setAnchor(null);
+    focusModelTrigger(ref);
+  };
+  const dismissCommands = useCommandTransient(close);
+  const value = modelChipValue(model, layout);
   return (
-    <View
-      className="min-w-0 shrink"
-      onPointerEnter={() => {
-        setHovered(true);
-      }}
-      onPointerLeave={() => {
-        setHovered(false);
-      }}
-    >
-      <Interactive
-        label={labelOf(model)}
-        onPress={() => {
-          setOpen(true);
+    <>
+      <CompactPickerControl
+        anchorRef={ref}
+        label={`Model and thinking: ${model.name}, ${model.effort ?? 'Default'}`}
+        value={value}
+        icon="brain"
+        onPress={(): void => {
+          openCommandPicker(dismissCommands, ref, setAnchor);
         }}
-        className="min-h-touch-min max-w-80 justify-center"
-        layerClassName="rounded-full"
-      >
-        <ChipFace model={model} compact={compact} hovered={showTip} />
-      </Interactive>
-      <EngineSheet
-        open={open}
-        onClose={() => {
-          setOpen(false);
-        }}
+      />
+      <QuickModelMenu
         engine={engine}
         onChange={onChange}
+        blocked={blocked}
+        anchor={anchor}
+        close={close}
       />
-    </View>
+    </>
   );
 }
 
-export function ChatModelChip({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  return (
-    <ModelChip
-      engine={chat.engine}
-      onChange={(engine) => {
-        void changeChat(chat.id, { engine });
-      }}
-    />
-  );
+function usePendingMachine(ref: RefObject<View | null>, show: (anchor: Rect) => void): void {
+  const accessory = useEngineAccessory();
+  const pending = accessory?.pending;
+  useEffect(() => {
+    if (pending !== undefined && pending !== null) measureAnchor(ref, show);
+  }, [pending, ref, show]);
+}
+
+function modelChipValue(
+  model: ReturnType<typeof useChatModel>,
+  layout: ReturnType<typeof useComposerAccessoryLayout>,
+): string {
+  if (layout.compact && model.shortName.length * 7 > layout.modelLabelWidth) {
+    const fallback = model.effort ?? 'Model';
+    return fallback.length * 7 <= layout.modelLabelWidth ? fallback : '';
+  }
+  if (layout.compact || model.effort === null) return model.shortName;
+  return `${model.shortName} · ${model.effort}`;
 }

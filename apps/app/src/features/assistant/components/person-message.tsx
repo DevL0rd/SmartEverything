@@ -51,7 +51,6 @@ export function PersonMessage({ item }: { readonly item: MessageItem }): ReactNo
       align="start"
       bar={<BarTime item={item} />}
       swipeable
-      reserve={endOfRun}
       onQuote={() => {
         actions.run('quote');
       }}

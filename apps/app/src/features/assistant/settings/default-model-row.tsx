@@ -1,58 +1,51 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { AI_EFFORT, AI_MODEL_CHOICE, DEFAULT_AI_EFFORT } from '@smarteverything/domain';
+import {
+  DEFAULT_ENGINE,
+  AUTO_LATEST_GEMINI_FLASH,
+  AI_MODEL_CHOICE,
+  AI_EFFORT,
+  DEFAULT_AI_EFFORT,
+  type Engine,
+} from '@smarteverything/domain';
 import { ListRow } from '../../../components/list-row';
 import { notify } from '../../../components/toast-store';
-import { joinParts } from '../../../format/text';
 import { useIsOwner } from '../../../store/selectors';
-import { useOpenRouterActions } from '../data/openrouter';
-import { effortLabel } from '../picker/efforts';
-import type { ModelPick } from '../picker/model-choice';
-import { useSuggestedModels } from '../picker/model-queries';
+import { useModelLabel, modelOrNull } from '../picker/model-label';
 import { ModelPickerSheet } from '../picker/model-picker-sheet';
+import { useSuggestedModels } from '../picker/model-queries';
+import { useOpenRouterActions } from '../data/openrouter';
+import {
+  useComputerProviderSupported,
+  useEngineCatalogue,
+  useEngineDefaultChange,
+} from '../provider/provider-data';
 
-interface DefaultModel {
-  readonly pick: ModelPick | null;
-  readonly label: string;
-  readonly save: (pick: ModelPick) => void;
-}
-
-function thinkingLabel(effort: string | null): string | null {
-  return effort === null ? null : effortLabel(effort);
-}
-
-function unresolvedLabel(
-  pending: boolean,
-  failed: boolean,
-  syncError: string | null | undefined,
-): string {
-  if (pending) {
-    return 'Loading…';
-  }
-  if (failed || (syncError !== null && syncError !== undefined)) {
-    return 'Couldn’t load the model list';
-  }
-  return 'Not set';
-}
-
-function useOpenRouterDefault(): DefaultModel {
-  const suggested = useSuggestedModels('chat', null, true);
+function useDefaultEngine(): { readonly engine: Engine; readonly save: (engine: Engine) => void } {
+  const supported = useComputerProviderSupported();
+  const catalogue = useEngineCatalogue();
+  const legacy = useSuggestedModels('chat', null, true);
   const actions = useOpenRouterActions();
-  const resolved = suggested.data?.default ?? null;
+  const change = useEngineDefaultChange();
+  const resolved = legacy.data?.default;
+  const legacyEngine: Engine =
+    resolved === undefined || resolved === null
+      ? DEFAULT_ENGINE
+      : { kind: 'openrouter', model: modelOrNull(resolved.choice), effort: resolved.effort };
   return {
-    pick: resolved === null ? null : { model: resolved.choice, effort: resolved.effort },
-    label:
-      resolved === null
-        ? unresolvedLabel(suggested.isPending, suggested.isError, suggested.data?.sync_error)
-        : joinParts([resolved.name, thinkingLabel(resolved.effort)]),
-    save: (pick): void => {
-      const model = AI_MODEL_CHOICE.safeParse(pick.model);
-      const effort = AI_EFFORT.safeParse(pick.effort ?? DEFAULT_AI_EFFORT);
-      if (!model.success || !effort.success) {
-        notify({ message: 'That model can’t be the default', tone: 'critical' });
+    engine: catalogue.data?.default ?? legacyEngine,
+    save: (engine): void => {
+      if (supported) {
+        change.mutate(engine);
         return;
       }
-      actions.setDefaults(model.data, effort.data).catch((error: unknown) => {
+      if (engine.kind !== 'openrouter') {
+        notify({ message: 'Update this hub to use computer-supplied models', tone: 'critical' });
+        return;
+      }
+      const model = AI_MODEL_CHOICE.parse(engine.model ?? AUTO_LATEST_GEMINI_FLASH);
+      const effort = AI_EFFORT.parse(engine.effort ?? DEFAULT_AI_EFFORT);
+      void actions.setDefaults(model, effort).catch((error: unknown) => {
         notify({ message: 'Default not changed', error, tone: 'critical' });
       });
     },
@@ -62,12 +55,14 @@ function useOpenRouterDefault(): DefaultModel {
 export function DefaultModelRow(): ReactNode {
   const [open, setOpen] = useState(false);
   const owner = useIsOwner();
-  const current = useOpenRouterDefault();
+  const current = useDefaultEngine();
+  const engine = current.engine;
+  const label = useModelLabel(engine);
   return (
     <>
       <ListRow
         title="Default for new chats"
-        subtitle={current.label}
+        subtitle={`${label.name}${label.computer === null ? '' : ` · ${label.computer}`}`}
         icon="star"
         chevron
         disabled={!owner}
@@ -81,8 +76,16 @@ export function DefaultModelRow(): ReactNode {
           setOpen(false);
         }}
         title="Default for new chats"
-        picked={current.pick}
-        onPick={current.save}
+        picked={{ model: engine.model ?? AUTO_LATEST_GEMINI_FLASH, effort: engine.effort, engine }}
+        onPick={(pick) => {
+          current.save(
+            pick.engine ?? {
+              kind: 'openrouter',
+              model: modelOrNull(pick.model),
+              effort: pick.effort,
+            },
+          );
+        }}
       />
     </>
   );

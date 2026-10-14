@@ -111,27 +111,39 @@ function useRowBuilder(
   query: string,
   recent: readonly string[],
 ): (expansion: Expansion) => readonly SearchRow[] {
-  const branches = useMemo(() => treeOf(catalogue, query), [catalogue, query]);
+  const branches = useMemo(
+    () => (query === '' ? [] : treeOf(catalogue, query)),
+    [catalogue, query],
+  );
   const suggested = useMemo(
     () =>
-      suggestionRows({
-        recent,
-        favourites: favouritesOf(catalogue),
-        rooms: roomsOf(catalogue),
-        tries: triesOf(catalogue),
-      }),
-    [catalogue, recent],
+      query === ''
+        ? suggestionRows({
+            recent,
+            favourites: favouritesOf(catalogue),
+            rooms: roomsOf(catalogue),
+            tries: triesOf(catalogue),
+          })
+        : [],
+    [catalogue, recent, query],
   );
   return (expansion) => (query === '' ? suggested : treeRows(branches, expansion));
 }
 
-export function useSearchPanel(props: SearchPanelProps): {
+export function useSearchQuery(query: string): string {
+  const trimmed = query.trim();
+  const settled = useDebouncedValue(trimmed, SETTLE_MS);
+  return trimmed === '' ? '' : settled;
+}
+
+export function useSettledSearchPanel(
+  props: SearchPanelProps,
+  query: string,
+): {
   readonly model: SearchListModel;
   readonly submit: (() => void) | null;
 } {
   const pointer = useIdiom() === 'pointer';
-  const settled = useDebouncedValue(props.query.trim(), SETTLE_MS);
-  const query = props.query.trim() === '' ? '' : settled;
   const catalogue = useSearchCatalogue();
   const { recent, clear } = useRecentSearches();
   const navigation = useResultNavigation(query, useRowBuilder(catalogue, query, recent));
@@ -156,4 +168,8 @@ export function useSearchPanel(props: SearchPanelProps): {
     activate(keys);
   };
   return { model, submit: pointer ? null : submit };
+}
+
+export function useSearchPanel(props: SearchPanelProps): ReturnType<typeof useSettledSearchPanel> {
+  return useSettledSearchPanel(props, useSearchQuery(props.query));
 }

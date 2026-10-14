@@ -1,5 +1,4 @@
 import { Logger } from '@smarteverything/logging';
-import { ValueStore, useValue } from '../design/external-store';
 import { loadLocalPrefs, localPref, setLocalPref } from '../store/local-prefs';
 import { activateFlag, activateFlags, developerFlags } from './flags';
 import {
@@ -10,8 +9,6 @@ import {
   type StoredFlags,
 } from './toggles';
 
-const ready = new ValueStore(false);
-
 function applyLogLevel(): void {
   Logger.configure({ level: developerFlags['log.debug'] ? 'debug' : 'info' });
 }
@@ -19,7 +16,6 @@ function applyLogLevel(): void {
 function activate(stored: StoredFlags): void {
   activateFlags(resolveFlags(stored, __DEV__));
   applyLogLevel();
-  ready.set(true);
 }
 
 export function startDeveloper(): Promise<void> {
@@ -31,10 +27,6 @@ export function startDeveloper(): Promise<void> {
       activate({});
     },
   );
-}
-
-export function useDeveloperReady(): boolean {
-  return useValue(ready);
 }
 
 export function setDeveloperToggle(id: DeveloperFlagId, value: boolean): void {

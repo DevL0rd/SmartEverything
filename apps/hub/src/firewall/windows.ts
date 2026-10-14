@@ -176,7 +176,7 @@ function filteringProfiles(firewall: WindowsFirewall): readonly string[] {
 function windowsStateOf(firewall: WindowsFirewall, wanted: PortRule): OpeningState {
   const profiles = filteringProfiles(firewall);
   const rules =
-    wanted.purpose === 'device' || wanted.purpose === 'plugin' ? firewall.appRules : firewall.rules;
+    wanted.purpose === 'camera' || wanted.purpose === 'webrtc' ? firewall.rules : firewall.appRules;
   const covering = rules.filter((rule) => ruleCovers(rule, wanted));
   const appliesHere = (rule: WindowsRule): boolean =>
     profiles.some((profile) => profileCovers(rule, profile));

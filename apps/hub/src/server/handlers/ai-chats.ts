@@ -1,10 +1,11 @@
-import { API_ENDPOINTS as E } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, ApiError, type AiChatRow } from '@smarteverything/domain';
 import type { ChatOwner } from '../../assistant/chat-directory';
-import { clientOf, profileIdOf, type Caller } from '../auth';
+import { admitInactiveRemoval } from '../../assistant/coordination/inactive-removal';
+import { clientOf, roleOfCaller, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type Bound } from '../router';
 
-type ChatContext = Pick<ServerContext, 'store' | 'assistant'>;
+type ChatContext = Pick<ServerContext, 'store' | 'assistant' | 'harness'>;
 
 type AiChatRoutes = Record<
   | 'listAiChats'
@@ -17,12 +18,16 @@ type AiChatRoutes = Record<
   | 'sendAiChatMessage'
   | 'retryAiChatMessage'
   | 'editAiChatMessage'
+  | 'compactAiChat'
   | 'interruptAiChat',
   Bound
 >;
 
 function ownerOf(context: ChatContext, caller: Caller): ChatOwner {
-  return { profileId: profileIdOf(context.store, caller), role: clientOf(caller).role };
+  return {
+    profileId: profileIdOf(context.store, caller),
+    role: roleOfCaller(caller),
+  };
 }
 
 function chatRoutes(
@@ -53,11 +58,36 @@ function chatRoutes(
     updateAiChat: bound(E.updateAiChat, ({ params, body, caller }) =>
       assistant.updateChat(ownerOf(context, caller), params.chatId, body),
     ),
-    removeAiChat: bound(E.removeAiChat, async ({ params, caller }) => {
-      await assistant.chats.remove(ownerOf(context, caller), params.chatId);
-      return DONE_REPLY;
-    }),
+    removeAiChat: removalRoute(context),
   };
+}
+
+function removalRoute(context: ChatContext): Bound {
+  const { store, assistant } = context;
+  return bound(E.removeAiChat, async ({ params, query, caller }) => {
+    const owner = ownerOf(context, caller);
+    await assistant.removeChat(
+      owner,
+      params.chatId,
+      (scope) => {
+        admitRemoval(context, caller, owner, scope);
+        if (query.expected_inactive_run_id !== undefined)
+          admitInactiveRemoval(
+            {
+              store,
+              harness: context.harness,
+              owner,
+              chatId: params.chatId,
+              runId: query.expected_inactive_run_id,
+              status: (chat) => assistant.engineStatus(chat),
+            },
+            scope,
+          );
+      },
+      query.expected_inactive_run_id !== undefined,
+    );
+    return DONE_REPLY;
+  });
 }
 
 function messageRoutes(
@@ -68,6 +98,7 @@ function messageRoutes(
   | 'sendAiChatMessage'
   | 'retryAiChatMessage'
   | 'editAiChatMessage'
+  | 'compactAiChat'
   | 'interruptAiChat'
 > {
   const { store, assistant } = context;
@@ -83,12 +114,23 @@ function messageRoutes(
         params.chatId,
       ),
     ),
-    retryAiChatMessage: bound(E.retryAiChatMessage, ({ params, body, caller }) =>
-      assistant.retry(ownerOf(context, caller), params, body.from),
-    ),
-    editAiChatMessage: bound(E.editAiChatMessage, ({ params, body, caller }) =>
-      assistant.edit(ownerOf(context, caller), params, body),
-    ),
+    retryAiChatMessage: bound(E.retryAiChatMessage, ({ params, body, caller }) => {
+      return assistant.retry(
+        ownerOf(context, caller),
+        params,
+        body.from,
+        caller.kind === 'service' ? null : clientOf(caller).id,
+      );
+    }),
+    editAiChatMessage: bound(E.editAiChatMessage, ({ params, body, caller }) => {
+      return assistant.edit(
+        ownerOf(context, caller),
+        params,
+        body,
+        caller.kind === 'service' ? null : clientOf(caller).id,
+      );
+    }),
+    compactAiChat: compactionRoute(context),
     interruptAiChat: bound(E.interruptAiChat, async ({ params, caller }) => {
       await assistant.interrupt(ownerOf(context, caller), params.chatId);
       return DONE_REPLY;
@@ -98,4 +140,34 @@ function messageRoutes(
 
 export function aiChatRoutes(context: ChatContext): AiChatRoutes {
   return { ...chatRoutes(context), ...messageRoutes(context) };
+}
+
+function admitRemoval(
+  context: ChatContext,
+  caller: Caller,
+  owner: ChatOwner,
+  _scope: readonly AiChatRow[],
+): void {
+  const current =
+    caller.kind === 'client'
+      ? { ...caller, client: context.store.clients.byId(caller.client.id) }
+      : caller;
+  const active = ownerOf(context, current);
+  if (active.profileId !== owner.profileId || active.role !== owner.role)
+    throw new ApiError(
+      'forbidden',
+      'The initiating profile or role changed while deleting; history was retained.',
+    );
+}
+
+function compactionRoute(context: ChatContext): Bound {
+  return bound(E.compactAiChat, async ({ params, caller }) => {
+    return {
+      compacted: await context.assistant.compact(
+        ownerOf(context, caller),
+        params.chatId,
+        clientOf(caller).id,
+      ),
+    };
+  });
 }

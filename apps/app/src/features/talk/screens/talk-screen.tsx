@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { ScrollView, View } from 'react-native';
 import { router } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { MasterDetail } from '../../../components/master-detail';
-import { OverflowButton } from '../../../components/menu';
 import { PageHeader } from '../../../components/page-header';
 import { Text } from '../../../components/text';
 import { Screen } from '../../../components/screen';
@@ -18,9 +18,6 @@ import { DeviceStatus } from '../components/device-status';
 import { chooseTalkChannel, useTalkChannelId } from '../data/talk-channel';
 import { useMyChannels, useTalkChannel, useTalkChannels } from '../data/talk-data';
 import type { TalkChannelRow } from '@smarteverything/domain';
-import { settingsItem } from '../../../settings/settings-item';
-
-const TALK_MENU = [settingsItem(href.settings.talk())];
 
 function NoChannels(): ReactNode {
   const owner = useIsOwner();
@@ -104,7 +101,10 @@ function ChannelLists({ split }: { readonly split: boolean }): ReactNode {
 
 function ListScreen(): ReactNode {
   return (
-    <Screen header={<PageHeader title="Walkie-talkie" overflow={TALK_MENU} />} maxWidth="reading">
+    <Screen
+      header={<PageHeader settings={mainPageSettings('talk')} title="Walkie-talkie" />}
+      maxWidth="reading"
+    >
       <DeviceStatus />
       <ChannelLists split={false} />
     </Screen>
@@ -118,7 +118,6 @@ function Master(): ReactNode {
         <Text variant="title-1" accessibilityRole="header" className="flex-1">
           Walkie-talkie
         </Text>
-        <OverflowButton items={TALK_MENU} />
       </View>
       <DeviceStatus />
       <ChannelLists split />
@@ -130,13 +129,21 @@ function SelectedChannel(): ReactNode {
   const channel = useTalkChannel(useTalkChannelId());
   if (channel === null) {
     return (
-      <Screen maxWidth="reading">
+      <Screen
+        header={
+          <PageHeader settings={mainPageSettings('talk')} title="Walkie-talkie" back={false} />
+        }
+        maxWidth="reading"
+      >
         <EmptyState icon="radio" title="Pick a channel" body="Join a channel to talk on it here." />
       </Screen>
     );
   }
   return (
-    <Screen header={<PageHeader title={channel.name} back={false} />} maxWidth="reading">
+    <Screen
+      header={<PageHeader settings={mainPageSettings('talk')} title={channel.name} back={false} />}
+      maxWidth="reading"
+    >
       <ChannelPanel channel={channel} />
     </Screen>
   );

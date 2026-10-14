@@ -2,209 +2,331 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import type { AiModelKind } from '@smarteverything/domain';
-import { IconButton } from '../../../components/icon-button';
 import { SearchField } from '../../../components/search-field';
-import { Segmented } from '../../../components/segmented';
-import { Select } from '../../../components/select';
-import { Text } from '../../../components/text';
 import { useDebouncedValue } from '../../../design/use-debounced-value';
+import { Text } from '../../../components/text';
+import { aiModelsKeys } from '../../../queries/keys';
 import { useFavouriteModels } from '../data/favourites';
-import { effortLabel } from './efforts';
-import { keptEffort, type ModelChoice, type ModelPick } from './model-choice';
-import { ModelList } from './model-list';
-import { ModelsUnavailable } from './models-unavailable';
+import { useHarnessPicker } from '../provider/harness-picker';
+import { isComputerEngine, nativeModelKey } from '../provider/computer-engine';
+import { useSubscriptionPicker, type NativeModelRequest } from '../provider/subscription-models';
+import { useEngineAccessory } from '../chats/engine-accessories';
 import {
-  useProviderView,
-  useProvidersView,
-  useSearchView,
-  useSuggestedView,
-  type PickerView,
-  type ViewData,
-} from './model-views';
+  choiceOf,
+  defaultChoiceOf,
+  keptEffort,
+  type ModelChoice,
+  type ModelPick,
+} from './model-choice';
+import { candidateItems, type ModelCandidate } from './model-candidates';
+import { useModelPages, useSuggestedModels, type ModelPages } from './model-queries';
+import { usePickerSession } from './model-search-session';
 import { useModelChoice } from './model-label';
+import { ModelList, type ListItem } from './model-list';
+import { ModelRow } from './model-row';
+import { ModelsUnavailable } from './models-unavailable';
 
-const NONE = '';
 const SEARCH_DELAY_MS = 200;
-
 export interface ModelPickerProps {
   readonly kind?: AiModelKind;
+  readonly initialQuery?: string;
   readonly picked: ModelPick | null;
   readonly onPick: ((pick: ModelPick) => void) | null;
+  readonly onNativeNeeded?: ((request: NativeModelRequest) => void) | undefined;
 }
-
-interface ViewInput {
-  readonly kind: AiModelKind;
-  readonly current: string | null;
-  readonly query: string;
-  readonly view: PickerView;
-  readonly setView: (view: PickerView) => void;
+function openrouterCandidates(
+  models: readonly ModelChoice[],
+  props: ModelPickerProps,
+  favorites: ReturnType<typeof useFavouriteModels>,
+): readonly ModelCandidate[] {
+  const native = props.picked?.engine !== undefined && props.picked.engine.kind !== 'openrouter';
+  return models.map((model) => {
+    const selected = !native && props.picked?.model === model.id;
+    const favourite = favorites.status === 'ready' && favorites.favourites.has(model.id);
+    const onPick = props.onPick;
+    const pick =
+      onPick === null
+        ? null
+        : (): void => {
+            onPick({ model: model.id, effort: keptEffort(model, props.picked?.effort ?? null) });
+          };
+    return {
+      pick,
+      key: `catalogue:${model.catalogueSupplier ?? 'openrouter'}:${model.id}`,
+      model,
+      selected,
+      favourite,
+      render: (): ReactNode => (
+        <ModelRow
+          model={model}
+          selected={selected}
+          favourite={favourite}
+          onPick={pick}
+          onFavourite={
+            favorites.status === 'ready'
+              ? (): void => {
+                  favorites.toggle(model.id);
+                }
+              : null
+          }
+        />
+      ),
+    };
+  });
 }
-
-type Mode = 'search' | PickerView['kind'];
-
-function useView({ kind, current, query, view, setView }: ViewInput): ViewData {
-  const mode: Mode = query === '' ? view.kind : 'search';
-  const views: Readonly<Record<Mode, ViewData>> = {
-    suggested: useSuggestedView(kind, current, mode === 'suggested', () => {
-      setView({ kind: 'providers' });
-    }),
-    search: useSearchView(kind, query, mode === 'search'),
-    providers: useProvidersView(kind, mode === 'providers', (provider, name) => {
-      setView({ kind: 'provider', provider, name });
-    }),
-    provider: useProviderView(
-      kind,
-      mode === 'provider' && view.kind === 'provider' ? view.provider : null,
-    ),
-  };
-  return views[mode];
-}
-
-const SEGMENTED_MAX = 4;
-
-function ThinkingControl({
-  efforts,
-  value,
-  onChange,
-}: {
-  readonly efforts: readonly string[];
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-}): ReactNode {
-  const options = [
-    { value: NONE, label: 'Default' },
-    ...efforts.map((effort) => ({ value: effort, label: effortLabel(effort) })),
+function retainedChoice(
+  picked: ModelPick | null,
+  current: ModelChoice | null,
+): readonly ModelChoice[] {
+  if (picked === null || picked.engine?.kind === 'claude' || picked.engine?.kind === 'codex')
+    return [];
+  return [
+    current ?? {
+      id: picked.model,
+      name: picked.model,
+      provider: '',
+      providerLabel: 'Unknown maker',
+      supplierLabel: 'OpenRouter',
+      contextLength: null,
+      price: { inputPerMillion: null, outputPerMillion: null, variable: false },
+      efforts: [],
+      latest: false,
+      inputs: [],
+      outputs: [],
+    },
   ];
-  if (efforts.length > SEGMENTED_MAX) {
-    return <Select label="Thinking" options={options} value={value} onChange={onChange} />;
-  }
+}
+export function usePickerData(
+  props: ModelPickerProps,
+  query: string,
+  catalogue?: ModelPages,
+  enabled = true,
+): PickerData {
+  const session = usePickerSession();
+  const guarded = guardedPicker(props, session.valid);
+  const { kind = 'chat', picked } = props;
+  const availableCurrent = useModelChoice(openrouterId(picked));
+  const current = openrouterId(picked) === null ? null : availableCurrent;
+  const favorites = guardedFavorites(useFavouriteModels(), session.valid);
+  const suggested = useSuggestedModels(kind, openrouterId(picked));
+  const legacyPages = useModelPages(
+    aiModelsKeys.search(kind, query),
+    { kind, ...(query === '' ? {} : { q: query }) },
+    catalogue === undefined && enabled && session.ready,
+  );
+  const pages = catalogue ?? legacyPages;
+  const accessory = useEngineAccessory();
+  const native = useSubscriptionPicker(
+    { ...guarded, valid: session.valid, onNativeNeeded: nativeRequestHandler(guarded, accessory) },
+    kind === 'chat',
+  );
+  const models = openrouterModels(picked, current, suggested.data, pages.models);
+  const harness = useHarnessPicker({ ...guarded, models, valid: session.valid }, kind === 'chat');
+  const candidates = retainCurrent(
+    [
+      ...native.candidates,
+      ...harness.candidates,
+      ...catalogueCandidates({
+        kind,
+        models,
+        props: guarded,
+        favorites,
+        routed: harness.candidates,
+      }),
+    ],
+    picked,
+    current,
+  );
+  const items = candidateItems(candidates, query, pages.total);
+  return { items, candidates, current, pages, native, harness };
+}
+export interface PickerData {
+  readonly items: readonly ListItem[];
+  readonly candidates: readonly ModelCandidate[];
+  readonly current: ModelChoice | null;
+  readonly pages: ReturnType<typeof useModelPages>;
+  readonly native: ReturnType<typeof useSubscriptionPicker>;
+  readonly harness: ReturnType<typeof useHarnessPicker>;
+}
+function CatalogueStatus({ data }: { readonly data: PickerData }): ReactNode {
+  const { native, harness, pages, current } = data;
   return (
-    <View className="gap-1">
-      <Text variant="footnote" tone="variant">
-        Thinking
-      </Text>
-      <Segmented label="Thinking" value={value} options={options} onChange={onChange} />
-    </View>
+    <>
+      {native.status}
+      {harness.status}
+      {pages.error === null ? null : (
+        <ModelsUnavailable keeping={current?.name ?? 'its current model'} retry={pages.retry} />
+      )}
+      {pages.models.length === 0 && !pages.loading && pages.error === null ? (
+        <Text tone="variant" className="px-3 py-4">
+          No models match this search.
+        </Text>
+      ) : null}
+    </>
   );
 }
-
-function Thinking({
-  model,
-  picked,
-  onPick,
-}: {
-  readonly model: ModelChoice | null;
-  readonly picked: ModelPick | null;
-  readonly onPick: ((pick: ModelPick) => void) | null;
-}): ReactNode {
-  if (model === null || picked === null || onPick === null || model.efforts.length === 0) {
-    return null;
-  }
-  return (
-    <View className="pb-2">
-      <ThinkingControl
-        efforts={model.efforts}
-        value={picked.effort ?? NONE}
-        onChange={(value) => {
-          onPick({ model: model.id, effort: value === NONE ? null : value });
-        }}
-      />
-    </View>
-  );
-}
-
-function Title({
-  view,
-  onBack,
-}: {
-  readonly view: PickerView;
-  readonly onBack: () => void;
-}): ReactNode {
-  if (view.kind === 'suggested') {
-    return null;
-  }
-  return (
-    <View className="flex-row items-center gap-1">
-      <IconButton icon="arrowLeft" label="Back" onPress={onBack} />
-      <Text variant="title-3" numberOfLines={1} className="min-w-0 flex-1">
-        {view.kind === 'providers' ? 'All providers' : view.name}
-      </Text>
-    </View>
-  );
-}
-
-interface BodyProps {
-  readonly data: ViewData;
-  readonly keeping: string;
-  readonly selected: string | null;
-  readonly onPick: ((model: ModelChoice) => void) | null;
-}
-
-function Body({ data, keeping, selected, onPick }: BodyProps): ReactNode {
-  const favourites = useFavouriteModels();
-  const ready = favourites.status === 'ready';
-  if (data.error !== null && data.items.length === 0) {
-    return <ModelsUnavailable keeping={keeping} retry={data.retry} />;
-  }
-  if (!data.loading && data.items.length === 0) {
-    return (
-      <Text variant="callout" tone="variant" className="px-3 py-4">
-        {data.empty}
-      </Text>
-    );
-  }
-  return (
-    <ModelList
-      items={data.items}
-      selected={selected}
-      favourites={ready ? favourites.favourites : new Set()}
-      onFavourite={ready ? favourites.toggle : null}
-      onEnd={data.more}
-      loading={data.loading}
-      onPick={onPick}
-    />
-  );
-}
-
-function pickHandler(
-  { onPick, picked }: ModelPickerProps,
-  remember: (model: ModelChoice) => void,
-): ((model: ModelChoice) => void) | null {
-  if (onPick === null) {
-    return null;
-  }
-  return (model) => {
-    remember(model);
-    onPick({ model: model.id, effort: keptEffort(model, picked?.effort ?? null) });
-  };
-}
-
 export function ModelPicker(props: ModelPickerProps): ReactNode {
-  const [text, setText] = useState('');
-  const [view, setView] = useState<PickerView>({ kind: 'suggested' });
-  const [tapped, setTapped] = useState<ModelChoice | null>(null);
-  const { kind = 'chat', picked, onPick } = props;
-  const pickedId = picked === null ? null : picked.model;
-  const initial = useModelChoice(pickedId);
-  const chosen = tapped ?? initial;
+  const [text, setText] = useState(props.initialQuery ?? '');
   const query = useDebouncedValue(text.trim(), SEARCH_DELAY_MS);
-  const data = useView({ kind, current: pickedId, query, view, setView });
+  const data = usePickerData(props, query);
   return (
     <View className="min-h-0 flex-1 gap-2">
-      <Thinking model={chosen} picked={picked} onPick={onPick} />
-      <SearchField value={text} onChange={setText} placeholder="Search models" variant="field" />
-      <Title
-        view={text === '' ? view : { kind: 'suggested' }}
-        onBack={() => {
-          setView(view.kind === 'provider' ? { kind: 'providers' } : { kind: 'suggested' });
-        }}
+      <SearchField
+        value={text}
+        onChange={setText}
+        placeholder="Search models"
+        variant="field"
+        focusOnMount={props.initialQuery !== undefined}
       />
-      <Body
-        data={data}
-        keeping={chosen?.name ?? 'its current model'}
-        selected={chosen?.id ?? pickedId}
-        onPick={pickHandler(props, setTapped)}
+      <ModelList
+        items={[
+          ...data.items,
+          {
+            type: 'custom',
+            key: 'sources:status',
+            render: (): ReactNode => <CatalogueStatus data={data} />,
+          },
+        ]}
+        selected={null}
+        favourites={new Set()}
+        onFavourite={null}
+        onPick={null}
+        onEnd={data.pages.more}
+        loading={data.pages.loading}
       />
     </View>
   );
+}
+
+function retainCurrent(
+  candidates: readonly ModelCandidate[],
+  picked: ModelPick | null,
+  current: ModelChoice | null,
+): readonly ModelCandidate[] {
+  if (picked === null || candidates.some((row) => row.selected)) return candidates;
+  const model = current ?? {
+    id: picked.model,
+    name: picked.model,
+    provider: '',
+    providerLabel: 'Unknown maker',
+    billing: nativeBilling(picked),
+    contextLength: null,
+    price: { inputPerMillion: null, outputPerMillion: null, variable: false },
+    efforts: [],
+    latest: false,
+    inputs: [],
+    outputs: [],
+  };
+  return [
+    {
+      key: retainedCurrentKey(picked),
+      pick: null,
+      model,
+      selected: true,
+      favourite: false,
+      render: (): ReactNode => (
+        <ModelRow model={model} selected favourite={false} onPick={null} onFavourite={null} />
+      ),
+    },
+    ...candidates,
+  ];
+}
+
+function isOpenrouterPick(picked: ModelPick | null): boolean {
+  return picked?.engine === undefined || picked.engine.kind === 'openrouter';
+}
+function openrouterId(picked: ModelPick | null): string | null {
+  return isOpenrouterPick(picked) || picked?.engine?.kind === 'dsh'
+    ? (picked?.model ?? null)
+    : null;
+}
+function nativeRequestHandler(
+  props: ModelPickerProps,
+  accessory: ReturnType<typeof useEngineAccessory>,
+): ModelPickerProps['onNativeNeeded'] {
+  return props.onNativeNeeded ?? accessory?.request;
+}
+function openrouterModels(
+  picked: ModelPick | null,
+  current: ModelChoice | null,
+  suggested: ReturnType<typeof useSuggestedModels>['data'],
+  pages: readonly ModelChoice[],
+): readonly ModelChoice[] {
+  const auto =
+    suggested === undefined ? null : defaultChoiceOf(suggested.default, suggested.default_model);
+  return [
+    ...retainedChoice(picked, current),
+    ...(auto === null ? [] : [auto]),
+    ...(suggested?.favourites.map(choiceOf) ?? []),
+    ...pages,
+  ];
+}
+
+function guardedPicker(props: ModelPickerProps, valid: () => boolean): ModelPickerProps {
+  const onPick = props.onPick;
+  const onNativeNeeded = props.onNativeNeeded;
+  return {
+    ...props,
+    onPick:
+      onPick === null
+        ? null
+        : (pick): void => {
+            if (valid()) onPick(pick);
+          },
+    onNativeNeeded:
+      onNativeNeeded === undefined
+        ? undefined
+        : (request): void => {
+            if (valid()) onNativeNeeded(request);
+          },
+  };
+}
+
+function nativeBilling(picked: ModelPick): string {
+  const kind = picked.engine?.kind;
+  return kind === 'claude' || kind === 'codex' ? 'Subscription' : 'Unknown';
+}
+
+interface CatalogueCandidates {
+  readonly kind: AiModelKind;
+  readonly models: readonly ModelChoice[];
+  readonly props: ModelPickerProps;
+  readonly favorites: ReturnType<typeof useFavouriteModels>;
+  readonly routed: readonly ModelCandidate[];
+}
+function catalogueCandidates(context: CatalogueCandidates): readonly ModelCandidate[] {
+  const props = context.kind === 'chat' ? { ...context.props, onPick: null } : context.props;
+  const models =
+    context.kind === 'chat'
+      ? context.models.filter((model) => model.catalogueSupplier !== undefined)
+      : context.models;
+  return openrouterCandidates(models, props, context.favorites).filter(
+    (candidate) =>
+      !context.routed.some(
+        (route) =>
+          route.model.id === candidate.model.id &&
+          route.model.catalogueSupplier === candidate.model.catalogueSupplier,
+      ),
+  );
+}
+
+function guardedFavorites(
+  favorites: ReturnType<typeof useFavouriteModels>,
+  valid: () => boolean,
+): ReturnType<typeof useFavouriteModels> {
+  if (favorites.status !== 'ready') return favorites;
+  return {
+    ...favorites,
+    toggle: (id): void => {
+      if (valid()) favorites.toggle(id);
+    },
+  };
+}
+
+function retainedCurrentKey(picked: ModelPick): string {
+  const engine = picked.engine;
+  if (engine?.kind === 'dsh') return `dsh:${engine.model_route_id}:${picked.model}`;
+  if (engine !== undefined && isComputerEngine(engine))
+    return nativeModelKey(engine.kind, picked.model);
+  return `catalogue:openrouter:${picked.model}`;
 }

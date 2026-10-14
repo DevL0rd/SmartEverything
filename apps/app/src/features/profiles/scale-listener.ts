@@ -13,6 +13,7 @@ import {
   startScaleLiveScan,
   startScaleRelay,
   stopScaleLiveScan,
+  stopScaleRelay,
   type ScaleEvent,
   type ScaleRelayStatus,
 } from '../../../modules/health-connect';
@@ -170,18 +171,22 @@ function logEvent(event: ScaleEvent): void {
   void refreshRelay();
 }
 
-function scaleAddresses(state: StoreState): string {
+function passiveAddresses(state: StoreState): string {
   return rowsOf(state.tables.devices)
-    .filter(isLocalScale)
+    .filter(
+      (device) => isLocalScale(device) || typeof device.details['bleObserverAddress'] === 'string',
+    )
     .flatMap((device) => {
-      const address = device.details['address'];
+      const address = isLocalScale(device)
+        ? device.details['address']
+        : device.details['bleObserverAddress'];
       return typeof address === 'string' ? [address] : [];
     })
     .join(',');
 }
 
-function useScaleAddresses(): string {
-  return useStoreSelector(scaleAddresses);
+function usePassiveAddresses(): string {
+  return useStoreSelector(passiveAddresses);
 }
 
 function useUnsavedReadings(): string {
@@ -212,7 +217,14 @@ function useListening(addresses: string): void {
   const url = paired?.url ?? null;
   const token = paired?.token ?? null;
   useEffect(() => {
-    if (!isHealthConnectLinked || addresses === '' || url === null || token === null) {
+    if (!isHealthConnectLinked) {
+      return undefined;
+    }
+    if (addresses === '' || url === null || token === null) {
+      server = null;
+      void stopScaleRelay().catch((error: unknown) => {
+        failed('scale.relay_not_stopped', error);
+      });
       return undefined;
     }
     server = { url, token };
@@ -230,7 +242,7 @@ function useListening(addresses: string): void {
 }
 
 export function ScaleListenerHost(): null {
-  const addresses = useScaleAddresses();
+  const addresses = usePassiveAddresses();
   const unsaved = useUnsavedReadings();
   useListening(addresses);
   useEffect(() => {

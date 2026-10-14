@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { ScrollView, View, useWindowDimensions, type ViewStyle } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { cn } from '../design/cn';
 import { entering, useMotion } from '../design/motion';
-import { placeNear, type Rect } from './anchor';
+import { placeAbove, placeNear, type Rect } from './anchor';
 import { Overlay, useOverlayShown } from './overlay';
 
 export interface PopoverProps {
@@ -12,18 +12,22 @@ export interface PopoverProps {
   readonly anchor: Rect | null;
   readonly label: string;
   readonly width?: number;
+  readonly height?: number;
+  readonly scroll?: boolean;
+  readonly placement?: 'auto' | 'above';
   readonly className?: string;
   readonly children: ReactNode;
 }
 
 interface PanelProps {
   readonly label: string;
-  readonly frame: object;
+  readonly frame: ViewStyle;
+  readonly scroll: boolean;
   readonly className: string | undefined;
   readonly children: ReactNode;
 }
 
-function PopoverPanel({ label, frame, className, children }: PanelProps): ReactNode {
+function PopoverPanel({ label, frame, className, children, scroll }: PanelProps): ReactNode {
   const motion = useMotion();
   const shown = useOverlayShown();
   return (
@@ -39,9 +43,13 @@ function PopoverPanel({ label, frame, className, children }: PanelProps): ReactN
         className,
       )}
     >
-      <ScrollView contentContainerClassName="py-1">
-        <View>{children}</View>
-      </ScrollView>
+      {scroll ? (
+        <ScrollView contentContainerClassName="py-1">
+          <View>{children}</View>
+        </ScrollView>
+      ) : (
+        children
+      )}
     </Animated.View>
   );
 }
@@ -52,6 +60,9 @@ export function Popover({
   anchor,
   label,
   width = 360,
+  height,
+  scroll = true,
+  placement = 'auto',
   className,
   children,
 }: PopoverProps): ReactNode {
@@ -60,16 +71,18 @@ export function Popover({
     return null;
   }
   const shown = Math.min(width, window.width - 16);
-  const place = placeNear(anchor, shown, window);
+  const place =
+    placement === 'above' ? placeAbove(anchor, shown, window) : placeNear(anchor, shown, window);
   const frame = {
     left: place.left,
     ...place.vertical,
     maxHeight: place.maxHeight,
     width: shown,
+    ...(height === undefined ? {} : { height: Math.min(height, place.maxHeight) }),
   };
   return (
     <Overlay open={open} onClose={onClose} label={label} scrim={false}>
-      <PopoverPanel label={label} frame={frame} className={className}>
+      <PopoverPanel label={label} frame={frame} className={className} scroll={scroll}>
         {children}
       </PopoverPanel>
     </Overlay>

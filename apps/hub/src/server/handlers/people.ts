@@ -1,3 +1,4 @@
+import { removeProfileChats } from '../../assistant/remove-profile-chats';
 import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import { outboxReadingOf } from '../../local/reading-records';
 import { clientOf, healthSourceOf, profileIdOf, type Caller } from '../auth';
@@ -13,6 +14,8 @@ type PeopleRoutes = Record<
   | 'assignBodyReading'
   | 'addLocalDevice'
   | 'removeLocalDevice'
+  | 'removeBleObserver'
+  | 'readBleDevice'
   | 'readBleWatch'
   | 'relayBleAdverts'
   | 'readHealthOutbox'
@@ -41,7 +44,9 @@ function profileRoutes(
       }
       return updated;
     }),
-    deleteProfile: bound(E.deleteProfile, ({ params }) => {
+    deleteProfile: bound(E.deleteProfile, async ({ params }) => {
+      store.profiles.assertRemovable(params.profileId);
+      await removeProfileChats(store, context.assistant, params.profileId);
       const moved = store.clients.list().filter((client) => client.profile_id === params.profileId);
       store.profiles.remove(params.profileId);
       for (const client of moved) {
@@ -62,7 +67,13 @@ function deviceRoutes(
   context: ServerContext,
 ): Pick<
   PeopleRoutes,
-  'assignBodyReading' | 'addLocalDevice' | 'removeLocalDevice' | 'readBleWatch' | 'relayBleAdverts'
+  | 'assignBodyReading'
+  | 'addLocalDevice'
+  | 'removeLocalDevice'
+  | 'removeBleObserver'
+  | 'readBleDevice'
+  | 'readBleWatch'
+  | 'relayBleAdverts'
 > {
   const { store, hub } = context;
   return {
@@ -74,6 +85,20 @@ function deviceRoutes(
       await hub.local.remove(store.devices.byId(params.deviceId));
       return DONE_REPLY;
     }),
+    removeBleObserver: bound(E.removeBleObserver, async ({ params }) => {
+      const device = store.devices.byId(params.deviceId);
+      if (device.provider !== 'xiaomi' || !hub.local.readiness(device.id).configured) {
+        throw new ApiError(
+          'invalid_request',
+          'This device has no passive Xiaomi Bluetooth observation to disable.',
+        );
+      }
+      await hub.local.remove(device);
+      return DONE_REPLY;
+    }),
+    readBleDevice: bound(E.readBleDevice, ({ params }) =>
+      hub.local.readiness(store.devices.byId(params.deviceId).id),
+    ),
     readBleWatch: bound(E.readBleWatch, ({ caller }) => hub.local.watch(clientOf(caller).id)),
     relayBleAdverts: bound(E.relayBleAdverts, ({ body, caller }) =>
       hub.local.relay(body.adverts, clientOf(caller).id),

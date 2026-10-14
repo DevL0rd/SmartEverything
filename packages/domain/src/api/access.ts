@@ -1,6 +1,7 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, randomBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import { HUB_ENDPOINT, HUB_IDENTITY } from '../hub-connections';
 
 export const CLIENT_TOKEN = z.string().regex(/^set_[0-9a-f]{64}$/);
 
@@ -27,10 +28,18 @@ export function hashPairingCode(code: string): string {
   return bytesToHex(sha256(utf8ToBytes(PAIRING_CODE.parse(code))));
 }
 
-export const PAIRING_QR = z.strictObject({
+export const LEGACY_PAIRING_QR = z.strictObject({
   url: z.url({ protocol: /^https$/ }),
   code: PAIRING_CODE,
 });
+
+export const PAIRING_QR = LEGACY_PAIRING_QR.extend({
+  identity: HUB_IDENTITY.optional(),
+  endpoints: z.array(HUB_ENDPOINT).min(1).max(32).optional(),
+}).refine(
+  (value) => (value.identity === undefined) === (value.endpoints === undefined),
+  'Pairing identity and endpoint inventory must be supplied together',
+);
 
 export type PairingQr = z.infer<typeof PAIRING_QR>;
 
@@ -70,3 +79,10 @@ export const MEDIA_PATHS = {
   live: '/live',
   publicUrlProbe: '/.well-known/smarteverything/:nonce',
 } as const;
+
+export {
+  PAIRING_INVITATION_MAX_LENGTH,
+  parsePairingInvitation,
+  pairingInvitationText,
+} from '../pairing-invitation';
+export type { PairingInvitation, PairingInvitationParse } from '../pairing-invitation';

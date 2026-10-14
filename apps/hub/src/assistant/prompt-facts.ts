@@ -1,8 +1,9 @@
 import { assistantLabel, type AiChatRow } from '@smarteverything/domain';
+import { toolGuide } from '../ai-tools/tool-guide';
 import { chatCatalogue, toolIndex } from '../ai-tools/tool-sets';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { Store } from '../store/store';
-import type { PromptFacts } from './engines/openrouter/context';
+import type { PromptFacts } from './conversation/prompt';
 
 function roleOf(store: Store, profileId: string): PromptFacts['role'] {
   const clients = store.clients.list().filter((client) => client.profile_id === profileId);
@@ -25,6 +26,8 @@ export function facts(
     timeZone: settings.time_zone,
     now,
     instructions: assistant.instructions,
+    responseStyle: assistant.response_style,
+    guide: toolGuide(tools === null ? [] : tools.list().map((tool) => tool.name)),
     toolIndex: tools === null ? '' : toolIndex(tools.list()),
     catalogue: tools === null ? '' : chatCatalogue(tools.list()),
     chat,

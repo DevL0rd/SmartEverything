@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../app-shell/main-pages';
 import { View } from 'react-native';
 import { fitnessReady } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
@@ -34,7 +35,10 @@ export function FinishFitnessCard({ compact = false }: { readonly compact?: bool
 
 export function FitnessSetupScreen(): ReactNode {
   return (
-    <Screen header={<PageHeader title="Fitness" back={false} />} maxWidth="reading">
+    <Screen
+      header={<PageHeader title="Fitness" settings={mainPageSettings('fitness')} back={false} />}
+      maxWidth="reading"
+    >
       <FinishFitnessCard />
     </Screen>
   );

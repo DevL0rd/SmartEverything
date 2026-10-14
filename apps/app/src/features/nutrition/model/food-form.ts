@@ -143,7 +143,7 @@ export function checkForm(form: FoodForm, origin: NewFood['origin']): FoodCheck 
           },
     kcal: number(form.kcal),
     grams: gramsOf(form),
-    water_percent: form.kind === 'drink' ? form.waterPercent : 0,
+    water_percent: form.waterPercent,
     origin,
     favourite: form.favourite,
   });

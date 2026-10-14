@@ -1,6 +1,5 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
-import { clientOf } from '../auth';
-import { checkedCommands, sourcedBy } from '../commands';
+import { checkedCommands, sourcedBy, commandPrincipal } from '../commands';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type Bound } from '../router';
 
@@ -48,14 +47,18 @@ export function deviceRoutes(context: ServerContext): DeviceRoutes {
     listCommands: bound(E.listCommands, ({ query }) => store.commands.recent(query.limit)),
     readCommand: bound(E.readCommand, ({ params }) => store.commands.byId(params.commandId)),
     sendCommand: bound(E.sendCommand, ({ body, caller }) => {
-      const [row] = hub.submit(checkedCommands(store, sourcedBy(caller, [body]), clientOf(caller)));
+      const [row] = hub.submit(
+        checkedCommands(store, sourcedBy(caller, [body]), commandPrincipal(store, caller)),
+      );
       if (row === undefined) {
         throw new Error('Submitting one command returned no row.');
       }
       return row;
     }),
     sendCommands: bound(E.sendCommands, ({ body, caller }) =>
-      hub.submit(checkedCommands(store, sourcedBy(caller, body.commands), clientOf(caller))),
+      hub.submit(
+        checkedCommands(store, sourcedBy(caller, body.commands), commandPrincipal(store, caller)),
+      ),
     ),
     listEvents: bound(E.listEvents, ({ query }) => store.events.list(query)),
     acknowledgeEvent: bound(E.acknowledgeEvent, ({ params }) =>

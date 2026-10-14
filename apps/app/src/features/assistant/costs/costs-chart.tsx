@@ -35,6 +35,7 @@ export function CostChart({
   const points = series.points.filter((point) => inRange(point, window));
   const money = useMoney();
   const total = points.reduce((sum, point) => sum + point.cost_micros, 0);
+  const incomplete = points.some((point) => (point.unknown_count ?? 0) > 0);
   const hourly = window.bucket === 'hour';
   const average = Math.round(total / Math.max(1, points.length));
   return (
@@ -43,15 +44,19 @@ export function CostChart({
         <CardEmpty
           icon="activity"
           colour="viz-1"
-          title="Nothing spent in these dates"
-          body="Spend shows up here as the assistant works."
+          title={incomplete ? 'Supplier costs unavailable' : 'Nothing spent in these dates'}
+          body={
+            incomplete
+              ? 'These dates contain requests with unavailable costs. The known total is incomplete.'
+              : 'Spend shows up here as the assistant works.'
+          }
         />
       ) : (
         <View className="gap-3">
           <View className="flex-row items-end gap-2">
             <Figure value={money.cost(average)} size="m" />
             <Text variant="footnote" tone="variant" className="pb-1">
-              {hourly ? 'an hour on average' : 'a day on average'}
+              {`${hourly ? 'an hour on average' : 'a day on average'}${incomplete ? ' · Known costs only' : ''}`}
             </Text>
           </View>
           <Bars
@@ -62,7 +67,7 @@ export function CostChart({
             }))}
             colour="viz-1"
             height={160}
-            label={`Spend ${hourly ? 'by hour' : 'by day'}, ${money.cost(total)} in total`}
+            label={`Spend ${hourly ? 'by hour' : 'by day'}, ${money.cost(total)} ${incomplete ? 'known total, additional costs unavailable' : 'in total'}`}
             formatValue={money.cost}
           />
         </View>

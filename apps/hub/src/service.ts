@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import process, { argv, env, execPath, exit, kill, pid } from 'node:process';
 import { Logger } from '@smarteverything/logging';
 import { SUPERVISE_ARGUMENT, dataDirectoryFrom } from './service/configuration';
+import { parseArgs } from 'node:util';
+import { pairNode, pairNodeWindow } from './node/setup';
 import { runService } from './service/runner';
 import { runSupervisor, type ServiceChild } from './service/supervisor';
 
@@ -16,6 +18,13 @@ class MissingEntryError extends Error {
     super(
       'The supervisor is started as "<runtime> <service entry> --supervise"; no entry was given.',
     );
+  }
+}
+
+class NodeSetupArgumentsError extends Error {
+  override readonly name = 'NodeSetupArgumentsError';
+  constructor() {
+    super('Node setup requires --hub <central hub URL> and --code <owner-issued pairing code>.');
   }
 }
 
@@ -73,6 +82,22 @@ function supervise(dataDirectory: string): Promise<void> {
 
 function start(): Promise<unknown> {
   const dataDirectory = dataDirectoryFrom(env);
+  if (argv.includes('--pair-node') || argv.includes('--pair-node-window')) {
+    const { values } = parseArgs({
+      args: argv.slice(2),
+      options: {
+        'pair-node': { type: 'boolean' },
+        'pair-node-window': { type: 'boolean' },
+        hub: { type: 'string' },
+        code: { type: 'string' },
+      },
+    });
+    if (values.hub === undefined || values.code === undefined) {
+      throw new NodeSetupArgumentsError();
+    }
+    const options = { dataDirectory, hubUrl: values.hub, code: values.code };
+    return values['pair-node-window'] === true ? pairNodeWindow(options) : pairNode(options);
+  }
   if (argv.includes(SUPERVISE_ARGUMENT)) {
     return supervise(dataDirectory);
   }

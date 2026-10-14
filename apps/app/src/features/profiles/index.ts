@@ -25,3 +25,4 @@ export { BodyDetails } from './body-details';
 export { FitnessSetupScreen, FitnessSetupWidget, useFitnessReady } from './fitness-ready';
 export { BodyReport } from './body-report';
 export { CompositionGrid } from './composition-grid';
+export { PhoneListeningRows } from './phone-listening-row';

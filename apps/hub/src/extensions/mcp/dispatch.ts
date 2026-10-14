@@ -1,9 +1,4 @@
-import {
-  ApiError,
-  CommandRefusedError,
-  InvalidValueError,
-  MCP_TOOLS,
-} from '@smarteverything/domain';
+import { ApiError, CommandRefusedError, InvalidValueError } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { StoreNotFoundError } from '../../store/context';
@@ -17,6 +12,7 @@ import {
 import { SERVER_INFO, SERVER_INSTRUCTIONS } from './instructions';
 import { resourceList, resourceRead } from './resources';
 import { TOOLS, toolNamed } from './tools';
+import { toolInScope, visibleTools } from './tools/visibility';
 import { ToolError, type Tool, type ToolContext, type ToolOutput } from './tools/registry';
 
 const REFUSAL_LOGGED = 300;
@@ -39,18 +35,8 @@ function switchedOff(context: ToolContext): ReadonlySet<string> {
   return new Set(context.store.settings.read().mcp_disabled_tools);
 }
 
-function inScope(context: ToolContext, name: string): boolean {
-  const areas = context.caller?.areas;
-  if (areas === undefined) {
-    return true;
-  }
-  const text = MCP_TOOLS.find((candidate) => candidate.name === name);
-  return text !== undefined && areas.includes(text.area);
-}
-
 function enabledTools(context: ToolContext): readonly Tool[] {
-  const off = switchedOff(context);
-  return TOOLS.filter((tool) => !off.has(tool.name) && inScope(context, tool.name));
+  return visibleTools(TOOLS, context);
 }
 
 interface Refusal {
@@ -95,6 +81,10 @@ function succeeded(done: Success, output: ToolOutput): unknown {
   });
 }
 
+function discoveryContext(context: ToolContext): ToolContext {
+  return { ...context, visibleTools: (): readonly Tool[] => enabledTools(context) };
+}
+
 async function called(request: RpcRequest, context: ToolContext, log: Logger): Promise<unknown> {
   const call = CALL.safeParse(request.params);
   if (!call.success) {
@@ -108,7 +98,7 @@ async function called(request: RpcRequest, context: ToolContext, log: Logger): P
       `Unknown tool: ${call.data.name}`,
     );
   }
-  if (!inScope(context, tool.name)) {
+  if (!toolInScope(context, tool.name)) {
     return failed(request, {
       code: 'forbidden',
       message: `This plugin may not use ${tool.name}; the owner chooses what it can reach.`,
@@ -123,7 +113,8 @@ async function called(request: RpcRequest, context: ToolContext, log: Logger): P
   }
   try {
     const args = call.data.arguments ?? {};
-    return succeeded({ request, log, name: tool.name }, await tool.call(context, args));
+    const visibleContext = discoveryContext(context);
+    return succeeded({ request, log, name: tool.name }, await tool.call(visibleContext, args));
   } catch (cause) {
     const refused = refusal(cause);
     if (refused === null) {

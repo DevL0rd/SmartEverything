@@ -86,6 +86,9 @@ function readObjects(payload: Uint8Array): MiBeaconObject[] {
     objects.push({ id: uint16(payload, offset), data: payload.subarray(offset + 3, end) });
     offset = end;
   }
+  if (offset !== payload.length) {
+    throw new MiBeaconFormatError('The MiBeacon object payload has a truncated object header.');
+  }
   return objects;
 }
 

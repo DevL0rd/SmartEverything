@@ -14,11 +14,14 @@ import {
   AI_PROVIDER_COUNT,
   OPENROUTER_ACCOUNT,
   OPENROUTER_KEY,
-  OPENROUTER_KEY_SOURCE,
   OPENROUTER_STATUS,
 } from '../ai-models';
 import { NO_BODY, endpoint } from './endpoint';
+import { AI_MODEL_SEARCH_ENDPOINTS } from './endpoints-ai-model-search';
 import { NOTHING, QUERY_FLAG, queryLimit } from './primitives';
+
+export * from '../ai-model-search';
+export * from './endpoints-ai-model-search';
 
 export const AI_MODEL_QUERY = z.strictObject({
   kind: AI_MODEL_KIND.optional(),
@@ -50,6 +53,7 @@ export const AI_PRICE_OVERRIDE = z.strictObject({
 });
 
 export const AI_MODEL_ENDPOINTS = {
+  ...AI_MODEL_SEARCH_ENDPOINTS,
   listAiModels: endpoint({
     method: 'GET',
     path: '/api/ai/models',
@@ -140,16 +144,6 @@ export const AI_MODEL_ENDPOINTS = {
     params: NOTHING,
     query: NOTHING,
     body: z.strictObject({ key: OPENROUTER_KEY }),
-    response: OPENROUTER_STATUS,
-  }),
-  importOpenRouterKey: endpoint({
-    method: 'POST',
-    path: '/api/ai/openrouter/key/import',
-    access: 'owner',
-    summary: 'Copy the OpenRouter key from Discordinator on this computer, after checking it works',
-    params: NOTHING,
-    query: NOTHING,
-    body: z.strictObject({ source: OPENROUTER_KEY_SOURCE }),
     response: OPENROUTER_STATUS,
   }),
   removeOpenRouterKey: endpoint({

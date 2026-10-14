@@ -26,6 +26,8 @@ export const EVENT_KINDS = [
   'place_left',
   'parked',
   'phone_unlocked',
+  'zone_enter',
+  'zone_leave',
 ] as const;
 
 export type EventKind = (typeof EVENT_KINDS)[number];
@@ -49,8 +51,20 @@ export function cameraDetectionsOf(kind: EventKind): readonly CameraDetection[] 
   );
 }
 
-function isCameraDetection(name: string): name is CameraDetection {
+export function isCameraDetection(name: string): name is CameraDetection {
   return Object.hasOwn(CAMERA_DETECTION_KINDS, name);
+}
+
+export function cameraDetectionOf(
+  kind: EventKind,
+  details: Readonly<Record<string, unknown>>,
+): CameraDetection | null {
+  const detection = details['detection'];
+  return typeof detection === 'string' &&
+    isCameraDetection(detection) &&
+    CAMERA_DETECTION_KINDS[detection] === kind
+    ? detection
+    : null;
 }
 
 const MIOT_DEVICE_EVENTS: Readonly<Record<string, EventKind>> = {

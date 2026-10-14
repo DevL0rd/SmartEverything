@@ -32,7 +32,7 @@ async function json(system: ServiceSystem, url: URL, init: RequestInit): Promise
 
 async function publicUrlOf(
   system: ServiceSystem,
-  ready: ServiceReady,
+  ready: Exclude<ServiceReady, { role: 'node' }>,
   token: string,
 ): Promise<HubFacts['publicUrl']> {
   const status = PUBLIC_STATUS.parse(await json(system, new URL('/status', ready.url), {}));
@@ -59,6 +59,8 @@ export async function readFacts(
   if (ready === null) {
     throw new HubCheckError(`the server isn't running (no live ${locations.readyFile})`);
   }
+  if ('role' in ready)
+    throw new HubCheckError('A paired computer node has no local hub database to migrate.');
   const token = await readOwnerToken(system, locations);
   const snapshot = SNAPSHOT.parse(
     await json(system, new URL('/api/snapshot', ready.url), {

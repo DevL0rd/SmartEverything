@@ -33,16 +33,19 @@ object ProcessExits {
       return emptyList()
     }
     val manager = context.getSystemService(ActivityManager::class.java)
-    return manager.getHistoricalProcessExitReasons(null, 0, KEPT).map { exit ->
+    return manager.getHistoricalProcessExitReasons(context.packageName, 0, KEPT)
+      .filter { it.processName == context.packageName || it.processName.startsWith(context.packageName + ":") }
+      .map { exit ->
       mapOf(
         "reason" to (REASONS[exit.reason] ?: "code_${exit.reason}"),
-        "description" to exit.description,
+        "description" to DiagnosticText.description(exit.description),
         "at" to exit.timestamp,
         "importance" to exit.importance,
         "status" to exit.status,
         "processName" to exit.processName,
         "pssKb" to exit.pss,
-        "rssKb" to exit.rss
+        "rssKb" to exit.rss,
+        "nativeTrace" to NativeTrace.read(exit)
       )
     }
   }

@@ -1,9 +1,13 @@
+import { useHarnessCatalogue } from '../data/harness';
+import { ChatSubscriptionUsage } from '../provider/subscription-usage';
+import { isComputerEngine } from '../provider/computer-engine';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { MCP_TOOLS, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
+import { useIsOwner } from '../../../store/selectors';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
 import { ContextRing } from '../components/context-ring';
@@ -43,7 +47,7 @@ function ContextRow({ percent }: { readonly percent: number }): ReactNode {
   );
 }
 
-function linkRowsOf(identity: ChatIdentity): readonly ReactNode[] {
+function linkRowsOf(identity: ChatIdentity, kind: AiChatRow['kind']): readonly ReactNode[] {
   const { source, parent } = identity;
   return [
     source.kind === 'plugin' && source.pluginId !== null ? (
@@ -57,7 +61,9 @@ function linkRowsOf(identity: ChatIdentity): readonly ReactNode[] {
     parent === null ? null : (
       <ListRow
         key="parent"
-        title={`Branched from ${parent.title}`}
+        title={
+          kind === 'subagent' ? `Parent chat · ${parent.title}` : `Branched from ${parent.title}`
+        }
         chevron
         href={href.assistantChat(parent.id)}
       />
@@ -77,30 +83,38 @@ export function InfoRows({
   readonly onTools: () => void;
 }): ReactNode {
   const model = useChatModel(chat.engine);
+  const owner = useIsOwner();
+  const readOnly = isComputerEngine(chat.engine) && !owner;
   const identity = useChatIdentity(chat);
-  const money = useMoney();
   const modelValue =
     model.effort === null ? model.shortName : `${model.shortName} · ${model.effort}`;
   return (
     <List>
-      <ListRow title="Model and thinking" value={modelValue} chevron onPress={onModel} />
-      <ListRow
-        title="Cost"
-        value={`${money.cost(chat.cost_micros)} · ${repliesText(rows)}`}
-        chevron
-        href={href.assistantCosts({ chat: chat.id })}
-      />
+      <ListRow title="Model" value={modelValue} chevron onPress={onModel} />
+      <ChatBilling chat={chat} rows={rows} />
       {chat.context_percent === null ? null : <ContextRow percent={chat.context_percent} />}
-      <ListRow title="Tools for this chat" value={toolsText(chat)} chevron onPress={onTools} />
-      {linkRowsOf(identity)}
+      <ListRow
+        title="Tools for this chat"
+        value={toolsText(chat)}
+        disabled={readOnly}
+        chevron
+        onPress={onTools}
+      />
+      {linkRowsOf(identity, chat.kind)}
     </List>
   );
 }
 
 export function BranchRows({ chatId }: { readonly chatId: string }): ReactNode {
-  const branches = useAiChats().filter((chat) => chat.parent_id === chatId);
+  const branches = useAiChats().filter(
+    (chat) => chat.parent_id === chatId && chat.kind !== 'subagent',
+  );
   if (branches.length === 0) {
-    return null;
+    return (
+      <Text tone="variant">
+        No branches yet. Branch from a message to continue a different direction.
+      </Text>
+    );
   }
   return (
     <List title="Branches">
@@ -120,7 +134,7 @@ export function BranchRows({ chatId }: { readonly chatId: string }): ReactNode {
 export function FileRows({ rows }: { readonly rows: readonly AssistantMessageRow[] }): ReactNode {
   const files = rows.flatMap((row) => row.attachments);
   if (files.length === 0) {
-    return null;
+    return <Text tone="variant">No files in this chat.</Text>;
   }
   return (
     <List title="Files in this chat">
@@ -132,5 +146,35 @@ export function FileRows({ rows }: { readonly rows: readonly AssistantMessageRow
         />
       ))}
     </List>
+  );
+}
+
+function ChatBilling({
+  chat,
+  rows,
+}: {
+  readonly chat: AiChatRow;
+  readonly rows: readonly AssistantMessageRow[];
+}): ReactNode {
+  const catalogue = useHarnessCatalogue();
+  const money = useMoney();
+  const engine = chat.engine;
+  const route =
+    engine.kind === 'dsh'
+      ? catalogue.data?.routes.find((row) => row.id === engine.model_route_id)
+      : undefined;
+  if (isComputerEngine(engine) || (engine.kind === 'dsh' && route?.billing !== 'metered'))
+    return <ChatSubscriptionUsage chat={chat} />;
+  const cost =
+    chat.cost_incomplete === true
+      ? `${money.cost(chat.cost_micros)} known + unavailable`
+      : money.cost(chat.cost_micros);
+  return (
+    <ListRow
+      title="Cost"
+      value={`${cost} · ${repliesText(rows)}`}
+      chevron
+      href={href.assistantCosts({ chat: chat.id })}
+    />
   );
 }

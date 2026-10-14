@@ -1,3 +1,4 @@
+import type { ComputerAiDirectory } from './computers/ai-directory';
 import type { Logger } from '@smarteverything/logging';
 import type { PushCommandChannel } from './extensions/push/commands';
 import type { OpenCalls } from './assistant-voice/open-calls';
@@ -12,6 +13,7 @@ import type { MediaNotes } from './transcripts/media-notes';
 
 export interface ExtensionContext {
   readonly store: Store;
+  readonly computerAi: ComputerAiDirectory;
   readonly hub: RunningHub;
   readonly secrets: SecretStore;
   readonly live: LiveHub;

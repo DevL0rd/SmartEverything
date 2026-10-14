@@ -5,6 +5,7 @@ import { patchCameraDays, refreshSnapshots } from './camera-day';
 import { entryChanges } from './health-entries';
 import {
   AI_USAGE_PREFIX,
+  AGENT_RUN_PREFIX,
   ARCHIVED_CHATS_KEY,
   HEALTH_PREFIX,
   HISTORY_PREFIX,
@@ -41,6 +42,13 @@ function invalidateAi(client: QueryClient, tables: ReadonlySet<LiveTable>): void
     void client.invalidateQueries({ queryKey: OPENROUTER_ACCOUNT_KEY });
   }
   if (tables.has('ai_chats')) {
+    void client.invalidateQueries({
+      predicate: (query) =>
+        query.queryKey[0] === 'window' &&
+        query.queryKey[1] === 'computer-ai' &&
+        query.queryKey[3] === 'cli-sessions',
+    });
+    void client.invalidateQueries({ queryKey: AGENT_RUN_PREFIX });
     void client.invalidateQueries({ queryKey: ARCHIVED_CHATS_KEY });
   }
   if (tables.has('ai_outreach')) {

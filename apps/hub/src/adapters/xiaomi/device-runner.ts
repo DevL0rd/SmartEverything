@@ -33,7 +33,7 @@ import { z } from 'zod';
 import type { CameraMotor } from './camera-motor';
 import { CameraPtz } from './camera-ptz';
 import type { DeviceIo } from './device-io';
-import { DeviceLink, type LinkContext, type Opened } from './device-link';
+import { DeviceLink, type LinkContext, type Opened, type RefreshTrigger } from './device-link';
 import type { InventoryEntry, TransportState } from './inventory';
 import { MiioTimeoutError } from './miio-client';
 
@@ -50,6 +50,8 @@ const CALL_START = 'key-call-start';
 export class DeviceRunner {
   private readonly values = new Map<CapabilityKey, JsonValue>();
   private readonly raw = new Map<CapabilityKey, JsonValue>();
+  private readonly pushes = new Map<CapabilityKey, number>();
+  private passiveFreshUntil = 0;
   private lanFailures = 0;
   private readonly ptz: CameraPtz | null;
   private readonly link: DeviceLink;
@@ -74,8 +76,7 @@ export class DeviceRunner {
       online: entry.cloud.online,
     };
     this.link = new DeviceLink(setup, context, {
-      poll: (): Promise<void> => this.poll(),
-      readAll: (): Promise<void> => this.publishAll(),
+      refresh: (trigger): Promise<void> => this.refresh(trigger),
       uplink: (uplink): void => {
         this.uplink(uplink);
       },
@@ -95,6 +96,14 @@ export class DeviceRunner {
     return [...this.entry.model.bindings].flatMap(([key, binding]) =>
       binding.kind === 'property' && binding.readable ? [{ ...binding, key }] : [],
     );
+  }
+
+  observePassive(update: StateUpdate | null, freshUntil: number): void {
+    this.passiveFreshUntil = freshUntil;
+    this.pushes.set('contact', (this.pushes.get('contact') ?? 0) + 1);
+    if (update !== null) {
+      this.values.set(update.capability, update.value);
+    }
   }
 
   transportState(): TransportState {
@@ -121,12 +130,12 @@ export class DeviceRunner {
     return this.read(this.readable);
   }
 
-  async poll(): Promise<void> {
+  private async refresh(trigger: RefreshTrigger): Promise<void> {
     try {
       await this.publishAll();
       this.lanFailures = 0;
     } catch (error) {
-      await this.pollFailed(error);
+      await this.refreshFailed(error, trigger);
     }
   }
 
@@ -192,21 +201,27 @@ export class DeviceRunner {
     if (bindings.length === 0) {
       return { all: [], changed: [] };
     }
-    return this.accepted(await this.io.read(bindings.map(({ siid, piid }) => ({ siid, piid }))));
+    const generations = new Map(bindings.map(({ key }) => [key, this.pushes.get(key) ?? 0]));
+    const readings = await this.io.read(bindings.map(({ siid, piid }) => ({ siid, piid })));
+    return this.accepted(readings, generations);
   }
 
-  private accepted(readings: readonly PropertyReading[]): {
+  private accepted(
+    readings: readonly PropertyReading[],
+    generations?: ReadonlyMap<CapabilityKey, number>,
+  ): {
     readonly all: StateUpdate[];
     readonly changed: StateUpdate[];
   } {
     const observedAt = new Date(this.context.now()).toISOString();
     const all: StateUpdate[] = [];
     const changed: StateUpdate[] = [];
-    if (readings.some((reading) => this.ptz?.observe(reading) === true)) {
+    const current = readings.filter((reading) => this.currentReading(reading, generations));
+    if (current.some((reading) => this.ptz?.observe(reading) === true)) {
       this.context.devicesChanged();
     }
-    for (const reading of readings) {
-      const update = this.accept(reading, observedAt);
+    for (const reading of current) {
+      const update = this.accept(reading, observedAt, generations === undefined);
       if (update !== null) {
         all.push(update.state);
         if (update.changed) {
@@ -217,9 +232,30 @@ export class DeviceRunner {
     return { all, changed };
   }
 
+  private currentReading(
+    reading: PropertyReading,
+    generations: ReadonlyMap<CapabilityKey, number> | undefined,
+  ): boolean {
+    const key = propertyKeyOf(this.entry.model, reading.siid, reading.piid);
+    if (
+      generations !== undefined &&
+      key === 'contact' &&
+      this.io.transport === 'cloud' &&
+      this.context.now() < this.passiveFreshUntil
+    ) {
+      return false;
+    }
+    return (
+      generations === undefined ||
+      key === null ||
+      generations.get(key) === (this.pushes.get(key) ?? 0)
+    );
+  }
+
   private accept(
     reading: PropertyReading,
     observedAt: string,
+    pushed: boolean,
   ): { readonly state: StateUpdate; readonly changed: boolean } | null {
     const key = propertyKeyOf(this.entry.model, reading.siid, reading.piid);
     const binding = key === null ? undefined : this.entry.model.bindings.get(key);
@@ -233,6 +269,9 @@ export class DeviceRunner {
     }
     try {
       const value = fromDevice(key, binding.codec, reading.value);
+      if (pushed) {
+        this.pushes.set(key, (this.pushes.get(key) ?? 0) + 1);
+      }
       this.observeCall(binding, key, reading.value, observedAt);
       const changed = JSON.stringify(this.values.get(key)) !== JSON.stringify(value);
       this.values.set(key, value);
@@ -261,8 +300,13 @@ export class DeviceRunner {
     }
   }
 
-  private async pollFailed(error: unknown): Promise<void> {
-    this.context.log.warn('xiaomi_device.poll_failed', {
+  private async refreshFailed(error: unknown, trigger: RefreshTrigger): Promise<void> {
+    const operation = trigger === 'poll' ? 'poll' : 'subscription-refresh';
+    const event =
+      trigger === 'poll'
+        ? 'xiaomi_device.poll_failed'
+        : 'xiaomi_device.subscription_refresh_failed';
+    this.context.log.warn(event, {
       did: this.did,
       transport: this.io.transport,
       reason: String(error),
@@ -270,7 +314,7 @@ export class DeviceRunner {
     this.context.sink()?.failure({
       provider: 'xiaomi',
       externalId: this.did,
-      operation: `${this.io.transport}-poll`,
+      operation: `${this.io.transport}-${operation}`,
       cause: error,
     });
     if (this.io.transport === 'cloud' && error instanceof XiaomiCloudError) {

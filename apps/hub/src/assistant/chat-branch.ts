@@ -1,3 +1,4 @@
+import { nativeForkIntent } from '../harness/forks';
 import {
   AI_CHAT_TITLE_MAX,
   ApiError,
@@ -33,7 +34,8 @@ export class ChatBranches {
     const source = this.chats.own(owner, chatId);
     const path = this.path(source, body.messageId);
     const copies = await this.copiedFiles(path);
-    return this.store.write(() => this.build(source, body, path, copies));
+    const write = source.engine.kind === 'dsh' ? this.store.durableWrite : this.store.write;
+    return write(() => this.build(source, body, path, copies));
   }
 
   private path(source: AiChatRow, messageId: string): AssistantMessageRow[] {
@@ -69,6 +71,8 @@ export class ChatBranches {
     path: readonly AssistantMessageRow[],
     copies: ReadonlyMap<string, StoredAttachment>,
   ): AiChatRow {
+    const selected = this.chats.select(source.profile_id, source.engine);
+    const engine = selected.kind === 'dsh' ? { ...selected, session_id: null } : selected;
     const branch = this.store.aiChats.create({
       profileId: source.profile_id,
       kind: 'chat',
@@ -76,10 +80,11 @@ export class ChatBranches {
       icon: source.icon,
       parentId: source.id,
       sourceKey: null,
-      engine: source.engine,
+      engine,
       tools: source.tools,
       branchMessageId: body.messageId,
     });
+    nativeForkIntent(this.store, source, branch, body.messageId);
     const made = new Map<string, string>();
     for (const row of path) {
       made.set(row.id, this.copy(row, branch.id, made, copies));

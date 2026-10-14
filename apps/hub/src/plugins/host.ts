@@ -1,7 +1,15 @@
+import { providerHubOsBan } from '../assistant/engines/computer/tool-authority';
+import { localPluginTransport } from './local-transport';
+import {
+  currentExecutionAuthority,
+  currentExecutionAuthorities,
+} from '../assistant/execution-authority';
+import { resetPluginCallAuthority, withPluginCallAuthority } from './call-authority';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
+  ApiError,
   MCP_PATHS,
   PLUGIN_MANIFEST,
   type JsonValue,
@@ -91,6 +99,7 @@ export class PluginHost {
     this.slots.delete(id);
     await slot?.stop();
     this.options.store.plugins.dropToken(id);
+    resetPluginCallAuthority(this.options.store, id);
     const row = this.options.store.plugins.find(id);
     if (row !== undefined && !row.enabled && row.status !== 'disabled') {
       this.options.store.plugins.update(id, { status: 'disabled', statusDetail: null });
@@ -129,9 +138,25 @@ export class PluginHost {
     caller: ToolCaller,
   ): Promise<HubToolResult> {
     const slot = this.slots.get(pluginId);
-    return slot === undefined
-      ? Promise.resolve(failure('That plugin is switched off'))
-      : slot.call(tool, args, caller);
+    if (slot === undefined) return Promise.resolve(failure('That plugin is switched off'));
+    const authority = caller.authority ?? currentExecutionAuthority();
+    if (authority === undefined) return slot.call(tool, args, caller);
+    const plugin = this.options.store.plugins.byId(pluginId);
+    if (
+      (providerHubOsBan() ||
+        [authority, ...currentExecutionAuthorities()].some((source) => source.hub_os_ban)) &&
+      plugin.source !== 'builtin' &&
+      localPluginTransport(plugin.manifest.mcp, this.options.mcpUrl())
+    )
+      return Promise.reject(
+        new ApiError(
+          'forbidden',
+          'Hub conversations cannot invoke an external local process whose OS effects cannot enforce the initiating restriction.',
+        ),
+      );
+    return withPluginCallAuthority(this.options.store, pluginId, authority, () =>
+      slot.call(tool, args, caller),
+    );
   }
 
   validate(row: PluginRow, settings: Readonly<Record<string, JsonValue>>): string | null {

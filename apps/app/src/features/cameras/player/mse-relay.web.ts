@@ -87,18 +87,31 @@ function openRelaySocket(url: string, parts: RelayParts): WebSocket {
   });
   socket.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (event.data instanceof ArrayBuffer) {
-      queue?.push(event.data);
-      parts.report('connected');
+      try {
+        queue?.push(event.data);
+        parts.report('connected');
+      } catch {
+        parts.report('failed');
+        socket.close();
+      }
       return;
     }
     const message = RELAY_MESSAGE.safeParse(
       typeof event.data === 'string' ? parsedJson(event.data) : null,
     );
     if (message.success && message.data.type === 'mse') {
-      queue = new SegmentQueue(parts.source.addSourceBuffer(message.data.value));
+      try {
+        queue = new SegmentQueue(parts.source.addSourceBuffer(message.data.value));
+      } catch {
+        parts.report('failed');
+        socket.close();
+      }
     } else {
       parts.report('failed');
     }
+  });
+  socket.addEventListener('error', () => {
+    parts.report('failed');
   });
   socket.addEventListener('close', () => {
     parts.report('failed');
@@ -110,6 +123,7 @@ export function createRelayLink(url: string): MediaLink {
   const source = new MediaSource();
   const listeners: ((state: PeerState) => void)[] = [];
   let socket: WebSocket | null = null;
+  let closed = false;
   const report = (state: PeerState): void => {
     for (const listener of listeners) {
       listener(state);
@@ -118,7 +132,9 @@ export function createRelayLink(url: string): MediaLink {
   source.addEventListener(
     'sourceopen',
     () => {
-      socket = openRelaySocket(url, { source, report });
+      if (!closed) {
+        socket = openRelaySocket(url, { source, report });
+      }
     },
     { once: true },
   );
@@ -141,6 +157,7 @@ export function createRelayLink(url: string): MediaLink {
       Promise.reject(new PeerError('starting talk', 'the relayed stream carries no microphone')),
     stats: (): Promise<unknown> => Promise.resolve(null),
     close: (): void => {
+      closed = true;
       listeners.length = 0;
       socket?.close();
     },

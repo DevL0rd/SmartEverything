@@ -1,4 +1,5 @@
 import { presentValue, withRole, type CapabilityRole } from '@smarteverything/domain';
+import { FAMILY_STATE_LINES } from './family-state-lines';
 import { joinParts } from '../../../format/text';
 import { deviceValuesOf, type DeviceValues } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
@@ -40,6 +41,10 @@ export function stateLine(model: DeviceModel, values: DeviceValues, withReading 
   }
   if (!model.device.online) {
     return 'Offline';
+  }
+  const custom = FAMILY_STATE_LINES[model.family];
+  if (custom !== undefined) {
+    return custom(values);
   }
   const power = powerStateOf(model, values);
   if (power === 'off') {

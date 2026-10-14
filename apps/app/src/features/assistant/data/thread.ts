@@ -56,6 +56,7 @@ function hasContent(row: AssistantMessageRow): boolean {
 }
 
 function shown(row: AssistantMessageRow): boolean {
+  if (row.embeds.some((embed) => embed.kind === 'tools_changed')) return false;
   if (isRetiredFailedAction(row)) {
     return false;
   }
@@ -189,10 +190,7 @@ export function threadOf(
       null,
   };
   const items = visible.map((row, index) => messageItem(row, index, context));
-  return [
-    ...items.filter((item) => !isWorkingRow(item.row)),
-    ...items.filter((item) => isWorkingRow(item.row)),
-  ].toReversed();
+  return [...items].reverse();
 }
 
 function isWorkingRow(row: AssistantMessageRow): boolean {

@@ -1,3 +1,4 @@
+import type { HubConnections } from '../network/connections';
 import { randomBytes } from 'node:crypto';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -9,6 +10,7 @@ import {
   hashClientToken,
   hashPairingCode,
   type ClientRow,
+  type HubConnectionMetadata,
   type Pairing,
   type Role,
 } from '@smarteverything/domain';
@@ -23,6 +25,7 @@ const CLAIMS_PER_WINDOW = 10;
 const CLAIM_WINDOW_MS = 60_000;
 
 export interface AccessOptions {
+  readonly connections?: HubConnections;
   readonly store: Store;
   readonly dataDirectory: string;
   readonly now: () => Date;
@@ -87,20 +90,52 @@ export class AccessService {
     return token;
   }
 
-  startPairing(role: Role, createdBy: string): Pairing {
-    const settings = this.options.store.settings.read();
-    if (settings.public_url === null || settings.public_url_verified_at === null) {
-      throw new ApiError(
-        'public_url_not_verified',
-        'Set and verify the public URL in Remote access before pairing a phone; the phone reaches this computer through it.',
-      );
-    }
+  startPairing(role: Role, createdBy: string, connectionProtocolVersion?: 1): Pairing {
+    const { url, metadata, publicUrl } = this.pairingTarget(connectionProtocolVersion);
     const now = this.options.now();
     this.options.store.clients.forgetPairingsBefore(now.toISOString());
     const code = createPairingCode();
     const expiresAt = new Date(now.getTime() + PAIRING_LIFETIME_MS).toISOString();
     this.options.store.clients.addPairing(hashPairingCode(code), role, createdBy, expiresAt);
-    return { code, expiresAt, qr: { url: settings.public_url, code } };
+    return {
+      code,
+      expiresAt,
+      qr: {
+        url,
+        code,
+        ...(metadata === undefined
+          ? {}
+          : { identity: metadata.identity, endpoints: metadata.endpoints }),
+      },
+      ...(metadata === undefined || publicUrl === null
+        ? {}
+        : { legacyQr: { url: publicUrl, code } }),
+    };
+  }
+
+  private pairingTarget(connectionProtocolVersion: 1 | undefined): {
+    readonly url: string;
+    readonly publicUrl: string | null;
+    readonly metadata: HubConnectionMetadata | undefined;
+  } {
+    const settings = this.options.store.settings.read();
+    const publicUrl = settings.public_url_verified_at === null ? null : settings.public_url;
+    const metadata =
+      connectionProtocolVersion === 1 ? this.options.connections?.metadata() : undefined;
+    const lan = metadata?.endpoints.find(
+      (endpoint) =>
+        endpoint.kind === 'lan' &&
+        new URL(endpoint.url).hostname !== metadata.identity.tls.serverName,
+    );
+    const url = publicUrl ?? lan?.url;
+    if (url === undefined)
+      throw new ApiError(
+        'public_url_not_verified',
+        connectionProtocolVersion === 1
+          ? 'Set and verify Remote access, or enable a secure home-network connection before pairing.'
+          : 'Set and verify the public URL in Remote access before pairing a phone; the phone reaches this computer through it.',
+      );
+    return { url, publicUrl, metadata };
   }
 
   claim(claim: Claim): { token: string; client: ClientRow } {

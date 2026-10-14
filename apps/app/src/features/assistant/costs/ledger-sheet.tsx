@@ -34,6 +34,7 @@ function factsOf(row: UsageLedgerRow, timeZone: string): readonly Fact[] {
     { title: 'Service', value: USAGE_SOURCE_LABELS[row.source] },
     { title: 'Type of work', value: USAGE_WORK_LABELS[row.work] },
     { title: 'Plugin', value: row.plugin?.label ?? null },
+    { title: 'Usage', value: row.usage_available === false ? 'Supplier usage unavailable' : null },
     { title: 'Tokens in', value: tokens(row.tokens_in) },
     { title: 'Tokens out', value: tokens(row.tokens_out) },
     { title: 'Thinking tokens', value: tokens(row.tokens_reasoning) },
@@ -75,9 +76,14 @@ export function LedgerSheet({ row, timeZone, onClose }: LedgerSheetProps): React
       {row === null ? null : (
         <View className="gap-4 pb-2">
           <View className="gap-0.5">
-            <Figure value={money.cost(row.cost_micros)} size="l" />
+            <Figure
+              value={row.cost_available === false ? 'Unavailable' : money.cost(row.cost_micros)}
+              size="l"
+            />
             <Text variant="caption" tone="variant">
-              {costStateLabel(row.cost_state)}
+              {row.cost_available === false
+                ? 'Supplier cost unavailable; total is incomplete'
+                : costStateLabel(row.cost_state)}
             </Text>
           </View>
           <List inset>

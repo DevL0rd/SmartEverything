@@ -79,6 +79,8 @@ function ledgerRowOf(row: AiUsageRow, names: Names): UsageLedgerRow {
     source: row.source,
     cost_micros: row.cost_micros,
     cost_state: row.cost_state,
+    cost_available: row.cost_state === 'reconciled' || row.meta['cost_available'] !== false,
+    usage_available: row.meta['usage_available'] !== false,
     tokens_in: row.tokens_in,
     tokens_out: row.tokens_out,
     tokens_reasoning: row.tokens_reasoning,

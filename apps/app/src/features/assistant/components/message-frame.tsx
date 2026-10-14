@@ -1,15 +1,12 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import type { Point } from '../../../components/interactive';
 import { useContextMenu } from '../../../components/menu';
 import { useIdiom } from '../../../design/platform';
+import { useSizeClass } from '../../../design/size-class';
 import type { MessageActions } from './message-actions';
-import { HoverBar } from './message-action-bars';
+import { MessageMenu } from './message-menu';
 import { SwipeToQuote } from './swipe-quote';
-import { useTimeout } from './use-timeout';
-
-const GRACE_MS = 200;
 
 interface ContextEvent {
   readonly preventDefault: () => void;
@@ -30,27 +27,6 @@ function contextProps(handler: ((point: Point) => void) | undefined): {
   };
 }
 
-function useHover(): {
-  readonly hovered: boolean;
-  readonly enter: () => void;
-  readonly leave: () => void;
-} {
-  const [hovered, setHovered] = useState(false);
-  const timeout = useTimeout();
-  return {
-    hovered,
-    enter: (): void => {
-      timeout.clear();
-      setHovered(true);
-    },
-    leave: (): void => {
-      timeout.start(GRACE_MS, () => {
-        setHovered(false);
-      });
-    },
-  };
-}
-
 interface FrameProps {
   readonly actions: MessageActions;
   readonly preview: ReactNode;
@@ -58,31 +34,36 @@ interface FrameProps {
   readonly bar: ReactNode;
   readonly swipeable: boolean;
   readonly swipeEnabled?: boolean;
-  readonly reserve: boolean;
   readonly onQuote: () => void;
   readonly children: ReactNode;
 }
 
-function Bar({
-  actions,
-  align,
+function MessageContent({
+  children,
   bar,
-  reserve,
-  visible,
-}: Pick<FrameProps, 'actions' | 'align' | 'bar' | 'reserve'> & {
-  readonly visible: boolean;
+  align,
+  pointer,
+  quotable,
+  onQuote,
+  swipeEnabled,
+}: Pick<FrameProps, 'children' | 'bar' | 'align' | 'onQuote'> & {
+  readonly pointer: boolean;
+  readonly quotable: boolean;
+  readonly swipeEnabled: boolean;
 }): ReactNode {
   return (
-    <HoverBar
-      specs={actions.plan.hover}
-      run={actions.run}
-      quick={actions.quick}
-      list={actions.list}
-      visible={visible}
-      align={align}
-      meta={bar}
-      reserve={reserve}
-    />
+    <View className="min-w-0 flex-1">
+      {quotable ? (
+        <SwipeToQuote onQuote={onQuote} enabled={swipeEnabled}>
+          {children}
+        </SwipeToQuote>
+      ) : (
+        children
+      )}
+      {bar === null || (!pointer && align === 'end') ? null : (
+        <View className={align === 'end' ? 'items-end' : 'items-start'}>{bar}</View>
+      )}
+    </View>
   );
 }
 
@@ -93,12 +74,11 @@ export function MessageFrame({
   bar,
   swipeable,
   swipeEnabled = swipeable,
-  reserve,
   onQuote,
   children,
 }: FrameProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const hover = useHover();
+  const expanded = useSizeClass().split;
   const menu = useContextMenu(actions.list, 'Message', {
     quick: actions.quick,
     preview,
@@ -110,23 +90,22 @@ export function MessageFrame({
       accessible={false}
       onLongPress={pointer ? undefined : menu.onLongPress}
       delayLongPress={450}
-      onPointerEnter={hover.enter}
-      onPointerLeave={hover.leave}
       {...contextProps(menu.onContextMenu)}
       className="relative"
     >
-      <View>
-        {quotable ? (
-          <SwipeToQuote onQuote={onQuote} enabled={swipeEnabled}>
-            {children}
-          </SwipeToQuote>
-        ) : (
-          children
-        )}
+      <View className="flex-row items-start gap-1">
+        <MessageContent
+          bar={bar}
+          align={align}
+          pointer={pointer}
+          quotable={quotable}
+          onQuote={onQuote}
+          swipeEnabled={swipeEnabled}
+        >
+          {children}
+        </MessageContent>
+        {pointer && expanded ? <MessageMenu actions={actions} /> : null}
       </View>
-      {pointer && bar !== null ? (
-        <Bar actions={actions} align={align} bar={bar} reserve={reserve} visible={hover.hovered} />
-      ) : null}
       {menu.host}
       {actions.host}
     </Pressable>

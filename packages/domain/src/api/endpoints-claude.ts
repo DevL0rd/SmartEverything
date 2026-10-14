@@ -34,7 +34,7 @@ export const CLAUDE_ENDPOINTS = {
     path: '/api/claude/status',
     access: 'owner',
     summary:
-      'Whether the owner’s Claude Desktop (Claude Code) is running and watched, the SmartEverything link and controller state, how many sessions are live, plan usage, and files that could not be read',
+      'Read retained legacy history availability, attached CLI integration and sampled usage; Desktop runtime control is retired',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -45,7 +45,7 @@ export const CLAUDE_ENDPOINTS = {
     path: '/api/claude/sessions',
     access: 'owner',
     summary:
-      'Claude Desktop (Claude Code) sessions: title, folder, idle, busy or waiting state, model, permission mode and context used; running ones first, then the most recent; archived=true lists the archived ones instead',
+      'List retained legacy session metadata and current CLI live files, including stable IDs, titles, folders and archive flags',
     params: NOTHING,
     query: z.strictObject({
       state: CLAUDE_SESSION_STATE.optional(),
@@ -59,7 +59,7 @@ export const CLAUDE_ENDPOINTS = {
     method: 'GET',
     path: '/api/claude/sessions/:sessionId',
     access: 'owner',
-    summary: 'One Claude Desktop (Claude Code) session with what it can and cannot be asked to do',
+    summary: 'Read one legacy session and its explicit read-only native-control capabilities',
     params: SESSION_PARAMS,
     query: NOTHING,
     body: NO_BODY,
@@ -69,8 +69,7 @@ export const CLAUDE_ENDPOINTS = {
     method: 'GET',
     path: '/api/claude/sessions/:sessionId/thread',
     access: 'owner',
-    summary:
-      'The messages of a Claude Desktop (Claude Code) session from its transcript, newest page first: prompts, replies, thinking, tool calls and results; before takes the older cursor of the previous page',
+    summary: 'Read retained legacy transcript messages with stable latest and older-page cursors',
     params: SESSION_PARAMS,
     query: z.strictObject({
       before: CLAUDE_THREAD_CURSOR.optional(),
@@ -84,7 +83,7 @@ export const CLAUDE_ENDPOINTS = {
     path: '/api/claude/usage',
     access: 'owner',
     summary:
-      'How much of the Claude plan limits (five hours, seven days) is used, as Claude Desktop last sampled it',
+      'Read previously sampled legacy plan usage or newer attached CLI usage without starting inference',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -105,8 +104,7 @@ export const CLAUDE_ENDPOINTS = {
     method: 'POST',
     path: '/api/claude/sessions/:sessionId/control',
     access: 'owner',
-    summary:
-      'Act on a Claude Desktop (Claude Code) session: send a prompt, interrupt the running turn, set its permission mode or set its model; answers 503 claude_not_ready naming what is missing when the SmartEverything link or controller is not ready',
+    summary: 'Retired compatibility operation; use controlClaudeCliSession on the owned CLI chat',
     params: SESSION_PARAMS,
     query: NOTHING,
     body: CLAUDE_CONTROL,
@@ -117,7 +115,7 @@ export const CLAUDE_ENDPOINTS = {
     path: '/api/claude/sessions',
     access: 'owner',
     summary:
-      'Start a Claude Desktop (Claude Code) session in a folder with a first prompt; through the controller session when it is ready, otherwise Claude Desktop opens its new-session page with the prompt filled in and the person presses Send there',
+      'Retired compatibility operation; use startClaudeCliSession to create an owned actual CLI chat',
     params: NOTHING,
     query: NOTHING,
     body: CLAUDE_START,
@@ -128,7 +126,7 @@ export const CLAUDE_ENDPOINTS = {
     path: '/api/claude/link',
     access: 'owner',
     summary:
-      'Install or repair the SmartEverything link, the plugin that lets Claude Desktop sessions report to SmartEverything and take its answers; replaces the older SmartEverything plugin and retires its old token; the hub already does this at start while Claude Desktop is present unless claude_link_auto is off in the assistant settings; only on the computer that runs Claude Desktop',
+      'Explicitly install or repair the attached Claude Code link for approvals, scoped home tools and direct native tool access',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -138,7 +136,7 @@ export const CLAUDE_ENDPOINTS = {
     method: 'DELETE',
     path: '/api/claude/link',
     access: 'owner',
-    summary: 'Remove the SmartEverything link from Claude Desktop and revoke its access',
+    summary: 'Remove the attached Claude Code link and revoke its integration credential',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -148,8 +146,7 @@ export const CLAUDE_ENDPOINTS = {
     method: 'POST',
     path: '/api/claude/controller',
     access: 'owner',
-    summary:
-      'Begin registering the controller session: returns the folder, the first prompt and a deep link that opens a new Claude Desktop session with it; hand the link to the person, who presses Send once. The session then carries out mode (keep or lower), model, and fallback send and interrupt requests',
+    summary: 'Retired Desktop controller registration; use owned CLI chats or attached CLI tools',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -159,7 +156,7 @@ export const CLAUDE_ENDPOINTS = {
     method: 'DELETE',
     path: '/api/claude/controller',
     access: 'owner',
-    summary: 'Forget the controller session; it stops receiving requests',
+    summary: 'Retired Desktop controller management; existing historical files remain untouched',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,

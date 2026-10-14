@@ -10,10 +10,12 @@ export interface Persona {
   readonly now: Date;
   readonly place: string | null;
   readonly unavailable: string | null;
+  readonly guide?: string;
   readonly toolIndex: string;
   readonly catalogue: string;
   readonly history: readonly string[];
   readonly sight?: boolean;
+  readonly stopLooking?: boolean;
   readonly ending?: string;
 }
 
@@ -34,10 +36,10 @@ function identity(persona: Persona): string {
 const MANNER =
   'This is a live voice call: short spoken sentences, no lists or markdown, and you stop when interrupted. The first thing to answer is what was just said.';
 
-const TOOLS = `Tools are how you see and change the home; their results are facts. What a camera shows comes only from a fresh camera_pictures: when they question or correct something you saw, look again before answering, never guess. Every tool is declared and listed below with what it is for. ${TOOL_MANNER}`;
+const TOOLS = `Tools are how you see and change the home; their results are facts. What a camera shows comes only from a fresh camera picture: when they question or correct something you saw, look again before answering, never guess. Use declared tools directly. For other enabled names listed below, use tool_details and call_tool when those declarations are available. ${TOOL_MANNER}`;
 
 const SIGHT =
-  'You can look at what they show you: their phone camera, their screen or one window on their computer, or a camera of the home. Pictures reach you only while a source is on or when you call see, and they stay in your memory for a short while only. What you did not see you do not know: when they question something you saw, or ask about it again later, look again with see before answering. Answer questions about a screen or window straight from what is on it. When you no longer need to look, or they ask you to stop, call stop_looking.';
+  'You can look at what they show you: their phone camera, their screen or one window on their computer, or a camera of the home. Pictures reach you only while a source is on or when you call see, and they stay in your memory for a short while only. What you did not see you do not know: when they question something you saw, or ask about it again later, look again with see before answering. Answer questions about a screen or window straight from what is on it.';
 
 const ENDING =
   'end_conversation ends the call, and only at a natural end: they clearly wrap up ("bye", "thanks, that is all", "never mind", "stop"), they say no when you ask whether there is anything else, or the conversation was a one-shot (a wake word or camera exchange where they asked one thing, you answered, and nothing more was invited). Never end it right after answering a question, after an action or a look, while a task or tool is still running, while you wait on them, or because you think the matter is settled. When unsure, keep it open: real silence is handled for you. Say a short farewell in the same turn as ending. A lone word, a garbled fragment or an echo of your own words is noise, not speech.';
@@ -67,14 +69,17 @@ export function liveInstructions(persona: Persona): string {
     TOOLS,
     persona.toolIndex === ''
       ? ''
-      : `Your tools, each declared with its parameters:\n${persona.toolIndex}`,
-    TOOL_GUIDE,
+      : `Other enabled home tools for call_tool; use the exact schema from tool_details when available, or the schema supplied here:\n${persona.toolIndex}`,
+    persona.guide ?? TOOL_GUIDE,
     TRUST,
     persona.catalogue === ''
       ? ''
-      : `Plugin tools, run with call_tool, as name(parameters, ? = optional): what it is.\n${persona.catalogue}`,
+      : `Enabled plugin tools for call_tool; use the exact schema from tool_details when available, or the schema supplied here:\n${persona.catalogue}`,
     persona.place ?? '',
     persona.sight === true ? SIGHT : '',
+    persona.sight === true && persona.stopLooking !== false
+      ? 'When you no longer need to look, or they ask you to stop, call stop_looking.'
+      : '',
     work(persona),
     persona.ending ?? ENDING,
     who(persona),

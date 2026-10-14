@@ -1,3 +1,4 @@
+import { BrowserOverlayOwner, coverBrowser } from '../platform/browser-overlays';
 import type { ReactNode } from 'react';
 import { createContext, use, useEffect, useEffectEvent, useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
@@ -90,6 +91,11 @@ export function Overlay({
   children,
 }: OverlayProps): ReactNode {
   const [signal] = useState(createSignal);
+  const browserOwner = use(BrowserOverlayOwner);
+  useEffect(() => {
+    if (open) return coverBrowser(browserOwner);
+    return undefined;
+  }, [open, browserOwner]);
   useEscape(open, onClose);
   useContentWatchdog(open, label, signal, onClose);
   return (

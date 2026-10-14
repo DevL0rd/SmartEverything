@@ -6,12 +6,14 @@ import {
   type AccessibilityActionEvent,
   type AccessibilityActionInfo,
   type AccessibilityRole,
+  type PressableProps,
 } from 'react-native';
 import { Link as RouterLink, type Href } from 'expo-router';
 import { cn } from '../design/cn';
 import { useColour } from '../design/colour';
-import { useIdiom } from '../design/platform';
+import { isNative, useIdiom } from '../design/platform';
 import { useLinkIntent } from './link-intent';
+import { longPressHandler } from './long-press';
 
 export interface Point {
   readonly x: number;
@@ -20,6 +22,7 @@ export interface Point {
 
 export interface InteractiveProps {
   readonly children: ReactNode;
+  readonly hitSlop?: PressableProps['hitSlop'];
   readonly onPress?: (() => void) | undefined;
   readonly onLongPress?: (() => void) | undefined;
   readonly onPressIn?: (() => void) | undefined;
@@ -29,6 +32,8 @@ export interface InteractiveProps {
   readonly disabled?: boolean | undefined;
   readonly selected?: boolean | undefined;
   readonly checked?: boolean | undefined;
+  readonly expanded?: boolean | undefined;
+  readonly controls?: string | undefined;
   readonly label?: string | undefined;
   readonly hint?: string | undefined;
   readonly role?: AccessibilityRole | undefined;
@@ -141,6 +146,7 @@ interface AccessibilityInput {
   readonly disabled: boolean;
   readonly selected: boolean | undefined;
   readonly checked: boolean | undefined;
+  readonly expanded: boolean | undefined;
 }
 
 function accessibilityOf(input: AccessibilityInput): {
@@ -151,6 +157,7 @@ function accessibilityOf(input: AccessibilityInput): {
     readonly disabled: boolean;
     readonly selected?: boolean;
     readonly checked?: boolean;
+    readonly expanded?: boolean;
   };
 } {
   return {
@@ -161,13 +168,14 @@ function accessibilityOf(input: AccessibilityInput): {
       disabled: input.disabled,
       ...(input.selected === undefined ? {} : { selected: input.selected }),
       ...(input.checked === undefined ? {} : { checked: input.checked }),
+      ...(input.expanded === undefined ? {} : { expanded: input.expanded }),
     },
   };
 }
 
 function pressableClass(disabled: boolean, inset: boolean, className: string | undefined): string {
   return cn(
-    'relative overflow-hidden focus:outline-2 focus:outline-focus',
+    'overflow-hidden focus:outline-2 focus:outline-focus',
     inset ? 'focus:-outline-offset-2' : 'focus:outline-offset-2',
     disabled && 'opacity-40',
     className,
@@ -183,15 +191,70 @@ function both(first: () => void, second: (() => void) | undefined): () => void {
       };
 }
 
-function Pressed(props: InteractiveProps): ReactNode {
+function PressedContent({
+  children,
+  state,
+  primary,
+  layerClassName,
+}: {
+  readonly children: ReactNode;
+  readonly state: LayerState;
+  readonly primary: boolean;
+  readonly layerClassName: string | undefined;
+}): ReactNode {
+  return (
+    <>
+      {children}
+      <Layer state={state} primary={primary} className={layerClassName} />
+    </>
+  );
+}
+
+function usePressFeedback(
+  href: Href | undefined,
+  tone: InteractiveProps['onTone'],
+  onPressIn: InteractiveProps['onPressIn'],
+): {
+  readonly attributes: PressableProps;
+  readonly state: (pressed: boolean, disabled: boolean) => LayerState;
+} {
+  const pointer = useIdiom() === 'pointer';
+  const hover = useHover(href);
+  const color = useColour(tone === 'primary' ? 'on-primary' : 'on-surface');
+  return {
+    attributes: {
+      onPressIn: both(hover.boost, onPressIn),
+      onHoverIn: hover.enter,
+      onHoverOut: hover.leave,
+      onFocus: hover.boost,
+      android_ripple: { color, foreground: true },
+    },
+    state: (pressed, disabled): LayerState => layerState(pointer, hover.hovered, pressed, disabled),
+  };
+}
+
+interface PressedProps extends Omit<InteractiveProps, 'href'> {
+  readonly href?: string;
+  readonly intentHref?: Href | undefined;
+}
+
+function webLinkProps(href: string | undefined, disabled: boolean): { readonly href?: string } {
+  return isNative() || disabled || href === undefined ? {} : { href };
+}
+
+function Pressed(props: PressedProps): ReactNode {
   const {
     children,
     onPressIn,
+    onLongPress,
     onContextMenu,
     href,
+    intentHref,
     disabled = false,
     selected,
     checked,
+    expanded,
+    controls,
     label,
     hint,
     role,
@@ -201,44 +264,41 @@ function Pressed(props: InteractiveProps): ReactNode {
     focusInset = false,
     ...forwarded
   } = props;
-  const primary = onTone === 'primary';
-  const pointer = useIdiom() === 'pointer';
-  const hover = useHover(href);
-  const ripple = { color: useColour(primary ? 'on-primary' : 'on-surface'), foreground: true };
+  const feedback = usePressFeedback(intentHref, onTone, onPressIn);
+  const semantics = { role, href: intentHref, label, hint, disabled, selected, checked, expanded };
   return (
     <Pressable
       {...forwarded}
+      {...webLinkProps(href, disabled)}
       {...contextMenuProps(onContextMenu)}
+      onLongPress={longPressHandler(onLongPress)}
       disabled={disabled}
-      onPressIn={both(hover.boost, onPressIn)}
-      onHoverIn={hover.enter}
-      onHoverOut={hover.leave}
-      onFocus={hover.boost}
-      android_ripple={ripple}
-      {...accessibilityOf({ role, href, label, hint, disabled, selected, checked })}
+      {...feedback.attributes}
+      {...accessibilityOf(semantics)}
+      aria-controls={controls}
       className={pressableClass(disabled, focusInset, className)}
     >
       {({ pressed }) => (
-        <>
+        <PressedContent
+          state={feedback.state(pressed, disabled)}
+          primary={onTone === 'primary'}
+          layerClassName={layerClassName}
+        >
           {children}
-          <Layer
-            state={layerState(pointer, hover.hovered, pressed, disabled)}
-            primary={primary}
-            className={layerClassName}
-          />
-        </>
+        </PressedContent>
       )}
     </Pressable>
   );
 }
 
 export function Interactive(props: InteractiveProps): ReactNode {
-  if (props.href === undefined || props.disabled === true) {
-    return <Pressed {...props} />;
+  const { href, ...pressed } = props;
+  if (href === undefined || props.disabled === true) {
+    return <Pressed {...pressed} intentHref={href} />;
   }
   return (
-    <RouterLink href={props.href} asChild>
-      <Pressed {...props} />
+    <RouterLink href={href} asChild>
+      <Pressed {...pressed} intentHref={href} />
     </RouterLink>
   );
 }

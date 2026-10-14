@@ -1,4 +1,9 @@
-import { CcmTagMismatchError, MiBeaconFormatError, ScalePacketError } from '@smarteverything/ble';
+import {
+  CcmTagMismatchError,
+  MiBeaconFormatError,
+  ScalePacketError,
+  MagnetPacketError,
+} from '@smarteverything/ble';
 import {
   ApiError,
   type BleAdvert,
@@ -17,10 +22,14 @@ import { LOCAL_DRIVER_REGISTRY } from './drivers';
 import type { Observed } from './driver-types';
 import { resolveSetup } from './setup';
 import type { BluetoothIdentitySource, WearableSource } from './setup-types';
+import { PassiveObservations, type PassiveObservationsOptions } from './passive-observations';
 import type { ScaleReadings } from './scale-readings';
 import { UnexpectedScaleFrameError } from './xiaomi-scale';
 
 export interface LocalDevicesOptions {
+  readonly state: PassiveObservationsOptions['state'];
+  readonly eligible: PassiveObservationsOptions['eligible'];
+  readonly sourceChanged: PassiveObservationsOptions['sourceChanged'];
   readonly store: Store;
   readonly secrets: SecretStore;
   readonly readings: ScaleReadings;
@@ -48,21 +57,37 @@ const UNREADABLE: readonly (new (...args: never[]) => Error)[] = [
   MiBeaconFormatError,
   ScalePacketError,
   UnexpectedScaleFrameError,
+  MagnetPacketError,
 ];
 
 export class LocalDevices {
   private readonly observed = new Map<string, Observed>();
 
-  constructor(private readonly options: LocalDevicesOptions) {}
+  private readonly passive: PassiveObservations;
+  private relaying: Promise<unknown> = Promise.resolve();
+
+  constructor(private readonly options: LocalDevicesOptions) {
+    this.passive = new PassiveObservations(options);
+  }
+
+  readiness(deviceId: string): ReturnType<PassiveObservations['status']> {
+    return this.passive.status(deviceId);
+  }
 
   async start(): Promise<void> {
     await this.options.apply(this.discovered());
+    this.passive.restore();
   }
 
   watch(requestedBy: string): BleWatch {
     const devices = this.options.store.localDevices.list().flatMap((entry) => {
       const adverts = LOCAL_DRIVER_REGISTRY[entry.driver].adverts;
-      return adverts === null ? [] : [adverts.watch(entry)];
+      return adverts === null ||
+        (LOCAL_DRIVER_REGISTRY[entry.driver].provider !== 'local' &&
+          (!this.options.eligible(entry) ||
+            this.options.secrets.deviceKey(entry.externalId) === null))
+        ? []
+        : [adverts.watch(entry)];
     });
     this.options.log.info('local.watch_served', { requestedBy, devices: devices.length });
     return { devices };
@@ -84,6 +109,20 @@ export class LocalDevices {
     }
     await secrets.saveDeviceKey(resolved.entry.externalId, resolved.key);
     store.localDevices.add(resolved.entry);
+    if (LOCAL_DRIVER_REGISTRY[resolved.entry.driver].provider !== 'local') {
+      this.passive.restoreEntry({ ...resolved.entry, createdAt: this.options.now().toISOString() });
+      const original = this.passive.device({
+        ...resolved.entry,
+        createdAt: this.options.now().toISOString(),
+      });
+      if (original === undefined) {
+        throw new ApiError(
+          'conflict',
+          'The original Xiaomi device disappeared during Bluetooth setup.',
+        );
+      }
+      return store.devices.byId(original.id);
+    }
     if (resolved.replaces !== null) {
       store.devices.update(resolved.replaces, { hidden: true });
     }
@@ -99,6 +138,19 @@ export class LocalDevices {
 
   async remove(device: DeviceRow): Promise<void> {
     const { store, secrets } = this.options;
+    const observer = store.localDevices
+      .list()
+      .find(
+        (entry) =>
+          entry.externalId === device.external_id &&
+          LOCAL_DRIVER_REGISTRY[entry.driver].provider === device.provider,
+      );
+    if (observer !== undefined && LOCAL_DRIVER_REGISTRY[observer.driver].provider !== 'local') {
+      store.localDevices.remove(observer.externalId);
+      await secrets.removeDeviceKey(observer.externalId);
+      this.passive.disable(observer);
+      return;
+    }
     if (device.provider !== 'local') {
       throw new ApiError('invalid_request', `${device.name} is not a built-in device.`);
     }
@@ -113,7 +165,16 @@ export class LocalDevices {
     }
   }
 
-  async relay(adverts: readonly BleAdvert[], heardBy: string): Promise<RelayOutcome> {
+  relay(adverts: readonly BleAdvert[], heardBy: string): Promise<RelayOutcome> {
+    const result = this.relaying.then(() => this.relayBatch(adverts, heardBy));
+    this.relaying = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async relayBatch(adverts: readonly BleAdvert[], heardBy: string): Promise<RelayOutcome> {
     const entries = new Map(
       this.options.store.localDevices.list().map((entry) => [entry.address, entry]),
     );
@@ -124,7 +185,7 @@ export class LocalDevices {
       const entry = entries.get(advert.address);
       unknown += entry === undefined ? 1 : 0;
       const received: Received =
-        entry === undefined ? { kind: 'ignored' } : this.receive(entry, advert, heardBy);
+        entry === undefined ? { kind: 'ignored' } : await this.receive(entry, advert, heardBy);
       if (received.kind === 'ignored') {
         ignored += 1;
       } else if (received.kind === 'reading') {
@@ -144,12 +205,16 @@ export class LocalDevices {
     return outcome;
   }
 
-  private receive(entry: LocalDeviceEntry, advert: BleAdvert, heardBy: string): Received {
+  private async receive(
+    entry: LocalDeviceEntry,
+    advert: BleAdvert,
+    heardBy: string,
+  ): Promise<Received> {
     const key = this.options.secrets.deviceKey(entry.externalId);
     if (key === null) {
       this.options.log.error('local.key_missing', undefined, {
         externalId: entry.externalId,
-        reason: 'no Bluetooth key is stored for this scale; add it again',
+        reason: 'no Bluetooth key is stored for this device; enable it again',
       });
       return { kind: 'ignored' };
     }
@@ -160,6 +225,11 @@ export class LocalDevices {
     }
     try {
       const decoded = adverts.decode(entry, advert, key);
+      if (decoded.kind === 'state') {
+        return (await this.passive.receive(entry, advert, key, decoded))
+          ? { kind: 'idle' }
+          : { kind: 'ignored' };
+      }
       this.remember(entry.externalId, { lastHeardAt: advert.seenAt });
       if (decoded.kind === 'idle') {
         return { kind: 'idle' };
@@ -189,7 +259,11 @@ export class LocalDevices {
   deviceOf(entry: LocalDeviceEntry): DeviceRow | undefined {
     return this.options.store.devices
       .list()
-      .find((row) => row.provider === 'local' && row.external_id === entry.externalId);
+      .find(
+        (row) =>
+          row.provider === LOCAL_DRIVER_REGISTRY[entry.driver].provider &&
+          row.external_id === entry.externalId,
+      );
   }
 
   private remember(externalId: string, values: Readonly<Record<string, JsonValue>>): void {
@@ -204,6 +278,9 @@ export class LocalDevices {
   private discovered(): DiscoveredDevice[] {
     return this.options.store.localDevices
       .list()
-      .map((entry) => LOCAL_DRIVER_REGISTRY[entry.driver].describe(entry, this.observedOf(entry)));
+      .flatMap(
+        (entry) =>
+          LOCAL_DRIVER_REGISTRY[entry.driver].describe(entry, this.observedOf(entry)) ?? [],
+      );
   }
 }

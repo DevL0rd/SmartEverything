@@ -14,7 +14,6 @@ export interface ConversationHooks {
   readonly system: () => string;
   readonly tools: () => readonly FunctionDeclaration[];
   readonly window: () => LiveWindow | null;
-  readonly webSearch: () => boolean;
   readonly record: (turn: RecordedTurn) => void;
   readonly task: (task: string, said: string | null) => string;
   readonly run: (name: string, args: Readonly<Record<string, unknown>>) => Promise<ToolAnswer>;

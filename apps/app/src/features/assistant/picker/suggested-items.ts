@@ -3,7 +3,7 @@ import {
   type AiModelRow,
   type AiModelSuggested,
 } from '@smarteverything/domain';
-import { autoChoiceOf, choiceOf, type ModelChoice } from './model-choice';
+import { defaultChoiceOf, choiceOf, type ModelChoice } from './model-choice';
 import type { ListItem } from './model-list';
 
 function section(key: string, title: string, models: readonly ModelChoice[]): readonly ListItem[] {
@@ -54,7 +54,7 @@ export function suggestedItems(
   picked: string | null,
   openProviders: () => void,
 ): readonly ListItem[] {
-  const auto = autoChoiceOf(data.default, data.default_model);
+  const auto = defaultChoiceOf(data.default, data.default_model);
   const current = currentOf(data, picked, auto);
   const seen = new Set(current === null ? [] : [identityOf(current, data)]);
   const recent = unseen(rowsOf(data.recent), seen, data);

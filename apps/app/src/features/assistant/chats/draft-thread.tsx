@@ -5,6 +5,7 @@ import { useHideNavigation } from '../../../app-shell/nav-visibility';
 import { useDraftEngine } from '../data/draft-engine';
 import { DraftHeader } from './chat-header';
 import { useDraftKeys } from './chat-list-toggle';
+import { EngineAccessoryProvider, useEngineControls } from './engine-accessories';
 import { StartChat } from './start-chat';
 
 export const NEW_CHAT_ID = 'new';
@@ -23,10 +24,11 @@ export function DraftThread({
   readonly back: boolean;
   readonly leading?: readonly HeaderAction[];
 }): ReactNode {
-  const [engine] = useDraftEngine();
+  const [engine, setEngine] = useDraftEngine();
+  const control = useEngineControls(engine, setEngine);
   useDraftKeys();
   return (
-    <>
+    <EngineAccessoryProvider value={control}>
       {back ? <HiddenNavigation /> : null}
       <Screen
         scroll={false}
@@ -35,6 +37,6 @@ export function DraftThread({
       >
         <StartChat onStarted={onStarted} />
       </Screen>
-    </>
+    </EngineAccessoryProvider>
   );
 }

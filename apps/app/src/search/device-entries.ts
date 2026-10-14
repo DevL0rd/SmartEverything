@@ -1,3 +1,5 @@
+import { APP_PLUGINS } from '../plugins/registry';
+import type { StoreState } from '../store/state';
 import type { Href } from 'expo-router';
 import {
   CAPABILITY_CATALOGUE,
@@ -7,6 +9,7 @@ import {
   type PresentedCapability,
   type SearchEntry,
 } from '@smarteverything/domain';
+import { contributedDevicePages } from '../app-shell/device-pages';
 import { href } from '../app-shell/hrefs';
 import type { IconName } from '../components/icon';
 import { deviceModelOf } from '../features/devices';
@@ -192,6 +195,8 @@ function controlWords(named: NamedDevice, presented: PresentedCapability): reado
     ? CAPABILITY_CATALOGUE[presented.key].keywords
     : [];
   return [
+    presented.label,
+    ...(presented.keywords ?? []),
     presented.capability.label,
     presented.key.replaceAll('_', ' '),
     presented.groupLabel,
@@ -232,13 +237,99 @@ function addPlace(builder: Builder, place: DevicePlace): void {
   }
 }
 
-export function deviceSources(named: readonly NamedDevice[], out: SourceLinks): DeviceSources {
+function addBluetoothObservation(builder: Builder): void {
+  const device = builder.named.device;
+  if (device.provider !== 'xiaomi' || device.model !== 'isa.magnet.dw2hl') {
+    return;
+  }
+  const parent = `devpage:${device.id}:settings`;
+  for (const title of ['Bluetooth updates', 'Listen for this door', 'Your server', 'This phone']) {
+    add(
+      builder,
+      {
+        id: `${parent}:bluetooth:${title}`,
+        title,
+        keywords: [
+          'Bluetooth',
+          'BLE',
+          'door',
+          'sensor',
+          'contact',
+          'listen',
+          'receiver',
+          'instant',
+          'passive',
+          'broadcast',
+          'nearby',
+        ],
+        parent,
+        link: href.settings.device(device.id),
+        icon: 'bluetooth',
+      },
+      'setting',
+    );
+  }
+}
+
+function addContributedPages(builder: Builder): void {
+  const id = builder.named.device.id;
+  for (const page of contributedDevicePages(builder.named.device)) {
+    const parent = `devpage:${id}:settings`;
+    const item = {
+      id: `devpage:${id}:${page.id}`,
+      title: page.title,
+      keywords: page.keywords,
+      parent,
+      link: href.settings.device(id, page.id),
+      icon: page.icon,
+    };
+    add(builder, item, 'page');
+    for (const title of page.settings) {
+      add(builder, { ...item, id: `${item.id}:${title}`, title, parent: item.id }, 'setting');
+    }
+  }
+}
+
+function addPluginControls(
+  builder: Builder,
+  streams: StoreState['tables']['plugin_streams'],
+): void {
+  const device = builder.named.device;
+  for (const plugin of APP_PLUGINS) {
+    for (const item of plugin.deviceSearch?.(device, streams) ?? []) {
+      add(
+        builder,
+        {
+          id: `plugin-control:${device.id}:${plugin.id}:${item.id}`,
+          title: item.title,
+          keywords: item.keywords,
+          parent: `devpage:${device.id}:${item.page}`,
+          icon: item.icon,
+          link: {
+            pathname: '/device/[deviceId]/settings/[page]',
+            params: { deviceId: device.id, page: item.page, focus: item.focus, ...item.query },
+          },
+        },
+        item.group,
+      );
+    }
+  }
+}
+
+export function deviceSources(
+  named: readonly NamedDevice[],
+  out: SourceLinks,
+  streams: StoreState['tables']['plugin_streams'],
+): DeviceSources {
   const sources: DeviceSources = { entries: [], controls: new Map() };
   for (const device of named) {
     const builder: Builder = { named: device, out, sources };
     const places = devicePlaces(device.device);
     addPages(builder, places);
     addCameraOptions(builder);
+    addBluetoothObservation(builder);
+    addContributedPages(builder);
+    addPluginControls(builder, streams);
     for (const place of places) {
       addPlace(builder, place);
     }

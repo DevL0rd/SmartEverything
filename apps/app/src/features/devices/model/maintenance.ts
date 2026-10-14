@@ -52,7 +52,7 @@ function statusShown(presented: PresentedCapability, values: DeviceValues): bool
     return false;
   }
   if (presented.role === 'fault') {
-    return typeof value === 'string' && !HEALTHY_FAULT.test(value);
+    return value === true || (typeof value === 'string' && !HEALTHY_FAULT.test(value));
   }
   return !(value === 0 && COUNTDOWN.test(presented.label));
 }

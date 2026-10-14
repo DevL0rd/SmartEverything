@@ -119,7 +119,7 @@ export function describeTrigger(names: Names, trigger: Trigger): string {
   const base = baseOf(trigger);
   const timing = timingText(timingOf(trigger));
   const what =
-    base === null
+    base === null || Object.keys(trigger.match).length > 0
       ? signalText(trigger, signalSubjectName(names, trigger))
       : untimedPhrase(names, base);
   return timing === '' ? what : `${what}, ${timing}`;

@@ -1,6 +1,7 @@
 import type { NavKind } from '../design/size-class';
 import type { Availability } from '../store/selectors';
 import { TAB_ROUTES } from './routes';
+import { PAGE_ORDER } from './main-pages';
 import type { RouteDefinition, TabKey } from './route-types';
 
 export interface NavEntry {
@@ -16,15 +17,6 @@ export interface NavModel {
   readonly orb: NavEntry | null;
 }
 
-const PAGE_ORDER: readonly TabKey[] = [
-  'home',
-  'devices',
-  'cameras',
-  'fitness',
-  'assistant',
-  'talk',
-  'automations',
-];
 const BAR_PAGES = 4;
 const ORB: TabKey = 'assistant';
 

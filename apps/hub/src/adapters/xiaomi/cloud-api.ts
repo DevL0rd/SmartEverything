@@ -22,6 +22,7 @@ import { signInWithPassToken } from './login-flow';
 
 const NONCE_RANDOM_BYTES = 8;
 const SDK_VERSION = 'accountsdk-18.8.15';
+const CLOUD_REQUEST_TIMEOUT_MS = 15_000;
 
 export class XiaomiHttpError extends Error {
   override readonly name = 'XiaomiHttpError';
@@ -42,6 +43,37 @@ export class XiaomiNetworkError extends Error {
     cause: unknown,
   ) {
     super(`The Xiaomi cloud could not be reached for ${path}: ${String(cause)}`, { cause });
+  }
+}
+
+class XiaomiCloudTimeoutError extends Error {
+  override readonly name = 'XiaomiCloudTimeoutError';
+
+  constructor(
+    readonly path: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`The Xiaomi cloud did not finish ${path} within ${String(timeoutMs)} ms.`);
+  }
+}
+
+async function boundedRequest<T>(
+  path: string,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const cause = new XiaomiCloudTimeoutError(path, CLOUD_REQUEST_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort(cause);
+      reject(new XiaomiNetworkError(path, cause));
+    }, CLOUD_REQUEST_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([work(controller.signal), expired]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -113,7 +145,7 @@ export class XiaomiCloud {
 
   private async request(target: Target): Promise<CloudPayload> {
     try {
-      const payload = await this.renewing(target);
+      const payload = await boundedRequest(target.path, (signal) => this.renewing(target, signal));
       this.reached();
       return payload;
     } catch (error) {
@@ -136,32 +168,38 @@ export class XiaomiCloud {
     });
   }
 
-  private async renewing(target: Target): Promise<CloudPayload> {
+  private async renewing(target: Target, signal: AbortSignal): Promise<CloudPayload> {
     if (this.rejected) {
       throw new XiaomiSessionRejectedError();
     }
     try {
-      return await this.signed(target);
+      return await this.signed(target, signal);
     } catch (error) {
       if (!isExpired(error)) {
         throw error;
       }
       this.hooks.log.info('xiaomi_cloud.session_expired', { path: target.path });
       await this.renew();
-      return this.signed(target);
+      return this.signed(target, signal);
     }
   }
 
   private async renew(): Promise<void> {
-    this.renewal ??= this.renewOnce().finally(() => {
+    this.renewal ??= boundedRequest('/pass/serviceLogin', (signal) =>
+      this.renewOnce(signal),
+    ).finally(() => {
       this.renewal = null;
     });
     return this.renewal;
   }
 
-  private async renewOnce(): Promise<void> {
-    const http = new AccountHttp(this.dependencies.fetch, accountCookies(this.secrets.deviceId));
+  private async renewOnce(signal: AbortSignal): Promise<void> {
+    const http = new AccountHttp(
+      (url, init) => this.dependencies.fetch(url, { ...init, signal }),
+      accountCookies(this.secrets.deviceId),
+    );
     const tokens = await signInWithPassToken(http, this.secrets.userId, this.secrets.passToken);
+    signal.throwIfAborted();
     if (tokens === null) {
       this.rejected = true;
       const rejected = new XiaomiSessionRejectedError();
@@ -190,7 +228,8 @@ export class XiaomiCloud {
     });
   }
 
-  private async signed(target: Target): Promise<CloudPayload> {
+  private async signed(target: Target, signal: AbortSignal): Promise<CloudPayload> {
+    signal.throwIfAborted();
     const nonce = createNonce(
       this.dependencies.randomBytes(NONCE_RANDOM_BYTES),
       this.dependencies.now(),
@@ -204,7 +243,7 @@ export class XiaomiCloud {
       target.method === 'GET'
         ? `${target.base}${target.path}?${fields}`
         : `${target.base}${target.path}`;
-    const { status, text } = await this.exchange(url, target, fields);
+    const { status, text } = await this.exchange(url, target, fields, signal);
     if (status !== 200) {
       throw new XiaomiHttpError(target.path, status);
     }
@@ -218,14 +257,18 @@ export class XiaomiCloud {
     url: string,
     target: Target,
     fields: string,
+    signal: AbortSignal,
   ): Promise<{ readonly status: number; readonly text: string }> {
     try {
       const response = await this.dependencies.fetch(url, {
         method: target.method,
         headers: this.headers(),
+        signal,
         ...(target.method === 'POST' ? { body: fields } : {}),
       });
-      return { status: response.status, text: await response.text() };
+      const text = await response.text();
+      signal.throwIfAborted();
+      return { status: response.status, text };
     } catch (error) {
       throw new XiaomiNetworkError(target.path, error);
     }

@@ -13,6 +13,7 @@ import { powerStateOf, useDeviceModel } from '../model/device-model';
 import { modeContextOf, shownInMode } from '../model/mode-rules';
 import { ControlBlock } from './control-block';
 import { offlineReason, poweredOffReason } from './guard';
+import { FAMILY_CONTROLS } from './family-controls';
 import { HoldButtons } from './hold-buttons';
 
 export function usePrimaryControls(
@@ -50,9 +51,13 @@ export function PrimaryControls({
   readonly exclude?: ReadonlySet<CapabilityRole>;
 }): ReactNode {
   const controls = usePrimaryControls(device, exclude);
+  const Custom = FAMILY_CONTROLS[useDeviceModel(device).family]?.primary;
   const reason = useReason(device);
   const left = controls.find((presented) => presented.role === 'rotate_left');
   const right = controls.find((presented) => presented.role === 'rotate_right');
+  if (Custom !== undefined) {
+    return <Custom device={device} />;
+  }
   if (controls.length === 0) {
     return null;
   }

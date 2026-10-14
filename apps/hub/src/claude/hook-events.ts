@@ -62,6 +62,7 @@ export const MOD_REPORT = z.discriminatedUnion('kind', [
     request_id: z.string().min(1).max(100),
     ok: z.boolean(),
     error: z.string().max(1000).optional(),
+    value: JSON_VALUE.optional(),
   }),
   z.strictObject({
     kind: z.literal('usage'),
@@ -82,4 +83,6 @@ export type ModReport = z.output<typeof MOD_REPORT>;
 export type ModAction =
   | { readonly op: 'send'; readonly text: string }
   | { readonly op: 'interrupt' }
-  | { readonly op: 'usage' };
+  | { readonly op: 'usage' }
+  | { readonly op: 'tools' }
+  | { readonly op: 'tool'; readonly name: string; readonly arguments: Record<string, JsonValue> };

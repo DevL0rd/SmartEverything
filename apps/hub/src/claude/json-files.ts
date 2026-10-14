@@ -24,6 +24,7 @@ export interface JsonFilesOptions<T> {
   readonly sleep: (milliseconds: number) => Promise<void>;
   readonly diagnostics: Diagnostics;
   readonly changed: () => void;
+  readonly accepted?: (name: string, value: T) => Promise<void>;
   readonly log: Logger;
 }
 
@@ -88,7 +89,13 @@ export class JsonFiles<T> {
   private onEvent(name: string | null): void {
     const work = name === null ? this.rescan() : this.load(name);
     work.catch((cause: unknown) => {
-      this.options.log.error('file.read_failed', cause, { source: this.options.source });
+      this.options.diagnostics.report(
+        this.options.source,
+        name ?? this.options.directory,
+        cause instanceof Error
+          ? cause.message
+          : 'The native metadata could not be read or retained.',
+      );
       this.firstScan?.reject(cause);
       this.firstScan = null;
     });
@@ -112,18 +119,19 @@ export class JsonFiles<T> {
     }
     await Promise.all(names.map((name) => this.load(name)));
     for (const name of [...this.entries.keys()].filter((known) => !names.includes(known))) {
-      this.markGone(name);
+      await this.markGone(name);
     }
     this.settleFirstScan();
   }
 
-  private markGone(name: string): void {
+  private async markGone(name: string): Promise<void> {
     const entry = this.entries.get(name);
     if (entry?.present !== true) {
       return;
     }
     this.entries.set(name, { value: entry.value, present: false });
     this.options.diagnostics.clear(this.options.source, name);
+    await this.options.accepted?.(name, entry.value);
     this.options.changed();
   }
 
@@ -135,15 +143,15 @@ export class JsonFiles<T> {
       return;
     }
     if (read.kind === 'gone') {
-      this.markGone(name);
+      await this.markGone(name);
     } else if (read.kind === 'invalid') {
       this.options.diagnostics.report(this.options.source, name, read.reason);
     } else {
-      this.accept(name, read.value);
+      await this.accept(name, read.value);
     }
   }
 
-  private accept(name: string, json: unknown): void {
+  private async accept(name: string, json: unknown): Promise<void> {
     const { source, schema, diagnostics } = this.options;
     const parsed = schema.safeParse(json);
     if (!parsed.success) {
@@ -153,6 +161,7 @@ export class JsonFiles<T> {
     diagnostics.clear(source, name);
     const previous = this.entries.get(name);
     this.entries.set(name, { value: parsed.data, present: true });
+    await this.options.accepted?.(name, parsed.data);
     if (
       previous?.present !== true ||
       JSON.stringify(previous.value) !== JSON.stringify(parsed.data)

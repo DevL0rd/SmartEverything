@@ -132,8 +132,8 @@ class HealthConnectModule : Module() {
       EntryWriter.deliver(context).toMap()
     }
 
-    AsyncFunction("configureScaleRelay") { serverUrl: String, token: String ->
-      ScaleRelay(context).configure(serverUrl, token)
+    AsyncFunction("configureScaleRelay") { serverUrl: String, token: String, enrollment: String ->
+      ScaleRelay(context).configure(serverUrl, token, enrollment)
     }
 
     AsyncFunction("startScaleRelay") Coroutine { ->
@@ -156,8 +156,8 @@ class HealthConnectModule : Module() {
       ScaleRelay(context).stopLive()
     }
 
-    AsyncFunction("syncWatches") Coroutine { serverUrl: String, token: String ->
-      WatchBridge.sync(context, serverUrl, token)
+    AsyncFunction("syncWatches") Coroutine { serverUrl: String, token: String, enrollment: String ->
+      WatchBridge.sync(context, serverUrl, token, enrollment)
     }
 
     AsyncFunction("runPushCommand") { command: String, payloadJson: String ->

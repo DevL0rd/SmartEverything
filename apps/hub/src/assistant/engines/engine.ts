@@ -1,5 +1,12 @@
-import type { AiChatRow, EngineKind } from '@smarteverything/domain';
+import type {
+  AiChatRow,
+  EngineKind,
+  ChatActivityNotice,
+  AssistantMessageRow,
+} from '@smarteverything/domain';
+import type { SideRequest } from '../side-completion';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
+import type { ChatOwner } from '../chat-directory';
 
 export interface EngineStatus {
   readonly state: 'ready' | 'working' | 'unavailable';
@@ -7,8 +14,14 @@ export interface EngineStatus {
 }
 
 export interface Engine {
+  readonly ownerOnly: boolean;
   readonly kind: EngineKind;
+  readonly activity?: (profileId: string) => readonly ChatActivityNotice[];
   readonly status: (chat: AiChatRow) => EngineStatus;
   readonly deliver: (event: StoredEvent, chat: AiChatRow) => Promise<void>;
+  readonly historyRemoved?: (chat: AiChatRow, rows: readonly AssistantMessageRow[]) => void;
+  readonly historyChanged: (chat: AiChatRow, owner: ChatOwner) => Promise<void>;
+  readonly auxiliary?: (request: SideRequest) => Promise<string>;
+  readonly compact: (chat: AiChatRow, clientId?: string) => Promise<boolean>;
   readonly interrupt: (chat: AiChatRow) => Promise<void>;
 }

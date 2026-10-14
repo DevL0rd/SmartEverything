@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import type { ClaudeUsage } from '@smarteverything/domain';
+import type { ClaudeUsage, JsonValue } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
-import { ClaudeControlFailedError, ClaudeControlTimeoutError } from './errors';
+import {
+  ClaudeControlFailedError,
+  ClaudeControlTimeoutError,
+  ClaudeControlUncertainError,
+} from './errors';
 import type { ModAction, ModReport } from './hook-events';
 import { NO_USAGE } from './plan-usage';
 
 const REQUEST_TIMEOUT_MS = 10_000;
+const MUTATION_TIMEOUT_MS = 3_600_000;
 
 export interface StreamSink {
   readonly write: (line: string) => void;
@@ -23,7 +28,7 @@ export interface StreamOptions {
 interface Pending {
   readonly action: string;
   readonly sessionId: string;
-  readonly settle: (error: string | null) => void;
+  readonly settle: (error: string | Error | null, value: JsonValue) => void;
 }
 
 const WINDOW_BY_KIND: Readonly<Record<string, ClaudeUsage['windows'][number]['window']>> = {
@@ -34,30 +39,49 @@ const WINDOW_BY_KIND: Readonly<Record<string, ClaudeUsage['windows'][number]['wi
 export class ModStreams {
   private readonly open = new Map<string, StreamSink>();
   private readonly pending = new Map<string, Pending>();
+  private readonly single = new Set<StreamSink>();
+  private readonly recent = new Map<string, number>();
+  private readonly queued = new Map<string, { session: string; line: string }>();
   private latest: ClaudeUsage = NO_USAGE;
 
   constructor(private readonly options: StreamOptions) {}
 
   has(sessionId: string): boolean {
-    return this.open.has(sessionId);
+    return (
+      this.open.has(sessionId) ||
+      (this.recent.get(sessionId) ?? 0) > this.options.clock.now().getTime()
+    );
+  }
+
+  sessions(): readonly string[] {
+    return [...this.recent.keys()].filter((session) => this.has(session));
   }
 
   usage(): ClaudeUsage {
     return this.latest;
   }
 
-  attach(sessionId: string, sink: StreamSink, closed: AbortSignal): void {
+  attach(sessionId: string, sink: StreamSink, closed: AbortSignal, single = false): void {
     this.open.get(sessionId)?.close();
     this.open.set(sessionId, sink);
+    if (single) this.single.add(sink);
+    this.recent.set(sessionId, this.options.clock.now().getTime() + 35_000);
+    for (const [id, queued] of this.queued) {
+      if (queued.session === sessionId) {
+        this.queued.delete(id);
+        this.deliver(sessionId, sink, queued.line);
+        break;
+      }
+    }
     this.options.log.info('stream.attached', { session: sessionId });
     this.options.changed();
     closed.addEventListener(
       'abort',
       () => {
+        this.single.delete(sink);
         if (this.open.get(sessionId) === sink) {
           this.open.delete(sessionId);
           this.options.log.info('stream.detached', { session: sessionId });
-          this.failPending(sessionId, 'the session closed its link');
           this.options.changed();
         }
       },
@@ -65,36 +89,45 @@ export class ModStreams {
     );
   }
 
-  request(sessionId: string, action: ModAction): Promise<void> {
+  request(sessionId: string, action: ModAction): Promise<JsonValue> {
     const sink = this.open.get(sessionId);
-    if (sink === undefined) {
+    if (sink === undefined && !this.has(sessionId)) {
       return Promise.reject(
         new ClaudeControlFailedError(action.op, 'session link', 'the session is not connected'),
       );
     }
     const id = randomUUID();
-    const timeoutMs = this.options.timeoutMs ?? REQUEST_TIMEOUT_MS;
+    const timeoutMs =
+      this.options.timeoutMs ??
+      (action.op === 'tools' || action.op === 'usage' ? REQUEST_TIMEOUT_MS : MUTATION_TIMEOUT_MS);
     return new Promise((resolve, reject) => {
       const cancel = this.options.clock.at(
         new Date(this.options.clock.now().getTime() + timeoutMs),
         () => {
           this.pending.delete(id);
+          this.queued.delete(id);
           reject(new ClaudeControlTimeoutError(action.op, 'session link', timeoutMs / 1000));
         },
       );
       this.pending.set(id, {
         action: action.op,
         sessionId,
-        settle: (error) => {
+        settle: (error, value) => {
           cancel();
           if (error === null) {
-            resolve();
+            resolve(value);
           } else {
-            reject(new ClaudeControlFailedError(action.op, 'session link', error));
+            reject(
+              error instanceof Error
+                ? error
+                : new ClaudeControlFailedError(action.op, 'session link', error),
+            );
           }
         },
       });
-      sink.write(`${JSON.stringify({ ...action, id })}\n`);
+      const line = `${JSON.stringify({ ...action, id })}\n`;
+      if (sink === undefined) this.queued.set(id, { session: sessionId, line });
+      else this.deliver(sessionId, sink, line);
     });
   }
 
@@ -120,15 +153,45 @@ export class ModStreams {
       return;
     }
     this.pending.delete(report.request_id);
-    waiting.settle(report.ok ? null : (report.error ?? 'the session refused it'));
+    this.queued.delete(report.request_id);
+    waiting.settle(
+      report.ok ? null : (report.error ?? 'the session refused it'),
+      report.value ?? null,
+    );
+  }
+
+  private deliver(sessionId: string, sink: StreamSink, line: string): void {
+    if (this.single.has(sink)) this.open.delete(sessionId);
+    sink.write(line);
   }
 
   private failPending(sessionId: string, reason: string): void {
     for (const [id, waiting] of this.pending) {
       if (waiting.sessionId === sessionId) {
+        const notSubmitted = this.queued.has(id);
         this.pending.delete(id);
-        waiting.settle(reason);
+        this.queued.delete(id);
+        const harmless = waiting.action === 'tools' || waiting.action === 'usage';
+        waiting.settle(
+          notSubmitted || harmless
+            ? reason
+            : new ClaudeControlUncertainError(waiting.action, reason),
+          null,
+        );
       }
     }
+  }
+
+  stop(): void {
+    for (const [sessionId, sink] of this.open) {
+      sink.close();
+      this.failPending(sessionId, 'the computer runtime stopped');
+    }
+    for (const session of this.recent.keys())
+      this.failPending(session, 'the computer runtime stopped');
+    this.single.clear();
+    this.open.clear();
+    this.recent.clear();
+    this.queued.clear();
   }
 }

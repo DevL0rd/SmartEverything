@@ -30,7 +30,7 @@ function useReplyView(item: MessageItem, live: boolean): ReplyView {
   return { text, view, caret: live && turn.working && view.pending === null };
 }
 
-function Blocks({
+export function StreamBlocks({
   view,
   caret,
   selectable,
@@ -92,7 +92,7 @@ export function StreamedText({
       >
         {text === '' ? null : (
           <View {...reading}>
-            <Blocks view={view} caret={caret} selectable={pointer} />
+            <StreamBlocks view={view} caret={caret} selectable={pointer} />
           </View>
         )}
       </Animated.View>

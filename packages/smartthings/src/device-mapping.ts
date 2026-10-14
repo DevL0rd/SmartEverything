@@ -19,6 +19,7 @@ import {
   type StandardMapping,
 } from './mapper-kit';
 import { allMappers } from './mappers';
+import { refineRawBinding } from './raw-refinement';
 import { rawFromDefinition, rawFromStatus } from './raw-bindings';
 import type { Component, ComponentStatus, Device, DeviceStatus } from './rest-schemas';
 
@@ -163,14 +164,17 @@ function addRaw(
       ? rawFromStatus(rawContext)
       : rawFromDefinition(rawContext, definition);
   work.bindings.push(
-    ...raw.map((binding) => ({
-      ...binding,
-      capability: {
-        ...binding.capability,
-        key: uniqueRawKey(binding.capability.key, taken),
-        label: componentLabel(component.id, binding.capability.label, component.label ?? null),
-      },
-    })),
+    ...raw.map((original) => {
+      const binding = refineRawBinding(original, status);
+      return {
+        ...binding,
+        capability: {
+          ...binding.capability,
+          key: uniqueRawKey(binding.capability.key, taken),
+          label: componentLabel(component.id, binding.capability.label, component.label ?? null),
+        },
+      };
+    }),
   );
 }
 

@@ -46,7 +46,7 @@ export function useControl(deviceId: string, capability: string): Control {
   return {
     value: pendingValue ?? read.reported?.value,
     observedAt: read.reported?.observedAt ?? null,
-    pending: pendingValue !== null,
+    pending: read.entry !== null && read.entry.failure === null,
     failure: read.entry?.failure ?? null,
     offline: !read.online,
     set: async (value): Promise<boolean> => {

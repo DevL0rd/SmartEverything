@@ -1,3 +1,4 @@
+import { deviceCardOf } from '../../../plugins/device-contributions';
 import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Interactive } from '../../../components/interactive';
@@ -57,6 +58,27 @@ function TileText({
   );
 }
 
+function TileBody({
+  device,
+  showRoom,
+  offline,
+}: {
+  readonly device: Device;
+  readonly showRoom: boolean;
+  readonly offline: boolean;
+}): ReactNode {
+  const card = deviceCardOf(device);
+  if (card !== undefined) return card.render(device, 'tile', showRoom);
+  return (
+    <>
+      <View className={cn('flex-row items-start', offline && 'opacity-60')}>
+        <DeviceVisual device={device} size="tile" />
+      </View>
+      <TileText device={device} showRoom={showRoom} />
+    </>
+  );
+}
+
 function DeviceTileBase({ device, showRoom = true, inset = false }: DeviceTileProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const name = useDisplayName(device.id);
@@ -78,10 +100,7 @@ function DeviceTileBase({ device, showRoom = true, inset = false }: DeviceTilePr
         )}
         layerClassName={inset ? 'rounded-md' : 'rounded-lg'}
       >
-        <View className={cn('flex-row items-start', offline && 'opacity-60')}>
-          <DeviceVisual device={device} size="tile" />
-        </View>
-        <TileText device={device} showRoom={showRoom} />
+        <TileBody device={device} showRoom={showRoom} offline={offline} />
       </Interactive>
       <View className="absolute right-2 top-2">
         {offline ? <StatusChip status="offline" /> : <PowerToggle device={device} />}

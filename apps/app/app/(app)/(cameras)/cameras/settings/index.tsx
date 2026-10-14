@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { CamerasSettingsScreen } from '../../../../../src/features/cameras/settings/cameras-settings-screen';
+import { MountedSettingsRoute } from '../../../../../src/settings/settings-screen';
 
-export default function CamerasSettingsRoute(): ReactNode {
-  return <CamerasSettingsScreen />;
+export default function SettingsRoute(): ReactNode {
+  return <MountedSettingsRoute root="cameras" />;
 }

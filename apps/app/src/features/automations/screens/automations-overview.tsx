@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
@@ -83,7 +84,13 @@ export function AutomationsOverview(): ReactNode {
   return (
     <Screen
       maxWidth="reading"
-      header={<PageHeader title="Automations" {...subtitleProp(countLine(page.rules))} />}
+      header={
+        <PageHeader
+          title="Automations"
+          settings={mainPageSettings('automations')}
+          {...subtitleProp(countLine(page.rules))}
+        />
+      }
       {...(page.status.kind === 'ok' ? {} : { banner: <PlaceBanner status={page.status} /> })}
     >
       {page.rules.length === 0 ? <FirstRun ideas={page.ideas} /> : <Overview page={page} />}

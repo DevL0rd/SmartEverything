@@ -1,17 +1,16 @@
 import type { ReactNode } from 'react';
 import { memo } from 'react';
 import { View } from 'react-native';
-import type { Engine } from '@smarteverything/domain';
+import type { AiChatRow } from '@smarteverything/domain';
 import { ProgressBar } from '../../../components/charts';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { joinParts } from '../../../format/text';
 import { useMoney } from '../../region';
 import { useFooterFacts } from '../data/chat-store';
 import { contextText } from '../data/cost';
-import { contextTone, filesLabel, repliesLabel, type FooterFacts } from '../model/chat-footer';
+import { contextTone, type FooterFacts } from '../model/chat-footer';
 import { useModelChoice } from '../picker/model-label';
-import { useChatModel } from './chat-model';
+import { CompactChatButton } from './compact-chat-button';
 
 function ContextMeter({
   percent,
@@ -22,98 +21,79 @@ function ContextMeter({
 }): ReactNode {
   const used = `${String(percent)} %`;
   return (
-    <View className="flex-row items-center gap-1.5">
-      <View className="w-12">
-        <ProgressBar progress={percent / 100} colour={contextTone(percent)} label="Context used" />
-      </View>
+    <View className="min-w-0 flex-1 gap-1">
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-        {window === null ? used : `${used} of ${window}`}
+        {window === null ? `Context ${used}` : `Context ${used} of ${window}`}
+      </Text>
+      <ProgressBar progress={percent / 100} colour={contextTone(percent)} label="Context used" />
+    </View>
+  );
+}
+
+function TotalCost({
+  chat,
+  facts,
+}: {
+  readonly chat: AiChatRow;
+  readonly facts: FooterFacts;
+}): ReactNode {
+  const money = useMoney();
+  const cost =
+    facts.costMicros > 0
+      ? `${money.cost(facts.costMicros)}${chat.cost_incomplete === true ? ' + unknown' : ''}`
+      : 'Unavailable';
+  return (
+    <View className="shrink-0 items-end gap-0.5">
+      <Text variant="caption" tone="variant">
+        Total cost
+      </Text>
+      <Text variant="caption" tone="variant" className="tabular">
+        {cost}
       </Text>
     </View>
   );
 }
 
-function speak(facts: FooterFacts, cost: string, model: string, window: string | null): string {
-  return [
-    facts.costMicros > 0 ? `Chat total ${cost}` : null,
-    facts.context === null
-      ? null
-      : `Context ${String(facts.context)} % used${window === null ? '' : ` of ${window}`}`,
-    model,
-    facts.replies > 0 ? repliesLabel(facts.replies) : null,
-    facts.files > 0 ? filesLabel(facts.files) : null,
-  ]
-    .filter((part): part is string => part !== null)
-    .join('. ');
-}
-
-function Strip({
-  engine,
-  facts,
+function ChatFooterStripBase({
+  chat,
+  blocked,
   onPress,
 }: {
-  readonly engine: Engine;
-  readonly facts: FooterFacts;
+  readonly chat: AiChatRow;
+  readonly blocked: boolean;
   readonly onPress: () => void;
 }): ReactNode {
-  const money = useMoney();
-  const model = useChatModel(engine);
-  const length = useModelChoice(engine.model)?.contextLength ?? null;
+  const stored = useFooterFacts(chat.id);
+  const facts = stored ?? {
+    costMicros: chat.cost_micros,
+    context: chat.context_percent,
+    replies: 0,
+    files: 0,
+  };
+  const length = useModelChoice(chat.engine.model)?.contextLength ?? null;
   const window = contextText(length)?.replace(' context', '') ?? null;
-  const cost = money.cost(facts.costMicros);
-  const counts = joinParts([
-    facts.replies > 0 ? repliesLabel(facts.replies) : null,
-    facts.files > 0 ? filesLabel(facts.files) : null,
-  ]);
   return (
-    <Interactive
-      label={`Chat details. ${speak(facts, cost, model.shortName, window)}`}
-      onPress={onPress}
-      className="h-8 w-full justify-center rounded-md px-2"
-      layerClassName="rounded-md"
-    >
-      <View className="flex-row items-center gap-3">
-        {facts.costMicros > 0 ? (
-          <Text variant="caption" tone="variant" numberOfLines={1} className="tabular shrink-0">
-            {cost}
-          </Text>
-        ) : null}
-        {facts.context === null ? null : (
-          <View className="shrink-0">
+    <View className="flex-row items-center gap-1">
+      <CompactChatButton chat={chat} blocked={blocked} />
+      <Interactive
+        label="Chat details, context and total cost"
+        onPress={onPress}
+        className="min-h-touch-min min-w-0 flex-1 justify-center rounded-md px-1"
+        layerClassName="rounded-md"
+      >
+        <View className="flex-row items-center gap-3">
+          {facts.context === null ? (
+            <Text variant="caption" tone="variant" className="min-w-0 flex-1">
+              Context unavailable
+            </Text>
+          ) : (
             <ContextMeter percent={facts.context} window={window} />
-          </View>
-        )}
-        <Text
-          variant="caption"
-          tone="variant"
-          numberOfLines={1}
-          className="min-w-0 shrink flex-1 text-right"
-        >
-          {joinParts([model.shortName, counts])}
-        </Text>
-      </View>
-    </Interactive>
+          )}
+          <TotalCost chat={chat} facts={facts} />
+        </View>
+      </Interactive>
+    </View>
   );
 }
 
-function ChatFooterStripBase({
-  chatId,
-  engine,
-  onPress,
-}: {
-  readonly chatId: string;
-  readonly engine: Engine;
-  readonly onPress: () => void;
-}): ReactNode {
-  const facts = useFooterFacts(chatId);
-  return facts === null ? null : <Strip engine={engine} facts={facts} onPress={onPress} />;
-}
-
-export const ChatFooterStrip = memo(
-  ChatFooterStripBase,
-  (left, right) =>
-    left.chatId === right.chatId &&
-    left.onPress === right.onPress &&
-    left.engine.model === right.engine.model &&
-    left.engine.effort === right.engine.effort,
-);
+export const ChatFooterStrip = memo(ChatFooterStripBase);

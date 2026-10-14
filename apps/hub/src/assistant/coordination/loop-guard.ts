@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AiChatRow } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import type { ConversationLog } from '../conversation-log';
-import type { StreamEmit } from '../engines/openrouter/stream';
+import type { StreamEmit } from '../conversation/stream';
 import { LOOP_LIMIT, LOOP_WINDOW_MS, PAUSED_TEXT } from './limits';
 
 export const GUARD_AUTHOR = 'SmartEverything';

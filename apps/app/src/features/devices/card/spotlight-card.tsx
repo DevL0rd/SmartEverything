@@ -1,3 +1,4 @@
+import { deviceCardOf } from '../../../plugins/device-contributions';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -30,6 +31,8 @@ function Body({
   ...face
 }: Omit<FaceProps, 'box'> & { readonly box: Box | null; readonly banner: boolean }): ReactNode {
   const hero = useVisualPx('hero');
+  const card = deviceCardOf(face.device);
+  if (card !== undefined) return card.render(face.device, face.size, true);
   if (box === null) {
     return null;
   }

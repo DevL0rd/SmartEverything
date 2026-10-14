@@ -9,6 +9,7 @@ import {
   ASSISTANT_TEXT_MAX,
   ASSISTANT_UPLOAD_CHUNK_BYTES,
 } from '../assistant';
+import { ASSISTANT_RESPONSE_STYLE } from '../assistant-response-style';
 import { NO_BODY, endpoint } from './endpoint';
 import { MEDIA_LINK } from './endpoints-media';
 import { DONE, ID, MOMENT, NOTHING, queryLimit } from './primitives';
@@ -173,6 +174,17 @@ const ATTACHMENT_ENDPOINTS = {
 } as const;
 
 const SETTINGS_ENDPOINTS = {
+  readAssistantResponseStyle: endpoint({
+    method: 'GET',
+    path: '/api/assistant/response-style',
+    access: 'member',
+    summary:
+      'Read the shared assistant response style; affects SmartEverything turns and existing shared voice prompts',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: ASSISTANT_RESPONSE_STYLE,
+  }),
   updateAssistantSettings: endpoint({
     method: 'PATCH',
     path: '/api/assistant/settings',

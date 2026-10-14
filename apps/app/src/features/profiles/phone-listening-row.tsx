@@ -20,7 +20,7 @@ function blocked(native: ScaleRelayStatus): ReactNode {
   if (!native.permission) {
     return (
       <ListRow
-        title="This phone can't hear the scale"
+        title="This phone can't hear Bluetooth devices"
         subtitle="Nearby devices permission missing · Allow"
         subtitleTone="warning"
         icon="smartphone"
@@ -32,7 +32,7 @@ function blocked(native: ScaleRelayStatus): ReactNode {
   }
   return (
     <ListRow
-      title="This phone can't hear the scale"
+      title="This phone can't hear Bluetooth devices"
       subtitle="Bluetooth is off"
       subtitleTone="warning"
       icon="smartphone"
@@ -77,7 +77,7 @@ function relayRows(state: RelayState, now: number): ReactNode {
     case 'update_needed':
       return (
         <ListRow
-          title="Update the app to hear the scale"
+          title="Update the app to hear Bluetooth devices"
           subtitle={state.reason}
           subtitleTone="warning"
           icon="download"
@@ -102,14 +102,14 @@ function relayRows(state: RelayState, now: number): ReactNode {
   }
 }
 
-export function PhoneListeningRows(): ReactNode {
+export function PhoneListeningRows({ health = true }: { readonly health?: boolean }): ReactNode {
   const now = useMinute();
   const relay = useRelayState();
   const write = useWriteState();
   return (
     <>
       {relayRows(relay, now)}
-      {write.kind === 'needs_permission' ? (
+      {health && write.kind === 'needs_permission' ? (
         <ListRow
           title="Save weigh-ins to Health Connect"
           subtitle={`${String(write.waiting)} waiting · Allow access`}
@@ -120,7 +120,7 @@ export function PhoneListeningRows(): ReactNode {
           }}
         />
       ) : null}
-      {write.kind === 'failed' ? (
+      {health && write.kind === 'failed' ? (
         <ListRow
           title="Weigh-ins not saved to Health Connect"
           subtitle={write.reason}

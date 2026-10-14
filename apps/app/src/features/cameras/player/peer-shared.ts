@@ -47,13 +47,22 @@ export function microphoneFor<T extends TalkTrack>({
   capture,
 }: MicrophoneOptions<T>): Microphone {
   let track: T | null = null;
+  let stopped = false;
+  const closed = (): boolean => stopped;
   return {
     setTalking: async (talking): Promise<void> => {
       if (!twoWayAudio) {
         throw new PeerError('starting talk', 'this camera has no speaker');
       }
+      if (closed()) {
+        return;
+      }
       if (talking && track === null) {
         track = await capture();
+      }
+      if (closed()) {
+        track?.stop();
+        return;
       }
       if (track !== null) {
         track.enabled = talking;
@@ -61,6 +70,7 @@ export function microphoneFor<T extends TalkTrack>({
       }
     },
     stop: (): void => {
+      stopped = true;
       track?.stop();
     },
   };

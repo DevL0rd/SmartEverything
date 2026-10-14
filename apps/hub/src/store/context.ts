@@ -79,9 +79,14 @@ export class StoreContext {
     }
     this.feed.hold();
     try {
-      const result = this.sql.transaction(work);
+      const previous = this.sql.mutationCount();
+      const result = this.sql.transaction(() => {
+        const value = work();
+        return { value, mutated: this.sql.mutationCount() !== previous };
+      });
       this.feed.release();
-      return result;
+      if (result.mutated) this.feed.committed();
+      return result.value;
     } catch (cause) {
       this.feed.discard();
       throw cause;

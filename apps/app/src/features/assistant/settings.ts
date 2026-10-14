@@ -1,3 +1,4 @@
+import { createElement } from 'react';
 import type { AssistantSettingsChange } from '@smarteverything/domain';
 import {
   ASSISTANT_INSTRUCTIONS_MAX,
@@ -16,6 +17,9 @@ import { BUDGET_SETTINGS } from './settings/budget-settings';
 import { REACH_SETTINGS } from './reach/reach-settings';
 import { CALL_AUDIO_SETTINGS } from './settings/call-audio-settings';
 import { SPEECH_SETTINGS } from './settings/speech-settings';
+import { RESPONSE_STYLE_SETTINGS } from './settings/response-style-settings';
+import { EXTENSION_UPDATE_SETTINGS } from './extensions/update-settings';
+import { CallVoiceSettingRow } from './settings/call-voice-setting-row';
 
 const owner = (env: { readonly owner: boolean }): boolean => env.owner;
 
@@ -120,6 +124,8 @@ export const SETTINGS: readonly SettingDefinition[] = [
   ...REACH_SETTINGS,
   ...CALL_AUDIO_SETTINGS,
   ...SPEECH_SETTINGS,
+  ...RESPONSE_STYLE_SETTINGS,
+  ...EXTENSION_UPDATE_SETTINGS,
   {
     id: 'assistant.steps',
     page: 'assistant',
@@ -164,22 +170,6 @@ export const SETTINGS: readonly SettingDefinition[] = [
     when: known,
     read: (state) => state.assistant?.settings.reply_suggestions === true,
     write: (value, context) => write({ reply_suggestions: value }, context),
-  },
-  {
-    id: 'assistant.web-search',
-    page: 'assistant',
-    icon: 'globe',
-    section: 'Conversation',
-    title: 'Search the web',
-    description:
-      'Let chats and calls look things up online by default. Each chat has its own switch. Searches cost a little.',
-    keywords: ['web', 'search', 'internet', 'online', 'browse', 'google', 'look up', 'sources'],
-    scope: 'server',
-    control: 'switch',
-    visible: owner,
-    when: known,
-    read: (state) => state.assistant?.settings.web_search_default === true,
-    write: (value, context) => write({ web_search_default: value }, context),
   },
   {
     id: 'assistant.compact',
@@ -237,10 +227,26 @@ export const SETTINGS: readonly SettingDefinition[] = [
     control: 'text',
     placeholder: 'Anything it should always keep in mind',
     maxLength: ASSISTANT_INSTRUCTIONS_MAX,
+    allowEmpty: true,
+    multiline: true,
     visible: owner,
     when: known,
     read: (state) => state.assistant?.settings.instructions ?? '',
     write: (value, context) => write({ instructions: value }, context),
+  },
+  {
+    id: 'assistant.voice.call-voice',
+    page: 'assistant',
+    icon: 'mic',
+    section: 'Voice calls',
+    title: 'Call voice',
+    keywords: ['Gemini', 'Live', 'voice', 'sample', 'preview', 'Sadachbia'],
+    scope: 'server',
+    control: 'custom',
+    row: true,
+    visible: owner,
+    when: known,
+    render: () => createElement(CallVoiceSettingRow),
   },
   {
     id: 'assistant.voice.idle',

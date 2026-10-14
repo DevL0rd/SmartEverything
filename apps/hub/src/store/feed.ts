@@ -4,6 +4,7 @@ import type { Logger } from '@smarteverything/logging';
 export type ChangeListener = (change: LiveChange) => void;
 
 export type Unsubscribe = () => void;
+export type CommitListener = () => void;
 
 interface ChangeSource {
   readonly subscribe: (listener: ChangeListener) => Unsubscribe;
@@ -11,6 +12,7 @@ interface ChangeSource {
 
 export class ChangeFeed implements ChangeSource {
   private readonly listeners = new Set<ChangeListener>();
+  private readonly commitListeners = new Set<CommitListener>();
   private pending: RowChange[] | null = null;
   private delivered = 0;
 
@@ -25,6 +27,23 @@ export class ChangeFeed implements ChangeSource {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  subscribeCommitted(listener: CommitListener): Unsubscribe {
+    this.commitListeners.add(listener);
+    return (): void => {
+      this.commitListeners.delete(listener);
+    };
+  }
+
+  committed(): void {
+    for (const listener of this.commitListeners) {
+      try {
+        listener();
+      } catch (cause) {
+        this.log.error('change.commit_listener_failed', cause);
+      }
+    }
   }
 
   hold(): void {

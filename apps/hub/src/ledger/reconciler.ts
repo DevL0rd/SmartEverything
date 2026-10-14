@@ -34,13 +34,24 @@ export function reconcileOf(stats: GenerationStats): UsageReconcile {
 
 export class Reconciler {
   private stopped = false;
+  private readonly settling = new Set<string>();
   private readonly unsubscribe: Unsubscribe;
 
   constructor(private readonly options: ReconcilerOptions) {
     this.unsubscribe = options.ledger.on((row) => {
       if (due(row)) {
-        void this.settle(row.id, row.generation_id);
+        this.schedule(row.id, row.generation_id);
       }
+    });
+    for (const row of options.ledger.pendingHarness())
+      if (due(row)) this.schedule(row.id, row.generation_id);
+  }
+
+  private schedule(id: string, generationId: string): void {
+    if (this.settling.has(id)) return;
+    this.settling.add(id);
+    void this.settle(id, generationId).finally((): void => {
+      this.settling.delete(id);
     });
   }
 

@@ -143,7 +143,20 @@ export interface PluginContext<S> {
   readonly signal: AbortSignal;
   readonly log: Logger;
   readonly tools: { readonly register: (tools: readonly PluginTool[]) => void };
-  readonly devices: { readonly register: (driver: DeviceDriver) => Unsubscribe };
+  readonly devices: {
+    readonly register: (driver: DeviceDriver) => Unsubscribe;
+    readonly command: (
+      input: {
+        readonly externalId: string;
+        readonly capability: string;
+        readonly value: JsonValue;
+        readonly transient?: boolean;
+      },
+      caller: ToolCaller,
+    ) => Promise<JsonValue>;
+    readonly callerOf: (commandId: string) => ToolCaller | null;
+    readonly valueOf: (commandId: string) => JsonValue | undefined;
+  };
   readonly data: { readonly publish: (stream: string, value: JsonValue) => void };
   readonly events: { readonly emit: (event: PluginEvent) => void };
   readonly options: PluginOptions;

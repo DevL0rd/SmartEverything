@@ -33,7 +33,7 @@ function Meter({
     return null;
   }
   const share = period.spent_micros / Math.max(1, period.limit_micros);
-  const caption = `${money.cost(period.spent_micros)} of ${money.cost(period.limit_micros)} ${name}`;
+  const caption = `${money.cost(period.spent_micros)} of ${money.cost(period.limit_micros)} ${name}${(period.unknown_count ?? 0) > 0 ? ' · Known costs only; supplier costs unavailable' : ''}`;
   return (
     <View className="gap-1">
       <ProgressBar progress={share} colour={colourOf(share, warnAt)} label={caption} />

@@ -26,7 +26,6 @@ export interface ActionSpec {
 export interface ActionContext {
   readonly speaker: MessageSpeaker['kind'];
   readonly hasText: boolean;
-  readonly latestReply: boolean;
   readonly canRegenerate: boolean;
   readonly canRetry: boolean;
   readonly canEdit: boolean;
@@ -36,8 +35,6 @@ export interface ActionContext {
 export interface ActionPlan {
   readonly quick: readonly ActionSpec[];
   readonly list: readonly ActionSpec[];
-  readonly hover: readonly ActionSpec[];
-  readonly row: readonly ActionSpec[];
 }
 
 function spec(
@@ -74,9 +71,9 @@ function aiQuick(context: ActionContext): readonly ActionSpec[] {
 }
 
 function ownQuick(context: ActionContext): readonly ActionSpec[] {
-  const { hasText, canRetry, canEdit } = context;
+  const { hasText, canRetry, canEdit, pointer } = context;
   return canRetry
-    ? pick('retry', canEdit && 'edit', hasText && 'copy', 'quote')
+    ? pick('retry', canEdit && 'edit', hasText && 'copy', 'quote', pointer && !canEdit && 'branch')
     : pick(hasText && 'copy', 'quote', canEdit && 'edit', 'branch');
 }
 
@@ -105,29 +102,9 @@ function listOf(context: ActionContext): readonly ActionSpec[] {
   );
 }
 
-function hoverOf(context: ActionContext): readonly ActionSpec[] {
-  const { speaker, hasText, canEdit } = context;
-  if (speaker === 'ai') {
-    return pick(hasText && 'copy', 'quote', 'branch');
-  }
-  if (speaker === 'me') {
-    return pick(hasText && 'copy', 'quote', canEdit ? 'edit' : 'branch');
-  }
-  return pick(hasText && 'copy', 'quote');
-}
-
-function rowOf(context: ActionContext): readonly ActionSpec[] {
-  const { hasText, canRegenerate } = context;
-  return pick(hasText && 'copy', canRegenerate && 'regenerate', 'branch');
-}
-
 export function actionPlan(context: ActionContext): ActionPlan {
   return {
     quick: quickOf(context),
     list: listOf(context),
-    hover: hoverOf(context),
-    row: context.latestReply ? rowOf(context) : [],
   };
 }
-
-export const MORE_LABEL = 'More actions';

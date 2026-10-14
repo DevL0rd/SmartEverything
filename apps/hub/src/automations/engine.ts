@@ -44,13 +44,18 @@ export interface AutomationRun {
 export interface AutomationEngineOptions {
   readonly store: AutomationStore;
   readonly recordRun: (run: AutomationRun) => void;
-  readonly actions: () => ActionRunner;
+  readonly actions: (waitForCommands?: boolean) => ActionRunner;
+  readonly admitManual?: (definition: AutomationDefinition) => () => void;
   readonly valueOf: ConditionContext['stateOf'];
   readonly forecast: () => WeatherForecast | null;
   readonly armers: readonly TriggerArmer[];
   readonly sources: () => readonly SignalSourceSpec[];
   readonly clock: Clock;
   readonly log: Logger;
+}
+
+interface ManualRun {
+  readonly admit: (() => void) | undefined;
 }
 
 interface Loaded {
@@ -273,7 +278,11 @@ export class AutomationEngine {
         `The automation ${record.name} is not valid, so it cannot run: ${definition.error.message}`,
       );
     }
-    void this.execute({ record, definition: definition.data }, null);
+    const manual = { admit: this.options.admitManual?.(definition.data) };
+    const error = await this.execute({ record, definition: definition.data }, null, manual);
+    if (error !== null) {
+      throw new ApiError('command_refused', error);
+    }
   }
 
   private async run(automation: Loaded, signal: SignalInput | null): Promise<void> {
@@ -284,18 +293,27 @@ export class AutomationEngine {
     await this.execute(automation, signal);
   }
 
-  private async execute(automation: Loaded, signal: SignalInput | null): Promise<void> {
+  private async execute(
+    automation: Loaded,
+    signal: SignalInput | null,
+    manual?: ManualRun,
+  ): Promise<string | null> {
     const automationId = automation.record.id;
     const run = this.options.log.operation('automation.run', { automationId });
     const startedAt = this.options.clock.now();
     let lastError: string | null = null;
     try {
-      await this.options.actions().run(automation.definition.actions, {
-        automationId,
-        name: automation.record.name,
-        signal,
-        plugin: automation.definition.origin,
-      });
+      await this.options.actions(manual !== undefined).run(
+        automation.definition.actions,
+        {
+          automationId,
+          name: automation.record.name,
+          signal,
+          plugin: automation.definition.origin,
+        },
+        manual?.admit,
+      );
+      manual?.admit?.();
       run.succeeded();
     } catch (cause) {
       lastError = describeError(cause);
@@ -310,15 +328,18 @@ export class AutomationEngine {
     });
     const runCount = (this.runCounts.get(automationId) ?? automation.record.runCount) + 1;
     this.runCounts.set(automationId, runCount);
-    await this.options.store
+    const recordingError = await this.options.store
       .updateAutomation(automationId, {
         lastRunAt: this.options.clock.now().toISOString(),
         runCount,
         lastError,
       })
+      .then(() => null)
       .catch((cause: unknown) => {
         this.options.log.error('automation.run_not_recorded', cause, { automationId });
+        return `The automation run could not be recorded: ${describeError(cause)}`;
       });
+    return recordingError ?? lastError;
   }
 
   private async recordError(automation: Loaded, message: string): Promise<void> {

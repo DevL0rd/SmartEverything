@@ -1,9 +1,79 @@
+import { SERVED_PROJECT_PREVIEWS } from './served-project-previews';
+import { SERVED_PROJECTS } from './served-projects';
+import { SERVED_PREVIEW_DIAGNOSTICS } from './served-preview-diagnostics';
 import { SHOW_WIDGETS_TEXT } from '../chat-widgets';
 import type { Served } from './served-types';
 
 const CUSTOM = { custom: true } as const;
 
 export const SERVED_AI = [
+  ...SERVED_PROJECTS,
+  ...SERVED_PREVIEW_DIAGNOSTICS,
+  ...SERVED_PROJECT_PREVIEWS,
+  [
+    'publish_html',
+    'assistant',
+    'control',
+    'Show HTML in the browser',
+    'Publish standalone HTML in the initiating chat without starting a development server. Returns immediately and the app opens its isolated preview. To update it, provide its publication_id and exact current revision. The HTML should include its own CSS and scripts; external network, arbitrary file access and viewer credentials are not exposed.',
+    { part: 'publish_html' },
+  ],
+  [
+    'read_previews',
+    'assistant',
+    'read',
+    'Read shared previews',
+    'List exact development services shared with an owned chat and the isolated HTTPS/WSS gateway readiness; this does not browse or control the page.',
+    { part: 'read_previews' },
+  ],
+  [
+    'revoke_shared_preview',
+    'assistant',
+    'control',
+    'Revoke a shared preview',
+    'Withdraw one explicitly shared development service from an owned chat and terminate its browser leases and streams.',
+    { part: 'revoke_shared_preview' },
+  ],
+  [
+    'list_image_endpoints',
+    'assistant',
+    'read',
+    'Read image endpoints',
+    'Discover available image-generation and editing endpoints for creating pictures, illustrations or drawings. Read their exact capabilities, prices and the initiating chat’s independent metered image-provider readiness before start_image_operation; use the returned model, provider_tag and revision.',
+    { part: 'list_image_endpoints' },
+  ],
+  [
+    'resolve_image_input',
+    'assistant',
+    'read',
+    'Select a chat image',
+    'Resolve an explicit owned image or the authoritative latest image to a stable attachment ID for an edit or ordered reference.',
+    { part: 'resolve_image_input' },
+  ],
+  [
+    'start_image_operation',
+    'assistant',
+    'control',
+    'Create or edit images',
+    'Generate or edit an image, picture, illustration or drawing from a text prompt, source image or references. First use list_image_endpoints to select an available metered OpenRouter endpoint and separate image-provider grant. Returns immediately; the UI automatically shows progress and the saved image. For standalone creation, briefly confirm start and finish. Only use wait_for_images if further user-requested work needs saved images, such as editing or explicitly sending them. Never poll receipt/history, repeat this request or schedule a completion turn. Immutable owned originals and once-only operation IDs are preserved; never automatically retry an unknown outcome with a new ID.',
+    { part: 'start_image_operation' },
+  ],
+  [
+    'wait_for_images',
+    'assistant',
+    'read',
+    'Wait for requested image work',
+    'Wait once, without polling, for images currently generating in this initiating chat, only when further work the user requested needs saved images: for example edit a generated image or explicitly send it. Omit operation_ids to snapshot active jobs; provide exact creation IDs to include already-finished results. Jobs started later are excluded. Returns completed, failed, cancelled or unknown outcomes and available saved attachment IDs; a bounded timeout returns truthful partial results. Never call merely to display images, monitor progress, or start an automatic completion turn. A timeout is not completion; report pending work honestly. Sending still requires the user’s explicit instruction.',
+    { part: 'wait_for_images' },
+  ],
+  [
+    'cancel_image_operation',
+    'assistant',
+    'control',
+    'Cancel image creation',
+    'Cancel the actual running image-provider request and pending result persistence; billing remains unverified when delivery is unknown.',
+    { part: 'cancel_image_operation' },
+  ],
   [
     'read_chats',
     'assistant',
@@ -26,7 +96,7 @@ export const SERVED_AI = [
     'assistant',
     'control',
     'Edit a chat',
-    'Starts a new AI chat, or renames, pins, archives, marks read or unread, branches, stops, regenerates the reply of, changes the engine, model, tools or web search of, or deletes one, or deletes a single message.',
+    'Starts a new AI chat, or renames, pins, archives, marks read or unread, branches, stops, regenerates the reply of, changes the engine, model or tools of, or deletes one, or deletes a single message.',
     {
       key: 'action',
       parts: {
@@ -259,7 +329,7 @@ export const SERVED_AI = [
     'assistant',
     'read',
     'Read Claude',
-    'Claude Desktop (Claude Code) on this computer: its state and plan usage, the sessions with idle, busy or waiting state, one session, its messages from the transcript, plan limits, or the prompts waiting for an answer.',
+    'Read legacy Claude Desktop and terminal records, saved transcripts and legacy usage. These records do not grant owned CLI control; read_claude_cli lists managed shared chats.',
     {
       key: 'view',
       parts: {
@@ -274,26 +344,26 @@ export const SERVED_AI = [
   ],
   [
     'claude_session',
-    'assistant',
+    'computers',
     'control',
     'Control a Claude session',
-    'Sends a prompt to a Claude Desktop session (sessionId from read_claude sessions), interrupts its turn, keeps or lowers its permission mode, or sets its model. Raising a mode is only done by the person on Claude Desktop’s own approval card.',
+    'Send, resume, stop, close or configure an owned Claude CLI shared chat on its exact computer. Read current chat/session/job through read_claude_cli first; use a unique operation_id and reconcile uncertain delivery through its receipt without resubmission. The authenticated current owner profile is fixed.',
     { part: 'control_claude_session' },
   ],
   [
     'claude_start',
-    'assistant',
+    'computers',
     'control',
     'Start a Claude session',
-    'Starts a Claude Desktop session in a folder with a first prompt; without the controller the person presses Send in Claude Desktop.',
+    'Create an owned shared Claude CLI chat and queue its actual first native turn on the selected computer with explicit model and working directory. Native provider execution must already be enabled; an accepted receipt is not completed inference. Keep operation_id for receipt reconciliation; the current owner profile is fixed.',
     { part: 'start_claude_session' },
   ],
   [
     'claude_answer',
-    'assistant',
+    'computers',
     'control',
     'Answer a Claude prompt',
-    'Allows or denies a permission request or plan a Claude session is waiting on, or answers its questions; promptId comes from read_claude prompts; only the owner can allow a risky one.',
+    'Answer an exact pending permission, question, plan or MCP elicitation from read_claude_cli prompts, bound to its owned chat, computer, native session and current job. Preserve question arrays, custom and multiple answers. Stale or foreign requests reject; the authenticated current owner profile is fixed.',
     { part: 'answer_claude_prompt' },
   ],
   [

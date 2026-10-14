@@ -8,6 +8,11 @@ import {
   type OpenRouterSettings,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import {
+  EMPTY_MODEL_SEARCH_STATE,
+  MODEL_SEARCH_STATE,
+  type ModelSearchState,
+} from './model-search-state';
 import { storedRow } from '../store/codec';
 import type { StoreContext } from '../store/context';
 import { jsonText } from '../store/sql';
@@ -184,6 +189,14 @@ export class AiModelsRepository {
 
   saveSyncState(state: CatalogueState): void {
     this.saveSetting(SYNC_KEY, CATALOGUE_STATE.parse(state));
+  }
+
+  searchState(): ModelSearchState {
+    return this.setting('model-search/order-v1', MODEL_SEARCH_STATE, EMPTY_MODEL_SEARCH_STATE);
+  }
+
+  saveSearchState(state: ModelSearchState): void {
+    this.saveSetting('model-search/order-v1', MODEL_SEARCH_STATE.parse(state));
   }
 
   private upsert(row: AiModelRow): void {

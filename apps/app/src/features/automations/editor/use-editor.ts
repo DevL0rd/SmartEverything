@@ -1,10 +1,11 @@
 import { useEffect, useReducer, useState } from 'react';
 import { useNavigation, useRouter } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
+import { resumeGuardedRemoval } from '../../../app-shell/tab-replacement';
 import { saveAutomation } from '../../../api/automations';
 import { confirm } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
-import { attempt, removeAutomation, testRun } from '../data/actions';
+import { attempt, removeAutomation, testDraftRun, testSavedRun } from '../data/actions';
 import type { Catalog } from '../data/use-automations';
 import { changeDraft, definitionOf, type Draft, type DraftChange } from '../model/editor-state';
 import { validateDraft, type Problems, type Validation } from '../model/validate';
@@ -49,9 +50,7 @@ export function useDiscardPrompt(dirty: boolean): void {
       confirmLabel: 'Discard',
       tone: 'destructive',
     }).then((discard) => {
-      if (discard) {
-        navigation.dispatch(data.action);
-      }
+      resumeGuardedRemoval(navigation, data.action, discard);
     });
   });
 }
@@ -73,6 +72,7 @@ export function useClose(): readonly [boolean, () => void] {
 }
 
 interface Session {
+  readonly dirty: boolean;
   readonly draft: Draft;
   readonly validation: Validation;
   readonly automationId: string | null;
@@ -118,10 +118,14 @@ function useTest(session: Session, catalog: Catalog): readonly [boolean, () => v
       return;
     }
     setTesting(true);
-    void testRun(validation.name, validation.definition.actions, {
-      devices: catalog.allDevices,
-      scenes: catalog.scenes,
-    }).finally(() => {
+    const run =
+      session.automationId !== null && !session.dirty
+        ? testSavedRun(session.automationId, validation.name)
+        : testDraftRun(validation.name, validation.definition.actions, {
+            devices: catalog.allDevices,
+            scenes: catalog.scenes,
+          });
+    void run.finally(() => {
       setTesting(false);
     });
   };
@@ -162,6 +166,7 @@ export function useEditor(start: Draft, savedId: string | null, catalog: Catalog
     profileIds: catalog.people.map((person) => person.id),
   });
   const session: Session = {
+    dirty: !sameDraft(draft, baseline),
     draft,
     validation,
     automationId,

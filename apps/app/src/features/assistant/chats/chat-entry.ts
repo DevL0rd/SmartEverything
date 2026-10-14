@@ -1,3 +1,4 @@
+import type { AiChatKind } from '@smarteverything/domain';
 import { DAY_MS, localDayKey } from '../../../format/time';
 import { sameSource, type ChatSource } from '../model/chat-source';
 
@@ -22,6 +23,7 @@ export type ChatLine =
 
 export interface ChatEntry {
   readonly id: string;
+  readonly kind: AiChatKind;
   readonly title: string;
   readonly source: ChatSource;
   readonly at: string;
@@ -123,6 +125,7 @@ function lineKey(line: ChatLine): string {
 export function sameEntry(left: ChatEntry, right: ChatEntry): boolean {
   return (
     left.id === right.id &&
+    left.kind === right.kind &&
     left.title === right.title &&
     left.at === right.at &&
     left.pinned === right.pinned &&

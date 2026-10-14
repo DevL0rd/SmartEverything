@@ -1,3 +1,6 @@
+import { ChatSubscriptionUsage } from '../provider/subscription-usage';
+import { isComputerEngine } from '../provider/computer-engine';
+import { useAiChats } from '../data/chat-store';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { UsageSummary } from '@smarteverything/domain';
@@ -55,7 +58,7 @@ function NothingYet({ state }: { readonly state: CostParamsState }): ReactNode {
     <EmptyState
       icon="gauge"
       title="No AI costs yet"
-      body="Every chat, call and helper's cost shows up here: by chat, person, model and day."
+      body="Metered chat, call and helper costs appear here by chat, person, model and day. Subscription plan windows are shown separately."
       action={<Button label="Open the assistant" variant="tonal" href={href.assistantChat()} />}
     />
   );
@@ -110,6 +113,21 @@ function Content(props: CostsHeaderProps): ReactNode {
 
 export function CostsHeader(props: CostsHeaderProps): ReactNode {
   const choices = useCostChoices(props.window);
+  const chats = useAiChats().filter(
+    (chat) =>
+      isComputerEngine(chat.engine) &&
+      (props.state.params.chat === undefined || props.state.params.chat === chat.id),
+  );
+  const accounts = chats.filter(
+    (chat, index) =>
+      chats.findIndex(
+        (other) =>
+          isComputerEngine(other.engine) &&
+          isComputerEngine(chat.engine) &&
+          other.engine.kind === chat.engine.kind &&
+          other.engine.device_id === chat.engine.device_id,
+      ) === index,
+  );
   return (
     <View className="w-full gap-section-gap self-center px-gutter pb-3 max-w-dashboard">
       <CostFilters
@@ -118,6 +136,9 @@ export function CostsHeader(props: CostsHeaderProps): ReactNode {
         window={props.window}
         today={props.today}
       />
+      {accounts.map((chat) => (
+        <ChatSubscriptionUsage key={chat.id} chat={chat} />
+      ))}
       <Content {...props} />
     </View>
   );

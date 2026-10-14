@@ -51,7 +51,7 @@ export function outputFor(
 }
 
 const FLOOR_TEXT =
-  'The SmartEverything controller session may only make the one Claude Desktop session call it was asked for.';
+  'An attached CLI tool may run only with the exact temporary SmartEverything call grant.';
 
 export function floorDenied(): HookOutput {
   return {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { ApiClient } from '../../../api/connection/client';
 import type { IceServer } from '@smarteverything/domain';
 import { preloader } from '../../../app-shell/preloader';
 import { notify } from '../../../components/toast-store';
@@ -13,7 +14,7 @@ export interface SessionOptions {
   readonly deviceId: string;
   readonly twoWayAudio: boolean;
   readonly iceServers: readonly IceServer[];
-  readonly relay: boolean;
+  readonly client: ApiClient | null;
   readonly enabled: boolean;
   readonly visible: boolean;
   readonly answering: boolean;
@@ -49,10 +50,14 @@ const NOBODY = new ValueStore<SharedState>({
 
 function useLease(options: SessionOptions): SessionLease {
   const [lease] = useState(() => new SessionLease(options.waitForFocus));
-  const { deviceId, relay, iceServers, enabled, visible } = options;
+  const { deviceId, client, iceServers, enabled, visible } = options;
   useEffect(() => {
-    lease.want({ deviceId, relay, iceServers }, enabled && visible);
-  }, [lease, deviceId, relay, iceServers, enabled, visible]);
+    if (client === null) {
+      lease.letGo();
+      return;
+    }
+    lease.want({ deviceId, client, iceServers }, enabled && visible);
+  }, [lease, deviceId, client, iceServers, enabled, visible]);
   useEffect(
     () => (): void => {
       lease.letGo();
@@ -66,22 +71,34 @@ function usePreloaderPause(live: boolean): void {
   useEffect(() => (live ? preloader.pause() : undefined), [live]);
 }
 
-function useTalkState(options: SessionOptions, lease: SessionLease, connected: boolean): Talk {
-  const [wantedFor, setWantedFor] = useState<string | null>(null);
+function useTalkState(options: SessionOptions, lease: SessionLease, state: SharedState): Talk {
+  const [wantedFor, setWantedFor] = useState<{
+    readonly deviceId: string;
+    readonly phase: SessionPhase;
+  } | null>(null);
   const { deviceId } = options;
-  const talk = options.twoWayAudio && wantedFor === deviceId && !options.relay;
+  const talk =
+    options.twoWayAudio &&
+    wantedFor?.deviceId === deviceId &&
+    wantedFor.phase === state.phase &&
+    state.transport === 'webrtc';
   const setWanted = useCallback(
     (wanted: boolean): void => {
-      setWantedFor(wanted ? deviceId : null);
+      setWantedFor(wanted ? { deviceId, phase: state.phase } : null);
     },
-    [deviceId],
+    [deviceId, state.phase],
   );
   const stopAtLimit = useCallback((): void => {
     setWantedFor(null);
     notify({ message: 'Talk stopped after 2 minutes' });
   }, []);
   const session = useTalkSession(
-    { deviceId, iceServers: options.iceServers, active: talk && connected },
+    {
+      deviceId,
+      client: options.client,
+      iceServers: options.iceServers,
+      active: talk && state.phase.kind === 'connected',
+    },
     stopAtLimit,
   );
   const { stop } = session;
@@ -110,7 +127,7 @@ export function useCameraSession(options: SessionOptions): CameraSession {
     [lease, visible],
   );
   const audio = useListening(applyListening, options.muted, options.answering);
-  const talk = useTalkState(options, lease, connected);
+  const talk = useTalkState(options, lease, state);
   return {
     ...state,
     retry: (): void => {

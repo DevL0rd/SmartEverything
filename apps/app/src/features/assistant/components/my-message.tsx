@@ -72,9 +72,8 @@ export function MyMessage({
       actions={actions}
       preview={<MessagePreview item={item} className="bg-primary-container" />}
       align="end"
-      bar={<BarTime item={item} />}
+      bar={endOfRun ? null : <BarTime item={item} />}
       swipeable
-      reserve={endOfRun}
       onQuote={() => {
         actions.run('quote');
       }}

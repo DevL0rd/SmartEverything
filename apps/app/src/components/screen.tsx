@@ -1,5 +1,5 @@
 import { useMemo, type ReactElement, type ReactNode } from 'react';
-import { KeyboardAvoidingView, RefreshControl, View } from 'react-native';
+import { RefreshControl, View } from 'react-native';
 import Animated, {
   useAnimatedRef,
   useAnimatedScrollHandler,
@@ -8,8 +8,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useIsFocused, useScrollToTop } from 'expo-router';
 import { cn } from '../design/cn';
-import { isNative } from '../design/platform';
 import { Ambient } from './ambient';
+import { KeyboardViewport } from './keyboard-viewport';
 import { useToastObstacle } from './toast-obstacles';
 import {
   PrimaryAction,
@@ -146,7 +146,7 @@ export function Screen({
   const value = useScreenValue(scrollY, scroll ? scrollRef : null, primaryAction);
   return (
     <ScreenContext.Provider value={value}>
-      <KeyboardAvoidingView behavior={isNative() ? 'padding' : undefined} className="flex-1">
+      <KeyboardViewport>
         <Ambient />
         {header}
         {scroll ? (
@@ -172,7 +172,7 @@ export function Screen({
         )}
         <Footer>{footer}</Footer>
         {primaryAction !== undefined && fab ? <PrimaryAction {...primaryAction} /> : null}
-      </KeyboardAvoidingView>
+      </KeyboardViewport>
     </ScreenContext.Provider>
   );
 }

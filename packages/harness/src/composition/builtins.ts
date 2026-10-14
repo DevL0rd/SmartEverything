@@ -1,0 +1,158 @@
+import type { HarnessHost } from '../host/contracts';
+import type {
+  HarnessDesiredConfiguration,
+  HarnessDesiredEntry,
+  InstalledHarnessPlugin,
+} from './configuration';
+import { mountCodeIndexer } from './indexer';
+import { mountNativeSkills } from './skills';
+import {
+  HARNESS_CODEGRAPH_METADATA,
+  HARNESS_SKILLS_METADATA,
+  HARNESS_BROWSER_METADATA,
+} from './builtin-metadata';
+import { mountHeadlessBrowser } from './browser';
+import type { HarnessSkillAssets } from './skill-assets';
+import { HarnessRuntimeError } from '../host/errors';
+import { HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
+
+export const HARNESS_CODEGRAPH_PACKAGE = '@smarteverything/harness-codegraph';
+export const HARNESS_CODEGRAPH_VERSION = '0.1.6-smarteverything.2';
+export const HARNESS_SKILLS_PACKAGE = '@smarteverything/harness-skills';
+export const HARNESS_SKILLS_VERSION = '0.2.1-alpha.2';
+export const HARNESS_BROWSER_PACKAGE = '@smarteverything/harness-browser';
+export const HARNESS_BROWSER_VERSION = '0.2.1-alpha.2';
+const PRE_BROWSER_DEFAULT_REVISION = 'builtin-indexer-skills-v3-native-value-imports';
+const DEFAULT_REVISION = 'builtin-indexer-skills-browser-v1';
+
+export function installedHarnessBuiltins(
+  host: HarnessHost,
+  assets?: HarnessSkillAssets,
+): readonly InstalledHarnessPlugin[] {
+  return [
+    {
+      package: HARNESS_CODEGRAPH_PACKAGE,
+      version: HARNESS_CODEGRAPH_VERSION,
+      provenance: HARNESS_CODEGRAPH_METADATA.provenance,
+      metadata: HARNESS_CODEGRAPH_METADATA,
+      platforms: ['linux'],
+      serverSafe: false,
+      mount: mountCodeIndexer,
+    },
+    installedSkills(host, assets),
+    {
+      package: HARNESS_BROWSER_PACKAGE,
+      version: HARNESS_BROWSER_VERSION,
+      provenance: HARNESS_BROWSER_METADATA.provenance,
+      metadata: HARNESS_BROWSER_METADATA,
+      platforms: ['linux'],
+      serverSafe: false,
+      features: ['browser', 'mcp'],
+      mount: (ctx, config): ReturnType<InstalledHarnessPlugin['mount']> => {
+        if (host.target.kind === 'server' || host.platform !== 'linux')
+          throw new HarnessRuntimeError(
+            'capability_unsupported',
+            'Headless browser is available only on a local Linux execution computer.',
+          );
+        return mountHeadlessBrowser(ctx, config);
+      },
+    },
+  ];
+}
+
+export function defaultHarnessBuiltins(): HarnessDesiredConfiguration {
+  return {
+    revision: DEFAULT_REVISION,
+    entries: [
+      {
+        id: 'codegraph',
+        package: HARNESS_CODEGRAPH_PACKAGE,
+        version: HARNESS_CODEGRAPH_VERSION,
+        enabled: true,
+        config: {},
+        metadata: HARNESS_CODEGRAPH_METADATA,
+      },
+      {
+        id: 'skills',
+        package: HARNESS_SKILLS_PACKAGE,
+        version: HARNESS_SKILLS_VERSION,
+        enabled: true,
+        config: {},
+        metadata: HARNESS_SKILLS_METADATA,
+      },
+      browserDefault(),
+    ],
+  };
+}
+
+export function upgradeHarnessBuiltins(
+  current: HarnessDesiredConfiguration,
+): HarnessDesiredConfiguration {
+  if (
+    current.revision !== PRE_BROWSER_DEFAULT_REVISION ||
+    current.entries.some(
+      (entry) => entry.id === 'browser' || entry.package === HARNESS_BROWSER_PACKAGE,
+    )
+  )
+    return current;
+  return { revision: DEFAULT_REVISION, entries: [...current.entries, browserDefault()] };
+}
+
+function browserDefault(): HarnessDesiredEntry {
+  return {
+    id: 'browser',
+    package: HARNESS_BROWSER_PACKAGE,
+    version: HARNESS_BROWSER_VERSION,
+    enabled: true,
+    config: {},
+    metadata: HARNESS_BROWSER_METADATA,
+  };
+}
+
+function installedSkills(
+  host: HarnessHost,
+  assets: HarnessSkillAssets | undefined,
+): InstalledHarnessPlugin {
+  return {
+    package: HARNESS_SKILLS_PACKAGE,
+    version: HARNESS_SKILLS_VERSION,
+    provenance: HARNESS_SKILLS_METADATA.provenance,
+    metadata: HARNESS_SKILLS_METADATA,
+    platforms: ['linux'],
+    serverSafe: false,
+    mount: (ctx, config) => mountNativeSkills(ctx, host, config),
+    resolve: (entry) => resolveSkills(host, assets, entry),
+  };
+}
+
+async function resolveSkills(
+  host: HarnessHost,
+  assets: HarnessSkillAssets | undefined,
+  entry: HarnessDesiredEntry,
+): Promise<InstalledHarnessPlugin> {
+  if (
+    entry.metadata === undefined ||
+    JSON.stringify({ ...entry.metadata, skill_assets: [] }) !==
+      JSON.stringify(HARNESS_SKILLS_METADATA)
+  )
+    throw new HarnessRuntimeError(
+      'composition_incompatible',
+      'Desired native skill metadata differs from the pinned artifact.',
+    );
+  if (entry.metadata.skill_assets.length === 0) return installedSkills(host, assets);
+  if (assets === undefined)
+    throw new HarnessRuntimeError(
+      'runtime_unavailable',
+      'Immutable skill asset source is unavailable on this host.',
+    );
+  const acquired = await assets.acquireAll(entry.metadata.skill_assets);
+  const metadata = HARNESS_PLUGIN_METADATA.parse({
+    ...HARNESS_SKILLS_METADATA,
+    skill_assets: acquired.map((asset) => asset.asset),
+  });
+  return {
+    ...installedSkills(host, assets),
+    metadata,
+    mount: (ctx, config) => mountNativeSkills(ctx, host, config, acquired),
+  };
+}

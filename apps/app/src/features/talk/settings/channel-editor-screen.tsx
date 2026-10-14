@@ -242,7 +242,8 @@ function ChannelById({ channelId }: { readonly channelId: string }): ReactNode {
 }
 
 export function ChannelEditorScreen(): ReactNode {
-  const params = PARAMS.safeParse(useLocalSearchParams());
+  const route = useLocalSearchParams<{ channelId?: string; page?: string[] }>();
+  const params = PARAMS.safeParse({ channelId: route.channelId ?? route.page?.[2] });
   if (!params.success || params.data.channelId === 'new') {
     return <NewChannel />;
   }

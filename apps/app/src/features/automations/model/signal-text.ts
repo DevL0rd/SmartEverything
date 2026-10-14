@@ -1,5 +1,8 @@
 import {
+  EVENT_KINDS,
   SIGNAL_SOURCES,
+  cameraDetectionOf,
+  eventLabel,
   kindSpecOf,
   type Comparison,
   type JsonValue,
@@ -91,14 +94,41 @@ function sourceLabel(source: string): string {
   return SIGNAL_SOURCES.find((spec) => spec.source === source)?.label ?? source;
 }
 
+function signalLabel(trigger: SignalTrigger): string {
+  const eventKind = EVENT_KINDS.find((kind) => kind === trigger.kind);
+  return trigger.source === 'event' && eventKind !== undefined
+    ? eventLabel(eventKind, trigger.match)
+    : (kindSpecOf(SIGNAL_SOURCES, trigger)?.label ?? trigger.kind);
+}
+
+function matchText(trigger: SignalTrigger): string {
+  const spec = kindSpecOf(SIGNAL_SOURCES, trigger);
+  const eventKind = EVENT_KINDS.find((kind) => kind === trigger.kind);
+  const detection =
+    trigger.source === 'event' && eventKind !== undefined
+      ? cameraDetectionOf(eventKind, trigger.match)
+      : null;
+  const parts = Object.entries(trigger.match).flatMap(([key, value]) => {
+    if (key === 'detection' && detection !== null) {
+      return [];
+    }
+    const entry = spec?.match.find((candidate) => candidate.key === key);
+    const text =
+      typeof value === 'string' ? (entry?.valueLabels?.[value] ?? value) : JSON.stringify(value);
+    return [`${entry?.label ?? key}: ${text}`];
+  });
+  return parts.length === 0 ? '' : ` matching ${parts.join(', ')}`;
+}
+
 export function signalText(trigger: SignalTrigger, subjectName: string | null): string {
   const kind = kindSpecOf(SIGNAL_SOURCES, trigger);
   const field = signalFieldOf(trigger);
-  const label = kind?.label ?? trigger.kind;
+  const label = signalLabel(trigger);
   const whose = subjectName === null ? '' : ` for ${subjectName}`;
+  const matching = matchText(trigger);
   if (kind?.pulse === true) {
-    return pulseText(label, field, whose);
+    return `${pulseText(label, field, whose)}${matching}`;
   }
   const amount = comparisonPhrase(trigger.comparison, field?.unit ?? null);
-  return `${sourceLabel(trigger.source)}: ${field?.label ?? label}${whose} ${amount}`;
+  return `${sourceLabel(trigger.source)}: ${field?.label ?? label}${whose} ${amount}${matching}`;
 }

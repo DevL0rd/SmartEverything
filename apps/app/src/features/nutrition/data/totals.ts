@@ -1,7 +1,8 @@
-import type { HealthMetric } from '@smarteverything/domain';
+import { hydrationAmounts, type HealthMetric } from '@smarteverything/domain';
 import { useStoreSelector } from '../../../store/store-context';
 import { MACROS } from '../model/macros';
 import { shiftDay } from '../../../format/time';
+import { useDayRecords } from './day-log';
 
 export type DayTotals = Readonly<Partial<Record<HealthMetric, number>>>;
 
@@ -18,7 +19,8 @@ function sameTotals(left: DayTotals, right: DayTotals): boolean {
 }
 
 export function useDayTotals(day: string): DayTotals {
-  return useStoreSelector((state) => {
+  const records = useDayRecords(day).data;
+  const totals = useStoreSelector((state) => {
     const totals: Partial<Record<HealthMetric, number>> = {};
     const table = state.tables.health_daily;
     for (const id of table.ids) {
@@ -29,6 +31,12 @@ export function useDayTotals(day: string): DayTotals {
     }
     return totals;
   }, sameTotals);
+  return records === undefined
+    ? totals
+    : {
+        ...totals,
+        hydration: hydrationAmounts(records).reduce((sum, liters) => sum + liters, 0),
+      };
 }
 
 export function useRecentMetric(day: string, days: number, metric: HealthMetric): boolean {

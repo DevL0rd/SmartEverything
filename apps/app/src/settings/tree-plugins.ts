@@ -17,7 +17,7 @@ export const PLUGIN_PAGES: readonly SettingsPageDefinition[] = [
     parent: null,
     group: 'Connections',
     summary: pluginsSummary,
-    keywords: ['plugin', 'extension', 'add-on', 'mcp server', 'integrations', 'discordinator'],
+    keywords: ['plugin', 'extension', 'add-on', 'mcp server', 'integrations'],
     visible: ownerOnly,
   },
   {

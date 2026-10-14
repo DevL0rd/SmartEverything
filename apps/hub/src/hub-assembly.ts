@@ -1,3 +1,5 @@
+import { preparePassiveAdapter } from './local/passive-adapter';
+import { withEffectAuthority } from './harness/effect-authority';
 import {
   isPrivate,
   privacySwitchOf,
@@ -8,6 +10,11 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { StoredAccount } from './adapters/contract';
 import { ActionRunner } from './automations/actions';
+import {
+  finishAutomationCommands,
+  submitAutomationCommands,
+} from './automations/command-submission';
+import { admitManualAutomation } from './automations/manual-run';
 import { AutomationAiSlot } from './automations/automation-ai';
 import { AutomationEngine, type AutomationRun } from './automations/engine';
 import { CameraService, type CameraConditions } from './cameras/camera-service';
@@ -56,6 +63,7 @@ export interface Core {
 interface ActionLinks {
   readonly engine: () => AutomationEngine;
   readonly ai: AutomationAiSlot;
+  readonly waitForCommands?: boolean;
 }
 
 export function reportFailure(log: Logger, event: string): (cause: unknown) => void {
@@ -115,11 +123,14 @@ function assembleActions(
   links: ActionLinks,
 ): ActionRunner {
   return new ActionRunner({
+    withOrigin: (origin, work) =>
+      withEffectAuthority(parts.store, 'automation', origin.automationId, work),
     store: parts.database,
-    submit: (rows): void => {
-      for (const row of rows) {
-        void executor.run(row);
+    submit: (rows): void | Promise<void> => {
+      if (links.waitForCommands === true) {
+        return finishAutomationCommands(parts.store, parts.clock, executor, rows);
       }
+      submitAutomationCommands(executor, rows);
     },
     sceneActions: (sceneId): readonly CommandAction[] | undefined =>
       links.engine().sceneActions(sceneId),
@@ -179,12 +190,18 @@ function assembleEngine(
     engine: () => engine,
     ai: links.automationAi,
   });
+  const manualActions = assembleActions(parts, writers.events, executor, {
+    engine: () => engine,
+    ai: links.automationAi,
+    waitForCommands: true,
+  });
   const engine: AutomationEngine = new AutomationEngine({
     store: parts.database,
     recordRun: (run): void => {
       recordAutomationRun(writers.events, run);
     },
-    actions: () => actions,
+    actions: (waitForCommands) => (waitForCommands === true ? manualActions : actions),
+    admitManual: (definition) => admitManualAutomation(parts.store, definition),
     valueOf: (deviceId, capability) => writers.state.valueOf(deviceId, capability),
     forecast: () => parts.store.weather.read().forecast,
     armers: [],
@@ -209,6 +226,9 @@ export function assemble(parts: HubParts): Core {
   const signals = new SignalBus({ log: areaOf(parts, 'signals') });
   const writers = assembleWriters(parts, cameras, signals);
   const providers = new ProviderManager({
+    prepareAdapter: (adapter): void => {
+      preparePassiveAdapter(adapter, parts);
+    },
     ...writers,
     registry: parts.registry,
     secrets: parts.secrets,

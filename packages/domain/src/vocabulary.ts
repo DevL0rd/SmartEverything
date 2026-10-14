@@ -10,6 +10,8 @@ export {
 } from './capability-presentation';
 export { AIR_BANDS, AIR_BAND_LABELS, airBand } from './presentation/air';
 export { isPrivate, privacySwitchOf } from './presentation/camera-privacy';
+export { readPresentedColor, writePresentedColor } from './presentation/color';
+export { hsvToPackedRgb, packedRgbToHsv } from './color';
 export type { PrivacySwitch } from './presentation/camera-privacy';
 export type { AirBand } from './presentation/air';
 export { dangerOf } from './presentation/danger';
@@ -34,6 +36,7 @@ export type {
   PresentedCapability,
   BooleanStates,
   ClockText,
+  ColorEncoding,
 } from './presentation/types';
 
 export {
@@ -50,7 +53,12 @@ export {
 } from './device-kinds';
 export type { NamedDevice, NamedRoom } from './device-kinds';
 
-export { EVENT_KIND_LABELS } from './event-labels';
+export {
+  CAMERA_DETECTION_PRESENTATIONS,
+  EVENT_KIND_LABELS,
+  eventKeywords,
+  eventLabel,
+} from './event-labels';
 
 export {
   ADDABLE_PROVIDERS,
@@ -76,7 +84,6 @@ export {
   CALL_FACINGS,
   CALL_RING_PREF,
   CAMERAS_PREF,
-  CAMERA_AWAY_MODES,
   CLIENT_PREFS,
   CLIENT_PREF_KEYS,
   CORNER_STYLES,

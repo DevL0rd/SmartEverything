@@ -9,23 +9,29 @@ import {
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
+import { assertEngineStorageCompatible } from './engine-compatibility';
 import { flag, jsonText } from '../sql';
+import { UNKNOWN_COST_SQL } from '../../ledger/usage-queries';
+import { removeStoredChat } from './ai-chat-removal';
+import { subagentChatIds } from './ai-chat-descendants';
+import type { NewChat } from './ai-chat-input';
+import { assertSubagentCreation, holdChatTree, assertChatWork } from './ai-chat-removal-hold';
 
 const STORED_CHAT = storedRow(AI_CHAT_ROW, {
   json: ['engine', 'tools', 'origin'],
-  flags: ['pinned'],
-  nullableFlags: ['web_search'],
+  flags: ['pinned', 'cost_incomplete'],
 });
 
 const STORED_COLUMNS =
-  'id, profile_id, kind, title, icon, parent_id, source_key, engine, tools, web_search, pinned, archived_at, cost_micros, read_at, context_percent, branch_message_id, last_message_at, created_at, updated_at';
+  'id, profile_id, kind, title, icon, parent_id, source_key, engine, tools, pinned, archived_at, cost_micros, read_at, context_percent, branch_message_id, last_message_at, created_at, updated_at';
 
 const INCOMING_SQL = `((m.role = 'responder' and m.kind in ('text', 'update') and m.state is not 'working')
   or (m.role = 'person' and json_extract(m.origin, '$.source') not in ('app', 'voice')
       and not (json_extract(m.origin, '$.source') = 'plugin'
                and coalesce(json_extract(m.origin, '$.requester'), '') = 'owner')))`;
 
-const CHAT_COLUMNS = `${STORED_COLUMNS},
+const CHAT_COLUMNS = `${STORED_COLUMNS}, deletion_state, deletion_error,
+  exists(select 1 from ai_usage where chat_id = ai_chats.id and ${UNKNOWN_COST_SQL}) as cost_incomplete,
   (select m.origin from assistant_messages m
    where m.chat_id = ai_chats.id and m.origin is not null
    order by m.created_at, m.rowid limit 1) as origin,
@@ -43,18 +49,7 @@ const SETTING = storedRow(z.strictObject({ settings: z.record(z.string(), z.unkn
   json: ['settings'],
 });
 
-export interface NewChat {
-  readonly profileId: string;
-  readonly kind: AiChatKind;
-  readonly title: string;
-  readonly icon: string | null;
-  readonly parentId: string | null;
-  readonly sourceKey: string | null;
-  readonly engine: Engine;
-  readonly tools?: readonly string[] | null;
-  readonly branchMessageId?: string | null;
-  readonly titleAuto?: boolean;
-}
+export type { NewChat } from './ai-chat-input';
 
 export interface ChatQuery {
   readonly profileId: string;
@@ -187,13 +182,15 @@ export class AiChatsRepository {
   }
 
   create(input: NewChat): AiChatRow {
+    assertSubagentCreation(this.context, input);
+    assertEngineStorageCompatible(input.engine);
     return this.context.write(() => {
       const id = this.context.newId();
       const now = this.context.now();
       this.context.sql.run(
         'add the AI chat',
         `insert into ai_chats (${STORED_COLUMNS}, title_auto)
-         values ($id, $profile, $kind, $title, $icon, $parent, $source, $engine, $tools, null, 0, null, 0,
+         values ($id, $profile, $kind, $title, $icon, $parent, $source, $engine, $tools, 0, null, 0,
                  null, null, $branch, null, $now, $now, $auto)`,
         {
           id,
@@ -217,6 +214,7 @@ export class AiChatsRepository {
   }
 
   update(id: string, change: AiChatChange): AiChatRow {
+    if (change.engine !== undefined) assertEngineStorageCompatible(change.engine);
     return this.context.write(() => {
       const before = this.chat(id);
       const set = assignments({
@@ -224,7 +222,6 @@ export class AiChatsRepository {
         title_auto: change.title === undefined ? undefined : flag(false),
         icon: change.icon,
         pinned: change.pinned === undefined ? undefined : flag(change.pinned),
-        web_search: change.web_search === undefined ? undefined : flag(change.web_search),
         archived_at: archivedAt(change.archived, this.context.now()),
         engine: change.engine === undefined ? undefined : jsonText(change.engine),
         tools:
@@ -359,12 +356,30 @@ export class AiChatsRepository {
     });
   }
 
-  remove(id: string): void {
+  deletion(ids: readonly string[], state: 'deleting' | 'failed', error: string | null): void {
     this.context.write(() => {
-      const before = this.chat(id);
-      this.context.sql.run('remove the AI chat', 'delete from ai_chats where id = $id', { id });
-      this.context.changed('ai_chats', 'DELETE', null, before);
+      for (const id of ids) {
+        const before = this.chat(id);
+        this.context.sql.run(
+          'record synchronous chat deletion state',
+          'update ai_chats set deletion_state=$state,deletion_error=$error where id=$id',
+          { id, state, error },
+        );
+        this.context.changed('ai_chats', 'UPDATE', this.chat(id), before);
+      }
     });
+  }
+  assertWorkAllowed(id: string): void {
+    assertChatWork(this.context, id);
+  }
+  holdRemoval(ids: readonly string[], work: () => Promise<void>): Promise<void> {
+    return holdChatTree(this.context, ids, work);
+  }
+  removalIds(id: string): string[] {
+    return subagentChatIds(this.context, id);
+  }
+  remove(id: string): void {
+    removeStoredChat(this.context, this.chat(id), (chatId) => this.chat(chatId));
   }
 
   setting(key: string): Readonly<Record<string, unknown>> | null {

@@ -1,3 +1,4 @@
+import { captureNativeServerEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { HEALTH_RECORD_TYPE, type HealthRecordType } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -58,12 +59,12 @@ declare class HealthConnectNative extends NativeModule<HealthConnectEvents> {
   deliverEntries(): Promise<unknown>;
   startScaleRelay(): Promise<unknown>;
   stopScaleRelay(): Promise<void>;
-  configureScaleRelay(serverUrl: string, token: string): Promise<void>;
+  configureScaleRelay(serverUrl: string, token: string, enrollment?: string): Promise<void>;
   healthConnectConfigured(): Promise<unknown>;
   scaleRelayStatus(): Promise<unknown>;
   startScaleLiveScan(): Promise<void>;
   stopScaleLiveScan(): Promise<void>;
-  syncWatches(serverUrl: string, token: string): Promise<unknown>;
+  syncWatches(serverUrl: string, token: string, enrollment?: string): Promise<unknown>;
   startWatches(): Promise<void>;
   runPushCommand(command: string, payloadJson: string): Promise<void>;
   pauseWatch(deviceId: string, paused: boolean): Promise<void>;
@@ -189,7 +190,10 @@ export async function healthConnectConfigured(): Promise<boolean> {
 }
 
 export async function configureScaleRelay(serverUrl: string, token: string): Promise<void> {
-  await nativeFor('configureScaleRelay').configureScaleRelay(serverUrl, token);
+  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
+  const source = nativeFor('configureScaleRelay');
+  if (enrollment === null) await source.configureScaleRelay(serverUrl, token);
+  else await source.configureScaleRelay(serverUrl, token, enrollment);
 }
 
 export async function startScaleRelay(): Promise<number> {

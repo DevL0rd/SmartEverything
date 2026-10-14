@@ -1,6 +1,6 @@
 import type { Migration } from './index';
 
-export const RESERVED_MIGRATION_VERSIONS: readonly number[] = [37];
+export const RESERVED_MIGRATION_VERSIONS: readonly number[] = [37, 57, 59];
 
 class MigrationOrderError extends Error {
   override readonly name = 'MigrationOrderError';

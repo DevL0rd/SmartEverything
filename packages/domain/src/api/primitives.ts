@@ -90,3 +90,14 @@ export const NOTHING = z.strictObject({});
 export const DONE = z.strictObject({ ok: z.literal(true) });
 
 export type Done = z.infer<typeof DONE>;
+
+export function knownResponseStrings<T extends string>(
+  item: z.ZodType<T>,
+): z.ZodPipe<z.ZodArray<z.ZodString>, z.ZodTransform<T[], string[]>> {
+  return z.array(z.string()).transform((values): T[] =>
+    values.flatMap((value) => {
+      const parsed = item.safeParse(value);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
+}

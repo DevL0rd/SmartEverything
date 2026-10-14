@@ -1,3 +1,4 @@
+import { deviceCardOf } from '../../../plugins/device-contributions';
 import type { ReactNode } from 'react';
 import { Card } from '../../../components/card';
 import type { Device } from '../../../store/state';
@@ -13,6 +14,8 @@ const NO_EXCLUSIONS = new Set<never>();
 
 export function Hero({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
+  const card = deviceCardOf(device);
+  if (card?.hero !== undefined) return card.hero(device);
   if (model.family === 'scale') {
     return <ScaleHero device={device} />;
   }

@@ -1,146 +1,61 @@
 import {
   API_ENDPOINTS as E,
+  AI_PREVIEW_CAPABILITY,
+  AI_ENGINE_CAPABILITY,
+  AI_ENGINE_CAPABILITY_V2,
+  AI_HARNESS_CAPABILITY,
+  HARNESS_CONFIGURATION_NOTICE_CAPABILITY,
   LIVE_TABLES,
   type LiveChange,
   type LiveMessage,
-  type LiveStream,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api, connectionRefused, type ServerConnection } from '../api/transport';
-import { withFrame, withSnapshot } from './chat-turns';
-import { runPushCommand } from '../../modules/health-connect';
-import { deliverAiSpeech } from './ai-speech-requests';
-import { appPlatform } from '../design/platform';
+import { noticeTo } from './live-notices';
+import { routeFeatureNotice } from './live-feature-notices';
+import { platformStreams } from './live-streams';
 import type { EntityStore } from './entity-store';
 import { notify } from '../components/toast-store';
 import { UnreadableChangeError } from './live-reducers';
 import { TOKEN_WITHDRAWN, backoffOf, openLiveSocket, type Received } from './live-socket';
+import {
+  clearServerCapabilities,
+  serverSupportsComputerAi,
+  serverSupportsComputerAiV2,
+  serverSupportsAiHarness,
+} from '../api/connection/server-capabilities';
 import { rawErrorText } from '../format/errors';
+import type { LiveSyncHooks } from './live-sync-hooks';
+export type { LiveSyncHooks } from './live-sync-hooks';
+import { routeFor } from '../api/connection/active-route';
+import { followLiveRouteReadiness } from './live-route-readiness';
+import { deployed } from './live-deployment';
+export { awaitingHubDeploy } from './live-deployment';
 
 const log = new Logger('app.live');
-
 const SNAPSHOT_ROOTS: readonly string[] = ['tables', 'owner'];
-
 export const LINK_DEADLINE_MS = 20_000;
-
-export interface LiveSyncHooks {
-  readonly onChanges: (changes: readonly LiveChange[]) => void;
-  readonly onProfileChanged: () => void;
-}
-
 type Phase = 'closed' | 'buffering' | 'live';
-
-const AWAITING_HUB_DEPLOY: ReadonlySet<string> = new Set<string>([]);
-
-export function awaitingHubDeploy(name: string): boolean {
-  return AWAITING_HUB_DEPLOY.has(name);
-}
-
-function deployed<T extends string>(names: readonly T[]): T[] {
-  return names.filter((name) => !AWAITING_HUB_DEPLOY.has(name));
-}
-
-function platformStreams(): readonly LiveStream[] {
-  return appPlatform() === 'desktop' ? ['service_log', 'talk', 'assistant'] : ['talk', 'assistant'];
-}
-
-type Notice = Exclude<LiveMessage, { type: 'change' | 'subscribed' | 'profile_changed' }>;
-
-type NoticeMap = { readonly [K in Notice['type']]: Extract<Notice, { readonly type: K }> };
-
-type NoticeHandler<K extends Notice['type']> = (store: EntityStore, message: NoticeMap[K]) => void;
-
-function setHub(store: EntityStore, message: NoticeMap['ready' | 'presence']): void {
-  store.update((state) => ({ ...state, hub: message.hub }));
-}
-
-const NOTICES: { readonly [K in Notice['type']]: NoticeHandler<K> } = {
-  ready: setHub,
-  presence: setHub,
-  firewall: (store, message) => {
-    store.update((state) => ({ ...state, firewall: message.firewall }));
-  },
-  refused: (store, message) => {
-    log.warn('live.refused', { code: message.error.code, reason: message.error.message });
-    store.setSync({ status: 'refused', problem: message.error.message });
-  },
-  mcp_consent: (store, message) => {
-    store.update((state) => ({
-      ...state,
-      consentRequests: [
-        ...state.consentRequests.filter((request) => request.id !== message.request.id),
-        message.request,
-      ],
-    }));
-  },
-  mcp_consent_closed: (store, message) => {
-    store.update((state) => ({
-      ...state,
-      consentRequests: state.consentRequests.filter((request) => request.id !== message.id),
-    }));
-  },
-  smartthings_webhook: (store, message) => {
-    store.update((state) => ({ ...state, smartthingsWebhook: message.webhook }));
-  },
-  service_log: (store, message) => {
-    store.appendLog(message.lines);
-  },
-  talk_floors: (store, message) => {
-    store.update((state) => ({
-      ...state,
-      talkPresence: { floors: message.floors, online: message.online },
-    }));
-  },
-  assistant_status: (store, message) => {
-    store.update((state) => ({ ...state, assistant: message.status }));
-  },
-  chat_activity: (store, message) => {
-    store.update((state) => ({ ...state, turns: withSnapshot(state.turns, message) }));
-  },
-  chat_stream: (store, message) => {
-    store.update((state) => ({ ...state, turns: withFrame(state.turns, message) }));
-  },
-  ai_speech: (_store, message) => {
-    log.info('live.ai_speech', { listeners: deliverAiSpeech(message) });
-  },
-  push_command: (_store, message) => {
-    runPushCommand(message.command, JSON.stringify(message.payload)).catch((error: unknown) => {
-      log.error('live.push_command_failed', error, { command: message.command });
-    });
-  },
-  watch_action: (_store, message) => {
-    log.warn('live.legacy_watch_action_ignored', { requestId: message.requestId });
-  },
-  claude_session: claudeNoticeNotShown,
-  claude_session_gone: claudeNoticeNotShown,
-  claude_thread: claudeNoticeNotShown,
-  claude_status: claudeNoticeNotShown,
-};
-
-function claudeNoticeNotShown(): void {
-  return undefined;
-}
-
-function noticeTo<K extends Notice['type']>(
-  store: EntityStore,
-  type: K,
-  message: NoticeMap[K],
-): void {
-  const handle: NoticeHandler<K> = NOTICES[type];
-  handle(store, message);
-}
+type ActivityNotice = Extract<LiveMessage, { type: 'chat_activity' | 'chat_stream' }>;
 
 export class LiveSync {
+  private retryRoute: (() => boolean) | null = null;
+  private stopRoute: (() => void) | null = null;
+  private socketRun = 0;
   private stopSocket: (() => void) | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private deadline: ReturnType<typeof setTimeout> | null = null;
   private attempt = 0;
   private phase: Phase = 'closed';
   private buffer: LiveChange[] = [];
+  private activityBuffer: ActivityNotice[] = [];
   private batch: LiveChange[] = [];
   private snapshotRun = 0;
   private outdated: ReadonlySet<string> = new Set();
   private suspended = false;
+  private computerAiAdvertised = false;
+  private computerAiV2Advertised = false;
+  private harnessAdvertised = false;
 
   constructor(
     private readonly connection: ServerConnection,
@@ -149,10 +64,39 @@ export class LiveSync {
   ) {}
 
   start(): void {
-    this.open();
+    const manager = routeFor(this.connection);
+    let generation = manager.state.get().generation;
+    this.stopRoute = manager.state.subscribe(() => {
+      const next = manager.state.get().generation;
+      if (next === generation || this.suspended || !manager.running) return;
+      generation = next;
+      this.stopSocket?.();
+      this.socketRun += 1;
+      this.snapshotRun += 1;
+      if (this.retry !== null) clearTimeout(this.retry);
+      this.retry = null;
+      this.open();
+    });
+    this.retryRoute = followLiveRouteReadiness(manager, {
+      generation: (): number => this.socketRun,
+      active: (): boolean => !this.suspended && this.stopRoute !== null,
+      ready: (): void => {
+        this.open();
+      },
+      failed: (error): void => {
+        log.error('live.route_failed', error);
+        this.store.setSync({ status: 'interrupted', problem: rawErrorText(error) });
+      },
+    });
   }
 
   stop(): void {
+    this.retryRoute = null;
+    this.stopRoute?.();
+    this.stopRoute = null;
+    this.socketRun += 1;
+    this.batch = [];
+    this.activityBuffer = [];
     if (this.retry !== null) {
       clearTimeout(this.retry);
       this.retry = null;
@@ -165,9 +109,7 @@ export class LiveSync {
   }
 
   suspend(): void {
-    if (this.suspended) {
-      return;
-    }
+    if (this.suspended) return;
     this.suspended = true;
     this.attempt = 0;
     this.stop();
@@ -176,28 +118,39 @@ export class LiveSync {
   }
 
   resume(): boolean {
-    if (!this.suspended) {
-      return false;
-    }
+    if (!this.suspended) return false;
     this.suspended = false;
     log.info('live.resumed');
-    this.open();
+    routeFor(this.connection).refresh();
+    this.start();
     return true;
   }
 
   online(): void {
+    if (!this.suspended && this.retryRoute?.() === true) return;
     if (!this.suspended && this.retry !== null) {
       clearTimeout(this.retry);
       this.open();
     }
   }
 
+  refresh(): void {
+    if (this.suspended || this.phase !== 'live') return;
+    this.resnapshot(this.store.get().sync.problem);
+  }
+
   private open(): void {
+    this.socketRun += 1;
+    const socketRun = this.socketRun;
     this.retry = null;
     this.phase = 'buffering';
     this.buffer = [];
+    this.activityBuffer = [];
     this.store.setSync({ status: this.store.get().loaded ? 'interrupted' : 'connecting' });
     this.armDeadline();
+    this.computerAiAdvertised = serverSupportsComputerAi(this.connection.url);
+    this.computerAiV2Advertised = serverSupportsComputerAiV2(this.connection.url);
+    this.harnessAdvertised = serverSupportsAiHarness(this.connection.url);
     this.stopSocket = openLiveSocket(
       {
         url: this.connection.url,
@@ -206,6 +159,17 @@ export class LiveSync {
           type: 'subscribe',
           tables: deployed(LIVE_TABLES),
           streams: deployed(platformStreams()),
+          capabilities: [
+            ...(this.computerAiAdvertised ? [AI_ENGINE_CAPABILITY] : []),
+            ...(this.computerAiV2Advertised ? [AI_ENGINE_CAPABILITY_V2] : []),
+            ...(this.harnessAdvertised
+              ? [
+                  AI_HARNESS_CAPABILITY,
+                  HARNESS_CONFIGURATION_NOTICE_CAPABILITY,
+                  AI_PREVIEW_CAPABILITY,
+                ]
+              : []),
+          ],
         },
       },
       {
@@ -213,10 +177,10 @@ export class LiveSync {
           log.debug('live.opened', { attempt: this.attempt });
         },
         onMessage: (received) => {
-          this.receive(received);
+          if (socketRun === this.socketRun) this.receive(received);
         },
         onClose: (code, reason) => {
-          this.closed(code, reason);
+          if (socketRun === this.socketRun) this.closed(code, reason);
         },
       },
     );
@@ -252,6 +216,8 @@ export class LiveSync {
       log.info('live.profile_changed', { profileId: message.profileId });
       this.phase = 'buffering';
       this.buffer = [];
+      this.activityBuffer = [];
+      this.store.setSync({ status: 'loading', problem: null });
       this.hooks.onProfileChanged();
       void this.loadSnapshot();
       return;
@@ -259,6 +225,14 @@ export class LiveSync {
     if (message.type === 'subscribed') {
       log.debug('live.subscribed', { tables: message.tables.length, seq: message.seq });
       void this.loadSnapshot();
+      return;
+    }
+    if (routeFeatureNotice(this.hooks, message, this.phase !== 'closed')) return;
+    if (
+      this.phase === 'buffering' &&
+      (message.type === 'chat_activity' || message.type === 'chat_stream')
+    ) {
+      this.activityBuffer.push(message);
       return;
     }
     noticeTo(this.store, message.type, message);
@@ -270,9 +244,7 @@ export class LiveSync {
       return;
     }
     const seq = this.store.get().sync.seq;
-    if (seq !== null && change.seq <= seq) {
-      return;
-    }
+    if (seq !== null && change.seq <= seq) return;
     this.batch.push(change);
     if (this.batch.length === 1) {
       queueMicrotask(() => {
@@ -282,7 +254,7 @@ export class LiveSync {
   }
 
   private flush(): void {
-    const changes = this.batch;
+    const changes = this.phase === 'live' ? this.batch : [];
     this.batch = [];
     this.applyAll(changes);
   }
@@ -291,9 +263,7 @@ export class LiveSync {
     try {
       this.store.apply(changes);
     } catch (error) {
-      if (!(error instanceof UnreadableChangeError)) {
-        throw error;
-      }
+      if (!(error instanceof UnreadableChangeError)) throw error;
       log.warn('live.change_unreadable', { table: error.table, reason: error.reason });
       this.resnapshot(error.message);
       return;
@@ -301,11 +271,27 @@ export class LiveSync {
     this.hooks.onChanges(changes);
   }
 
-  private resnapshot(problem: string): void {
+  private resnapshot(problem: string | null): void {
     this.phase = 'buffering';
     this.buffer = [];
+    this.activityBuffer = [];
     this.store.setSync({ status: 'interrupted', problem });
     void this.loadSnapshot();
+  }
+
+  private upgradeComputerAi(): boolean {
+    const supported = serverSupportsComputerAi(this.connection.url);
+    const v2 = serverSupportsComputerAiV2(this.connection.url);
+    const harness = serverSupportsAiHarness(this.connection.url);
+    if (
+      this.computerAiAdvertised === supported &&
+      this.computerAiV2Advertised === v2 &&
+      this.harnessAdvertised === harness
+    )
+      return false;
+    this.stopSocket?.();
+    this.open();
+    return true;
   }
 
   private async loadSnapshot(): Promise<void> {
@@ -320,9 +306,8 @@ export class LiveSync {
         SNAPSHOT_ROOTS,
       );
       const snapshot = read.data;
-      if (run !== this.snapshotRun || this.phase === 'closed') {
-        return;
-      }
+      if (run !== this.snapshotRun || this.phase === 'closed') return;
+      if (this.upgradeComputerAi()) return;
       this.store.replace(snapshot);
       this.outdated = new Set(read.skipped);
       const replay = this.buffer.filter((change) => change.seq > snapshot.seq);
@@ -330,8 +315,10 @@ export class LiveSync {
       this.phase = 'live';
       this.clearDeadline();
       this.applyAll(replay);
+      this.replayActivity();
       this.attempt = 0;
       this.store.setSync({ status: 'live', problem: null, outdated: read.skipped });
+      this.hooks.onSynchronized?.();
       log.info('live.ready', { seq: snapshot.seq, replayed: replay.length });
       if (snapshot.session.client.role === 'owner') {
         this.loadConsents().catch((error: unknown) => {
@@ -344,9 +331,7 @@ export class LiveSync {
         });
       }
     } catch (error) {
-      if (run !== this.snapshotRun) {
-        return;
-      }
+      if (run !== this.snapshotRun) return;
       log.error('live.snapshot_failed', error);
       this.store.setSync({
         status: 'interrupted',
@@ -358,8 +343,15 @@ export class LiveSync {
   }
 
   private async loadConsents(): Promise<void> {
+    const run = this.snapshotRun;
     const requests = await api().call(E.listMcpConsents, {});
-    this.store.update((state) => ({ ...state, consentRequests: requests }));
+    if (run === this.snapshotRun && this.phase !== 'closed')
+      this.store.update((state) => ({ ...state, consentRequests: requests }));
+  }
+
+  private replayActivity(): void {
+    for (const notice of this.activityBuffer) noticeTo(this.store, notice.type, notice);
+    this.activityBuffer = [];
   }
 
   private armDeadline(): void {
@@ -385,6 +377,7 @@ export class LiveSync {
   }
 
   private closed(code: number, reason: string): void {
+    clearServerCapabilities(this.connection.url);
     this.clearDeadline();
     if (this.retry !== null) {
       clearTimeout(this.retry);

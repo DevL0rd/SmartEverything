@@ -153,7 +153,7 @@ function ClipView({
       ? recording.kind === 'clip'
         ? 'Clip'
         : 'Snapshot'
-      : eventLook(event.kind).label;
+      : eventLook(event.kind, event.details).label;
   const subtitle = joinParts([
     cameraName,
     moment(recording.started_at, now, timeZone),

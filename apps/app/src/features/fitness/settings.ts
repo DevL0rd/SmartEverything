@@ -6,6 +6,7 @@ import {
   effectiveFitnessGoals,
   type FitnessGoalKey,
 } from '@smarteverything/domain';
+import { href } from '../../app-shell/hrefs';
 import type { SettingDefinition, SettingEnv, StepperSetting } from '../../settings/types';
 import { activeProfileIn } from '../../store/people';
 import { writeFitnessSettings } from './data/settings-write';
@@ -53,6 +54,28 @@ function goalSetting(key: FitnessGoalKey): StepperSetting {
 }
 
 export const SETTINGS: readonly SettingDefinition[] = [
+  {
+    id: 'health.browse',
+    page: 'health',
+    section: 'Health data',
+    title: 'All health data',
+    icon: 'list',
+    keywords: ['browse', 'records', 'all health data'],
+    scope: 'server',
+    control: 'link',
+    href: href.fitnessPage('browse'),
+  },
+  {
+    id: 'health.log',
+    page: 'health',
+    section: 'Health data',
+    title: 'Log health data',
+    icon: 'plus',
+    keywords: ['log', 'add', 'manual', 'record', 'measurement'],
+    scope: 'server',
+    control: 'link',
+    href: href.logHealth(),
+  },
   {
     id: 'health-connect',
     page: 'health',

@@ -134,7 +134,7 @@ export function startTalkListening(
         clock: wiring.clock,
       }),
       names: (): string[] => assistantNames(store),
-      keyPresent: (): boolean => links.voice.keys.current() !== null,
+      keyPresent: (): boolean => context.openRouter.keys.current() !== null,
       now: wiring.clock.now,
       heard: wakeTurn(context, wiring, pending),
       log: wiring.log.forArea('hub.talk'),

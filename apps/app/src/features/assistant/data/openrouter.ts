@@ -46,7 +46,6 @@ function keyChanged(client: QueryClient, status: OpenRouterStatus): OpenRouterSt
 
 export interface OpenRouterActions {
   readonly saveKey: (key: string) => Promise<OpenRouterStatus>;
-  readonly importKey: () => Promise<OpenRouterStatus>;
   readonly removeKey: () => Promise<OpenRouterStatus>;
   readonly setDefaults: (model: AiModelChoice, effort: AiEffort) => Promise<OpenRouterStatus>;
   readonly refresh: () => Promise<AiCatalogueSync>;
@@ -59,13 +58,6 @@ export function useOpenRouterActions(): OpenRouterActions {
     saveKey: async (key): Promise<OpenRouterStatus> => {
       const status = await api().call(M.setOpenRouterKey, { body: { key } });
       log.info('openrouter.key_saved', {});
-      return keyChanged(client, status);
-    },
-    importKey: async (): Promise<OpenRouterStatus> => {
-      const status = await api().call(M.importOpenRouterKey, {
-        body: { source: 'discordinator' },
-      });
-      log.info('openrouter.key_imported', { source: 'discordinator' });
       return keyChanged(client, status);
     },
     removeKey: async (): Promise<OpenRouterStatus> => {

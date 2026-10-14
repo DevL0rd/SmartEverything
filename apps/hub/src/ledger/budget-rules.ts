@@ -114,6 +114,8 @@ export function lowCreditsAlert(remainingUsd: number, settings: AiBudgetSettings
 
 function usedUp(name: string, period: AiBudgetPeriod): string[] {
   const limit = period.limit_micros;
+  if (limit !== null && (period.unknown_count ?? 0) > 0)
+    return [`${name} AI spend is incomplete because supplier costs are unavailable`];
   return limit !== null && period.spent_micros >= limit
     ? [`${name} ${money(limit)} budget is used up`]
     : [];

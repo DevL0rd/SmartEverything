@@ -1,13 +1,14 @@
 import { pid } from 'node:process';
 import { Logger } from '@smarteverything/logging';
 import { startServer, type RunningServer } from '../start';
+import { startNode } from '../node/bootstrap';
 import { HUB_VERSION } from '../version';
 import {
   RESTART_EXIT_CODE,
   RESTART_REQUEST_FILE,
   readServiceConfig,
-  type ServiceConfig,
   type ServiceRole,
+  type HubServiceConfig,
 } from './configuration';
 import {
   clearRequest,
@@ -28,7 +29,7 @@ export interface ServiceHost {
 }
 
 export interface RunningService {
-  readonly server: RunningServer;
+  readonly server: RunningServer | Awaited<ReturnType<typeof startNode>>;
   readonly shutdown: (code: number) => Promise<void>;
 }
 
@@ -43,7 +44,7 @@ export class RoleUnavailableError extends Error {
 }
 
 class Lifecycle {
-  server: RunningServer | null = null;
+  server: RunningServer | Awaited<ReturnType<typeof startNode>> | null = null;
   restart: RequestWatch | null = null;
   ready: ReadyFile | null = null;
   private stopping: Promise<void> | null = null;
@@ -75,7 +76,7 @@ class Lifecycle {
 
 function serverOptions(
   host: ServiceHost,
-  config: ServiceConfig,
+  config: HubServiceConfig,
   log: Logger,
   lifecycle: Lifecycle,
 ): Parameters<typeof startServer>[0] {
@@ -83,8 +84,16 @@ function serverOptions(
     dataDirectory: host.dataDirectory,
     logLines: lifecycle.files.logFile.lines,
     port: config.port,
+    ...(config.lan === undefined ? {} : { lan: config.lan }),
+    ...(config.preview === undefined ? {} : { preview: config.preview }),
     host: config.host,
     go2rtcBinary: config.go2rtcBinary,
+    codex: {
+      ...(config.codex_executable === undefined ? {} : { executable: config.codex_executable }),
+      ...(config.codex_control_socket === undefined
+        ? {}
+        : { controlSocket: config.codex_control_socket }),
+    },
     go2rtcApiPort: config.go2rtcApiPort,
     webrtcPort: config.webrtcPort,
     ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins }),
@@ -99,10 +108,6 @@ function serverOptions(
 export async function runService(host: ServiceHost): Promise<RunningService> {
   const logFile = await openLogFile(host.dataDirectory);
   const config = await readServiceConfig(host.dataDirectory);
-  if (config.role !== 'hub') {
-    await logFile.close();
-    throw new RoleUnavailableError(config.role);
-  }
   Logger.configure({
     level: config.logLevel,
     sink: logFile.sink,
@@ -112,7 +117,10 @@ export async function runService(host: ServiceHost): Promise<RunningService> {
   const pidFile = await writePidFile(host.dataDirectory, pid);
   const lifecycle = new Lifecycle(host, log, { logFile, pidFile });
   try {
-    const server = await startServer(serverOptions(host, config, log, lifecycle));
+    const server =
+      config.role === 'node'
+        ? await startNode({ dataDirectory: host.dataDirectory, config, log })
+        : await startServer(serverOptions(host, config, log, lifecycle));
     lifecycle.server = server;
     lifecycle.restart = await watchRestartRequests(host.dataDirectory, {
       requested: () => {
@@ -125,12 +133,16 @@ export async function runService(host: ServiceHost): Promise<RunningService> {
     });
     host.onSignal('SIGTERM', () => void lifecycle.shutdown(0));
     host.onSignal('SIGINT', () => void lifecycle.shutdown(0));
-    lifecycle.ready = await writeReadyFile(host.dataDirectory, {
-      pid,
-      url: server.url,
-      version: HUB_VERSION,
-    });
-    log.info('service.started', { url: server.url });
+    if (config.role === 'hub') {
+      lifecycle.ready = await writeReadyFile(host.dataDirectory, {
+        pid,
+        url: server.url,
+        version: HUB_VERSION,
+      });
+      log.info('service.started', { url: server.url });
+    } else {
+      log.info('service.node_started');
+    }
     return { server, shutdown: (code) => lifecycle.shutdown(code) };
   } catch (cause) {
     log.exception('service.start_failed', cause);

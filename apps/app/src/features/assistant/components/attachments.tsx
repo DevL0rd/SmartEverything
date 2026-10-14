@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 import type { AssistantAttachment } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Icon, type IconName } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
-import { Skeleton } from '../../../components/skeleton';
+import { ImagePlaceholder } from '../../../components/image-placeholder';
+import { LoadedImage } from '../../../components/loaded-image';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { bytes } from '../../../format/number';
@@ -100,15 +101,14 @@ function ImagePicture({
       className="size-full"
       focusInset
     >
-      <Image
-        key={attempt}
-        source={{ uri: url }}
+      <LoadedImage
+        key={`${url}:${String(attempt)}`}
+        url={url}
         resizeMode={single ? 'contain' : 'cover'}
-        accessibilityLabel={attachment.name}
+        label={attachment.name}
         onError={() => {
           setBroken(true);
         }}
-        className="size-full"
       />
     </Interactive>
   );
@@ -132,7 +132,7 @@ function ImageTile({
   const frame = single ? frameOf(attachment) : { aspectRatio: 1 };
   return (
     <View style={frame} className={cn(FRAME, single ? 'max-w-full' : 'w-full')}>
-      {state === 'loading' ? <Skeleton shape="block" className="size-full" /> : null}
+      {state === 'loading' ? <ImagePlaceholder /> : null}
       {state === 'failed' || url === undefined ? null : (
         <ImagePicture attachment={attachment} url={url} single={single} onOpen={onOpen} />
       )}
@@ -200,11 +200,12 @@ function stateOf(
   return links.data === undefined ? 'loading' : 'ready';
 }
 
-export function Attachments({
-  attachments,
-}: {
+interface AttachmentsProps {
   readonly attachments: readonly AssistantAttachment[];
-}): ReactNode {
+  readonly chatId?: string | undefined;
+}
+
+export function Attachments({ attachments, chatId }: AttachmentsProps): ReactNode {
   const links = useAttachmentLinks(attachments.map((attachment) => attachment.id));
   const [viewed, setViewed] = useState<string | null>(null);
   const images = attachments.filter(isImageAttachment);
@@ -243,6 +244,7 @@ export function Attachments({
       ))}
       <ImageViewer
         startId={viewed}
+        chatId={chatId}
         onClose={() => {
           setViewed(null);
         }}

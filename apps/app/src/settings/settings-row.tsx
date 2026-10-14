@@ -74,6 +74,8 @@ function TextRow({
                 placeholder: setting.placeholder,
                 confirmLabel: 'Save',
                 maxLength: setting.maxLength,
+                allowEmpty: setting.allowEmpty === true,
+                multiline: setting.multiline === true,
                 save: (value) => setting.write(value, { state: store.get(), store }),
               }
             : null

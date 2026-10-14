@@ -1,4 +1,11 @@
-import { MCP_SCOPE, MCP_TOKEN, hashMcpToken, type McpToolArea } from '@smarteverything/domain';
+import {
+  COMPUTER_MCP_TOKEN,
+  MCP_SCOPE,
+  MCP_TOKEN,
+  hashMcpToken,
+  type McpToolArea,
+} from '@smarteverything/domain';
+import { computerMcpGrant } from '../../computers/node-mcp-grant';
 import type { OAuthTokenRow } from '../../store/repositories/oauth';
 import type { Store } from '../../store/store';
 import { ACCESS_TOKEN_PREFIX, hashSecret } from './secrets';
@@ -7,7 +14,7 @@ import type { Site } from './site';
 export type McpCaller =
   | {
       readonly kind: 'accepted';
-      readonly via: 'personal' | 'oauth' | 'plugin';
+      readonly via: 'personal' | 'oauth' | 'plugin' | 'computer';
       readonly id: string;
       readonly localOnly: boolean;
       readonly areas?: readonly McpToolArea[];
@@ -44,6 +51,28 @@ function pluginCaller(store: Store, token: string): McpCaller | null {
       };
 }
 
+function checkLocalGrant(store: Store, token: string): boolean {
+  return (
+    MCP_TOKEN.safeParse(token).success &&
+    store.computerNativeMcpPolicy.localGrant(hashMcpToken(token)) !== undefined
+  );
+}
+
+function computerCaller(store: Store, token: string): McpCaller | null {
+  const grant = computerMcpGrant(store, token);
+  const local = checkLocalGrant(store, token);
+  if (grant === null && !COMPUTER_MCP_TOKEN.safeParse(token).success && !local) return null;
+  return grant === null
+    ? { kind: 'refused', reason: 'This computer MCP grant was revoked, disabled or never existed' }
+    : {
+        kind: 'accepted',
+        via: 'computer',
+        id: grant.deviceId,
+        localOnly: grant.localOnly,
+        areas: grant.areas,
+      };
+}
+
 function personal(store: Store, token: string): McpCaller {
   const row = store.assistant.activeTokenByHash(hashMcpToken(token));
   if (row === undefined) {
@@ -76,6 +105,10 @@ function delegated(check: BearerCheck, token: string): McpCaller {
 }
 
 export function callerFor(check: BearerCheck, token: string): McpCaller {
+  const computer = computerCaller(check.store, token);
+  if (computer !== null) {
+    return computer;
+  }
   if (MCP_TOKEN.safeParse(token).success) {
     return pluginCaller(check.store, token) ?? personal(check.store, token);
   }
@@ -84,7 +117,8 @@ export function callerFor(check: BearerCheck, token: string): McpCaller {
   }
   return {
     kind: 'refused',
-    reason: 'Only OAuth access tokens and personal MCP tokens are accepted here',
+    reason:
+      'Only OAuth access tokens, personal MCP tokens and scoped computer grants are accepted here',
   };
 }
 

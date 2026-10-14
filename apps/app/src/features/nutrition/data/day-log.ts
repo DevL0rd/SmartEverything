@@ -29,7 +29,7 @@ function isLogged(record: HealthRecord): record is OtherRecord {
   return record.type === 'Nutrition' || record.type === 'Hydration';
 }
 
-async function readOthers(from: number, to: number): Promise<OtherRecord[]> {
+async function readDayRecords(from: number, to: number): Promise<OtherRecord[]> {
   const records = await api().call(E.readHealthRecords, {
     query: {
       types: [...LOGGED_TYPES],
@@ -37,15 +37,32 @@ async function readOthers(from: number, to: number): Promise<OtherRecord[]> {
       to: new Date(to).toISOString(),
     },
   });
-  return records.filter(isLogged).filter((record) => !isOwnSource(record.sourceApp));
+  return records.filter(isLogged).filter((record) => {
+    const start = Date.parse(record.startTime);
+    return record.type !== 'Hydration' || (start >= from && start < to);
+  });
+}
+
+function dayRecordsQuery(day: string): {
+  readonly queryKey: readonly (string | number)[];
+  readonly queryFn: () => Promise<OtherRecord[]>;
+} {
+  const from = startOfDayKey(day);
+  const to = endOfDayKey(day);
+  return {
+    queryKey: [...HEALTH_PREFIX, 'nutrition-records', from, to],
+    queryFn: () => readDayRecords(from, to),
+  };
+}
+
+export function useDayRecords(day: string): UseQueryResult<OtherRecord[]> {
+  return useScreenQuery(dayRecordsQuery(day));
 }
 
 export function useOtherApps(day: string): UseQueryResult<OtherRecord[]> {
-  const from = startOfDayKey(day);
-  const to = endOfDayKey(day);
   return useScreenQuery({
-    queryKey: [...HEALTH_PREFIX, 'nutrition-others', from, to],
-    queryFn: () => readOthers(from, to),
+    ...dayRecordsQuery(day),
+    select: (records) => records.filter((record) => !isOwnSource(record.sourceApp)),
   });
 }
 

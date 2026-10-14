@@ -9,6 +9,14 @@ const LINK_TOKEN_FILE = 'link.token';
 
 const BRIDGE_TOKEN_NAME = 'Claude Code on this computer';
 
+export interface LinkCredential {
+  readonly verify: (bearer: string | null) => boolean;
+  readonly read: () => Promise<string | null>;
+  readonly ensure: () => Promise<string>;
+  readonly revoke: () => Promise<void>;
+  readonly retireBridge: () => number;
+}
+
 function isMissing(cause: unknown): boolean {
   return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }

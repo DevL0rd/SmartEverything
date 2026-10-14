@@ -242,7 +242,6 @@ export class Conversation {
       voice: settings.voice,
       system: this.hooks.system(),
       tools: this.hooks.tools(),
-      webSearch: this.hooks.webSearch(),
       resume: this.resume,
       window: this.tuning === null ? base : sightWindow(this.tuning, base),
       automatic: streamsInput(this.hooks.speech),

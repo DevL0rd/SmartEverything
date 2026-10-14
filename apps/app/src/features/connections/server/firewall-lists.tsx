@@ -11,6 +11,8 @@ const PURPOSE_ICON = {
   camera: 'camera',
   device: 'wifi',
   plugin: 'puzzle',
+  hub: 'server',
+  discovery: 'wifi',
 } as const;
 
 function useDeviceName(): (id: string) => string | null {

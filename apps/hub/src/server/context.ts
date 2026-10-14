@@ -1,3 +1,11 @@
+import type { HubConnections } from '../network/connections';
+import type { PreviewService } from '../preview/service';
+import type { ImageRuntime } from './image-wiring';
+import type { ComputerAiDirectory } from '../computers/ai-directory';
+import type { HarnessService } from '../harness/service';
+import type { ComputerNodeAccess } from '../computers/node-access';
+import type { ComputerHarnessSockets } from './harness-socket';
+import type { ComputerNodeSockets } from './node-socket';
 import type { HubStatus, PublicStatus } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { FirewallMonitor } from '../firewall/monitor';
@@ -22,7 +30,15 @@ import type { OpenRouterPlatform } from '../openrouter/platform';
 import type { MediaNotes } from '../transcripts/media-notes';
 
 export interface ServerContext {
+  readonly connections?: HubConnections;
+  readonly preview: PreviewService;
+  readonly imageRuntime: ImageRuntime;
+  readonly harness: HarnessService;
   readonly store: Store;
+  readonly computerAi: ComputerAiDirectory;
+  readonly computerNodes: ComputerNodeAccess;
+  readonly harnessSockets: ComputerHarnessSockets;
+  readonly nodeSockets: ComputerNodeSockets;
   readonly hub: RunningHub;
   readonly firewall: FirewallMonitor;
   readonly secrets: SecretStore;

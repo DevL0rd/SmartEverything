@@ -88,12 +88,16 @@ export async function fetchOpenRouterModels(
   deps: SyncDeps,
   syncedAt: string,
 ): Promise<FetchedCatalogue> {
-  const [chat, video] = await Promise.all([
+  const [chat, video, transcription] = await Promise.all([
     retried(deps, () => deps.client.models()),
     retried(deps, () => deps.client.videoModels()),
+    retried(deps, () => deps.client.transcriptionModels()),
   ]);
   const unknownEfforts = new Set<string>();
-  const chatRows = chat
+  const models = [
+    ...new Map([...chat, ...transcription].map((model) => [model.id, model])).values(),
+  ];
+  const chatRows = models
     .filter((model) => !model.id.endsWith(BATCH_SUFFIX))
     .map((model) => {
       const efforts = effortsOf(model);

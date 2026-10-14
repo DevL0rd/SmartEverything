@@ -57,6 +57,7 @@ export function SummaryTiles({
 }): ReactNode {
   const { sum } = summary.totals;
   const money = useMoney();
+  const incomplete = (sum.unknown_count ?? 0) > 0;
   const trail = summary.series.points.map((point) => point.cost_micros);
   return (
     <>
@@ -65,7 +66,11 @@ export function SummaryTiles({
         icon="gauge"
         accent="viz-1"
         value={money.cost(sum.cost_micros)}
-        caption={rangeName}
+        caption={
+          incomplete
+            ? `${rangeName} · Known costs only; ${String(sum.unknown_count)} unavailable`
+            : rangeName
+        }
         trail={trail}
         extra={<EstimateNote micros={sum.pending_micros} />}
       />
@@ -82,7 +87,7 @@ export function SummaryTiles({
         icon="calendar"
         accent="viz-3"
         value={money.cost(Math.round(sum.cost_micros / Math.max(1, window.days)))}
-        caption={`Average over ${String(window.days)} ${window.days === 1 ? 'day' : 'days'}`}
+        caption={`${incomplete ? 'Known costs only · ' : ''}Average over ${String(window.days)} ${window.days === 1 ? 'day' : 'days'}`}
       />
     </>
   );

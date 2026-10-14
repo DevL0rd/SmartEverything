@@ -15,7 +15,11 @@ export function computersExtension(now: () => Date): ServerExtension {
       localComputerDriver({
         history: drivers.metrics,
         viewers: drivers.viewers,
-        deviceIdOf: drivers.deviceIdOf,
+        deviceIdOf: (externalId) => {
+          const deviceId = drivers.deviceIdOf(externalId);
+          if (deviceId !== undefined) context.computerAi.bindLocalDevice(deviceId);
+          return deviceId;
+        },
         scopesOf: (deviceId) => store.computerScopes.read(deviceId),
         directory,
         records: { originOf: commandOrigin(store), macsOf: computerMacs(store), wake: wakeOnLan },

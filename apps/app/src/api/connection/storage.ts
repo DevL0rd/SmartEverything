@@ -1,19 +1,39 @@
 import * as SecureStore from 'expo-secure-store';
 import { z } from 'zod';
-import { CLIENT_TOKEN } from '@smarteverything/domain';
+import { CLIENT_TOKEN, HUB_CONNECTION_METADATA } from '@smarteverything/domain';
 import { desktopBridge } from '../../design/platform';
 import { jsonText } from '../../format/json-text';
 
-const SERVER_CONNECTION = z.strictObject({
-  url: z.url({ protocol: /^https?$/ }),
-  token: CLIENT_TOKEN,
-});
+const SERVER_CONNECTION = z
+  .strictObject({
+    url: z.url({ protocol: /^https?$/ }),
+    token: CLIENT_TOKEN,
+    canonicalKind: z.enum(['loopback', 'lan', 'remote']).optional(),
+    trustedMetadata: HUB_CONNECTION_METADATA.optional(),
+  })
+  .refine(
+    (connection) =>
+      connection.trustedMetadata === undefined ||
+      connection.trustedMetadata.endpoints.some(
+        (endpoint) => endpoint.url === connection.url && endpoint.kind === connection.canonicalKind,
+      ),
+    'Saved hub credentials, canonical endpoint kind and trusted metadata must belong to one enrollment',
+  );
+
+const DESKTOP_CONNECTION = SERVER_CONNECTION.strip();
 
 export type ServerConnection = z.infer<typeof SERVER_CONNECTION>;
 
 export type StoredKind = 'phone' | 'browser';
 
 const STORAGE_KEY = 'smarteverything.server';
+let writing: Promise<void> = Promise.resolve();
+
+function serializeWrite(action: () => Promise<void>): Promise<void> {
+  const next = writing.then(action, action);
+  writing = next;
+  return next;
+}
 
 const REMOTE_KEY = 'smarteverything.server.remote';
 
@@ -70,21 +90,33 @@ export async function readStoredConnection(kind: StoredKind): Promise<ServerConn
 export async function storeConnection(
   kind: StoredKind,
   connection: ServerConnection,
+  isCurrent: () => boolean = (): boolean => true,
 ): Promise<void> {
   const text = JSON.stringify(SERVER_CONNECTION.parse(connection));
-  if (kind === 'phone') {
-    await SecureStore.setItemAsync(STORAGE_KEY, text);
-    return;
-  }
-  window.localStorage.setItem(STORAGE_KEY, text);
+  await serializeWrite(async (): Promise<void> => {
+    if (!isCurrent()) return;
+    if (kind === 'phone') await SecureStore.setItemAsync(STORAGE_KEY, text);
+    else window.localStorage.setItem(STORAGE_KEY, text);
+  });
+}
+
+export async function forgetStoredEnrollment(
+  kind: StoredKind,
+  connection: ServerConnection,
+): Promise<void> {
+  await serializeWrite(async (): Promise<void> => {
+    const stored = await readStoredConnection(kind);
+    if (stored?.token !== connection.token || stored.url !== connection.url) return;
+    if (kind === 'phone') await SecureStore.deleteItemAsync(STORAGE_KEY);
+    else window.localStorage.removeItem(STORAGE_KEY);
+  });
 }
 
 export async function forgetConnection(kind: StoredKind): Promise<void> {
-  if (kind === 'phone') {
-    await SecureStore.deleteItemAsync(STORAGE_KEY);
-    return;
-  }
-  window.localStorage.removeItem(STORAGE_KEY);
+  await serializeWrite(async (): Promise<void> => {
+    if (kind === 'phone') await SecureStore.deleteItemAsync(STORAGE_KEY);
+    else window.localStorage.removeItem(STORAGE_KEY);
+  });
 }
 
 export function prefersRemoteServer(): boolean {
@@ -104,7 +136,7 @@ export async function desktopConnection(): Promise<ServerConnection | null> {
   if (bridge === null) {
     return null;
   }
-  const parsed = SERVER_CONNECTION.safeParse(await bridge.server());
+  const parsed = DESKTOP_CONNECTION.safeParse(await bridge.server());
   if (!parsed.success) {
     throw new DesktopServerError(
       parsed.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`).join('; '),

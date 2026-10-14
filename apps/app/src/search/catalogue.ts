@@ -7,7 +7,12 @@ import {
 } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
 import type { IconName } from '../components/icon';
-import { chatSourceOf } from '../features/assistant';
+import {
+  chatSourceOf,
+  useExtensions,
+  useExtensionConfiguration,
+  useHarnessCatalogue,
+} from '../features/assistant';
 import { deviceIcon } from '../features/device-visuals';
 import { useSettingEnv } from '../settings/env';
 import type { SettingEnv } from '../settings/types';
@@ -23,6 +28,7 @@ import {
   type SourceLinks,
 } from './sources';
 import { deviceSources, type DeviceControl } from './device-entries';
+import { useCachedProviderChats } from './cached-provider-chats';
 import { synonymsOf } from './synonyms';
 
 export interface SearchCatalogue {
@@ -139,7 +145,7 @@ function build(tables: SearchTables, env: SettingEnv): SearchCatalogue {
     plugins: new Set(),
   };
   const built = buildSearchIndex(sourcesOf(tables, named, env, out));
-  const extra = deviceSources(named, out);
+  const extra = deviceSources(named, out, tables.pluginStreams);
   const entries = [...built.entries.filter(isIndexed), ...extra.entries].map((entry) =>
     widened(adjusted(entry, devices)),
   );
@@ -180,7 +186,11 @@ function catalogueFor(tables: SearchTables, env: SettingEnv): SearchCatalogue {
     tables.automations,
     tables.scheduled,
     tables.plugins,
+    tables.pluginStreams,
     tables.chats,
+    tables.extensions,
+    tables.configuration,
+    tables.inventory,
   ];
   if (cached !== null && shallowEqual(cached.tables, key) && sameEnv(cached.env, env)) {
     return cached.catalogue;
@@ -201,6 +211,12 @@ const searchChatsOf = memoOnInputs(
         title: chat.title,
         source: chatSourceOf(chat, names).label,
         pinned: chat.pinned,
+        computer: chat.engine.kind === 'claude' || chat.engine.kind === 'codex',
+        ...(chat.engine.kind === 'claude' ||
+        chat.engine.kind === 'codex' ||
+        chat.engine.kind === 'dsh'
+          ? { runtime: chat.engine.kind }
+          : {}),
       }));
   },
 );
@@ -214,7 +230,9 @@ function sameChats(left: readonly SearchChat[], right: readonly SearchChat[]): b
         other?.id === chat.id &&
         other.title === chat.title &&
         other.source === chat.source &&
-        other.pinned === chat.pinned
+        other.pinned === chat.pinned &&
+        other.computer === chat.computer &&
+        other.runtime === chat.runtime
       );
     })
   );
@@ -230,6 +248,10 @@ function searchTablesOf(state: StoreState): SearchTables {
     automations: t.automations,
     scheduled: t.scheduled_actions,
     plugins: t.plugins,
+    pluginStreams: t.plugin_streams,
+    extensions: undefined,
+    configuration: undefined,
+    inventory: undefined,
   };
 }
 
@@ -241,6 +263,7 @@ function sameTables(left: SearchTables, right: SearchTables): boolean {
     left.automations === right.automations &&
     left.scheduled === right.scheduled &&
     left.plugins === right.plugins &&
+    left.pluginStreams === right.pluginStreams &&
     sameChats(left.chats, right.chats)
   );
 }
@@ -248,5 +271,9 @@ function sameTables(left: SearchTables, right: SearchTables): boolean {
 export function useSearchCatalogue(): SearchCatalogue {
   const env = useSettingEnv();
   const tables = useStoreSelector(searchTablesOf, sameTables);
-  return catalogueFor(tables, env);
+  const chats = useCachedProviderChats(tables.chats, env.owner);
+  const extensions = useExtensions().data;
+  const configuration = useExtensionConfiguration().data;
+  const inventory = useHarnessCatalogue().data;
+  return catalogueFor({ ...tables, chats, extensions, configuration, inventory }, env);
 }

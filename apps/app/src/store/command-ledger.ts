@@ -13,6 +13,7 @@ import { api } from '../api/transport';
 import { notify } from '../components/toast-store';
 import type { EntityStore } from './entity-store';
 import type { Device, LedgerEntry, StoreState } from './state';
+import { sameJson } from './same-json';
 import { rawErrorText } from '../format/errors';
 
 const log = new Logger('app.commands');
@@ -49,7 +50,19 @@ function settled(state: StoreState, device: Device, row: CommandRow): StoreState
     return state;
   }
   const current = state.deviceValues[device.id] ?? {};
-  const value = { value: row.value, observedAt: row.finished_at ?? row.created_at };
+  const reported = current[row.capability];
+  if (
+    reported !== undefined &&
+    reported.optimistic !== true &&
+    sameJson(reported.value, row.value)
+  ) {
+    return state;
+  }
+  const value = {
+    value: row.value,
+    observedAt: row.finished_at ?? row.created_at,
+    optimistic: true,
+  } as const;
   return {
     ...state,
     deviceValues: { ...state.deviceValues, [device.id]: { ...current, [row.capability]: value } },

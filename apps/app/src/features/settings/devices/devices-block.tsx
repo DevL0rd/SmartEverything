@@ -8,25 +8,24 @@ import { joinParts } from '../../../format/text';
 import { useListedDevices, useRooms } from '../../../store/selectors';
 import { deviceIcon } from '../../device-visuals';
 
-function HiddenList(): ReactNode {
+export function DevicesBlock(): ReactNode {
   const devices = useListedDevices();
   const rooms = useRooms();
-  const hidden = devices
-    .filter((device) => device.hidden)
+  const entries = devices
     .map((device) => ({ device, name: displayName(device, devices, rooms) }))
     .sort((left, right) => left.name.localeCompare(right.name));
-  if (hidden.length === 0) {
+  if (entries.length === 0) {
     return (
       <EmptyState
         icon="eye"
-        title="Nothing hidden"
-        body="Devices you hide from Home show up here."
+        title="No devices yet"
+        body="Devices you add appear here, whether shown on Home or hidden."
       />
     );
   }
   return (
-    <List title="Hidden from Home" inset>
-      {hidden.map(({ device, name }) => (
+    <List title="Devices" inset>
+      {entries.map(({ device, name }) => (
         <NavRow
           key={device.id}
           title={name}
@@ -35,14 +34,11 @@ function HiddenList(): ReactNode {
             PROVIDER_INFO[device.provider].name,
             device.online ? null : 'Offline',
           ])}
+          value={device.hidden ? 'Hidden from Home' : 'Shown on Home'}
           icon={deviceIcon(device)}
           href={href.settings.device(device.id)}
         />
       ))}
     </List>
   );
-}
-
-export function DevicesBlock(): ReactNode {
-  return <HiddenList />;
 }

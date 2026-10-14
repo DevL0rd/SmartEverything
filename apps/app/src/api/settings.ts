@@ -43,7 +43,10 @@ export async function removeRoom(roomId: string): Promise<void> {
 }
 
 export async function changeClientRole(clientId: string, role: Role): Promise<void> {
-  await api().call(E.updateClient, { params: { clientId }, body: { role } });
+  await api().call(E.updateClient, {
+    params: { clientId },
+    body: { role },
+  });
   log.info('client.role_changed', { clientId, role });
 }
 
@@ -53,7 +56,9 @@ export async function removeClient(clientId: string): Promise<void> {
 }
 
 export async function startPairing(role: Role): Promise<Pairing> {
-  const pairing = await api().call(E.startPairing, { body: { role } });
+  const pairing = await api().call(E.startPairing, {
+    body: { role, connectionProtocolVersion: 1 },
+  });
   log.info('pairing.started', { role });
   return pairing;
 }

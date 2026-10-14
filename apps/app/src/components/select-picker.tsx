@@ -16,6 +16,8 @@ export interface SelectOption<T extends string> {
   readonly value: T;
   readonly label: string;
   readonly description?: string;
+  readonly wrapDescription?: boolean;
+  readonly disabled?: boolean;
 }
 
 export interface SelectPickerProps<T extends string> {
@@ -42,6 +44,7 @@ function OptionRow<T extends string>({
   return (
     <Interactive
       role="radio"
+      disabled={option.disabled === true}
       label={option.label}
       selected={selected}
       onPress={() => {
@@ -59,7 +62,11 @@ function OptionRow<T extends string>({
           {option.label}
         </Text>
         {option.description === undefined ? null : (
-          <Text variant="footnote" tone="variant" numberOfLines={1}>
+          <Text
+            variant="footnote"
+            tone="variant"
+            {...(option.wrapDescription === true ? {} : { numberOfLines: 1 })}
+          >
             {option.description}
           </Text>
         )}

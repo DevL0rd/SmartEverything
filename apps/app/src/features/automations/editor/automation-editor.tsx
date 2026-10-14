@@ -196,7 +196,9 @@ export function AutomationEditor({
       <OnlyIfBlock {...blocks} />
       <ThenBlock {...blocks} />
       <Text variant="footnote" tone="variant" className="px-4">
-        Test run does the actions now and skips waits.
+        {editor.status === 'Saved'
+          ? 'Test run executes saved actions now, including waits and AI steps.'
+          : 'Draft tests send commands and skip waits and AI steps.'}
       </Text>
     </Screen>
   );

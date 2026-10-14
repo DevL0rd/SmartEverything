@@ -1,0 +1,102 @@
+import type { z } from 'zod';
+import { apiErrorOf, type ApiError } from '@smarteverything/domain';
+import { HarnessRuntimeError } from '../host/errors';
+import { HARNESS_TRANSPORT_REQUEST } from '@smarteverything/domain/node/harness-frames';
+import type { HarnessTransportRequest } from '@smarteverything/domain/node/harness-frames';
+import type { HarnessBoot } from './boot';
+import { connectionDiagnosticFetch } from './connection-diagnostics';
+
+export class HarnessHttp {
+  constructor(
+    private readonly boot: HarnessBoot,
+    private readonly fetcher: typeof fetch = fetch,
+  ) {}
+
+  async call<S extends z.ZodType>(
+    request: HarnessTransportRequest['request'],
+    schema: S,
+    signal?: AbortSignal,
+  ): Promise<z.output<S>> {
+    const response = await this.fetcher(new URL('/api/ai/harness/transport', this.boot.hub_url), {
+      method: 'POST',
+      headers: { authorization: `Bearer ${this.boot.token}`, 'content-type': 'application/json' },
+      redirect: 'error',
+      signal: signal ?? AbortSignal.timeout(30_000),
+      body: JSON.stringify(HARNESS_TRANSPORT_REQUEST.parse({ ...this.identity(), request })),
+    });
+    if (!response.ok) {
+      const refusal = await this.refusal(request, response);
+      if (refusal !== undefined) throw refusal;
+      throw new HarnessRuntimeError(
+        response.status === 403 || response.status === 409
+          ? 'ownership_lost'
+          : 'runtime_unavailable',
+        `Central harness transport refused the operation (HTTP ${String(response.status)}).`,
+      );
+    }
+    return schema.parse(await response.json());
+  }
+
+  private async refusal(
+    request: HarnessTransportRequest['request'],
+    response: Response,
+  ): Promise<ApiError | undefined> {
+    if (
+      response.status !== 422 ||
+      request.operation !== 'publish' ||
+      request.frame.type !== 'harness_event' ||
+      request.frame.event.kind !== 'state' ||
+      request.frame.event.delivery_id === undefined ||
+      request.frame.event.native_turn === undefined
+    )
+      return undefined;
+    const refusal = apiErrorOf(response.status, await response.json());
+    return refusal.code === 'command_refused' ? refusal : undefined;
+  }
+  identity(): Pick<HarnessTransportRequest, 'device_id' | 'generation' | 'runtime_instance'> {
+    return {
+      device_id: this.boot.device_id,
+      generation: this.boot.generation,
+      runtime_instance: this.boot.runtime_instance,
+    };
+  }
+}
+
+export async function harnessInference(
+  options: {
+    readonly boot: HarnessBoot;
+    readonly claim: unknown;
+    readonly routeId: string;
+    readonly fetcher?: typeof fetch;
+  },
+  input: Parameters<typeof fetch>[0],
+  init?: RequestInit,
+): Promise<Response> {
+  const request = new Request(input, init);
+  if (request.url !== 'https://openrouter.ai/api/v1/chat/completions' || request.method !== 'POST')
+    throw new HarnessRuntimeError(
+      'route_unavailable',
+      'The supplier transport accepts only the selected model inference endpoint.',
+    );
+  const body: unknown = JSON.parse(await request.text());
+  return connectionDiagnosticFetch('harness_hub', options.fetcher ?? fetch)(
+    new URL('/api/ai/harness/inference', options.boot.hub_url),
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${options.boot.token}`,
+        'content-type': 'application/json',
+      },
+      redirect: 'error',
+      signal: request.signal,
+      body: JSON.stringify({
+        device_id: options.boot.device_id,
+        generation: options.boot.generation,
+        runtime_instance: options.boot.runtime_instance,
+        claim: options.claim,
+        route_id: options.routeId,
+        request: body,
+      }),
+    },
+  );
+}

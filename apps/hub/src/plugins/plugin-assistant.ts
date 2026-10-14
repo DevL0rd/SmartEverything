@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import {
   AI_MODEL_CHOICE,
+  ENGINE_WRITE,
   ApiError,
   pluginChatKey,
   type AiChatRow,
@@ -161,6 +162,7 @@ export class PluginConversations {
     if (chat === null) {
       throw new ApiError('not_found', 'Ask something first; the model is set per conversation.');
     }
+    if (chat.engine.kind !== 'openrouter') return this.setComputerModel(chat, model);
     const parsed = model === null ? null : AI_MODEL_CHOICE.safeParse(model);
     if (parsed !== null && !parsed.success) {
       throw new ApiError(
@@ -176,5 +178,20 @@ export class PluginConversations {
       { engine: { kind: chat.engine.kind, model: choice, effort: chat.engine.effort } },
     );
     return resolved.name;
+  }
+
+  private async setComputerModel(chat: AiChatRow, model: string | null): Promise<string> {
+    if (model === null)
+      throw new ApiError(
+        'invalid_request',
+        'Choose an explicit model supplied by this subscription computer; its binding cannot be replaced with the OpenRouter default.',
+      );
+    const engine = ENGINE_WRITE.parse({ ...chat.engine, model });
+    await this.options.assistant.updateChat(
+      { profileId: chat.profile_id, role: 'owner' },
+      chat.id,
+      { engine },
+    );
+    return model;
   }
 }

@@ -1,5 +1,10 @@
+import { z } from 'zod';
+import { join } from 'node:path';
 import { CLIENT_TOKEN } from '@smarteverything/domain';
-import { SERVICE_READY, type ServiceReady } from '@smarteverything/hub/service/configuration';
+import {
+  RUNNING_SERVICE_READY,
+  type ServiceReady,
+} from '@smarteverything/hub/service/configuration';
 import type { ServiceLocations } from './locations.js';
 import type { ServiceSystem } from './system.js';
 
@@ -29,7 +34,7 @@ export async function readReady(
   } catch (error: unknown) {
     throw new ServiceFileInvalidError(locations.readyFile, 'JSON', String(error));
   }
-  const parsed = SERVICE_READY.safeParse(json);
+  const parsed = RUNNING_SERVICE_READY.safeParse(json);
   if (!parsed.success) {
     throw new ServiceFileInvalidError(
       locations.readyFile,
@@ -79,4 +84,33 @@ export async function readOwnerToken(
     throw new OwnerTokenMissingError(locations.ownerTokenFile, 'a file without a valid token');
   }
   return parsed.data;
+}
+
+export function readyUrl(ready: ServiceReady): string {
+  return 'role' in ready ? ready.hub_url : ready.url;
+}
+
+const NODE_WINDOW = z.strictObject({
+  hub_url: z.url({ protocol: /^https?$/ }),
+  token: CLIENT_TOKEN,
+});
+export async function readNodeWindow(
+  system: ServiceSystem,
+  locations: ServiceLocations,
+  hubUrl: string,
+): Promise<{ readonly url: string; readonly token: string }> {
+  const text = await system.files.read(join(locations.dataDirectory, 'node-window.json'));
+  if (text === null) throw new NodeWindowPairingError();
+  const value: unknown = JSON.parse(text);
+  const paired = NODE_WINDOW.parse(value);
+  if (new URL(paired.hub_url).origin !== new URL(hubUrl).origin) throw new NodeWindowPairingError();
+  return { url: hubUrl, token: paired.token };
+}
+class NodeWindowPairingError extends Error {
+  override readonly name = 'NodeWindowPairingError';
+  constructor() {
+    super(
+      'Pair this desktop window separately: create an app pairing code in the hub, then run the packaged service entry with --pair-node-window --hub <hub URL> --code <app code>. The node service credential cannot sign into the window.',
+    );
+  }
 }

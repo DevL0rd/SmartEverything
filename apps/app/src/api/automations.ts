@@ -40,6 +40,11 @@ export async function deleteAutomation(automationId: string): Promise<void> {
   log.info('automation.deleted', { automationId });
 }
 
+export async function runAutomation(automationId: string): Promise<void> {
+  await api().call(E.runAutomation, { params: { automationId } });
+  log.info('automation.manual_run_completed', { automationId });
+}
+
 export interface AutomationCommand {
   readonly deviceId: string;
   readonly capability: string;

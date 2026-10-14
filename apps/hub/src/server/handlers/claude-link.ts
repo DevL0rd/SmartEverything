@@ -72,6 +72,7 @@ function streamRoute(options: LinkRoutesOptions): RawRoute {
     path: LINK_PATHS.stream,
     handle: (request, response): Promise<void> => {
       authorize(options, request);
+      const poll = new URL(request.url ?? '/', 'http://server').searchParams.get('poll') === '1';
       const session = CLAUDE_SESSION_ID.safeParse(
         new URL(request.url ?? '/', 'http://server').searchParams.get('session'),
       );
@@ -85,7 +86,8 @@ function streamRoute(options: LinkRoutesOptions): RawRoute {
       });
       response.flushHeaders();
       const heartbeat = setInterval(() => {
-        response.write('\n');
+        if (poll) response.end();
+        else response.write('\n');
       }, HEARTBEAT_MS);
       const signal = closing(response);
       signal.addEventListener('abort', () => {
@@ -95,13 +97,15 @@ function streamRoute(options: LinkRoutesOptions): RawRoute {
         session.data,
         {
           write: (line) => {
-            response.write(line);
+            if (poll) response.end(line);
+            else response.write(line);
           },
           close: () => {
             response.end();
           },
         },
         signal,
+        poll,
       );
       return Promise.resolve();
     },

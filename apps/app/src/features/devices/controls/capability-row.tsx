@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
+import { deviceFamily, type JsonValue, type PresentedCapability } from '@smarteverything/domain';
 import { Highlighted, type TextRange } from '../../../components/highlighted';
 import { ListRow } from '../../../components/list-row';
 import { cn } from '../../../design/cn';
@@ -13,6 +13,7 @@ import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit
 import { useControl, type Control } from '../../../store/control';
 import type { Device } from '../../../store/state';
 import { shownValue } from '../model/device-model';
+import { FAMILY_CONTROLS } from './family-controls';
 import { ColourBlock } from './colour-block';
 import { TimeRow } from './time-row';
 import { Guard } from './guard';
@@ -146,7 +147,7 @@ function ActionRowFor({ device, presented, disabled, highlight }: RowProps): Rea
 function ColourRow({ device, presented, disabled }: RowProps): ReactNode {
   return (
     <View className={cn('px-4 py-3', disabled && 'opacity-40')}>
-      <ColourBlock deviceId={device.id} presented={presented} />
+      <ColourBlock deviceId={device.id} presented={presented} disabled={disabled} />
     </View>
   );
 }
@@ -194,6 +195,14 @@ function WritableRow(props: RowProps): ReactNode {
   }
 }
 
+function CapabilityBody(props: RowProps): ReactNode {
+  return props.presented.colorEncoding === undefined ? (
+    <WritableRow {...props} />
+  ) : (
+    <ColourRow {...props} />
+  );
+}
+
 export function CapabilityRow({
   device,
   presented,
@@ -206,6 +215,10 @@ export function CapabilityRow({
   readonly highlight?: TextRange | null;
 }): ReactNode {
   const control = useControl(device.id, presented.key);
+  const Custom = FAMILY_CONTROLS[deviceFamily(device)]?.rows[presented.key];
+  if (Custom !== undefined && presented.writable) {
+    return <Custom device={device} presented={presented} />;
+  }
   if (!presented.writable) {
     return (
       <ValueRow
@@ -217,7 +230,7 @@ export function CapabilityRow({
   }
   return (
     <Guard reason={reason}>
-      <WritableRow
+      <CapabilityBody
         device={device}
         presented={presented}
         control={control}

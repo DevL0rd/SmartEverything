@@ -29,6 +29,8 @@ function logFailure(log: Logger, reporter: Reporter, failure: ClientFailure): vo
     name: failure.name,
     message: failure.message,
     stack: failure.stack,
+    ...(failure.processExit === undefined ? {} : { processExit: failure.processExit }),
+    ...(failure.harnessStartup === undefined ? {} : { harnessStartup: failure.harnessStartup }),
   };
   if (failure.level === 'warn') {
     log.warn('client.failure_reported', payload);

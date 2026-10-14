@@ -46,10 +46,11 @@ interface RowProps {
 function PartRow({ dimension, part, share, onFilter }: RowProps): ReactNode {
   const title = partTitle(part);
   const money = useMoney();
+  const cost = `${money.cost(part.cost_micros)}${(part.unknown_count ?? 0) > 0 ? ' + unavailable' : ''}`;
   return (
     <View className="flex-row items-center gap-1">
       <Interactive
-        label={`${title}, ${money.cost(part.cost_micros)}. Show only this`}
+        label={`${title}, ${cost}. Show only this`}
         onPress={() => {
           onFilter(part.key);
         }}
@@ -63,7 +64,7 @@ function PartRow({ dimension, part, share, onFilter }: RowProps): ReactNode {
               {title}
             </Text>
             <Text variant="body-strong" className="tabular">
-              {money.cost(part.cost_micros)}
+              {cost}
             </Text>
           </View>
           <ProgressBar progress={share} colour={DIMENSION_INFO[dimension].colour} label={title} />

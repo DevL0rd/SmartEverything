@@ -1,75 +1,12 @@
-export {
-  ACTION_VALUE,
-  BOOLEAN_VALUE,
-  COLOR_VALUE,
-  ENUM_VALUE,
-  HSV_COLOR,
-  JSON_VALUE,
-  NUMBER_VALUE,
-  TEXT_VALUE,
-  VALUE_DESCRIPTOR,
-  InvalidValueError,
-  checkValue,
-} from './values';
-export type { HsvColor, JsonValue, ValueDescriptor } from './values';
+export * from './values';
 
-export {
-  ACCESS_MODES,
-  CAPABILITY_CATALOGUE,
-  CAPABILITY_GROUPS,
-  CAPABILITY_KEY,
-  catalogueEntryOf,
-  isSampledCapability,
-  isRawCapability,
-  isStandardCapability,
-} from './capabilities';
-export type {
-  AccessMode,
-  CapabilityGroup,
-  CapabilityKey,
-  RawCapability,
-  StandardCapability,
-} from './capabilities';
+export * from './capabilities';
 
-export {
-  DEVICE_CAPABILITY,
-  DEVICE_KINDS,
-  DISCOVERED_DEVICE,
-  PROVIDER,
-  PROVIDERS,
-  STATE_UPDATE,
-  capabilityOf,
-} from './devices';
-export type {
-  DeviceCapability,
-  DeviceKind,
-  DiscoveredDevice,
-  Provider,
-  StateUpdate,
-} from './devices';
+export * from './devices';
 
-export {
-  COMMAND_REQUEST,
-  COMMAND_STATUSES,
-  DEVICE_COMMAND,
-  CommandRefusedError,
-  isFinished,
-  validateCommand,
-} from './commands';
-export type { CommandRequest, CommandStatus, DeviceCommand } from './commands';
+export * from './commands';
 
-export {
-  CAMERA_DETECTION_KINDS,
-  DEVICE_EVENT,
-  EVENT_KINDS,
-  cameraDetectionsOf,
-  isPushed,
-  isUrgent,
-  miotDeviceEventKind,
-  miotDeviceEventsOf,
-  pushedMessageOf,
-} from './events';
-export type { CameraDetection, DeviceEvent, EventKind } from './events';
+export * from './events';
 
 export type { AdapterFailure, AdapterSink, ProviderAdapter, Unsubscribe } from './adapter';
 
@@ -136,15 +73,7 @@ export type {
   Trigger,
 } from './automations';
 
-export {
-  COMPARISON,
-  NUMERIC_COMPARISON,
-  VALUE_COMPARISON,
-  compare,
-  compareNumber,
-  jsonEquals,
-} from './comparison';
-export type { Comparison, NumericComparison } from './comparison';
+export * from './comparison';
 
 export { localClock, minuteOfClock, shiftedDate, zonedInstant } from './zoned-clock';
 export type { LocalClock } from './zoned-clock';
@@ -179,7 +108,7 @@ export type {
   HealthRecord,
   HealthRecordType,
 } from './health';
-
+export { hydrationAmounts } from './hydration';
 export {
   CLIENT_RECORD_ID,
   ENTRIES_SOURCE_APP,
@@ -301,8 +230,7 @@ export { MCP_TOKEN, createMcpToken, hashMcpToken } from './access-tokens';
 
 export { zoneOffsetSeconds } from './zone-offset';
 
-export { HEALTH_TYPE_INFO, healthTypeInfo } from './health-types';
-export type { HealthTypeInfo } from './health-types';
+export { HEALTH_TYPE_INFO, healthTypeInfo, type HealthTypeInfo } from './health-types';
 
 export {
   defaultAmount,
@@ -333,6 +261,7 @@ export {
 export type { McpRoute, McpToolName } from './mcp/served';
 export * from './mcp/operations';
 
+export { DESKTOP_COMPUTER_IDENTITY } from './desktop-bridge';
 export type * from './desktop-bridge';
 
 export * from './api/index';
@@ -445,10 +374,33 @@ export * from './api/endpoints-reach';
 
 export * from './api/endpoints-calls';
 
-export * from './claude';
-
-export * from './api/endpoints-claude';
+export * from './claude-contracts';
 
 export * from './chat-widgets';
 
 export * from './client-failures';
+
+export * from './ai-provider';
+
+export * from './computer-runtime-contracts';
+
+export * from './ai-subscription-usage';
+
+export * from './ai-harness-contracts';
+
+export * from './image-operations';
+export * from './api/endpoints-images';
+
+export * from './desktop-browser';
+
+export * from './ai-subscription-inference';
+
+export * from './shelly-presence';
+export * from './microwave';
+export * from './hub-connections';
+export * from './hub-native';
+
+export * from './ai-project-files';
+export * from './api/endpoints-ai-projects';
+
+export * from './native-project-compatibility';

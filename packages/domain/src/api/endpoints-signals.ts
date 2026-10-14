@@ -15,6 +15,7 @@ const SIGNAL_MATCH_INFO = z.strictObject({
   key: z.string(),
   label: z.string(),
   values: z.array(z.string()).nullable(),
+  valueLabels: z.record(z.string(), z.string()).optional(),
 });
 
 export const SIGNAL_SOURCE_INFO = z.strictObject({

@@ -10,6 +10,8 @@ import {
 export interface DriverHostOptions {
   readonly registry: DeviceDriverRegistry;
   readonly sink: AdapterSink;
+  readonly publishDevices: DeviceDriverContext['publishDevices'];
+  readonly publishEvent: DeviceDriverContext['publishEvent'];
   readonly forget: (externalIds: readonly string[]) => Promise<void>;
   readonly log: Logger;
 }
@@ -63,6 +65,8 @@ export class DriverHost {
   private contextFor(driver: DeviceDriver, signal: AbortSignal): DeviceDriverContext {
     return {
       sink: this.options.sink,
+      publishDevices: this.options.publishDevices,
+      publishEvent: this.options.publishEvent,
       signal,
       forget: async (ids): Promise<void> => {
         try {

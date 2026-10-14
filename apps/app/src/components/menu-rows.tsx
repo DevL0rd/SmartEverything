@@ -7,6 +7,7 @@ import { Text } from './text';
 
 export interface MenuItem {
   readonly label: string;
+  readonly description?: string;
   readonly icon?: IconName;
   readonly onPress: () => void;
   readonly destructive?: boolean;
@@ -59,6 +60,7 @@ function MenuRow({
   return (
     <Interactive
       label={item.label}
+      hint={item.description}
       disabled={item.disabled}
       role="menuitem"
       onPress={() => {
@@ -71,20 +73,34 @@ function MenuRow({
       {item.icon === undefined ? null : (
         <Icon name={item.icon} size={ICON_SIZE[layout]} tone={critical ? 'critical' : 'variant'} />
       )}
-      <Text
-        variant="body"
-        tone={critical ? 'critical' : 'default'}
-        className="flex-1"
-        numberOfLines={1}
-      >
-        {item.label}
-      </Text>
+      <MenuItemBody item={item} critical={critical} />
       {item.shortcut === undefined || layout !== 'popover' ? null : (
         <Text variant="caption" tone="faint">
           {item.shortcut}
         </Text>
       )}
     </Interactive>
+  );
+}
+
+function MenuItemBody({
+  item,
+  critical,
+}: {
+  readonly item: MenuItem;
+  readonly critical: boolean;
+}): ReactNode {
+  return (
+    <View className="min-w-0 flex-1 gap-0.5 py-1">
+      <Text variant="body" tone={critical ? 'critical' : 'default'} numberOfLines={1}>
+        {item.label}
+      </Text>
+      {item.description === undefined ? null : (
+        <Text variant="caption" tone="variant">
+          {item.description}
+        </Text>
+      )}
+    </View>
   );
 }
 

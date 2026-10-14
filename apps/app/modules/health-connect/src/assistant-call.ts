@@ -1,3 +1,4 @@
+import { captureNativeServerEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { ECHO_TEST_OUTCOMES } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -92,7 +93,7 @@ interface AssistantCallEvents {
 }
 
 declare class AssistantCallNative extends NativeModule<AssistantCallEvents> {
-  openAssistantCall(serverUrl: string, token: string): Promise<void>;
+  openAssistantCall(serverUrl: string, token: string, enrollment?: string): Promise<void>;
   beginAssistantCall(
     callId: string,
     source: string,
@@ -166,7 +167,10 @@ export function assistantCallCan(operation: AssistantCallName): boolean {
 }
 
 export async function openAssistantCall(serverUrl: string, token: string): Promise<void> {
-  await callFor('openAssistantCall').openAssistantCall(serverUrl, token);
+  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
+  const source = callFor('openAssistantCall');
+  if (enrollment === null) await source.openAssistantCall(serverUrl, token);
+  else await source.openAssistantCall(serverUrl, token, enrollment);
 }
 
 export async function beginAssistantCall(

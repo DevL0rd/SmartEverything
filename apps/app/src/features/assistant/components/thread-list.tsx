@@ -1,6 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useEffectEvent } from 'react';
-import { View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import type { AssistantMessageRow } from '@smarteverything/domain';
 import { useRow } from '../../../store/selectors';
 import { loadOlderMessages, type OlderLoader } from '../data/history';
@@ -9,6 +9,7 @@ import { ThreadItems } from './thread-items';
 import { useThreadRows } from './thread-rows';
 import { ThreadSkeleton } from './thread-skeleton';
 import { useFocusParam } from './use-focused-message';
+import { TurnFeedback } from './turn-feedback';
 
 const FIRST_PAGE = 20;
 
@@ -45,26 +46,35 @@ export function ThreadList({
   historyKey,
   loadOlder,
   intro = null,
+  footer = null,
 }: {
   readonly rows: readonly AssistantMessageRow[];
   readonly empty: ReactElement;
   readonly historyKey: string;
   readonly loadOlder: OlderLoader;
   readonly intro?: ReactElement | null;
+  readonly footer?: ReactElement | null;
 }): ReactNode {
   const model = useThreadRows(historyKey, rows);
   const chat = useRow('ai_chats', historyKey);
   const { focus, clearFocus } = useFocusParam();
+  const progress = (
+    <>
+      {chat === null ? null : <TurnFeedback chat={chat} rows={model.all} />}
+      {footer}
+    </>
+  );
   useFillFirstPage(historyKey, model.all, loadOlder);
   if (model.data.length === 0) {
     return model.complete ? (
-      <View className="flex-1 justify-center py-section-gap">{empty}</View>
+      <EmptyThread empty={empty} footer={progress} />
     ) : (
-      <ThreadSkeleton />
+      <LoadingThread footer={progress} />
     );
   }
   return (
     <ThreadItems
+      footer={progress}
       rows={model.data}
       loading={model.loading}
       readAt={model.readAt}
@@ -77,5 +87,30 @@ export function ThreadList({
       }}
       announced={latestResponder(model.all)}
     />
+  );
+}
+
+function EmptyThread({
+  empty,
+  footer,
+}: {
+  readonly empty: ReactElement;
+  readonly footer: ReactElement | null;
+}): ReactNode {
+  if (footer === null) return <View className="flex-1 justify-center py-section-gap">{empty}</View>;
+  return (
+    <ScrollView className="flex-1" contentContainerClassName="grow">
+      <View className="flex-1 justify-center py-section-gap">{empty}</View>
+      <View className="px-gutter">{footer}</View>
+    </ScrollView>
+  );
+}
+
+function LoadingThread({ footer }: { readonly footer: ReactElement }): ReactNode {
+  return (
+    <View className="flex-1">
+      <ThreadSkeleton />
+      <View className="px-gutter">{footer}</View>
+    </View>
   );
 }

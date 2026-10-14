@@ -10,7 +10,7 @@ import type { ServiceConfig } from '@smarteverything/hub/service/configuration';
 import { prepareServiceConfig, type PreparedConfig } from './config-file.js';
 import { LiveLink, type OpenSocket } from './live-link.js';
 import { PRIVATE_MODE, type ManagerState, type ServiceManager } from './manager.js';
-import { answers, readOwnerToken, readReady } from './ready.js';
+import { answers, readOwnerToken, readReady, readyUrl, readNodeWindow } from './ready.js';
 import type { ServiceLocations } from './locations.js';
 import type { ServiceSystem } from './system.js';
 
@@ -113,9 +113,12 @@ export class ServiceController {
   watch(): void {
     const { locations, system } = this.#options;
     const relevant = new Set(
-      [locations.readyFile, locations.supervisorPidFile, locations.ownerTokenFile].map((file) =>
-        path.basename(file),
-      ),
+      [
+        locations.readyFile,
+        locations.supervisorPidFile,
+        locations.ownerTokenFile,
+        path.join(locations.dataDirectory, 'node-window.json'),
+      ].map((file) => path.basename(file)),
     );
     this.#stopWatching = system.watch(locations.dataDirectory, {
       changed: (name) => {
@@ -242,14 +245,17 @@ export class ServiceController {
     if (ready === null) {
       throw new ServiceNotRunningError(await this.status());
     }
-    return { url: ready.url, token: await readOwnerToken(system, locations) };
+    return 'role' in ready
+      ? readNodeWindow(system, locations, ready.hub_url)
+      : { url: ready.url, token: await readOwnerToken(system, locations) };
   }
 
   async #observe(): Promise<Observed> {
     const { system, locations, manager } = this.#options;
     const state = await manager.state();
     const ready = await readReady(system, locations);
-    const url = ready !== null && (await answers(system, ready.url)) ? ready.url : null;
+    const connected = ready !== null && (!('role' in ready) || ready.connected);
+    const url = connected && (await answers(system, readyUrl(ready))) ? readyUrl(ready) : null;
     return { state, url };
   }
 
@@ -308,7 +314,7 @@ export class ServiceController {
       return (
         ready !== null &&
         ready.pid !== previousPid &&
-        (await answers(this.#options.system, ready.url))
+        ('role' in ready ? ready.connected : await answers(this.#options.system, ready.url))
       );
     });
     const status = await this.status();

@@ -1,5 +1,7 @@
+import { PREVIEW_GATEWAY_CONFIG } from '../preview/gateway';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
+import { NODE_AI_TOKEN } from '@smarteverything/domain';
 import { LOG_LEVELS } from '@smarteverything/logging';
 import { z } from 'zod';
 
@@ -28,8 +30,16 @@ const PORT = z.int().min(1).max(65_535);
 
 const SERVICE_ENVIRONMENT = z.object({ [DATA_DIRECTORY_VARIABLE]: ABSOLUTE_PATH });
 
-const SERVICE_CONFIG = z.strictObject({
-  role: z.enum(SERVICE_ROLES).default('hub'),
+const HUB_SERVICE_CONFIG = z.strictObject({
+  preview: PREVIEW_GATEWAY_CONFIG.optional(),
+  lan: z
+    .strictObject({
+      port: PORT.default(7882),
+      host: z.union([z.ipv4(), z.ipv6()]).default('0.0.0.0'),
+      advertise: z.boolean().default(true),
+    })
+    .optional(),
+  role: z.literal('hub').default('hub'),
   port: PORT.default(DEFAULT_SERVER_PORT),
   host: z.string().min(1).default('0.0.0.0'),
   go2rtcBinary: ABSOLUTE_PATH,
@@ -37,8 +47,25 @@ const SERVICE_CONFIG = z.strictObject({
   webrtcPort: PORT.default(8555),
   logLevel: z.enum(LOG_LEVELS).default('info'),
   allowedOrigins: z.array(z.url()).min(1).optional(),
+  codex_executable: ABSOLUTE_PATH.optional(),
+  codex_control_socket: ABSOLUTE_PATH.optional(),
 });
 
+export const NODE_SERVICE_CONFIG = z.strictObject({
+  role: z.literal('node'),
+  logLevel: z.enum(LOG_LEVELS).default('info'),
+  node: z.strictObject({
+    hub_url: z.url({ protocol: /^https?$/ }),
+    node_token: NODE_AI_TOKEN,
+    device_id: z.uuid(),
+    claude_executable: ABSOLUTE_PATH.optional(),
+    codex_executable: ABSOLUTE_PATH.optional(),
+    codex_control_socket: ABSOLUTE_PATH.optional(),
+  }),
+});
+const SERVICE_CONFIG = z.union([HUB_SERVICE_CONFIG, NODE_SERVICE_CONFIG]);
+export type HubServiceConfig = z.infer<typeof HUB_SERVICE_CONFIG>;
+export type NodeServiceConfig = z.infer<typeof NODE_SERVICE_CONFIG>;
 export type ServiceConfig = z.infer<typeof SERVICE_CONFIG>;
 
 export const SERVICE_READY = z.strictObject({
@@ -47,14 +74,30 @@ export const SERVICE_READY = z.strictObject({
   version: z.string().min(1),
 });
 
-export type ServiceReady = z.infer<typeof SERVICE_READY>;
+export const NODE_SERVICE_READY = z.strictObject({
+  role: z.literal('node'),
+  route_authority: z.uuid().optional(),
+  route_process_start: z.string().regex(/^\d+$/).optional(),
+  pid: z.int().positive(),
+  hub_url: z.url({ protocol: /^https?$/ }),
+  device_id: z.uuid(),
+  connected: z.boolean(),
+  version: z.string().min(1),
+});
+export const RUNNING_SERVICE_READY = z.union([SERVICE_READY, NODE_SERVICE_READY]);
+export type NodeServiceReady = z.infer<typeof NODE_SERVICE_READY>;
+export type ServiceReady = z.infer<typeof RUNNING_SERVICE_READY>;
 
 function loopbackOf(host: string): string {
   return host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
 }
 
-export function serviceUrl(config: Pick<ServiceConfig, 'host' | 'port'>): string {
-  return `http://${loopbackOf(config.host)}:${String(config.port)}`;
+export function serviceUrl(
+  config: Pick<HubServiceConfig, 'host' | 'port'> | NodeServiceConfig,
+): string {
+  if ('node' in config) return config.node.hub_url;
+  const host = loopbackOf(config.host);
+  return `http://${host.includes(':') ? `[${host}]` : host}:${String(config.port)}`;
 }
 
 class ServiceConfigError extends Error {

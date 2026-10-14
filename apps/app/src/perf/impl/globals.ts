@@ -58,29 +58,80 @@ export interface Hot {
   readonly net: (path: string, ms: number) => void;
 }
 
-export function patchGlobals(hot: Hot): () => void {
-  const parse = JSON.parse.bind(JSON);
-  const original = globalThis.fetch.bind(globalThis);
-  JSON.parse = (
-    text: string,
+class HotLease {
+  constructor(private current: Hot | null) {}
+
+  subscriber(): Hot | null {
+    return this.current;
+  }
+
+  stop(): void {
+    this.current = null;
+  }
+}
+
+function timedParse(parse: typeof JSON.parse, lease: HotLease): typeof JSON.parse {
+  return function wrappedParse(
+    this: unknown,
+    text: unknown,
     reviver?: (this: unknown, key: string, value: unknown) => unknown,
-  ): unknown => {
+  ): unknown {
+    if (lease.subscriber() === null) {
+      return Reflect.apply(parse, this, [text, reviver]);
+    }
     const start = performance.now();
-    const value: unknown = parse(text, reviver);
-    hot.json(performance.now() - start, text.length);
+    const value: unknown = Reflect.apply(parse, this, [text, reviver]);
+    const subscriber = lease.subscriber();
+    if (subscriber !== null) {
+      subscriber.json(performance.now() - start, typeof text === 'string' ? text.length : 0);
+    }
     return value;
   };
-  globalThis.fetch = async (
+}
+
+function timedFetch(original: typeof fetch, lease: HotLease): typeof fetch {
+  return async function wrappedFetch(
+    this: unknown,
     input: Parameters<typeof fetch>[0],
     init?: RequestInit,
-  ): Promise<Response> => {
+  ): Promise<Response> {
+    if (lease.subscriber() === null) {
+      return original.call(this, input, init);
+    }
     const start = performance.now();
-    const response = await original(input, init);
-    hot.net(pathOf(input), performance.now() - start);
+    const response = await original.call(this, input, init);
+    const subscriber = lease.subscriber();
+    if (subscriber !== null) {
+      subscriber.net(pathOf(input), performance.now() - start);
+    }
     return response;
   };
-  return (): void => {
-    JSON.parse = parse;
-    globalThis.fetch = original;
+}
+
+export function patchGlobals(hot: Hot): () => void {
+  const parse = JSON.parse;
+  const original = globalThis.fetch;
+  const lease = new HotLease(hot);
+  const wrappedParse = timedParse(parse, lease);
+  const wrappedFetch = timedFetch(original, lease);
+  const stop = (): void => {
+    lease.stop();
+    try {
+      if (JSON.parse === wrappedParse) {
+        JSON.parse = parse;
+      }
+    } finally {
+      if (globalThis.fetch === wrappedFetch) {
+        globalThis.fetch = original;
+      }
+    }
   };
+  try {
+    JSON.parse = wrappedParse;
+    globalThis.fetch = wrappedFetch;
+    return stop;
+  } catch (error: unknown) {
+    stop();
+    throw error;
+  }
 }

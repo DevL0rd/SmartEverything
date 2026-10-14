@@ -1,4 +1,3 @@
-import type { AiModelRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
 import { SideCompletion, type SideCompletionDeps } from '../side-completion';
@@ -45,16 +44,7 @@ export class ChatTitles {
     if (this.deps.store.aiChats.setting(BACKFILL_KEY) !== null) {
       return;
     }
-    if (this.model() !== null) {
-      this.startBackfill();
-      return;
-    }
-    const stop = this.deps.catalogue.onChange(() => {
-      if (this.model() !== null) {
-        stop();
-        this.startBackfill();
-      }
-    });
+    this.startBackfill();
   }
 
   private startBackfill(): void {
@@ -113,11 +103,9 @@ export class ChatTitles {
   }
 
   private async generate(chatId: string, source: string): Promise<void> {
-    const model = this.model();
-    if (model === null) {
-      throw new TitleError('There is no Gemini Flash-Lite in the model list yet.');
-    }
-    const text = await this.side.complete(model, {
+    if (!this.side.nativeAvailable(chatId))
+      throw new TitleError('The selected engine supplies no title completion.');
+    const text = await this.side.complete({
       chatId,
       messages: titleMessages(source),
       maxTokens: TITLE_TOKENS_MAX,
@@ -127,9 +115,5 @@ export class ChatTitles {
       throw new TitleError('The model sent no usable title.');
     }
     this.deps.store.aiChats.autoTitle(chatId, title);
-  }
-
-  private model(): AiModelRow | null {
-    return this.side.model();
   }
 }

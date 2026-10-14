@@ -1,0 +1,18 @@
+export { projectWorkspaceContext } from '../composition/workspace-context';
+export { NativeProjectFiles } from './project-files';
+export type { NativeMediaNoteInput, NativeMediaNote } from './native-media-note';
+export { toolMediaReferences } from './media-reference';
+export type { NativePreviewAdapter } from './preview-tools';
+export { createComputerHarness, ComputerHarness } from './computer';
+export { readNativeHistory, forkNativeHistory } from './history';
+export { nativeToolOutput, toolSummary } from './tool-result-output';
+export type { HarnessModelStreamEvent } from './streams';
+export { createHarnessDispatcher, HarnessDispatcher } from './dispatcher';
+export type { HarnessDispatcherOptions, HarnessAttachment } from './dispatcher';
+export type { HarnessControlPersistence } from './contracts';
+export { MeteredRouteAdapter } from './model-route';
+export type { MeteredRouteTransport } from './model-route';
+export { MeteredUsageStream, SUPPLIER_USAGE } from './metered-usage';
+export type { SupplierUsage, SupplierUsageSnapshot } from './metered-usage';
+export { HARNESS_BOOT } from './boot';
+export { connectionDiagnosticFetch } from './connection-diagnostics';

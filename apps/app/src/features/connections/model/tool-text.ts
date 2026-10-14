@@ -6,6 +6,58 @@ interface ToolText {
 }
 
 const TEXT: Readonly<Record<McpToolName, ToolText>> = {
+  read_embedded_browser: {
+    title: 'Read browser tabs',
+    line: 'Reads tabs and available actions on the connected viewing device',
+  },
+  edit_embedded_browser: {
+    title: 'Edit browser tabs',
+    line: 'Opens, selects, navigates, reloads, closes or reorders tabs on the viewing device',
+  },
+  clear_preview_data: {
+    title: 'Clear preview website data',
+    line: 'Clears the selected preview’s cache or cookies only',
+  },
+  read_preview_logs: {
+    title: 'Read preview console',
+    line: 'Reads bounded console entries from the viewing device, with stable cursors',
+  },
+  search_preview_logs: {
+    title: 'Search preview console',
+    line: 'Finds text, severity, source and stack in retained viewing-device logs',
+  },
+  capture_preview_viewport: {
+    title: 'Capture visible preview',
+    line: 'Captures the current viewport on the viewing device; hidden or unsupported views are unavailable',
+  },
+  read_project_files: {
+    title: 'Read chat project files',
+    line: 'Reads, lists or searches files in the chat’s central project',
+  },
+  write_project_files: {
+    title: 'Change chat project files',
+    line: 'Writes or edits files in the chat’s central project',
+  },
+  remove_project_files: {
+    title: 'Remove chat project files',
+    line: 'Removes selected files from the chat’s central project',
+  },
+  publish_project_preview: {
+    title: 'Show project in the browser',
+    line: 'Shares a multi-file project from the chat’s central workspace',
+  },
+  publish_html: {
+    title: 'Show HTML in the browser',
+    line: 'Shows or updates standalone HTML shared with the conversation',
+  },
+  read_previews: {
+    title: 'Read shared previews',
+    line: 'Lists development services shared with the conversation',
+  },
+  revoke_shared_preview: {
+    title: 'Stop sharing preview',
+    line: 'Revokes access to a shared development service',
+  },
   get_home: { title: 'See the home', line: 'Rooms, devices, people and providers' },
   edit_room: { title: 'Edit rooms', line: 'Add, rename, reorder or remove' },
   sync_provider: { title: 'Sync a provider', line: 'Fetch its devices again' },
@@ -60,6 +112,26 @@ const TEXT: Readonly<Record<McpToolName, ToolText>> = {
   subagent_run: { title: 'Run a subagent', line: 'A helper chat works on a task' },
   assistant_post: { title: 'Post to a chat', line: 'A message at any time' },
   show_widgets: { title: 'Show widgets', line: 'Cards and charts under a reply' },
+  list_image_endpoints: {
+    title: 'Read image providers',
+    line: 'Image models, supported options and metered readiness',
+  },
+  resolve_image_input: {
+    title: 'Choose a saved image',
+    line: 'Freeze a source or reference from this chat',
+  },
+  start_image_operation: {
+    title: 'Create or edit images',
+    line: 'Uses the selected metered provider; originals stay intact',
+  },
+  cancel_image_operation: {
+    title: 'Cancel an image operation',
+    line: 'Request cancellation; provider billing may remain unknown',
+  },
+  wait_for_images: {
+    title: 'Wait for images',
+    line: 'Finish an image batch before the next step',
+  },
   read_models: { title: 'Read AI models', line: 'Names, prices and thinking levels' },
   read_usage: { title: 'Read AI costs', line: 'Totals, over time, one by one' },
   read_presence: {
@@ -86,9 +158,19 @@ const TEXT: Readonly<Record<McpToolName, ToolText>> = {
   read_plugins: { title: 'Read plugins', line: 'Status, tools, data and log' },
   update_plugin: { title: 'Change a plugin', line: 'Switch it, its tools, settings or restart' },
   call_plugin_tool: { title: 'Use a plugin tool', line: 'Run one thing a plugin offers' },
-  read_claude: { title: 'Read Claude', line: 'Sessions, messages, prompts and plan usage' },
-  claude_session: { title: 'Control Claude', line: 'Send, interrupt, set mode or model' },
-  claude_start: { title: 'Start Claude', line: 'Open a new session in a folder with a prompt' },
+  read_claude: {
+    title: 'Read legacy Claude',
+    line: 'Historical records, transcripts and legacy usage',
+  },
+  read_claude_cli: {
+    title: 'Read owned Claude CLI',
+    line: 'Shared sessions, history, prompts and operation receipts',
+  },
+  claude_session: {
+    title: 'Control Claude',
+    line: 'Send, resume, stop, close, set permission mode or model',
+  },
+  claude_start: { title: 'Start Claude', line: 'Run the first prompt in an owned shared CLI chat' },
   claude_answer: { title: 'Answer Claude', line: 'Allow, deny or answer what it asks' },
   list_operations: { title: 'List app operations', line: 'Everything the app can do' },
   call_operation: { title: 'Run an app operation', line: 'Anything without its own tool' },

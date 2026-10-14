@@ -71,6 +71,11 @@ export interface EventInsert {
   readonly details: Readonly<Record<string, JsonValue>>;
 }
 
+export interface EventAcknowledgment {
+  readonly id: string;
+  readonly inserted: boolean;
+}
+
 export interface CameraUpsert {
   readonly deviceId: string;
   readonly streamName: string;
@@ -164,6 +169,10 @@ export interface HubDatabase {
   readonly loadState: () => Promise<readonly StateRecord[]>;
   readonly upsertState: (rows: readonly StateRecord[]) => Promise<void>;
   readonly insertEvents: (rows: readonly EventInsert[]) => Promise<readonly string[]>;
+  readonly recordEventOccurrence: (
+    event: EventInsert,
+    occurrence: string,
+  ) => Promise<EventAcknowledgment>;
   readonly enrichEvent: (id: string, details: Readonly<Record<string, JsonValue>>) => Promise<void>;
   readonly loadCameras: () => Promise<readonly CameraRecord[]>;
   readonly upsertCameras: (rows: readonly CameraUpsert[]) => Promise<void>;

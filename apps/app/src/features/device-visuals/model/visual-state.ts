@@ -2,12 +2,14 @@ import {
   airBand,
   deviceFamily,
   sleepsBetweenUse,
+  withRole,
   type CapabilityRole,
   type DeviceFamily,
   type PresentableDeviceWithCapabilities,
 } from '@smarteverything/domain';
 import type { ThermalMode, VisualPower, VisualState } from '../types';
-import { hsvCss, kelvinCss } from './light-colour';
+import { familyVisualState } from './family-state';
+import { presentedColourCss, kelvinCss } from './light-colour';
 import {
   flagOf,
   lookupOf,
@@ -105,7 +107,9 @@ function thermalOf(lookup: Lookup, family: DeviceFamily, power: VisualPower): Th
 }
 
 function colourOf(lookup: Lookup): string | null {
-  const colour = hsvCss(valueOf(lookup, 'color'));
+  const presented = withRole(lookup.presentation, 'color');
+  const colour =
+    presented === undefined ? null : presentedColourCss(presented, valueOf(lookup, 'color'));
   if (colour !== null) {
     return colour;
   }
@@ -158,23 +162,28 @@ export function visualStateOf(device: VisualDevice, values: ObservedValues): Vis
   const lookup = lookupOf(device, values);
   const family = deviceFamily(device);
   const power = powerOf(lookup);
-  return {
-    power,
-    online: device.online || sleepsBetweenUse(device),
-    level: levelOf(lookup),
-    ...airFields(lookup),
-    ...motionFields(lookup),
-    ...waterFields(lookup),
-    ...positionFields(lookup),
-    colour: colourOf(lookup),
-    thermal: thermalOf(lookup, family, power),
-    progress: null,
-    battery: numberOf(lookup, 'battery'),
-    pulse: null,
-    syncing: false,
-    load: shareOf(lookup, 'power_draw'),
-    reading: readingOf(lookup, SENSOR_READINGS),
-    source: readingOf(lookup, SOURCE_ROLES)?.text ?? null,
-    presence: flagOf(lookup, 'occupancy') ?? flagOf(lookup, 'motion'),
-  };
+  return familyVisualState(
+    family,
+    {
+      power,
+      online: device.online || sleepsBetweenUse(device),
+      level: levelOf(lookup),
+      ...airFields(lookup),
+      ...motionFields(lookup),
+      ...waterFields(lookup),
+      ...positionFields(lookup),
+      colour: colourOf(lookup),
+      ambientLight: flagOf(lookup, 'ambient_light'),
+      thermal: thermalOf(lookup, family, power),
+      progress: null,
+      battery: numberOf(lookup, 'battery'),
+      pulse: null,
+      syncing: false,
+      load: shareOf(lookup, 'power_draw'),
+      reading: readingOf(lookup, SENSOR_READINGS),
+      source: readingOf(lookup, SOURCE_ROLES)?.text ?? null,
+      presence: flagOf(lookup, 'occupancy') ?? flagOf(lookup, 'motion'),
+    },
+    values,
+  );
 }

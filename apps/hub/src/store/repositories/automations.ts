@@ -1,5 +1,8 @@
+import { HarnessEffectsRepository } from './harness-effects';
+import { currentExecutionAuthorities } from '../../assistant/execution-authority';
 import {
   AUTOMATION_ROW,
+  ApiError,
   jsonEquals,
   type AutomationDefinition,
   type AutomationRow,
@@ -66,22 +69,42 @@ export class AutomationsRepository {
           now,
         },
       );
+      new HarnessEffectsRepository(this.context).keep(
+        'automation',
+        id,
+        currentExecutionAuthorities(),
+      );
       const row = this.byId(id);
       this.context.changed('automations', 'INSERT', row, null);
       return row;
     });
   }
 
-  update(id: string, change: AutomationChange): AutomationRow {
+  update(id: string, change: AutomationChange, reauthorizeProfile?: string): AutomationRow {
     return this.context.write(() => {
       const before = this.byId(id);
+      const authorities = currentExecutionAuthorities();
+      const reauthorized = change.definition !== undefined && reauthorizeProfile !== undefined;
+      if (reauthorized) {
+        if (authorities.length > 0)
+          throw new ApiError(
+            'forbidden',
+            'AI changes cannot replace an automation’s authorization.',
+          );
+        new HarnessEffectsRepository(this.context).reauthorize(
+          'automation',
+          id,
+          reauthorizeProfile,
+        );
+      }
+      new HarnessEffectsRepository(this.context).keep('automation', id, authorities);
       const redefined =
         change.definition !== undefined && !jsonEquals(change.definition, before.definition);
       return this.change(before, {
         ...(change.name === undefined ? {} : { name: change.name }),
         ...(change.enabled === undefined ? {} : { enabled: flag(change.enabled) }),
         ...(change.definition === undefined ? {} : { definition: jsonText(change.definition) }),
-        ...(redefined ? { last_error: null } : {}),
+        ...(redefined || reauthorized ? { last_error: null } : {}),
       });
     });
   }

@@ -1,0 +1,49 @@
+{
+  "name": "dsh-plugin-codegraph-service",
+  "version": "0.1.6-smarteverything.2",
+  "description": "Service Definition for the DeepSeek Harness code-graph capability seam (ctx.codegraph): a graph-store and graph-indexer provider registry with per-query, order-independent selection over eight normalized structural queries",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "cordis-plugin",
+    "codegraph",
+    "code-graph",
+    "code-intelligence",
+    "ai-agent",
+    "llm-tools"
+  ],
+  "license": "MIT",
+  "author": "CC ZHAO",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CC19990113/dsh-plugin-codegraph.git",
+    "directory": "packages/service"
+  },
+  "homepage": "https://github.com/CC19990113/dsh-plugin-codegraph#readme",
+  "bugs": "https://github.com/CC19990113/dsh-plugin-codegraph/issues",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json",
+    "./paths": "./lib/paths.js"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "upstream.json",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.0.5-alpha.1",
+    "@deepseek-ai/dsh-brand": "0.2.1-alpha.2",
+    "@deepseek-ai/dsh-llm": "0.2.1-alpha.2"
+  },
+  "private": true
+}

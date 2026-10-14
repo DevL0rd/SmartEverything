@@ -13,6 +13,7 @@ import { NavSheetHost } from './nav-sheet';
 import { ShellGate } from './shell-gate';
 import { SyncIndicator } from './sync-indicator';
 import { anchorTabRoots } from './tab-router';
+import { useTabReplacement } from './tab-replacement-host';
 
 const TABS = [
   '(home)',
@@ -23,7 +24,6 @@ const TABS = [
   '(automations)',
   '(talk)',
   '(settings)',
-  '(more)',
 ] as const;
 
 const SYNC_INDICATOR = <SyncIndicator />;
@@ -38,6 +38,7 @@ function renderTabBar(props: BottomTabBarProps): ReactNode {
 
 function ShellTabs(): ReactNode {
   useNaturalTabForColdLinks();
+  useTabReplacement();
   const { nav } = useSizeClass();
   const scene = { backgroundColor: useColour('bg') };
   return (

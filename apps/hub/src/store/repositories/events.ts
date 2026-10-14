@@ -1,3 +1,4 @@
+import type { EventAcknowledgment } from '../../database/port';
 import { EVENT_ROW, type EventKind, type EventRow, type JsonValue } from '@smarteverything/domain';
 import { storedRow } from '../codec';
 import { found, moment, type StoreContext } from '../context';
@@ -42,27 +43,41 @@ export class EventsRepository {
   }
 
   insert(events: readonly NewEvent[]): EventRow[] {
-    return this.context.write(() =>
-      events.map((event) => {
-        const id = this.context.newId();
-        this.context.sql.run(
-          'record the event',
-          `insert into events (id, device_id, kind, occurred_at, details, created_at)
-           values ($id, $deviceId, $kind, $occurredAt, $details, $now)`,
-          {
-            id,
-            deviceId: event.deviceId,
-            kind: event.kind,
-            occurredAt: moment(event.occurredAt),
-            details: jsonText(event.details),
-            now: this.context.now(),
-          },
-        );
-        const row = this.byId(id);
-        this.context.changed('events', 'INSERT', row, null);
-        return row;
-      }),
+    return this.context.write(() => events.map((event) => this.insertOne(event, null)));
+  }
+  recordOccurrence(event: NewEvent, occurrence: string): EventAcknowledgment {
+    return this.context.write(() => {
+      const existing = this.context.sql.get(
+        STORED_EVENT,
+        `select ${COLUMNS} from events where occurrence_key = $occurrence`,
+        { occurrence },
+      );
+      if (existing !== undefined) {
+        this.enrich(existing.id, event.details);
+        return { id: existing.id, inserted: false };
+      }
+      return { id: this.insertOne(event, occurrence).id, inserted: true };
+    });
+  }
+  private insertOne(event: NewEvent, occurrence: string | null): EventRow {
+    const id = this.context.newId();
+    this.context.sql.run(
+      'record the event',
+      `insert into events (id, device_id, kind, occurred_at, details, created_at, occurrence_key)
+      values ($id, $deviceId, $kind, $occurredAt, $details, $now, $occurrence)`,
+      {
+        id,
+        deviceId: event.deviceId,
+        kind: event.kind,
+        occurredAt: moment(event.occurredAt),
+        details: jsonText(event.details),
+        now: this.context.now(),
+        occurrence,
+      },
     );
+    const row = this.byId(id);
+    this.context.changed('events', 'INSERT', row, null);
+    return row;
   }
 
   enrich(id: string, details: Readonly<Record<string, JsonValue>>): EventRow {

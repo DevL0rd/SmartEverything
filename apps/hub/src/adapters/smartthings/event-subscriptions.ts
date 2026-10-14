@@ -1,6 +1,5 @@
 import type { AdapterSink } from '@smarteverything/domain';
 import {
-  deviceEventsFor,
   INSTALLED_APP,
   isOnlineHealth,
   INSTALLED_SUBSCRIPTION_LIST,
@@ -224,14 +223,16 @@ export class EventSubscriptions {
     const { sink, inventory, context } = this.options;
     const at = new Date(event.eventTime).toISOString();
     switch (event.eventType) {
-      case 'DEVICE_EVENT':
+      case 'DEVICE_EVENT': {
+        const events = inventory.eventsFor(event.deviceEvent, at);
         inventory.applyEvent(event.deviceEvent, at).forEach((update) => {
           sink.state(update);
         });
-        deviceEventsFor(event.deviceEvent, at).forEach((deviceEvent) => {
+        events.forEach((deviceEvent) => {
           sink.event(deviceEvent);
         });
         return;
+      }
       case 'DEVICE_HEALTH_EVENT':
         sink.online(
           event.deviceHealthEvent.deviceId,

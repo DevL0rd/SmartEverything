@@ -1,3 +1,5 @@
+import { executionRole, withExecutionAuthorities } from '../assistant/execution-authority';
+import { effectAuthorities, withEffectTool } from '../harness/effect-authority';
 import {
   SCHEDULED_AI_STEPS_REASON,
   type PluginOrigin,
@@ -47,7 +49,7 @@ function failed(line: string, detail: string): StepOutcome {
 export class StepRunner {
   constructor(
     private readonly tools: ToolHub,
-    private readonly store: Pick<Store, 'clients'>,
+    private readonly store: Store,
     private readonly ai: AiTurns | null,
   ) {}
 
@@ -70,6 +72,18 @@ export class StepRunner {
   }
 
   private callerOf(row: ScheduleRow): ToolCaller {
+    const authorities = effectAuthorities(this.store, 'schedule', row.id);
+    const authority = authorities[0];
+    if (authority !== undefined)
+      return {
+        authority,
+        profileId: authority.profile_id,
+        role: executionRole(this.store, authority),
+        chatId: this.store.assistantEvents.event(authority.event_id).chat_id,
+        clientId: authority.client_id,
+        via: 'schedule',
+        ...limitsOf(authority.requester ?? undefined, authority.plugin_id ?? undefined),
+      };
     if (row.client_id === null) {
       throw new RemovedDeviceError();
     }
@@ -89,7 +103,13 @@ export class StepRunner {
     row: ScheduleRow,
     line: string,
   ): Promise<StepOutcome> {
-    const result = await this.tools.call(step.tool, step.args, this.callerOf(row));
+    const authorities = effectAuthorities(this.store, 'schedule', row.id);
+    const result = await withEffectTool(
+      this.store,
+      authorities,
+      { name: step.tool, args: step.args },
+      () => this.tools.call(step.tool, step.args, this.callerOf(row)),
+    );
     const error = result.response['error'];
     if (typeof error === 'string') {
       return failed(line, error);
@@ -105,13 +125,17 @@ export class StepRunner {
     if (this.ai === null) {
       return failed(line, SCHEDULED_AI_STEPS_REASON);
     }
-    const turn = await this.ai.run({
-      profileId: row.profile_id,
-      chatId: step.chatId,
-      title: row.label ?? DEFAULT_SCHEDULE_TITLE,
-      text: step.prompt,
-      plugin: row.origin,
-    });
+    const ai = this.ai;
+    const authorities = effectAuthorities(this.store, 'schedule', row.id);
+    const turn = await withExecutionAuthorities(authorities, () =>
+      ai.run({
+        profileId: row.profile_id,
+        chatId: step.chatId,
+        title: row.label ?? DEFAULT_SCHEDULE_TITLE,
+        text: step.prompt,
+        plugin: row.origin,
+      }),
+    );
     return { outcome: 'ok', line, detail: `chat ${turn.chatId}` };
   }
 }

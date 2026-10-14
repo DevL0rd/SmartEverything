@@ -1,3 +1,5 @@
+import type { AiModelSearchRequest } from '@smarteverything/domain';
+
 export const WINDOW_PREFIX = ['window'] as const;
 
 export const HEALTH_PREFIX = ['window', 'health'] as const;
@@ -63,6 +65,10 @@ export const OPENROUTER_ACCOUNT_KEY = ['window', 'openrouter', 'account'] as con
 export const AI_MODELS_PREFIX = ['window', 'ai-models'] as const;
 
 export const aiModelsKeys = {
+  detailed: (
+    session: string,
+    query: Omit<AiModelSearchRequest, 'cursor' | 'limit' | 'gone'>,
+  ): readonly unknown[] => [...AI_MODELS_PREFIX, 'detailed', session, query, 30],
   suggested: (kind: string, current: string | null): readonly string[] => [
     ...AI_MODELS_PREFIX,
     'suggested',
@@ -120,3 +126,9 @@ export function chatSearchKey(
 ): readonly ['window', 'ai-chats', 'search', string, boolean] {
   return ['window', 'ai-chats', 'search', text, archived];
 }
+
+export function providerKey(chatId: string): readonly string[] {
+  return ['window', 'ai-provider', chatId];
+}
+
+export const AGENT_RUN_PREFIX = ['window', 'ai-agents'] as const;

@@ -7,17 +7,18 @@ function socketOriginText(url: URL): string {
   return `${protocol}//${url.host}`;
 }
 
-export function buildContentSecurityPolicy(serverUrl: string): string {
+export function buildContentSecurityPolicy(serverUrl: string, mediaOrigin?: string): string {
   const server = new URL(serverUrl);
   const origin = originText(server);
+  const media = mediaOrigin === undefined ? [] : [mediaOrigin];
   const directives: readonly (readonly string[])[] = [
     ['default-src', "'self'"],
     ['script-src', "'self'", "'wasm-unsafe-eval'"],
     ['style-src', "'self'", "'unsafe-inline'"],
-    ['img-src', "'self'", 'data:', 'blob:', origin],
+    ['img-src', "'self'", 'data:', 'blob:', origin, ...media],
     ['font-src', "'self'", 'data:'],
-    ['media-src', "'self'", 'blob:', origin],
-    ['connect-src', "'self'", origin, socketOriginText(server)],
+    ['media-src', "'self'", 'blob:', origin, ...media],
+    ['connect-src', "'self'", origin, socketOriginText(server), ...media],
     ['worker-src', "'self'", 'blob:'],
     ['frame-src', "'none'"],
     ['object-src', "'none'"],

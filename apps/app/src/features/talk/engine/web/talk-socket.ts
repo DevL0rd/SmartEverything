@@ -1,3 +1,4 @@
+import { openHubSocket } from '../../../../api/connection/hub-socket';
 import {
   TALK_PATH,
   TALK_SERVER_MESSAGE,
@@ -24,10 +25,6 @@ export interface TalkSocket {
   readonly close: () => void;
 }
 
-function socketUrl(connection: TalkConnection): string {
-  return `${connection.url.replace(/\/$/, '').replace(/^http/, 'ws')}${TALK_PATH}`;
-}
-
 function readText(text: string, handlers: TalkSocketHandlers): void {
   const read = jsonText(text);
   const parsed = read.ok ? TALK_SERVER_MESSAGE.safeParse(read.value) : null;
@@ -44,19 +41,18 @@ export function openTalkSocket(
   connection: TalkConnection,
   handlers: TalkSocketHandlers,
 ): TalkSocket {
-  const socket = new WebSocket(socketUrl(connection), [...talkProtocols(connection.token)]);
-  socket.binaryType = 'arraybuffer';
-  socket.addEventListener('open', handlers.onOpen);
-  socket.addEventListener('message', (event: MessageEvent<unknown>) => {
+  const socket = openHubSocket(connection, TALK_PATH, talkProtocols(connection.token));
+  socket.onopen = handlers.onOpen;
+  socket.onmessage = (event): void => {
     if (typeof event.data === 'string') {
       readText(event.data, handlers);
     } else if (event.data instanceof ArrayBuffer) {
       handlers.onAudio(packetOfFrame(new Uint8Array(event.data)));
     }
-  });
-  socket.addEventListener('close', (event) => {
+  };
+  socket.onclose = (event): void => {
     handlers.onClose(event.code, event.reason);
-  });
+  };
   return {
     send: (message): void => {
       if (socket.readyState === WebSocket.OPEN) {

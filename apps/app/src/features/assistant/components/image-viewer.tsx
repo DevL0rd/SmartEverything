@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { FlatList, Modal, View, type NativeScrollEvent } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ScopedTheme } from 'uniwind';
@@ -16,6 +16,7 @@ import type { SignedLink } from '../../../api/media';
 import { useAttachmentLinks } from '../data/remote';
 import { useArrowKeys } from './use-arrow-keys';
 import { ZoomPage, type PageSize } from './zoom-page';
+import { ImageResultContext } from '../images/components/image-result-context';
 
 const FILL = { flex: 1 } as const;
 
@@ -134,6 +135,19 @@ function usePaging(
   return { index, size, zoomed, setSize, setZoomed, settle, go };
 }
 
+function usePagePosition(
+  listRef: RefObject<FlatList<AssistantAttachment> | null>,
+  width: number,
+  index: number,
+): void {
+  const position = useEffectEvent(() => {
+    listRef.current?.scrollToOffset({ offset: width * index, animated: false });
+  });
+  useEffect(() => {
+    position();
+  }, [width, listRef]);
+}
+
 function Pages({
   images,
   links,
@@ -148,6 +162,7 @@ function Pages({
   readonly listRef: RefObject<FlatList<AssistantAttachment> | null>;
 }): ReactNode {
   const { width } = paging.size;
+  usePagePosition(listRef, width, paging.index);
   return (
     <FlatList
       ref={listRef}
@@ -262,14 +277,34 @@ function PageArea({
   );
 }
 
+function ResultFooter({
+  image,
+  chatId,
+}: {
+  readonly image: AssistantAttachment | undefined;
+  readonly chatId: string | undefined;
+}): ReactNode {
+  return (
+    <View className="px-3 pb-safe-offset-3">
+      {image === undefined ? null : (
+        <View className="gap-2">
+          <ImageResultContext image={image} chatId={chatId} />
+        </View>
+      )}
+    </View>
+  );
+}
+
 function Viewer({
   startId,
   onClose,
+  chatId,
 }: {
   readonly startId: string;
+  readonly chatId?: string | undefined;
   readonly onClose: () => void;
 }): ReactNode {
-  const images = useChatImages(startId);
+  const images = useChatImages(startId, chatId ?? null);
   const links = useAttachmentLinks(images.map((image) => image.id)).data;
   const first = Math.max(
     0,
@@ -292,10 +327,17 @@ function Viewer({
   return (
     <GestureHandlerRootView style={FILL}>
       <ScopedTheme theme="dark">
-        <View ref={root} tabIndex={-1} className="flex-1 bg-bg outline-none">
+        <View
+          ref={root}
+          tabIndex={-1}
+          accessibilityViewIsModal
+          accessibilityLabel="Image viewer"
+          className="flex-1 bg-bg outline-none"
+        >
           <CurrentBar images={images} links={links} index={index} onClose={onClose} />
           <PageArea images={images} links={links} first={first} paging={paging} listRef={listRef} />
           <Steps paging={paging} count={images.length} />
+          <ResultFooter image={images[index]} chatId={chatId} />
         </View>
       </ScopedTheme>
     </GestureHandlerRootView>
@@ -305,8 +347,10 @@ function Viewer({
 export function ImageViewer({
   startId,
   onClose,
+  chatId,
 }: {
   readonly startId: string | null;
+  readonly chatId?: string | undefined;
   readonly onClose: () => void;
 }): ReactNode {
   return (
@@ -317,7 +361,7 @@ export function ImageViewer({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {startId === null ? null : <Viewer startId={startId} onClose={onClose} />}
+      {startId === null ? null : <Viewer startId={startId} onClose={onClose} chatId={chatId} />}
     </Modal>
   );
 }

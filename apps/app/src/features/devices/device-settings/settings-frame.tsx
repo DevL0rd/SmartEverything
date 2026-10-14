@@ -7,6 +7,7 @@ import { Screen } from '../../../components/screen';
 import { useDevice } from '../../../store/selectors';
 
 const ORIGINS: Readonly<Record<string, Crumb>> = {
+  '(settings)': { label: 'Devices', href: href.settings.page('devices') },
   '(home)': { label: 'Home', href: href.home() },
   '(cameras)': { label: 'Cameras', href: href.cameras() },
   '(fitness)': { label: 'Fitness', href: href.fitness() },

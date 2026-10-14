@@ -14,6 +14,7 @@ export interface ListRowProps {
   readonly title: string;
   readonly titleHighlight?: TextRange | null;
   readonly subtitle?: string;
+  readonly caption?: string;
   readonly subtitleTone?: Tone;
   readonly wrapSubtitle?: boolean;
   readonly icon?: IconName;
@@ -83,11 +84,18 @@ function Body({
   titleHighlight,
   subtitle,
   subtitleTone,
+  caption,
   wrapSubtitle,
   destructive,
 }: Pick<
   ListRowProps,
-  'title' | 'titleHighlight' | 'subtitle' | 'subtitleTone' | 'wrapSubtitle' | 'destructive'
+  | 'title'
+  | 'titleHighlight'
+  | 'subtitle'
+  | 'subtitleTone'
+  | 'caption'
+  | 'wrapSubtitle'
+  | 'destructive'
 >): ReactNode {
   return (
     <View className="min-w-0 flex-1 gap-0.5">
@@ -101,6 +109,11 @@ function Body({
           {...(wrapSubtitle === true ? {} : { numberOfLines: 2 })}
         >
           {subtitle}
+        </Text>
+      )}
+      {caption === undefined ? null : (
+        <Text variant="caption" tone="variant" numberOfLines={2}>
+          {caption}
         </Text>
       )}
     </View>

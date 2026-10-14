@@ -33,14 +33,17 @@ export class ReplySuggestions {
   };
 
   private async suggest(event: StoredEvent, text: string): Promise<void> {
-    const model = this.side.model();
     const reply = this.latestReply(event);
     const person =
       event.message_id === null ? null : this.deps.store.assistantChat.message(event.message_id);
-    if (model === null || reply === null || person?.origin?.source !== 'app') {
+    if (
+      !this.side.nativeAvailable(event.chat_id) ||
+      reply === null ||
+      person?.origin?.source !== 'app'
+    ) {
       return;
     }
-    const raw = await this.side.complete(model, {
+    const raw = await this.side.complete({
       chatId: event.chat_id,
       messages: suggestionMessages(person.text, text),
       maxTokens: SUGGESTION_TOKENS_MAX,

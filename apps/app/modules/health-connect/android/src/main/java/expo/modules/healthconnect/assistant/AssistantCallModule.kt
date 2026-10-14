@@ -70,9 +70,9 @@ class AssistantCallModule : Module() {
   }
 
   private fun ModuleDefinitionBuilder.callFunctions() {
-    AsyncFunction("openAssistantCall") { serverUrl: String, token: String ->
+    AsyncFunction("openAssistantCall") { serverUrl: String, token: String, enrollment: String ->
       call?.close()
-      call = AssistantCall(context, serverUrl, token).also { it.open() }
+      call = AssistantCall(context, serverUrl, token, enrollment).also { it.open() }
     }
 
     AsyncFunction("beginAssistantCall") { callId: String, source: String, device: String, chatId: String? ->

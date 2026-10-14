@@ -22,7 +22,6 @@ export interface LiveOptions {
   readonly voice: string;
   readonly system: string;
   readonly tools: readonly FunctionDeclaration[];
-  readonly webSearch: boolean;
   readonly resume: string | null;
   readonly window: LiveWindow | null;
   readonly automatic: boolean;
@@ -257,10 +256,7 @@ export function liveConfigOf(options: LiveOptions): LiveConnectConfig {
           },
         }),
     sessionResumption: options.resume === null ? {} : { handle: options.resume },
-    tools: [
-      ...(options.webSearch ? [LIVE_WEB_SEARCH_TOOL] : []),
-      { functionDeclarations: [...options.tools] },
-    ],
+    tools: [LIVE_WEB_SEARCH_TOOL, { functionDeclarations: [...options.tools] }],
   };
 }
 

@@ -16,76 +16,36 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.time.Instant
-import org.json.JSONArray
 import org.json.JSONObject
 
-object ScaleAdverts {
-  private const val PREFERENCES = "expo.modules.healthconnect.scale-adverts"
-  private const val PENDING = "pending"
-  private const val SENT = "sent"
-  private const val WORK_NAME = "expo.modules.healthconnect.scale-relay"
-  private const val SENT_WINDOW_MS = 120_000L
+class BleAcknowledgmentInvalid(detail: String) : SyncFailure(
+  "The server did not acknowledge the complete Bluetooth batch: $detail",
+  retryable = true
+)
 
+object ScaleAdverts {
+  private const val WORK_NAME = "expo.modules.healthconnect.scale-relay"
+
+  @Synchronized
   fun relay(context: Context, results: List<ScanResult>) {
-    val status = ScaleStatus(context)
     val watched = ScaleRelay(context).watched().map { it.address }.toSet()
-    val adverts = results.filter { it.device.address.uppercase() in watched }.flatMap(::advertsOf)
-    if (adverts.isEmpty()) {
-      return
-    }
-    val added = remember(context, adverts)
-    if (added == 0) {
-      return
-    }
-    status.note("heard", "$added new frame(s) from the scale")
+    val adverts = results.filter { it.device.address.uppercase() in watched }
+      .sortedBy { it.timestampNanos }
+      .flatMap(::advertsOf)
+    if (adverts.isEmpty()) return
+    val added = BleAdvertOutbox.remember(context, adverts)
+    if (added == 0) return
+    ScaleStatus(context).note("heard", "$added new Bluetooth frame(s)")
+    resume(context)
+  }
+
+  fun resume(context: Context) {
+    if (!BleAdvertOutbox.pending(context)) return
     val request = OneTimeWorkRequestBuilder<ScaleRelayWorker>()
       .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
       .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
       .build()
-    WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.KEEP, request)
-  }
-
-  @Synchronized
-  fun take(context: Context): JSONArray {
-    val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-    val pending = JSONObject(preferences.getString(PENDING, "{}") ?: "{}")
-    val sent = JSONObject(preferences.getString(SENT, "{}") ?: "{}")
-    val now = System.currentTimeMillis()
-    val adverts = JSONArray()
-    for (key in pending.keys()) {
-      adverts.put(pending.getJSONObject(key))
-      sent.put(key, now)
-    }
-    preferences.edit().putString(PENDING, "{}").putString(SENT, sent.toString()).apply()
-    return adverts
-  }
-
-  @Synchronized
-  private fun remember(context: Context, adverts: List<JSONObject>): Int {
-    val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-    val pending = JSONObject(preferences.getString(PENDING, "{}") ?: "{}")
-    val sent = recent(JSONObject(preferences.getString(SENT, "{}") ?: "{}"))
-    var added = 0
-    for (advert in adverts) {
-      val key = advert.getString("data")
-      if (!pending.has(key) && !sent.has(key)) {
-        pending.put(key, advert)
-        added += 1
-      }
-    }
-    preferences.edit().putString(PENDING, pending.toString()).putString(SENT, sent.toString()).apply()
-    return added
-  }
-
-  private fun recent(sent: JSONObject): JSONObject {
-    val cutoff = System.currentTimeMillis() - SENT_WINDOW_MS
-    val kept = JSONObject()
-    for (key in sent.keys()) {
-      if (sent.getLong(key) >= cutoff) {
-        kept.put(key, sent.getLong(key))
-      }
-    }
-    return kept
+    WorkManager.getInstance(context).enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
   }
 
   private fun advertsOf(result: ScanResult) = result.scanRecord?.serviceData.orEmpty().map { (uuid, data) ->
@@ -128,32 +88,41 @@ class ScaleRelayWorker(context: Context, parameters: WorkerParameters) :
     val status = ScaleStatus(applicationContext)
     return try {
       var batches = 0
-      do {
-        val adverts = ScaleAdverts.take(applicationContext)
-        if (adverts.length() > 0) {
-          send(adverts, status)
-          batches += 1
-        }
-      } while (adverts.length() > 0 && batches < MAX_BATCHES)
-      if (batches > 0) {
-        saveToHealthConnect(status)
+      while (batches < MAX_BATCHES) {
+        val batch = BleAdvertOutbox.peek(applicationContext)
+        if (batch.ids.isEmpty()) break
+        send(batch, status)
+        batches += 1
       }
-      Result.success()
+      saveToHealthConnect(status)
+      if (BleAdvertOutbox.pending(applicationContext)) Result.retry() else Result.success()
     } catch (failure: SyncFailure) {
       status.note("failed", failure.message ?: failure.javaClass.simpleName)
       if (failure.retryable) Result.retry() else Result.failure()
     }
   }
 
-  private suspend fun send(adverts: JSONArray, status: ScaleStatus) {
-    for (start in 0 until adverts.length() step BATCH_LIMIT) {
-      val chunk = JSONArray()
-      for (index in start until minOf(adverts.length(), start + BATCH_LIMIT)) {
-        chunk.put(adverts.getJSONObject(index))
-      }
-      val answer = HubClient(relayTarget(applicationContext)).post(ScaleRelay.ADVERTS_PATH, jsonOf("adverts" to chunk))
-      status.note("uploaded", "${chunk.length()} frame(s): $answer")
+  private suspend fun send(batch: BleAdvertBatch, status: ScaleStatus) {
+    val answer = HubClient(relayTarget(applicationContext)).post(ScaleRelay.ADVERTS_PATH, jsonOf("adverts" to batch.adverts))
+    val accepted = acknowledgedCount(answer, "accepted", batch.ids.size)
+    val ignored = acknowledgedCount(answer, "ignored", batch.ids.size)
+    if (accepted + ignored != batch.ids.size) {
+      throw BleAcknowledgmentInvalid("accepted and ignored counts do not cover the submitted frames")
     }
+    BleAdvertOutbox.acknowledge(applicationContext, batch)
+    status.note("uploaded", "${batch.ids.size} Bluetooth frame(s): $accepted accepted, $ignored ignored")
+  }
+
+  private fun acknowledgedCount(answer: JSONObject, name: String, batchSize: Int): Int {
+    val value = answer.opt(name)
+    if (value !is Number) {
+      throw BleAcknowledgmentInvalid("$name must be a numeric integer")
+    }
+    val count = value.toString().toBigDecimalOrNull()
+    if (count == null || count.signum() < 0 || count > batchSize.toBigDecimal() || count.stripTrailingZeros().scale() > 0) {
+      throw BleAcknowledgmentInvalid("$name must be an integer from zero to the submitted frame count")
+    }
+    return count.toInt()
   }
 
   private suspend fun saveToHealthConnect(status: ScaleStatus) {
@@ -165,7 +134,6 @@ class ScaleRelayWorker(context: Context, parameters: WorkerParameters) :
   }
 
   private companion object {
-    const val BATCH_LIMIT = 50
     const val MAX_BATCHES = 20
   }
 

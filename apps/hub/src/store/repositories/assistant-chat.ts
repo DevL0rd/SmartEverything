@@ -1,15 +1,19 @@
 import {
   ASSISTANT_MESSAGE_ROW,
   ASSISTANT_SETTINGS,
-  type AssistantAttachment,
+  ASSISTANT_SETTINGS_WRITE,
   type AssistantMessageRow,
   type AssistantReasonCode,
   type AssistantSettings,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { readResponseStyle, saveResponseStyle } from './assistant-response-style';
+import { CALL_TEXT, type CallText } from './assistant-call-text';
+export type { CallText } from './assistant-call-text';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
+import { UNKNOWN_COST_SQL } from '../../ledger/usage-queries';
 import {
   FILE_COLUMNS,
   STORED_FILE,
@@ -18,37 +22,25 @@ import {
 } from './assistant-files';
 
 export type { NewAttachment, StoredAttachment };
+export { summaryOf } from './assistant-files';
 
 export const STORED_MESSAGE = storedRow(ASSISTANT_MESSAGE_ROW, {
   json: ['attachments', 'steps', 'step_states', 'origin', 'embeds'],
+  flags: ['cost_incomplete'],
 });
 
 const STORED_SETTINGS = storedRow(z.strictObject({ settings: ASSISTANT_SETTINGS }), {
   json: ['settings'],
 });
 
-const CALL_TEXT = storedRow(
-  z.strictObject({ at: z.iso.datetime({ offset: true }), text: z.string() }),
-  {},
-);
-
-export type CallText = z.output<typeof CALL_TEXT>;
-
-export const MESSAGE_COLUMNS =
+const STORED_MESSAGE_COLUMNS =
   'id, profile_id, client_id, role, kind, author, text, attachments, state, reason, reason_code, client_message_id, steps, step_states, reply_to, chat_id, origin, embeds, cost_micros, model, created_at, updated_at';
 
-export type NewAssistantMessage = Omit<
-  AssistantMessageRow,
-  'id' | 'created_at' | 'updated_at' | 'reason_code' | 'client_message_id'
-> &
-  Partial<Pick<AssistantMessageRow, 'client_message_id' | 'reason_code'>>;
+export const MESSAGE_COLUMNS = `${STORED_MESSAGE_COLUMNS},
+  exists(select 1 from ai_usage where message_id = assistant_messages.id and ${UNKNOWN_COST_SQL}) as cost_incomplete`;
 
-export type AssistantMessageChange = Partial<
-  Pick<
-    AssistantMessageRow,
-    'state' | 'reason' | 'reason_code' | 'steps' | 'step_states' | 'text' | 'model' | 'embeds' | 'attachments'
-  >
->;
+import type { NewAssistantMessage, AssistantMessageChange } from './assistant-message-contract';
+export type { NewAssistantMessage, AssistantMessageChange } from './assistant-message-contract';
 
 const LATEST_AT = storedRow(
   z.strictObject({ at: z.iso.datetime({ offset: true }).nullable() }),
@@ -69,18 +61,23 @@ export class AssistantChatRepository {
       STORED_SETTINGS,
       'select settings from assistant_settings where id = 1',
     );
-    return row === undefined ? ASSISTANT_SETTINGS.parse({}) : row.settings;
+    return {
+      ...(row === undefined ? ASSISTANT_SETTINGS.parse({}) : row.settings),
+      response_style: readResponseStyle(this.context),
+    };
   }
 
   saveSettings(settings: AssistantSettings): AssistantSettings {
-    const parsed = ASSISTANT_SETTINGS.parse(settings);
+    const parsed = ASSISTANT_SETTINGS_WRITE.parse(settings);
+    const { response_style: style, ...legacy } = parsed;
     this.context.write(() => {
       this.context.sql.run(
         'save the assistant settings',
         `insert into assistant_settings (id, settings, updated_at) values (1, $settings, $now)
          on conflict (id) do update set settings = excluded.settings, updated_at = excluded.updated_at`,
-        { settings: jsonText(parsed), now: this.context.now() },
+        { settings: jsonText(legacy), now: this.context.now() },
       );
+      if (style !== undefined) saveResponseStyle(this.context, style);
     });
     return parsed;
   }
@@ -182,13 +179,14 @@ export class AssistantChatRepository {
   addMessage(
     input: NewAssistantMessage,
     stamp?: { readonly createdAt: string; readonly updatedAt: string },
+    messageId?: string,
   ): AssistantMessageRow {
     return this.context.write(() => {
-      const id = this.context.newId();
+      const id = messageId ?? this.context.newId();
       const createdAt = stamp?.createdAt ?? this.nextMoment(input.chat_id);
       this.context.sql.run(
         'add the assistant message',
-        `insert into assistant_messages (${MESSAGE_COLUMNS})
+        `insert into assistant_messages (${STORED_MESSAGE_COLUMNS})
          values ($id, $profile, $client, $role, $kind, $author, $text, $attachments, $state,
                  $reason, $reasonCode, $clientMessage, $steps, $stepStates, $replyTo, $chat, $origin, $embeds, $cost,
                  $model, $createdAt, $updatedAt)`,
@@ -247,8 +245,7 @@ export class AssistantChatRepository {
         model: change.model,
         attachments: change.attachments === undefined ? undefined : jsonText(change.attachments),
         steps: change.steps === undefined ? undefined : jsonText(change.steps),
-        step_states:
-          change.step_states === undefined ? undefined : jsonText(change.step_states),
+        step_states: change.step_states === undefined ? undefined : jsonText(change.step_states),
         embeds: change.embeds === undefined ? undefined : jsonText(change.embeds),
         updated_at: this.context.now(),
       });
@@ -341,11 +338,19 @@ export class AssistantChatRepository {
 
   setTranscript(id: string, transcript: string): void {
     this.context.write(() => {
+      const file = this.attachment(id);
       this.context.sql.run(
         'keep the attachment transcript',
         'update assistant_attachments set transcript = $transcript where id = $id',
         { id, transcript },
       );
+      if (file.message_id === null) return;
+      const message = this.message(file.message_id);
+      this.updateMessage(message.id, {
+        attachments: message.attachments.map((attachment) =>
+          attachment.id === id ? { ...attachment, transcript } : attachment,
+        ),
+      });
     });
   }
 
@@ -428,15 +433,4 @@ export class AssistantChatRepository {
       });
     });
   }
-}
-
-export function summaryOf(file: StoredAttachment): AssistantAttachment {
-  return {
-    id: file.id,
-    name: file.name,
-    mime: file.mime,
-    bytes: file.bytes,
-    width: file.width,
-    height: file.height,
-  };
 }

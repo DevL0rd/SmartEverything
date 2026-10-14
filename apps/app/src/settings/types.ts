@@ -63,6 +63,8 @@ export interface StepperSetting extends SettingBase {
 
 interface TextSetting extends SettingBase {
   readonly control: 'text';
+  readonly allowEmpty?: boolean;
+  readonly multiline?: boolean;
   readonly placeholder: string;
   readonly maxLength: number;
   readonly read: (state: StoreState) => string;

@@ -20,8 +20,8 @@ export const OTHER_SETTINGS: readonly SettingDefinition[] = [
   {
     id: 'devices.list',
     page: 'devices',
-    title: 'Hidden devices',
-    keywords: ['devices', 'hidden devices', 'show on home', 'unhide'],
+    title: 'Devices',
+    keywords: ['devices', 'all devices', 'hidden devices', 'show on home', 'visibility', 'unhide'],
     scope: 'server',
     control: 'custom',
     render: () => createElement(DevicesBlock),

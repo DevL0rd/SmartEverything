@@ -1,24 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { router, useGlobalSearchParams, useSegments, type Href } from 'expo-router';
 
-type SettingsPage = 'remotes' | 'diagnostics' | 'camera';
-
-const SETTINGS_PAGES: ReadonlySet<string> = new Set<SettingsPage>([
-  'remotes',
-  'diagnostics',
-  'camera',
-]);
-
-function isSettingsPage(page: string | undefined): page is SettingsPage {
-  return page !== undefined && SETTINGS_PAGES.has(page);
-}
-
 function homeHref(
   segments: readonly string[],
   id: string | undefined,
   section: string | undefined,
+  settingsPage: string | undefined,
 ): Href | null {
-  const [, , page, , subPage, settingsPage] = segments;
+  const [, , page, , subPage] = segments;
   if (page === 'weather') {
     return '/(app)/(home)/weather';
   }
@@ -36,7 +25,7 @@ function homeHref(
 
 function homeSettingsHref(deviceId: string, page: string | undefined): Href {
   const id = encodeURIComponent(deviceId);
-  return isSettingsPage(page)
+  return page !== undefined
     ? `/(app)/(home)/device/${id}/settings/${encodeURIComponent(page)}`
     : `/(app)/(home)/device/${id}/settings`;
 }
@@ -50,10 +39,11 @@ function homeDeviceHref(deviceId: string, section: string | undefined): Href {
 
 export function useNaturalTabForColdLinks(): void {
   const segments = useSegments();
-  const { deviceId, roomId, section } = useGlobalSearchParams<{
+  const { deviceId, roomId, section, page } = useGlobalSearchParams<{
     deviceId?: string;
     roomId?: string;
     section?: string;
+    page?: string;
   }>();
   const checked = useRef(false);
   useEffect(() => {
@@ -62,10 +52,11 @@ export function useNaturalTabForColdLinks(): void {
       return;
     }
     checked.current = true;
-    const target = group === '(home)' ? null : homeHref(segments, deviceId ?? roomId, section);
+    const target =
+      group === '(home)' ? null : homeHref(segments, deviceId ?? roomId, section, page);
     if (target !== null) {
       router.dismissAll();
       router.replace(target, { withAnchor: true });
     }
-  }, [segments, deviceId, roomId, section]);
+  }, [segments, deviceId, roomId, section, page]);
 }

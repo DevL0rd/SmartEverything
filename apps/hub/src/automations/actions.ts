@@ -12,11 +12,12 @@ export interface ActionOrigin {
 
 export interface ActionRunnerOptions {
   readonly store: Pick<HubDatabase, 'insertCommands'>;
-  readonly submit: (rows: readonly CommandRow[]) => void;
+  readonly submit: (rows: readonly CommandRow[]) => void | Promise<void>;
   readonly sceneActions: (sceneId: string) => readonly CommandAction[] | undefined;
   readonly notify: (origin: ActionOrigin, message: string) => void;
   readonly ai: AutomationAiSlot;
   readonly clock: Pick<Clock, 'sleep'>;
+  readonly withOrigin?: (origin: ActionOrigin, work: () => Promise<void>) => Promise<void>;
 }
 
 export class UnknownSceneError extends Error {
@@ -42,9 +43,19 @@ export class ActionRunner {
     await this.issue(actions.map((action) => commandOf(action, 'scene')));
   }
 
-  async run(actions: readonly Action[], origin: ActionOrigin): Promise<void> {
+  async run(actions: readonly Action[], origin: ActionOrigin, admit?: () => void): Promise<void> {
+    const work = (): Promise<void> => this.runActions(actions, origin, admit);
+    return this.options.withOrigin === undefined ? work() : this.options.withOrigin(origin, work);
+  }
+  private async runActions(
+    actions: readonly Action[],
+    origin: ActionOrigin,
+    admit?: () => void,
+  ): Promise<void> {
     for (const action of actions) {
+      admit?.();
       await this.runOne(action, origin);
+      admit?.();
     }
   }
 
@@ -72,6 +83,6 @@ export class ActionRunner {
   }
 
   private async issue(commands: readonly CommandInsert[]): Promise<void> {
-    this.options.submit(await this.options.store.insertCommands(commands));
+    await this.options.submit(await this.options.store.insertCommands(commands));
   }
 }

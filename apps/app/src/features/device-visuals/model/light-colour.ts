@@ -1,4 +1,9 @@
-import { HSV_COLOR, type JsonValue } from '@smarteverything/domain';
+import {
+  HSV_COLOR,
+  readPresentedColor,
+  type JsonValue,
+  type PresentedCapability,
+} from '@smarteverything/domain';
 
 function channel(value: number): string {
   return Math.round(Math.min(255, Math.max(0, value)))
@@ -17,6 +22,20 @@ export function hsvCss(value: JsonValue): string | null {
   const hslSaturation =
     lightness === 0 || lightness === 1 ? 0 : share / 2 / Math.min(lightness, 1 - lightness);
   return `hsl(${String(Math.round(hue))}, ${String(Math.round(hslSaturation * 100))}%, ${String(Math.round(Math.max(lightness, 0.55) * 100))}%)`;
+}
+
+export function presentedColourCss(
+  presented: PresentedCapability,
+  value: JsonValue | undefined,
+): string | null {
+  const colour = readPresentedColor(presented, value);
+  if (colour === null) {
+    return null;
+  }
+  if (presented.colorEncoding === 'packed_rgb' && typeof value === 'number') {
+    return `#${value.toString(16).padStart(6, '0')}`;
+  }
+  return hsvCss(colour);
 }
 
 function warmRed(): number {

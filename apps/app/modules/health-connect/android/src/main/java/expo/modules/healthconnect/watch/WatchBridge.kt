@@ -14,8 +14,8 @@ import expo.modules.healthconnect.relayTarget
 object WatchBridge {
   private const val WATCHES_PATH = "/api/watches/mine"
 
-  suspend fun sync(context: Context, serverUrl: String, token: String): List<Map<String, Any?>> {
-    configureServer(context, serverUrl, token)
+  suspend fun sync(context: Context, serverUrl: String, token: String, enrollment: String): List<Map<String, Any?>> {
+    configureServer(context, serverUrl, token, enrollment)
     val answer = HubClient(relayTarget(context)).get(WATCHES_PATH).getJSONArray("watches")
     val watches = (0 until answer.length()).map { WatchConfig.of(answer.getJSONObject(it)) }
     val store = WatchStore(context)

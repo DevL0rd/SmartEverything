@@ -29,6 +29,8 @@ export interface Upload {
 }
 
 const uploads = new ValueStore<readonly Upload[]>([]);
+const uploadFiles = new Map<string, PickedFile>();
+const commandFiles = new Map<string, PickedFile>();
 
 let counter = 0;
 
@@ -41,10 +43,14 @@ function patch(key: string, change: Partial<Upload>): void {
 }
 
 export function removeUpload(key: string): void {
+  uploadFiles.delete(key);
+  commandFiles.delete(key);
   uploads.update((list) => list.filter((item) => item.key !== key));
 }
 
 export function clearUploads(): void {
+  uploadFiles.clear();
+  commandFiles.clear();
   uploads.set([]);
 }
 
@@ -59,6 +65,7 @@ function base64Of(buffer: ArrayBuffer, start: number, end: number): string {
 
 async function send(key: string, file: PickedFile): Promise<void> {
   const data = await file.data();
+  if (uploadFiles.get(key) !== file) return;
   if (data.byteLength > ASSISTANT_ATTACHMENT_BYTES_MAX) {
     throw new RangeError(`${file.name} is over ${bytes(ASSISTANT_ATTACHMENT_BYTES_MAX)}.`);
   }
@@ -69,18 +76,41 @@ async function send(key: string, file: PickedFile): Promise<void> {
   });
   const chunks = Math.ceil(data.byteLength / upload.chunkBytes);
   for (let index = 0; index < chunks; index += 1) {
+    if (uploadFiles.get(key) !== file) return;
     const start = index * upload.chunkBytes;
     const end = Math.min(data.byteLength, start + upload.chunkBytes);
     await sendAssistantUploadChunk(upload.uploadId, index, base64Of(data, start, end));
     patch(key, { progress: end / data.byteLength });
   }
+  if (uploadFiles.get(key) !== file) return;
   const attachment = await finishAssistantUpload(upload.uploadId);
+  if (uploadFiles.get(key) !== file) return;
+  uploadFiles.delete(key);
   patch(key, { state: 'done', progress: 1, attachment });
+}
+
+function runUpload(key: string, file: PickedFile): void {
+  void send(key, file).catch((error: unknown) => {
+    if (uploadFiles.get(key) !== file) return;
+    log.warn('upload.failed', { reason: String(error) });
+    patch(key, { state: 'failed' });
+    notify({ message: `${file.name} couldn’t be attached`, error, tone: 'critical' });
+  });
+}
+
+export function retryUpload(key: string): void {
+  const source = uploadFiles.get(key);
+  const upload = uploads.get().find((item) => item.key === key);
+  if (source === undefined || upload?.state !== 'failed') return;
+  patch(key, { state: 'uploading', progress: 0, attachment: null });
+  runUpload(key, source);
 }
 
 function enqueue(file: PickedFile): void {
   counter += 1;
   const key = `upload-${String(counter)}`;
+  uploadFiles.set(key, file);
+  commandFiles.set(key, file);
   uploads.update((list) => [
     ...list,
     {
@@ -93,11 +123,7 @@ function enqueue(file: PickedFile): void {
       attachment: null,
     },
   ]);
-  send(key, file).catch((error: unknown) => {
-    log.warn('upload.failed', { reason: String(error) });
-    patch(key, { state: 'failed' });
-    notify({ message: `${file.name} couldn’t be attached`, error, tone: 'critical' });
-  });
+  runUpload(key, file);
 }
 
 export function attachFiles(files: readonly PickedFile[]): void {
@@ -116,4 +142,17 @@ export function readyAttachments(list: readonly Upload[]): readonly string[] | n
     return null;
   }
   return list.flatMap((item) => (item.attachment === null ? [] : [item.attachment.id]));
+}
+
+export async function commandUploadData(key: string): Promise<string> {
+  const file = commandFiles.get(key);
+  if (file === undefined)
+    throw new Error('The original image is unavailable. Attach it again to run this command.');
+  const buffer = await file.data();
+  if (buffer.byteLength > ASSISTANT_ATTACHMENT_BYTES_MAX)
+    throw new RangeError('The image exceeds the command attachment limit.');
+  return base64Of(buffer, 0, buffer.byteLength);
+}
+export function clearSubmittedUploads(keys: readonly string[]): void {
+  keys.forEach(removeUpload);
 }

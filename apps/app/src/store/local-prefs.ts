@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { z } from 'zod';
 import { Logger } from '@smarteverything/logging';
+import { BROWSER_METADATA, loadBrowserMetadata, migrateBrowserMetadata } from './browser-metadata';
 import { jsonText } from '../format/json-text';
 import { ValueStore, useValue } from '../design/external-store';
 
@@ -29,7 +30,7 @@ export type LocalPrefValue<K extends LocalPrefKey> = Values[K];
 
 const STORAGE_KEY = 'smarteverything.local-prefs';
 
-const STORED = LOCAL_PREFS.partial();
+const STORED = LOCAL_PREFS.partial().extend({ browserTabs: BROWSER_METADATA.optional() });
 
 const defaults: Values = {
   sidebarCollapsed: false,
@@ -63,11 +64,17 @@ async function readStored(): Promise<void> {
     log.warn('local_prefs.unreadable', { stored: text.slice(0, 200) });
     throw new Error('The preferences saved on this device are unreadable and were not applied.');
   }
-  values.set(LOCAL_PREFS.parse({ ...defaults, ...parsed.data }));
+  const { browserTabs, ...preferences } = parsed.data;
+  if (browserTabs !== undefined) {
+    await migrateBrowserMetadata(browserTabs);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+  }
+  values.set(LOCAL_PREFS.parse({ ...defaults, ...preferences }));
 }
 
 async function loadOnce(): Promise<void> {
   try {
+    await loadBrowserMetadata();
     await readStored();
     status.set('ready');
   } catch (error) {

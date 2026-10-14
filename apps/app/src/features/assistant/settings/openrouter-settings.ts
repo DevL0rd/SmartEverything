@@ -6,8 +6,6 @@ const BLOCK = 'assistant.openrouter';
 
 const owner = (env: SettingEnv): boolean => env.owner;
 
-const desktopOwner = (env: SettingEnv): boolean => env.owner && env.platform === 'desktop';
-
 function listed(
   id: string,
   title: string,
@@ -45,12 +43,6 @@ export const OPENROUTER_SETTINGS: readonly SettingDefinition[] = [
     'Paste or replace the key',
     ['api key', 'paste key', 'replace key', 'sk-or'],
     owner,
-  ),
-  listed(
-    'import',
-    'Use the key from Discordinator',
-    ['api key', 'import key', 'discordinator'],
-    desktopOwner,
   ),
   listed('remove', 'Remove the key', ['api key', 'delete key', 'disconnect'], owner),
   listed('credit', 'Credit', ['balance', 'top up', 'buy credits', 'money left'], owner),

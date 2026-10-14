@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DAY, MOMENT } from './api/primitives';
+import { DAY, MOMENT, knownResponseStrings } from './api/primitives';
 
 export const AI_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
@@ -7,7 +7,15 @@ export const AI_EFFORT = z.enum(AI_EFFORTS);
 
 export type AiEffort = z.infer<typeof AI_EFFORT>;
 
-export const AI_MODEL_KINDS = ['chat', 'image', 'video', 'embed', 'transcribe', 'live', 'speak'] as const;
+export const AI_MODEL_KINDS = [
+  'chat',
+  'image',
+  'video',
+  'embed',
+  'transcribe',
+  'live',
+  'speak',
+] as const;
 
 export const AI_MODEL_KIND = z.enum(AI_MODEL_KINDS);
 
@@ -279,12 +287,6 @@ export const AI_CATALOGUE_SYNC = z.strictObject({
 
 export type AiCatalogueSync = z.infer<typeof AI_CATALOGUE_SYNC>;
 
-export const OPENROUTER_KEY_SOURCES = ['discordinator'] as const;
-
-export const OPENROUTER_KEY_SOURCE = z.enum(OPENROUTER_KEY_SOURCES);
-
-export type OpenRouterKeySource = z.infer<typeof OPENROUTER_KEY_SOURCE>;
-
 export const OPENROUTER_KEY = z
   .string()
   .trim()
@@ -292,7 +294,7 @@ export const OPENROUTER_KEY = z
 
 export const OPENROUTER_STATUS = z.strictObject({
   key: z.enum(['set', 'missing']),
-  sources: z.array(OPENROUTER_KEY_SOURCE),
+  sources: knownResponseStrings(z.never()),
   settings: OPENROUTER_SETTINGS,
   default: AI_RESOLVED_MODEL.nullable(),
   synced_at: MOMENT.nullable(),

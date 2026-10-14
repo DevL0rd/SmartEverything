@@ -4,15 +4,7 @@ import type { IconName } from '../components/icon';
 import type { Availability } from '../store/selectors';
 
 export type TabKey =
-  | 'home'
-  | 'devices'
-  | 'cameras'
-  | 'fitness'
-  | 'assistant'
-  | 'automations'
-  | 'talk'
-  | 'settings'
-  | 'more';
+  'home' | 'devices' | 'cameras' | 'fitness' | 'assistant' | 'automations' | 'talk' | 'settings';
 
 export interface PreloadContext {
   readonly queryClient: QueryClient;

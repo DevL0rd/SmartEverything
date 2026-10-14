@@ -1,0 +1,18 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1,4 +1,4 @@
+-import { isAbsolute } from "node:path";
++import { isAbsolute, posix, win32 } from "node:path";
+ import { Service } from "@deepseek-ai/cordis";
+ import z from "@deepseek-ai/schemastery";
+ import { z as z$1 } from "zod";
+@@ -25,7 +25,7 @@ var WorkingDirectoryService = class extends Service {
+ 		const directory = config.defaultDirectory ?? process.cwd();
+ 		if (!isAbsolute(directory)) throw new Error("working-directory: defaultDirectory must be absolute");
+ 		this.defaultDirectory = directory;
+-		const directorySchema = z$1.string().min(1).refine(isAbsolute).nullable();
++		const directorySchema = z$1.string().min(1).refine((value) => posix.isAbsolute(value) || win32.isAbsolute(value)).nullable();
+ 		ctx.sessionProjections.register({
+ 			key: "workingDirectory",
+ 			stateVersion: 1,

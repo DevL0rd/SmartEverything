@@ -1,4 +1,4 @@
-import { ASSISTANT_ATTACHMENT } from '@smarteverything/domain';
+import { ASSISTANT_ATTACHMENT, type AssistantAttachment } from '@smarteverything/domain';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 
@@ -20,3 +20,15 @@ export const FILE_COLUMNS =
   'id, message_id, profile_id, name, mime, bytes, width, height, storage_path, sha256, transcript, created_at';
 
 export type NewAttachment = Omit<StoredAttachment, 'created_at' | 'message_id' | 'transcript'>;
+
+export function summaryOf(file: StoredAttachment): AssistantAttachment {
+  return {
+    id: file.id,
+    name: file.name,
+    mime: file.mime,
+    bytes: file.bytes,
+    width: file.width,
+    height: file.height,
+    transcript: file.transcript,
+  };
+}

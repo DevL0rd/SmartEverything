@@ -3,23 +3,18 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import {
   COMPACTION_EMBED,
-  TOOLS_CHANGED_EMBED,
   type AssistantMessageRow,
   type MessageSource,
-  type ToolsChangedEmbed,
 } from '@smarteverything/domain';
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useStoreSelector } from '../../../store/store-context';
-import { toolDisplayName } from '../model/tool-names';
 import { CollapseBody, CollapseRoot, TurnChevron } from './disclosure';
 import { Markdown } from './markdown/markdown';
 import { Overline } from './overline';
 
 export type SystemEventView =
   | { readonly kind: 'compaction'; readonly summary: string }
-  | { readonly kind: 'tools'; readonly change: ToolsChangedEmbed }
   | { readonly kind: 'note'; readonly icon: IconName; readonly text: string };
 
 const SOURCE_ICON: Readonly<Record<MessageSource, IconName>> = {
@@ -37,10 +32,6 @@ export function systemEventOf(row: AssistantMessageRow): SystemEventView | null 
     if (COMPACTION_EMBED.safeParse(embed).success) {
       return { kind: 'compaction', summary: row.text };
     }
-    const tools = TOOLS_CHANGED_EMBED.safeParse(embed);
-    if (tools.success) {
-      return { kind: 'tools', change: tools.data };
-    }
   }
   if (row.role !== 'system') {
     return null;
@@ -50,37 +41,6 @@ export function systemEventOf(row: AssistantMessageRow): SystemEventView | null 
     icon: row.origin === null ? 'sparkles' : SOURCE_ICON[row.origin.source],
     text: row.text,
   };
-}
-
-function toolsLine(change: ToolsChangedEmbed): string {
-  const parts = [
-    change.added.length === 0 ? null : `${String(change.added.length)} added`,
-    change.removed.length === 0 ? null : `${String(change.removed.length)} removed`,
-  ].filter((part) => part !== null);
-  return parts.length === 0 ? 'Tools changed' : `Tools changed · ${parts.join(', ')}`;
-}
-
-function NameList({
-  title,
-  names,
-}: {
-  readonly title: string;
-  readonly names: readonly string[];
-}): ReactNode {
-  const plugins = useStoreSelector((state) => state.tables.plugins.byId, Object.is);
-  if (names.length === 0) {
-    return null;
-  }
-  return (
-    <View className="gap-1">
-      <Overline>{`${title} · ${String(names.length)}`}</Overline>
-      {names.map((name) => (
-        <Text key={name} variant="callout" selectable>
-          {toolDisplayName(name, (id) => plugins[id]?.manifest.name ?? null)}
-        </Text>
-      ))}
-    </View>
-  );
 }
 
 function Panel({ children }: { readonly children: ReactNode }): ReactNode {
@@ -96,14 +56,6 @@ function EventBody({ event }: { readonly event: SystemEventView }): ReactNode {
       </Panel>
     );
   }
-  if (event.kind === 'tools') {
-    return (
-      <Panel>
-        <NameList title="Added" names={event.change.added} />
-        <NameList title="Removed" names={event.change.removed} />
-      </Panel>
-    );
-  }
   return null;
 }
 
@@ -111,8 +63,6 @@ function labelOf(event: SystemEventView): string {
   switch (event.kind) {
     case 'compaction':
       return 'Earlier messages summarized';
-    case 'tools':
-      return toolsLine(event.change);
     case 'note':
       return event.text;
   }
@@ -122,8 +72,6 @@ function iconOf(event: SystemEventView): IconName {
   switch (event.kind) {
     case 'compaction':
       return 'layers';
-    case 'tools':
-      return 'wrench';
     case 'note':
       return event.icon;
   }

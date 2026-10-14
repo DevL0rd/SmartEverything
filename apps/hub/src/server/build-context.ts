@@ -1,3 +1,12 @@
+import type { Logger } from '@smarteverything/logging';
+import { PreviewService } from '../preview/service';
+import { createImageRuntime, type ImageRuntime } from './image-wiring';
+import { ComputerAiDirectory } from '../computers/ai-directory';
+import { HarnessService } from '../harness/service';
+import { HarnessRoutes } from '../harness/routes';
+import { ComputerNodeAccess } from '../computers/node-access';
+import { ComputerHarnessSockets } from './harness-socket';
+import { ComputerNodeSockets } from './node-socket';
 import { join } from 'node:path';
 import type { HubStatus, PublicStatus } from '@smarteverything/domain';
 import { OpenCalls } from '../assistant-voice/open-calls';
@@ -6,9 +15,11 @@ import { PushCommandChannel } from '../extensions/push/commands';
 import { WatchActionBroker } from '../local/watch-actions';
 import { WatchDataService } from '../local/watch-data';
 import { createOpenRouter } from '../openrouter/platform';
+import { OpenRouterTranscription } from '../openrouter/transcription';
 import { PlaceFinder } from '../places/place-finder';
 import { TalkService } from '../talk/talk-service';
-import { GeminiMediaNotes, MediaNotes } from '../transcripts/media-notes';
+import { MediaNotes } from '../transcripts/media-notes';
+import { OpenRouterMediaNotes } from '../openrouter/media-notes';
 import { WeatherService } from '../weather/weather-service';
 import { ExchangeRateService } from '../exchange-rates/exchange-rate-service';
 import { AccessService } from './access';
@@ -67,6 +78,7 @@ function accessOf(options: BuildOptions, live: LiveHub): AccessService {
     store: options.store,
     dataDirectory: options.dataDirectory,
     now: options.clock.now,
+    ...(options.connections === undefined ? {} : { connections: options.connections }),
     ownerChanged: (clientId): void => {
       live.closeClient(clientId);
     },
@@ -85,10 +97,10 @@ function outboundOf(
   });
   return {
     mediaNotes: new MediaNotes({
-      provider: new GeminiMediaNotes(() => options.secrets.read().geminiKey),
+      provider: new OpenRouterMediaNotes(openRouter.client),
+      transcriptionProvider: new OpenRouterTranscription(openRouter.client),
       chat: options.store.assistantChat,
       ledger: options.store.ledger,
-      prices: openRouter.catalogue,
       filesRoot: join(options.dataDirectory, 'assistant'),
       log: options.log.forArea('hub.assistant'),
     }),
@@ -115,37 +127,170 @@ function outboundOf(
 
 export function contextOf(options: BuildOptions, live: LiveHub, statuses: Statuses): ServerContext {
   const log = options.log.forArea('hub.server');
+  const computers = computerServicesOf(options, live);
+  const outbound = outboundOf(options);
+  const harness = harnessOf(options, live, outbound.openRouter);
+  const assistant = assistantOf(options, live, computers.computerAi);
+  assistant.attachLedger(options.store.ledger);
+  assistant.attachMediaNotes(outbound.mediaNotes);
   const pushCommands = new PushCommandChannel();
   pushCommands.attachLive((clientId, notice, receiver) => live.deliver(clientId, notice, receiver));
   return {
+    ...connectionContext(options),
     store: options.store,
+    harness,
+    preview: previewOf(options, live, { harness, access: computers.computerNodes, assistant }),
+    harnessSockets: harnessSocketsOf(options, computers.computerNodes, harness),
+    imageRuntime: imagesOf(options, live, assistant, outbound.mediaNotes),
+    ...computers,
     hub: options.core.hub,
     firewall: options.core.firewall,
     secrets: options.secrets,
     access: accessOf(options, live),
     links: new MediaLinks(options.clock.now),
     publicUrl: new PublicUrlVerifier({ store: options.store, fetch: options.fetch, log }),
-    foodLookup: new FoodLookup({
-      foods: options.store.foods,
-      fetch: options.fetch,
-      now: options.clock.now,
-      version: options.version,
-      log,
-    }),
+    foodLookup: foodLookupOf(options, log),
     live,
     pushCommands,
     openCalls: new OpenCalls(),
     talk: talkOf(options, live),
-    assistant: assistantOf(options, live),
+    assistant,
     watchActions: new WatchActionBroker(
       pushCommands,
       options.store,
       options.log.forArea('hub.watch'),
     ),
     watchData: new WatchDataService({ store: options.store, now: options.clock.now }),
-    ...outboundOf(options),
+    ...outbound,
     ...statuses,
     recordingPath: options.core.recordingPath,
     log,
   };
+}
+
+function previewOf(
+  options: BuildOptions,
+  live: LiveHub,
+  dependencies: {
+    readonly harness: HarnessService;
+    readonly access: ComputerNodeAccess;
+    readonly assistant: ServerContext['assistant'];
+  },
+): PreviewService {
+  const preview = new PreviewService(
+    dependencies.harness,
+    dependencies.access,
+    options.log.forArea('hub.preview'),
+    {
+      assistant: dependencies.assistant,
+      ...(options.preview === undefined ? {} : { config: options.preview }),
+      notice: (notice): void => {
+        live.profileNotice(notice, notice.profile_id, 'assistant');
+      },
+    },
+  );
+  live.previewOwners.attach(preview.leases);
+  return preview;
+}
+
+function computerServicesOf(
+  options: BuildOptions,
+  live: LiveHub,
+): Pick<ServerContext, 'computerAi' | 'computerNodes' | 'nodeSockets'> {
+  const log = options.log.forArea('hub.computers');
+  const computerAi = new ComputerAiDirectory(options.store, log);
+  computerAi.onChange((status) => {
+    live.announce({ type: 'computer_ai_status', status }, 'owners');
+  });
+  computerAi.onEvent(({ deviceId, event, profileId }) => {
+    if (event.kind !== 'native') return;
+    const notice = { type: 'computer_claude', device_id: deviceId, notice: event.notice } as const;
+    if (profileId !== undefined) live.profileNotice(notice, profileId, 'owners');
+    else live.announce(notice, 'owners');
+  });
+  computerAi.runtimes.onChange((status) => {
+    live.announce({ type: 'computer_runtime_status', status }, 'owners');
+  });
+  computerAi.runtimes.onEvent(({ target, event, profileId }) => {
+    if (event.kind !== 'native' || event.runtime !== 'codex') return;
+    const notice = {
+      type: 'computer_runtime_native',
+      device_id: target.device_id,
+      payload: { runtime: event.runtime, notice: event.notice },
+    } as const;
+    if (profileId !== undefined) live.profileNotice(notice, profileId, 'owners');
+    else live.announce(notice, 'owners');
+  });
+  const computerNodes = new ComputerNodeAccess(options.store, options.clock.now);
+  const nodeSockets = new ComputerNodeSockets(options.store, computerNodes, computerAi, log);
+  return { computerAi, computerNodes, nodeSockets };
+}
+
+function harnessOf(
+  options: BuildOptions,
+  live: LiveHub,
+  openRouter: ServerContext['openRouter'],
+): HarnessService {
+  const harness = new HarnessService(
+    options.store,
+    new HarnessRoutes(openRouter.catalogue, () => options.secrets.read().openrouterKey !== null),
+    (event, profileId) => {
+      live.profileNotice({ type: 'ai_harness', event }, profileId, 'assistant');
+    },
+    { stateDirectory: join(options.dataDirectory, 'harness'), clock: options.clock },
+  );
+  harness.configuration.onChange((notice) => {
+    live.announce(notice, 'assistant');
+  });
+  return harness;
+}
+
+function imagesOf(
+  options: BuildOptions,
+  live: LiveHub,
+  assistant: ServerContext['assistant'],
+  notes: MediaNotes,
+): ImageRuntime {
+  return createImageRuntime({
+    store: options.store,
+    files: assistant.files,
+    notes,
+    fetch: options.fetch,
+    key: () => options.secrets.read().openrouterKey,
+    now: options.clock.now,
+    publish: (receipt): void => {
+      live.profileNotice({ type: 'image_operation', receipt }, receipt.profile_id, 'assistant');
+    },
+    preview: (preview): void => {
+      live.profileNotice(preview, preview.profile_id, 'assistant');
+    },
+    log: options.log.forArea('hub.assistant'),
+  });
+}
+
+function harnessSocketsOf(
+  options: BuildOptions,
+  access: ComputerNodeAccess,
+  harness: HarnessService,
+): ComputerHarnessSockets {
+  return new ComputerHarnessSockets(
+    options.store,
+    access,
+    harness,
+    options.log.forArea('hub.harness-socket'),
+  );
+}
+
+function connectionContext(options: BuildOptions): Pick<ServerContext, 'connections'> {
+  return options.connections === undefined ? {} : { connections: options.connections };
+}
+
+function foodLookupOf(options: BuildOptions, log: Logger): FoodLookup {
+  return new FoodLookup({
+    foods: options.store.foods,
+    fetch: options.fetch,
+    now: options.clock.now,
+    version: options.version,
+    log,
+  });
 }

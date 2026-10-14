@@ -10,14 +10,20 @@ export interface ChatModel {
   readonly providerLabel: string | null;
   readonly effort: string | null;
   readonly isDefault: boolean;
+  readonly computer: string | null;
 }
 
 export function useChatModel(engine: Engine): ChatModel {
   const label = useModelLabel(engine);
   const loaded = label.provider !== null;
-  const name = loaded ? plainModelName(label.name) : modelIdName(engine.model);
+  const name = loaded
+    ? plainModelName(label.name)
+    : engine.model === null
+      ? label.name
+      : modelIdName(engine.model);
   return {
     name,
+    computer: label.computer,
     shortName: loaded ? shortModelName(name) : name,
     provider: label.provider,
     providerLabel: label.providerLabel,

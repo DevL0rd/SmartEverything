@@ -1,5 +1,10 @@
 import electron = require('electron');
+import { htmlPreview } from './html-preview/preload.cjs';
+import * as hubPreload from './hub-network/preload';
+import { browserDiagnostics } from './browser-diagnostics-preload';
 import type {
+  BrowserStatus,
+  DesktopBrowser,
   DesktopCaptureKind,
   DesktopCaptureMode,
   DesktopCaptureSource,
@@ -12,7 +17,6 @@ import type {
   DesktopInvokeChannels,
   DesktopLinger,
   DesktopPlatform,
-  DesktopServer,
   DesktopServiceHealth,
   DesktopServiceLogs,
   DesktopServiceManager,
@@ -24,13 +28,11 @@ import type {
   DesktopVersionArgumentPrefix,
   SmartEverythingDesktop,
 } from '@smarteverything/domain';
-
 const GLOBAL_NAME: DesktopGlobalName = 'smartEverythingDesktop';
 const VERSION_PREFIX: DesktopVersionArgumentPrefix = '--smarteverything-version=';
 const DEEP_LINK_CHANNEL: DesktopEventChannel = 'desktop:deep-link';
 const SERVICE_STATUS_CHANNEL: DesktopEventChannel = 'desktop:service-status-changed';
 const TALK_COMMAND_CHANNEL: DesktopEventChannel = 'desktop:talk-command';
-
 function platformOfProcess(): DesktopPlatform {
   const platform = process.platform;
   if (platform === 'linux' || platform === 'darwin' || platform === 'win32') {
@@ -38,7 +40,6 @@ function platformOfProcess(): DesktopPlatform {
   }
   throw new Error(`the desktop shell runs on linux, darwin or win32; received ${platform}`);
 }
-
 function versionOfProcess(): string {
   const argument = process.argv.find((candidate) => candidate.startsWith(VERSION_PREFIX));
   if (argument === undefined) {
@@ -46,22 +47,18 @@ function versionOfProcess(): string {
   }
   return argument.slice(VERSION_PREFIX.length);
 }
-
 function isString(value: unknown): value is string {
   return typeof value === 'string';
 }
-
 function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean';
 }
-
 async function invoke<C extends DesktopInvokeChannel>(
   channel: C,
   request: DesktopInvokeChannels[C]['request'],
 ): Promise<unknown> {
   return electron.ipcRenderer.invoke(channel, request);
 }
-
 async function invokeForBoolean(
   channel: 'desktop:get-start-on-login' | 'desktop:set-start-on-login',
   request: boolean | undefined,
@@ -72,11 +69,9 @@ async function invokeForBoolean(
   }
   return answer;
 }
-
 function isList(value: unknown): value is readonly unknown[] {
   return Array.isArray(value);
 }
-
 async function takeDeepLinks(): Promise<readonly string[]> {
   const answer: unknown = await invoke('desktop:take-deep-links', undefined);
   if (!isList(answer) || !answer.every(isString)) {
@@ -84,7 +79,6 @@ async function takeDeepLinks(): Promise<readonly string[]> {
   }
   return answer.filter(isString);
 }
-
 function onDeepLink(listener: (url: string) => void): () => void {
   const forward = (_event: unknown, url: unknown): void => {
     if (isString(url)) {
@@ -96,31 +90,25 @@ function onDeepLink(listener: (url: string) => void): () => void {
     electron.ipcRenderer.removeListener(DEEP_LINK_CHANNEL, forward);
   };
 }
-
 class BridgeAnswerError extends Error {
   constructor(channel: string, expected: string) {
     super(`${channel} answers ${expected}; received something else`);
     this.name = 'BridgeAnswerError';
   }
 }
-
 type Fields = Readonly<Record<string, unknown>>;
-
 function isFields(value: unknown): value is Fields {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
-
 function fieldsOf(channel: string, expected: string, value: unknown): Fields {
   if (!isFields(value)) {
     throw new BridgeAnswerError(channel, expected);
   }
   return value;
 }
-
 function oneOf<T extends string>(options: readonly T[], value: unknown): value is T {
   return options.some((option) => option === value);
 }
-
 function stringOf(channel: string, fields: Fields, key: string): string {
   const value = fields[key];
   if (!isString(value)) {
@@ -128,11 +116,9 @@ function stringOf(channel: string, fields: Fields, key: string): string {
   }
   return value;
 }
-
 function nullableStringOf(channel: string, fields: Fields, key: string): string | null {
   return fields[key] === null ? null : stringOf(channel, fields, key);
 }
-
 function booleanOf(channel: string, fields: Fields, key: string): boolean {
   const value = fields[key];
   if (!isBoolean(value)) {
@@ -140,7 +126,6 @@ function booleanOf(channel: string, fields: Fields, key: string): boolean {
   }
   return value;
 }
-
 function numberOf(channel: string, fields: Fields, key: string): number {
   const value = fields[key];
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -148,11 +133,9 @@ function numberOf(channel: string, fields: Fields, key: string): number {
   }
   return value;
 }
-
 function nullableNumberOf(channel: string, fields: Fields, key: string): number | null {
   return fields[key] === null ? null : numberOf(channel, fields, key);
 }
-
 function choiceOf<T extends string>(
   channel: string,
   fields: Fields,
@@ -165,7 +148,6 @@ function choiceOf<T extends string>(
   }
   return value;
 }
-
 const MANAGERS: readonly DesktopServiceManager[] = ['systemd', 'launchd', 'windows-run'];
 const HEALTHS: readonly DesktopServiceHealth[] = [
   'not-installed',
@@ -176,7 +158,6 @@ const HEALTHS: readonly DesktopServiceHealth[] = [
 ];
 const LINGERS: readonly DesktopLinger[] = ['enabled', 'disabled', 'unsupported'];
 const SERVICE_OWNERS: readonly NonNullable<DesktopServiceStatus['managedBy']>[] = ['stable-app'];
-
 function parseServiceStatus(channel: string, value: unknown): DesktopServiceStatus {
   const fields = fieldsOf(channel, 'a service status', value);
   return {
@@ -193,7 +174,6 @@ function parseServiceStatus(channel: string, value: unknown): DesktopServiceStat
       : { managedBy: choiceOf(channel, fields, 'managedBy', SERVICE_OWNERS) }),
   };
 }
-
 type ServiceStatusChannel =
   | 'desktop:service-status'
   | 'desktop:service-start'
@@ -201,11 +181,9 @@ type ServiceStatusChannel =
   | 'desktop:service-restart'
   | 'desktop:service-uninstall'
   | 'desktop:service-enable-linger';
-
 async function invokeForStatus(channel: ServiceStatusChannel): Promise<DesktopServiceStatus> {
   return parseServiceStatus(channel, await invoke(channel, undefined));
 }
-
 function onServiceStatus(listener: (status: DesktopServiceStatus) => void): () => void {
   const forward = (_event: unknown, status: unknown): void => {
     listener(parseServiceStatus(SERVICE_STATUS_CHANNEL, status));
@@ -215,13 +193,6 @@ function onServiceStatus(listener: (status: DesktopServiceStatus) => void): () =
     electron.ipcRenderer.removeListener(SERVICE_STATUS_CHANNEL, forward);
   };
 }
-
-async function server(): Promise<DesktopServer> {
-  const channel = 'desktop:server';
-  const fields = fieldsOf(channel, 'a server', await invoke(channel, undefined));
-  return { url: stringOf(channel, fields, 'url'), token: stringOf(channel, fields, 'token') };
-}
-
 async function serviceLogs(): Promise<DesktopServiceLogs> {
   const channel = 'desktop:service-logs';
   const fields = fieldsOf(channel, 'service logs', await invoke(channel, undefined));
@@ -360,7 +331,39 @@ async function captureStill(sourceId: string | null): Promise<DesktopStill> {
   };
 }
 
+function browserStatus(value: unknown): BrowserStatus {
+  const channel = 'desktop:browser-status';
+  const fields = fieldsOf(channel, 'browser navigation status', value);
+  return {
+    id: stringOf(channel, fields, 'id'),
+    url: stringOf(channel, fields, 'url'),
+    loading: booleanOf(channel, fields, 'loading'),
+    back: booleanOf(channel, fields, 'back'),
+    forward: booleanOf(channel, fields, 'forward'),
+    problem: nullableStringOf(channel, fields, 'problem'),
+  };
+}
+const browser: DesktopBrowser = {
+  publicSessionVersion: (): number => 1,
+  diagnostics: browserDiagnostics,
+  command: async (command) => {
+    await electron.ipcRenderer.invoke('desktop:browser', command);
+  },
+  subscribe: (listener) => {
+    const receive = (_event: unknown, value: unknown): void => {
+      listener(browserStatus(value));
+    };
+    electron.ipcRenderer.on('desktop:browser-status', receive);
+    return (): void => {
+      electron.ipcRenderer.removeListener('desktop:browser-status', receive);
+    };
+  },
+};
 const desktop: SmartEverythingDesktop = {
+  browser,
+  computerIdentity: hubPreload.computerIdentity,
+  htmlPreview,
+  hubNetwork: hubPreload.hubNetwork,
   platform: platformOfProcess(),
   version: versionOfProcess(),
   notify: async (notification) => {
@@ -370,7 +373,7 @@ const desktop: SmartEverythingDesktop = {
   setStartOnLogin: (enabled) => invokeForBoolean('desktop:set-start-on-login', enabled),
   onDeepLink,
   takePendingDeepLinks: takeDeepLinks,
-  server,
+  server: hubPreload.server,
   serviceStatus: () => invokeForStatus('desktop:service-status'),
   startService: () => invokeForStatus('desktop:service-start'),
   stopService: () => invokeForStatus('desktop:service-stop'),

@@ -1,13 +1,22 @@
 import type { IceServer } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
+import type { ApiClient } from '../../../api/connection/client';
 import { ValueStore } from '../../../design/external-store';
 import type { MediaHandle, MediaLink, Transport } from './peer-types';
-import { NO_VIDEO_AFTER_MS, type SessionPhase, type VideoFlow } from './player-state';
-import { guarded, logFailure, startDirect, startRelay } from './session-start';
-import { hasDecodedFrames } from './stats';
+import {
+  NO_VIDEO_AFTER_MS,
+  type SessionError,
+  type SessionPhase,
+  type VideoFlow,
+} from './player-state';
+import { guarded, logFailure, startDirect, startRelay, type SessionHooks } from './session-start';
+import { sampleOf, type StreamSample } from './stats';
 import { surfaceReportsFrames } from './video-surface';
+import { relaySupported } from './rtc';
 
 const log = new Logger('app.camera-sessions');
+
+const MEDIA_CONNECTION_LIMIT_MS = 10_000;
 
 const RETRY_BASE_MS = 500;
 const RETRY_MAX_MS = 8000;
@@ -29,8 +38,21 @@ const IDLE: SharedState = {
 
 export interface SessionKey {
   readonly deviceId: string;
-  readonly relay: boolean;
+  readonly client: ApiClient;
   readonly iceServers: readonly IceServer[];
+}
+
+function framesArrived(
+  previous: StreamSample | null,
+  current: StreamSample | null,
+  requireProgress: boolean,
+): boolean {
+  const decoded = current?.framesDecoded ?? null;
+  const baseline = previous?.framesDecoded ?? null;
+  if (decoded === null) {
+    return false;
+  }
+  return baseline === null ? !requireProgress && decoded > 0 : decoded > baseline;
 }
 
 export class SharedSession {
@@ -38,8 +60,10 @@ export class SharedSession {
   private link: MediaLink | null = null;
   private stopped = (): boolean => true;
   private watch: ReturnType<typeof setTimeout> | null = null;
+  private videoWatch = 0;
   private users = 0;
   private retries = 0;
+  private directRetried = false;
 
   retryDelay(): number {
     const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** this.retries);
@@ -80,51 +104,100 @@ export class SharedSession {
   constructor(readonly key: SessionKey) {}
 
   start(): void {
+    this.directRetried = false;
+    this.begin('webrtc');
+  }
+
+  private begin(transport: Transport): void {
     this.stop();
     let stopped = false;
     this.stopped = (): boolean => stopped;
-    const hooks = guarded(
-      {
-        report: (phase) => {
-          if (phase.kind === 'failed') {
-            logFailure(this.key.deviceId, phase.error);
-          }
-          if (phase.kind === 'connected') {
-            this.retries = 0;
-          }
-          this.patch({ phase });
-          if (phase.kind === 'connected') {
-            this.watchVideo();
-          }
-        },
-        onMedia: (media) => {
-          this.applyListening();
-          this.patch({ media });
-        },
-        onFlow: (flowing) => {
-          this.patch({ video: flowing ? 'flowing' : 'stalled' });
-        },
-        onLink: (next, transport) => {
-          this.link?.close();
-          this.link = next;
-          this.patch({ transport });
-        },
-      },
-      () => stopped,
-    );
-    const { deviceId, iceServers, relay } = this.key;
-    (relay ? startRelay : startDirect)({ deviceId, iceServers }, hooks);
     this.close = (): void => {
       stopped = true;
     };
+    const hooks = guarded(this.hooks(), () => stopped);
+    const { deviceId, iceServers, client } = this.key;
+    (transport === 'mse' ? startRelay : startDirect)({ deviceId, iceServers, client }, hooks);
   }
 
-  stop(): void {
-    this.close();
+  private hooks(): SessionHooks {
+    return {
+      active: (): boolean => !this.stopped(),
+      report: (phase): void => {
+        this.report(phase);
+      },
+      onMedia: (media): void => {
+        this.applyListening();
+        this.patch({ media });
+      },
+      onFlow: (flowing): void => {
+        this.patch({ video: flowing ? 'flowing' : 'stalled' });
+        if (flowing) {
+          this.clearWatch();
+        } else {
+          this.watchVideo();
+        }
+      },
+      onLink: (next, transport): void => {
+        this.link = next;
+        this.applyListening();
+        this.patch({ transport });
+      },
+    };
+  }
+
+  private report(phase: SessionPhase): void {
+    if (phase.kind === 'failed') {
+      logFailure(this.key.deviceId, phase.error);
+      if (this.recover(phase.error)) {
+        return;
+      }
+      this.clearWatch();
+    }
+    this.patch({ phase });
+    if (phase.kind === 'connected') {
+      this.retries = 0;
+      this.watchVideo();
+    } else if (phase.kind === 'starting' || phase.kind === 'interrupted') {
+      this.clearWatch();
+      this.watch = setTimeout(() => {
+        this.watch = null;
+        this.report({ kind: 'failed', error: { kind: 'noPath' } });
+      }, MEDIA_CONNECTION_LIMIT_MS);
+    }
+  }
+
+  private recover(error: SessionError): boolean {
+    if (!['noPath', 'dropped', 'gathering'].includes(error.kind)) {
+      return false;
+    }
+    if (this.state.get().transport !== 'webrtc') {
+      return false;
+    }
+    if (relaySupported()) {
+      log.info('camera.transport_fallback', { deviceId: this.key.deviceId, transport: 'mse' });
+      this.begin('mse');
+      return true;
+    }
+    if (this.directRetried) {
+      return false;
+    }
+    this.directRetried = true;
+    this.begin('webrtc');
+    return true;
+  }
+
+  private clearWatch(): void {
+    this.videoWatch += 1;
     if (this.watch !== null) {
       clearTimeout(this.watch);
       this.watch = null;
     }
+  }
+
+  stop(): void {
+    this.close();
+    this.clearWatch();
     this.link?.close();
     this.link = null;
     this.state.set(IDLE);
@@ -132,6 +205,7 @@ export class SharedSession {
 
   frameSeen(): void {
     this.patch({ video: 'flowing' });
+    this.clearWatch();
   }
 
   stats(): Promise<unknown> {
@@ -161,27 +235,57 @@ export class SharedSession {
     }
   }
 
+  private videoMissing(): void {
+    if (!this.recover({ kind: 'noPath' })) {
+      this.patch({ video: 'stalled' });
+    }
+  }
+
+  private checkNativeVideo(
+    previous: Promise<StreamSample | null>,
+    requireProgress: boolean,
+    active: () => boolean,
+    watch: number,
+  ): void {
+    Promise.all([previous, this.stats().then(sampleOf)]).then(
+      ([before, current]) => {
+        if (active() || watch !== this.videoWatch) {
+          return;
+        }
+        if (framesArrived(before, current, requireProgress)) {
+          this.patch({ video: 'flowing' });
+        } else {
+          this.videoMissing();
+        }
+      },
+      () => {
+        if (!active() && watch === this.videoWatch) {
+          this.videoMissing();
+        }
+      },
+    );
+  }
+
   private watchVideo(): void {
+    this.clearWatch();
     const reports = surfaceReportsFrames();
-    if (!reports) {
+    const active = this.stopped;
+    const watch = this.videoWatch;
+    const requireProgress = this.state.get().video === 'stalled';
+    const previous =
+      !reports && requireProgress ? this.stats().then(sampleOf, () => null) : Promise.resolve(null);
+    if (!reports && !requireProgress) {
       this.patch({ video: 'flowing' });
     }
     this.watch = setTimeout(() => {
       this.watch = null;
       if (reports) {
-        if (this.state.get().video === 'waiting') {
-          this.patch({ video: 'stalled' });
+        if (this.state.get().video !== 'flowing') {
+          this.videoMissing();
         }
         return;
       }
-      this.stats().then(
-        (report) => {
-          this.patch({ video: hasDecodedFrames(report) ? 'flowing' : 'stalled' });
-        },
-        () => {
-          this.patch({ video: 'stalled' });
-        },
-      );
+      this.checkNativeVideo(previous, requireProgress, active, watch);
     }, NO_VIDEO_AFTER_MS);
   }
 }
@@ -194,8 +298,17 @@ export function peekSession(key: SessionKey): SharedSession | null {
   return sessions.get(keyOf(key)) ?? null;
 }
 
+const clients = new WeakMap<ApiClient, number>();
+let nextClient = 0;
+
 function keyOf(key: SessionKey): string {
-  return `${key.deviceId}/${key.relay ? 'server' : 'direct'}`;
+  let identity = clients.get(key.client);
+  if (identity === undefined) {
+    identity = nextClient;
+    nextClient += 1;
+    clients.set(key.client, identity);
+  }
+  return `${String(identity)}/${key.deviceId}/${JSON.stringify(key.iceServers)}`;
 }
 
 export function acquireSession(key: SessionKey): SharedSession {
@@ -206,7 +319,10 @@ export function acquireSession(key: SessionKey): SharedSession {
     sessions.set(name, session);
   }
   session.cancelLeave();
-  if (session.hold() === 1 && existing === undefined) {
+  const state = session.state.get();
+  const needsStart =
+    existing === undefined || state.phase.kind === 'failed' || state.video === 'stalled';
+  if (session.hold() === 1 && needsStart) {
     log.info('camera.session_opened', { deviceId: key.deviceId });
     session.start();
     sessionsChanged.update((version) => version + 1);

@@ -17,8 +17,13 @@ export interface PendingMessage {
 }
 
 const pending = new ValueStore<readonly PendingMessage[]>([]);
+const sending = new ValueStore<ReadonlySet<string>>(new Set());
 
 let flushing = false;
+
+export function useSendingMessage(chatId: string): boolean {
+  return useValue(sending).has(chatId);
+}
 
 export function usePendingMessages(chatId: string): readonly PendingMessage[] {
   const all = useValue(pending);
@@ -75,6 +80,7 @@ async function sendNow(
   text: string,
   attachments: readonly string[],
 ): Promise<boolean> {
+  sending.update((all) => new Set([...all, chatId]));
   try {
     await sendAiChatMessage(chatId, text, attachments, randomUUID());
     clearUploads();
@@ -82,6 +88,8 @@ async function sendNow(
   } catch (error) {
     notify({ message: 'Message not sent', error, tone: 'critical' });
     return false;
+  } finally {
+    sending.update((all) => new Set([...all].filter((id) => id !== chatId)));
   }
 }
 

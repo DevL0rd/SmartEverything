@@ -7,6 +7,8 @@ import {
   type AiChatRow,
   type AiModelChoice,
   type AiModelKind,
+  type AiModelSearch,
+  type AiModelSearchRequest,
   type AiModelList,
   type AiModelRow,
   type AiModelSuggested,
@@ -29,6 +31,12 @@ export interface ModelPageQuery {
 
 export async function listAiModels(query: ModelPageQuery): Promise<AiModelList> {
   return api().call(M.listAiModels, { query: { limit: 30, ...query } });
+}
+
+export async function searchAiModels(
+  query: Omit<AiModelSearchRequest, 'limit' | 'gone'>,
+): Promise<AiModelSearch> {
+  return api().call(M.searchAiModels, { query: { ...query, limit: 30, gone: false } });
 }
 
 export async function suggestedAiModels(
@@ -98,8 +106,14 @@ export async function branchAiChat(
   return row;
 }
 
-export async function removeAiChat(chatId: string): Promise<void> {
-  await api().call(C.removeAiChat, { params: { chatId } });
+export async function removeAiChat(chatId: string, expectedInactiveRunId?: string): Promise<void> {
+  await api().call(C.removeAiChat, {
+    params: { chatId },
+    query:
+      expectedInactiveRunId === undefined
+        ? {}
+        : { expected_inactive_run_id: expectedInactiveRunId },
+  });
   log.info('chat.removed', { chatId });
 }
 
@@ -158,4 +172,10 @@ export async function editAiChatMessage(
 export async function interruptAiChat(chatId: string): Promise<void> {
   await api().call(C.interruptAiChat, { params: { chatId } });
   log.info('chat.interrupted', { chatId });
+}
+
+export async function compactAiChat(chatId: string): Promise<boolean> {
+  const result = await api().call(C.compactAiChat, { params: { chatId } });
+  log.info('chat.compacted', { chatId, compacted: result.compacted });
+  return result.compacted;
 }

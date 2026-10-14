@@ -1,3 +1,11 @@
+import { aiProjectRoutes } from './handlers/ai-projects';
+import { aiPreviewRoutes } from './handlers/ai-previews';
+import { imageRoutes } from './handlers/images';
+import { aiAgentRunRoutes } from './handlers/ai-agent-runs';
+import { aiHarnessRoutes } from './handlers/ai-harness';
+import { computerRuntimeRoutes } from '../computers/runtime-routes';
+import { computerAiRoutes } from '../computers/ai-routes';
+import { computerNodeRoutes } from '../computers/node-routes';
 import type { RunningExtension } from '../extensions';
 import { aiModelRoutes } from '../openrouter/routes';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
@@ -9,8 +17,11 @@ import type { BuildOptions } from './build';
 import type { ServerContext } from './context';
 import { accessRoutes } from './handlers/access';
 import { aiBudgetRoutes } from './handlers/ai-budget';
+import { nativeCommandRoutes } from './handlers/ai-native-commands';
+import { aiProviderRoutes } from './handlers/ai-provider';
 import { aiChatRoutes } from './handlers/ai-chats';
 import { aiCoordinationRoutes } from './handlers/ai-coordination';
+import { claudeCliRoutes } from './handlers/claude-cli';
 import { claudeRoutes } from './handlers/claude';
 import { aiUsageRoutes } from './handlers/ai-usage';
 import { assistantChatRoutes } from './handlers/assistant';
@@ -57,10 +68,15 @@ export function routeTable(
   services: RouteServices,
 ): RouteTable {
   return {
+    ...assistantMediaRoutes(context),
+    ...aiHarnessRoutes(context.harness),
     ...assistantVoiceRoutes(services.voice),
     ...callRoutes(context, services.voice),
     ...services.reach,
-    ...claudeRoutes(services.claude),
+    ...claudeSessionRoutes(context, services.claude),
+    ...computerAiRoutes(context.computerAi),
+    ...computerRuntimeRoutes(context.computerAi, context.store),
+    ...computerNodeRoutes(context.computerNodes, context.nodeSockets, context.harnessSockets),
     ...transcriptRoutes(
       context.store,
       services.transcribing.transcripts,
@@ -88,10 +104,46 @@ export function routeTable(
     ...signalRoutes(context),
     ...assistantChatRoutes(context),
     ...aiChatRoutes(context),
+    ...nativeChatProviderRoutes(context),
+    ...aiAgentRunRoutes(context.store, (run, body) => context.assistant.controlAgentRun(run, body)),
     ...aiCoordinationRoutes(context),
     ...aiUsageRoutes(context),
     ...aiBudgetRoutes(services.budget),
     ...aiModelRoutes(context),
+  };
+}
+
+function nativeChatProviderRoutes(
+  context: ServerContext,
+): Pick<
+  RouteTable,
+  keyof ReturnType<typeof aiProviderRoutes> | keyof ReturnType<typeof nativeCommandRoutes>
+> {
+  return { ...aiProviderRoutes(context), ...nativeCommandRoutes(context) };
+}
+
+function claudeSessionRoutes(
+  context: ServerContext,
+  service: ClaudeService,
+): Pick<
+  RouteTable,
+  keyof ReturnType<typeof claudeRoutes> | keyof ReturnType<typeof claudeCliRoutes>
+> {
+  return { ...claudeRoutes(service), ...claudeCliRoutes(context) };
+}
+
+function assistantMediaRoutes(
+  context: ServerContext,
+): Pick<
+  RouteTable,
+  | keyof ReturnType<typeof imageApiRoutes>
+  | keyof ReturnType<typeof aiPreviewRoutes>
+  | keyof ReturnType<typeof aiProjectRoutes>
+> {
+  return {
+    ...imageApiRoutes(context),
+    ...aiPreviewRoutes(context.preview),
+    ...aiProjectRoutes(context.store, context.assistant.projects),
   };
 }
 
@@ -111,6 +163,7 @@ export function startExtensions(
     options.extensions.map((extension) =>
       extension({
         store: options.store,
+        computerAi: context.computerAi,
         hub: options.core.hub,
         secrets: options.secrets,
         live: context.live,
@@ -123,4 +176,12 @@ export function startExtensions(
       }),
     ),
   );
+}
+
+function imageApiRoutes(context: ServerContext): ReturnType<typeof imageRoutes> {
+  return imageRoutes({
+    images: context.imageRuntime.service,
+    imageActor: context.imageRuntime.actor,
+    imageCatalog: context.imageRuntime.readCatalog,
+  });
 }

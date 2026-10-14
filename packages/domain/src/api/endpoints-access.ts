@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PAIRING_CODE, PAIRING_QR } from './access';
+import { LEGACY_PAIRING_QR, PAIRING_CODE, PAIRING_QR } from './access';
 import { NO_BODY, endpoint } from './endpoint';
 import { CLIENT_NAME, CLIENT_ROW } from './rows-home';
 import { DONE, ID, MOMENT, NOTHING, ROLE, somethingToChange } from './primitives';
@@ -25,7 +25,12 @@ export type HubStatus = z.infer<typeof HUB_STATUS>;
 
 export const SESSION = z.strictObject({ client: CLIENT_ROW, hub: HUB_STATUS });
 
-export const PAIRING = z.strictObject({ code: PAIRING_CODE, expiresAt: MOMENT, qr: PAIRING_QR });
+export const PAIRING = z.strictObject({
+  code: PAIRING_CODE,
+  expiresAt: MOMENT,
+  qr: PAIRING_QR,
+  legacyQr: LEGACY_PAIRING_QR.optional(),
+});
 
 export type Pairing = z.infer<typeof PAIRING>;
 
@@ -63,7 +68,7 @@ export const ACCESS_ENDPOINTS = {
     summary: 'A one-time pairing code and the QR payload a phone scans',
     params: NOTHING,
     query: NOTHING,
-    body: z.strictObject({ role: ROLE }),
+    body: z.strictObject({ role: ROLE, connectionProtocolVersion: z.literal(1).optional() }),
     response: PAIRING,
   }),
   claimPairing: endpoint({

@@ -1,3 +1,4 @@
+import { desktopComputerIdentity } from './service/computer-identity.js';
 import { ipcMain, Notification, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import { z } from 'zod';
 import type {
@@ -155,6 +156,7 @@ function registerCaptureIpc(capture: DisplayCapture, handle: Handle): void {
 
 function registerServiceIpc(services: IpcServices, handle: Handle): void {
   const { service } = services;
+  handle('desktop:computer-identity', () => desktopComputerIdentity(service));
   handle('desktop:server', () => service.server());
   handle('desktop:service-status', () => service.status());
   handle('desktop:service-start', () => service.start());

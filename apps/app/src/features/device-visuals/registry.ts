@@ -2,6 +2,8 @@ import { FAMILY_ICONS } from './family-icon';
 import type { VisualRegistry } from './types';
 import { CameraVisual } from './visuals/camera-visual';
 import { CoverVisual } from './visuals/cover-visual';
+import { MicrowaveVisual } from './visuals/microwave-visual';
+import { DiffuserVisual } from './visuals/diffuser-visual';
 import { glyphVisual } from './visuals/glyph-visual';
 import { DehumidifierVisual, HumidifierVisual } from './visuals/humidifier-visual';
 import { LightVisual } from './visuals/light-visual';
@@ -22,6 +24,8 @@ import { WatchVisual } from './visuals/watch-visual';
 export const VISUALS: VisualRegistry = {
   air_purifier: PurifierVisual,
   humidifier: HumidifierVisual,
+  diffuser: DiffuserVisual,
+  microwave: MicrowaveVisual,
   dehumidifier: DehumidifierVisual,
   tower_fan: TowerFanVisual,
   fan: RotorFanVisual,

@@ -18,6 +18,7 @@ import { StatusAnnouncer } from './status-announcer';
 import type { MessageItem } from '../data/thread';
 import { initialRowCount, type RowShape } from '../model/initial-rows';
 import type { ThreadRow } from './thread-rows';
+import { ImageOperationBubble } from '../images/components/image-receipts';
 import { useFocusedMessage } from './use-focused-message';
 import {
   AWAY_PX,
@@ -39,6 +40,7 @@ export interface ThreadItemsProps {
   readonly onFocused: () => void;
   readonly onOlder: () => void;
   readonly announced: AssistantMessageRow | null;
+  readonly footer?: ReactElement | null;
 }
 
 const TOP_THIRD = 0.33;
@@ -50,6 +52,8 @@ const OPEN_WINDOW = 3;
 const WARM_MS = 700;
 
 function shapeOf(row: ThreadRow): RowShape {
+  if (row.type === 'image-operation')
+    return { text: row.receipt.request.prompt, attachments: 1, embeds: 0 };
   return row.type === 'message'
     ? { text: row.row.text, attachments: row.row.attachments.length, embeds: row.row.embeds.length }
     : { text: row.message.text, attachments: row.message.attachments.length, embeds: 0 };
@@ -116,6 +120,14 @@ function sameRow(left: ThreadRow, right: ThreadRow): boolean {
       return right.type === 'message' && sameMessage(left, right);
     case 'outbox':
       return right.type === 'outbox' && left.message === right.message;
+    case 'image-operation':
+      return (
+        right.type === 'image-operation' &&
+        left.receipt === right.receipt &&
+        (left.message === null || right.message === null
+          ? left.message === right.message
+          : sameMessage(left.message, right.message))
+      );
   }
 }
 
@@ -140,7 +152,13 @@ function RowViewBase({
       );
     case 'outbox':
       return <PendingBubble message={row.message} />;
+    case 'image-operation':
+      return <ImageOperationBubble item={row} flash={flash} renderMessage={renderImageMessage} />;
   }
+}
+
+function renderImageMessage(item: MessageItem, flash: boolean): ReactNode {
+  return <MessageBubble item={item} flash={flash} hideText />;
 }
 
 function newestOf(rows: readonly ThreadRow[], readAt: string | null): Newest | null {
@@ -148,16 +166,33 @@ function newestOf(rows: readonly ThreadRow[], readAt: string | null): Newest | n
   if (outbox !== undefined) {
     return { key: outbox.key, streaming: false, unread: false, mine: true };
   }
-  const row = rows.find((candidate) => candidate.type === 'message');
+  const row = rows.find((candidate) => candidate.type !== 'outbox');
+  if (row?.type === 'image-operation') return newestImageOf(row, readAt);
   if (row?.type !== 'message') {
     return null;
   }
+  return newestMessageOf(row, readAt);
+}
+
+function newestMessageOf(row: MessageItem, readAt: string | null): Newest {
   const ai = row.speaker.kind === 'ai';
   return {
     key: row.key,
     streaming: row.row.state === 'working' && ai,
     unread: ai && readAt !== null && row.row.created_at > readAt,
     mine: row.speaker.kind === 'me' && row.row.origin?.source === 'app',
+  };
+}
+
+function newestImageOf(
+  row: Extract<ThreadRow, { readonly type: 'image-operation' }>,
+  readAt: string | null,
+): Newest {
+  return {
+    key: row.key,
+    streaming: false,
+    unread: readAt !== null && row.receipt.created_at > readAt,
+    mine: false,
   };
 }
 
@@ -171,12 +206,23 @@ interface ItemsModel {
   readonly dayLabel: string | null;
 }
 
+function messageOf(row: ThreadRow): MessageItem | null {
+  switch (row.type) {
+    case 'message':
+      return row;
+    case 'image-operation':
+      return row.message;
+    case 'outbox':
+      return null;
+  }
+}
+
 function useLanding(
   rows: readonly ThreadRow[],
   scrollTo: (index: number, position: number) => void,
 ): void {
   const landed = useRef(false);
-  const divider = rows.findIndex((row) => row.type === 'message' && row.divider);
+  const divider = rows.findIndex((row) => messageOf(row)?.divider === true);
   useEffect(() => {
     if (!landed.current && divider > 0) {
       landed.current = true;
@@ -193,16 +239,24 @@ function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>
   const topKeys = useTopKey();
   const keys = useMemo(() => rows.map((row) => row.key), [rows]);
   const messageKeys = useMemo(
-    () => rows.flatMap((row) => (row.type === 'message' ? [row.key] : [])),
+    () => rows.flatMap((row) => (row.type !== 'outbox' ? [row.key] : [])),
     [rows],
   );
   const dayOf = useMemo(
-    () => new Map(rows.flatMap((row) => (row.type === 'message' ? [[row.key, row.dayName]] : []))),
+    () =>
+      new Map(
+        rows.flatMap((row) => {
+          const message = messageOf(row);
+          return message === null ? [] : [[row.key, message.dayName]];
+        }),
+      ),
     [rows],
   );
+  const focusedKey =
+    rows.find((row) => row.key === focusId || messageOf(row)?.row.id === focusId)?.key ?? focusId;
   const flashed = useFocusedMessage({
     keys,
-    focusId,
+    focusId: focusedKey,
     scroller,
     exhausted,
     loadMore: onOlder,
@@ -212,7 +266,7 @@ function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>
   const showDay = scroll.away && scroll.active;
   return {
     scroll,
-    newestKey: rows.find((row) => row.type === 'message')?.key ?? null,
+    newestKey: rows.find((row) => row.type !== 'outbox')?.key ?? null,
     scroller,
     topKeys,
     flashed,
@@ -244,7 +298,7 @@ function useRenderRow(model: ItemsModel): ListRenderItem<ThreadRow> {
 }
 
 export function ThreadItems(props: ThreadItemsProps): ReactNode {
-  const { rows, loading, intro, onOlder, announced } = props;
+  const { rows, loading, intro, onOlder, announced, footer = null } = props;
   const list = useRef<FlatList<ThreadRow>>(null);
   const model = useItemsModel(props, list);
   const { scroll } = model;
@@ -277,12 +331,8 @@ export function ThreadItems(props: ThreadItemsProps): ReactNode {
           onEndReachedThreshold={0.4}
           onScrollToIndexFailed={model.scroller.onFailed}
           onViewableItemsChanged={model.topKeys.onViewableItemsChanged}
-          ListFooterComponent={
-            <>
-              <Loader loading={loading} />
-              {intro}
-            </>
-          }
+          ListHeaderComponent={footer}
+          ListFooterComponent={<ThreadEnd loading={loading} intro={intro} />}
           contentContainerClassName="px-gutter pb-section-gap"
           renderItem={renderItem}
         />
@@ -291,5 +341,20 @@ export function ThreadItems(props: ThreadItemsProps): ReactNode {
       {scroll.away ? <JumpPill unseen={model.unseen} onPress={scroll.toBottom} /> : null}
       <StatusAnnouncer row={announced} />
     </View>
+  );
+}
+
+function ThreadEnd({
+  loading,
+  intro,
+}: {
+  readonly loading: boolean;
+  readonly intro: ReactElement | null;
+}): ReactNode {
+  return (
+    <>
+      <Loader loading={loading} />
+      {intro}
+    </>
   );
 }

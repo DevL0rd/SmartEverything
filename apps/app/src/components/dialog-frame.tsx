@@ -40,6 +40,7 @@ function DialogPanel({
       {...entering(motion, dialog ? FadeIn.duration(250) : SlideInRight.duration(250))}
       accessibilityViewIsModal
       aria-modal
+      role="dialog"
       accessibilityLabel={label}
       onLayout={shown}
       className={cn(

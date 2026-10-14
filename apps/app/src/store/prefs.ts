@@ -88,11 +88,18 @@ export function savePref<T>(store: EntityStore, pref: Pref<T>, value: T): void {
 export function usePref<T>(pref: Pref<T>): PrefRead<T> {
   const store = useEntityStore();
   const stored = useStoreSelector(
-    (state) => state.tables.layouts.byId[pref.storageKey]?.layout ?? null,
+    (state) => state.tables.layouts.byId[pref.storageKey] ?? null,
     Object.is,
     [pref.storageKey],
   );
-  const read = useMemo(() => pref.decode(stored), [pref, stored]);
+  const read = useMemo(() => {
+    if (stored !== null && (stored.client_id !== null) !== (pref.scope === 'client'))
+      return {
+        status: 'invalid' as const,
+        reason: `The saved ${pref.storageKey} preference has the wrong ${pref.scope} scope.`,
+      };
+    return pref.decode(stored?.layout ?? null);
+  }, [pref, stored]);
   if (read.status === 'invalid') {
     return {
       status: 'invalid',

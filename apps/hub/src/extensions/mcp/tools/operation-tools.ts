@@ -1,5 +1,7 @@
+import { previewCaptureImage } from './preview-capture-image';
 import {
   MCP_HUMAN_ONLY_OPERATIONS,
+  MCP_UNAVAILABLE_OPERATIONS,
   MCP_OPERATION_TOOLS,
   MCP_TOOL_AREAS,
   mcpOperationArea,
@@ -41,10 +43,42 @@ async function called(
 ): Promise<ToolOutput> {
   const profileId = PROFILE_ID.parse(args['profileId']);
   const result = await operate(context, shape.name, operationInput(shape, args), { profileId });
+  if (shape.name === 'capturePreviewViewport') return previewCaptureImage(context, result);
   return { structured: { result: result ?? null } };
 }
 
+const IMAGE_READ_OPERATIONS: ReadonlySet<EndpointName> = new Set([
+  'readPreviewLogs',
+  'searchPreviewLogs',
+  'capturePreviewViewport',
+  'resolveImageInput',
+  'waitForImages',
+]);
+
+const SPECIAL_ANNOTATIONS: ReadonlyMap<EndpointName, ToolAnnotations> = new Map([
+  ['readAiProjectFiles', READS],
+  ['writeAiProjectFiles', { ...WRITES, idempotentHint: true, destructiveHint: true }],
+  ['removeAiProjectFiles', REMOVES],
+  ['readEmbeddedBrowser', READS],
+  ['clearPreviewWebsiteData', { ...REMOVES, openWorldHint: true }],
+  [
+    'startClaudeCliSession',
+    { ...WRITES, idempotentHint: true, destructiveHint: true, openWorldHint: true },
+  ],
+  [
+    'controlClaudeCliSession',
+    { ...WRITES, idempotentHint: true, destructiveHint: true, openWorldHint: true },
+  ],
+  ['answerClaudeCliPrompt', { ...WRITES, destructiveHint: true, openWorldHint: true }],
+  ['startImageOperation', { ...WRITES, openWorldHint: true }],
+  ['cancelImageOperation', { ...WRITES, idempotentHint: true, openWorldHint: true }],
+  ['listImageEndpoints', { ...READS, openWorldHint: true }],
+]);
+
 function annotationsOf(shape: OperationShape): ToolAnnotations {
+  const special = SPECIAL_ANNOTATIONS.get(shape.name);
+  if (special !== undefined) return special;
+  if (IMAGE_READ_OPERATIONS.has(shape.name)) return READS;
   switch (shape.endpoint.method) {
     case 'GET':
       return READS;
@@ -106,9 +140,27 @@ const LIST = z.strictObject({
   responses: z.boolean().default(false).describe('Also give their response JSON schemas'),
 });
 
-function detailed(asked: string, responses: boolean): Record<string, unknown> {
+function operationInScope(context: ToolContext, shape: OperationShape): boolean {
+  const areas = context.caller?.areas;
+  return areas === undefined || areas.includes(mcpOperationArea(shape.endpoint));
+}
+
+function detailed(
+  context: ToolContext,
+  asked: string,
+  responses: boolean,
+): Record<string, unknown> {
   const name = operationNamed(asked);
+  const reason = MCP_UNAVAILABLE_OPERATIONS[name];
+  if (reason !== undefined)
+    throw new ToolError(`${name} is unavailable to AI: ${reason}`, 'unsupported_operation');
   const shape = operationShape(name);
+  if (!operationInScope(context, shape)) {
+    throw new ToolError(
+      `This caller may not discover ${name}; the owner chooses its operation areas`,
+      'forbidden',
+    );
+  }
   return {
     ...listed(name),
     input: shape.input,
@@ -116,15 +168,20 @@ function detailed(asked: string, responses: boolean): Record<string, unknown> {
   };
 }
 
-function operationsListed(input: z.infer<typeof LIST>): Record<string, unknown> {
+function operationsListed(
+  context: ToolContext,
+  input: z.infer<typeof LIST>,
+): Record<string, unknown> {
   if (input.operations !== undefined) {
-    return { operations: input.operations.map((name) => detailed(name, input.responses)) };
+    return { operations: input.operations.map((name) => detailed(context, name, input.responses)) };
   }
   const search = input.search;
   return {
     operations: Object.keys(MCP_HUMAN_ONLY_OPERATIONS)
       .filter(isEndpointName)
+      .filter((name) => MCP_UNAVAILABLE_OPERATIONS[name] === undefined)
       .concat(CALLABLE_OPERATIONS)
+      .filter((name) => operationInScope(context, operationShape(name)))
       .map(listed)
       .filter(
         (entry) =>
@@ -156,6 +213,9 @@ const CALL = z.strictObject({
 
 function callable(asked: string): EndpointName {
   const name = operationNamed(asked);
+  const unavailable = MCP_UNAVAILABLE_OPERATIONS[name];
+  if (unavailable !== undefined)
+    throw new ToolError(`${name} is unavailable to AI: ${unavailable}`, 'unsupported_operation');
   const reason = MCP_HUMAN_ONLY_OPERATIONS[name];
   if (reason !== undefined) {
     throw new ToolError(`${name} stays with the person: ${reason}`, 'human_only');
@@ -168,7 +228,7 @@ export const OPERATION_TOOLS: readonly Tool[] = [
     name: 'list_operations',
     input: LIST,
     annotations: READS,
-    run: (_context, input) => ({ structured: operationsListed(input) }),
+    run: (context, input) => ({ structured: operationsListed(context, input) }),
   }),
   defineTool({
     name: 'call_operation',

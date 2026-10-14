@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
 import { Select } from '../../../components/select';
@@ -16,7 +15,7 @@ import { ColourBlock } from './colour-block';
 import { DialBlock, isDial } from './dial-block';
 import { Guard } from './guard';
 import { SEGMENTED_MOST_OPTIONS, usesStepper, type NumberDescriptor } from './number-kind';
-import { useAction } from './use-action';
+import { ActionButton } from './action-button';
 
 interface BlockProps {
   readonly device: Device;
@@ -137,24 +136,17 @@ function SwitchBlock({ presented, control, disabled }: BlockProps): ReactNode {
   );
 }
 
-function ActionBlock({ device, presented, disabled }: BlockProps): ReactNode {
-  const action = useAction(device, presented);
-  return (
-    <>
-      <Button
-        label={presented.label}
-        variant={presented.danger.tier === 'none' ? 'tonal' : 'destructive'}
-        loading={action.pending}
-        disabled={disabled}
-        onPress={action.run}
-      />
-      {action.sheet}
-    </>
-  );
-}
-
 function Block(props: BlockProps): ReactNode {
   const descriptor = props.presented.capability.value;
+  if (props.presented.colorEncoding !== undefined) {
+    return (
+      <ColourBlock
+        deviceId={props.device.id}
+        presented={props.presented}
+        disabled={props.disabled}
+      />
+    );
+  }
   switch (descriptor.kind) {
     case 'boolean':
       return <SwitchBlock {...props} />;
@@ -163,9 +155,17 @@ function Block(props: BlockProps): ReactNode {
     case 'number':
       return <NumberBlock {...props} descriptor={descriptor} />;
     case 'color':
-      return <ColourBlock deviceId={props.device.id} presented={props.presented} />;
+      return (
+        <ColourBlock
+          deviceId={props.device.id}
+          presented={props.presented}
+          disabled={props.disabled}
+        />
+      );
     case 'action':
-      return <ActionBlock {...props} />;
+      return (
+        <ActionButton device={props.device} presented={props.presented} disabled={props.disabled} />
+      );
     case 'text':
       return <CapabilityRow device={props.device} presented={props.presented} reason={null} />;
   }

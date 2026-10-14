@@ -7,13 +7,7 @@ import type { Outbox } from './outbox';
 import type { HostedListening } from './outreach';
 import type { SpeechSource } from './speech-input';
 import { liveWindow } from './live-window';
-import {
-  callSearchesWeb,
-  declarationsOf,
-  systemOf,
-  type VoiceKit,
-  type VoiceWho,
-} from './voice-kit';
+import { declarationsOf, systemOf, voiceHub, type VoiceKit, type VoiceWho } from './voice-kit';
 import { VOICE_TOOL_NAMES } from './voice-tools';
 
 export interface CallHooksDeps {
@@ -104,7 +98,6 @@ export function conversationHooks(
     system: () => systemOf(kit, who()),
     window: () => liveWindow(store.assistantChat.settings()),
     tools: () => declarationsOf(kit, who()),
-    webSearch: () => callSearchesWeb(kit, who()),
     record: (turn): void => {
       recordTurn(call(), turn);
     },
@@ -115,7 +108,7 @@ export function conversationHooks(
       if (sight !== null) {
         return sight;
       }
-      const result = await options.tools.call(name, args, toolCallerOf(current));
+      const result = await voiceHub(kit, who()).call(name, args, toolCallerOf(current));
       return { response: result.response, line: result.line, pictures: result.pictures };
     },
     ended: (reason, detail): void => {

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { useEffect } from 'react';
 import { View } from 'react-native';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
@@ -17,7 +18,6 @@ import { ChatList } from '../chats/chat-list';
 import { ChatThread } from '../chats/chat-thread';
 import { ListPane } from '../chats/list-pane';
 import { DraftThread, NEW_CHAT_ID } from '../chats/draft-thread';
-import { StartChat } from '../chats/start-chat';
 import { BlockedChat } from '../components/chat-states';
 import { useAssistantName, useChatState } from '../data/assistant-data';
 import { useAiChat, useAiChats, useChatMessages } from '../data/chat-store';
@@ -29,7 +29,7 @@ const log = new Logger('app.assistant');
 
 function openChat(chatId: string, inPlace: boolean, messageId?: string): void {
   if (inPlace) {
-    router.setParams(messageId === undefined ? { chatId } : { chatId, message: messageId });
+    router.setParams({ chatId, agent: undefined, message: messageId });
   } else {
     router.push(href.assistantChat(chatId, messageId === undefined ? {} : { message: messageId }));
   }
@@ -126,18 +126,20 @@ function PhoneList(): ReactNode {
   const actions: readonly HeaderAction[] = fab
     ? []
     : [{ icon: 'pencil', label: 'New chat', onPress: compose }];
+  if (!hasChats) return <DraftThread back={false} onStarted={pushChat} />;
   return (
-    <Screen scroll={false} header={<PageHeader title="Chats" search={false} actions={actions} />}>
-      {hasChats ? (
-        <ChatList
-          selected={null}
-          onOpen={pushChat}
-          onDeleted={() => undefined}
-          onNewChat={compose}
+    <Screen
+      scroll={false}
+      header={
+        <PageHeader
+          title="Chats"
+          settings={mainPageSettings('assistant')}
+          search={false}
+          actions={actions}
         />
-      ) : (
-        <StartChat onStarted={pushChat} />
-      )}
+      }
+    >
+      <ChatList selected={null} onOpen={pushChat} onDeleted={() => undefined} onNewChat={compose} />
     </Screen>
   );
 }
@@ -198,7 +200,10 @@ function Blocked(): ReactNode {
     return null;
   }
   return (
-    <Screen scroll={false} header={<PageHeader title={name} />}>
+    <Screen
+      scroll={false}
+      header={<PageHeader settings={mainPageSettings('assistant')} title={name} />}
+    >
       <View className="flex-1 justify-center">
         <BlockedChat state={state} />
       </View>

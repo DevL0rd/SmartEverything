@@ -1,18 +1,16 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../app-shell/main-pages';
 import { useDeferredValue, useState } from 'react';
 import { View } from 'react-native';
-import { router, useLocalSearchParams, type Href } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { href } from '../../app-shell/hrefs';
 import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
-import type { IconName } from '../../components/icon';
-import type { MenuItem } from '../../components/menu';
 import { PageHeader } from '../../components/page-header';
 import { Screen } from '../../components/screen';
-import { settingsItem } from '../../settings/settings-item';
 import { useListedDevices, useRooms } from '../../store/selectors';
-import { ComfortStrip, useClimateWidgets } from '../climate';
+import { ComfortStrip } from '../climate';
 import { isOffline } from '../devices';
 import { DeviceFilters } from './components/device-filters';
 import { DeviceGrid } from './components/device-grid';
@@ -28,29 +26,6 @@ import {
 
 const ADD_DEVICE = href.settings.page('devices/add');
 
-function menuItem(label: string, icon: IconName, target: Href): MenuItem {
-  return {
-    label,
-    icon,
-    onPress: (): void => {
-      router.push(target);
-    },
-  };
-}
-
-function useOverflow(): readonly MenuItem[] {
-  const climate = useClimateWidgets();
-  return [
-    ...(climate.airHistory ? [menuItem('Air history', 'activity', href.devicesPage('air'))] : []),
-    ...(climate.supplies
-      ? [menuItem('Filters & water', 'wrench', href.devicesPage('supplies'))]
-      : []),
-    menuItem('Add a device', 'plus', ADD_DEVICE),
-    menuItem('Rooms', 'grid', href.settings.page('home/rooms')),
-    settingsItem(href.settings.page('devices')),
-  ];
-}
-
 function useQuery(): readonly [DeviceQuery, (query: DeviceQuery) => void] {
   const { status } = useLocalSearchParams<{ status?: string }>();
   const [query, setQuery] = useState<DeviceQuery>({
@@ -63,7 +38,10 @@ function useQuery(): readonly [DeviceQuery, (query: DeviceQuery) => void] {
 
 function NoDevices(): ReactNode {
   return (
-    <Screen header={<PageHeader title="Devices" back={false} />} maxWidth="reading">
+    <Screen
+      header={<PageHeader title="Devices" settings={mainPageSettings('devices')} back={false} />}
+      maxWidth="reading"
+    >
       <EmptyState
         icon="bulb"
         title="No devices yet"
@@ -116,7 +94,6 @@ export function DevicesScreen(): ReactNode {
   const rooms = useRooms();
   const [query, setQuery] = useQuery();
   const shownQuery = useDeferredValue(query);
-  const overflow = useOverflow();
   if (devices.length === 0) {
     return <NoDevices />;
   }
@@ -125,7 +102,14 @@ export function DevicesScreen(): ReactNode {
     <Screen
       scroll={false}
       maxWidth="dashboard"
-      header={<PageHeader title="Devices" back={false} search={false} overflow={overflow} />}
+      header={
+        <PageHeader
+          title="Devices"
+          settings={mainPageSettings('devices')}
+          back={false}
+          search={false}
+        />
+      }
     >
       <DeviceGrid
         groups={groupedDevices(devices, rooms, shownQuery)}

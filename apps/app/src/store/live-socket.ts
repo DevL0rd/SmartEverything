@@ -8,6 +8,7 @@ import {
 import { z } from 'zod';
 import { readLeniently } from '../api/connection/readable';
 import { jsonText } from '../format/json-text';
+import { openHubSocket } from '../api/connection/hub-socket';
 
 export const TOKEN_WITHDRAWN = 4001;
 
@@ -67,8 +68,7 @@ export interface SocketTarget {
 }
 
 export function openLiveSocket(target: SocketTarget, handlers: SocketHandlers): () => void {
-  const url = `${target.url.replace(/^http/, 'ws')}${MEDIA_PATHS.live}`;
-  const socket = new WebSocket(url, [...liveProtocols(target.token)]);
+  const socket = openHubSocket(target, MEDIA_PATHS.live, liveProtocols(target.token));
   let closedByUs = false;
   socket.onopen = (): void => {
     socket.send(JSON.stringify(target.subscribe));

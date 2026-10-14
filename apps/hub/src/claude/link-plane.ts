@@ -1,22 +1,19 @@
 import type {
   ClaudeAnswer,
-  ClaudeControl,
-  ClaudeDelivery,
   ClaudePrompt,
-  ClaudeStart,
+  ClaudeControllerRegistration,
+  ClaudeController,
   ClaudeUsage,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import type { ClaudeCli } from './claude-cli';
-import { ClaudeController } from './controller';
-import { ClaudeControls, type OpenUrl } from './control';
+import { NativeTools } from './native-tools';
 import type {
   ClaudeControlPlane,
   ClaudeControllerState,
   ClaudeLinkState,
-  ControlTarget,
   SessionLinkFacts,
 } from './control-plane';
 import {
@@ -31,35 +28,36 @@ import { ClaudeNotReadyError } from './errors';
 import { floorDenied } from './hook-output';
 import { ClaudeLink } from './link';
 import type { LinkLaunch } from './link-launch';
-import { LinkToken } from './link-token';
+import { LinkToken, type LinkCredential } from './link-token';
 import { PromptBroker, type Requester } from './prompt-broker';
 import { ModStreams, type StreamSink } from './streams';
 
 export interface PlaneOptions {
-  readonly store: Store;
+  readonly store?: Store;
+  readonly credential?: LinkCredential;
   readonly clock: Clock;
   readonly log: Logger;
   readonly directory: string;
   readonly launch: LinkLaunch;
   readonly cli: ClaudeCli;
   readonly readUrl: () => Promise<string>;
+  readonly readMcp?: () => Promise<{
+    readonly url: string | null;
+    readonly headersCommand: string;
+  }>;
   readonly pluginsDirectory: string;
-  readonly open: OpenUrl;
   readonly raised: (prompt: ClaudePrompt) => void;
-  readonly autoInstall: () => boolean;
   readonly holdMs?: number;
   readonly riskyHoldMs?: number;
   readonly requestTimeoutMs?: number;
-  readonly pickupMs?: number;
 }
 
 export class LinkPlane implements ClaudeControlPlane {
   readonly broker: PromptBroker;
   readonly streams: ModStreams;
-  readonly token: LinkToken;
+  readonly native: NativeTools;
+  readonly token: LinkCredential;
   private readonly pluginLink: ClaudeLink;
-  private readonly controllerSession: ClaudeController;
-  private readonly controls: ClaudeControls;
   private readonly listeners = new Set<() => void>();
   private readonly reported = new Set<string>();
   private problem: string | null = null;
@@ -69,7 +67,7 @@ export class LinkPlane implements ClaudeControlPlane {
       this.notify();
     };
     const { clock, log, directory, launch } = options;
-    this.token = new LinkToken(options.store, directory);
+    this.token = credentialOf(options);
     this.broker = new PromptBroker({
       clock,
       log,
@@ -84,53 +82,23 @@ export class LinkPlane implements ClaudeControlPlane {
       changed,
       ...(options.requestTimeoutMs === undefined ? {} : { timeoutMs: options.requestTimeoutMs }),
     });
-    this.controllerSession = new ClaudeController({ clock, log, directory, launch, changed });
+    this.native = nativeTools(this.streams, directory, changed, log);
     this.pluginLink = new ClaudeLink({
       directory,
       launch,
       token: this.token,
       cli: options.cli,
       readUrl: options.readUrl,
+      ...(options.readMcp === undefined ? {} : { readMcp: options.readMcp }),
       pluginsDirectory: options.pluginsDirectory,
       log,
       changed,
     });
-    this.controls = new ClaudeControls({
-      streams: this.streams,
-      controller: this.controllerSession,
-      open: options.open,
-      log,
-      ...(options.pickupMs === undefined ? {} : { pickupMs: options.pickupMs }),
-    });
   }
 
   async load(): Promise<void> {
-    await this.controllerSession.load();
     await this.pluginLink.refresh();
     this.notify();
-    if (this.options.autoInstall()) {
-      await this.autoInstallLink();
-    }
-  }
-
-  private async autoInstallLink(): Promise<void> {
-    const { log } = this.options;
-    const before = this.pluginLink.state();
-    try {
-      const after = await this.pluginLink.install();
-      this.setProblem(null);
-      log.info(before === 'installed' ? 'link.auto_current' : 'link.auto_installed', {
-        from: before,
-        state: after,
-      });
-    } catch (cause) {
-      if (cause instanceof ClaudeNotReadyError) {
-        log.info('link.auto_skipped', { reason: cause.reason });
-        return;
-      }
-      this.setProblem(cause instanceof Error ? cause.message : String(cause));
-      log.error('link.auto_failed', cause);
-    }
   }
 
   private setProblem(next: string | null): void {
@@ -155,7 +123,7 @@ export class LinkPlane implements ClaudeControlPlane {
   }
 
   controller(): ClaudeControllerState {
-    return this.controllerSession.state();
+    return 'not_registered';
   }
 
   prompts(): readonly ClaudePrompt[] {
@@ -163,23 +131,25 @@ export class LinkPlane implements ClaudeControlPlane {
   }
 
   sessionLink(sessionId: string): SessionLinkFacts {
-    return { connected: this.streams.has(sessionId), reported: this.reported.has(sessionId) };
+    return {
+      connected: this.streams.has(sessionId),
+      reported: this.reported.has(sessionId),
+    };
   }
 
   usage(): ClaudeUsage {
     return this.streams.usage();
   }
 
-  control(target: ControlTarget, body: ClaudeControl): Promise<ClaudeDelivery | null> {
-    return this.controls.control(target, body);
+  configureControl(enabled: boolean): void {
+    if (!enabled) {
+      this.streams.stop();
+      this.broker.stop();
+    }
   }
 
   answer(promptId: string, body: ClaudeAnswer, requester: Requester): Promise<ClaudePrompt> {
     return Promise.resolve(this.broker.answer(promptId, body, requester));
-  }
-
-  start(body: ClaudeStart): ReturnType<ClaudeControls['start']> {
-    return this.controls.start(body);
   }
 
   async installLink(): Promise<{ state: ClaudeLinkState }> {
@@ -192,13 +162,22 @@ export class LinkPlane implements ClaudeControlPlane {
     return this.pluginLink.remove().then((state) => ({ state }));
   }
 
-  registerController(): ReturnType<ClaudeController['begin']> {
-    return this.controllerSession.begin();
+  registerController(): Promise<ClaudeControllerRegistration> {
+    return Promise.reject(
+      new ClaudeNotReadyError(
+        'register_controller',
+        'Desktop controller registration is retired. Use the owned CLI provider or attached CLI tools.',
+      ),
+    );
   }
 
-  async removeController(): Promise<{ state: ClaudeControllerState }> {
-    await this.controllerSession.forget();
-    return { state: this.controllerSession.state() };
+  removeController(): Promise<ClaudeController> {
+    return Promise.reject(
+      new ClaudeNotReadyError(
+        'remove_controller',
+        'Desktop controller management is retired; existing files are retained.',
+      ),
+    );
   }
 
   onChange(listener: () => void): () => void {
@@ -212,14 +191,9 @@ export class LinkPlane implements ClaudeControlPlane {
     this.markReported(input.session_id);
     switch (input.hook_event_name) {
       case 'UserPromptSubmit':
-        await this.controllerSession.prompted(input.session_id, input.prompt);
         return NO_ANSWER;
       case 'Stop':
-        return this.controllerSession.stopped(
-          input.session_id,
-          input.last_assistant_message ?? '',
-          closed,
-        );
+        return NO_ANSWER;
       case 'PermissionRequest':
       case 'PreToolUse':
         return this.broker.hold(
@@ -244,10 +218,10 @@ export class LinkPlane implements ClaudeControlPlane {
   }
 
   floor(input: FloorInput): HookOutput {
-    if (this.controllerSession.permits(input.session_id, input.tool_name, input.tool_input)) {
+    if (this.native.permits(input.session_id, input.tool_name, input.tool_input)) {
       return NO_ANSWER;
     }
-    this.options.log.warn('controller.floor_denied', {
+    this.options.log.warn('native.floor_denied', {
       session: input.session_id,
       tool: input.tool_name,
     });
@@ -261,12 +235,40 @@ export class LinkPlane implements ClaudeControlPlane {
     }
   }
 
-  attachStream(sessionId: string, sink: StreamSink, closed: AbortSignal): void {
+  attachStream(sessionId: string, sink: StreamSink, closed: AbortSignal, single = false): void {
     this.markReported(sessionId);
-    this.streams.attach(sessionId, sink, closed);
+    this.streams.attach(sessionId, sink, closed, single);
+    this.native.discover(sessionId);
   }
 
   report(report: ModReport): void {
     this.streams.report(report);
   }
+
+  stop(): void {
+    this.streams.stop();
+    this.broker.stop();
+    this.listeners.clear();
+  }
+}
+
+function credentialOf(options: PlaneOptions): LinkCredential {
+  if (options.credential !== undefined) {
+    return options.credential;
+  }
+  if (options.store === undefined) {
+    throw new ClaudeNotReadyError('link', 'a local scoped link credential is required');
+  }
+  return new LinkToken(options.store, options.directory);
+}
+
+function nativeTools(
+  streams: ModStreams,
+  directory: string,
+  changed: () => void,
+  log: Logger,
+): NativeTools {
+  return new NativeTools(streams, directory, changed, (cause): void => {
+    log.error('native.discovery_failed', cause);
+  });
 }

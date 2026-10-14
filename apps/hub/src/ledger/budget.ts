@@ -143,6 +143,7 @@ export class Budget {
     return {
       from,
       spent_micros: this.options.ledger.spentSince(from),
+      unknown_count: this.options.ledger.unknownSince(from),
       limit_micros: limitOf(limitUsd),
     };
   }

@@ -13,7 +13,13 @@ export {
 export type { AppCredentials, AppTargets, SmartThingsApp } from './apps';
 export { SmartThingsResponseError } from './errors';
 export type { Binding, SmartThingsCommand } from './bindings';
-export { nextRequestAt, outcomesOf, pruneHistory, takeBatch } from './command-batching';
+export {
+  MAX_COMMANDS_PER_REQUEST,
+  nextRequestAt,
+  outcomesOf,
+  pruneHistory,
+  takeBatch,
+} from './command-batching';
 export type { CommandOutcome, QueuedCommand } from './command-batching';
 export { CAPABILITY_DEFINITION, definitionKey, definitionPath } from './definition-schema';
 export type { CapabilityDefinition } from './definition-schema';
@@ -95,3 +101,5 @@ export type {
   WebhookEventEntry,
   WebhookMessage,
 } from './webhook-messages';
+
+export { validateRawWrite } from './raw-refinement';

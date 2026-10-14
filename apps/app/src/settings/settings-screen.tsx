@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Redirect, useLocalSearchParams } from 'expo-router';
+import { CUSTOM_SETTINGS_SCREENS, customSettingsScreenId } from './custom-screens';
 import { EmptyState } from '../components/empty-state';
 import { PageHeader } from '../components/page-header';
 import type { PrimaryActionProps } from '../components/primary-action';
@@ -11,7 +12,6 @@ import { pageAvailable, useBuiltSettingsPages } from './availability';
 import { SettingsFrame } from './settings-frame';
 import { href } from '../app-shell/hrefs';
 import { legacyHref } from '../app-shell/legacy-routes';
-import { mountedHref } from './mounts';
 import { retiredPageTarget } from './retired-pages';
 import { SettingsPageBody } from './settings-page';
 import { onPlatform, settingsPage } from './tree';
@@ -80,17 +80,21 @@ export function SettingsPageScreen({
 }
 
 export function MountedSettingsRoute({ root }: { readonly root: string }): ReactNode {
-  const { page } = useLocalSearchParams<{ page: string[]; focus?: string }>();
-  return <SettingsPageScreen page={[root, ...page].join('/')} />;
+  const { page, focus } = useLocalSearchParams<{ page?: string[]; focus?: string }>();
+  const id = [root, ...(page ?? [])].join('/');
+  return (
+    <Redirect
+      href={focus === undefined ? href.settings.page(id) : href.settings.focus(id, focus)}
+    />
+  );
 }
 
 export function SettingsCatchAll(): ReactNode {
-  const { page, focus } = useLocalSearchParams<{ page: string[]; focus?: string }>();
+  const { page } = useLocalSearchParams<{ page: string[]; focus?: string }>();
   const id = page.join('/');
   const retired = retiredPageTarget(id);
-  const moved =
-    retired === null
-      ? (legacyHref(['settings', ...page]) ?? mountedHref(id, focus))
-      : href.settings.page(retired);
-  return moved === null ? <SettingsPageScreen page={id} /> : <Redirect href={moved} />;
+  const moved = retired === null ? legacyHref(['settings', ...page]) : href.settings.page(retired);
+  const Custom = CUSTOM_SETTINGS_SCREENS[customSettingsScreenId(id)];
+  if (moved !== null) return <Redirect href={moved} />;
+  return Custom === undefined ? <SettingsPageScreen page={id} /> : <Custom />;
 }

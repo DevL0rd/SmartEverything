@@ -22,7 +22,6 @@ async function commit(id: string): Promise<void> {
     await removeAssistantMessage(id);
   } catch (error) {
     notify({ message: 'Message not deleted', error, tone: 'critical' });
-  } finally {
     restore(id);
   }
 }

@@ -12,7 +12,10 @@ export function HomeHost({ children }: { readonly children: ReactNode }): ReactN
     return children;
   }
   return (
-    <HomeStore key={state.connection.token} connection={state.connection}>
+    <HomeStore
+      key={`${state.connection.url}:${state.connection.token}`}
+      connection={state.connection}
+    >
       <LoadedGate>{children}</LoadedGate>
     </HomeStore>
   );

@@ -16,8 +16,9 @@ import {
 } from '@smarteverything/domain';
 import type { StoreContext } from '../store/context';
 import { ledgerPageOf, positionOf } from './ledger-page';
-import { choicesOf, seriesOf, spentSince, totalsOf } from './usage-queries';
+import { choicesOf, seriesOf, spentSince, totalsOf, unknownSince } from './usage-queries';
 import { UsageStore } from './usage-store';
+import { durableSessionWrite } from '../store/repositories/dsh-session-durability';
 
 export type UsageListener = (row: AiUsageRow) => void;
 
@@ -60,9 +61,9 @@ export class Ledger {
     this.rows = new UsageStore(context);
   }
 
-  record(entry: UsageEntry): AiUsageRow {
+  record(entry: UsageEntry, durable = false): AiUsageRow {
     const parsed = USAGE_ENTRY.parse(entry);
-    const row = this.context.write(() => {
+    const write = (): AiUsageRow => {
       const row = AI_USAGE_ROW.parse({
         ...parsed,
         id: this.context.newId(),
@@ -73,9 +74,47 @@ export class Ledger {
       this.context.changed('ai_usage', 'INSERT', row, null);
       this.sink(row, row.cost_micros);
       return row;
+    };
+    const row = durable ? durableSessionWrite(this.context, write) : this.context.write(write);
+    this.tell(row);
+    return row;
+  }
+
+  amend(
+    id: string,
+    change: Partial<
+      Pick<
+        AiUsageRow,
+        | 'generation_id'
+        | 'tokens_in'
+        | 'tokens_out'
+        | 'tokens_cached'
+        | 'tokens_reasoning'
+        | 'cost_micros'
+        | 'cost_state'
+        | 'meta'
+      >
+    >,
+  ): AiUsageRow {
+    const row = durableSessionWrite(this.context, () => {
+      const before = this.rows.get(id);
+      if (before.cost_state === 'reconciled') return before;
+      const after = AI_USAGE_ROW.parse({
+        ...before,
+        ...change,
+        meta: { ...before.meta, ...change.meta },
+      });
+      this.rows.replace(after);
+      this.context.changed('ai_usage', 'UPDATE', after, before);
+      this.sink(after, after.cost_micros - before.cost_micros);
+      return after;
     });
     this.tell(row);
     return row;
+  }
+
+  pendingHarness(): AiUsageRow[] {
+    return this.rows.pendingHarness();
   }
 
   reconcile(id: string, stats: UsageReconcile): AiUsageRow {
@@ -88,7 +127,7 @@ export class Ledger {
       const after = AI_USAGE_ROW.parse({
         ...before,
         ...change,
-        meta: { ...before.meta, ...change.meta },
+        meta: { ...before.meta, ...change.meta, cost_available: true },
         cost_state: 'reconciled',
       });
       this.rows.replace(after);
@@ -132,6 +171,10 @@ export class Ledger {
 
   zone(): string {
     return this.timeZone();
+  }
+
+  unknownSince(from: string): number {
+    return unknownSince(this.context.sql, from);
   }
 
   spentSince(from: string): number {

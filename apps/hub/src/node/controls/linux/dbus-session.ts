@@ -95,7 +95,12 @@ export class SessionBus {
       }
     };
     this.bus.on('message', onMessage);
-    await this.daemon('AddMatch', text);
+    try {
+      await this.daemon('AddMatch', text);
+    } catch (cause) {
+      this.bus.removeListener('message', onMessage);
+      throw cause;
+    }
     return (): void => {
       this.bus.removeListener('message', onMessage);
     };

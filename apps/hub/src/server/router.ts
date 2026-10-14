@@ -1,6 +1,10 @@
+import { nativeProjectResponse } from './native-project-compatibility';
+import { withRequestSignal } from './request-signal';
+import { withControlCaller } from './local-control-context';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   API_ENDPOINTS,
+  ASSISTANT_POST,
   ApiError,
   NO_BODY,
   matchPath,
@@ -12,7 +16,14 @@ import type { z } from 'zod';
 import type { ComputerEndpointName } from '../computers/computer-routes';
 import type { PhoneEndpointName } from '../phones/phone-routes';
 import type { Store } from '../store/store';
-import { authenticate, type Caller } from './auth';
+import {
+  assertReaderEngineWrite,
+  engineProjection,
+  engineReader,
+  memberEngineProjection,
+  legacyTargetChat,
+} from './engine-compatibility';
+import { authenticate, profileIdOf, roleOfCaller, type Caller } from './auth';
 import { invalid, issuesOf } from './errors';
 import { BODY_LIMIT, PUBLIC_BODY_LIMIT, parseJsonBody, readBody, remoteOf, sendJson } from './http';
 
@@ -72,13 +83,15 @@ export function bound<
       if (!body.success) {
         throw invalid('body', body.error);
       }
-      const result = await handler({
-        params: params.data,
-        query: query.data,
-        body: body.data,
-        caller,
-        remote: raw.remote,
-      });
+      const result = await withControlCaller(caller, () =>
+        handler({
+          params: params.data,
+          query: query.data,
+          body: body.data,
+          caller,
+          remote: raw.remote,
+        }),
+      );
       const response = endpoint.response.safeParse(result);
       if (!response.success) {
         log.error('response.invalid', undefined, {
@@ -90,7 +103,9 @@ export function bound<
           `The server built an invalid response for ${endpoint.path}.`,
         );
       }
-      return response.data;
+      return caller.kind === 'client' && roleOfCaller(caller) !== 'owner'
+        ? memberEngineProjection(response.data)
+        : response.data;
     },
   };
 }
@@ -184,16 +199,57 @@ export class Router {
       throw new ApiError('invalid_request', `${endpoint.method} ${endpoint.path} takes no body.`);
     }
     const url = new URL(request.url ?? '/', 'http://server');
-    const result = await matched.route.bound.run(
-      caller,
-      {
-        params: matched.params,
-        query: Object.fromEntries(url.searchParams),
-        body,
-        remote: remoteOf(request),
-      },
-      this.log,
+    const reader = engineReader(request.headers);
+    const computerEngines = reader !== 'legacy';
+    if (endpoint.method !== 'GET')
+      assertReaderEngineWrite(
+        this.store,
+        matched.route.name,
+        {
+          ...matched.params,
+          ...legacyChatParams(this.store, matched, caller, body),
+        },
+        { body, reader },
+      );
+    const result = await withRequestSignal(request, response, () =>
+      matched.route.bound.run(
+        caller,
+        {
+          params: matched.params,
+          query: Object.fromEntries(url.searchParams),
+          body,
+          remote: remoteOf(request),
+        },
+        this.log,
+      ),
     );
-    sendJson(response, 200, result);
+    if (!computerEngines)
+      response.setHeader(
+        'x-smarteverything-ai-unavailable',
+        'Computer AI chats require an updated app; computer chats are unavailable in this app.',
+      );
+    response.setHeader('vary', 'origin, accept');
+    sendJson(
+      response,
+      200,
+      engineProjection(nativeProjectResponse(result, request.headers), reader),
+    );
   }
+}
+
+function legacyChatParams(
+  store: Store,
+  matched: Matched,
+  caller: Caller,
+  body: unknown,
+): Readonly<Record<string, string>> {
+  const post = matched.route.name === 'postAssistant' ? ASSISTANT_POST.safeParse(body) : null;
+  const profileId = post?.success === true ? post.data.profileId : undefined;
+  const id = legacyTargetChat(
+    store,
+    matched.route.name,
+    matched.params,
+    profileId ?? (caller.kind === 'client' ? profileIdOf(store, caller) : null),
+  );
+  return id === undefined ? {} : { chatId: id };
 }

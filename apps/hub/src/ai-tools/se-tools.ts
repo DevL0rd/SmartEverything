@@ -1,5 +1,5 @@
+import { validateExecutionAuthority } from '../assistant/execution-authority';
 import type { Logger } from '@smarteverything/logging';
-import { MCP_ONLY_TOOLS, isMcpToolName } from '@smarteverything/domain';
 import { z } from 'zod';
 import { answered } from '../extensions/mcp/dispatch';
 import { TOOLS, toolNamed } from '../extensions/mcp/tools';
@@ -22,6 +22,8 @@ const LISTING = z.object({
   description: z.string().min(1),
   inputSchema: z.record(z.string(), z.unknown()),
   annotations: z.object({
+    title: z.string(),
+    idempotentHint: z.boolean(),
     readOnlyHint: z.boolean(),
     destructiveHint: z.boolean(),
     openWorldHint: z.boolean(),
@@ -46,15 +48,14 @@ const REPLY = z.union([
   z.object({ error: z.object({ code: z.number(), message: z.string() }) }),
 ]);
 
-const SE_TOOLS: readonly HubTool[] = TOOLS.filter(
-  (tool) => !isMcpToolName(tool.name) || !MCP_ONLY_TOOLS.has(tool.name),
-).map((tool) => {
+const SE_TOOLS: readonly HubTool[] = TOOLS.map((tool) => {
   const listing = LISTING.parse(tool.listing);
   return {
     name: listing.name,
     title: listing.title,
     description: listing.description,
     inputSchema: listing.inputSchema,
+    ...(tool.variants === undefined ? {} : { variants: tool.variants }),
     annotations: listing.annotations,
     origin: { kind: 'se' },
     humanOnly: false,
@@ -72,6 +73,7 @@ function picturesOf(content: readonly z.infer<typeof CONTENT>[]): ToolPicture[] 
 function actorOf(caller: ToolCaller): ToolActor {
   return {
     clientId: caller.clientId,
+    ...(caller.authority === undefined ? {} : { authority: caller.authority }),
     profileId: caller.profileId,
     chatId: caller.chatId,
     ...(caller.pluginRequester === undefined ? {} : { pluginRequester: caller.pluginRequester }),
@@ -115,6 +117,8 @@ export class SeTools implements ToolSource {
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
   ): Promise<HubToolResult> {
+    if (caller.authority !== undefined)
+      validateExecutionAuthority(this.options.context.store, caller.authority);
     if (needsOwnDevice(caller)) {
       return failure('This needs the device of the person it runs for');
     }
@@ -143,7 +147,15 @@ export class SeTools implements ToolSource {
     const { content, structuredContent, isError } = reply.result;
     const text = content.find((part) => part.type === 'text')?.text ?? '';
     if (isError) {
-      return { response: { error: text, schema: tool.inputSchema }, line: '', pictures: [] };
+      return {
+        response: {
+          error: text,
+          schema: tool.inputSchema,
+          ...(tool.variants === undefined ? {} : { variants: tool.variants }),
+        },
+        line: '',
+        pictures: [],
+      };
     }
     const line = toolLine({ tool, args, deviceName: this.options.deviceName });
     return { response: { result: structuredContent ?? text }, line, pictures: picturesOf(content) };

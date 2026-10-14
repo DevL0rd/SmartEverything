@@ -28,7 +28,10 @@ export class SessionLease {
 
   want(key: SessionKey, wanted: boolean): void {
     const moved =
-      this.key !== null && (this.key.deviceId !== key.deviceId || this.key.relay !== key.relay);
+      this.key !== null &&
+      (this.key.deviceId !== key.deviceId ||
+        this.key.client !== key.client ||
+        JSON.stringify(this.key.iceServers) !== JSON.stringify(key.iceServers));
     this.key = key;
     this.wanted = wanted;
     if (moved) {

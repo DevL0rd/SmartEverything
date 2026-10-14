@@ -45,7 +45,7 @@ export interface ScheduleFilter {
 
 export interface NewSchedule {
   readonly profileId: string;
-  readonly clientId: string;
+  readonly clientId: string | null;
   readonly via: ScheduleRow['via'];
   readonly label: string | null;
   readonly timing: ScheduleTiming;

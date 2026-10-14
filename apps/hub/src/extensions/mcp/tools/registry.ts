@@ -1,3 +1,5 @@
+import { scopedToolCall } from './authority';
+import type { ConversationAuthority } from '../../../harness/authority-contract';
 import { MCP_PART_TEXTS, type McpPartName, type PluginRequester } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Clock } from '../../../clock';
@@ -13,6 +15,7 @@ export interface ToolImage {
 }
 
 export interface ToolActor {
+  readonly authority?: ConversationAuthority;
   readonly clientId: string | null;
   readonly profileId: string;
   readonly chatId: string | null;
@@ -31,6 +34,7 @@ export interface ToolContext {
   readonly assistantFiles: string;
   readonly mediaNotes: MediaNotes;
   readonly actor: ToolActor | null;
+  readonly visibleTools?: () => readonly Tool[];
 }
 
 export interface ToolOutput {
@@ -55,6 +59,7 @@ export interface ToolDefinition<I> {
 export interface Tool {
   readonly name: string;
   readonly listing: Readonly<Record<string, unknown>>;
+  readonly variants?: readonly Readonly<Record<string, unknown>>[];
   readonly call: (
     context: ToolContext,
     raw: Readonly<Record<string, unknown>>,
@@ -177,7 +182,9 @@ export function defineTool<I>(definition: ToolDefinition<I>): Tool {
       if (!parsed.success) {
         throw new ToolError(`The arguments are not valid: ${issuesOf(parsed.error)}`);
       }
-      return definition.run(context, parsed.data);
+      return scopedToolCall(context, definition.name, raw, (scoped) =>
+        definition.run(scoped, parsed.data),
+      );
     },
   };
 }

@@ -1,5 +1,6 @@
 import {
   API_ENDPOINTS,
+  MCP_UNAVAILABLE_OPERATIONS,
   NO_BODY,
   isHumanOnlyOperation,
   mcpOperationArea,
@@ -8,6 +9,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { OperationInput } from '../../../server/operations';
+import { portableSchemaOf } from '../../../ai-tools/portable-schema';
 import { ToolError, jsonSchemaOf } from './registry';
 
 const OBJECT_SCHEMA = z.looseObject({
@@ -31,7 +33,7 @@ export interface OperationShape {
 }
 
 function objectOf(schema: z.ZodType): ObjectSchema | null {
-  const parsed = OBJECT_SCHEMA.safeParse(jsonSchemaOf(schema, 'input'));
+  const parsed = OBJECT_SCHEMA.safeParse(portableSchemaOf(jsonSchemaOf(schema, 'input')));
   return parsed.success ? parsed.data : null;
 }
 
@@ -70,7 +72,7 @@ function nestedBody(endpoint: EndpointShape, parts: Parts): ObjectSchema | null 
   }
   return {
     type: 'object',
-    properties: { body: jsonSchemaOf(endpoint.body, 'input') },
+    properties: { body: portableSchemaOf(jsonSchemaOf(endpoint.body, 'input')) },
     required: ['body'],
   };
 }
@@ -184,4 +186,4 @@ export function isEndpointName(name: string): name is EndpointName {
 
 export const CALLABLE_OPERATIONS: readonly EndpointName[] = Object.keys(API_ENDPOINTS)
   .filter(isEndpointName)
-  .filter((name) => !isHumanOnlyOperation(name));
+  .filter((name) => !isHumanOnlyOperation(name) && MCP_UNAVAILABLE_OPERATIONS[name] === undefined);

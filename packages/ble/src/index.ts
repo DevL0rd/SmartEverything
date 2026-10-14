@@ -14,3 +14,10 @@ export {
   isXiaomiScale,
 } from './xiaomi-scale';
 export type { ScalePacket } from './xiaomi-scale';
+export {
+  decodeMagnetFrame,
+  MagnetPacketError,
+  XIAOMI_MAGNET_MODEL,
+  XIAOMI_MAGNET_PRODUCT,
+} from './xiaomi-magnet';
+export type { MagnetObservation } from './xiaomi-magnet';

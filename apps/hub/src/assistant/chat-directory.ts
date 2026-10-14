@@ -1,5 +1,5 @@
+import type { ProjectFilesService } from '../projects/service';
 import {
-  DEFAULT_ENGINE,
   NEW_CHAT_TITLE,
   ApiError,
   type AiChatChange,
@@ -8,6 +8,7 @@ import {
   type AiChatRow,
   type AiChatSearch,
   type Role,
+  type Engine,
 } from '@smarteverything/domain';
 import { NothingToMarkUnreadError } from '../store/repositories/ai-chats';
 import type { Store } from '../store/store';
@@ -39,8 +40,24 @@ export class ChatDirectory {
     private readonly store: Store,
     private readonly files: AssistantFiles,
     private readonly now: () => Date,
+    private readonly selections?: {
+      readonly projects?: ProjectFilesService;
+      readonly default: (profileId: string, background: boolean) => Engine;
+      readonly select: (profileId: string, engine: Engine) => Engine;
+      readonly validate: (engine: Engine, role: Role) => void;
+    },
   ) {}
 
+  private defaultEngine(profileId: string, background = false): Engine {
+    if (this.selections === undefined)
+      throw new ApiError('conflict', 'SmartEverything model routes are starting.');
+    return this.selections.default(profileId, background);
+  }
+  select(profileId: string, engine: Engine): Engine {
+    if (this.selections === undefined)
+      throw new ApiError('conflict', 'SmartEverything model routes are starting.');
+    return this.selections.select(profileId, engine);
+  }
   own(owner: ChatOwner, chatId: string): AiChatRow {
     const chat = this.store.aiChats.chat(chatId);
     if (chat.profile_id !== owner.profileId) {
@@ -59,7 +76,7 @@ export class ChatDirectory {
         icon: null,
         parentId: null,
         sourceKey: null,
-        engine: DEFAULT_ENGINE,
+        engine: this.defaultEngine(profileId),
         titleAuto: true,
       })
     );
@@ -102,7 +119,7 @@ export class ChatDirectory {
       icon: null,
       parentId: null,
       sourceKey,
-      engine: DEFAULT_ENGINE,
+      engine: this.defaultEngine(profileId, true),
       titleAuto: shape.titleAuto,
     });
   }
@@ -118,12 +135,17 @@ export class ChatDirectory {
       icon: null,
       parentId: null,
       sourceKey: null,
-      engine: DEFAULT_ENGINE,
+      engine: this.defaultEngine(profileId, true),
       titleAuto: title === undefined,
     });
   }
 
   create(owner: ChatOwner, input: AiChatNew): AiChatRow {
+    const engine =
+      input.engine === undefined
+        ? this.defaultEngine(owner.profileId)
+        : this.select(owner.profileId, input.engine);
+    this.selections?.validate(engine, owner.role);
     if (input.parent_id !== undefined) {
       this.own(owner, input.parent_id);
     }
@@ -134,15 +156,20 @@ export class ChatDirectory {
       icon: input.icon ?? null,
       parentId: input.parent_id ?? null,
       sourceKey: null,
-      engine: input.engine ?? DEFAULT_ENGINE,
+      engine,
       titleAuto: input.title === undefined,
     });
   }
 
   update(owner: ChatOwner, chatId: string, change: AiChatChange): AiChatRow {
     this.own(owner, chatId);
+    const selected =
+      change.engine === undefined
+        ? change
+        : { ...change, engine: this.select(owner.profileId, change.engine) };
+    if (selected.engine !== undefined) this.selections?.validate(selected.engine, owner.role);
     try {
-      return this.store.aiChats.update(chatId, change);
+      return this.store.aiChats.update(chatId, selected);
     } catch (cause) {
       if (cause instanceof NothingToMarkUnreadError) {
         throw new ApiError('conflict', 'This chat has no incoming message to mark unread.');
@@ -181,12 +208,61 @@ export class ChatDirectory {
     return [...titles, ...messages].slice(0, query.limit);
   }
 
-  async remove(owner: ChatOwner, chatId: string): Promise<void> {
-    this.own(owner, chatId);
-    const files = this.store.assistantChat.removeMessages(
-      this.store.assistantChat.messageIdsOf(chatId),
-    );
-    await this.files.remove(files);
-    this.store.aiChats.remove(chatId);
+  holdRemoval(
+    ids: readonly string[],
+    work: () => Promise<void>,
+    inactiveOnly = false,
+  ): Promise<void> {
+    const held = (): Promise<void> =>
+      this.store.aiChats.holdRemoval(ids, async () => {
+        this.store.aiChats.deletion(ids, 'deleting', null);
+        try {
+          await work();
+        } catch (cause) {
+          const reason =
+            cause instanceof ApiError
+              ? cause.message
+              : 'Managed chat files could not be completely removed. Retry deleting this chat.';
+          this.store.aiChats.deletion(ids, 'failed', reason);
+          throw cause instanceof ApiError ? cause : new ApiError('conflict', reason);
+        }
+      });
+    return inactiveOnly ? this.store.assistantEvents.holdQueuedWork(ids, held) : held();
+  }
+
+  removalScope(owner: ChatOwner, chatId: string): AiChatRow[] {
+    return this.store.aiChats.removalIds(chatId).map((id) => this.own(owner, id));
+  }
+
+  async remove(
+    owner: ChatOwner,
+    chatId: string,
+    expected?: readonly string[],
+    committed?: () => void,
+  ): Promise<void> {
+    const scope = this.removalScope(owner, chatId);
+    this.requireRemovalScope(scope, expected);
+    await this.selections?.projects?.removeRoots(scope.map((chat) => chat.id));
+    const attached = scope.flatMap((chat) => this.store.assistantChat.attachmentsOfChat(chat.id));
+    await this.files.remove(attached);
+    this.store.write(() => {
+      const current = this.removalScope(owner, chatId);
+      this.requireRemovalScope(current, expected);
+      for (const chat of current) this.store.aiChats.remove(chat.id);
+    });
+    committed?.();
+  }
+  private requireRemovalScope(
+    scope: readonly AiChatRow[],
+    expected: readonly string[] | undefined,
+  ): void {
+    if (
+      expected !== undefined &&
+      JSON.stringify(scope.map((chat) => chat.id)) !== JSON.stringify(expected)
+    )
+      throw new ApiError(
+        'conflict',
+        'The subagent tree changed while closing; its history was retained. Try deleting again.',
+      );
   }
 }

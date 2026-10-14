@@ -148,7 +148,7 @@ class MessageListener implements PacketSink {
       return 'too_short';
     }
     if (!this.options.keyPresent()) {
-      return 'no_gemini_key';
+      return 'no_openrouter_key';
     }
     return this.options.budget.capReached() ? 'cap_reached' : null;
   }

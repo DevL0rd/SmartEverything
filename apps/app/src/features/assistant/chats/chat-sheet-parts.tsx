@@ -1,3 +1,4 @@
+import { isComputerEngine } from '../provider/computer-engine';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { TextInput, View } from 'react-native';
@@ -8,6 +9,7 @@ import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useFocusOnMount } from '../../../components/use-focus-on-mount';
 import { cn } from '../../../design/cn';
+import { useIsOwner } from '../../../store/selectors';
 import { useMinute } from '../../../store/clock';
 import { useStoreSelector } from '../../../store/store-context';
 import { moment } from '../../../format/time';
@@ -93,6 +95,8 @@ function runAction(id: ChatAction['id'], props: QuickActionsProps): void {
 
 export function QuickActions(props: QuickActionsProps): ReactNode {
   const { chat, rows } = props;
+  const owner = useIsOwner();
+  const readOnly = isComputerEngine(chat.engine) && !owner;
   const actions = chatActionsOf(chat, {
     incoming: hasIncoming(rows),
     branchPoint: latestBranchPoint(rows) !== null,
@@ -102,7 +106,11 @@ export function QuickActions(props: QuickActionsProps): ReactNode {
       {actions.map((action) => (
         <View key={action.id} className="flex-1 items-center">
           <QuickButton
-            action={action}
+            action={
+              readOnly && (action.id === 'branch' || action.id === 'delete')
+                ? { ...action, enabled: false }
+                : action
+            }
             onPress={() => {
               runAction(action.id, props);
             }}

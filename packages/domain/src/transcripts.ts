@@ -104,6 +104,7 @@ export type TranscriptHit = z.output<typeof TRANSCRIPT_HIT>;
 
 export const TRANSCRIPT_PAUSE_REASONS = [
   'no_gemini_key',
+  'no_openrouter_key',
   'cap_reached',
   'privacy',
   'offline',
@@ -114,6 +115,7 @@ export type TranscriptPauseReason = (typeof TRANSCRIPT_PAUSE_REASONS)[number];
 
 export const TRANSCRIPT_PAUSE_LABELS: Readonly<Record<TranscriptPauseReason, string>> = {
   no_gemini_key: 'Needs a Gemini key in the voice settings',
+  no_openrouter_key: 'Needs an OpenRouter key in the AI settings',
   cap_reached: 'Today’s transcript budget is used up',
   privacy: 'Privacy mode is on',
   offline: 'The camera is offline',

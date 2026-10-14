@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { createContext, Profiler, useContext, useLayoutEffect, useState } from 'react';
+import { createContext, Profiler, useContext, useLayoutEffect, useRef, useState } from 'react';
 import { developerFlags } from '../developer/flags';
 import { sinkOf } from './sink';
 
@@ -15,9 +15,11 @@ function ProbedLayer({ route, children }: ScreenProbeArgs): ReactElement {
   const parent = useContext(LayerContext);
   const label = parent === '' ? route.name : `${parent}>${route.name}`;
   const [born] = useState(() => performance.now());
+  const connected = useRef(false);
   useLayoutEffect(() => {
     const mounted = performance.now();
-    sinkOf()?.screenMount(label, mounted - born);
+    sinkOf()?.screenMount(label, connected.current ? 0 : mounted - born);
+    connected.current = true;
     return (): void => {
       sinkOf()?.screenUnmount(label, performance.now() - mounted);
     };

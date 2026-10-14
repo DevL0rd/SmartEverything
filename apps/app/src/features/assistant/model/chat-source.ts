@@ -59,9 +59,11 @@ function originSource(chat: AiChatRow, names: PluginNames): ChatSource | null {
 }
 
 export function chatSourceOf(chat: AiChatRow, names: PluginNames): ChatSource {
+  if (chat.kind === 'subagent') {
+    return { kind: 'branch', pluginId: null, label: 'Sub-agent', filterKey: null };
+  }
   if (chat.parent_id !== null) {
-    const label = chat.kind === 'subagent' ? 'Sub-agent' : 'Branch';
-    return { kind: 'branch', pluginId: null, label, filterKey: null };
+    return { kind: 'branch', pluginId: null, label: 'Branch', filterKey: null };
   }
   if (chat.kind === 'call') {
     return { kind: 'call', pluginId: null, label: 'Voice call', filterKey: 'call' };

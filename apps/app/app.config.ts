@@ -33,6 +33,16 @@ const FONT_FILES = [
   'GeistMono-Medium',
 ].map((name) => `./assets/fonts/${name}.ttf`);
 
+const ANDROID_BUILD_PROPERTIES = {
+  android: {
+    minSdkVersion: 26,
+    packagingOptions: {
+      exclude: ['META-INF/INDEX.LIST'],
+      merge: ['META-INF/io.netty.versions.properties'],
+    },
+  },
+};
+
 interface Extra {
   readonly privacyPolicyUrl: string | null;
 }
@@ -101,7 +111,7 @@ export default (): ExpoConfig => {
             'SmartEverything uses the microphone only while you hold Talk on a camera.',
         },
       ],
-      ['expo-build-properties', { android: { minSdkVersion: 26 } }],
+      ['expo-build-properties', ANDROID_BUILD_PROPERTIES],
       ['expo-notifications', { color: '#F2B45E' }],
       [
         'expo-camera',

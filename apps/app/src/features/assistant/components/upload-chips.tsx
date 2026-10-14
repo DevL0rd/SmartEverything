@@ -14,7 +14,8 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { entering, exiting, useMotion } from '../../../design/motion';
 import { percent } from '../../../format/number';
-import { removeUpload, useUploads, type Upload } from '../data/uploads';
+import { removeUpload, retryUpload, useUploads, type Upload } from '../data/uploads';
+import { Button } from '../../../components/button';
 
 function Thumb({ upload }: { readonly upload: Upload }): ReactNode {
   if (upload.preview !== null) {
@@ -74,6 +75,15 @@ function Chip({ upload }: { readonly upload: Upload }): ReactNode {
           {STATE_TEXT[upload.state](upload)}
         </Text>
       </View>
+      {upload.state === 'failed' ? (
+        <Button
+          label="Retry"
+          variant="text"
+          onPress={() => {
+            retryUpload(upload.key);
+          }}
+        />
+      ) : null}
       <IconButton
         icon="close"
         label={`Remove ${upload.name}`}
@@ -88,9 +98,7 @@ function Chip({ upload }: { readonly upload: Upload }): ReactNode {
 
 export function UploadChips(): ReactNode {
   const uploads = useUploads();
-  if (uploads.length === 0) {
-    return null;
-  }
+  if (uploads.length === 0) return null;
   return (
     <View className="flex-row flex-wrap gap-2">
       {uploads.map((upload) => (

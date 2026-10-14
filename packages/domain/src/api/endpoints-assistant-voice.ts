@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { NO_BODY, endpoint } from './endpoint';
-import { NOTHING } from './primitives';
+import { NOTHING, knownResponseStrings } from './primitives';
+import { VOICE_PREVIEW, VOICE_PREVIEW_CANCEL, VOICE_PREVIEW_REQUEST } from '../voice-preview';
 
-export const GEMINI_KEY_SOURCES = ['discordinator', 'aibinator'] as const;
+export * from '../voice-preview';
+
+export const GEMINI_KEY_SOURCES = ['aibinator'] as const;
 
 export const GEMINI_KEY_SOURCE = z.enum(GEMINI_KEY_SOURCES);
 
@@ -12,12 +15,32 @@ export const GEMINI_KEY = z.string().trim().min(20).max(200);
 
 export const ASSISTANT_VOICE_STATUS = z.strictObject({
   key: z.enum(['set', 'missing']),
-  sources: z.array(GEMINI_KEY_SOURCE),
+  sources: knownResponseStrings(GEMINI_KEY_SOURCE),
 });
 
 export type AssistantVoiceStatus = z.infer<typeof ASSISTANT_VOICE_STATUS>;
 
 export const ASSISTANT_VOICE_ENDPOINTS = {
+  previewAssistantVoice: endpoint({
+    method: 'POST',
+    path: '/api/assistant/voice/preview',
+    access: 'owner',
+    summary: 'Generate one bounded Gemini Live call-voice sample on explicit Play',
+    params: NOTHING,
+    query: NOTHING,
+    body: VOICE_PREVIEW_REQUEST,
+    response: VOICE_PREVIEW,
+  }),
+  cancelAssistantVoicePreview: endpoint({
+    method: 'DELETE',
+    path: '/api/assistant/voice/preview',
+    access: 'owner',
+    summary: 'Stop this paired app’s pending call-voice sample',
+    params: NOTHING,
+    query: NOTHING,
+    body: VOICE_PREVIEW_CANCEL,
+    response: NOTHING,
+  }),
   readAssistantVoice: endpoint({
     method: 'GET',
     path: '/api/assistant/voice',
@@ -33,8 +56,7 @@ export const ASSISTANT_VOICE_ENDPOINTS = {
     method: 'POST',
     path: '/api/assistant/voice/key/import',
     access: 'owner',
-    summary:
-      'Copy the Gemini key from Discordinator or AiBinator on this computer, after checking it works',
+    summary: 'Copy the Gemini key from AiBinator on this computer, after checking it works',
     params: NOTHING,
     query: NOTHING,
     body: z.strictObject({ source: GEMINI_KEY_SOURCE }),

@@ -299,7 +299,18 @@ export const CLAUDE_STARTED = z.strictObject({
 
 export type ClaudeStarted = z.infer<typeof CLAUDE_STARTED>;
 
+export const CLAUDE_OPERATION = z.strictObject({
+  id: z.uuid(),
+  operation: z.enum(['control', 'start', 'native_tools_call']),
+  state: z.enum(['pending', 'completed', 'failed', 'uncertain']),
+  value: JSON_VALUE,
+  error: z.string().max(2000).nullable(),
+});
+export type ClaudeOperation = z.infer<typeof CLAUDE_OPERATION>;
+export const CLAUDE_OPERATION_ACCEPTED = z.strictObject({ native_operation: CLAUDE_OPERATION });
+
 export const CLAUDE_NOTICES = [
+  z.strictObject({ type: z.literal('claude_operation'), operation: CLAUDE_OPERATION }),
   z.strictObject({ type: z.literal('claude_session'), session: CLAUDE_SESSION }),
   z.strictObject({ type: z.literal('claude_session_gone'), id: CLAUDE_SESSION_ID }),
   z.strictObject({

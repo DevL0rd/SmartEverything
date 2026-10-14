@@ -43,12 +43,17 @@ export class PersonalRepository {
   }
 
   layouts(owner: LayoutOwner): LayoutRow[] {
-    return this.context.sql.all(
-      STORED_LAYOUT,
-      `select ${LAYOUT_COLUMNS} from layouts
-       where client_id = $clientId or profile_id = $profileId order by page`,
-      { clientId: owner.clientId, profileId: owner.profileId },
-    );
+    return this.context.sql
+      .all(
+        STORED_LAYOUT,
+        `select ${LAYOUT_COLUMNS} from layouts
+         where client_id = $clientId or profile_id = $profileId order by page`,
+        { clientId: owner.clientId, profileId: owner.profileId },
+      )
+      .filter((row) => {
+        const scoped = ownerOf(owner, row.page);
+        return row[scoped.column] === scoped.id;
+      });
   }
 
   saveLayout(

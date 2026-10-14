@@ -1,3 +1,35 @@
+import { href } from '../../app-shell/hrefs';
 import type { SettingDefinition } from '../../settings/types';
 
-export const SETTINGS: readonly SettingDefinition[] = [];
+export const SETTINGS: readonly SettingDefinition[] = [
+  {
+    id: 'automations.scheduled',
+    page: 'automations',
+    title: 'Scheduled',
+    icon: 'timer',
+    keywords: ['later', 'timer', 'delay', 'once', 'countdown'],
+    scope: 'server',
+    control: 'link',
+    href: href.scheduled(),
+  },
+  {
+    id: 'automations.schedule',
+    page: 'automations',
+    title: 'Schedule',
+    icon: 'calendar',
+    keywords: ['week', 'next', 'when', 'calendar'],
+    scope: 'server',
+    control: 'link',
+    href: href.automationSchedule(),
+  },
+  {
+    id: 'automations.run-history',
+    page: 'automations',
+    title: 'Run history',
+    icon: 'activity',
+    keywords: ['log', 'ran', 'failed', 'history'],
+    scope: 'server',
+    control: 'link',
+    href: href.automationRuns(),
+  },
+];

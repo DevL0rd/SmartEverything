@@ -1,24 +1,24 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { View } from 'react-native';
 import { useNavigation } from 'expo-router';
 import type { AiChatRow, Engine } from '@smarteverything/domain';
+import { useHeaderStatus } from '../../../components/header-status';
+import { PageSettingsButton } from '../../../components/page-settings-button';
 import { IconButton } from '../../../components/icon-button';
-import { Interactive } from '../../../components/interactive';
 import { Icon } from '../../../components/icon';
 import type { HeaderAction } from '../../../components/page-header';
 import { useHeaderSlot } from '../../../components/screen-context';
 import { Text } from '../../../components/text';
-import { useIdiom } from '../../../design/platform';
 import { useSizeClass } from '../../../design/size-class';
 import { CallPill, startCall } from '../call';
-import { AssistantOrb } from '../call/orb';
+import { ProfileSwitcher } from '../../profiles';
 import { ContextRing } from '../components/context-ring';
 import { TypingDots } from '../components/typing-dots';
 import { useAssistantName } from '../data/assistant-data';
 import { sublineOf, waitingText, type Subline } from '../model/chat-subline';
 import { useChatIdentity } from './chat-identity';
 import { useChatModel } from './chat-model';
-import { SourceMark } from './source-mark';
 
 export interface PanelToggle {
   readonly open: boolean;
@@ -80,20 +80,24 @@ function SublineText({ line }: { readonly line: Subline }): ReactNode {
 function TitleText({
   title,
   line,
-  chevron,
 }: {
   readonly title: string;
   readonly line: ReactNode;
-  readonly chevron: boolean;
 }): ReactNode {
   return (
     <View className="min-w-0 shrink justify-center">
-      <Text variant="title-3" numberOfLines={1} accessibilityRole="header">
-        {title}
-      </Text>
+      <View className="min-w-0 flex-row items-center gap-1">
+        <Text
+          variant="body-strong"
+          numberOfLines={1}
+          accessibilityRole="header"
+          className="min-w-0 shrink"
+        >
+          {title}
+        </Text>
+      </View>
       <View className="min-w-0 flex-row items-center gap-0.5">
         <View className="shrink">{line}</View>
-        {chevron ? <Icon name="chevronDown" size={16} tone="faint" /> : null}
       </View>
     </View>
   );
@@ -111,6 +115,7 @@ function Frame({
   readonly trailing: ReactNode;
 }): ReactNode {
   const slot = useHeaderSlot();
+  const status = useHeaderStatus();
   if (slot === 'large') {
     return null;
   }
@@ -129,7 +134,9 @@ function Frame({
         ))}
         {back || leading.length > 0 ? null : <View className="w-3" />}
         <View className="min-w-0 flex-1">{title}</View>
+        {status}
         {trailing}
+        <PageSettingsButton settings={mainPageSettings('assistant')} />
       </View>
       <View className="items-start px-3">
         <CallPill />
@@ -157,7 +164,6 @@ export interface ChatHeaderProps {
   readonly waiting: number;
   readonly back: boolean;
   readonly leading?: readonly HeaderAction[];
-  readonly onInfo: () => void;
   readonly panel: PanelToggle | null;
 }
 
@@ -181,37 +187,26 @@ export function ChatHeader({
   waiting,
   back,
   leading = [],
-  onInfo,
   panel,
 }: ChatHeaderProps): ReactNode {
-  const identity = useChatIdentity(chat);
-  const pointer = useIdiom() === 'pointer';
   const line = useSubline(chat, working, waiting);
-  const spoken = line.kind === 'plain' ? line.segments.join(', ') : line.kind;
   return (
     <Frame
       back={back}
       leading={leading}
       title={
-        <Interactive
-          label={`${chat.title}, ${spoken}. Chat details`}
-          onPress={onInfo}
-          className="min-h-touch-min max-w-full min-w-0 self-start rounded-md px-2"
-          layerClassName="rounded-md"
-        >
-          <View className="min-w-0 max-w-full flex-row items-center gap-2.5 py-1">
-            <SourceMark source={identity.source} size={28} />
-            <TitleText title={chat.title} line={<SublineText line={line} />} chevron />
-          </View>
-        </Interactive>
+        <View className="min-w-0 flex-row items-center gap-1 px-1 py-1">
+          <ProfileSwitcher compact />
+          <TitleText title={chat.title} line={<SublineText line={line} />} />
+        </View>
       }
       trailing={
         <>
           <CallAction chatId={chat.id} />
-          {pointer && panel !== null ? (
+          {panel !== null ? (
             <IconButton
               icon="panelRight"
-              label="Chat panel"
+              label="Browser"
               shortcut="Ctrl I"
               selected={panel.open}
               onPress={panel.toggle}
@@ -240,7 +235,7 @@ export function DraftHeader({
       leading={leading}
       title={
         <View className="min-w-0 flex-row items-center gap-2.5 px-2 py-1">
-          <AssistantOrb state="idle" size={28} />
+          <ProfileSwitcher compact />
           <TitleText
             title="New chat"
             line={
@@ -248,7 +243,6 @@ export function DraftHeader({
                 {compact ? model.shortName : model.name}
               </Text>
             }
-            chevron={false}
           />
         </View>
       }

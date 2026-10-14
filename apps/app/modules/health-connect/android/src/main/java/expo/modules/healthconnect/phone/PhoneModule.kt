@@ -36,8 +36,8 @@ class PhoneModule : Module() {
       forwarding = null
     }
 
-    AsyncFunction("startPhoneNode") { serverUrl: String, token: String ->
-      configureServer(context, serverUrl, token)
+    AsyncFunction("startPhoneNode") { serverUrl: String, token: String, enrollment: String ->
+      configureServer(context, serverUrl, token, enrollment)
       PhoneNode.start(context)
     }
 

@@ -1,13 +1,10 @@
 import { z } from 'zod';
-import { PAIRING_CODE, PAIRING_QR } from '@smarteverything/domain';
+import { PAIRING_CODE, PAIRING_QR, type PairingQr } from '@smarteverything/domain';
 import { jsonText } from '../format/json-text';
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
-export interface PairingTarget {
-  readonly url: string;
-  readonly code: string;
-}
+export type PairingTarget = PairingQr;
 
 export type PairingInput =
   | { readonly ok: true; readonly target: PairingTarget }
@@ -19,6 +16,8 @@ export function serverUrlProblem(url: string, allowPlainHttp: boolean): string |
     return 'Enter an address that starts with https://';
   }
   const address = new URL(parsed.data);
+  if (address.username !== '' || address.password !== '')
+    return 'Remove credentials from the address';
   if (address.search !== '' || address.hash !== '') {
     return 'Remove everything after the address';
   }
@@ -81,7 +80,9 @@ export function pairingFromScan(text: string): PairingInput {
       problem: 'That is not a SmartEverything pairing code',
     };
   }
-  return pairingFromTyped(scanned.data.url, scanned.data.code, false);
+  const problem = serverUrlProblem(scanned.data.url, false);
+  if (problem !== null) return { ok: false, problem };
+  return { ok: true, target: scanned.data };
 }
 
 export function pairingQrText(target: PairingTarget): string {

@@ -21,6 +21,10 @@ export function startDrivers(
   const host = new DriverHost({
     registry: core.drivers,
     sink: localDriverSink(core, log),
+    publishEvent: (event): Promise<string> => core.events.fromProviderCommitted('local', event),
+    publishDevices: async (devices): Promise<void> => {
+      await core.inventory.apply('local', devices);
+    },
     forget: (externalIds): Promise<void> => core.inventory.remove('local', externalIds),
     log,
   });

@@ -9,6 +9,9 @@
       "path": "./packages/domain"
     },
     {
+      "path": "./packages/harness"
+    },
+    {
       "path": "./packages/xiaomi"
     },
     {

@@ -13,6 +13,8 @@ export interface TextEditRequest {
   readonly confirmLabel: string;
   readonly maxLength: number;
   readonly kind?: FieldKind;
+  readonly allowEmpty?: boolean;
+  readonly multiline?: boolean;
   readonly helper?: string;
   readonly problemOf?: (value: string) => string | null;
   readonly save: (value: string) => Promise<void>;
@@ -60,7 +62,10 @@ function useEditor(request: TextEditRequest, onClose: () => void): EditorState {
   const mutation = useMutationState();
   const trimmed = value.trim();
   const invalid = problemOf(request, trimmed);
-  const ready = trimmed !== '' && trimmed !== request.initial && invalid === null;
+  const ready =
+    (trimmed !== '' || request.allowEmpty === true) &&
+    trimmed !== request.initial &&
+    invalid === null;
   const submit = (): void => {
     if (ready) {
       mutation.run(() => request.save(trimmed), {
@@ -105,6 +110,7 @@ function Editor({
         placeholder={request.placeholder}
         error={invalid ?? mutation.problem}
         kind={request.kind ?? 'text'}
+        multiline={request.multiline === true}
         {...(request.helper === undefined ? {} : { helper: request.helper })}
         focusOnMount
       />
@@ -122,5 +128,5 @@ export function TextEditSheet({
   if (request === null) {
     return null;
   }
-  return <Editor key={request.title + request.initial} request={request} onClose={onClose} />;
+  return <Editor key={request.title} request={request} onClose={onClose} />;
 }

@@ -1,9 +1,11 @@
+import type { ConversationAuthority } from '../harness/authority-contract';
 import type { IncomingMessage } from 'node:http';
 import {
   ApiError,
   CLIENT_TOKEN,
   HEALTH_SOURCE_TOKEN,
   hashClientToken,
+  turnRoleOf,
   hashHealthSourceToken,
   type Access,
   type ClientRow,
@@ -16,10 +18,20 @@ import { bearerOf } from './http';
 export type Caller =
   | { readonly kind: 'anonymous' }
   | {
+      readonly kind: 'service';
+      readonly authority: ConversationAuthority;
+      readonly profileId: string;
+      readonly chatId: string | null;
+      readonly pluginId?: string;
+      readonly pluginRequester?: PluginRequester;
+    }
+  | {
       readonly kind: 'client';
       readonly client: ClientRow;
       readonly profileId?: string;
       readonly via?: 'assistant';
+      readonly mcpOrigin?: 'personal' | 'oauth' | 'computer';
+      readonly authority?: ConversationAuthority;
       readonly local?: boolean;
       readonly chatId?: string;
       readonly pluginId?: string;
@@ -98,6 +110,7 @@ export function healthSourceOf(caller: Caller): HealthSourceRow {
 }
 
 export function profileIdOf(store: Store, caller: Caller): string {
+  if (caller.kind === 'service') return caller.profileId;
   if (caller.kind === 'client') {
     return caller.profileId ?? store.profiles.activeOf(caller.client.id).id;
   }
@@ -105,4 +118,11 @@ export function profileIdOf(store: Store, caller: Caller): string {
     return store.profiles.activeOf(caller.source.client_id).id;
   }
   throw new ApiError('forbidden', 'This token belongs to no paired app, so it has no profile.');
+}
+
+export function roleOfCaller(caller: Caller): ClientRow['role'] {
+  if (caller.kind === 'service') return 'member';
+  return caller.kind === 'client' && caller.pluginRequester !== undefined
+    ? turnRoleOf(caller.pluginRequester)
+    : clientOf(caller).role;
 }

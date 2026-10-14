@@ -48,6 +48,7 @@ export function entryOf(chat: AiChatRow, sources: EntrySources): ChatEntry {
   const preview = sources.previews.get(chat.id);
   return {
     id: chat.id,
+    kind: chat.kind,
     title: chat.title,
     source: chatSourceOf(chat, sources.plugins),
     at: chat.last_message_at ?? preview?.at ?? chat.created_at,

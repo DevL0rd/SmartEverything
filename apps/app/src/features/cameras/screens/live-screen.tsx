@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
@@ -16,9 +17,6 @@ import {
   cameraDefaults,
   cameraInstanceAvailable,
 } from '../live/widgets';
-import { settingsItem } from '../../../settings/settings-item';
-
-const CAMERA_SETTINGS = settingsItem(href.settings.cameras());
 
 const AVAILABLE: ReadonlySet<string> = new Set(['camera', 'camera-events']);
 
@@ -74,8 +72,8 @@ export function LiveScreen(): ReactNode {
       header={
         <PageHeader
           title="Cameras"
+          settings={mainPageSettings('cameras')}
           actions={editor.editing ? [] : [editor.editAction, ...actions]}
-          overflow={[CAMERA_SETTINGS]}
           editing={editor.header}
         />
       }

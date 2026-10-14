@@ -7,6 +7,8 @@ import {
   type AssistantVoiceClientMessage,
   type ClientRow,
   type SightFrame,
+  type VoicePreview,
+  type VoicePreviewRequest,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { VoiceResponder } from '../assistant/voice-link';
@@ -28,6 +30,8 @@ import {
   type SpeechRequest,
 } from '../speech/one-shot-speech';
 import { GeminiKeys } from './gemini-key';
+import { GeminiLivePreview, type VoiceSampleProvider } from './gemini-preview';
+import { VoicePreviews } from './voice-previews';
 import { TurnSessions, type TurnRequest } from './turn-sessions';
 import type { TurnSession } from './turn-session';
 import { VoiceSockets } from './voice-sockets';
@@ -46,10 +50,12 @@ export interface AssistantVoiceOptions {
   readonly log: Logger;
   readonly provider?: VoiceProvider;
   readonly speech?: SpeechProviders;
+  readonly previewProvider?: VoiceSampleProvider;
 }
 
 export class AssistantVoice {
   readonly keys: GeminiKeys;
+  readonly previews: VoicePreviews;
   private readonly desk: CallDesk;
   private readonly turns: TurnSessions;
   private readonly speech: OneShotSpeech;
@@ -62,6 +68,7 @@ export class AssistantVoice {
   constructor(private readonly options: AssistantVoiceOptions) {
     const { store, log } = options;
     this.keys = new GeminiKeys(options.secrets, options.fetch);
+    this.previews = this.createPreviews();
     const provider = options.provider ?? new Gemini(() => this.keys.current());
     this.speech = new OneShotSpeech({
       store,
@@ -103,19 +110,36 @@ export class AssistantVoice {
     );
   }
 
+  preview(
+    client: ClientRow,
+    profileId: string | undefined,
+    request: VoicePreviewRequest,
+    signal?: AbortSignal,
+  ): Promise<VoicePreview> {
+    return this.previews.sample(
+      client.id,
+      profileId ?? this.options.store.profiles.activeOf(client.id).id,
+      request,
+      signal,
+    );
+  }
+
   attachOutreach(desk: OutreachDesk): void {
     this.desk.attachOutreach(desk);
   }
 
   attachBudget(budget: SightBudget): void {
     this.desk.attachBudget(budget);
+    this.previews.attachBudget(() => budget.reason());
   }
 
   host(request: HostedCallRequest): Promise<HostedCall> {
+    this.previews.stopAll();
     return this.desk.host(request);
   }
 
   turn(request: TurnRequest): Promise<TurnSession> {
+    this.previews.stopAll();
     return this.turns.open(request);
   }
 
@@ -140,9 +164,24 @@ export class AssistantVoice {
   }
 
   async stop(): Promise<void> {
+    this.previews.stopAll();
     await this.desk.stop();
     this.turns.stop();
     this.sockets.stop();
+  }
+
+  private createPreviews(): VoicePreviews {
+    const previews = new VoicePreviews({
+      provider: this.options.previewProvider ?? new GeminiLivePreview(() => this.keys.current()),
+      store: this.options.store,
+      prices: this.options.prices,
+      log: this.options.log,
+      key: (): string | null => this.keys.current(),
+    });
+    this.keys.changes(() => {
+      previews.invalidateCredential();
+    });
+    return previews;
   }
 
   private connected(endpoint: VoiceEndpoint): void {
@@ -175,6 +214,7 @@ export class AssistantVoice {
     }
     switch (message.type) {
       case 'call_start':
+        this.previews.stop(client.id);
         this.desk.start(endpoint, client, message).catch((cause: unknown) => {
           this.options.log.error('voice.call_crashed', cause);
         });

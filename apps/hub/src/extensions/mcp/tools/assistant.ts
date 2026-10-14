@@ -1,3 +1,4 @@
+import { validateExecutionAuthority } from '../../../assistant/execution-authority';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ASSISTANT_POST, SHOW_WIDGETS_INPUT } from '@smarteverything/domain';
@@ -30,6 +31,12 @@ async function attachment(
   id: string,
 ): Promise<{ structured: Record<string, unknown>; images?: { data: string; mimeType: string }[] }> {
   const file = context.store.assistantChat.attachment(id);
+  const authority = context.actor?.authority;
+  if (authority !== undefined) {
+    validateExecutionAuthority(context.store, authority);
+    if (file.profile_id !== authority.profile_id)
+      throw new ToolError('Attachment belongs to another initiating profile.', 'forbidden');
+  }
   const summary = {
     id: file.id,
     name: file.name,
@@ -49,6 +56,7 @@ async function attachment(
   }
   const content = await readFile(join(context.assistantFiles, file.storage_path));
   if (kind === 'image') {
+    context.mediaNotes.later(file);
     return {
       structured: { ...summary, description: file.transcript },
       images: [{ data: content.toString('base64'), mimeType: file.mime }],

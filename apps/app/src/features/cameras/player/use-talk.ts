@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ApiClient } from '../../../api/connection/client';
 import type { IceServer } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { answerTalkOffer } from '../../../api/media';
@@ -22,24 +23,39 @@ export interface Talk {
 }
 
 export interface TalkTarget {
+  readonly client: ApiClient | null;
   readonly deviceId: string;
   readonly iceServers: readonly IceServer[];
   readonly active: boolean;
 }
 
-function openTalk(target: TalkTarget, onLive: () => void): () => void {
+function openTalk(
+  target: TalkTarget & { readonly client: ApiClient },
+  onLive: () => void,
+): () => void {
   let stopped = false;
   const peer = createCameraPeer({ twoWayAudio: true, video: false, iceServers: target.iceServers });
   peer.setListening(false);
   peer.onState((state) => {
     if (state === 'connected' && !stopped) {
-      peer.setTalking(true).then(onLive, talkFailed);
+      peer.setTalking(true).then(
+        () => {
+          if (!stopped) {
+            onLive();
+          }
+        },
+        (error: unknown) => {
+          if (!stopped) {
+            talkFailed(error);
+          }
+        },
+      );
     }
   });
   peer
     .offer()
-    .then((offer) => answerTalkOffer(target.deviceId, offer))
-    .then((answer) => (stopped ? undefined : peer.answer(answer)))
+    .then((offer) => (stopped ? null : answerTalkOffer(target.deviceId, offer, target.client)))
+    .then((answer) => (stopped || answer === null ? undefined : peer.answer(answer)))
     .catch((error: unknown) => {
       if (!stopped) {
         talkFailed(error);
@@ -61,12 +77,12 @@ export interface TalkSession {
 export function useTalkSession(target: TalkTarget, onLimit: () => void): TalkSession {
   const [live, setLive] = useState(false);
   const close = useRef<(() => void) | null>(null);
-  const { deviceId, iceServers, active } = target;
+  const { deviceId, iceServers, active, client } = target;
   useEffect(() => {
-    if (!active) {
+    if (!active || client === null) {
       return undefined;
     }
-    close.current = openTalk({ deviceId, iceServers, active }, () => {
+    close.current = openTalk({ deviceId, iceServers, active, client }, () => {
       setLive(true);
     });
     const limit = setTimeout(onLimit, TALK_LIMIT_MS);
@@ -76,7 +92,7 @@ export function useTalkSession(target: TalkTarget, onLimit: () => void): TalkSes
       close.current = null;
       setLive(false);
     };
-  }, [deviceId, iceServers, active, onLimit]);
+  }, [deviceId, iceServers, active, client, onLimit]);
   const stop = useCallback((): void => {
     close.current?.();
     close.current = null;

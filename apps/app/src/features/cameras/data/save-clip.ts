@@ -1,3 +1,4 @@
+import { nativeMediaFile } from '../../../api/connection/media-resources';
 import { Linking } from 'react-native';
 import { recordingLinks } from '../../../api/media';
 import { notify } from '../../../components/toast-store';
@@ -7,7 +8,12 @@ function failed(error: unknown): void {
 }
 
 export function openClip(url: string): void {
-  Linking.openURL(url).catch(failed);
+  nativeMediaFile(url, 'open')
+    .then((handled) => {
+      if (handled === 'external') return Linking.openURL(url);
+      return undefined;
+    })
+    .catch(failed);
 }
 
 export function saveRecording(recordingId: string): void {
@@ -17,6 +23,10 @@ export function saveRecording(recordingId: string): void {
       notify({ message: 'This clip isn’t saved anymore', tone: 'critical' });
       return;
     }
-    openClip(link.url);
+    nativeMediaFile(link.url, 'save')
+      .then((handled) => {
+        if (handled === 'external') openClip(link.url);
+      })
+      .catch(failed);
   }, failed);
 }

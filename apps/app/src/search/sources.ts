@@ -1,3 +1,4 @@
+import { APP_PLUGINS } from '../plugins/registry';
 import type { Href } from 'expo-router';
 import {
   displayName,
@@ -5,27 +6,31 @@ import {
   isScheduleActive,
   roomNameOf,
   type PluginRow,
+  type AiAgentRun,
+  type ProviderMetadata,
   type PluginSetting,
   type SearchDevice,
   type SearchSetting,
   type SearchSources,
 } from '@smarteverything/domain';
+import { extensionPages, type ExtensionSearchData } from './extension-pages';
+import { chatProviderPages } from './chat-provider-pages';
 import { href } from '../app-shell/hrefs';
 import { ROUTES, type RouteDefinition } from '../app-shell/routes';
 import type { IconName } from '../components/icon';
 import { visibleSettings } from '../settings/registry';
-import { mountOf } from '../settings/mounts';
 import { SETTINGS_TREE, settingsPage, settingsTrail } from '../settings/tree';
 import type { SettingDefinition, SettingEnv, SettingsPageDefinition } from '../settings/types';
 import { rowsOf, type Device, type StoreState } from '../store/state';
 
-export interface SearchTables {
+export interface SearchTables extends ExtensionSearchData {
   readonly devices: StoreState['tables']['devices'];
   readonly rooms: StoreState['tables']['rooms'];
   readonly scenes: StoreState['tables']['scenes'];
   readonly automations: StoreState['tables']['automations'];
   readonly scheduled: StoreState['tables']['scheduled_actions'];
   readonly plugins: StoreState['tables']['plugins'];
+  readonly pluginStreams: StoreState['tables']['plugin_streams'];
   readonly chats: readonly SearchChat[];
 }
 
@@ -34,6 +39,10 @@ export interface SearchChat {
   readonly title: string;
   readonly source: string;
   readonly pinned: boolean;
+  readonly computer: boolean;
+  readonly runtime?: 'claude' | 'codex' | 'dsh';
+  readonly metadata?: ProviderMetadata | null;
+  readonly agents?: readonly AiAgentRun[];
 }
 
 export interface SourceLinks {
@@ -64,20 +73,12 @@ function trailOf(pageId: string, inclusive: boolean): string {
   return (inclusive ? crumbs : crumbs.slice(0, -1)).join(' › ');
 }
 
-function ownerRouteOf(pageId: string): string | null {
-  const mount = mountOf(pageId);
-  const owner = mount === null ? undefined : ROUTES.find((route) => route.href === mount.ownerHref);
-  return owner === undefined ? null : pageKey(owner.key);
-}
-
 function treePage(page: SettingsPageDefinition, out: SourceLinks): SearchSetting {
   const id = `page/${page.id}`;
   out.links.set(`setting:${id}`, href.settings.page(page.id));
   out.icons.set(`setting:${id}`, page.icon);
-  const parent = page.parent === null ? ownerRouteOf(page.id) : settingsPageKey(page.parent);
-  if (parent !== null) {
-    out.parents.set(`setting:${id}`, parent);
-  }
+  const parent = page.parent === null ? pageKey('settings') : settingsPageKey(page.parent);
+  out.parents.set(`setting:${id}`, parent);
   return {
     id,
     title: page.title,
@@ -202,7 +203,7 @@ function pluginSubPages(row: PluginRow, parent: string, out: SourceLinks): Searc
         },
       ]
     : [];
-  return [...people, ...settings].map(({ to, ...page }) => {
+  return [...people, ...settings, ...nativePluginSettings(row, parent)].map(({ to, ...page }) => {
     out.links.set(pageKey(page.path), to);
     out.icons.set(pageKey(page.path), 'puzzle');
     out.parents.set(pageKey(page.path), pageKey(parent));
@@ -330,13 +331,29 @@ export function sourcesOf(
     })),
     pages: [
       ...pagesOf(env, out),
+      ...extensionPages(tables, env.owner, out),
       ...scheduledPages(tables, out),
       ...pluginPages(tables, env, out),
       ...chatPages(tables, out),
+      ...tables.chats.flatMap((chat) => chatProviderPages(chat, out, env.owner)),
     ],
     settings: settingsOf(env, out),
     ...routinesOf(tables),
     irRemotes: [],
     cameras: [],
   };
+}
+
+function nativePluginSettings(row: PluginRow, parent: string): readonly PluginPage[] {
+  const plugin = APP_PLUGINS.find((entry) => entry.id === row.id);
+  return (plugin?.settingsSearch ?? []).map((item) => ({
+    path: `${parent}#native:${item.id}`,
+    title: item.title,
+    description: row.manifest.name,
+    keywords: item.keywords,
+    to: {
+      pathname: '/settings/[...page]',
+      params: { page: ['plugins', row.id], focus: item.focus },
+    },
+  }));
 }

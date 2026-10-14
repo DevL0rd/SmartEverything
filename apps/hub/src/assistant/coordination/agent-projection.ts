@@ -1,0 +1,42 @@
+import { randomUUID } from 'node:crypto';
+import type { AiAgentRun, AiChatRow } from '@smarteverything/domain';
+export function agentProjection(
+  chat: AiChatRow,
+  source: AiAgentRun['source'],
+  sourceId: string,
+  now: string,
+): AiAgentRun {
+  return {
+    id: randomUUID(),
+    parent_chat_id: chat.id,
+    profile_id: chat.profile_id,
+    source,
+    source_id: sourceId,
+    parent_run_id: null,
+    child_chat_id: null,
+    device_id: null,
+    runtime: null,
+    session_id: null,
+    job_id: null,
+    source_generation: null,
+    source_seq: 0,
+    source_revision: 0,
+    title: 'Subagent',
+    task: null,
+    state: 'queued',
+    last_known_state: null,
+    observability_reason: null,
+    progress: null,
+    result: null,
+    error: null,
+    model: null,
+    effort: null,
+    cwd: null,
+    started_at: null,
+    updated_at: now,
+    completed_at: null,
+    usage: null,
+    supported_actions: [],
+    truncated: false,
+  };
+}

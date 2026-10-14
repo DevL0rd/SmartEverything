@@ -6,7 +6,6 @@ import { useIdiom } from '../../../design/platform';
 import type { MessageItem } from '../data/thread';
 import { stepsOfRow } from '../model/work-steps';
 import { MessageWidgets } from '../widgets/message-widgets';
-import { ActionRow } from './message-action-bars';
 import { useMessageActions } from './message-actions';
 import { MessageFrame } from './message-frame';
 import { ReplyMeta } from './message-meta';
@@ -16,9 +15,12 @@ import { StreamedText } from './streamed-text';
 import { Attachments } from './attachments';
 import { SuggestionChips } from './suggestion-chips';
 import { WebSources } from './web-sources';
+import { webSourcesOf } from '../model/web-sources';
 import { TurnNotice } from './turn-notice';
 import { useSettledMount } from './use-settled-mount';
-import { WorkCard } from './work-card';
+import { RecordedActivity } from './recorded-activity';
+import { InlineReply } from './inline-reply';
+import { hasReplyTimeline } from '../model/reply-timeline';
 
 const HORIZONTAL_CONTENT = /```|^\s*\|.*\|\s*$/m;
 
@@ -41,10 +43,13 @@ interface PartProps {
   readonly actions: ReturnType<typeof useMessageActions>;
   readonly live: boolean;
   readonly streamed: boolean;
+  readonly hideText: boolean;
 }
 
-function ReplyText({ item, actions, live, streamed }: PartProps): ReactNode {
+function ReplyText({ item, actions, live, streamed, hideText }: PartProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
+  if (hideText) return null;
+  if (hasReplyTimeline(item.row)) return <InlineReply item={item} live={live} actions={actions} />;
   if (streamed) {
     return <StreamedText item={item} actions={actions} live={live} />;
   }
@@ -53,56 +58,42 @@ function ReplyText({ item, actions, live, streamed }: PartProps): ReactNode {
   );
 }
 
-function ReplyActions({ item, actions, live, streamed }: PartProps): ReactNode {
+function ReplySuggestions({ item, live, streamed }: PartProps): ReactNode {
   const ready = useSettledMount(!live, streamed);
   if (!ready || !item.latestReply) {
     return null;
   }
-  return (
-    <>
-      <ActionRow
-        specs={actions.plan.row}
-        run={actions.run}
-        quick={actions.quick}
-        list={actions.list}
-        row={item.row}
-        onMeta={actions.openDetails}
-      />
-      <SuggestionChips row={item.row} />
-    </>
-  );
+  return <SuggestionChips row={item.row} />;
 }
 
 function ReplyBody(props: PartProps): ReactNode {
-  const { item, live } = props;
+  const { item, live, hideText } = props;
   const { row } = item;
   const steps = useMemo(() => stepsOfRow(row.steps, row.step_states), [row.steps, row.step_states]);
   return (
     <View className="w-full gap-2.5">
-      {live ? null : (
-        <WorkCard
-          steps={steps}
-          live={false}
-          thinking={false}
-          reasoning=""
-          startedAt={null}
-          reconnecting={false}
-          onStop={null}
-        />
-      )}
+      {live || hasReplyTimeline(row) ? null : <RecordedActivity steps={steps} />}
       {live || row.attachments.length === 0 ? null : <Attachments attachments={row.attachments} />}
       <ReplyText {...props} />
-      {live ? null : <WebSources row={row} />}
+      {live || (hasReplyTimeline(row) && !hideText) ? null : (
+        <WebSources sources={webSourcesOf(row)} />
+      )}
       <MessageWidgets row={row} />
       {row.state === 'failed' ? <TurnNotice row={row} subject="reply" /> : null}
-      <ReplyActions {...props} />
+      <ReplySuggestions {...props} />
     </View>
   );
 }
 
-export function AiMessage({ item }: { readonly item: MessageItem }): ReactNode {
+export function AiMessage({
+  item,
+  hideText = false,
+}: {
+  readonly item: MessageItem;
+  readonly hideText?: boolean;
+}): ReactNode {
   const actions = useMessageActions(item);
-  const { row, latestReply } = item;
+  const { row } = item;
   const live = row.state === 'working';
   const [streamed] = useState(live);
   const quotable = swipeable(item);
@@ -112,17 +103,22 @@ export function AiMessage({ item }: { readonly item: MessageItem }): ReactNode {
       actions={actions}
       preview={<MessagePreview item={item} className="bg-surface-1" />}
       align="start"
-      bar={latestReply || live ? null : <ReplyMeta row={row} onPress={actions.openDetails} />}
+      bar={live ? null : <ReplyMeta row={row} onPress={actions.openDetails} />}
       swipeable={streamed || quotable}
       swipeEnabled={swipeEnabled}
-      reserve
       onQuote={() => {
         actions.run('quote');
       }}
     >
       <View className="w-full">
         {showsHeader(item) ? <RunHeader item={item} ai inset={false} /> : null}
-        <ReplyBody item={item} actions={actions} live={live} streamed={streamed} />
+        <ReplyBody
+          item={item}
+          actions={actions}
+          live={live}
+          streamed={streamed}
+          hideText={hideText}
+        />
       </View>
     </MessageFrame>
   );

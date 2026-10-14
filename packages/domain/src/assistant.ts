@@ -1,6 +1,12 @@
 import { z } from 'zod';
+export * from './assistant-response-style';
+export * from './assistant-settings-patch';
 import { AI_MESSAGE_FIELDS, CHAT_STEP_OUTCOMES } from './ai-chats';
 import { ASSISTANT_VOICE_SETTINGS } from './assistant-voice';
+import {
+  ASSISTANT_RESPONSE_STYLE,
+  ASSISTANT_RESPONSE_STYLE_WRITE,
+} from './assistant-response-style';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
@@ -21,7 +27,8 @@ export const REUSE_CHAT_MINUTES = 120;
 
 export const COMPACT_AT_PERCENT = { min: 50, max: 95, step: 5, fallback: 85 } as const;
 
-export const ASSISTANT_SETTINGS = z.strictObject({
+const SETTINGS_FIELDS = {
+  response_style: ASSISTANT_RESPONSE_STYLE.optional(),
   instructions: z.string().max(ASSISTANT_INSTRUCTIONS_MAX).default(''),
   activity_steps: z.boolean().default(true),
   name: ASSISTANT_NAME.nullable().default('Coordinator'),
@@ -47,26 +54,28 @@ export const ASSISTANT_SETTINGS = z.strictObject({
     .describe(
       'After a reply in an app chat, ask a cheap model for up to three short follow-up replies to offer as taps; costs a little per reply',
     ),
-  web_search_default: z
-    .boolean()
-    .default(false)
-    .describe(
-      'Whether text chats and live voice may search the web unless a chat says otherwise; each chat can override it, and each search costs a little',
-    ),
   claude_link_auto: z
     .boolean()
     .default(true)
     .describe(
       'When the hub starts and Claude Desktop is on this computer, install or repair the SmartEverything link in it automatically; false leaves the link as it is',
     ),
+};
+
+export const ASSISTANT_SETTINGS = z.object(SETTINGS_FIELDS);
+export const ASSISTANT_SETTINGS_WRITE = z.strictObject({
+  ...SETTINGS_FIELDS,
+  response_style: ASSISTANT_RESPONSE_STYLE_WRITE.optional(),
 });
 
 export type AssistantSettings = z.output<typeof ASSISTANT_SETTINGS>;
 
-export const ASSISTANT_SETTINGS_CHANGE = ASSISTANT_SETTINGS.partial().refine(
-  (patch) => Object.keys(patch).length > 0,
-  { message: 'name at least one field to change' },
-);
+export const ASSISTANT_SETTINGS_CHANGE = ASSISTANT_SETTINGS_WRITE.omit({ response_style: true })
+  .partial()
+  .extend({ response_style: ASSISTANT_RESPONSE_STYLE_WRITE.partial().optional() })
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: 'name at least one field to change',
+  });
 
 export type AssistantSettingsChange = z.output<typeof ASSISTANT_SETTINGS_CHANGE>;
 
@@ -107,6 +116,7 @@ export const ASSISTANT_ATTACHMENT = z.strictObject({
   bytes: z.int().min(1).max(ASSISTANT_ATTACHMENT_BYTES_MAX),
   width: z.int().min(1).nullable(),
   height: z.int().min(1).nullable(),
+  transcript: z.string().max(8000).nullable().optional(),
 });
 
 export type AssistantAttachment = z.infer<typeof ASSISTANT_ATTACHMENT>;
@@ -152,7 +162,7 @@ export function isRetiredFailedAction(row: Pick<AssistantMessageRow, 'kind' | 't
   return row.kind === 'action' && row.text.startsWith(RETIRED_FAILED_ACTION_PREFIX);
 }
 
-export const ASSISTANT_STATUS = z.strictObject({
+export const ASSISTANT_STATUS = z.object({
   settings: ASSISTANT_SETTINGS,
   responder: z.looseObject({}).optional(),
   apps: z.array(z.unknown()).optional(),

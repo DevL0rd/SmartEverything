@@ -11,6 +11,8 @@ import {
   type AiModelChoice,
   type AiModelDetail,
   type AiModelList,
+  type AiModelSearch,
+  type AiModelSearchRequest,
   type AiModelRow,
   type AiPricing,
   type AiResolvedModel,
@@ -31,6 +33,8 @@ import {
 import { fetchOpenRouterModels, googleRows } from './catalogue-sync';
 import type { OpenRouterClient } from './client';
 import type { AiModelsRepository } from './models-repository';
+import { modelSearchPage } from './model-search-query';
+import { syncModelSearch } from './model-search-sync';
 
 const DAY_MS = 86_400_000;
 const SYNC_HOUR = 4;
@@ -76,7 +80,10 @@ export class Catalogue {
     this.writeGoogle(this.settings().google_prices);
     const synced = this.options.models.syncState().synced_at;
     const stale = synced === null || this.now() - Date.parse(synced) > DAY_MS;
-    if (stale) {
+    const missingOrder = Object.values(this.options.models.searchState()).some(
+      (order) => order.source.checked_at === null,
+    );
+    if (stale || missingOrder) {
       this.syncInBackground('boot');
     }
     this.schedule();
@@ -111,18 +118,45 @@ export class Catalogue {
     };
   }
 
-  list(filter: ModelFilter, page: PageRequest): AiModelList {
+  list(
+    filter: ModelFilter,
+    page: PageRequest,
+    visible: (row: AiModelRow) => boolean = () => true,
+  ): AiModelList {
     const overview = this.overview();
     return {
       synced_at: overview.synced_at,
       sync_error: overview.sync_error,
       default: overview.default,
-      ...pageOf(this.loaded, filter, page),
+      ...pageOf(this.loaded.filter(visible), filter, page),
     };
   }
 
-  providers(kind: AiModelKind | undefined): AiProviderCount[] {
-    return providersOf(this.loaded, kind);
+  search(
+    query: AiModelSearchRequest,
+    visible: (row: AiModelRow) => boolean = () => true,
+  ): AiModelSearch {
+    const overview = this.overview();
+    return {
+      version: 1,
+      scope: 'hub-catalogue',
+      synced_at: overview.synced_at,
+      sync_error: overview.sync_error,
+      default: overview.default,
+      ...modelSearchPage(
+        this.loaded.filter(visible),
+        query,
+        this.options.models.searchState(),
+        this.now(),
+      ),
+    };
+  }
+
+  providers(
+    kind: AiModelKind | undefined,
+    visible: (row: AiModelRow) => boolean = () => true,
+  ): AiProviderCount[] {
+    return providersOf(this.loaded.filter(visible), kind);
   }
 
   topPicks(kind: AiModelKind): AiModelRow[] {
@@ -243,6 +277,12 @@ export class Catalogue {
         syncedAt,
       );
       const result = this.options.models.replace(fetched.rows, 'openrouter');
+      this.options.models.saveSearchState(
+        await syncModelSearch(
+          { client: this.options.client, log: this.options.log, at: syncedAt },
+          this.options.models.searchState(),
+        ),
+      );
       this.writeGoogle(this.settings().google_prices);
       this.options.models.saveSyncState({
         synced_at: syncedAt,

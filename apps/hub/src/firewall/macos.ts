@@ -74,7 +74,7 @@ export async function probeMac(system: FirewallSystem): Promise<Probe> {
         ? 'The macOS application firewall blocks all incoming connections; turn that off in System Settings before allowing apps.'
         : 'The macOS application firewall is on and only lets in apps it allows.',
     stateOf: (rule) =>
-      STATE_OF[rule.purpose === 'device' || rule.purpose === 'plugin' ? app : go2rtc],
+      STATE_OF[rule.purpose === 'camera' || rule.purpose === 'webrtc' ? go2rtc : app],
     draft: blocked.length === 0 ? null : (): PlanDraft => ({ backend: 'macos', programs: blocked }),
     fixable: new Set(['missing', 'denied', 'unknown']),
     watch: [],

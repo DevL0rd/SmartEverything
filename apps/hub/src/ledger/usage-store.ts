@@ -74,7 +74,7 @@ export class UsageStore {
       'update AI usage',
       `update ai_usage set tokens_in = $tokens_in, tokens_out = $tokens_out,
         tokens_cached = $tokens_cached, tokens_reasoning = $tokens_reasoning,
-        cost_micros = $cost_micros, cost_state = $cost_state, meta = $meta where id = $id`,
+        cost_micros = $cost_micros, cost_state = $cost_state, generation_id = $generation_id, meta = $meta where id = $id`,
       {
         id: row.id,
         tokens_in: row.tokens_in,
@@ -83,6 +83,7 @@ export class UsageStore {
         tokens_reasoning: row.tokens_reasoning,
         cost_micros: row.cost_micros,
         cost_state: row.cost_state,
+        generation_id: row.generation_id,
         meta: jsonText(row.meta),
       },
     );
@@ -93,6 +94,13 @@ export class UsageStore {
       this.context.sql.get(STORED, `select ${LIST} from ai_usage where id = $id`, { id }),
       'AI usage record',
       id,
+    );
+  }
+
+  pendingHarness(): AiUsageRow[] {
+    return this.context.sql.all(
+      STORED,
+      `select ${LIST} from ai_usage where generation_id is not null and cost_state in ('estimated','reported') and json_extract(meta,'$.harness_session_id') is not null`,
     );
   }
 

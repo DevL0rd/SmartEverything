@@ -18,6 +18,7 @@ export class StoreConflictError extends Error {
 }
 
 const CONSTRAINT = /constraint failed/i;
+const MUTATION_COUNT = z.strictObject({ count: z.int().nonnegative() });
 
 function isConstraintFailure(cause: unknown): boolean {
   return cause instanceof Error && CONSTRAINT.test(cause.message);
@@ -47,6 +48,10 @@ export class Sql {
       }
       throw cause;
     }
+  }
+
+  mutationCount(): number {
+    return MUTATION_COUNT.parse(this.prepared('select total_changes() as count').get()).count;
   }
 
   transaction<T>(work: () => T): T {

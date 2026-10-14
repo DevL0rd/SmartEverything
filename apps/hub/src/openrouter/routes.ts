@@ -1,17 +1,18 @@
 import {
   AI_MODEL_ENDPOINTS as E,
   ApiError,
+  type AiModelSuggested,
+  type AiModelRow,
   type ApiErrorCode,
   type OpenRouterAccount,
   type OpenRouterCredits,
   type OpenRouterStatus,
 } from '@smarteverything/domain';
-import { clientOf, profileIdOf, type Caller } from '../server/auth';
+import { clientOf, profileIdOf } from '../server/auth';
 import type { ServerContext } from '../server/context';
 import { bound, type Bound } from '../server/router';
 import type { ModelFilter, PageRequest } from './catalogue-query';
 import { OpenRouterError, type OpenRouterErrorCode } from './errors';
-import { discordinatorHasKey, readDiscordinatorKey } from './key-import';
 import { suggestionsOf } from './model-suggestions';
 import type { OpenRouterPlatform } from './platform';
 
@@ -41,20 +42,11 @@ async function upstream<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-function onThisComputer(caller: Caller): void {
-  if (!clientOf(caller).built_in) {
-    throw new ApiError(
-      'forbidden',
-      'Import the key in the desktop app on the computer that runs SmartEverything.',
-    );
-  }
-}
-
-async function statusOf(platform: OpenRouterPlatform): Promise<OpenRouterStatus> {
+function statusOf(platform: OpenRouterPlatform): OpenRouterStatus {
   const { catalogue } = platform;
   return {
     key: platform.keys.current() === null ? 'missing' : 'set',
-    sources: (await discordinatorHasKey()) ? ['discordinator'] : [],
+    sources: [],
     settings: catalogue.settings(),
     ...catalogue.overview(),
   };
@@ -88,18 +80,6 @@ async function accountOf(platform: OpenRouterPlatform): Promise<OpenRouterAccoun
   };
 }
 
-async function importKey(platform: OpenRouterPlatform): Promise<OpenRouterStatus> {
-  const key = await readDiscordinatorKey();
-  if (key === null) {
-    throw new ApiError(
-      'not_found',
-      'There is no OpenRouter key in Discordinator on this computer.',
-    );
-  }
-  await upstream(() => platform.keys.save(key));
-  return statusOf(platform);
-}
-
 interface ListQuery {
   readonly kind?: ModelFilter['kind'] | undefined;
   readonly q?: string | undefined;
@@ -129,32 +109,38 @@ function pickerRoutes(
   context: ServerContext,
 ): Pick<
   AiModelRoutes,
-  'listAiModels' | 'suggestedAiModels' | 'listAiModelProviders' | 'readAiModel'
+  'searchAiModels' | 'listAiModels' | 'suggestedAiModels' | 'listAiModelProviders' | 'readAiModel'
 > {
   const { catalogue } = context.openRouter;
   return {
+    searchAiModels: bound(E.searchAiModels, ({ query }) =>
+      catalogue.search(query, (row) => pickerVisible(context, row)),
+    ),
     listAiModels: bound(E.listAiModels, ({ query }) =>
-      catalogue.list(filterOf(query), pageRequestOf(query)),
+      catalogue.list(filterOf(query), pageRequestOf(query), (row) => pickerVisible(context, row)),
     ),
     suggestedAiModels: bound(E.suggestedAiModels, ({ query, caller }) =>
-      suggestionsOf(
-        {
-          catalogue,
-          models: context.store.aiModels,
-          personal: context.store.personal,
-        },
-        {
-          owner: {
-            clientId: clientOf(caller).id,
-            profileId: profileIdOf(context.store, caller),
+      visibleSuggestions(
+        context,
+        suggestionsOf(
+          {
+            catalogue,
+            models: context.store.aiModels,
+            personal: context.store.personal,
           },
-          kind: query.kind,
-          current: query.current,
-        },
+          {
+            owner: {
+              clientId: clientOf(caller).id,
+              profileId: profileIdOf(context.store, caller),
+            },
+            kind: query.kind,
+            current: query.current,
+          },
+        ),
       ),
     ),
     listAiModelProviders: bound(E.listAiModelProviders, ({ query }) =>
-      catalogue.providers(query.kind),
+      catalogue.providers(query.kind, (row) => pickerVisible(context, row)),
     ),
     readAiModel: bound(E.readAiModel, ({ params }) => catalogue.detail(params.id)),
   };
@@ -178,10 +164,6 @@ export function aiModelRoutes(context: ServerContext): AiModelRoutes {
       await upstream(() => keys.save(body.key));
       return statusOf(platform);
     }),
-    importOpenRouterKey: bound(E.importOpenRouterKey, ({ caller }) => {
-      onThisComputer(caller);
-      return importKey(platform);
-    }),
     removeOpenRouterKey: bound(E.removeOpenRouterKey, async () => {
       await keys.remove();
       return statusOf(platform);
@@ -190,4 +172,22 @@ export function aiModelRoutes(context: ServerContext): AiModelRoutes {
       upstream(() => accountOf(platform)),
     ),
   };
+}
+
+function visibleSuggestions(context: ServerContext, result: AiModelSuggested): AiModelSuggested {
+  if (context.assistant.selections?.hasComputerProvider() !== true) return result;
+  const visible = (row: AiModelRow): boolean => row.author !== 'anthropic';
+  return {
+    ...result,
+    favourites: result.favourites.filter(visible),
+    recent: result.recent.filter(visible),
+    top_picks: result.top_picks.filter(visible),
+    default_model: result.default_model?.author === 'anthropic' ? null : result.default_model,
+  };
+}
+
+function pickerVisible(context: ServerContext, row: AiModelRow): boolean {
+  return !(
+    context.assistant.selections?.hasComputerProvider() === true && row.author === 'anthropic'
+  );
 }

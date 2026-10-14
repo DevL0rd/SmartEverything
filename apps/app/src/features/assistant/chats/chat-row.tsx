@@ -1,3 +1,4 @@
+import { isComputerEngine } from '../provider/computer-engine';
 import type { ReactNode } from 'react';
 import { memo, useState } from 'react';
 import { View } from 'react-native';
@@ -12,9 +13,11 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { entering, exiting, useMotion } from '../../../design/motion';
 import { useIdiom } from '../../../design/platform';
+import { useIsOwner, useRow } from '../../../store/selectors';
 import { useMinute } from '../../../store/clock';
 import { TypingDots } from '../components/typing-dots';
 import { chatListTime } from '../model/chat-list-time';
+import { childChatIcon } from '../model/child-chat-icon';
 import { sameEntry, type ChatEntry, type FailedChatLine, type PreviewChatLine } from './chat-entry';
 import { HOVER_BAR, ROW_EXIT, UNREAD_PULSE, arrivedJustNow } from './list-motion';
 import { menuOf, swipeActionsOf } from './row-actions';
@@ -23,6 +26,7 @@ import { SourceMark } from './source-mark';
 export interface ChatRowProps {
   readonly entry: ChatEntry;
   readonly nested: boolean;
+  readonly inactive?: boolean;
   readonly selected: boolean;
   readonly timeZone: string | null;
   readonly onOpen: (chatId: string) => void;
@@ -83,7 +87,7 @@ function PreviewLine({
   readonly entry: ChatEntry;
   readonly line: PreviewChatLine;
 }): ReactNode {
-  const branch = entry.source.kind === 'branch';
+  const branch = entry.source.kind === 'branch' && entry.kind !== 'subagent';
   return (
     <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
       {branch ? <Icon name="gitBranch" size={16} tone="variant" /> : null}
@@ -160,17 +164,21 @@ function Body({
   entry,
   timeZone,
   hovered,
+  compact,
+  inactive,
 }: {
   readonly entry: ChatEntry;
   readonly timeZone: string | null;
   readonly hovered: boolean;
+  readonly compact: boolean;
+  readonly inactive: boolean;
 }): ReactNode {
   const now = useMinute();
   return (
     <View className="min-w-0 flex-1 gap-0.5">
       <View className="flex-row items-center gap-2">
         <Text
-          variant="body-strong"
+          variant={inactive ? 'footnote' : compact ? 'label' : 'body-strong'}
           numberOfLines={1}
           className={cn('min-w-0 flex-1', entry.unread > 0 && 'font-sans-semibold')}
         >
@@ -180,21 +188,92 @@ function Body({
           {chatListTime(entry.at, now, timeZone)}
         </Text>
       </View>
-      <View className="flex-row items-center gap-2">
-        <Line entry={entry} />
+      {inactive ? (
         <Trailing entry={entry} />
-      </View>
+      ) : (
+        <View className="flex-row items-center gap-2">
+          <Line entry={entry} />
+          <Trailing entry={entry} />
+        </View>
+      )}
     </View>
   );
 }
 
-function Row({ entry, nested, selected, timeZone, onOpen, onDeleted }: ChatRowProps): ReactNode {
+function useRowMenu(
+  entry: ChatEntry,
+  onDeleted: ChatRowProps['onDeleted'],
+): ReturnType<typeof menuOf> {
+  const owner = useIsOwner();
+  const chat = useRow('ai_chats', entry.id);
+  const readOnly = chat !== null && isComputerEngine(chat.engine) && !owner;
+  return menuOf(entry, { onDeleted }).filter((item) => !readOnly || item.icon !== 'trash');
+}
+
+function RowContent({
+  entry,
+  nested,
+  selected,
+  timeZone,
+  hovered,
+  child,
+  inactive,
+}: Pick<ChatRowProps, 'entry' | 'nested' | 'selected' | 'timeZone'> & {
+  readonly hovered: boolean;
+  readonly child: boolean;
+  readonly inactive: boolean;
+}): ReactNode {
+  return (
+    <>
+      {selected ? (
+        <View className="absolute inset-y-2 left-0 w-0.75 rounded-r-sm bg-primary" />
+      ) : null}
+      {nested ? <View className="w-6" /> : null}
+      {child ? (
+        <View aria-hidden className="size-5 items-center justify-center">
+          <Icon name={childChatIcon(entry.id)} size={16} tone={selected ? 'primary' : 'variant'} />
+        </View>
+      ) : (
+        <SourceMark source={entry.source} size={40} />
+      )}
+      <Body
+        entry={entry}
+        timeZone={timeZone}
+        hovered={hovered}
+        compact={child}
+        inactive={inactive}
+      />
+    </>
+  );
+}
+
+function rowFrame(child: boolean, inactive: boolean, selected: boolean): string {
+  return cn(
+    'flex-row items-center px-gutter',
+    inactive
+      ? 'min-h-touch-min gap-2 py-0.5'
+      : child
+        ? 'min-h-touch-min gap-2 py-1.5'
+        : 'min-h-chat-row gap-3 py-3',
+    selected && 'bg-primary/12',
+  );
+}
+
+function Row({
+  entry,
+  nested,
+  selected,
+  timeZone,
+  onOpen,
+  onDeleted,
+  inactive = false,
+}: ChatRowProps): ReactNode {
   const motion = useMotion();
-  const pointer = useIdiom() === 'pointer';
+  const child = entry.kind === 'subagent';
   const [hovered, setHovered] = useState(false);
-  const menu = useContextMenu(menuOf(entry, { onDeleted }), entry.title);
+  const menu = useContextMenu(useRowMenu(entry, onDeleted), entry.title);
   const { leading, trailing } = swipeActionsOf(entry);
-  const hoverShown = pointer && hovered;
+  const hoverShown = useIdiom() === 'pointer' && hovered;
   return (
     <Animated.View
       {...exiting(motion, ROW_EXIT)}
@@ -216,17 +295,12 @@ function Row({ entry, nested, selected, timeZone, onOpen, onDeleted }: ChatRowPr
           onLongPress={menu.onLongPress}
           onContextMenu={menu.onContextMenu}
           {...swipeAccessibility(leading, trailing)}
-          className={cn(
-            'min-h-chat-row flex-row items-center gap-3 px-gutter py-3',
-            selected && 'bg-primary/12',
-          )}
+          className={rowFrame(child, inactive, selected)}
         >
-          {selected ? (
-            <View className="absolute inset-y-2 left-0 w-0.75 rounded-r-sm bg-primary" />
-          ) : null}
-          {nested ? <View className="w-6" /> : null}
-          <SourceMark source={entry.source} size={40} />
-          <Body entry={entry} timeZone={timeZone} hovered={hoverShown} />
+          <RowContent
+            {...{ entry, nested, selected, timeZone, child, inactive }}
+            hovered={hoverShown}
+          />
         </Interactive>
       </SwipeRow>
       {nested ? <Connector /> : null}
@@ -241,6 +315,7 @@ export const ChatRow = memo(
   (left, right) =>
     sameEntry(left.entry, right.entry) &&
     left.nested === right.nested &&
+    left.inactive === right.inactive &&
     left.selected === right.selected &&
     left.timeZone === right.timeZone &&
     left.onOpen === right.onOpen &&

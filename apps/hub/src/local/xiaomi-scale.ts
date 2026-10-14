@@ -105,6 +105,7 @@ function decode(entry: LocalDeviceEntry, advert: BleAdvert, key: string): Decode
 
 export const xiaomiScaleDriver: LocalDriverDefinition = {
   id: 'xiaomi_scale',
+  provider: 'local',
   describe,
   adverts: { watch, decode },
 };

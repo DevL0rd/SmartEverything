@@ -18,6 +18,7 @@ import {
   always,
   cameraAddressOf,
   requiredOpenings,
+  type ConnectionPortNeed,
   type DeviceAddress,
   type OpeningState,
   type PlanDraft,
@@ -133,6 +134,7 @@ export class FirewallMonitor {
   private readonly suspects = new Set<string>();
   private readonly listeners = new Set<FirewallListener>();
   private readonly watchers = new Map<string, () => void>();
+  private connectionNeeds: readonly ConnectionPortNeed[] = [];
   private queue: Promise<unknown> = Promise.resolve();
   private pending: Promise<FirewallStatus> | null = null;
   private last = '';
@@ -176,6 +178,12 @@ export class FirewallMonitor {
     this.cameras = cameras;
     this.pushing = pushing;
     this.devicesKey = key;
+    this.recheck();
+  }
+
+  connectionsChanged(needs: readonly ConnectionPortNeed[]): void {
+    if (JSON.stringify(needs) === JSON.stringify(this.connectionNeeds)) return;
+    this.connectionNeeds = needs;
     this.recheck();
   }
 
@@ -263,6 +271,7 @@ export class FirewallMonitor {
     const networks = this.plugins.length === 0 ? [] : await lanNetworks(system.read);
     this.warnNoLan(networks);
     const needs = {
+      connections: this.connectionNeeds,
       cameras: this.cameras,
       pushing: this.pushing,
       plugins: this.plugins,

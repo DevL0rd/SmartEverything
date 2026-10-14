@@ -56,11 +56,12 @@ export async function removeTalkMember(target: TalkMemberTarget): Promise<void> 
 }
 
 export async function talkMessageUrl(messageId: string): Promise<string> {
-  const [link] = await api().call(E.talkMessageLinks, { body: { ids: [messageId] } });
+  const client = api().forMedia();
+  const [link] = await client.call(E.talkMessageLinks, { body: { ids: [messageId] } });
   if (link === undefined) {
     throw new Error(`The server returned no link for message ${messageId}.`);
   }
-  return api().urlOf(link.url);
+  return client.resourceUrl(link.url, link.expiresAt, 'audio');
 }
 
 export async function removeTalkMessage(messageId: string): Promise<void> {

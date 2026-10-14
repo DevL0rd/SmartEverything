@@ -8,7 +8,7 @@ import type { ClaudeCli } from './claude-cli';
 import { ClaudeLinkError, ClaudeNotReadyError } from './errors';
 import { MARKETPLACE, PLUGIN_ID, linkFiles, pluginContents, type LinkFiles } from './link-files';
 import type { LinkLaunch } from './link-launch';
-import type { LinkToken } from './link-token';
+import type { LinkCredential } from './link-token';
 
 export type LinkState = LinkStatus['state'];
 
@@ -30,9 +30,13 @@ const BACKED_UP = ['known_marketplaces.json', 'installed_plugins.json'] as const
 export interface LinkOptions {
   readonly directory: string;
   readonly launch: LinkLaunch;
-  readonly token: LinkToken;
+  readonly token: LinkCredential;
   readonly cli: ClaudeCli;
   readonly readUrl: () => Promise<string>;
+  readonly readMcp?: () => Promise<{
+    readonly url: string | null;
+    readonly headersCommand: string;
+  }>;
   readonly pluginsDirectory: string;
   readonly log: Logger;
   readonly changed: () => void;
@@ -101,7 +105,7 @@ export class ClaudeLink {
     }
     await this.options.token.ensure();
     const url = await this.options.readUrl();
-    await this.writeFiles(linkFiles({ launch: this.options.launch, url }).files);
+    await this.writeFiles((await this.generated(url)).files);
     await this.backup();
     const misplaced =
       before.marketplace && before.path !== null && resolve(before.path) !== resolve(this.root);
@@ -164,7 +168,12 @@ export class ClaudeLink {
   private async expected(): Promise<LinkFiles | null> {
     return (await this.options.token.read()) === null
       ? null
-      : linkFiles({ launch: this.options.launch, url: await this.options.readUrl() });
+      : this.generated(await this.options.readUrl());
+  }
+
+  private async generated(url: string): Promise<LinkFiles> {
+    const mcp = await this.options.readMcp?.();
+    return linkFiles({ launch: this.options.launch, url, ...(mcp === undefined ? {} : { mcp }) });
   }
 
   private async current(registered: Registered): Promise<boolean> {

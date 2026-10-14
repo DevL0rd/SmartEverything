@@ -1,3 +1,4 @@
+import { isDirectoryChild } from '../../../plugins/device-contributions';
 import { deviceFamily, roomNameOf, type TableRow } from '@smarteverything/domain';
 import type { SelectOption } from '../../../components/select-picker';
 import { roomGroupsOf, type RoomGroup } from '../../../store/room-groups';
@@ -65,6 +66,7 @@ export function groupedDevices(
   const needle = query.text.trim().toLowerCase();
   const shown = devices.filter(
     (device) =>
+      (needle !== '' || !isDirectoryChild(device)) &&
       roomMatches(device, query.room, rooms) &&
       kindMatches(device, query.kind) &&
       textMatches(device, needle, rooms),

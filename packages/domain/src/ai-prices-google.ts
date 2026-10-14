@@ -1,6 +1,8 @@
 import { NO_PRICES, type AiModelKind, type AiPricing, type AiReasoningMode } from './ai-models';
 
-export const GOOGLE_PRICES_CHECKED = '2026-10-09';
+export const GOOGLE_PRICES_CHECKED = '2026-10-14';
+export const GOOGLE_MEDIA_NOTES_MODEL = 'google:gemini-2.5-flash-lite';
+export const OPENROUTER_MEDIA_NOTES_MODEL = 'google/gemini-2.5-flash-lite';
 
 export interface GoogleModel {
   readonly id: string;
@@ -42,6 +44,15 @@ const FLASH_LITE_PRICES: AiPricing = {
   output_per_mtok: 2.5,
   audio_in_per_mtok: 0.3,
   video_in_per_mtok: 0.3,
+};
+
+const MEDIA_NOTE_PRICES: AiPricing = {
+  ...NO_PRICES,
+  input_per_mtok: 0.1,
+  output_per_mtok: 0.4,
+  audio_in_per_mtok: 0.3,
+  video_in_per_mtok: 0.1,
+  image_in_per_mtok: 0.1,
 };
 
 const EMBEDDING_PRICES: AiPricing = {
@@ -107,6 +118,18 @@ export const GOOGLE_MODELS: readonly GoogleModel[] = [
     contextLength: 1_048_576,
     reasoning: 'optional',
     pricing: FLASH_LITE_PRICES,
+  },
+  {
+    id: GOOGLE_MEDIA_NOTES_MODEL,
+    name: 'Gemini 2.5 Flash-Lite',
+    family: 'gemini-flash-lite',
+    description: 'Low-cost image descriptions and video captions.',
+    kinds: ['transcribe'],
+    input: MEDIA_IN,
+    output: ['text'],
+    contextLength: 1_048_576,
+    reasoning: 'optional',
+    pricing: MEDIA_NOTE_PRICES,
   },
   {
     id: 'google:gemini-embedding-2',

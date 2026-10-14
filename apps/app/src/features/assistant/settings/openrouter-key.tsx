@@ -89,7 +89,11 @@ function KeySheet({
   );
 }
 
-function statusLine(status: OpenRouterStatus): string {
+function statusLine(status: OpenRouterStatus, context: 'chat' | 'images'): string {
+  if (context === 'images')
+    return status.key === 'missing'
+      ? 'Add an OpenRouter key to use a metered image provider.'
+      : 'Key configured. Image requests use separate metered credit.';
   if (status.key === 'missing') {
     return 'Add a key so the assistant can answer with any model.';
   }
@@ -105,7 +109,9 @@ async function run(action: () => Promise<unknown>, done: string): Promise<void> 
   }
 }
 
-export function KeyStatusRow(): ReactNode {
+export function KeyStatusRow({
+  context = 'chat',
+}: { readonly context?: 'chat' | 'images' } = {}): ReactNode {
   const status = useOpenRouterStatus();
   if (status.isError) {
     return <ErrorState error={status.error} retry={() => void status.refetch()} />;
@@ -119,18 +125,7 @@ export function KeyStatusRow(): ReactNode {
       title={set ? 'Key added' : 'No key yet'}
       icon="key"
       iconTone={set ? 'positive' : 'warning'}
-      subtitle={statusLine(status.data)}
-    />
-  );
-}
-
-export function ImportKeyRow(): ReactNode {
-  const { importKey } = useOpenRouterActions();
-  return (
-    <ActionRow
-      title="Use the key from Discordinator"
-      icon="link"
-      onPress={() => void run(importKey, 'Key from Discordinator saved')}
+      subtitle={statusLine(status.data, context)}
     />
   );
 }

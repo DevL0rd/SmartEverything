@@ -1,8 +1,12 @@
 import type { HealthRecordType, LoggableType } from '@smarteverything/domain';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   AndroidConfig,
   type ConfigPlugin,
+  type ExportedConfigWithProps,
   withAndroidManifest,
+  withDangerousMod,
   type AndroidManifest,
 } from 'expo/config-plugins.js';
 
@@ -208,6 +212,46 @@ function allowPictureInPicture(manifest: AndroidManifest): void {
   activity.$['android:configChanges'] = [...present, ...missing].join('|');
 }
 
+const NETWORK_SECURITY = '@xml/hub_resource_network_security';
+const NETWORK_SECURITY_FILE = 'hub_resource_network_security.xml';
+const DEVELOPMENT_VARIANTS = ['debug', 'debugOptimized'] as const;
+const DEVELOPMENT_NETWORK_SECURITY = new URL(
+  '../android/src/debug/res/xml/hub_resource_network_security.xml',
+  import.meta.url,
+);
+
+const withHubResourceDevelopmentPolicy: ConfigPlugin = (config) =>
+  withDangerousMod(config, [
+    'android',
+    async (modified): Promise<ExportedConfigWithProps<unknown>> => {
+      const template = await readFile(DEVELOPMENT_NETWORK_SECURITY, 'utf8');
+      for (const variant of DEVELOPMENT_VARIANTS) {
+        const directory = join(
+          modified.modRequest.platformProjectRoot,
+          'app',
+          'src',
+          variant,
+          'res',
+          'xml',
+        );
+        await mkdir(directory, { recursive: true });
+        await writeFile(join(directory, NETWORK_SECURITY_FILE), template);
+      }
+      return modified;
+    },
+  ]);
+
+function addHubResourceManifest(manifest: AndroidManifest): void {
+  const application = AndroidConfig.Manifest.getMainApplicationOrThrow(manifest);
+  const existingSecurity = application.$['android:networkSecurityConfig'];
+  if (existingSecurity !== undefined && existingSecurity !== NETWORK_SECURITY) {
+    throw new Error(
+      'Merge the existing Android network security policy before enabling hub resources.',
+    );
+  }
+  application.$['android:networkSecurityConfig'] = NETWORK_SECURITY;
+}
+
 type ManifestConfig = Parameters<Parameters<typeof withAndroidManifest>[1]>[0];
 
 function manifestEdit(privacyPolicyUrl: string): (modified: ManifestConfig) => ManifestConfig {
@@ -215,6 +259,7 @@ function manifestEdit(privacyPolicyUrl: string): (modified: ManifestConfig) => M
     addQueries(modified.modResults);
     addRationale(modified.modResults, privacyPolicyUrl);
     allowPictureInPicture(modified.modResults);
+    addHubResourceManifest(modified.modResults);
     return modified;
   };
 }
@@ -224,5 +269,6 @@ export const withHealthConnect: ConfigPlugin<HealthConnectPluginOptions> = (conf
   const permitted = AndroidConfig.Permissions.withPermissions(config, [
     ...HEALTH_CONNECT_PERMISSIONS,
   ]);
-  return withAndroidManifest(permitted, manifestEdit(privacyPolicyUrl));
+  const developmentPolicy = withHubResourceDevelopmentPolicy(permitted);
+  return withAndroidManifest(developmentPolicy, manifestEdit(privacyPolicyUrl));
 };

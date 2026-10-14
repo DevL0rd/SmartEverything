@@ -74,6 +74,16 @@ why it is the way it is. Never edit what you have not read.
   search, nested under the page, section or device where it appears, with keywords and synonyms for the words people
   use.
 
+## Product skills
+
+- SmartEverything's AI skills live in `packages/harness/skills/`; they are product capabilities, separate from development-agent skills.
+- Keep them current when related tools, permissions or workflows change. Check affected skill descriptions, instructions and bundled resources as part of that change.
+- Group skills by useful tasks, rather than creating one per tool. Keep discovery descriptions precise and bodies concise; load detailed resources only when needed.
+- Use actual available tools and live schema discovery. Do not duplicate whole tool schemas or promise missing capabilities; identify missing equivalents clearly.
+- Preserve the user's scope, native permissions and asynchronous behavior. Skills guide work; they do not grant access or create execution capabilities.
+- Follow the Agent Skills format and verify compatibility with the native loader. After editing their source, regenerate embedded assets with `node_modules/.bin/tsx tooling/generate-product-skills.ts`.
+- Adapt third-party skills only under compatible licenses, retaining required attribution and notices.
+
 ## Logging
 
 One logger (`@smarteverything/logging`), no `console`. Scope `<runtime>.<area>` (runtime: app, edge, db, tool, hub,

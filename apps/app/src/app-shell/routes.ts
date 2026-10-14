@@ -168,17 +168,6 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     badge: (a) => (a.needsAttention ? 'critical' : null),
     searchable: true,
   },
-  {
-    key: 'more',
-    href: '/more',
-    title: 'More',
-    icon: 'more',
-    tab: 'more',
-    parent: null,
-    keywords: [],
-    available: always,
-    searchable: false,
-  },
 ];
 
 const PAGES: readonly RouteDefinition[] = [

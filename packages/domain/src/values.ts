@@ -1,5 +1,19 @@
 import { z } from 'zod';
 
+export type JsonValue =
+  string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+
+export const JSON_VALUE: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JSON_VALUE),
+    z.record(z.string(), JSON_VALUE),
+  ]),
+);
+
 export const BOOLEAN_VALUE = z.object({ kind: z.literal('boolean') });
 
 export const NUMBER_VALUE = z
@@ -27,6 +41,7 @@ export const TEXT_VALUE = z.object({
 export const ACTION_VALUE = z.object({
   kind: z.literal('action'),
   arguments: z.array(z.string().min(1)).optional(),
+  argumentSchema: JSON_VALUE.optional(),
 });
 
 export const VALUE_DESCRIPTOR = z.discriminatedUnion('kind', [
@@ -47,20 +62,6 @@ export const HSV_COLOR = z.object({
 });
 
 export type HsvColor = z.infer<typeof HSV_COLOR>;
-
-export type JsonValue =
-  string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
-
-export const JSON_VALUE: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(JSON_VALUE),
-    z.record(z.string(), JSON_VALUE),
-  ]),
-);
 
 export class InvalidValueError extends Error {
   override readonly name = 'InvalidValueError';

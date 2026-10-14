@@ -1,10 +1,30 @@
+import {
+  EMBEDDED_BROWSER_CAPABILITY,
+  EMBEDDED_BROWSER_PATH,
+  PREVIEW_DIAGNOSTICS_CAPABILITY,
+  PREVIEW_BROWSER_DATA_CAPABILITY,
+  PREVIEW_DIAGNOSTICS_PATH,
+} from '@smarteverything/domain';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { createServer as createSecureServer, type ServerOptions as TlsOptions } from 'node:https';
 import type { Duplex } from 'node:stream';
 import {
+  AI_ENGINE_CAPABILITIES_HEADER,
+  AI_HARNESS_CAPABILITY,
+  AI_PREVIEW_CAPABILITY,
+  AI_PREVIEW_LIFETIME_CAPABILITY,
+  AI_NATIVE_HTML_CAPABILITY,
+  AI_NATIVE_PROJECT_CAPABILITY,
+  AI_ENGINE_CAPABILITY,
+  AI_ENGINE_CAPABILITY_V2,
   ASSISTANT_VOICE_PATH,
   ApiError,
+  HUB_IDENTITY_PATH,
   MEDIA_PATHS,
   TALK_PATH,
+  NODE_AI_PATH,
+  NODE_HARNESS_PATH,
+  NODE_PREVIEW_PATH,
   matchPath,
   type HttpMethod,
 } from '@smarteverything/domain';
@@ -19,7 +39,7 @@ import { recordingFile, sendRecording } from './recording-files';
 import type { Router } from './router';
 
 export interface RawRoute {
-  readonly method: HttpMethod;
+  readonly method: HttpMethod | 'HEAD';
   readonly path: string;
   readonly handle: (
     request: IncomingMessage,
@@ -38,7 +58,7 @@ export interface HttpServerOptions {
   readonly go2rtc: Go2rtcClient;
 }
 
-const ALLOWED_HEADERS = 'authorization, content-type, range';
+const ALLOWED_HEADERS = 'accept, authorization, content-type, range';
 const ALLOWED_METHODS = 'GET, POST, PUT, PATCH, DELETE';
 
 function urlOf(request: IncomingMessage): URL {
@@ -55,6 +75,14 @@ function corsAllowed(
   request: IncomingMessage,
   response: ServerResponse,
 ): boolean {
+  response.setHeader(
+    AI_ENGINE_CAPABILITIES_HEADER,
+    `${AI_ENGINE_CAPABILITY}, ${AI_ENGINE_CAPABILITY_V2}, ${AI_HARNESS_CAPABILITY}, ${AI_PREVIEW_CAPABILITY}, ${AI_PREVIEW_LIFETIME_CAPABILITY}, ${AI_NATIVE_HTML_CAPABILITY}, ${AI_NATIVE_PROJECT_CAPABILITY}, ${PREVIEW_DIAGNOSTICS_CAPABILITY}, ${PREVIEW_BROWSER_DATA_CAPABILITY}, ${EMBEDDED_BROWSER_CAPABILITY}`,
+  );
+  response.setHeader(
+    'access-control-expose-headers',
+    `${AI_ENGINE_CAPABILITIES_HEADER}, x-smarteverything-ai-unavailable`,
+  );
   const origin = request.headers.origin;
   if (origin === undefined || isPublicOrigin(options, origin)) {
     return true;
@@ -89,6 +117,7 @@ type PublicPath = (
 ) => Promise<boolean>;
 
 const answerProbe: PublicPath = (options, _request, response, url) => {
+  if (url.pathname === HUB_IDENTITY_PATH) return Promise.resolve(false);
   const probe = matchPath(MEDIA_PATHS.publicUrlProbe, url.pathname);
   if (probe === null) {
     return Promise.resolve(false);
@@ -252,6 +281,20 @@ async function upgrade(
   head: Buffer,
 ): Promise<void> {
   const url = urlOf(request);
+  const native = new Map<
+    string,
+    { readonly upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void }
+  >([
+    [PREVIEW_DIAGNOSTICS_PATH, options.context.preview.diagnosticSockets],
+    [EMBEDDED_BROWSER_PATH, options.context.preview.browserSockets],
+    [NODE_PREVIEW_PATH, options.context.preview.data],
+    [NODE_HARNESS_PATH, options.context.harnessSockets],
+    [NODE_AI_PATH, options.context.nodeSockets],
+  ]).get(url.pathname);
+  if (native !== undefined) {
+    native.upgrade(request, socket, head);
+    return;
+  }
   if (url.pathname === MEDIA_PATHS.live) {
     options.context.live.upgrade(request, socket, head);
     return;
@@ -274,13 +317,14 @@ async function upgrade(
   options.cameraSockets.relay(request, socket, head, options.go2rtc.socketOf(deviceId));
 }
 
-export function createHttpServer(options: HttpServerOptions): Server {
+export function createHttpServer(options: HttpServerOptions, tls?: TlsOptions): Server {
   const serving: Serving = { ...options, thumbnails: new Thumbnails() };
-  const server = createServer((request, response) => {
+  const handler = (request: IncomingMessage, response: ServerResponse): void => {
     serve(serving, request, response).catch((cause: unknown) => {
       sendError(response, failed(options, cause));
     });
-  });
+  };
+  const server = tls === undefined ? createServer(handler) : createSecureServer(tls, handler);
   server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     upgrade(options, request, socket, head).catch((cause: unknown) => {
       refuseUpgrade(socket, failed(options, cause));

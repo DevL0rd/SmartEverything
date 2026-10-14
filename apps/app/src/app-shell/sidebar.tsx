@@ -16,7 +16,7 @@ const HOME_MENU = HOME_ACTIONS.map((action) => ({
   label: action.label,
   icon: action.icon,
   onPress: (): void => {
-    router.push(action.href);
+    router.navigate(action.href);
   },
 }));
 

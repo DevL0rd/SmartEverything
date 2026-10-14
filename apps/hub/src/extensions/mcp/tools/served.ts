@@ -233,6 +233,21 @@ function refusedFields(route: Routed, fields: PartFields, args: Args): void {
   }
 }
 
+function selectorVariants(route: Routed, parts: ReadonlyMap<string, Tool>): readonly Args[] {
+  return Object.entries(route.parts).map(([value, part]) => {
+    const listed = listedOf(partNamed(parts, part));
+    return {
+      selector: { [route.key]: value },
+      inputSchema: {
+        ...listed.inputSchema,
+        properties: { [route.key]: { const: value }, ...listed.inputSchema.properties },
+        required: [route.key, ...listed.inputSchema.required],
+      },
+      annotations: listed.annotations,
+    };
+  });
+}
+
 function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string, Tool>): Tool {
   const members = Object.values(route.parts).map((part) => partNamed(parts, part));
   const fieldsOf = new Map(partFields(route, parts).map((fields) => [fields.part, fields]));
@@ -247,6 +262,7 @@ function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string,
   return {
     name,
     listing: servedListing(name, routedSchema(route, parts), merged(members)),
+    variants: selectorVariants(route, parts),
     check: (context, args): string | null => {
       try {
         const found = resolve(args);

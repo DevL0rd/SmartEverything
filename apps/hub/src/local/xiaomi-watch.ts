@@ -52,6 +52,7 @@ function describe(entry: LocalDeviceEntry, observed: Observed): DiscoveredDevice
 
 export const xiaomiWatchDriver: LocalDriverDefinition = {
   id: 'xiaomi_watch',
+  provider: 'local',
   describe,
   adverts: null,
 };

@@ -4,6 +4,8 @@ import type { IconName } from '../../components/icon';
 export const FAMILY_ICONS: Readonly<Record<DeviceFamily, IconName>> = {
   air_purifier: 'fan',
   humidifier: 'droplet',
+  diffuser: 'flower',
+  microwave: 'heater',
   dehumidifier: 'droplet',
   tower_fan: 'fan',
   fan: 'fan',

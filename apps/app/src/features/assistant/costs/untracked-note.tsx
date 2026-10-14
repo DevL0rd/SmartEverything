@@ -18,6 +18,14 @@ export function UntrackedNote(): ReactNode {
   }
   const reported = microsOfUsd(account.data.usage_daily);
   const here = tracked.data.sum.cost_micros;
+  if ((tracked.data.sum.unknown_count ?? 0) > 0)
+    return (
+      <Banner
+        tone="info"
+        title="Supplier costs unavailable"
+        body={`OpenRouter reports ${money.cost(reported)} today (UTC). Known costs here: ${money.cost(here)}; accounting is incomplete, so outside usage cannot be determined.`}
+      />
+    );
   const untracked = Math.max(0, reported - here);
   if (untracked <= NOTICE_MICROS) {
     return null;

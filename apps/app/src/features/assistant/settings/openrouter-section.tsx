@@ -1,17 +1,15 @@
 import type { ReactNode } from 'react';
 import type { OpenRouterAccount } from '@smarteverything/domain';
 import { List } from '../../../components/section';
-import { appPlatform } from '../../../design/platform';
 import { useIsOwner } from '../../../store/selectors';
 import { useOpenRouterAccount, useOpenRouterStatus } from '../data/openrouter';
 import { DefaultModelRow } from './default-model-row';
 import { CreditRow, KeyLimitRow, KeySpendRow } from './openrouter-credits';
-import { ImportKeyRow, KeyStatusRow, PasteKeyRow, RemoveKeyRow } from './openrouter-key';
+import { KeyStatusRow, PasteKeyRow, RemoveKeyRow } from './openrouter-key';
 
 interface KeyFacts {
   readonly owner: boolean;
   readonly keySet: boolean;
-  readonly importable: boolean;
   readonly account: OpenRouterAccount | undefined;
 }
 
@@ -20,8 +18,7 @@ function useKeyFacts(): KeyFacts {
   const status = useOpenRouterStatus();
   const keySet = status.data?.key === 'set';
   const account = useOpenRouterAccount(keySet).data;
-  const found = status.data?.sources.includes('discordinator') === true;
-  return { owner, keySet, importable: appPlatform() === 'desktop' && found, account };
+  return { owner, keySet, account };
 }
 
 function limitRow({ owner, account }: KeyFacts): ReactNode {
@@ -47,13 +44,12 @@ function SpentWithKey({ owner, account }: KeyFacts): ReactNode {
 
 export function OpenRouterSection(): ReactNode {
   const facts = useKeyFacts();
-  const { owner, keySet, importable } = facts;
+  const { owner, keySet } = facts;
   return (
     <>
       <List inset title="OpenRouter">
         <KeyStatusRow key="status" />
         {owner ? <PasteKeyRow key="paste" /> : null}
-        {owner && importable ? <ImportKeyRow key="import" /> : null}
         {owner && keySet ? <RemoveKeyRow key="remove" /> : null}
         {owner && keySet ? <CreditRow key="credit" /> : null}
         {limitRow(facts)}

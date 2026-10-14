@@ -41,6 +41,7 @@ const MICROS = z.int().min(0);
 export const AI_BUDGET_PERIOD = z.strictObject({
   from: z.iso.datetime({ offset: true }),
   spent_micros: MICROS,
+  unknown_count: MICROS.optional(),
   limit_micros: MICROS.nullable(),
 });
 

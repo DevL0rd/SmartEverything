@@ -1,6 +1,7 @@
 import type { Action, AutomationDefinition } from '@smarteverything/domain';
 import {
   deleteAutomation,
+  runAutomation,
   saveAutomation,
   sendAutomationCommands,
   setAutomationEnabled,
@@ -60,7 +61,7 @@ export interface TestCatalog {
   readonly scenes: readonly RunnableScene[];
 }
 
-export async function testRun(
+export async function testDraftRun(
   name: string,
   actions: readonly Action[],
   catalog: TestCatalog,
@@ -71,8 +72,18 @@ export async function testRun(
       await runStep(name, step);
     }
     notify({
-      message: `${name} ran`,
-      detail: plural(commandCount(steps), 'command'),
+      message: `${name} test sent`,
+      detail: `${plural(commandCount(steps), 'command')} submitted; waits and AI steps skipped`,
+      tone: 'positive',
+    });
+  });
+}
+
+export async function testSavedRun(automationId: string, name: string): Promise<boolean> {
+  return attempt(`${name} didn’t run`, async () => {
+    await runAutomation(automationId);
+    notify({
+      message: `${name} test completed`,
       tone: 'positive',
     });
   });

@@ -1,3 +1,4 @@
+import { BluetoothObservation } from './bluetooth-observation';
 import { Fragment, type ReactNode } from 'react';
 import { inTier, isCamera } from '@smarteverything/domain';
 import { NavRow } from '../../../components/rows';
@@ -67,7 +68,19 @@ function MaintenanceSection({
   );
 }
 
-function Body({ device }: { readonly device: Device }): ReactNode {
+function BluetoothSection({ device }: { readonly device: Device }): ReactNode {
+  return device.provider === 'xiaomi' && device.model === 'isa.magnet.dw2hl' ? (
+    <BluetoothObservation device={device} />
+  ) : null;
+}
+
+function Body({
+  device,
+  children,
+}: {
+  readonly device: Device;
+  readonly children?: ReactNode;
+}): ReactNode {
   const name = useDisplayName(device.id);
   const scale = useDeviceModel(device).family === 'scale';
   const reason = device.online ? null : offlineReason(name);
@@ -99,17 +112,25 @@ function Body({ device }: { readonly device: Device }): ReactNode {
           />
         </List>
       ) : null}
+      <BluetoothSection device={device} />
       {scale ? <ScaleStatus scale={device} /> : null}
       {pluginSettingsBlocksOf(device).map((block) => (
         <Fragment key={block.key}>{block.render(device)}</Fragment>
       ))}
+      {children}
       <AboutSection device={device} />
       <RemoveSection device={device} name={name} />
     </DeviceSettingsFrame>
   );
 }
 
-export function DeviceSettingsScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
+export function DeviceSettingsScreen({
+  deviceId,
+  children,
+}: {
+  readonly deviceId: string;
+  readonly children?: ReactNode;
+}): ReactNode {
   const device = useDevice(deviceId);
-  return device === null ? <MissingDevice /> : <Body device={device} />;
+  return device === null ? <MissingDevice /> : <Body device={device}>{children}</Body>;
 }

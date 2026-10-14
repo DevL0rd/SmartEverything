@@ -82,6 +82,7 @@ function emptyTurn(frame: ChatStreamNotice): Turn {
 
 export function withSnapshot(turns: Turns, notice: ChatActivityNotice): Turns {
   const previous = turns[notice.turnId];
+  if (previous !== undefined && previous.seq > notice.seq) return turns;
   const kept = previous?.waiting.filter((frame) => frame.seq > notice.seq) ?? [];
   const turn: Turn = {
     chatId: notice.chatId,
@@ -108,6 +109,23 @@ export function withSnapshot(turns: Turns, notice: ChatActivityNotice): Turns {
 
 export function turnsOf(notices: readonly ChatActivityNotice[]): Turns {
   return notices.reduce<Turns>(withSnapshot, {});
+}
+
+export function settleChatTurns(turns: Turns, observed: Turns, chatId: string): Turns {
+  const settled = Object.values(turns).filter(
+    (turn) =>
+      turn.chatId === chatId &&
+      turn.state !== 'idle' &&
+      turn.state !== 'failed' &&
+      turn === observed[turn.turnId],
+  );
+  if (settled.length === 0) return turns;
+  return {
+    ...turns,
+    ...Object.fromEntries(
+      settled.map((turn) => [turn.turnId, { ...turn, state: 'idle' as const }]),
+    ),
+  };
 }
 
 export function withFrame(turns: Turns, frame: ChatStreamNotice): Turns {

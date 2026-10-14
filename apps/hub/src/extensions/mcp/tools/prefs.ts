@@ -22,7 +22,7 @@ async function readOf<T>(
   return read.value;
 }
 
-async function writeOf<T extends object>(
+async function writeOf<T extends Readonly<Record<string, unknown>>>(
   context: ToolContext,
   definition: ClientPrefDefinition<T>,
   patch: Readonly<Record<string, unknown>>,
@@ -44,53 +44,41 @@ async function writeOf<T extends object>(
   return next.data;
 }
 
-export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs): Promise<unknown> {
-  switch (key) {
-    case 'appearance':
-      return readOf(context, CLIENT_PREFS.appearance, as);
-    case 'call_ring':
-      return readOf(context, CLIENT_PREFS.call_ring, as);
-    case 'call_audio':
-      return readOf(context, CLIENT_PREFS.call_audio, as);
-    case 'cameras':
-      return readOf(context, CLIENT_PREFS.cameras, as);
-    case 'health_sync':
-      return readOf(context, CLIENT_PREFS.health_sync, as);
-    case 'nutrition':
-      return readOf(context, CLIENT_PREFS.nutrition, as);
-    case 'ai_models':
-      return readOf(context, CLIENT_PREFS.ai_models, as);
-    case 'ai_speech':
-      return readOf(context, CLIENT_PREFS.ai_speech, as);
-    case 'region':
-      return readOf(context, CLIENT_PREFS.region, as);
-  }
+interface PreferenceOperations {
+  readonly read: (context: ToolContext, as: ActingAs) => Promise<unknown>;
+  readonly write: (
+    context: ToolContext,
+    patch: Readonly<Record<string, unknown>>,
+    as: ActingAs,
+  ) => Promise<unknown>;
 }
-
+function operations<T extends Readonly<Record<string, unknown>>>(
+  definition: ClientPrefDefinition<T>,
+): PreferenceOperations {
+  return {
+    read: (context, as) => readOf(context, definition, as),
+    write: (context, patch, as) => writeOf(context, definition, patch, as),
+  };
+}
+const PREFERENCE_OPERATIONS: Readonly<Record<ClientPrefKey, PreferenceOperations>> = {
+  appearance: operations(CLIENT_PREFS.appearance),
+  call_ring: operations(CLIENT_PREFS.call_ring),
+  call_audio: operations(CLIENT_PREFS.call_audio),
+  cameras: operations(CLIENT_PREFS.cameras),
+  health_sync: operations(CLIENT_PREFS.health_sync),
+  nutrition: operations(CLIENT_PREFS.nutrition),
+  ai_models: operations(CLIENT_PREFS.ai_models),
+  ai_speech: operations(CLIENT_PREFS.ai_speech),
+  region: operations(CLIENT_PREFS.region),
+};
+export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs): Promise<unknown> {
+  return PREFERENCE_OPERATIONS[key].read(context, as);
+}
 export function writePref(
   context: ToolContext,
   key: ClientPrefKey,
   patch: Readonly<Record<string, unknown>>,
   as: ActingAs,
 ): Promise<unknown> {
-  switch (key) {
-    case 'appearance':
-      return writeOf(context, CLIENT_PREFS.appearance, patch, as);
-    case 'call_ring':
-      return writeOf(context, CLIENT_PREFS.call_ring, patch, as);
-    case 'call_audio':
-      return writeOf(context, CLIENT_PREFS.call_audio, patch, as);
-    case 'cameras':
-      return writeOf(context, CLIENT_PREFS.cameras, patch, as);
-    case 'health_sync':
-      return writeOf(context, CLIENT_PREFS.health_sync, patch, as);
-    case 'nutrition':
-      return writeOf(context, CLIENT_PREFS.nutrition, patch, as);
-    case 'ai_models':
-      return writeOf(context, CLIENT_PREFS.ai_models, patch, as);
-    case 'ai_speech':
-      return writeOf(context, CLIENT_PREFS.ai_speech, patch, as);
-    case 'region':
-      return writeOf(context, CLIENT_PREFS.region, patch, as);
-  }
+  return PREFERENCE_OPERATIONS[key].write(context, patch, as);
 }

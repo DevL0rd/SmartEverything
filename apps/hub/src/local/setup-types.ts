@@ -6,9 +6,13 @@ import type { Store } from '../store/store';
 export interface BluetoothIdentity {
   readonly mac: string;
   readonly bindKey: string;
+  readonly accountScope?: string;
 }
 
-export type BluetoothIdentitySource = (did: string) => Promise<BluetoothIdentity>;
+export type BluetoothIdentitySource = (
+  did: string,
+  expectedModel?: string,
+) => Promise<BluetoothIdentity>;
 
 export type WearableSource = () => Promise<SourceList>;
 

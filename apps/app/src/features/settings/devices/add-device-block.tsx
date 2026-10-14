@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { PairComputerSheet } from '../../computers';
 import type { Href } from 'expo-router';
 import { ADDABLE_PROVIDERS, PROVIDER_INFO } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
@@ -36,9 +37,26 @@ function AccountRows(): ReactNode {
 }
 
 export function AddDeviceBlock(): ReactNode {
+  const [pair, setPair] = useState(false);
   return (
     <>
       <AccountRows />
+      <List title="Computers">
+        <NavRow
+          title="Pair a computer"
+          subtitle="Connect native Claude sessions and subscription models"
+          icon="monitor"
+          onPress={() => {
+            setPair(true);
+          }}
+        />
+      </List>
+      <PairComputerSheet
+        open={pair}
+        onClose={() => {
+          setPair(false);
+        }}
+      />
       <List title="On your network" inset>
         <NavRow
           title="Add by address"

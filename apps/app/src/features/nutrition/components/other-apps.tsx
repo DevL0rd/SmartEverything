@@ -19,6 +19,15 @@ function summary(record: OtherRecord): { readonly title: string; readonly value:
   };
 }
 
+function footerOf(records: readonly OtherRecord[], counted: boolean): string {
+  if (counted || records.every((record) => record.type === 'Hydration')) {
+    return 'Counted in today’s totals. Change them in the app that logged them.';
+  }
+  return records.some((record) => record.type === 'Hydration')
+    ? 'Water is counted in today’s totals. Food logged here is used. Change these in the app that logged them.'
+    : 'Not counted today: what you log here is used. Change these in the app that logged them.';
+}
+
 export function OtherApps({
   records,
   counted,
@@ -30,15 +39,7 @@ export function OtherApps({
     return null;
   }
   return (
-    <List
-      title="From other apps"
-      inset
-      footer={
-        counted
-          ? 'Counted in today’s totals. Change them in the app that logged them.'
-          : 'Not counted today: what you log here is used. Change these in the app that logged them.'
-      }
-    >
+    <List title="From other apps" inset footer={footerOf(records, counted)}>
       {records.map((record) => {
         const shown = summary(record);
         return (

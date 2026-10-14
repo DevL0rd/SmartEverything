@@ -1,6 +1,13 @@
-import type { DiscoveredDevice, StateUpdate } from '@smarteverything/domain';
+import type {
+  DiscoveredDevice,
+  StateUpdate,
+  JsonValue,
+  DeviceEvent,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import {
+  validateRawWrite,
+  deviceEventsFor,
   DEVICE,
   DEVICE_LIST,
   DEVICE_STATUS,
@@ -127,6 +134,14 @@ export class Inventory {
     );
   }
 
+  validateWrite(externalId: string, binding: Binding, value: JsonValue): void {
+    const status = this.entryOf(externalId).status[binding.component];
+    if (status === undefined) {
+      throw new UnknownDeviceError(externalId);
+    }
+    validateRawWrite(binding, status, value);
+  }
+
   currentStates(observedAt: string): readonly StateUpdate[] {
     return [...this.entries.values()].flatMap((entry) => statesOf(entry, observedAt));
   }
@@ -137,6 +152,11 @@ export class Inventory {
     const updated = { ...entry, status: status.components };
     this.entries.set(externalId, updated);
     return statesOf(updated, observedAt);
+  }
+
+  eventsFor(event: SmartThingsDeviceEvent, occurredAt: string): readonly DeviceEvent[] {
+    const previous = this.entries.get(event.deviceId)?.status[event.componentId];
+    return deviceEventsFor(event, occurredAt, previous);
   }
 
   applyEvent(event: SmartThingsDeviceEvent, observedAt: string): readonly StateUpdate[] {

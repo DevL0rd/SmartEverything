@@ -12,6 +12,7 @@ import { useSyncStatus } from '../../../store/selectors';
 import { APP_SOURCE } from '../model/chat-source';
 import type { ChatEntry } from './chat-entry';
 import { ChatRow } from './chat-row';
+import { SubagentRows } from './subagent-rows';
 import { FilterBar } from './filter-bar';
 import { HitRow } from './hit-row';
 import { filterOfParam, type ChatFilter, type FilterCounts } from './list-filters';
@@ -69,6 +70,8 @@ interface RowContext {
   readonly entries: ReadonlyMap<string, ChatEntry>;
   readonly timeZone: string | null;
   readonly query: string;
+  readonly expandedInactives: ReadonlySet<string>;
+  readonly onToggleInactive: (id: string) => void;
   readonly onOpen: (chatId: string, messageId?: string) => void;
   readonly onDeleted: (chatId: string) => void;
 }
@@ -88,6 +91,8 @@ function renderRow(item: ListItem, context: RowContext): ReactElement {
           onDeleted={context.onDeleted}
         />
       );
+    case 'subagents':
+      return <SubagentRows parentId={item.parentId} rows={item.rows} {...context} />;
     case 'hit':
       return (
         <HitRow
@@ -203,10 +208,24 @@ function ListHeader({
   );
 }
 
+function useInactiveSections(): Pick<RowContext, 'expandedInactives' | 'onToggleInactive'> {
+  const [expandedInactives, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const onToggleInactive = useCallback((id: string): void => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  return { expandedInactives, onToggleInactive };
+}
+
 export function ChatList(props: ChatListProps): ReactNode {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ChatFilter>('all');
   const [past, setPast] = useState(false);
+  const inactiveSections = useInactiveSections();
   const model = useListModel(filter, query);
   const fab = usePrimaryActionPlacement() === 'fab';
   const applyParam = useCallback((next: ChatFilter): void => {
@@ -218,6 +237,7 @@ export function ChatList(props: ChatListProps): ReactNode {
     entries: model.entries,
     timeZone: model.timeZone,
     query,
+    ...inactiveSections,
     onOpen: props.onOpen,
     onDeleted: props.onDeleted,
   };
@@ -231,22 +251,52 @@ export function ChatList(props: ChatListProps): ReactNode {
         onQuery={setQuery}
         onFilter={setFilter}
       />
-      <ListBody
-        items={model.items}
-        sticky={model.sticky}
+      <ModelListBody
+        model={model}
         context={context}
-        empty={
-          <ListEmpty
-            model={model}
-            filter={filter}
-            query={query}
-            onFilter={setFilter}
-            onQuery={setQuery}
-          />
-        }
+        filter={filter}
+        query={query}
+        onFilter={setFilter}
+        onQuery={setQuery}
         onScrolled={setPast}
       />
       {fab ? <NewChatFab extended={!past} onPress={props.onNewChat} /> : null}
     </View>
+  );
+}
+
+function ModelListBody({
+  model,
+  context,
+  filter,
+  query,
+  onFilter,
+  onQuery,
+  onScrolled,
+}: {
+  readonly model: ListModel;
+  readonly context: RowContext;
+  readonly filter: ChatFilter;
+  readonly query: string;
+  readonly onFilter: (value: ChatFilter) => void;
+  readonly onQuery: (value: string) => void;
+  readonly onScrolled: (value: boolean) => void;
+}): ReactNode {
+  return (
+    <ListBody
+      items={model.items}
+      sticky={model.sticky}
+      context={context}
+      empty={
+        <ListEmpty
+          model={model}
+          filter={filter}
+          query={query}
+          onFilter={onFilter}
+          onQuery={onQuery}
+        />
+      }
+      onScrolled={onScrolled}
+    />
   );
 }

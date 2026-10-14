@@ -1,8 +1,9 @@
 import { useCallback } from 'react';
 import { BackHandler } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
+import { useSettingsOrigin } from '../app-shell/settings-navigation';
 import { isNative } from '../design/platform';
-import { mountOf, settingsIdOfRoute } from './mounts';
+import { settingsIdOfRoute } from './mounts';
 import { pageHref, settingsPage } from './tree';
 
 interface RouteEntry {
@@ -35,8 +36,8 @@ function previousRoute(state: {
 
 export function useSettingsParentBack(page: string): void {
   const navigation = useNavigation();
+  const origin = useSettingsOrigin();
   const parent = settingsPage(page)?.parent ?? null;
-  const base = mountOf(page) === null ? 'settings' : '';
   useFocusEffect(
     useCallback(() => {
       const definition = parent === null ? undefined : settingsPage(parent);
@@ -46,7 +47,11 @@ export function useSettingsParentBack(page: string): void {
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
         const state = navigation.getState();
         const previous = state === undefined ? undefined : previousRoute(state);
-        if (previous !== undefined && routeSettingsId(previous, base) === definition.id) {
+        if (origin && previous === undefined) return false;
+        if (
+          previous !== undefined &&
+          keepsSettingsHistory(page, routeSettingsId(previous, 'settings'), definition.id)
+        ) {
           return false;
         }
         router.replace(pageHref(definition));
@@ -55,6 +60,10 @@ export function useSettingsParentBack(page: string): void {
       return (): void => {
         subscription.remove();
       };
-    }, [navigation, parent, base]),
+    }, [navigation, parent, origin, page]),
   );
+}
+
+function keepsSettingsHistory(page: string, previous: string | null, parent: string): boolean {
+  return previous === parent || (page.endsWith('/detail') && previous === `${parent}/add`);
 }

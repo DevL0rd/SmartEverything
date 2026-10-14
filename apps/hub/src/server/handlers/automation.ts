@@ -9,11 +9,13 @@ import {
   type AutomationDefinition,
 } from '@smarteverything/domain';
 import { pluginOriginOf } from '../../ai-tools/plugin-turn';
+import { currentExecutionAuthorities } from '../../assistant/execution-authority';
 import type { ToolHub } from '../../ai-tools/tool-hub';
 import type { LayoutOwner } from '../../store/repositories/personal';
 import type { Store } from '../../store/store';
+import type { AutomationChange } from '../../store/repositories/automations';
 import { clientOf, profileIdOf, type Caller } from '../auth';
-import { checkedCommands } from '../commands';
+import { checkedCommands, commandPrincipal, sourcedBy } from '../commands';
 import type { ServerContext } from '../context';
 import { invalid } from '../errors';
 import { requireKnownSignals, requireOwnerForAiActions } from './signals';
@@ -70,7 +72,9 @@ export function sceneRoutes(context: ServerContext): SceneRoutes {
         value: action.value,
         source: 'scene' as const,
       }));
-      return hub.submit(checkedCommands(store, inputs, clientOf(caller)));
+      return hub.submit(
+        checkedCommands(store, sourcedBy(caller, inputs), commandPrincipal(store, caller)),
+      );
     }),
   };
 }
@@ -129,6 +133,47 @@ function authored(
   return { ...definition, origin: plugin };
 }
 
+function reauthorizationProfile(store: Store, caller: Caller): string | undefined {
+  if (
+    caller.kind !== 'client' ||
+    caller.client.role !== 'owner' ||
+    caller.via !== undefined ||
+    caller.authority !== undefined ||
+    caller.mcpOrigin !== undefined ||
+    caller.pluginId !== undefined ||
+    caller.pluginRequester !== undefined ||
+    currentExecutionAuthorities().length > 0
+  )
+    return undefined;
+  return profileIdOf(store, caller);
+}
+
+function saveAutomation(
+  store: Store,
+  tools: ToolHub,
+  input: {
+    readonly id: string;
+    readonly change: AutomationChange;
+    readonly caller: Caller;
+  },
+): ReturnType<Store['automations']['update']> {
+  const { id, change, caller } = input;
+  if (change.definition !== undefined) {
+    requireOwnerForAiActions(caller, change.definition);
+    requireKnownSignals(store, change.definition);
+    requireRunnableActions(store, tools, change.definition);
+  }
+  return store.automations.update(
+    id,
+    {
+      ...change,
+      definition:
+        change.definition === undefined ? undefined : authored(tools, caller, change.definition),
+    },
+    reauthorizationProfile(store, caller),
+  );
+}
+
 export function automationRoutes(context: ServerContext, tools: ToolHub): AutomationRoutes {
   const { store, hub } = context;
   return {
@@ -142,18 +187,9 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
         definition: authored(tools, caller, body.definition),
       });
     }),
-    updateAutomation: bound(E.updateAutomation, ({ params, body, caller }) => {
-      if (body.definition !== undefined) {
-        requireOwnerForAiActions(caller, body.definition);
-        requireKnownSignals(store, body.definition);
-        requireRunnableActions(store, tools, body.definition);
-      }
-      return store.automations.update(params.automationId, {
-        ...body,
-        definition:
-          body.definition === undefined ? undefined : authored(tools, caller, body.definition),
-      });
-    }),
+    updateAutomation: bound(E.updateAutomation, ({ params, body, caller }) =>
+      saveAutomation(store, tools, { id: params.automationId, change: body, caller }),
+    ),
     removeAutomation: bound(E.removeAutomation, ({ params }) => {
       store.automations.remove(params.automationId);
       return DONE_REPLY;

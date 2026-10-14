@@ -10,7 +10,7 @@ import type { Catalog, RuleView } from '../data/use-automations';
 import {
   duplicateAutomation,
   removeAutomation,
-  testRun,
+  testSavedRun,
   toggleAutomation,
   type SavedAutomation,
 } from '../data/actions';
@@ -28,8 +28,8 @@ function subtitleOf(rule: RuleView): string {
 }
 
 function runItems(
+  automationId: string,
   saved: SavedAutomation | null,
-  catalog: Catalog,
   taken: readonly string[],
 ): MenuItem[] {
   if (saved === null) {
@@ -40,10 +40,7 @@ function runItems(
       label: 'Run now',
       icon: 'play',
       onPress: (): void => {
-        void testRun(saved.name, saved.definition.actions, {
-          devices: catalog.allDevices,
-          scenes: catalog.scenes,
-        });
+        void testSavedRun(automationId, saved.name);
       },
     },
     {
@@ -75,12 +72,12 @@ function deleteItem(row: AutomationRecord, saved: SavedAutomation | null): MenuI
   };
 }
 
-function useRowMenu(rule: RuleView, catalog: Catalog, taken: readonly string[]): MenuItem[] {
+function useRowMenu(rule: RuleView, taken: readonly string[]): MenuItem[] {
   const router = useRouter();
   const { row, definition } = rule;
   const saved = definition === null ? null : { name: row.name, enabled: row.enabled, definition };
   return [
-    ...runItems(saved, catalog, taken),
+    ...runItems(row.id, saved, taken),
     {
       label: 'Run history',
       icon: 'activity',
@@ -121,7 +118,7 @@ export function AutomationRow({
       iconTone={attention ? 'critical' : 'primary'}
       href={href.automation(rule.row.id)}
       selected={selected}
-      contextMenu={useRowMenu(rule, catalog, taken)}
+      contextMenu={useRowMenu(rule, taken)}
       trailing={
         <Switch
           label={`${rule.row.name} on`}

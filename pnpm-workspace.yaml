@@ -7,6 +7,11 @@ nodeLinker: hoisted
 saveExact: true
 engineStrict: true
 
+supportedArchitectures:
+  os: [current, linux]
+  cpu: [current, arm64]
+  libc: [current, glibc]
+
 minimumReleaseAgeExclude:
   - react-native
   - '@react-native/*'
@@ -19,16 +24,20 @@ minimumReleaseAgeExclude:
   - electron@44.7.0
 
 allowBuilds:
+  '@deepseek-ai/dsh-subprocess-local': true
   '@google/genai': false
   cpu-features: false
   electron: true
   electron-winstaller: true
   esbuild: true
+  koffi: true
+  node-pty: true
   protobufjs: false
   ssh2: false
   usocket: false
 
 overrides:
+  '@earendil-works/pi-ai': 1.0.2
   react-native-worklets: 0.10.1
   '@react-native/metro-config': 0.86.3
   uuid@<11.1.1: '>=11.1.1'
@@ -37,9 +46,12 @@ overrides:
   basic-ftp@<=6.2.0: 6.2.1
 
 patchedDependencies:
+  '@deepseek-ai/dsh-session@0.2.1-alpha.2': patches/@deepseek-ai__dsh-session@0.2.1-alpha.2.patch
+  '@deepseek-ai/dsh-working-directory@0.2.1-alpha.2': patches/@deepseek-ai__dsh-working-directory@0.2.1-alpha.2.patch
   braces@3.0.3: patches/braces@3.0.3.patch
   decode-uri-component@0.5.0: patches/decode-uri-component@0.5.0.patch
   node-forge@1.4.0: patches/node-forge@1.4.0.patch
+  react-native-webview@13.16.1: patches/react-native-webview@13.16.1.patch
 
 auditConfig:
   ignoreGhsas:

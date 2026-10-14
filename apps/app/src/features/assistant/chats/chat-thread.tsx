@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
-import Animated, { LinearTransition, SlideInRight, SlideOutRight } from 'react-native-reanimated';
+import Animated, { LinearTransition } from 'react-native-reanimated';
 import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
 import { olderChatMessages } from '../../../api/ai';
 import { useHideNavigation } from '../../../app-shell/nav-visibility';
 import type { HeaderAction } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
-import { DURATION, EASING, entering, exiting, useMotion } from '../../../design/motion';
+import { DURATION, EASING, useMotion } from '../../../design/motion';
 import { useFileDrop } from '../../../platform/file-drop';
 import { EmptyChat } from '../components/chat-states';
 import { DropOverlay } from '../components/drop-overlay';
@@ -18,16 +18,23 @@ import { useAssistantName } from '../data/assistant-data';
 import { useChatWorking } from '../data/chat-store';
 import { setDraft } from '../data/drafts';
 import { usePendingMessages } from '../data/outbox';
-import { statusRequestOf } from '../data/thread';
 import { attachFiles } from '../data/uploads';
 import { ChatHeader } from './chat-header';
-import { usePanelState, type PanelState } from './chat-panel-state';
-import { ChatPanel, ChatSheet } from './chat-sheet';
+import { usePanelState } from './chat-panel-state';
+import { ChatSheet } from './chat-sheet';
+import { BrowserPane } from './browser-panel';
+import { useBrowserTabs } from '../browser/browser-tab-events';
+import { useEmbeddedBrowserController } from '../browser/data/use-embedded-browser-controller';
+import { useChatInfo } from './chat-info-state';
 import { ThreadFooter } from './chat-thread-footer';
 import { useThreadKeys } from './chat-thread-keys';
-import { ChatStatusDock } from './chat-status-box';
+import { ProviderRouteSheet } from '../provider/provider-route-sheet';
+import { EngineAccessoryProvider, useEngineControls } from './engine-accessories';
+import { useChatEngineChange } from './chat-engine-change';
+import { ProviderPromptDock } from '../provider/provider-prompt-dock';
 
 export interface ChatThreadProps {
+  readonly active?: boolean;
   readonly chat: AiChatRow;
   readonly rows: readonly AssistantMessageRow[];
   readonly back: boolean;
@@ -40,6 +47,7 @@ function Body({
   rows,
   name,
 }: {
+  readonly active?: boolean;
   readonly chat: AiChatRow;
   readonly rows: readonly AssistantMessageRow[];
   readonly name: string;
@@ -77,99 +85,56 @@ function HiddenNavigation(): ReactNode {
 function Column({
   chat,
   rows,
-  back,
-  leading,
-  panel,
   onDeleted,
-}: ChatThreadProps & {
-  readonly leading: readonly HeaderAction[];
-  readonly panel: PanelState;
-}): ReactNode {
+  working,
+}: ChatThreadProps & { readonly working: boolean }): ReactNode {
   const name = useAssistantName();
+  const info = useChatInfo();
+  return (
+    <>
+      <Screen scroll={false} maxWidth="full" banner={<ThreadBanners />}>
+        <Body chat={chat} rows={rows} name={name} />
+        <ProviderPromptDock chat={chat} />
+        <ProviderRouteSheet chat={chat} />
+        <PerfProbe id="foot">
+          <ThreadFooter chat={chat} working={working} onInfo={info.show} />
+        </PerfProbe>
+        <ChatSheet
+          chat={chat}
+          rows={rows}
+          open={info.open}
+          onClose={info.hide}
+          onDeleted={onDeleted}
+        />
+      </Screen>
+    </>
+  );
+}
+
+export function ChatThread(props: ChatThreadProps): ReactNode {
+  const { chat, rows, back, leading = [] } = props;
+  const panel = usePanelState();
+  const active = props.active !== false;
+  const browser = useBrowserTabs(chat, active && panel.open);
+  useEmbeddedBrowserController(chat, browser.tabs, active);
+  const motion = useMotion();
+  useThreadKeys(chat.id, rows, panel, active);
+  const control = useEngineControls(chat.engine, useChatEngineChange(chat), chat);
   const live = useChatWorking(chat.id);
   const waiting = usePendingMessages(chat.id).length;
-  const request = useMemo(() => statusRequestOf(rows), [rows]);
   return (
-    <Screen
-      scroll={false}
-      maxWidth="full"
-      banner={<ThreadBanners />}
-      header={
+    <EngineAccessoryProvider value={control}>
+      {active ? (
         <ChatHeader
           chat={chat}
           working={live}
           waiting={waiting}
           back={back}
           leading={leading}
-          onInfo={panel.show}
           panel={{ open: panel.open, toggle: panel.toggle }}
         />
-      }
-    >
-      <Body chat={chat} rows={rows} name={name} />
-      <PerfProbe id="dock">
-        <ChatStatusDock chatId={chat.id} request={request} />
-      </PerfProbe>
-      <PerfProbe id="foot">
-        <ThreadFooter chat={chat} working={live} onInfo={panel.show} />
-      </PerfProbe>
-      <PanelHost chat={chat} rows={rows} panel={panel} onDeleted={onDeleted} />
-    </Screen>
-  );
-}
-
-function PanelHost({
-  chat,
-  rows,
-  panel,
-  onDeleted,
-}: {
-  readonly chat: AiChatRow;
-  readonly rows: readonly AssistantMessageRow[];
-  readonly panel: PanelState;
-  readonly onDeleted: () => void;
-}): ReactNode {
-  return panel.docked ? null : (
-    <ChatSheet
-      chat={chat}
-      rows={rows}
-      open={panel.overlay}
-      onClose={panel.hide}
-      onDeleted={onDeleted}
-    />
-  );
-}
-
-function DockedPanel({
-  chat,
-  rows,
-  onClose,
-  onDeleted,
-}: {
-  readonly chat: AiChatRow;
-  readonly rows: readonly AssistantMessageRow[];
-  readonly onClose: () => void;
-  readonly onDeleted: () => void;
-}): ReactNode {
-  const motion = useMotion();
-  return (
-    <Animated.View
-      {...entering(motion, SlideInRight.duration(DURATION.medium).easing(EASING.standard))}
-      {...exiting(motion, SlideOutRight.duration(DURATION.medium).easing(EASING.standard))}
-    >
-      <ChatPanel chat={chat} rows={rows} onClose={onClose} onDeleted={onDeleted} />
-    </Animated.View>
-  );
-}
-
-export function ChatThread(props: ChatThreadProps): ReactNode {
-  const { chat, rows, back, onDeleted, leading = [] } = props;
-  const panel = usePanelState();
-  const motion = useMotion();
-  useThreadKeys(chat.id, rows, panel);
-  return (
-    <>
-      {back ? <HiddenNavigation /> : null}
+      ) : null}
+      {back && active ? <HiddenNavigation /> : null}
       <View
         className="min-h-0 flex-1 flex-row"
         onLayout={(event) => {
@@ -180,16 +145,13 @@ export function ChatThread(props: ChatThreadProps): ReactNode {
           {...(motion.reduced
             ? {}
             : { layout: LinearTransition.duration(DURATION.medium).easing(EASING.standard) })}
+          style={panel.open && !panel.docked ? { display: 'none' } : undefined}
           className="min-w-0 flex-1"
         >
-          <PerfProbe id="thread">
-            <Column {...props} leading={leading} panel={panel} />
-          </PerfProbe>
+          <PerfProbe id="thread">{active ? <Column {...props} working={live} /> : null}</PerfProbe>
         </Animated.View>
-        {panel.docked ? (
-          <DockedPanel chat={chat} rows={rows} onClose={panel.hide} onDeleted={onDeleted} />
-        ) : null}
+        <BrowserPane chat={chat} panel={panel} browser={browser} active={active} />
       </View>
-    </>
+    </EngineAccessoryProvider>
   );
 }

@@ -4,6 +4,7 @@ import type { ChatChunk, ChatRequest, Credits, GenerationStats, KeyInfo } from '
 import { errorCodeOf, networkFailure, openRouterError, OpenRouterError, readJson } from './errors';
 import { sseData } from './sse';
 import { ChunkReader } from './stream';
+import { responseText } from './response';
 import {
   OR_CREDITS,
   OR_ERROR,
@@ -36,6 +37,7 @@ export interface OpenRouterCall {
   readonly body?: unknown;
   readonly key?: string | null;
   readonly signal?: AbortSignal;
+  readonly responseBytesMax?: number;
 }
 
 function wireMessages(req: ChatRequest): readonly unknown[] {
@@ -71,8 +73,8 @@ function requestBody(req: ChatRequest): Record<string, unknown> {
   };
 }
 
-async function failureOf(response: Response): Promise<OpenRouterError> {
-  const text = await response.text();
+async function failureOf(response: Response, limit?: number): Promise<OpenRouterError> {
+  const text = await responseText(response, limit);
   const json = readJson(text);
   const parsed = json.ok ? OR_ERROR.safeParse(json.value) : null;
   const detail =
@@ -94,6 +96,10 @@ function readAs<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
 
 export class OpenRouterClient {
   constructor(private readonly options: OpenRouterClientOptions) {}
+
+  usingFetch(scope: (fetcher: typeof fetch) => typeof fetch): OpenRouterClient {
+    return new OpenRouterClient({ ...this.options, fetch: scope(this.options.fetch) });
+  }
 
   async *chat(req: ChatRequest, signal: AbortSignal): AsyncGenerator<ChatChunk> {
     const response = await this.send({
@@ -120,6 +126,16 @@ export class OpenRouterClient {
 
   async models(): Promise<OrModel[]> {
     return (await this.json({ path: '/models', key: null }, OR_MODELS, 'model list')).data;
+  }
+
+  async transcriptionModels(): Promise<OrModel[]> {
+    return (
+      await this.json(
+        { path: '/models?output_modalities=transcription', key: null },
+        OR_MODELS,
+        'transcription model list',
+      )
+    ).data;
   }
 
   async videoModels(): Promise<OrVideoModel[]> {
@@ -192,7 +208,7 @@ export class OpenRouterClient {
 
   async json<T>(call: OpenRouterCall, schema: z.ZodType<T>, what: string): Promise<T> {
     const response = await this.send(call);
-    const json = readJson(await response.text());
+    const json = readJson(await responseText(response, call.responseBytesMax));
     if (!json.ok) {
       throw openRouterError('unreadable', `${what} wasn’t JSON: ${json.reason}`);
     }
@@ -230,7 +246,7 @@ export class OpenRouterClient {
       throw openRouterError('unavailable', `couldn’t reach OpenRouter: ${networkFailure(cause)}`);
     }
     if (!response.ok) {
-      throw await failureOf(response);
+      throw await failureOf(response, call.responseBytesMax);
     }
     return response;
   }

@@ -45,7 +45,7 @@ export function TimedFields({
   const timing = timingOf(trigger);
   const changeBase = (next: TimedBase): void => {
     const kept = next.type === base.type ? timing : NO_TIMING;
-    onChange(withTiming(next, fittedTiming(next, kept, devices)));
+    onChange(withTiming(next, fittedTiming(next, kept, devices), trigger));
   };
   return (
     <View className="gap-3">
@@ -59,7 +59,7 @@ export function TimedFields({
         modes={windowModesFor(base, valueOf(base, devices))}
         pulse={base.type === 'event'}
         onChange={(next) => {
-          onChange(withTiming(base, next));
+          onChange(withTiming(base, next, trigger));
         }}
       />
     </View>

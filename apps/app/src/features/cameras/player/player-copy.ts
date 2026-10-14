@@ -29,7 +29,7 @@ const FAILURES: Readonly<Record<FailureReason, Omit<StateCopy, 'critical'>>> = {
   dropped: { title: 'The video stopped', body: 'Try again to reconnect.', icon: 'cameraOff' },
   relayUnsupported: {
     title: 'Watching through your server isn’t available here',
-    body: 'Switch back to watching directly.',
+    body: 'Try again to reconnect.',
     icon: 'cameraOff',
   },
   noStream: { title: 'This camera has no live view', body: null, icon: 'cameraOff' },
@@ -88,13 +88,6 @@ function problemCopy(state: Problem, context: CopyContext): StateCopy {
         body: null,
         icon: 'shield',
         critical: true,
-      };
-    case 'awayNeedsSetup':
-      return {
-        title: 'Watching away from home needs remote viewing',
-        body: 'Set it up once, or watch through your server.',
-        icon: 'globe',
-        critical: false,
       };
     case 'failed':
       return { ...FAILURES[state.reason], critical: true };

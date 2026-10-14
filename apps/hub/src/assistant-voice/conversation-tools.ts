@@ -39,6 +39,18 @@ export class VoiceTools {
     const { watchdog, session, flushHeard, finishSoon } = this.ports;
     watchdog.replied();
     flushHeard();
+    if (
+      Object.values(VOICE_TOOL_NAMES).some((control) => control === name) &&
+      !this.ports.hooks.tools().some((tool) => tool.name === name)
+    ) {
+      session()?.toolResult(
+        id,
+        name,
+        { error: `This voice control ${name} is unavailable in this call` },
+        { scheduling: 'silent', more: false },
+      );
+      return;
+    }
     if (name === VOICE_TOOL_NAMES.end) {
       session()?.toolResult(id, name, { ok: true }, { scheduling: 'silent', more: false });
       finishSoon();

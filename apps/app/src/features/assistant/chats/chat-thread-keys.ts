@@ -35,10 +35,12 @@ export function useThreadKeys(
   chatId: string,
   rows: readonly AssistantMessageRow[],
   panel: PanelState,
+  active = true,
 ): void {
   const ids = useListOrder();
   useKeyboard((press: KeyPress) => {
     const key = press.key.toLowerCase();
+    if (closeBrowser(key, panel)) return true;
     if (press.command && press.shift) {
       return shiftedKey(key, rows);
     }
@@ -53,7 +55,7 @@ export function useThreadKeys(
       return true;
     }
     return false;
-  }, true);
+  }, active);
 }
 
 function shiftedKey(key: string, rows: readonly AssistantMessageRow[]): boolean {
@@ -79,4 +81,10 @@ function commandKey(key: string, panel: PanelState): boolean {
     return true;
   }
   return false;
+}
+
+function closeBrowser(key: string, panel: PanelState): boolean {
+  if (key !== 'escape' || !panel.open) return false;
+  panel.hide();
+  return true;
 }

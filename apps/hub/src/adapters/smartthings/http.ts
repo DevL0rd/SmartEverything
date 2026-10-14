@@ -81,6 +81,7 @@ export interface ApiRequest {
   readonly path: string;
   readonly accept?: string;
   readonly body?: unknown;
+  readonly buildBody?: () => unknown;
 }
 
 function urlOf(path: string): string {
@@ -88,17 +89,18 @@ function urlOf(path: string): string {
 }
 
 function send(io: SmartThingsIo, token: string, request: ApiRequest): Promise<Response> {
+  const body = request.buildBody === undefined ? request.body : request.buildBody();
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     Accept: request.accept ?? JSON_ACCEPT,
   };
-  if (request.body !== undefined) {
+  if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
   return io.fetch(urlOf(request.path), {
     method: request.method,
     headers,
-    ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
 

@@ -44,6 +44,8 @@ export function ruleText(rule: PortRule): string {
   switch (rule.purpose) {
     case 'webrtc':
       return `${protocol} port ${String(rule.port)}`;
+    case 'hub':
+    case 'discovery':
     case 'plugin':
       return `${protocol} port ${String(rule.port)} from ${rule.source}`;
     case 'camera':
@@ -53,10 +55,26 @@ export function ruleText(rule: PortRule): string {
 }
 
 export function openingTitle(opening: FirewallOpening, names: readonly string[]): string {
-  const who = names.length === 0 ? null : names.join(', ');
   switch (opening.rule.purpose) {
     case 'webrtc':
       return 'Live video';
+    case 'hub':
+      return 'Local server connection';
+    case 'discovery':
+      return 'Server discovery';
+    case 'camera':
+    case 'device':
+    case 'plugin':
+      return namedOpeningTitle(opening.rule, names);
+  }
+}
+
+function namedOpeningTitle(
+  rule: Extract<PortRule, { readonly purpose: 'camera' | 'device' | 'plugin' }>,
+  names: readonly string[],
+): string {
+  const who = names.length === 0 ? null : names.join(', ');
+  switch (rule.purpose) {
     case 'camera':
       return who ?? 'Camera';
     case 'device':

@@ -16,7 +16,7 @@ import { closeNavSheet, goFromDirectory, navCurrent } from './nav-sheet-state';
 
 function leaveTo(target: Href): void {
   closeNavSheet();
-  router.push(target);
+  router.navigate(target);
 }
 
 function ProfileBlock(): ReactNode {

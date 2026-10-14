@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
+import { mainPageSettings } from '../../../app-shell/main-pages';
 import { useState } from 'react';
-import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
-import type { MenuItem } from '../../../components/menu';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
 import { NavRow } from '../../../components/rows';
 import { Screen } from '../../../components/screen';
@@ -24,35 +23,10 @@ import { isMasterWidth, subtitleProp } from './shared';
 
 const SEARCH_FROM = 8;
 
-function useMenus(): { readonly actions: HeaderAction[]; readonly overflow: MenuItem[] } {
-  const router = useRouter();
-  const pointer = useIdiom() === 'pointer';
-  return {
-    actions: pointer ? [{ icon: 'sparkles', label: 'Scenes', href: href.scenes() }] : [],
-    overflow: [
-      {
-        label: 'Scheduled',
-        icon: 'timer',
-        onPress: (): void => {
-          router.push(href.scheduled());
-        },
-      },
-      {
-        label: 'Schedule',
-        icon: 'calendar',
-        onPress: (): void => {
-          router.push(href.automationSchedule());
-        },
-      },
-      {
-        label: 'Run history',
-        icon: 'activity',
-        onPress: (): void => {
-          router.push(href.automationRuns());
-        },
-      },
-    ],
-  };
+function useActions(): readonly HeaderAction[] {
+  return useIdiom() === 'pointer'
+    ? [{ icon: 'sparkles', label: 'Scenes', href: href.scenes() }]
+    : [];
 }
 
 function ListBody({ page }: { readonly page: AutomationsPage }): ReactNode {
@@ -76,7 +50,7 @@ function ListBody({ page }: { readonly page: AutomationsPage }): ReactNode {
 
 function AutomationsList(): ReactNode {
   const page = useAutomationsPage();
-  const menus = useMenus();
+  const actions = useActions();
   const touch = useIdiom() === 'touch';
   const creator = useNewAutomation(page.ideas);
   const scenes = page.catalog.scenes.length;
@@ -84,7 +58,12 @@ function AutomationsList(): ReactNode {
   return (
     <Screen
       header={
-        <PageHeader title="Automations" {...subtitleProp(countLine(page.rules))} {...menus} />
+        <PageHeader
+          title="Automations"
+          settings={mainPageSettings('automations')}
+          {...subtitleProp(countLine(page.rules))}
+          actions={actions}
+        />
       }
       maxWidth="reading"
       primaryAction={{

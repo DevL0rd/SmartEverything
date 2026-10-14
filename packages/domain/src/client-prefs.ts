@@ -15,7 +15,14 @@ import {
   VOICE_DETECTIONS,
 } from './voice-activity';
 import { REGION_PREF } from './region';
-import { JSON_VALUE, type JsonValue } from './values';
+import {
+  clientPref,
+  noLegacy,
+  type ClientPrefDefinition,
+  type LayoutScope,
+} from './client-pref-definition';
+export type { ClientPrefRead, ClientPrefDefinition, LayoutScope } from './client-pref-definition';
+export { LAYOUT_SCOPES } from './client-pref-definition';
 
 export const THEMES = ['system', 'light', 'dark'] as const;
 export const ACCENTS = ['amber', 'aqua', 'rose', 'violet', 'lime', 'ice'] as const;
@@ -154,18 +161,23 @@ export const CALL_AUDIO_PREF = z.strictObject({
 
 export type CallAudioPref = z.infer<typeof CALL_AUDIO_PREF>;
 
-export const CAMERA_AWAY_MODES = ['direct', 'server'] as const;
-
-export const CAMERAS_PREF = z.strictObject({
-  awayMode: z.enum(CAMERA_AWAY_MODES),
-  muted: z.boolean(),
-});
+export const CAMERAS_PREF = z.strictObject({ muted: z.boolean() });
 
 export type CamerasPref = z.infer<typeof CAMERAS_PREF>;
 
+const LEGACY_CAMERAS_VALUE = z.strictObject({
+  awayMode: z.enum(['direct', 'server']),
+  muted: z.boolean(),
+});
+
 function legacyCameras(stored: unknown): CamerasPref | null {
-  const parsed = z.strictObject({ version: z.literal(1), value: CAMERAS_PREF }).safeParse(stored);
-  return parsed.success ? { awayMode: parsed.data.value.awayMode, muted: true } : null;
+  const parsed = z
+    .strictObject({ version: z.union([z.literal(1), z.literal(2)]), value: LEGACY_CAMERAS_VALUE })
+    .safeParse(stored);
+  if (!parsed.success) {
+    return null;
+  }
+  return { muted: parsed.data.version === 1 ? true : parsed.data.value.muted };
 }
 
 export const HEALTH_SYNC_INTERVALS = [0, 15, 30, 60] as const;
@@ -185,77 +197,6 @@ export type AiModelsPref = z.infer<typeof AI_MODELS_PREF>;
 export const AI_SPEECH_PREF = z.strictObject({ showText: z.boolean() });
 
 export type AiSpeechPref = z.infer<typeof AI_SPEECH_PREF>;
-
-export type ClientPrefRead<T> =
-  | { readonly status: 'absent'; readonly value: T }
-  | { readonly status: 'stored'; readonly value: T; readonly migrated: boolean }
-  | { readonly status: 'invalid'; readonly reason: string };
-
-export const LAYOUT_SCOPES = ['profile', 'client'] as const;
-
-export type LayoutScope = (typeof LAYOUT_SCOPES)[number];
-
-export interface ClientPrefDefinition<T> {
-  readonly storageKey: string;
-  readonly scope: LayoutScope;
-  readonly version: number;
-  readonly defaultValue: T;
-  readonly schema: z.ZodType<T>;
-  readonly decode: (stored: unknown) => ClientPrefRead<T>;
-  readonly encode: (value: T) => Readonly<Record<string, JsonValue>>;
-}
-
-interface ClientPrefSpec<T> {
-  readonly storageKey: string;
-  readonly scope: LayoutScope;
-  readonly version: number;
-  readonly defaultValue: NoInfer<T>;
-  readonly schema: z.ZodType<T>;
-  readonly legacy: (stored: unknown) => NoInfer<T> | null;
-}
-
-const STORED_OBJECT = z.record(z.string(), JSON_VALUE);
-
-function decoderOf<T>(spec: ClientPrefSpec<T>): (stored: unknown) => ClientPrefRead<T> {
-  const envelope = z.strictObject({ version: z.literal(spec.version), value: spec.schema });
-  return (stored) => {
-    if (stored === null || stored === undefined) {
-      return { status: 'absent', value: spec.defaultValue };
-    }
-    const current = envelope.safeParse(stored);
-    if (current.success) {
-      return { status: 'stored', value: current.data.value, migrated: false };
-    }
-    const legacy = spec.legacy(stored);
-    if (legacy !== null) {
-      return { status: 'stored', value: legacy, migrated: true };
-    }
-    return {
-      status: 'invalid',
-      reason: `The saved ${spec.storageKey} preference is not version ${String(spec.version)}: ${current.error.message}`,
-    };
-  };
-}
-
-function clientPref<T>(spec: ClientPrefSpec<T>): ClientPrefDefinition<T> {
-  return {
-    storageKey: spec.storageKey,
-    scope: spec.scope,
-    version: spec.version,
-    defaultValue: spec.defaultValue,
-    schema: spec.schema,
-    decode: decoderOf(spec),
-    encode: (value) =>
-      STORED_OBJECT.parse({
-        version: spec.version,
-        value: JSON_VALUE.parse(spec.schema.parse(value)),
-      }),
-  };
-}
-
-function noLegacy(): null {
-  return null;
-}
 
 export const CLIENT_PREFS = {
   appearance: clientPref({
@@ -285,8 +226,8 @@ export const CLIENT_PREFS = {
   cameras: clientPref({
     storageKey: 'camera-prefs',
     scope: 'client',
-    version: 2,
-    defaultValue: { awayMode: 'direct', muted: true },
+    version: 3,
+    defaultValue: { muted: true },
     schema: CAMERAS_PREF,
     legacy: legacyCameras,
   }),

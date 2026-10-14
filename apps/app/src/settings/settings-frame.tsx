@@ -4,8 +4,8 @@ import { PageHeader, type HeaderAction } from '../components/page-header';
 import type { MenuItem } from '../components/menu';
 import type { PrimaryActionProps } from '../components/primary-action';
 import { Screen, type ScreenProps } from '../components/screen';
+import { useSettingsOrigin } from '../app-shell/settings-navigation';
 import { useSizeClass } from '../design/size-class';
-import { mountOf } from './mounts';
 import { useSettingsParentBack } from './settings-back';
 import { settingsPage, settingsTrail } from './tree';
 
@@ -42,9 +42,10 @@ function FrameHeader({
   readonly chrome: HeaderChrome;
 }): ReactNode {
   const { split } = useSizeClass();
+  const origin = useSettingsOrigin();
   const definition = settingsPage(page);
   useSettingsParentBack(page);
-  const topLevel = split && !detail && definition?.parent === null && mountOf(page) === null;
+  const topLevel = split && !detail && definition?.parent === null && !origin;
   return (
     <PageHeader
       title={title ?? definition?.title ?? 'Settings'}

@@ -142,18 +142,38 @@ export function collect(root: unknown): CommitReport | null {
   };
 }
 
-export function watchCommits(onCommit: (report: CommitReport) => void): boolean {
+export function watchCommits(
+  onCommit: (report: CommitReport, collectionMs: number) => void,
+): (() => void) | null {
   const hook: unknown = Reflect.get(globalThis, '__REACT_DEVTOOLS_GLOBAL_HOOK__');
   const original = isBag(hook) ? hook['onCommitFiberRoot'] : undefined;
   if (!isBag(hook) || typeof original !== 'function') {
-    return false;
+    return null;
   }
-  return Reflect.set(hook, 'onCommitFiberRoot', (...args: unknown[]): unknown => {
-    const result: unknown = Reflect.apply(original, hook, args);
+  const commit = original;
+  const subscriber: { current: typeof onCommit | null } = { current: onCommit };
+  const current = (): typeof onCommit | null => subscriber.current;
+  function wrapped(this: unknown, ...args: unknown[]): unknown {
+    const result: unknown = Reflect.apply(commit, this, args);
+    if (current() === null) {
+      return result;
+    }
+    const started = performance.now();
     const report = collect(args[1]);
-    if (report !== null) {
-      onCommit(report);
+    const collectionMs = performance.now() - started;
+    const notify = current();
+    if (report !== null && notify !== null) {
+      notify(report, collectionMs);
     }
     return result;
-  });
+  }
+  if (!Reflect.set(hook, 'onCommitFiberRoot', wrapped)) {
+    return null;
+  }
+  return (): void => {
+    subscriber.current = null;
+    if (Reflect.get(hook, 'onCommitFiberRoot') === wrapped) {
+      Reflect.set(hook, 'onCommitFiberRoot', original);
+    }
+  };
 }

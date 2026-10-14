@@ -36,6 +36,15 @@ export const EXTRA_ROLES = [
   'follow_people',
   'follow_pets',
   'smart_zoom',
+  'spray',
+  'spray_duration',
+  'spray_interval',
+  'ambient_light',
+  'auto_fragrance',
+  'auto_light',
+  'light_auto_off',
+  'charging_state',
+  'cooking_state',
 ] as const;
 
 export type ExtraRole = (typeof EXTRA_ROLES)[number];
@@ -45,6 +54,8 @@ export type CapabilityRole = StandardCapability | ExtraRole;
 export const DEVICE_FAMILIES = [
   'air_purifier',
   'humidifier',
+  'diffuser',
+  'microwave',
   'dehumidifier',
   'tower_fan',
   'fan',
@@ -83,13 +94,18 @@ export interface CapabilityOverride {
   readonly tier: PresentationTier;
   readonly role?: CapabilityRole;
   readonly group?: CapabilityGroup;
+  readonly groupLabel?: string;
   readonly options?: Readonly<Record<string, string>>;
   readonly unit?: string;
   readonly danger?: Danger;
   readonly readOnly?: true;
   readonly states?: BooleanStates;
   readonly clock?: ClockText;
+  readonly colorEncoding?: ColorEncoding;
+  readonly keywords?: readonly string[];
 }
+
+export type ColorEncoding = 'packed_rgb';
 
 export type ClockText = 'minutes' | 'seconds';
 
@@ -129,6 +145,8 @@ export interface CapabilityPresentation {
   readonly unit: string | null;
   readonly states: BooleanStates | null;
   readonly clock: ClockText | null;
+  readonly colorEncoding?: ColorEncoding;
+  readonly keywords?: readonly string[];
 }
 
 export interface PresentedCapability extends CapabilityPresentation {

@@ -1,3 +1,4 @@
+import type { ConversationAuthority } from '../harness/authority-contract';
 import type { PluginRequester } from '@smarteverything/domain';
 
 export type JsonSchema = Readonly<Record<string, unknown>>;
@@ -6,9 +7,12 @@ export interface ToolSpec {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: JsonSchema;
+  readonly variants?: readonly Readonly<Record<string, unknown>>[];
 }
 
 export interface ToolAnnotationHints {
+  readonly title?: string;
+  readonly idempotentHint?: boolean;
   readonly readOnlyHint: boolean;
   readonly destructiveHint: boolean;
   readonly openWorldHint: boolean;
@@ -29,6 +33,7 @@ export interface HubTool extends ToolSpec {
 export type ToolVia = 'chat' | 'voice' | 'wake' | 'plugin' | 'schedule' | 'automation' | 'app';
 
 export interface ToolCaller {
+  readonly authority?: ConversationAuthority;
   readonly profileId: string;
   readonly role: 'owner' | 'member';
   readonly chatId: string | null;
@@ -39,7 +44,9 @@ export interface ToolCaller {
 }
 
 export function needsOwnDevice(caller: ToolCaller): boolean {
-  return caller.clientId === null && caller.role !== 'owner';
+  return (
+    caller.clientId === null && caller.role !== 'owner' && caller.authority?.kind !== 'service'
+  );
 }
 
 export interface ToolPicture {

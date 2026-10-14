@@ -1,7 +1,13 @@
+import { hears, readSubscribe } from './live-subscribe';
+import { LivePreviewOwners } from './live-preview-owners';
+import { AI_PREVIEW_CAPABILITY } from '@smarteverything/domain';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
-  LIVE_CLIENT_MESSAGE,
+  AI_ENGINE_CAPABILITY,
+  AI_HARNESS_CAPABILITY,
+  HARNESS_CONFIGURATION_NOTICE_CAPABILITY,
+  AI_ENGINE_CAPABILITY_V2,
   LIVE_PROTOCOL,
   type ClientRow,
   type FirewallStatus,
@@ -16,14 +22,13 @@ import type { Store } from '../store/store';
 import { socketClient } from './socket-auth';
 import { issuesOf } from './errors';
 import {
-  CURRENT_DIALECT,
   type Greeting,
   type LiveDialect,
   type LiveNotice,
   type Outgoing,
   type Subscription,
 } from './live-dialect';
-import { readLegacySubscribe } from './live-legacy';
+import { readerEngineChange, memberEngineChange, type EngineReader } from './engine-compatibility';
 import {
   allowedStreams,
   allowedTables,
@@ -50,40 +55,29 @@ export interface LiveOptions {
   readonly log: Logger;
 }
 
-function hears(
-  connection: Connection,
-  dialect: LiveDialect | undefined,
-  notice: LiveNotice,
-  audience: LiveAudience,
-): boolean {
-  if (dialect?.hears(notice) !== true) {
-    return false;
-  }
-  if (audience === 'everyone') {
-    return true;
-  }
-  if (audience === 'owners') {
-    return connection.client.role === 'owner';
-  }
-  return connection.streams.has(audience);
-}
-
-function readSubscribe(raw: unknown): Subscription | z.ZodError {
-  const legacy = readLegacySubscribe(raw);
-  if (legacy !== null) {
-    return legacy;
-  }
-  const parsed = LIVE_CLIENT_MESSAGE.safeParse(raw);
-  return parsed.success ? { dialect: CURRENT_DIALECT, message: parsed.data } : parsed.error;
-}
-
+const RUNTIME_NOTICES: ReadonlySet<Outgoing['type']> = new Set([
+  'computer_runtime_status',
+  'computer_runtime_native',
+  'ai_chat_runtime_provider',
+]);
+const COMPUTER_NOTICES: ReadonlySet<Outgoing['type']> = new Set([
+  'computer_ai_status',
+  'computer_claude',
+  'ai_chat_provider',
+]);
 export class LiveHub {
   private readonly server = new WebSocketServer({
     noServer: true,
     handleProtocols: (protocols: Set<string>): string | false =>
       protocols.has(LIVE_PROTOCOL) ? LIVE_PROTOCOL : false,
   });
+  readonly previewOwners = new LivePreviewOwners();
   private readonly connections = new Set<Connection>();
+  private readonly harnessEngines = new Set<Connection>();
+  private readonly previewObservers = new Set<Connection>();
+  private readonly configurationObservers = new Set<Connection>();
+  private readonly runtimeEngines = new Set<Connection>();
+  private readonly computerEngines = new Set<Connection>();
   private readonly dialects = new Map<Connection, LiveDialect>();
   private readonly primers = new Map<LiveStream, (profileId: string) => readonly LiveNotice[]>();
   private readonly heartbeat: NodeJS.Timeout;
@@ -158,10 +152,10 @@ export class LiveHub {
     this.primers.set(stream, primer);
   }
 
-  profileNotice(notice: LiveNotice, profileId: string, stream: LiveStream): void {
+  profileNotice(notice: LiveNotice, profileId: string, audience: LiveAudience): void {
     for (const connection of this.connections) {
       const own = this.options.store.profiles.activeOf(connection.client.id).id === profileId;
-      if (own && hears(connection, this.dialects.get(connection), notice, stream)) {
+      if (own && hears(connection, this.dialects.get(connection), notice, audience)) {
         this.send(connection, notice);
       }
     }
@@ -206,8 +200,14 @@ export class LiveHub {
       this.receive(connection, data);
     });
     socket.once('close', () => {
+      this.previewOwners.close(connection);
       this.connections.delete(connection);
+      this.harnessEngines.delete(connection);
+      this.configurationObservers.delete(connection);
+      this.previewObservers.delete(connection);
       this.dialects.delete(connection);
+      this.computerEngines.delete(connection);
+      this.runtimeEngines.delete(connection);
     });
     socket.on('error', (cause) => {
       this.options.log.warn('live.socket_failed', { clientId: client.id, reason: cause.message });
@@ -257,6 +257,9 @@ export class LiveHub {
     dialect: LiveDialect,
     message: Subscription['message'],
   ): void {
+    if (!this.previewOwners.receive(connection, message)) return;
+    this.observeConfiguration(connection, message);
+    this.observeEngines(connection, message);
     const tables = allowedTables(connection.client, message.tables);
     const streams = allowedStreams(connection.client, message.streams);
     connection.tables.clear();
@@ -265,6 +268,36 @@ export class LiveHub {
     streams.forEach((stream) => connection.streams.add(stream));
     this.send(connection, dialect.subscribed(tables, streams, this.options.store.feed.seq));
     this.primeConnection(connection, dialect);
+    if (
+      !this.computerEngines.has(connection) &&
+      this.options.store.aiChats.usingEngine('claude').length > 0
+    )
+      this.send(connection, {
+        type: 'refused',
+        error: {
+          code: 'conflict',
+          message:
+            'Computer AI chats require an updated app; computer chats are unavailable in this app and their writes are blocked.',
+        },
+      });
+  }
+
+  private observeEngines(connection: Connection, message: Subscription['message']): void {
+    if (message.capabilities?.includes(AI_HARNESS_CAPABILITY) === true)
+      this.harnessEngines.add(connection);
+    else this.harnessEngines.delete(connection);
+    if (
+      message.capabilities?.includes(AI_ENGINE_CAPABILITY_V2) === true ||
+      this.harnessEngines.has(connection)
+    )
+      this.runtimeEngines.add(connection);
+    else this.runtimeEngines.delete(connection);
+    if (
+      this.runtimeEngines.has(connection) ||
+      message.capabilities?.includes(AI_ENGINE_CAPABILITY) === true
+    )
+      this.computerEngines.add(connection);
+    else this.computerEngines.delete(connection);
   }
 
   private primeConnection(connection: Connection, dialect: LiveDialect): void {
@@ -278,6 +311,15 @@ export class LiveHub {
           });
       }
     }
+  }
+
+  private observeConfiguration(connection: Connection, message: Subscription['message']): void {
+    if (message.capabilities?.includes(AI_PREVIEW_CAPABILITY) === true)
+      this.previewObservers.add(connection);
+    else this.previewObservers.delete(connection);
+    if (message.capabilities?.includes(HARNESS_CONFIGURATION_NOTICE_CAPABILITY) === true)
+      this.configurationObservers.add(connection);
+    else this.configurationObservers.delete(connection);
   }
 
   private json(text: string): unknown {
@@ -308,7 +350,36 @@ export class LiveHub {
       connection.socket.terminate();
       return;
     }
-    connection.socket.send(JSON.stringify(message));
+    const visible =
+      connection.client.role !== 'owner' && message.type === 'change'
+        ? memberEngineChange(message)
+        : message;
+    if (!this.acceptsNotice(connection, visible)) return;
+    const compatible = this.compatible(connection, visible);
+    if (compatible !== null) connection.socket.send(JSON.stringify(compatible));
+  }
+
+  private reader(connection: Connection): EngineReader {
+    if (this.harnessEngines.has(connection)) return 'harness';
+    if (this.runtimeEngines.has(connection)) return 'v2';
+    return this.computerEngines.has(connection) ? 'v1' : 'legacy';
+  }
+  private compatible(connection: Connection, message: Outgoing): Outgoing | null {
+    const runtimeNotice = RUNTIME_NOTICES.has(message.type);
+    const computerNotice = COMPUTER_NOTICES.has(message.type);
+    if (connection.client.role !== 'owner' && (runtimeNotice || computerNotice)) return null;
+    if (runtimeNotice) return this.runtimeEngines.has(connection) ? message : null;
+    if (message.type === 'change') return readerEngineChange(message, this.reader(connection));
+    if (computerNotice && !this.computerEngines.has(connection)) return null;
+    return message;
+  }
+
+  private acceptsNotice(connection: Connection, message: Outgoing): boolean {
+    if (message.type === 'ai_preview') return this.previewObservers.has(connection);
+    if (message.type === 'ai_harness_configuration')
+      return this.configurationObservers.has(connection);
+    if (message.type === 'ai_harness') return this.harnessEngines.has(connection);
+    return true;
   }
 
   private beat(): void {

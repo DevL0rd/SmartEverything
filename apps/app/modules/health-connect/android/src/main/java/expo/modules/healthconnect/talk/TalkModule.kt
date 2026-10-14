@@ -31,8 +31,8 @@ class TalkModule : Module() {
       forwarding = null
     }
 
-    AsyncFunction("configureTalk") { serverUrl: String, token: String ->
-      configureServer(context, serverUrl, token)
+    AsyncFunction("configureTalk") { serverUrl: String, token: String, enrollment: String ->
+      configureServer(context, serverUrl, token, enrollment)
     }
 
     AsyncFunction("startTalk") {

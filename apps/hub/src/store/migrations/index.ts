@@ -1,3 +1,22 @@
+import { HARNESS_SKILL_UPDATE_TABLES } from './harness-skill-updates';
+import { PREVIEW_PROJECT_TABLES } from './preview-projects';
+import { AI_PROJECT_TABLES } from './ai-projects';
+import { EVENT_OCCURRENCE_COLUMNS } from './event-occurrences';
+import { COMPUTER_NATIVE_MCP_POLICY_TABLES } from './computer-native-mcp-policy';
+import { NATIVE_COMMAND_OPERATIONS_TABLES } from './native-command-operations';
+import { CLAUDE_CLI_TABLES } from './claude-cli-operations';
+import { BLE_OBSERVATION_TABLES } from './ble-observations';
+import { HARNESS_SKILL_PRESENTATION_TABLES } from './harness-skill-presentations';
+import { HARNESS_CONFIGURATION_TABLES } from './harness-configuration';
+import { HARNESS_EFFECT_AUTHORITY_TABLES } from './harness-effect-authority';
+import { DURABLE_EFFECT_AUTHORITY_TABLES } from './durable-effect-authorities';
+import { HARNESS_DELIVERY_DELETION_TABLES } from './harness-delivery-deletion';
+import { AI_SUBSCRIPTION_USAGE_COLUMNS } from './ai-subscription-usage';
+import { DSH_SESSION_TABLES } from './dsh-sessions';
+import { HARNESS_COORDINATION_TABLES } from './harness-coordination';
+import { HARNESS_RECOVERY_TABLES } from './harness-recovery';
+import { IMAGE_OPERATION_TABLES } from './image-operations';
+import { COMPUTER_RUNTIME_TABLES } from './computer-runtimes';
 import type { LogPayload } from '@smarteverything/logging';
 import type { Sql } from '../sql';
 import { CAMERA_WAKE_SENSITIVITY_COLUMNS } from './camera-wake-sensitivity';
@@ -48,6 +67,9 @@ import { VOICE_MEMORY_LINES } from './voice-memory-lines';
 import { VOICE_HISTORY_COLUMNS } from './voice-history';
 import { renameToolNames } from './tool-names';
 import { COMPUTER_SCOPE_TABLES } from './computer-scopes';
+import { AI_PROVIDER_TABLES } from './ai-provider';
+import { AI_PROVIDER_RETENTION, retainExistingProviderEvents } from './ai-provider-retention';
+import { COMPUTER_AI_TABLES } from './computer-ai';
 import { APP_SESSION_TABLES } from './app-sessions';
 import { RESERVED_MIGRATION_VERSIONS, inOrder } from './order';
 
@@ -130,6 +152,53 @@ export const MIGRATIONS: readonly Migration[] = inOrder(
     { version: 47, name: 'step_states', statements: STEP_STATE_COLUMNS },
     { version: 48, name: 'chat_web_search', statements: CHAT_WEB_SEARCH_COLUMNS },
     { version: 49, name: 'exchange_rates', statements: EXCHANGE_RATES_TABLES },
+    { version: 50, name: 'computer_ai', statements: COMPUTER_AI_TABLES },
+    { version: 51, name: 'ai_provider', statements: AI_PROVIDER_TABLES },
+    {
+      version: 52,
+      name: 'ai_provider_retention',
+      statements: AI_PROVIDER_RETENTION,
+      backfill: retainExistingProviderEvents,
+    },
+    { version: 53, name: 'computer_runtimes_and_agent_runs', statements: COMPUTER_RUNTIME_TABLES },
+    { version: 54, name: 'ai_subscription_usage', statements: AI_SUBSCRIPTION_USAGE_COLUMNS },
+    { version: 55, name: 'dsh_native_sessions', statements: DSH_SESSION_TABLES },
+    { version: 56, name: 'harness_coordination', statements: HARNESS_COORDINATION_TABLES },
+    { version: 58, name: 'harness_recovery', statements: HARNESS_RECOVERY_TABLES },
+    { version: 60, name: 'image_operations', statements: IMAGE_OPERATION_TABLES },
+    { version: 61, name: 'harness_effect_authority', statements: HARNESS_EFFECT_AUTHORITY_TABLES },
+    {
+      version: 62,
+      name: 'harness_delivery_deletion',
+      statements: HARNESS_DELIVERY_DELETION_TABLES,
+    },
+    { version: 63, name: 'harness_configuration', statements: HARNESS_CONFIGURATION_TABLES },
+    { version: 64, name: 'ble_observations', statements: BLE_OBSERVATION_TABLES },
+    {
+      version: 65,
+      name: 'harness_skill_presentations',
+      statements: HARNESS_SKILL_PRESENTATION_TABLES,
+    },
+    { version: 66, name: 'claude_cli_operations', statements: CLAUDE_CLI_TABLES },
+    {
+      version: 67,
+      name: 'native_command_operations',
+      statements: NATIVE_COMMAND_OPERATIONS_TABLES,
+    },
+    {
+      version: 68,
+      name: 'computer_native_mcp_policy',
+      statements: COMPUTER_NATIVE_MCP_POLICY_TABLES,
+    },
+    { version: 69, name: 'event_occurrences', statements: EVENT_OCCURRENCE_COLUMNS },
+    {
+      version: 70,
+      name: 'durable_effect_authorities',
+      statements: DURABLE_EFFECT_AUTHORITY_TABLES,
+    },
+    { version: 71, name: 'ai_projects', statements: AI_PROJECT_TABLES },
+    { version: 72, name: 'preview_projects', statements: PREVIEW_PROJECT_TABLES },
+    { version: 73, name: 'harness_skill_updates', statements: HARNESS_SKILL_UPDATE_TABLES },
   ],
   RESERVED_MIGRATION_VERSIONS,
 );

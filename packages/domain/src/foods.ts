@@ -117,9 +117,6 @@ export function waterMlOf(
   food: Pick<FoodFacts, 'kind' | 'basis' | 'water_percent'>,
   amount: number,
 ): number {
-  if (food.basis.unit !== 'ml') {
-    return 0;
-  }
   return Math.round((amount * food.water_percent) / 100);
 }
 

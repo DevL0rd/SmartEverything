@@ -49,6 +49,7 @@ function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
       conversations: links.conversations,
       attachments: links.attachments,
       dataDirectory: options.dataDirectory,
+      submit: options.core.hub.submit,
       now: options.clock.now,
     },
     contributions: {

@@ -5,7 +5,7 @@ import {
   type PluginRequester,
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import { chatContext, transcriptLine } from '../assistant/engines/openrouter/compaction';
+import { chatContext, transcriptLine } from '../assistant/conversation/history';
 import { attachmentNote } from '../assistant/attachment-note';
 import type { Persona } from './instructions';
 import { historyCharacters, newest } from './live-window';

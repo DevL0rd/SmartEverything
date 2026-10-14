@@ -6,7 +6,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node/harness-frames": "./src/node/harness-frames.ts"
   },
   "dependencies": {
     "@noble/ciphers": "2.4.0",

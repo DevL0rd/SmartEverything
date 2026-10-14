@@ -15,13 +15,7 @@ import { deliverToolAnswer, timingOf } from './tool-delivery';
 import { declarationOf, stringsOf } from './turn-tool';
 import { trackToolProgress } from './tool-progress';
 import { TurnText } from './turn-text';
-import {
-  callSearchesWeb,
-  declarationsOf,
-  systemOf,
-  type VoiceKit,
-  type VoiceWho,
-} from './voice-kit';
+import { declarationsOf, systemOf, voiceHub, type VoiceKit, type VoiceWho } from './voice-kit';
 import { VOICE_TOOL_NAMES } from './voice-tools';
 
 interface TurnToolParameter {
@@ -83,7 +77,14 @@ export class TurnSession {
 
   constructor(private readonly options: TurnSessionOptions) {
     const { kit, who } = options;
-    const own = this.assistantTools().map((declaration) => declaration.name);
+    const own = [
+      ...this.assistantTools().map((declaration) => declaration.name),
+      ...(options.bare === true
+        ? []
+        : voiceHub(kit, who)
+            .list()
+            .map((tool) => tool.name)),
+    ];
     options.tools.forEach((tool) => {
       if (own.includes(tool.name)) {
         throw new TurnToolNameTakenError(tool.name);
@@ -204,7 +205,6 @@ export class TurnSession {
           voice: settings.voice.voice,
           system: this.options.bare === true ? (who.place ?? '') : systemOf(kit, who),
           tools: [...this.assistantTools(), ...tools.map(declarationOf)],
-          webSearch: callSearchesWeb(kit, who),
           resume: this.resume,
           window: liveWindow(settings),
           automatic: false,
@@ -284,6 +284,15 @@ export class TurnSession {
   ): Promise<void> {
     const own = this.options.tools.find((tool) => tool.name === name);
     if (own === undefined && name === VOICE_TOOL_NAMES.task) {
+      if (!this.assistantTools().some((tool) => tool.name === name)) {
+        this.session?.toolResult(
+          id,
+          name,
+          { error: 'Background tasks are unavailable in this call' },
+          { scheduling: 'silent', more: false },
+        );
+        return;
+      }
       this.startTask(id, name, stringArgument(args, 'task'));
       return;
     }
@@ -313,11 +322,16 @@ export class TurnSession {
     if (own !== undefined) {
       return own.run(stringsOf(args));
     }
-    return this.options.kit.tools.call(name, args, this.toolCaller()).then((result) => ({
-      response: result.response,
-      line: result.line,
-      pictures: result.pictures,
-    }));
+    if (this.options.bare === true) {
+      return Promise.resolve(failedAnswer(new Error(`There is no turn tool named ${name}`)));
+    }
+    return voiceHub(this.options.kit, this.options.who)
+      .call(name, args, this.toolCaller())
+      .then((result) => ({
+        response: result.response,
+        line: result.line,
+        pictures: result.pictures,
+      }));
   }
 
   private toolCaller(): ToolCaller {

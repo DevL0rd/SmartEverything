@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  EVENT_KIND_LABELS,
+  eventLabel,
   isCamera,
   presentCapability,
   presentValue,
@@ -49,6 +49,8 @@ const SOURCE_CATEGORY: Readonly<Record<CommandRow['source'], ActivityCategory | 
 
 const FAILED: ReadonlySet<CommandRow['status']> = new Set(['failed', 'expired']);
 
+const EVENT_SUMMARY = z.object({ summary: z.string().min(1), topic: z.string().min(1) });
+
 const AUTOMATION_RUN = z.object({
   name: z.string().min(1),
   outcome: z.enum(['succeeded', 'failed']).optional(),
@@ -86,16 +88,16 @@ export function eventAtom(event: EventRow, devices: DeviceLookup): ActivityAtom 
   if (device === undefined) {
     return null;
   }
-  const look = eventLook(event.kind);
+  const look = eventLook(event.kind, event.details);
+  const summary = eventSummary(event);
   return {
     id: `event:${event.id}`,
     kind: 'event',
-    group: `event:${device.id}:${event.kind}`,
+    group: `event:${device.id}:${event.kind}:${summary.what}`,
     at: event.occurred_at,
     deviceId: device.id,
     name: device.label,
-    what: EVENT_KIND_LABELS[event.kind],
-    topic: EVENT_KIND_LABELS[event.kind],
+    ...summary,
     by: null,
     icon: look.icon,
     tone: look.tone,
@@ -137,4 +139,11 @@ export function commandAtom(command: CommandRow, devices: DeviceLookup): Activit
     category: SOURCE_CATEGORY[command.source] ?? deviceCategory(device),
     failed,
   };
+}
+
+function eventSummary(event: EventRow): { readonly what: string; readonly topic: string } {
+  const parsed = EVENT_SUMMARY.safeParse(event.details);
+  return parsed.success
+    ? { what: parsed.data.summary, topic: parsed.data.topic }
+    : { what: eventLabel(event.kind, event.details), topic: eventLabel(event.kind, event.details) };
 }

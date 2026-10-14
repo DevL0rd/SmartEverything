@@ -9,7 +9,6 @@ export interface HomeAction {
 }
 
 export const HOME_ACTIONS: readonly HomeAction[] = [
-  { label: 'Home settings', icon: 'home', href: href.settings.page('home') },
   {
     label: 'People & devices',
     icon: 'users',

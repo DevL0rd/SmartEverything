@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   parseServiceConfigText,
   type ServiceConfig,
+  type HubServiceConfig,
 } from '@smarteverything/hub/service/configuration';
 
 const CONFIG_OBJECT = z.record(z.string(), z.unknown());
@@ -41,10 +42,21 @@ export interface PreparedConfig {
 
 export function prepareServiceConfig(
   file: string,
+  existing: null,
+  go2rtcBinary: string,
+): PreparedConfig & { readonly config: HubServiceConfig };
+export function prepareServiceConfig(
+  file: string,
+  existing: string | null,
+  go2rtcBinary: string,
+): PreparedConfig;
+export function prepareServiceConfig(
+  file: string,
   existing: string | null,
   go2rtcBinary: string,
 ): PreparedConfig {
-  const merged = { ...existingObject(file, existing), go2rtcBinary };
+  const previous = existingObject(file, existing);
+  const merged = previous['role'] === 'node' ? previous : { ...previous, go2rtcBinary };
   const text = `${JSON.stringify(merged, null, 2)}\n`;
   return { text, config: parseServiceConfigText(file, text), changed: text !== existing };
 }

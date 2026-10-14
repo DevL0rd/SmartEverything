@@ -1,5 +1,6 @@
 import { useListProbe } from '../../../perf/list-probe';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, FlatList, View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
@@ -9,12 +10,10 @@ import type { ModelChoice } from './model-choice';
 import { ModelRow } from './model-row';
 import { ProviderLogo } from './provider-logo';
 
-export const MODEL_ROW_HEIGHT = 72;
-const HEADER_HEIGHT = 40;
-
 export type ListItem =
   | { readonly type: 'header'; readonly key: string; readonly title: string }
   | { readonly type: 'model'; readonly key: string; readonly model: ModelChoice }
+  | { readonly type: 'custom'; readonly key: string; readonly render: () => ReactNode }
   | {
       readonly type: 'link';
       readonly key: string;
@@ -26,16 +25,14 @@ export type ListItem =
 
 export interface ModelListProps {
   readonly items: readonly ListItem[];
+  readonly header?: ReactNode;
+  readonly resetKey?: string;
   readonly selected: string | null;
   readonly favourites: ReadonlySet<string>;
   readonly onPick: ((model: ModelChoice) => void) | null;
   readonly onFavourite: ((modelId: string) => void) | null;
   readonly onEnd: (() => void) | null;
   readonly loading: boolean;
-}
-
-function heightOf(item: ListItem): number {
-  return item.type === 'header' ? HEADER_HEIGHT : MODEL_ROW_HEIGHT;
 }
 
 function LinkRow({ item }: { readonly item: Extract<ListItem, { type: 'link' }> }): ReactNode {
@@ -85,6 +82,8 @@ function Item({
       );
     case 'link':
       return <LinkRow item={item} />;
+    case 'custom':
+      return item.render();
     case 'model':
       return (
         <ModelRow
@@ -121,20 +120,13 @@ function Footer({ loading }: { readonly loading: boolean }): ReactNode {
 
 export function ModelList(props: ModelListProps): ReactNode {
   const probe = useListProbe('models', props.items.length);
-  const offsets = props.items.reduce<number[]>(
-    (all, item, index) => [...all, (all[index] ?? 0) + heightOf(item)],
-    [0],
-  );
+  const ref = useListReset(props.resetKey);
   return (
     <FlatList
+      ref={ref}
       data={props.items}
       keyExtractor={(item) => item.key}
       renderItem={({ item }) => <Item item={item} list={props} />}
-      getItemLayout={(_data, index) => ({
-        length: (offsets[index + 1] ?? 0) - (offsets[index] ?? 0),
-        offset: offsets[index] ?? 0,
-        index,
-      })}
       onScroll={probe.scrollWith()}
       onLayout={probe.onLayout}
       CellRendererComponent={probe.cell}
@@ -146,8 +138,20 @@ export function ModelList(props: ModelListProps): ReactNode {
       keyboardShouldPersistTaps="handled"
       {...(props.onEnd === null ? {} : { onEndReached: props.onEnd })}
       onEndReachedThreshold={0.5}
+      ListHeaderComponent={<>{props.header}</>}
       ListFooterComponent={<Footer loading={props.loading} />}
       className="min-h-0 flex-1"
     />
   );
+}
+
+function useListReset(key: string | undefined): RefObject<FlatList<ListItem> | null> {
+  const ref = useRef<FlatList<ListItem>>(null);
+  const previous = useRef(key);
+  useEffect(() => {
+    if (previous.current === key) return;
+    previous.current = key;
+    ref.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [key]);
+  return ref;
 }

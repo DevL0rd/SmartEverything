@@ -1,3 +1,9 @@
+import { connectionPortNeeds } from './network/firewall';
+import { HubConnections } from './network/connections';
+import { openHubIdentity } from './network/identity';
+import { advertiseHub } from './network/avahi';
+import type { Server } from 'node:http';
+import type { PreviewGatewayConfig } from './preview/gateway';
 import { mkdir } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -20,7 +26,7 @@ import type { ModuleRegistry } from './providers/registry-types';
 import { watchResume } from './clock/resume-watch';
 import { openSecretStore } from './secrets/open';
 import { buildServer, type BuiltServer } from './server/build';
-import { DATABASE_FILE } from './service/configuration';
+import { DATABASE_FILE, serviceUrl } from './service/configuration';
 import type { LogLines } from './service/log-lines';
 import { startCore, type Core } from './services';
 import { openStore, type Store } from './store/store';
@@ -29,7 +35,13 @@ import { HUB_VERSION } from './version';
 export const DEFAULT_ORIGINS: readonly string[] = ['app://smarteverything'];
 
 export interface ServerOptions {
+  readonly lan?: { readonly port: number; readonly host?: string; readonly advertise?: boolean };
+  readonly preview?: PreviewGatewayConfig;
   readonly dataDirectory: string;
+  readonly codex?: {
+    readonly executable?: string;
+    readonly controlSocket?: string;
+  };
   readonly port: number;
   readonly host?: string;
   readonly go2rtcBinary: string;
@@ -64,12 +76,30 @@ interface Started {
   readonly extensions: readonly RunningExtension[];
 }
 
-function listen(built: BuiltServer, port: number, host: string): Promise<AddressInfo> {
+function serverExtensions(
+  options: ServerOptions,
+  clock: Clock,
+  alerts: OwnerAlerts,
+  smartthings: ReturnType<typeof smartThingsWiring>,
+): readonly ServerExtension[] {
+  return [
+    mcpExtension({ clock, alerts }),
+    pushExtension({ fetch: options.fetch ?? fetch, now: clock.now, alerts }),
+    smartthings.extension,
+    privacyExtension(),
+    bodyAlertsExtension({ alerts }),
+    computersExtension(clock.now),
+    phonesExtension(),
+    ...(options.extensions ?? []),
+  ];
+}
+
+function listen(server: Server, port: number, host: string): Promise<AddressInfo> {
   return new Promise((resolve, reject) => {
-    built.http.once('error', reject);
-    built.http.listen(port, host, () => {
-      built.http.off('error', reject);
-      const address = built.http.address();
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      server.off('error', reject);
+      const address = server.address();
       if (address === null || typeof address === 'string') {
         reject(
           new Error(`The server is not listening on a TCP port; it reported ${String(address)}.`),
@@ -81,18 +111,10 @@ function listen(built: BuiltServer, port: number, host: string): Promise<Address
   });
 }
 
-function loopbackOf(host: string): string {
-  return host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
-}
-
-async function stopAll(started: Started): Promise<void> {
-  started.built.stop();
-  await new Promise<void>((resolve) => {
-    started.built.http.close(() => {
-      resolve();
-    });
-    started.built.http.closeAllConnections();
-  });
+async function stopAll(started: Started, withdraw: () => Promise<void>): Promise<void> {
+  await withdraw();
+  await started.built.stop();
+  await closeListeners(started.built);
   await Promise.all(started.extensions.map((extension) => extension.stop()));
   await started.core.hub.stop();
   started.core.firewall.stop();
@@ -157,22 +179,17 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     () => core.hub.stop(),
   );
   const alerts = new OwnerAlerts();
+  const connections = new HubConnections(await openHubIdentity(options.dataDirectory), store);
   const built = await buildServer({
+    connections,
     store,
     secrets,
     core,
     dataDirectory: options.dataDirectory,
+    ...(options.preview === undefined ? {} : { preview: options.preview }),
+    ...(options.codex === undefined ? {} : { codex: options.codex }),
     allowedOrigins: new Set(options.allowedOrigins ?? DEFAULT_ORIGINS),
-    extensions: [
-      mcpExtension({ clock, alerts }),
-      pushExtension({ fetch: outbound, now: clock.now, alerts }),
-      smartthings.extension,
-      privacyExtension(),
-      bodyAlertsExtension({ alerts }),
-      computersExtension(clock.now),
-      phonesExtension(),
-      ...(options.extensions ?? []),
-    ],
+    extensions: serverExtensions(options, clock, alerts, smartthings),
     fetch: outbound,
     clock,
     version: HUB_VERSION,
@@ -180,10 +197,14 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     logLines: options.logLines,
     alerts,
   });
-  undo.push(built.stop, () =>
-    Promise.all(built.extensions.map((extension) => extension.stop())).then(() => undefined),
-  );
-  return { lock, store, core, built, extensions: built.extensions };
+  rememberBuilt(built, undo);
+  return {
+    lock,
+    store,
+    core,
+    built,
+    extensions: built.extensions,
+  };
 }
 
 export async function startServer(options: ServerOptions): Promise<RunningServer> {
@@ -199,21 +220,83 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     const started = await boot(options, clock, undo);
     const ownerToken = await started.built.access.ensureOwner();
     const host = options.host ?? '0.0.0.0';
-    const address = await listen(started.built, options.port, host);
+    const address = await listen(started.built.http, options.port, host);
+    const url = serviceUrl({ host, port: address.port });
+    const withdraw = await startLan(options, started, url);
+    undo.push(withdraw);
     options.log.info('server.started', { port: address.port, version: HUB_VERSION });
     return {
       ownerToken,
-      url: `http://${loopbackOf(host)}:${String(address.port)}`,
+      url,
       rotateOwnerToken: () => started.built.access.rotateOwner(),
       status: started.built.context.status,
       publicStatus: started.built.context.publicStatus,
       stop: async (): Promise<void> => {
         stopResumeWatch();
-        await stopAll(started);
+        await stopAll(started, withdraw);
       },
     };
   } catch (cause) {
     await rollBack(undo, options.log);
     throw cause;
   }
+}
+
+async function closeListeners(built: BuiltServer): Promise<void> {
+  const listeners = [built.http, ...(built.secure === null ? [] : [built.secure])];
+  await Promise.all(
+    listeners.map(
+      (server) =>
+        new Promise<void>((resolve) => {
+          server.close(() => {
+            resolve();
+          });
+          server.closeAllConnections();
+        }),
+    ),
+  );
+}
+
+async function startLan(
+  options: ServerOptions,
+  started: Started,
+  loopback: string,
+): Promise<() => Promise<void>> {
+  const connections = started.built.context.connections;
+  if (connections === undefined)
+    throw new Error('The hub connection identity was not initialized.');
+  if (options.lan === undefined) {
+    connections.listening(loopback, null);
+    return () => Promise.resolve();
+  }
+  const server = started.built.secure;
+  if (server === null) throw new Error('The encrypted LAN listener was not initialized.');
+  const listener = await listen(server, options.lan.port, options.lan.host ?? '0.0.0.0');
+  connections.listening(loopback, listener);
+  started.core.firewall.connectionsChanged(connectionPortNeeds(listener, false));
+  if (options.lan.advertise === false) return () => Promise.resolve();
+  return advertiseHub({
+    identity: connections.tls.identity,
+    listener,
+    log: options.log.forArea('hub.network'),
+    changed: (status) => {
+      connections.discoveryChanged(status);
+      started.core.firewall.connectionsChanged(
+        connectionPortNeeds(listener, status.state === 'advertising'),
+      );
+    },
+    networkChanged: () => {
+      started.core.firewall.connectionsChanged(
+        connectionPortNeeds(listener, connections.metadata().discovery.state === 'advertising'),
+      );
+    },
+  });
+}
+
+function rememberBuilt(built: BuiltServer, undo: Undo[]): void {
+  undo.push(
+    () => closeListeners(built),
+    built.stop,
+    () => Promise.all(built.extensions.map((extension) => extension.stop())).then(() => undefined),
+  );
 }

@@ -1,3 +1,21 @@
+import { HarnessSkillUpdatesRepository } from './repositories/harness-skill-updates';
+import { PreviewProjectsRepository } from './repositories/preview-projects';
+import { AiProjectsRepository } from './repositories/ai-projects';
+import { NativeCommandOperationsRepository } from './repositories/native-command-operations';
+import { ClaudeCliOperationsRepository } from './repositories/claude-cli-operations';
+import { BleObservationsRepository } from './repositories/ble-observations';
+import { HarnessConfigurationRepository } from './repositories/harness-configuration';
+import { HarnessSkillPresentationsRepository } from './repositories/harness-skill-presentations';
+import { HarnessChildrenRepository } from './repositories/harness-children';
+import { ImageOperationsRepository } from './repositories/image-operations';
+import { HarnessRecoveryRepository } from './repositories/harness-recovery';
+import { AiRuntimeProviderRepository } from './repositories/ai-runtime-provider';
+import { ComputerNativeMcpPolicyRepository } from './repositories/computer-native-mcp-policy';
+import { ComputerRuntimesRepository } from './repositories/computer-runtimes';
+import { AiAgentRunsRepository } from './repositories/ai-agent-runs';
+import { DshSessionsRepository } from './repositories/dsh-sessions';
+import { HarnessCoordinationRepository } from './repositories/harness-coordination';
+import { HarnessDeliveriesRepository } from './repositories/harness-deliveries';
 import { TIME_ZONE } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import type { Logger } from '@smarteverything/logging';
@@ -8,6 +26,8 @@ import { MIGRATIONS } from './migrations';
 import { AssistantRepository } from './repositories/assistant';
 import { AssistantChatRepository } from './repositories/assistant-chat';
 import { AssistantMessageSearchRepository } from './repositories/assistant-message-search';
+import { AiProviderRepository } from './repositories/ai-provider';
+import { AiEngineDefaultsRepository } from './repositories/ai-engine-defaults';
 import { AiChatsRepository } from './repositories/ai-chats';
 import { AssistantEventsRepository } from './repositories/assistant-events';
 import { AutomationsRepository } from './repositories/automations';
@@ -34,6 +54,8 @@ import { ScenesRepository } from './repositories/scenes';
 import { SettingsRepository } from './repositories/settings';
 import { StateRepository } from './repositories/state';
 import { DeviceMetricsRepository } from './repositories/device-metrics';
+import { ComputerAiRepository } from './repositories/computer-ai';
+import { ComputerNodesRepository } from './repositories/computer-nodes';
 import { ComputerScopesRepository } from './repositories/computer-scopes';
 import { AppSessionsRepository } from './repositories/app-sessions';
 import { TalkRepository } from './repositories/talk';
@@ -49,6 +71,7 @@ import { AiOutreachRepository } from './repositories/ai-outreach';
 import { Sql } from './sql';
 import { Ledger } from '../ledger/ledger';
 import { AiModelsRepository } from '../openrouter/models-repository';
+import { durableSessionWrite } from './repositories/dsh-session-durability';
 
 export interface StoreOptions {
   readonly path: string;
@@ -67,6 +90,19 @@ export interface Store {
   readonly state: StateRepository;
   readonly deviceMetrics: DeviceMetricsRepository;
   readonly computerScopes: ComputerScopesRepository;
+  readonly computerRuntimes: ComputerRuntimesRepository;
+  readonly computerNativeMcpPolicy: ComputerNativeMcpPolicyRepository;
+  readonly aiAgentRuns: AiAgentRunsRepository;
+  readonly dshSessions: DshSessionsRepository;
+  readonly harnessConfiguration: HarnessConfigurationRepository;
+  readonly harnessSkillPresentations: HarnessSkillPresentationsRepository;
+  readonly harnessSkillUpdates: HarnessSkillUpdatesRepository;
+  readonly harnessCoordination: HarnessCoordinationRepository;
+  readonly harnessChildren: HarnessChildrenRepository;
+  readonly harnessRecovery: HarnessRecoveryRepository;
+  readonly harnessDeliveries: HarnessDeliveriesRepository;
+  readonly computerAi: ComputerAiRepository;
+  readonly computerNodes: ComputerNodesRepository;
   readonly appSessions: AppSessionsRepository;
   readonly commands: CommandsRepository;
   readonly events: EventsRepository;
@@ -82,13 +118,22 @@ export interface Store {
   readonly watchDays: WatchDaysRepository;
   readonly assistant: AssistantRepository;
   readonly assistantChat: AssistantChatRepository;
+  readonly imageOperations: ImageOperationsRepository;
+  readonly claudeCliOperations: ClaudeCliOperationsRepository;
+  readonly nativeCommandOperations: NativeCommandOperationsRepository;
   readonly assistantSearch: AssistantMessageSearchRepository;
   readonly aiChats: AiChatsRepository;
+  readonly aiProjects: AiProjectsRepository;
+  readonly previewProjects: PreviewProjectsRepository;
+  readonly aiRuntimeProvider: AiRuntimeProviderRepository;
+  readonly aiProvider: AiProviderRepository;
+  readonly aiEngineDefaults: AiEngineDefaultsRepository;
   readonly assistantEvents: AssistantEventsRepository;
   readonly oauth: OAuthRepository;
   readonly profiles: ProfilesRepository;
   readonly bodyReadings: BodyReadingsRepository;
   readonly localDevices: LocalDevicesRepository;
+  readonly bleObservations: BleObservationsRepository;
   readonly phoneContexts: PhoneContextsRepository;
   readonly talk: TalkRepository;
   readonly weather: WeatherRepository;
@@ -103,6 +148,7 @@ export interface Store {
   readonly aiModels: AiModelsRepository;
   readonly ledger: Ledger;
   readonly write: <T>(work: () => T) => T;
+  readonly durableWrite: <T>(work: () => T) => T;
   readonly close: () => void;
 }
 
@@ -158,28 +204,82 @@ function pluginRepositories(
 
 function computerRepositories(
   context: StoreContext,
-): Pick<Store, 'computerScopes' | 'appSessions'> {
+): Pick<
+  Store,
+  | 'computerScopes'
+  | 'computerAi'
+  | 'computerRuntimes'
+  | 'computerNativeMcpPolicy'
+  | 'computerNodes'
+  | 'appSessions'
+> {
   return {
     computerScopes: new ComputerScopesRepository(context),
+    computerAi: new ComputerAiRepository(context),
+    computerNativeMcpPolicy: new ComputerNativeMcpPolicyRepository(context),
+    computerRuntimes: new ComputerRuntimesRepository(context),
+    computerNodes: new ComputerNodesRepository(context),
     appSessions: new AppSessionsRepository(context),
   };
 }
 
-function localRepositories(context: StoreContext): Pick<Store, 'localDevices' | 'phoneContexts'> {
+function localRepositories(
+  context: StoreContext,
+): Pick<Store, 'localDevices' | 'phoneContexts' | 'bleObservations'> {
   return {
     localDevices: new LocalDevicesRepository(context),
+    bleObservations: new BleObservationsRepository(context),
     phoneContexts: new PhoneContextsRepository(context),
   };
 }
 
 function assistantRepositories(
   context: StoreContext,
-): Pick<Store, 'assistant' | 'assistantChat' | 'assistantSearch' | 'aiChats' | 'assistantEvents'> {
+): Pick<
+  Store,
+  | 'assistant'
+  | 'assistantChat'
+  | 'imageOperations'
+  | 'claudeCliOperations'
+  | 'nativeCommandOperations'
+  | 'assistantSearch'
+  | 'aiChats'
+  | 'aiEngineDefaults'
+  | 'aiProvider'
+  | 'aiRuntimeProvider'
+  | 'aiAgentRuns'
+  | 'dshSessions'
+  | 'harnessConfiguration'
+  | 'harnessSkillPresentations'
+  | 'harnessCoordination'
+  | 'harnessChildren'
+  | 'harnessRecovery'
+  | 'harnessDeliveries'
+  | 'assistantEvents'
+  | 'aiProjects'
+  | 'previewProjects'
+> {
   return {
     assistant: new AssistantRepository(context),
     assistantChat: new AssistantChatRepository(context),
+    imageOperations: new ImageOperationsRepository(context),
+    claudeCliOperations: new ClaudeCliOperationsRepository(context),
+    nativeCommandOperations: new NativeCommandOperationsRepository(context),
     assistantSearch: new AssistantMessageSearchRepository(context),
     aiChats: new AiChatsRepository(context),
+    aiProjects: new AiProjectsRepository(context),
+    previewProjects: new PreviewProjectsRepository(context),
+    aiProvider: new AiProviderRepository(context),
+    aiRuntimeProvider: new AiRuntimeProviderRepository(context),
+    aiAgentRuns: new AiAgentRunsRepository(context),
+    dshSessions: new DshSessionsRepository(context),
+    harnessConfiguration: new HarnessConfigurationRepository(context),
+    harnessSkillPresentations: new HarnessSkillPresentationsRepository(context),
+    harnessCoordination: new HarnessCoordinationRepository(context),
+    harnessChildren: new HarnessChildrenRepository(context),
+    harnessRecovery: new HarnessRecoveryRepository(context),
+    harnessDeliveries: new HarnessDeliveriesRepository(context),
+    aiEngineDefaults: new AiEngineDefaultsRepository(context),
     assistantEvents: new AssistantEventsRepository(context),
   };
 }
@@ -205,6 +305,7 @@ export function openStore(options: StoreOptions): Store {
   return {
     feed,
     settings,
+    harnessSkillUpdates: new HarnessSkillUpdatesRepository(context),
     clients: new ClientsRepository(context),
     providers: new ProvidersRepository(context),
     rooms: new RoomsRepository(context),
@@ -235,6 +336,7 @@ export function openStore(options: StoreOptions): Store {
     transcripts: new TranscriptsRepository(context),
     ledger: new Ledger(context, () => settings.read().time_zone),
     write: (work) => context.write(work),
+    durableWrite: (work) => durableSessionWrite(context, work),
     close: (): void => {
       database.close();
     },

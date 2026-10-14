@@ -4,6 +4,7 @@ import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated
 import { useNavigation, type Href } from 'expo-router';
 import Head from 'expo-router/head';
 import { useNavigationState } from 'expo-router/react-navigation';
+import { PageSettingsButton, type PageSettingsLink } from './page-settings-button';
 import { useSizeClass, type HeaderKind } from '../design/size-class';
 import { Breadcrumbs, type Crumb } from './breadcrumbs';
 import { useHeaderSearchHandler } from './header-search';
@@ -34,18 +35,23 @@ export interface HeaderEditing {
   readonly dirty: boolean;
 }
 
-export interface PageHeaderProps {
+interface HeaderProps {
   readonly title: string;
   readonly subtitle?: string;
   readonly back?: boolean;
   readonly actions?: readonly HeaderAction[];
-  readonly overflow?: readonly MenuItem[];
   readonly below?: ReactNode;
   readonly editing?: HeaderEditing | null;
   readonly breadcrumbs?: readonly Crumb[];
   readonly search?: boolean;
   readonly onTitlePress?: () => void;
 }
+
+export type PageHeaderProps = HeaderProps &
+  (
+    | { readonly settings: PageSettingsLink; readonly overflow?: never }
+    | { readonly settings?: never; readonly overflow?: readonly MenuItem[] }
+  );
 
 const COLLAPSE_AT = 48;
 
@@ -87,13 +93,15 @@ function TouchActions({
   actions,
   overflow,
   search,
+  directSettings,
 }: {
   readonly actions: readonly HeaderAction[];
   readonly overflow: readonly MenuItem[];
   readonly search: boolean;
+  readonly directSettings: boolean;
 }): ReactNode {
-  const shown = actions.slice(0, 2);
-  const rest = overflowItems(actions.slice(2), overflow);
+  const shown = directSettings ? actions : actions.slice(0, 2);
+  const rest = overflowItems(actions.slice(shown.length), overflow);
   const { primaryAction } = useScreen();
   const placed = usePrimaryActionPlacement() === 'header' ? primaryAction : null;
   return (
@@ -190,8 +198,14 @@ function Trailing(props: PageHeaderProps & { readonly kind: HeaderKind }): React
       {props.kind === 'desktop' ? (
         <PointerActions actions={actions} overflow={overflow} />
       ) : (
-        <TouchActions actions={actions} overflow={overflow} search={props.search ?? true} />
+        <TouchActions
+          actions={actions}
+          overflow={overflow}
+          search={props.search ?? true}
+          directSettings={props.settings !== undefined}
+        />
       )}
+      {props.settings === undefined ? null : <PageSettingsButton settings={props.settings} />}
     </View>
   );
 }

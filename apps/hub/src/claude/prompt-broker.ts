@@ -50,6 +50,7 @@ export interface BrokerOptions {
   readonly riskyHoldMs?: number;
   readonly changed: () => void;
   readonly raised: (prompt: ClaudePrompt) => void;
+  readonly finished?: (prompt: ClaudePrompt) => void;
 }
 
 interface Held {
@@ -147,6 +148,12 @@ export class PromptBroker {
     return [...this.waiting.values()].map((held) => held.prompt);
   }
 
+  stop(): void {
+    for (const id of [...this.waiting.keys()]) {
+      this.finish(id, 'expired', null, NO_ANSWER);
+    }
+  }
+
   hold(request: HoldRequest, closed: AbortSignal): Promise<HookOutput> {
     if (!isHeldTool(request.event, request.toolName)) {
       return Promise.resolve(NO_ANSWER);
@@ -218,6 +225,37 @@ export class PromptBroker {
     return this.finish(promptId, state, requester, outputFor(held.event, verdict, held.input));
   }
 
+  answerQuestion(
+    promptId: string,
+    answers: Readonly<Record<string, string>>,
+    requester: Requester,
+  ): ClaudePrompt {
+    const held = this.waiting.get(promptId);
+    if (held === undefined) throw new ClaudePromptNotFoundError(promptId);
+    if (held.prompt.kind !== 'question')
+      throw new ClaudeInvalidAnswerError(
+        promptId,
+        'only an AskUserQuestion request accepts text answers',
+      );
+    const expected = new Set(held.prompt.questions.map((question) => question.question));
+    if (
+      Object.keys(answers).length !== expected.size ||
+      Object.keys(answers).some((question) => !expected.has(question))
+    ) {
+      throw new ClaudeInvalidAnswerError(
+        promptId,
+        'answer exactly the questions offered by this SDK request',
+      );
+    }
+    const verified = z.record(z.string(), z.string().min(1).max(10_000)).parse(answers);
+    return this.finish(
+      promptId,
+      'answered',
+      requester,
+      outputFor(held.event, { kind: 'answer', answers: verified }, held.input),
+    );
+  }
+
   private verdictOf(prompt: ClaudePrompt, body: ClaudeAnswer): PromptVerdict {
     if (body.decision === 'deny') {
       return { kind: 'deny', reason: body.reason ?? null };
@@ -262,6 +300,7 @@ export class PromptBroker {
       by: answeredBy,
     });
     held.settle(output);
+    this.options.finished?.(prompt);
     this.options.changed();
     return prompt;
   }
