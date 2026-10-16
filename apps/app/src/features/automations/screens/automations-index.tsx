@@ -29,7 +29,11 @@ function useActions(): readonly HeaderAction[] {
     : [];
 }
 
-function ListBody({ page }: { readonly page: AutomationsPage }): ReactNode {
+interface ListBodyProps {
+  readonly page: AutomationsPage;
+}
+
+function ListBody({ page }: ListBodyProps): ReactNode {
   const [query, setQuery] = useState('');
   const { rules, reading, catalog } = page;
   return (
@@ -76,6 +80,8 @@ function AutomationsList(): ReactNode {
     >
       {touch ? (
         <List inset>
+          <NavRow title="Values" icon="customize" href={href.automationValues()} />
+          <NavRow title="Sequences" icon="layers" href={href.automationSequences()} />
           <NavRow
             title="Scenes"
             subtitle={scenes === 0 ? 'Set several devices at once' : plural(scenes, 'scene')}

@@ -1,10 +1,19 @@
+import { LIVE_SEQUENCE_HEADER } from '@smarteverything/domain';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-const requests = new AsyncLocalStorage<AbortSignal>();
+interface RequestContext {
+  readonly signal: AbortSignal;
+  readonly response: ServerResponse;
+}
+const requests = new AsyncLocalStorage<RequestContext>();
+
+export function requestSequence(seq: number): void {
+  requests.getStore()?.response.setHeader(LIVE_SEQUENCE_HEADER, String(seq));
+}
 
 export function currentRequestSignal(): AbortSignal | undefined {
-  return requests.getStore();
+  return requests.getStore()?.signal;
 }
 
 export async function withRequestSignal<T>(
@@ -23,7 +32,7 @@ export async function withRequestSignal<T>(
   response.once('close', closed);
   if ((request.destroyed && !request.complete) || response.destroyed) aborted();
   try {
-    return await requests.run(controller.signal, work);
+    return await requests.run({ signal: controller.signal, response }, work);
   } finally {
     request.off('aborted', aborted);
     response.off('close', closed);

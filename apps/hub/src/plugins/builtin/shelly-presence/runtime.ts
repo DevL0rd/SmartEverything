@@ -1,3 +1,4 @@
+import { watchShellyAddresses } from './address-watch';
 import { queuedShellyAction, validateQueuedShellyAction } from './queued-command';
 import { shellySensitiveAction } from './action-sensitive';
 import {
@@ -79,12 +80,13 @@ export class ShellyRuntime {
         for (const session of this.sessions.values()) session.start(this.driver);
       this.publish();
     });
+    const stopAddresses = watchShellyAddresses(this.ctx, (enrollment) => this.attach(enrollment));
     this.publish();
-    return () => {
+    return async () => {
       unwatch();
       unregister();
       for (const session of this.sessions.values()) session.stop();
-      return Promise.resolve();
+      await stopAddresses();
     };
   }
   private attach(enrollment: ShellyEnrollment): ShellySession {

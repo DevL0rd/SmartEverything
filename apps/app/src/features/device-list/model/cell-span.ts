@@ -8,9 +8,6 @@ export function spanOf(device: Device, weights: Weights): CellSpan {
   if (isCamera(device)) {
     return 2;
   }
-  if (!device.online) {
-    return 'half';
-  }
   const weight = weights.get(device.id) ?? 'none';
   if (weight === 'many') {
     return 2;

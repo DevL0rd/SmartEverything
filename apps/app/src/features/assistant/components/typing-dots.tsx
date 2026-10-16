@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
+import { useContext } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useForeground } from '../../../design/animation-gate';
 import { cn } from '../../../design/cn';
 import { BLINK, EASE_IN_OUT, loopStyle } from '../../../design/loops';
 import { useMotion } from '../../../design/motion';
+import { ScreenPausedContext } from '../../../design/screen-pause';
 
 const DELAYS = [0, 180, 360] as const;
 
@@ -17,7 +19,8 @@ export function TypingDots({
 }): ReactNode {
   const { reduced } = useMotion();
   const foreground = useForeground();
-  const running = moving && !reduced && foreground;
+  const paused = useContext(ScreenPausedContext);
+  const running = moving && !reduced && foreground && !paused;
   return (
     <View accessibilityLabel="Typing" className="h-4 flex-row items-center gap-1">
       {DELAYS.map((delay) => (

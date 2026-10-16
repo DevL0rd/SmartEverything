@@ -1,3 +1,4 @@
+import type { PluginSpeechReader } from '../store/repositories/speech';
 import type {
   PluginTranscriptPage,
   PluginTranscriptPageQuery,
@@ -22,7 +23,7 @@ import type { Store } from '../store/store';
 import { TranscriptSettingsStore } from './transcript-settings';
 
 export interface TranscriptsOptions {
-  readonly store: Pick<Store, 'transcripts' | 'aiChats'>;
+  readonly store: Pick<Store, 'transcripts' | 'aiChats' | 'speech'>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
@@ -83,6 +84,10 @@ export class Transcripts {
     });
     this.arm();
     return session;
+  }
+
+  speechReader(pluginId: string, reader: PluginSpeechReader): () => void {
+    return this.options.store.speech.register(pluginId, reader);
   }
 
   add(sessionId: string, line: TranscriptLineInput): TranscriptLine {

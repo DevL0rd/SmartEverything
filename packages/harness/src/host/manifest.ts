@@ -3,11 +3,11 @@ import type { AiHarnessManifest } from '@smarteverything/domain';
 import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION } from '@deepseek-ai/dsh-session';
 import type { HarnessConfiguration } from '../composition/configuration';
 import type { HarnessHost } from './contracts';
-import { HARNESS_RUNTIME_REVISION } from '../composition/builtin-metadata';
+import { HARNESS_NATIVE_RUNTIME_REVISION } from '../composition/builtin-metadata';
 
 export function harnessManifest(
   ctx: Context,
-  host: HarnessHost,
+  _host: HarnessHost,
   configuration: HarnessConfiguration,
   identity: { readonly fingerprint: string; readonly restoreRevision: string },
 ): AiHarnessManifest {
@@ -18,7 +18,7 @@ export function harnessManifest(
     configuration_prepare: true,
     delivery_correlation: true,
     history_import: true,
-    revision: HARNESS_RUNTIME_REVISION,
+    revision: HARNESS_NATIVE_RUNTIME_REVISION,
     composition: {
       dsh_version: '0.2.1-alpha.2',
       runtime_version: process.version,
@@ -28,17 +28,14 @@ export function harnessManifest(
       restore_revision: identity.restoreRevision,
       event_vocabulary: [...KNOWN_SESSION_EVENT_TYPES],
     },
-    features: manifestFeatures(host.target.kind === 'server', configuration),
+    features: manifestFeatures(configuration),
     tools: ctx.tools.schemas().map((tool) => tool.name),
     permissions: manifestPermissions(),
     permission_change: true,
   };
 }
 
-function manifestFeatures(
-  server: boolean,
-  configuration: HarnessConfiguration,
-): AiHarnessManifest['features'] {
+function manifestFeatures(configuration: HarnessConfiguration): AiHarnessManifest['features'] {
   const conversation: AiHarnessManifest['features'] = [
     'text',
     'reasoning',
@@ -49,7 +46,6 @@ function manifestFeatures(
     'compaction',
     'native-resume',
   ];
-  if (server) return conversation;
   return [
     ...new Set<AiHarnessManifest['features'][number]>([
       ...conversation,

@@ -1,3 +1,4 @@
+import { DEVICE_GROUP_TOOLS } from './device-groups';
 import {
   MCP_ROUTES,
   MCP_TOOL_NAMES,
@@ -30,6 +31,7 @@ import { SETTINGS_TOOLS } from './settings';
 import { WEATHER_TOOLS } from './weather';
 
 const PARTS: readonly Tool[] = [
+  ...DEVICE_GROUP_TOOLS,
   ...HOME_TOOLS,
   ...DEVICE_TOOLS,
   SEARCH_TOOL,

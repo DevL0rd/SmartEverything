@@ -40,8 +40,8 @@ export function useDayTotals(day: string): DayTotals {
 }
 
 export function useRecentMetric(day: string, days: number, metric: HealthMetric): boolean {
+  const first = shiftDay(day, -days);
   return useStoreSelector((state) => {
-    const first = shiftDay(day, -days);
     const table = state.tables.health_daily;
     return table.ids.some((id) => {
       const row = table.byId[id];

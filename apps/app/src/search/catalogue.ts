@@ -182,8 +182,12 @@ function catalogueFor(tables: SearchTables, env: SettingEnv): SearchCatalogue {
   const key = [
     tables.devices,
     tables.rooms,
+    tables.deviceGroups,
     tables.scenes,
     tables.automations,
+    tables.automationRuns,
+    tables.automationValues,
+    tables.automationSequences,
     tables.scheduled,
     tables.plugins,
     tables.pluginStreams,
@@ -244,8 +248,12 @@ function searchTablesOf(state: StoreState): SearchTables {
     chats: searchChatsOf(state),
     devices: t.devices,
     rooms: t.rooms,
+    deviceGroups: t.device_groups,
     scenes: t.scenes,
     automations: t.automations,
+    automationRuns: t.automation_runs,
+    automationValues: t.automation_values,
+    automationSequences: t.automation_sequences,
     scheduled: t.scheduled_actions,
     plugins: t.plugins,
     pluginStreams: t.plugin_streams,
@@ -255,12 +263,22 @@ function searchTablesOf(state: StoreState): SearchTables {
   };
 }
 
+function sameAutomationRuntimeTables(left: SearchTables, right: SearchTables): boolean {
+  return (
+    left.automationRuns === right.automationRuns &&
+    left.automationValues === right.automationValues &&
+    left.automationSequences === right.automationSequences
+  );
+}
+
 function sameTables(left: SearchTables, right: SearchTables): boolean {
   return (
     left.devices === right.devices &&
     left.rooms === right.rooms &&
+    left.deviceGroups === right.deviceGroups &&
     left.scenes === right.scenes &&
     left.automations === right.automations &&
+    sameAutomationRuntimeTables(left, right) &&
     left.scheduled === right.scheduled &&
     left.plugins === right.plugins &&
     left.pluginStreams === right.pluginStreams &&

@@ -4,6 +4,7 @@ import type { AiMessageReference } from '@smarteverything/domain';
 import { isDeepStrictEqual } from 'node:util';
 import type { ReferenceService } from '../references/service';
 import type { HarnessService } from './service';
+import type { HarnessGrant } from './grant';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import { eventAuthority, validateExecutionAuthority } from '../assistant/execution-authority';
 import type { Caller } from '../server/auth';
@@ -90,5 +91,9 @@ export async function validateNativeReferences(
     selected.map((item) => item.reference),
   );
   signal?.throwIfAborted();
-  service.storage.grant(id);
+  verifyReferenceGrant(service, id, grant);
+}
+function verifyReferenceGrant(service: HarnessService, id: string, grant: HarnessGrant): void {
+  if (!isDeepStrictEqual(grant, service.storage.grant(id)))
+    throw new ApiError('forbidden', 'Native reference delivery grant changed during validation.');
 }

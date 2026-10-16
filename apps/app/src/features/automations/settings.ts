@@ -3,6 +3,26 @@ import type { SettingDefinition } from '../../settings/types';
 
 export const SETTINGS: readonly SettingDefinition[] = [
   {
+    id: 'automations.values',
+    page: 'automations',
+    title: 'Values',
+    icon: 'customize',
+    keywords: ['variables', 'remember', 'number', 'duration', 'choice'],
+    scope: 'server',
+    control: 'link',
+    href: href.automationValues(),
+  },
+  {
+    id: 'automations.sequences',
+    page: 'automations',
+    title: 'Sequences',
+    icon: 'layers',
+    keywords: ['reusable', 'steps', 'parameters'],
+    scope: 'server',
+    control: 'link',
+    href: href.automationSequences(),
+  },
+  {
     id: 'automations.scheduled',
     page: 'automations',
     title: 'Scheduled',

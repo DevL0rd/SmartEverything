@@ -203,11 +203,11 @@ export function WeatherVisual({
   readonly px: VisualPx;
 }): ReactNode {
   const ref = useRef<View>(null);
-  const onScreen = useOnScreen(ref);
-  const { moving } = useAnimationGate(true, onScreen);
+  const { visible, onLayout } = useOnScreen(ref);
+  const { moving } = useAnimationGate(true, visible);
   const palette = usePalette();
   return (
-    <View ref={ref} pointerEvents="none" className={SIZE_CLASS[px]} aria-hidden>
+    <View ref={ref} onLayout={onLayout} pointerEvents="none" className={SIZE_CLASS[px]} aria-hidden>
       <Scene
         kind={weatherKindOf(code)}
         px={px}

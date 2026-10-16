@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { isReplacementSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session';
+import {
+  isReplacementSurfaceEvent,
+  isSurfaceEvent,
+  type SessionEvent,
+} from '@deepseek-ai/dsh-session';
 import type { TokenUsage } from '@deepseek-ai/dsh-llm';
 import type { AiHarnessSession } from '@smarteverything/domain';
 
@@ -34,6 +38,12 @@ export class ProcessContextProjection {
       this.value = { ...this.value, state: 'compacting' };
     }
     if (isReplacementSurfaceEvent(event)) this.value = { ...this.value, state: 'stale' };
+    if (
+      isSurfaceEvent(event) &&
+      this.value.estimate_tokens !== undefined &&
+      this.value.estimate_tokens !== null
+    )
+      this.value = { ...this.value, estimate_tokens: null, state: 'stale' };
     if (event.type === 'compaction/end' && this.value.state === 'compacting')
       this.value = { ...this.value, state: this.beforeCompaction };
     return before !== this.value;
@@ -45,7 +55,15 @@ export class ProcessContextProjection {
         this.measure(record.chunk.usage);
   }
   measure(usage: Pick<TokenUsage, 'inputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'>): void {
-    this.value = { ...this.value, input_tokens: contextInput(usage), state: 'measured' };
+    this.value = {
+      ...this.value,
+      input_tokens: contextInput(usage),
+      estimate_tokens: null,
+      state: 'measured',
+    };
+  }
+  estimate(tokens: number | null): void {
+    this.value = { ...this.value, estimate_tokens: tokens, state: 'stale' };
   }
   private requestContext(data: unknown): void {
     const request = REQUEST.parse(data);
@@ -58,6 +76,7 @@ export class ProcessContextProjection {
       model: request.model,
       capacity_tokens: request.contextWindow ?? null,
       input_tokens: same ? this.value.input_tokens : null,
+      estimate_tokens: same ? this.value.estimate_tokens : null,
       state: same ? this.value.state : 'unmeasured',
     };
     this.request = request;

@@ -1,4 +1,7 @@
 import {
+  DEVICE_GROUP_CAPABILITY,
+  AUTOMATION_EFFECTS_CAPABILITY,
+  LAYOUT_WRITE_CAPABILITY,
   EMBEDDED_BROWSER_CAPABILITY,
   AI_PREVIEW_CAPABILITY,
   AI_PREVIEW_LIFETIME_CAPABILITY,
@@ -115,4 +118,21 @@ export function serverSupportsAiReferences(url: string): boolean {
 export function useServerAiReferences(url: string | null): boolean {
   const known = useValue(capabilities);
   return url !== null && known.get(url)?.includes(AI_REFERENCE_CAPABILITY) === true;
+}
+
+export function serverSupportsDeviceGroups(url: string): boolean {
+  return capabilities.get().get(url)?.includes(DEVICE_GROUP_CAPABILITY) === true;
+}
+
+export function useServerDeviceGroups(url: string | null): boolean {
+  const known = useValue(capabilities);
+  return url !== null && known.get(url)?.includes(DEVICE_GROUP_CAPABILITY) === true;
+}
+
+export function serverSupportsLayoutWrites(url: string): boolean {
+  return capabilities.get().get(url)?.includes(LAYOUT_WRITE_CAPABILITY) === true;
+}
+
+export function serverSupportsAutomationEffects(url: string): boolean {
+  return capabilities.get().get(url)?.includes(AUTOMATION_EFFECTS_CAPABILITY) === true;
 }

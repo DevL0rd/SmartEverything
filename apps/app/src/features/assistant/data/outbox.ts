@@ -59,12 +59,12 @@ function queue(
     references: input.references,
     state: 'waiting',
   };
-  pending.update((all) => [...all, message]);
+  pending.update((all) => (all.some((row) => row.id === message.id) ? all : [...all, message]));
   log.info('outbox.queued', { chatId, attachments: attachments.length });
 }
 
 async function deliver(message: PendingMessage): Promise<void> {
-  if (delivering.has(message.id)) return;
+  if (delivering.has(message.id) || !pending.get().some((row) => row.id === message.id)) return;
   delivering.add(message.id);
   try {
     await sendAiChatMessage(message.chatId, message.text, message.attachments, {

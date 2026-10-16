@@ -155,7 +155,7 @@ export function useDeviceValues(deviceId: string): DeviceValues {
 
 export function useDeviceValue(deviceId: string, capability: string): DeviceValue | null {
   return useStoreSelector(
-    (state) => state.deviceValues[deviceId]?.[capability] ?? null,
+    (state) => deviceValuesOf(state, deviceId)[capability] ?? null,
     Object.is,
     [deviceId, capability],
   );

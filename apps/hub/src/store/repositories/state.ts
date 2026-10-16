@@ -154,13 +154,15 @@ export class StateRepository {
       { deviceId: row.deviceId, capability: row.capability },
     );
     const value = jsonText(row.value);
-    this.context.sql.run(
+    const written = this.context.sql.run(
       'save the device state',
       `insert into device_state (device_id, capability, value, observed_at)
        values ($deviceId, $capability, $value, $observedAt)
-       on conflict (device_id, capability) do update set value = excluded.value, observed_at = excluded.observed_at`,
+       on conflict (device_id, capability) do update set value = excluded.value, observed_at = excluded.observed_at
+       where excluded.observed_at >= device_state.observed_at`,
       { deviceId: row.deviceId, capability: row.capability, value, observedAt },
     );
+    if (written === 0) return;
     const after = {
       device_id: row.deviceId,
       capability: row.capability,

@@ -63,13 +63,18 @@ export interface LiveView {
   readonly toggle: () => void;
 }
 
-export function useLiveView(sensor: ShellyPresenceDevice): LiveView {
-  const [enabled, setEnabled] = useState(false);
+export function useLiveView(
+  sensor: ShellyPresenceDevice,
+  initiallyEnabled = false,
+  visible = true,
+): LiveView {
+  const [enabled, setEnabled] = useState(initiallyEnabled);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const focused = useIsFocused();
   const foreground = useForeground();
-  const active = enabled && focused && foreground && sensor.connection.state === 'online';
+  const active =
+    enabled && visible && focused && foreground && sensor.connection.state === 'online';
   useEffect(() => {
     if (!active) return;
     return openLease(

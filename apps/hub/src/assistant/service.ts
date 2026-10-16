@@ -77,7 +77,6 @@ import type {
 } from './service-contract';
 export type * from './service-contract';
 export type { Sender } from './requests';
-const RESTART_REASON = 'Stopped by a server restart.';
 export class AssistantService {
   readonly files: AssistantFiles;
   readonly voice: VoiceResponder;
@@ -175,7 +174,7 @@ export class AssistantService {
   }
   start(): void {
     this.coordination.restart();
-    this.conversation.interrupted(RESTART_REASON);
+    this.conversation.interrupted('Stopped by a server restart.');
     this.delivery.pump();
   }
   attachComputerAi(directory: ComputerAiDirectory): void {
@@ -295,11 +294,9 @@ export class AssistantService {
     this.engines.forMutation(this.chats.own(owner, chatId), owner.role);
     return this.branches.branch(owner, chatId, body);
   }
-
   searchChats(owner: ChatOwner, query: AiChatSearch): AiChatHit[] {
     return this.chats.search(owner, query);
   }
-
   async updateChat(owner: ChatOwner, chatId: string, change: AiChatChange): Promise<AiChatRow> {
     const before = this.chats.own(owner, chatId);
     const selected = selectChatEngineChange(

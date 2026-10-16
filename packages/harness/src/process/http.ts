@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { apiErrorOf, type ApiError } from '@smarteverything/domain';
+import { apiErrorOf } from '@smarteverything/domain';
 import { HarnessRuntimeError } from '../host/errors';
 import { HARNESS_TRANSPORT_REQUEST } from '@smarteverything/domain/node/harness-frames';
 import type { HarnessTransportRequest } from '@smarteverything/domain/node/harness-frames';
@@ -25,36 +25,14 @@ export class HarnessHttp {
       body: JSON.stringify(HARNESS_TRANSPORT_REQUEST.parse({ ...this.identity(), request })),
     });
     if (!response.ok) {
-      const refusal = await this.refusal(request, response);
-      if (refusal !== undefined) throw refusal;
-      throw new HarnessRuntimeError(
-        response.status === 403 || response.status === 409
-          ? 'ownership_lost'
-          : 'runtime_unavailable',
-        `Central harness transport refused the operation (HTTP ${String(response.status)}).`,
-      );
+      const refusal = apiErrorOf(response.status, await response.json());
+      if (refusal.code === 'ownership_lost')
+        throw new HarnessRuntimeError('ownership_lost', refusal.message);
+      throw refusal;
     }
     return schema.parse(await response.json());
   }
 
-  private async refusal(
-    request: HarnessTransportRequest['request'],
-    response: Response,
-  ): Promise<ApiError | undefined> {
-    if (request.operation === 'plugin_agent')
-      return apiErrorOf(response.status, await response.json());
-    if (
-      response.status !== 422 ||
-      request.operation !== 'publish' ||
-      request.frame.type !== 'harness_event' ||
-      request.frame.event.kind !== 'state' ||
-      request.frame.event.delivery_id === undefined ||
-      request.frame.event.native_turn === undefined
-    )
-      return undefined;
-    const refusal = apiErrorOf(response.status, await response.json());
-    return refusal.code === 'command_refused' ? refusal : undefined;
-  }
   identity(): Pick<HarnessTransportRequest, 'device_id' | 'generation' | 'runtime_instance'> {
     return {
       device_id: this.boot.device_id,

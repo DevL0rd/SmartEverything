@@ -1,3 +1,8 @@
+import {
+  AUTOMATION_EFFECTS_HEADER_VALUE,
+  AUTOMATION_SPEECH_ACCEPT,
+  automationFeatureResponse,
+} from '@smarteverything/domain';
 import type { IncomingHttpHeaders } from 'node:http';
 import { AI_REFERENCE_HEADER_VALUE, aiReferenceProjection } from '@smarteverything/domain';
 import { nativeProjectResponse } from './native-project-compatibility';
@@ -27,9 +32,27 @@ export function clientResponse(
       .split(',')
       .map((part) => part.trim())
       .includes(AI_REFERENCE_HEADER_VALUE);
+  const automation = automationFeatureResponse(
+    value,
+    {
+      effects:
+        typeof accept === 'string' &&
+        accept
+          .split(',')
+          .map((part) => part.trim())
+          .includes(AUTOMATION_EFFECTS_HEADER_VALUE),
+      speech:
+        typeof accept === 'string' &&
+        accept
+          .split(',')
+          .map((part) => part.trim())
+          .includes(AUTOMATION_SPEECH_ACCEPT),
+    },
+    endpoint,
+  );
   return engineProjection(
     aiReferenceProjection(
-      nativeProjectResponse(value, headers, endpoint),
+      nativeProjectResponse(automation, headers, endpoint),
       accepted,
       envelopeFor(endpoint),
     ),

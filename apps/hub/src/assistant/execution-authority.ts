@@ -84,6 +84,22 @@ export function admitExecutionTarget(
       'Hub-originated work cannot obtain hub-local OS access through another engine, relay or child.',
     );
 }
+export function selectedExecutionDevice(
+  store: Store,
+  device: string,
+  authority: ConversationAuthority,
+): boolean {
+  if (providerHubOsBan() || executionRole(store, authority) !== 'owner') return false;
+  return validateAuthorityGraph(store, authority).every((source) => {
+    const event = store.assistantEvents.event(source.event_id);
+    const chat = store.aiChats.chat(event.chat_id);
+    if (chat.profile_id !== authority.profile_id || chat.engine.kind !== 'dsh') return false;
+    const target = chat.engine.execution_target;
+    return target.kind === 'device'
+      ? target.device_id === device
+      : localComputers.get(store)?.(device) === true;
+  });
+}
 export function admitExecutionDevice(
   store: Store,
   device: string,
@@ -95,9 +111,11 @@ export function admitExecutionDevice(
     store.devices.byId(device).kind !== 'computer'
   )
     return;
-  const local = localComputers.get(store);
-  if (local === undefined || local(device))
-    throw new ApiError('forbidden', 'Hub-originated commands cannot perform hub-local OS effects.');
+  if (!selectedExecutionDevice(store, device, authority))
+    throw new ApiError(
+      'forbidden',
+      'Computer commands require the authorized selected execution target.',
+    );
 }
 export function validateExecutionAuthority(store: Store, authority: ConversationAuthority): void {
   validateAuthorityGraph(store, authority);

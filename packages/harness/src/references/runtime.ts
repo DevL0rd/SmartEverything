@@ -28,7 +28,7 @@ export class NativeReferences {
     ctx.on('skills/change', (): void => {
       this.generation += 1;
     });
-    ctx.effect(() => (): (() => Promise<void>) => () => this.close());
+    ctx.effect(() => (): Promise<void> => this.close());
   }
   private agent(id: string): Agent {
     const agent = this.ctx.agents.get(SessionId(id));
@@ -127,28 +127,42 @@ export class NativeReferences {
             'capability_unsupported',
             'Native reference registry changed; select again.',
           );
-        const items: AiNativeReferenceResult['items'] = [];
-        for (
-          let examined = 0;
-          examined < 128 && index < catalogue.items.length && items.length < limit;
-          examined += 1
-        ) {
-          const item = catalogue.items[index];
-          index += 1;
-          if (
-            item !== undefined &&
-            `${item.label} ${item.subtitle}`
-              .toLocaleLowerCase()
-              .includes(request.query.toLocaleLowerCase())
-          )
-            items.push(item);
-        }
-        return {
-          items,
-          revision: catalogue.revision,
-          next_cursor: null,
-          incomplete: index < catalogue.items.length,
-        };
+        const page = this.registryPage(catalogue, request, limit, index);
+        index = page.position;
+        return page.result;
+      },
+    };
+  }
+  private registryPage(
+    catalogue: Awaited<ReturnType<typeof nativeReferenceCatalogue>>,
+    request: AiReferenceSearch,
+    limit: number,
+    position: number,
+  ): { readonly result: AiNativeReferenceResult; readonly position: number } {
+    let index = position;
+    const items: AiNativeReferenceResult['items'] = [];
+    for (
+      let examined = 0;
+      examined < 128 && index < catalogue.items.length && items.length < limit;
+      examined += 1
+    ) {
+      const item = catalogue.items[index];
+      index += 1;
+      if (
+        item !== undefined &&
+        `${item.label} ${item.subtitle}`
+          .toLocaleLowerCase()
+          .includes(request.query.toLocaleLowerCase())
+      )
+        items.push(item);
+    }
+    return {
+      position: index,
+      result: {
+        items,
+        revision: catalogue.revision,
+        next_cursor: null,
+        incomplete: index < catalogue.items.length,
       },
     };
   }
@@ -161,7 +175,7 @@ export class NativeReferences {
     if (binding?.kind !== 'device')
       throw new HarnessRuntimeError(
         'directory_unavailable',
-        'Device references require an explicitly selected device workspace.',
+        'Device references require the selected machine primary folder.',
       );
     const scan = await NativeDeviceReferenceScan.open(this.ctx, binding, request);
     return {
@@ -216,6 +230,9 @@ export class NativeReferences {
           'Selected reference is no longer the exact effective native registry item.',
         );
     }
+  }
+  closeSession(id: string): Promise<void> {
+    return this.admission.cleanup(() => this.cursors.releaseOwner(id));
   }
   skillGeneration(): number {
     return this.generation;

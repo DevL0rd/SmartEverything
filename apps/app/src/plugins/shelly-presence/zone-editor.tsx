@@ -1,5 +1,5 @@
 import type { ShellyPresenceDevice, ShellyPresenceZone } from '@smarteverything/domain';
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../components/button';
 import { TextField } from '../../components/text-field';
@@ -12,6 +12,8 @@ import { revisionOf } from './presence-data';
 import { OperationFeedback } from './operation-feedback';
 import { useZoneDraft, type ZoneDraft } from './use-zone-draft';
 import { ZoneColor } from './zone-color';
+import { useOnScreen } from '../../features/device-visuals';
+import { useLiveView } from './use-live-view';
 
 function DelayFields({ draft }: { readonly draft: ZoneDraft }): ReactNode {
   return (
@@ -93,9 +95,13 @@ export function ZoneEditor({
   readonly close: () => void;
 }): ReactNode {
   const draft = useZoneDraft(sensor, zone);
+  const frame = useRef<View | null>(null);
+  const { visible, onLayout } = useOnScreen(frame);
+  const live = useLiveView(sensor, true, visible);
   return (
-    <View className="gap-3">
-      <RoomMap sensor={sensor} area={draft.area} />
+    <View ref={frame} onLayout={onLayout} className="gap-3">
+      <RoomMap sensor={sensor} area={draft.area} live={live.active} />
+      {live.error === null ? null : <Text tone="critical">{live.error}</Text>}
       <TextField
         label="Zone name"
         value={draft.name}
@@ -106,6 +112,7 @@ export function ZoneEditor({
       <ZoneColor value={draft.color} change={draft.setColor} />
       <DelayFields draft={draft} />
       <AreaEditor
+        tracks={live.active ? sensor.tracks : []}
         value={draft.area}
         change={draft.setArea}
         validity={draft.setValidArea}

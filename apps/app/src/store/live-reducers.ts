@@ -1,3 +1,4 @@
+import { automationTablesOf } from './automation-tables';
 import {
   displayName,
   type RowChange,
@@ -11,6 +12,7 @@ import {
   rowsOf,
   type DeviceValues,
   type ListTable,
+  type NextTable,
   type RowOf,
   type StoreState,
   type Table,
@@ -44,12 +46,11 @@ function tableOf<R>(rows: readonly R[], rule: TableRule<R>, version: number): Ta
 function upsert<R>(table: Table<R>, row: R, rule: TableRule<R>): Table<R> {
   const id = rule.idOf(row);
   const known = table.byId[id];
-  if (known !== undefined && sameJson(known, row)) {
-    return table;
-  }
-  const others = table.ids.flatMap((other) => {
+  if (known !== undefined && sameJson(known, row)) return table;
+  const others: R[] = [];
+  table.ids.forEach((other) => {
     const existing = table.byId[other];
-    return other === id || existing === undefined ? [] : [existing];
+    if (other !== id && existing !== undefined) others.push(existing);
   });
   return tableOf([...others, row], rule, table.version + 1);
 }
@@ -94,6 +95,16 @@ function withTables(state: StoreState, tables: Tables): StoreState {
   return tables === state.tables ? state : { ...state, tables };
 }
 
+function unchangedOrOlder(known: DeviceValues[string] | undefined, row: StateRow): boolean {
+  if (known === undefined) return false;
+  if (Date.parse(known.observedAt) > Date.parse(row.observed_at)) return true;
+  return (
+    known.optimistic !== true &&
+    known.observedAt === row.observed_at &&
+    sameJson(known.value, row.value)
+  );
+}
+
 function valuesWith(
   values: Readonly<Record<string, DeviceValues>>,
   row: StateRow,
@@ -101,14 +112,7 @@ function valuesWith(
 ): Readonly<Record<string, DeviceValues>> {
   const current = values[row.device_id] ?? {};
   const known = current[row.capability];
-  if (
-    !removed &&
-    known?.optimistic !== true &&
-    known?.observedAt === row.observed_at &&
-    sameJson(known.value, row.value)
-  ) {
-    return values;
-  }
+  if (!removed && unchangedOrOlder(known, row)) return values;
   if (removed) {
     const next = Object.fromEntries(
       Object.entries(current).filter(([capability]) => capability !== row.capability),
@@ -179,8 +183,10 @@ function applyClient(
   );
   const own = state.session === null ? undefined : tables.clients.byId[state.session.client.id];
   const session =
-    state.session === null || own === undefined ? state.session : { ...state.session, client: own };
-  return { ...state, tables, session };
+    state.session === null || own === undefined || own === state.session.client
+      ? state.session
+      : { ...state.session, client: own };
+  return withTables(session === state.session ? state : { ...state, session }, tables);
 }
 
 function applyDevice(
@@ -252,10 +258,12 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   settings: applySettings,
   device_state: applyState,
   state_history: (state) => state,
+  device_effect_targets: (state) => state,
   clients: applyClient,
   devices: applyDevice,
   provider_links: list('provider_links'),
   rooms: list('rooms'),
+  device_groups: list('device_groups'),
   commands: list('commands'),
   events: list('events'),
   cameras: list('cameras'),
@@ -264,6 +272,9 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   ir_codes: list('ir_codes'),
   scenes: list('scenes'),
   automations: list('automations'),
+  automation_values: list('automation_values'),
+  automation_sequences: list('automation_sequences'),
+  automation_runs: list('automation_runs'),
   layouts: list('layouts'),
   push_targets: list('push_targets'),
   health_sources: list('health_sources'),
@@ -326,15 +337,11 @@ export function applyChange(state: StoreState, change: RowChange): StoreState {
 function valuesOf(rows: readonly StateRow[]): Readonly<Record<string, DeviceValues>> {
   const values: Record<string, Record<string, DeviceValues[string]>> = {};
   for (const row of rows) {
-    values[row.device_id] = {
-      ...values[row.device_id],
-      [row.capability]: { value: row.value, observedAt: row.observed_at },
-    };
+    const device = (values[row.device_id] ??= {});
+    device[row.capability] = { value: row.value, observedAt: row.observed_at };
   }
   return values;
 }
-
-type NextTable = <T extends ListTable>(name: T, rows: readonly RowOf<T>[]) => Table<RowOf<T>>;
 
 function talkTablesOf(
   snapshot: Snapshot,
@@ -363,6 +370,10 @@ function pluginTablesOf(
   };
 }
 
+function groupTablesOf(snapshot: Snapshot, next: NextTable): Pick<Tables, 'device_groups'> {
+  return { device_groups: next('device_groups', snapshot.tables.device_groups ?? []) };
+}
+
 function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
   const t = snapshot.tables;
   const owner = snapshot.owner;
@@ -372,6 +383,7 @@ function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
     clients: next('clients', owner?.clients ?? [snapshot.session.client]),
     provider_links: next('provider_links', t.provider_links),
     rooms: next('rooms', t.rooms),
+    ...groupTablesOf(snapshot, next),
     devices: next('devices', t.devices.map(deviceOf)),
     commands: next('commands', t.commands),
     events: next('events', t.events),
@@ -381,6 +393,7 @@ function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
     ir_codes: next('ir_codes', t.ir_codes),
     scenes: next('scenes', t.scenes),
     automations: next('automations', t.automations),
+    ...automationTablesOf(snapshot, next),
     layouts: next('layouts', t.layouts),
     push_targets: next('push_targets', owner?.push_targets ?? []),
     health_sources: next('health_sources', t.health_sources),

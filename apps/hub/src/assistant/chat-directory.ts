@@ -35,6 +35,17 @@ function callTitle(device: string, at: Date): string {
   return `Voice · ${device} · ${time}`.slice(0, 80);
 }
 
+export function ownedChat(
+  store: Pick<Store, 'aiChats'>,
+  owner: ChatOwner,
+  chatId: string,
+): AiChatRow {
+  const chat = store.aiChats.chat(chatId);
+  if (chat.profile_id !== owner.profileId)
+    throw new ApiError('forbidden', 'That chat belongs to someone else.');
+  return chat;
+}
+
 export class ChatDirectory {
   constructor(
     private readonly store: Store,
@@ -59,11 +70,7 @@ export class ChatDirectory {
     return this.selections.select(profileId, engine);
   }
   own(owner: ChatOwner, chatId: string): AiChatRow {
-    const chat = this.store.aiChats.chat(chatId);
-    if (chat.profile_id !== owner.profileId) {
-      throw new ApiError('forbidden', 'That chat belongs to someone else.');
-    }
-    return chat;
+    return ownedChat(this.store, owner, chatId);
   }
 
   defaultChat(profileId: string): AiChatRow {

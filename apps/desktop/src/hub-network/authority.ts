@@ -9,7 +9,11 @@ import type { NodeRouteView } from '../../../hub/src/service/route-view';
 import { writeRouteNotice } from '../../../hub/src/service/route-notices';
 import { Logger } from '@smarteverything/logging';
 import { DesktopAuthorityView } from './authority-view.js';
-import { enrollDesktopClient, type DesktopClientEnrollment } from './authority-enrollment.js';
+import {
+  enrollDesktopClient,
+  refreshDesktopEndpoint,
+  type DesktopClientEnrollment,
+} from './authority-enrollment.js';
 import { HubPolicies, HubTransportError } from './policy.js';
 const log = new Logger('desktop.hub-route');
 interface ClientScope {
@@ -22,6 +26,7 @@ export class DesktopRouteAuthority implements HubLeasePort {
   private readonly policies = new HubPolicies();
   private readonly clients = new Map<string, ClientScope>();
   private readonly operations = new Map<string, AbortController>();
+  private readonly refreshes = new Map<string, AbortController>();
   private observed: NodeRouteView | null = null;
   private generation = 0;
   private networkGeneration = 0;
@@ -66,12 +71,15 @@ export class DesktopRouteAuthority implements HubLeasePort {
       };
       this.policies.configure(configuration.trust);
       this.clients.set(scopeId, client);
+      this.refreshEndpoint(scopeId, client, this.view.value);
       return client.snapshot;
     } finally {
       if (this.operations.get(scopeId) === operation) this.operations.delete(scopeId);
     }
   }
   clear(scopeId: string): void {
+    this.refreshes.get(scopeId)?.abort();
+    this.refreshes.delete(scopeId);
     this.operations.get(scopeId)?.abort();
     this.operations.delete(scopeId);
     this.clients
@@ -104,7 +112,7 @@ export class DesktopRouteAuthority implements HubLeasePort {
       routeGeneration: previous?.routeGeneration ?? this.generation,
       networkGeneration: previous?.networkGeneration ?? this.networkGeneration,
     };
-    if (this.pendingRevision !== null)
+    if (this.checkingUnavailable(enrollment, view))
       return NATIVE_HUB_ROUTE_SNAPSHOT.parse({
         ...base,
         readiness: 'pending',
@@ -135,6 +143,12 @@ export class DesktopRouteAuthority implements HubLeasePort {
       endpoint,
       detail: view.state.detail,
     });
+  }
+  private checkingUnavailable(
+    enrollment: DesktopClientEnrollment,
+    view: NodeRouteView | null,
+  ): boolean {
+    return this.pendingRevision !== null && (view === null || !this.allowed(enrollment, view));
   }
   private allowed(enrollment: DesktopClientEnrollment, view: NodeRouteView): boolean {
     const endpoint = view.state.endpoint;
@@ -252,7 +266,64 @@ export class DesktopRouteAuthority implements HubLeasePort {
       };
       this.clients.set(scopeId, client);
       this.emit(client.snapshot);
+      this.refreshEndpoint(scopeId, client, view, retired);
     }
+  }
+  private refreshable(
+    enrollment: DesktopClientEnrollment,
+    view: NodeRouteView | null,
+  ): view is NodeRouteView {
+    return (
+      view !== null &&
+      view.state.endpoint?.kind === 'lan' &&
+      view.state.localSupported &&
+      view.canonicalOrigin === enrollment.configuration.canonicalOrigin &&
+      JSON.stringify(view.trust?.identity) === JSON.stringify(enrollment.metadata.identity) &&
+      !this.allowed(enrollment, view)
+    );
+  }
+  private refreshEndpoint(
+    scopeId: string,
+    client: ClientScope,
+    view: NodeRouteView | null,
+    retired = true,
+  ): void {
+    if (!retired) return;
+    this.refreshes.get(scopeId)?.abort();
+    this.refreshes.delete(scopeId);
+    if (!this.refreshable(client.enrollment, view)) return;
+    const endpoint = view.state.endpoint;
+    if (endpoint === null) return;
+    const operation = new AbortController();
+    this.refreshes.set(scopeId, operation);
+    void refreshDesktopEndpoint(client.enrollment, endpoint, operation.signal)
+      .then((enrollment): void => {
+        const current = this.clients.get(scopeId);
+        if (
+          current?.enrollment !== client.enrollment ||
+          current.controller !== client.controller ||
+          operation.signal.aborted ||
+          this.stopped
+        )
+          return;
+        this.policies.configure(enrollment.configuration.trust);
+        const updated = {
+          ...current,
+          enrollment,
+          snapshot: this.snapshot(enrollment, this.observed, current.snapshot),
+        };
+        this.clients.set(scopeId, updated);
+        this.emit(updated.snapshot);
+      })
+      .catch((cause: unknown): void => {
+        if (!operation.signal.aborted)
+          log.warn('route.client_inventory_failed', {
+            error_name: cause instanceof Error ? cause.name : 'unknown',
+          });
+      })
+      .finally((): void => {
+        if (this.refreshes.get(scopeId) === operation) this.refreshes.delete(scopeId);
+      });
   }
   authorize(scopeId: string, bearer: string | undefined): void {
     const token = this.clients.get(scopeId)?.enrollment.token;

@@ -61,11 +61,17 @@ export async function pluginAgentTransport(
   signal: AbortSignal | undefined = currentRequestSignal(),
 ): Promise<Result> {
   const { service, access } = ports;
-  const { caller } = access.authorizeCall(request.claim.session_id, 'subagent_run', {});
+  const caller = access.caller(request.claim.session_id);
   if (caller.chatId === null || caller.authority === undefined)
     throw new ApiError('forbidden', 'Helpers require their current initiating conversation.');
   const parent = service.own({ profileId: caller.profileId, role: caller.role }, caller.chatId);
   if (request.action === 'start') return startHelper(ports, request, caller, parent);
+  access.authorizeCall(request.claim.session_id, 'subagent_run', {
+    chatId: parent.id,
+    task: INPUT.parse(request.arguments).prompt,
+    wait: false,
+    timeoutSeconds: 300,
+  });
   const accepted = admittedHelper(service, request, caller, parent);
   const run = service.store.aiAgentRuns.read(accepted.run_id);
   if (run.parent_chat_id !== parent.id || run.child_chat_id !== accepted.child_id)
@@ -89,7 +95,7 @@ async function startHelper(
   admitCanonicalTool(service, request);
   const plan = await helperPlan(ports, request, parent);
   const { args, policy } = plan;
-  access.authorizeCall(request.claim.session_id, 'subagent_run', args);
+  access.authorizeCall(request.claim.session_id, 'subagent_run', { chatId: parent.id, ...args });
   const key = receiptKey(request);
   const canonical = canonicalHelperSource(request, caller, parent, plan);
   const receipt = service.store.harnessCoordination.begin(key, request.claim.session_id, canonical);

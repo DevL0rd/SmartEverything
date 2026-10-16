@@ -1,5 +1,6 @@
 import {
   BODY_READINGS_SNAPSHOT,
+  AUTOMATION_RUN_HISTORY_LIMIT,
   SNAPSHOT_WINDOWS,
   TALK_MESSAGES_SNAPSHOT,
   pluginStreamKey,
@@ -62,6 +63,11 @@ export const RULES: Rules = {
     keep: ALL,
   },
   rooms: { idOf: (row) => row.id, order: positioned, keep: ALL },
+  device_groups: {
+    idOf: (row) => row.id,
+    order: (a, b) => a.name.localeCompare(b.name),
+    keep: ALL,
+  },
   devices: { idOf: (row) => row.id, order: devicesOrder, keep: ALL },
   commands: {
     idOf: (row) => row.id,
@@ -87,6 +93,21 @@ export const RULES: Rules = {
   ir_codes: { idOf: (row) => row.id, order: alphabetical((row) => row.button), keep: ALL },
   scenes: { idOf: (row) => row.id, order: positioned, keep: ALL },
   automations: { idOf: (row) => row.id, order: alphabetical((row) => row.name), keep: ALL },
+  automation_sequences: {
+    idOf: (row) => row.id,
+    order: alphabetical((row) => row.name),
+    keep: ALL,
+  },
+  automation_values: {
+    idOf: (row) => row.id,
+    order: alphabetical((row) => row.content.name),
+    keep: ALL,
+  },
+  automation_runs: {
+    idOf: (row) => row.id,
+    order: newest((row) => row.created_at),
+    keep: AUTOMATION_RUN_HISTORY_LIMIT,
+  },
   layouts: { idOf: (row) => row.page, order: alphabetical((row) => row.page), keep: ALL },
   push_targets: {
     idOf: (row) => row.token,

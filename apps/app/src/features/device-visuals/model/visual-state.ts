@@ -106,18 +106,24 @@ function thermalOf(lookup: Lookup, family: DeviceFamily, power: VisualPower): Th
   return 'idle';
 }
 
+function observedAfter(lookup: Lookup, first: CapabilityRole, second: CapabilityRole): boolean {
+  const left = withRole(lookup.presentation, first);
+  const right = withRole(lookup.presentation, second);
+  const a = left === undefined ? undefined : lookup.values[left.key];
+  const b = right === undefined ? undefined : lookup.values[right.key];
+  return (
+    a !== undefined && (b === undefined || Date.parse(a.observedAt) > Date.parse(b.observedAt))
+  );
+}
+
 function colourOf(lookup: Lookup): string | null {
   const presented = withRole(lookup.presentation, 'color');
   const colour =
     presented === undefined ? null : presentedColourCss(presented, valueOf(lookup, 'color'));
-  if (colour !== null) {
-    return colour;
-  }
   const temperature = numberOf(lookup, 'color_temperature');
-  if (temperature === null || temperature <= 0) {
-    return null;
-  }
-  return kelvinCss(temperature < 1000 ? 1_000_000 / temperature : temperature);
+  if (temperature === null || temperature <= 0) return colour;
+  const kelvin = kelvinCss(temperature < 1000 ? 1_000_000 / temperature : temperature);
+  return colour === null || observedAfter(lookup, 'color_temperature', 'color') ? kelvin : colour;
 }
 
 function waterLowOf(lookup: Lookup): boolean {

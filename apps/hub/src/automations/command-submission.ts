@@ -7,9 +7,11 @@ import type { Store } from '../store/store';
 export function submitAutomationCommands(
   executor: CommandExecutor,
   rows: readonly CommandRow[],
+  admitted = false,
+  authorize?: () => void,
 ): void {
   for (const row of rows) {
-    void executor.run(row);
+    void executor.run(row, admitted, authorize);
   }
 }
 
@@ -17,14 +19,22 @@ export async function finishAutomationCommands(
   store: Store,
   clock: Clock,
   executor: CommandExecutor,
-  rows: readonly CommandRow[],
+  submission:
+    | readonly CommandRow[]
+    | {
+        readonly rows: readonly CommandRow[];
+        readonly admitted: boolean;
+        readonly authorize?: () => void;
+      },
 ): Promise<void> {
+  const { rows, admitted, authorize } =
+    'rows' in submission ? submission : { rows: submission, admitted: false, authorize: undefined };
   const outcome = await submitAndWait({
     feed: store.feed,
     clock,
     waitMs: COMMAND_WAIT_MS,
     submit: (): Promise<readonly CommandRow[]> => {
-      submitAutomationCommands(executor, rows);
+      submitAutomationCommands(executor, rows, admitted, authorize);
       return Promise.resolve(rows);
     },
     current: (id) => store.commands.byId(id),

@@ -68,6 +68,7 @@ class PluginPortAddressUnavailableError extends Error {
 export interface PluginNetwork {
   readonly listenTcp: (port: number, address: string) => Promise<Server>;
   readonly listenUdp: (port: number, address: string) => Promise<Socket>;
+  readonly connectUdp: (port: number, address: string) => Promise<Socket>;
 }
 
 const BIND_ERRORS: Readonly<Record<string, new (port: number, address: string) => Error>> = {
@@ -125,6 +126,32 @@ function bound(socket: Socket, port: number, address: string): Promise<Socket> {
   });
 }
 
+function connecting(socket: Socket, port: number, address: string): Promise<Socket> {
+  return new Promise((resolve, reject) => {
+    const failed = (cause: Error): void => {
+      socket.off('close', closed);
+      reject(cause);
+    };
+    const closed = (): void => {
+      socket.off('error', failed);
+      reject(new PluginUdpClosedError());
+    };
+    socket.once('error', failed);
+    socket.once('close', closed);
+    socket.connect(port, address, () => {
+      socket.off('error', failed);
+      socket.off('close', closed);
+      resolve(socket);
+    });
+  });
+}
+class PluginUdpClosedError extends Error {
+  override readonly name = 'PluginUdpClosedError';
+  constructor() {
+    super('The plugin stopped before its outgoing UDP socket connected.');
+  }
+}
+
 function closeOnce(socket: Socket): void {
   try {
     socket.close();
@@ -153,6 +180,20 @@ export function networkOf(
         server.close();
       });
       return server;
+    },
+    connectUdp: async (port, address): Promise<Socket> => {
+      declared({ pluginId, listens, protocol: 'udp', port, address });
+      const socket = createSocket(isIP(address) === 6 ? 'udp6' : 'udp4');
+      const release = track(() => {
+        closeOnce(socket);
+      });
+      socket.once('close', release);
+      try {
+        return await connecting(socket, port, address);
+      } catch (cause) {
+        release();
+        throw cause;
+      }
     },
     listenUdp: async (port, address): Promise<Socket> => {
       declared({ pluginId, listens, protocol: 'udp', port, address });

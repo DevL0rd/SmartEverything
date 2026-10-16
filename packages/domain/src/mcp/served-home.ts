@@ -1,6 +1,10 @@
+import { SERVED_DEVICE_GROUPS } from './served-device-groups';
+import { SERVED_SEQUENCES } from './served-sequences';
 import type { Served } from './served-types';
 
 export const SERVED_HOME = [
+  ...SERVED_DEVICE_GROUPS,
+  ...SERVED_SEQUENCES,
   [
     'get_home',
     'home',
@@ -235,6 +239,14 @@ export const SERVED_HOME = [
     },
   ],
   [
+    'list_speech_sources',
+    'automations',
+    'read',
+    'List speech sources',
+    'Readable finalized camera, plugin and audio-attachment sources for literal speech phrase triggers; images and mixed video notes are unavailable.',
+    { part: 'list_speech_sources' },
+  ],
+  [
     'list_automations',
     'automations',
     'read',
@@ -247,7 +259,7 @@ export const SERVED_HOME = [
     'automations',
     'control',
     'Edit an automation',
-    'Adds, changes, switches on or off, or removes an automation (a definition of triggers, conditions and actions). automationId comes from list_automations; deviceId and capability keys from get_device; signal kinds and match keys from read_signals.',
+    'Adds, changes, switches on or off, or removes an automation (a definition of triggers, conditions and actions). automationId comes from list_automations; deviceId and capability keys from get_device; signal kinds and match keys from read_signals. Discover list_speech_sources for speech triggers: literal words or contiguous phrases, authorized global or selected sources, bot speech off by default.',
     {
       key: 'action',
       parts: {
@@ -264,6 +276,94 @@ export const SERVED_HOME = [
     'Run an automation',
     'Runs an automation’s actions now, skipping its triggers and conditions; automationId comes from list_automations.',
     { part: 'run_automation' },
+  ],
+  [
+    'read_automation_revision',
+    'automations',
+    'read',
+    'Read automation revision',
+    'Read the current automation and its definition revision before a guarded save.',
+    { part: 'read_automation_revision' },
+  ],
+  [
+    'list_automation_values',
+    'automations',
+    'read',
+    'List automation Values',
+    'Read the home’s typed automation Values and their current revisions.',
+    { part: 'list_automation_values' },
+  ],
+  [
+    'create_automation_value',
+    'automations',
+    'control',
+    'Create an automation Value',
+    'Create a boolean, number, duration or choice Value with validated bounds.',
+    { part: 'create_automation_value' },
+  ],
+  [
+    'update_automation_value',
+    'automations',
+    'control',
+    'Update an automation Value',
+    'Replace a Value definition and current value at its expected revision.',
+    { part: 'update_automation_value' },
+  ],
+  [
+    'apply_automation_value_operation',
+    'automations',
+    'control',
+    'Apply an automation Value operation',
+    'Atomically set, toggle, increment, decrement or cycle a typed automation Value.',
+    { part: 'apply_automation_value_operation' },
+  ],
+  [
+    'remove_automation_value',
+    'automations',
+    'control',
+    'Remove an automation Value',
+    'Delete an unreferenced automation Value.',
+    { part: 'remove_automation_value' },
+  ],
+  [
+    'list_automation_runs',
+    'automations',
+    'read',
+    'List automation runs',
+    'Read the newest 200 owned runs, optionally for one automation.',
+    { part: 'list_automation_runs' },
+  ],
+  [
+    'read_automation_run',
+    'automations',
+    'read',
+    'Read an automation run',
+    'Read run status and bounded step outcomes with linked command history IDs.',
+    { part: 'read_automation_run' },
+  ],
+  [
+    'stop_automation_run',
+    'automations',
+    'control',
+    'Stop an automation run',
+    'Idempotently cancel future run actions; already dispatched commands may complete.',
+    { part: 'stop_automation_run' },
+  ],
+  [
+    'stop_automation_runs',
+    'automations',
+    'control',
+    'Stop automation runs',
+    'Cancel active and queued runs of one automation, optionally restricted to its control key.',
+    { part: 'stop_automation_runs' },
+  ],
+  [
+    'start_automation',
+    'automations',
+    'control',
+    'Start an automation',
+    'Start saved actions under their run policy, skipping entry triggers and conditions, and return the owned run immediately.',
+    { part: 'start_automation' },
   ],
   [
     'list_scheduled',
@@ -295,7 +395,7 @@ export const SERVED_HOME = [
     'automations',
     'read',
     'Read signals',
-    'The kinds of signal in the home, or the newest values of matching signals.',
+    'Discover signal kinds and match keys, or read newest signal values. A match key with values:null has no fixed enum; use exact observed detail values. Empty latest values do not imply unsupported triggers.',
     { key: 'view', parts: { kinds: 'list_signal_kinds', values: 'read_signal' } },
   ],
 ] as const satisfies readonly Served[];

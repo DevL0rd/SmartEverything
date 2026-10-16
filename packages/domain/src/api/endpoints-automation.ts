@@ -1,4 +1,7 @@
+import { AUTOMATION_SEQUENCE_ENDPOINTS } from './endpoints-automation-sequences';
+import { AUTOMATION_RUNTIME_ENDPOINTS } from './endpoints-automation-runtime';
 import { z } from 'zod';
+import { SPEECH_SOURCES } from '../speech-triggers';
 import { AUTOMATION_DEFINITION, SCENE_ACTIONS } from '../automations';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, JSON_OBJECT, NOTHING, POSITION, somethingToChange } from './primitives';
@@ -91,6 +94,17 @@ const SCENE_ENDPOINTS = {
 } as const;
 
 const AUTOMATION_ENDPOINTS = {
+  listSpeechSources: endpoint({
+    method: 'GET',
+    path: '/api/automations/speech-sources',
+    access: 'member',
+    summary:
+      'Readable finalized-speech sources for literal word or contiguous phrase automation triggers; global means these authorized sources, images and mixed video notes are unavailable',
+    params: NOTHING,
+    query: NOTHING,
+    body: NO_BODY,
+    response: SPEECH_SOURCES,
+  }),
   listAutomations: endpoint({
     method: 'GET',
     path: '/api/automations',
@@ -105,7 +119,8 @@ const AUTOMATION_ENDPOINTS = {
     method: 'POST',
     path: '/api/automations',
     access: 'member',
-    summary: 'Add an automation',
+    summary:
+      'Add an automation; speech triggers match literal finalized words or contiguous phrases from currently authorized sources, with bot speech excluded by default',
     params: NOTHING,
     query: NOTHING,
     body: z.strictObject({
@@ -126,6 +141,7 @@ const AUTOMATION_ENDPOINTS = {
       name: AUTOMATION_NAME,
       enabled: z.boolean(),
       definition: AUTOMATION_DEFINITION,
+      expectedRevision: z.string().regex(/^[a-f0-9]{64}$/),
     }),
     response: AUTOMATION_ROW,
   }),
@@ -206,6 +222,8 @@ const CLIENT_ENDPOINTS = {
 } as const;
 
 export const AUTOMATION_AREA_ENDPOINTS = {
+  ...AUTOMATION_RUNTIME_ENDPOINTS,
+  ...AUTOMATION_SEQUENCE_ENDPOINTS,
   ...SCENE_ENDPOINTS,
   ...AUTOMATION_ENDPOINTS,
   ...CLIENT_ENDPOINTS,

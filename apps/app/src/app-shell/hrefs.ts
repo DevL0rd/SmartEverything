@@ -30,14 +30,31 @@ export const href = {
   cameras: (): Href => '/cameras',
   fitness: (): Href => '/fitness',
   automations: (): Href => '/automations',
-  automation: (automationId: string, idea?: string): Href => ({
+  automation: (automationId: string, idea?: string, focus?: string): Href => ({
     pathname: '/automations/[automationId]',
-    params: idea === undefined ? { automationId } : { automationId, idea },
+    params: {
+      automationId,
+      ...(idea === undefined ? {} : { idea }),
+      ...(focus === undefined ? {} : { focus }),
+    },
   }),
-  automationRuns: (automationId?: string): Href =>
+  automationRuns: (automationId?: string, focus?: string): Href =>
     automationId === undefined
-      ? '/automations/runs'
-      : { pathname: '/automations/[automationId]/runs', params: { automationId } },
+      ? { pathname: '/automations/runs', params: focus === undefined ? {} : { focus } }
+      : {
+          pathname: '/automations/[automationId]/runs',
+          params: { automationId, ...(focus === undefined ? {} : { focus }) },
+        },
+  automationValues: (): Href => '/automations/values',
+  automationValue: (valueId: string, focus?: string): Href => ({
+    pathname: '/automations/values/[valueId]',
+    params: { valueId, ...(focus === undefined ? {} : { focus }) },
+  }),
+  automationSequences: (): Href => '/automations/sequences',
+  automationSequence: (sequenceId: string, focus?: string): Href => ({
+    pathname: '/automations/sequences/[sequenceId]',
+    params: { sequenceId, ...(focus === undefined ? {} : { focus }) },
+  }),
   automationSchedule: (): Href => '/automations/schedule',
   scheduled: (): Href => '/automations/scheduled',
   scheduledItem: (scheduleId: string): Href => ({

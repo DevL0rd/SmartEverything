@@ -1,3 +1,13 @@
+import { authorSpeechAutomation } from '../../automations/speech-authoring';
+import { speechPrincipal } from '../../transcripts/speech-principal';
+import { readableSpeechSources } from '../../transcripts/speech-catalogue';
+import { AUTOMATION_DEFINITION } from '@smarteverything/domain';
+import { requestSequence } from '../request-signal';
+import {
+  validateAutomationProgram,
+  validateValueConditions,
+} from '../../automations/validate-program';
+import { automationProgram, programActions } from '../../automations/program';
 import {
   API_ENDPOINTS as E,
   ApiError,
@@ -7,6 +17,8 @@ import {
   validateCommand,
   type Action,
   type AutomationDefinition,
+  type PluginOrigin,
+  walkActions,
 } from '@smarteverything/domain';
 import { pluginOriginOf } from '../../ai-tools/plugin-turn';
 import { currentExecutionAuthorities } from '../../assistant/execution-authority';
@@ -27,6 +39,7 @@ type SceneRoutes = Record<
 >;
 
 type AutomationRoutes = Record<
+  | 'listSpeechSources'
   | 'listAutomations'
   | 'createAutomation'
   | 'updateAutomation'
@@ -84,7 +97,7 @@ function problemWith(action: Action, store: Pick<Store, 'devices'>, tools: ToolH
     const check = tools.check(action.tool, action.args);
     return check.ok ? null : `${action.tool} would be refused: ${check.reason}`;
   }
-  if (action.type !== 'command') {
+  if (action.type !== 'command' || 'binding' in action) {
     return null;
   }
   try {
@@ -115,25 +128,39 @@ export function requireRunnableActions(
   }
 }
 
+export function authoredActions(
+  tools: ToolHub,
+  caller: Caller,
+  actions: readonly Action[],
+): PluginOrigin | null {
+  const plugin = caller.kind === 'client' ? pluginOriginOf(caller) : null;
+  if (plugin !== null) {
+    for (const action of walkActions(actions)) {
+      const refusal =
+        action.type === 'tool' ? tools.pluginTurnRefusal(action.tool, action.args) : null;
+      if (refusal !== null) throw refusal;
+    }
+  }
+  return plugin;
+}
+
 function authored(
+  store: Store,
   tools: ToolHub,
   caller: Caller,
   definition: AutomationDefinition,
 ): AutomationDefinition {
-  const plugin = caller.kind === 'client' ? pluginOriginOf(caller) : null;
-  if (plugin !== null) {
-    for (const action of definition.actions) {
-      const refusal =
-        action.type === 'tool' ? tools.pluginTurnRefusal(action.tool, action.args) : null;
-      if (refusal !== null) {
-        throw refusal;
-      }
-    }
-  }
-  return { ...definition, origin: plugin };
+  return {
+    ...definition,
+    origin: authoredActions(
+      tools,
+      caller,
+      programActions(automationProgram(store, definition.actions)),
+    ),
+  };
 }
 
-function reauthorizationProfile(store: Store, caller: Caller): string | undefined {
+export function reauthorizationProfile(store: Store, caller: Caller): string | undefined {
   if (
     caller.kind !== 'client' ||
     caller.client.role !== 'owner' ||
@@ -159,32 +186,51 @@ function saveAutomation(
 ): ReturnType<Store['automations']['update']> {
   const { id, change, caller } = input;
   if (change.definition !== undefined) {
-    requireOwnerForAiActions(caller, change.definition);
+    const actions = validateAutomationProgram(store, change.definition.actions);
+    validateValueConditions(store, change.definition.conditions);
+    requireOwnerForAiActions(caller, { actions: [...actions] });
     requireKnownSignals(store, change.definition);
-    requireRunnableActions(store, tools, change.definition);
+    requireRunnableActions(store, tools, { actions: [...actions] });
   }
-  return store.automations.update(
+  return authorSpeechAutomation(store, caller, {
+    definition:
+      change.definition ?? AUTOMATION_DEFINITION.parse(store.automations.byId(id).definition),
+    save: () =>
+      store.automations.update(
+        id,
+        {
+          ...change,
+          definition:
+            change.definition === undefined
+              ? undefined
+              : authored(store, tools, caller, change.definition),
+        },
+        reauthorizationProfile(store, caller),
+      ),
     id,
-    {
-      ...change,
-      definition:
-        change.definition === undefined ? undefined : authored(tools, caller, change.definition),
-    },
-    reauthorizationProfile(store, caller),
-  );
+  });
 }
 
 export function automationRoutes(context: ServerContext, tools: ToolHub): AutomationRoutes {
   const { store, hub } = context;
   return {
+    listSpeechSources: bound(E.listSpeechSources, ({ caller }) =>
+      readableSpeechSources(store, speechPrincipal(store, caller)),
+    ),
     listAutomations: bound(E.listAutomations, () => store.automations.list()),
     createAutomation: bound(E.createAutomation, ({ body, caller }) => {
-      requireOwnerForAiActions(caller, body.definition);
+      const actions = validateAutomationProgram(store, body.definition.actions);
+      validateValueConditions(store, body.definition.conditions);
+      requireOwnerForAiActions(caller, { actions: [...actions] });
       requireKnownSignals(store, body.definition);
-      requireRunnableActions(store, tools, body.definition);
-      return store.automations.create({
-        ...body,
-        definition: authored(tools, caller, body.definition),
+      requireRunnableActions(store, tools, { actions: [...actions] });
+      return authorSpeechAutomation(store, caller, {
+        definition: body.definition,
+        save: () =>
+          store.automations.create({
+            ...body,
+            definition: authored(store, tools, caller, body.definition),
+          }),
       });
     }),
     updateAutomation: bound(E.updateAutomation, ({ params, body, caller }) =>
@@ -202,7 +248,7 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
       layout: store.personal.layout(ownerOf(store, caller), params.page)?.layout ?? null,
     })),
     saveLayout: bound(E.saveLayout, ({ params, body, caller }) =>
-      store.personal.saveLayout(ownerOf(store, caller), params.page, body.layout),
+      store.personal.saveLayout(ownerOf(store, caller), params.page, body.layout, requestSequence),
     ),
     listPushTargets: bound(E.listPushTargets, () => store.personal.pushTargets()),
     savePushTarget: bound(E.savePushTarget, ({ body, caller }) =>

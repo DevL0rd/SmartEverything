@@ -114,7 +114,7 @@ class HubResourceGrants(private val policy: HubRoutePolicy) : AutoCloseable {
     val url = input.getString("url")
     val uri = URI(url)
     require(url.length <= 4096 && uri.scheme == "https" && uri.userInfo == null && uri.fragment == null)
-    require(HubTrust.origin(uri) == binding.canonicalOrigin && uri.rawPath.startsWith('/') && uri.rawQuery != null)
+    require(HubTrust.origin(uri) == HubTrust.origin(URI(binding.canonicalOrigin)) && uri.rawPath.startsWith('/') && uri.rawQuery != null)
     val expiresAt = input.getString("expiresAt")
     val expiry = Instant.parse(expiresAt)
     require(expiry > Instant.now())

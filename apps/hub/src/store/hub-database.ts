@@ -1,3 +1,4 @@
+import { ApiError } from '@smarteverything/domain';
 import { currentExecutionAuthorities } from '../assistant/execution-authority';
 import { admitEffectCommand } from '../harness/effect-authority';
 import { describeError } from '../commands/executor';
@@ -91,6 +92,11 @@ function commandPart(store: Store): CommandPart {
       settle(() => {
         if (!store.commands.claim(id, from)) return false;
         try {
+          if (!store.automationRuns.canDispatch(id))
+            throw new ApiError(
+              'command_refused',
+              'The owning automation run was cancelled before command dispatch.',
+            );
           admitEffectCommand(store, id);
           return true;
         } catch (cause) {
@@ -102,15 +108,19 @@ function commandPart(store: Store): CommandPart {
       settle(() => {
         store.commands.finish(id, outcome);
       }),
-    insertCommands: (rows) =>
+    insertCommands: (rows, record) =>
       settle(() =>
-        store.commands.insert(
-          rows.map((row) => ({
-            ...row,
-            source: currentExecutionAuthorities().length === 0 ? row.source : 'assistant',
-            requestedBy: null,
-          })),
-        ),
+        store.write(() => {
+          const commands = store.commands.insert(
+            rows.map((row) => ({
+              ...row,
+              source: currentExecutionAuthorities().length === 0 ? row.source : 'assistant',
+              requestedBy: null,
+            })),
+          );
+          record?.(commands);
+          return commands;
+        }),
       ),
     updateProviderLink: (provider, change) =>
       settle(() => {

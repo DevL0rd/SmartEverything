@@ -1,3 +1,11 @@
+export * from './automation-feature-compatibility';
+export * from './speech-triggers';
+export * from './device-effects';
+export * from './api/endpoints-device-effects';
+export * from './api/endpoints-device-groups';
+export * from './device-targets';
+export * from './device-groups';
+export * from './device-group-commands';
 export * from './values';
 
 export * from './capabilities';
@@ -44,6 +52,7 @@ export type { CalendarDate, GeoPoint, SunEvent, SunSchedule } from './sun';
 export {
   ACTION,
   AUTOMATION_DEFINITION,
+  LEGACY_AUTOMATION_DEFINITION,
   CLOCK_TIME,
   COMMAND_ACTION,
   CONDITION,
@@ -64,6 +73,8 @@ export {
 export type {
   Action,
   AutomationDefinition,
+  LegacyAutomationDefinition,
+  LegacyCondition,
   CommandAction,
   Condition,
   ConditionContext,
@@ -413,3 +424,15 @@ export * from './api/endpoints-ai-references';
 export * from './ai-reference-compatibility';
 
 export * from './ai-reference-runtime';
+
+export * from './automation-values';
+export * from './automation-runs';
+
+export * from './automation-actions';
+export * from './automation-bindings';
+export * from './automation-tree';
+export * from './automation-sequences';
+
+export * from './automation-references';
+
+export * from './automation-runtime-compatibility';

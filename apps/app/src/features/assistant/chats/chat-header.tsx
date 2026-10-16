@@ -16,6 +16,7 @@ import { ProfileSwitcher } from '../../profiles';
 import { ContextRing } from '../components/context-ring';
 import { TypingDots } from '../components/typing-dots';
 import { useAssistantName } from '../data/assistant-data';
+import { useContextUsage } from '../data/context-usage';
 import { sublineOf, waitingText, type Subline } from '../model/chat-subline';
 import { useChatIdentity } from './chat-identity';
 import { useChatModel } from './chat-model';
@@ -38,7 +39,13 @@ function Back(): ReactNode {
   );
 }
 
-function SublineText({ line }: { readonly line: Subline }): ReactNode {
+function SublineText({
+  line,
+  contextLabel,
+}: {
+  readonly line: Subline;
+  readonly contextLabel: string;
+}): ReactNode {
   switch (line.kind) {
     case 'working':
       return (
@@ -68,7 +75,7 @@ function SublineText({ line }: { readonly line: Subline }): ReactNode {
             <View className="shrink-0 flex-row items-center gap-1">
               <ContextRing percent={line.context} />
               <Text variant="footnote" tone="variant" numberOfLines={1} className="tabular">
-                {`${String(line.context)} %`}
+                {`${contextLabel === 'Context' ? '' : `${contextLabel} `}${String(line.context)} %`}
               </Text>
             </View>
           )}
@@ -167,18 +174,26 @@ export interface ChatHeaderProps {
   readonly panel: PanelToggle | null;
 }
 
-function useSubline(chat: AiChatRow, working: boolean, waiting: number): Subline {
+function useSubline(
+  chat: AiChatRow,
+  working: boolean,
+  waiting: number,
+): readonly [Subline, string] {
   const identity = useChatIdentity(chat);
   const model = useChatModel(chat.engine);
   const compact = useSizeClass().width === 'compact';
-  return sublineOf({
-    working,
-    waiting,
-    lead: identity.lead,
-    model: compact ? model.shortName : model.name,
-    context: chat.context_percent,
-    compact,
-  });
+  const context = useContextUsage(chat);
+  return [
+    sublineOf({
+      working,
+      waiting,
+      lead: identity.lead,
+      model: compact ? model.shortName : model.name,
+      context: context.percent,
+      compact,
+    }),
+    context.label,
+  ];
 }
 
 export function ChatHeader({
@@ -189,7 +204,7 @@ export function ChatHeader({
   leading = [],
   panel,
 }: ChatHeaderProps): ReactNode {
-  const line = useSubline(chat, working, waiting);
+  const [line, contextLabel] = useSubline(chat, working, waiting);
   return (
     <Frame
       back={back}
@@ -197,7 +212,10 @@ export function ChatHeader({
       title={
         <View className="min-w-0 flex-row items-center gap-1 px-1 py-1">
           <ProfileSwitcher compact />
-          <TitleText title={chat.title} line={<SublineText line={line} />} />
+          <TitleText
+            title={chat.title}
+            line={<SublineText line={line} contextLabel={contextLabel} />}
+          />
         </View>
       }
       trailing={

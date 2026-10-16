@@ -1,3 +1,4 @@
+import { automationProgram, programActions } from './program';
 import { AI_ACTION_TYPES, ApiError, type AutomationDefinition } from '@smarteverything/domain';
 import { validateExecutionAuthority } from '../assistant/execution-authority';
 import { profileIdOf, type Caller } from '../server/auth';
@@ -23,7 +24,10 @@ function currentCaller(store: Store, caller: Caller, profileId: string): Caller 
   return { ...caller, client };
 }
 
-export function admitManualAutomation(store: Store, definition: AutomationDefinition): () => void {
+export function admitManualAutomation(
+  store: Store,
+  definition: Pick<AutomationDefinition, 'actions'>,
+): () => void {
   const caller = currentControlCaller();
   if (caller === undefined) {
     throw new ApiError('forbidden', 'Running an automation now requires an authenticated caller.');
@@ -33,7 +37,9 @@ export function admitManualAutomation(store: Store, definition: AutomationDefini
     const principal = commandPrincipal(store, currentCaller(store, caller, profileId));
     if (
       principal.role !== 'owner' &&
-      definition.actions.some((action) => AI_ACTION_TYPES.has(action.type))
+      programActions(automationProgram(store, definition.actions)).some((action) =>
+        AI_ACTION_TYPES.has(action.type),
+      )
     ) {
       throw new ApiError(
         'forbidden',

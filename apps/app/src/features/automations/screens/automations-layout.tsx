@@ -26,6 +26,8 @@ export function AutomationsLayout(): ReactNode {
       screenOptions={master ? { ...options, animation: 'none' } : options}
     >
       <Stack.Screen name="[automationId]/index" dangerouslySingular={idOf('automationId')} />
+      <Stack.Screen name="values/[valueId]" dangerouslySingular={idOf('valueId')} />
+      <Stack.Screen name="sequences/[sequenceId]" dangerouslySingular={idOf('sequenceId')} />
       <Stack.Screen name="scenes/[sceneId]" dangerouslySingular={idOf('sceneId')} />
     </Stack>
   );

@@ -1,4 +1,5 @@
 import { isClimateDevice, type TableRow } from '@smarteverything/domain';
+import { memoOnInputs } from '../../../store/memo-selector';
 import { useStoreSelector } from '../../../store/store-context';
 import {
   deviceValuesOf,
@@ -26,17 +27,30 @@ function climateModelOf(device: Device): DeviceModel {
   return model;
 }
 
-function inRoom(device: Device, room: string | null): boolean {
-  return room === null || device.room_id === room;
-}
+const devicesByRoom = memoOnInputs(
+  (state) => [state.tables.devices],
+  (state) => {
+    const all = rowsOf(state.tables.devices).filter(
+      (device) => !device.hidden && isClimateDevice(device),
+    );
+    const rooms = new Map<string, Device[]>();
+    for (const device of all) {
+      if (device.room_id === null) continue;
+      const devices = rooms.get(device.room_id) ?? [];
+      devices.push(device);
+      rooms.set(device.room_id, devices);
+    }
+    return { all, rooms };
+  },
+);
 
 export function sourcesIn(state: StoreState, room: string | null): readonly ClimateSource[] {
-  return rowsOf(state.tables.devices)
-    .filter((device) => !device.hidden && isClimateDevice(device) && inRoom(device, room))
-    .map((device) => ({
-      model: climateModelOf(device),
-      values: deviceValuesOf(state, device.id),
-    }));
+  const devices = devicesByRoom(state);
+  const selected = room === null ? devices.all : (devices.rooms.get(room) ?? []);
+  return selected.map((device) => ({
+    model: climateModelOf(device),
+    values: deviceValuesOf(state, device.id),
+  }));
 }
 
 function sameSources(left: readonly ClimateSource[], right: readonly ClimateSource[]): boolean {

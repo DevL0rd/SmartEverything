@@ -15,6 +15,8 @@ import { isNative, useIdiom } from '../design/platform';
 import { useLinkIntent } from './link-intent';
 import { longPressHandler } from './long-press';
 
+const CHECKED_ROLES: ReadonlySet<AccessibilityRole> = new Set(['checkbox', 'radio', 'switch']);
+
 export interface Point {
   readonly x: number;
   readonly y: number;
@@ -276,6 +278,7 @@ function Pressed(props: PressedProps): ReactNode {
       {...feedback.attributes}
       {...accessibilityOf(semantics)}
       aria-controls={controls}
+      aria-checked={role !== undefined && CHECKED_ROLES.has(role) ? checked : undefined}
       className={pressableClass(disabled, focusInset, className)}
     >
       {({ pressed }) => (

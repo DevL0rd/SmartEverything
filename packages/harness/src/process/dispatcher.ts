@@ -41,7 +41,6 @@ import { HarnessRuntimeError } from '../host/errors';
 import { sessionOpenOptions } from './open-options';
 import { ProcessProjection } from './projection';
 import { ProcessInteractions } from './interactions';
-
 type NativeOperationRequest = Exclude<
   HarnessRuntimeRequest,
   {
@@ -130,7 +129,11 @@ export class HarnessDispatcher {
       };
     if (request.kind === 'auxiliary') return this.auxiliary(id, request);
     if (request.kind === 'prompt') {
-      await this.prompt(session, request);
+      await this.ports.projection.flush(request.session_id);
+      await submitNativePrompt(this.runtime, session, request, {
+        ctx: this.ports.ctx,
+        options: this.options,
+      });
       return this.receipt(id, request.session_id, claim.epoch, 'accepted');
     }
     await this.operation(session, request, id);
@@ -191,16 +194,6 @@ export class HarnessDispatcher {
     const claim = await cleanupUnopened(request, this.options.persistence, this.options.host);
     this.closed.set(request.session_id, claim);
     return this.receipt(id, request.session_id, request.expected_epoch, 'closed');
-  }
-  private async prompt(
-    session: HarnessSession,
-    request: Extract<HarnessRuntimeRequest, { kind: 'prompt' }>,
-  ): Promise<void> {
-    await this.ports.projection.flush(request.session_id);
-    await submitNativePrompt(this.runtime, session, request, {
-      ctx: this.ports.ctx,
-      options: this.options,
-    });
   }
   private async operation(
     session: HarnessSession,

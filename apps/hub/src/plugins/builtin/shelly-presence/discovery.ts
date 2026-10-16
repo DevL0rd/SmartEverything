@@ -1,6 +1,7 @@
 import { SHELLY_DISCOVERY_RESULT, type ShellyDiscoveryResult } from '@smarteverything/domain';
 import { z } from 'zod';
 import { SessionBus, type BusCall } from '../../../node/controls/linux/dbus-session';
+type Candidate = ShellyDiscoveryResult['candidates'][number];
 const DESTINATION = 'org.freedesktop.Avahi';
 const ITEM = z.tuple([
   z.int(),
@@ -36,7 +37,7 @@ export async function discoverShelly(signal: AbortSignal): Promise<ShellyDiscove
   let unwatch: () => void = () => undefined;
   let path: string | null = null;
   try {
-    const browser = await prepareBrowser(bus, candidates, pending);
+    const browser = await prepareBrowser(bus, candidates, pending, () => undefined);
     path = browser.path;
     unwatch = browser.unwatch;
     await discoveryWindow(signal, bus);
@@ -73,6 +74,7 @@ async function prepareBrowser(
   bus: SessionBus,
   candidates: Map<string, ShellyDiscoveryResult['candidates'][number]>,
   pending: Set<Promise<void>>,
+  observed: (candidate: Candidate) => void,
 ): Promise<{ path: string; unwatch: () => void }> {
   const prepared = await deadline(
     bus.call({
@@ -93,6 +95,7 @@ async function prepareBrowser(
       const work = resolve(bus, parsed.data)
         .then((candidate) => {
           candidates.set(candidate.address, candidate);
+          observed(candidate);
         })
         .catch(() => undefined)
         .finally(() => {
@@ -178,5 +181,39 @@ class ShellyDiscoveryTimeoutError extends Error {
   override readonly name = 'ShellyDiscoveryTimeoutError';
   constructor() {
     super('The discovery service did not respond in time.');
+  }
+}
+
+export async function watchShelly(
+  observed: (candidate: Candidate) => void,
+  failed: (cause: unknown) => void,
+): Promise<() => Promise<void>> {
+  if (process.platform !== 'linux') return () => Promise.resolve();
+  const bus = SessionBus.system();
+  bus.onError(failed);
+  try {
+    const candidates = new Map<string, Candidate>();
+    const browser = await prepareBrowser(bus, candidates, new Set(), (candidate) => {
+      candidates.clear();
+      observed(candidate);
+    });
+    return async (): Promise<void> => {
+      browser.unwatch();
+      try {
+        await deadline(
+          bus.call({
+            destination: DESTINATION,
+            path: browser.path,
+            iface: 'org.freedesktop.Avahi.ServiceBrowser',
+            member: 'Free',
+          }),
+        );
+      } finally {
+        bus.close();
+      }
+    };
+  } catch (cause) {
+    bus.close();
+    throw cause;
   }
 }

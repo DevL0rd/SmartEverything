@@ -1,6 +1,8 @@
 import { presentValue, withRole } from '@smarteverything/domain';
-import { rowsOf, type Device, type StoreState } from '../../../store/state';
-import { deviceModelOf } from '../../devices';
+import { memoOnInputs } from '../../../store/memo-selector';
+import type { StoreState } from '../../../store/state';
+import type { DeviceModel } from '../../devices';
+import { homeDeviceModels } from './devices';
 
 type SecurityRole = 'lock' | 'contact' | 'leak' | 'smoke' | 'gas';
 
@@ -32,8 +34,8 @@ function alerting(role: SecurityRole, value: boolean): boolean {
   return role === 'lock' ? !value : ALARMING[role] && value;
 }
 
-function lineOf(state: StoreState, device: Device): SecurityLine | null {
-  const presentation = deviceModelOf(device).presentation;
+function lineOf(state: StoreState, model: DeviceModel): SecurityLine | null {
+  const { device, presentation } = model;
   const role = ROLES.find((candidate) => withRole(presentation, candidate) !== undefined);
   const presented = role === undefined ? undefined : withRole(presentation, role);
   const value =
@@ -49,12 +51,14 @@ function lineOf(state: StoreState, device: Device): SecurityLine | null {
   };
 }
 
-export function securityLines(state: StoreState): readonly SecurityLine[] {
-  return rowsOf(state.tables.devices).flatMap((device) => {
-    const line = device.hidden ? null : lineOf(state, device);
-    return line === null ? [] : [line];
-  });
-}
+export const securityLines = memoOnInputs(
+  (state) => [state.tables.devices, state.deviceValues],
+  (state): readonly SecurityLine[] =>
+    homeDeviceModels(state).flatMap((model) => {
+      const line = lineOf(state, model);
+      return line === null ? [] : [line];
+    }),
+);
 
 export function sameSecurity(
   left: readonly SecurityLine[],

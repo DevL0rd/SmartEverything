@@ -1,3 +1,8 @@
+import { DEVICE_EFFECT_TARGET } from '../device-effects';
+import { DEVICE_GROUP_ROW } from '../device-groups';
+import { AUTOMATION_SEQUENCE_ROW } from '../automation-sequences';
+import { AUTOMATION_VALUE_ROW } from '../automation-values';
+import { AUTOMATION_RUN_ROW } from '../automation-runs';
 import { TRANSCRIPT_CHANGED_NOTICE } from '../transcript-reader';
 import { AI_PREVIEW_NOTICE, AI_PREVIEW_LEASE } from '../ai-previews';
 import { AI_HTML_PREVIEW_LEASE } from '../ai-preview-documents';
@@ -64,6 +69,9 @@ import {
   SCENE_ROW,
 } from './rows-media';
 
+export const LIVE_SEQUENCE_HEADER = 'x-smarteverything-live-seq';
+export const LAYOUT_WRITE_CAPABILITY = 'layout_writes_v1';
+
 export const ROW_OPERATIONS = ['INSERT', 'UPDATE', 'DELETE'] as const;
 
 export type RowOperation = (typeof ROW_OPERATIONS)[number];
@@ -73,6 +81,8 @@ export const TABLE_ROWS = {
   clients: CLIENT_ROW,
   provider_links: PROVIDER_LINK_ROW,
   rooms: ROOM_ROW,
+  device_groups: DEVICE_GROUP_ROW,
+  device_effect_targets: DEVICE_EFFECT_TARGET,
   devices: DEVICE_ROW,
   device_state: STATE_ROW,
   state_history: HISTORY_ROW,
@@ -84,6 +94,9 @@ export const TABLE_ROWS = {
   ir_codes: IR_CODE_ROW,
   scenes: SCENE_ROW,
   automations: AUTOMATION_ROW,
+  automation_values: AUTOMATION_VALUE_ROW,
+  automation_sequences: AUTOMATION_SEQUENCE_ROW,
+  automation_runs: AUTOMATION_RUN_ROW,
   layouts: LAYOUT_ROW,
   push_targets: PUSH_TARGET_ROW,
   health_sources: HEALTH_SOURCE_ROW,
@@ -158,6 +171,8 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('clients', TABLE_ROWS.clients),
   changeOf('provider_links', TABLE_ROWS.provider_links),
   changeOf('rooms', TABLE_ROWS.rooms),
+  changeOf('device_groups', TABLE_ROWS.device_groups),
+  changeOf('device_effect_targets', TABLE_ROWS.device_effect_targets),
   changeOf('devices', TABLE_ROWS.devices),
   changeOf('device_state', TABLE_ROWS.device_state),
   changeOf('state_history', TABLE_ROWS.state_history),
@@ -169,6 +184,9 @@ export const ROW_CHANGE = z.discriminatedUnion('table', [
   changeOf('ir_codes', TABLE_ROWS.ir_codes),
   changeOf('scenes', TABLE_ROWS.scenes),
   changeOf('automations', TABLE_ROWS.automations),
+  changeOf('automation_values', TABLE_ROWS.automation_values),
+  changeOf('automation_sequences', TABLE_ROWS.automation_sequences),
+  changeOf('automation_runs', TABLE_ROWS.automation_runs),
   changeOf('layouts', TABLE_ROWS.layouts),
   changeOf('push_targets', TABLE_ROWS.push_targets),
   changeOf('health_sources', TABLE_ROWS.health_sources),

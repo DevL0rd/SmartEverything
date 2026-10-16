@@ -2,6 +2,7 @@ import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
 import { z } from 'zod';
 import { MiioDeviceError, MiioPacketError } from './errors';
 import type { PropertyReading } from './miot';
+import { LEGACY_BUTTON_METHOD, type LegacyButtonMethod } from './events';
 import type { PushOffer } from './miio-packet';
 
 export const SUBSCRIBE_METHOD = 'miIO.sub';
@@ -39,6 +40,14 @@ const UPLINK = z.discriminatedUnion('method', [
   }),
 ]);
 
+const CHILD_EVENT = z.strictObject({
+  id: ID,
+  method: LEGACY_BUTTON_METHOD,
+  params: z.tuple([]),
+  sid: z.string().min(1),
+  model: z.string().min(1),
+});
+
 const METHOD_CALL = z.object({ id: ID, method: z.string() });
 
 const SUBSCRIBE_RESULT = z.object({ code: z.number().int() });
@@ -48,7 +57,16 @@ export interface MiotEventArgument {
   readonly value: JsonValue;
 }
 
+export interface LegacyChildEvent {
+  readonly kind: 'child-event';
+  readonly id: number;
+  readonly childDid: string;
+  readonly model: string;
+  readonly method: LegacyButtonMethod;
+}
+
 export type Uplink =
+  | LegacyChildEvent
   | { readonly kind: 'properties'; readonly id: number; readonly readings: PropertyReading[] }
   | {
       readonly kind: 'event';
@@ -100,9 +118,20 @@ function checkDevice(expected: string, received: string): void {
 }
 
 export function parseUplink(did: string, text: string): Uplink {
-  const parsed = UPLINK.safeParse(parseJson(text));
+  const body = parseJson(text);
+  const child = CHILD_EVENT.safeParse(body);
+  if (child.success) {
+    return {
+      kind: 'child-event',
+      id: child.data.id,
+      childDid: child.data.sid,
+      model: child.data.model,
+      method: child.data.method,
+    };
+  }
+  const parsed = UPLINK.safeParse(body);
   if (!parsed.success) {
-    throw new MiioPacketError('properties_changed or event_occured', text);
+    throw new MiioPacketError('a supported MIoT uplink or legacy child button event', text);
   }
   const message = parsed.data;
   if (message.method === 'event_occured') {

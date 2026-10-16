@@ -173,8 +173,15 @@ class HubRoutePolicy private constructor(context: Context) {
       val config = configurations.values.firstOrNull { it.canonical == group.canonical } ?: return
       Triple(config.trust.scopeId, group.trust, candidates(config))
     }
-    val selected = try { HubRouteProbe.batch(prepared.first, prepared.second, prepared.third) }
-      catch (failure: Exception) { null }
+    var resolved = false
+    try {
+      HubRouteProbe.batch(prepared.first, prepared.second, prepared.third) { selected ->
+        resolved = true
+        acceptProbe(batch, selected)
+      }
+    } catch (failure: Exception) { if (!resolved) acceptProbe(batch, null) }
+  }
+  private fun acceptProbe(batch: Triple<String, Long, Long>, selected: HubRouteEndpoint?) {
     synchronized(this) {
       val group = groups[batch.first] ?: return
       if (group.epoch != batch.second || networkGeneration != batch.third) return
@@ -190,7 +197,7 @@ class HubRoutePolicy private constructor(context: Context) {
     val values = config.raw.getJSONObject("trust").getJSONArray("endpoints")
     val endpoints = (0 until values.length()).map { values.getJSONObject(it) }
       .filter { it.getString("kind") != "loopback" }.map { HubRouteEndpoint(it.getString("url"), it.getString("kind")) }
-    val local = endpoints.filter { it.kind == "lan" }.take(HubRouteProbe.MAX_PROBES - 1)
+    val local = endpoints.filter { it.kind == "lan" }.asReversed().take(HubRouteProbe.MAX_PROBES - 1)
     val remote = endpoints.firstOrNull { it.url == config.canonical && it.kind == "remote" }
       ?: HubRouteEndpoint(config.canonical, "remote")
     return local + remote
@@ -227,11 +234,19 @@ class HubRoutePolicy private constructor(context: Context) {
         if (config.trust.endpoints.containsKey(HubTrust.origin(URI(url)))) return@forEach
         val raw = JSONObject(config.raw.toString())
         val trust = raw.getJSONObject("trust")
-        if (trust.getJSONArray("endpoints").length() >= 32 || trust.getJSONArray("lanAddresses").length() >= 32) return@forEach
         val address = URI(url).host.removePrefix("[").removeSuffix("]")
         HubTrust.literal(address)
-        trust.getJSONArray("endpoints").put(JSONObject().put("kind", "lan").put("url", url))
-        trust.getJSONArray("lanAddresses").put(address)
+        val endpoints = trust.getJSONArray("endpoints")
+        val retained = (0 until endpoints.length()).map { endpoints.getJSONObject(it) }.toMutableList()
+        if (retained.size >= 32) {
+          val oldest = retained.indexOfFirst { it.getString("kind") == "lan" && it.getString("url") != config.canonical }
+          if (oldest < 0) return@forEach
+          retained.removeAt(oldest)
+        }
+        retained.add(JSONObject().put("kind", "lan").put("url", url))
+        trust.put("endpoints", org.json.JSONArray(retained))
+        val addresses = (config.trust.addresses.map { it.hostAddress } + address).distinct().takeLast(32)
+        trust.put("lanAddresses", org.json.JSONArray(addresses))
         val next = HubRouteConfiguration.parse(raw)
         configurations[next.trust.scopeId] = next
         groups.getValue(next.canonical).apply { this.trust = next.trust; epoch = ++configurationEpoch }
@@ -279,7 +294,10 @@ class HubRoutePolicy private constructor(context: Context) {
   }
   @Synchronized fun failed(binding: HubRouteBinding, generation: Long?) {
     val group = groups[binding.canonicalOrigin] ?: return
-    if (configurations[binding.scopeId]?.bindings?.contains(binding) == true && (generation == null || generation == group.generation)) refreshAll()
+    if (configurations[binding.scopeId]?.bindings?.contains(binding) == true && (generation == null || generation == group.generation)) {
+      discovery.recover()
+      refreshAll()
+    }
   }
   companion object {
     private const val READINESS_TIMEOUT_NANOS = 20_000_000_000L

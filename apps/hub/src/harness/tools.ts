@@ -157,6 +157,16 @@ export class HarnessHubTools implements HarnessServerToolAccess {
       if (refusal !== undefined) throw new ApiError('forbidden', refusal);
     }
   }
+  nativeAccess(id: string, authority: HarnessAuthority): boolean {
+    const grant = this.service.storage.grant(id);
+    const caller = this.caller(id);
+    return (
+      grant.target.kind === 'server' &&
+      authority.kind === 'manual' &&
+      authority.profileId === caller.profileId &&
+      caller.role === 'owner'
+    );
+  }
   hubToolNames(_authority: HarnessAuthority): readonly string[] {
     return centralToolSpecs(this.tools).map((tool) => tool.name);
   }
@@ -168,17 +178,15 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     const caller = this.caller(execution.agent.id);
     if (caller.profileId !== authority.profileId)
       return 'This initiating profile no longer owns the tool grant.';
-    const refusal = this.policy.refusal(
-      execution.name,
-      z.record(z.string(), z.unknown()).parse(execution.arguments),
-    );
+    const args = z.record(z.string(), z.unknown()).parse(execution.arguments);
+    const checked = this.scoped(execution.agent.id).check(execution.name, args);
+    if (!checked.ok) return checked.reason;
+    const refusal =
+      caller.authority === undefined
+        ? this.policy.refusal(execution.name, args)
+        : withExecutionAuthority(caller.authority, () => this.policy.refusal(execution.name, args));
     if (refusal !== undefined) return refusal;
-    const scoped = this.scoped(execution.agent.id);
-    const checked = scoped.check(
-      execution.name,
-      z.record(z.string(), z.unknown()).parse(execution.arguments),
-    );
-    return checked.ok ? undefined : checked.reason;
+    return undefined;
   }
   install(ctx: Context): void {
     limitSearchToolSchemas(ctx, this.service);
@@ -258,12 +266,15 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     name: string,
     args: Readonly<Record<string, unknown>>,
   ): { readonly caller: ToolCaller; readonly hub: ToolHub } {
-    const caller = this.admit(name, args, this.caller(id));
-    const refusal = this.policy.refusal(name, args);
-    if (refusal !== undefined) throw new HubCapabilityFailure(name, refusal);
     const hub = this.scoped(id);
     const checked = hub.check(name, args);
     if (!checked.ok) throw new HubCapabilityFailure(name, checked.reason);
+    const caller = this.admit(name, args, this.caller(id));
+    const refusal =
+      caller.authority === undefined
+        ? this.policy.refusal(name, args)
+        : withExecutionAuthority(caller.authority, () => this.policy.refusal(name, args));
+    if (refusal !== undefined) throw new ApiError('forbidden', refusal);
     return { caller, hub };
   }
   async call(
@@ -358,13 +369,12 @@ export class HarnessHubTools implements HarnessServerToolAccess {
   }
 }
 
-class HubCapabilityFailure extends Error {
-  override readonly name = 'HubCapabilityFailure';
+class HubCapabilityFailure extends ApiError {
   constructor(
     readonly tool: string,
     message: string,
   ) {
-    super(message);
+    super('invalid_request', message);
   }
 }
 

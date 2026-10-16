@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import type { CapabilityRole, PresentedCapability } from '@smarteverything/domain';
+import {
+  deviceFamily,
+  type CapabilityRole,
+  type PresentedCapability,
+} from '@smarteverything/domain';
 import { Text } from '../../../components/text';
 import { selectionTick } from '../../../platform/haptics';
+import { useLiveControl } from '../../../store/use-live-control';
 import { useControl } from '../../../store/control';
 import { useDeviceValues } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
@@ -44,22 +50,29 @@ function useLevelPan(
   range: Range,
   width: number,
 ): { readonly pan: ReturnType<typeof Gesture.Pan>; readonly draft: number | null } {
-  const control = useControl(device.id, level.key);
+  const raw = useControl(device.id, level.key);
+  const control = useLiveControl(device, level.key, raw, deviceFamily(device) === 'light');
   const [draft, setDraft] = useState<number | null>(null);
+  const origin = useSharedValue(0);
   const current = typeof control.value === 'number' ? control.value : range.min;
   const valueAt = (dx: number): number =>
-    stepped(current + (dx / Math.max(1, width)) * (range.max - range.min), range);
+    stepped(origin.get() + (dx / Math.max(1, width)) * (range.max - range.min), range);
   const pan = Gesture.Pan()
     .runOnJS(true)
     .activeOffsetX([-SLOP, SLOP])
     .failOffsetY([-SLOP, SLOP])
-    .onStart(selectionTick)
-    .onUpdate((event) => {
-      setDraft(valueAt(event.translationX));
+    .onStart(() => {
+      origin.set(current);
+      selectionTick();
     })
-    .onEnd((event) => {
+    .onUpdate((event) => {
+      const next = valueAt(event.translationX);
+      setDraft(next);
+      if (deviceFamily(device) === 'light') void control.set(next);
+    })
+    .onEnd((event, success) => {
       setDraft(null);
-      void control.set(valueAt(event.translationX));
+      if (success) void control.set(valueAt(event.translationX));
     });
   return { pan, draft };
 }

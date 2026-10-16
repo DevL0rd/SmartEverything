@@ -1,3 +1,4 @@
+import { automationSignals } from './automation';
 import type { RowChange, SignalInput } from '@smarteverything/domain';
 import { assistantSignals } from './assistant';
 import type { FeedContext, FeedProducer } from './feed-context';
@@ -6,6 +7,7 @@ import { scheduleSignals } from './schedule';
 import { weatherSignals } from './weather';
 
 const FEED_PRODUCERS: readonly FeedProducer[] = [
+  automationSignals,
   weatherSignals,
   healthSignals,
   assistantSignals,

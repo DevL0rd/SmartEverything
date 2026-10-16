@@ -40,9 +40,7 @@ function CameraZoomControls({ camera }: { readonly camera: CameraZoom }): ReactN
         label="Zoom in"
         variant="overlay"
         onPress={() => {
-          if (camera.level < camera.max) {
-            camera.commit(nudged(camera, CAMERA_ZOOM_NUDGE));
-          }
+          if (camera.level < camera.max) camera.commit(nudged(camera, CAMERA_ZOOM_NUDGE));
         }}
       />
       <Slider
@@ -55,15 +53,14 @@ function CameraZoomControls({ camera }: { readonly camera: CameraZoom }): ReactN
         formatValue={times}
         onChange={camera.preview}
         onCommit={camera.commit}
+        onCancel={camera.cancel}
       />
       <IconButton
         icon="minus"
         label="Zoom out"
         variant="overlay"
         onPress={() => {
-          if (camera.level > camera.min) {
-            camera.commit(nudged(camera, -CAMERA_ZOOM_NUDGE));
-          }
+          if (camera.level > camera.min) camera.commit(nudged(camera, -CAMERA_ZOOM_NUDGE));
         }}
       />
     </View>

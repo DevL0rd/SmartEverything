@@ -9,6 +9,13 @@ const ANNOUNCE_GAP_MS = 15_000;
 const LENGTH_PREFIX_BYTES = 2;
 const DEFAULT_UPSTREAM_PORT = 53;
 
+class DnsListenerStoppedError extends Error {
+  override readonly name = 'DnsListenerStoppedError';
+  constructor() {
+    super('DNS listener stopped');
+  }
+}
+
 class DnsUpstreamTimeoutError extends Error {
   override readonly name = 'DnsUpstreamTimeoutError';
 
@@ -29,14 +36,27 @@ export interface DnsEvents {
   readonly warning: (title: string, detail: string) => void;
 }
 
-function forward(message: Buffer, upstream: string): Promise<Buffer> {
+function forward(message: Buffer, upstream: string, signal: AbortSignal): Promise<Buffer> {
   const [host = '1.1.1.1', port = String(DEFAULT_UPSTREAM_PORT)] = upstream.split(':');
   return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DnsListenerStoppedError());
+      return;
+    }
     const socket = createSocket('udp4');
+    let finished = false;
     const finish = (settle: () => void): void => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer);
+      signal.removeEventListener('abort', aborted);
       socket.close();
       settle();
+    };
+    const aborted = (): void => {
+      finish(() => {
+        reject(new DnsListenerStoppedError());
+      });
     };
     const timer = setTimeout(() => {
       finish(() => {
@@ -54,6 +74,7 @@ function forward(message: Buffer, upstream: string): Promise<Buffer> {
       });
     });
     socket.send(message, Number(port), host);
+    signal.addEventListener('abort', aborted, { once: true });
   });
 }
 
@@ -62,6 +83,7 @@ export class DnsServer {
   private tcp: Server | null = null;
   private readonly clients = new Set<Socket>();
   private readonly lastAnswer = new Map<string, number>();
+  private readonly lifetime = new AbortController();
 
   constructor(
     private readonly options: DnsOptions,
@@ -71,9 +93,13 @@ export class DnsServer {
   async start(): Promise<void> {
     const { network, port, address } = this.options;
     const udp = await network.listenUdp(port, address);
+    if (this.lifetime.signal.aborted) {
+      udp.close();
+      return;
+    }
     udp.on('message', (message, remote) => {
       void this.reply(message, remote.address).then((answer) => {
-        if (answer !== null) {
+        if (answer !== null && this.udp === udp && !this.lifetime.signal.aborted) {
           udp.send(answer, remote.port, remote.address);
         }
       });
@@ -97,6 +123,10 @@ export class DnsServer {
       );
       return;
     }
+    if (this.lifetime.signal.aborted) {
+      tcp.close();
+      return;
+    }
     tcp.on('connection', (client) => {
       this.stream(client);
     });
@@ -107,6 +137,7 @@ export class DnsServer {
   }
 
   stop(): void {
+    this.lifetime.abort();
     this.clients.forEach((client) => {
       client.destroy();
     });
@@ -121,11 +152,12 @@ export class DnsServer {
     try {
       const local = localAnswer(message, this.options.address);
       if (local === null) {
-        return await forward(message, this.options.upstream);
+        return await forward(message, this.options.upstream, this.lifetime.signal);
       }
       this.noteAnswer(remote);
       return local;
     } catch (error) {
+      if (this.lifetime.signal.aborted) return null;
       this.events.warning(
         'DNS query failed',
         error instanceof Error ? error.message : String(error),

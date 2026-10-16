@@ -1,11 +1,11 @@
-import type { Action, AutomationDefinition } from '@smarteverything/domain';
+import type { LegacyAction as Action, AutomationDefinition } from '@smarteverything/domain';
 import {
   deleteAutomation,
-  runAutomation,
   saveAutomation,
   sendAutomationCommands,
   setAutomationEnabled,
 } from '../../../api/automations';
+import { startOwnedRun } from '../../../api/automation-runtime';
 import { deleteScene, runScene, saveScene } from '../../../api/scenes';
 import { notify } from '../../../components/toast-store';
 import { plural } from '../../../format/text';
@@ -81,9 +81,9 @@ export async function testDraftRun(
 
 export async function testSavedRun(automationId: string, name: string): Promise<boolean> {
   return attempt(`${name} didn’t run`, async () => {
-    await runAutomation(automationId);
+    await startOwnedRun(automationId);
     notify({
-      message: `${name} test completed`,
+      message: `${name} started`,
       tone: 'positive',
     });
   });

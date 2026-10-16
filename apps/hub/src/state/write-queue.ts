@@ -145,7 +145,13 @@ export class WriteQueue<T, R> {
   }
 
   private async writeAppend(policy: AppendPolicy): Promise<boolean> {
-    const batch = [...this.entries].slice(0, policy.batchLimit);
+    const batch: [string | number, Entry<T, R>][] = [];
+    const pending = this.entries.entries();
+    while (batch.length < policy.batchLimit) {
+      const entry = pending.next();
+      if (entry.done === true) break;
+      batch.push(entry.value);
+    }
     const items = batch.map(([, entry]) => entry.item);
     for (let attempt = 1; attempt <= policy.attempts; attempt += 1) {
       try {

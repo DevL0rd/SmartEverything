@@ -36,6 +36,7 @@ class HubDiscovery(private val context: Context, private val emit: (Map<String, 
   private val pending = ArrayDeque<NsdServiceInfo>()
   private val visible = mutableSetOf<String>()
   private val candidates = mutableMapOf<String, Map<String, Any?>>()
+  fun recover() { handler.post { if (!running) start() } }
   fun start(): Map<String, Any?> {
     stop()
     generation += 1

@@ -1,3 +1,5 @@
+import { DEVICE_EFFECT_ENDPOINTS } from './endpoints-device-effects';
+import { DEVICE_GROUP_ENDPOINTS } from './endpoints-device-groups';
 import { AI_REFERENCE_ENDPOINTS } from './endpoints-ai-references';
 import { AI_PROJECT_ENDPOINTS } from './endpoints-ai-projects';
 import { AI_NATIVE_COMMAND_ENDPOINTS } from './endpoints-ai-native-commands';
@@ -49,7 +51,9 @@ import { SIGNAL_ENDPOINTS } from './endpoints-signals';
 import { REACH_ENDPOINTS } from './endpoints-reach';
 import { TRANSCRIPT_ENDPOINTS } from './endpoints-transcripts';
 
-type ApiEndpointRegistry = typeof AI_REFERENCE_ENDPOINTS &
+type ApiEndpointRegistry = typeof DEVICE_EFFECT_ENDPOINTS &
+  typeof DEVICE_GROUP_ENDPOINTS &
+  typeof AI_REFERENCE_ENDPOINTS &
   typeof AI_PROJECT_ENDPOINTS &
   typeof AI_NATIVE_COMMAND_ENDPOINTS &
   typeof AI_PREVIEW_ENDPOINTS &
@@ -101,6 +105,8 @@ type ApiEndpointRegistry = typeof AI_REFERENCE_ENDPOINTS &
   typeof COMPUTER_SESSION_ENDPOINTS;
 
 export const API_ENDPOINTS: ApiEndpointRegistry = {
+  ...DEVICE_GROUP_ENDPOINTS,
+  ...DEVICE_EFFECT_ENDPOINTS,
   ...AI_REFERENCE_ENDPOINTS,
   ...AI_PROJECT_ENDPOINTS,
   ...AI_NATIVE_COMMAND_ENDPOINTS,

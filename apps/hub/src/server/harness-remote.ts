@@ -24,6 +24,7 @@ const RECEIPT_STATES = {
   interrupt: 'completed',
   compact: 'completed',
   command_list: 'completed',
+  reference: 'completed',
   configuration_prepare: 'preflighted',
   command: 'completed',
   answer: 'completed',

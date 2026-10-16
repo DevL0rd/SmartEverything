@@ -130,6 +130,9 @@ export function VolumeRow(): ReactNode {
             step={1}
             formatValue={(value) => `${String(Math.round(value))} percent`}
             onChange={setDragged}
+            onCancel={() => {
+              setDragged(null);
+            }}
             onCommit={(value) => {
               setDragged(null);
               change(

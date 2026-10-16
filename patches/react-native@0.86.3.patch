@@ -1,0 +1,22 @@
+diff --git a/Libraries/Components/ScrollView/ScrollViewStickyHeader.js b/Libraries/Components/ScrollView/ScrollViewStickyHeader.js
+index 72804f697538e3487723393c2225ce5105378043..8884ef614c781b5b09d5d8d6e4b01de4270e483e 100644
+--- a/Libraries/Components/ScrollView/ScrollViewStickyHeader.js
++++ b/Libraries/Components/ScrollView/ScrollViewStickyHeader.js
+@@ -275,6 +275,9 @@ const ScrollViewStickyHeader: component(
+     if (child.props.onLayout) {
+       child.props.onLayout(event);
+     }
++    if (child.props.onCellLayout) {
++      child.props.onCellLayout(event, child.props.cellKey, child.props.index);
++    }
+   };
+ 
+   const child = React.Children.only<$FlowFixMe>(props.children);
+@@ -304,6 +307,7 @@ const ScrollViewStickyHeader: component(
+       }>
+       {cloneElement(child, {
+         onLayout: undefined, // we call this manually through our this._onLayout
++        onCellLayout: undefined,
+         style: styles.fill, // We transfer the child style to the wrapper.
+       })}
+     </Animated.View>

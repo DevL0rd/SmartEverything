@@ -1,7 +1,7 @@
 import {
   capabilityOf,
   isCamera,
-  type Action,
+  type LegacyAction as Action,
   type DeviceCapability,
 } from '@smarteverything/domain';
 import { isReadable, isWritable, type DeviceLike } from './capability-choices';

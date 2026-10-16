@@ -1,3 +1,8 @@
+import { AUTOMATION_SPEECH_TABLES } from './automation-speech';
+import { DEVICE_EFFECT_TABLES } from './device-effects';
+import { DEVICE_GROUP_TABLES } from './device-groups';
+import { AUTOMATION_SEQUENCE_TABLES } from './automation-sequences';
+import { AUTOMATION_RUNTIME_TABLES } from './automation-runtime';
 import { TRANSCRIPT_READER_COLUMNS } from './transcript-reader';
 import { AI_REFERENCE_COLUMNS } from './ai-references';
 import { PREVIEW_ERROR_RULE_TABLES } from './preview-error-rules';
@@ -207,6 +212,11 @@ export const MIGRATIONS: readonly Migration[] = inOrder(
     { version: 75, name: 'preview_error_rules', statements: PREVIEW_ERROR_RULE_TABLES },
     { version: 76, name: 'ai_message_references', statements: AI_REFERENCE_COLUMNS },
     { version: 77, name: 'transcript_reader', statements: TRANSCRIPT_READER_COLUMNS },
+    { version: 78, name: 'automation_runtime', statements: AUTOMATION_RUNTIME_TABLES },
+    { version: 79, name: 'automation_sequences', statements: AUTOMATION_SEQUENCE_TABLES },
+    { version: 80, name: 'device_groups', statements: DEVICE_GROUP_TABLES },
+    { version: 81, name: 'device_effects', statements: DEVICE_EFFECT_TABLES },
+    { version: 82, name: 'automation_speech', statements: AUTOMATION_SPEECH_TABLES },
   ],
   RESERVED_MIGRATION_VERSIONS,
 );

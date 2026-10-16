@@ -6,7 +6,8 @@ import {
   JsonSchemaError,
 } from '@deepseek-ai/dsh-tools';
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools';
-import { portableSchemaOf } from '../ai-tools/portable-schema';
+import { portableSchemaOf, ToolSchemaReferenceError } from '../ai-tools/portable-schema';
+import { validateSchemaReferences } from '../ai-tools/referenced-schema';
 import type { JsonSchema } from '../ai-tools/hub-tool';
 
 const RECORD = z.record(z.string(), JSON_VALUE);
@@ -22,7 +23,7 @@ const STRUCTURE = new Set([
 ]);
 const ANNOTATIONS = new Set(['description', 'title', 'default', 'examples']);
 export function harnessToolSchema(input: JsonSchema): ObjectJsonSchema {
-  const schema = project(portableSchemaOf(input));
+  const schema = project(declarationInput(input));
   assertObjectJsonSchema(schema);
   return schema;
 }
@@ -119,4 +120,18 @@ function tag(branch: z.infer<typeof RECORD>, key: string): string | null {
   const required = z.array(z.string()).safeParse(branch['required']);
   if (!required.success || !required.data.includes(key)) return null;
   return JSON.stringify(property.data['const']);
+}
+
+function declarationInput(input: JsonSchema): JsonSchema {
+  try {
+    return portableSchemaOf(input);
+  } catch (cause) {
+    if (
+      !(cause instanceof ToolSchemaReferenceError) ||
+      cause.reason !== 'recursive schemas cannot be inlined'
+    )
+      throw cause;
+  }
+  validateSchemaReferences(input);
+  return input;
 }

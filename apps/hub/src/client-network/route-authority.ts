@@ -173,30 +173,37 @@ export class NodeRouteAuthority {
       AbortSignal.timeout(ROUTE_PROBE_TIMEOUT_MS),
     ]);
     const candidates = this.candidates(configuration);
-    const answers = await Promise.all(
-      candidates.map(async (endpoint) => ({
+    const answers = candidates.map(async (endpoint) =>
+      (await probeNodeRoute(
+        { policies: this.policies, trust: configuration.trust, log: this.options.log },
         endpoint,
-        reachable: await probeNodeRoute(
-          { policies: this.policies, trust: configuration.trust, log: this.options.log },
-          endpoint,
-          signal,
-        ),
-      })),
+        signal,
+      ))
+        ? endpoint
+        : null,
     );
-    if (
-      this.stopped ||
-      epoch !== this.stateValue.networkGeneration ||
-      configuration !== this.configuration
-    )
-      return;
-    const chosen = answers.find((answer) => answer.reachable)?.endpoint ?? null;
-    this.publish(
-      chosen,
-      true,
-      chosen === null
-        ? 'No enrolled hub endpoint is reachable.'
-        : 'Independently enrolled route selected.',
-    );
+    try {
+      let chosen: HubEndpoint | null = null;
+      for (const answer of answers) {
+        chosen = await answer;
+        if (chosen !== null) break;
+      }
+      if (
+        this.stopped ||
+        epoch !== this.stateValue.networkGeneration ||
+        configuration !== this.configuration
+      )
+        return;
+      this.publish(
+        chosen,
+        true,
+        chosen === null
+          ? 'No enrolled hub endpoint is reachable.'
+          : 'Independently enrolled route selected.',
+      );
+    } finally {
+      await Promise.all(answers);
+    }
   }
   private candidates(configuration: NativeHubRouteConfiguration): readonly HubEndpoint[] {
     const locals = configuration.trust.endpoints
@@ -247,7 +254,10 @@ export class NodeRouteAuthority {
   }
   failed(generation: number): void {
     if (this.stopped || generation !== this.stateValue.routeGeneration) return;
-    this.networkChanged();
+    if (this.batch !== null) this.pending = true;
+    void this.refresh().catch((cause: unknown) => {
+      this.options.log.error('route.refresh_failed', cause);
+    });
   }
   private discovered(candidate: HubDiscoveryCandidate): void {
     const configuration = this.configuration;

@@ -1,4 +1,6 @@
 import { useHarnessCatalogue } from '../data/harness';
+import { useContextUsage } from '../data/context-usage';
+import type { ContextUsage } from '../model/context-usage';
 import { ChatSubscriptionUsage } from '../provider/subscription-usage';
 import { isComputerEngine } from '../provider/computer-engine';
 import type { ReactNode } from 'react';
@@ -30,10 +32,11 @@ function toolsText(chat: AiChatRow): string {
   return `${count(known)} of ${count(MCP_TOOLS.length)} tools`;
 }
 
-function ContextRow({ percent }: { readonly percent: number }): ReactNode {
+function ContextRow({ percent, label }: ContextUsage): ReactNode {
+  if (percent === null) return <ListRow title={label} value="Unavailable" />;
   return (
     <ListRow
-      title="Context"
+      title={label}
       subtitle={`Compacts at ${String(CONTEXT_COMPACTS_AT)} %`}
       trailing={
         <View className="flex-row items-center gap-1.5">
@@ -83,6 +86,7 @@ export function InfoRows({
   readonly onTools: () => void;
 }): ReactNode {
   const model = useChatModel(chat.engine);
+  const context = useContextUsage(chat);
   const owner = useIsOwner();
   const readOnly = isComputerEngine(chat.engine) && !owner;
   const identity = useChatIdentity(chat);
@@ -92,7 +96,7 @@ export function InfoRows({
     <List>
       <ListRow title="Model" value={modelValue} chevron onPress={onModel} />
       <ChatBilling chat={chat} rows={rows} />
-      {chat.context_percent === null ? null : <ContextRow percent={chat.context_percent} />}
+      <ContextRow {...context} />
       <ListRow
         title="Tools for this chat"
         value={toolsText(chat)}

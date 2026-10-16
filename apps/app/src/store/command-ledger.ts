@@ -12,7 +12,7 @@ import { Logger } from '@smarteverything/logging';
 import { api } from '../api/transport';
 import { notify } from '../components/toast-store';
 import type { EntityStore } from './entity-store';
-import type { Device, LedgerEntry, StoreState } from './state';
+import type { Device, DeviceValue, LedgerEntry, StoreState } from './state';
 import { sameJson } from './same-json';
 import { rawErrorText } from '../format/errors';
 
@@ -40,6 +40,15 @@ function failureOf(row: CommandRow): string {
   return row.error ?? 'Your server reported a failure without a reason.';
 }
 
+function authoritative(reported: DeviceValue | undefined, row: CommandRow): boolean {
+  return (
+    reported !== undefined &&
+    (sameJson(reported.value, row.value) ||
+      (reported.optimistic !== true &&
+        Date.parse(reported.observedAt) >= Date.parse(row.started_at ?? row.created_at)))
+  );
+}
+
 function settled(state: StoreState, device: Device, row: CommandRow): StoreState {
   const capability = capabilityOf(device, CAPABILITY_KEY.parse(row.capability));
   if (
@@ -51,16 +60,10 @@ function settled(state: StoreState, device: Device, row: CommandRow): StoreState
   }
   const current = state.deviceValues[device.id] ?? {};
   const reported = current[row.capability];
-  if (
-    reported !== undefined &&
-    reported.optimistic !== true &&
-    sameJson(reported.value, row.value)
-  ) {
-    return state;
-  }
+  if (authoritative(reported, row)) return state;
   const value = {
     value: row.value,
-    observedAt: row.finished_at ?? row.created_at,
+    observedAt: row.started_at ?? row.created_at,
     optimistic: true,
   } as const;
   return {
@@ -72,10 +75,15 @@ function settled(state: StoreState, device: Device, row: CommandRow): StoreState
 export class CommandLedger {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly early = new Map<string, CommandRow>();
+  private readonly requests = new Map<string, symbol>();
+  private stopped = false;
 
   constructor(private readonly store: EntityStore) {}
 
   stop(): void {
+    this.stopped = true;
+    this.requests.clear();
+    this.early.clear();
     for (const timer of this.timers.values()) {
       clearTimeout(timer);
     }
@@ -90,42 +98,83 @@ export class CommandLedger {
     }
   }
 
+  noteSnapshot(rows: readonly CommandRow[]): void {
+    if (this.stopped) return;
+    for (const row of rows) {
+      if (
+        row.device_id !== null &&
+        this.store.get().ledger[slotOf(row.device_id, row.capability)]?.commandId === row.id
+      )
+        this.note(row);
+    }
+  }
+
   async send(device: Device, capability: string, value: JsonValue): Promise<CommandOutcome> {
+    if (this.stopped) return { sent: false, message: 'This home connection has closed.' };
     const slot = slotOf(device.id, capability);
+    const request = Symbol();
+    this.requests.set(slot, request);
+    const requestedAt = new Date().toISOString();
     try {
       const checked = validateCommand(device, {
         capability: CAPABILITY_KEY.parse(capability),
         value,
       });
       this.store.update((state) =>
-        withEntry(state, slot, { commandId: null, value: checked, expiresAt: null, failure: null }),
+        withEntry(state, slot, {
+          commandId: null,
+          value: checked,
+          expiresAt: null,
+          failure: null,
+          requestedAt,
+        }),
       );
       const row = await api().call(E.sendCommand, {
         body: { device_id: device.id, capability, value: checked },
       });
-      this.store.update((state) =>
-        withEntry(state, slot, {
-          commandId: row.id,
-          value: checked,
-          expiresAt: row.expires_at,
-          failure: null,
-        }),
-      );
+      if (this.requests.get(slot) !== request) {
+        this.early.delete(row.id);
+        return { sent: true, row };
+      }
+      this.accept(slot, row, checked, requestedAt);
       log.info('command.sent', { commandId: row.id, capability });
       this.follow(device, row);
       return { sent: true, row };
     } catch (error) {
       const message = rawErrorText(error);
-      this.store.update((state) =>
-        withEntry(state, slot, { commandId: null, value: null, expiresAt: null, failure: message }),
-      );
+      if (this.requests.get(slot) === request)
+        this.store.update((state) =>
+          withEntry(state, slot, {
+            commandId: null,
+            value: null,
+            expiresAt: null,
+            failure: message,
+          }),
+        );
       notify({ message: `${device.label} did not take that`, error, tone: 'critical' });
       log.warn('command.refused', { capability, reason: message });
       return { sent: false, message };
     }
   }
 
+  private accept(slot: string, row: CommandRow, value: JsonValue, requestedAt: string): void {
+    this.store.update((state) =>
+      withEntry(state, slot, {
+        requestedAt,
+        commandId: row.id,
+        value,
+        expiresAt: row.expires_at,
+        failure: null,
+      }),
+    );
+  }
+
   private follow(device: Device, row: CommandRow): void {
+    const known = this.store.get().tables.commands.byId[row.id];
+    if (known !== undefined && isFinished(known.status)) {
+      this.finish(device, known);
+      return;
+    }
     const early = this.early.get(row.id);
     if (early !== undefined) {
       this.early.delete(row.id);
@@ -169,6 +218,7 @@ export class CommandLedger {
       clearTimeout(timer);
       this.timers.delete(row.id);
     }
+    if (this.store.get().ledger[slot]?.commandId !== row.id) return;
     if (row.status === 'succeeded') {
       this.store.update((state) => withEntry(settled(state, device, row), slot, null));
       return;

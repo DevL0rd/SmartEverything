@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
+import { deviceFamily, type JsonValue, type PresentedCapability } from '@smarteverything/domain';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
 import { Select } from '../../../components/select';
@@ -9,6 +9,7 @@ import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
 import { useControl, type Control } from '../../../store/control';
+import { useLiveControl } from '../../../store/use-live-control';
 import type { Device } from '../../../store/state';
 import { Guard } from '../controls/guard';
 import { ActionButton } from '../controls/action-button';
@@ -130,9 +131,30 @@ function EnumControl({ presented, control, disabled, width, labels }: Props): Re
   );
 }
 
+function NumberCaption({
+  presented,
+  control,
+  labels,
+  stepper,
+}: Pick<Props, 'presented' | 'control' | 'labels'> & { readonly stepper: boolean }): ReactNode {
+  if (!stepper && labels === 'inline' && typeof control.value !== 'number')
+    return (
+      <Text variant="footnote" tone="variant">
+        {shownValue(presented, control.value)}
+      </Text>
+    );
+  return (
+    <Caption
+      presented={presented}
+      value={stepper ? null : shownValue(presented, control.value)}
+      shown={labels === 'caption'}
+    />
+  );
+}
+
 function NumberControl(props: Props & { readonly descriptor: NumberDescriptor }): ReactNode {
   const { presented, control, disabled, labels, descriptor } = props;
-  const value = typeof control.value === 'number' ? control.value : descriptor.min;
+  const value = typeof control.value === 'number' ? control.value : null;
   const format = (next: number): string => shownValue(presented, next);
   const set = (next: number): void => {
     void control.set(next);
@@ -141,12 +163,8 @@ function NumberControl(props: Props & { readonly descriptor: NumberDescriptor })
     usesStepper(descriptor, presented) ||
     (presented.role !== null && DIAL_ROLES.has(presented.role));
   return (
-    <View className="gap-1.5">
-      <Caption
-        presented={presented}
-        value={stepper ? null : format(value)}
-        shown={labels === 'caption'}
-      />
+    <View className="w-full gap-1.5">
+      <NumberCaption presented={presented} control={control} labels={labels} stepper={stepper} />
       {stepper ? (
         <NumberStepper
           value={value}
@@ -167,6 +185,8 @@ function NumberControl(props: Props & { readonly descriptor: NumberDescriptor })
           label={presented.label}
           disabled={disabled}
           formatValue={format}
+          unknownValue={shownValue(presented, control.value)}
+          {...(deviceFamily(props.device) === 'light' ? { onChange: set } : {})}
           onCommit={set}
         />
       )}
@@ -224,7 +244,8 @@ export function CompactControl({
   readonly width: number;
   readonly labels: LabelMode;
 }): ReactNode {
-  const control = useControl(device.id, presented.key);
+  const raw = useControl(device.id, presented.key);
+  const control = useLiveControl(device, presented.key, raw, deviceFamily(device) === 'light');
   const kind = presented.capability.value.kind;
   const inline = labels === 'inline' && kind !== 'boolean' && kind !== 'action';
   return (

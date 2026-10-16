@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Condition } from '@smarteverything/domain';
+import type { LegacyCondition as Condition } from '@smarteverything/domain';
 import { stateCondition } from '../model/blanks';
 import { readableCapabilities, valueOperators, type DeviceLike } from '../model/capability-choices';
 import { ComparisonField } from './comparison-field';

@@ -10,7 +10,7 @@ import { committedValue, sanitizeDraft, settledValue } from './number-draft';
 import { Text } from './text';
 
 export interface NumberStepperProps {
-  readonly value: number;
+  readonly value: number | null;
   readonly min: number;
   readonly max: number;
   readonly step: number;
@@ -18,6 +18,7 @@ export interface NumberStepperProps {
   readonly label: string;
   readonly unit?: string;
   readonly disabled?: boolean;
+  readonly unknownValue?: string;
   readonly formatValue?: (value: number) => string;
 }
 
@@ -55,13 +56,13 @@ interface Range {
 }
 
 function useDraft(
-  value: number,
+  value: number | null,
   range: Range,
   onChange: (value: number) => void,
 ): { readonly text: string; readonly type: (typed: string) => void; readonly settle: () => void } {
   const [draft, setDraft] = useState<string | null>(null);
   return {
-    text: draft ?? plain(value),
+    text: draft ?? (value === null ? '' : plain(value)),
     type: (typed: string): void => {
       const next = sanitizeDraft(typed);
       setDraft(next);
@@ -82,7 +83,7 @@ function useDraft(
 
 interface AdjustableArgs {
   readonly label: string;
-  readonly value: number;
+  readonly value: number | null;
   readonly range: Range;
   readonly written: string;
   readonly disabled: boolean;
@@ -94,7 +95,9 @@ function adjustable(args: AdjustableArgs): {
   readonly accessibilityLabel: string;
   readonly accessibilityRole: 'adjustable';
   readonly accessibilityState: { readonly disabled: boolean };
-  readonly accessibilityValue: { min: number; max: number; now: number; text: string };
+  readonly accessibilityValue: { min: number; max: number; now?: number; text: string };
+  readonly 'aria-valuenow': number | undefined;
+  readonly 'aria-valuetext': string;
   readonly accessibilityActions: readonly { readonly name: string }[];
   readonly onAccessibilityAction: (event: AccessibilityActionEvent) => void;
 } {
@@ -103,7 +106,14 @@ function adjustable(args: AdjustableArgs): {
     accessibilityLabel: label,
     accessibilityRole: 'adjustable',
     accessibilityState: { disabled },
-    accessibilityValue: { min: range.min, max: range.max, now: value, text: written },
+    accessibilityValue: {
+      min: range.min,
+      max: range.max,
+      ...(value === null ? {} : { now: value }),
+      text: written,
+    },
+    'aria-valuenow': value ?? undefined,
+    'aria-valuetext': written,
     accessibilityActions: [{ name: 'increment' }, { name: 'decrement' }],
     onAccessibilityAction: (event: AccessibilityActionEvent): void => {
       onAdjust(event.nativeEvent.actionName === 'increment' ? step : -step);
@@ -123,6 +133,7 @@ function ValueInput(props: ValueInputProps): ReactNode {
     <View className="shrink flex-row items-center gap-1">
       <TextInput
         value={draft.text}
+        placeholder="—"
         onChangeText={draft.type}
         onBlur={draft.settle}
         keyboardType="decimal-pad"
@@ -146,14 +157,24 @@ function ValueInput(props: ValueInputProps): ReactNode {
   );
 }
 
+function adjustedValue(value: number | null, by: number, range: Range, step: number): number {
+  if (value === null) return range.min;
+  const digits = Math.max(decimalsOf(step), decimalsOf(value));
+  return clamp(Number((value + by).toFixed(digits)), range);
+}
+
+function writtenValue(props: NumberStepperProps): string {
+  if (props.value === null) return props.unknownValue ?? 'Unknown';
+  const format = props.formatValue ?? stepFormat(props.step);
+  return withUnit(format(props.value), props.unit);
+}
+
 export function NumberStepper(props: NumberStepperProps): ReactNode {
   const { value, min, max, step, onChange, label, unit, disabled = false } = props;
-  const formatValue = props.formatValue ?? stepFormat(step);
-  const written = withUnit(formatValue(value), unit);
+  const written = writtenValue(props);
   const typable = props.formatValue === undefined;
   const change = (by: number): void => {
-    const digits = Math.max(decimalsOf(step), decimalsOf(value));
-    const next = clamp(Number((value + by).toFixed(digits)), { min, max });
+    const next = adjustedValue(value, by, { min, max }, step);
     if (!disabled && next !== value) {
       selectionTick();
       onChange(next);
@@ -168,7 +189,7 @@ export function NumberStepper(props: NumberStepperProps): ReactNode {
       <IconButton
         icon="minus"
         label={`Decrease ${label}`}
-        disabled={disabled || value <= min}
+        disabled={disabled || (value !== null && value <= min)}
         onPress={() => {
           change(-step);
         }}
@@ -181,7 +202,7 @@ export function NumberStepper(props: NumberStepperProps): ReactNode {
       <IconButton
         icon="plus"
         label={`Increase ${label}`}
-        disabled={disabled || value >= max}
+        disabled={disabled || (value !== null && value >= max)}
         onPress={() => {
           change(step);
         }}

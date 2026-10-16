@@ -1,3 +1,4 @@
+import { setAttachmentTranscript } from './assistant-attachment-transcripts';
 import {
   STORED_MESSAGE,
   STORED_MESSAGE_COLUMNS,
@@ -332,21 +333,7 @@ export class AssistantChatRepository {
   }
 
   setTranscript(id: string, transcript: string): void {
-    this.context.write(() => {
-      const file = this.attachment(id);
-      this.context.sql.run(
-        'keep the attachment transcript',
-        'update assistant_attachments set transcript = $transcript where id = $id',
-        { id, transcript },
-      );
-      if (file.message_id === null) return;
-      const message = this.message(file.message_id);
-      this.updateMessage(message.id, {
-        attachments: message.attachments.map((attachment) =>
-          attachment.id === id ? { ...attachment, transcript } : attachment,
-        ),
-      });
-    });
+    setAttachmentTranscript(this.context, this, id, transcript);
   }
 
   attachment(id: string): StoredAttachment {

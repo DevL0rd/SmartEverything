@@ -12,7 +12,7 @@ function segmentPath([x1, y1, x2, y2]: ShellyArea[number]): string {
   return `M${String(8 - x1)} ${String(y1)} H${String(8 - x2)} V${String(y2)} H${String(8 - x1)} Z`;
 }
 
-function Tracks({
+export function PresenceTracks({
   tracks,
   colour,
 }: {
@@ -106,7 +106,7 @@ function MapCanvas({
       ))}
       <Line x1={8} y1={0} x2={8} y2={viewport.rows} stroke={edge} strokeWidth={0.03} />
       {live && sensor.connection.state === 'online' ? (
-        <Tracks tracks={sensor.tracks} colour={positive} />
+        <PresenceTracks tracks={sensor.tracks} colour={positive} />
       ) : null}
       <Circle cx={origin} cy={0} r={0.22} fill={primary} />
     </Svg>

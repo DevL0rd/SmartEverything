@@ -10,6 +10,7 @@ import { SelectRow, SwitchRow, ValueRow } from '../../../components/rows';
 import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
+import { useLiveControl } from '../../../store/use-live-control';
 import { useControl, type Control } from '../../../store/control';
 import type { Device } from '../../../store/state';
 import { shownValue } from '../model/device-model';
@@ -48,7 +49,7 @@ function NumberHeading({
 
 function NumberRow(props: RowProps & { readonly descriptor: NumberDescriptor }): ReactNode {
   const { presented, control, disabled, descriptor } = props;
-  const value = typeof control.value === 'number' ? control.value : descriptor.min;
+  const value = typeof control.value === 'number' ? control.value : null;
   const format = (next: number): string => shownValue(presented, next);
   const set = (next: number): void => {
     void control.set(next);
@@ -85,6 +86,8 @@ function NumberRow(props: RowProps & { readonly descriptor: NumberDescriptor }):
         {...bounds}
         disabled={disabled}
         formatValue={format}
+        unknownValue={shownValue(presented, control.value)}
+        {...(deviceFamily(props.device) === 'light' ? { onChange: set } : {})}
         onCommit={set}
       />
     </View>
@@ -144,10 +147,10 @@ function ActionRowFor({ device, presented, disabled, highlight }: RowProps): Rea
   );
 }
 
-function ColourRow({ device, presented, disabled }: RowProps): ReactNode {
+function ColourRow({ control, presented, disabled }: RowProps): ReactNode {
   return (
     <View className={cn('px-4 py-3', disabled && 'opacity-40')}>
-      <ColourBlock deviceId={device.id} presented={presented} disabled={disabled} />
+      <ColourBlock control={control} presented={presented} disabled={disabled} />
     </View>
   );
 }
@@ -214,7 +217,8 @@ export function CapabilityRow({
   readonly reason: string | null;
   readonly highlight?: TextRange | null;
 }): ReactNode {
-  const control = useControl(device.id, presented.key);
+  const raw = useControl(device.id, presented.key);
+  const control = useLiveControl(device, presented.key, raw, deviceFamily(device) === 'light');
   const Custom = FAMILY_CONTROLS[deviceFamily(device)]?.rows[presented.key];
   if (Custom !== undefined && presented.writable) {
     return <Custom device={device} presented={presented} />;

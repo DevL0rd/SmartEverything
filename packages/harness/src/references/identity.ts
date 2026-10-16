@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 import type { Context } from '@deepseek-ai/cordis';
 import type { Agent } from '@deepseek-ai/dsh-agent';
 import { isUserInvocable } from '@deepseek-ai/dsh-skill';
@@ -13,7 +14,7 @@ export function skillLookup(ctx: Context, agent: Agent, signal?: AbortSignal): S
   return { scope: agent, cwd: ctx.workingDirectory.get(agent.session), signal };
 }
 export async function skillReference(
-  ctx: Context,
+  _ctx: Context,
   skill: SkillSummary,
   generation: number,
   signal?: AbortSignal,
@@ -30,21 +31,10 @@ export async function skillReference(
     path: skill.path,
     resource_base,
   });
-  const file =
-    skill.path === undefined
-      ? undefined
-      : await ctx.fs.stat(
-          await ctx.fs.resolve(skill.path, signal === undefined ? undefined : { signal }),
-          signal,
-        );
-  if (skill.path !== undefined && file?.type !== 'file')
-    throw new HarnessRuntimeError(
-      'capability_unsupported',
-      'The selected skill file is unavailable.',
-    );
+  const version = await skillFileVersion(skill.path, signal);
   const revision = referenceHash({
     skill: summaryIdentity(skill),
-    version: file?.version,
+    version,
     generation,
   });
   return {
@@ -69,4 +59,20 @@ function summaryIdentity(skill: SkillSummary): unknown {
     path: skill.path,
     resourceBase: skill.resourceBase,
   };
+}
+
+async function skillFileVersion(
+  path: string | undefined,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  signal?.throwIfAborted();
+  if (path === undefined) return undefined;
+  const file = await stat(path, { bigint: true });
+  signal?.throwIfAborted();
+  if (!file.isFile())
+    throw new HarnessRuntimeError(
+      'capability_unsupported',
+      'The selected skill file is unavailable.',
+    );
+  return referenceHash([file.dev, file.ino, file.size, file.mtimeNs, file.ctimeNs].map(String));
 }

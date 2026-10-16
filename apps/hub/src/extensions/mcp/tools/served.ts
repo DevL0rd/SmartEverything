@@ -1,3 +1,4 @@
+import { schemaDefinitions } from '../../../ai-tools/referenced-schema';
 import {
   MCP_PART_TEXTS,
   MCP_TOOLS,
@@ -80,6 +81,7 @@ interface PartFields {
   readonly properties: Readonly<Record<string, unknown>>;
   readonly required: readonly string[];
   readonly closed: boolean;
+  readonly definitions: Readonly<Record<string, unknown>>;
 }
 
 function partFields(route: Routed, parts: ReadonlyMap<string, Tool>): readonly PartFields[] {
@@ -92,6 +94,7 @@ function partFields(route: Routed, parts: ReadonlyMap<string, Tool>): readonly P
       properties: schema?.properties ?? {},
       required: schema?.required ?? [],
       closed: schema?.additionalProperties === false,
+      definitions: schema === null ? {} : schemaDefinitions(schema),
     };
   });
 }
@@ -192,6 +195,7 @@ function routedSchema(route: Routed, parts: ReadonlyMap<string, Tool>): Args {
   return {
     type: 'object',
     properties: { [route.key]: keySchema(route, all), ...properties },
+    ...mergedDefinitions(all),
     required: [route.key],
     additionalProperties: false,
   };
@@ -320,4 +324,11 @@ export function servedTool(
     );
   }
   return partNamed(custom, name);
+}
+
+function mergedDefinitions(parts: readonly PartFields[]): {
+  readonly $defs?: Readonly<Record<string, unknown>>;
+} {
+  const definitions = Object.fromEntries(parts.flatMap((part) => Object.entries(part.definitions)));
+  return Object.keys(definitions).length === 0 ? {} : { $defs: definitions };
 }

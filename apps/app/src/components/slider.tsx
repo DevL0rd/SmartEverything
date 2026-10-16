@@ -1,6 +1,11 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { View, type AccessibilityActionEvent, type LayoutChangeEvent } from 'react-native';
+import {
+  View,
+  type AccessibilityActionEvent,
+  type LayoutChangeEvent,
+  type ViewProps,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
@@ -20,14 +25,16 @@ import { useWheelSteps } from './slider-wheel';
 type SliderOrientation = 'horizontal' | 'vertical';
 
 export interface SliderProps {
-  readonly value: number;
+  readonly value: number | null;
   readonly min: number;
   readonly max: number;
   readonly step: number;
   readonly label: string;
   readonly onChange?: (value: number) => void;
   readonly onCommit: (value: number) => void;
+  readonly onCancel?: () => void;
   readonly disabled?: boolean;
+  readonly unknownValue?: string;
   readonly formatValue?: (value: number) => string;
   readonly orientation?: SliderOrientation;
 }
@@ -39,6 +46,8 @@ interface Track {
   readonly digits: number;
   readonly vertical: boolean;
 }
+
+const GESTURE_SLOP = 12;
 
 const KEY_STEPS: Readonly<Record<string, number>> = {
   ArrowRight: 1,
@@ -91,7 +100,7 @@ function snapShare(share: number, track: Track): number {
   return Math.min(track.max, Math.max(track.min, value));
 }
 
-function keyTarget(key: string, value: number, props: SliderProps): number | null {
+function keyTarget(key: string, value: number | null, props: SliderProps): number | null {
   if (key === 'Home') {
     return props.min;
   }
@@ -99,7 +108,8 @@ function keyTarget(key: string, value: number, props: SliderProps): number | nul
     return props.max;
   }
   const steps = KEY_STEPS[key];
-  return steps === undefined ? null : snap(value + steps * props.step, props, props.step);
+  if (steps === undefined) return null;
+  return value === null ? props.min : snap(value + steps * props.step, props, props.step);
 }
 
 function usePosition(value: number, props: SliderProps, dragging: boolean): SharedValue<number> {
@@ -119,7 +129,7 @@ function usePosition(value: number, props: SliderProps, dragging: boolean): Shar
 }
 
 interface Drag {
-  readonly pan: ReturnType<typeof Gesture.Pan>;
+  readonly gesture: ReturnType<typeof Gesture.Exclusive>;
   readonly position: SharedValue<number>;
   readonly length: SharedValue<number>;
 }
@@ -134,23 +144,41 @@ function trackOf(props: SliderProps): Track {
   };
 }
 
-function panOf(
+function gestureOf(
   track: Track,
   enabled: boolean,
   move: (x: number, y: number) => void,
-  finish: () => void,
-): ReturnType<typeof Gesture.Pan> {
-  return Gesture.Pan()
+  finish: (success: boolean) => void,
+): ReturnType<typeof Gesture.Exclusive> {
+  const hitSlop = track.vertical ? { horizontal: 8 } : { vertical: 16, horizontal: 12 };
+  const pan = Gesture.Pan()
     .enabled(enabled)
-    .minDistance(0)
-    .hitSlop(track.vertical ? { horizontal: 8 } : { vertical: 16, horizontal: 12 })
-    .onBegin((event) => {
+    .hitSlop(hitSlop)
+    .onStart((event) => {
       move(event.x, event.y);
     })
     .onUpdate((event) => {
       move(event.x, event.y);
     })
-    .onFinalize(finish);
+    .onFinalize((_event, success) => {
+      finish(success);
+    });
+  if (track.vertical) {
+    pan.activeOffsetY([-GESTURE_SLOP, GESTURE_SLOP]).failOffsetX([-GESTURE_SLOP, GESTURE_SLOP]);
+  } else {
+    pan.activeOffsetX([-GESTURE_SLOP, GESTURE_SLOP]).failOffsetY([-GESTURE_SLOP, GESTURE_SLOP]);
+  }
+  const tap = Gesture.Tap()
+    .enabled(enabled)
+    .hitSlop(hitSlop)
+    .maxDistance(GESTURE_SLOP)
+    .onEnd((event, success) => {
+      if (success) {
+        move(event.x, event.y);
+        finish(true);
+      }
+    });
+  return Gesture.Exclusive(pan, tap);
 }
 
 function useDrag(
@@ -168,9 +196,13 @@ function useDrag(
     selectionTick();
     props.onChange?.(next);
   };
-  const commit = (next: number): void => {
+  const settle = (next: number, success: boolean): void => {
     setDragged(null);
-    props.onCommit(next);
+    if (success) props.onCommit(next);
+    else {
+      props.onCancel?.();
+      position.set(shareOf(base, props.min, props.max));
+    }
   };
   const move = (x: number, y: number): void => {
     'worklet';
@@ -182,15 +214,15 @@ function useDrag(
       scheduleOnRN(preview, next);
     }
   };
-  const finish = (): void => {
+  const finish = (success: boolean): void => {
     'worklet';
     const next = last.get();
     last.set(null);
     if (next !== null) {
-      scheduleOnRN(commit, next);
+      scheduleOnRN(settle, next, success);
     }
   };
-  return { pan: panOf(track, props.disabled !== true, move, finish), position, length };
+  return { gesture: gestureOf(track, props.disabled !== true, move, finish), position, length };
 }
 
 interface TrackProps {
@@ -267,7 +299,7 @@ function useWheel(
   const [wheeled, setWheeled] = useState<number | null>(null);
   const { value, min, max, step, onChange, onCommit } = props;
   useWheelSteps(frame, active, {
-    value,
+    value: value ?? min,
     min,
     max,
     step,
@@ -288,20 +320,66 @@ function useWheel(
 function useSliderState(
   props: SliderProps,
   keyboard: boolean,
-): Drag & { readonly frame: RefObject<View | null>; readonly shown: number } {
+): Drag & { readonly frame: RefObject<View | null>; readonly shown: number | null } {
   const frame = useRef<View>(null);
   const wheeled = useWheel(props, frame, keyboard);
   const [dragged, setDragged] = useState<number | null>(null);
   const base = wheeled ?? props.value;
-  return { frame, shown: dragged ?? base, ...useDrag(props, dragged, setDragged, base) };
+  return {
+    frame,
+    shown: dragged ?? base,
+    ...useDrag(props, dragged, setDragged, base ?? props.min),
+  };
+}
+
+function SliderTrack({
+  known,
+  vertical,
+  ...track
+}: TrackProps & {
+  readonly known: boolean;
+  readonly vertical: boolean;
+}): ReactNode {
+  if (known) return vertical ? <VerticalTrack {...track} /> : <HorizontalTrack {...track} />;
+  return (
+    <View
+      className={
+        vertical
+          ? 'w-1.5 flex-1 self-center rounded-full bg-surface-3'
+          : 'h-1 rounded-full bg-surface-3'
+      }
+    />
+  );
+}
+
+function valueAccessibility(
+  props: SliderProps,
+  shown: number | null,
+): Pick<
+  ViewProps,
+  'aria-valuemin' | 'aria-valuemax' | 'aria-valuenow' | 'aria-valuetext' | 'accessibilityValue'
+> {
+  const format = props.formatValue ?? stepFormat(props.step);
+  const text = shown === null ? (props.unknownValue ?? 'Unknown') : format(shown);
+  return {
+    'aria-valuemin': props.min,
+    'aria-valuemax': props.max,
+    'aria-valuenow': shown ?? undefined,
+    'aria-valuetext': text,
+    accessibilityValue: {
+      min: props.min,
+      max: props.max,
+      ...(shown === null ? {} : { now: shown }),
+      text,
+    },
+  };
 }
 
 export function Slider(props: SliderProps): ReactNode {
-  const { min, max, step, label, disabled = false, orientation = 'horizontal' } = props;
-  const formatValue = props.formatValue ?? stepFormat(step);
+  const { label, disabled = false, orientation = 'horizontal' } = props;
   const pointer = useIdiom() === 'pointer';
   const keyboard = pointer && !disabled;
-  const { frame, shown, pan, position, length } = useSliderState(props, keyboard);
+  const { frame, shown, gesture, position, length } = useSliderState(props, keyboard);
   const vertical = orientation === 'vertical';
   const { focus, onAction } = useNudge(props, keyboard);
   const measure = (event: LayoutChangeEvent): void => {
@@ -317,25 +395,25 @@ export function Slider(props: SliderProps): ReactNode {
       accessibilityRole="adjustable"
       accessibilityLabel={label}
       aria-disabled={disabled}
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={shown}
-      aria-valuetext={formatValue(shown)}
+      {...valueAccessibility(props, shown)}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
       onAccessibilityAction={onAction}
       className={cn(
         'rounded-md focus:outline-2 focus:outline-offset-2 focus:outline-focus',
-        vertical ? 'h-40 min-h-20 w-11 shrink py-2.5' : 'min-h-touch-min justify-center px-3',
+        vertical
+          ? 'h-40 min-h-20 w-11 shrink py-2.5'
+          : 'min-h-touch-min w-full justify-center px-3',
         disabled && 'opacity-40',
       )}
     >
-      <GestureDetector gesture={pan}>
+      <GestureDetector gesture={gesture} touchAction={vertical ? 'pan-x' : 'pan-y'}>
         <View onLayout={measure} className={vertical ? 'flex-1' : 'h-6 justify-center'}>
-          {vertical ? (
-            <VerticalTrack position={position} length={length} />
-          ) : (
-            <HorizontalTrack position={position} length={length} />
-          )}
+          <SliderTrack
+            known={shown !== null}
+            vertical={vertical}
+            position={position}
+            length={length}
+          />
         </View>
       </GestureDetector>
     </View>

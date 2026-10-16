@@ -15,6 +15,9 @@ import { useRunEvents, type RunEvents } from '../data/use-run-events';
 import { RunRow, useRunSheet } from '../components/runs';
 import { usePlaceReading } from '../data/use-automations';
 import { runsOf, type Run } from '../model/history';
+import { EditorFocusProvider } from '../editor/editor-focus';
+import { FocusedRun } from '../editor/focused-run';
+import { OwnedRuns } from '../components/owned-runs';
 import { NotFound } from './not-found';
 
 interface Day {
@@ -37,15 +40,13 @@ function daysOf(runs: readonly Run[], timeZone: string | null): Day[] {
   return days;
 }
 
-function RunDays({
-  runs,
-  zone,
-  onOpen,
-}: {
+interface RunDaysProps {
   readonly runs: readonly Run[];
   readonly zone: string | null;
   readonly onOpen: (run: Run) => void;
-}): ReactNode {
+}
+
+function RunDays({ runs, zone, onOpen }: RunDaysProps): ReactNode {
   const now = useMinute();
   return (
     <>
@@ -60,17 +61,14 @@ function RunDays({
   );
 }
 
-function RunsBody({
-  source,
-  runs,
-  zone,
-  onOpen,
-}: {
+interface RunsBodyProps {
   readonly source: RunEvents;
   readonly runs: readonly Run[];
   readonly zone: string | null;
   readonly onOpen: (run: Run) => void;
-}): ReactNode {
+}
+
+function RunsBody({ source, runs, zone, onOpen }: RunsBodyProps): ReactNode {
   if (source.error !== null && runs.length === 0) {
     return <ErrorState error={source.error} retry={source.retry} />;
   }
@@ -81,8 +79,8 @@ function RunsBody({
     return (
       <EmptyState
         icon="activity"
-        title="Nothing has run yet"
-        body="Runs show up here as they happen."
+        title="No legacy run events"
+        body="Earlier event records appear separately from owned program runs."
       />
     );
   }
@@ -101,29 +99,39 @@ function RunsBody({
   );
 }
 
-function RunsPage({
-  title,
-  automationId,
-}: {
+interface RunsPageProps {
   readonly title: string;
   readonly automationId: string | null;
-}): ReactNode {
+}
+
+function RunsPage({ title, automationId }: RunsPageProps): ReactNode {
   const source = useRunEvents();
   const reading = usePlaceReading();
   const zone = reading.usable ? reading.place.timeZone : null;
   const runs = runsOf(source.events, automationId);
   const sheet = useRunSheet(source.events, zone);
   return (
-    <Screen maxWidth="reading" header={<PageHeader title={title} />}>
-      <RunsBody source={source} runs={runs} zone={zone} onOpen={sheet.open} />
-      {sheet.sheet}
-    </Screen>
+    <EditorFocusProvider>
+      <Screen maxWidth="reading" header={<PageHeader title={title} />}>
+        <FocusedRun />
+        <OwnedRuns
+          automationId={automationId}
+          {...(automationId === null ? {} : ({ targetType: 'automation' } as const))}
+        />
+        <RunsBody source={source} runs={runs} zone={zone} onOpen={sheet.open} />
+        {sheet.sheet}
+      </Screen>
+    </EditorFocusProvider>
   );
 }
 
 const PARAMS = z.object({ automationId: z.string() });
 
-function OneAutomationRuns({ automationId }: { readonly automationId: string }): ReactNode {
+interface OneAutomationRunsProps {
+  readonly automationId: string;
+}
+
+function OneAutomationRuns({ automationId }: OneAutomationRunsProps): ReactNode {
   const row = useRow('automations', automationId);
   return (
     <RunsPage

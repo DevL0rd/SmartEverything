@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { memoOnInputs } from '../../../store/memo-selector';
 import { useStoreSelector } from '../../../store/store-context';
 import { sourcesIn } from '../model/climate-devices';
 import { readingsOf, type ComfortMetric, type MetricReading } from '../model/comfort';
@@ -29,8 +31,13 @@ export function useComfortReadings(
   metrics: readonly ComfortMetric[],
   room: string | null = null,
 ): readonly MetricReading[] {
-  return useStoreSelector((state) => readingsOf(sourcesIn(state, room), metrics), sameReadings, [
-    metrics,
-    room,
-  ]);
+  const selectReadings = useMemo(
+    () =>
+      memoOnInputs(
+        (state) => [state.tables.devices, state.deviceValues, state.ledger],
+        (state) => readingsOf(sourcesIn(state, room), metrics),
+      ),
+    [metrics, room],
+  );
+  return useStoreSelector(selectReadings, sameReadings);
 }

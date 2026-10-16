@@ -11,6 +11,34 @@ const MAX_DISCOVERY_ENTRIES = 64;
 const MAX_DISCOVERY_RESOLVERS = 4;
 const DESTINATION = 'org.freedesktop.Avahi';
 const BROWSER = `${DESTINATION}.ServiceBrowser`;
+const NETWORK_TELEMETRY = z.union([
+  z.tuple([
+    z.literal('org.freedesktop.NetworkManager.AccessPoint'),
+    z
+      .strictObject({
+        Strength: z
+          .strictObject({ signature: z.literal('y'), value: z.int().min(0).max(255) })
+          .optional(),
+        LastSeen: z.strictObject({ signature: z.literal('i'), value: z.int32() }).optional(),
+      })
+      .refine(
+        (properties) =>
+          Object.keys(properties).length > 0 &&
+          Object.values(properties).every((value) => value !== undefined),
+      ),
+    z.tuple([]),
+  ]),
+  z.tuple([
+    z.literal('org.freedesktop.NetworkManager.Device.Statistics'),
+    z
+      .partialRecord(
+        z.enum(['RxBytes', 'TxBytes']),
+        z.strictObject({ signature: z.literal('t'), value: z.uint64() }),
+      )
+      .refine((properties) => Object.keys(properties).length > 0),
+    z.tuple([]),
+  ]),
+]);
 const ITEM = z.tuple([
   z.int(),
   z.int(),
@@ -91,8 +119,8 @@ export class NodeRouteEvents {
           iface: 'org.freedesktop.DBus.Properties',
           member: 'PropertiesChanged',
         },
-        () => {
-          this.options.changed();
+        (body) => {
+          if (!NETWORK_TELEMETRY.safeParse(body).success) this.options.changed();
         },
         this.lifetime.signal,
       );

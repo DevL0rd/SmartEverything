@@ -1,7 +1,10 @@
+import { AUTOMATION_EFFECTS_CAPABILITY } from '@smarteverything/domain';
+import { AutomationRuntimeReaders } from './automation-runtime-compatibility';
 import { LiveTranscripts } from './live-transcripts';
 import { hears, readSubscribe } from './live-subscribe';
 import { LivePreviewOwners } from './live-preview-owners';
 import {
+  DEVICE_GROUP_CAPABILITY,
   AI_PREVIEW_CAPABILITY,
   AI_REFERENCE_CAPABILITY,
   aiReferenceChange,
@@ -77,6 +80,7 @@ export class LiveHub {
       protocols.has(LIVE_PROTOCOL) ? LIVE_PROTOCOL : false,
   });
   readonly previewOwners = new LivePreviewOwners();
+  private readonly automationReaders = new AutomationRuntimeReaders();
   private readonly connections = new Set<Connection>();
   private readonly harnessEngines = new Set<Connection>();
   private readonly referenceObservers = new Set<Connection>();
@@ -271,10 +275,17 @@ export class LiveHub {
     message: Subscription['message'],
   ): void {
     if (!this.previewOwners.receive(connection, message)) return;
+    this.automationReaders.observe(connection, message);
     this.observeConfiguration(connection, message);
     this.transcriptNotices.observe(connection, message);
     this.observeEngines(connection, message);
-    const tables = allowedTables(connection.client, message.tables);
+    const groupRuntime = message.capabilities?.includes(DEVICE_GROUP_CAPABILITY) === true;
+    const tables = allowedTables(connection.client, message.tables).filter(
+      (table) =>
+        (table !== 'device_groups' || groupRuntime) &&
+        (table !== 'device_effect_targets' ||
+          message.capabilities?.includes(AUTOMATION_EFFECTS_CAPABILITY) === true),
+    );
     const streams = allowedStreams(connection.client, message.streams);
     connection.tables.clear();
     connection.streams.clear();
@@ -372,7 +383,9 @@ export class LiveHub {
         ? memberEngineChange(message)
         : message;
     if (!this.acceptsNotice(connection, visible)) return;
-    const compatible = this.compatible(connection, visible);
+    const automationCompatible = this.automationReaders.project(connection, visible);
+    const compatible =
+      automationCompatible === null ? null : this.compatible(connection, automationCompatible);
     if (compatible !== null) connection.socket.send(JSON.stringify(compatible));
   }
 

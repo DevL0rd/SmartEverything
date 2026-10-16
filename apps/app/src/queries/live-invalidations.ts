@@ -7,6 +7,7 @@ import {
   AI_USAGE_PREFIX,
   AGENT_RUN_PREFIX,
   ARCHIVED_CHATS_KEY,
+  DEVICE_EFFECTS_KEY,
   HEALTH_PREFIX,
   HISTORY_PREFIX,
   OPENROUTER_ACCOUNT_KEY,
@@ -56,6 +57,11 @@ function invalidateAi(client: QueryClient, tables: ReadonlySet<LiveTable>): void
   }
 }
 
+export function refreshDeviceEffects(client: QueryClient): void {
+  void client.cancelQueries({ queryKey: DEVICE_EFFECTS_KEY });
+  void client.invalidateQueries({ queryKey: DEVICE_EFFECTS_KEY });
+}
+
 export function applyToWindows(client: QueryClient, changes: readonly LiveChange[]): void {
   const tables = new Set<LiveTable>();
   for (const change of changes) {
@@ -72,6 +78,9 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
     void client.invalidateQueries({ queryKey: HEALTH_PREFIX });
   }
   invalidateAi(client, tables);
+  if (tables.has('device_effect_targets')) {
+    refreshDeviceEffects(client);
+  }
   if (tables.has('plugins')) {
     void client.invalidateQueries({ queryKey: PLUGIN_PREFIX });
   }

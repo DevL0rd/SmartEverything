@@ -157,7 +157,10 @@ export interface HubDatabase {
   readonly pendingCommands: () => Promise<readonly CommandRow[]>;
   readonly claimCommand: (id: string, from: CommandStatus) => Promise<boolean>;
   readonly finishCommand: (id: string, outcome: CommandOutcome) => Promise<void>;
-  readonly insertCommands: (rows: readonly CommandInsert[]) => Promise<readonly CommandRow[]>;
+  readonly insertCommands: (
+    rows: readonly CommandInsert[],
+    record?: (rows: readonly CommandRow[]) => void,
+  ) => Promise<readonly CommandRow[]>;
   readonly loadDevices: () => Promise<readonly DeviceRecord[]>;
   readonly upsertDevices: (rows: readonly DeviceUpsert[]) => Promise<readonly DeviceRecord[]>;
   readonly setDevicesOnline: (

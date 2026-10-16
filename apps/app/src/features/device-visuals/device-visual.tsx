@@ -35,13 +35,14 @@ function VisualView({ family, state, size, px: fixed }: VisualViewProps): ReactN
   const natural = useVisualPx(size);
   const px = fixed ?? natural;
   const tone = toneOf(state);
-  const onScreen = useOnScreen(frame);
+  const { visible, onLayout } = useOnScreen(frame);
   const animated = tone === 'active' || (state.online && state.ambientLight === true);
-  const { moving, reduced } = useAnimationGate(animated, onScreen);
+  const { moving, reduced } = useAnimationGate(animated, visible);
   const Visual = VISUALS[family];
   return (
     <View
       ref={frame}
+      onLayout={onLayout}
       aria-hidden
       pointerEvents="none"
       className={cn('relative shrink-0', SIZE_CLASS[px], tone === 'offline' && 'opacity-60')}

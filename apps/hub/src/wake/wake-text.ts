@@ -16,7 +16,7 @@ const MINUTES_PER_HOUR = 60;
 
 export type WakeNameStore = Pick<
   Store,
-  'devices' | 'profiles' | 'aiChats' | 'schedules' | 'automations' | 'settings'
+  'devices' | 'profiles' | 'aiChats' | 'schedules' | 'automations' | 'automationValues' | 'settings'
 >;
 
 export interface WakeOccasion {
@@ -123,6 +123,7 @@ export class WakeText {
       chat: (id) => this.store.aiChats.chat(id).title,
       schedule: (id) => this.store.schedules.byId(id).label,
       automation: (id) => this.store.automations.byId(id).name,
+      automation_value: (id) => this.store.automationValues.byId(id).content.name,
       client: null,
       channel: null,
       planner_item: null,

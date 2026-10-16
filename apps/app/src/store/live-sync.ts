@@ -1,3 +1,4 @@
+import { deviceRuntimeTables, deviceRuntimeCapabilities } from './live-device-capabilities';
 import {
   API_ENDPOINTS as E,
   AI_PREVIEW_CAPABILITY,
@@ -9,6 +10,7 @@ import {
   TRANSCRIPT_NOTICE_CAPABILITY,
   LIVE_TABLES,
   type LiveChange,
+  type LiveTable,
   type LiveMessage,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
@@ -23,6 +25,7 @@ import { TOKEN_WITHDRAWN, backoffOf, openLiveSocket, type Received } from './liv
 import {
   clearServerCapabilities,
   serverSupportsComputerAi,
+  serverSupportsDeviceGroups,
   serverSupportsComputerAiV2,
   serverSupportsAiHarness,
 } from '../api/connection/server-capabilities';
@@ -41,6 +44,7 @@ type Phase = 'closed' | 'buffering' | 'live';
 type ActivityNotice = Extract<LiveMessage, { type: 'chat_activity' | 'chat_stream' }>;
 
 export class LiveSync {
+  private readonly snapshotCommands: NonNullable<LiveSyncHooks['onSnapshotCommands']>;
   private retryRoute: (() => boolean) | null = null;
   private stopRoute: (() => void) | null = null;
   private socketRun = 0;
@@ -63,7 +67,9 @@ export class LiveSync {
     private readonly connection: ServerConnection,
     private readonly store: EntityStore,
     private readonly hooks: LiveSyncHooks,
-  ) {}
+  ) {
+    this.snapshotCommands = hooks.onSnapshotCommands ?? ((): void => undefined);
+  }
 
   start(): void {
     const manager = routeFor(this.connection);
@@ -141,6 +147,10 @@ export class LiveSync {
     this.resnapshot(this.store.get().sync.problem);
   }
 
+  private subscribedTables(): LiveTable[] {
+    return deviceRuntimeTables(deployed(LIVE_TABLES), this.connection.url);
+  }
+
   private open(): void {
     this.socketRun += 1;
     const socketRun = this.socketRun;
@@ -159,9 +169,10 @@ export class LiveSync {
         token: this.connection.token,
         subscribe: {
           type: 'subscribe',
-          tables: deployed(LIVE_TABLES),
+          tables: this.subscribedTables(),
           streams: deployed(platformStreams()),
           capabilities: [
+            ...deviceRuntimeCapabilities(this.connection.url),
             TRANSCRIPT_NOTICE_CAPABILITY,
             AI_REFERENCE_CAPABILITY,
             ...(this.computerAiAdvertised ? [AI_ENGINE_CAPABILITY] : []),
@@ -307,13 +318,23 @@ export class LiveSync {
     try {
       const read = await api().callTables(
         E.readSnapshot,
-        { query: { nutrition: true, watch: true, weather: true, talk: true, assistant: true } },
+        {
+          query: {
+            nutrition: true,
+            watch: true,
+            weather: true,
+            talk: true,
+            assistant: true,
+            ...(serverSupportsDeviceGroups(this.connection.url) ? { groupRuntime: true } : {}),
+          },
+        },
         SNAPSHOT_ROOTS,
       );
       const snapshot = read.data;
       if (run !== this.snapshotRun || this.phase === 'closed') return;
       if (this.upgradeComputerAi()) return;
       this.store.replace(snapshot);
+      this.snapshotCommands(snapshot.tables.commands);
       this.outdated = new Set(read.skipped);
       const replay = this.buffer.filter((change) => change.seq > snapshot.seq);
       this.buffer = [];
@@ -323,18 +344,9 @@ export class LiveSync {
       this.replayActivity();
       this.attempt = 0;
       this.store.setSync({ status: 'live', problem: null, outdated: read.skipped });
-      this.hooks.onSynchronized?.();
+      this.hooks.onSynchronized?.(replay);
       log.info('live.ready', { seq: snapshot.seq, replayed: replay.length });
-      if (snapshot.session.client.role === 'owner') {
-        this.loadConsents().catch((error: unknown) => {
-          log.error('live.consents_failed', error);
-          notify({
-            message: 'Waiting assistant requests could not be read',
-            error,
-            tone: 'critical',
-          });
-        });
-      }
+      this.loadOwnerConsents(snapshot.session.client.role === 'owner');
     } catch (error) {
       if (run !== this.snapshotRun) return;
       log.error('live.snapshot_failed', error);
@@ -345,6 +357,14 @@ export class LiveSync {
       this.stopSocket?.();
       this.closed(0, 'snapshot failed');
     }
+  }
+
+  private loadOwnerConsents(owner: boolean): void {
+    if (!owner) return;
+    this.loadConsents().catch((error: unknown) => {
+      log.error('live.consents_failed', error);
+      notify({ message: 'Waiting assistant requests could not be read', error, tone: 'critical' });
+    });
   }
 
   private async loadConsents(): Promise<void> {

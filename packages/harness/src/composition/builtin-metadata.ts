@@ -11,6 +11,7 @@ import { HarnessRuntimeError } from '../host/errors';
 import { BROWSER_PACKAGES } from './browser-provenance-data';
 
 export const HARNESS_RUNTIME_REVISION = 'dsh-alpha.2-node-2-historical-paths-v1';
+export const HARNESS_NATIVE_RUNTIME_REVISION = 'dsh-alpha.2-selected-machine-native-v2';
 const requirePackage = createRequire(import.meta.url);
 const SKILL_MEMBERS = ['LICENSE', 'lib/index.js', 'lib/types/index.d.ts', 'package.json'] as const;
 const SKILL_PACKAGES = [
@@ -31,7 +32,7 @@ const SKILL_PACKAGES = [
 export const HARNESS_CODEGRAPH_METADATA = builtinMetadata(
   {
     id: 'codegraph',
-    version: '0.1.6-smarteverything.2',
+    version: '0.1.6-smarteverything.3',
     provenance: CODEGRAPH_PROVENANCE,
     kind: 'tools',
   },
@@ -97,8 +98,8 @@ function builtinMetadata(
       provenance: identity.provenance,
       platforms: identity.id === 'skills' ? ['linux', 'macos', 'windows'] : ['linux'],
       dsh_version: '0.2.1-alpha.2',
-      runtime_version: HARNESS_RUNTIME_REVISION,
-      server_safe: identity.id === 'skills',
+      runtime_version: HARNESS_NATIVE_RUNTIME_REVISION,
+      server_safe: identity.id === 'skills' || identity.id === 'codegraph',
       adapter: { id: identity.id, version: identity.version, kind: identity.kind },
       skill_assets: [],
     }),

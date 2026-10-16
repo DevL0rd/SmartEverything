@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { AiHarnessNotice } from '@smarteverything/domain';
 import {
@@ -15,6 +16,27 @@ const COMMAND_QUERY_PREFIX = ['window', 'ai-harness-commands'] as const;
 export const HARNESS_CATALOGUE_KEY = ['window', 'ai-harness'] as const;
 export const HARNESS_SESSION_PREFIX = ['window', 'ai-harness-session'] as const;
 const live = new WeakMap<QueryClient, HarnessNotices>();
+const readers = new WeakMap<QueryClient, Set<() => void>>();
+
+export function useHarnessReadRevision(client: QueryClient, chatId: string): string {
+  return useSyncExternalStore(
+    (notify) => subscribeRevision(client, notify),
+    () => harnessReadRevision(client, chatId),
+    () => harnessReadRevision(client, chatId),
+  );
+}
+function subscribeRevision(client: QueryClient, notify: () => void): () => void {
+  const listeners = readers.get(client) ?? new Set<() => void>();
+  listeners.add(notify);
+  readers.set(client, listeners);
+  return (): void => {
+    listeners.delete(notify);
+    if (listeners.size === 0) readers.delete(client);
+  };
+}
+function publishRevision(client: QueryClient): void {
+  for (const notify of readers.get(client) ?? []) notify();
+}
 
 export function harnessReadRevision(client: QueryClient, chatId: string): string {
   return live.get(client)?.readRevision(chatId) ?? 'unwatched';
@@ -34,6 +56,7 @@ export class HarnessNotices {
   start(): void {
     this.active = true;
     live.set(this.client, this);
+    publishRevision(this.client);
   }
   readRevision(chatId: string): string {
     return JSON.stringify([this.readGeneration, this.noticeRevisions.get(chatId) ?? 0]);
@@ -47,6 +70,7 @@ export class HarnessNotices {
   configurationChanged(): void {
     if (!this.active) return;
     this.readGeneration += 1;
+    publishRevision(this.client);
     this.enqueue(EXTENSION_CONFIGURATION_KEY);
     this.enqueue(EXTENSIONS_KEY);
     this.enqueue(SKILL_UPDATES_KEY);
@@ -61,6 +85,7 @@ export class HarnessNotices {
     const event = message.event;
     if (event.kind === 'text' || event.kind === 'reasoning' || event.kind === 'tool') return;
     this.noticeRevisions.set(event.chat_id, (this.noticeRevisions.get(event.chat_id) ?? 0) + 1);
+    publishRevision(this.client);
     this.enqueue(harnessKey(event.chat_id));
     this.enqueue(COMMAND_QUERY_PREFIX);
     this.enqueue(REFERENCE_QUERY_PREFIX);
@@ -101,6 +126,7 @@ export class HarnessNotices {
     this.revision += 1;
     this.readGeneration += 1;
     this.noticeRevisions.clear();
+    publishRevision(this.client);
     this.queued = false;
     this.pending.clear();
     this.refreshing.clear();

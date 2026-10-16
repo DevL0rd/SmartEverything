@@ -64,14 +64,17 @@ export class Authority {
     return origin;
   }
 
+  assertOwner(caller: ToolCaller): void {
+    if (caller.role !== 'owner')
+      throw new DiscordPolicyError('Discord is only available to the owner’s own conversations');
+  }
+
   async access(
     caller: ToolCaller,
     eventId: string | undefined,
     mutating: boolean,
   ): Promise<Access> {
-    if (caller.role !== 'owner') {
-      throw new DiscordPolicyError('Discord is only available to the owner’s own conversations');
-    }
+    this.assertOwner(caller);
     if (eventId === undefined) {
       return { origin: null };
     }

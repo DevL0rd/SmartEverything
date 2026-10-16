@@ -40,6 +40,20 @@ function homeHits(store: Store, { query, limit }: Search): Record<string, unknow
         name: automation.name,
         enabled: automation.enabled,
       })),
+    sequences: store.automationSequences
+      .list()
+      .filter((sequence) => matches(query, sequence.name, 'sequence', 'reusable'))
+      .slice(0, limit)
+      .map((sequence) => ({
+        id: sequence.id,
+        name: sequence.name,
+        parameters: sequence.definition.parameters,
+      })),
+    values: store.automationValues
+      .list()
+      .filter((value) => matches(query, value.content.name, value.content.kind, 'value'))
+      .slice(0, limit)
+      .map((value) => ({ id: value.id, name: value.content.name, kind: value.content.kind })),
     remotes: store.infrared
       .remotes()
       .filter((remote) => matches(query, remote.name, remote.category, remote.brand))

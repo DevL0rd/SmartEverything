@@ -1,9 +1,20 @@
+import { speechTriggerArmer } from './automations/speech-trigger';
+import { DeviceEffects } from './commands/effects';
+import { temporaryEffectService } from './automations/temporary-effect';
+import { automationTargetCommand } from './automations/target-command';
+import { AutomationSequences } from './automations/sequences';
+import { automationBindings, boundAutomationCommand } from './automations/bindings';
+import { conditionsHold, GEO_POINT } from '@smarteverything/domain';
+import type { StructuredActionServices } from './automations/structured-actions';
+import { OwnedAutomationRuns } from './automations/owned-runs';
+import { ownedRunTask } from './automations/run-task';
 import { preparePassiveAdapter } from './local/passive-adapter';
 import { withEffectAuthority } from './harness/effect-authority';
 import {
   isPrivate,
   privacySwitchOf,
   type CommandAction,
+  type GeoPoint,
   type JsonValue,
   type Provider,
 } from '@smarteverything/domain';
@@ -53,7 +64,10 @@ export interface Core {
   readonly events: EventRouter;
   readonly providers: ProviderManager;
   readonly executor: CommandExecutor;
+  readonly effects: DeviceEffects;
   readonly engine: AutomationEngine;
+  readonly runs: OwnedAutomationRuns;
+  readonly sequences: AutomationSequences;
   readonly cameras: CameraService;
   readonly signals: SignalBus;
   readonly automationAi: AutomationAiSlot;
@@ -64,6 +78,7 @@ interface ActionLinks {
   readonly engine: () => AutomationEngine;
   readonly ai: AutomationAiSlot;
   readonly waitForCommands?: boolean;
+  readonly structured?: StructuredActionServices;
 }
 
 export function reportFailure(log: Logger, event: string): (cause: unknown) => void {
@@ -124,13 +139,23 @@ function assembleActions(
 ): ActionRunner {
   return new ActionRunner({
     withOrigin: (origin, work) =>
-      withEffectAuthority(parts.store, 'automation', origin.automationId, work),
+      withEffectAuthority(
+        parts.store,
+        origin.targetType ?? 'automation',
+        origin.automationId,
+        work,
+      ),
+    ...(links.structured === undefined ? {} : { structured: links.structured }),
     store: parts.database,
-    submit: (rows): void | Promise<void> => {
+    submit: (rows, admitted, authorize): void | Promise<void> => {
       if (links.waitForCommands === true) {
-        return finishAutomationCommands(parts.store, parts.clock, executor, rows);
+        return finishAutomationCommands(parts.store, parts.clock, executor, {
+          rows,
+          admitted: admitted === true,
+          ...(authorize === undefined ? {} : { authorize }),
+        });
       }
-      submitAutomationCommands(executor, rows);
+      submitAutomationCommands(executor, rows, admitted, authorize);
     },
     sceneActions: (sceneId): readonly CommandAction[] | undefined =>
       links.engine().sceneActions(sceneId),
@@ -184,27 +209,38 @@ function assembleEngine(
   parts: HubParts,
   writers: Pick<Core, 'state' | 'events'>,
   executor: CommandExecutor,
-  links: Pick<Core, 'signals' | 'automationAi'>,
+  links: Pick<Core, 'signals' | 'automationAi' | 'runs'> & {
+    readonly structured: StructuredActionServices;
+  },
 ): AutomationEngine {
+  const { structured } = links;
   const actions = assembleActions(parts, writers.events, executor, {
     engine: () => engine,
     ai: links.automationAi,
+    structured,
   });
   const manualActions = assembleActions(parts, writers.events, executor, {
     engine: () => engine,
     ai: links.automationAi,
+    structured,
     waitForCommands: true,
   });
   const engine: AutomationEngine = new AutomationEngine({
     store: parts.database,
+    ownRun: (request) => links.runs.start(ownedRunTask(parts.store, request)),
+    cancelRuns: (): void => {
+      links.runs.shutdown();
+    },
     recordRun: (run): void => {
       recordAutomationRun(writers.events, run);
     },
     actions: (waitForCommands) => (waitForCommands === true ? manualActions : actions),
     admitManual: (definition) => admitManualAutomation(parts.store, definition),
     valueOf: (deviceId, capability) => writers.state.valueOf(deviceId, capability),
+    automationValue: (id) => parts.store.automationValues.byId(id).content.value,
+    bindings: () => automationBindings(parts.store, executor, {}),
     forecast: () => parts.store.weather.read().forecast,
-    armers: [],
+    armers: [speechTriggerArmer(parts.store)],
     sources: () => installedSignalSources(parts.store),
     clock: parts.clock,
     log: areaOf(parts, 'automations'),
@@ -213,6 +249,50 @@ function assembleEngine(
     engine.signal(signal);
   });
   return engine;
+}
+
+function structuredServices(
+  parts: HubParts,
+  executor: CommandExecutor,
+  runs: OwnedAutomationRuns,
+  runtime: { readonly sequences: AutomationSequences; readonly effects: DeviceEffects },
+): StructuredActionServices {
+  const { sequences, effects } = runtime;
+  const evaluate: StructuredActionServices['conditions'] = (conditions, parameters) =>
+    parts.store.write(() =>
+      conditionsHold(conditions, {
+        bindings: automationBindings(parts.store, executor, parameters),
+        now: parts.clock.now(),
+        timeZone: parts.store.settings.read().time_zone,
+        location: conditionLocation(parts.store),
+        forecast: parts.store.weather.read().forecast,
+        stateOf: (id, key) =>
+          parts.store.state.list().find((row) => row.device_id === id && row.capability === key)
+            ?.value,
+        valueOf: (id) => parts.store.automationValues.byId(id).content.value,
+      }),
+    );
+  return {
+    bindingContext: (parameters) => automationBindings(parts.store, executor, parameters),
+    command: boundAutomationCommand(parts.store, executor),
+    targetCommand: automationTargetCommand(parts.store, executor),
+    value: (id, operation): void => {
+      parts.store.automationValues.apply(id, operation);
+    },
+    sequence: (action, origin, context, parameters) =>
+      sequences.call(
+        { id: action.sequenceId, parameters: action.parameters, origin },
+        context,
+        parameters,
+      ),
+    conditions: evaluate,
+    temporaryEffect: temporaryEffectService(parts.store, parts.clock, effects, evaluate),
+    stop: (target, context): void => {
+      if (target.type === 'current') runs.stop(context.runId);
+      else if (target.type === 'run') runs.stop(target.runId);
+      else runs.cancelTarget(target.id, target.controlKey);
+    },
+  };
 }
 
 export function assemble(parts: HubParts): Core {
@@ -242,7 +322,9 @@ export function assemble(parts: HubParts): Core {
     log: areaOf(parts, 'providers'),
   });
   const drivers = new DeviceDriverRegistry();
+  const effects = new DeviceEffects(parts.store, parts.clock.now, areaOf(parts, 'effects'));
   const executor = new CommandExecutor({
+    effects,
     store: parts.database,
     drivers,
     inventory: writers.inventory,
@@ -254,7 +336,47 @@ export function assemble(parts: HubParts): Core {
     log: areaOf(parts, 'commands'),
     now: parts.clock.now,
   });
+  effects.attach(executor);
+  const automation = assembleAutomationCore(parts, writers, signals, { executor, effects });
+  return { ...writers, drivers, providers, executor, effects, ...automation, cameras, signals };
+}
+
+function assembleAutomationCore(
+  parts: HubParts,
+  writers: Pick<Core, 'state' | 'events'>,
+  signals: SignalBus,
+  commands: { readonly executor: CommandExecutor; readonly effects: DeviceEffects },
+): Pick<Core, 'engine' | 'runs' | 'sequences' | 'automationAi'> {
+  const { executor, effects } = commands;
   const automationAi = new AutomationAiSlot();
-  const engine = assembleEngine(parts, writers, executor, { signals, automationAi });
-  return { ...writers, drivers, providers, executor, engine, cameras, signals, automationAi };
+  const runs = new OwnedAutomationRuns(parts.store.automationRuns, parts.clock);
+  const sequences = new AutomationSequences(
+    parts.store,
+    runs,
+    () => sequenceRunner,
+    (parameters) => automationBindings(parts.store, executor, parameters),
+  );
+  const structured = structuredServices(parts, executor, runs, { sequences, effects });
+  const engine = assembleEngine(parts, writers, executor, {
+    signals,
+    automationAi,
+    runs,
+    structured,
+  });
+  const sequenceRunner = assembleActions(parts, writers.events, executor, {
+    engine: () => engine,
+    ai: automationAi,
+    waitForCommands: true,
+    structured,
+  });
+  return { engine, runs, sequences, automationAi };
+}
+
+function conditionLocation(store: Store): GeoPoint | null {
+  const settings = store.settings.read();
+  const location = GEO_POINT.safeParse({
+    latitude: settings.latitude,
+    longitude: settings.longitude,
+  });
+  return location.success ? location.data : null;
 }

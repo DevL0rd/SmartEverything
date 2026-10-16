@@ -126,6 +126,9 @@ export function displayName(
   allDevices: readonly NamedDevice[],
   rooms: readonly NamedRoom[],
 ): string {
+  if (device.display_name !== null) {
+    return device.display_name;
+  }
   const replaced = replacedIds(allDevices);
   if (replaced.has(device.id)) {
     return baseNameOf(device);

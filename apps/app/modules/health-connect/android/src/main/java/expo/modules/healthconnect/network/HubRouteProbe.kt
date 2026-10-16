@@ -2,6 +2,7 @@ package expo.modules.healthconnect.network
 
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -18,7 +19,7 @@ object HubRouteProbe {
   private val permits = Semaphore(MAX_PROBES)
   private val calls = mutableSetOf<Call>()
   @Volatile var settled: () -> Unit = {}
-  fun batch(scopeId: String, trust: HubTrust, endpoints: List<HubRouteEndpoint>): HubRouteEndpoint? {
+  fun batch(scopeId: String, trust: HubTrust, endpoints: List<HubRouteEndpoint>, resolved: (HubRouteEndpoint?) -> Unit = {}): HubRouteEndpoint? {
     val capacity = permits.availablePermits()
     val remote = endpoints.firstOrNull { it.kind == "remote" }
     val local = endpoints.filter { it.kind != "remote" }.take(maxOf(0, capacity - if (remote == null) 0 else 1))
@@ -26,24 +27,32 @@ object HubRouteProbe {
     val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(PROBE_MS)
     val results = candidates.mapNotNull { endpoint ->
       if (!permits.tryAcquire()) return@mapNotNull null
-      val retired = AtomicBoolean(false)
+      val settledOrRetired = AtomicBoolean(false)
       val future = executor.submit(Callable {
         try { verify(scopeId, endpoint, trust) }
-        finally { permits.release(); if (retired.get()) settled() }
+        finally { permits.release(); if (settledOrRetired.getAndSet(true)) settled() }
       })
-      Triple(endpoint, future, retired)
+      Triple(endpoint, future, settledOrRetired)
     }
-    return results.map { (endpoint, future, retired) ->
-      val answer = try { future.get(maxOf(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS) }
-        catch (failure: java.util.concurrent.TimeoutException) { retired.set(true); false }
-      endpoint to answer
-    }.firstOrNull { it.second }?.first
+    val remaining = results.iterator()
+    val selected = remaining.asSequence().firstOrNull { (_, future, settledOrRetired) ->
+      answer(future, settledOrRetired, deadline)
+    }?.first
+    try { resolved(selected) }
+    finally { remaining.forEach { (_, future, settledOrRetired) -> answer(future, settledOrRetired, deadline) } }
+    return selected
+  }
+  private fun answer(future: Future<Boolean>, settledOrRetired: AtomicBoolean, deadline: Long): Boolean = try {
+    future.get(maxOf(1, deadline - System.nanoTime()), TimeUnit.NANOSECONDS)
+  } catch (failure: java.util.concurrent.TimeoutException) {
+    if (settledOrRetired.getAndSet(true)) settled()
+    false
   }
   fun cancel() { synchronized(calls) { calls.toList() }.forEach { it.cancel() } }
   fun canonicalIdentity(origin: String): JSONObject {
     if (!permits.tryAcquire()) throw java.io.IOException("Previous identity probes are still settling")
     try { return read(HubTransport.canonicalLease(origin + IDENTITY_PATH)).getJSONObject("identity") }
-    finally { permits.release() }
+    finally { permits.release(); settled() }
   }
   private fun verify(scopeId: String, endpoint: HubRouteEndpoint, trust: HubTrust): Boolean = try {
     val identity = read(HubTransport.lease(endpoint.url + IDENTITY_PATH, scopeId)).getJSONObject("identity")
@@ -53,7 +62,7 @@ object HubRouteProbe {
       tls.getString("publicKeySha256") == trust.publicKeySha256
   } catch (failure: Exception) { false }
   private fun read(lease: HubLease): JSONObject {
-    val client = lease.client.newBuilder().callTimeout(PROBE_MS, TimeUnit.MILLISECONDS).build()
+    val client = lease.client.newBuilder().retryOnConnectionFailure(true).callTimeout(PROBE_MS, TimeUnit.MILLISECONDS).build()
     val call = client.newCall(Request.Builder().url(lease.url).get().build())
     synchronized(calls) { calls.add(call) }
     try {

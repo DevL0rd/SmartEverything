@@ -11,6 +11,7 @@ export interface CameraZoom {
   readonly step: number;
   readonly preview: (level: number) => void;
   readonly commit: (level: number) => void;
+  readonly cancel: () => void;
   readonly toggle: () => void;
   readonly reset: () => void;
 }
@@ -90,6 +91,9 @@ export function useCameraZoom(device: Device): CameraZoom {
       }
     },
     commit,
+    cancel: (): void => {
+      setPreviewing(null);
+    },
     toggle: (): void => {
       commit(units > shown.min ? shown.min / UNITS_PER_X : TOGGLED_X);
     },

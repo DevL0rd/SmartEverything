@@ -27,6 +27,7 @@ export interface NewCommand {
   readonly value: JsonValue;
   readonly source: CommandSource;
   readonly requestedBy: string | null;
+  readonly effectPolicy?: 'keep' | 'cancel' | undefined;
 }
 
 function outcomeColumns(outcome: CommandOutcome): { result: string; error: string | null } {
@@ -116,8 +117,8 @@ export class CommandsRepository {
     const now = this.context.now();
     this.context.sql.run(
       'add the command',
-      `insert into commands (id, device_id, capability, value, source, requested_by, created_at, expires_at)
-       values ($id, $deviceId, $capability, $value, $source, $requestedBy, $now, $expiresAt)`,
+      `insert into commands (id, device_id, capability, value, source, requested_by, created_at, expires_at, effect_policy)
+       values ($id, $deviceId, $capability, $value, $source, $requestedBy, $now, $expiresAt, $effectPolicy)`,
       {
         id,
         deviceId: command.deviceId,
@@ -125,6 +126,7 @@ export class CommandsRepository {
         value: jsonText(command.value),
         source: command.source,
         requestedBy: command.requestedBy,
+        effectPolicy: command.effectPolicy ?? 'keep',
         now,
         expiresAt: new Date(Date.parse(now) + COMMAND_LIFETIME_MS).toISOString(),
       },

@@ -99,7 +99,7 @@ function PermissionExplanation({ session }: { readonly session: AiHarnessSession
       </Text>
       {session.target.kind === 'server' ? (
         <Text variant="caption" tone="variant">
-          Home hub files, shell and system tools stay unavailable.
+          Only the owner can use system files and commands on Home Hub.
         </Text>
       ) : null}
     </>

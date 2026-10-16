@@ -21,7 +21,7 @@ export class NativeReferenceCursors {
   private readonly pending = new Set<Promise<void>>();
   private readonly failures: unknown[] = [];
   keep(owner: string, progress: NativeReferenceProgress): string {
-    if (this.entries.size >= CURSOR_MAX)
+    if (this.entries.size + this.pending.size >= CURSOR_MAX)
       throw new HarnessRuntimeError(
         'operation_failed',
         'Native reference cursor capacity is exhausted.',
@@ -71,9 +71,18 @@ export class NativeReferenceCursors {
     );
     return work;
   }
+  async releaseOwner(owner: string): Promise<void> {
+    const work = [...this.entries].flatMap(([id, entry]) =>
+      entry.owner === owner ? [this.release(id, owner)] : [],
+    );
+    await this.finish(work);
+  }
   async close(): Promise<void> {
     const owned = [...this.entries.keys()].map((id) => this.release(id));
-    const results = await Promise.allSettled([...owned, ...this.pending]);
+    await this.finish([...new Set([...owned, ...this.pending])]);
+  }
+  private async finish(work: readonly Promise<void>[]): Promise<void> {
+    const results = await Promise.allSettled(work);
     const failures: unknown[] = [...this.failures];
     for (const result of results) if (result.status === 'rejected') failures.push(result.reason);
     if (failures.length > 0)

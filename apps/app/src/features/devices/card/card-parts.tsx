@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import {
   airBand,
@@ -16,9 +16,11 @@ import { AIR_BAND_COLOUR } from '../../../design/data-colours';
 import type { ColourRole } from '../../../design/tokens';
 import { joinParts } from '../../../format/text';
 import { useHistory } from '../../../queries/history';
+import { memoOnInputs } from '../../../store/memo-selector';
 import { useDeviceValues } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceValuesOf, type Device, type DeviceValues } from '../../../store/state';
+import { ColourShortcut } from '../controls/colour-shortcut';
 import { PowerToggle } from '../controls/power-toggle';
 import { splitUnit } from '../detail/device-hero';
 import { useOfflineLine, useSeenLine } from '../detail/offline-banner';
@@ -75,16 +77,20 @@ function useNamesText(device: Device, model: DeviceModel, look: NamesLook): stri
   const offline = useOfflineLine(device.id);
   const seen = useSeenLine(device.id, look !== 'tile' && look !== 'line');
   const awake = device.online || model.sleepy;
-  return useStoreSelector(
-    (state) => {
-      const values = deviceValuesOf(state, device.id);
-      return awake
-        ? stateText(model, values, look !== 'large')
-        : asleepText(model, values, look === 'large' ? offline : seen, look);
-    },
-    Object.is,
+  const select = useMemo(
+    () =>
+      memoOnInputs(
+        (state) => [deviceValuesOf(state, device.id)],
+        (state) => {
+          const values = deviceValuesOf(state, device.id);
+          return awake
+            ? stateText(model, values, look !== 'large')
+            : asleepText(model, values, look === 'large' ? offline : seen, look);
+        },
+      ),
     [device.id, model, awake, look, offline, seen],
   );
+  return useStoreSelector(select);
 }
 
 function useIsOn(model: DeviceModel): boolean {
@@ -129,7 +135,12 @@ export function Corner({ device }: { readonly device: Device }): ReactNode {
   if (!device.online && !model.sleepy) {
     return <StatusChip status="offline" />;
   }
-  return <PowerToggle device={device} />;
+  return (
+    <View className="flex-row items-center">
+      <ColourShortcut device={device} />
+      <PowerToggle device={device} />
+    </View>
+  );
 }
 
 export function Header({

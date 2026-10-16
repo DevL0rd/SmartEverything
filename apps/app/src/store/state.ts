@@ -5,6 +5,7 @@ import type {
   FirewallStatus,
   HubStatus,
   JsonValue,
+  LayoutRow,
   LiveTable,
   McpConsentRequest,
   SettingsRow,
@@ -35,9 +36,15 @@ export type ListTable = Exclude<
   | 'weather'
   | 'exchange_rates'
   | 'ai_outreach'
+  | 'device_effect_targets'
 >;
 
 export type RowOf<T extends ListTable> = T extends 'devices' ? Device : TableRow<T>;
+
+export type NextTable = <T extends ListTable>(
+  name: T,
+  rows: readonly RowOf<T>[],
+) => Table<RowOf<T>>;
 
 export interface Table<R> {
   readonly byId: Readonly<Record<string, R>>;
@@ -51,9 +58,10 @@ export function makeTable<R>(
   ids: readonly string[],
   version: number,
 ): Table<R> {
-  const rows = ids.flatMap((id) => {
+  const rows: R[] = [];
+  ids.forEach((id) => {
     const row = byId[id];
-    return row === undefined ? [] : [row];
+    if (row !== undefined) rows.push(row);
   });
   return { byId, ids, rows, version };
 }
@@ -80,10 +88,20 @@ export interface SyncState {
 export type Session = Snapshot['session'];
 
 export interface LedgerEntry {
+  readonly requestedAt?: string;
   readonly commandId: string | null;
   readonly value: JsonValue | null;
   readonly expiresAt: string | null;
   readonly failure: string | null;
+}
+
+export interface LayoutWrite {
+  readonly request: symbol;
+  readonly scope: string;
+  readonly record: LayoutRow;
+  readonly previous: LayoutRow | null;
+  readonly observedSeq: number;
+  readonly confirmedSeq: number | null;
 }
 
 export interface StoreState {
@@ -104,6 +122,9 @@ export interface StoreState {
   readonly serviceLog: readonly string[];
   readonly consentRequests: readonly McpConsentRequest[];
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
+  readonly layoutWrites: Readonly<Record<string, LayoutWrite>>;
+  readonly layoutWriteEpoch: number;
+  readonly layoutWritesSuspended: boolean;
 }
 
 function emptyTable<R>(): Table<R> {
@@ -115,6 +136,7 @@ function emptyTables(): Tables {
     clients: emptyTable(),
     provider_links: emptyTable(),
     rooms: emptyTable(),
+    device_groups: emptyTable(),
     devices: emptyTable(),
     commands: emptyTable(),
     events: emptyTable(),
@@ -124,6 +146,9 @@ function emptyTables(): Tables {
     ir_codes: emptyTable(),
     scenes: emptyTable(),
     automations: emptyTable(),
+    automation_values: emptyTable(),
+    automation_sequences: emptyTable(),
+    automation_runs: emptyTable(),
     layouts: emptyTable(),
     push_targets: emptyTable(),
     health_sources: emptyTable(),
@@ -163,13 +188,91 @@ export function emptyState(): StoreState {
     serviceLog: [],
     consentRequests: [],
     ledger: {},
+    layoutWrites: {},
+    layoutWriteEpoch: 0,
+    layoutWritesSuspended: false,
   };
 }
 
 const NO_VALUES: DeviceValues = {};
 
+const projectedValues = new WeakMap<StoreState, Map<string, DeviceValues>>();
+
+type PendingEntry = readonly [capability: string, entry: LedgerEntry];
+
+interface ProjectionNode {
+  readonly entries: Map<string, WeakMap<LedgerEntry, ProjectionNode>>;
+  values: DeviceValues | undefined;
+}
+
+const ledgerEntries = new WeakMap<
+  StoreState['ledger'],
+  ReadonlyMap<string, readonly PendingEntry[]>
+>();
+const reportedProjections = new WeakMap<DeviceValues, ProjectionNode>();
+
+function entriesByDevice(
+  ledger: StoreState['ledger'],
+): ReadonlyMap<string, readonly PendingEntry[]> {
+  const known = ledgerEntries.get(ledger);
+  if (known !== undefined) return known;
+  const devices = new Map<string, PendingEntry[]>();
+  for (const [slot, entry] of Object.entries(ledger)) {
+    if (entry.failure !== null || entry.value === null) continue;
+    const separator = slot.lastIndexOf('/');
+    const deviceId = slot.slice(0, separator);
+    const entries = devices.get(deviceId) ?? [];
+    entries.push([slot.slice(separator + 1), entry]);
+    devices.set(deviceId, entries);
+  }
+  ledgerEntries.set(ledger, devices);
+  return devices;
+}
+
+function projectionNode(reported: DeviceValues, entries: readonly PendingEntry[]): ProjectionNode {
+  let node: ProjectionNode = reportedProjections.get(reported) ?? {
+    entries: new Map(),
+    values: undefined,
+  };
+  reportedProjections.set(reported, node);
+  for (const [capability, entry] of entries) {
+    const generations = node.entries.get(capability) ?? new WeakMap<LedgerEntry, ProjectionNode>();
+    node.entries.set(capability, generations);
+    const next: ProjectionNode = generations.get(entry) ?? {
+      entries: new Map(),
+      values: undefined,
+    };
+    generations.set(entry, next);
+    node = next;
+  }
+  return node;
+}
+
+function pendingValues(reported: DeviceValues, entries: readonly PendingEntry[]): DeviceValues {
+  if (entries.length === 0) return reported;
+  const node = projectionNode(reported, entries);
+  if (node.values !== undefined) return node.values;
+  const pending: Record<string, DeviceValue> = {};
+  for (const [capability, entry] of entries) {
+    const observedAt = entry.requestedAt ?? reported[capability]?.observedAt;
+    if (observedAt !== undefined && entry.value !== null)
+      pending[capability] = { value: entry.value, observedAt, optimistic: true };
+  }
+  node.values = { ...reported, ...pending };
+  return node.values;
+}
+
 export function deviceValuesOf(state: StoreState, deviceId: string): DeviceValues {
-  return state.deviceValues[deviceId] ?? NO_VALUES;
+  const cache = projectedValues.get(state) ?? new Map<string, DeviceValues>();
+  projectedValues.set(state, cache);
+  const known = cache.get(deviceId);
+  if (known !== undefined) return known;
+  const values = pendingValues(
+    state.deviceValues[deviceId] ?? NO_VALUES,
+    entriesByDevice(state.ledger).get(deviceId) ?? [],
+  );
+  cache.set(deviceId, values);
+  return values;
 }
 
 export function rowsOf<R>(table: Table<R>): readonly R[] {

@@ -1,3 +1,4 @@
+import type { PluginSpeechReader } from '../store/repositories/speech';
 import {
   ApiError,
   type TranscriptDetail,
@@ -16,6 +17,7 @@ import { ownerProfileOf } from '../transcripts/owner';
 import type { Transcripts } from '../transcripts/transcript-service';
 
 export interface PluginTranscripts {
+  readonly speechReader: (reader: PluginSpeechReader) => () => void;
   readonly list: (limit: number) => readonly TranscriptSession[];
   readonly find: (id: string) => TranscriptSession | null;
   readonly read: (id: string, after: number, limit: number) => TranscriptDetail | null;
@@ -68,6 +70,7 @@ export function transcriptsOf(
     return session?.source === 'plugin' && session.plugin_id === pluginId ? session : null;
   };
   return {
+    speechReader: (reader) => transcripts.speechReader(pluginId, reader),
     list: (limit): TranscriptSession[] => transcripts.list({ source: 'plugin', pluginId, limit }),
     find,
     read: (id, after, limit): TranscriptDetail | null =>

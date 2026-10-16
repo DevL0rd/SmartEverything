@@ -1,3 +1,5 @@
+import { automationRuntimePages } from './automation-runtime-pages';
+import { deviceGroupPages } from './device-group-pages';
 import { cameraTranscriptPages } from './camera-transcript-pages';
 import { APP_PLUGINS } from '../plugins/registry';
 import type { Href } from 'expo-router';
@@ -30,8 +32,12 @@ import { rowsOf, type Device, type StoreState } from '../store/state';
 export interface SearchTables extends ExtensionSearchData {
   readonly devices: StoreState['tables']['devices'];
   readonly rooms: StoreState['tables']['rooms'];
+  readonly deviceGroups: StoreState['tables']['device_groups'];
   readonly scenes: StoreState['tables']['scenes'];
   readonly automations: StoreState['tables']['automations'];
+  readonly automationRuns?: StoreState['tables']['automation_runs'];
+  readonly automationValues?: StoreState['tables']['automation_values'];
+  readonly automationSequences?: StoreState['tables']['automation_sequences'];
   readonly scheduled: StoreState['tables']['scheduled_actions'];
   readonly plugins: StoreState['tables']['plugins'];
   readonly pluginStreams: StoreState['tables']['plugin_streams'];
@@ -366,6 +372,8 @@ export function sourcesOf(
     })),
     pages: [
       ...pagesOf(env, out),
+      ...deviceGroupPages(tables, out),
+      ...automationRuntimePages(tables, out),
       ...cameraTimelinePages(devices, out),
       ...cameraTranscriptPages(devices, out),
       ...extensionPages(tables, env.owner, out),

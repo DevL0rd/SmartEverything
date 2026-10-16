@@ -2,6 +2,7 @@ import {
   AUTOMATION_DEFINITION,
   checkValue,
   validateCommand,
+  walkActions,
   type Action,
   type AutomationDefinition,
   type Comparison,
@@ -148,9 +149,15 @@ function actionProblem(choices: ValidationChoices, action: Action): string | nul
       ? null
       : 'wakes the AI for someone who was removed';
   }
-  if (action.type !== 'command') {
-    return null;
-  }
+  if (action.type !== 'command') return null;
+  return commandProblem(choices, action);
+}
+
+function commandProblem(
+  choices: ValidationChoices,
+  action: Extract<Action, { type: 'command' }>,
+): string | null {
+  if ('binding' in action) return null;
   const found = capabilityFound(choices.devices, action.deviceId, action.capability);
   if ('problem' in found) {
     return found.problem;
@@ -178,7 +185,7 @@ function referenceProblems(
     only: numbered(
       definition.conditions.items.map((condition) => conditionProblem(choices.devices, condition)),
     ),
-    then: numbered(definition.actions.map((action) => actionProblem(choices, action))),
+    then: numbered(walkActions(definition.actions).map((action) => actionProblem(choices, action))),
   };
 }
 

@@ -3,6 +3,11 @@ import {
   displayName,
   type AiChatRow,
   type AutomationDefinition,
+  type AutomationValueRow,
+  type AutomationSequenceRow,
+  type SequenceParameter,
+  type DeviceGroupRow,
+  type RoomRow,
   type AutomationRow,
   type ProfileRow,
   type SceneRow,
@@ -25,6 +30,12 @@ export interface Catalog {
   readonly chats: readonly AiChatRow[];
   readonly wakeProfileId: string | null;
   readonly names: Names;
+  readonly values?: readonly AutomationValueRow[];
+  readonly sequences?: readonly AutomationSequenceRow[];
+  readonly parameters?: readonly SequenceParameter[];
+  readonly groups?: readonly DeviceGroupRow[];
+  readonly rooms?: readonly RoomRow[];
+  readonly automations?: readonly AutomationRow[];
 }
 
 const WAKEABLE_KINDS: ReadonlySet<AiChatRow['kind']> = new Set(['chat', 'call']);
@@ -47,6 +58,10 @@ export function useCatalog(): Catalog {
   const devices = useDevices({ includeHidden: true });
   const rooms = useRooms();
   const scenes = useRows('scenes');
+  const values = useRows('automation_values');
+  const sequences = useRows('automation_sequences');
+  const groups = useRows('device_groups');
+  const automations = useRows('automations');
   const people = useProfiles();
   const chats = useRows('ai_chats').filter(
     (chat) => chat.archived_at === null && WAKEABLE_KINDS.has(chat.kind),
@@ -57,13 +72,28 @@ export function useCatalog(): Catalog {
     label: displayName(device, devices, rooms),
   }));
   return {
+    values,
+    sequences,
+    groups,
+    rooms,
+    automations,
     devices: allDevices.filter((device) => !device.hidden),
     allDevices,
     scenes,
     people,
     chats,
     wakeProfileId,
-    names: { devices: allDevices, scenes, people, chats },
+    names: {
+      devices: allDevices,
+      scenes,
+      people,
+      chats,
+      values,
+      sequences,
+      groups,
+      rooms,
+      automations,
+    },
   };
 }
 

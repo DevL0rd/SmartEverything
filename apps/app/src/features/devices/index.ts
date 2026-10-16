@@ -1,3 +1,5 @@
+export { CapabilityControl } from './controls/control-block';
+export { ColourBlock } from './controls/colour-block';
 export { CapabilityRow } from './controls/capability-row';
 export { offlineReason } from './controls/guard';
 export { PowerToggle } from './controls/power-toggle';
@@ -16,7 +18,7 @@ export {
   type DeviceModel,
 } from './model/device-model';
 export { stateLine } from './model/state-line';
-export { cardWeight, type CardWeight } from './model/card-facts';
+export { cardWeight, cardLayoutWeight, type CardWeight } from './model/card-facts';
 export { QuickControlsHost } from './quick/quick-controls';
 export { DeviceTile } from './tile/device-tile';
 export { DeviceSpotlightWidget } from './card/spotlight-card';

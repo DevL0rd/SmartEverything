@@ -1,5 +1,6 @@
 import { deviceFamily, isCamera, isClimateAppliance } from '@smarteverything/domain';
-import { rowsOf, type Device, type StoreState } from '../../../store/state';
+import { memoOnInputs } from '../../../store/memo-selector';
+import { rowsOf, type Device } from '../../../store/state';
 import { isOffline } from '../../devices';
 
 export function spotlightable(device: Device): boolean {
@@ -26,15 +27,18 @@ export interface DeviceDigest {
   readonly featured: readonly string[];
 }
 
-export function deviceDigest(state: StoreState): DeviceDigest {
-  const devices = rowsOf(state.tables.devices).filter((device) => !device.hidden);
-  return {
-    count: devices.length,
-    offline: devices.filter(isOffline).length,
-    spotlightable: devices.filter(spotlightable).map((device) => device.id),
-    featured: featuredByDefault(devices).map((device) => device.id),
-  };
-}
+export const deviceDigest = memoOnInputs(
+  (state) => [state.tables.devices],
+  (state): DeviceDigest => {
+    const devices = rowsOf(state.tables.devices).filter((device) => !device.hidden);
+    return {
+      count: devices.length,
+      offline: devices.filter(isOffline).length,
+      spotlightable: devices.filter(spotlightable).map((device) => device.id),
+      featured: featuredByDefault(devices).map((device) => device.id),
+    };
+  },
+);
 
 function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index]);

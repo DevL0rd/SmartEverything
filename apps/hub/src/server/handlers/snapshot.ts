@@ -6,6 +6,8 @@ import {
   NUTRITION_METRICS,
   WATCH_METRICS,
   SNAPSHOT_WINDOWS,
+  automationRunForReader,
+  automationRunVisible,
   TALK_MESSAGES_SNAPSHOT,
   type ClientRow,
   type OwnerSnapshotTables,
@@ -37,17 +39,26 @@ function tablesOf(
   store: Store,
   { client, profileId }: Viewer,
   now: Date,
-  extras: { readonly nutrition: boolean; readonly watch: boolean; readonly weather: boolean },
+  extras: {
+    readonly nutrition: boolean;
+    readonly watch: boolean;
+    readonly weather: boolean;
+    readonly automationRuntime: boolean;
+    readonly groupRuntime: boolean;
+    readonly automationRunDetails: boolean;
+  },
 ): SnapshotTables {
   const firstDay = new Date(now.getTime() - (SNAPSHOT_WINDOWS.healthDailyDays - 1) * DAY_MS);
   return {
     settings: store.settings.read(),
     rooms: store.rooms.list(),
     devices: store.devices.list(),
+    ...(extras.groupRuntime ? { device_groups: store.deviceGroups.list() } : {}),
     device_state: store.state.list(),
     cameras: store.cameras.list(),
     scenes: store.scenes.list(),
     automations: store.automations.list(),
+    ...(extras.automationRuntime ? automationTablesOf(store, extras.automationRunDetails) : {}),
     provider_links: store.providers.list(),
     ir_remotes: store.infrared.remotes(),
     ir_codes: store.infrared.codes(),
@@ -72,6 +83,20 @@ function tablesOf(
     plugin_streams: store.pluginData.streams(),
     exchange_rates: store.exchangeRates.read(),
     ...(extras.weather ? { weather: store.weather.read() } : {}),
+  };
+}
+
+function automationTablesOf(
+  store: Store,
+  details: boolean,
+): Pick<SnapshotTables, 'automation_values' | 'automation_runs' | 'automation_sequences'> {
+  return {
+    automation_values: store.automationValues.list(),
+    ...(details ? { automation_sequences: store.automationSequences.list() } : {}),
+    automation_runs: store.automationRuns
+      .list()
+      .filter((run) => automationRunVisible(run, details))
+      .map((run) => automationRunForReader(run, details)),
   };
 }
 

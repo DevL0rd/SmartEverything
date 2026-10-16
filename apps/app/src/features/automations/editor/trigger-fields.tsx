@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Text } from '../../../components/text';
 import { View } from 'react-native';
 import type { Trigger } from '@smarteverything/domain';
 import type { DeviceLike } from '../model/capability-choices';
@@ -70,6 +71,13 @@ export function TriggerFields({
   readonly onChange: (trigger: Trigger) => void;
 }): ReactNode {
   switch (trigger.type) {
+    case 'speech':
+      return (
+        <Text variant="callout" tone="variant">
+          This saved speech trigger is preserved. Editing becomes available when the connected hub
+          provides its authorized speech sources.
+        </Text>
+      );
     case 'state':
     case 'event':
     case 'signal':

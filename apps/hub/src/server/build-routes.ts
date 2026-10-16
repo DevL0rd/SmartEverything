@@ -1,3 +1,7 @@
+import { deviceEffectRoutes } from './handlers/device-effects';
+import { deviceGroupRoutes } from './handlers/device-groups';
+import { automationSequenceRoutes } from './handlers/automation-sequences';
+import { automationRuntimeRoutes } from './handlers/automation-runtime';
 import { aiReferenceRoutes } from './handlers/ai-references';
 import { aiProjectRoutes } from './handlers/ai-projects';
 import { aiPreviewRoutes } from './handlers/ai-previews';
@@ -87,11 +91,11 @@ export function routeTable(
     ...snapshotRoutes(context, now),
     ...accessRoutes(context),
     ...settingsRoutes(context),
-    ...deviceRoutes(context),
+    ...allDeviceRoutes(context),
     ...mediaRoutes(context),
     ...firewallRoutes(context),
     ...sceneRoutes(context),
-    ...automationRoutes(context, services.tools),
+    ...allAutomationRoutes(context, services.tools),
     ...healthRoutes(context),
     ...assistantRoutes(context),
     ...peopleRoutes(context),
@@ -111,6 +115,37 @@ export function routeTable(
     ...aiUsageRoutes(context),
     ...aiBudgetRoutes(services.budget),
     ...aiModelRoutes(context),
+  };
+}
+
+function allDeviceRoutes(
+  context: ServerContext,
+): Pick<
+  RouteTable,
+  | keyof ReturnType<typeof deviceRoutes>
+  | keyof ReturnType<typeof deviceGroupRoutes>
+  | keyof ReturnType<typeof deviceEffectRoutes>
+> {
+  return {
+    ...deviceRoutes(context),
+    ...deviceGroupRoutes(context),
+    ...deviceEffectRoutes(context),
+  };
+}
+
+function allAutomationRoutes(
+  context: ServerContext,
+  tools: ToolHub,
+): Pick<
+  RouteTable,
+  | keyof ReturnType<typeof automationRoutes>
+  | keyof ReturnType<typeof automationRuntimeRoutes>
+  | keyof ReturnType<typeof automationSequenceRoutes>
+> {
+  return {
+    ...automationRoutes(context, tools),
+    ...automationRuntimeRoutes(context),
+    ...automationSequenceRoutes(context, tools),
   };
 }
 

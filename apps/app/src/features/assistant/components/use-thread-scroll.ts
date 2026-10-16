@@ -64,7 +64,7 @@ export interface ThreadScroll {
 interface PinState {
   readonly pinned: boolean;
   readonly observe: (away: boolean) => void;
-  readonly release: () => void;
+  readonly release: (key?: string | null) => void;
 }
 
 type Fit = 'unmeasured' | 'short' | 'roomy';
@@ -151,8 +151,8 @@ function usePin(
         setPin((current) => ({ ...current, mode: 'released' }));
       }
     },
-    release: (): void => {
-      setPin((current) => ({ ...current, mode: 'released' }));
+    release: (key): void => {
+      setPin((current) => ({ key: key === undefined ? current.key : key, mode: 'released' }));
     },
   };
 }
@@ -225,6 +225,7 @@ export function useThreadScroll(
   list: RefObject<FlatList | null>,
   newest: Newest | null,
 ): ThreadScroll {
+  const key = newest?.key ?? null;
   const [away, setAway] = useState(false);
   const geometry = useGeometry();
   const [active, setActive] = useState(false);
@@ -261,7 +262,7 @@ export function useThreadScroll(
     toBottom: (): void => {
       stick.stick();
       list.current?.scrollToOffset({ offset: 0, animated: true });
-      pin.release();
+      pin.release(key);
     },
   };
 }

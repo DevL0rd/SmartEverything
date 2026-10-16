@@ -16,13 +16,17 @@ class Preloader {
   private queue: RouteDefinition[] = [];
   private readonly done = new Set<string>();
   private client: QueryClient | null = null;
-  private running = false;
+  private running: string | null = null;
+  private scheduled = false;
   private paused = 0;
   private settle: ReturnType<typeof setTimeout> | null = null;
 
   start(routes: readonly RouteDefinition[], client: QueryClient): void {
     this.client = client;
-    this.queue = routes.filter((route) => !this.done.has(route.key));
+    this.queue = routes.filter(
+      (route) =>
+        route.preload !== undefined && !this.done.has(route.key) && route.key !== this.running,
+    );
     this.schedule();
   }
 
@@ -35,7 +39,7 @@ class Preloader {
     }
     this.queue.splice(index, 1);
     this.queue.unshift(route);
-    if (!this.running && this.paused === 0) {
+    if (this.running === null && this.paused === 0) {
       void this.next();
     }
   }
@@ -62,10 +66,12 @@ class Preloader {
   }
 
   private schedule(): void {
-    if (this.running || this.paused > 0 || this.queue.length === 0) {
+    if (this.scheduled || this.running !== null || this.paused > 0 || this.queue.length === 0) {
       return;
     }
+    this.scheduled = true;
     requestIdleCallback(() => {
+      this.scheduled = false;
       if (this.settle === null) {
         void this.next();
       }
@@ -73,19 +79,20 @@ class Preloader {
   }
 
   private async next(): Promise<void> {
+    if (this.running !== null || this.paused > 0) return;
     const route = this.queue.shift();
     const client = this.client;
-    if (route === undefined || client === null || this.paused > 0) {
+    if (route === undefined || client === null) {
       return;
     }
-    this.running = true;
+    this.running = route.key;
     try {
       await route.preload?.({ queryClient: client });
       this.done.add(route.key);
     } catch (error) {
       log.warn('preload.failed', { route: route.key, reason: String(error) });
     } finally {
-      this.running = false;
+      this.running = null;
       this.schedule();
     }
   }

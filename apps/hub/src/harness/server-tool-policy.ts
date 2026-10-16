@@ -2,6 +2,7 @@ import {
   admitExecutionTarget,
   admitNativeExecutionTarget,
   currentExecutionAuthority,
+  selectedExecutionDevice,
 } from '../assistant/execution-authority';
 import { operationNamed } from '../extensions/mcp/tools/operation-names';
 import { z } from 'zod';
@@ -68,7 +69,7 @@ export class ServerToolPolicy {
       return this.refusalFor(
         mcpOperationArea(API_ENDPOINTS[operation]),
         operation,
-        RECORD.parse(args['arguments']),
+        RECORD.parse(args['arguments'] ?? {}),
       );
     }
     if (hubNativeBridge(name))
@@ -134,29 +135,35 @@ export class ServerToolPolicy {
     admitNativeExecutionTarget(this.store, device, authority);
   }
   private inspect(value: unknown, selectors: boolean): string | undefined {
-    if (typeof value === 'string') {
-      const device = this.store.devices.find(value);
-      return device?.kind === 'computer' && this.localComputer(device.id)
-        ? 'Hub conversations never receive hub-local file, process, shell or system access.'
-        : undefined;
-    }
+    if (typeof value === 'string') return this.computerRefusal(value);
     if (Array.isArray(value)) return this.values(value, selectors);
     const record = RECORD.safeParse(value);
     if (!record.success) return undefined;
     const expanded = this.expanded(record.data, selectors);
     if (expanded !== undefined) return expanded;
     if (selectors && this.localSelector(record.data))
-      return 'Hub conversations cannot control the hub computer through device selectors.';
+      return 'Computer selectors require the authorized selected execution target.';
     return this.values(Object.values(record.data), selectors);
+  }
+  private computerRefusal(id: string): string | undefined {
+    const device = this.store.devices.find(id);
+    if (device?.kind !== 'computer') return undefined;
+    return this.selectedComputer(device.id)
+      ? undefined
+      : 'Computer tools require the authorized selected execution target.';
   }
   private localSelector(record: Readonly<Record<string, unknown>>): boolean {
     const target = TARGET.safeParse(record);
     return (
       target.success &&
       targeted(this.store, target.data).some(
-        (item) => item.device.kind === 'computer' && this.localComputer(item.device.id),
+        (item) => item.device.kind === 'computer' && !this.selectedComputer(item.device.id),
       )
     );
+  }
+  private selectedComputer(id: string): boolean {
+    const authority = currentExecutionAuthority();
+    return authority !== undefined && selectedExecutionDevice(this.store, id, authority);
   }
   private expanded(
     record: Readonly<Record<string, unknown>>,

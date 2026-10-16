@@ -19,7 +19,7 @@ export interface StateWriterOptions {
 
 interface Transition {
   readonly record: StateRecord;
-  readonly change: StateChange;
+  readonly change: StateChange | null;
 }
 
 function keyOf(deviceId: string, capability: string): string {
@@ -36,7 +36,7 @@ const STATE_APPEND_POLICY = {
 export class StateWriter {
   private generation = 0;
   private readonly values = new Map<string, JsonValue>();
-  private readonly observed = new Map<string, JsonValue>();
+  private readonly observed = new Map<string, StateRecord>();
   private readonly queue: WriteQueue<Transition, true>;
 
   constructor(private readonly options: StateWriterOptions) {
@@ -45,7 +45,7 @@ export class StateWriter {
         await options.store.upsertState(rows.map((row) => row.record));
         for (const row of rows) {
           this.values.set(keyOf(row.record.deviceId, row.record.capability), row.record.value);
-          options.changed(row.change);
+          if (row.change !== null) options.changed(row.change);
         }
         return rows.map(() => true);
       },
@@ -60,7 +60,7 @@ export class StateWriter {
   async load(): Promise<void> {
     for (const row of await this.options.store.loadState()) {
       this.values.set(keyOf(row.deviceId, row.capability), row.value);
-      this.observed.set(keyOf(row.deviceId, row.capability), row.value);
+      this.observed.set(keyOf(row.deviceId, row.capability), row);
     }
   }
 
@@ -75,27 +75,31 @@ export class StateWriter {
       return;
     }
     const key = keyOf(device.id, update.capability);
+    const observedAt = new Date(update.observedAt).toISOString();
     const previous = this.observed.get(key);
-    if (previous !== undefined && jsonEquals(previous, update.value)) {
-      return;
-    }
-    const change = {
+    if (previous !== undefined && observedAt < previous.observedAt) return;
+    const unchanged = previous !== undefined && jsonEquals(previous.value, update.value);
+    if (unchanged && observedAt === previous.observedAt) return;
+    const change = unchanged
+      ? null
+      : {
+          deviceId: device.id,
+          capability: update.capability,
+          value: update.value,
+          previous: previous?.value,
+        };
+    const record = {
       deviceId: device.id,
       capability: update.capability,
       value: update.value,
-      previous,
+      observedAt,
     };
     this.queue.enqueue({
-      record: {
-        deviceId: device.id,
-        capability: update.capability,
-        value: update.value,
-        observedAt: update.observedAt,
-      },
+      record,
       change,
     });
     this.generation += 1;
-    this.observed.set(key, update.value);
+    this.observed.set(key, record);
   }
 
   async commitObservation(row: StateRecord | null, commit: () => boolean): Promise<boolean> {
@@ -108,13 +112,16 @@ export class StateWriter {
       return commit();
     }
     const key = keyOf(row.deviceId, row.capability);
+    const record = { ...row, observedAt: new Date(row.observedAt).toISOString() };
+    const observed = this.observed.get(key);
+    if (observed !== undefined && record.observedAt < observed.observedAt) return false;
     const previous = this.values.get(key);
     if (!commit()) {
       return false;
     }
     this.generation += 1;
     this.values.set(key, row.value);
-    this.observed.set(key, row.value);
+    this.observed.set(key, record);
     if (previous === undefined || !jsonEquals(previous, row.value)) {
       this.options.changed({ ...row, previous });
     }

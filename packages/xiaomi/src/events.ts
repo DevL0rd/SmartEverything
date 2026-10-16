@@ -31,6 +31,44 @@ const DETECTION_SOURCES: readonly DetectionSource[] = [
   { detection: 'motion', miotEvents: ['object-motion', 'motion-detected'], cloudToken: /motion/i },
 ];
 
+export const LEGACY_BUTTON_METHOD = z.enum([
+  'event.click',
+  'event.double_click',
+  'event.long_click_press',
+  'event.long_click_release',
+]);
+
+export type LegacyButtonMethod = z.infer<typeof LEGACY_BUTTON_METHOD>;
+
+const LEGACY_BUTTON_ACTIONS: Readonly<Record<LegacyButtonMethod, string>> = {
+  'event.click': 'single_press',
+  'event.double_click': 'double_press',
+  'event.long_click_press': 'long_press',
+  'event.long_click_release': 'release',
+};
+
+const LEGACY_BUTTON_MODELS: ReadonlySet<string> = new Set(['lumi.sensor_switch.v2']);
+
+export function supportsLegacyButton(model: string): boolean {
+  return LEGACY_BUTTON_MODELS.has(model);
+}
+
+export function deviceEventFromLegacyButton(
+  method: LegacyButtonMethod,
+  observed: ObservedEvent,
+): DeviceEvent {
+  return {
+    ...observed,
+    kind: 'button',
+    details: {
+      ...observed.details,
+      action: LEGACY_BUTTON_ACTIONS[method],
+      protocol: 'legacy-miio',
+      method,
+    },
+  };
+}
+
 const CALL_CALLING = 1;
 
 export interface ObservedEvent {

@@ -1,16 +1,19 @@
 import type { CameraReach, EventRow, RecordingRow } from '@smarteverything/domain';
+import { memoOnInputs } from '../../../store/memo-selector';
 import { rowsOf, type StoreState } from '../../../store/state';
 import { shallowEqual, useStoreSelector } from '../../../store/store-context';
 import { cameraEntriesOf, sameEntries, type CameraEntry } from '../logic/cameras';
 import { CAMERA_EVENT_KINDS } from '../logic/timeline';
 
-function entriesOf(state: StoreState): CameraEntry[] {
-  return cameraEntriesOf({
-    devices: rowsOf(state.tables.devices),
-    cameras: state.tables.cameras.byId,
-    rooms: rowsOf(state.tables.rooms),
-  });
-}
+const entriesOf = memoOnInputs(
+  (state) => [state.tables.devices, state.tables.cameras, state.tables.rooms],
+  (state): CameraEntry[] =>
+    cameraEntriesOf({
+      devices: rowsOf(state.tables.devices),
+      cameras: state.tables.cameras.byId,
+      rooms: rowsOf(state.tables.rooms),
+    }),
+);
 
 export function useCameraEntries(): readonly CameraEntry[] {
   return useStoreSelector(entriesOf, sameEntries);

@@ -1,6 +1,7 @@
 import {
   CancelledError,
   useInfiniteQuery,
+  useQueryClient,
   type UseInfiniteQueryResult,
   type InfiniteData,
 } from '@tanstack/react-query';
@@ -11,6 +12,7 @@ import {
   type AiReferenceSummary,
   type AiReferenceSourceStatus,
 } from '@smarteverything/domain';
+import { harnessReadRevision, useHarnessReadRevision } from '../../../queries/harness-notices';
 import { api, useConnection } from '../../../api/transport';
 import { useServerAiReferences } from '../../../api/connection/server-capabilities';
 import { useDebouncedValue } from '../../../design/use-debounced-value';
@@ -31,12 +33,14 @@ export interface ReferenceSearch {
   readonly loadingMore: boolean;
   readonly incomplete: boolean;
   readonly next: () => void;
+  readonly valid: () => boolean;
 }
 type SearchQuery = UseInfiniteQueryResult<InfiniteData<AiReferenceSearchResult>>;
 export function useReferenceSearch(
   chat: AiChatRow | undefined,
   intent: ReferenceIntent | null,
 ): ReferenceSearch {
+  const client = useQueryClient();
   const session = usePickerSession();
   const connection = useConnection();
   const supported = useServerAiReferences(
@@ -46,7 +50,17 @@ export function useReferenceSearch(
   const query = useDebouncedValue(intent?.query ?? '', SEARCH_DELAY_MS);
   const reason = searchReason(chat, session.ready, supported, binding.reason);
   const settled = query === intent?.query;
-  const key = JSON.stringify([session.key, binding.key, chat?.engine, query]);
+  const revision = useHarnessReadRevision(client, chat?.id ?? '');
+  const valid = (): boolean =>
+    session.valid() && revision === harnessReadRevision(client, chat?.id ?? '');
+  const key = JSON.stringify([
+    session.key,
+    binding.key,
+    chat?.engine,
+    revision,
+    query,
+    intent !== null,
+  ]);
   const result = useInfiniteQuery({
     queryKey: ['window', 'ai-references', key],
     enabled: intent !== null && settled && reason === null,
@@ -55,11 +69,21 @@ export function useReferenceSearch(
     retry: false,
     gcTime: 0,
     staleTime: 0,
-    queryFn: ({ pageParam, signal }): Promise<AiReferenceSearchResult> =>
-      readReferences(chat, session, { query, cursor: pageParam, signal }),
+    queryFn: ({ pageParam, signal, queryKey }): Promise<AiReferenceSearchResult> =>
+      readReferences(chat, session, {
+        query,
+        cursor:
+          client
+            .getQueryData<InfiniteData<AiReferenceSearchResult>>(queryKey)
+            ?.pageParams.includes(pageParam) === true
+            ? null
+            : pageParam,
+        signal,
+        valid,
+      }),
     getNextPageParam: (page) => page.next_cursor,
   });
-  return searchResult(result, { key, reason, settled, opened: intent !== null });
+  return { ...searchResult(result, { key, reason, settled, opened: intent !== null }), valid };
 }
 function initialCursor(): string | null {
   return null;
@@ -67,11 +91,16 @@ function initialCursor(): string | null {
 async function readReferences(
   chat: AiChatRow | undefined,
   session: PickerSession,
-  input: { readonly query: string; readonly cursor: string | null; readonly signal: AbortSignal },
+  input: {
+    readonly query: string;
+    readonly cursor: string | null;
+    readonly signal: AbortSignal;
+    readonly valid: () => boolean;
+  },
 ): Promise<AiReferenceSearchResult> {
   const { query, cursor, signal } = input;
   if (chat === undefined) throw new CancelledError({ silent: true });
-  assertSearchActive(session, signal);
+  assertSearchActive(session, signal, input.valid);
   const result = await api().call(
     E.searchAiChatReferences,
     {
@@ -80,7 +109,7 @@ async function readReferences(
     },
     { signal },
   );
-  assertSearchActive(session, signal);
+  assertSearchActive(session, signal, input.valid);
   return result;
 }
 function searchResult(
@@ -91,7 +120,7 @@ function searchResult(
     readonly settled: boolean;
     readonly opened: boolean;
   },
-): ReferenceSearch {
+): Omit<ReferenceSearch, 'valid'> {
   const pages = scope.settled && scope.reason === null ? (result.data?.pages ?? []) : [];
   const reason =
     result.error === null ? scope.reason : `References could not load: ${result.error.message}`;
@@ -131,8 +160,12 @@ function nextPage(result: SearchQuery): () => void {
     if (result.hasNextPage && !result.isFetching) void result.fetchNextPage();
   };
 }
-function assertSearchActive(session: PickerSession, signal: AbortSignal): void {
-  if (!session.valid() || signal.aborted) throw new CancelledError({ silent: true });
+function assertSearchActive(
+  session: PickerSession,
+  signal: AbortSignal,
+  valid: () => boolean,
+): void {
+  if (!session.valid() || signal.aborted || !valid()) throw new CancelledError({ silent: true });
 }
 
 function searchPending(

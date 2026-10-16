@@ -9,7 +9,7 @@ export class ToolSchemaReferenceError extends Error {
 
   constructor(
     readonly reference: string,
-    reason: string,
+    readonly reason: string,
   ) {
     super(`Cannot declare tool schema reference ${reference}: ${reason}`);
   }
@@ -30,7 +30,8 @@ function decodedPointer(reference: string): string {
   }
 }
 
-function referenceTarget(root: Json, reference: string): unknown {
+export function referenceTarget(root: Json, reference: string): unknown {
+  if (reference === '#') return root;
   if (!reference.startsWith('#/')) {
     throw new ToolSchemaReferenceError(reference, 'expected a local JSON pointer');
   }

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { withRole, type CapabilityRole, type PresentedCapability } from '@smarteverything/domain';
+import { NumberStepper } from '../../../components/number-stepper';
 import { TargetDial } from '../../../components/target-dial';
 import type { ColourRole } from '../../../design/tokens';
 import type { Control } from '../../../store/control';
@@ -27,19 +28,21 @@ export function dialReading(presented: PresentedCapability): CapabilityRole | nu
   return (presented.role === null ? undefined : DIAL_CURRENT[presented.role]) ?? null;
 }
 
+interface DialProps {
+  readonly device: Device;
+  readonly presented: PresentedCapability;
+  readonly control: Control;
+  readonly descriptor: NumberDescriptor;
+  readonly disabled: boolean;
+}
+
 export function DialBlock({
   device,
   presented,
   control,
   descriptor,
   disabled,
-}: {
-  readonly device: Device;
-  readonly presented: PresentedCapability;
-  readonly control: Control;
-  readonly descriptor: NumberDescriptor;
-  readonly disabled: boolean;
-}): ReactNode {
+}: DialProps): ReactNode {
   const model = useDeviceModel(device);
   const values = useDeviceValues(device.id);
   const currentRole = presented.role === null ? undefined : DIAL_CURRENT[presented.role];
@@ -47,7 +50,22 @@ export function DialBlock({
     values,
     currentRole === undefined ? null : withRole(model.presentation, currentRole),
   );
-  const target = typeof control.value === 'number' ? control.value : descriptor.min;
+  if (typeof control.value !== 'number')
+    return (
+      <NumberStepper
+        value={null}
+        min={descriptor.min}
+        max={descriptor.max}
+        step={descriptor.step}
+        unit={presented.unit ?? ''}
+        label={presented.label}
+        disabled={disabled}
+        onChange={(next) => {
+          void control.set(next);
+        }}
+      />
+    );
+  const target = control.value;
   return (
     <View className={disabled ? 'items-center opacity-40' : 'items-center'}>
       <TargetDial

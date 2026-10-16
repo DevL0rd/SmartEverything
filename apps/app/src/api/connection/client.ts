@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {
   AI_ENGINE_HEADER,
+  LIVE_SEQUENCE_HEADER,
+  SEQ,
   AI_ENGINE_HEADER_VALUE,
   AI_ENGINE_HEADER_VALUE_V2,
   AI_HARNESS_HEADER_VALUE,
@@ -59,6 +61,16 @@ export class InvalidRequestError extends Error {
 }
 
 const PATH_PARAMS = z.record(z.string(), z.string());
+const HEADER_SEQUENCE = z
+  .string()
+  .regex(/^(0|[1-9]\d*)$/)
+  .transform(Number)
+  .pipe(SEQ);
+
+function sequenceOf(response: Response): number | null {
+  const value = response.headers.get(LIVE_SEQUENCE_HEADER);
+  return value === null ? null : HEADER_SEQUENCE.parse(value);
+}
 
 function issuesOf(error: z.ZodError): string {
   return error.issues
@@ -190,10 +202,21 @@ export class ApiClient {
   async call<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType, R extends z.ZodType>(
     endpoint: TypedEndpoint<P, Q, B, R>,
     input: CallInput<P, Q, B>,
-    options: { readonly signal?: AbortSignal } = {},
+    options: {
+      readonly signal?: AbortSignal;
+      readonly onSequence?: (seq: number | null) => void;
+    } = {},
   ): Promise<z.output<R>> {
-    const answer = await this.answerOf(endpoint, input, options.signal);
-    return answered(routeOf(endpoint), endpoint.response, answer);
+    let sequence: number | null = null;
+    let pinned: HubRouteLease | undefined;
+    const answer = await this.answerOf(endpoint, input, options.signal, (value, lease) => {
+      sequence = value;
+      pinned = lease;
+    });
+    const result = answered(routeOf(endpoint), endpoint.response, answer);
+    if (pinned !== undefined) assertHubLease(pinned, endpoint.method);
+    options.onSequence?.(sequence);
+    return result;
   }
 
   async callTables<
@@ -219,6 +242,7 @@ export class ApiClient {
     endpoint: TypedEndpoint<P, Q, B, R>,
     input: CallInput<P, Q, B>,
     signal?: AbortSignal,
+    sequence?: (seq: number | null, lease: HubRouteLease | undefined) => void,
   ): Promise<unknown> {
     const route = routeOf(endpoint);
     const params = PATH_PARAMS.parse(checked(route, 'path', endpoint.params, input.params ?? {}));
@@ -229,6 +253,7 @@ export class ApiClient {
     return this.exchange(path, endpoint.method, body, {
       authenticated: endpoint.access !== 'public',
       signal,
+      sequence,
     });
   }
 
@@ -236,9 +261,15 @@ export class ApiClient {
     path: string,
     method: string,
     body: unknown,
-    options: { readonly authenticated: boolean; readonly signal: AbortSignal | undefined },
+    options: {
+      readonly authenticated: boolean;
+      readonly signal: AbortSignal | undefined;
+      readonly sequence:
+        ((seq: number | null, lease: HubRouteLease | undefined) => void) | undefined;
+    },
   ): Promise<unknown> {
     await this.options.ready?.();
+    assertRequestActive(options.signal);
     const lease = this.options.route?.();
     const baseUrl = lease?.baseUrl ?? this.options.baseUrl;
     const response = await this.send(`${baseUrl}${path}`, method, body, {
@@ -254,6 +285,7 @@ export class ApiClient {
       }
       throw refusal;
     }
+    options.sequence?.(sequenceOf(response), lease);
     return answer;
   }
 
@@ -299,4 +331,8 @@ export class ApiClient {
 
 function assertNotAborted(signal: AbortSignal | undefined, error: unknown): void {
   if (signal?.aborted === true) throw error;
+}
+
+function assertRequestActive(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) throw signal.reason;
 }

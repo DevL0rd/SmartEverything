@@ -140,9 +140,9 @@ export class HarnessSession {
     }
   }
 
-  directory(path: string): Promise<string> {
+  directory(path: string, signal?: AbortSignal): Promise<string> {
     this.assertAdmitted();
-    return this.ctx.workingDirectory.set(this.handle.agent, path);
+    return this.ctx.workingDirectory.set(this.handle.agent, path, signal);
   }
 
   async permission(input: AiHarnessPermission): Promise<void> {

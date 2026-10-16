@@ -88,6 +88,7 @@ function deviceCommand(store: Store, input: CheckedInput, client: CommandPrincip
     value,
     source: input.source,
     requestedBy: client.clientId,
+    effectPolicy: input.effect_policy,
   };
 }
 

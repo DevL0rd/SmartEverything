@@ -10,6 +10,7 @@ import { EmptyState } from '../../components/empty-state';
 import { PageHeader } from '../../components/page-header';
 import { Screen } from '../../components/screen';
 import { useListedDevices, useRooms } from '../../store/selectors';
+import { DeviceGroups } from '../device-groups';
 import { ComfortStrip } from '../climate';
 import { isOffline } from '../devices';
 import { DeviceFilters } from './components/device-filters';
@@ -27,10 +28,10 @@ import {
 const ADD_DEVICE = href.settings.page('devices/add');
 
 function useQuery(): readonly [DeviceQuery, (query: DeviceQuery) => void] {
-  const { status } = useLocalSearchParams<{ status?: string }>();
+  const { status, room } = useLocalSearchParams<{ status?: string; room?: string }>();
   const [query, setQuery] = useState<DeviceQuery>({
     text: '',
-    room: ANY,
+    room: room ?? ANY,
     kind: status === OFFLINE ? OFFLINE : ANY,
   });
   return [query, setQuery];
@@ -65,6 +66,7 @@ function ListTop({
     <View className="px-gutter">
       <View className="w-full max-w-dashboard gap-3 self-center pb-1">
         {children}
+        <DeviceGroups />
         {allOffline ? (
           <Banner
             tone="warning"
@@ -89,7 +91,7 @@ function NoMatch({ onReset }: { readonly onReset: () => void }): ReactNode {
   );
 }
 
-export function DevicesScreen(): ReactNode {
+function DevicesBody(): ReactNode {
   const devices = useListedDevices();
   const rooms = useRooms();
   const [query, setQuery] = useQuery();
@@ -112,6 +114,7 @@ export function DevicesScreen(): ReactNode {
       }
     >
       <DeviceGrid
+        allDevices={devices}
         groups={groupedDevices(devices, rooms, shownQuery)}
         header={
           <ListTop room={room} allOffline={devices.every(isOffline)}>
@@ -134,4 +137,13 @@ export function DevicesScreen(): ReactNode {
       />
     </Screen>
   );
+}
+
+export function DevicesScreen(): ReactNode {
+  const { room, status, groups } = useLocalSearchParams<{
+    room?: string;
+    status?: string;
+    groups?: string;
+  }>();
+  return <DevicesBody key={`${room ?? ANY}:${status ?? ANY}:${groups ?? 'closed'}`} />;
 }

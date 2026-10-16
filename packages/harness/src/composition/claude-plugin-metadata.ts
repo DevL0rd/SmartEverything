@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
-import { HARNESS_RUNTIME_REVISION } from './builtin-metadata';
+import { HARNESS_NATIVE_RUNTIME_REVISION } from './builtin-metadata';
 
 export const HARNESS_CLAUDE_PLUGINS_PACKAGE = '@smarteverything/harness-claude-plugins';
 export const HARNESS_CLAUDE_PLUGINS_VERSION = '0.1.0-smarteverything.1';
@@ -18,7 +18,7 @@ export const HARNESS_CLAUDE_PLUGINS_METADATA = deepFreeze(
     provenance: SOURCE.loader,
     platforms: ['linux', 'macos', 'windows'],
     dsh_version: '0.2.1-alpha.2',
-    runtime_version: HARNESS_RUNTIME_REVISION,
+    runtime_version: HARNESS_NATIVE_RUNTIME_REVISION,
     server_safe: true,
     adapter: { id: 'claude-plugins', version: HARNESS_CLAUDE_PLUGINS_VERSION, kind: 'tools' },
     skill_assets: [],

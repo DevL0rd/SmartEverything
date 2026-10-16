@@ -52,6 +52,7 @@ patchedDependencies:
   decode-uri-component@0.5.0: patches/decode-uri-component@0.5.0.patch
   node-forge@1.4.0: patches/node-forge@1.4.0.patch
   react-native-webview@13.16.1: patches/react-native-webview@13.16.1.patch
+  react-native@0.86.3: patches/react-native@0.86.3.patch
 
 auditConfig:
   ignoreGhsas:

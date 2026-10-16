@@ -50,6 +50,8 @@ export const PUSH_STATUS_KEY = ['window', 'push-status'] as const;
 
 export const AUTOMATION_RUNS_KEY = ['window', 'automation-runs'] as const;
 
+export const DEVICE_EFFECTS_KEY = ['window', 'device-effects'] as const;
+
 export function assistantLinksKey(
   ids: readonly string[],
 ): readonly ['window', 'assistant-links', string] {

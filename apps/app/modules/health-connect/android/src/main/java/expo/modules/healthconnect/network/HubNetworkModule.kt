@@ -157,7 +157,7 @@ class HubNetworkModule : Module() {
       require(key.lowercase() !in listOf("host", "connection", "content-length", "transfer-encoding"))
       builder.header(key, headers.getString(key))
     }
-    try { lease.client.newBuilder().callTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build().newCall(builder.build()).execute().use { response ->
+    try { lease.client.newBuilder().retryOnConnectionFailure(method == "GET").callTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build().newCall(builder.build()).execute().use { response ->
       require(response.code !in 300..399) { "Hub redirects are forbidden" }
       val source = response.body?.source()
       if (source != null) require(!source.request(MAX_BYTES.toLong() + 1)) { "Hub response exceeds limit" }

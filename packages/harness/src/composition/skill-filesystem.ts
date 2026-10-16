@@ -2,7 +2,6 @@ import { readSkillCacheFile } from './skill-asset-paths';
 import { parseMarkdownFile } from 'dsh-claude-plugin-loader-compat';
 import { HarnessRuntimeError } from '../host/errors';
 import { withCodingProcess } from './coding-process';
-import { ProjectFileSystem } from './project-filesystem';
 import type { Context } from '@deepseek-ai/cordis';
 import type { FileSystemSkillProvider } from '@deepseek-ai/dsh-skill-filesystem';
 import type * as SkillFilesystem from '@deepseek-ai/dsh-skill-filesystem';
@@ -55,8 +54,7 @@ export class NativeWorkspaceSkills implements SkillProvider {
     this.codingProcessAssets = selected.codingProcessAssets;
     this.visibleNames = selected.visibleNames;
     const { FileSystemSkillProvider } = loadSkillFilesystem();
-    const assetContext = ctx.fs instanceof ProjectFileSystem ? ctx.fs.runtimeFileContext(ctx) : ctx;
-    this.native = new FileSystemSkillProvider(assetContext, control, {
+    this.native = new FileSystemSkillProvider(ctx, control, {
       providerName: this.name,
       dshHome: host.stateDirectory,
       agentsHome: join(host.homeDirectory, '.agents'),

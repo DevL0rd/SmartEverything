@@ -138,6 +138,7 @@ export const AI_HARNESS_SESSION = z
         model: z.string().min(1).optional(),
         capacity_tokens: z.int().positive().nullable(),
         input_tokens: z.int().nonnegative().nullable(),
+        estimate_tokens: z.int().nonnegative().nullable().optional(),
         state: z.enum(['unmeasured', 'measured', 'compacting', 'stale']),
       })
       .optional(),
@@ -158,10 +159,20 @@ export const AI_HARNESS_SESSION = z
   );
 export type AiHarnessSession = z.infer<typeof AI_HARNESS_SESSION>;
 
-export function harnessContextPercent(context: AiHarnessSession['context']): number | null {
+export function harnessContextPercent(
+  context: AiHarnessSession['context'],
+  includeEstimate = false,
+): number | null {
   if (context === undefined) return null;
-  if (context.capacity_tokens === null || context.input_tokens === null) return null;
-  return Math.min(100, (context.input_tokens / context.capacity_tokens) * 100);
+  const input =
+    includeEstimate &&
+    context.state === 'stale' &&
+    context.estimate_tokens !== undefined &&
+    context.estimate_tokens !== null
+      ? context.estimate_tokens
+      : context.input_tokens;
+  if (context.capacity_tokens === null || input === null) return null;
+  return Math.min(100, (input / context.capacity_tokens) * 100);
 }
 
 const EVENT_FIELDS = {

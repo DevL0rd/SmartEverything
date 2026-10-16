@@ -1,0 +1,60 @@
+import type { Served } from './served-types';
+
+export const SERVED_SEQUENCES = [
+  [
+    'list_automation_sequences',
+    'automations',
+    'read',
+    'List sequences',
+    'Read named reusable sequences with typed parameters and current revisions.',
+    { part: 'list_automation_sequences' },
+  ],
+  [
+    'read_automation_sequence',
+    'automations',
+    'read',
+    'Read a sequence',
+    'Read one reusable sequence and its revision before editing.',
+    { part: 'read_automation_sequence' },
+  ],
+  [
+    'create_automation_sequence',
+    'automations',
+    'control',
+    'Create a sequence',
+    'Create a reusable bounded action tree with typed parameters and a run policy.',
+    { part: 'create_automation_sequence' },
+  ],
+  [
+    'update_automation_sequence',
+    'automations',
+    'control',
+    'Update a sequence',
+    'Replace a sequence at its expected revision, retaining recursive action authorization.',
+    { part: 'update_automation_sequence' },
+  ],
+  [
+    'remove_automation_sequence',
+    'automations',
+    'control',
+    'Remove a sequence',
+    'Delete an unreferenced reusable sequence at its expected revision.',
+    { part: 'remove_automation_sequence' },
+  ],
+  [
+    'start_automation_sequence',
+    'automations',
+    'control',
+    'Start a sequence',
+    'Start a sequence with typed parameters under its policy and return its owned run immediately.',
+    { part: 'start_automation_sequence' },
+  ],
+  [
+    'stop_automation_sequence',
+    'automations',
+    'control',
+    'Stop a sequence',
+    'Idempotently cancel active and queued sequence runs, optionally restricted to a control key.',
+    { part: 'stop_automation_sequence' },
+  ],
+] as const satisfies readonly Served[];

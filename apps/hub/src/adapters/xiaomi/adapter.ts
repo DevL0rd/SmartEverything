@@ -14,26 +14,25 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import {
-  DEVICE_LIST_PATH,
   cameraFeatures,
   chooseTransport,
-  deviceListData,
   isCameraModel,
-  parseDeviceList,
   parseToken,
+  type LegacyChildEvent,
   type SourceList,
 } from '@smarteverything/xiaomi';
-import { CameraEventPoller } from './camera-events';
+import { CameraEventPoller, cameraEventsDetail } from './camera-events';
 import type { CameraMotor } from './camera-motor';
 import type { XiaomiCloud } from './cloud-api';
 import type { XiaomiDependencies } from './dependencies';
 import { cloudIo, lanIo } from './device-io';
-import { seconds, type Opened } from './device-link';
+import type { Opened } from './device-link';
 import { DeviceRunner, type RunnerContext } from './device-runner';
 import { XiaomiHealthCloud } from './health-cloud';
 import { discoveredDevice, fetchInventory, type InventoryEntry } from './inventory';
 import { MiioClient } from './miio-client';
 import type { CloudLookup } from './reachability';
+import { lookupDeviceAddress } from './device-address';
 import type { SpecStore } from './spec-store';
 
 const VIRTUAL_DID_BYTES = 8;
@@ -52,14 +51,6 @@ class LanTokenMissingError extends Error {
 
   constructor(did: string, host: string) {
     super(`The device ${did} answers at ${host}, but the hub holds no LAN token for it.`);
-  }
-}
-
-class DeviceUnlistedError extends Error {
-  override readonly name = 'DeviceUnlistedError';
-
-  constructor(did: string) {
-    super(`The Xiaomi device list no longer holds the device ${did}.`);
   }
 }
 
@@ -83,7 +74,12 @@ function virtualDidOf(bytes: Uint8Array): bigint {
 
 export class XiaomiAdapter implements ProviderAdapter {
   readonly provider = 'xiaomi';
+  private discovery: Promise<readonly DiscoveredDevice[]> = Promise.resolve([]);
+  private discoveryGeneration = 0;
+  private inventoryReady = false;
+  private readonly runnerGenerations = new WeakMap<DeviceRunner, number>();
   private runners = new Map<string, DeviceRunner>();
+  private readonly addresses = new WeakMap<DeviceRunner, string>();
   private cameras: { readonly did: string; readonly poller: CameraEventPoller }[] = [];
   private devices = new Map<string, DiscoveredDevice>();
   private sink: AdapterSink | null = null;
@@ -97,15 +93,21 @@ export class XiaomiAdapter implements ProviderAdapter {
     this.virtualDid = virtualDidOf(options.dependencies.randomBytes(VIRTUAL_DID_BYTES));
   }
 
-  readonly discover = async (): Promise<readonly DiscoveredDevice[]> => {
+  readonly discover = (): Promise<readonly DiscoveredDevice[]> =>
+    (this.discovery = this.discovery.then(this.discoverDevices, this.discoverDevices));
+
+  private readonly discoverDevices = async (): Promise<readonly DiscoveredDevice[]> => {
+    const generation = ++this.discoveryGeneration;
+    this.inventoryReady = false;
     const { cloud, specs, log, motor } = this.options;
     const entries = await fetchInventory({ cloud, specs, log, cameraMotor: motor !== null });
     await this.stopRunning();
     for (const entry of entries) {
       const opened = await this.open(entry);
-      const runner = new DeviceRunner(entry, opened, this.runnerContext());
+      const runner = new DeviceRunner(entry, opened, this.runnerContext(generation));
       await runner.loadPtzPositions();
       this.runners.set(entry.cloud.did, runner);
+      this.runnerGenerations.set(runner, generation);
       const passive = this.passive.get(entry.cloud.did);
       if (
         passive !== undefined &&
@@ -118,6 +120,7 @@ export class XiaomiAdapter implements ProviderAdapter {
     this.cameras = entries
       .filter((entry) => isCameraModel(entry.cloud.model))
       .map((entry) => this.cameraPoller(entry));
+    this.inventoryReady = generation === this.discoveryGeneration;
     this.rebuild();
     if (this.sink !== null) {
       this.startRunning();
@@ -177,10 +180,11 @@ export class XiaomiAdapter implements ProviderAdapter {
     return updates;
   };
 
-  private runnerContext(): RunnerContext {
+  private runnerContext(generation: number): RunnerContext {
     const { dependencies, cloud, log } = this.options;
     return {
       sink: () => this.sink,
+      childEvent: (gateway, uplink) => this.childEvent(generation, gateway, uplink),
       log,
       now: dependencies.now,
       jitter: dependencies.jitter,
@@ -194,15 +198,13 @@ export class XiaomiAdapter implements ProviderAdapter {
         }
         return this.connect(host, token);
       },
-      lookup: (did) => this.lookup(did),
+      lookup: (did) => this.lookup(did, generation),
       online: (did, online): void => {
         this.sink?.online(did, online);
       },
       motor: this.options.motor,
       devicesChanged: (): void => {
-        this.rebuild();
-        this.updateCameraTriggers();
-        this.sink?.devices([...this.devices.values()]);
+        this.publishDevices();
       },
       cameraDetected: (event, detection): void => {
         const sink = this.sink;
@@ -218,6 +220,26 @@ export class XiaomiAdapter implements ProviderAdapter {
         camera.poller.detected(sink, event, detection, dependencies.timing.cameraFollowUps);
       },
     };
+  }
+
+  private childEvent(
+    generation: number,
+    gateway: DeviceRunner,
+    uplink: LegacyChildEvent,
+  ): (() => void) | null {
+    const child = this.runners.get(uplink.childDid);
+    if (
+      !this.inventoryReady ||
+      generation !== this.discoveryGeneration ||
+      this.sink === null ||
+      this.runners.get(gateway.did) !== gateway ||
+      gateway.entry.cloud.parentDid !== null ||
+      child === undefined ||
+      this.runnerGenerations.get(child) !== generation
+    ) {
+      return null;
+    }
+    return child.legacyChildDelivery(gateway.did, uplink);
   }
 
   passiveEligible(did: string, model: string, address: string, scope: string): boolean {
@@ -264,14 +286,26 @@ export class XiaomiAdapter implements ProviderAdapter {
     }
   }
 
-  private async lookup(did: string): Promise<CloudLookup> {
-    const page = parseDeviceList(await this.options.cloud.call(DEVICE_LIST_PATH, deviceListData()));
-    const device = page.devices.find((candidate) => candidate.did === did);
-    if (device === undefined) {
-      throw new DeviceUnlistedError(did);
+  private publishDevices(): void {
+    this.rebuild();
+    this.updateCameraTriggers();
+    this.sink?.devices([...this.devices.values()]);
+  }
+
+  private async lookup(did: string, generation: number): Promise<CloudLookup> {
+    const runner = this.runners.get(did);
+    const device = await lookupDeviceAddress(this.options.cloud, did);
+    if (
+      runner !== undefined &&
+      generation === this.discoveryGeneration &&
+      this.runners.get(did) === runner &&
+      device.ip !== null &&
+      device.ip !== (this.addresses.get(runner) ?? runner.entry.cloud.ip)
+    ) {
+      this.addresses.set(runner, device.ip);
+      this.publishDevices();
     }
-    const host = chooseTransport(device).transport === 'cloud' ? null : device.ip;
-    return { host, online: device.online };
+    return { host: device.host, online: device.online };
   }
 
   private async connect(host: string, token: string): Promise<MiioClient> {
@@ -335,12 +369,18 @@ export class XiaomiAdapter implements ProviderAdapter {
   private rebuild(): void {
     const known = new Set(this.runners.keys());
     const account = { userId: this.options.userId, region: this.options.cloud.region };
+    const pollMs = this.options.dependencies.timing.cameraPollMs;
     this.devices = new Map(
       [...this.runners.values()].map((runner) => {
-        const device = discoveredDevice(runner.entry, runner.transportState(), account, known);
+        const entry = runner.entry;
+        const projected = {
+          ...entry,
+          cloud: { ...entry.cloud, ip: this.addresses.get(runner) ?? entry.cloud.ip },
+        };
+        const device = discoveredDevice(projected, runner.transportState(), account, known);
         const camera = this.cameras.find(({ did }) => did === runner.did);
         const events =
-          camera === undefined ? {} : { cameraEvents: this.cameraEventsDetail(camera.poller) };
+          camera === undefined ? {} : { cameraEvents: cameraEventsDetail(camera.poller, pollMs) };
         return [
           runner.did,
           {
@@ -356,13 +396,6 @@ export class XiaomiAdapter implements ProviderAdapter {
         ];
       }),
     );
-  }
-
-  private cameraEventsDetail(poller: CameraEventPoller): string {
-    const interval = seconds(this.options.dependencies.timing.cameraPollMs);
-    return poller.trigger === 'lan-push'
-      ? 'pushed over the LAN at once; the cloud event list adds the clip afterwards'
-      : `cloud event list every ${interval} s: the camera has no LAN push subscription`;
   }
 
   private startRunning(): void {
@@ -388,6 +421,7 @@ export class XiaomiAdapter implements ProviderAdapter {
   }
 
   private async stopRunning(): Promise<void> {
+    this.inventoryReady = false;
     for (const { poller } of this.cameras) {
       poller.stop();
     }

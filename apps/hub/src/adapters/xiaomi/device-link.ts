@@ -1,5 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
-import type { Uplink } from '@smarteverything/xiaomi';
+import type { LegacyChildEvent, Uplink } from '@smarteverything/xiaomi';
 import type { XiaomiTiming } from './dependencies';
 import { lanIo, type DeviceIo } from './device-io';
 import type { TransportState } from './inventory';
@@ -30,6 +30,7 @@ export type RefreshTrigger = 'poll' | 'subscription';
 export interface LinkHooks {
   readonly refresh: (trigger: RefreshTrigger) => Promise<void>;
   readonly uplink: (uplink: Uplink) => void;
+  readonly childUplink?: (uplink: LegacyChildEvent) => (() => void) | null;
   readonly changed: () => void;
 }
 
@@ -248,6 +249,7 @@ export class DeviceLink {
           void this.hooks.refresh('subscription');
         },
         uplink: this.hooks.uplink,
+        childUplink: (uplink): (() => void) | null => this.hooks.childUplink?.(uplink) ?? null,
         changed: (): void => {
           this.updateLoop();
           this.hooks.changed();

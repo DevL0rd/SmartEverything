@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
+import { deviceFamily, type JsonValue, type PresentedCapability } from '@smarteverything/domain';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
 import { Select } from '../../../components/select';
@@ -8,6 +8,7 @@ import { Slider } from '../../../components/slider';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { useControl, type Control } from '../../../store/control';
+import { useLiveControl } from '../../../store/use-live-control';
 import type { Device } from '../../../store/state';
 import { shownValue } from '../model/device-model';
 import { CapabilityRow } from './capability-row';
@@ -22,6 +23,8 @@ interface BlockProps {
   readonly presented: PresentedCapability;
   readonly control: Control;
   readonly disabled: boolean;
+  readonly continuous?: boolean;
+  readonly unknownValue?: string;
 }
 
 function Labelled({
@@ -78,12 +81,18 @@ function EnumBlock({ presented, control, disabled }: BlockProps): ReactNode {
   );
 }
 
+function captionOf({ presented, control, unknownValue }: BlockProps): string {
+  return (control.value === undefined || control.value === null) && unknownValue !== undefined
+    ? unknownValue
+    : shownValue(presented, control.value);
+}
+
 function NumberBlock(props: BlockProps & { readonly descriptor: NumberDescriptor }): ReactNode {
   const { presented, control, disabled, descriptor } = props;
   if (isDial(presented)) {
     return <DialBlock {...props} />;
   }
-  const value = typeof control.value === 'number' ? control.value : descriptor.min;
+  const value = typeof control.value === 'number' ? control.value : null;
   const format = (next: number): string => shownValue(presented, next);
   const set = (next: number): void => {
     void control.set(next);
@@ -99,13 +108,15 @@ function NumberBlock(props: BlockProps & { readonly descriptor: NumberDescriptor
           label={presented.label}
           disabled={disabled}
           formatValue={format}
+          unknownValue={captionOf(props)}
           onChange={set}
         />
       </Labelled>
     );
   }
+
   return (
-    <Labelled label={presented.label} value={shownValue(presented, control.value)}>
+    <Labelled label={presented.label} value={captionOf(props)}>
       <Slider
         label={presented.label}
         value={value}
@@ -114,6 +125,10 @@ function NumberBlock(props: BlockProps & { readonly descriptor: NumberDescriptor
         step={descriptor.step}
         disabled={disabled}
         formatValue={format}
+        unknownValue={captionOf(props)}
+        {...(props.continuous === true || deviceFamily(props.device) === 'light'
+          ? { onChange: set }
+          : {})}
         onCommit={set}
       />
     </Labelled>
@@ -136,15 +151,11 @@ function SwitchBlock({ presented, control, disabled }: BlockProps): ReactNode {
   );
 }
 
-function Block(props: BlockProps): ReactNode {
+export function CapabilityControl(props: BlockProps): ReactNode {
   const descriptor = props.presented.capability.value;
   if (props.presented.colorEncoding !== undefined) {
     return (
-      <ColourBlock
-        deviceId={props.device.id}
-        presented={props.presented}
-        disabled={props.disabled}
-      />
+      <ColourBlock control={props.control} presented={props.presented} disabled={props.disabled} />
     );
   }
   switch (descriptor.kind) {
@@ -157,7 +168,7 @@ function Block(props: BlockProps): ReactNode {
     case 'color':
       return (
         <ColourBlock
-          deviceId={props.device.id}
+          control={props.control}
           presented={props.presented}
           disabled={props.disabled}
         />
@@ -180,10 +191,16 @@ export function ControlBlock({
   readonly presented: PresentedCapability;
   readonly reason: string | null;
 }): ReactNode {
-  const control = useControl(device.id, presented.key);
+  const raw = useControl(device.id, presented.key);
+  const control = useLiveControl(device, presented.key, raw, deviceFamily(device) === 'light');
   return (
     <Guard reason={reason}>
-      <Block device={device} presented={presented} control={control} disabled={reason !== null} />
+      <CapabilityControl
+        device={device}
+        presented={presented}
+        control={control}
+        disabled={reason !== null}
+      />
     </Guard>
   );
 }

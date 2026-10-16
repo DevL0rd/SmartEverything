@@ -60,6 +60,7 @@ export class PersonalRepository {
     owner: LayoutOwner,
     page: string,
     layout: Readonly<Record<string, JsonValue>>,
+    onSequence?: (seq: number) => void,
   ): LayoutRow {
     return this.context.write(() => {
       const before = this.layout(owner, page);
@@ -72,11 +73,11 @@ export class PersonalRepository {
         { owner: scoped.id, page, layout: jsonText(layout), now: this.context.now() },
       );
       const after = found(this.layout(owner, page), 'layout', page);
-      this.context.changed(
+      this.context.changedWithSequence(
         'layouts',
         before === undefined ? 'INSERT' : 'UPDATE',
-        after,
-        before ?? null,
+        { record: after, oldRecord: before ?? null },
+        onSequence,
       );
       return after;
     });

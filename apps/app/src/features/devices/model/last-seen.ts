@@ -1,5 +1,5 @@
 import { useStoreSelector } from '../../../store/store-context';
-import { deviceValuesOf, rowsOf, type StoreState } from '../../../store/state';
+import { deviceValuesOf, rowsOf, type DeviceValues, type StoreState } from '../../../store/state';
 
 export interface LastSeen {
   readonly at: string;
@@ -40,14 +40,41 @@ function offlineMomentOf(events: StoreState['tables']['events'], deviceId: strin
   return moment;
 }
 
-function lastSeenIn(state: StoreState, deviceId: string): LastSeen | null {
-  const offline = offlineMomentOf(state.tables.events, deviceId);
+interface SeenProjection {
+  readonly deviceId: string;
+  readonly value: LastSeen | null;
+}
+
+const seenProjections = new WeakMap<
+  StoreState['tables']['events'],
+  WeakMap<DeviceValues, SeenProjection>
+>();
+
+function lastSeenOf(
+  events: StoreState['tables']['events'],
+  values: DeviceValues,
+  deviceId: string,
+): LastSeen | null {
+  const offline = offlineMomentOf(events, deviceId);
   if (offline !== null) {
     return { at: offline, wentOffline: true };
   }
-  const values = deviceValuesOf(state, deviceId);
   const heard = latest(Object.values(values).map((value) => value.observedAt));
   return heard === null ? null : { at: heard, wentOffline: false };
+}
+
+function lastSeenIn(state: StoreState, deviceId: string): LastSeen | null {
+  const values = deviceValuesOf(state, deviceId);
+  const events = state.tables.events;
+  const projections = seenProjections.get(events) ?? new WeakMap<DeviceValues, SeenProjection>();
+  seenProjections.set(events, projections);
+  const known = projections.get(values);
+  if (known?.deviceId === deviceId) {
+    return known.value;
+  }
+  const value = lastSeenOf(events, values, deviceId);
+  projections.set(values, { deviceId, value });
+  return value;
 }
 
 function sameSeen(left: LastSeen | null, right: LastSeen | null): boolean {

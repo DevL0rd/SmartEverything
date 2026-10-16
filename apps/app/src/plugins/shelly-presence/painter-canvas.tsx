@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import Svg, { Circle, G, Line, Path } from 'react-native-svg';
-import type { ShellyArea } from '@smarteverything/domain';
+import type { ShellyArea, ShellyTrack } from '@smarteverything/domain';
 import { useColour } from '../../design/colour';
 import type { GridCell } from './area-geometry';
 import type { PainterViewport } from './painter-viewport';
+import { PresenceTracks } from './room-map';
 
 function Segments({
   area,
@@ -57,6 +58,7 @@ function PainterGrid({
 }
 
 export function PainterCanvas({
+  tracks,
   area,
   context,
   origin,
@@ -65,6 +67,7 @@ export function PainterCanvas({
   width,
   viewport,
 }: {
+  readonly tracks: readonly ShellyTrack[];
   readonly area: ShellyArea;
   readonly context: ShellyArea;
   readonly origin: number;
@@ -76,6 +79,7 @@ export function PainterCanvas({
   const primary = useColour('primary');
   const edge = useColour('outline');
   const background = useColour('surface-2');
+  const positive = useColour('positive');
   return (
     <Svg
       width="100%"
@@ -97,6 +101,7 @@ export function PainterCanvas({
         strokeWidth={0.09}
         fill="none"
       />
+      <PresenceTracks tracks={tracks} colour={positive} />
       <Circle cx={origin} cy={0} r={0.16} fill={primary} />
     </Svg>
   );

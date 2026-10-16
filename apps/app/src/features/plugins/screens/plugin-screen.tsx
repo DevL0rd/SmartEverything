@@ -13,6 +13,7 @@ import { restart } from '../data/plugin-actions';
 import { pluginIcon } from '../model/plugin-look';
 import { PowerRows, SwitchRows, ToolRows, UpkeepRows } from './plugin-detail-rows';
 import { PluginSettingsForm } from './plugin-settings-form';
+import { PluginFirewallBanner } from './plugin-firewall-banner';
 
 function Header({ row }: { readonly row: PluginRow }): ReactNode {
   const { manifest } = row;
@@ -64,6 +65,7 @@ function Plugin({ row }: { readonly row: PluginRow }): ReactNode {
       <Header row={row} />
       <StatusBanner row={row} />
       <SwitchRows row={row} />
+      <PluginFirewallBanner row={row} />
       <PowerRows row={row} />
       <ToolRows row={row} />
       <CustomSettings row={row} />

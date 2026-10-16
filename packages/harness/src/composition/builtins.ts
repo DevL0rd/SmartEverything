@@ -19,14 +19,16 @@ import {
   HARNESS_CODEGRAPH_METADATA,
   HARNESS_SKILLS_METADATA,
   HARNESS_BROWSER_METADATA,
+  HARNESS_RUNTIME_REVISION,
 } from './builtin-metadata';
 import { mountHeadlessBrowser } from './browser';
 import type { HarnessSkillAssets } from './skill-assets';
 import { HarnessRuntimeError } from '../host/errors';
 import { HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
+import { upgradeBuiltinRuntimeMetadata } from './builtin-runtime-upgrade';
 
 export const HARNESS_CODEGRAPH_PACKAGE = '@smarteverything/harness-codegraph';
-export const HARNESS_CODEGRAPH_VERSION = '0.1.6-smarteverything.2';
+export const HARNESS_CODEGRAPH_VERSION = '0.1.6-smarteverything.3';
 export const HARNESS_SKILLS_PACKAGE = '@smarteverything/harness-skills';
 export const HARNESS_SKILLS_VERSION = '0.2.1-alpha.2';
 export const HARNESS_BROWSER_PACKAGE = '@smarteverything/harness-browser';
@@ -46,7 +48,7 @@ export function installedHarnessBuiltins(
       provenance: HARNESS_CODEGRAPH_METADATA.provenance,
       metadata: HARNESS_CODEGRAPH_METADATA,
       platforms: ['linux'],
-      serverSafe: false,
+      serverSafe: true,
       mount: mountCodeIndexer,
     },
     installedSkills(host, assets),
@@ -106,7 +108,9 @@ export function upgradeHarnessBuiltins(
     )
       ? { revision: DEFAULT_REVISION, entries: [...current.entries, browserDefault()] }
       : current;
-  return upgradeSharedSkillEligibility(previous);
+  return upgradeBuiltinRuntimeMetadata(
+    upgradeNativeIndexer(upgradeSharedSkillEligibility(previous)),
+  );
 }
 
 function browserDefault(): HarnessDesiredEntry {
@@ -219,6 +223,7 @@ function upgradeSharedSkillEligibility(
       return entry;
     const previous = {
       ...HARNESS_SKILLS_METADATA,
+      runtime_version: HARNESS_RUNTIME_REVISION,
       platforms: ['linux'],
       server_safe: false,
       skill_assets: entry.metadata.skill_assets,
@@ -232,6 +237,31 @@ function upgradeSharedSkillEligibility(
   return entries.some((entry, index) => entry !== current.entries[index])
     ? {
         revision: `shared-skills-${createHash('sha256')
+          .update(JSON.stringify({ previous: current.revision, entries }))
+          .digest('hex')}`,
+        entries,
+      }
+    : current;
+}
+
+function upgradeNativeIndexer(current: HarnessDesiredConfiguration): HarnessDesiredConfiguration {
+  const entries = current.entries.map((entry): HarnessDesiredEntry => {
+    if (
+      entry.package !== HARNESS_CODEGRAPH_PACKAGE ||
+      entry.version !== '0.1.6-smarteverything.2' ||
+      !isDeepStrictEqual(entry.metadata, {
+        ...HARNESS_CODEGRAPH_METADATA,
+        runtime_version: HARNESS_RUNTIME_REVISION,
+        server_safe: false,
+        adapter: { ...HARNESS_CODEGRAPH_METADATA.adapter, version: '0.1.6-smarteverything.2' },
+      })
+    )
+      return entry;
+    return { ...entry, version: HARNESS_CODEGRAPH_VERSION, metadata: HARNESS_CODEGRAPH_METADATA };
+  });
+  return entries.some((entry, index) => entry !== current.entries[index])
+    ? {
+        revision: `native-indexer-${createHash('sha256')
           .update(JSON.stringify({ previous: current.revision, entries }))
           .digest('hex')}`,
         entries,

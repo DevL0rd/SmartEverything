@@ -7,7 +7,7 @@ const EFFECT = z.strictObject({
   profile_id: z.uuid(),
   authorities: SQL_JSON.pipe(z.array(z.uuid()).min(1)),
 });
-export type EffectKind = 'command' | 'schedule' | 'automation';
+export type EffectKind = 'command' | 'schedule' | 'automation' | 'sequence';
 export class HarnessEffectsRepository {
   constructor(private readonly context: StoreContext) {}
   keep(kind: EffectKind, id: string, sources: readonly ConversationAuthority[]): void {

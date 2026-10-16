@@ -31,9 +31,10 @@ export function Glow({
   const fill = useColour(colour);
   const id = `glow-${useId().replaceAll(':', '')}`;
   const ref = useRef<View>(null);
-  const { moving } = useAnimationGate(breathing, useOnScreen(ref));
+  const { visible, onLayout } = useOnScreen(ref);
+  const { moving } = useAnimationGate(breathing, visible);
   return (
-    <View ref={ref} pointerEvents="none" className="absolute inset-0">
+    <View ref={ref} onLayout={onLayout} pointerEvents="none" className="absolute inset-0">
       <Animated.View className="absolute inset-0" style={loopStyle(BREATH, moving)}>
         <Svg width="100%" height="100%">
           <Defs>

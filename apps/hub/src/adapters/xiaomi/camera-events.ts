@@ -14,6 +14,7 @@ import {
 import type { XiaomiCloud } from './cloud-api';
 import type { CameraFollowUps } from './dependencies';
 import { startLoop, type Loop } from './loop';
+import { seconds } from './device-link';
 
 const PAGE_LIMIT = 20;
 const SAME_DETECTION_WITHIN_MS = 120_000;
@@ -240,4 +241,11 @@ export class CameraEventPoller {
       null,
     );
   }
+}
+
+export function cameraEventsDetail(poller: CameraEventPoller, pollMs: number): string {
+  const interval = seconds(pollMs);
+  return poller.trigger === 'lan-push'
+    ? 'pushed over the LAN at once; the cloud event list adds the clip afterwards'
+    : `cloud event list every ${interval} s: the camera has no LAN push subscription`;
 }

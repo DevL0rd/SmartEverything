@@ -1,16 +1,18 @@
 import type { ReactElement, ReactNode } from 'react';
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { View, type ViewStyle } from 'react-native';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
 import { useIdiom } from '../../../design/platform';
 import { useAppliedTheme } from '../../../design/theme';
 import { SEMANTIC_SIZES, type Idiom } from '../../../design/tokens';
+import { deviceFamily } from '@smarteverything/domain';
+import { DeviceGroupCard } from '../../device-groups';
 import { plural } from '../../../format/text';
 import type { RoomGroup } from '../../../store/room-groups';
 import type { Device } from '../../../store/state';
 import type { Slot } from '../model/cell-span';
-import { useCardWeights, type Weights } from '../model/card-weights';
+import { cardWeightsOf, type Weights } from '../model/card-weights';
 import { packRows, type PackedRow } from '../model/row-pack';
 import { DeviceCell } from './device-cell';
 
@@ -18,6 +20,7 @@ const MIN_CELL: Readonly<Record<Idiom, number>> = { pointer: 196, touch: 172 };
 const CELL_HEIGHT: Readonly<Record<Idiom, number>> = { pointer: 196, touch: 220 };
 const MAX_COLUMNS = 6;
 const WINDOW_SIZE = 3;
+const INITIAL_ROWS = 3;
 const GUTTERS = 32;
 
 function columnsFor(width: number, gap: number, minimum: number): number {
@@ -25,19 +28,38 @@ function columnsFor(width: number, gap: number, minimum: number): number {
   return Math.min(MAX_COLUMNS, Math.max(2, fit));
 }
 
+type GridEntry =
+  | { readonly kind: 'lights'; readonly key: string; readonly devices: readonly Device[] }
+  | { readonly kind: 'devices'; readonly key: string; readonly row: PackedRow };
+
 function sectionsOf(
   groups: readonly RoomGroup<Device>[],
+  all: readonly Device[],
   columns: number,
   weights: Weights,
-): readonly VirtualSection<PackedRow>[] {
-  return groups.map((group) => ({
-    key: group.key,
-    title: `${group.title} · ${plural(group.devices.length, 'device')}`,
-    data: packRows(group.devices, columns, weights).map((row) => ({
-      ...row,
-      key: `${group.key}:${row.key}`,
-    })),
-  }));
+): readonly VirtualSection<GridEntry>[] {
+  return groups.map((group) => {
+    const lights = all.filter(
+      (device) =>
+        !device.hidden &&
+        deviceFamily(device) === 'light' &&
+        (device.room_id === group.key || (group.key === 'none' && device.room_id === null)),
+    );
+    const data: GridEntry[] =
+      lights.length === 0 ? [] : [{ kind: 'lights', key: `${group.key}:lights`, devices: lights }];
+    return {
+      key: group.key,
+      title: `${group.title} · ${plural(group.devices.length, 'device')}`,
+      data: [
+        ...data,
+        ...packRows(group.devices, columns, weights).map((row) => ({
+          kind: 'devices' as const,
+          key: `${group.key}:${row.key}`,
+          row,
+        })),
+      ],
+    };
+  });
 }
 
 interface CellSize {
@@ -138,41 +160,52 @@ const GridRowView = memo(
     sameRow(left.row, right.row),
 );
 
+function sameEntry(left: GridEntry, right: GridEntry): boolean {
+  if (left.kind === 'devices' && right.kind === 'devices') return sameRow(left.row, right.row);
+  return (
+    left.kind === 'lights' &&
+    right.kind === 'lights' &&
+    left.devices.length === right.devices.length &&
+    left.devices.every((device, index) => device === right.devices[index])
+  );
+}
+
 interface DeviceGridProps {
   readonly groups: readonly RoomGroup<Device>[];
+  readonly allDevices: readonly Device[];
   readonly header: ReactElement;
   readonly empty: ReactElement;
 }
 
 function Grid({
   groups,
+  allDevices,
   header,
   empty,
   width,
 }: DeviceGridProps & { readonly width: number }): ReactNode {
-  const [topLength, setTopLength] = useState(0);
   const cell = useCellSize();
-  const weights = useCardWeights(groups.flatMap((group) => group.devices));
+  const weights = cardWeightsOf(groups.flatMap((group) => group.devices));
   const columns = columnsFor(width - GUTTERS, cell.gap, cell.minimum);
   return (
     <VirtualList
-      sections={sectionsOf(groups, columns, weights)}
+      sections={sectionsOf(groups, allDevices, columns, weights)}
       keyOf={(row) => row.key}
       widthClassName="max-w-dashboard"
       windowSize={WINDOW_SIZE}
-      sameItem={sameRow}
-      header={
-        <View
-          onLayout={(event) => {
-            setTopLength(event.nativeEvent.layout.height);
-          }}
-        >
-          {header}
-        </View>
-      }
-      fixedRows={{ rowLength: cell.height + cell.gap, topLength }}
+      initialNumToRender={INITIAL_ROWS}
+      sameItem={sameEntry}
+      header={header}
       empty={empty}
-      renderItem={(row) => <GridRowView row={row} cell={cell} />}
+      renderItem={(entry) =>
+        entry.kind === 'lights' ? (
+          <View className="pb-3">
+            <DeviceGroupCard title="All lights" devices={entry.devices} />
+          </View>
+        ) : (
+          <GridRowView row={entry.row} cell={cell} />
+        )
+      }
     />
   );
 }

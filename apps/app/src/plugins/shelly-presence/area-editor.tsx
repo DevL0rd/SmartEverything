@@ -1,4 +1,4 @@
-import type { ShellyArea } from '@smarteverything/domain';
+import type { ShellyArea, ShellyTrack } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../components/button';
@@ -70,25 +70,30 @@ function AreaActions({ draft }: { readonly draft: AreaControls }): ReactNode {
   );
 }
 
-export function AreaEditor({
-  value,
-  change,
-  validity,
-  context,
-  allowed,
-  origin,
-}: {
+interface AreaEditorProps {
+  readonly tracks?: readonly ShellyTrack[];
   readonly value: ShellyArea;
   readonly change: (value: ShellyArea) => void;
   readonly validity: (valid: boolean) => void;
   readonly context?: ShellyArea;
   readonly allowed?: ShellyArea;
   readonly origin?: number;
-}): ReactNode {
+}
+
+export function AreaEditor({
+  tracks = [],
+  value,
+  change,
+  validity,
+  context,
+  allowed,
+  origin,
+}: AreaEditorProps): ReactNode {
   const draft = useAreaDraft(value, change, validity);
   return (
     <View className="gap-3">
       <GridPainter
+        tracks={tracks}
         area={value}
         {...(context === undefined ? {} : { context })}
         {...(allowed === undefined ? {} : { allowed })}

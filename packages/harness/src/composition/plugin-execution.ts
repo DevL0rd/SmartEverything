@@ -1,5 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis';
-import type { AiHarnessPermission, AiHarnessStorageBinding } from '@smarteverything/domain';
+import type { AiHarnessPermission } from '@smarteverything/domain';
 import type { LoadedPlugin } from 'dsh-claude-plugin-loader-compat';
 import { mapMcpServer } from 'dsh-claude-plugin-loader-compat';
 import type { HarnessHost } from '../host/contracts';
@@ -109,15 +109,16 @@ function validateMcp(
 export async function mountManagedPackageExecution(
   ctx: Context,
   agentCtx: Context,
-  host: HarnessHost,
+  _host: HarnessHost,
   policy: {
-    readonly binding: AiHarnessStorageBinding | undefined;
+    readonly directory: string;
+    readonly native: boolean;
     readonly permission: AiHarnessPermission | undefined;
   },
 ): Promise<void> {
   for (const execution of executions.get(ctx) ?? []) {
     if (!execution.hook && execution.servers.length === 0) continue;
-    const project = admittedExecutionProject(host, policy);
+    const project = admittedExecutionProject(policy);
     await execution.asset.verify();
     if (execution.hook && execution.plugin.components.hooksFile !== undefined)
       await agentCtx.plugin(hooks, {
@@ -129,24 +130,21 @@ export async function mountManagedPackageExecution(
       await mountMcp(agentCtx, execution.plugin, serverKey);
   }
 }
-function admittedExecutionProject(
-  host: HarnessHost,
-  policy: {
-    readonly binding: AiHarnessStorageBinding | undefined;
-    readonly permission: AiHarnessPermission | undefined;
-  },
-): string {
+function admittedExecutionProject(policy: {
+  readonly directory: string;
+  readonly native: boolean;
+  readonly permission: AiHarnessPermission | undefined;
+}): string {
   if (
-    host.target.kind !== 'device' ||
-    policy.binding?.kind !== 'device' ||
+    !policy.native ||
     policy.permission?.sandbox !== 'danger-full-access' ||
     policy.permission.approval !== 'never'
   )
     throw new HarnessRuntimeError(
       'capability_unsupported',
-      'Package hooks and MCP require an explicitly selected computer project with full execution permission.',
+      'Package hooks and MCP require authenticated native machine access and full execution permission.',
     );
-  return policy.binding.path;
+  return policy.directory;
 }
 async function mountMcp(ctx: Context, plugin: LoadedPlugin, serverKey: string): Promise<void> {
   const entry = plugin.components.mcpServers[serverKey];

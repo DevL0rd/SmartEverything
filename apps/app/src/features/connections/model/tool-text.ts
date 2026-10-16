@@ -6,6 +6,15 @@ interface ToolText {
 }
 
 const TEXT: Readonly<Record<McpToolName, ToolText>> = {
+  get_device_groups: { title: 'Read device groups', line: 'Named groups and their member devices' },
+  edit_device_group: {
+    title: 'Edit device groups',
+    line: 'Create, rename, change members or remove a group',
+  },
+  control_device_target: {
+    title: 'Control a room or group',
+    line: 'Supported members with individual command outcomes',
+  },
   search_chat_references: {
     title: 'Find chat references',
     line: 'Finds available files, folders, skills, plugins and owned chats without loading their contents',
@@ -103,9 +112,85 @@ const TEXT: Readonly<Record<McpToolName, ToolText>> = {
   list_automations: { title: 'List automations', line: 'Triggers, actions and last run' },
   edit_automation: { title: 'Edit automations', line: 'Add, change, switch or remove' },
   run_automation: { title: 'Run an automation', line: 'Its actions, right now' },
+  read_automation_revision: {
+    title: 'Read an automation',
+    line: 'Current settings and revision before saving changes',
+  },
+  list_automation_sequences: {
+    title: 'List sequences',
+    line: 'Read reusable sequences and their parameters.',
+  },
+  read_automation_sequence: {
+    title: 'Read a sequence',
+    line: 'Read a reusable sequence and its revision.',
+  },
+  create_automation_sequence: {
+    title: 'Create a sequence',
+    line: 'Save a reusable action sequence.',
+  },
+  update_automation_sequence: {
+    title: 'Update a sequence',
+    line: 'Replace a reusable sequence at its current revision.',
+  },
+  remove_automation_sequence: {
+    title: 'Remove a sequence',
+    line: 'Delete an unreferenced reusable sequence.',
+  },
+  start_automation_sequence: {
+    title: 'Start a sequence',
+    line: 'Start a reusable sequence with typed parameters.',
+  },
+  stop_automation_sequence: {
+    title: 'Stop a sequence',
+    line: 'Cancel future actions in active and queued sequence runs.',
+  },
+  list_automation_values: {
+    title: 'List automation Values',
+    line: 'Current boolean, number, duration and choice values',
+  },
+  create_automation_value: {
+    title: 'Create an automation Value',
+    line: 'A boolean, number, duration or ordered choice',
+  },
+  update_automation_value: {
+    title: 'Change an automation Value',
+    line: 'Its settings and value at the expected revision',
+  },
+  apply_automation_value_operation: {
+    title: 'Apply a Value operation',
+    line: 'Set, toggle, add, subtract or cycle in one operation',
+  },
+  remove_automation_value: {
+    title: 'Remove an automation Value',
+    line: 'Delete it when no automation refers to it',
+  },
+  list_automation_runs: {
+    title: 'List automation runs',
+    line: 'Recent runs, statuses and outcomes',
+  },
+  read_automation_run: {
+    title: 'Read an automation run',
+    line: 'Step outcomes and linked device commands',
+  },
+  stop_automation_run: {
+    title: 'Stop an automation run',
+    line: 'Cancel future steps; sent commands may still finish',
+  },
+  stop_automation_runs: {
+    title: 'Stop automation runs',
+    line: 'Cancel active and queued runs, optionally by control key',
+  },
+  start_automation: {
+    title: 'Start an automation',
+    line: 'Run saved actions, skipping triggers and conditions',
+  },
   list_scheduled: { title: 'List scheduled', line: 'What is waiting to run, and how it went' },
   schedule: { title: 'Schedule', line: 'Plan steps for later, change or cancel them' },
   read_signals: { title: 'Read signals', line: 'Everything an automation can react to' },
+  list_speech_sources: {
+    title: 'Read speech sources',
+    line: 'Authorized sources available for spoken-word automation triggers',
+  },
   read_health: { title: 'Read health', line: 'Days, records, logs and types' },
   log_health: { title: 'Log health', line: 'Add, change or delete a record' },
   find_food: { title: 'Find food', line: 'Saved foods, products and barcodes' },

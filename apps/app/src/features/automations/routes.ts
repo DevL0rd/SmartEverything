@@ -5,6 +5,55 @@ const always = (): boolean => true;
 
 export const ROUTES: readonly RouteDefinition[] = [
   {
+    key: 'automations.values',
+    href: '/automations/values',
+    title: 'Values',
+    icon: 'customize',
+    tab: 'automations',
+    parent: 'automations',
+    keywords: [
+      'variables',
+      'remember',
+      'number',
+      'duration',
+      'choice',
+      'toggle',
+      'cycle',
+      'bounds',
+    ],
+    available: always,
+    searchable: true,
+    actions: [
+      {
+        key: 'new',
+        title: 'New Value',
+        icon: 'plus',
+        href: href.automationValue('new'),
+        keywords: ['create', 'add', 'variable'],
+      },
+    ],
+  },
+  {
+    key: 'automations.sequences',
+    href: '/automations/sequences',
+    title: 'Sequences',
+    icon: 'layers',
+    tab: 'automations',
+    parent: 'automations',
+    keywords: ['reusable', 'steps', 'parameters', 'program'],
+    available: always,
+    searchable: true,
+    actions: [
+      {
+        key: 'new',
+        title: 'New sequence',
+        icon: 'plus',
+        href: href.automationSequence('new'),
+        keywords: ['create', 'add', 'reuse'],
+      },
+    ],
+  },
+  {
     key: 'automations.scenes',
     href: '/automations/scenes',
     title: 'Scenes',

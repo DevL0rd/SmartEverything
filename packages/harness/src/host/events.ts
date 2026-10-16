@@ -1,4 +1,5 @@
 import { observeModelRequestContext } from './model-request-context';
+import { observeCompactionContext } from './compaction-context';
 import { addAbortListener } from 'node:events';
 import { createHash } from 'node:crypto';
 import { HarnessRuntimeError } from './errors';
@@ -20,6 +21,7 @@ export type HarnessRuntimeEvent =
   | { readonly kind: 'stream'; readonly sessionId: string; readonly frame: AssistantStreamFrame }
   | { readonly kind: 'status'; readonly sessionId: string; readonly status: 'idle' | 'running' }
   | { readonly kind: 'commands'; readonly sessionId: string; readonly revision: string }
+  | { readonly kind: 'context'; readonly sessionId: string; readonly estimate: number | null }
   | { readonly kind: 'error'; readonly sessionId: string; readonly failure: FailureDetail };
 
 export function observeHarness(
@@ -44,6 +46,7 @@ export function observeHarness(
       log.warn('model.retry_scheduled', { session_id: session.id, ...event.data });
     emit({ kind: 'session', sessionId: session.id, event });
   });
+  observeCompactionContext(ctx, emit);
   ctx.on('agent/inbox/claimed', ({ agent, message, turn }) => {
     emit({ kind: 'input', sessionId: agent.id, messageId: message.id, turn });
   });

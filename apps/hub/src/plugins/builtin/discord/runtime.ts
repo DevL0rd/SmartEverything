@@ -1,3 +1,4 @@
+import { discordSpeechReader } from './voice/speech-reader';
 import type { InboundMessage } from '@smarteverything/domain';
 import { MissingSecretError } from '../../placeholders';
 import type { PluginContext, PluginStop } from '../contract';
@@ -160,6 +161,7 @@ function wire(shared: Shared, link: DiscordLink): Wired {
 
 function register(ctx: Context, wired: Wired): void {
   const { typing, status, services, voice } = wired;
+  ctx.voice.transcripts.speechReader(discordSpeechReader(services, ctx.voice.transcripts));
   ctx.tools.register([
     ...discordTools(
       services,

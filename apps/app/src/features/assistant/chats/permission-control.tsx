@@ -231,7 +231,7 @@ function BoundPermissionControl({ session }: { readonly session: AiHarnessSessio
 }
 function hubRestriction(): MenuItem {
   return {
-    label: 'Home hub files, shell and system tools stay unavailable.',
+    label: 'Only the owner can use system files and commands on Home Hub.',
     disabled: true,
     onPress: (): void => undefined,
   };

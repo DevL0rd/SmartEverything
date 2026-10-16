@@ -13,7 +13,7 @@ export function SheetBody({
 }): ReactNode {
   if (scroll) {
     return (
-      <ScrollView className="shrink" contentContainerClassName={padding}>
+      <ScrollView className="min-h-0 shrink" contentContainerClassName={padding}>
         {children}
       </ScrollView>
     );

@@ -3,6 +3,10 @@ import {
   SIGNAL_SOURCES,
   kindSpecOf,
   type Action,
+  type LegacyAction,
+  type StructuredAction,
+  type AutomationValueRow,
+  type LegacyCondition,
   type AutomationDefinition,
   type Comparison,
   type Condition,
@@ -10,6 +14,7 @@ import {
   type SignalTrigger,
   type Trigger,
 } from '@smarteverything/domain';
+import { typedConditionPhrase, programActionPhrase } from './program-description';
 import type { DeviceLike } from './capability-choices';
 import { subjectLabel, subjectOf, subjectValue, type Subject } from './present';
 import { duration } from '../../../format/time';
@@ -25,6 +30,11 @@ interface Named {
 
 export interface Names {
   readonly devices: readonly DeviceLike[];
+  readonly values?: readonly AutomationValueRow[];
+  readonly sequences?: readonly Named[];
+  readonly automations?: readonly Named[];
+  readonly groups?: readonly Named[];
+  readonly rooms?: readonly Named[];
   readonly scenes: readonly Named[];
   readonly people: readonly Named[];
   readonly chats: readonly { readonly id: string; readonly title: string }[];
@@ -100,6 +110,7 @@ const SUBJECT_NAMES: Readonly<
   client: null,
   channel: null,
   automation: null,
+  automation_value: null,
   schedule: null,
   planner_item: null,
   none: null,
@@ -127,6 +138,8 @@ export function describeTrigger(names: Names, trigger: Trigger): string {
 
 function untimedPhrase(names: Names, trigger: Exclude<Trigger, { type: 'signal' }>): string {
   switch (trigger.type) {
+    case 'speech':
+      return `speech contains “${trigger.phrase}”`;
     case 'state':
       return statePhrase(names, trigger);
     case 'event':
@@ -152,6 +165,11 @@ function whenPhrase(names: Names, trigger: Trigger): string {
 }
 
 export function describeCondition(names: Names, condition: Condition): string {
+  return condition.type === 'binding' || condition.type === 'value'
+    ? typedConditionPhrase(names, condition)
+    : legacyConditionPhrase(names, condition);
+}
+function legacyConditionPhrase(names: Names, condition: LegacyCondition): string {
   switch (condition.type) {
     case 'state': {
       const subject = subjectOf(names.devices, condition.deviceId, condition.capability);
@@ -170,7 +188,7 @@ export function describeCondition(names: Names, condition: Condition): string {
   }
 }
 
-function commandPhrase(names: Names, action: Extract<Action, { type: 'command' }>): string {
+function commandPhrase(names: Names, action: Extract<LegacyAction, { type: 'command' }>): string {
   const subject = subjectOf(names.devices, action.deviceId, action.capability);
   const device = subject.device?.label ?? GONE;
   if (action.capability === 'power' && typeof action.value === 'boolean') {
@@ -196,6 +214,12 @@ export function toolLabel(tool: string): string {
 }
 
 export function describeAction(names: Names, action: Action): string {
+  if (action.type === 'command' && 'binding' in action)
+    return `set ${deviceName(names, action.deviceId)} ${action.capability} from a typed input`;
+  if (isStructuredDescription(action)) return programActionPhrase(names, action);
+  return legacyActionPhrase(names, action);
+}
+function legacyActionPhrase(names: Names, action: LegacyAction): string {
   switch (action.type) {
     case 'command':
       return commandPhrase(names, action);
@@ -230,4 +254,18 @@ export function sentenceOf(summary: Summary): string | null {
       ? ''
       : `, if ${summary.conditions.join(summary.mode === 'all' ? ' and ' : ' or ')}`;
   return sentenceStart(`${summary.when.join(' or ')}${only}, ${summary.then.join(', then ')}.`);
+}
+
+function isStructuredDescription(
+  action: Action,
+): action is Exclude<StructuredAction, { type: 'command' }> {
+  return (
+    action.type === 'temporary_effect' ||
+    action.type === 'target_command' ||
+    action.type === 'choose' ||
+    action.type === 'repeat' ||
+    action.type === 'sequence' ||
+    action.type === 'value_update' ||
+    action.type === 'stop'
+  );
 }

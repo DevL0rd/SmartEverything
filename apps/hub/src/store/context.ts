@@ -1,3 +1,4 @@
+import type { CommittedSpeech } from '../transcripts/speech';
 import { randomUUID } from 'node:crypto';
 import type { CommittedNotice, LiveTable, RowOperation, TableRow } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
@@ -93,6 +94,10 @@ export class StoreContext {
     }
   }
 
+  speech(speech: CommittedSpeech): void {
+    this.feed.speech(speech);
+  }
+
   notice(notice: CommittedNotice): void {
     this.feed.notice(notice);
   }
@@ -103,7 +108,16 @@ export class StoreContext {
     record: TableRow<T> | null,
     oldRecord: TableRow<T> | null,
   ): void {
-    this.feed.emit({ type: 'change', table, operation, record, oldRecord });
+    this.changedWithSequence(table, operation, { record, oldRecord });
+  }
+
+  changedWithSequence<T extends LiveTable>(
+    table: T,
+    operation: RowOperation,
+    rows: { readonly record: TableRow<T> | null; readonly oldRecord: TableRow<T> | null },
+    onSequence?: (seq: number) => void,
+  ): void {
+    this.feed.emit({ type: 'change', table, operation, ...rows }, onSequence);
   }
 }
 

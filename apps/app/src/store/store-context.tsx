@@ -84,7 +84,10 @@ export function useStoreSelector<T>(
       return last.value;
     }
     const value = select(state);
-    const kept = last !== null && equal(last.value, value) ? last.value : value;
+    const kept =
+      last !== null && (Object.is(last.value, value) || equal(last.value, value))
+        ? last.value
+        : value;
     cache.current = { state, select, deps, value: kept };
     return kept;
   };

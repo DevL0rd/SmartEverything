@@ -1,3 +1,4 @@
+import { wizPlugin } from './wiz';
 import { shellyPresencePlugin } from './shelly-presence';
 import type { BuiltinPlugin } from './contract';
 import { adguardPlugin } from './adguard';
@@ -8,6 +9,7 @@ import { syncthingPlugin } from './syncthing';
 
 export const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
   shellyPresencePlugin,
+  wizPlugin,
   routerPlugin,
   syncthingPlugin,
   adguardPlugin,

@@ -75,6 +75,7 @@ const SUBJECT_CHOICES: Readonly<Record<SignalSubject, SubjectChooser | null>> = 
   client: null,
   channel: null,
   automation: null,
+  automation_value: null,
   schedule: null,
   planner_item: null,
   none: null,

@@ -1,10 +1,14 @@
 import { BrowserOverlayOwner, coverBrowser } from '../platform/browser-overlays';
 import type { ReactNode } from 'react';
-import { createContext, use, useEffect, useEffectEvent, useState } from 'react';
+import { use, useEffect, useEffectEvent, useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Logger } from '@smarteverything/logging';
 import { cn } from '../design/cn';
 import { useEscape } from './use-escape';
+
+import { createSignal, OverlayShown, type ShownSignal } from './overlay-shown';
+export { useOverlayShown } from './overlay-shown';
 
 const log = new Logger('app.overlay');
 
@@ -18,33 +22,6 @@ class OverlayContentNotVisibleError extends Error {
       `The overlay "${component}" showed its backdrop but its content was not visible after ${String(CONTENT_DEADLINE_MS)} ms.`,
     );
   }
-}
-
-interface ShownSignal {
-  readonly mark: () => void;
-  readonly seen: () => boolean;
-  readonly reset: () => void;
-}
-
-function createSignal(): ShownSignal {
-  let seen = false;
-  return {
-    mark: (): void => {
-      seen = true;
-    },
-    seen: (): boolean => seen,
-    reset: (): void => {
-      seen = false;
-    },
-  };
-}
-
-const NO_SIGNAL: ShownSignal = createSignal();
-
-const OverlayShown = createContext<ShownSignal>(NO_SIGNAL);
-
-export function useOverlayShown(): () => void {
-  return use(OverlayShown).mark;
 }
 
 function useContentWatchdog(
@@ -107,15 +84,17 @@ export function Overlay({
       statusBarTranslucent
       navigationBarTranslucent
     >
-      <View className={cn('flex-1', className)}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Close ${label}`}
-          onPress={onClose}
-          className={cn('absolute inset-0', scrim && 'bg-scrim')}
-        />
-        <OverlayShown value={signal}>{children}</OverlayShown>
-      </View>
+      <GestureHandlerRootView className="flex-1">
+        <View className={cn('flex-1', className)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Close ${label}`}
+            onPress={onClose}
+            className={cn('absolute inset-0', scrim && 'bg-scrim')}
+          />
+          <OverlayShown value={signal}>{children}</OverlayShown>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

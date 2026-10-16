@@ -1,4 +1,4 @@
-import type { LiveChange, LiveMessage } from '@smarteverything/domain';
+import type { CommandRow, LiveChange, LiveMessage } from '@smarteverything/domain';
 import type { ImageNotice } from '../features/assistant';
 
 export interface LiveSyncHooks {
@@ -6,9 +6,10 @@ export interface LiveSyncHooks {
   readonly onTranscriptNotice?: (
     message: Extract<LiveMessage, { type: 'transcript_changed' }>,
   ) => void;
+  readonly onSnapshotCommands?: (commands: readonly CommandRow[]) => void;
   readonly onChanges: (changes: readonly LiveChange[]) => void;
   readonly onProfileChanged: () => void;
-  readonly onSynchronized?: () => void;
+  readonly onSynchronized?: (replayed: readonly LiveChange[]) => void;
   readonly onAiProviderNotice?: (
     message: Extract<LiveMessage, { type: 'ai_chat_provider' | 'ai_chat_runtime_provider' }>,
   ) => void;

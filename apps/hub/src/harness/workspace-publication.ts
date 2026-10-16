@@ -57,10 +57,7 @@ function validateDeviceBinding(
 ): void {
   const binding = event.session.storage_binding;
   if (binding?.kind !== 'device') return;
-  if (
-    binding.path !== event.session.directory?.path ||
-    harnessTargetKey(binding.target) !== harnessTargetKey(grant.target)
-  )
+  if (harnessTargetKey(binding.target) !== harnessTargetKey(grant.target))
     throw new ApiError(
       'forbidden',
       'Explicit project binding differs from its execution directory.',

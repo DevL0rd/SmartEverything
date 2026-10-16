@@ -1,5 +1,7 @@
 import {
   ApiError,
+  AutomationBindingError,
+  AutomationValueError,
   CommandRefusedError,
   InvalidValueError,
   UnsealError,
@@ -43,6 +45,8 @@ type ErrorClass = abstract new (...args: never) => Error;
 
 const KNOWN_ERRORS: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [StoreNotFoundError, 'not_found'],
+  [AutomationBindingError, 'invalid_request'],
+  [AutomationValueError, 'invalid_request'],
   [StoreConflictError, 'conflict'],
   [CommandRefusedError, 'command_refused'],
   [InvalidValueError, 'command_refused'],

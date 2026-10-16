@@ -19,6 +19,7 @@ export function Checkbox({ checked, onChange, label, disabled = false }: Checkbo
       role="checkbox"
       label={label}
       selected={checked}
+      checked={checked}
       disabled={disabled}
       onPress={() => {
         selectionTick();

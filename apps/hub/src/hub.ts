@@ -1,4 +1,10 @@
-import type { CommandRow, MediaSize, RowChange } from '@smarteverything/domain';
+import type {
+  AutomationRunRow,
+  JsonValue,
+  CommandRow,
+  MediaSize,
+  RowChange,
+} from '@smarteverything/domain';
 import { ApiError, jsonEquals } from '@smarteverything/domain';
 import { XiaomiAdapter } from './adapters/xiaomi';
 import { onlyRunBookkeeping } from './automations/changes';
@@ -21,11 +27,19 @@ export type { HubParts };
 
 export interface RunningHub {
   readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
+  readonly endDeviceEffect: (id: string) => Promise<void>;
   readonly answerOffer: (deviceId: string, sdp: string, clientId: string) => Promise<string>;
   readonly answerTalk: (deviceId: string, sdp: string, clientId: string) => Promise<string>;
   readonly snapshot: (deviceId: string, size: MediaSize) => Promise<Uint8Array>;
   readonly streamReady: (deviceId: string) => Promise<void>;
   readonly runAutomation: (automationId: string) => Promise<void>;
+  readonly startSequence: (
+    sequenceId: string,
+    parameters: Readonly<Record<string, JsonValue>>,
+  ) => AutomationRunRow;
+  readonly startAutomation: (automationId: string) => Promise<AutomationRunRow>;
+  readonly stopAutomationRun: (runId: string) => AutomationRunRow;
+  readonly stopAutomationRuns: (automationId: string, controlKey?: string) => void;
   readonly settled: () => Promise<void>;
   readonly local: LocalDevices;
   readonly watches: LocalWatches;
@@ -181,6 +195,34 @@ async function flushWrites(core: Core, closing: boolean): Promise<void> {
   ]);
 }
 
+function automationControls(
+  core: Core,
+): Pick<
+  RunningHub,
+  'runAutomation' | 'startAutomation' | 'stopAutomationRun' | 'stopAutomationRuns' | 'startSequence'
+> {
+  return {
+    runAutomation: (automationId) => core.engine.runNow(automationId),
+    startSequence: (id, parameters) => core.sequences.start(id, parameters),
+    startAutomation: (automationId) => core.engine.startNow(automationId),
+    stopAutomationRun: (runId) => core.runs.stop(runId),
+    stopAutomationRuns: (automationId, controlKey): void => {
+      core.runs.cancelTarget(automationId, controlKey);
+    },
+  };
+}
+
+function subscribeHubChanges(parts: HubParts, core: Core): () => void {
+  const stopChanges = parts.store.feed.subscribe(reacting(parts, core));
+  const stopValidation = parts.store.feed.subscribeCommitted(() => {
+    core.runs.revalidate();
+  });
+  return (): void => {
+    stopChanges();
+    stopValidation();
+  };
+}
+
 export async function startHub(parts: HubParts): Promise<RunningHub> {
   const core = assemble(parts);
   await core.inventory.load();
@@ -188,15 +230,17 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   await core.cameras.sync(core.inventory.all());
   parts.devicesChanged(core.inventory.all());
   await core.engine.reload();
-  const unsubscribe = parts.store.feed.subscribe(reacting(parts, core));
+  const unsubscribe = subscribeHubChanges(parts, core);
   await core.providers.startLinked();
   const { local, watches, readings, phones } = startLocal(parts, core);
   await local.start();
   const drivers = startDrivers(parts, core);
   readings.recomputeOutdated();
+  await core.effects.recover();
   const caughtUp = await core.executor.catchUp();
   areaOf(parts, 'commands').info('commands.caught_up', { count: caughtUp });
   return {
+    endDeviceEffect: (id) => core.effects.end(id, () => undefined),
     submit: (commands): CommandRow[] => {
       const rows = parts.store.commands.insert(commands);
       for (const row of rows) {
@@ -208,7 +252,7 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     answerTalk: (deviceId, sdp, clientId) => core.cameras.talk(deviceId, sdp, clientId),
     snapshot: (deviceId, size) => core.cameras.snapshot(deviceId, size),
     streamReady: (deviceId) => core.cameras.streamReady(deviceId),
-    runAutomation: (automationId) => core.engine.runNow(automationId),
+    ...automationControls(core),
     settled: (): Promise<void> => flushWrites(core, false),
     local,
     watches,
@@ -220,6 +264,8 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     stop: async (): Promise<void> => {
       unsubscribe();
       core.engine.stop();
+      await core.runs.settled();
+      await core.effects.stop();
       core.automationAi.stop();
       await drivers.stop();
       await core.providers.stopAll();

@@ -1,3 +1,4 @@
+import { SpeechRepository } from './speech';
 import { PluginTranscriptPageRepository } from './plugin-transcript-page';
 import { transcriptMatch } from './transcript-reader-scope';
 import { TranscriptReaderRepository } from './transcript-reader';
@@ -175,6 +176,12 @@ export class TranscriptsRepository {
       );
       this.touch(session, added);
       this.notify(session, 'update');
+      this.context.speech({
+        kind: 'transcript',
+        commitId: new SpeechRepository(this.context).nextCommit(),
+        session,
+        line: added,
+      });
       return added;
     });
   }

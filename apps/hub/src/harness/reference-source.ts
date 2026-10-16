@@ -6,13 +6,13 @@ import type {
 } from '@smarteverything/domain';
 import type {
   ReferenceContext,
+  ReferencePage,
   ReferenceSource,
   ReferenceSearchProgress,
 } from '../references/contracts';
 import { emptyReferenceSearch } from '../references/contracts';
 import type { HarnessService } from './service';
 import { nativeReferenceSession } from './reference-authority';
-import { storedProjectBinding } from './project-grant';
 import { resolveRuntimeReference, type NativeReferenceOperation } from './reference-runtime';
 
 export function nativeReferenceSource(
@@ -34,14 +34,11 @@ function nativeSourceStatus(
 ): AiReferenceSourceStatus {
   try {
     const session = nativeReferenceSession(service, context);
-    if (
-      kind === 'device_path' &&
-      storedProjectBinding(service.store, session.session_id)?.kind !== 'device'
-    )
+    if (kind === 'device_path' && session.target.kind !== 'device')
       return {
         kind,
         state: 'unavailable',
-        reason: 'Select an explicit device workspace to reference its files and folders.',
+        reason: 'Device references use the primary indexed folder of a selected computer.',
       };
     return { kind, state: 'available' };
   } catch (error) {

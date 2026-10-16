@@ -177,6 +177,16 @@ function controlCount(model: DeviceModel): number {
   return primary.length + settingControls(model).length;
 }
 
+export function cardLayoutWeight(model: DeviceModel): CardWeight {
+  const controls = controlCount(model);
+  if (controls >= 2) return 'many';
+  return controls === 1 ||
+    REMOTE_FAMILIES.has(model.family) ||
+    inTier(model.presentation, 'reading').length > 0
+    ? 'one'
+    : 'none';
+}
+
 export function cardWeight(model: DeviceModel, values: DeviceValues): CardWeight {
   if (powerStateOf(model, values) === 'off') {
     return 'one';

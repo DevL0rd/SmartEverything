@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { memo } from 'react';
 import { View } from 'react-native';
-import type { AiChatRow, AiHarnessSession } from '@smarteverything/domain';
+import type { AiChatRow } from '@smarteverything/domain';
 import { ProgressBar } from '../../../components/charts';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useMoney } from '../../region';
-import { useChatHarness } from '../data/harness';
+import { useContextUsage } from '../data/context-usage';
 import { useFooterFacts } from '../data/chat-store';
 import { contextText } from '../data/cost';
 import { contextTone, type FooterFacts } from '../model/chat-footer';
@@ -16,19 +16,13 @@ import { CompactChatButton } from './compact-chat-button';
 function ContextMeter({
   percent,
   window,
-  state,
+  label,
 }: {
   readonly percent: number;
   readonly window: string | null;
-  readonly state: NonNullable<AiHarnessSession['context']>['state'] | undefined;
+  readonly label: string;
 }): ReactNode {
   const used = `${String(percent)} %`;
-  const label =
-    state === 'compacting'
-      ? 'Compacting · last request'
-      : state === 'stale'
-        ? 'Last request'
-        : 'Context';
   return (
     <View className="min-w-0 flex-1 gap-1">
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
@@ -63,13 +57,6 @@ function TotalCost({
   );
 }
 
-function contextCapacity(
-  context: AiHarnessSession['context'],
-  discovered: number | null,
-): number | null {
-  return context?.capacity_tokens ?? discovered;
-}
-
 function ChatFooterStripBase({
   chat,
   blocked,
@@ -86,9 +73,9 @@ function ChatFooterStripBase({
     replies: 0,
     files: 0,
   };
-  const native = useChatHarness(chat.id, chat.engine.kind === 'dsh').data?.context;
+  const context = useContextUsage(chat);
   const discovered = useModelChoice(chat.engine.model)?.contextLength ?? null;
-  const length = contextCapacity(native, discovered);
+  const length = context.capacity ?? discovered;
   const window = contextText(length)?.replace(' context', '') ?? null;
   return (
     <View className="flex-row items-center gap-1">
@@ -100,12 +87,12 @@ function ChatFooterStripBase({
         layerClassName="rounded-md"
       >
         <View className="flex-row items-center gap-3">
-          {facts.context === null ? (
+          {context.percent === null ? (
             <Text variant="caption" tone="variant" className="min-w-0 flex-1">
               {window === null ? 'Context unavailable' : `Context ${window} · awaiting usage`}
             </Text>
           ) : (
-            <ContextMeter percent={facts.context} window={window} state={native?.state} />
+            <ContextMeter percent={context.percent} window={window} label={context.label} />
           )}
           <TotalCost chat={chat} facts={facts} />
         </View>

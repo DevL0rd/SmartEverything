@@ -1,4 +1,5 @@
 import { rowsOf, type Device, type StoreState } from '../../../store/state';
+import { memoOnInputs } from '../../../store/memo-selector';
 import { spotlightable } from './spotlight';
 
 export interface Favourites {
@@ -22,17 +23,20 @@ function frequentlyUsed(state: StoreState, devices: readonly Device[]): readonly
     .slice(0, FREQUENT_LIMIT);
 }
 
-export function favouritesOf(state: StoreState): Favourites {
-  const devices = rowsOf(state.tables.devices).filter(
-    (device) => !device.hidden && spotlightable(device),
-  );
-  const favourites = devices
-    .filter((device) => device.favourite)
-    .sort((left, right) => left.position - right.position);
-  return favourites.length > 0
-    ? { chosen: true, title: 'Favourites', devices: favourites }
-    : { chosen: false, title: 'Frequently used', devices: frequentlyUsed(state, devices) };
-}
+export const favouritesOf = memoOnInputs(
+  (state) => [state.tables.devices, state.tables.commands],
+  (state): Favourites => {
+    const devices = rowsOf(state.tables.devices).filter(
+      (device) => !device.hidden && spotlightable(device),
+    );
+    const favourites = devices
+      .filter((device) => device.favourite)
+      .sort((left, right) => left.position - right.position);
+    return favourites.length > 0
+      ? { chosen: true, title: 'Favourites', devices: favourites }
+      : { chosen: false, title: 'Frequently used', devices: frequentlyUsed(state, devices) };
+  },
+);
 
 export function sameFavourites(left: Favourites, right: Favourites): boolean {
   return (

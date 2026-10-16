@@ -10,6 +10,7 @@ export const SIGNAL_SUBJECTS = [
   'chat',
   'channel',
   'automation',
+  'automation_value',
   'schedule',
   'planner_item',
   'none',

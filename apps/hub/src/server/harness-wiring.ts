@@ -104,7 +104,7 @@ function composeHub(ports: {
   return createHarnessDispatcher({
     projectFiles: projectFiles.execute,
     validateReferences: (id, deliveryId, references, signal) =>
-      validateNativeReferences(context.harness, id, deliveryId, references, signal),
+      validateNativeReferences(context.harness, id, { deliveryId, selected: references, signal }),
     host,
     persistence,
     desiredConfiguration: context.harness.configuration.desired(),

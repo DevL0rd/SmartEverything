@@ -69,7 +69,7 @@ export async function resolveDeviceReference(
 }
 async function safeDevicePath(root: string, path: string): Promise<void> {
   const delta = relative(resolve(root), resolve(path));
-  if (delta.startsWith('..') || isAbsolute(delta))
+  if (delta.split('/').some((part) => part === '..' || part === '.operations') || isAbsolute(delta))
     throw new HarnessRuntimeError(
       'directory_unavailable',
       'Device references must stay in the explicit workspace.',
@@ -120,13 +120,7 @@ export class NativeDeviceReferenceScan {
     return new NativeDeviceReferenceScan(ctx, binding, { root, request }, directories);
   }
   async next(limit: number, signal?: AbortSignal): Promise<NativeReferencePage> {
-    if (this.closed !== undefined)
-      throw new HarnessRuntimeError('directory_unavailable', 'Device reference search is closed.');
-    if ((await deviceRoot(this.ctx, this.binding)) !== this.search.root)
-      throw new HarnessRuntimeError(
-        'directory_unavailable',
-        'Device workspace changed while searching.',
-      );
+    await this.validateRoot();
     const items: AiReferenceSummary[] = [];
     const deadline = performance.now() + PAGE_MS;
     for (
@@ -147,6 +141,15 @@ export class NativeDeviceReferenceScan {
         items.push(item);
     }
     return { items, complete: false, incomplete: true };
+  }
+  private async validateRoot(): Promise<void> {
+    if (this.closed !== undefined)
+      throw new HarnessRuntimeError('directory_unavailable', 'Device reference search is closed.');
+    if ((await deviceRoot(this.ctx, this.binding)) !== this.search.root)
+      throw new HarnessRuntimeError(
+        'directory_unavailable',
+        'Device workspace changed while searching.',
+      );
   }
   private async entry(
     directory: NonNullable<NativeDeviceReferenceScan['directory']>,

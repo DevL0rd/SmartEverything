@@ -46,8 +46,17 @@ class HubBoundedSocket(private val lease: HubLease, private val original: Reques
         group = runtime
         deadline = runtime.next().schedule({ failed(IOException("Hub socket opening timed out")) }, 15, TimeUnit.SECONDS)
       }
+      lease.client.dispatcher.executorService.execute { prepare() }
+    } catch (failure: Exception) { failed(failure) }
+  }
+  private fun prepare() {
+    try {
+      if (done) return
+      lease.check()
       val uri = URI(lease.url)
       val targets = targets(uri)
+      if (done) return
+      lease.check()
       require(targets.isNotEmpty()) { "Hub endpoint did not resolve" }
       connect(targets, 0)
     } catch (failure: Exception) { failed(failure) }

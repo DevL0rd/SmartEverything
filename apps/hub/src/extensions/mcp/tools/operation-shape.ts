@@ -9,13 +9,18 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { OperationInput } from '../../../server/operations';
-import { portableSchemaOf } from '../../../ai-tools/portable-schema';
+import {
+  referencedSchemaOf,
+  schemaDefinitions,
+  withoutDefinitions,
+} from '../../../ai-tools/referenced-schema';
 import { ToolError, jsonSchemaOf } from './registry';
 
 const OBJECT_SCHEMA = z.looseObject({
   type: z.literal('object'),
   properties: z.record(z.string(), z.unknown()).default({}),
   required: z.array(z.string()).default([]),
+  $defs: z.record(z.string(), z.unknown()).optional(),
 });
 
 type ObjectSchema = z.infer<typeof OBJECT_SCHEMA>;
@@ -32,16 +37,22 @@ export interface OperationShape {
   readonly input: Record<string, unknown>;
 }
 
-function objectOf(schema: z.ZodType): ObjectSchema | null {
-  const parsed = OBJECT_SCHEMA.safeParse(portableSchemaOf(jsonSchemaOf(schema, 'input')));
+function objectOf(schema: z.ZodType, namespace: string): ObjectSchema | null {
+  const parsed = OBJECT_SCHEMA.safeParse(
+    referencedSchemaOf(jsonSchemaOf(schema, 'input'), namespace),
+  );
   return parsed.success ? parsed.data : null;
 }
 
-function flatBodyOf(endpoint: EndpointShape, taken: readonly string[]): ObjectSchema | null {
+function flatBodyOf(
+  endpoint: EndpointShape,
+  taken: readonly string[],
+  namespace: string,
+): ObjectSchema | null {
   if (endpoint.body === NO_BODY) {
     return null;
   }
-  const body = objectOf(endpoint.body);
+  const body = objectOf(endpoint.body, namespace);
   if (body === null || Object.keys(body.properties).some((key) => taken.includes(key))) {
     return null;
   }
@@ -66,13 +77,15 @@ interface Extra {
   readonly personal: boolean;
 }
 
-function nestedBody(endpoint: EndpointShape, parts: Parts): ObjectSchema | null {
+function nestedBody(endpoint: EndpointShape, parts: Parts, namespace: string): ObjectSchema | null {
   if (endpoint.body === NO_BODY || parts.flat !== null) {
     return null;
   }
+  const body = referencedSchemaOf(jsonSchemaOf(endpoint.body, 'input'), namespace);
   return {
     type: 'object',
-    properties: { body: portableSchemaOf(jsonSchemaOf(endpoint.body, 'input')) },
+    $defs: schemaDefinitions(body),
+    properties: { body: withoutDefinitions(body) },
     required: ['body'],
   };
 }
@@ -85,17 +98,23 @@ function extraOf(extra: Extra): ObjectSchema {
   };
 }
 
-function inputOf(endpoint: EndpointShape, parts: Parts, extra: Extra): Record<string, unknown> {
+function inputOf(
+  endpoint: EndpointShape,
+  parts: Parts,
+  extra: Extra,
+  namespace: string,
+): Record<string, unknown> {
   const groups = [
     parts.params,
     parts.query,
     parts.flat,
-    nestedBody(endpoint, parts),
+    nestedBody(endpoint, parts, namespace),
     extraOf(extra),
   ].filter((group) => group !== null);
   return {
     type: 'object',
     properties: Object.assign({}, ...groups.map((group) => group.properties)),
+    ...definitionsOf(groups),
     required: groups.flatMap((group) => group.required),
     additionalProperties: false,
   };
@@ -115,14 +134,14 @@ export function operationShape(name: EndpointName): OperationShape {
 
 function shapeOf(name: EndpointName): OperationShape {
   const endpoint: EndpointShape = API_ENDPOINTS[name];
-  const params = objectOf(endpoint.params);
-  const query = objectOf(endpoint.query);
+  const params = objectOf(endpoint.params, `${name}_params`);
+  const query = objectOf(endpoint.query, `${name}_query`);
   const taken = [
     ...Object.keys(params?.properties ?? {}),
     ...Object.keys(query?.properties ?? {}),
     ...EXTRA_FIELDS,
   ];
-  const flat = flatBodyOf(endpoint, taken);
+  const flat = flatBodyOf(endpoint, taken, `${name}_body`);
   const personal = PERSONAL_AREAS.has(mcpOperationArea(endpoint));
   return {
     name,
@@ -131,7 +150,7 @@ function shapeOf(name: EndpointName): OperationShape {
     query: Object.keys(query?.properties ?? {}),
     flatBody: flat === null ? null : Object.keys(flat.properties),
     personal,
-    input: inputOf(endpoint, { params, query, flat }, { personal }),
+    input: inputOf(endpoint, { params, query, flat }, { personal }, `${name}_body`),
   };
 }
 
@@ -187,3 +206,12 @@ export function isEndpointName(name: string): name is EndpointName {
 export const CALLABLE_OPERATIONS: readonly EndpointName[] = Object.keys(API_ENDPOINTS)
   .filter(isEndpointName)
   .filter((name) => !isHumanOnlyOperation(name) && MCP_UNAVAILABLE_OPERATIONS[name] === undefined);
+
+function definitionsOf(groups: readonly ObjectSchema[]): {
+  readonly $defs?: Readonly<Record<string, unknown>>;
+} {
+  const definitions = Object.fromEntries(
+    groups.flatMap((group) => Object.entries(schemaDefinitions(group))),
+  );
+  return Object.keys(definitions).length === 0 ? {} : { $defs: definitions };
+}

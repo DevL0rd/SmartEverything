@@ -10,6 +10,7 @@ import type { AiMessageReference } from '@smarteverything/domain';
 import { skillLookup, skillReference } from './identity';
 import type { NativeReferences } from './runtime';
 import { HarnessRuntimeError } from '../host/errors';
+import { withNativeSkills } from './skills';
 
 export type ValidateCentralReferences = (
   id: string,
@@ -95,26 +96,28 @@ class NativePromptReferences {
     reference: Extract<AiMessageReference['reference'], { kind: 'skill' }>,
     signal: AbortSignal,
   ): Promise<UserMessage> {
-    const skill = await this.ctx.skills.get(reference.name, skillLookup(this.ctx, agent, signal));
-    if (
-      skill === undefined ||
-      !isUserInvocable(skill) ||
-      JSON.stringify(
-        await skillReference(this.ctx, skill, this.native.skillGeneration(), signal),
-      ) !== JSON.stringify(reference)
-    )
-      throw new HarnessRuntimeError(
-        'capability_unsupported',
-        'The selected native skill winner or instruction revision changed before invocation.',
-      );
-    const source: SkillInvocationSource = {
-      kind: 'skill-invocation',
-      name: skill.name,
-      form: 'instructions',
-    };
-    return createUserMessage({
-      content: [{ type: 'text', text: renderSkillContent(skill) }],
-      source,
+    return withNativeSkills(this.ctx, async (skills) => {
+      const skill = await skills.get(reference.name, skillLookup(this.ctx, agent, signal));
+      if (
+        skill === undefined ||
+        !isUserInvocable(skill) ||
+        JSON.stringify(
+          await skillReference(this.ctx, skill, this.native.skillGeneration(), signal),
+        ) !== JSON.stringify(reference)
+      )
+        throw new HarnessRuntimeError(
+          'capability_unsupported',
+          'The selected native skill winner or instruction revision changed before invocation.',
+        );
+      const source: SkillInvocationSource = {
+        kind: 'skill-invocation',
+        name: skill.name,
+        form: 'instructions',
+      };
+      return createUserMessage({
+        content: [{ type: 'text', text: renderSkillContent(skill) }],
+        source,
+      });
     });
   }
 }

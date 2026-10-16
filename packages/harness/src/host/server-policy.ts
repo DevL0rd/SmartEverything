@@ -16,6 +16,7 @@ export type HarnessAuthority = z.infer<typeof HARNESS_AUTHORITY>;
 
 export interface HarnessServerToolAccess {
   hubToolNames(authority: HarnessAuthority): readonly string[];
+  nativeAccess?(id: string, authority: HarnessAuthority): boolean;
   deny(authority: HarnessAuthority, execution: Readonly<ToolExecution>): string | undefined;
 }
 
@@ -29,9 +30,9 @@ const LOCAL_SYSTEM_TOOLS = new Set([
   'job_output',
   'job_list',
   'job_kill',
+  'set_working_directory',
 ]);
 const CONVERSATION_TOOLS = ['ask_user_question', 'skill'];
-const MANAGED_FILE_TOOLS = ['read', 'write', 'edit', 'read_image'];
 
 export class HarnessServerPolicy {
   private readonly authorities = new Map<string, HarnessAuthority>();
@@ -57,6 +58,21 @@ export class HarnessServerPolicy {
     this.authorities.delete(id);
   }
 
+  nativeAvailable(id: string): boolean {
+    if (!this.server) return true;
+    const authority = this.authorities.get(id);
+    return authority !== undefined && this.nativeAccess(id, authority);
+  }
+
+  requireNative(id: string): void {
+    if (!this.nativeAvailable(id))
+      throw new HarnessRuntimeError(
+        'capability_unsupported',
+        'Native machine access requires its authenticated owner.',
+        id,
+      );
+  }
+
   allowed(id: string): readonly string[] | undefined {
     if (!this.server) return undefined;
     const authority = this.authorities.get(id);
@@ -75,7 +91,12 @@ export class HarnessServerPolicy {
       );
     return [
       ...CONVERSATION_TOOLS,
-      ...MANAGED_FILE_TOOLS,
+      ...(this.nativeAccess(id, authority)
+        ? this.ctx.tools
+            .schemas()
+            .map((tool) => tool.name)
+            .filter(localSystemTool)
+        : []),
       ...managedPluginAgentNames(this.ctx),
       ...names,
     ];
@@ -86,36 +107,32 @@ export class HarnessServerPolicy {
       return undefined;
     return skillRefusal(execution.arguments);
   }
-  private helperRefusal(
-    authority: HarnessAuthority,
-    execution: Readonly<ToolExecution>,
-  ): string | undefined {
-    return this.access === undefined
-      ? 'Durable helper access is unavailable.'
-      : this.access.deny(authority, {
-          ...execution,
-          name: 'subagent_run',
-          arguments: {
-            task: z.object({ prompt: z.string() }).parse(execution.arguments).prompt,
-            wait: false,
-            timeoutSeconds: 300,
-          },
-        });
+  private nativeAccess(id: string, authority: HarnessAuthority): boolean {
+    return this.access?.nativeAccess?.(id, authority) === true;
   }
   guard(execution: Readonly<ToolExecution>): string | undefined {
     if (!this.server) return undefined;
-    if (localSystemTool(execution.name))
-      return 'Server-local file, shell and system tools are never available.';
     const agent = execution.agent;
     if (agent === undefined)
       return 'Server tools require an owned conversation and initiating profile.';
     const authority = this.authorities.get(agent.id);
     if (authority === undefined) return 'Server session authority is unavailable.';
-    if (MANAGED_FILE_TOOLS.includes(execution.name) || CONVERSATION_TOOLS.includes(execution.name))
-      return this.conversationRefusal(execution);
+    if (localSystemTool(execution.name))
+      return this.nativeAccess(agent.id, authority)
+        ? undefined
+        : 'Native Hub tools require the authenticated owner on this selected host.';
+    if (CONVERSATION_TOOLS.includes(execution.name)) return this.conversationRefusal(execution);
+    return this.hubRefusal(authority, execution);
+  }
+  private hubRefusal(
+    authority: HarnessAuthority,
+    execution: Readonly<ToolExecution>,
+  ): string | undefined {
     const access = this.access;
     if (managedPluginAgentNames(this.ctx).includes(execution.name))
-      return this.helperRefusal(authority, execution);
+      return access?.hubToolNames(authority).includes('subagent_run') === true
+        ? undefined
+        : 'This initiating grant does not expose helper execution.';
     if (access?.hubToolNames(authority).includes(execution.name) !== true)
       return 'This initiating profile or trigger grant does not expose the requested hub tool.';
     return access.deny(authority, execution);
@@ -123,7 +140,7 @@ export class HarnessServerPolicy {
 }
 
 function localSystemTool(name: string): boolean {
-  return LOCAL_SYSTEM_TOOLS.has(name) && !MANAGED_FILE_TOOLS.includes(name);
+  return LOCAL_SYSTEM_TOOLS.has(name) || name.startsWith('codegraph');
 }
 
 function skillRefusal(args: unknown): string | undefined {

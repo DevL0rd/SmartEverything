@@ -1,10 +1,12 @@
 import {
   API_ENDPOINTS as E,
   type AutomationDefinition,
+  type AutomationRow,
   type CommandInput,
   type EventRow,
   type JsonValue,
 } from '@smarteverything/domain';
+import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
 
@@ -20,19 +22,40 @@ export interface AutomationSave {
   readonly name: string;
   readonly enabled: boolean;
   readonly definition: AutomationDefinition;
+  readonly expectedRevision?: string;
 }
 
-export async function saveAutomation(save: AutomationSave): Promise<string> {
+async function writeAutomation(save: AutomationSave): Promise<AutomationRow> {
   const fields = { name: save.name, enabled: save.enabled, definition: save.definition };
   const saved =
     save.automationId === null
       ? await api().call(E.createAutomation, { body: fields })
       : await api().call(E.updateAutomation, {
           params: { automationId: save.automationId },
-          body: fields,
+          body: {
+            ...fields,
+            ...(save.expectedRevision === undefined
+              ? {}
+              : { expectedRevision: save.expectedRevision }),
+          },
         });
   log.info('automation.saved', { automationId: saved.id, created: save.automationId === null });
-  return saved.id;
+  return saved;
+}
+
+export async function saveAutomation(save: AutomationSave): Promise<string> {
+  return (await writeAutomation(save)).id;
+}
+
+export async function saveAutomationRevision(
+  save: AutomationSave,
+): Promise<{ readonly automation: AutomationRow; readonly definitionRevision: string }> {
+  const automation = await writeAutomation(save);
+  const definitionRevision = await digestStringAsync(
+    CryptoDigestAlgorithm.SHA256,
+    JSON.stringify(automation.definition),
+  );
+  return { automation, definitionRevision };
 }
 
 export async function deleteAutomation(automationId: string): Promise<void> {

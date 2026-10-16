@@ -1,7 +1,7 @@
 import {
   CAPABILITY_KEY,
   JSON_VALUE,
-  type Action,
+  type LegacyAction as Action,
   type McpToolName,
   type ScheduleStep,
   type ScheduleStepInput,

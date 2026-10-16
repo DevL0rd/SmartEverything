@@ -8,6 +8,7 @@ import {
   subscriptionParams,
   uplinkAck,
   type MiioHeader,
+  type LegacyChildEvent,
   type ProbeReply,
   type PushOffer,
   type Uplink,
@@ -28,6 +29,7 @@ export type PushState =
 export interface PushListener {
   readonly subscribed: () => void;
   readonly uplink: (uplink: Uplink) => void;
+  readonly childUplink?: (uplink: LegacyChildEvent) => (() => void) | null;
   readonly changed: (state: PushState) => void;
   readonly lost: (reason: string) => void;
   readonly returned: () => void;
@@ -52,7 +54,7 @@ export class LanPush {
   private answeredOnce = false;
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
-  private readonly seen = new Map<number, number>();
+  private readonly seen = new Map<string, number>();
 
   constructor(
     private readonly options: LanPushOptions,
@@ -192,6 +194,9 @@ export class LanPush {
 
   private received(body: string, header: MiioHeader): void {
     const { did, client, log, now, timing } = this.options;
+    if (this.stopped || String(header.deviceId) !== did) {
+      return;
+    }
     let uplink: Uplink;
     try {
       uplink = parseUplink(did, body);
@@ -199,20 +204,41 @@ export class LanPush {
       log.warn('xiaomi_push.uplink_refused', { did, reason: String(error) });
       return;
     }
-    client.answer(header, uplinkAck(uplink.id));
-    const at = now();
-    if ((this.seen.get(uplink.id) ?? 0) > at) {
+    const deliver = this.delivery(uplink);
+    if (deliver === null) {
+      log.warn('xiaomi_push.child_refused', {
+        did,
+        reason: 'the current inventory does not authorize this child event',
+      });
       return;
     }
-    this.remember(uplink.id, at + timing.duplicateWindowMs, at);
-    this.listener.uplink(uplink);
+    client.answer(header, uplinkAck(uplink.id));
+    const key = JSON.stringify([
+      did,
+      uplink.kind === 'child-event' ? uplink.childDid : did,
+      uplink.id,
+    ]);
+    const at = now();
+    if ((this.seen.get(key) ?? 0) > at) {
+      return;
+    }
+    this.remember(key, at + timing.duplicateWindowMs, at);
+    deliver();
     if (this.current.kind === 'subscribed') {
       this.missed = 0;
       this.scheduleKeepAlive();
     }
   }
 
-  private remember(id: number, until: number, at: number): void {
+  private delivery(uplink: Uplink): (() => void) | null {
+    return uplink.kind === 'child-event'
+      ? (this.listener.childUplink?.(uplink) ?? null)
+      : (): void => {
+          this.listener.uplink(uplink);
+        };
+  }
+
+  private remember(id: string, until: number, at: number): void {
     for (const [known, expires] of this.seen) {
       if (expires <= at || this.seen.size >= SEEN_LIMIT) {
         this.seen.delete(known);

@@ -52,8 +52,8 @@ function textMatches(device: Device, needle: string, rooms: Rooms): boolean {
 function ordered(devices: readonly Device[]): readonly Device[] {
   return [...devices].sort(
     (left, right) =>
-      Number(isOffline(left)) - Number(isOffline(right)) ||
       Number(right.favourite) - Number(left.favourite) ||
+      left.position - right.position ||
       left.label.localeCompare(right.label),
   );
 }

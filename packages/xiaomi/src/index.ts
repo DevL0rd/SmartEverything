@@ -20,7 +20,7 @@ export {
   subscriptionParams,
   uplinkAck,
 } from './push';
-export type { MiotEventArgument, Uplink } from './push';
+export type { LegacyChildEvent, MiotEventArgument, Uplink } from './push';
 
 export { encodeRequest, nextMessageId, parseResponse, responseId } from './rpc';
 export type { RpcRequest } from './rpc';
@@ -147,6 +147,8 @@ export {
   cameraEventDetections,
   cameraEventListData,
   deviceEventFromMiot,
+  deviceEventFromLegacyButton,
+  supportsLegacyButton,
   miotDetection,
   miotEventDetails,
   miotEventKind,

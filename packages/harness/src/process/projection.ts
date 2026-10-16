@@ -1,4 +1,5 @@
 import { ProcessContextProjection, contextInput } from './projection-context';
+import { projectProcessMetadata } from './projection-metadata';
 import { projectNativeSessionChange } from './projection-session-change';
 import { projectAssistantStream } from './assistant-stream';
 import { ProcessTurnCorrelation } from './turn-correlation';
@@ -145,7 +146,6 @@ export class ProcessProjection {
     switch (event.kind) {
       case 'session':
         return this.projectSession(event);
-
       case 'input':
         return this.claimed(event);
       case 'discarded':
@@ -154,13 +154,14 @@ export class ProcessProjection {
         return this.stream(event);
       case 'status':
         return this.status(event);
-      case 'commands': {
-        const session = this.sessions.get(event.sessionId);
-        if (session === undefined) return Promise.resolve();
-        const updated = { ...session, commands_revision: event.revision };
-        this.sessions.set(event.sessionId, updated);
-        return this.send(event.sessionId, { kind: 'state', session: updated });
-      }
+      case 'commands':
+      case 'context':
+        return projectProcessMetadata(event, {
+          sessions: this.sessions,
+          contexts: this.contexts,
+          context: (id) => this.contextState(id, 'changed'),
+          state: (id, session) => this.send(id, { kind: 'state', session }),
+        });
       case 'error':
         return this.send(event.sessionId, {
           kind: 'failed',

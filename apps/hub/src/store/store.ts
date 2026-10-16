@@ -1,3 +1,9 @@
+import { SpeechRepository } from './repositories/speech';
+import { DeviceEffectsRepository } from './repositories/device-effects';
+import { DeviceGroupsRepository } from './repositories/device-groups';
+import { AutomationSequencesRepository } from './repositories/automation-sequences';
+import { AutomationValuesRepository } from './repositories/automation-values';
+import { AutomationRunsRepository } from './repositories/automation-runs';
 import { PreviewErrorRulesRepository } from './repositories/preview-error-rules';
 import { HarnessSkillUpdatesRepository } from './repositories/harness-skill-updates';
 import { PreviewProjectsRepository } from './repositories/preview-projects';
@@ -87,6 +93,8 @@ export interface Store {
   readonly clients: ClientsRepository;
   readonly providers: ProvidersRepository;
   readonly rooms: RoomsRepository;
+  readonly deviceGroups: DeviceGroupsRepository;
+  readonly deviceEffects: DeviceEffectsRepository;
   readonly devices: DevicesRepository;
   readonly state: StateRepository;
   readonly deviceMetrics: DeviceMetricsRepository;
@@ -111,6 +119,10 @@ export interface Store {
   readonly infrared: InfraredRepository;
   readonly scenes: ScenesRepository;
   readonly automations: AutomationsRepository;
+  readonly automationValues: AutomationValuesRepository;
+  readonly automationSequences: AutomationSequencesRepository;
+  readonly automationRuns: AutomationRunsRepository;
+  readonly speech: SpeechRepository;
   readonly personal: PersonalRepository;
   readonly healthSources: HealthSourcesRepository;
   readonly health: HealthRecordsRepository;
@@ -304,6 +316,31 @@ function scalarRepositories(context: StoreContext): Pick<Store, 'weather' | 'exc
   return { weather, exchangeRates };
 }
 
+function automationRepositories(
+  context: StoreContext,
+): Pick<
+  Store,
+  'automations' | 'automationValues' | 'automationRuns' | 'automationSequences' | 'speech'
+> {
+  return {
+    automations: new AutomationsRepository(context),
+    speech: new SpeechRepository(context),
+    automationSequences: new AutomationSequencesRepository(context),
+    automationValues: new AutomationValuesRepository(context),
+    automationRuns: new AutomationRunsRepository(context),
+  };
+}
+
+function roomRepositories(context: StoreContext): Pick<Store, 'rooms' | 'deviceGroups'> {
+  return { rooms: new RoomsRepository(context), deviceGroups: new DeviceGroupsRepository(context) };
+}
+
+function commandRepositories(context: StoreContext): Pick<Store, 'commands' | 'deviceEffects'> {
+  return {
+    commands: new CommandsRepository(context),
+    deviceEffects: new DeviceEffectsRepository(context),
+  };
+}
 export function openStore(options: StoreOptions): Store {
   const database = openDatabase(options.path);
   const sql = new Sql(database);
@@ -320,17 +357,17 @@ export function openStore(options: StoreOptions): Store {
     harnessSkillUpdates: new HarnessSkillUpdatesRepository(context),
     clients: new ClientsRepository(context),
     providers: new ProvidersRepository(context),
-    rooms: new RoomsRepository(context),
+    ...roomRepositories(context),
     devices: new DevicesRepository(context),
     state: new StateRepository(context),
     deviceMetrics: new DeviceMetricsRepository(context),
     ...computerRepositories(context),
-    commands: new CommandsRepository(context),
+    ...commandRepositories(context),
     events: new EventsRepository(context),
     cameras: new CamerasRepository(context),
     infrared: new InfraredRepository(context),
     scenes: new ScenesRepository(context),
-    automations: new AutomationsRepository(context),
+    ...automationRepositories(context),
     personal: new PersonalRepository(context),
     healthSources: new HealthSourcesRepository(context),
     ...healthRepositories(context),

@@ -1,7 +1,7 @@
 import {
   SCENE_ACTIONS,
   validateCommand,
-  type Action,
+  type LegacyAction as Action,
   type CommandAction,
   type JsonValue,
 } from '@smarteverything/domain';

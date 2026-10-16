@@ -35,7 +35,9 @@ data class HubLease(val url: String, val client: OkHttpClient, val scopeId: Stri
   }
 }
 object HubTransport {
-  private data class Policy(val trust: HubTrust, val fence: HubLeaseFence, val dispatcher: Dispatcher = Dispatcher(), val pool: ConnectionPool = ConnectionPool())
+  private const val MAX_IDLE_CONNECTIONS = 5
+  private const val KEEP_ALIVE_SECONDS = 5L
+  private data class Policy(val trust: HubTrust, val fence: HubLeaseFence, val dispatcher: Dispatcher = Dispatcher(), val pool: ConnectionPool = ConnectionPool(MAX_IDLE_CONNECTIONS, KEEP_ALIVE_SECONDS, TimeUnit.SECONDS))
   private data class Client(val http: OkHttpClient, val tls: SSLContext?)
   private val policies = mutableMapOf<String, Policy>()
   private val sockets = mutableMapOf<String, MutableSet<okhttp3.WebSocket>>()

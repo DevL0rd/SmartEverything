@@ -3,7 +3,7 @@ import {
   WEATHER_KIND_LABELS,
   WEATHER_METRICS,
   WEATHER_METRIC_INFO,
-  type Condition,
+  type LegacyCondition as Condition,
   type NumericComparison,
   type Trigger,
   type WeatherCondition,

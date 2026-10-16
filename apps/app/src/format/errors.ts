@@ -4,6 +4,7 @@ const API_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   invalid_request: 'The app sent something your server could not accept.',
   unauthorized: 'This device is no longer paired with your server.',
   forbidden: 'Only the owner can do this.',
+  ownership_lost: 'This chat’s connection changed. Reopen it to continue.',
   not_found: 'This no longer exists.',
   method_not_allowed: 'Your server does not support this yet.',
   conflict: 'Something changed at the same time. Try again.',

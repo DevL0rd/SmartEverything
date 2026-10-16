@@ -3,7 +3,7 @@ import { AI_WAKE_ROW } from '../automation-ai';
 import { SIGNAL_SUBJECTS } from '../signal-sources/spec';
 import { SIGNAL_INPUT, SIGNAL_SOURCE_NAME } from '../signals';
 import { NO_BODY, endpoint } from './endpoint';
-import { ID, NOTHING, queryLimit } from './primitives';
+import { ID, NOTHING, QUERY_FLAG, queryLimit } from './primitives';
 
 const SIGNAL_FIELD_INFO = z.strictObject({
   field: z.string(),
@@ -14,7 +14,12 @@ const SIGNAL_FIELD_INFO = z.strictObject({
 const SIGNAL_MATCH_INFO = z.strictObject({
   key: z.string(),
   label: z.string(),
-  values: z.array(z.string()).nullable(),
+  values: z
+    .array(z.string())
+    .nullable()
+    .describe(
+      'Allowed fixed values; null means no fixed enumeration. Match exact signal data values.',
+    ),
   valueLabels: z.record(z.string(), z.string()).optional(),
 });
 
@@ -52,9 +57,9 @@ export const SIGNAL_ENDPOINTS = {
     path: '/api/signals/kinds',
     access: 'member',
     summary:
-      'Every kind of signal in the home (device values, events, weather, health, AI, scheduled actions…) with its fields, units and match keys, for “When something happens” automation triggers',
+      'Every kind of signal in the home (device values, events, weather, health, AI, scheduled actions…) with its fields, units and match keys, for “When something happens” automation triggers; set automationRuntime=true to include automation Value and run sources',
     params: NOTHING,
-    query: NOTHING,
+    query: z.strictObject({ automationRuntime: QUERY_FLAG.default(false) }),
     body: NO_BODY,
     response: z.array(SIGNAL_SOURCE_INFO),
   }),

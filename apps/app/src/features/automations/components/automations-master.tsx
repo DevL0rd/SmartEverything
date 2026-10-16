@@ -21,16 +21,17 @@ function selectedIdOf(pathname: string): string | null {
   return SELECTED.exec(pathname)?.[1] ?? null;
 }
 
-function Pages({
-  pathname,
-  scenes,
-}: {
+interface PagesProps {
   readonly pathname: string;
   readonly scenes: number;
-}): ReactNode {
+}
+
+function Pages({ pathname, scenes }: PagesProps): ReactNode {
   const upcoming = upcomingOf(useScheduledRows()).length;
   return (
     <List inset>
+      <NavRow title="Values" icon="customize" href={href.automationValues()} />
+      <NavRow title="Sequences" icon="layers" href={href.automationSequences()} />
       <NavRow
         title="Scenes"
         icon="sparkles"

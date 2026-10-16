@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View, type ViewStyle } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
-import type { ShellyArea } from '@smarteverything/domain';
+import type { ShellyArea, ShellyTrack } from '@smarteverything/domain';
 import { Button } from '../../components/button';
 import { Segmented } from '../../components/segmented';
 import { SwitchRow } from '../../components/rows';
@@ -20,6 +20,7 @@ const TOOLS = [
   { value: 'select', label: 'Select' },
 ] as const;
 interface PainterProps {
+  readonly tracks?: readonly ShellyTrack[];
   readonly area: ShellyArea;
   readonly change: (value: ShellyArea) => void;
   readonly disabled: boolean;
@@ -66,6 +67,7 @@ function ZoomTools({
   );
 }
 interface GridSurfaceProps {
+  readonly tracks: readonly ShellyTrack[];
   readonly area: ShellyArea;
   readonly allowed: ShellyArea | undefined;
   readonly origin: number;
@@ -77,27 +79,16 @@ interface GridSurfaceProps {
   readonly zoom: number;
   readonly context: ShellyArea;
 }
-function GridSurface({
-  area,
-  allowed,
-  origin,
-  disabled,
-  change,
-  tool,
-  cursor,
-  changeCursor,
-  zoom,
-  context,
-}: GridSurfaceProps): ReactNode {
+function GridSurface(props: GridSurfaceProps): ReactNode {
   const { setWidth, preview, viewport, shownWidth, gesture } = useGridSurface({
-    area,
-    allowed,
-    disabled,
-    change,
-    tool,
-    cursor: changeCursor,
-    zoom,
-    context,
+    area: props.area,
+    allowed: props.allowed,
+    disabled: props.disabled,
+    change: props.change,
+    tool: props.tool,
+    cursor: props.changeCursor,
+    zoom: props.zoom,
+    context: props.context,
   });
   return (
     <View
@@ -111,11 +102,12 @@ function GridSurface({
           <GestureDetector gesture={gesture}>
             <View style={canvasStyle(shownWidth)}>
               <PainterCanvas
-                area={area}
-                context={context}
-                origin={origin}
+                tracks={props.tracks}
+                area={props.area}
+                context={props.context}
+                origin={props.origin}
                 preview={preview}
-                cursor={cursor}
+                cursor={props.cursor}
                 width={shownWidth}
                 viewport={viewport}
               />
@@ -146,6 +138,7 @@ export function GridPainter(props: PainterProps): ReactNode {
         <SwitchRow title="Show other areas" value={showContext} onChange={setShowContext} />
       )}
       <GridSurface
+        tracks={props.tracks ?? []}
         area={props.area}
         allowed={props.allowed}
         origin={props.origin ?? 8}

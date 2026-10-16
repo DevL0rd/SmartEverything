@@ -35,6 +35,11 @@ export interface AibiEnvironment {
   readonly cloud: (dnsServer: string) => Cloud;
   readonly address: (configured: string) => Promise<string>;
   readonly now: () => Date;
+  readonly watchAddress?: (
+    changed: () => void,
+    failed: (cause: unknown) => void,
+    signal: AbortSignal,
+  ) => Promise<() => Promise<void>>;
 }
 
 const PUBLISH_DELAY_MS = 250;
@@ -194,7 +199,7 @@ class AibiRuntime {
     this.stops = [];
     this.speaker?.();
     await this.desk.end();
-    this.listeners.down();
+    await this.listeners.down();
     this.speeches.clear();
     await this.capture.flushed();
   }

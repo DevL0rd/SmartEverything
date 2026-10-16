@@ -8,19 +8,10 @@ import { Select } from '../../../components/select';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import type { ValueInputProps } from './value-input';
-const PARAMETER = z.object({
-  type: z.string().optional(),
-  enum: z.array(JSON_VALUE).optional(),
-  minimum: z.number().optional(),
-  maximum: z.number().optional(),
-  pattern: z.string().optional(),
-  maxLength: z.number().optional(),
-});
-const ARGUMENT_SCHEMA = z.object({
-  properties: z.record(z.string(), PARAMETER),
-  required: z.array(z.string()).optional(),
-});
-type Parameter = z.infer<typeof PARAMETER>;
+import {
+  COMMAND_ARGUMENT_SCHEMA as ARGUMENT_SCHEMA,
+  type CommandArgument as Parameter,
+} from '../model/command-input';
 interface ArgumentFieldProps {
   readonly name: string;
   readonly parameter: Parameter;
@@ -115,17 +106,21 @@ function TypedField(props: ArgumentFieldProps): ReactNode {
     />
   );
 }
-function ArgumentInput(props: ArgumentFieldProps): ReactNode {
-  const options = props.parameter.enum?.filter(
-    (value): value is string => typeof value === 'string',
-  );
+export function ArgumentInput(props: ArgumentFieldProps): ReactNode {
+  const options = props.parameter.enum;
   if (options !== undefined && options.length > 0) {
     return (
       <Select
         label={humanizeEnum(props.name)}
-        options={options.map((value) => ({ value, label: humanizeEnum(value) }))}
-        value={typeof props.value === 'string' ? props.value : null}
-        onChange={props.onChange}
+        options={options.map((value) => ({
+          value: JSON.stringify(value),
+          label: typeof value === 'string' ? humanizeEnum(value) : JSON.stringify(value),
+        }))}
+        value={props.value === undefined ? null : JSON.stringify(props.value)}
+        onChange={(key) => {
+          const chosen = options.find((value) => JSON.stringify(value) === key);
+          if (chosen !== undefined) props.onChange(chosen);
+        }}
       />
     );
   }

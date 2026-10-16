@@ -8,8 +8,6 @@ import type {
 import { mountManagedPackageExecution } from '../composition/plugin-execution';
 import { projectWorkspaceContext } from '../composition/workspace-context';
 import { HarnessRuntimeError } from './errors';
-import { installManagedImage } from '../composition/project-image';
-import { ProjectFileSystem } from '../composition/project-filesystem';
 import type { AiHarnessStorageBinding } from '@smarteverything/domain';
 import type { ProjectFilePort } from '../composition/project-files';
 import { nativePendingInput, type NativeInputHistory } from './input-history';
@@ -71,6 +69,7 @@ export interface HarnessRuntimeOptions {
 export class HarnessRuntime {
   private readonly sessions = new Map<string, HarnessSession>();
   private readonly opening = new Set<string>();
+  private readonly storage = new Map<string, AiHarnessStorageBinding>();
   private readonly admission = new HarnessAdmission();
   private readonly composition: HarnessRuntimeConfiguration;
   private readonly references: NativeReferences;
@@ -92,7 +91,7 @@ export class HarnessRuntime {
   ) {
     this.references = new NativeReferences(
       ctx,
-      (id) => this.storageBinding(id),
+      (id) => this.executionWorkspace(id),
       () => this.configurationStatus(),
     );
     mountReferencePrompts(ctx, this.references, lifecycle.validateReferences);
@@ -121,18 +120,32 @@ export class HarnessRuntime {
   }
 
   storageBinding(id: string): AiHarnessStorageBinding | undefined {
-    return this.ctx.fs instanceof ProjectFileSystem ? this.ctx.fs.scopes.binding(id) : undefined;
+    return this.storage.get(id);
   }
 
-  deviceWorkspace(id: string, path: string): void {
+  assertNativeAccess(id: string): void {
     this.get(id);
-    if (this.host.target.kind !== 'device')
-      throw new HarnessRuntimeError(
-        'capability_unsupported',
-        'Hub conversations cannot select local device workspaces.',
-      );
-    if (this.ctx.fs instanceof ProjectFileSystem)
-      this.ctx.fs.scopes.bind(id, { kind: 'device', target: this.host.target, path });
+    this.lifecycle.serverPolicy.requireNative(id);
+  }
+
+  async directory(id: string, path: string, signal?: AbortSignal): Promise<string> {
+    this.assertNativeAccess(id);
+    const session = this.get(id);
+    const directory = await session.directory(path, signal);
+    await this.references.closeSession(id);
+    await session.flush();
+    return directory;
+  }
+
+  private executionWorkspace(id: string): AiHarnessStorageBinding | undefined {
+    const agent = this.ctx.agents.get(SessionId(id));
+    return agent === undefined || this.host.target.kind !== 'device'
+      ? undefined
+      : {
+          kind: 'device',
+          target: this.host.target,
+          path: this.ctx.workingDirectory.get(agent.session),
+        };
   }
 
   get(id: string): HarnessSession {
@@ -191,10 +204,11 @@ export class HarnessRuntime {
   }
 
   private async closeSession(id: string): Promise<void> {
+    await this.references.closeSession(id);
     await this.get(id).close();
     this.sessions.delete(id);
     this.lifecycle.serverPolicy.unbind(id);
-    if (this.ctx.fs instanceof ProjectFileSystem) this.ctx.fs.scopes.bind(id, undefined);
+    this.storage.delete(id);
     this.log.info('session.closed', { session_id: id });
     if (this.sessions.size === 0 && this.opening.size === 0)
       await this.composition.applyPending().catch((error: unknown) => {
@@ -209,9 +223,7 @@ export class HarnessRuntime {
         fingerprint: this.fingerprint(),
         restoreRevision: this.restoreRevision(),
       }),
-      ...(this.ctx.fs instanceof ProjectFileSystem
-        ? { project_files: { protocol: 1 as const } }
-        : {}),
+      project_files: { protocol: 1 },
     };
   }
 
@@ -273,8 +285,8 @@ export class HarnessRuntime {
       );
     this.opening.add(options.sessionId);
     try {
-      if (this.ctx.fs instanceof ProjectFileSystem)
-        this.ctx.fs.scopes.bind(options.sessionId, options.storageBinding);
+      if (options.storageBinding !== undefined)
+        this.storage.set(options.sessionId, options.storageBinding);
       this.lifecycle.serverPolicy.bind(options.sessionId, options.authority);
       await this.ctx.llm.resolveModelInfo(options.provider, options.model);
       const handle = await this.acquire(options, resume);
@@ -284,8 +296,7 @@ export class HarnessRuntime {
       return session;
     } catch (error) {
       this.lifecycle.serverPolicy.unbind(options.sessionId);
-      if (this.ctx.fs instanceof ProjectFileSystem)
-        this.ctx.fs.scopes.bind(options.sessionId, undefined);
+      this.storage.delete(options.sessionId);
       throw error;
     } finally {
       this.opening.delete(options.sessionId);
@@ -294,7 +305,6 @@ export class HarnessRuntime {
 
   private async acquire(options: HarnessSessionOptions, resume: boolean): Promise<AgentHandle> {
     const setup = async (agentCtx: Context, agent: Agent): Promise<void> => {
-      if (options.storageBinding?.kind === 'managed') installManagedImage(this.ctx, agentCtx);
       const allowed = this.lifecycle.serverPolicy.allowed(options.sessionId);
       if (allowed !== undefined) agentCtx.tools.restrict({ allow: allowed });
       await this.ctx.workingDirectory.set(agent, options.directory ?? this.host.homeDirectory);
@@ -307,7 +317,8 @@ export class HarnessRuntime {
       });
       initializeSessionPermission(this.ctx, agent, options.permission, resume);
       await mountManagedPackageExecution(this.ctx, agentCtx, this.host, {
-        binding: options.storageBinding,
+        directory: this.ctx.workingDirectory.get(agent.session),
+        native: this.lifecycle.serverPolicy.nativeAvailable(options.sessionId),
         permission: options.permission,
       });
       this.setupHelper(agentCtx, options);
@@ -346,13 +357,11 @@ export class HarnessRuntime {
   }
 
   private hostContext(agent: Agent): string {
-    const binding =
-      this.ctx.fs instanceof ProjectFileSystem ? this.ctx.fs.scopes.binding(agent.id) : undefined;
-    if (binding !== undefined)
-      return `Current execution host: ${this.host.name}. ${projectWorkspaceContext(binding, this.ctx.workingDirectory.get(agent.session))}`;
-    if (this.host.target.kind === 'server')
-      return `Current execution host: ${this.host.name}, central conversation host. Local server file, shell and system-control tools are unavailable. Hub actions run only with this conversation's initiating profile and trigger grants.`;
-    return `Current execution host: ${this.host.name} (${JSON.stringify(this.host.target)}), ${this.host.platform}. Effective directory: ${this.ctx.workingDirectory.get(agent.session)}. Local tools execute here. Historical paths, files and processes on another host remain there and have not been transferred.`;
+    const local = this.lifecycle.serverPolicy.nativeAvailable(agent.id);
+    const execution = local
+      ? 'Native file and shell tools use this selected machine under the chat permission. The primary folder selects working and indexing context; it does not grant access.'
+      : 'This initiating account has no native machine access. Use explicit central project tools for chat-owned files.';
+    return `Current execution host: ${this.host.name} (${JSON.stringify(this.host.target)}). ${execution} ${projectWorkspaceContext(this.storageBinding(agent.id), this.ctx.workingDirectory.get(agent.session))}`;
   }
 
   private restoreRevision(): string {

@@ -1,3 +1,7 @@
+import { DEVICE_GROUP_ROW } from '../device-groups';
+import { AUTOMATION_SEQUENCE_ROW } from '../automation-sequences';
+import { AUTOMATION_VALUE_ROW } from '../automation-values';
+import { AUTOMATION_RUN_ROW, AUTOMATION_RUN_HISTORY_LIMIT } from '../automation-runs';
 import { z } from 'zod';
 import { BODY_READINGS_SNAPSHOT, BODY_READING_ROW } from '../body-readings';
 import { PROFILE_ROW } from '../profiles';
@@ -55,11 +59,15 @@ export const SNAPSHOT_WINDOWS = {
 export const SNAPSHOT_TABLES = z.strictObject({
   settings: SETTINGS_ROW,
   rooms: z.array(ROOM_ROW),
+  device_groups: z.array(DEVICE_GROUP_ROW).optional(),
   devices: z.array(DEVICE_ROW),
   device_state: z.array(STATE_ROW),
   cameras: z.array(CAMERA_ROW),
   scenes: z.array(SCENE_ROW),
   automations: z.array(AUTOMATION_ROW),
+  automation_values: z.array(AUTOMATION_VALUE_ROW).optional(),
+  automation_sequences: z.array(AUTOMATION_SEQUENCE_ROW).optional(),
+  automation_runs: z.array(AUTOMATION_RUN_ROW).max(AUTOMATION_RUN_HISTORY_LIMIT).optional(),
   provider_links: z.array(PROVIDER_LINK_ROW),
   ir_remotes: z.array(IR_REMOTE_ROW),
   ir_codes: z.array(IR_CODE_ROW),
@@ -115,6 +123,9 @@ export const SNAPSHOT_ENDPOINTS = {
     summary: 'Every live table the caller may see, at one change sequence number, in one read',
     params: NOTHING,
     query: z.strictObject({
+      groupRuntime: QUERY_FLAG.default(false),
+      automationRuntime: QUERY_FLAG.default(false),
+      automationRunDetails: QUERY_FLAG.default(false),
       nutrition: QUERY_FLAG.default(false),
       watch: QUERY_FLAG.default(false),
       weather: QUERY_FLAG.default(false),

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Action, CommandAction, SceneRow } from '@smarteverything/domain';
+import type { LegacyAction as Action, CommandAction, SceneRow } from '@smarteverything/domain';
 import type { Catalog } from '../data/use-automations';
 import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';

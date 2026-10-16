@@ -7,6 +7,8 @@ import {
   type Trigger,
 } from '@smarteverything/domain';
 
+import { omittedDefinitionFields } from './retained-definition';
+
 export interface Draft {
   readonly name: string;
   readonly enabled: boolean;
@@ -14,6 +16,9 @@ export interface Draft {
   readonly mode: Conditions['mode'];
   readonly conditions: readonly Condition[];
   readonly actions: readonly Action[];
+  readonly origin?: AutomationDefinition['origin'];
+  readonly runPolicy?: AutomationDefinition['runPolicy'];
+  readonly controlKey?: string | undefined;
 }
 
 export type ListChange<T> =
@@ -23,6 +28,13 @@ export type ListChange<T> =
   | { readonly kind: 'move'; readonly index: number; readonly by: -1 | 1 };
 
 export type DraftChange =
+  | {
+      readonly type: 'policy';
+      readonly runPolicy: AutomationDefinition['runPolicy'];
+      readonly controlKey: string | undefined;
+    }
+  | { readonly type: 'replace-conditions'; readonly conditions: Conditions }
+  | { readonly type: 'replace-actions'; readonly actions: readonly Action[] }
   | { readonly type: 'rename'; readonly name: string }
   | { readonly type: 'enable'; readonly enabled: boolean }
   | { readonly type: 'mode'; readonly mode: Conditions['mode'] }
@@ -72,6 +84,12 @@ export function changeList<T>(items: readonly T[], change: ListChange<T>): reado
 
 export function changeDraft(draft: Draft, change: DraftChange): Draft {
   switch (change.type) {
+    case 'policy':
+      return { ...draft, runPolicy: change.runPolicy, controlKey: change.controlKey };
+    case 'replace-conditions':
+      return { ...draft, mode: change.conditions.mode, conditions: change.conditions.items };
+    case 'replace-actions':
+      return { ...draft, actions: change.actions };
     case 'rename':
       return { ...draft, name: change.name };
     case 'enable':
@@ -95,6 +113,9 @@ function draftOf(name: string, enabled: boolean, definition: AutomationDefinitio
     mode: definition.conditions.mode,
     conditions: definition.conditions.items,
     actions: definition.actions,
+    origin: definition.origin,
+    runPolicy: definition.runPolicy,
+    controlKey: definition.controlKey,
   };
 }
 
@@ -116,6 +137,12 @@ export function readDraft(row: {
         .join('; ')}`,
     };
   }
+  const omitted = omittedDefinitionFields(row.definition, parsed.data);
+  if (omitted.length > 0)
+    return {
+      readable: false,
+      problem: `The saved definition contains unsupported fields: ${omitted.join(', ')}. It is preserved; use a compatible app to edit it.`,
+    };
   return { readable: true, draft: draftOf(row.name, row.enabled, parsed.data) };
 }
 
@@ -124,6 +151,9 @@ export function definitionOf(draft: Draft): unknown {
     triggers: draft.triggers,
     conditions: { mode: draft.mode, items: draft.conditions },
     actions: draft.actions,
+    origin: draft.origin ?? null,
+    ...(draft.runPolicy === undefined ? {} : { runPolicy: draft.runPolicy }),
+    ...(draft.controlKey === undefined ? {} : { controlKey: draft.controlKey }),
   };
 }
 

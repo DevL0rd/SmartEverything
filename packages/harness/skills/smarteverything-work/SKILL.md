@@ -13,9 +13,9 @@ Use `read_chats` to find the caller's chats, messages or attached files. `edit_c
 
 ## Inspect a computer
 
-`find_devices` identifies computers. Read `get_computer` view permissions before acting; now and history views diagnose load. `computer_apps` identifies installed apps, then `run_computer_app` opens or closes the chosen app. `list_processes` gives exact process IDs before `end_process`; force quitting can lose work. `read_files` is confined to the signed-in person's home on the selected computer.
+`find_devices` identifies computers. `get_computer` exposes the computer service's own permission grants, while now and history views diagnose load. `computer_apps` identifies installed apps, then `run_computer_app` opens or closes the chosen app. `list_processes` gives exact process IDs before `end_process`; force quitting can lose work. `read_files` is confined to the signed-in person's home on the selected computer.
 
-Computer actions require the selected computer's actual capabilities and grants. Chat management and delegation do not require a computer. For code, project files and development previews, load `smarteverything-coding-process`; for webpage reads, website testing or embedded Browser control, load `smarteverything-browser`.
+Computer actions require the selected computer's actual capabilities and grants. Ordinary native file and shell tools execute on the chat's selected machine under its native permission; selecting a project is not a prerequisite grant. Use `set_working_directory` to choose the primary folder for relative paths and indexing without changing the selected machine, permission or central artifact storage. Central chat files use the explicit project-file tools. Native Hub access requires its authenticated owner; being an owner does not grant another profile or machine access. Chat management and delegation do not require a computer. For code, project files and development previews, load `smarteverything-coding-process`; for webpage reads, website testing or embedded Browser control, load `smarteverything-browser`.
 
 ## Manage a requested native session
 

@@ -1,3 +1,4 @@
+import { clearWithdrawnLayoutWrites, reconcileLayoutWrites } from './layout-writes';
 import type { LiveChange, Snapshot } from '@smarteverything/domain';
 import { perfStoreChanged } from '../perf/store-hook';
 import { applyChange, replaceWith } from './live-reducers';
@@ -19,10 +20,11 @@ export class EntityStore {
   };
 
   readonly update = (change: (state: StoreState) => StoreState): void => {
-    const next = change(this.state);
-    if (next === this.state) {
+    const changed = change(this.state);
+    if (changed === this.state) {
       return;
     }
+    const next = clearWithdrawnLayoutWrites(this.state, changed);
     const previous = this.state;
     this.state = next;
     perfStoreChanged(previous, next, this.listeners.size);
@@ -40,19 +42,35 @@ export class EntityStore {
       const last = changes[changes.length - 1];
       return last === undefined
         ? applied
-        : { ...applied, sync: { ...applied.sync, seq: last.seq } };
+        : reconcileLayoutWrites(
+            state,
+            { ...applied, sync: { ...applied.sync, seq: last.seq } },
+            changes,
+          );
     });
   }
 
   replace(snapshot: Snapshot): void {
-    this.update((state) => replaceWith(state, snapshot));
+    this.update((state) =>
+      reconcileLayoutWrites(
+        state,
+        { ...replaceWith(state, snapshot), layoutWritesSuspended: false },
+        null,
+      ),
+    );
   }
 
   setSync(sync: Partial<SyncState>): void {
-    this.update((state) => ({ ...state, sync: { ...state.sync, ...sync } }));
+    this.update((state) => ({
+      ...state,
+      sync: { ...state.sync, ...sync },
+      layoutWriteEpoch: state.layoutWriteEpoch + (sync.status === 'loading' ? 1 : 0),
+      layoutWritesSuspended: sync.status === 'loading' || state.layoutWritesSuspended,
+    }));
   }
 
   appendLog(lines: readonly string[]): void {
+    if (lines.length === 0) return;
     this.update((state) => ({
       ...state,
       serviceLog: [...state.serviceLog, ...lines].slice(-SERVICE_LOG_KEPT),

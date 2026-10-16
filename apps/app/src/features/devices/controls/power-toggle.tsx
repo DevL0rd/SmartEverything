@@ -1,3 +1,5 @@
+import { deviceFamily } from '@smarteverything/domain';
+import { useLiveControl } from '../../../store/use-live-control';
 import type { ReactNode } from 'react';
 import { IconButton } from '../../../components/icon-button';
 import { useControl } from '../../../store/control';
@@ -13,7 +15,8 @@ export function usePowerAction(device: Device): {
 } {
   const model = useDeviceModel(device);
   const values = useDeviceValues(device.id);
-  const control = useControl(device.id, 'power');
+  const raw = useControl(device.id, 'power');
+  const control = useLiveControl(device, 'power', raw, deviceFamily(device) === 'light');
   const name = useDisplayName(device.id);
   const state = powerStateOf(model, values);
   const on = control.value === true;

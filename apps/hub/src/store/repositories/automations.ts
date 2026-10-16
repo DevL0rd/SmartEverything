@@ -1,9 +1,13 @@
+import { requireCurrentAutomationDefinition } from './automation-revisions';
 import { HarnessEffectsRepository } from './harness-effects';
 import { currentExecutionAuthorities } from '../../assistant/execution-authority';
 import {
   AUTOMATION_ROW,
+  AUTOMATION_NODE_ID,
+  identifyActions,
   ApiError,
   jsonEquals,
+  JSON_VALUE,
   type AutomationDefinition,
   type AutomationRow,
 } from '@smarteverything/domain';
@@ -25,7 +29,7 @@ export interface NewAutomation {
 
 export type AutomationChange = {
   readonly [K in keyof NewAutomation]?: NewAutomation[K] | undefined;
-};
+} & { readonly expectedRevision?: string | undefined };
 
 export interface RunBookkeeping {
   readonly lastRunAt?: string;
@@ -65,7 +69,7 @@ export class AutomationsRepository {
           id,
           name: automation.name,
           enabled: flag(automation.enabled),
-          definition: jsonText(automation.definition),
+          definition: jsonText(this.identified(automation.definition, true)),
           now,
         },
       );
@@ -83,6 +87,7 @@ export class AutomationsRepository {
   update(id: string, change: AutomationChange, reauthorizeProfile?: string): AutomationRow {
     return this.context.write(() => {
       const before = this.byId(id);
+      requireCurrentAutomationDefinition(before, change);
       const authorities = currentExecutionAuthorities();
       const reauthorized = change.definition !== undefined && reauthorizeProfile !== undefined;
       if (reauthorized) {
@@ -99,11 +104,14 @@ export class AutomationsRepository {
       }
       new HarnessEffectsRepository(this.context).keep('automation', id, authorities);
       const redefined =
-        change.definition !== undefined && !jsonEquals(change.definition, before.definition);
+        change.definition !== undefined &&
+        !jsonEquals(JSON_VALUE.parse(change.definition), before.definition);
       return this.change(before, {
         ...(change.name === undefined ? {} : { name: change.name }),
         ...(change.enabled === undefined ? {} : { enabled: flag(change.enabled) }),
-        ...(change.definition === undefined ? {} : { definition: jsonText(change.definition) }),
+        ...(change.definition === undefined
+          ? {}
+          : { definition: jsonText(this.identified(change.definition, false)) }),
         ...(redefined || reauthorized ? { last_error: null } : {}),
       });
     });
@@ -127,6 +135,19 @@ export class AutomationsRepository {
       });
       this.context.changed('automations', 'DELETE', null, before);
     });
+  }
+
+  private identified(definition: AutomationDefinition, remap: boolean): AutomationDefinition {
+    return {
+      ...definition,
+      actions: identifyActions(definition.actions, () => this.context.newId(), remap),
+      triggers: definition.triggers.map((trigger) => ({
+        ...trigger,
+        nodeId: remap
+          ? AUTOMATION_NODE_ID.parse(this.context.newId())
+          : (trigger.nodeId ?? AUTOMATION_NODE_ID.parse(this.context.newId())),
+      })),
+    };
   }
 
   private change(

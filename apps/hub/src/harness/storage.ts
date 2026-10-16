@@ -173,8 +173,13 @@ export class HarnessStorage {
     binding: Pick<HarnessTransportRequest, 'device_id' | 'generation' | 'runtime_instance'>,
     subscription?: HarnessSubscriptionUse,
   ): DshWriterClaim {
-    const principal = this.principal(claim.session_id, binding);
     if (subscription !== undefined) this.admitSubscription(claim.session_id, subscription);
-    return this.store.dshSessions.verifyWriter(claim, principal);
+    try {
+      const principal = this.principal(claim.session_id, binding);
+      return this.store.dshSessions.verifyWriter(claim, principal);
+    } catch (error) {
+      if (error instanceof ApiError) throw new ApiError('ownership_lost', error.message);
+      throw error;
+    }
   }
 }

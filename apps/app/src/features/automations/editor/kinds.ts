@@ -1,4 +1,8 @@
-import { type Action, type Condition, type Trigger } from '@smarteverything/domain';
+import {
+  type LegacyAction as Action,
+  type LegacyCondition as Condition,
+  type Trigger,
+} from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 import { useDevices } from '../../../store/selectors';
 import { deviceIcon } from '../../device-visuals';
@@ -11,6 +15,7 @@ export interface KindLook {
 }
 
 export const TRIGGER_KINDS: Readonly<Record<Trigger['type'], KindLook>> = {
+  speech: { label: 'Speech contains', icon: 'messageCircle' },
   time: { label: 'Time', icon: 'clock' },
   sun: { label: 'Sunrise or sunset', icon: 'sunrise' },
   state: { label: 'Device changes', icon: 'activity' },
@@ -53,6 +58,8 @@ function untimedIcon(
   trigger: Exclude<Trigger, { type: 'signal' }>,
   devices: readonly DeviceLike[],
 ): IconName {
+  if (trigger.type !== 'state' && trigger.type !== 'event' && trigger.type !== 'sun')
+    return TRIGGER_KINDS[trigger.type].icon;
   switch (trigger.type) {
     case 'state':
       return iconOfDevice(devices, trigger.deviceId);
@@ -60,11 +67,6 @@ function untimedIcon(
       return trigger.deviceId === null ? 'bell' : iconOfDevice(devices, trigger.deviceId);
     case 'sun':
       return trigger.event === 'sunrise' ? 'sunrise' : 'sunset';
-    case 'time':
-    case 'interval':
-    case 'weather':
-    case 'weather_kind':
-      return TRIGGER_KINDS[trigger.type].icon;
   }
 }
 

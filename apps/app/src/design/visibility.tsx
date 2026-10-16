@@ -1,6 +1,9 @@
 import type { ReactNode, RefObject } from 'react';
-import { createContext, use, useEffect, useState } from 'react';
+import { createContext, use } from 'react';
 import type { View } from 'react-native';
+import { useViewport, type ViewportVisibility } from './viewport';
+
+const PREWARM_MARGIN = 48;
 
 const ScopeVisible = createContext(true);
 
@@ -14,36 +17,8 @@ export function VisualVisibility({
   return <ScopeVisible value={visible}>{children}</ScopeVisible>;
 }
 
-function observable(node: unknown): Element | null {
-  if (typeof IntersectionObserver !== 'function' || typeof Element === 'undefined') {
-    return null;
-  }
-  return node instanceof Element ? node : null;
-}
-
-function useIntersecting(ref: RefObject<View | null>): boolean {
-  const [intersecting, setIntersecting] = useState(true);
-  useEffect(() => {
-    const target = observable(ref.current);
-    if (target === null) {
-      return undefined;
-    }
-    const observer = new IntersectionObserver((entries) => {
-      const last = entries.at(-1);
-      if (last !== undefined) {
-        setIntersecting(last.isIntersecting);
-      }
-    });
-    observer.observe(target);
-    return (): void => {
-      observer.disconnect();
-    };
-  }, [ref]);
-  return intersecting;
-}
-
-export function useOnScreen(ref: RefObject<View | null>): boolean {
+export function useOnScreen(ref: RefObject<View | null>): ViewportVisibility {
   const scope = use(ScopeVisible);
-  const intersecting = useIntersecting(ref);
-  return scope && intersecting;
+  const viewport = useViewport(ref, { margin: PREWARM_MARGIN, screenOnly: true });
+  return { visible: scope && viewport.visible, onLayout: viewport.onLayout };
 }

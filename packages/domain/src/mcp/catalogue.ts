@@ -68,6 +68,13 @@ const ENTRIES: readonly Entry[] = [
     'Remotes taught to IR blasters: id, name, category, brand, blaster, room and button names.',
   ],
   [
+    'control_device_target',
+    'control',
+    'control',
+    'Control a room or group',
+    'Set a supported control on a canonical room, named custom group or device selection, with individual command outcomes and skipped offline or unsupported devices.',
+  ],
+  [
     'control_devices',
     'control',
     'control',

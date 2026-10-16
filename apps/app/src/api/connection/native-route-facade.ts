@@ -12,7 +12,10 @@ import { claimNativeServerEnrollment } from '../../../modules/health-connect/src
 import { hubNetwork, pinnedFetch } from './route-platform';
 import { trustOf, HubRouteUnavailableError, StaleHubRouteError } from './route-policy';
 
+import { noteNativeRouteChange, noteNativeRequestFailure } from './native-route-diagnostics';
+
 const log = new Logger('app.hub-route');
+const READINESS_TIMEOUT_MS = 20_000;
 
 export interface NativeRouteFacadeOptions {
   readonly connection: ServerConnection;
@@ -47,6 +50,7 @@ export class NativeRouteFacade {
   private stopped = false;
   private readyTask: Promise<void> | null = null;
   private unsubscribe: (() => void) | null = null;
+  private readonly readinessListeners = new Set<() => void>();
   constructor(
     private readonly authority: NativeHubRouteAuthority,
     private readonly options: NativeRouteFacadeOptions,
@@ -67,7 +71,7 @@ export class NativeRouteFacade {
     });
   }
   ready(): Promise<void> {
-    if (this.readyTask !== null) return this.readyTask;
+    if (this.readyTask !== null) return this.readyTask.then(() => this.waitReady());
     const task = this.configure().catch((error: unknown) => {
       if (this.readyTask === task) {
         this.readyTask = null;
@@ -76,7 +80,29 @@ export class NativeRouteFacade {
       throw error;
     });
     this.readyTask = task;
-    return task;
+    return task.then(() => this.waitReady());
+  }
+  private waitReady(): Promise<void> {
+    if (this.current?.readiness === 'ready' && !this.stopped) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const finish = (error?: Error): void => {
+        clearTimeout(timer);
+        this.readinessListeners.delete(changed);
+        if (error === undefined) resolve();
+        else reject(error);
+      };
+      const changed = (): void => {
+        if (this.stopped) finish(new StaleHubRouteError('GET'));
+        else if (this.current?.readiness === 'ready') finish();
+        else if (this.current?.readiness === 'unavailable')
+          finish(new HubRouteUnavailableError(this.current.detail));
+      };
+      const timer = setTimeout(() => {
+        finish(new HubRouteUnavailableError('Trusted hub routes did not become ready in time.'));
+      }, READINESS_TIMEOUT_MS);
+      this.readinessListeners.add(changed);
+      changed();
+    });
   }
   private async configure(): Promise<void> {
     const run = ++this.operation;
@@ -153,11 +179,15 @@ export class NativeRouteFacade {
       this.current.readiness !== state.readiness
     )
       this.version += 1;
+    noteNativeRouteChange(this.current, state);
     this.current = state;
     this.options.publish({
       endpoint: state.readiness === 'ready' ? state.endpoint : null,
       generation: this.version,
       problem: state.detail === '' ? null : state.detail,
+    });
+    this.readinessListeners.forEach((listener) => {
+      listener();
     });
   }
   invalidate(): void {
@@ -218,17 +248,41 @@ export class NativeRouteFacade {
       nativeAuthority: true,
       fetch: (url, init): Promise<Response> => {
         if (!isCurrent()) throw new StaleHubRouteError(init.method ?? 'GET');
-        return pinnedFetch(this.options.scopeId, url, init, {
-          binding,
-          routeGeneration: state.routeGeneration,
-        });
+        return this.fetch(state, binding, url, init);
       },
       isCurrent,
       failed: (): void => undefined,
     };
   }
+  private async fetch(
+    state: NativeHubRouteSnapshot,
+    binding: NativeHubCredentialBinding,
+    url: string,
+    init: RequestInit,
+  ): Promise<Response> {
+    const startedAt = performance.now();
+    try {
+      return await pinnedFetch(this.options.scopeId, url, init, {
+        binding,
+        routeGeneration: state.routeGeneration,
+      });
+    } catch (error) {
+      noteNativeRequestFailure({
+        error,
+        url,
+        method: init.method ?? 'GET',
+        elapsedMs: Math.round(performance.now() - startedAt),
+        started: state,
+        current: this.current,
+      });
+      throw error;
+    }
+  }
   stop(): void {
     this.stopped = true;
+    this.readinessListeners.forEach((listener) => {
+      listener();
+    });
     this.operation += 1;
     this.unsubscribe?.();
     this.unsubscribe = null;

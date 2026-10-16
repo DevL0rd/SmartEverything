@@ -1,6 +1,8 @@
 import {
   API_ENDPOINTS as E,
   AI_ACTION_TYPES,
+  walkActions,
+  AUTOMATION_RUNTIME_SIGNAL_SOURCES,
   ApiError,
   automationSignalError,
   type AutomationDefinition,
@@ -57,7 +59,10 @@ export function requireOwnerForAiActions(
   caller: Caller,
   definition: Pick<AutomationDefinition, 'actions'>,
 ): void {
-  if (definition.actions.some((action) => AI_ACTION_TYPES.has(action.type)) && !isOwner(caller)) {
+  if (
+    walkActions(definition.actions).some((action) => AI_ACTION_TYPES.has(action.type)) &&
+    !isOwner(caller)
+  ) {
     throw new ApiError(
       'forbidden',
       'Only an owner can save automations that wake the AI or use tools.',
@@ -78,7 +83,15 @@ export function requireKnownSignals(
 export function signalRoutes(context: ServerContext): SignalRoutes {
   const { store, hub } = context;
   return {
-    listSignalKinds: bound(E.listSignalKinds, () => installedSignalSources(store).map(sourceInfo)),
+    listSignalKinds: bound(E.listSignalKinds, ({ query }) =>
+      installedSignalSources(store)
+        .filter(
+          (spec) =>
+            query.automationRuntime ||
+            !AUTOMATION_RUNTIME_SIGNAL_SOURCES.some((runtime) => runtime.source === spec.source),
+        )
+        .map(sourceInfo),
+    ),
     readSignal: bound(E.readSignal, ({ query, caller }) => {
       const visible = visibleTo(context, caller);
       return hub.signals.latest(query).filter(visible).slice(0, query.limit);

@@ -1,8 +1,8 @@
 import type {
-  Action,
+  LegacyAction as Action,
   CommandAction,
   Comparison,
-  Condition,
+  LegacyCondition as Condition,
   DeviceCapability,
   Trigger,
   ValueDescriptor,
@@ -125,12 +125,16 @@ function blankSignal(): Trigger | null {
   return withKind({ type: 'signal' }, source.source, kind);
 }
 
+function blankStateTrigger(choices: Choices): Trigger | null {
+  const target = firstTarget(choices.devices, readableCapabilities);
+  return target === null ? null : stateTrigger(target.device, target.capability);
+}
+
 export function blankTrigger(type: TriggerType, choices: Choices): Trigger | null {
+  if (type === 'speech') return null;
   switch (type) {
-    case 'state': {
-      const target = firstTarget(choices.devices, readableCapabilities);
-      return target === null ? null : stateTrigger(target.device, target.capability);
-    }
+    case 'state':
+      return blankStateTrigger(choices);
     case 'event':
       return { type, deviceId: null, kind: 'motion' };
     case 'time':

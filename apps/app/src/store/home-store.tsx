@@ -20,7 +20,11 @@ import { Logger } from '@smarteverything/logging';
 import type { ServerConnection } from '../api/transport';
 import { routeFor } from '../api/connection/active-route';
 import { appPlatform, desktopBridge } from '../design/platform';
-import { applyToWindows, refreshAllWindows } from '../queries/live-invalidations';
+import {
+  applyToWindows,
+  refreshAllWindows,
+  refreshDeviceEffects,
+} from '../queries/live-invalidations';
 import { ProviderNotices } from '../queries/provider-notices';
 import { CommandLedger } from './command-ledger';
 import { EntityStore } from './entity-store';
@@ -137,6 +141,19 @@ function computerNotice(
   void client.invalidateQueries({ queryKey: key });
 }
 
+function synchronized(
+  harness: HarnessNotices,
+  client: QueryClient,
+  replayed: readonly LiveChange[],
+): void {
+  if (!replayed.some((change) => change.table === 'device_effect_targets')) {
+    refreshDeviceEffects(client);
+  }
+  harness.synchronized();
+  refreshTranscriptReaders(client);
+  refreshImageOperations(client);
+}
+
 function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
   const store = new EntityStore();
   const providers = new ProviderNotices(client);
@@ -144,6 +161,7 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
   const harness = new HarnessNotices(client);
   const ledger = new CommandLedger(store);
   const sync = new LiveSync(connection, store, {
+    onSnapshotCommands: ledger.noteSnapshot.bind(ledger),
     onChanges: (changes): void => {
       ledger.noteChanges(changes);
       applyToWindows(client, changes);
@@ -177,11 +195,7 @@ function runtimeOf(connection: ServerConnection, client: QueryClient): Runtime {
       codex.clear();
       client.removeQueries();
     },
-    onSynchronized: (): void => {
-      harness.synchronized();
-      refreshTranscriptReaders(client);
-      refreshImageOperations(client);
-    },
+    onSynchronized: synchronized.bind(null, harness, client),
   });
   const start = (): (() => void) =>
     startRuntime({ connection, client, store, sync, ledger, providers, codex, harness });

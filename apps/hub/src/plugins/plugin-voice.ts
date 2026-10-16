@@ -342,6 +342,7 @@ export function voiceOf(
     transcript: guarded((request) => openTranscript(services, scope, request)),
     transcribe: guarded((request) => transcribeFor(services, scope, request)),
     transcripts: {
+      speechReader: guarded((reader) => scope.track(own.speechReader(reader))),
       list: guarded(own.list),
       find: guarded(own.find),
       page: guarded(own.page),

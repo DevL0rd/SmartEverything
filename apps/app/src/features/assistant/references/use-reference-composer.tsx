@@ -42,8 +42,7 @@ export function useReferenceComposer(input: ComposerInput): ReferenceComposer {
   const candidate = referenceIntent(text, selection);
   const revision = JSON.stringify([key, draftRevision(key), selection]);
   const intent =
-    dismissed === revision ||
-    references.some((item) => selection.start > item.start && selection.start <= item.end)
+    dismissed === revision || references.some((item) => overlapsReference(candidate, item))
       ? null
       : candidate;
   const opened = intent !== null;
@@ -100,7 +99,7 @@ function chooseReference(
   },
 ): void {
   const item = choice.search.items.find((entry) => referenceKey(entry.reference) === choice.id);
-  if (item === undefined || choice.intent === null) return;
+  if (item === undefined || choice.intent === null || !choice.search.valid()) return;
   if (input.references.length >= AI_REFERENCES_MAX) {
     notify({
       message: `A message can reference up to ${String(AI_REFERENCES_MAX)} items. Remove one to continue.`,
@@ -133,4 +132,11 @@ function referenceKeys(
   keys: Parameters<typeof selectionKey>[1],
 ): (key: string) => boolean {
   return (key): boolean => opened && selectionKey(key, keys);
+}
+
+function overlapsReference(
+  intent: ReturnType<typeof referenceIntent>,
+  item: AiMessageReference,
+): boolean {
+  return intent !== null && item.start < intent.end && item.end > intent.start;
 }

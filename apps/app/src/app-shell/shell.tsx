@@ -53,7 +53,7 @@ function ShellTabs(): ReactNode {
             headerShown: false,
             tabBarPosition: nav === 'bar' ? 'bottom' : 'left',
             lazy: true,
-            freezeOnBlur: true,
+            freezeOnBlur: false,
             sceneStyle: scene,
           }}
         >

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Action } from '@smarteverything/domain';
+import type { LegacyAction as Action } from '@smarteverything/domain';
 import type { Catalog } from '../data/use-automations';
 import { ACTION_TYPES, blankAction, type ActionType } from '../model/blanks';
 import { describeAction } from '../model/describe';

@@ -4,6 +4,7 @@ import type { AiReference, AiReferenceKind, AiReferenceSummary } from '@smarteve
 import { isUserInvocable } from '@deepseek-ai/dsh-skill';
 import { referenceHash, skillLookup, skillReference } from './identity';
 import { nativeReferencePackages } from './packages';
+import { withNativeSkills } from './skills';
 import type { HarnessPluginReadiness } from '../composition/configuration';
 
 export async function nativeReferenceCatalogue(
@@ -21,31 +22,34 @@ export async function nativeReferenceCatalogue(
   readonly complete: boolean;
 }> {
   const { generation, readiness, signal } = options;
-  if (kind === 'skill') {
-    const snapshot = await ctx.skills.snapshot(skillLookup(ctx, agent, signal));
-    const items: AiReferenceSummary[] = [];
-    for (const skill of snapshot.skills) {
-      if (!isUserInvocable(skill) || /codex/iu.test(`${skill.provider}:${skill.source}`)) continue;
-      items.push({
-        reference: await skillReference(ctx, skill, generation, signal),
-        label: skill.name,
-        subtitle: `${skill.source} · ${skill.provider}`,
-        description: skill.description.slice(0, 1000),
-      });
-    }
-    return {
-      items,
-      revision: referenceHash({ items, generation, complete: snapshot.complete }),
-      complete: snapshot.complete,
-    };
-  }
-  const items = await relatedReferences(ctx, agent, kind);
+  if (kind === 'skill')
+    return withNativeSkills(ctx, async (skills) => {
+      const snapshot = await skills.snapshot(skillLookup(ctx, agent, signal));
+      const items: AiReferenceSummary[] = [];
+      for (const skill of snapshot.skills) {
+        if (!isUserInvocable(skill) || /codex/iu.test(`${skill.provider}:${skill.source}`))
+          continue;
+        items.push({
+          reference: await skillReference(ctx, skill, generation, signal),
+          label: skill.name,
+          subtitle: `${skill.source} · ${skill.provider}`,
+          description: skill.description.slice(0, 1000),
+        });
+      }
+      return {
+        items,
+        revision: referenceHash({ items, generation, complete: snapshot.complete }),
+        complete: snapshot.complete,
+      };
+    });
+  const items = await relatedReferences(ctx, agent, kind, readiness);
   return { items, revision: referenceHash(items), complete: true };
 }
 async function relatedReferences(
   ctx: Context,
   agent: Agent,
   kind: AiReferenceKind,
+  readiness: readonly HarnessPluginReadiness[],
 ): Promise<readonly AiReferenceSummary[]> {
   const packages = nativeReferencePackages(ctx);
   if (kind === 'plugin') {
@@ -94,22 +98,20 @@ function commandReferences(
   const restricted = new Set(
     nativeReferencePackages(ctx).flatMap((entry) => entry.restrictedCommands),
   );
-  return ctx.commands
-    .list(agent)
-    .flatMap((command) =>
-      command.definitionId === undefined || restricted.has(command.definitionId)
-        ? []
-        : [
-            {
-              reference: {
-                kind: 'command' as const,
-                definition_id: command.definitionId,
-                revision: referenceHash({ command, readiness }),
-              },
-              label: `/${command.name}`,
-              subtitle: 'Native command · explicit invocation required',
-              description: command.description.slice(0, 1000),
+  return ctx.commands.list(agent).flatMap((command) =>
+    command.definitionId === undefined || restricted.has(command.definitionId)
+      ? []
+      : [
+          {
+            reference: {
+              kind: 'command' as const,
+              definition_id: command.definitionId,
+              revision: referenceHash({ command, readiness }),
             },
-          ],
-    );
+            label: `/${command.name}`,
+            subtitle: 'Native command · explicit invocation required',
+            description: command.description.slice(0, 1000),
+          },
+        ],
+  );
 }

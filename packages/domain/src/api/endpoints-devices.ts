@@ -31,6 +31,7 @@ export const COMMAND_INPUT = z.strictObject({
   capability: z.string().min(1).max(120),
   value: JSON_VALUE,
   source: z.enum(['app', 'automation', 'scene']).default('app'),
+  effect_policy: z.enum(['keep', 'cancel']).optional(),
 });
 
 export type CommandInput = z.input<typeof COMMAND_INPUT>;
