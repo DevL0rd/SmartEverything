@@ -4,10 +4,10 @@ import androidx.health.connect.client.records.ExerciseCompletionGoal
 import androidx.health.connect.client.records.ExercisePerformanceTarget
 import androidx.health.connect.client.records.PlannedExerciseSessionRecord
 import java.time.Duration
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonObject
 
 object PlannedExerciseData {
-  fun describe(record: PlannedExerciseSessionRecord): JSONObject = jsonOf(
+  fun describe(record: PlannedExerciseSessionRecord): JsonObject = jsonOf(
     "exerciseType" to record.exerciseType,
     "title" to record.title,
     "notes" to record.notes,
@@ -31,7 +31,7 @@ object PlannedExerciseData {
 
   private fun seconds(duration: Duration): Double = duration.toMillis() / 1000.0
 
-  private fun goal(goal: ExerciseCompletionGoal): JSONObject = when (goal) {
+  private fun goal(goal: ExerciseCompletionGoal): JsonObject = when (goal) {
     is ExerciseCompletionGoal.DistanceGoal ->
       jsonOf("kind" to "distance", "meters" to goal.distance.inMeters)
     is ExerciseCompletionGoal.DistanceAndDurationGoal -> jsonOf(
@@ -53,7 +53,7 @@ object PlannedExerciseData {
     else -> throw UnmappedValue("completion goal", goal)
   }
 
-  private fun target(target: ExercisePerformanceTarget): JSONObject = when (target) {
+  private fun target(target: ExercisePerformanceTarget): JsonObject = when (target) {
     is ExercisePerformanceTarget.PowerTarget -> jsonOf(
       "kind" to "power",
       "minWatts" to target.minPower.inWatts,

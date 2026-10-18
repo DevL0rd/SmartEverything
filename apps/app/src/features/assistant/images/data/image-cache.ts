@@ -7,11 +7,13 @@ import type {
 import { newestImageReceipt } from '../model/image-receipt';
 import { resultMessageId } from '../model/image-thread';
 import { IMAGE_QUERY_PREFIX, imageOperationsKey, imagePreviewKey } from '../model/image-query-keys';
+import { compareText } from '../../../../format/text';
+import { background } from '@smarteverything/logging';
 
 const RECEIPTS_KEY = [...IMAGE_QUERY_PREFIX, 'chat'] as const;
 
 export function refreshImageOperations(client: QueryClient): void {
-  void client.invalidateQueries({ queryKey: RECEIPTS_KEY });
+  background(client.invalidateQueries({ queryKey: RECEIPTS_KEY }), 'queries.invalidate_failed');
 }
 
 export function reconcileImageMessages(client: QueryClient, changes: readonly LiveChange[]): void {
@@ -45,7 +47,10 @@ export function reconcileImageMessages(client: QueryClient, changes: readonly Li
     }),
   );
   for (const chatId of chats)
-    void client.invalidateQueries({ queryKey: imageOperationsKey(chatId) });
+    background(
+      client.invalidateQueries({ queryKey: imageOperationsKey(chatId) }),
+      'queries.invalidate_failed',
+    );
 }
 
 export function mergeImageReceipt(client: QueryClient, receipt: ImageOperationReceipt): void {
@@ -60,7 +65,7 @@ export function mergeImageReceipt(client: QueryClient, receipt: ImageOperationRe
   client.setQueryData<readonly ImageOperationReceipt[]>(
     imageOperationsKey(receipt.chat_id),
     [...(prior ?? []).filter((item) => item.id !== newest.id), newest].sort((left, right) =>
-      left.created_at.localeCompare(right.created_at),
+      compareText(left.created_at, right.created_at),
     ),
   );
 }

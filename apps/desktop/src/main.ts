@@ -1,10 +1,19 @@
-import type { DesktopPlatform, DesktopServiceStatus } from '@smarteverything/domain';
+import type {
+  DesktopPlatform,
+  DesktopServiceStatus,
+  NativeHubCapabilities,
+} from '@smarteverything/domain';
 import { serviceUrl, type ServiceConfig } from '@smarteverything/hub/service/configuration';
-import { Logger } from '@smarteverything/logging';
-import { app, dialog, session, type BrowserWindow } from 'electron';
+import { Logger, setBackgroundScope } from '@smarteverything/logging';
+import { app, dialog, session, shell, type BrowserWindow } from 'electron';
+import { sessionAgentDirectory } from '@smarteverything/hub/node/session-agent/location';
+import { electronAgentActions } from './agent/agent-actions.js';
+import { startSessionAgent, type RunningAgent } from './agent/agent-host.js';
+import { RingWindow } from './agent/ring-window.js';
 import { currentCaptureMode, DisplayCapture, prepareScreenCapture } from './display-capture.js';
 import { buildContentSecurityPolicy } from './csp.js';
 import { deepLinkInArguments } from './deep-link.js';
+import { readAgentEnvironment } from './environment.js';
 import { DeepLinkInbox, type DeepLinkRefusal } from './deep-link-inbox.js';
 import { applyFirewall } from './firewall/apply.js';
 import { reportFailure } from './failure.js';
@@ -24,21 +33,31 @@ import {
   currentPlatform,
   type DesktopService,
 } from './service/desktop-service.js';
-import { showFfmpegMissing } from './service/dialogs.js';
 import { startService } from './service/startup.js';
 import { nodeSystem, runAwaitingApproval } from './service/system.js';
+import { OverlayDesktop } from './overlay/overlay-desktop.js';
+import { registerOverlayIpc } from './overlay/overlay-ipc.js';
 import { TalkDesktop } from './talk/talk-desktop.js';
-import { createTray, type DesktopTray } from './tray.js';
+import type { UpdateController } from './updates/update-controller.js';
+import { createDesktopUpdates, followUpdates } from './updates/update-shell.js';
+import { updateTrayItems } from './updates/update-tray.js';
+import { createTray, type DesktopTray, type TrayOptions } from './tray.js';
 import { readDesktopVariant, type DesktopVariant } from './variant.js';
 import { createMainWindow, revealWindow } from './window.js';
 
 const log = new Logger('desktop.main');
+setBackgroundScope('desktop.background');
+
+process.on('unhandledRejection', (cause: unknown) => {
+  log.exception('promise.unhandled', cause);
+});
 
 function logControlFailure(cause: unknown): void {
   reportFailure('The server control did not finish', cause);
 }
 
 function refuseDeepLink(refusal: DeepLinkRefusal): void {
+  log.warn('deep_link.refused', { reason: refusal.reason });
   dialog.showErrorBox('Link not opened', `${refusal.reason}; received ${refusal.received}`);
 }
 
@@ -54,7 +73,9 @@ function registerDeepLinkScheme(): void {
     startLinuxSchemeRegistration();
     return;
   }
-  if (!app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME)) {
+  const registered = app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+  log.debug('deep_link.scheme_registered', { scheme: DEEP_LINK_SCHEME, registered });
+  if (!registered) {
     reportFailure('Sign-in links will not open SmartEverything', {
       expected: `${DEEP_LINK_SCHEME}:// registered to this app`,
       received: 'the operating system refused the registration',
@@ -70,8 +91,12 @@ class DesktopShell {
   #tray: DesktopTray | undefined;
   #service: DesktopService | undefined;
   readonly #talk = new TalkDesktop();
+  readonly #overlay = new OverlayDesktop(import.meta.dirname);
   #quitting = false;
+  #overlayStopped = false;
   #closeHubNetwork: (() => void) | undefined;
+  #closeOverlayIpc: (() => void) | undefined;
+  #agent: RunningAgent | undefined;
 
   constructor(variant: DesktopVariant, capture: DisplayCapture) {
     this.#variant = variant;
@@ -79,22 +104,43 @@ class DesktopShell {
   }
 
   listen(): void {
-    app.on('before-quit', () => {
+    app.on('before-quit', (event) => {
       this.#quitting = true;
+      if (!this.#overlayStopped) {
+        this.#overlayStopped = true;
+        event.preventDefault();
+        this.#closeOverlayIpc?.();
+        this.#overlay
+          .stop()
+          .then(() => {
+            app.quit();
+          })
+          .catch((cause: unknown) => {
+            log.error('app.quit_failed', cause);
+          });
+        return;
+      }
+      log.info('app.quitting', { hadWindow: this.#window !== undefined });
       this.#tray?.destroy();
       this.#talk.stop();
       this.#closeHubNetwork?.();
       this.#service?.controller.close();
+      this.#agent?.stop().catch((cause: unknown) => {
+        log.error('agent.stop_failed', cause);
+      });
     });
     app.on('open-url', (event, url) => {
       event.preventDefault();
+      log.info('deep_link.received', { source: 'open-url', length: url.length });
       this.#inbox.receive(url);
     });
     app.on('second-instance', (_event, argv) => {
+      log.info('app.second_instance', { argumentCount: argv.length });
       this.#receiveFromArguments(argv);
       this.#reveal();
     });
     app.on('activate', () => {
+      log.debug('app.activated', { hasWindow: this.#window !== undefined });
       this.#reveal();
     });
   }
@@ -103,12 +149,14 @@ class DesktopShell {
     const platform = currentPlatform();
     const variant = this.#variant;
     const paths = desktopPaths(variant);
+    this.#logLaunch(platform);
     const service = createDesktopService(platform, paths, variant, (cause) => {
       log.error('desktop.service.watch_failed', cause);
     });
     this.#service = service;
     const config = await service.controller.config();
     serveWebExport(paths.webRoot);
+    this.#overlay.serve();
     enforceContentSecurityPolicy(
       session.defaultSession,
       buildContentSecurityPolicy(config.role === 'node' ? config.node.hub_url : serviceUrl(config)),
@@ -118,6 +166,24 @@ class DesktopShell {
     if (variant.managedBy === undefined) {
       registerDeepLinkScheme();
     }
+    const updates = await createDesktopUpdates(service);
+    this.#registerIpc(platform, service, updates);
+    this.#closeOverlayIpc = registerOverlayIpc(this.#overlay.controller, variant.startUrl);
+    if (variant.managedBy === undefined && (await this.#serviceDeclined(platform, service))) {
+      log.info('app.launch_declined');
+      app.quit();
+      return;
+    }
+    await this.#startAgent();
+    this.#open(paths, service, updates, await this.#registerHubNetwork(config));
+  }
+
+  #registerIpc(
+    platform: DesktopPlatform,
+    service: DesktopService,
+    updates: UpdateController,
+  ): void {
+    const variant = this.#variant;
     registerDesktopIpc({
       startUrl: variant.startUrl,
       managedBy: variant.managedBy,
@@ -126,15 +192,14 @@ class DesktopShell {
         this.#reveal();
       },
       service: service.controller,
-      ffmpeg: service.ffmpeg,
       talk: this.#talk,
+      overlay: this.#overlay,
       capture: this.#capture,
+      updates,
       applyFirewall: (revision) =>
         applyFirewall(
           {
             platform,
-            go2rtcBinary: paths.go2rtcBinary,
-            appBinary: process.execPath,
             server: () => service.controller.server(),
             fetch: nodeSystem.fetch,
             run: runAwaitingApproval,
@@ -142,23 +207,49 @@ class DesktopShell {
           revision,
         ),
     });
-    if (variant.managedBy === undefined && (await this.#serviceDeclined(platform, service))) {
-      app.quit();
-      return;
-    }
-    await this.#registerHubNetwork(service, config);
-    this.#open(paths, service);
   }
 
-  async #registerHubNetwork(service: DesktopService, config: ServiceConfig): Promise<void> {
-    const directory =
-      config.role === 'node' && process.platform === 'linux'
-        ? service.controller.dataDirectory
-        : undefined;
+  async #startAgent(): Promise<void> {
+    if (this.#variant.managedBy !== undefined) return;
+    const directory = sessionAgentDirectory(process.platform, {
+      ...readAgentEnvironment(),
+      home: app.getPath('home'),
+    });
+    if (directory === null) {
+      log.warn('agent.no_location', { platform: process.platform });
+      return;
+    }
+    try {
+      this.#agent = await startSessionAgent({
+        directory,
+        platform: process.platform,
+        actions: electronAgentActions({
+          shell,
+          ring: new RingWindow(),
+          screen: this.#capture,
+          now: () => new Date(),
+        }),
+      });
+    } catch (cause) {
+      log.error('agent.start_failed', cause);
+    }
+  }
+
+  #logLaunch(platform: DesktopPlatform): void {
+    log.info('app.launching', {
+      platform,
+      managedBy: this.#variant.managedBy ?? 'self',
+      packaged: app.isPackaged,
+      version: app.getVersion(),
+    });
+  }
+
+  async #registerHubNetwork(config: ServiceConfig): Promise<NativeHubCapabilities> {
+    const routeAuthority = config.role === 'node';
     const serverUrl = config.role === 'node' ? config.node.hub_url : serviceUrl(config);
-    this.#closeHubNetwork = await registerHubNetworkIpc(
+    const registration = await registerHubNetworkIpc(
       this.#variant.startUrl,
-      directory,
+      routeAuthority,
       (origin): void => {
         enforceContentSecurityPolicy(
           session.defaultSession,
@@ -166,6 +257,8 @@ class DesktopShell {
         );
       },
     );
+    this.#closeHubNetwork = registration.close;
+    return registration.capabilities;
   }
 
   async #serviceDeclined(platform: DesktopPlatform, service: DesktopService): Promise<boolean> {
@@ -175,8 +268,14 @@ class DesktopShell {
     return outcome === 'declined';
   }
 
-  #open(paths: ReturnType<typeof desktopPaths>, service: DesktopService): void {
+  #open(
+    paths: ReturnType<typeof desktopPaths>,
+    service: DesktopService,
+    updates: UpdateController,
+    capabilities: NativeHubCapabilities,
+  ): void {
     const window = createMainWindow({
+      capabilities,
       preload: paths.preload,
       icon: paths.icon,
       stateFile: paths.windowState,
@@ -188,6 +287,9 @@ class DesktopShell {
       isQuitting: () => this.#quitting,
     });
     this.#window = window;
+    log.info('window.opened', {
+      startHidden: process.argv.includes(HIDDEN_START_ARGUMENT) || wasOpenedAtLogin(),
+    });
     if (this.#variant.managedBy === 'stable-app') {
       showMetroUnreachable(window, this.#variant.startUrl);
     }
@@ -198,26 +300,50 @@ class DesktopShell {
       talk: (command) => {
         this.#talk.send(command);
       },
-      service: {
-        start: () => void service.controller.start().catch(logControlFailure),
-        stop: () => void service.controller.stop().catch(logControlFailure),
-        restart: () => void service.controller.restart().catch(logControlFailure),
-        showFfmpeg: () => {
-          showFfmpegMissing(service.ffmpeg());
-        },
-      },
+      overlayItems: () => this.#overlay.menuItems(),
+      updateItems: () => updateTrayItems(updates),
+      service: this.#trayService(service),
       quit: () => {
+        log.info('tray.quit_requested');
         app.quit();
       },
     });
     this.#talk.attach(window, this.#tray);
-    this.#follow(window, service);
+    this.#overlay.attach(window, this.#tray);
+    this.#talk.takeFirst((command) => this.#overlay.takesShortcut(command));
+    this.#follow(window, service, updates);
     this.#receiveFromArguments(process.argv);
   }
 
-  #follow(window: BrowserWindow, service: DesktopService): void {
+  #trayService(service: DesktopService): TrayOptions['service'] {
+    const request = (action: 'start' | 'stop' | 'restart'): void => {
+      log.info('tray.service_requested', { action });
+      void service.controller[action]().catch(logControlFailure);
+    };
+    return {
+      start: (): void => {
+        request('start');
+      },
+      stop: (): void => {
+        request('stop');
+      },
+      restart: (): void => {
+        request('restart');
+      },
+    };
+  }
+
+  #follow(window: BrowserWindow, service: DesktopService, updates: UpdateController): void {
+    const onService = followUpdates(updates, window, () => {
+      this.#tray?.refresh();
+    });
     const show = (status: DesktopServiceStatus | null): void => {
-      this.#tray?.show(status, service.ffmpeg());
+      onService(status);
+      log.debug('service.status_forwarded', () => ({
+        health: status?.health ?? null,
+        windowAlive: !window.isDestroyed(),
+      }));
+      this.#tray?.show(status);
       if (status !== null && !window.isDestroyed()) {
         window.webContents.send('desktop:service-status-changed', status);
       }
@@ -230,15 +356,18 @@ class DesktopShell {
 
   #receiveFromArguments(argv: readonly string[]): void {
     const link = deepLinkInArguments(argv);
+    log.debug('deep_link.scanned', { argumentCount: argv.length, found: link !== undefined });
     if (link !== undefined) {
       this.#inbox.receive(link);
     }
   }
 
   #reveal(): void {
-    if (this.#window !== undefined) {
-      revealWindow(this.#window);
+    if (this.#window === undefined) {
+      log.debug('window.reveal_skipped', { reason: 'no_window' });
+      return;
     }
+    revealWindow(this.#window);
   }
 }
 
@@ -247,7 +376,10 @@ function start(variant: DesktopVariant, capture: DisplayCapture): void {
   shell.listen();
   app
     .whenReady()
-    .then(() => shell.launch())
+    .then(() => {
+      log.info('app.ready', { platform: process.platform, arch: process.arch });
+      return shell.launch();
+    })
     .catch((error: unknown) => {
       reportFailure('SmartEverything could not start', error);
       app.exit(1);
@@ -256,7 +388,13 @@ function start(variant: DesktopVariant, capture: DisplayCapture): void {
 
 function main(): void {
   const squirrelEvent = squirrelEventOf(process.platform, process.argv);
+  log.info('app.starting', {
+    platform: process.platform,
+    electron: process.versions.electron,
+    argumentCount: process.argv.length,
+  });
   if (squirrelEvent !== undefined) {
+    log.info('squirrel.event', { event: squirrelEvent });
     handleSquirrelEvent(squirrelEvent);
     return;
   }
@@ -268,8 +406,10 @@ function main(): void {
   prepareScreenCapture(captureMode);
   if (app.requestSingleInstanceLock()) {
     const variant = readDesktopVariant(app.getAppPath());
+    log.debug('app.variant_read', { managedBy: variant.managedBy ?? 'self' });
     start(variant, new DisplayCapture(captureMode, variant.startUrl));
   } else {
+    log.info('app.single_instance_refused');
     app.quit();
   }
 }

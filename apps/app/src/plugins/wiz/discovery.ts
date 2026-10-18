@@ -1,9 +1,11 @@
+import { Logger } from '@smarteverything/logging';
 import { useState } from 'react';
 import { z } from 'zod';
 import { callPluginTool } from '../../api/plugins';
 import { rawErrorText } from '../../format/errors';
 import { plural } from '../../format/text';
 
+const log = new Logger('app.wiz');
 const SCAN_RESULT = z.object({
   devices: z.array(z.object({ externalId: z.string(), online: z.boolean() })).max(512),
   discoveryAvailable: z.boolean(),
@@ -31,10 +33,13 @@ export function useWizDiscovery(): {
   const discover = async (): Promise<void> => {
     if (state.phase === 'scanning') return;
     setState({ phase: 'scanning' });
+    const operation = log.operation('wiz.discover');
     try {
       const response = await callPluginTool('wiz', 'rescan', {});
+      operation.succeeded();
       setState({ phase: 'done', message: scanMessage(SCAN_RESULT.parse(response.result)) });
     } catch (error) {
+      operation.failed(error);
       setState({ phase: 'failed', message: `Discovery failed: ${rawErrorText(error)}` });
     }
   };

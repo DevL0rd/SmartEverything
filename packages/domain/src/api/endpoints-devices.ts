@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BUTTON_ACTIONS, DEVICE_LOG_ENTRY } from '../device-log';
 import { EVENT_KINDS } from '../events';
 import { JSON_VALUE } from '../values';
 import { NO_BODY, endpoint } from './endpoint';
@@ -24,6 +25,7 @@ import {
   ROOM_NAME,
   ROOM_ROW,
   STATE_ROW,
+  TELEVISION_INPUT_NAMES,
 } from './rows-home';
 
 export const COMMAND_INPUT = z.strictObject({
@@ -112,7 +114,8 @@ const DEVICE_ENDPOINTS = {
     method: 'PATCH',
     path: '/api/devices/:deviceId',
     access: 'member',
-    summary: 'Rename, place, hide, favourite or reorder a device',
+    summary:
+      'Rename, place, hide, favourite or reorder a device, or set the names of a television’s inputs (input id to name; the map replaces the old one)',
     params: DEVICE_PARAMS,
     query: NOTHING,
     body: somethingToChange({
@@ -121,8 +124,44 @@ const DEVICE_ENDPOINTS = {
       hidden: z.boolean(),
       favourite: z.boolean(),
       position: POSITION,
+      input_names: TELEVISION_INPUT_NAMES,
     }),
     response: DEVICE_ROW,
+  }),
+  readDeviceLog: endpoint({
+    method: 'GET',
+    path: '/api/devices/:deviceId/log',
+    access: 'member',
+    summary:
+      'What happened to a device, newest first: changes with who or what caused them, button presses with the automations they ran, events and cooking cycles; page with to = the oldest at',
+    params: DEVICE_PARAMS,
+    query: z.strictObject({ to: MOMENT.optional(), limit: queryLimit(20, 200) }),
+    body: NO_BODY,
+    response: z.array(DEVICE_LOG_ENTRY),
+  }),
+  pressDeviceButton: endpoint({
+    method: 'POST',
+    path: '/api/devices/:deviceId/press',
+    access: 'member',
+    summary:
+      'Press a wireless button from the app: records the press and runs the automations that react to it',
+    params: DEVICE_PARAMS,
+    query: NOTHING,
+    body: z.strictObject({ action: z.enum(BUTTON_ACTIONS) }),
+    response: z.strictObject({
+      automations: z.array(z.strictObject({ id: ID, name: z.string().min(1) })),
+    }),
+  }),
+  recordDeviceRefill: endpoint({
+    method: 'POST',
+    path: '/api/devices/:deviceId/refill',
+    access: 'member',
+    summary:
+      'Say that a scent diffuser has just been refilled: the date is kept for the whole household in the settings (device_refills) and appears in the device log',
+    params: DEVICE_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: DONE,
   }),
   listState: endpoint({
     method: 'GET',
@@ -170,9 +209,9 @@ const COMMAND_ENDPOINTS = {
     method: 'GET',
     path: '/api/commands',
     access: 'member',
-    summary: 'The most recent commands, newest first',
+    summary: 'The most recent commands, newest first; deviceId keeps one device’s',
     params: NOTHING,
-    query: z.strictObject({ limit: queryLimit(50, 500) }),
+    query: z.strictObject({ limit: queryLimit(50, 500), deviceId: ID.optional() }),
     body: NO_BODY,
     response: z.array(COMMAND_ROW),
   }),

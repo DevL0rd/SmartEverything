@@ -82,7 +82,7 @@ export class LogindPower implements PowerControl {
     if (session === null) {
       throw new NodeFailureError('no_session', 'Nobody is signed in on this computer.');
     }
-    await this.guarded(this.program('loginctl', [SESSION_VERBS[action], session]));
+    await guardedLogind(this.program('loginctl', [SESSION_VERBS[action], session]));
   }
 
   private async system(method: SystemMethod): Promise<void> {
@@ -93,7 +93,7 @@ export class LogindPower implements PowerControl {
         `${blocker.who} is stopping this computer from ${method.doing}: ${blocker.why}.`,
       );
     }
-    await this.guarded(this.program('busctl', ['call', ...LOGIND, method.call, 'b', 'false']));
+    await guardedLogind(this.program('busctl', ['call', ...LOGIND, method.call, 'b', 'false']));
   }
 
   private async answer(check: string): Promise<string> {
@@ -115,18 +115,18 @@ export class LogindPower implements PowerControl {
     );
     return found === undefined ? null : { who: found[1], why: found[2] };
   }
+}
 
-  private async guarded(work: Promise<string>): Promise<void> {
-    try {
-      await work;
-    } catch (cause) {
-      if (cause instanceof ProgramFailedError && NEEDS_PERMISSION.test(cause.output)) {
-        throw new NodeFailureError(
-          'not_permitted',
-          'This computer has not given SmartEverything permission for that yet.',
-        );
-      }
-      throw cause;
+export async function guardedLogind(work: Promise<string>): Promise<void> {
+  try {
+    await work;
+  } catch (cause) {
+    if (cause instanceof ProgramFailedError && NEEDS_PERMISSION.test(cause.output)) {
+      throw new NodeFailureError(
+        'not_permitted',
+        'This computer has not given SmartEverything permission for that yet.',
+      );
     }
+    throw cause;
   }
 }

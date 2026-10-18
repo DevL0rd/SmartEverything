@@ -1,4 +1,11 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
+import {
+  messagesTable,
+  rawState,
+  turnsOfChat,
+  turnsSlice,
+  workingTurns,
+} from '../../../store/subscriptions';
+import { useEffect, useMemo, useState } from 'react';
 import { isChatActivity, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { useRow, useRows } from '../../../store/selectors';
@@ -8,11 +15,11 @@ import { entryOf, type ChatPreview, type ChatWork } from '../chats/entries';
 import type { ChatEntry } from '../chats/chat-entry';
 import { footerFacts, type FooterFacts } from '../model/chat-footer';
 import { previewTextOf, failureReasonOf } from '../model/chat-preview';
-import { sameStatusDock, statusDockOf, type StatusDockView } from '../model/status-dock';
 import type { PluginNames } from '../model/chat-source';
-import { liveTurnOf, type Turn, type Turns } from '../../../store/chat-turns';
+import { isWorking, liveTurnOf, stepOf, type Turns } from '../../../store/chat-turns';
 import { callPreviewOf } from './call-transcript';
-import { ScreenPausedContext } from '../../../design/screen-pause';
+import { StreamParser, type StreamView } from '../model/stream-view';
+import { useScreenPaused } from '../../../design/screen-pause';
 
 const SELF_SOURCES: ReadonlySet<string> = new Set(['app', 'voice']);
 
@@ -31,12 +38,28 @@ function sameRows(
   return left.length === right.length && left.every((row, index) => row === right[index]);
 }
 
+const groupedMessages = memoOnInputs(
+  (state: StoreState) => [rawState(state).tables.assistant_messages],
+  (state): ReadonlyMap<string, readonly AssistantMessageRow[]> => {
+    const grouped = new Map<string, AssistantMessageRow[]>();
+    for (const row of rawState(state).tables.assistant_messages.rows) {
+      const rows = grouped.get(row.chat_id);
+      if (rows === undefined) grouped.set(row.chat_id, [row]);
+      else rows.push(row);
+    }
+    return grouped;
+  },
+);
+
+const NO_MESSAGES: readonly AssistantMessageRow[] = [];
+
+function messagesOfChat(state: StoreState, chatId: string): readonly AssistantMessageRow[] {
+  messagesTable(state, chatId);
+  return groupedMessages(state).get(chatId) ?? NO_MESSAGES;
+}
+
 export function useChatMessages(chatId: string): readonly AssistantMessageRow[] {
-  return useStoreSelector(
-    (state) => state.tables.assistant_messages.rows.filter((row) => row.chat_id === chatId),
-    sameRows,
-    [chatId],
-  );
+  return useStoreSelector((state) => messagesOfChat(state, chatId), sameRows, [chatId]);
 }
 
 function sameFacts(left: FooterFacts | null, right: FooterFacts | null): boolean {
@@ -55,12 +78,7 @@ export function useFooterFacts(chatId: string): FooterFacts | null {
   return useStoreSelector(
     (state) => {
       const chat = state.tables.ai_chats.byId[chatId];
-      return chat === undefined
-        ? null
-        : footerFacts(
-            chat,
-            state.tables.assistant_messages.rows.filter((row) => row.chat_id === chatId),
-          );
+      return chat === undefined ? null : footerFacts(chat, messagesOfChat(state, chatId));
     },
     sameFacts,
     [chatId],
@@ -70,36 +88,60 @@ export function useFooterFacts(chatId: string): FooterFacts | null {
 export interface LiveTurnView {
   readonly text: string;
   readonly working: boolean;
+  readonly view: StreamView;
+  readonly at: number | null;
 }
 
-const NO_TURN: LiveTurnView = { text: '', working: false };
+const NO_TURN: LiveTurnView = {
+  text: '',
+  working: false,
+  view: { settled: [], tail: '', pending: null },
+  at: null,
+};
 
-function viewOf(turns: Turns, chatId: string): LiveTurnView {
-  const turn = liveTurnOf(turns, chatId);
-  return turn === null ? NO_TURN : { text: turn.text, working: turn.state !== 'failed' };
+function liveViewOf(parser: StreamParser): (turns: Turns, chatId: string) => LiveTurnView {
+  let last = NO_TURN;
+  return (turns, chatId) => {
+    const turn = liveTurnOf(turns, chatId);
+    if (turn === null) return NO_TURN;
+    const working = turn.state !== 'failed';
+    if (turn.text === last.text) {
+      if (working !== last.working) last = { ...last, working };
+      return last;
+    }
+    last = { text: turn.text, working, view: parser.view(turn.text), at: Date.now() };
+    return last;
+  };
 }
+
+const LONG_TAIL = 2048;
+const LONG_TAIL_MS = 250;
 
 export function useLiveTurn(chatId: string, intervalMs: number, enabled: boolean): LiveTurnView {
   const store = useEntityStore();
-  const paused = useContext(ScreenPausedContext);
+  const paused = useScreenPaused();
   const [view, setView] = useState(NO_TURN);
   useEffect(() => {
     if (!enabled || paused) {
       return undefined;
     }
+    const read = liveViewOf(new StreamParser());
     let timer: ReturnType<typeof setTimeout> | null = null;
     let flushedAt = 0;
+    let gap = intervalMs;
     const flush = (): void => {
       timer = null;
       flushedAt = Date.now();
-      const next = viewOf(store.get().turns, chatId);
-      setView((current) =>
-        current.text === next.text && current.working === next.working ? current : next,
-      );
+      const next = read(store.get().turns, chatId);
+      gap = next.view.tail.length > LONG_TAIL ? Math.max(intervalMs, LONG_TAIL_MS) : intervalMs;
+      setView(next);
     };
     flush();
-    const unsubscribe = store.subscribe(() => {
-      timer ??= setTimeout(flush, Math.max(0, flushedAt + intervalMs - Date.now()));
+    const unsubscribe = store.subscriptions.add({
+      reads: new Set([turnsSlice(chatId)]),
+      wake: () => {
+        timer ??= setTimeout(flush, Math.max(0, flushedAt + gap - Date.now()));
+      },
     });
     return (): void => {
       unsubscribe();
@@ -111,20 +153,9 @@ export function useLiveTurn(chatId: string, intervalMs: number, enabled: boolean
   return enabled ? view : NO_TURN;
 }
 
-export function useChatTurnField<T>(chatId: string, pick: (turn: Turn) => T): T | null {
-  return useStoreSelector((state) => {
-    const turn = liveTurnOf(state.turns, chatId);
-    return turn === null ? null : pick(turn);
-  });
-}
-
-export function useStatusDock(chatId: string): StatusDockView | null {
-  return useStoreSelector((state) => statusDockOf(state.turns, chatId), sameStatusDock, [chatId]);
-}
-
 export function useChatWorking(chatId: string): boolean {
   return useStoreSelector((state) => {
-    const turn = liveTurnOf(state.turns, chatId);
+    const turn = liveTurnOf(turnsOfChat(state, chatId), chatId);
     return turn !== null && turn.state !== 'failed';
   });
 }
@@ -193,15 +224,10 @@ function sameMap<T>(
   return true;
 }
 
-function stepOf(turn: Turn): string | null {
-  const running = turn.tools.findLast((tool) => tool.state === 'running');
-  return running?.title ?? turn.steps.at(-1) ?? null;
-}
-
 function workingOf(turns: Turns): ReadonlyMap<string, ChatWork> {
   const working = new Map<string, ChatWork>();
   for (const turn of Object.values(turns)) {
-    if (turn.state !== 'idle' && turn.state !== 'failed') {
+    if (isWorking(turn)) {
       working.set(turn.chatId, { step: stepOf(turn) });
     }
   }
@@ -209,8 +235,8 @@ function workingOf(turns: Turns): ReadonlyMap<string, ChatWork> {
 }
 
 const workingOfState = memoOnInputs(
-  (state: StoreState) => [state.turns],
-  (state) => workingOf(state.turns),
+  (state: StoreState) => [workingTurns(state)],
+  (state) => workingOf(workingTurns(state)),
 );
 
 const pluginNamesOf = memoOnInputs(

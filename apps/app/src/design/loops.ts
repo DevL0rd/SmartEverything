@@ -25,12 +25,20 @@ export const BLINK = css.keyframes({
   '100%': { opacity: 1 },
 });
 
+export const EYE_BLINK = css.keyframes({
+  '0%': { transform: [{ scaleY: 1 }] },
+  '3%': { transform: [{ scaleY: 0.08 }] },
+  '6%': { transform: [{ scaleY: 1 }] },
+  '100%': { transform: [{ scaleY: 1 }] },
+});
+
 export const RING = css.keyframes({
   from: { opacity: 0.8, transform: [{ scale: 0.82 }] },
   to: { opacity: 0, transform: [{ scale: 1.32 }] },
 });
 
 const rises = new Map<number, CSSKeyframesRule>();
+const hops = new Map<number, CSSKeyframesRule>();
 const drifts = new Map<number, CSSKeyframesRule>();
 const sweeps = new Map<number, CSSKeyframesRule>();
 const sways = new Map<number, CSSKeyframesRule>();
@@ -56,6 +64,19 @@ export function rise(distance: number): CSSKeyframesRule {
       '0%': { opacity: 0, transform: [{ translateY: 0 }, { scale: 0.55 }] },
       '25%': { opacity: 0.9, transform: [{ translateY: -travel * 0.25 }, { scale: 0.8 }] },
       '100%': { opacity: 0, transform: [{ translateY: -travel }, { scale: 1.3 }] },
+    }),
+  );
+}
+
+export function hop(distance: number): CSSKeyframesRule {
+  const travel = Math.round(distance);
+  return cached(hops, travel, () =>
+    css.keyframes({
+      '0%': { transform: [{ translateY: 0 }] },
+      '30%': { transform: [{ translateY: -travel }] },
+      '55%': { transform: [{ translateY: 0 }] },
+      '75%': { transform: [{ translateY: -travel * 0.5 }] },
+      '100%': { transform: [{ translateY: 0 }] },
     }),
   );
 }
@@ -107,9 +128,10 @@ export interface LoopStyle {
   readonly animationIterationCount: number | 'infinite';
   readonly animationDirection: 'alternate' | 'normal';
   readonly animationFillMode: 'none' | 'both';
+  readonly animationPlayState: 'running' | 'paused';
 }
 
-export function loopStyle(loop: Loop, running: boolean): LoopStyle | null {
+export function loopStyle(loop: Loop, running: boolean, frozen = false): LoopStyle | null {
   if (!running) {
     return null;
   }
@@ -121,7 +143,12 @@ export function loopStyle(loop: Loop, running: boolean): LoopStyle | null {
     animationIterationCount: loop.times ?? 'infinite',
     animationDirection: loop.alternate === true ? 'alternate' : 'normal',
     animationFillMode: loop.times === undefined ? 'none' : 'both',
+    animationPlayState: frozen ? 'paused' : 'running',
   };
+}
+
+export function opacityOnly(motion: LoopStyle | null | undefined): boolean {
+  return motion?.animationName === BREATHE || motion?.animationName === BLINK;
 }
 
 export const EASE_IN_OUT: CSSAnimationTimingFunction = 'ease-in-out';

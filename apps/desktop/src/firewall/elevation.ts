@@ -1,11 +1,9 @@
 import {
-  COMMAND_SEPARATOR,
-  firewallArgv,
+  encodedPowerShell,
   firewallScript,
   type DesktopPlatform,
   type FirewallPlan,
 } from '@smarteverything/domain';
-import { encodedPowerShell } from '@smarteverything/hub/firewall/powershell';
 
 export interface ElevatedRun {
   readonly program: string;
@@ -35,46 +33,20 @@ const PLAN_PLATFORM: Readonly<Record<FirewallPlan['backend'], DesktopPlatform>> 
   macos: 'darwin',
 };
 
-const RUN_EACH_COMMAND = [
-  'set -e',
-  'while [ "$#" -gt 0 ]; do',
-  '  count=0',
-  '  for word do',
-  `    if [ "$word" = '${COMMAND_SEPARATOR}' ]; then break; fi`,
-  '    count=$((count + 1))',
-  '  done',
-  '  (',
-  '    index=0',
-  '    for word do',
-  '      shift',
-  '      if [ "$index" -lt "$count" ]; then set -- "$@" "$word"; fi',
-  '      index=$((index + 1))',
-  '    done',
-  '    "$@"',
-  '  )',
-  '  shift "$count"',
-  '  if [ "$#" -gt 0 ]; then shift; fi',
-  'done',
-].join('\n');
-
-const RUN_EACH_COMMAND_AS_ADMINISTRATOR = [
+const MAC_RUN_SCRIPT_AS_ADMINISTRATOR = [
   'on run argv',
-  '  set commandLine to ""',
-  '  repeat with word in argv',
-  `    if (word as text) is "${COMMAND_SEPARATOR}" then`,
-  '      set commandLine to commandLine & " && "',
-  '    else',
-  '      set commandLine to commandLine & quoted form of (word as text) & " "',
-  '    end if',
-  '  end repeat',
-  '  do shell script commandLine with administrator privileges',
+  '  do shell script (item 1 of argv) with administrator privileges',
   'end run',
 ];
+
+function posixScript(plan: FirewallPlan): string {
+  return ['set -e', ...firewallScript(plan)].join('\n');
+}
 
 function linuxRun(plan: FirewallPlan): ElevatedRun {
   return {
     program: 'pkexec',
-    args: ['/bin/sh', '-c', RUN_EACH_COMMAND, 'firewall', ...firewallArgv(plan)],
+    args: ['/bin/sh', '-c', posixScript(plan)],
     declinedWhen: (exitCode) => exitCode === PKEXEC_DISMISSED || exitCode === PKEXEC_NOT_AUTHORIZED,
   };
 }
@@ -104,10 +76,7 @@ function windowsRun(lines: readonly string[]): ElevatedRun {
 function macRun(plan: FirewallPlan): ElevatedRun {
   return {
     program: 'osascript',
-    args: [
-      ...RUN_EACH_COMMAND_AS_ADMINISTRATOR.flatMap((line) => ['-e', line]),
-      ...firewallArgv(plan),
-    ],
+    args: [...MAC_RUN_SCRIPT_AS_ADMINISTRATOR.flatMap((line) => ['-e', line]), posixScript(plan)],
     declinedWhen: (_exitCode, output) => output.includes(APPLESCRIPT_CANCELLED),
   };
 }

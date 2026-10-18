@@ -1,7 +1,7 @@
 import { useIsFocused } from 'expo-router';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { SHELLY_AREA, type ShellyArea } from '@smarteverything/domain';
+import { SHELLY_AREA, type ShellyArea } from '@smarteverything/shelly';
 import { Text } from '../../components/text';
 import { Button } from '../../components/button';
 import { TextField } from '../../components/text-field';

@@ -1,7 +1,5 @@
-import { sha1 } from '@noble/hashes/legacy.js';
-import { sha256 } from '@noble/hashes/sha2.js';
 import type { XIAOMI_REGIONS } from '@smarteverything/domain';
-import { base64ToBytes, bytesToBase64, bytesToUtf8, concatBytes, utf8ToBytes } from './bytes';
+import { bytesToUtf8, digest, utf8ToBytes } from './bytes';
 import { rc4Drop1024 } from './rc4';
 
 export type XiaomiRegion = (typeof XIAOMI_REGIONS)[number];
@@ -40,7 +38,7 @@ export function createNonce(random: Uint8Array, nowMs: number): Uint8Array {
 }
 
 export function signedNonce(ssecurity: string, nonce: Uint8Array): Uint8Array {
-  return sha256(concatBytes(base64ToBytes(ssecurity), nonce));
+  return digest('sha256', Uint8Array.fromBase64(ssecurity), nonce);
 }
 
 export function signFields(
@@ -53,11 +51,11 @@ export function signFields(
     request.path,
     ...fields.map(([name, value]) => `${name}=${value}`),
   ];
-  return bytesToBase64(sha1(utf8ToBytes([...parts, bytesToBase64(key)].join('&'))));
+  return digest('sha1', utf8ToBytes([...parts, key.toBase64()].join('&'))).toBase64();
 }
 
 function encrypt(key: Uint8Array, text: string): string {
-  return bytesToBase64(rc4Drop1024(key, utf8ToBytes(text)));
+  return rc4Drop1024(key, utf8ToBytes(text)).toBase64();
 }
 
 export function encryptRequest(request: SignedRequest): FormFields {
@@ -70,10 +68,10 @@ export function encryptRequest(request: SignedRequest): FormFields {
   return [
     ...encrypted,
     ['signature', signFields(request, encrypted, key)],
-    ['_nonce', bytesToBase64(request.nonce)],
+    ['_nonce', request.nonce.toBase64()],
   ];
 }
 
 export function decryptResponse(ssecurity: string, nonce: Uint8Array, body: string): string {
-  return bytesToUtf8(rc4Drop1024(signedNonce(ssecurity, nonce), base64ToBytes(body)));
+  return bytesToUtf8(rc4Drop1024(signedNonce(ssecurity, nonce), Uint8Array.fromBase64(body)));
 }

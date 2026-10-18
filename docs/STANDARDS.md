@@ -63,8 +63,19 @@ why it is the way it is. Never edit what you have not read.
 ### Documented exceptions to "no polling"
 
 - **Clock jump on non-Linux hubs** (`apps/hub/src/clock/resume-watch.ts`, `drift.ts`): Linux re-arms timers on the logind `PrepareForSleep(false)` signal. Windows and macOS hubs run as plain Node services (Run-key launcher, launchd agent) with no power event, so one unref'd 5 s interval compares wall-clock time and re-arms timers when it jumped by more than 8 s. If Linux has no system bus (containers, the fixture sandbox), the hub logs one `clock.resume_watch_unavailable` warning and does not poll.
-- New contract fields are optional or defaulted, and readers ignore fields they do not know (writers stay strict), so an
-  older app keeps working against a newer server and a rollback of either side never breaks the other.
+- **Polls where the source offers no push** (intervals are the defaults in code): Samsung TV power state (5 s), Xiaomi LAN state (10 s), cloud state (60 s) and camera events (15 s when the camera cannot push), Tuya cloud IR learn result and Smart Life QR scan result (2 s each), Discord typing pulse (8 s, keeps the indicator alive while a reply is written).
+- **Always-on history sampling** (the history interval, 1 s by default, and its window are settings per device and per source class): every machine and service stat is read on that grid into a bounded in-memory ring, watched or not, so a page that opens shows the last minutes at once. Only what goes over the wire is demand-driven.
+  - Computer readings (`apps/hub/src/node/collectors/sampler.ts`, also the hub's own computer): all topics except processes are recorded every interval; parts reach clients only for demanded topics (summary every 10 s otherwise); processes are sampled every second only while the Processes page is open; slow hwmon inputs (10 s) are the exception to the grid.
+  - Router (`apps/hub/src/plugins/builtin/router/collector.ts`): counters over the persistent SSH shell every second, settling at 2 s if the router's own CPU rises by more than 5 points at 1 s (logged `router.interval_settled`); the full frame (clients, radios, system) every 10 s while viewed and every 30 s otherwise; the snapshot stream is published every second while viewed and every 30 s otherwise.
+  - Syncthing (`apps/hub/src/plugins/builtin/syncthing/sync-monitor.ts`): transfer rates from `/rest/system/connections` every second; the snapshot is published every second while viewed and every 10 s otherwise; folder and device state stays event driven (`/rest/events`).
+  - AdGuard Home (`apps/hub/src/plugins/builtin/adguard/monitor.ts`): `/control/stats` every second (lookup and blocked rates), status every 10 s, clients and filter lists every 60 s; the snapshot is published every second while viewed and every 60 s otherwise.
+  - Router, Syncthing and AdGuard snapshot streams are `live: true` (memory per frame, newest written to SQLite every 60 s and on stop).
+
+## Compatibility
+
+- App and hub are released together from this repository. There are no version shims, legacy dialects or fallbacks for
+  older peers: a changed message or field changes both sides in the same commit.
+- Readers ignore fields and messages they do not know; writers stay strict.
 
 ## MCP and search coverage
 

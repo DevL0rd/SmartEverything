@@ -1,7 +1,8 @@
 import { QUESTION_ANSWER, admitQuestionAnswer } from './question-answer';
+import { reaskedReply } from './reasked-reply';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { JSON_VALUE, AI_HARNESS_INTERACTION } from '@smarteverything/domain';
+import { JSON_VALUE, AI_HARNESS_INTERACTION, appendTo } from '@smarteverything/domain';
 import type { AiHarnessAnswer, AiHarnessInteraction } from '@smarteverything/domain';
 import type { HarnessInteractionPort } from '../host/interactions';
 import { HarnessRuntimeError } from '../host/errors';
@@ -10,13 +11,13 @@ const APPROVAL = z.enum(['allowed-once', 'rejected', 'cancelled', 'unavailable']
 interface Pending {
   readonly sessionId: string;
   readonly epoch: number;
-  readonly request: unknown;
+  readonly request: AiHarnessInteraction['request'];
   readonly kind: AiHarnessInteraction['kind'];
   readonly settle: (value: unknown) => void;
-  readonly reject: (cause: Error) => void;
 }
 export class ProcessInteractions implements HarnessInteractionPort {
   private readonly pending = new Map<string, Pending>();
+  private readonly cancelled = new Map<string, AiHarnessInteraction[]>();
   constructor(
     private readonly epoch: (id: string) => number,
     private readonly publish: (id: string, interaction: AiHarnessInteraction | null) => void,
@@ -34,6 +35,34 @@ export class ProcessInteractions implements HarnessInteractionPort {
           ]
         : [],
     );
+  }
+  takeCancelled(sessionId: string): AiHarnessInteraction[] {
+    const asked = this.cancelled.get(sessionId) ?? [];
+    this.cancelled.delete(sessionId);
+    return asked;
+  }
+  forget(sessionId: string): void {
+    this.cancelled.delete(sessionId);
+  }
+  restore(
+    sessionId: string,
+    asked: readonly AiHarnessInteraction[],
+    steer: (text: string) => void,
+  ): void {
+    for (const item of asked) {
+      const id = randomUUID();
+      const epoch = this.epoch(sessionId);
+      this.pending.set(id, {
+        sessionId,
+        epoch,
+        kind: item.kind,
+        request: item.request,
+        settle: (answer): void => {
+          steer(reaskedReply(item, answer));
+        },
+      });
+      this.publish(sessionId, { id, epoch, kind: item.kind, request: item.request });
+    }
   }
   approve: HarnessInteractionPort['approve'] = async (request) => {
     const answer = await this.ask(
@@ -90,6 +119,7 @@ export class ProcessInteractions implements HarnessInteractionPort {
   ): Promise<unknown> {
     const id = randomUUID();
     const epoch = this.epoch(sessionId);
+    const payload = JSON_VALUE.parse(request);
     let abort: (() => void) | undefined;
     try {
       return await new Promise<unknown>((resolve, reject) => {
@@ -97,9 +127,8 @@ export class ProcessInteractions implements HarnessInteractionPort {
           sessionId,
           epoch,
           kind,
-          request: JSON_VALUE.parse(request),
+          request: payload,
           settle: resolve,
-          reject,
         });
         abort = (): void => {
           reject(new HarnessRuntimeError('operation_failed', 'Native interaction was cancelled.'));
@@ -109,11 +138,15 @@ export class ProcessInteractions implements HarnessInteractionPort {
           return;
         }
         signal?.addEventListener('abort', abort, { once: true });
-        this.publish(sessionId, { id, epoch, kind, request: JSON_VALUE.parse(request) });
+        this.publish(sessionId, { id, epoch, kind, request: payload });
       });
     } finally {
       if (abort !== undefined) signal?.removeEventListener('abort', abort);
-      if (this.pending.delete(id)) this.publish(sessionId, null);
+      if (this.pending.delete(id)) {
+        if (signal?.aborted === true)
+          appendTo(this.cancelled, sessionId, { id, epoch, kind, request: payload });
+        this.publish(sessionId, null);
+      }
     }
   }
 }

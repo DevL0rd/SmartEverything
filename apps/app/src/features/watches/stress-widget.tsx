@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { WidgetSize } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 import { FillChart } from '../../components/charts';
 import { Figure } from '../../components/figure';
 import { Text } from '../../components/text';
 import { WidgetFrame, type WidgetDefinition } from '../../components/widget-board';
+import { allSizes, isTile } from '../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../components/widget-board/use-widget-face';
 import { errorText } from '../../format/errors';
 import { joinParts } from '../../format/text';
 import { stressLevel, useWatchToday, type WatchDay } from './watch-days';
@@ -26,10 +27,10 @@ function StressChart({ stress }: { readonly stress: WatchDay }): ReactNode {
 
 function StressBody({
   stress,
-  size,
+  tile,
 }: {
   readonly stress: WatchDay;
-  readonly size: WidgetSize;
+  readonly tile: boolean;
 }): ReactNode {
   if (stress.latest === null || stress.average === null || stress.maximum === null) {
     return (
@@ -43,14 +44,14 @@ function StressBody({
       <Figure
         value={String(stress.latest)}
         unit={stressLevel(stress.latest)}
-        size={size === 'S' ? 'm' : 'l'}
+        size={tile ? 'm' : 'l'}
       />
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {joinParts([`Average ${String(stress.average)}`, `Peak ${String(stress.maximum)}`])}
       </Text>
     </View>
   );
-  if (size === 'S') {
+  if (tile) {
     return (
       <View className="flex-1 gap-2">
         {headline}
@@ -60,14 +61,15 @@ function StressBody({
   }
   return (
     <View className="flex-1 flex-row gap-4">
-      <View className="w-36 justify-center">{headline}</View>
+      <View className="w-1/2 max-w-56 justify-center">{headline}</View>
       <StressChart stress={stress} />
     </View>
   );
 }
 
-function StressContent({ size }: { readonly size: WidgetSize }): ReactNode {
+function StressContent(): ReactNode {
   const today = useWatchToday();
+  const tile = isTile(useWidgetFace().cls);
   if (today.kind === 'loading') {
     return null;
   }
@@ -78,10 +80,10 @@ function StressContent({ size }: { readonly size: WidgetSize }): ReactNode {
       </Text>
     );
   }
-  return <StressBody stress={today.stress} size={size} />;
+  return <StressBody stress={today.stress} tile={tile} />;
 }
 
-function StressWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+function StressWidget(): ReactNode {
   const watch = useMyWatch();
   return (
     <WidgetFrame
@@ -89,20 +91,17 @@ function StressWidget({ size }: { readonly size: WidgetSize }): ReactNode {
       icon="brain"
       accent="viz-3"
       href={watch === null ? href.connect('watch') : href.device(watch)}
-      size={size}
     >
-      <StressContent size={size} />
+      <StressContent />
     </WidgetFrame>
   );
 }
 
-const SIZES = ['S', 'M', 'W'] as const;
-
 export const STRESS_WIDGET: WidgetDefinition = {
   type: 'stress',
   title: 'Stress',
-  icon: 'heartPulse',
-  sizes: { compact: SIZES, medium: SIZES, expanded: SIZES },
+  icon: 'brain',
+  sizes: allSizes('M', 'W'),
   defaultSize: 'M',
-  render: ({ size }) => <StressWidget size={size} />,
+  render: () => <StressWidget />,
 };

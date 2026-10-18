@@ -1,3 +1,4 @@
+import { Logger, background } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -8,25 +9,28 @@ import { NumberStepper } from '../../../components/number-stepper';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
+import { useCommittedNumber } from '../../../design/use-committed-number';
 import { useEntityStore } from '../../../store/store-context';
 import { useMaxHeartRateSetting } from '../data/goals';
 import { useBestDay } from '../data/queries';
 import { writeFitnessSettings } from '../data/settings-write';
 import { maxHeartRateFromData } from '../model/goals';
 
+const log = new Logger('app.fitness');
 const STANDARD_MAX = 190;
 
-function useSave(): (value: number | null) => void {
+function useSave(): (value: number | null) => Promise<void> {
   const store = useEntityStore();
-  return (value) => {
+  return (value) =>
     writeFitnessSettings(store, { maxHeartRate: value }).catch((error: unknown) => {
+      log.warn('fitness.max_heart_rate_failed', { cleared: value === null });
       notify({
         message: 'Maximum heart rate was not changed',
         error,
         tone: 'critical',
       });
+      throw error;
     });
-  };
 }
 
 function Editor({
@@ -36,8 +40,12 @@ function Editor({
 }: {
   readonly setting: number | null;
   readonly highest: number | null;
-  readonly save: (value: number | null) => void;
+  readonly save: (value: number | null) => Promise<void>;
 }): ReactNode {
+  const committed = useCommittedNumber(setting, save);
+  const apply = (value: number | null): void => {
+    background(save(value), 'fitness.max_heart_rate_failed');
+  };
   return (
     <View className="gap-4">
       <Text variant="callout" tone="variant">
@@ -45,12 +53,12 @@ function Editor({
       </Text>
       <NumberStepper
         label="Maximum heart rate"
-        value={setting ?? highest ?? STANDARD_MAX}
+        value={committed.shown ?? highest ?? STANDARD_MAX}
         min={MAX_HEART_RATE_LIMITS.min}
         max={MAX_HEART_RATE_LIMITS.max}
         step={MAX_HEART_RATE_LIMITS.step}
         unit="bpm"
-        onChange={save}
+        onChange={committed.set}
       />
       <View className="flex-row flex-wrap gap-2">
         {highest === null ? null : (
@@ -58,7 +66,7 @@ function Editor({
             label={`Use highest in my data (${String(highest)})`}
             variant="tonal"
             onPress={() => {
-              save(highest);
+              apply(highest);
             }}
           />
         )}
@@ -67,7 +75,7 @@ function Editor({
             label="Work it out for me"
             variant="text"
             onPress={() => {
-              save(null);
+              apply(null);
             }}
           />
         )}

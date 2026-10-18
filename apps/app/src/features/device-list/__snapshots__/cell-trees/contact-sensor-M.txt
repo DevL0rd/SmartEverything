@@ -1,0 +1,34 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1" onLayout=undefined pointerEvents="box-none" ref={current:null}
+      View className="flex-1 gap-1.5" pointerEvents="box-none"
+        View className="flex-1 flex-row gap-3" pointerEvents="box-none"
+          View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
+            View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
+              Svg.default height=96 viewBox="0 0 100 100" width=96
+                Svg.Ellipse cx=50 cy=92 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=34 ry=4
+                Svg.Path d="M23 6 H77 A3 3 0 0 1 80 9 V91 A3 3 0 0 1 77 94 H23 A3 3 0 0 1 20 91 V9 A3 3 0 0 1 23 6 Z" fill="#1a2836" stroke="#3d444b" strokeWidth=0.6
+                Svg.Path d="M24 10H76V90H24Z" fill="#474c51"
+                Svg.Path d="M24 10L54 20V80L24 90Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#3d444b" strokeLinejoin="round" strokeWidth=0.6
+                Svg.Circle cx=48 cy=52 fill="#6a6866" r=2.2
+          View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
+            View accessibilityLabel="Device 0, Room 0. Open. Not opened today. Battery 80 percent" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
+              View className="flex-row items-center justify-between gap-2"
+                Text className="font-sans-medium text-body text-on-surface text-left min-w-0 flex-1" numberOfLines=1 selectable=false
+              Text className="font-sans text-footnote text-warning text-left" numberOfLines=1 selectable=false
+              View className="flex-row items-end gap-3 overflow-hidden pt-0.5"
+                Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+                View accessibilityLabel="80 %" accessibilityRole="image" accessible=true className="flex-row items-center gap-1.5"
+                  View aria-hidden=true className="flex-row gap-0.5"
+                    View className="h-2 w-2.5 rounded-xs bg-positive"
+                    View className="h-2 w-2.5 rounded-xs bg-positive"
+                    View className="h-2 w-2.5 rounded-xs bg-positive"
+                    View className="h-2 w-2.5 rounded-xs bg-positive"
+                  Text className="font-sans-medium text-caption text-on-surface-variant text-left tabular" selectable=false
+            View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
+              View aria-hidden=true className="w-full items-center justify-center" style={height:28}
+                View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
+                View className="rounded-xs bg-surface-1 px-2"
+                  Text className="font-sans-medium text-caption text-on-surface-variant text-left" numberOfLines=1 selectable=false
+        View className="flex-row items-center gap-2" pointerEvents="box-none"
+          View className="min-w-0 flex-1 items-end" pointerEvents="none"

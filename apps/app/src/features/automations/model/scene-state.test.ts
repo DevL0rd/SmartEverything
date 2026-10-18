@@ -89,7 +89,7 @@ describe('reading and validating scenes', () => {
     const gone = '30000000-0000-4000-8000-000000000001';
     expect(validateScene(EMPTY_SCENE, DEVICES)).toEqual({
       valid: false,
-      problems: ['Give the scene a name.', 'Add at least one device setting.'],
+      problems: { name: ['Give it a name.'], steps: ['Add at least one device.'] },
     });
     expect(
       validateScene(
@@ -102,12 +102,14 @@ describe('reading and validating scenes', () => {
       ),
     ).toEqual({
       valid: false,
-      problems: [
-        'The name must be at most 80 characters.',
-        'Step 1: uses a device that is no longer in this home',
-        'Step 2: Expected a number value: outside 1 to 100. Received 900.',
-        'Step 3: sets brightness on the same device twice',
-      ],
+      problems: {
+        name: ['Use at most 80 characters.'],
+        steps: [
+          '1. uses a device that is no longer here',
+          '2. Expected a number value: outside 1 to 100. Received 900.',
+          '3. sets the same thing twice',
+        ],
+      },
     });
   });
 });

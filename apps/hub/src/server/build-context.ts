@@ -2,8 +2,10 @@ import type { Logger } from '@smarteverything/logging';
 import { PreviewService } from '../preview/service';
 import { createImageRuntime, type ImageRuntime } from './image-wiring';
 import { ComputerAiDirectory } from '../computers/ai-directory';
+import { EarsRelay } from '../computers/ears-relay';
 import { HarnessService } from '../harness/service';
 import { HarnessRoutes } from '../harness/routes';
+import { harnessTransport, type HarnessTransportPorts } from '../harness/transport';
 import { ComputerNodeAccess } from '../computers/node-access';
 import { ComputerHarnessSockets } from './harness-socket';
 import { ComputerNodeSockets } from './node-socket';
@@ -13,11 +15,14 @@ import { OpenCalls } from '../assistant-voice/open-calls';
 import { FoodLookup } from '../foods/food-lookup';
 import { PushCommandChannel } from '../extensions/push/commands';
 import { WatchActionBroker } from '../local/watch-actions';
+import { MachineApprovals } from '../machines/approval';
 import { WatchDataService } from '../local/watch-data';
 import { createOpenRouter } from '../openrouter/platform';
 import { OpenRouterTranscription } from '../openrouter/transcription';
 import { PlaceFinder } from '../places/place-finder';
 import { TalkService } from '../talk/talk-service';
+import type { Store } from '../store/store';
+import type { StoredAttachment } from '../store/repositories/assistant-chat';
 import { MediaNotes } from '../transcripts/media-notes';
 import { OpenRouterMediaNotes } from '../openrouter/media-notes';
 import { WeatherService } from '../weather/weather-service';
@@ -79,10 +84,21 @@ function accessOf(options: BuildOptions, live: LiveHub): AccessService {
     dataDirectory: options.dataDirectory,
     now: options.clock.now,
     ...(options.connections === undefined ? {} : { connections: options.connections }),
-    ownerChanged: (clientId): void => {
+    clientWithdrawn: (clientId): void => {
       live.closeClient(clientId);
     },
+    clientPaused: (clientId): void => {
+      live.reconnectClient(clientId);
+    },
   });
+}
+
+function modalitiesOf(store: Store, file: StoredAttachment): readonly string[] | null {
+  if (file.message_id === null) return null;
+  const chat = store.aiChats.chat(store.assistantChat.message(file.message_id).chat_id);
+  if (chat.engine.kind !== 'dsh') return null;
+  const model = chat.engine.model;
+  return store.aiModels.all().find((row) => row.id === model)?.input_modalities ?? null;
 }
 
 function outboundOf(
@@ -102,6 +118,8 @@ function outboundOf(
       chat: options.store.assistantChat,
       ledger: options.store.ledger,
       filesRoot: join(options.dataDirectory, 'assistant'),
+      describeImages: (): boolean => options.store.assistantChat.settings().describe_images,
+      inputModalities: (file) => modalitiesOf(options.store, file),
       log: options.log.forArea('hub.assistant'),
     }),
     openRouter,
@@ -119,7 +137,7 @@ function outboundOf(
     }),
     places: new PlaceFinder({
       request: { fetch: options.fetch, version: options.version },
-      now: options.clock.now,
+      clock: options.clock,
       log: options.log.forArea('hub.places'),
     }),
   };
@@ -134,13 +152,17 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
   assistant.attachLedger(options.store.ledger);
   assistant.attachMediaNotes(outbound.mediaNotes);
   const pushCommands = new PushCommandChannel();
-  pushCommands.attachLive((clientId, notice, receiver) => live.deliver(clientId, notice, receiver));
+  pushCommands.attachLive((clientId, notice) => live.deliver(clientId, notice));
+  const preview = previewOf(options, live, { harness, access: computers.computerNodes, assistant });
   return {
     ...connectionContext(options),
     store: options.store,
     harness,
-    preview: previewOf(options, live, { harness, access: computers.computerNodes, assistant }),
-    harnessSockets: harnessSocketsOf(options, computers.computerNodes, harness),
+    preview,
+    harnessSockets: harnessSocketsOf(options, computers.computerNodes, {
+      harness,
+      transport: { assistant, preview },
+    }),
     imageRuntime: imagesOf(options, live, assistant, outbound.mediaNotes),
     ...computers,
     hub: options.core.hub,
@@ -155,6 +177,7 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
     openCalls: new OpenCalls(),
     talk: talkOf(options, live),
     assistant,
+    machineApprovals: machineApprovalsOf(options, pushCommands),
     watchActions: new WatchActionBroker(
       pushCommands,
       options.store,
@@ -166,6 +189,10 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
     recordingPath: options.core.recordingPath,
     log,
   };
+}
+
+function machineApprovalsOf(options: BuildOptions, push: PushCommandChannel): MachineApprovals {
+  return new MachineApprovals(push, options.store, options.log.forArea('hub.machine'));
 }
 
 function previewOf(
@@ -196,7 +223,7 @@ function previewOf(
 function computerServicesOf(
   options: BuildOptions,
   live: LiveHub,
-): Pick<ServerContext, 'computerAi' | 'computerNodes' | 'nodeSockets'> {
+): Pick<ServerContext, 'computerAi' | 'computerNodes' | 'nodeSockets' | 'computerEars'> {
   const log = options.log.forArea('hub.computers');
   const computerAi = new ComputerAiDirectory(options.store, log);
   computerAi.onChange((status) => {
@@ -223,7 +250,7 @@ function computerServicesOf(
   });
   const computerNodes = new ComputerNodeAccess(options.store, options.clock.now);
   const nodeSockets = new ComputerNodeSockets(options.store, computerNodes, computerAi, log);
-  return { computerAi, computerNodes, nodeSockets };
+  return { computerAi, computerNodes, nodeSockets, computerEars: new EarsRelay() };
 }
 
 function harnessOf(
@@ -237,7 +264,7 @@ function harnessOf(
     (event, profileId) => {
       live.profileNotice({ type: 'ai_harness', event }, profileId, 'assistant');
     },
-    { stateDirectory: join(options.dataDirectory, 'harness'), clock: options.clock },
+    { dataDirectory: options.dataDirectory, clock: options.clock },
   );
   harness.configuration.onChange((notice) => {
     live.announce(notice, 'assistant');
@@ -271,12 +298,15 @@ function imagesOf(
 function harnessSocketsOf(
   options: BuildOptions,
   access: ComputerNodeAccess,
-  harness: HarnessService,
+  served: { readonly harness: HarnessService; readonly transport: HarnessTransportPorts },
 ): ComputerHarnessSockets {
   return new ComputerHarnessSockets(
     options.store,
     access,
-    harness,
+    {
+      service: served.harness,
+      calls: (input) => harnessTransport(served.transport, served.harness, input),
+    },
     options.log.forArea('hub.harness-socket'),
   );
 }

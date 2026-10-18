@@ -13,6 +13,7 @@ import { usePrimaryControls } from '../controls/primary-controls';
 import { controlGroupsOf, extrasOf } from '../model/control-groups';
 import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
+import { stagedRoles } from './stage-level';
 
 function Extras({
   device,
@@ -54,8 +55,6 @@ function Extras({
   );
 }
 
-const NO_EXCLUSIONS = new Set<never>();
-
 export function ControlsSection({
   device,
   beside,
@@ -65,7 +64,7 @@ export function ControlsSection({
 }): ReactNode {
   const model = useDeviceModel(device);
   const name = useDisplayName(device.id);
-  const primary = usePrimaryControls(device, NO_EXCLUSIONS);
+  const primary = usePrimaryControls(device, stagedRoles(model));
   const reason = device.online ? null : offlineReason(name);
   const shown = new Set(beside ? primary.map((presented) => presented.key) : []);
   const custom = FAMILY_CONTROLS[model.family];

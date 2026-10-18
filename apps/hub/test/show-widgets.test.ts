@@ -1,9 +1,11 @@
 import {
   DEFAULT_ENGINE,
   MCP_PART_TEXTS,
+  PLUGIN_MANIFEST,
   SHOW_WIDGETS_INPUT,
   chatWidgetsOf,
   type AssistantMessageRow,
+  type ChatWidget,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { showWidgets } from '../src/chat-widgets/show-widgets';
@@ -11,8 +13,9 @@ import { TOOLS } from '../src/extensions/mcp/tools';
 import { ToolError } from '../src/extensions/mcp/tools/registry';
 import { voiceSet } from '../src/assistant-voice/voice-tools';
 import { WIDGET_MANNER } from '../src/ai-tools/tool-guide';
-import { stablePrompt } from '../src/assistant/engines/openrouter/context';
-import type { HubTool, HubToolResult } from '../src/ai-tools/hub-tool';
+import { stablePrompt, turnPrompt } from '../src/assistant/conversation/prompt';
+import { facts } from '../src/assistant/prompt-facts';
+import type { HubTool, HubToolResult, ToolSource } from '../src/ai-tools/hub-tool';
 import { ToolHub } from '../src/ai-tools/tool-hub';
 import { FakeClock } from './support/fake-clock';
 import { testStore, type TestStore } from './support/store';
@@ -63,6 +66,29 @@ function widgetsOn(id: string): unknown[] {
   return chatWidgetsOf(opened.store.assistantChat.message(id).embeds);
 }
 
+function pluginWithBoards(id: string, boards: readonly string[], enabled: boolean): void {
+  const manifest = PLUGIN_MANIFEST.parse({
+    id,
+    name: id,
+    version: '1.0.0',
+    description: 'A plugin with chat boards',
+    publisher: 'Test',
+    icon: 'plug',
+    contributes: {
+      data: [{ stream: 'state', title: 'State', schema: { type: 'object' }, history: 0 }],
+      widgets: boards.map((board) => ({
+        id: board,
+        title: board,
+        icon: 'plug',
+        sizes: ['M'],
+        body: { type: 'figure', value: { stream: 'state' }, caption: null },
+      })),
+    },
+  });
+  opened.store.plugins.create({ manifest, source: 'local', location: null, trusted: true });
+  opened.store.plugins.update(id, { enabled });
+}
+
 function device(externalId: string, kind: 'light' | 'camera'): string {
   const [row] = opened.store.devices.upsert([
     {
@@ -111,7 +137,7 @@ describe('show_widgets', () => {
       { kind: 'camera', id: camera },
       { kind: 'weather' },
     ]);
-    expect(result).toEqual({ added: 3, already_shown: 0 });
+    expect(result).toEqual({ added: 3, already_shown: 0, dropped: [] });
     expect(widgetsOn(reply.id)).toEqual([
       { kind: 'device', id: lamp },
       { kind: 'camera', id: camera },
@@ -123,7 +149,7 @@ describe('show_widgets', () => {
     const reply = message('responder', 'working');
     showWidgets(context(), [{ kind: 'device', id: lamp }]);
     const second = showWidgets(context(), [{ kind: 'device', id: lamp }, { kind: 'weather' }]);
-    expect(second).toEqual({ added: 1, already_shown: 1 });
+    expect(second).toEqual({ added: 1, already_shown: 1, dropped: [] });
     expect(widgetsOn(reply.id)).toHaveLength(2);
   });
 
@@ -182,6 +208,43 @@ describe('show_widgets', () => {
     expect(widgetsOn(reply.id)).toEqual([]);
   });
 
+  it('shows the boards of every enabled plugin and names them when one is unknown', () => {
+    const reply = message('responder', 'working');
+    pluginWithBoards('garden', ['garden.soil', 'garden.rain'], true);
+    pluginWithBoards('pool', ['pool.level'], true);
+    pluginWithBoards('attic', ['attic.heat'], false);
+    const result = showWidgets(context(), [
+      { kind: 'board', type: 'garden.rain' },
+      { kind: 'board', type: 'pool.level' },
+    ]);
+    expect(result).toEqual({ added: 2, already_shown: 0, dropped: [] });
+    expect(widgetsOn(reply.id)).toHaveLength(2);
+    expect(() => showWidgets(context(), [{ kind: 'board', type: 'attic.heat' }])).toThrow(
+      'There is no board attic.heat; boards of enabled plugins: garden.soil, garden.rain, pool.level',
+    );
+  });
+
+  it('reports the widgets a reply has no room for instead of dropping them silently', () => {
+    const reply = message('responder', 'working');
+    const first = ['a', 'b', 'c', 'd'].map((id): ChatWidget => ({
+      kind: 'setting_link',
+      setting: id,
+      value: null,
+    }));
+    const second = ['e', 'f', 'g'].map((id): ChatWidget => ({
+      kind: 'setting_link',
+      setting: id,
+      value: null,
+    }));
+    expect(showWidgets(context(), first)).toEqual({ added: 4, already_shown: 0, dropped: [] });
+    expect(showWidgets(context(), [...second, first[0] ?? { kind: 'weather' }])).toEqual({
+      added: 2,
+      already_shown: 1,
+      dropped: ['setting_link:g'],
+    });
+    expect(widgetsOn(reply.id)).toHaveLength(6);
+  });
+
   it('says which kind to use when a camera is shown as a device', () => {
     message('responder', 'working');
     expect(() => showWidgets(context(), [{ kind: 'device', id: camera }])).toThrow(
@@ -213,9 +276,9 @@ describe('where show_widgets is offered', () => {
       origin: { kind: 'se' },
       humanOnly: false,
     };
-    expect(voiceSet([hubTool], false, false).map((tool) => tool.name)).toEqual([
-      'end_conversation',
-    ]);
+    const voiceTools = voiceSet([hubTool], false, false).map((tool) => tool.name);
+    expect(voiceTools).toContain('end_conversation');
+    expect(voiceTools).not.toContain('show_widgets');
     expect(
       stablePrompt({
         name: 'A',
@@ -224,11 +287,41 @@ describe('where show_widgets is offered', () => {
         homeName: 'H',
         timeZone: 'UTC',
         now: new Date('2026-10-08T10:00:00.000Z'),
+        boardTypes: [],
+        interruption: null,
         chat: { title: 'T', id: chatId, kind: 'chat' },
         toolIndex: '',
         catalogue: '',
         instructions: '',
       }),
     ).toContain(WIDGET_MANNER);
+  });
+
+  it('puts the board types of the home in the reply context only when show_widgets is offered', () => {
+    pluginWithBoards('garden', ['garden.soil'], true);
+    pluginWithBoards('attic', ['attic.heat'], false);
+    const tool: HubTool = {
+      name: 'show_widgets',
+      title: 'Show widgets',
+      description: '',
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      origin: { kind: 'se' },
+      humanOnly: false,
+    };
+    const source: ToolSource = {
+      tools: () => [tool],
+      call: () => Promise.resolve({ response: {}, line: '', pictures: [] }),
+      validate: () => null,
+      changes: () => () => undefined,
+    };
+    const chat = opened.store.aiChats.chat(chatId);
+    const now = new Date('2026-10-08T10:00:00.000Z');
+    expect(
+      turnPrompt(facts(opened.store, chat, new ToolHub([source]), { now, clientId: null })),
+    ).toContain('Board types for show_widgets kind board: garden.soil.');
+    expect(
+      turnPrompt(facts(opened.store, chat, new ToolHub([]), { now, clientId: null })),
+    ).not.toContain('Board types');
   });
 });

@@ -19,7 +19,7 @@ export interface DeviceDriverContext {
 export interface DeviceDriver {
   readonly id: string;
   readonly start: (context: DeviceDriverContext) => Promise<() => Promise<void>>;
-  readonly execute: (command: DeviceCommand) => Promise<JsonValue>;
+  readonly execute: (command: DeviceCommand, submittedByPlugin?: boolean) => Promise<JsonValue>;
 }
 
 export function driverDeviceId(driverId: string, id: string): string {

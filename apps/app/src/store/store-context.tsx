@@ -1,17 +1,12 @@
 import type { ReactNode } from 'react';
-import { createContext, useContext, useRef, useSyncExternalStore } from 'react';
+import { use, useCallback, useContext, useRef, useSyncExternalStore } from 'react';
+import { WidgetPickerSource, type PickerState } from '../components/widget-board';
 import type { CommandLedger } from './command-ledger';
 import type { EntityStore } from './entity-store';
-import { IDLE_SUBSCRIBE } from '../design/external-store';
 import { ScreenPausedContext } from '../design/screen-pause';
-import type { StoreState } from './state';
-
-export interface StoreRuntime {
-  readonly store: EntityStore;
-  readonly ledger: CommandLedger;
-}
-
-const StoreContext = createContext<StoreRuntime | null>(null);
+import { rowsOf, type StoreState } from './state';
+import { StoreContext, type StoreRuntime } from './store-runtime';
+import { trackReads, type Slice } from './subscriptions';
 
 class NoStoreError extends Error {
   override readonly name = 'NoStoreError';
@@ -28,7 +23,21 @@ export function StoreProvider({
   readonly runtime: StoreRuntime;
   readonly children: ReactNode;
 }): ReactNode {
-  return <StoreContext.Provider value={runtime}>{children}</StoreContext.Provider>;
+  return (
+    <StoreContext.Provider value={runtime}>
+      <WidgetPickerSource read={() => pickerStateOf(runtime.store.get())}>
+        {children}
+      </WidgetPickerSource>
+    </StoreContext.Provider>
+  );
+}
+
+function pickerStateOf(state: StoreState): PickerState {
+  return {
+    devices: rowsOf(state.tables.devices),
+    rooms: rowsOf(state.tables.rooms),
+    groups: rowsOf(state.tables.device_groups),
+  };
 }
 
 function useRuntime(): StoreRuntime {
@@ -48,21 +57,20 @@ export function useLedger(): CommandLedger {
 }
 
 interface Cached<T> {
-  readonly state: StoreState;
   readonly select: (state: StoreState) => T;
   readonly deps: readonly unknown[] | undefined;
   readonly value: T;
+  readonly reads: ReadonlySet<Slice>;
+  readonly readAt: number;
 }
 
-function isFresh<T>(
+const NO_READS: ReadonlySet<Slice> = new Set();
+
+function sameInputs<T>(
   last: Cached<T>,
-  state: StoreState,
   select: (state: StoreState) => T,
   deps: readonly unknown[] | undefined,
 ): boolean {
-  if (last.state !== state) {
-    return false;
-  }
   if (deps === undefined || last.deps === undefined) {
     return last.select === select;
   }
@@ -75,23 +83,41 @@ export function useStoreSelector<T>(
   deps?: readonly unknown[],
 ): T {
   const store = useEntityStore();
-  const paused = useContext(ScreenPausedContext);
+  const pause = use(ScreenPausedContext);
   const cache = useRef<Cached<T> | null>(null);
+  const subscribe = useCallback(
+    (wake: () => void) => {
+      const off = store.subscriptions.add({
+        get reads() {
+          return cache.current?.reads ?? NO_READS;
+        },
+        wake: pause.gate(wake),
+      });
+      return (): void => {
+        off();
+        pause.release(wake);
+      };
+    },
+    [store, pause],
+  );
   const read = (): T => {
     const last = cache.current;
-    const state = paused && last !== null ? last.state : store.get();
-    if (last !== null && isFresh(last, state, select, deps)) {
-      return last.value;
+    if (last !== null) {
+      if (pause.isPaused()) return last.value;
+      if (sameInputs(last, select, deps) && store.subscriptions.isFresh(last.reads, last.readAt)) {
+        return last.value;
+      }
     }
-    const value = select(state);
+    const readAt = store.subscriptions.version;
+    const { value, reads } = trackReads(store.get(), select);
     const kept =
       last !== null && (Object.is(last.value, value) || equal(last.value, value))
         ? last.value
         : value;
-    cache.current = { state, select, deps, value: kept };
+    cache.current = { select, deps, value: kept, reads, readAt };
     return kept;
   };
-  return useSyncExternalStore(paused ? IDLE_SUBSCRIBE : store.subscribe, read, read);
+  return useSyncExternalStore(subscribe, read, read);
 }
 
 export function shallowEqual<T>(left: readonly T[], right: readonly T[]): boolean {

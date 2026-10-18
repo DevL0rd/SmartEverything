@@ -7,7 +7,8 @@ import android.net.Uri
 object AssistantLink {
   private val SCHEMES = listOf("smarteverything-dev", "smarteverything")
 
-  fun call(context: Context, source: String): Intent = open(context, "assistant/call?source=$source")
+  fun call(context: Context, source: String, action: String? = null): Intent =
+    open(context, "assistant/call?source=$source" + (action?.let { "&action=${Uri.encode(it)}" } ?: ""))
 
   fun answer(context: Context, chatId: String, outreachId: String): Intent = open(
     context,

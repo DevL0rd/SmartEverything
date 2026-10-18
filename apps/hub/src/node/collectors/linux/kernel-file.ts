@@ -11,9 +11,10 @@ export class KernelFileTooLargeError extends Error {
   }
 }
 
+let scratch = Buffer.allocUnsafeSlow(FIRST_SIZE);
+
 export class KernelFile {
   private descriptor: number | null = null;
-  private buffer = Buffer.allocUnsafe(FIRST_SIZE);
 
   constructor(readonly path: string) {}
 
@@ -37,20 +38,20 @@ export class KernelFile {
     const descriptor = this.descriptor ?? openSync(this.path, 'r');
     this.descriptor = descriptor;
     for (;;) {
-      const length = readSync(descriptor, this.buffer, 0, this.buffer.length, 0);
-      if (length < this.buffer.length) {
-        return this.buffer.toString('utf8', 0, length);
+      const length = readSync(descriptor, scratch, 0, scratch.length, 0);
+      if (length < scratch.length) {
+        return scratch.toString('utf8', 0, length);
       }
       this.grow();
     }
   }
 
   private grow(): void {
-    const size = this.buffer.length * 2;
+    const size = scratch.length * 2;
     if (size > MAX_SIZE) {
       throw new KernelFileTooLargeError(this.path);
     }
-    this.buffer = Buffer.allocUnsafe(size);
+    scratch = Buffer.allocUnsafeSlow(size);
   }
 }
 
@@ -71,16 +72,15 @@ export class KernelFiles {
     }
   }
 
-  forget(keep: (path: string) => boolean): void {
-    for (const [path, file] of this.files) {
-      if (!keep(path)) {
-        file.close();
-        this.files.delete(path);
-      }
-    }
+  drop(path: string): void {
+    this.files.get(path)?.close();
+    this.files.delete(path);
   }
 
   closeAll(): void {
-    this.forget(() => false);
+    for (const file of this.files.values()) {
+      file.close();
+    }
+    this.files.clear();
   }
 }

@@ -21,7 +21,7 @@ function dayOf(date: Date): string {
   return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-export interface RangeChoice {
+interface RangeChoice {
   readonly range: CostRange;
   readonly from?: string;
   readonly to?: string;

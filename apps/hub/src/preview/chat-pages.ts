@@ -3,7 +3,9 @@ import { AI_CHAT_PAGE_PATH, ApiError, chatPageAssetUrl } from '@smarteverything/
 import type { Store } from '../store/store';
 import { authenticate, type Caller } from '../server/auth';
 import type { RawRoute } from '../server/http-server';
+import type { PreviewDocuments } from './documents';
 import type { PreviewService } from './service';
+import { pageHeaders } from './headers';
 import { serveProjectAsset } from './project-response';
 
 export function chatPageRoutes(store: Store, preview: PreviewService): readonly RawRoute[] {
@@ -11,7 +13,7 @@ export function chatPageRoutes(store: Store, preview: PreviewService): readonly 
     method: method === 'GET' ? ('GET' as const) : ('HEAD' as const),
     path: AI_CHAT_PAGE_PATH,
     handle: async (request, response, params): Promise<void> => {
-      const caller = authenticate(store, request, 'member');
+      const caller = authenticate(store, request, 'member', false);
       const chat = params['chatId'] ?? '';
       const publication = params['publicationId'] ?? '';
       const rest = params['path'] ?? '';
@@ -33,7 +35,7 @@ export function chatPageRoutes(store: Store, preview: PreviewService): readonly 
 }
 
 export async function serveChatPage(
-  preview: Pick<PreviewService, 'documents'>,
+  preview: { readonly documents: Pick<PreviewDocuments, 'visible'> },
   caller: Caller,
   exchange: { readonly request: IncomingMessage; readonly response: ServerResponse },
   input: {
@@ -55,7 +57,6 @@ export async function serveChatPage(
       prefix: input.prefix,
       signal: new AbortController().signal,
       ancestors: input.ancestors,
-      ordinaryPage: true,
     });
     return;
   }
@@ -64,11 +65,9 @@ export async function serveChatPage(
   const html = await publication.readHtml();
   preview.documents.visible(caller, input.chat, input.publication);
   response.writeHead(200, {
+    ...pageHeaders(input.ancestors),
     'content-type': 'text/html; charset=utf-8',
     'content-length': Buffer.byteLength(html),
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-    'content-security-policy': `frame-ancestors ${input.ancestors.join(' ')}`,
   });
   response.end(request.method === 'HEAD' ? undefined : html);
 }

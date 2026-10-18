@@ -1,12 +1,12 @@
+import { chunk } from '@smarteverything/domain';
 import { z } from 'zod';
 import {
   ConversionError,
-  chunks,
+  colorsysHsvToRgb,
+  colorsysRgbToHsv,
   decimal,
-  hsvToRgb,
   lenientHex,
   pythonRound,
-  rgbToHsv,
   strictHex,
   textOf,
   type Converter,
@@ -21,7 +21,7 @@ interface Hsv {
 }
 
 function hsvFromRgb(red: number, green: number, blue: number): Hsv {
-  const [h, s, v] = rgbToHsv(red / 255, green / 255, blue / 255);
+  const [h, s, v] = colorsysRgbToHsv(red / 255, green / 255, blue / 255);
   return {
     h: pythonRound(h * 360, 1),
     s: pythonRound(s * 255, 1),
@@ -29,17 +29,12 @@ function hsvFromRgb(red: number, green: number, blue: number): Hsv {
   };
 }
 
-function shortHex(hex: string): number {
-  return hex === '' || hex.length > 2 ? 0 : strictHex('dj_v1_hsv_alg', hex);
-}
-
-function hsvColour(name: string, precision: number, rgb: (hex: string) => number): Converter {
+function hsvColour(name: string, precision: number): Converter {
   return (raw) => {
     const text = textOf(name, raw);
     if (text.slice(6) === RGB_MARKER) {
-      return JSON.stringify(
-        hsvFromRgb(rgb(text.slice(0, 2)), rgb(text.slice(2, 4)), rgb(text.slice(4, 6))),
-      );
+      const rgb = (start: number): number => strictHex(name, text.slice(start, start + 2));
+      return JSON.stringify(hsvFromRgb(rgb(0), rgb(2), rgb(4)));
     }
     const hue = strictHex(name, text.slice(6, 8)) * 256 + strictHex(name, text.slice(8, 10));
     const saturation = pythonRound(strictHex(name, text.slice(10, 12)) / 255, precision);
@@ -65,7 +60,7 @@ const djV1Scene: Converter = (raw) => {
     frequency: hex(4, 6),
     bright: hex(0, 2),
     temperature: hex(2, 4),
-    hsv: chunks(text.slice(8), 6).map((rgb) =>
+    hsv: chunk(text.slice(8), 6).map((rgb) =>
       hsvFromRgb(hex(0, 2, rgb), hex(2, 4, rgb), hex(4, 6, rgb)),
     ),
   });
@@ -161,7 +156,7 @@ const hbDjV1Colour: Converter = (raw) => {
   if (!colour.success) {
     throw new ConversionError(name, 'the value has no h, s and v');
   }
-  const rgb = hsvToRgb(
+  const rgb = colorsysHsvToRgb(
     floatOf(name, colour.data.h) / 360,
     floatOf(name, colour.data.s) / 255,
     floatOf(name, colour.data.v) / 255,
@@ -209,8 +204,8 @@ function rangeOf(name: string, range: Range): Converter {
 }
 
 export const NULL_PRESERVING_LIGHTING: Readonly<Record<string, Converter>> = {
-  dj_v1_hsv_alg: hsvColour('dj_v1_hsv_alg', 3, shortHex),
-  voice_atm_color: hsvColour('voice_atm_color', 4, (hex) => strictHex('voice_atm_color', hex)),
+  dj_v1_hsv_alg: hsvColour('dj_v1_hsv_alg', 3),
+  voice_atm_color: hsvColour('voice_atm_color', 4),
   dj_v1_scene_alg: djV1Scene,
   dj_v2_color_alg: djV2Colour,
   dj_v2_contr_alg: djV2Control('dj_v2_contr_alg', ''),

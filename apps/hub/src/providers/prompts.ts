@@ -1,18 +1,15 @@
-import type { Provider, ProviderProblem, ProviderPrompt } from '@smarteverything/domain';
+import {
+  ApiError,
+  type Provider,
+  type ProviderProblem,
+  type ProviderPrompt,
+} from '@smarteverything/domain';
 import type { ShownPrompt } from '../adapters/contract';
 import type { HubDatabase } from '../database/port';
 
 interface Pending {
   readonly resolve: (answer: string) => void;
   readonly reject: (cause: unknown) => void;
-}
-
-class NoPromptPendingError extends Error {
-  override readonly name = 'NoPromptPendingError';
-
-  constructor(provider: Provider) {
-    super(`An answer arrived for ${provider}, but ${provider} is not waiting for one.`);
-  }
 }
 
 class PromptReplacedError extends Error {
@@ -74,7 +71,10 @@ export class PromptBroker {
   async answer(provider: Provider, answer: string): Promise<void> {
     const pending = this.pending.get(provider);
     if (pending === undefined) {
-      throw new NoPromptPendingError(provider);
+      throw new ApiError(
+        'conflict',
+        `An answer arrived for ${provider}, but ${provider} is not waiting for one.`,
+      );
     }
     this.pending.delete(provider);
     await this.store.updateProviderLink(provider, { prompt: null, phase: 'signing_in' });

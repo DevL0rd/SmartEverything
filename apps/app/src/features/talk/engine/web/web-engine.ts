@@ -1,4 +1,9 @@
-import type { TalkServerMessage } from '@smarteverything/domain';
+import {
+  reduceTalk,
+  type TalkEffect,
+  type TalkInput,
+  type TalkServerMessage,
+} from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { notify } from '../../../../components/toast-store';
 import { rawErrorText } from '../../../../format/errors';
@@ -6,6 +11,7 @@ import { TOKEN_WITHDRAWN, backoffOf } from '../../../../store/live-socket';
 import {
   IDLE_TRANSMIT,
   engineState,
+  sessionOf,
   type TalkConnection,
   type TalkEngine,
   type TalkEngineState,
@@ -17,12 +23,6 @@ import { openTalkSocket, type TalkSocket } from './talk-socket';
 const log = new Logger('app.talk-engine');
 
 const EARLY_PACKETS_KEPT = 50;
-
-type Handlers = {
-  readonly [K in TalkServerMessage['type']]: (
-    message: Extract<TalkServerMessage, { readonly type: K }>,
-  ) => void;
-};
 
 function update(change: (state: TalkEngineState) => Partial<TalkEngineState>): void {
   engineState.update((state) => ({ ...state, ...change(state) }));
@@ -83,14 +83,7 @@ export class WebTalkEngine implements TalkEngine {
       return;
     }
     this.playback.unlock();
-    this.pressRun += 1;
-    const run = this.pressRun;
-    update(() => ({ transmit: { ...IDLE_TRANSMIT, status: 'requesting', channelId } }));
-    this.socket?.send({ type: 'press', channelId });
-    this.openCapture(
-      () => run === this.pressRun && engineState.get().transmit.status !== 'idle',
-      this.release,
-    );
+    this.apply({ kind: 'press', channelId });
   };
 
   readonly listen = (channelId: string, cameraId: string): void => {
@@ -98,114 +91,65 @@ export class WebTalkEngine implements TalkEngine {
       return;
     }
     this.playback.unlock();
-    update(() => ({ transmit: { ...IDLE_TRANSMIT, status: 'requesting', channelId, cameraId } }));
-    this.socket?.send({ type: 'listen', channelId, cameraId });
+    this.apply({ kind: 'listen', channelId, cameraId });
   };
 
   readonly leaveLive = (): void => {
-    if (engineState.get().live === null) {
-      return;
-    }
-    this.socket?.send({ type: 'release' });
-    this.closeLive();
+    this.apply({ kind: 'leave_live' });
   };
 
   readonly release = (): void => {
-    if (engineState.get().transmit.status === 'idle') {
+    this.apply({ kind: 'release' });
+  };
+
+  private apply(input: TalkInput): void {
+    const step = reduceTalk(sessionOf(engineState.get()), input, Date.now());
+    update(() => step.session);
+    step.effects.forEach((effect) => {
+      this.perform(effect);
+    });
+  }
+
+  private perform(effect: TalkEffect): void {
+    switch (effect.kind) {
+      case 'send':
+        this.socket?.send(effect.message);
+        return;
+      case 'tone':
+        this.playback.tone(effect.tone);
+        return;
+      case 'playback_begin':
+        this.playback.begin();
+        return;
+      case 'playback_end':
+        this.playback.end();
+        return;
+      case 'stop_capture':
+        this.stopCapture();
+        return;
+      case 'flush_early_audio':
+        this.early.splice(0).forEach((packet) => this.socket?.sendAudio(packet));
+        return;
+      case 'open_capture':
+        this.beginCapture(effect);
+        return;
+    }
+  }
+
+  private beginCapture(effect: Extract<TalkEffect, { readonly kind: 'open_capture' }>): void {
+    if (effect.purpose === 'live') {
+      this.openCapture(
+        () => engineState.get().live?.conversationId === effect.conversationId,
+        this.leaveLive,
+      );
       return;
     }
-    this.socket?.send({ type: 'release' });
-    this.stopCapture();
-    update(() => ({ transmit: IDLE_TRANSMIT }));
-  };
-
-  private readonly handlers: Handlers = {
-    live_start: (message) => {
-      const live = {
-        channelId: message.channelId,
-        conversationId: message.conversationId,
-        label: message.label,
-      };
-      update(() => ({ live }));
-      this.playback.begin();
-      if (engineState.get().transmit.status === 'idle') {
-        this.openCapture(
-          () => engineState.get().live?.conversationId === live.conversationId,
-          this.leaveLive,
-        );
-      }
-    },
-    live_end: (message) => {
-      if (engineState.get().live?.conversationId === message.conversationId) {
-        this.closeLive();
-      }
-    },
-    ready: () => {
-      this.attempt = 0;
-      update(() => ({ link: 'ready', problem: null }));
-    },
-    channels: () => undefined,
-    granted: (message) => {
-      const { transmit } = engineState.get();
-      if (transmit.status !== 'requesting' || transmit.channelId !== message.channelId) {
-        this.socket?.send({ type: 'release' });
-        return;
-      }
-      update((state) => ({
-        transmit: {
-          ...state.transmit,
-          status: 'talking',
-          messageId: message.messageId,
-          startedAt: Date.now(),
-          limitSeconds: message.limitSeconds,
-        },
-      }));
-      this.playback.tone('permit');
-      this.early.splice(0).forEach((packet) => this.socket?.sendAudio(packet));
-    },
-    denied: (message) => {
-      this.stopCapture();
-      update(() => ({
-        transmit: IDLE_TRANSMIT,
-        lastDenial: { channelId: message.channelId, reason: message.reason },
-      }));
-      this.playback.tone('busy');
-    },
-    ended: (message) => {
-      if (engineState.get().transmit.messageId !== message.messageId) {
-        return;
-      }
-      this.stopCapture();
-      update(() => ({ transmit: IDLE_TRANSMIT, lastEnding: message.reason }));
-      this.playback.tone('end');
-    },
-    rx_start: (message) => {
-      this.playback.begin();
-      update(() => ({
-        receive: {
-          channelId: message.channelId,
-          messageId: message.messageId,
-          speaker: message.speaker,
-          startedAt: Date.now(),
-        },
-      }));
-    },
-    rx_end: (message) => {
-      if (engineState.get().receive?.messageId !== message.messageId) {
-        return;
-      }
-      this.playback.end();
-      this.playback.tone('roger');
-      update(() => ({ receive: null }));
-    },
-  };
-
-  private closeLive(): void {
-    if (engineState.get().transmit.status === 'idle') {
-      this.stopCapture();
-    }
-    this.playback.end();
-    update(() => ({ live: null }));
+    this.pressRun += 1;
+    const run = this.pressRun;
+    this.openCapture(
+      () => run === this.pressRun && engineState.get().transmit.status !== 'idle',
+      this.release,
+    );
   }
 
   private openCapture(keep: () => boolean, refused: () => void): void {
@@ -282,7 +226,7 @@ export class WebTalkEngine implements TalkEngine {
         log.debug('talk.socket_opened', { attempt: this.attempt });
       },
       onMessage: (message) => {
-        this.handle(message.type, message);
+        this.handle(message);
       },
       onAudio: (packet) => {
         this.playback.push(packet);
@@ -296,12 +240,12 @@ export class WebTalkEngine implements TalkEngine {
     });
   }
 
-  private handle<T extends TalkServerMessage['type']>(
-    type: T,
-    message: Extract<TalkServerMessage, { readonly type: T }>,
-  ): void {
-    const handler: Handlers[T] = this.handlers[type];
-    handler(message);
+  private handle(message: TalkServerMessage): void {
+    if (message.type === 'ready') {
+      this.attempt = 0;
+      update(() => ({ link: 'ready', problem: null }));
+    }
+    this.apply({ kind: 'message', message });
   }
 
   private closed(code: number, reason: string): void {

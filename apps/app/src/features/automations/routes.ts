@@ -26,7 +26,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     actions: [
       {
         key: 'new',
-        title: 'New Value',
+        title: 'New value',
         icon: 'plus',
         href: href.automationValue('new'),
         keywords: ['create', 'add', 'variable'],
@@ -36,17 +36,17 @@ export const ROUTES: readonly RouteDefinition[] = [
   {
     key: 'automations.sequences',
     href: '/automations/sequences',
-    title: 'Sequences',
+    title: 'Reusable steps',
     icon: 'layers',
     tab: 'automations',
     parent: 'automations',
-    keywords: ['reusable', 'steps', 'parameters', 'program'],
+    keywords: ['reusable', 'steps', 'inputs', 'sequence', 'routine', 'program'],
     available: always,
     searchable: true,
     actions: [
       {
         key: 'new',
-        title: 'New sequence',
+        title: 'New reusable steps',
         icon: 'plus',
         href: href.automationSequence('new'),
         keywords: ['create', 'add', 'reuse'],
@@ -76,22 +76,23 @@ export const ROUTES: readonly RouteDefinition[] = [
   {
     key: 'automations.schedule',
     href: '/automations/schedule',
-    title: 'Schedule',
+    title: 'Week view',
     icon: 'calendar',
     tab: 'automations',
     parent: 'automations',
-    keywords: ['timer', 'week', 'next', 'when'],
+    keywords: ['schedule', 'calendar', 'timer', 'week', 'next', 'when'],
     available: always,
     searchable: true,
   },
   {
     key: 'automations.scheduled',
     href: '/automations/scheduled',
-    title: 'Scheduled',
+    title: 'One-off timers',
     icon: 'timer',
     tab: 'automations',
     parent: 'automations',
     keywords: [
+      'scheduled',
       'timer',
       'later',
       'delay',

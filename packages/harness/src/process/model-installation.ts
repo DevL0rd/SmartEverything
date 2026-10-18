@@ -31,7 +31,7 @@ export async function installDispatcherModels(
       active.on('tools/pre-execute', async (execution, next) => {
         if (execution.agent === undefined)
           return { kind: 'deny', reason: 'Native tools require an owned conversation.' };
-        await options.persistence.verify(options.persistence.claim(execution.agent.id));
+        options.persistence.claim(execution.agent.id);
         return next();
       });
     },

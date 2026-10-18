@@ -1,0 +1,382 @@
+{
+  "responses": {
+    "healthOutbox": {
+      "readings": [
+        {
+          "id": "6f1c1b0e-3b1f-4f0e-9a52-0a6b7a3f0c11",
+          "version": 2,
+          "measuredAt": "2026-10-17T07:30:00Z",
+          "weightKg": 72.4,
+          "bodyFatPercent": 18.2,
+          "basalMetabolicRateKcal": null,
+          "leanMassKg": 59.1,
+          "boneMassKg": null,
+          "waterMassKg": 43.5,
+          "heartRate": 61,
+          "heightMeters": null
+        }
+      ],
+      "entries": [
+        {
+          "id": "0d3f5a77-52b1-4bd1-8c0f-3d2a1e9b7a10",
+          "version": 1,
+          "records": [
+            {
+              "type": "Weight",
+              "clientRecordId": "se-entry-0d3f5a77-52b1-4bd1-8c0f-3d2a1e9b7a10-Weight",
+              "record": {
+                "recordId": "entry:0d3f5a77-52b1-4bd1-8c0f-3d2a1e9b7a10:Weight",
+                "type": "Weight",
+                "startTime": "2026-10-17T07:00:00Z",
+                "endTime": null,
+                "zoneOffsetSeconds": 3600,
+                "sourceApp": "smarteverything",
+                "lastModified": "2026-10-17T07:00:01Z",
+                "data": {
+                  "kilograms": 72.4
+                }
+              }
+            },
+            {
+              "type": "Hydration",
+              "clientRecordId": "se-entry-0d3f5a77-52b1-4bd1-8c0f-3d2a1e9b7a10-Hydration",
+              "record": null
+            }
+          ]
+        }
+      ]
+    },
+    "bleWatch": {
+      "devices": [
+        {
+          "address": "AA:BB:CC:DD:EE:FF",
+          "serviceUuid": "0000fe95-0000-1000-8000-00805f9b34fb",
+          "dataPrefix": "4020",
+          "dataMask": "ffff"
+        }
+      ]
+    },
+    "bleRelayResult": {
+      "accepted": 2,
+      "ignored": 1,
+      "readings": ["6f1c1b0e-3b1f-4f0e-9a52-0a6b7a3f0c11"]
+    },
+    "phoneWatches": {
+      "watches": [
+        {
+          "deviceId": "2b0f8c4e-6a41-4c55-8d7e-5f6d0a1b2c33",
+          "family": "xiaomi",
+          "name": "Xiaomi Watch S5",
+          "model": null,
+          "address": "11:22:33:44:55:66",
+          "authKey": "00112233445566778899aabbccddeeff"
+        }
+      ]
+    },
+    "watchData": {
+      "weather": {
+        "place": "Home",
+        "timeZone": "Europe/Berlin",
+        "publishedAt": "2026-10-17T08:00:00Z",
+        "now": {
+          "code": 2,
+          "temperatureC": 14,
+          "humidityPercent": 71,
+          "windKmh": 9.5,
+          "windDirection": 220,
+          "uvIndex": null,
+          "aqi": 32,
+          "aqiLabel": "Good",
+          "pressureHpa": 1012.5
+        },
+        "days": [
+          {
+            "code": 3,
+            "nightCode": 1,
+            "minC": 8,
+            "maxC": 16,
+            "aqi": null,
+            "sunrise": "07:41",
+            "sunset": "18:12"
+          }
+        ],
+        "hours": [
+          {
+            "code": 2,
+            "temperatureC": 14,
+            "windKmh": 9.5,
+            "windDirection": null
+          }
+        ]
+      },
+      "user": {
+        "heightCm": 180,
+        "weightKg": 72.4,
+        "birthDate": "1990-05-04",
+        "female": false,
+        "maxHeartRate": 190,
+        "stepGoal": 8000,
+        "calorieGoal": 600,
+        "activeMinutes": 30
+      }
+    },
+    "watchDataEmpty": {
+      "weather": null,
+      "user": null
+    },
+    "watchRecordsSaved": {
+      "saved": 3,
+      "samples": 4,
+      "unmatchedRoutes": ["2026-10-17T06:00:00Z"],
+      "rejected": 0
+    },
+    "aiSpeechNotice": {
+      "type": "ai_speech",
+      "id": "7c2d9a10-4b1e-4c25-9d63-1a2b3c4d5e6f",
+      "from": "Ada",
+      "text": "Dinner is ready",
+      "audio": "T2dnUwACAAAAAAAAAADYDAAAAAAAAAAAAAAAAAAAAAAA",
+      "showText": true
+    },
+    "aiSpeechPush": {
+      "id": "7c2d9a10-4b1e-4c25-9d63-1a2b3c4d5e6f",
+      "expiresAt": "2026-10-17T08:00:20Z"
+    },
+    "phoneActionPush": {
+      "requestId": "3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73",
+      "action": {
+        "type": "set_volume",
+        "stream": "media",
+        "percent": 40
+      },
+      "origin": {
+        "source": "assistant",
+        "client": "Desk assistant"
+      },
+      "expiresAt": "2026-10-17T08:00:25Z"
+    },
+    "machineApprovalCancelPush": {
+      "requestId": "3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73"
+    },
+    "watchActionPush": {
+      "requestId": "9a4e7c18-2d35-4b60-a1f7-6c0b3e8d5f24",
+      "deviceId": "5e2b8d44-1f93-4a07-b6c1-0d7a9e3f2c58",
+      "action": {
+        "type": "start_workout",
+        "sport": "outdoor_running"
+      },
+      "expiresAt": "2026-10-17T08:00:25Z"
+    }
+  },
+  "requests": {
+    "ingest": {
+      "records": [
+        {
+          "recordId": "hc-1",
+          "type": "Steps",
+          "startTime": "2026-10-17T10:00:00Z",
+          "endTime": "2026-10-17T10:05:00Z",
+          "zoneOffsetSeconds": 0,
+          "sourceApp": "com.other",
+          "lastModified": "2026-10-17T10:06:00Z",
+          "data": {
+            "count": 120
+          }
+        }
+      ],
+      "deletions": ["hc-0"],
+      "grantedTypes": ["Steps", "Weight"],
+      "source": {
+        "device": "samsung SM-F966B",
+        "appVersion": "1.0.0"
+      }
+    },
+    "outboxAck": {
+      "written": [
+        {
+          "id": "6f1c1b0e-3b1f-4f0e-9a52-0a6b7a3f0c11",
+          "version": 2
+        }
+      ],
+      "entries": [
+        {
+          "id": "0d3f5a77-52b1-4bd1-8c0f-3d2a1e9b7a10",
+          "version": 1
+        }
+      ],
+      "failed": [
+        {
+          "id": "0d3f5a77-52b1-4bd1-8c0f-3d2a1e9b7a11",
+          "version": 1,
+          "reason": "Health Connect refused it"
+        }
+      ],
+      "deletedInHealthConnect": ["se-entry-0d3f5a77-52b1-4bd1-8c0f-3d2a1e9b7a10-Hydration"]
+    },
+    "bleAdverts": {
+      "adverts": [
+        {
+          "address": "AA:BB:CC:DD:EE:FF",
+          "serviceUuid": "0000fe95-0000-1000-8000-00805f9b34fb",
+          "data": "40200102030405",
+          "rssi": -61,
+          "seenAt": "2026-10-17T07:30:00Z"
+        }
+      ]
+    },
+    "watchState": {
+      "phase": "connected",
+      "battery": 80,
+      "charging": false,
+      "worn": true,
+      "firmware": "2.1.0",
+      "steps": 4200,
+      "heartRate": 71,
+      "lastSyncAt": "2026-10-17T07:00:00Z",
+      "error": null,
+      "at": "2026-10-17T07:10:00Z",
+      "config": {
+        "settings": [
+          {
+            "key": "display.always_on",
+            "section": "Display",
+            "label": "Always on",
+            "description": null,
+            "kind": "switch",
+            "value": true
+          },
+          {
+            "key": "sleep.start",
+            "section": "Sleep",
+            "label": "Bedtime",
+            "description": "When sleep tracking begins",
+            "kind": "time",
+            "value": "22:30"
+          },
+          {
+            "key": "display.language",
+            "section": "Display",
+            "label": "Language",
+            "description": null,
+            "kind": "choice",
+            "value": "en",
+            "options": [
+              {
+                "value": "en",
+                "label": "English"
+              },
+              {
+                "value": "de",
+                "label": "German"
+              }
+            ]
+          }
+        ],
+        "alarms": [
+          {
+            "id": 1,
+            "time": "06:45",
+            "enabled": true,
+            "days": ["mon", "tue"],
+            "smart": false
+          }
+        ],
+        "faces": [
+          {
+            "id": "classic",
+            "name": "Classic",
+            "active": true,
+            "removable": false
+          }
+        ],
+        "goals": [
+          {
+            "key": "steps",
+            "sent": 8000,
+            "reported": 8000,
+            "shown": true
+          }
+        ],
+        "sports": ["treadmill", "yoga"]
+      },
+      "workout": {
+        "sport": "outdoor_running",
+        "state": "running",
+        "startedAt": "2026-10-17T06:00:00Z",
+        "endedAt": null,
+        "pausedAt": null,
+        "pausedSeconds": 0,
+        "startedFrom": "phone",
+        "heartRate": 140,
+        "kcal": 90,
+        "steps": 1500,
+        "distanceM": 1200,
+        "updatedAt": "2026-10-17T06:10:00Z"
+      }
+    },
+    "watchStateBare": {
+      "phase": "waiting",
+      "battery": null,
+      "charging": null,
+      "worn": null,
+      "firmware": null,
+      "steps": null,
+      "heartRate": null,
+      "lastSyncAt": null,
+      "error": "Bluetooth is off",
+      "at": "2026-10-17T07:10:00Z"
+    },
+    "watchRecords": {
+      "records": [
+        {
+          "recordId": "watch:dev:file:Steps:1760695200",
+          "type": "Steps",
+          "startTime": "2026-10-17T10:00:00Z",
+          "endTime": "2026-10-17T10:59:00Z",
+          "zoneOffsetSeconds": 3600,
+          "sourceApp": "smarteverything.watch",
+          "lastModified": "2026-10-17T11:00:00Z",
+          "data": {
+            "count": 900
+          }
+        }
+      ],
+      "samples": [
+        {
+          "kind": "stress",
+          "zoneOffsetSeconds": 3600,
+          "samples": [
+            {
+              "time": "2026-10-17T10:00:00Z",
+              "value": 30
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "start": "2026-10-17T06:00:00Z",
+          "points": [
+            {
+              "time": "2026-10-17T06:00:05Z",
+              "latitude": 52.5,
+              "longitude": 13.4,
+              "altitudeMeters": 34.5,
+              "horizontalAccuracyMeters": null
+            }
+          ]
+        }
+      ]
+    },
+    "phoneActionAnswer": {
+      "requestId": "3b9c1d52-7a40-4e1f-8c26-5d1e0f2a9b73",
+      "ok": true,
+      "detail": "Media volume set to 40%."
+    },
+    "watchActionAnswer": {
+      "requestId": "9a4e7c18-2d35-4b60-a1f7-6c0b3e8d5f24",
+      "ok": false,
+      "detail": "The watch did not connect to this phone in time."
+    }
+  }
+}

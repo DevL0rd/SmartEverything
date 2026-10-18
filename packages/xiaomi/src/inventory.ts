@@ -134,6 +134,7 @@ const PRIVATE_RANGES: readonly (readonly [number, number, number])[] = [
   [172, 16, 31],
   [192, 168, 168],
   [169, 254, 254],
+  [127, 0, 255],
 ];
 
 function isPrivateIpv4(address: string): boolean {

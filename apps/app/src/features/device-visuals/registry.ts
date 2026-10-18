@@ -1,16 +1,21 @@
 import { FAMILY_ICONS } from './family-icon';
 import type { VisualRegistry } from './types';
+import { ButtonVisual } from './visuals/button-visual';
 import { CameraVisual } from './visuals/camera-visual';
 import { CoverVisual } from './visuals/cover-visual';
 import { MicrowaveVisual } from './visuals/microwave-visual';
 import { DiffuserVisual } from './visuals/diffuser-visual';
 import { glyphVisual } from './visuals/glyph-visual';
+import { HubVisual } from './visuals/hub-visual';
 import { DehumidifierVisual, HumidifierVisual } from './visuals/humidifier-visual';
+import { LaundryVisual } from './visuals/laundry-visual';
 import { LightVisual } from './visuals/light-visual';
 import { LockVisual } from './visuals/lock-visual';
 import { IrBlasterVisual, IrRemoteVisual } from './visuals/ir-visual';
 import { SpeakerVisual } from './visuals/media-visual';
+import { PhoneVisual } from './visuals/phone-visual';
 import { PurifierVisual } from './visuals/purifier-visual';
+import { RobotVisual } from './visuals/robot-visual';
 import { RotorFanVisual } from './visuals/rotor-fan-visual';
 import { ScaleVisual } from './visuals/scale-visual';
 import { SensorVisual } from './visuals/sensor-visual';
@@ -26,6 +31,7 @@ export const VISUALS: VisualRegistry = {
   humidifier: HumidifierVisual,
   diffuser: DiffuserVisual,
   microwave: MicrowaveVisual,
+  laundry: LaundryVisual,
   dehumidifier: DehumidifierVisual,
   tower_fan: TowerFanVisual,
   fan: RotorFanVisual,
@@ -36,6 +42,8 @@ export const VISUALS: VisualRegistry = {
   switch: SwitchVisual,
   plug: PlugVisual,
   sensor: SensorVisual,
+  presence_phone: SensorVisual,
+  button: ButtonVisual,
   camera: CameraVisual,
   doorbell: glyphVisual(FAMILY_ICONS.doorbell),
   scale: ScaleVisual,
@@ -47,12 +55,12 @@ export const VISUALS: VisualRegistry = {
   vacuum: VacuumVisual,
   ir_blaster: IrBlasterVisual,
   ir_remote: IrRemoteVisual,
-  gateway: glyphVisual(FAMILY_ICONS.gateway),
+  gateway: HubVisual,
   router: glyphVisual(FAMILY_ICONS.router),
   file_sync: glyphVisual(FAMILY_ICONS.file_sync),
   dns_filter: glyphVisual(FAMILY_ICONS.dns_filter),
-  robot: glyphVisual(FAMILY_ICONS.robot),
+  robot: RobotVisual,
   computer: glyphVisual(FAMILY_ICONS.computer),
-  phone: glyphVisual(FAMILY_ICONS.phone),
+  phone: PhoneVisual,
   generic: glyphVisual(FAMILY_ICONS.generic),
 };

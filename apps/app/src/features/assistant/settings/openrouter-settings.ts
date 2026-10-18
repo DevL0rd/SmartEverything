@@ -34,7 +34,6 @@ export const OPENROUTER_SETTINGS: readonly SettingDefinition[] = [
     keywords: ['openrouter', 'api key', 'credit', 'default model'],
     scope: 'server',
     control: 'custom',
-    beforeSubPages: true,
     render: () => createElement(OpenRouterSection),
   },
   listed('key', 'Key status', ['api key', 'key added', 'no key yet', 'connected', 'models']),

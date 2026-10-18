@@ -3,7 +3,6 @@ import { BackHandler } from 'react-native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useSettingsOrigin } from '../app-shell/settings-navigation';
 import { isNative } from '../design/platform';
-import { settingsIdOfRoute } from './mounts';
 import { pageHref, settingsPage } from './tree';
 
 interface RouteEntry {
@@ -19,12 +18,12 @@ function paramOf(params: object | undefined, key: string): string {
   return typeof value === 'string' ? value : '';
 }
 
-export function routeSettingsId(route: RouteEntry, base: string): string | null {
+export function routeSettingsId(route: RouteEntry): string {
   const path = route.name
     .replace(/\[\.\.\.(\w+)\]/g, (_, key: string) => paramOf(route.params, key))
     .replace(/\[(\w+)\]/g, (_, key: string) => paramOf(route.params, key))
     .replace(/(^|\/)index$/, '');
-  return settingsIdOfRoute([base, path].filter((part) => part !== '').join('/'));
+  return path === '' ? 'home' : path;
 }
 
 function previousRoute(state: {
@@ -50,7 +49,7 @@ export function useSettingsParentBack(page: string): void {
         if (origin && previous === undefined) return false;
         if (
           previous !== undefined &&
-          keepsSettingsHistory(page, routeSettingsId(previous, 'settings'), definition.id)
+          keepsSettingsHistory(page, routeSettingsId(previous), definition.id)
         ) {
           return false;
         }
@@ -64,6 +63,6 @@ export function useSettingsParentBack(page: string): void {
   );
 }
 
-function keepsSettingsHistory(page: string, previous: string | null, parent: string): boolean {
+function keepsSettingsHistory(page: string, previous: string, parent: string): boolean {
   return previous === parent || (page.endsWith('/detail') && previous === `${parent}/add`);
 }

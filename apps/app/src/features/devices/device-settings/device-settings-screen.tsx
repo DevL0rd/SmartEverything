@@ -1,6 +1,6 @@
 import { BluetoothObservation } from './bluetooth-observation';
 import { Fragment, type ReactNode } from 'react';
-import { inTier, isCamera } from '@smarteverything/domain';
+import { inTier, isBleObservable, isCamera } from '@smarteverything/domain';
 import { NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { href } from '../../../app-shell/hrefs';
@@ -69,9 +69,7 @@ function MaintenanceSection({
 }
 
 function BluetoothSection({ device }: { readonly device: Device }): ReactNode {
-  return device.provider === 'xiaomi' && device.model === 'isa.magnet.dw2hl' ? (
-    <BluetoothObservation device={device} />
-  ) : null;
+  return isBleObservable(device) ? <BluetoothObservation device={device} /> : null;
 }
 
 function Body({

@@ -8,9 +8,10 @@ import { Text } from '../../components/text';
 import { count, kilometres } from '../../format/number';
 import { playTime } from '../../format/time';
 import { joinParts } from '../../format/text';
-import { useSecond } from '../../store/clock';
+import { useSecondOf } from '../../store/clock';
 import type { WatchCommand } from './watch-config';
 import { elapsedSeconds } from './watch-workout';
+import { background } from '@smarteverything/logging';
 
 const STATE_TEXT: Readonly<Record<WatchWorkout['state'], string>> = {
   running: 'On the watch now',
@@ -34,19 +35,21 @@ export function WorkoutClock({
   readonly workout: WatchWorkout;
   readonly compact: boolean;
 }): ReactNode {
-  const now = useSecond();
+  const elapsed = useSecondOf((now) => playTime(elapsedSeconds(workout, now)));
   return (
     <View className="gap-0.5">
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {joinParts([WATCH_SPORT_LABELS[workout.sport], STATE_TEXT[workout.state]])}
       </Text>
       <Figure
-        value={playTime(elapsedSeconds(workout, now))}
+        value={elapsed}
         size={compact ? 'l' : 'xl'}
         tone={workout.state === 'paused' ? 'variant' : 'default'}
       />
       <Text variant="callout" numberOfLines={1}>
-        {workoutFigures(workout) === '' ? 'Waiting for the watch’s readings' : workoutFigures(workout)}
+        {workoutFigures(workout) === ''
+          ? 'Waiting for the watch’s readings'
+          : workoutFigures(workout)}
       </Text>
     </View>
   );
@@ -88,7 +91,7 @@ export function WorkoutControls({
         variant="outlined"
         disabled={command.busy}
         onPress={() => {
-          void finish(command);
+          background(finish(command), 'watch_workout_live.finish_failed');
         }}
       />
     </View>

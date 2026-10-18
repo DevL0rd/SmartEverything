@@ -3,7 +3,7 @@ import { dirname, basename } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 const SETTLE_MS = 75;
 interface RootWatch {
-  readonly watchers: readonly FSWatcher[];
+  readonly watchers: FSWatcher[];
   timer: NodeJS.Timeout | undefined;
 }
 export class PreviewProjectWatch {
@@ -12,11 +12,7 @@ export class PreviewProjectWatch {
   add(
     id: string,
     root: string,
-    events: {
-      readonly changed: () => void;
-      readonly failed: () => void;
-      readonly touched: () => void;
-    },
+    events: { readonly changed: () => void; readonly touched: () => void },
   ): void {
     this.remove(id);
     const watchers: FSWatcher[] = [];
@@ -27,14 +23,17 @@ export class PreviewProjectWatch {
       scope.timer = setTimeout(events.changed, SETTLE_MS);
       scope.timer.unref();
     };
-    const error = (cause: unknown): void => {
-      this.log.warn('project.watch_failed', {
-        publication_id: id,
-        error_name: cause instanceof Error ? cause.name : 'unknown',
-      });
-      this.remove(id);
-      events.failed();
+    let reported = false;
+    const unwatched = (cause: unknown): void => {
+      if (!reported)
+        this.log.warn('project.watch_failed', {
+          publication_id: id,
+          error_name: cause instanceof Error ? cause.name : 'unknown',
+        });
+      reported = true;
+      for (const watcher of watchers.splice(0)) watcher.close();
     };
+    this.entries.set(id, scope);
     try {
       watchers.push(watch(root, { recursive: true }, settle));
       watchers.push(
@@ -44,12 +43,10 @@ export class PreviewProjectWatch {
       );
       for (const watcher of watchers) {
         watcher.unref();
-        watcher.on('error', error);
+        watcher.on('error', unwatched);
       }
-      this.entries.set(id, scope);
     } catch (cause) {
-      for (const watcher of watchers) watcher.close();
-      error(cause);
+      unwatched(cause);
     }
   }
   signal(id: string, changed: () => void): void {

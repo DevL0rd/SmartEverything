@@ -1,26 +1,9 @@
-export interface Loop {
-  readonly stop: () => void;
-}
+import { Loop } from '../../plugins/loop';
+
+export type { Loop };
 
 export function startLoop(intervalMs: () => number, task: () => Promise<void>): Loop {
-  let stopped = false;
-  let timer: NodeJS.Timeout | null = null;
-  const schedule = (): void => {
-    timer = setTimeout(() => {
-      void task().finally(() => {
-        if (!stopped) {
-          schedule();
-        }
-      });
-    }, intervalMs());
-  };
-  schedule();
-  return {
-    stop: (): void => {
-      stopped = true;
-      if (timer !== null) {
-        clearTimeout(timer);
-      }
-    },
-  };
+  const loop = new Loop(task, intervalMs);
+  loop.start();
+  return loop;
 }

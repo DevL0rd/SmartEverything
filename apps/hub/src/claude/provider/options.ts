@@ -30,6 +30,12 @@ export function subscriptionEnvironment(): Record<string, string | undefined> {
   );
 }
 
+const WORK_DIRECTORY_NAME = 'provider-work';
+
+export function providerWorkDirectory(dataDirectory: string): string {
+  return join(dataDirectory, WORK_DIRECTORY_NAME);
+}
+
 export async function workDirectory(
   dataDirectory: string,
   options: ClaudeProviderOptions,
@@ -43,7 +49,7 @@ export async function workDirectory(
     }
     return cwd;
   }
-  const directory = join(dataDirectory, 'provider-work');
+  const directory = providerWorkDirectory(dataDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   return directory;
 }

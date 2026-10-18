@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { operate, ownerOf, profileFor, type ActingAs } from './acting';
 import { readPref, writePref } from './prefs';
 import {
-  PROFILE,
+  PERSON,
   READS,
   WRITES,
   defineTool,
@@ -12,24 +12,33 @@ import {
   type ToolContext,
 } from './registry';
 
-const CHANGED_BY = {
-  home_name: 'update_settings area home',
-  time_zone: 'update_settings area home',
-  latitude: 'update_settings area home or location',
-  longitude: 'update_settings area home or location',
+export const CHANGED_BY = {
+  home_name: 'update_settings action home',
+  time_zone: 'update_settings action home',
+  latitude: 'update_settings action home or location',
+  longitude: 'update_settings action home or location',
   public_url: 'call_operation setPublicUrl, then verifyPublicUrl',
   ice_servers: 'call_operation updateNetwork',
   webrtc_candidates: 'call_operation updateNetwork',
   push: 'call_operation setPushAccount or clearPushAccount',
-  mcp_disabled_tools: 'update_settings area tools',
+  mcp_disabled_tools: 'update_settings action tools',
+  ir_remotes: 'call_operation updateIrRemote (remote ids from get_device or list_remotes)',
+  end_of_speech_pause_ms: 'call_operation updateListeningSettings',
+  ear_host_device_id: 'call_operation updateListeningSettings',
+  device_refills: 'call_operation recordDeviceRefill',
+  history_settings: 'call_operation updateHistorySettings',
+  location_name: 'update_settings action location',
+  fitness_goals: 'edit_person action goals',
+  max_heart_rate: 'edit_person action goals',
+  push_project_id: 'call_operation setPushAccount or clearPushAccount',
   goals: 'edit_person action goals',
-  preferences: 'update_settings area preference',
+  preferences: 'update_settings action preference',
   layouts: 'call_operation saveLayout (page = home, climate, fitness or cameras)',
   rooms: 'edit_room',
   people: 'edit_person',
   devices:
-    'update_device what device (name, room, hidden, favourite, position); device options with control_devices',
-  cameras: 'update_device what camera (save event clips); camera options with control_devices',
+    'edit_device action device (name, room, hidden, favourite, position, a television’s input_names); device options with control_devices',
+  cameras: 'edit_device action camera (save event clips); camera options with control_devices',
 } as const;
 
 const CLIENT = z
@@ -68,7 +77,7 @@ async function settings(context: ToolContext, as: ActingAs): Promise<Record<stri
 export const SETTINGS_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'get_settings',
-    input: z.strictObject({ profileId: PROFILE, clientId: CLIENT }),
+    input: z.strictObject({ personId: PERSON, clientId: CLIENT }),
     annotations: READS,
     run: async (context, input) => ({ structured: await settings(context, input) }),
   }),
@@ -79,7 +88,7 @@ export const SETTINGS_TOOLS: readonly Tool[] = [
       value: z
         .record(z.string(), z.unknown())
         .describe('Only the fields to change, with values from get_settings › allowed'),
-      profileId: PROFILE,
+      personId: PERSON,
       clientId: CLIENT,
     }),
     annotations: { ...WRITES, idempotentHint: true },

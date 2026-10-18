@@ -7,7 +7,6 @@ import { app } from 'electron';
 import { readXdgEnvironment } from './environment.js';
 import {
   declaresScheme,
-  planSchemeRegistration,
   SCHEME_HANDLER_FILE,
   SCHEME_MIME_TYPE,
   schemeHandlerEntry,
@@ -17,19 +16,6 @@ import {
 const log = new Logger('desktop.scheme');
 const run = promisify(execFile);
 const DESKTOP_FILE_SUFFIX = '.desktop';
-
-class SchemeRegistrationRefusedError extends Error {
-  readonly received: string;
-
-  constructor(received: string) {
-    super(
-      `xdg-mime must answer ${SCHEME_HANDLER_FILE} for ${SCHEME_MIME_TYPE} after registering it; ` +
-        `received ${received === '' ? 'no handler' : received}`,
-    );
-    this.name = 'SchemeRegistrationRefusedError';
-    this.received = received;
-  }
-}
 
 function isAbsentPath(error: unknown): boolean {
   return (
@@ -79,43 +65,18 @@ async function packagedHandlers(directories: readonly string[]): Promise<readonl
   return declaring.filter((file) => file !== undefined);
 }
 
-async function currentDefaultHandler(): Promise<string> {
-  const { stdout } = await run('xdg-mime', ['query', 'default', SCHEME_MIME_TYPE]);
-  return stdout.trim();
-}
-
 async function registerLinuxSchemeHandler(): Promise<void> {
   const locations = xdgDataLocations(readXdgEnvironment(), app.getPath('home'));
+  const handlers = await packagedHandlers(locations.directories);
+  if (handlers.length > 0) {
+    log.info('desktop.scheme.packaged', { handlers, mimeType: SCHEME_MIME_TYPE });
+    return;
+  }
   const userFile = path.join(locations.home, 'applications', SCHEME_HANDLER_FILE);
-  const desiredEntry = schemeHandlerEntry(app.getName(), process.execPath);
-  const plan = planSchemeRegistration({
-    packagedHandlers: await packagedHandlers(locations.directories),
-    userEntry: await readOptional(userFile),
-    desiredEntry,
-    currentDefault: await currentDefaultHandler(),
-  });
-  if (plan.kind === 'packaged') {
-    log.info('desktop.scheme.packaged', { handlers: plan.handlers, mimeType: SCHEME_MIME_TYPE });
-    return;
-  }
-  if (plan.kind === 'current') {
-    log.info('desktop.scheme.current', { file: userFile, executable: process.execPath });
-    return;
-  }
-  if (plan.writeEntry) {
-    await mkdir(path.dirname(userFile), { recursive: true });
-    await writeFile(userFile, desiredEntry, 'utf8');
-  }
+  await mkdir(path.dirname(userFile), { recursive: true });
+  await writeFile(userFile, schemeHandlerEntry(app.getName(), process.execPath), 'utf8');
   await run('xdg-mime', ['default', SCHEME_HANDLER_FILE, SCHEME_MIME_TYPE]);
-  const registered = await currentDefaultHandler();
-  if (registered !== SCHEME_HANDLER_FILE) {
-    throw new SchemeRegistrationRefusedError(registered);
-  }
-  log.info('desktop.scheme.registered', {
-    file: userFile,
-    executable: process.execPath,
-    wroteEntry: plan.writeEntry,
-  });
+  log.info('desktop.scheme.registered', { file: userFile, executable: process.execPath });
 }
 
 export function startLinuxSchemeRegistration(): void {

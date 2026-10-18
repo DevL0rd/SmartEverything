@@ -1,0 +1,2102 @@
+[
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T08:06:02.849Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T05:38:38.793Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T03:42:52.694Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T08:03:28.831Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T04:09:41.872Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T06:36:02.849Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T04:08:38.793Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T02:12:52.694Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T06:33:28.831Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-16T02:38:11.936Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T08:51:02.849Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T06:23:38.793Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T04:27:52.694Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T08:48:28.831Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T04:54:41.872Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T18:06:02.849Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T15:38:38.793Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T13:42:39.527Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T18:03:28.831Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T14:09:41.872Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T20:05:57.104Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T17:36:21.997Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T15:42:52.694Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T20:03:59.141Z"
+  },
+  {
+    "place": "london",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T16:08:11.936Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T16:00:46.994Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T18:31:17.469Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T20:21:15.148Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T15:53:13.726Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T19:43:28.142Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T14:30:46.994Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T17:01:17.469Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T18:51:15.148Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T14:23:13.726Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T18:13:28.142Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T16:45:46.994Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T19:16:17.469Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T21:06:15.148Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T16:38:13.726Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T20:28:28.142Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T01:59:50.450Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T04:29:38.480Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T06:21:15.148Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T01:52:51.624Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T05:41:56.386Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T04:00:46.994Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T06:31:17.469Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T08:21:28.199Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T03:53:13.726Z"
+  },
+  {
+    "place": "london",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T07:43:28.142Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T18:47:48.492Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T20:07:28.463Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T20:59:59.261Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T18:41:15.580Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T20:40:04.241Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T17:17:48.492Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T18:37:28.463Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T19:29:59.261Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T17:11:15.580Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T19:10:04.241Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T19:32:48.492Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T20:52:28.463Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T21:44:59.261Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T19:26:15.580Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T21:25:04.241Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T04:47:05.809Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T06:06:45.120Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T06:59:59.261Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T04:40:48.932Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T06:39:20.353Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T06:47:48.492Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T08:07:28.463Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T09:00:10.961Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T06:41:15.580Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T08:40:04.241Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T09:09:02.226Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T07:52:29.335Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T06:53:39.824Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T09:05:11.817Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T07:03:07.854Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T07:39:02.226Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T06:22:29.335Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T05:23:39.824Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T07:35:11.817Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T05:33:07.854Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T09:54:02.226Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T08:37:29.335Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T07:38:39.824Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T09:50:11.817Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T07:48:07.854Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T19:09:02.226Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T17:52:29.335Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T16:53:26.689Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T19:05:11.817Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T17:03:07.854Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T21:09:13.022Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T19:51:08.112Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T18:53:39.824Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T21:05:40.868Z"
+  },
+  {
+    "place": "sydney",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T19:02:24.958Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T10:31:15.632Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T03:53:42.229Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-26T23:25:18.949Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T10:30:19.138Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T23:38:31.818Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T09:01:15.632Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T02:23:42.229Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-26T21:55:18.949Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T09:00:19.138Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T22:08:31.818Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T11:16:15.632Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T04:38:42.229Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-27T00:10:18.949Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T11:15:19.138Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-16T00:23:31.818Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T20:31:15.632Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T13:53:42.229Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-27T09:25:18.949Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T20:30:19.138Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T09:49:02.500Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-15T22:31:15.632Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T15:49:04.470Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-26T11:25:18.949Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-15T22:30:19.138Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T11:38:31.818Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T11:15:01.878Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T17:43:34.146Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-27T22:16:12.969Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T11:16:00.082Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T21:31:27.627Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T09:45:01.878Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T16:13:34.146Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-27T20:46:12.969Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T09:46:00.082Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T20:01:27.627Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T12:00:01.878Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T18:28:34.146Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-27T23:01:12.969Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T12:01:00.082Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T22:16:27.627Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-16T21:15:01.878Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T03:39:34.948Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-28T08:16:12.969Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-16T21:16:00.082Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T07:22:08.968Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-15T23:15:01.878Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T05:43:34.146Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-07-27T10:16:12.969Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2025-01-15T23:16:00.082Z"
+  },
+  {
+    "place": "tromso",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T09:31:27.627Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T11:12:50.776Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T11:15:02.431Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T11:12:12.936Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T11:07:46.219Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T11:06:40.235Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T09:42:50.776Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T09:45:02.431Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T09:42:12.936Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T09:37:46.219Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T09:36:40.235Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T11:57:50.776Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T12:00:02.431Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T11:57:12.936Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T11:52:46.219Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T11:51:40.235Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T21:12:50.776Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T21:15:02.431Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T21:11:59.827Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T21:07:46.219Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T21:06:40.235Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T23:13:17.713Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T23:14:43.682Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T23:12:12.936Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T23:08:14.053Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T23:06:40.634Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T23:20:42.267Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T23:21:37.032Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T23:18:38.048Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T23:15:39.538Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T23:13:12.980Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T21:50:42.267Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T21:51:37.032Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T21:48:38.048Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T21:45:39.538Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T21:43:12.980Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T00:05:15.405Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T00:06:56.245Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T00:03:38.048Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T00:00:11.710Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T23:58:12.980Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T09:20:15.405Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T09:21:56.245Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T09:18:38.048Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T09:15:11.710Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T09:13:12.972Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T11:20:42.267Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T11:21:37.032Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T11:18:51.157Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T11:15:39.538Z"
+  },
+  {
+    "place": "quito",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T11:13:12.980Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T17:05:24.029Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T18:34:32.586Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T19:33:44.590Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T16:58:39.391Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T19:12:00.687Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T15:35:24.029Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T17:04:32.586Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T18:03:44.590Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T15:28:39.391Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T17:42:00.687Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T17:50:24.029Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T19:19:32.586Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T20:18:44.590Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T17:43:39.391Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T19:57:00.687Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T03:04:39.282Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T04:33:41.955Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T05:33:44.590Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T02:58:12.899Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T05:11:11.413Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T05:05:24.029Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T06:34:32.586Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T07:33:56.112Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T04:58:39.391Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T07:12:00.687Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T07:43:04.417Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T06:17:08.164Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T05:11:30.159Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T07:39:23.514Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T05:22:52.458Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T06:13:04.417Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T04:47:08.164Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T03:41:30.159Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T06:09:23.514Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T03:52:52.458Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T08:28:04.417Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T07:02:08.164Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T05:56:30.159Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T08:24:23.514Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T06:07:52.458Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T17:43:04.417Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T16:17:08.164Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T15:11:17.021Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T17:39:23.514Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T15:22:52.458Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T19:43:13.149Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T18:15:39.654Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T17:11:30.159Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T19:39:52.721Z"
+  },
+  {
+    "place": "auckland",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T17:22:04.176Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T17:08:34.915Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T16:25:47.386Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T15:49:55.623Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T17:04:11.164Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T15:53:22.357Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T15:38:34.915Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T14:55:47.386Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T14:19:55.623Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T15:34:11.164Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T14:23:22.357Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T17:53:34.915Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T17:10:47.386Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T16:34:55.623Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T17:49:11.164Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T16:38:22.357Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T03:08:15.758Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T02:26:42.848Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T01:49:55.623Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T03:03:41.857Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-16T01:53:22.357Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T05:08:34.915Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T04:25:47.386Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T03:50:08.747Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T05:04:11.164Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunrise",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T03:53:22.357Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T03:59:26.656Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T04:45:38.096Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T05:15:45.708Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T03:53:51.768Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 0,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T05:01:08.468Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T02:29:26.656Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T03:15:38.096Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T03:45:45.708Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T02:23:51.768Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -90,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T03:31:08.468Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T04:44:26.656Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T05:30:38.096Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-22T06:00:45.708Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T04:38:51.768Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 45,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T05:46:08.468Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T13:59:26.656Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T14:45:38.096Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T15:15:31.816Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T13:53:51.768Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": 600,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T15:01:08.468Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-01-01T00:00:00Z",
+    "expected": "2024-01-01T16:00:01.584Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-03-30T23:59:59Z",
+    "expected": "2024-03-31T16:45:55.533Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-06-21T12:00:00Z",
+    "expected": "2024-06-21T17:15:45.708Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2024-12-21T00:00:00Z",
+    "expected": "2024-12-21T15:54:18.049Z"
+  },
+  {
+    "place": "honolulu",
+    "event": "sunset",
+    "offsetMinutes": -720,
+    "after": "2025-05-15T03:30:00Z",
+    "expected": "2025-05-15T17:01:34.314Z"
+  }
+]

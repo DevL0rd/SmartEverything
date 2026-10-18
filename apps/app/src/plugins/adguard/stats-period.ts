@@ -1,6 +1,14 @@
 import type { AdGuardStats } from '@smarteverything/domain';
 
+function spanText(stats: AdGuardStats): string {
+  const unit = stats.timeUnit === 'hours' ? 'hours' : 'days';
+  return `${String(stats.history.length)} ${unit}`;
+}
+
 export function periodText(stats: AdGuardStats): string {
-  const span = stats.history.length;
-  return stats.timeUnit === 'hours' ? `last ${String(span)} hours` : `last ${String(span)} days`;
+  return `last ${spanText(stats)}`;
+}
+
+export function periodCaption(stats: AdGuardStats): string {
+  return `Last ${spanText(stats)}`;
 }

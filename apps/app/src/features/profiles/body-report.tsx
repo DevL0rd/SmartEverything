@@ -1,26 +1,17 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Badge } from '../../components/badge';
 import { Card } from '../../components/card';
 import { Figure } from '../../components/figure';
 import { Text } from '../../components/text';
-import { decimal } from '../../format/number';
+import { decimal, signed } from '../../format/number';
 import { joinParts } from '../../format/text';
 import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
 import { useActiveProfile, useBodyReadings, type WeighedReading } from '../../store/people';
+import { BodyBadges } from './body-badges';
 import { BodyHistory } from './body-history';
 import { CompositionGrid } from './composition-grid';
-import { BODY_TYPE_LABELS } from './composition-metrics';
 import { FinishFitnessCard } from './fitness-ready';
-
-function changeOf(latest: WeighedReading, previous: WeighedReading | undefined): string | null {
-  if (previous === undefined) {
-    return null;
-  }
-  const delta = latest.weight_kg - previous.weight_kg;
-  return `${delta > 0 ? '+' : delta < 0 ? '−' : '±'}${decimal(Math.abs(delta), 1)} kg since last time`;
-}
 
 function Hero({
   latest,
@@ -38,18 +29,14 @@ function Hero({
         <Text variant="footnote" tone="variant">
           {joinParts([
             relative(latest.measured_at, now),
-            changeOf(latest, previous),
+            previous === undefined
+              ? null
+              : `${signed(latest.weight_kg - previous.weight_kg, 1)} kg since last time`,
             latest.bmi === null ? null : `BMI ${decimal(latest.bmi, 1)}`,
             latest.heart_rate === null ? null : `${String(latest.heart_rate)} bpm`,
           ])}
         </Text>
-        {composition === null ? null : (
-          <View className="flex-row flex-wrap gap-2">
-            <Badge label={`Body score ${String(composition.body_score)}`} tone="primary" />
-            <Badge label={BODY_TYPE_LABELS[composition.body_type]} tone="neutral" />
-            <Badge label={`Body age ${String(composition.body_age)}`} tone="neutral" />
-          </View>
-        )}
+        {composition === null ? null : <BodyBadges composition={composition} />}
       </View>
     </Card>
   );

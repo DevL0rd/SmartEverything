@@ -1,12 +1,10 @@
-import {
-  useInfiniteQuery,
-  useQuery,
-  type InfiniteData,
-  type UseQueryResult,
-} from '@tanstack/react-query';
+import { type InfiniteData, type UseQueryResult } from '@tanstack/react-query';
+import { useScreenInfiniteQuery, useScreenQuery } from '../../../queries/use-screen-query';
 import type { PluginOption, PluginOptionPage, PluginRow } from '@smarteverything/domain';
 import { readPluginOptions } from '../../../api/plugin-admin';
 import { pluginOptionsKey } from '../../../queries/keys';
+import { background } from '@smarteverything/logging';
+import { readChosen } from '../model/chosen-pages';
 
 const PAGES_MAX = 40;
 const CHOSEN_STALE_MS = 30_000;
@@ -36,7 +34,7 @@ export function useOptionPages(
   search: string,
   enabled: boolean,
 ): OptionPages {
-  const result = useInfiniteQuery<
+  const result = useScreenInfiniteQuery<
     PluginOptionPage,
     Error,
     InfiniteData<PluginOptionPage, string | null>,
@@ -62,10 +60,12 @@ export function useOptionPages(
     error: result.error,
     more:
       result.hasNextPage && !result.isFetchingNextPage
-        ? (): void => void result.fetchNextPage()
+        ? (): void => {
+            background(result.fetchNextPage(), 'next_page.fetch_failed');
+          }
         : null,
     retry: (): void => {
-      void result.refetch();
+      background(result.refetch(), 'result.refetch_failed');
     },
   };
 }
@@ -76,9 +76,9 @@ export function useChosenOptions(
   ids: readonly string[],
 ): UseQueryResult<PluginOptionPage> {
   const key = ids.join(',');
-  return useQuery({
+  return useScreenQuery({
     queryKey: pluginOptionsKey(row.id, source, ['chosen', key]),
-    queryFn: () => readPluginOptions(row.id, source, { ids: key }),
+    queryFn: () => readChosen((query) => readPluginOptions(row.id, source, query), ids),
     enabled: ids.length > 0 && source !== '',
     staleTime: CHOSEN_STALE_MS,
   });

@@ -1,6 +1,9 @@
 import type { JsonValue, WebSource } from '@smarteverything/domain';
-import type { ChatChunk, ChatUsage, ToolCall } from './chat-types';
+import type { ToolCall } from './chat-types';
 import { openRouterError } from './errors';
+import type { OrChunk, OrUsage } from './wire';
+
+type Delta = NonNullable<OrChunk['choices'][number]['delta']>;
 
 interface PendingCall {
   id: string | null;
@@ -17,7 +20,7 @@ export interface Turn {
   readonly toolCalls: readonly ToolCall[];
   readonly citations: readonly WebSource[];
   readonly finishReason: string | null;
-  readonly usage: ChatUsage | null;
+  readonly usage: OrUsage | null;
 }
 
 function finished(index: number, call: PendingCall): ToolCall {
@@ -40,36 +43,16 @@ export class TurnAccumulator {
   private readonly calls = new Map<number, PendingCall>();
   private readonly citations: WebSource[] = [];
   private finishReason: string | null = null;
-  private usage: ChatUsage | null = null;
+  private usage: OrUsage | null = null;
 
-  feed(chunk: ChatChunk): void {
-    switch (chunk.type) {
-      case 'start':
-        this.generationId = chunk.generationId;
-        this.model = chunk.model;
-        return;
-      case 'text':
-        this.text += chunk.text;
-        return;
-      case 'reasoning':
-        this.reasoning += chunk.text;
-        return;
-      case 'reasoning_details':
-        this.reasoningDetails.push(...chunk.details);
-        return;
-      case 'tool_call':
-        this.toolDelta(chunk);
-        return;
-      case 'citation':
-        this.citations.push({ url: chunk.url, title: chunk.title });
-        return;
-      case 'finish':
-        this.finishReason = chunk.reason;
-        return;
-      case 'usage':
-        this.usage = chunk.usage;
-        return;
+  feed(chunk: OrChunk): void {
+    this.generationId ??= chunk.id;
+    this.model ??= chunk.model;
+    for (const choice of chunk.choices) {
+      if (choice.delta !== undefined) this.delta(choice.delta);
+      if (typeof choice.finish_reason === 'string') this.finishReason = choice.finish_reason;
     }
+    if (chunk.usage !== undefined && chunk.usage !== null) this.usage = chunk.usage;
   }
 
   result(): Turn {
@@ -91,11 +74,29 @@ export class TurnAccumulator {
     };
   }
 
-  private toolDelta(chunk: Extract<ChatChunk, { type: 'tool_call' }>): void {
-    const call = this.calls.get(chunk.index) ?? { id: null, name: null, arguments: '' };
-    call.id ??= chunk.id;
-    call.name ??= chunk.name;
-    call.arguments += chunk.arguments;
-    this.calls.set(chunk.index, call);
+  private delta(delta: Delta): void {
+    this.text += delta.content ?? '';
+    this.reasoning += delta.reasoning ?? '';
+    this.reasoningDetails.push(...(delta.reasoning_details ?? []));
+    this.cite(delta.annotations ?? []);
+    this.callDeltas(delta.tool_calls ?? []);
+  }
+
+  private cite(annotations: NonNullable<Delta['annotations']>): void {
+    for (const { type, url_citation: source } of annotations) {
+      if (type === 'url_citation' && source !== undefined) {
+        this.citations.push({ url: source.url, title: source.title ?? '' });
+      }
+    }
+  }
+
+  private callDeltas(deltas: NonNullable<Delta['tool_calls']>): void {
+    for (const { index, id, function: fn } of deltas) {
+      const call = this.calls.get(index) ?? { id: null, name: null, arguments: '' };
+      call.id ??= id ?? null;
+      call.name ??= fn?.name ?? null;
+      call.arguments += fn?.arguments ?? '';
+      this.calls.set(index, call);
+    }
   }
 }

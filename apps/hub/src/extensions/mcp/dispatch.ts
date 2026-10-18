@@ -1,59 +1,52 @@
-import { ApiError, CommandRefusedError, InvalidValueError } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
-import { z } from 'zod';
-import { StoreNotFoundError } from '../../store/context';
 import {
-  JSON_RPC_ERRORS,
-  errorMessage,
-  negotiatedVersion,
-  resultMessage,
-  type RpcRequest,
-} from './protocol';
-import { SERVER_INFO, SERVER_INSTRUCTIONS } from './instructions';
-import { resourceList, resourceRead } from './resources';
-import { TOOLS, toolNamed } from './tools';
+  ApiError,
+  CommandRefusedError,
+  InvalidValueError,
+  MCP_TOOLS,
+  currentToolCall,
+} from '@smarteverything/domain';
+import type { Logger } from '@smarteverything/logging';
+import { switchedOffTools } from '../../ai-tools/tool-discovery';
+import { StoreNotFoundError } from '../../store/context';
+import { TOOLS, shownOutput, toolNamed } from './tools';
+import { areaRefusal } from './tools/person-reach';
 import { toolInScope, visibleTools } from './tools/visibility';
-import { ToolError, type Tool, type ToolContext, type ToolOutput } from './tools/registry';
-
-const REFUSAL_LOGGED = 300;
-
-const CALL = z.object({
-  name: z.string().min(1),
-  arguments: z.record(z.string(), z.unknown()).optional(),
-});
-
-function contentOf(output: ToolOutput): readonly Record<string, unknown>[] {
-  const images = (output.images ?? []).map((image) => ({
-    type: 'image',
-    data: image.data,
-    mimeType: image.mimeType,
-  }));
-  return [{ type: 'text', text: JSON.stringify(output.structured) }, ...images];
-}
-
-function switchedOff(context: ToolContext): ReadonlySet<string> {
-  return new Set(context.store.settings.read().mcp_disabled_tools);
-}
-
-function enabledTools(context: ToolContext): readonly Tool[] {
-  return visibleTools(TOOLS, context);
-}
+import {
+  PLUGIN_ONLY_TOOLS,
+  ToolError,
+  internalRefusal,
+  type Tool,
+  type ToolContext,
+  type ToolOutput,
+} from './tools/registry';
 
 interface Refusal {
   readonly code: string;
   readonly message: string;
 }
 
-function failed(request: RpcRequest, error: Refusal): unknown {
-  return resultMessage(request.id, {
-    content: [{ type: 'text', text: `${error.code}: ${error.message}` }],
-    structuredContent: { error },
-    isError: true,
-  });
+export type ToolRun =
+  | { readonly kind: 'done'; readonly output: ToolOutput }
+  | { readonly kind: 'refused'; readonly refusal: Refusal }
+  | { readonly kind: 'unknown' };
+
+function reachable(context: ToolContext, name: string): boolean {
+  return context.caller?.via === 'plugin' || !PLUGIN_ONLY_TOOLS.has(name);
+}
+
+export function enabledTools(context: ToolContext): readonly Tool[] {
+  return visibleTools(TOOLS, context).filter((tool) => reachable(context, tool.name));
+}
+
+function refusalOf(error: ToolError): Refusal {
+  return { code: error.code, message: error.message };
 }
 
 function refusal(cause: unknown): Refusal | null {
-  if (cause instanceof ToolError || cause instanceof ApiError) {
+  if (cause instanceof ToolError) {
+    return refusalOf(cause);
+  }
+  if (cause instanceof ApiError) {
     return { code: cause.code, message: cause.message };
   }
   if (cause instanceof StoreNotFoundError) {
@@ -65,114 +58,120 @@ function refusal(cause: unknown): Refusal | null {
   return null;
 }
 
-interface Success {
-  readonly request: RpcRequest;
-  readonly log: Logger;
-  readonly name: string;
-}
-
-function succeeded(done: Success, output: ToolOutput): unknown {
-  const { request, name } = done;
-  done.log.info('tool.succeeded', { tool: name });
-  return resultMessage(request.id, {
-    content: contentOf(output),
-    structuredContent: output.structured,
-    isError: false,
-  });
-}
-
-function discoveryContext(context: ToolContext): ToolContext {
-  return { ...context, visibleTools: (): readonly Tool[] => enabledTools(context) };
-}
-
-async function called(request: RpcRequest, context: ToolContext, log: Logger): Promise<unknown> {
-  const call = CALL.safeParse(request.params);
-  if (!call.success) {
-    return errorMessage(request.id, JSON_RPC_ERRORS.invalidParams, 'tools/call needs a tool name');
+function unavailability(context: ToolContext, name: string, log: Logger): Refusal | null {
+  if (!toolInScope(context, name)) {
+    const area = MCP_TOOLS.find((candidate) => candidate.name === name)?.area ?? 'everything';
+    return refusalOf(areaRefusal(context, name, area));
   }
-  const tool = toolNamed(call.data.name);
-  if (tool === undefined) {
-    return errorMessage(
-      request.id,
-      JSON_RPC_ERRORS.invalidParams,
-      `Unknown tool: ${call.data.name}`,
-    );
+  if (!reachable(context, name)) {
+    return { code: 'forbidden', message: `${name} is only for a plugin handing over a message.` };
   }
-  if (!toolInScope(context, tool.name)) {
-    return failed(request, {
-      code: 'forbidden',
-      message: `This plugin may not use ${tool.name}; the owner chooses what it can reach.`,
-    });
-  }
-  if (switchedOff(context).has(tool.name)) {
-    log.warn('tool.switched_off', { tool: tool.name });
-    return failed(request, {
+  if (switchedOffTools(context.store.settings.read().mcp_disabled_tools).has(name)) {
+    log.warn('tool.switched_off', { tool: name });
+    return {
       code: 'tool_switched_off',
-      message: `The owner turned off ${tool.name}. They can turn it on in SmartEverything under Settings › AI assistants › Exposed tools.`,
-    });
+      message: `The owner turned off ${name}. They can turn it on in SmartEverything under Settings › AI assistants › Exposed tools.`,
+    };
   }
+  return null;
+}
+
+const SELECTOR_KEYS = ['action', 'view'] as const;
+
+function selectorOf(args: Readonly<Record<string, unknown>>): string | undefined {
+  for (const key of SELECTOR_KEYS) {
+    const value = args[key];
+    if (typeof value === 'string') {
+      return value.slice(0, 40);
+    }
+  }
+  return undefined;
+}
+
+function callFields(
+  context: ToolContext,
+  tool: string,
+  args: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  return {
+    tool,
+    action: selectorOf(args),
+    argumentKeys: Object.keys(args).length,
+    profileId: context.actor?.profileId,
+    chatId: context.actor?.chatId,
+    role: context.actor?.role,
+    via: context.caller?.via,
+    pluginId: context.actor?.pluginId,
+  };
+}
+
+function resultSize(output: ToolOutput): number {
+  return JSON.stringify(output.structured).length;
+}
+
+interface Invocation {
+  readonly tool: Tool;
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly fields: Record<string, unknown>;
+}
+
+async function invoke(context: ToolContext, call: Invocation, log: Logger): Promise<ToolRun> {
+  const { tool, args, fields } = call;
+  const startedAt = performance.now();
+  log.debug('tool.called', fields);
   try {
-    const args = call.data.arguments ?? {};
-    const visibleContext = discoveryContext(context);
-    return succeeded({ request, log, name: tool.name }, await tool.call(visibleContext, args));
+    const output = await tool.call(
+      { ...context, visibleTools: (): readonly Tool[] => enabledTools(context) },
+      args,
+    );
+    const shown = shownOutput(tool.name, args, output);
+    log.info('tool.succeeded', {
+      ...fields,
+      durationMs: Math.round(performance.now() - startedAt),
+      resultBytes: resultSize(shown),
+      images: shown.images?.length ?? 0,
+      changed: shown.action === true,
+    });
+    return { kind: 'done', output: shown };
   } catch (cause) {
     const refused = refusal(cause);
     if (refused === null) {
-      log.error('tool.failed', cause, { tool: tool.name });
+      log.error('tool.failed', cause, {
+        ...fields,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
     } else {
       log.warn('tool.refused', {
-        tool: tool.name,
+        ...fields,
+        durationMs: Math.round(performance.now() - startedAt),
         refusal: refused.code,
-        message: refused.message.slice(0, REFUSAL_LOGGED),
+        message: refused.message,
       });
     }
-    return failed(
-      request,
-      refused ?? {
-        code: 'internal',
-        message: 'The tool failed inside the server; its log has the detail.',
-      },
-    );
+    return { kind: 'refused', refusal: refused ?? refusalOf(internalRefusal(cause)) };
   }
 }
 
-function readResource(request: RpcRequest, context: ToolContext): unknown {
-  const read = resourceRead(request.params, enabledTools(context));
-  return read === null
-    ? errorMessage(request.id, JSON_RPC_ERRORS.invalidParams, 'Unknown resource')
-    : resultMessage(request.id, read);
-}
-
-export async function answered(
-  request: RpcRequest,
+export async function runTool(
   context: ToolContext,
+  name: string,
+  args: Readonly<Record<string, unknown>>,
   log: Logger,
-): Promise<unknown> {
-  switch (request.method) {
-    case 'initialize':
-      return resultMessage(request.id, {
-        protocolVersion: negotiatedVersion(request.params?.['protocolVersion']),
-        capabilities: { tools: { listChanged: true }, resources: {} },
-        serverInfo: SERVER_INFO,
-        instructions: SERVER_INSTRUCTIONS,
-      });
-    case 'ping':
-      return resultMessage(request.id, {});
-    case 'tools/list':
-      return resultMessage(request.id, {
-        tools: enabledTools(context).map((tool) => tool.listing),
-      });
-    case 'tools/call':
-      return called(request, context, log);
-    case 'resources/list':
-      return resultMessage(request.id, resourceList());
-    case 'resources/read':
-      return readResource(request, context);
-    default:
-      return errorMessage(
-        request.id,
-        JSON_RPC_ERRORS.methodNotFound,
-        `This server does not answer ${request.method}`,
-      );
+): Promise<ToolRun> {
+  const requested = currentToolCall(name, args);
+  const tool = toolNamed(requested.name);
+  if (tool === undefined) {
+    log.warn('tool.unknown', { tool: name, via: context.caller?.via });
+    return { kind: 'unknown' };
   }
+  const fields = callFields(context, tool.name, requested.arguments);
+  if (requested.name !== name) {
+    log.debug('tool.renamed', () => ({ ...fields, requested: name }));
+  }
+  const unavailable = unavailability(context, tool.name, log);
+  if (unavailable !== null) {
+    log.warn('tool.unavailable', { ...fields, refusal: unavailable.code });
+    return { kind: 'refused', refusal: unavailable };
+  }
+  return invoke(context, { tool, args: requested.arguments, fields }, log);
 }

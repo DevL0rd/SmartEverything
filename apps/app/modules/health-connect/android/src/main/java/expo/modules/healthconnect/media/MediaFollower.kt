@@ -10,6 +10,7 @@ data class NowPlaying(
   val track: String,
   val artist: String,
   val app: String?,
+  val packageName: String?,
   val positionSeconds: Int,
   val durationSeconds: Int
 ) {
@@ -53,6 +54,7 @@ class MediaFollower(private val context: Context, private val changed: () -> Uni
       track = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty(),
       artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty(),
       app = current?.packageName?.let { appLabel(it) },
+      packageName = current?.packageName,
       positionSeconds = ((state?.position ?: 0L) / MILLIS).toInt(),
       durationSeconds = ((metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L) / MILLIS).toInt()
     )

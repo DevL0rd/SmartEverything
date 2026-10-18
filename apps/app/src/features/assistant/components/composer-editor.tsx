@@ -8,30 +8,27 @@ import type { AiMessageReference } from '@smarteverything/domain';
 import type { ReferenceComposer } from '../references/use-reference-composer';
 import { ReferenceChips } from '../references/chips';
 import { ComposerField } from './composer-field';
+import { SuggestionKeys, suggestionKey } from './suggestion-keys';
 
 interface EditorProps {
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly text: string;
-  readonly setText: (text: string) => void;
+  readonly draftKey: string;
   readonly placeholder: string;
   readonly ready: boolean;
   readonly onSend: () => void;
   readonly mentions: ReferenceComposer;
-  readonly onCommandKey: (key: string) => boolean;
   readonly references: readonly AiMessageReference[];
 }
 function ComposerEditorBase({
   open,
   onClose,
-  text,
-  setText,
+  draftKey,
   placeholder,
   ready,
   onSend,
   mentions,
   references,
-  onCommandKey,
 }: EditorProps): ReactNode {
   const input = useFocusOnMount(open);
   return (
@@ -44,24 +41,25 @@ function ComposerEditorBase({
       footer={editorSend(ready, onSend)}
     >
       {open ? (
-        <View className="min-h-0 flex-1 gap-2 rounded-lg bg-surface-2 px-2">
-          {mentions.editorPanel}
-          <ReferenceChips references={references} remove={mentions.remove} />
-          <ComposerField
-            input={input}
-            text={text}
-            setText={setText}
-            disabled={false}
-            placeholder={placeholder}
-            onSend={onSend}
-            selection={mentions.selection}
-            onSelection={mentions.select}
-            onCommandKey={onCommandKey}
-            onEscape={onClose}
-            onEditLatest={null}
-            tall
-          />
-        </View>
+        <SuggestionKeys suggestions={mentions.suggestions} className="min-h-0 flex-1">
+          <View className="min-h-0 flex-1 gap-2 rounded-lg bg-surface-2 px-2">
+            {mentions.editorPanel}
+            <ReferenceChips references={references} remove={mentions.remove} />
+            <ComposerField
+              input={input}
+              draftKey={draftKey}
+              disabled={false}
+              placeholder={placeholder}
+              onSend={onSend}
+              selection={mentions.selection}
+              onSelection={mentions.select}
+              onCommandKey={(key): boolean => suggestionKey(key, mentions.suggestions)}
+              onEscape={onClose}
+              onEditLatest={null}
+              tall
+            />
+          </View>
+        </SuggestionKeys>
       ) : null}
     </Sheet>
   );

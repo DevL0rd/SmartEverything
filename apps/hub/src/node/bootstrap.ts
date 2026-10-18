@@ -1,8 +1,6 @@
 import { HubGuestBroker } from '../client-network/guest-broker';
 import { NodeRouteAuthority } from '../client-network/route-authority';
 import { nodeHubTransport, type NodeHubTransport } from '../client-network/node-transport';
-import { NodeRouteNotices } from '../service/route-notices';
-import { NodeRouteViewWriter } from '../service/route-view';
 import { pid } from 'node:process';
 import type { Logger } from '@smarteverything/logging';
 import type { NodeServiceConfig } from '../service/configuration';
@@ -11,8 +9,14 @@ import { HUB_VERSION } from '../version';
 import { NodeHarnessRuntime } from './harness-runtime';
 import { NodeAiRuntime } from './ai-runtime';
 import { nodeIdentity } from './identity';
-import { createNodeClaudeHost } from './claude-host';
 import { nodeRuntimeHosts } from './runtime-hosts';
+import { collectorFor, UnsupportedPlatformError } from './collectors/collector';
+import { ComputerNode } from './computer-node';
+import { controlsFor } from './controls/controls';
+import { earHostFor, type EarHostFactory } from './ear/ear-host';
+import { computerEarFor } from './ear/linux-ear';
+import type { NodeLink } from './link';
+import { NodeFailureError } from './node-failure';
 
 interface NodeBootstrapOptions {
   readonly dataDirectory: string;
@@ -29,22 +33,13 @@ class NodeReadyWriter {
   private writing: Promise<void> = Promise.resolve();
   private ready: ReadyFile | null = null;
   private stopped = false;
-  constructor(
-    private readonly options: NodeBootstrapOptions,
-    private readonly routeAuthority: NodeRouteViewWriter | null,
-  ) {}
+  constructor(private readonly options: NodeBootstrapOptions) {}
   changed(connected: boolean): void {
     this.writing = this.writing
       .then(async () => {
         if (this.stopped) return;
         this.ready = await writeReadyFile(this.options.dataDirectory, {
           role: 'node',
-          ...(this.routeAuthority === null
-            ? {}
-            : {
-                route_authority: this.routeAuthority.id,
-                route_process_start: this.routeAuthority.processStart,
-              }),
           pid,
           version: HUB_VERSION,
           hub_url: this.options.config.node.hub_url,
@@ -76,18 +71,7 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
   });
   await authority.start();
   const { broker, transport } = await startNodeTransport(authority, node.hub_url);
-  const view = await NodeRouteViewWriter.start(options.dataDirectory, authority, options.log);
-  const ready = new NodeReadyWriter(options, view);
-  const notices =
-    view === null
-      ? null
-      : new NodeRouteNotices(options.dataDirectory, view.id, authority, {
-          log: options.log,
-          completed: (): void => {
-            view.changed();
-          },
-        });
-  await notices?.start();
+  const ready = new NodeReadyWriter(options);
   const harness = new NodeHarnessRuntime({
     node,
     dataDirectory: options.dataDirectory,
@@ -107,8 +91,6 @@ export async function startNode(options: NodeBootstrapOptions): Promise<RunningN
       runtime.stop();
       broker.close();
       await harness.stop();
-      await notices?.stop();
-      await view?.stop();
       await authority.stop();
       await ready.stop();
     },
@@ -122,6 +104,7 @@ function createRuntime(
   transport: NodeHubTransport,
 ): NodeAiRuntime {
   const { node } = options.config;
+  const earHost = earHostFor({ now: (): Date => new Date(), log: options.log });
   return new NodeAiRuntime({
     hubUrl: node.hub_url,
     transport,
@@ -129,23 +112,42 @@ function createRuntime(
     deviceId: node.device_id,
     hello: identity,
     log: options.log,
-    createHost: (): ReturnType<typeof createNodeClaudeHost> =>
-      createNodeClaudeHost({
-        dataDirectory: options.dataDirectory,
-        deviceId: node.device_id,
-        hubUrl: node.hub_url,
-        transport,
-        token: node.node_token,
-        log: options.log,
-        ...(node.claude_executable === undefined ? {} : { executable: node.claude_executable }),
-      }),
     runtimes: ['claude', 'codex'],
     createRuntimeHosts: (): ReturnType<typeof nodeRuntimeHosts> =>
       nodeRuntimeHosts({ dataDirectory: options.dataDirectory, node, log: options.log, transport }),
+    createComputer: (link) => createComputerNode(options.log, link, earHost, identity.machineId),
     changed: (connected): void => {
       ready.changed(connected);
     },
   });
+}
+
+function createComputerNode(
+  log: Logger,
+  link: NodeLink,
+  earHost: EarHostFactory,
+  machineId: string,
+): ComputerNode | null {
+  const now = (): Date => new Date();
+  try {
+    return new ComputerNode({
+      collector: collectorFor(process.platform, { log, machineId, now: Date.now }),
+      controls: controlsFor(process.platform, { now, log }),
+      link,
+      now,
+      log,
+      ear: computerEarFor(process.platform, { now, log }),
+      earHost,
+    });
+  } catch (cause) {
+    if (!(cause instanceof UnsupportedPlatformError || cause instanceof NodeFailureError))
+      throw cause;
+    log.warn('node.computer_unavailable', {
+      reason: cause.message,
+      consequence: 'readings, apps, processes, files and power are not available',
+    });
+    return null;
+  }
 }
 
 async function startNodeTransport(

@@ -6,7 +6,7 @@ import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { useIsOwner } from '../../../store/selectors';
-import { useAgentRunsSupported, useLaunchAgent } from '../data/agent-runs';
+import { useLaunchAgent } from '../data/agent-runs';
 import { isComputerEngine } from '../provider/computer-engine';
 
 function LaunchAgentSheet({
@@ -51,15 +51,14 @@ function LaunchAgentSheet({
 }
 export function LaunchAgent({ chat }: { readonly chat: AiChatRow }): ReactNode {
   const owner = useIsOwner();
-  const supported = useAgentRunsSupported();
   const [launching, setLaunching] = useState(false);
-  if (!supported) return null;
   return (
     <>
       {!isComputerEngine(chat.engine) || owner ? (
         <Button
           label="New agent"
-          variant="tonal"
+          icon="plus"
+          variant="outlined"
           onPress={() => {
             setLaunching(true);
           }}

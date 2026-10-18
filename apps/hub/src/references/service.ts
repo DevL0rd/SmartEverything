@@ -1,224 +1,84 @@
-import { currentRequestSignal } from '../server/request-signal';
-import { ReferenceLifecycle } from './lifecycle';
-import { Logger } from '@smarteverything/logging';
-import { createHash } from 'node:crypto';
 import {
   AI_MESSAGE_REFERENCES,
-  AI_REFERENCE,
-  AI_REFERENCE_SOURCE_STATUS,
-  AI_REFERENCE_SUMMARY,
   AI_REFERENCE_KINDS,
   AI_REFERENCE_SEARCH,
   AI_REFERENCE_SEARCH_RESULT,
   ApiError,
   referencesMatchText,
   type AiMessageReference,
-  type AiReferenceKind,
+  type AiChatRow,
   type AiReference,
+  type AiReferenceKind,
   type AiReferenceSearch,
   type AiReferenceSearchResult,
   type AiReferenceSourceStatus,
+  type AiReferenceSummary,
 } from '@smarteverything/domain';
+import type { ProjectFilesService } from '../projects/service';
 import type { Caller } from '../server/auth';
 import type { Store } from '../store/store';
-import { referenceContext, referenceScope } from './context';
-import type { ReferenceContext, ReferenceRuntime, ReferenceSource } from './contracts';
-import {
-  ReferenceCursors,
-  closeReferenceCursor,
-  finishReferenceCleanup,
-  type ReferenceCursor,
-} from './cursors';
-import { chatReferenceSource } from './chats';
-import { managedReferenceSource } from './managed';
-import { unavailableReferenceSource } from './unavailable';
+import { resolveChat, searchChats } from './chats';
+import { referenceContext } from './context';
+import type {
+  NativeReferences,
+  NativeSearch,
+  ReferenceContext,
+  ReferenceMatches,
+} from './contracts';
+import { resolveManaged, searchManaged } from './managed';
+
+const LOCAL_KINDS: readonly AiReferenceKind[] = ['managed_path', 'chat'];
 
 export class ReferenceService {
-  private readonly log = new Logger('hub.ai-references');
-  private readonly lifecycle = new ReferenceLifecycle();
-  private closing: Promise<void> | undefined;
-  private readonly cursors = new ReferenceCursors();
-  private readonly sources = new Map<AiReferenceKind, ReferenceSource>();
-  private runtime: ReferenceRuntime | undefined;
-  private titleRevision = 0;
-  private readonly unsubscribe: () => void;
+  private readonly natives = new Map<AiChatRow['engine']['kind'], NativeReferences>();
   constructor(
     private readonly store: Store,
-    dataDirectory: string,
-  ) {
-    for (const kind of AI_REFERENCE_KINDS) this.sources.set(kind, unavailableReferenceSource(kind));
-    this.sources.set('managed_path', managedReferenceSource(store, dataDirectory));
-    this.sources.set('chat', chatReferenceSource(store));
-    this.unsubscribe = store.feed.subscribe((change) => {
-      if (change.table !== 'ai_chats') return;
-      const changed = [
-        change.record?.title !== change.oldRecord?.title,
-        change.record?.archived_at !== change.oldRecord?.archived_at,
-        change.record?.deletion_state !== change.oldRecord?.deletion_state,
-      ];
-      if (change.operation !== 'UPDATE' || changed.includes(true)) this.titleRevision += 1;
-    });
-  }
-  attachRuntime(runtime: ReferenceRuntime): void {
-    this.lifecycle.validate();
-    if (this.runtime !== undefined)
-      throw new ApiError('conflict', 'Reference runtime support is already attached.');
-    if (new Set(runtime.sources.map((source) => source.kind)).size !== runtime.sources.length)
-      throw new ApiError('conflict', 'Runtime reference source kinds must be unique.');
-    for (const source of runtime.sources) {
-      if (source.kind === 'managed_path' || source.kind === 'chat')
-        throw new ApiError(
-          'conflict',
-          'Runtime reference sources cannot replace central project or chat authority.',
-        );
-    }
-    this.runtime = runtime;
-    for (const source of runtime.sources) this.sources.set(source.kind, source);
+    private readonly projects: ProjectFilesService,
+  ) {}
+  attachNative(engines: readonly AiChatRow['engine']['kind'][], native: NativeReferences): void {
+    for (const engine of engines) this.natives.set(engine, native);
   }
   async search(
     caller: Caller,
     chatId: string,
     input: AiReferenceSearch,
   ): Promise<AiReferenceSearchResult> {
-    const finished = this.lifecycle.begin();
-    try {
-      const result = await this.performSearch(caller, chatId, input);
-      this.lifecycle.validate();
-      return result;
-    } finally {
-      finished();
-    }
-  }
-  private async performSearch(
-    caller: Caller,
-    chatId: string,
-    input: AiReferenceSearch,
-  ): Promise<AiReferenceSearchResult> {
     const request = AI_REFERENCE_SEARCH.parse(input);
-    const context = this.context(caller, chatId, request);
-    const sources = this.statuses(context, request);
-    let scope = this.scope(context, request);
-    const cursor: ReferenceCursor =
-      request.cursor === undefined
-        ? { scope, progresses: new Map(), incomplete: new Set<string>() }
-        : this.cursors.take(request.cursor, scope);
-    try {
-      if (request.cursor === undefined) {
-        await this.open(cursor, context, request, sources);
-        scope = this.scope(context, request);
-        cursor.scope = scope;
-      }
-      const result = await this.page(cursor, context, request, sources);
-      context.validate();
-      if (this.scope(context, request) !== scope)
-        throw new ApiError(
-          'conflict',
-          'Reference sources changed while searching; start a fresh search.',
-        );
-      const next = cursor.progresses.size === 0 ? null : await this.cursors.keep(cursor);
-      context.validate();
-      return AI_REFERENCE_SEARCH_RESULT.parse({ ...result, next_cursor: next });
-    } catch (cause) {
-      await closeReferenceCursor(cursor);
-      throw cause;
-    }
-  }
-  private statuses(
-    context: ReferenceContext,
-    request: AiReferenceSearch,
-  ): AiReferenceSourceStatus[] {
-    return (request.kinds ?? AI_REFERENCE_KINDS).map((kind) => {
-      const status = AI_REFERENCE_SOURCE_STATUS.parse(this.source(kind).status(context));
-      if (status.kind !== kind)
-        throw new ApiError('conflict', 'Reference status names another source.');
-      return status;
+    const context = referenceContext(this.store, caller, chatId, request);
+    context.validate();
+    const kinds = searchedKinds(context.chat, request);
+    const nativeKinds = kinds.filter((kind) => !LOCAL_KINDS.includes(kind));
+    const [local, native] = await Promise.all([
+      Promise.all(
+        kinds
+          .filter((kind) => LOCAL_KINDS.includes(kind))
+          .map(async (kind) => ({ kind, matches: await this.local(context, request, kind) })),
+      ),
+      this.nativeSearch(context, request, nativeKinds),
+    ]);
+    const groups = [
+      ...local.map(({ kind, matches }) => ({ kind, items: matches.items })),
+      ...nativeKinds.map((kind) => ({
+        kind,
+        items: native.matches.items.filter((item) => item.reference.kind === kind),
+      })),
+    ];
+    const sources = kinds.map((kind) => sourceOf(kind, native.sources));
+    const searched = sources.filter((source) => source.state === 'available');
+    const quota = Math.max(1, Math.floor(request.limit / Math.max(1, searched.length)));
+    const items = fill(
+      searched.map((source) => groups.find((group) => group.kind === source.kind)?.items ?? []),
+      quota,
+      request.limit,
+    );
+    return AI_REFERENCE_SEARCH_RESULT.parse({
+      items,
+      sources,
+      next_cursor: null,
+      incomplete: native.matches.incomplete || local.some(({ matches }) => matches.incomplete),
     });
   }
-  private scope(context: ReferenceContext, request: AiReferenceSearch): string {
-    return createHash('sha256')
-      .update(
-        JSON.stringify({
-          authority: referenceScope(this.store, context),
-          query: request.query,
-          kinds: request.kinds,
-          directory: request.directory,
-          container: request.container,
-          titles: this.titleRevision,
-          runtime: this.runtime?.revision(context),
-        }),
-      )
-      .digest('hex');
-  }
-  private async open(
-    cursor: ReferenceCursor,
-    context: ReferenceContext,
-    request: AiReferenceSearch,
-    statuses: readonly AiReferenceSourceStatus[],
-  ): Promise<void> {
-    for (const status of statuses) {
-      if (status.state === 'unavailable') continue;
-      cursor.progresses.set(status.kind, await this.source(status.kind).open(context, request));
-    }
-  }
-  private async page(
-    cursor: ReferenceCursor,
-    context: ReferenceContext,
-    request: AiReferenceSearch,
-    sources: readonly AiReferenceSourceStatus[],
-  ): Promise<Omit<AiReferenceSearchResult, 'next_cursor'>> {
-    const items: AiReferenceSearchResult['items'] = [];
-    const quota = Math.max(1, Math.floor(request.limit / Math.max(1, cursor.progresses.size)));
-    for (const [kind, progress] of [...cursor.progresses]) {
-      if (items.length >= request.limit) break;
-      context.validate();
-      const page = await progress.next(context, Math.min(quota, request.limit - items.length));
-      context.validate();
-      if (page.items.length > quota || page.items.length > request.limit - items.length)
-        throw new ApiError('conflict', 'Reference source exceeded its bounded metadata quota.');
-      for (const raw of page.items) {
-        const item = AI_REFERENCE_SUMMARY.parse(raw);
-        if (item.reference.kind !== kind)
-          throw new ApiError('conflict', 'Reference metadata names another source.');
-        items.push(item);
-      }
-      if (page.incomplete) cursor.incomplete.add(kind);
-      else cursor.incomplete.delete(kind);
-      if (page.complete) {
-        await progress.close();
-        cursor.progresses.delete(kind);
-      } else {
-        cursor.progresses.delete(kind);
-        cursor.progresses.set(kind, progress);
-      }
-    }
-    return {
-      items,
-      sources: [...sources],
-      incomplete: cursor.incomplete.size > 0 || cursor.progresses.size > 0,
-    };
-  }
-  private source(kind: AiReferenceKind): ReferenceSource {
-    const source = this.sources.get(kind);
-    if (source === undefined)
-      throw new ApiError('conflict', `Reference source ${kind} is unavailable.`);
-    return source;
-  }
   async resolve(
-    caller: Caller,
-    chatId: string,
-    text: string,
-    input: readonly AiMessageReference[],
-  ): Promise<AiMessageReference[]> {
-    const finished = this.lifecycle.begin();
-    try {
-      const result = await this.resolveReferences(caller, chatId, text, input);
-      this.lifecycle.validate();
-      return result;
-    } finally {
-      finished();
-    }
-  }
-  private async resolveReferences(
     caller: Caller,
     chatId: string,
     text: string,
@@ -231,88 +91,75 @@ export class ReferenceService {
         'Reference tokens were edited; select their exact identities again.',
       );
     if (references.length === 0) return references;
-    const context = this.context(caller, chatId);
-    const scope = this.resolutionScope(context);
-    const runtime = this.runtime;
-    if (runtime === undefined)
+    const context = referenceContext(this.store, caller, chatId);
+    const native: AiReference[] = [];
+    const central = context.chat.engine.kind !== 'claude';
+    for (const { reference } of references) {
+      if (central && reference.kind === 'managed_path')
+        await resolveManaged(this.projects, context, reference);
+      else if (central && reference.kind === 'chat') resolveChat(this.store, context, reference);
+      else native.push(reference);
+    }
+    if (native.length > 0) await this.nativeSupport(context.chat).admit(context, native);
+    context.validate();
+    return references;
+  }
+  private local(
+    context: ReferenceContext,
+    request: AiReferenceSearch,
+    kind: AiReferenceKind,
+  ): Promise<ReferenceMatches> {
+    if (kind === 'managed_path') return searchManaged(this.projects, context, request);
+    return Promise.resolve(searchChats(this.store, context, request));
+  }
+  private async nativeSearch(
+    context: ReferenceContext,
+    request: AiReferenceSearch,
+    kinds: readonly AiReferenceKind[],
+  ): Promise<NativeSearch> {
+    if (kinds.length === 0) return { sources: [], matches: { items: [], incomplete: false } };
+    const native = this.natives.get(context.chat.engine.kind);
+    if (native === undefined)
+      return {
+        sources: kinds.map((kind) => ({
+          kind,
+          state: 'unavailable',
+          reason: 'The current runtime has not negotiated effective reference metadata support.',
+        })),
+        matches: { items: [], incomplete: false },
+      };
+    return native.search(context, request, kinds);
+  }
+  private nativeSupport(chat: AiChatRow): NativeReferences {
+    const native = this.natives.get(chat.engine.kind);
+    if (native === undefined)
       throw new ApiError(
         'conflict',
         'This runtime cannot consume structured references yet; no message was submitted.',
       );
-    const resolved: AiMessageReference[] = [];
-    for (const item of references) {
-      context.validate();
-      const reference = AI_REFERENCE.parse(
-        await this.source(item.reference.kind).resolve(context, item.reference),
-      );
-      context.validate();
-      if (JSON.stringify(reference) !== JSON.stringify(item.reference))
-        throw new ApiError('conflict', 'A referenced identity changed; select it again.');
-      resolved.push({ ...item, reference });
-    }
-    context.validate();
-    await runtime.admit(
-      context,
-      resolved.map((item) => item.reference),
-    );
-    context.validate();
-    if (this.resolutionScope(context) !== scope)
-      throw new ApiError('conflict', 'Reference authority changed before submission.');
-    return resolved;
+    return native;
   }
-  private resolutionScope(context: ReferenceContext): string {
-    return `${referenceScope(this.store, context)}:${this.runtime?.revision(context) ?? 'unavailable'}`;
-  }
-  async revalidateCentral(
-    caller: Caller,
-    chatId: string,
-    references: readonly AiReference[],
-  ): Promise<void> {
-    const finished = this.lifecycle.begin();
-    try {
-      const context = this.context(caller, chatId);
-      const scope = this.resolutionScope(context);
-      for (const reference of references) {
-        if (reference.kind !== 'managed_path' && reference.kind !== 'chat') continue;
-        const resolved = await this.source(reference.kind).resolve(context, reference);
-        if (JSON.stringify(resolved) !== JSON.stringify(reference))
-          throw new ApiError('conflict', 'Central reference identity changed before native use.');
-      }
-      context.validate();
-      if (this.resolutionScope(context) !== scope)
-        throw new ApiError('conflict', 'Central reference authority changed before native use.');
-      this.lifecycle.validate();
-    } finally {
-      finished();
-    }
-  }
-  stop(): void {
-    void this.close().catch((cause: unknown) => {
-      this.log.error('references.close_failed', cause);
-    });
-  }
-  close(): Promise<void> {
-    if (this.closing === undefined) {
-      this.unsubscribe();
-      const drained = this.lifecycle.close();
-      this.closing = finishReferenceCleanup([this.cursors.close(), drained]);
-    }
-    return this.closing;
-  }
-  private context(caller: Caller, chatId: string, request?: AiReferenceSearch): ReferenceContext {
-    const context = referenceContext(this.store, caller, chatId, request);
-    const current = currentRequestSignal();
-    const signal =
-      current === undefined
-        ? this.lifecycle.signal
-        : AbortSignal.any([current, this.lifecycle.signal]);
-    return {
-      ...context,
-      signal,
-      validate: (): void => {
-        signal.throwIfAborted();
-        context.validate();
-      },
-    };
-  }
+}
+
+function searchedKinds(chat: AiChatRow, request: AiReferenceSearch): readonly AiReferenceKind[] {
+  const wanted = request.kinds ?? AI_REFERENCE_KINDS;
+  return chat.engine.kind === 'claude' ? wanted.filter((kind) => kind === 'device_path') : wanted;
+}
+
+function sourceOf(
+  kind: AiReferenceKind,
+  native: readonly AiReferenceSourceStatus[],
+): AiReferenceSourceStatus {
+  return native.find((source) => source.kind === kind) ?? { kind, state: 'available' };
+}
+
+function fill(
+  groups: readonly (readonly AiReferenceSummary[])[],
+  quota: number,
+  limit: number,
+): AiReferenceSummary[] {
+  const taken = groups.map((group) => group.slice(0, quota));
+  const spare = groups.flatMap((group) => group.slice(quota));
+  const room = Math.max(0, limit - taken.reduce((sum, group) => sum + group.length, 0));
+  return [...taken.flat(), ...spare.slice(0, room)].slice(0, limit);
 }

@@ -1,5 +1,7 @@
 import { isIP } from 'node:net';
+import type { z } from 'zod';
 import {
+  API_ERROR,
   NODE_CONNECTION_PATH,
   NODE_CONNECTION_RESPONSE,
   NATIVE_HUB_ROUTE_CONFIGURATION,
@@ -29,6 +31,11 @@ export function canonicalEndpoint(hubUrl: string): HubEndpoint {
   if (url.protocol !== 'https:') throw new HubTransportError('A remote node hub requires HTTPS');
   return { kind: 'remote', url: url.origin };
 }
+async function confirmsRevocation(response: Response): Promise<boolean> {
+  if (response.headers.get('content-type')?.includes('application/json') !== true) return false;
+  const parsed = API_ERROR.safeParse(await response.json());
+  return parsed.success && ['unauthorized', 'forbidden'].includes(parsed.data.error.code);
+}
 export async function bootstrapNodeTrust(
   identity: NodeRouteIdentity,
 ): Promise<NativeHubRouteConfiguration | null> {
@@ -39,7 +46,7 @@ export async function bootstrapNodeTrust(
     redirect: 'error',
     signal: AbortSignal.timeout(ROUTE_PROBE_TIMEOUT_MS),
   });
-  if (response.status === 401 || response.status === 403)
+  if ((response.status === 401 || response.status === 403) && (await confirmsRevocation(response)))
     throw new NodeEnrollmentRefusedError(response.status);
   if (response.status === 404 || response.status === 503) return null;
   if (!response.ok)
@@ -48,13 +55,20 @@ export async function bootstrapNodeTrust(
     JSON.parse((await readRouteDocument(response, ROUTE_DOCUMENT_BYTES * 4)).body),
   );
   if (answer.device_id !== identity.deviceId) throw new NodeEnrollmentRefusedError(403);
+  return routeConfiguration(identity, canonical, answer);
+}
+export function routeConfiguration(
+  identity: NodeRouteIdentity,
+  canonical: HubEndpoint,
+  answer: z.infer<typeof NODE_CONNECTION_RESPONSE>,
+): NativeHubRouteConfiguration {
   const scopeId = `node:${identity.deviceId}`;
-  const endpoints = new Map<string, HubEndpoint>(
-    answer.connection.endpoints
+  const endpoints = new Map<string, HubEndpoint>([
+    [canonical.url, canonical],
+    ...answer.connection.endpoints
       .filter((endpoint) => endpoint.kind !== 'loopback')
-      .map((endpoint) => [new URL(endpoint.url).origin, endpoint]),
-  );
-  endpoints.set(canonical.url, canonical);
+      .map((endpoint): [string, HubEndpoint] => [new URL(endpoint.url).origin, endpoint]),
+  ]);
   return NATIVE_HUB_ROUTE_CONFIGURATION.parse({
     canonicalOrigin: canonical.url,
     trust: {

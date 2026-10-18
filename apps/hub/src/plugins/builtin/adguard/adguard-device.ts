@@ -5,6 +5,7 @@ import type {
   DiscoveredDevice,
   JsonValue,
 } from '@smarteverything/domain';
+import type { PluginMetrics } from '../contract';
 import type { DeviceMirrorSpec } from '../device-mirror';
 
 export const ADGUARD_DRIVER_ID = 'adguard';
@@ -59,10 +60,17 @@ function adguardReadings(snapshot: AdGuardSnapshot): ReadonlyMap<CapabilityKey, 
   return readings;
 }
 
-export const ADGUARD_MIRROR: DeviceMirrorSpec<AdGuardSnapshot> = {
-  externalId: ADGUARD_EXTERNAL_ID,
-  describe: describeAdGuard,
-  readings: adguardReadings,
-  observedAt: (snapshot) => snapshot.at,
-  sampled: null,
-};
+const SAMPLED: ReadonlySet<CapabilityKey> = new Set(['dns_queries', 'dns_blocked_percent']);
+
+export const LOOKUPS_RATE_KEY = 'dns_lookups_rate';
+export const BLOCKED_RATE_KEY = 'dns_blocked_rate';
+
+export function adguardMirror(metrics: PluginMetrics): DeviceMirrorSpec<AdGuardSnapshot> {
+  return {
+    externalId: ADGUARD_EXTERNAL_ID,
+    describe: describeAdGuard,
+    readings: adguardReadings,
+    observedAt: (snapshot) => snapshot.at,
+    sampled: { keys: SAMPLED, metrics, stateEveryMs: 10_000 },
+  };
+}

@@ -1,5 +1,5 @@
-import { describeIssues } from './issues';
 import { z } from 'zod';
+import { fit, readJson } from './json';
 
 export const IR_CODE_FORMATS = ['pulses', 'head_key', 'library'] as const;
 
@@ -231,17 +231,8 @@ function parsedJson<S extends z.ZodType>(
   schema: S,
   text: string,
 ): z.output<S> {
-  let candidate: unknown;
-  try {
-    candidate = JSON.parse(text);
-  } catch (cause) {
-    throw new IrCodeError(format, `it is not JSON (${String(cause)})`);
-  }
-  const result = schema.safeParse(candidate);
-  if (!result.success) {
-    throw new IrCodeError(format, describeIssues(result.error));
-  }
-  return result.data;
+  const reject = (reason: string): IrCodeError => new IrCodeError(format, reason);
+  return fit(schema, readJson(text, 'text', reject), 'text', reject);
 }
 
 export function parseHeadKey(text: string): HeadKey {

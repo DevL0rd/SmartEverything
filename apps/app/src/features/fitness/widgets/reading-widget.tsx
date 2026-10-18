@@ -5,8 +5,9 @@ import { FillChart } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import type { IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { WidgetFrame, boardClassOf, type WidgetSize } from '../../../components/widget-board';
-import { useSizeClass } from '../../../design/size-class';
+import { WidgetFrame } from '../../../components/widget-board';
+import { rowLayoutOf, type RowLayout } from '../../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import type { ColourRole } from '../../../design/tokens';
 import { AgeBadge } from '../components/age-badge';
 import { DeltaLine, QuickStats, type QuickStat } from '../components/glance-parts';
@@ -17,7 +18,6 @@ export interface ReadingWidgetProps {
   readonly title: string;
   readonly icon: IconName;
   readonly href: Href;
-  readonly size: WidgetSize;
   readonly day: string;
   readonly glance: MetricGlance;
   readonly format: (value: number) => string;
@@ -29,18 +29,6 @@ export interface ReadingWidgetProps {
   readonly against: string;
   readonly caption?: string;
   readonly reference?: number | null;
-}
-
-type Layout = 'tile' | 'split' | 'wide' | 'tall';
-
-function layoutOf(size: WidgetSize, compact: boolean): Layout {
-  if (size === 'S') {
-    return 'tile';
-  }
-  if (size === 'L' || size === 'XL') {
-    return 'tall';
-  }
-  return size === 'W' && !compact ? 'wide' : 'split';
 }
 
 function statsOf(props: ReadingWidgetProps): readonly QuickStat[] {
@@ -107,7 +95,7 @@ function Body({
   layout,
 }: {
   readonly widget: ReadingWidgetProps;
-  readonly layout: Layout;
+  readonly layout: RowLayout;
 }): ReactNode {
   switch (layout) {
     case 'tile':
@@ -120,7 +108,7 @@ function Body({
     case 'split':
       return (
         <View className="flex-1 flex-row gap-4">
-          <View className="w-36 justify-between">
+          <View className="min-w-0 shrink justify-between">
             <Headline widget={widget} big />
           </View>
           <Chart widget={widget} />
@@ -129,11 +117,11 @@ function Body({
     case 'wide':
       return (
         <View className="flex-1 flex-row gap-6">
-          <View className="w-44 justify-center">
+          <View className="w-1/4 justify-center">
             <Headline widget={widget} big />
           </View>
           <Chart widget={widget} />
-          <View className="w-36 justify-center">
+          <View className="w-1/5 justify-center">
             <QuickStats stats={statsOf(widget)} vertical />
           </View>
         </View>
@@ -150,8 +138,8 @@ function Body({
 }
 
 export function ReadingWidget(widget: ReadingWidgetProps): ReactNode {
-  const { glance, size, day } = widget;
-  const compact = boardClassOf(useSizeClass().width) === 'compact';
+  const { glance, day } = widget;
+  const { cls } = useWidgetFace();
   const latest = glance.latest;
   return (
     <WidgetFrame
@@ -160,14 +148,13 @@ export function ReadingWidget(widget: ReadingWidgetProps): ReactNode {
       accent={widget.colour}
       href={widget.href}
       action={latest === null ? undefined : <AgeBadge day={latest.day} selected={day} />}
-      size={size}
     >
       {latest === null ? (
         <Text variant="callout" tone="variant">
           {widget.empty}
         </Text>
       ) : (
-        <Body widget={widget} layout={layoutOf(size, compact)} />
+        <Body widget={widget} layout={rowLayoutOf(cls)} />
       )}
     </WidgetFrame>
   );

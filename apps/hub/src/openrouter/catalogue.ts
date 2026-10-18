@@ -35,6 +35,7 @@ import type { OpenRouterClient } from './client';
 import type { AiModelsRepository } from './models-repository';
 import { modelSearchPage } from './model-search-query';
 import { syncModelSearch } from './model-search-sync';
+import { messageOf } from '@smarteverything/logging';
 
 const DAY_MS = 86_400_000;
 const SYNC_HOUR = 4;
@@ -54,7 +55,7 @@ export interface CatalogueOverview {
   readonly models: number;
 }
 
-export function nextSyncAt(now: Date): Date {
+function nextSyncAt(now: Date): Date {
   const next = new Date(now);
   next.setHours(SYNC_HOUR, SYNC_MINUTE, 0, 0);
   if (next.getTime() <= now.getTime()) {
@@ -64,7 +65,7 @@ export function nextSyncAt(now: Date): Date {
 }
 
 function causeText(cause: unknown): string {
-  return (cause instanceof Error ? cause.message : String(cause)).slice(0, 400);
+  return messageOf(cause).slice(0, 400);
 }
 
 export class Catalogue {
@@ -80,10 +81,7 @@ export class Catalogue {
     this.writeGoogle(this.settings().google_prices);
     const synced = this.options.models.syncState().synced_at;
     const stale = synced === null || this.now() - Date.parse(synced) > DAY_MS;
-    const missingOrder = Object.values(this.options.models.searchState()).some(
-      (order) => order.source.checked_at === null,
-    );
-    if (stale || missingOrder) {
+    if (stale) {
       this.syncInBackground('boot');
     }
     this.schedule();

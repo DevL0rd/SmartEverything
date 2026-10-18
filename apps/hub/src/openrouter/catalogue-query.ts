@@ -40,7 +40,7 @@ export function newestFirst(a: AiModelRow, b: AiModelRow): number {
   return before(a, b);
 }
 
-export function matches(row: AiModelRow, filter: ModelFilter): boolean {
+function matches(row: AiModelRow, filter: ModelFilter): boolean {
   if (!filter.gone && row.gone_at !== null) {
     return false;
   }

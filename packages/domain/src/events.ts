@@ -5,6 +5,7 @@ export const EVENT_KINDS = [
   'doorbell',
   'call',
   'motion',
+  'no_motion',
   'person',
   'sound',
   'alarm',
@@ -20,7 +21,9 @@ export const EVENT_KINDS = [
   'maintenance',
   'fault',
   'activity',
+  'cycle_finished',
   'computer_power',
+  'machine_action',
   'phone_context_changed',
   'place_arrived',
   'place_left',
@@ -85,7 +88,21 @@ const MIOT_DEVICE_EVENTS: Readonly<Record<string, EventKind>> = {
   'self-check-complete': 'activity',
   'long-time-no-humang': 'alarm',
   'no-huamn-appear': 'alarm',
+  click: 'button',
+  'double-click': 'button',
+  'long-press': 'button',
+  'low-battery': 'maintenance',
+  'someone-move': 'motion',
+  'nobody-move': 'no_motion',
+  'auto-light': 'activity',
+  'auto-fragrance': 'activity',
 };
+
+export const LAUNDRY_MIOT_EVENTS = {
+  washEnd: 'wash-end',
+  cleanCompleted: 'clean-completed',
+  washEndLog: 'wash-end-log',
+} as const;
 
 export function miotDeviceEventKind(name: string): EventKind | null {
   return Object.hasOwn(MIOT_DEVICE_EVENTS, name) ? (MIOT_DEVICE_EVENTS[name] ?? null) : null;

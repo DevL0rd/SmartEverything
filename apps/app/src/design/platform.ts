@@ -40,7 +40,7 @@ export function idiomNow(): Idiom {
   return coarseQuery()?.matches === true ? 'touch' : 'pointer';
 }
 
-function subscribeIdiom(listener: () => void): () => void {
+export function onIdiomChange(listener: () => void): () => void {
   const query = coarseQuery();
   if (query === null) {
     return (): void => undefined;
@@ -51,13 +51,15 @@ function subscribeIdiom(listener: () => void): () => void {
   };
 }
 
-export function onIdiomChange(listener: () => void): () => void {
-  return subscribeIdiom(listener);
+function useWebIdiom(): Idiom {
+  return useSyncExternalStore(onIdiomChange, idiomNow, idiomNow);
 }
 
-export function useIdiom(): Idiom {
-  return useSyncExternalStore(subscribeIdiom, idiomNow, idiomNow);
+function useTouchIdiom(): Idiom {
+  return 'touch';
 }
+
+export const useIdiom: () => Idiom = isNative() ? useTouchIdiom : useWebIdiom;
 
 export function isMacLike(): boolean {
   const bridge = desktopBridge();

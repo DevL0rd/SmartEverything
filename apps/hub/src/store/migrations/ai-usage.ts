@@ -1,9 +1,6 @@
 import { COLUMN_TYPES } from './core-tables';
 
-const { JSON_OBJECT } = COLUMN_TYPES;
-
-const METER = (column: string): string =>
-  `${column} integer not null default 0 check (${column} >= 0)`;
+const { JSON_OBJECT, METER } = COLUMN_TYPES;
 
 export const AI_USAGE_TABLES: readonly string[] = [
   `create table ai_usage (

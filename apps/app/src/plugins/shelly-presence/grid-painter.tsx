@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ScrollView, View, type ViewStyle } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
-import type { ShellyArea, ShellyTrack } from '@smarteverything/domain';
+import type { ShellyArea, ShellyTrack } from '@smarteverything/shelly';
 import { Button } from '../../components/button';
 import { Segmented } from '../../components/segmented';
 import { SwitchRow } from '../../components/rows';
@@ -12,7 +12,7 @@ import type { PainterViewport } from './painter-viewport';
 import { painterGesture } from './use-painter-gesture';
 import { PainterCanvas } from './painter-canvas';
 import { PainterCursor } from './painter-cursor';
-import { areaCells } from './area-context';
+import { areaCells, type PainterTool } from './area-context';
 
 const TOOLS = [
   { value: 'paint', label: 'Paint' },
@@ -73,14 +73,14 @@ interface GridSurfaceProps {
   readonly origin: number;
   readonly disabled: boolean;
   readonly change: (value: ShellyArea) => void;
-  readonly tool: 'paint' | 'erase' | 'select';
+  readonly tool: PainterTool;
   readonly cursor: GridCell;
   readonly changeCursor: (value: GridCell) => void;
   readonly zoom: number;
   readonly context: ShellyArea;
 }
 function GridSurface(props: GridSurfaceProps): ReactNode {
-  const { setWidth, preview, viewport, shownWidth, gesture } = useGridSurface({
+  const { setWidth, preview, viewport, shownWidth, gesture, rejected } = useGridSurface({
     area: props.area,
     allowed: props.allowed,
     disabled: props.disabled,
@@ -91,35 +91,40 @@ function GridSurface(props: GridSurfaceProps): ReactNode {
     context: props.context,
   });
   return (
-    <View
-      onLayout={(event) => {
-        setWidth(event.nativeEvent.layout.width);
-      }}
-      className="w-full"
-    >
-      <ScrollView horizontal>
-        <ScrollView className="max-h-128">
-          <GestureDetector gesture={gesture}>
-            <View style={canvasStyle(shownWidth)}>
-              <PainterCanvas
-                tracks={props.tracks}
-                area={props.area}
-                context={props.context}
-                origin={props.origin}
-                preview={preview}
-                cursor={props.cursor}
-                width={shownWidth}
-                viewport={viewport}
-              />
-            </View>
-          </GestureDetector>
+    <View className="w-full gap-2">
+      <View
+        onLayout={(event) => {
+          setWidth(event.nativeEvent.layout.width);
+        }}
+        className="w-full"
+      >
+        <ScrollView horizontal>
+          <ScrollView className="max-h-128">
+            <GestureDetector gesture={gesture}>
+              <View style={canvasStyle(shownWidth)}>
+                <PainterCanvas
+                  tracks={props.tracks}
+                  area={props.area}
+                  context={props.context}
+                  origin={props.origin}
+                  preview={preview}
+                  cursor={props.cursor}
+                  width={shownWidth}
+                  viewport={viewport}
+                />
+              </View>
+            </GestureDetector>
+          </ScrollView>
         </ScrollView>
-      </ScrollView>
+      </View>
+      {rejected ? (
+        <Text tone="critical">Paint inside the main room. That stroke was outside it.</Text>
+      ) : null}
     </View>
   );
 }
 export function GridPainter(props: PainterProps): ReactNode {
-  const [tool, setTool] = useState<'paint' | 'erase' | 'select'>('select');
+  const [tool, setTool] = useState<PainterTool>('paint');
   const [zoom, setZoom] = useState(1);
   const [keyboard, setKeyboard] = useState(false);
   const [showContext, setShowContext] = useState(true);
@@ -195,7 +200,7 @@ function useGridSurface(input: {
   readonly allowed: ShellyArea | undefined;
   readonly disabled: boolean;
   readonly change: (value: ShellyArea) => void;
-  readonly tool: 'paint' | 'erase' | 'select';
+  readonly tool: PainterTool;
   readonly cursor: (value: GridCell) => void;
   readonly zoom: number;
   readonly context: ShellyArea;
@@ -205,10 +210,12 @@ function useGridSurface(input: {
   readonly viewport: PainterViewport;
   readonly shownWidth: number;
   readonly gesture: ReturnType<typeof painterGesture>;
+  readonly rejected: boolean;
 } {
   const { area, allowed, disabled, change, tool, cursor: changeCursor, zoom, context } = input;
   const [width, setWidth] = useState(320);
   const [preview, setPreview] = useState<ShellyArea>([]);
+  const [rejected, setRejected] = useState(false);
   const viewport = painterViewport([...area, ...context]);
   const shownWidth = width * zoom;
   const gesture = painterGesture({
@@ -221,6 +228,7 @@ function useGridSurface(input: {
     change,
     cursor: changeCursor,
     preview: setPreview,
+    rejected: setRejected,
   });
-  return { setWidth, preview, viewport, shownWidth, gesture };
+  return { setWidth, preview, viewport, shownWidth, gesture, rejected };
 }

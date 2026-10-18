@@ -11,14 +11,19 @@ const LICENCES = z.array(
 
 export type Licence = z.infer<typeof LICENCES>[number];
 
-const LICENCE_LIST: readonly Licence[] = LICENCES.parse(listed);
+let parsed: readonly Licence[] | null = null;
+
+function licenceList(): readonly Licence[] {
+  parsed ??= LICENCES.parse(listed);
+  return parsed;
+}
 
 export function matchingLicences(query: string): readonly Licence[] {
   const needle = query.trim().toLowerCase();
   if (needle === '') {
-    return LICENCE_LIST;
+    return licenceList();
   }
-  return LICENCE_LIST.filter((entry) =>
+  return licenceList().filter((entry) =>
     [entry.name, entry.licence].some((text) => text.toLowerCase().includes(needle)),
   );
 }

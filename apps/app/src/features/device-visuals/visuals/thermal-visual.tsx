@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Path } from 'react-native-svg';
+import { Circle, Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import type { ColourRole } from '../../../design/tokens';
 import { decimal } from '../../../format/number';
@@ -45,9 +45,7 @@ function Glow({
       )}
     >
       <Canvas px={visual.px}>
-        <Defs>
-          <GlowGradient id={id} colour={colour} strength={0.5} />
-        </Defs>
+        <GlowGradient id={id} colour={colour} strength={0.5} />
         <Circle cx={50} cy={cy} r={r} fill={`url(#${id})`} />
       </Canvas>
     </Layer>
@@ -62,9 +60,7 @@ function Radiator({ ink, tint }: { readonly ink: VisualInk; readonly tint: strin
   const body = useSvgId('radiator');
   return (
     <>
-      <Defs>
-        <BodyGradient id={body} ink={ink} vertical />
-      </Defs>
+      <BodyGradient id={body} ink={ink} vertical />
       <Shadow cy={88} rx={30} />
       <Path
         d={rounded({ x: 22, y: 22, w: 56, h: 60, r: 10 })}
@@ -93,11 +89,9 @@ export function HeaterVisual(props: VisualProps): ReactNode {
   return (
     <>
       <Glow visual={props} cy={52} r={48} />
-      <Layer box={FULL} px={props.px}>
-        <Canvas px={props.px}>
-          <Radiator ink={ink} tint={tint} />
-        </Canvas>
-      </Layer>
+      <Canvas px={props.px} layer>
+        <Radiator ink={ink} tint={tint} />
+      </Canvas>
     </>
   );
 }
@@ -136,9 +130,7 @@ export function AirConditionerVisual(props: VisualProps): ReactNode {
   return (
     <>
       <Canvas px={props.px}>
-        <Defs>
-          <BodyGradient id={body} ink={ink} vertical />
-        </Defs>
+        <BodyGradient id={body} ink={ink} vertical />
         <Path
           d={rounded({ x: 10, y: 26, w: 80, h: 32, r: 10 })}
           fill={`url(#${body})`}
@@ -167,28 +159,26 @@ export function ThermostatVisual(props: VisualProps): ReactNode {
   return (
     <>
       <Glow visual={props} cy={50} r={50} />
-      <Layer box={FULL} px={props.px}>
-        <Canvas px={props.px}>
-          <Circle cx={50} cy={50} r={40} fill={ink.light} stroke={ink.edge} strokeWidth={0.6} />
+      <Canvas px={props.px} layer>
+        <Circle cx={50} cy={50} r={40} fill={ink.light} stroke={ink.edge} strokeWidth={0.6} />
+        <Path
+          d={arcPath({ cx: 50, cy: 50, r: 33 }, -135, 135)}
+          stroke={ink.well}
+          strokeOpacity={WELL}
+          strokeWidth={4}
+          strokeLinecap="round"
+          fill="none"
+        />
+        {targetShare === null ? null : (
           <Path
-            d={arcPath({ cx: 50, cy: 50, r: 33 }, -135, 135)}
-            stroke={ink.well}
-            strokeOpacity={WELL}
+            d={arcPath({ cx: 50, cy: 50, r: 33 }, -135, -135 + Math.max(1, targetShare * 270))}
+            stroke={tint}
             strokeWidth={4}
             strokeLinecap="round"
             fill="none"
           />
-          {targetShare === null ? null : (
-            <Path
-              d={arcPath({ cx: 50, cy: 50, r: 33 }, -135, -135 + Math.max(1, targetShare * 270))}
-              stroke={tint}
-              strokeWidth={4}
-              strokeLinecap="round"
-              fill="none"
-            />
-          )}
-        </Canvas>
-      </Layer>
+        )}
+      </Canvas>
       {current === null ? null : (
         <Readout
           box={{ x: 25, y: 25, w: 50, h: 50 }}

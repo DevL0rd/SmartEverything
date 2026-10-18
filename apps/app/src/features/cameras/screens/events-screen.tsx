@@ -1,14 +1,17 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { Logger } from '@smarteverything/logging';
 import { EmptyState } from '../../../components/empty-state';
 import { PageHeader } from '../../../components/page-header';
+import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { Screen } from '../../../components/screen';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
 import { dayLabel } from '../../../format/time';
 import { daysOf } from '../../activity';
 import { useMinute } from '../../../store/clock';
 import { EventRow } from '../components/event-row';
+import { cameraNameOf } from '../components/recent-events';
 import { FilterButton } from '../components/filter-sheet';
 import { useDeleteWithUndo } from '../data/delete-recordings';
 import { useCameraEntries } from '../data/use-cameras';
@@ -16,6 +19,8 @@ import { thumbOf, useEventFeed, type EventFeed } from '../data/use-event-feed';
 import type { CameraEntry } from '../logic/cameras';
 import type { EventEntry } from '../logic/event-entries';
 import { NO_FILTER, type TimelineFilter } from '../logic/timeline';
+
+const log = new Logger('app.cameras');
 
 interface Row {
   readonly entry: EventEntry;
@@ -91,6 +96,31 @@ function toggled(current: ReadonlySet<string>, id: string): ReadonlySet<string> 
     : new Set([...current, id]);
 }
 
+function useEventsLog(shown: {
+  readonly cameras: number;
+  readonly feed: EventFeed;
+  readonly filter: TimelineFilter;
+  readonly open: number;
+}): void {
+  const { cameras, feed, filter, open } = shown;
+  const entries = feed.entries.length;
+  const thumbs = Object.keys(feed.thumbs).length;
+  useLifecycleLog(log, 'events_screen');
+  useEffect(() => {
+    log.debug('events.feed_changed', { cameras, entries, thumbs });
+  }, [cameras, entries, thumbs]);
+  useEffect(() => {
+    log.debug('events.filter_changed', () => ({
+      cameras: filter.deviceIds?.length ?? null,
+      kinds: filter.kinds?.join(',') ?? null,
+      sounds: filter.soundDetections?.length ?? null,
+    }));
+  }, [filter]);
+  useEffect(() => {
+    log.debug('events.expanded_changed', { open });
+  }, [open]);
+}
+
 export function EventsScreen(): ReactNode {
   const cameras = useCameraEntries();
   const [filter, setFilter] = useState<TimelineFilter>(NO_FILTER);
@@ -101,10 +131,8 @@ export function EventsScreen(): ReactNode {
   );
   const deleting = useDeleteWithUndo();
   const now = useMinute();
-  const nameOf = (deviceId: string): string | null =>
-    cameras.length === 1
-      ? null
-      : (cameras.find((entry) => entry.device.id === deviceId)?.name ?? null);
+  const nameOf = cameraNameOf(cameras);
+  useEventsLog({ cameras: cameras.length, feed, filter, open: open.size });
   return (
     <Screen header={<PageHeader title="Events" />} scroll={false}>
       <View className="w-full max-w-reading flex-1 self-center">

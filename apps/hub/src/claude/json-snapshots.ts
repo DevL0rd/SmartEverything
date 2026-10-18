@@ -4,6 +4,8 @@ import { z } from 'zod';
 import type { Diagnostics, ClaudeSource } from './diagnostics';
 import { ClaudeFileReadError } from './errors';
 import type { JsonEntry } from './json-files';
+import { messageOf } from '@smarteverything/logging';
+import { isMissing } from '../fs-util';
 
 interface SnapshotOptions<T> {
   readonly source: ClaudeSource;
@@ -15,10 +17,6 @@ interface SnapshotOptions<T> {
   readonly snapshot: string;
   readonly identity?: (name: string, value: T) => string;
   readonly acceptsValue?: (name: string, value: T) => boolean;
-}
-
-function missing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
 
 export class JsonSnapshots<T> {
@@ -40,6 +38,13 @@ export class JsonSnapshots<T> {
     } finally {
       this.scanning = null;
     }
+  }
+
+  settled(): Promise<void> {
+    return this.pending.then(
+      (): void => undefined,
+      (): void => undefined,
+    );
   }
 
   retain(name: string, value: T): Promise<void> {
@@ -75,7 +80,7 @@ export class JsonSnapshots<T> {
     try {
       names = (await readdir(directory, { recursive })).filter(accepts);
     } catch (cause) {
-      if (!missing(cause)) throw new ClaudeFileReadError(directory, cause);
+      if (!isMissing(cause)) throw new ClaudeFileReadError(directory, cause);
       diagnostics.report(
         source,
         directory,
@@ -97,11 +102,7 @@ export class JsonSnapshots<T> {
     try {
       json = JSON.parse(text);
     } catch (cause) {
-      diagnostics.report(
-        source,
-        name,
-        cause instanceof Error ? cause.message : 'Invalid legacy JSON.',
-      );
+      diagnostics.report(source, name, messageOf(cause));
       return;
     }
     const result = schema.safeParse(json);
@@ -147,7 +148,7 @@ export class JsonSnapshots<T> {
     try {
       return await readFile(file, 'utf8');
     } catch (cause) {
-      if (missing(cause)) return null;
+      if (isMissing(cause)) return null;
       throw new ClaudeFileReadError(file, cause);
     }
   }

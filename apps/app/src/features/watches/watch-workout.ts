@@ -1,4 +1,9 @@
-import { WATCH_SPORTS, WATCH_WORKOUT, type WatchSport, type WatchWorkout } from '@smarteverything/domain';
+import {
+  WATCH_SPORTS,
+  WATCH_WORKOUT,
+  type WatchSport,
+  type WatchWorkout,
+} from '@smarteverything/domain';
 import type { IconName } from '../../components/icon';
 import type { Device } from '../../store/state';
 import { configOf } from './watch-config';
@@ -19,7 +24,7 @@ export const SPORT_ICONS: Readonly<Record<WatchSport, IconName>> = {
   jump_rope: 'activity',
 };
 
-export type WorkoutReading =
+type WorkoutReading =
   | { readonly kind: 'ready'; readonly workout: WatchWorkout | null }
   | { readonly kind: 'invalid'; readonly reason: string };
 

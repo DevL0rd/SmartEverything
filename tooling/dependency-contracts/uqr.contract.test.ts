@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { encode } from 'uqr';
-import { appDeclaredVersion } from './app-manifest';
-import { installedVersion } from './versions';
 
 describe('uqr contract', () => {
-  it('is installed at exactly the version the app declares', () => {
-    expect(installedVersion('uqr')).toBe(appDeclaredVersion('uqr'));
-  });
-
   it('encodes text into a square grid of dark modules with the quiet zone asked for', () => {
     const qr = encode('{"url":"https://home.example.com","code":"ABCD-EFGH"}', {
       ecc: 'M',

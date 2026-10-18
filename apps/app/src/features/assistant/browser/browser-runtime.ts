@@ -1,30 +1,14 @@
-import { releasePreviewDiagnostics } from './browser-diagnostics';
 import { retiredGatewayLease } from '../data/preview-owner';
-import { BROWSER_RETIRED_PROBLEM } from '@smarteverything/domain';
 import { previewNotices } from '../../../queries/preview-notices';
 import { browserTabOperation } from './browser-tab-operation';
-import type { BrowserSurfaceProps } from '../../../platform/browser-contract';
 import type { ServerConnection } from '../../../api/transport';
-import { ValueStore } from '../../../design/external-store';
 import { BrowserTabs } from './browser-tabs';
+import { closeBrowserSurfaces } from './browser-surfaces';
 import {
   persistBrowserTabs,
   restoreBrowserTabs,
-  forgetBrowserTabs,
+  forgetChatBrowserTabs,
 } from './browser-tab-persistence';
-export interface BrowserRegion {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-export interface RetainedBrowserSurface {
-  readonly owner: symbol;
-  readonly chatId: string;
-  readonly props: BrowserSurfaceProps;
-  readonly bounds: BrowserRegion;
-  readonly attached: boolean;
-}
 interface BrowserWorkspace {
   readonly chatId: string;
   readonly profileId: string;
@@ -34,8 +18,6 @@ interface BrowserWorkspace {
   readonly stop: () => void;
 }
 const workspaces = new Map<string, BrowserWorkspace>();
-export const browserSurfaces = new ValueStore<readonly RetainedBrowserSurface[]>([]);
-const EMPTY_REGION: BrowserRegion = { x: 0, y: 0, width: 0, height: 0 };
 export function browserWorkspace(
   key: string,
   owner: Omit<BrowserWorkspace, 'tabs' | 'stop'>,
@@ -47,37 +29,6 @@ export function browserWorkspace(
   tabs.restore(restoreBrowserTabs(key));
   workspaces.set(key, { ...owner, tabs, stop: persistBrowserTabs(key, tabs) });
   return tabs;
-}
-export function retainBrowserSurface(
-  chatId: string,
-  props: BrowserSurfaceProps,
-  owner: symbol,
-): () => void {
-  const existing = browserSurfaces.get().find((entry) => entry.props.target.id === props.target.id);
-  const entry = { owner, chatId, props, bounds: existing?.bounds ?? EMPTY_REGION, attached: true };
-  browserSurfaces.set([
-    ...browserSurfaces.get().filter((row) => row.props.target.id !== props.target.id),
-    entry,
-  ]);
-  return (): void => {
-    const rows = browserSurfaces.get();
-    browserSurfaces.set(
-      rows.map((row) => (row.owner === owner ? { ...row, attached: false } : row)),
-    );
-  };
-}
-export function layoutBrowserSurface(id: string, bounds: BrowserRegion, owner: symbol): void {
-  browserSurfaces.set(
-    browserSurfaces
-      .get()
-      .map((entry) =>
-        entry.props.target.id === id && entry.owner === owner ? { ...entry, bounds } : entry,
-      ),
-  );
-}
-export function closeBrowserSurface(id: string): void {
-  releasePreviewDiagnostics(id);
-  browserSurfaces.set(browserSurfaces.get().filter((entry) => entry.props.target.id !== id));
 }
 export function browserTargetProfile(chatId: string, id: string): string | null {
   for (const workspace of workspaces.values()) {
@@ -102,25 +53,21 @@ export function retainBrowserAuthority(
   connection: ServerConnection | null,
   profileId: string | null,
   clientId: string,
-  chatIds: ReadonlySet<string>,
 ): void {
   for (const [key, workspace] of workspaces) {
     if (
       !sameBrowserEnrollment(workspace.connection, connection) ||
       workspace.profileId !== profileId ||
-      workspace.clientId !== clientId ||
-      !chatIds.has(workspace.chatId)
-    ) {
-      if (
-        sameBrowserEnrollment(workspace.connection, connection) &&
-        workspace.profileId === profileId &&
-        workspace.clientId === clientId &&
-        !chatIds.has(workspace.chatId)
-      )
-        forgetBrowserTabs(key);
+      workspace.clientId !== clientId
+    )
       closeWorkspace(key, workspace);
-    }
   }
+}
+export function forgetBrowserChat(chatId: string): void {
+  for (const [key, workspace] of workspaces) {
+    if (workspace.chatId === chatId) closeWorkspace(key, workspace);
+  }
+  forgetChatBrowserTabs(chatId);
 }
 let hostGeneration = 0;
 export function ownBrowserRuntime(): () => void {
@@ -131,10 +78,9 @@ export function ownBrowserRuntime(): () => void {
     });
   };
 }
-export function closeBrowserRuntime(): void {
+function closeBrowserRuntime(): void {
   for (const [key, workspace] of workspaces) closeWorkspace(key, workspace);
-  for (const surface of browserSurfaces.get()) releasePreviewDiagnostics(surface.props.target.id);
-  browserSurfaces.set([]);
+  closeBrowserSurfaces();
 }
 function closeWorkspace(key: string, workspace: BrowserWorkspace): void {
   workspaces.delete(key);
@@ -173,7 +119,7 @@ export function followGatewayRetirements(): () => void {
           !('purpose' in tab.selection.lease) &&
           tab.selection.lease.origin === origin
         )
-          browserTabOperation(workspace.tabs.unavailable(tab.id, BROWSER_RETIRED_PROBLEM));
+          browserTabOperation(workspace.tabs.renew(tab.id));
       }
   });
 }

@@ -140,7 +140,8 @@ function Results({ env, query }: { readonly env: SettingEnv; readonly query: str
   const settings = visibleSettings(env).filter((setting) =>
     [setting.title, ...setting.keywords].some((word) => matches(word, needle)),
   );
-  if (pages.length + settings.length === 0) {
+  const total = pages.length + settings.length;
+  if (total === 0) {
     return (
       <Text variant="body" tone="variant" className="px-4 py-6">
         {`Nothing in Settings matches “${query.trim()}”.`}

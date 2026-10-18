@@ -10,10 +10,12 @@ import { toolTimelineDetails, type ToolTimelineDetails } from './tool-timeline-d
 export class TurnTimeline {
   private parts: ChatTimelinePart[] = [];
   private persist: ((timeline: ChatTimelineEmbed) => void) | null = null;
+  private dirty = false;
   bind(persist: (timeline: ChatTimelineEmbed) => void): void {
     this.persist = persist;
   }
   text(kind: 'text' | 'reasoning', delta: string): void {
+    this.dirty = true;
     const last = this.parts.at(-1);
     if (last?.kind === kind) {
       this.parts[this.parts.length - 1] = { ...last, text: last.text + delta };
@@ -22,6 +24,7 @@ export class TurnTimeline {
     this.parts.push({ kind, key: `${kind}:${String(this.parts.length)}`, text: delta });
   }
   tool(item: ChatToolItem, details: ToolTimelineDetails): void {
+    this.dirty = true;
     const index = this.parts.findIndex(
       (part) => part.kind === 'tool' && part.tool.callId === item.callId,
     );
@@ -32,6 +35,7 @@ export class TurnTimeline {
     else this.parts[index] = part;
   }
   restore(timeline: ChatTimelineEmbed): void {
+    this.dirty = true;
     const tools = this.parts.filter((part) => part.kind === 'tool');
     this.parts = timeline.parts.map((part) =>
       part.kind === 'tool'
@@ -46,9 +50,15 @@ export class TurnTimeline {
       )
         this.parts.push(part);
   }
+  clear(): void {
+    this.dirty = true;
+    this.parts = [];
+  }
   finish(interrupted: boolean): void {
+    if (!this.parts.some(running)) return;
+    this.dirty = true;
     this.parts = this.parts.map((part) =>
-      part.kind === 'tool' && part.tool.state === 'running'
+      running(part)
         ? { ...part, tool: { ...part.tool, state: interrupted ? 'interrupted' : 'unknown' } }
         : part,
     );
@@ -57,9 +67,14 @@ export class TurnTimeline {
     return { kind: 'chat_timeline', version: 1, parts: [...this.parts] };
   }
   flush(): void {
-    if (this.persist === null) return;
+    if (this.persist === null || !this.dirty) return;
     this.persist(this.current());
+    this.dirty = false;
   }
+}
+
+function running(part: ChatTimelinePart): part is Extract<ChatTimelinePart, { kind: 'tool' }> {
+  return part.kind === 'tool' && part.tool.state === 'running';
 }
 
 function updatedTool(
@@ -67,7 +82,7 @@ function updatedTool(
   details: ToolTimelineDetails,
   previous: ChatTimelineTool | null,
 ): ChatTimelineTool {
-  const reported = toolTimelineDetails(item.name, details, previous?.input === REDACTED);
+  const reported = toolTimelineDetails(item.name, details);
   const current = {
     ...item,
     ...reported,

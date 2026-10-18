@@ -47,7 +47,6 @@ export {
   ROOM_DEVICES,
   SPECIFICATION,
   STATUS_BATCH_SIZE,
-  batches,
   commandBody,
   commandsOf,
   deviceListQuery,
@@ -74,7 +73,7 @@ export {
 } from './values';
 export type { DeviceValue } from './values';
 
-export { ColorValueError, decodeColor, encodeColor, rgbOf } from './color';
+export { ColorValueError, decodeColor, encodeColor } from './color';
 export type { ColorVersion, Transport } from './color';
 
 export { IR_REMOTE_CATEGORY_PREFIX, kindOf } from './categories';

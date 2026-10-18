@@ -20,7 +20,7 @@ import { settingsTrail } from '../../../settings/tree';
 import { ActionRow } from '../../../components/rows';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { useRow } from '../../../store/selectors';
 import { useChannelMembers } from '../data/talk-data';
@@ -35,15 +35,11 @@ import {
 import { ChannelFieldsBlock } from './channel-fields';
 import { ChannelMembersBlock, type MemberChange } from './channel-members';
 
+import { talkLog, trackTalk } from '../data/talk-log';
+import { background } from '@smarteverything/logging';
 const CRUMBS = settingsTrail('talk/channels');
 
 const PARAMS = z.object({ channelId: z.string().min(1) });
-
-function failed(message: string): (error: unknown) => void {
-  return (error) => {
-    notify({ message, error, tone: 'critical' });
-  };
-}
 
 function nameProblem(name: string): string | null {
   return TALK_CHANNEL_NAME.safeParse(name).success
@@ -78,20 +74,22 @@ function useCreate(
   const [saving, setSaving] = useState(false);
   const create = (): void => {
     setSaving(true);
-    createTalkChannel({
-      ...fields,
-      members: members.map((member) => ({
-        member_kind: member.kind,
-        member_id: member.memberId,
-        listening: member.listening,
-      })),
-    }).then(
+    trackTalk('channel.create', { members: members.length }, () =>
+      createTalkChannel({
+        ...fields,
+        members: members.map((member) => ({
+          member_kind: member.kind,
+          member_id: member.memberId,
+          listening: member.listening,
+        })),
+      }),
+    ).then(
       (row) => {
         router.replace(href.talkChannel(row.id), { withAnchor: true });
       },
       (error: unknown) => {
         setSaving(false);
-        failed('The channel wasn’t created')(error);
+        notifyFailure('The channel wasn’t created')(error);
       },
     );
   };
@@ -151,11 +149,14 @@ function NewChannel(): ReactNode {
       <ChannelMembersBlock
         members={members}
         onChange={(change) => {
-          void speakerAllowed(change).then((allowed) => {
-            if (allowed) {
-              setMembers((current) => applied(current, change));
-            }
-          });
+          background(
+            speakerAllowed(change).then((allowed) => {
+              if (allowed) {
+                setMembers((current) => applied(current, change));
+              }
+            }),
+            'allowed.speaker_failed',
+          );
         }}
       />
     </Screen>
@@ -164,15 +165,26 @@ function NewChannel(): ReactNode {
 
 function memberSaved(channelId: string): (change: MemberChange) => void {
   return (change) => {
-    void speakerAllowed(change).then((allowed) => {
-      if (!allowed) {
-        return;
-      }
-      const target = { channelId, kind: change.kind, memberId: change.memberId };
-      (change.member ? setTalkMember(target, change.listening) : removeTalkMember(target)).catch(
-        failed('The member wasn’t changed'),
-      );
-    });
+    background(
+      speakerAllowed(change).then((allowed) => {
+        if (!allowed) {
+          return;
+        }
+        const target = { channelId, kind: change.kind, memberId: change.memberId };
+        trackTalk(
+          'channel_member.change',
+          {
+            channelId,
+            memberKind: change.kind,
+            member: change.member,
+            listening: change.listening,
+          },
+          () =>
+            change.member ? setTalkMember(target, change.listening) : removeTalkMember(target),
+        ).catch(notifyFailure('The member wasn’t changed'));
+      }),
+      'allowed.speaker_failed',
+    );
   };
 }
 
@@ -184,8 +196,12 @@ async function deleteChannel(channel: TalkChannelRow): Promise<void> {
     tone: 'destructive',
   });
   if (accepted) {
-    await removeTalkChannel(channel.id);
+    await trackTalk('channel.delete', { channelId: channel.id }, () =>
+      removeTalkChannel(channel.id),
+    );
     router.back();
+  } else {
+    talkLog.debug('channel.delete_cancelled', { channelId: channel.id });
   }
 }
 
@@ -194,7 +210,11 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
   const members = draftMembersOf(useChannelMembers(channel.id));
   const problem = nameProblem(name);
   const save = (change: Partial<ChannelFields>): void => {
-    updateTalkChannel(channel.id, change).catch(failed('The channel wasn’t changed'));
+    trackTalk(
+      'channel.update',
+      { channelId: channel.id, fields: Object.keys(change).join(',') },
+      () => updateTalkChannel(channel.id, change),
+    ).catch(notifyFailure('The channel wasn’t changed'));
   };
   return (
     <Screen header={<PageHeader title={channel.name} breadcrumbs={CRUMBS} />} maxWidth="reading">
@@ -221,7 +241,7 @@ function ExistingChannel({ channel }: { readonly channel: TalkChannelRow }): Rea
           icon="trash"
           destructive
           onPress={() => {
-            deleteChannel(channel).catch(failed('The channel wasn’t deleted'));
+            deleteChannel(channel).catch(notifyFailure('The channel wasn’t deleted'));
           }}
         />
       </List>

@@ -1,8 +1,7 @@
 import type { InboundMessage } from '@smarteverything/domain';
-import { DiscordInputError } from './errors';
-import { attachmentUrl, type Downloader } from './media-download';
-import { inspectFile } from './media-formats';
+import { mimeOf, safeFileName, type Downloader } from './media-download';
 import type { RawAttachment } from './payloads';
+import { messageOf } from '@smarteverything/logging';
 
 type InboundAttachment = InboundMessage['attachments'][number];
 
@@ -18,26 +17,19 @@ export interface AttachmentLimits {
 
 async function one(
   attachment: RawAttachment,
-  channelId: string,
-  limits: AttachmentLimits,
+  maxFileBytes: number,
   download: Downloader,
 ): Promise<InboundAttachment> {
-  if (attachment.size > limits.maxFileBytes) {
-    throw new DiscordInputError('it is larger than the file size limit in the plugin settings');
-  }
-  const url = attachmentUrl(attachment.url, channelId, attachment.id);
-  const bytes = await download(url, attachment.size);
-  const mime = await inspectFile(bytes, attachment.filename, attachment.content_type ?? undefined);
+  const { data, type } = await download(attachment.url, maxFileBytes);
   return {
-    name: attachment.filename,
-    mime,
-    source: { kind: 'base64', data: bytes.toString('base64') },
+    name: safeFileName(attachment.filename),
+    mime: await mimeOf(data, attachment.content_type ?? type),
+    source: { kind: 'base64', data: data.toString('base64') },
   };
 }
 
 export async function attachedFiles(
   attachments: readonly RawAttachment[],
-  channelId: string,
   limits: AttachmentLimits,
   download: Downloader,
 ): Promise<AttachedFiles> {
@@ -56,11 +48,9 @@ export async function attachedFiles(
   const notes: string[] = [];
   for (const attachment of attachments) {
     try {
-      kept.push(await one(attachment, channelId, limits, download));
+      kept.push(await one(attachment, limits.maxFileBytes, download));
     } catch (cause) {
-      notes.push(
-        `Attachment "${attachment.filename}" was not attached: ${cause instanceof Error ? cause.message : String(cause)}`,
-      );
+      notes.push(`Attachment "${attachment.filename}" was not attached: ${messageOf(cause)}`);
     }
   }
   return { attachments: kept, notes };

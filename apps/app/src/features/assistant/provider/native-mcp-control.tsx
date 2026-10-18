@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AiChatRow, ClaudeMcpServers } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
-import { McpServers } from '../../computers/components/mcp-servers';
+import { McpServers } from '../../computers';
 import { useProviderControl } from './provider-data';
 import { ProviderResult } from './provider-result';
 

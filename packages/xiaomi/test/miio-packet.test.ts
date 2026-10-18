@@ -8,7 +8,9 @@ import {
   encodeMessage,
   helloPacket,
   parseHandshake,
+  parseProbeReply,
   parseToken,
+  probePacket,
 } from '../src';
 
 const TOKEN_HEX = '00112233445566778899aabbccddeeff';
@@ -221,5 +223,61 @@ describe('encoded miIO messages', () => {
       deviceId: 9,
       stamp: 8,
     });
+  });
+});
+
+describe('encoded miIO messages from the previous noble implementation', () => {
+  it('stay byte-identical for a fixed header, token and body', () => {
+    const packet = encodeMessage(
+      tokenBytes(),
+      { deviceId: 0x0a0b0c0d, stamp: 0x01020304 },
+      '{"id":1,"method":"get_prop","params":["power"]}',
+    );
+    expect(packet.toHex()).toBe(
+      '21310060000000000a0b0c0d0102030484de26b919466f1b42ce1072c6f8f687a5516ec6151955dc2bb2d43e7c84c1833ad6abd2560c09de4318b095b7713e2366d4bd383c59bdc6c2b0c6191f43f2f2caae6e8e38a8ce4e08268e608a56a78c',
+    );
+  });
+});
+
+function probeReply(mark: string, publish: string, state: number, wildcard: number): Uint8Array {
+  const packet = handshakeReply(0x0a0b0c0d, 0x01020304, []);
+  packet.set(new TextEncoder().encode(mark), 16);
+  new DataView(packet.buffer).setUint32(20, 1_700_000_000);
+  packet.set(new TextEncoder().encode(publish), 24);
+  packet[27] = state;
+  packet[28] = wildcard;
+  return packet;
+}
+
+describe('the miIO push probe', () => {
+  it('is the hello packet carrying the MDID mark and the virtual device id', () => {
+    const packet = probePacket(0x0102030405060708n);
+    expect(packet.toHex()).toBe(
+      `21310020ffffffffffffffffffffffff4d4449440102030405060708${'00'.repeat(4)}`,
+    );
+  });
+
+  it('reads the subscription offer of a device that publishes', () => {
+    expect(parseProbeReply(probeReply('MSUB', 'PUB', 2, 0xfe))).toStrictEqual({
+      deviceId: 0x0a0b0c0d,
+      stamp: 0x01020304,
+      offer: { wildcard: true, subscribedAt: 1_700_000_000, state: 2 },
+    });
+    expect(parseProbeReply(probeReply('MSUB', 'PUB', 0, 0)).offer?.wildcard).toBe(false);
+  });
+
+  it('reports no offer when the marks are missing', () => {
+    expect(parseProbeReply(probeReply('MSUX', 'PUB', 2, 0)).offer).toBeNull();
+    expect(parseProbeReply(probeReply('MSUB', 'PUX', 2, 0)).offer).toBeNull();
+  });
+
+  it('refuses a reply that is not 32 bytes', () => {
+    const longer = new Uint8Array(40);
+    const view = new DataView(longer.buffer);
+    view.setUint16(0, 0x2131);
+    view.setUint16(2, 40);
+    expect(() => parseProbeReply(longer)).toThrow(
+      new MiioPacketError('a 32-byte probe reply', '40 bytes'),
+    );
   });
 });

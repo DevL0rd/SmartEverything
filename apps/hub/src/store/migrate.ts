@@ -1,5 +1,6 @@
 import type { LogPayload, Logger } from '@smarteverything/logging';
 import { z } from 'zod';
+import { backUpBeforeMigrating } from './migration-backup';
 import type { Migration } from './migrations';
 import type { Sql } from './sql';
 
@@ -27,13 +28,34 @@ class ForeignKeyViolationError extends Error {
 
 const VIOLATION = z.object({ table: z.string() });
 
-function apply(sql: Sql, migration: Migration, now: string): LogPayload {
+function apply(sql: Sql, migration: Migration, now: string, log: Logger): LogPayload {
   return sql.transaction(() => {
+    const statementsAt = performance.now();
     for (const statement of migration.statements) {
       sql.database.exec(statement);
     }
-    const outcome = migration.backfill?.(sql) ?? {};
+    const backfillAt = performance.now();
+    log.debug('store.migration_statements_ran', {
+      version: migration.version,
+      name: migration.name,
+      statements: migration.statements.length,
+      durationMs: Math.round(backfillAt - statementsAt),
+    });
+    const outcome = migration.backfill?.(sql, now) ?? {};
+    if (migration.backfill !== undefined) {
+      log.debug('store.migration_backfilled', () => ({
+        version: migration.version,
+        name: migration.name,
+        durationMs: Math.round(performance.now() - backfillAt),
+        ...outcome,
+      }));
+    }
     const violations = sql.all(VIOLATION, 'pragma foreign_key_check');
+    log.debug('store.migration_foreign_keys_checked', () => ({
+      version: migration.version,
+      violations: violations.length,
+      tables: [...new Set(violations.map((violation) => violation.table))],
+    }));
     if (violations.length > 0) {
       throw new ForeignKeyViolationError(migration.name, violations.length);
     }
@@ -46,16 +68,33 @@ function apply(sql: Sql, migration: Migration, now: string): LogPayload {
   });
 }
 
-function withForeignKeys<T>(sql: Sql, migration: Migration, work: () => T): T {
+function withForeignKeys<T>(sql: Sql, migration: Migration, log: Logger, work: () => T): T {
   if (migration.foreignKeys !== 'off') {
     return work();
   }
   sql.database.exec('pragma foreign_keys = off');
+  log.debug('store.foreign_keys_suspended', { version: migration.version });
   try {
     return work();
   } finally {
     sql.database.exec('pragma foreign_keys = on');
+    log.debug('store.foreign_keys_restored', { version: migration.version });
   }
+}
+
+function reportPending(
+  log: Logger,
+  applied: number,
+  known: number,
+  pending: readonly Migration[],
+): void {
+  log.info('store.migration_checked', {
+    applied,
+    known,
+    pending: pending.length,
+    pendingVersions: pending.map((migration) => migration.version),
+  });
+  if (pending.length === 0) log.debug('store.migration_skipped', { applied, known });
 }
 
 export function migrate(
@@ -76,9 +115,31 @@ export function migrate(
   if (applied > known) {
     throw new SchemaTooNewError(applied, known);
   }
-  for (const migration of migrations.filter((candidate) => candidate.version > applied)) {
-    const backfilled = withForeignKeys(sql, migration, () => apply(sql, migration, now));
-    log.info('store.migrated', { version: migration.version, name: migration.name, ...backfilled });
+  const pending = migrations.filter((candidate) => candidate.version > applied);
+  reportPending(log, applied, known, pending);
+  if (applied > 0 && pending.length > 0) {
+    backUpBeforeMigrating(sql, applied, known, log);
+  }
+  for (const migration of pending) {
+    const startedAt = performance.now();
+    log.debug('store.migration_started', { version: migration.version, name: migration.name });
+    let backfilled: LogPayload;
+    try {
+      backfilled = withForeignKeys(sql, migration, log, () => apply(sql, migration, now, log));
+    } catch (cause) {
+      log.error('store.migration_failed', cause, {
+        version: migration.version,
+        name: migration.name,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw cause;
+    }
+    log.info('store.migrated', {
+      version: migration.version,
+      name: migration.name,
+      durationMs: Math.round(performance.now() - startedAt),
+      ...backfilled,
+    });
   }
   return known;
 }

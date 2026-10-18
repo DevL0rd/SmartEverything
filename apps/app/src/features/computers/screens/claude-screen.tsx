@@ -17,6 +17,7 @@ import { PairComputerSheet } from '../components/pair-computer-sheet';
 import { QueryState } from '../components/query-state';
 import { SubscriptionRows } from '../components/subscription-rows';
 import { useComputerAi } from '../data/computer-ai';
+import { background } from '@smarteverything/logging';
 
 function OwnerBody({ status }: { readonly status: ComputerAiStatus }): ReactNode {
   const [pair, setPair] = useState(false);
@@ -68,7 +69,7 @@ export function ComputerClaudeScreen({ deviceId }: { readonly deviceId: string }
         error={status.error}
         pending={status.isPending}
         retry={() => {
-          void status.refetch();
+          background(status.refetch(), 'status.refetch_failed');
         }}
       />
       {status.data === undefined ? null : (
@@ -76,13 +77,13 @@ export function ComputerClaudeScreen({ deviceId }: { readonly deviceId: string }
           <Banner
             tone={status.data.online ? 'positive' : 'warning'}
             title={status.data.online ? 'Computer connected' : 'Computer offline'}
-            body="Native sessions and chat models are configured independently."
+            body="Sessions and models are set up separately."
             wrapBody
           />
           {owner ? (
             <OwnerBody status={status.data} />
           ) : (
-            <Text tone="variant">The hub owner can configure Claude on this computer.</Text>
+            <Text tone="variant">Only the home owner can set up Claude on this computer.</Text>
           )}
         </>
       )}

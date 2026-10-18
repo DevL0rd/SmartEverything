@@ -7,6 +7,7 @@ import { Text } from '../../../components/text';
 import { useLocalPref } from '../../../store/local-prefs';
 import { turnTalkOn } from '../data/talk-device';
 import { useTalkEngine } from '../engine/engine-state';
+import { background } from '@smarteverything/logging';
 
 interface StatusCopy {
   readonly title: string;
@@ -62,7 +63,7 @@ export function DeviceStatus(): ReactNode {
             label="Turn on"
             icon="power"
             onPress={() => {
-              void turnTalkOn();
+              background(turnTalkOn(), 'talk_on.turn_failed');
             }}
           />
         </View>

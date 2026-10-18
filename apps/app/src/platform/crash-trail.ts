@@ -6,7 +6,6 @@ import {
   CLIENT_FAILURE_LEVELS,
   CLIENT_FAILURE,
   CLIENT_PROCESS_EXIT,
-  CLIENT_HARNESS_STARTUP,
   type ClientCrumb,
   type ClientFailure,
 } from '@smarteverything/domain';
@@ -49,7 +48,6 @@ function failureOf(record: LogRecord, level: ClientFailure['level']): ClientFail
   const message = record.failure?.message ?? hintOf(record);
   const stack = record.failure?.stack;
   const exit = CLIENT_PROCESS_EXIT.safeParse(record.payload['processExit']);
-  const startup = CLIENT_HARNESS_STARTUP.safeParse(record.payload['harnessStartup']);
   return {
     at: record.timestamp,
     level,
@@ -60,7 +58,6 @@ function failureOf(record: LogRecord, level: ClientFailure['level']): ClientFail
     message: message === null ? null : redactText(message, MESSAGE_MAX),
     stack: stack === undefined ? null : redactText(stack, STACK_MAX),
     ...(exit.success ? { processExit: exit.data } : {}),
-    ...(startup.success ? { harnessStartup: startup.data } : {}),
   };
 }
 

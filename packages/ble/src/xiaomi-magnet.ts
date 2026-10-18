@@ -1,4 +1,4 @@
-import { uint32 } from './bytes';
+import { uint8, uint32 } from './bytes';
 import {
   decryptObjects,
   MiBeaconFormatError,
@@ -8,7 +8,7 @@ import {
 
 export const XIAOMI_MAGNET_MODEL = 'isa.magnet.dw2hl';
 export const XIAOMI_MAGNET_PRODUCT = 0x098b;
-export const MAGNET_CONTACT_OBJECT = 0x1019;
+const MAGNET_CONTACT_OBJECT = 0x1019;
 const COUNTER_TAIL_BYTES = 7;
 
 export interface MagnetObservation {
@@ -24,7 +24,7 @@ function contactOf(object: MiBeaconObject): boolean | null {
   if (object.data.length !== 1) {
     throw new MagnetPacketError('MiBeacon contact object 0x1019 must contain exactly one byte.');
   }
-  switch (object.data[0]) {
+  switch (uint8(object.data, 0)) {
     case 0:
     case 2:
       return true;
@@ -32,7 +32,6 @@ function contactOf(object: MiBeaconObject): boolean | null {
       return false;
     case 3:
       return null;
-    case undefined:
     default:
       throw new MagnetPacketError('MiBeacon contact object 0x1019 contains an unsupported state.');
   }
@@ -58,11 +57,10 @@ export function decodeMagnetFrame(
   if (contacts.length > 1) {
     throw new MagnetPacketError('A Xiaomi door frame must contain at most one contact object.');
   }
-  const extended = frame.body.subarray(
-    frame.body.length - COUNTER_TAIL_BYTES,
-    frame.body.length - 4,
+  const counter = uint32(
+    Uint8Array.of(frame.counter, ...frame.body.subarray(-COUNTER_TAIL_BYTES)),
+    0,
   );
-  const counter = uint32(new Uint8Array([frame.counter, ...extended]), 0);
   const [contact] = contacts;
   return { counter, contact: contact === undefined ? null : contactOf(contact) };
 }

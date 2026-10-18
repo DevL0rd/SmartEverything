@@ -2,7 +2,10 @@ import type { HealthRecordType } from '@smarteverything/domain';
 import { SERIES_PART_ONE } from './catalogue-activity';
 import { SERIES_PART_TWO } from './catalogue-body';
 import type { IconName } from '../../../components/icon';
+import { compact, decimal, withUnit } from '../../../format/number';
 import type { SeriesGroup, SeriesSpec } from './series-spec';
+
+const COMPACT_FROM = 10_000;
 
 export const SERIES: readonly SeriesSpec[] = [...SERIES_PART_ONE, ...SERIES_PART_TWO];
 
@@ -69,13 +72,11 @@ function scaled(spec: SeriesSpec, value: number): number {
 
 export function formatAmount(spec: SeriesSpec, value: number): string {
   const shown = scaled(spec, value);
-  if (spec.digits === 0 && Math.abs(shown) >= 10_000) {
-    return `${(shown / 1000).toFixed(1)}k`;
-  }
-  return shown.toFixed(spec.digits);
+  return spec.digits === 0 && Math.abs(shown) >= COMPACT_FROM
+    ? compact(shown)
+    : decimal(shown, spec.digits);
 }
 
 export function formatReading(spec: SeriesSpec, value: number): string {
-  const amount = formatAmount(spec, value);
-  return spec.unit === '' ? amount : `${amount} ${spec.unit}`;
+  return withUnit(formatAmount(spec, value), spec.unit);
 }

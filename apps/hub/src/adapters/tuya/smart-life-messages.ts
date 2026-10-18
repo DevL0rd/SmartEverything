@@ -13,6 +13,7 @@ import type { MessageStream } from './backend';
 import type { TuyaDependencies } from './dependencies';
 import type { MqttConnection } from './mqtt-connection';
 import type { SmartLifeCloud } from './smart-life-cloud';
+import { background, failureLine } from '@smarteverything/logging';
 
 const LINK_ID_PREFIX = 'tuya-device-sharing-sdk-python.';
 
@@ -50,7 +51,7 @@ export class SmartLifeMessages implements MessageStream {
 
   start(): void {
     this.stopped = false;
-    void this.connect();
+    background(this.connect(), 'smart_life_messages.connect_failed');
   }
 
   stop(): void {
@@ -91,7 +92,7 @@ export class SmartLifeMessages implements MessageStream {
         this.open(messaging);
       }
     } catch (cause) {
-      this.options.log.warn('tuya.messaging_unavailable', { reason: String(cause) });
+      this.options.log.warn('tuya.messaging_unavailable', { reason: failureLine(cause) });
       this.retry();
     }
   }
@@ -172,7 +173,7 @@ export class SmartLifeMessages implements MessageStream {
     this.options.log.info('tuya.messages_reconnect_scheduled', { delayMs, reason });
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.connect();
+      background(this.connect(), 'smart_life_messages.connect_failed');
     }, delayMs);
   }
 

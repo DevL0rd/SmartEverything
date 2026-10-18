@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { useAppliedTheme } from '../design/theme';
+import { useThemeSetting } from '../design/theme';
 
 export function Ambient(): ReactNode {
-  const { background } = useAppliedTheme().settings;
+  const background = useThemeSetting('background');
   if (background === 'off') {
     return null;
   }

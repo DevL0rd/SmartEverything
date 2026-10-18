@@ -1,15 +1,12 @@
-import { createHash } from 'node:crypto';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import * as domain from '../src';
 import {
   HEALTH_BATCH,
   HEALTH_BATCH_LIMIT,
   HEALTH_BATCH_SOURCE,
   HEALTH_INGEST_RESULT,
-  HEALTH_SOURCE_TOKEN,
   affectedDays,
-  createHealthSourceToken,
-  hashHealthSourceToken,
   localDayOf,
 } from '../src';
 
@@ -73,31 +70,28 @@ describe('health batch', () => {
     expect(HEALTH_BATCH.safeParse(batch({ grantedTypes: ['Stairs'] })).success).toBe(false);
   });
 
-  it('holds records and deletions to the batch limit', () => {
+  it('reads batches larger than the batch size senders use', () => {
     expect(HEALTH_BATCH_LIMIT).toBe(500);
-    const full = ids(HEALTH_BATCH_LIMIT);
     const over = ids(HEALTH_BATCH_LIMIT + 1);
-    expect(HEALTH_BATCH.safeParse(batch({ records: full.map(steps) })).success).toBe(true);
-    expect(HEALTH_BATCH.safeParse(batch({ records: over.map(steps) })).success).toBe(false);
-    expect(HEALTH_BATCH.safeParse(batch({ deletions: full })).success).toBe(true);
-    expect(HEALTH_BATCH.safeParse(batch({ deletions: over })).success).toBe(false);
+    expect(HEALTH_BATCH.parse(batch({ records: over.map(steps) })).records).toHaveLength(
+      over.length,
+    );
+    expect(HEALTH_BATCH.parse(batch({ deletions: over })).deletions).toHaveLength(over.length);
   });
 
-  it('refuses an empty deletion id and unknown envelope fields', () => {
+  it('refuses an empty deletion id and ignores unknown envelope fields', () => {
     expect(HEALTH_BATCH.safeParse(batch({ deletions: [''] })).success).toBe(false);
-    expect(HEALTH_BATCH.safeParse(batch({ cursor: 'x' })).success).toBe(false);
+    expect(HEALTH_BATCH.parse(batch({ cursor: 'x' }))).not.toHaveProperty('cursor');
   });
 
-  it('bounds the source description', () => {
+  it('requires a source description and reads long ones', () => {
     const accepts = (source: unknown): boolean => HEALTH_BATCH_SOURCE.safeParse(source).success;
     expect(accepts(SOURCE)).toBe(true);
     expect(accepts({ ...SOURCE, device: '' })).toBe(false);
-    expect(accepts({ ...SOURCE, device: 'd'.repeat(120) })).toBe(true);
-    expect(accepts({ ...SOURCE, device: 'd'.repeat(121) })).toBe(false);
+    expect(accepts({ ...SOURCE, device: 'd'.repeat(500) })).toBe(true);
     expect(accepts({ ...SOURCE, appVersion: '' })).toBe(false);
-    expect(accepts({ ...SOURCE, appVersion: 'v'.repeat(40) })).toBe(true);
-    expect(accepts({ ...SOURCE, appVersion: 'v'.repeat(41) })).toBe(false);
-    expect(accepts({ ...SOURCE, owner: 'x' })).toBe(false);
+    expect(accepts({ ...SOURCE, appVersion: 'v'.repeat(500) })).toBe(true);
+    expect(HEALTH_BATCH_SOURCE.parse({ ...SOURCE, owner: 'x' })).toStrictEqual(SOURCE);
   });
 });
 
@@ -181,32 +175,10 @@ describe('local days', () => {
   });
 });
 
-describe('health source tokens', () => {
-  it('creates distinct tokens in the published format', () => {
-    const first = createHealthSourceToken();
-    const second = createHealthSourceToken();
-    expect(first).toMatch(/^hst_[0-9a-f]{64}$/);
-    expect(HEALTH_SOURCE_TOKEN.safeParse(first).success).toBe(true);
-    expect(first).not.toBe(second);
-  });
-
-  it('refuses anything but the prefix and sixty-four lower-case hex digits', () => {
-    const digits = 'ab'.repeat(32);
-    const accepts = (token: string): boolean => HEALTH_SOURCE_TOKEN.safeParse(token).success;
-    expect(accepts(`hst_${digits}`)).toBe(true);
-    expect(accepts(`-hst_${digits}`)).toBe(false);
-    expect(accepts(`hst_${digits}0`)).toBe(false);
-    expect(accepts(`hst_${digits.slice(1)}`)).toBe(false);
-    expect(accepts(`hst_${digits.toUpperCase()}`)).toBe(false);
-    expect(accepts(digits)).toBe(false);
-  });
-
-  it('hashes a token to its lower-case SHA-256 hex digest', () => {
-    const token = `hst_${'0f'.repeat(32)}`;
-    expect(hashHealthSourceToken(token)).toBe(createHash('sha256').update(token).digest('hex'));
-  });
-
-  it('refuses to hash something that is not a token', () => {
-    expect(() => hashHealthSourceToken('password')).toThrow();
+describe('health upload credentials', () => {
+  it('has no separate health source token any more', () => {
+    expect(Object.keys(domain).filter((name) => /health.?source.?token/i.test(name))).toStrictEqual(
+      [],
+    );
   });
 });

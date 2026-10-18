@@ -1,5 +1,5 @@
-import { MeteredUsageStream } from '@smarteverything/harness/process';
-import type { SupplierUsage, SupplierUsageSnapshot } from '@smarteverything/harness/process';
+import { MeteredUsageStream } from './metered-usage';
+import type { SupplierUsage, SupplierUsageSnapshot } from './metered-usage';
 import { ApiError, JSON_VALUE, microsOfUsd, harnessContextPercent } from '@smarteverything/domain';
 import type {
   AiUsageRow,
@@ -12,6 +12,7 @@ import type { HarnessService } from './service';
 import type { HarnessGrant } from './grant';
 import type { Store } from '../store/store';
 import type { Budget } from '../ledger/budget';
+import { assertModelAllowed } from '../server/person-scope';
 
 const budgets = new WeakMap<Store, Budget['gate']>();
 export function bindMeteredBudget(store: Store, gate: Budget['gate']): void {
@@ -31,7 +32,11 @@ export function meteredAccountingFetch(
     const budget = budgets.get(service.store);
     if (budget === undefined)
       throw new ApiError('conflict', 'Metered spending admission is not ready.');
-    budget.check(entry.work, grant.authority.kind === 'trigger' ? { background: true } : undefined);
+    assertModelAllowed(service.store, entry.profile_id, grant.route.model);
+    budget.check(entry.work, {
+      profileId: entry.profile_id,
+      ...(grant.authority.kind === 'trigger' ? { background: true as const } : {}),
+    });
     const row = service.store.ledger.record(entry, true);
     const request =
       options.ordinary_request === true ? admitContextRequest(service, grant, row.id) : undefined;
@@ -57,12 +62,12 @@ function admitContextRequest(
   readonly claim: DshWriterClaim;
   readonly context: NonNullable<AiHarnessSession['context_request']>;
 } {
-  const writer = service.store.dshSessions.writerState(grant.session_id, grant.profile_id);
-  if (writer.state !== 'active' || writer.claim === null)
+  const claim = service.store.dshSessions.attached(grant.session_id, grant.profile_id);
+  if (claim === null)
     throw new ApiError('conflict', 'Ordinary supplier context request has no active writer.');
   if (
-    writer.claim.runtime_instance !== grant.runtime_instance ||
-    writer.claim.connection_generation !== grant.generation
+    claim.runtime_instance !== grant.runtime_instance ||
+    claim.connection_generation !== grant.generation
   )
     throw new ApiError(
       'conflict',
@@ -70,13 +75,13 @@ function admitContextRequest(
     );
   const context = {
     id: requestId,
-    epoch: writer.claim.epoch,
+    epoch: claim.epoch,
     provider: grant.route.route_id,
     model: grant.route.model,
     capacity_tokens: supplierContextCapacity(service, grant),
   };
-  service.store.harnessCoordination.admitContextRequest(writer.claim, context);
-  return { claim: writer.claim, context };
+  service.store.harnessCoordination.admitContextRequest(claim, context);
+  return { claim, context };
 }
 function entryOf(service: HarnessService, grant: HarnessGrant): UsageEntry {
   const metadata = service.store.dshSessions.stat(grant.session_id, grant.profile_id);

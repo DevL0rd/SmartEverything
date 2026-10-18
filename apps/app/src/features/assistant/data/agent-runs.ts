@@ -1,19 +1,15 @@
-import { useEffect } from 'react';
 import type { z } from 'zod';
 import type { InfiniteData } from '@tanstack/react-query';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useScreenInfiniteQuery, useScreenQuery } from '../../../queries/use-screen-query';
 import { API_ENDPOINTS as E, type AiSubagent } from '@smarteverything/domain';
-import { api, useConnection } from '../../../api/transport';
-import { useServerComputerAiV2 } from '../../../api/connection/server-capabilities';
+import { api } from '../../../api/transport';
 import { notify } from '../../../components/toast-store';
 
 import { AGENT_RUN_PREFIX } from '../../../queries/keys';
+import { background } from '@smarteverything/logging';
 export function agentRunKey(chatId: string): readonly string[] {
   return [...AGENT_RUN_PREFIX, chatId];
-}
-export function useAgentRunsSupported(): boolean {
-  const connection = useConnection();
-  return useServerComputerAiV2(connection.status === 'paired' ? connection.connection.url : null);
 }
 export function useAgentRuns(chatId: string): ReturnType<typeof useRunPages> {
   return useRunPages(chatId, false);
@@ -22,9 +18,8 @@ export function useAgentRuns(chatId: string): ReturnType<typeof useRunPages> {
 function useRunPages(
   chatId: string,
   currentChildrenOnly: boolean,
-): ReturnType<typeof useInfiniteQuery<Awaited<ReturnType<typeof readRuns>>>> {
-  const supported = useAgentRunsSupported();
-  return useInfiniteQuery<
+): ReturnType<typeof useScreenInfiniteQuery<Awaited<ReturnType<typeof readRuns>>>> {
+  return useScreenInfiniteQuery<
     z.output<typeof E.listAiAgentRuns.response>,
     Error,
     InfiniteData<z.output<typeof E.listAiAgentRuns.response>>,
@@ -36,16 +31,7 @@ function useRunPages(
       readRuns(chatId, currentChildrenOnly, typeof pageParam === 'string' ? pageParam : undefined),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
-    enabled: supported,
   });
-}
-export function useCurrentChildRuns(chatId: string): ReturnType<typeof useRunPages> {
-  const runs = useRunPages(chatId, true);
-  const { hasNextPage, isFetching, error, fetchNextPage } = runs;
-  useEffect(() => {
-    if (hasNextPage && !isFetching && error === null) void fetchNextPage();
-  }, [hasNextPage, isFetching, error, fetchNextPage]);
-  return runs;
 }
 
 function readRuns(
@@ -66,8 +52,8 @@ export function useAgentRun(
   chatId: string,
   agentRunId: string | null,
   cursor?: string,
-): ReturnType<typeof useQuery<Awaited<ReturnType<typeof readRun>>>> {
-  return useQuery({
+): ReturnType<typeof useScreenQuery<Awaited<ReturnType<typeof readRun>>>> {
+  return useScreenQuery({
     queryKey: [...agentRunKey(chatId), 'detail', agentRunId, cursor],
     queryFn: () => {
       if (agentRunId === null) throw new Error('An agent run must be selected.');
@@ -93,7 +79,10 @@ export function useLaunchAgent(
   return useMutation({
     mutationFn: (body: AiSubagent) => launch(chatId, body),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: agentRunKey(chatId) });
+      background(
+        client.invalidateQueries({ queryKey: agentRunKey(chatId) }),
+        'queries.invalidate_failed',
+      );
     },
     onError: (error) => notify({ message: 'Helper wasn’t started', error, tone: 'critical' }),
   });
@@ -116,7 +105,10 @@ export function useInterruptAgent(
         body: { action: 'interrupt' },
       }),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: agentRunKey(chatId) });
+      background(
+        client.invalidateQueries({ queryKey: agentRunKey(chatId) }),
+        'queries.invalidate_failed',
+      );
     },
     onError: (error) => notify({ message: 'Helper wasn’t interrupted', error, tone: 'critical' }),
   });

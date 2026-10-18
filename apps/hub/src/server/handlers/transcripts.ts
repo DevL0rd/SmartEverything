@@ -1,108 +1,76 @@
-import { admitLegacyTranscript, legacyTranscriptFilter } from '../../transcripts/legacy-reader';
 import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
-import { cameraReaderScope } from '../../transcripts/camera-reader';
-import type { Store } from '../../store/store';
 import type { CameraListening } from '../../transcripts/camera-listening';
-import { ownerProfileOf } from '../../transcripts/owner';
+import {
+  admitTranscriptCaller,
+  admitTranscriptReader,
+  admitTranscriptSource,
+  admittedSource,
+  transcriptReaderScope,
+} from '../../transcripts/reader-scope';
 import type { Transcripts } from '../../transcripts/transcript-service';
-import { profileIdOf, type Caller } from '../auth';
-import { DONE_REPLY, bound, type Bound } from '../router';
+import type { Store } from '../../store/store';
+import type { Caller } from '../auth';
+import { DONE_REPLY, bound } from '../router';
 
-type TranscriptRouteName =
-  | 'readCameraTranscriptFeed'
-  | 'searchCameraTranscriptFeed'
-  | 'readCameraTranscriptRange'
-  | 'listTranscripts'
-  | 'readTranscript'
-  | 'removeTranscript'
-  | 'searchTranscripts'
-  | 'readTranscriptSettings'
-  | 'updateTranscriptSettings'
-  | 'readTranscriptStatus';
-
-type TranscriptRoutes = Record<TranscriptRouteName, Bound>;
-
-export function ownerReader(store: Store, caller: Caller): void {
+export function requireOwner(caller: Caller): void {
   const owner =
     caller.kind === 'client' &&
+    caller.client.role === 'owner' &&
     (caller.pluginRequester === undefined
       ? caller.pluginId === undefined
-      : caller.pluginRequester === 'owner') &&
-    caller.client.role === 'owner' &&
-    profileIdOf(store, caller) === ownerProfileOf(store);
+      : caller.pluginRequester === 'owner');
   if (!owner) {
-    throw new ApiError('forbidden', 'Only the owner reads transcripts.');
+    throw new ApiError('forbidden', 'Only the owner changes transcripts.');
   }
 }
 
-function cameraTranscriptRoutes(
+export const transcriptRoutes = (
   store: Store,
   transcripts: Transcripts,
-): Pick<
-  TranscriptRoutes,
-  'readCameraTranscriptFeed' | 'searchCameraTranscriptFeed' | 'readCameraTranscriptRange'
-> {
-  return {
+  listening: Pick<CameraListening, 'status'>,
+) =>
+  ({
     readCameraTranscriptFeed: bound(E.readCameraTranscriptFeed, ({ query, caller }) =>
-      transcripts.feed(cameraReaderScope(store, caller, query.cameraId), query),
+      transcripts.feed(transcriptReaderScope(store, caller, query), query),
     ),
     searchCameraTranscriptFeed: bound(E.searchCameraTranscriptFeed, ({ query, caller }) =>
-      transcripts.feed(cameraReaderScope(store, caller, query.cameraId), {
-        ...query,
-        words: query.q,
-      }),
+      transcripts.feed(transcriptReaderScope(store, caller, query), { ...query, words: query.q }),
     ),
     readCameraTranscriptRange: bound(E.readCameraTranscriptRange, ({ query, caller }) =>
-      transcripts.range(
-        cameraReaderScope(store, caller, query.cameraId),
-        query.anchor,
-        query.limit,
-      ),
+      transcripts.range(transcriptReaderScope(store, caller, query), query.anchor, query.limit),
     ),
-  };
-}
-
-export function transcriptRoutes(
-  store: Store,
-  transcripts: Transcripts,
-  listening: CameraListening,
-): TranscriptRoutes {
-  return {
-    ...cameraTranscriptRoutes(store, transcripts),
     listTranscripts: bound(E.listTranscripts, ({ query, caller }) => {
-      ownerReader(store, caller);
-      return transcripts.list({ ...query, ...legacyTranscriptFilter(caller, query) });
+      admitTranscriptCaller(caller);
+      const source = admittedSource(store, caller, query.source, query.sourceId);
+      return transcripts.list({ ...query, source });
     }),
     readTranscript: bound(E.readTranscript, ({ params, query, caller }) => {
-      ownerReader(store, caller);
-      admitLegacyTranscript(caller, store.transcripts.byId(params.sessionId));
+      admitTranscriptCaller(caller);
+      const session = store.transcripts.byId(params.sessionId);
+      admitTranscriptSource(store, caller, session.source, session.source_id);
       return transcripts.read(params.sessionId, query.after ?? 0, query.limit);
     }),
-    removeTranscript: bound(E.removeTranscript, ({ params, caller }) => {
-      ownerReader(store, caller);
-      admitLegacyTranscript(caller, store.transcripts.byId(params.sessionId));
-      transcripts.remove(params.sessionId);
+    removeTranscript: bound(E.removeTranscript, ({ params, query, caller }) => {
+      requireOwner(caller);
+      if (query.lineId === undefined) transcripts.remove(params.sessionId);
+      else transcripts.removeLine(params.sessionId, query.lineId);
       return DONE_REPLY;
     }),
     searchTranscripts: bound(E.searchTranscripts, ({ query, caller }) => {
-      ownerReader(store, caller);
-      return transcripts.search({
-        ...query,
-        ...legacyTranscriptFilter(caller, query),
-        words: query.q,
-      });
+      admitTranscriptCaller(caller);
+      const source = admittedSource(store, caller, query.source, query.sourceId);
+      return transcripts.search({ ...query, source, words: query.q });
     }),
-    readTranscriptSettings: bound(E.readTranscriptSettings, ({ query, caller }) => {
-      cameraReaderScope(store, caller, query.cameraId);
+    readTranscriptSettings: bound(E.readTranscriptSettings, ({ caller }) => {
+      admitTranscriptReader(caller);
       return transcripts.settings();
     }),
     updateTranscriptSettings: bound(E.updateTranscriptSettings, ({ body, caller }) => {
-      ownerReader(store, caller);
+      requireOwner(caller);
       return transcripts.updateSettings(body);
     }),
     readTranscriptStatus: bound(E.readTranscriptStatus, ({ query, caller }) => {
-      const scope = cameraReaderScope(store, caller, query.cameraId);
-      return listening.status(scope.kind === 'camera' ? scope.cameraIds : []);
+      admitTranscriptReader(caller);
+      return listening.status(query.cameraId === undefined ? undefined : [query.cameraId]);
     }),
-  };
-}
+  }) as const;

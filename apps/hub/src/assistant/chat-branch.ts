@@ -5,6 +5,7 @@ import {
   type AiChatBranch,
   type AiChatRow,
   type AssistantMessageRow,
+  type Engine,
 } from '@smarteverything/domain';
 import { summaryOf, type StoredAttachment } from '../store/repositories/assistant-chat';
 import type { Store } from '../store/store';
@@ -32,10 +33,17 @@ export class ChatBranches {
 
   async branch(owner: ChatOwner, chatId: string, body: AiChatBranch): Promise<AiChatRow> {
     const source = this.chats.own(owner, chatId);
+    const engine = this.engineOf(owner, source, body);
     const path = this.path(source, body.messageId);
     const copies = await this.copiedFiles(path);
     const write = source.engine.kind === 'dsh' ? this.store.durableWrite : this.store.write;
-    return write(() => this.build(source, body, path, copies));
+    return write(() => this.build(source, { ...body, engine }, path, copies));
+  }
+
+  private engineOf(owner: ChatOwner, source: AiChatRow, body: AiChatBranch): Engine {
+    if (body.engine !== undefined) this.chats.validateEngine(body.engine, owner);
+    const engine = body.engine ?? source.engine;
+    return engine.kind === 'dsh' ? { ...engine, session_id: null } : engine;
   }
 
   private path(source: AiChatRow, messageId: string): AssistantMessageRow[] {
@@ -67,12 +75,10 @@ export class ChatBranches {
 
   private build(
     source: AiChatRow,
-    body: AiChatBranch,
+    body: AiChatBranch & { readonly engine: Engine },
     path: readonly AssistantMessageRow[],
     copies: ReadonlyMap<string, StoredAttachment>,
   ): AiChatRow {
-    const selected = this.chats.select(source.profile_id, source.engine);
-    const engine = selected.kind === 'dsh' ? { ...selected, session_id: null } : selected;
     const branch = this.store.aiChats.create({
       profileId: source.profile_id,
       kind: 'chat',
@@ -80,11 +86,11 @@ export class ChatBranches {
       icon: source.icon,
       parentId: source.id,
       sourceKey: null,
-      engine,
+      engine: body.engine,
       tools: source.tools,
       branchMessageId: body.messageId,
     });
-    nativeForkIntent(this.store, source, branch, body.messageId);
+    if (branch.engine.kind === 'dsh') nativeForkIntent(this.store, source, branch, body.messageId);
     const made = new Map<string, string>();
     for (const row of path) {
       made.set(row.id, this.copy(row, branch.id, made, copies));

@@ -5,7 +5,7 @@ import { latestFigure } from './daily';
 import type { Delta, MetricGlance } from './glance';
 import type { DailyFigure } from './points';
 
-export type BodySource =
+type BodySource =
   | { readonly kind: 'scale'; readonly at: string }
   | { readonly kind: 'health'; readonly day: string };
 

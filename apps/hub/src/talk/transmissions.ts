@@ -14,6 +14,7 @@ import type { TalkMembership } from './membership';
 import type { Recording, TalkRecorder } from './recorder';
 import type { TalkListening } from './talk-listening';
 import type { PacketSink, TalkEndpoint, Transmission } from './transmission';
+import { messageOf } from '@smarteverything/logging';
 
 export interface TransmissionsOptions {
   readonly store: Store;
@@ -95,7 +96,7 @@ export class Transmissions {
           }
         },
         (cause: unknown) => {
-          feed.ended(transmission, cause instanceof Error ? cause.message : String(cause));
+          feed.ended(transmission, messageOf(cause));
         },
       );
     return transmission;
@@ -154,7 +155,7 @@ export class Transmissions {
     const sinks: PacketSink[] = this.options.membership
       .speakerCameras(opening.channelId)
       .filter((cameraId) => cameraId !== opening.skipCamera)
-      .flatMap((cameraId) => this.options.speakers.open(cameraId, messageId, 'talk') ?? []);
+      .map((cameraId) => this.options.speakers.open(cameraId, messageId, 'talk'));
     if (channel !== undefined && channel.keep_hours > 0) {
       const recording = this.options.recorder.open(opening.channelId, messageId);
       this.recordings.set(messageId, recording);

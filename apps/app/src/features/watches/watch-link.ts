@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AppState, PermissionsAndroid, Platform } from 'react-native';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import {
   AppUpdateNeededError,
   addWatchEventListener,
@@ -21,6 +21,7 @@ import {
 import { takeOverWatchBridge } from '../../api/watches';
 import { ValueStore, useValue } from '../../design/external-store';
 import { rawErrorText } from '../../format/errors';
+import { sameJson } from '../../store/same-json';
 import { useActiveProfile } from '../../store/people';
 import { useDevices } from '../../store/selectors';
 import { usePairedServer, type RelayServer } from '../profiles';
@@ -62,12 +63,40 @@ function failed(event: string, error: unknown): void {
   linkState.set({ kind: updateNeeded ? 'update_needed' : 'failed', reason });
 }
 
-async function refreshStatus(): Promise<void> {
+const reading = {
+  active: false,
+  stale: false,
+  again(): boolean {
+    return this.stale;
+  },
+};
+
+async function readStatus(): Promise<void> {
   try {
-    linkState.set({ kind: 'ready', watches: await watchStatus() });
+    const watches = await watchStatus();
+    const current = linkState.get();
+    if (current.kind !== 'ready' || !sameJson(current.watches, watches)) {
+      linkState.set({ kind: 'ready', watches });
+    }
     lastFailure = null;
   } catch (error) {
     failed('watch.status_unreadable', error);
+  }
+}
+
+async function refreshStatus(): Promise<void> {
+  if (reading.active) {
+    reading.stale = true;
+    return;
+  }
+  reading.active = true;
+  try {
+    do {
+      reading.stale = false;
+      await readStatus();
+    } while (reading.again());
+  } finally {
+    reading.active = false;
   }
 }
 
@@ -132,7 +161,7 @@ function logEvent(event: WatchEvent): void {
   } else {
     log.info(`watch.native_${event.event}`, payload);
   }
-  void refreshStatus();
+  background(refreshStatus(), 'status.refresh_failed');
 }
 
 async function run(event: string, work: () => Promise<unknown>): Promise<void> {
@@ -225,7 +254,7 @@ export function WatchLinkHost(): null {
       return undefined;
     }
     const events = addWatchEventListener(logEvent);
-    void bringUp({ url, token });
+    background(bringUp({ url, token }), 'up.bring_failed');
     const app = AppState.addEventListener('change', (state) => {
       void setWatchLive(state === 'active').catch((error: unknown) => {
         failed('watch.live_failed', error);

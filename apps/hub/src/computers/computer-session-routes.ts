@@ -6,14 +6,16 @@ import {
   FILE_LIST,
   INSTALLED_APP,
   type ComputerApps,
-  type ComputerScope,
-  type NodeRequest,
+  localClock,
+  shiftedDate,
+  zonedInstant,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { bound, DONE_REPLY, type Bound } from '../server/router';
+import type { Caller } from '../server/auth';
+import { bound, DONE_REPLY, type Routes } from '../server/router';
 import type { Store } from '../store/store';
-import { ComputerAccess, guarded } from './computer-access';
 import type { ComputerDirectory } from './computer-directory';
+import type { ComputerService } from './computer-service';
 
 export type ComputerSessionEndpointName =
   | 'listComputerApps'
@@ -24,83 +26,72 @@ export type ComputerSessionEndpointName =
   | 'captureComputer';
 
 const INSTALLED = z.array(INSTALLED_APP);
-const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
 
 export interface ComputerSessionRouteOptions {
-  readonly store: Pick<Store, 'devices' | 'computerScopes' | 'appSessions'>;
+  readonly store: Pick<Store, 'appSessions' | 'settings'>;
+  readonly service: ComputerService;
   readonly directory: ComputerDirectory;
   readonly now: () => Date;
 }
 
-function startOfDay(now: Date): Date {
-  const day = new Date(now);
-  day.setHours(0, 0, 0, 0);
-  return day;
+export function periodStarts(
+  now: Date,
+  zone: string,
+): { readonly today: Date; readonly week: Date } {
+  const clock = localClock(now, zone);
+  return {
+    today: zonedInstant(clock, 0, zone),
+    week: zonedInstant(shiftedDate(clock, 1 - WEEK_DAYS), 0, zone),
+  };
 }
 
 async function appsOf(
   options: ComputerSessionRouteOptions,
+  caller: Caller,
   deviceId: string,
 ): Promise<ComputerApps> {
-  const session = options.directory.byDevice(deviceId);
-  const installed = INSTALLED.parse(await session.call({ verb: 'apps' }));
-  const today = startOfDay(options.now());
+  const installed = await options.service.ask(
+    { caller, deviceId, request: { verb: 'apps' } },
+    INSTALLED,
+  );
+  const { today, week } = periodStarts(options.now(), options.store.settings.read().time_zone);
   return {
     installed,
-    focused: session.view()?.session?.focused ?? null,
+    focused: options.directory.online(deviceId)?.view()?.parts.session?.focused ?? null,
     today: options.store.appSessions.usage(deviceId, today),
-    week: options.store.appSessions.usage(
-      deviceId,
-      new Date(today.getTime() - (WEEK_DAYS - 1) * DAY_MS),
-    ),
+    week: options.store.appSessions.usage(deviceId, week),
   };
 }
 
 export function computerSessionRoutes(
   options: ComputerSessionRouteOptions,
-): Record<ComputerSessionEndpointName, Bound> {
-  const access = new ComputerAccess(options.store);
-  const ask = (deviceId: string, scope: ComputerScope, request: NodeRequest): Promise<unknown> => {
-    access.require(deviceId, scope);
-    return options.directory.byDevice(deviceId).call(request);
-  };
+): Routes<ComputerSessionEndpointName> {
+  const { service } = options;
   return {
-    listComputerApps: bound(E.listComputerApps, ({ params }) =>
-      guarded(() => {
-        access.require(params.deviceId, 'apps');
-        return appsOf(options, params.deviceId);
-      }),
+    listComputerApps: bound(E.listComputerApps, ({ params, caller }) =>
+      appsOf(options, caller, params.deviceId),
     ),
-    openComputerApp: bound(E.openComputerApp, ({ params, body }) =>
-      guarded(async () => {
-        await ask(params.deviceId, 'apps', { verb: 'open_app', appId: body.appId });
-        return DONE_REPLY;
-      }),
-    ),
-    closeComputerApp: bound(E.closeComputerApp, ({ params, body }) =>
-      guarded(async () => {
-        const request: NodeRequest = { verb: 'close_app', appId: body.appId, force: body.force };
-        return APP_CLOSED.parse(await ask(params.deviceId, 'apps', request));
-      }),
-    ),
-    listComputerFiles: bound(E.listComputerFiles, ({ params, query }) =>
-      guarded(async () => {
-        const request: NodeRequest = { verb: 'files', path: query.path ?? null };
-        return FILE_LIST.parse(await ask(params.deviceId, 'files', request));
-      }),
-    ),
-    readComputerFile: bound(E.readComputerFile, ({ params, query }) =>
-      guarded(async () => {
-        const request: NodeRequest = { verb: 'file', path: query.path };
-        return FILE_CONTENT.parse(await ask(params.deviceId, 'files', request));
-      }),
-    ),
-    captureComputer: bound(E.captureComputer, ({ params, body }) =>
-      guarded(async () => {
-        const request: NodeRequest = { verb: 'capture', target: body.target };
-        return COMPUTER_CAPTURE.parse(await ask(params.deviceId, 'screenshots', request));
-      }),
-    ),
+    openComputerApp: bound(E.openComputerApp, async ({ params, body, caller }) => {
+      const request = { verb: 'open_app', appId: body.appId } as const;
+      await service.ask({ caller, deviceId: params.deviceId, request }, z.unknown());
+      return DONE_REPLY;
+    }),
+    closeComputerApp: bound(E.closeComputerApp, ({ params, body, caller }) => {
+      const request = { verb: 'close_app', appId: body.appId, force: body.force } as const;
+      return service.ask({ caller, deviceId: params.deviceId, request }, APP_CLOSED);
+    }),
+    listComputerFiles: bound(E.listComputerFiles, ({ params, query, caller }) => {
+      const request = { verb: 'files', path: query.path ?? null, cursor: query.cursor } as const;
+      return service.ask({ caller, deviceId: params.deviceId, request }, FILE_LIST);
+    }),
+    readComputerFile: bound(E.readComputerFile, ({ params, query, caller }) => {
+      const request = { verb: 'file', path: query.path } as const;
+      return service.ask({ caller, deviceId: params.deviceId, request }, FILE_CONTENT);
+    }),
+    captureComputer: bound(E.captureComputer, ({ params, body, caller }) => {
+      const request = { verb: 'capture', target: body.target } as const;
+      return service.ask({ caller, deviceId: params.deviceId, request }, COMPUTER_CAPTURE);
+    }),
   };
 }

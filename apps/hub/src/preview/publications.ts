@@ -1,17 +1,17 @@
-import { isDeepStrictEqual } from 'node:util';
-import { AI_PREVIEW_SERVICE_WRITE } from '@smarteverything/domain';
-import { admitCanonicalTool } from '../harness/canonical-tools';
 import { randomUUID } from 'node:crypto';
 import { ApiError, AI_PREVIEW_CAPABILITY } from '@smarteverything/domain';
 import type {
   AiPreviewCatalogue,
   AiPreviewNotice,
-  DshWriterClaim,
+  AiHarnessHost,
   AiPreviewPublication,
+  AiPreviewServiceWrite,
   HarnessTransportRequest,
   HubPreviewOpen,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import type { HarnessService } from '../harness/service';
+import { onPreviewAuthorityChange } from './authority-events';
 import type { Caller } from '../server/auth';
 import { profileIdOf } from '../server/auth';
 
@@ -20,17 +20,16 @@ type Native = Extract<
   { operation: 'preview_publish' | 'preview_revoke' }
 >;
 export interface Publication {
-  readonly view: AiPreviewPublication;
+  view: AiPreviewPublication;
   readonly session: string;
-  readonly epoch: number;
-  readonly claim: DshWriterClaim;
   readonly serviceHandle: string;
   readonly writerExpires: () => number;
   readonly send: (frame: HubPreviewOpen) => void;
 }
+const log = new Logger('hub.preview');
+const STREAM_HORIZON_MS = 24 * 60 * 60_000;
 export class PreviewPublications {
   private readonly entries = new Map<string, Publication>();
-  private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly listeners = new Set<(id: string) => void>();
   private readonly subscriptions: readonly (() => void)[];
   constructor(
@@ -38,16 +37,10 @@ export class PreviewPublications {
     private readonly notice: (value: AiPreviewNotice) => void,
   ) {
     this.subscriptions = [
-      harness.directory.onOffline(() => {
-        this.revalidate();
+      harness.directory.onRegister((connection) => {
+        this.rebind(connection.host);
       }),
-      harness.directory.onOwnershipLost(() => {
-        this.revalidate();
-      }),
-      harness.directory.onRegister(() => {
-        this.revalidate();
-      }),
-      harness.store.feed.subscribe(() => {
+      onPreviewAuthorityChange(harness.store, () => {
         this.revalidate();
       }),
     ];
@@ -57,23 +50,24 @@ export class PreviewPublications {
     input: Native,
   ): AiPreviewPublication | { readonly ok: true } {
     this.harness.storage.verify(input.claim, binding);
-    admitCanonicalTool(this.harness, {
-      operation: 'tool',
-      claim: input.claim,
-      call_id: input.call_id,
-      call_seq: input.call_seq,
-      name: input.operation === 'preview_publish' ? 'publish_preview' : 'revoke_preview',
-      arguments: input.arguments,
-    });
-    this.exactServiceScope(input);
+    return input.operation === 'preview_revoke'
+      ? this.revokeOwned(input)
+      : this.share(binding, input);
+  }
+  private revokeOwned(input: Extract<Native, { operation: 'preview_revoke' }>): {
+    readonly ok: true;
+  } {
+    const entry = this.require(input.publication_id);
+    if (entry.session !== input.claim.session_id)
+      throw new ApiError('forbidden', 'This service belongs to another native session.');
+    this.revoke(entry.view.id);
+    return { ok: true };
+  }
+  private share(
+    binding: Pick<HarnessTransportRequest, 'device_id' | 'generation' | 'runtime_instance'>,
+    input: Extract<Native, { operation: 'preview_publish' }>,
+  ): AiPreviewPublication {
     const grant = this.harness.storage.grant(input.claim.session_id);
-    if (input.operation === 'preview_revoke') {
-      const entry = this.require(input.publication_id);
-      if (entry.session !== input.claim.session_id)
-        throw new ApiError('forbidden', 'This service belongs to another native session.');
-      this.revoke(entry.view.id);
-      return { ok: true };
-    }
     const connection = this.harness.directory.bound(
       binding.device_id,
       binding.generation,
@@ -82,46 +76,56 @@ export class PreviewPublications {
     if (
       grant.target.kind !== 'device' ||
       connection.actor.kind !== 'node' ||
-      !['linux', 'macos'].includes(connection.host.platform) ||
       connection.preview === undefined
-    )
+    ) {
+      log.warn('publication.refused', {
+        reason: 'host_cannot_share',
+        deviceId: binding.device_id,
+        targetKind: grant.target.kind,
+        actorKind: connection.actor.kind,
+        previewSupported: connection.preview !== undefined,
+      });
       throw new ApiError(
         'forbidden',
-        'Only preview-v1 paired Linux/macOS computer hosts can share services; the hub and phones cannot.',
+        'Only paired computers that support preview sharing can share services; the hub and phones cannot.',
       );
-    if (grant.cwd !== input.workspace || grant.permission.sandbox === 'read-only')
-      throw new ApiError(
-        'forbidden',
-        'Sharing requires the admitted workspace and its current native write authority.',
-      );
-    return this.publish(binding, input, grant.profile_id, connection.preview);
-  }
-  private exactServiceScope(input: Native): void {
-    const matches =
-      input.operation === 'preview_publish'
-        ? isDeepStrictEqual(AI_PREVIEW_SERVICE_WRITE.parse(input.arguments), input.service)
-        : input.arguments['publication_id'] === input.publication_id;
-    if (!matches)
-      throw new ApiError(
-        'forbidden',
-        'The literal service grant differs from the canonical native tool arguments.',
-      );
+    }
+    if (grant.cwd !== input.workspace) {
+      log.warn('publication.refused', {
+        reason: 'workspace_mismatch',
+        deviceId: binding.device_id,
+        sessionId: input.claim.session_id,
+      });
+      throw new ApiError('forbidden', 'Sharing requires the workspace the session is admitted in.');
+    }
+    const metadata = this.harness.store.dshSessions.stat(input.claim.session_id, grant.profile_id);
+    if (metadata === undefined) throw new ApiError('forbidden', 'The published session is absent.');
+    return this.publish(
+      binding,
+      {
+        session: input.claim.session_id,
+        workspace: input.workspace,
+        service: input.service,
+        serviceHandle: input.service_handle,
+      },
+      { profile: grant.profile_id, chat: metadata.chat_id },
+    );
   }
   private publish(
     binding: Pick<HarnessTransportRequest, 'device_id' | 'generation' | 'runtime_instance'>,
-    input: Extract<Native, { operation: 'preview_publish' }>,
-    profile: string,
-    send: (frame: HubPreviewOpen) => void,
+    input: {
+      readonly session: string;
+      readonly workspace: string;
+      readonly service: AiPreviewServiceWrite;
+      readonly serviceHandle: string;
+    },
+    owner: { readonly profile: string; readonly chat: string },
   ): AiPreviewPublication {
-    if (this.entries.size >= 256)
-      throw new ApiError('conflict', 'The active published-service limit was reached.');
-    const metadata = this.harness.store.dshSessions.stat(input.claim.session_id, profile);
-    if (metadata === undefined) throw new ApiError('forbidden', 'The published session is absent.');
     const view: AiPreviewPublication = {
       id: randomUUID(),
       revision: randomUUID(),
-      chat_id: metadata.chat_id,
-      profile_id: profile,
+      chat_id: owner.chat,
+      profile_id: owner.profile,
       target: { kind: 'device', device_id: binding.device_id },
       generation: binding.generation,
       runtime_instance: binding.runtime_instance,
@@ -131,17 +135,17 @@ export class PreviewPublications {
       initial_path: input.service.initial_path,
       expires_at: null,
     };
-    this.entries.set(view.id, {
+    const entry: Publication = {
       view,
-      session: input.claim.session_id,
-      epoch: input.claim.epoch,
-      claim: input.claim,
-      serviceHandle: input.service_handle,
-      writerExpires: (): number => this.validate(this.require(view.id)),
-      send,
-    });
-    const entry = this.require(view.id);
-    this.arm(entry, this.validate(entry));
+      session: input.session,
+      serviceHandle: input.serviceHandle,
+      writerExpires: (): number => Date.now() + STREAM_HORIZON_MS,
+      send: (frame): void => {
+        this.sender(entry)(frame);
+      },
+    };
+    this.entries.set(view.id, entry);
+    this.announced(view, binding.device_id, input.session);
     this.notice({
       type: 'ai_preview',
       chat_id: view.chat_id,
@@ -151,13 +155,58 @@ export class PreviewPublications {
     });
     return view;
   }
+  private announced(view: AiPreviewPublication, deviceId: string, sessionId: string): void {
+    log.info('publication.published', {
+      publicationId: view.id,
+      chatId: view.chat_id,
+      profileId: view.profile_id,
+      deviceId,
+      generation: view.generation,
+      sessionId,
+      titleLength: view.title.length,
+      publications: this.entries.size,
+    });
+  }
+  private sender(entry: Publication): (frame: HubPreviewOpen) => void {
+    const connection = this.harness.directory.get(entry.view.target);
+    if (connection.preview === undefined)
+      throw new ApiError(
+        'conflict',
+        'The computer sharing this service no longer supports previews.',
+      );
+    return connection.preview;
+  }
+  private rebind(host: AiHarnessHost): void {
+    for (const entry of [...this.entries.values()]) {
+      if (host.target.kind !== 'device' || host.target.device_id !== entry.view.target.device_id)
+        continue;
+      if (host.runtime_instance !== entry.view.runtime_instance) {
+        log.info('publication.runtime_replaced', { publicationId: entry.view.id });
+        this.revoke(entry.view.id);
+        continue;
+      }
+      log.debug('publication.rebound', {
+        publicationId: entry.view.id,
+        deviceId: host.target.device_id,
+        from: entry.view.generation,
+        to: host.connection_generation,
+      });
+      entry.view = { ...entry.view, generation: host.connection_generation };
+      this.notice({
+        type: 'ai_preview',
+        chat_id: entry.view.chat_id,
+        profile_id: entry.view.profile_id,
+        publication_id: entry.view.id,
+        state: 'published',
+      });
+    }
+  }
   catalogue(
     caller: Caller,
     chatId: string,
     gateway: AiPreviewCatalogue['gateway'],
   ): AiPreviewCatalogue {
     this.chat(caller, chatId);
-    this.revalidate();
     return {
       capability: AI_PREVIEW_CAPABILITY,
       documents: [],
@@ -184,7 +233,6 @@ export class PreviewPublications {
     const entry = this.entries.get(id);
     if (entry === undefined)
       throw new ApiError('not_found', 'Sharing was revoked or the origin host disconnected.');
-    this.validate(entry);
     return entry;
   }
   private chat(caller: Caller, id: string): void {
@@ -197,48 +245,18 @@ export class PreviewPublications {
     )
       throw new ApiError('forbidden', 'The selected profile is no longer active.');
   }
-  private validate(entry: Publication): number {
-    const view = entry.view;
-    const grant = this.harness.storage.grant(entry.session);
-    const writer = this.harness.storage.verify(entry.claim, {
-      device_id: view.target.device_id,
-      generation: view.generation,
-      runtime_instance: view.runtime_instance,
-    });
-    if (
-      (view.expires_at !== null && Date.parse(view.expires_at) <= Date.now()) ||
-      grant.cwd !== view.workspace ||
-      grant.permission.sandbox === 'read-only' ||
-      this.harness.store.harnessCoordination.state(entry.session)?.epoch !== entry.epoch
-    )
-      throw new ApiError(
-        'forbidden',
-        'This service’s workspace, writer or publication authority changed.',
-      );
-    return Date.parse(writer.expires_at);
-  }
-  private arm(entry: Publication, writerExpires: number): void {
-    clearTimeout(this.timers.get(entry.view.id));
-    const expires =
-      entry.view.expires_at === null
-        ? writerExpires
-        : Math.min(Date.parse(entry.view.expires_at), writerExpires);
-    const timer = setTimeout(
-      () => {
-        this.revalidate();
-      },
-      Math.max(0, expires - Date.now()),
-    );
-    timer.unref();
-    this.timers.set(entry.view.id, timer);
-  }
   private revalidate(): void {
     for (const entry of [...this.entries.values()]) {
       try {
-        this.arm(entry, this.validate(entry));
+        this.harness.store.aiChats.assertWorkAllowed(entry.view.chat_id);
+        this.harness.store.aiChats.chat(entry.view.chat_id);
       } catch (cause) {
-        if (!(cause instanceof Error))
-          throw new ApiError('internal', 'Publication revalidation failed without an Error.');
+        if (!(cause instanceof ApiError)) throw cause;
+        log.info('publication.revalidation_failed', {
+          publicationId: entry.view.id,
+          chatId: entry.view.chat_id,
+          errorCode: cause.code,
+        });
         this.revoke(entry.view.id);
       }
     }
@@ -247,6 +265,13 @@ export class PreviewPublications {
     const entry = this.entries.get(id);
     if (entry === undefined) return;
     this.entries.delete(id);
+    log.info('publication.revoked', {
+      publicationId: id,
+      chatId: entry.view.chat_id,
+      profileId: entry.view.profile_id,
+      listeners: this.listeners.size,
+      remaining: this.entries.size,
+    });
     this.notice({
       type: 'ai_preview',
       chat_id: entry.view.chat_id,
@@ -254,8 +279,6 @@ export class PreviewPublications {
       publication_id: id,
       state: 'revoked',
     });
-    clearTimeout(this.timers.get(id));
-    this.timers.delete(id);
     for (const listener of this.listeners) listener(id);
   }
   onRevoke(listener: (id: string) => void): () => void {

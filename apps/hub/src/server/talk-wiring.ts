@@ -14,6 +14,7 @@ import { ListeningBudget } from '../transcripts/listening-budget';
 import { ownerProfileOf } from '../transcripts/owner';
 import type { ServerContext } from './context';
 import type { Transcribing } from './transcribing';
+import { messageOf } from '@smarteverything/logging';
 
 const CONTEXT_ROWS = 50;
 const REPLY_CHARACTERS_MAX = 1000;
@@ -32,6 +33,22 @@ export interface TalkLinks {
 
 function originOf(channel: TalkChannelRow): MessageOrigin {
   return { source: 'wake', plugin_id: null, device_id: null, name: channel.name };
+}
+
+function dropWhenSuperseded(
+  message: TalkHeard,
+  eventId: string,
+  pending: Map<string, TalkChannelRow>,
+  log: Logger,
+): void {
+  message.onSuperseded((winner) => {
+    pending.delete(eventId);
+    log.info('talk.reply_dropped', {
+      channelId: message.channel.id,
+      eventId,
+      winner: winner.source,
+    });
+  });
 }
 
 function wakeTurn(
@@ -75,6 +92,7 @@ function wakeTurn(
       origin: originOf(message.channel),
     });
     pending.set(eventId, message.channel);
+    dropWhenSuperseded(message, eventId, pending, log);
     log.info('talk.woke', { channelId: message.channel.id, eventId });
   };
 }
@@ -109,7 +127,7 @@ function speakReplies(
       .catch((cause: unknown) => {
         log.warn('talk.reply_failed', {
           channelId: channel.id,
-          reason: cause instanceof Error ? cause.message : 'the reply could not be spoken',
+          reason: messageOf(cause),
         });
       });
   });
@@ -135,7 +153,7 @@ export function startTalkListening(
       }),
       names: (): string[] => assistantNames(store),
       keyPresent: (): boolean => context.openRouter.keys.current() !== null,
-      now: wiring.clock.now,
+      clock: wiring.clock,
       heard: wakeTurn(context, wiring, pending),
       log: wiring.log.forArea('hub.talk'),
     }),

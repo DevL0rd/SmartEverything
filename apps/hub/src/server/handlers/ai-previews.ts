@@ -1,11 +1,10 @@
 import { embeddedBrowserRoutes } from './embedded-browser';
-import { previewPublicationView, previewCatalogueView } from '../../preview/compatibility';
 import { previewDiagnosticRoutes } from './preview-diagnostics';
 import { AI_PREVIEW_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import type { PreviewService } from '../../preview/service';
-import { bound, type Bound } from '../router';
-export function aiPreviewRoutes(preview: PreviewService): Record<keyof typeof E, Bound> {
-  return {
+import { bound } from '../router';
+export const aiPreviewRoutes = (preview: PreviewService) =>
+  ({
     ...previewDiagnosticRoutes(preview),
     ...embeddedBrowserRoutes(preview),
     ...htmlPublicationRoutes(preview),
@@ -14,7 +13,7 @@ export function aiPreviewRoutes(preview: PreviewService): Record<keyof typeof E,
       const publication = preview.documents.visible(caller, params.chatId, body.publication_id);
       if (publication.view.revision !== body.revision)
         throw new ApiError('conflict', 'The HTML changed; choose its current revision.');
-      return preview.leases.issueHtml(caller, publication, preview.gateway.domain(), body.lifetime);
+      return preview.leases.issueHtml(caller, publication, preview.gateway.domain());
     }),
     createAiNativeHtmlPreviewLease: bound(
       E.createAiNativeHtmlPreviewLease,
@@ -22,7 +21,7 @@ export function aiPreviewRoutes(preview: PreviewService): Record<keyof typeof E,
         const publication = preview.documents.visible(caller, params.chatId, body.publication_id);
         if (publication.view.revision !== body.revision)
           throw new ApiError('conflict', 'The HTML changed; choose its current revision.');
-        return preview.leases.issueNativeHtml(caller, publication, body.lifetime);
+        return preview.leases.issueNativeHtml(caller, publication);
       },
     ),
     createAiPreviewLease: bound(E.createAiPreviewLease, ({ caller, params, body }) => {
@@ -32,7 +31,7 @@ export function aiPreviewRoutes(preview: PreviewService): Record<keyof typeof E,
           'conflict',
           'This published service was replaced; choose its current revision.',
         );
-      return preview.leases.issue(caller, publication, preview.gateway.domain(), body.lifetime);
+      return preview.leases.issue(caller, publication, preview.gateway.domain());
     }),
     releaseAiPreviewLease: bound(E.releaseAiPreviewLease, ({ caller, params, body }) => {
       preview.leases.release(caller, params.chatId, body.lease);
@@ -48,46 +47,24 @@ export function aiPreviewRoutes(preview: PreviewService): Record<keyof typeof E,
       preview.publications.revoke(publication.view.id);
       return { ok: true as const };
     }),
-  };
-}
+  }) as const;
 
-function htmlPublicationRoutes(
-  preview: PreviewService,
-): Pick<
-  Record<keyof typeof E, Bound>,
-  'publishAiHtmlPreview' | 'publishAiProjectPreview' | 'readAiChatPreviews'
-> {
-  return {
-    publishAiHtmlPreview: bound(E.publishAiHtmlPreview, async ({ caller, params, body, query }) =>
-      previewPublicationView(
-        await preview.documents.publish(caller, params.chatId, body),
-        query.lifetime,
-      ),
+const htmlPublicationRoutes = (preview: PreviewService) =>
+  ({
+    publishAiHtmlPreview: bound(E.publishAiHtmlPreview, ({ caller, params, body }) =>
+      preview.documents.publish(caller, params.chatId, body),
     ),
-    publishAiProjectPreview: bound(
-      E.publishAiProjectPreview,
-      async ({ caller, params, body, query }) =>
-        previewPublicationView(
-          await preview.documents.publishProject(caller, params.chatId, body),
-          query.lifetime,
-        ),
+    publishAiProjectPreview: bound(E.publishAiProjectPreview, ({ caller, params, body }) =>
+      preview.documents.publishProject(caller, params.chatId, body),
     ),
-    readAiChatPreviews: bound(E.readAiChatPreviews, ({ caller, params, query }) =>
-      previewCatalogueView(
-        {
-          ...preview.publications.catalogue(caller, params.chatId, preview.gateway.status()),
-          documents: [...preview.documents.catalogue(caller, params.chatId)],
-        },
-        query.lifetime,
-      ),
-    ),
-  };
-}
+    readAiChatPreviews: bound(E.readAiChatPreviews, ({ caller, params }) => ({
+      ...preview.publications.catalogue(caller, params.chatId, preview.gateway.status()),
+      documents: [...preview.documents.catalogue(caller, params.chatId)],
+    })),
+  }) as const;
 
-function chatPageAddressRoutes(
-  preview: PreviewService,
-): Pick<Record<keyof typeof E, Bound>, 'readAiHtmlPage'> {
-  return {
+const chatPageAddressRoutes = (preview: PreviewService) =>
+  ({
     readAiHtmlPage: bound(E.readAiHtmlPage, ({ caller, params }) => {
       const publication = preview.documents.visible(caller, params.chatId, params.publicationId);
       const entry = publication.view.project_source?.entry;
@@ -106,5 +83,4 @@ function chatPageAddressRoutes(
         url: `${origin}${entryPath}`,
       };
     }),
-  };
-}
+  }) as const;

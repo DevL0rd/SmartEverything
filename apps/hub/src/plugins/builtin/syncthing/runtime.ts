@@ -9,7 +9,7 @@ import { runSyncthingCommand } from './controls';
 import { SyncthingRest } from './rest-client';
 import { API_KEY_SECRET, type SyncthingSettings } from './settings';
 import { DeviceMirror } from '../device-mirror';
-import { SYNCTHING_DRIVER_ID, SYNCTHING_EXTERNAL_ID, SYNCTHING_MIRROR } from './sync-device';
+import { SYNCTHING_DRIVER_ID, SYNCTHING_EXTERNAL_ID, syncthingMirror } from './sync-device';
 import { SyncthingMonitor } from './sync-monitor';
 import { syncthingSearchEntries, syncthingSearchSignature } from './sync-search';
 import { syncthingTools } from './tools';
@@ -51,9 +51,11 @@ function createMonitor(
     rest,
     overdueHours: ctx.settings.overdue_hours,
     log: ctx.log,
+    record: (snapshot): void => {
+      sync.update(snapshot);
+    },
     publish: (snapshot): void => {
       ctx.data.publish(SNAPSHOT_STREAM, snapshot);
-      sync.update(snapshot);
       const signature = syncthingSearchSignature(snapshot);
       if (signature !== searched) {
         searched = signature;
@@ -104,7 +106,7 @@ function startMonitor(
   rest: SyncthingRest,
   importLocal: () => Promise<void>,
 ): PluginStop {
-  const sync = new DeviceMirror(SYNCTHING_MIRROR);
+  const sync = new DeviceMirror(syncthingMirror(ctx.metrics));
   const monitor = createMonitor(ctx, rest, sync);
   const command = async (value: SyncthingCommand): Promise<string> => {
     const done = await runSyncthingCommand(rest, value);

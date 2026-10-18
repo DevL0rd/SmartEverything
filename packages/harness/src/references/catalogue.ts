@@ -12,38 +12,24 @@ export async function nativeReferenceCatalogue(
   agent: Agent,
   kind: AiReferenceKind,
   options: {
-    readonly generation: number;
     readonly readiness: readonly HarnessPluginReadiness[];
     readonly signal?: AbortSignal | undefined;
   },
-): Promise<{
-  readonly items: readonly AiReferenceSummary[];
-  readonly revision: string;
-  readonly complete: boolean;
-}> {
-  const { generation, readiness, signal } = options;
+): Promise<{ readonly items: readonly AiReferenceSummary[]; readonly revision: string }> {
+  const { readiness, signal } = options;
   if (kind === 'skill')
     return withNativeSkills(ctx, async (skills) => {
       const snapshot = await skills.snapshot(skillLookup(ctx, agent, signal));
-      const items: AiReferenceSummary[] = [];
-      for (const skill of snapshot.skills) {
-        if (!isUserInvocable(skill) || /codex/iu.test(`${skill.provider}:${skill.source}`))
-          continue;
-        items.push({
-          reference: await skillReference(ctx, skill, generation, signal),
-          label: skill.name,
-          subtitle: `${skill.source} · ${skill.provider}`,
-          description: skill.description.slice(0, 1000),
-        });
-      }
-      return {
-        items,
-        revision: referenceHash({ items, generation, complete: snapshot.complete }),
-        complete: snapshot.complete,
-      };
+      const items = snapshot.skills.filter(isUserInvocable).map((skill): AiReferenceSummary => ({
+        reference: skillReference(skill),
+        label: skill.name,
+        subtitle: `${skill.source} · ${skill.provider}`,
+        description: skill.description.slice(0, 1000),
+      }));
+      return { items, revision: referenceHash(items) };
     });
   const items = await relatedReferences(ctx, agent, kind, readiness);
-  return { items, revision: referenceHash(items), complete: true };
+  return { items, revision: referenceHash(items) };
 }
 async function relatedReferences(
   ctx: Context,
@@ -53,7 +39,6 @@ async function relatedReferences(
 ): Promise<readonly AiReferenceSummary[]> {
   const packages = nativeReferencePackages(ctx);
   if (kind === 'plugin') {
-    for (const entry of packages) await entry.asset.verify();
     return packages.map((entry) => ({
       reference: {
         kind: 'plugin' as const,
@@ -83,11 +68,29 @@ async function relatedReferences(
   if (kind === 'command') return commandReferences(ctx, agent, readiness);
   return [];
 }
-export function exactReferenceItem(
+export function findReferenceItem(
   items: readonly AiReferenceSummary[],
   reference: AiReference,
 ): AiReferenceSummary | undefined {
-  return items.find((item) => JSON.stringify(item.reference) === JSON.stringify(reference));
+  const key = referenceKey(reference);
+  return items.find((item) => referenceKey(item.reference) === key);
+}
+
+function referenceKey(reference: AiReference): string {
+  switch (reference.kind) {
+    case 'skill':
+      return `skill|${reference.identity}`;
+    case 'plugin':
+      return `plugin|${reference.asset_id}`;
+    case 'agent':
+      return `agent|${reference.identity}`;
+    case 'command':
+      return `command|${reference.definition_id}`;
+    case 'managed_path':
+    case 'device_path':
+    case 'chat':
+      return JSON.stringify(reference);
+  }
 }
 
 function commandReferences(

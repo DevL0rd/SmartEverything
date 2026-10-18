@@ -16,10 +16,11 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import { cn } from '../design/cn';
 import { DURATION, EASING, useMotion } from '../design/motion';
-import { isNative, useIdiom } from '../design/platform';
+import { useIdiom } from '../design/platform';
 import { selectionTick } from '../platform/haptics';
 import { decimalsOf, snap } from './charts/scale';
 import { stepFormat } from './number-stepper';
+import { useFocusedKeys } from './focused-keys';
 import { useWheelSteps } from './slider-wheel';
 
 type SliderOrientation = 'horizontal' | 'vertical';
@@ -48,6 +49,8 @@ interface Track {
 }
 
 const GESTURE_SLOP = 12;
+const TRACK_CLASS = 'h-1.5 overflow-hidden rounded-full border-hairline border-track';
+const SHIFT_MULTIPLIER = 10;
 
 const KEY_STEPS: Readonly<Record<string, number>> = {
   ArrowRight: 1,
@@ -57,35 +60,6 @@ const KEY_STEPS: Readonly<Record<string, number>> = {
   PageUp: 10,
   PageDown: -10,
 };
-
-export function useFocusedKeys(
-  active: boolean,
-  onKey: (key: string) => boolean,
-): { onFocus: () => void; onBlur: () => void } {
-  const [focused, setFocused] = useState(false);
-  useEffect(() => {
-    if (!active || !focused || isNative()) {
-      return undefined;
-    }
-    const listen = (event: KeyboardEvent): void => {
-      if (onKey(event.key)) {
-        event.preventDefault();
-      }
-    };
-    document.addEventListener('keydown', listen);
-    return (): void => {
-      document.removeEventListener('keydown', listen);
-    };
-  }, [active, focused, onKey]);
-  return {
-    onFocus: (): void => {
-      setFocused(true);
-    },
-    onBlur: (): void => {
-      setFocused(false);
-    },
-  };
-}
 
 function shareOf(value: number, min: number, max: number): number {
   'worklet';
@@ -100,7 +74,12 @@ function snapShare(share: number, track: Track): number {
   return Math.min(track.max, Math.max(track.min, value));
 }
 
-function keyTarget(key: string, value: number | null, props: SliderProps): number | null {
+function keyTarget(
+  key: string,
+  shift: boolean,
+  value: number | null,
+  props: SliderProps,
+): number | null {
   if (key === 'Home') {
     return props.min;
   }
@@ -109,7 +88,8 @@ function keyTarget(key: string, value: number | null, props: SliderProps): numbe
   }
   const steps = KEY_STEPS[key];
   if (steps === undefined) return null;
-  return value === null ? props.min : snap(value + steps * props.step, props, props.step);
+  const stride = shift ? SHIFT_MULTIPLIER : 1;
+  return value === null ? props.min : snap(value + steps * stride * props.step, props, props.step);
 }
 
 function usePosition(value: number, props: SliderProps, dragging: boolean): SharedValue<number> {
@@ -228,27 +208,34 @@ function useDrag(
 interface TrackProps {
   readonly position: SharedValue<number>;
   readonly length: SharedValue<number>;
+  readonly disabled: boolean;
 }
 
-function HorizontalTrack({ position, length }: TrackProps): ReactNode {
+function HorizontalTrack({ position, length, disabled }: TrackProps): ReactNode {
   const fill = useAnimatedStyle(() => ({ width: position.get() * length.get() }));
   const thumb = useAnimatedStyle(() => ({
     transform: [{ translateX: position.get() * length.get() }],
   }));
   return (
     <>
-      <View className="h-1 overflow-hidden rounded-full bg-surface-3">
-        <Animated.View style={fill} className="h-full rounded-full bg-primary" />
+      <View className={cn(TRACK_CLASS, disabled ? 'border-dashed' : 'bg-track')}>
+        <Animated.View
+          style={fill}
+          className={cn('h-full rounded-full bg-primary', disabled && 'opacity-38')}
+        />
       </View>
       <Animated.View
         style={thumb}
-        className="absolute top-0 left-0 -ml-3 size-6 rounded-full border-2 border-surface-1 bg-primary elevation-1"
+        className={cn(
+          'absolute top-0 left-0 -ml-3 size-6 rounded-full border-2 border-surface-1 bg-primary elevation-1',
+          disabled && 'opacity-38',
+        )}
       />
     </>
   );
 }
 
-function VerticalTrack({ position, length }: TrackProps): ReactNode {
+function VerticalTrack({ position, length }: Omit<TrackProps, 'disabled'>): ReactNode {
   const fill = useAnimatedStyle(() => ({ height: position.get() * length.get() }));
   const thumb = useAnimatedStyle(() => ({
     transform: [{ translateY: (1 - position.get()) * length.get() }],
@@ -283,10 +270,12 @@ function useNudge(props: SliderProps, keyboard: boolean): Nudge {
     }
     return true;
   };
-  const focus = useFocusedKeys(keyboard, (key) => nudge(keyTarget(key, value, props)));
+  const focus = useFocusedKeys(keyboard, (key, shift) =>
+    nudge(keyTarget(key, shift, value, props)),
+  );
   const onAction = (event: AccessibilityActionEvent): void => {
     const key = event.nativeEvent.actionName === 'increment' ? 'ArrowUp' : 'ArrowDown';
-    nudge(props.disabled === true ? null : keyTarget(key, value, props));
+    nudge(props.disabled === true ? null : keyTarget(key, false, value, props));
   };
   return { focus, onAction };
 }
@@ -345,8 +334,8 @@ function SliderTrack({
     <View
       className={
         vertical
-          ? 'w-1.5 flex-1 self-center rounded-full bg-surface-3'
-          : 'h-1 rounded-full bg-surface-3'
+          ? 'w-1.5 flex-1 self-center rounded-full bg-track'
+          : cn(TRACK_CLASS, 'border-dashed')
       }
     />
   );
@@ -402,8 +391,7 @@ export function Slider(props: SliderProps): ReactNode {
         'rounded-md focus:outline-2 focus:outline-offset-2 focus:outline-focus',
         vertical
           ? 'h-40 min-h-20 w-11 shrink py-2.5'
-          : 'min-h-touch-min w-full justify-center px-3',
-        disabled && 'opacity-40',
+          : 'min-h-touch-min w-full min-w-24 justify-center px-3',
       )}
     >
       <GestureDetector gesture={gesture} touchAction={vertical ? 'pan-x' : 'pan-y'}>
@@ -413,6 +401,7 @@ export function Slider(props: SliderProps): ReactNode {
             vertical={vertical}
             position={position}
             length={length}
+            disabled={disabled}
           />
         </View>
       </GestureDetector>

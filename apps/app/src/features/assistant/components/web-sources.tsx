@@ -1,12 +1,16 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { Linking, View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
+import { Disclosure } from '../../../components/disclosure';
 import { hostOf } from '../../../format/text';
 import type { NumberedSource } from '../model/web-sources';
+import { background } from '@smarteverything/logging';
 
-function SourceLink({ number, source }: NumberedSource): ReactNode {
+const FIRST_SOURCES = 8;
+
+const SourceLink = memo(function SourceLink({ number, source }: NumberedSource): ReactNode {
   const host = hostOf(source.url) ?? source.url;
   const title = source.title === '' ? host : source.title;
   return (
@@ -15,7 +19,7 @@ function SourceLink({ number, source }: NumberedSource): ReactNode {
       hint="Opens the page in your browser"
       role="link"
       onPress={() => {
-        void Linking.openURL(source.url);
+        background(Linking.openURL(source.url), 'url.open_failed');
       }}
       className="min-h-touch-min min-w-0 flex-row items-center gap-2 rounded-sm px-1"
       layerClassName="rounded-sm"
@@ -36,7 +40,7 @@ function SourceLink({ number, source }: NumberedSource): ReactNode {
       <Icon name="externalLink" size={16} tone="variant" />
     </Interactive>
   );
-}
+});
 
 export function WebSources({
   sources,
@@ -44,34 +48,37 @@ export function WebSources({
   readonly sources: readonly NumberedSource[];
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const [all, setAll] = useState(false);
   if (sources.length === 0) return null;
+  const shown = all ? sources : sources.slice(0, FIRST_SOURCES);
   return (
-    <View className="min-w-0 gap-0.5">
-      <View className="min-h-touch-min max-w-full justify-center self-start">
+    <Disclosure
+      label="Sources"
+      accessibleLabel={`Sources, ${String(sources.length)}`}
+      count={sources.length}
+      open={open}
+      onToggle={() => {
+        setOpen(!open);
+      }}
+      hint={open ? 'Hide sources' : 'Show source titles and links'}
+      bodyClassName="pl-4"
+    >
+      {shown.map((entry) => (
+        <SourceLink key={`${String(entry.number)}:${entry.source.url}`} {...entry} />
+      ))}
+      {shown.length === sources.length ? null : (
         <Interactive
-          label={`Sources, ${String(sources.length)}`}
-          checked={open}
-          hint={open ? 'Hide sources' : 'Show source titles and links'}
-          hitSlop={10}
+          label={`Show ${String(sources.length - shown.length)} more sources`}
           onPress={() => {
-            setOpen(!open);
+            setAll(true);
           }}
-          className="min-h-6 flex-row items-center gap-1.5 self-start rounded-sm px-1"
-          layerClassName="rounded-sm"
+          className="min-h-touch-min justify-center self-start px-1"
         >
-          <Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} tone="variant" />
-          <Text variant="caption" tone="variant">
-            Sources · {String(sources.length)}
+          <Text variant="caption" tone="primary">
+            {`Show ${String(sources.length - shown.length)} more`}
           </Text>
         </Interactive>
-      </View>
-      {open ? (
-        <View className="pl-4">
-          {sources.map((entry) => (
-            <SourceLink key={`${String(entry.number)}:${entry.source.url}`} {...entry} />
-          ))}
-        </View>
-      ) : null}
-    </View>
+      )}
+    </Disclosure>
   );
 }

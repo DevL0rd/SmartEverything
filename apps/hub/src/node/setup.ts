@@ -1,15 +1,26 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { hostname } from 'node:os';
-import { API_ENDPOINTS, CLIENT_TOKEN } from '@smarteverything/domain';
-import { SERVICE_CONFIG_FILE, NODE_SERVICE_CONFIG } from '../service/configuration';
+import {
+  API_ENDPOINTS,
+  NODE_CONNECTION_PATH,
+  NODE_CONNECTION_RESPONSE,
+} from '@smarteverything/domain';
+import { canonicalEndpoint, routeConfiguration } from '../client-network/route-trust';
+import { NodeRouteStore } from '../client-network/route-store';
+import {
+  NODE_SERVICE_CONFIG,
+  NODE_WINDOW,
+  NODE_WINDOW_FILE,
+  SERVICE_CONFIG_FILE,
+} from '../service/configuration';
 import { nodeIdentity } from './identity';
+import { hubFetch } from './pinned-fetch';
 
-async function claim(url: string, path: string, body: unknown): Promise<unknown> {
-  const response = await fetch(new URL(path, url), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+type Fetch = ReturnType<typeof hubFetch>;
+
+async function exchange(fetcher: Fetch, url: URL, init: Parameters<Fetch>[1]): Promise<unknown> {
+  const response = await fetcher(url, {
+    ...init,
     signal: AbortSignal.timeout(10_000),
     redirect: 'error',
   });
@@ -28,24 +39,37 @@ export async function pairNode(options: {
   readonly dataDirectory: string;
   readonly hubUrl: string;
   readonly code: string;
+  readonly pin?: string | undefined;
 }): Promise<void> {
+  canonicalEndpoint(options.hubUrl);
+  const fetcher = hubFetch(options.pin);
   const endpoint = API_ENDPOINTS.claimComputerNode;
   const body = endpoint.body.parse({
     code: options.code,
     hello: await nodeIdentity(options.dataDirectory),
   });
-  const paired = endpoint.response.parse(await claim(options.hubUrl, endpoint.path, body));
-  if (new URL(paired.hub_url).origin !== new URL(options.hubUrl).origin) {
+  const paired = endpoint.response.parse(
+    await exchange(fetcher, new URL(endpoint.path, options.hubUrl), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+  );
+  const origin = new URL(paired.hub_url).origin;
+  if (origin !== new URL(options.hubUrl).origin) {
     throw new NodeSetupError('The pairing response redirected the node to a different hub origin.');
   }
+  if (origin.startsWith('https:'))
+    await enrolRoute(options.dataDirectory, fetcher, paired.hub_url, paired.token);
   const config = NODE_SERVICE_CONFIG.parse({
     role: 'node',
-    node: {
-      hub_url: paired.hub_url,
-      node_token: paired.token,
-      device_id: paired.device_id,
-    },
+    node: { hub_url: paired.hub_url, node_token: paired.token, device_id: paired.device_id },
   });
+  await protectedFile(
+    options.dataDirectory,
+    NODE_WINDOW_FILE,
+    JSON.stringify(NODE_WINDOW.parse({ hub_url: origin, token: paired.window_token })),
+  );
   await protectedFile(
     options.dataDirectory,
     SERVICE_CONFIG_FILE,
@@ -53,27 +77,26 @@ export async function pairNode(options: {
   );
 }
 
-export async function pairNodeWindow(options: {
-  readonly dataDirectory: string;
-  readonly hubUrl: string;
-  readonly code: string;
-}): Promise<void> {
-  const endpoint = API_ENDPOINTS.claimPairing;
-  const body = endpoint.body.parse({
-    code: options.code,
-    name: `${hostname()} desktop`,
-    platform: 'web',
-  });
-  const paired = endpoint.response.parse(await claim(options.hubUrl, endpoint.path, body));
-  await protectedFile(
-    options.dataDirectory,
-    'node-window.json',
-    JSON.stringify({
-      hub_url: new URL(options.hubUrl).origin,
-      token: CLIENT_TOKEN.parse(paired.token),
+async function enrolRoute(
+  dataDirectory: string,
+  fetcher: Fetch,
+  hubUrl: string,
+  token: string,
+): Promise<void> {
+  const answer = NODE_CONNECTION_RESPONSE.parse(
+    await exchange(fetcher, new URL(NODE_CONNECTION_PATH, hubUrl), {
+      headers: { authorization: `Bearer ${token}` },
     }),
   );
+  await new NodeRouteStore(dataDirectory, token).write(
+    routeConfiguration(
+      { hubUrl, deviceId: answer.device_id, token },
+      canonicalEndpoint(hubUrl),
+      answer,
+    ),
+  );
 }
+
 class NodeSetupError extends Error {
   override readonly name = 'NodeSetupError';
 }

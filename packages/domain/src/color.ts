@@ -1,49 +1,35 @@
+import { colord } from 'colord';
 import type { HsvColor } from './values';
 
-const CHANNEL_MAX = 255;
-const SECTOR_DEGREES = 60;
-const PERCENT = 100;
+const CHANNEL_MASK = 0xff;
+const GREEN_SHIFT = 8;
+const RED_SHIFT = 16;
 
-function channels(rgb: number): readonly [number, number, number] {
-  return [(rgb >> 16) & CHANNEL_MAX, (rgb >> 8) & CHANNEL_MAX, rgb & CHANNEL_MAX];
+export interface RgbChannels {
+  readonly r: number;
+  readonly g: number;
+  readonly b: number;
 }
 
-function hueOf(
-  [red, green, blue]: readonly [number, number, number],
-  max: number,
-  delta: number,
-): number {
-  if (delta === 0) {
-    return 0;
-  }
-  if (max === red) {
-    return (SECTOR_DEGREES * ((green - blue) / delta) + 360) % 360;
-  }
-  if (max === green) {
-    return SECTOR_DEGREES * ((blue - red) / delta + 2);
-  }
-  return SECTOR_DEGREES * ((red - green) / delta + 4);
+export function rgbChannelsToHsv({ r, g, b }: RgbChannels): HsvColor {
+  const { h, s, v } = colord({ r, g, b }).toHsv();
+  return { hue: h, saturation: s, value: v };
+}
+
+export function hsvToRgbChannels(color: HsvColor): RgbChannels {
+  const { r, g, b } = colord({ h: color.hue, s: color.saturation, v: color.value }).toRgb();
+  return { r, g, b };
 }
 
 export function packedRgbToHsv(rgb: number): HsvColor {
-  const [red, green, blue] = channels(rgb);
-  const max = Math.max(red, green, blue);
-  const delta = max - Math.min(red, green, blue);
-  return {
-    hue: Math.round(hueOf([red, green, blue], max, delta)),
-    saturation: max === 0 ? 0 : Math.round((delta / max) * PERCENT),
-    value: Math.round((max / CHANNEL_MAX) * PERCENT),
-  };
-}
-
-function channel(color: HsvColor, offset: number): number {
-  const sector = (offset + color.hue / SECTOR_DEGREES) % 6;
-  const weight = Math.max(0, Math.min(sector, 4 - sector, 1));
-  const value = color.value / PERCENT;
-  const saturation = color.saturation / PERCENT;
-  return Math.round((value - value * saturation * weight) * CHANNEL_MAX);
+  return rgbChannelsToHsv({
+    r: (rgb >> RED_SHIFT) & CHANNEL_MASK,
+    g: (rgb >> GREEN_SHIFT) & CHANNEL_MASK,
+    b: rgb & CHANNEL_MASK,
+  });
 }
 
 export function hsvToPackedRgb(color: HsvColor): number {
-  return (channel(color, 5) << 16) | (channel(color, 3) << 8) | channel(color, 1);
+  const { r, g, b } = hsvToRgbChannels(color);
+  return (r << RED_SHIFT) | (g << GREEN_SHIFT) | b;
 }

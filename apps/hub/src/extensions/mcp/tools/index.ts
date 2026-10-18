@@ -11,6 +11,10 @@ import { AI_USAGE_TOOLS } from './ai-usage';
 import { ASSISTANT_TOOLS } from './assistant';
 import { CAMERA_TOOLS } from './camera';
 import { CLAUDE_TOOLS } from './claude';
+import { COMPUTER_CONTROL_TOOLS } from './computer-controls';
+import { EDIT_FILES_TOOL } from './computer-files-tool';
+import { COMPUTER_PROGRAM_TOOLS } from './computer-programs';
+import { COMPUTER_READ_TOOLS } from './computer-reads';
 import { CONTROL_TOOLS } from './control';
 import { DEVICE_TOOLS } from './devices';
 import { HEALTH_TOOLS } from './health';
@@ -21,7 +25,8 @@ import { NUTRITION_TOOLS } from './nutrition';
 import { OPERATION_TOOLS } from './operation-tools';
 import { PEOPLE_TOOLS } from './people';
 import { PLACE_TOOLS } from './places';
-import { ToolError, type Tool } from './registry';
+import { outcomeOf } from './outcome';
+import { ToolError, type Tool, type ToolOutput } from './registry';
 import { discoveryTools } from './discovery';
 import { partCall, servedTool, type PartCall } from './served';
 import { REMOTE_TOOLS } from './remotes';
@@ -50,6 +55,10 @@ const PARTS: readonly Tool[] = [
   ...ASSISTANT_TOOLS,
   ...AI_USAGE_TOOLS,
   ...AI_MODEL_TOOLS,
+  ...COMPUTER_READ_TOOLS,
+  ...COMPUTER_PROGRAM_TOOLS,
+  ...COMPUTER_CONTROL_TOOLS,
+  EDIT_FILES_TOOL,
   ...OPERATION_TOOLS,
   ...CLAUDE_TOOLS,
 ];
@@ -80,4 +89,13 @@ function routeOf(name: McpToolName): McpRoute {
 
 export function partCallOf(name: string, args: Readonly<Record<string, unknown>>): PartCall {
   return isMcpToolName(name) ? partCall(routeOf(name), name, args) : { name, args };
+}
+
+export function shownOutput(
+  name: string,
+  args: Readonly<Record<string, unknown>>,
+  output: ToolOutput,
+): ToolOutput {
+  if (output.action !== true || output.images !== undefined) return output;
+  return { structured: outcomeOf(partCallOf(name, args).name, output.structured) };
 }

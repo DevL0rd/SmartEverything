@@ -18,6 +18,7 @@ import type { Store } from '../store/store';
 import type { RawRoute } from './http-server';
 import type { ServerContext } from './context';
 import { claudeLinkRoutes } from './handlers/claude-link';
+import { isMissing } from '../fs-util';
 
 export interface ClaudeWiring {
   readonly clock: Clock;
@@ -100,12 +101,12 @@ function retainLocalCredential(store: Store, deviceId: string, directory: string
   try {
     text = readFileSync(file, 'utf8');
   } catch (cause) {
-    if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return;
+    if (isMissing(cause)) return;
     throw new ClaudeFileReadError(file, cause);
   }
   const token = MCP_TOKEN.parse(text.trim());
   const hash = hashMcpToken(token);
-  if (store.assistant.activeTokenByHash(hash) === undefined) return;
+  if (store.oauth.activePersonalTokenByHash(hash) === undefined) return;
   store.computerNativeMcpPolicy.bindLocal(deviceId, hash);
 }
 

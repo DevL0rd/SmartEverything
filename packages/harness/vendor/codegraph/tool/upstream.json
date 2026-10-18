@@ -1,9 +1,0 @@
-{
-  "package": "dsh-plugin-codegraph-tool",
-  "version": "0.1.6",
-  "tarball": "https://registry.npmjs.org/dsh-plugin-codegraph-tool/-/dsh-plugin-codegraph-tool-0.1.6.tgz",
-  "integrity": "sha512-ZaBoEA+02RYys1fNAHMsCFl8V/Ca41NPP/EYn/5KY2lEFBolQxbVzxwQk1eC2aOQrC0i85S0/tjNeHfr4rW7Pw==",
-  "license": "MIT",
-  "source": "https://github.com/CC19990113/dsh-plugin-codegraph",
-  "adaptation": "0.1.6-smarteverything.2"
-}

@@ -6,7 +6,7 @@ const options: LiveOptions = {
   voice: 'Puck',
   system: 'be brief',
   tools: [],
-  webSearch: false,
+  webSearch: true,
   resume: null,
   window: null,
   automatic: true,
@@ -17,6 +17,19 @@ describe('liveConfigOf', () => {
     const config = liveConfigOf(options);
     expect(config).not.toHaveProperty('thinkingConfig');
     expect(JSON.stringify(config)).not.toMatch(/thinking/i);
+  });
+
+  it('searches the web beside the function declarations when the chat allows it', () => {
+    expect(liveConfigOf(options).tools).toEqual([
+      { googleSearch: {} },
+      { functionDeclarations: [] },
+    ]);
+  });
+
+  it('declares no search tool when the chat does not allow web search', () => {
+    expect(liveConfigOf({ ...options, webSearch: false }).tools).toEqual([
+      { functionDeclarations: [] },
+    ]);
   });
 
   it('keeps the voice and system instruction', () => {

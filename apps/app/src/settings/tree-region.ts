@@ -1,11 +1,10 @@
-import { CLIENT_PREFS, REGIONS } from '@smarteverything/domain';
+import { REGIONS } from '@smarteverything/domain';
+import { PREFS, prefOf } from '../store/prefs';
 import type { StoreState } from '../store/state';
 import type { SettingsPageDefinition } from './types';
 
 function regionSummary(state: StoreState): string | null {
-  const read = CLIENT_PREFS.region.decode(
-    state.tables.layouts.byId[CLIENT_PREFS.region.storageKey]?.layout ?? null,
-  );
+  const read = prefOf(state, PREFS.region);
   if (read.status === 'invalid') {
     return null;
   }

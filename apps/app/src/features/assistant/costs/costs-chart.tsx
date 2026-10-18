@@ -7,6 +7,7 @@ import { Text } from '../../../components/text';
 import { CardEmpty, CostCard } from './cost-card';
 import { useMoney } from '../../region';
 import type { CostWindow } from './costs-range';
+import { dateFormat } from '../../../format/locale';
 
 const LABELLED_DAYS = 14;
 
@@ -18,11 +19,11 @@ function inRange(point: UsagePoint, window: CostWindow): boolean {
 function labelOf(point: UsagePoint, window: CostWindow, timeZone: string): string {
   const at = new Date(point.start);
   if (window.bucket === 'hour') {
-    return at.toLocaleTimeString(undefined, { hour: 'numeric', timeZone });
+    return dateFormat({ hour: 'numeric', timeZone }).format(at);
   }
   return window.days <= LABELLED_DAYS
-    ? at.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', timeZone })
-    : at.toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone });
+    ? dateFormat({ weekday: 'short', day: 'numeric', timeZone }).format(at)
+    : dateFormat({ day: 'numeric', month: 'short', timeZone }).format(at);
 }
 
 export function CostChart({

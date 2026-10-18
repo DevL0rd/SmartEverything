@@ -1,12 +1,15 @@
+import { systemClock } from '../src/clock';
 import {
   DEFAULT_ENGINE,
   type AiOutreachRow,
   type AiSpeechNotice,
   type ClientRow,
+  type ListeningHubMessage,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Saying, SpeechRequest } from '../src/speech/one-shot-speech';
 import type { HostedCall, HostedCallRequest } from '../src/assistant-voice/outreach';
+import { ComputerCallAudio } from '../src/computers/computer-call-audio';
 import type { CameraParts } from '../src/reach/camera-conversation';
 import { CameraFraming } from '../src/reach/camera-framing';
 import { ReachRefusedError } from '../src/reach/reach-errors';
@@ -20,6 +23,8 @@ import { CameraMicrophones } from '../src/talk/camera-microphone';
 import { CameraSpeakers } from '../src/talk/camera-speaker';
 import { TalkFeeds } from '../src/talk/feeds';
 import type { LiveOpening } from '../src/talk/relay';
+import type { VoiceCallTap } from '../src/listening/voice-activity';
+import { idleHostedCall } from './support/hosted-call';
 import { FakeClock } from './support/fake-clock';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
@@ -33,12 +38,14 @@ interface Bench {
   readonly rules: ReachRules;
   readonly asker: Asker;
   readonly phone: ClientRow;
+  readonly audio: ComputerCallAudio;
   readonly turns: { chatId: string; text: string }[];
   readonly rang: AiOutreachRow[];
   readonly cancelled: string[];
   readonly hosted: HostedCallRequest[];
   readonly announced: SpeechRequest[];
   readonly delivered: AiSpeechNotice[];
+  readonly computerSent: ListeningHubMessage[];
   reachable: boolean;
   stuck: boolean;
 }
@@ -60,6 +67,15 @@ function transport(
   };
 }
 
+const SILENT_TAP: VoiceCallTap = {
+  phase: (): void => undefined,
+  muted: (): void => undefined,
+  caption: (): void => undefined,
+  heard: (): void => undefined,
+  spoke: (): void => undefined,
+  end: (): void => undefined,
+};
+
 function idleCamera(): CameraParts {
   const log = testLogger('reach-camera');
   const ready = (): Promise<void> => Promise.resolve();
@@ -68,9 +84,11 @@ function idleCamera(): CameraParts {
       go2rtc: { play: (): Promise<void> => Promise.resolve() },
       feeds: new TalkFeeds(log),
       ready,
+      clock: systemClock,
       log,
     }),
     microphones: new CameraMicrophones({ rtspPort: 0, ready, log }),
+    video: { watch: (): (() => void) => () => undefined },
   };
 }
 
@@ -94,21 +112,32 @@ async function bench(): Promise<Bench> {
     role: 'owner',
     tokenHash: 'a'.repeat(64),
   });
-  const parts: Omit<Bench, 'opened' | 'clock' | 'service' | 'rules' | 'asker' | 'phone'> = {
-    rang: [],
-    cancelled: [],
-    turns: [],
-    hosted: [],
-    announced: [],
-    delivered: [],
-    reachable: true,
-    stuck: false,
-  };
+  const parts: Omit<Bench, 'opened' | 'clock' | 'service' | 'rules' | 'asker' | 'phone' | 'audio'> =
+    {
+      rang: [],
+      cancelled: [],
+      turns: [],
+      hosted: [],
+      announced: [],
+      delivered: [],
+      computerSent: [],
+      reachable: true,
+      stuck: false,
+    };
   const rules = new ReachRules(store, clock.now);
+  const audio = new ComputerCallAudio({
+    sendOf:
+      () =>
+      (message): void => {
+        parts.computerSent.push(message);
+      },
+    changed: (): void => undefined,
+  });
   const ring = transport(parts, () => [phone]);
   const service = new ReachService({
     store,
     rules,
+    speakers: { forDevice: (): null => null },
     assistant: {
       conversationChat: (): string => chat.id,
       turn: (chatId, text): void => {
@@ -122,7 +151,7 @@ async function bench(): Promise<Bench> {
     transports: { phone: ring, desktop: transport(parts, () => []) },
     host: (request): Promise<HostedCall> => {
       parts.hosted.push(request);
-      return Promise.resolve({ hear: () => undefined, end: () => Promise.resolve() });
+      return Promise.resolve(idleHostedCall());
     },
     say: (request): Promise<Saying> => {
       parts.announced.push(request);
@@ -140,10 +169,10 @@ async function bench(): Promise<Bench> {
       },
     },
     camera: idleCamera(),
+    computer: { audio, activity: { begin: (): VoiceCallTap => SILENT_TAP } },
     framing: new CameraFraming({
       store,
       submit: (): void => undefined,
-      clock,
       log: testLogger('reach-framing'),
     }),
     openLive: (): LiveOpening => ({ ok: false, reason: 'channel_busy' }),
@@ -156,6 +185,7 @@ async function bench(): Promise<Bench> {
     service,
     rules,
     phone,
+    audio,
     asker: { profileId, role: 'owner' as const, clientId: phone.id, chatId: chat.id },
   });
 }
@@ -236,11 +266,25 @@ describe('call_person', () => {
     await expect(callMe(true)).resolves.toMatchObject({ state: 'ringing' });
   });
 
-  it('refuses after six outreaches in ten minutes', async () => {
-    for (let index = 0; index < 6; index++) {
-      await callMe();
+  it('refuses a member’s AI reaching another person with the shared wording', async () => {
+    const member = { ...current.asker, role: 'member' as const };
+    await expect(
+      current.service.call(member, {
+        personId: '1d000000-0000-4000-8000-0000000000aa',
+        device: 'phone',
+        reason: 'Hello',
+        urgent: false,
+      }),
+    ).rejects.toMatchObject({
+      code: 'forbidden',
+      message: 'Only an owner can do this for another person.',
+    });
+  });
+
+  it('keeps calling the same person however often the AI asks', async () => {
+    for (let index = 0; index < 10; index++) {
+      await expect(callMe()).resolves.toMatchObject({ state: 'ringing' });
     }
-    await expect(callMe()).rejects.toThrow(/6 times/);
   });
 });
 
@@ -264,6 +308,7 @@ describe('speak', () => {
     });
     expect(row).toMatchObject({ how: 'app', chat_id: null, state: 'live' });
     expect(spoken().text).toBe('Dinner is ready');
+    expect(spoken().at).toStrictEqual({ deviceId: null, clientId: current.phone.id });
     spoken().sink.audio(OPUS_FRAME);
     spoken().sink.said();
     await vi.waitFor(() => {
@@ -405,5 +450,52 @@ describe('phone transport', () => {
   it('says to open the app once when push is set up but the phone never signed up', () => {
     const phone = phoneTransport(new Set(), true, []);
     expect(phone.unreachable(current.asker.profileId, 'Me')).toContain('open SmartEverything');
+  });
+});
+
+describe('computer conversations', () => {
+  function computerId(kind: 'computer' | 'phone' = 'computer'): string {
+    const [row] = current.opened.store.devices.upsert([
+      {
+        provider: 'local',
+        externalId: `${kind}-desk`,
+        parentId: null,
+        kind,
+        name: 'Desk PC',
+        model: 'm',
+        manufacturer: 'm',
+        providerRoom: null,
+        roomId: null,
+        online: true,
+        capabilities: [],
+        details: {},
+      },
+    ]);
+    return row?.id ?? '';
+  }
+
+  it('hosts a live call through the computer and records it as a desktop outreach', async () => {
+    const id = computerId();
+    const row = await current.service.computer(
+      current.asker,
+      { computerId: id, reason: 'Someone said hey' },
+      () => new Int16Array(1600),
+    );
+    expect(row).toMatchObject({
+      how: 'desktop',
+      target: id,
+      target_label: 'Desk PC',
+      state: 'live',
+    });
+    expect(current.hosted[0]?.deviceId).toBe(id);
+    expect(current.hosted[0]?.opening.text).toContain('Desk PC');
+    expect(current.computerSent[0]).toEqual({ kind: 'call', active: true });
+    await current.service.hangUp(row.id);
+  });
+
+  it('refuses a device that is not a computer', () => {
+    expect(() =>
+      current.service.computer(current.asker, { computerId: computerId('phone'), reason: 'x' }),
+    ).toThrow(ReachRefusedError);
   });
 });

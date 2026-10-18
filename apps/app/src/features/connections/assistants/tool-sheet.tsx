@@ -6,7 +6,6 @@ import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { toolTitle } from '../model/tool-text';
 
 export interface ToolSheetProps {
   readonly tool: McpToolSummary<McpToolName> | null;
@@ -20,7 +19,7 @@ export function ToolSheet({ tool, on, onChange, onClose }: ToolSheetProps): Reac
     return null;
   }
   return (
-    <Sheet open onClose={onClose} title={toolTitle(tool)} detents={['fit']}>
+    <Sheet open onClose={onClose} title={tool.title} detents={['fit']}>
       <View className="gap-4">
         <View className="flex-row flex-wrap gap-2">
           <Badge

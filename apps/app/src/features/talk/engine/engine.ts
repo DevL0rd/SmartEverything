@@ -37,12 +37,14 @@ export const talkEngine: TalkEngine = {
   supported: () =>
     talkLinked() ? null : 'Install the newest SmartEverything app to use the walkie-talkie.',
   start: (connection) => {
+    log.info('talk.engine_starting');
     follow();
     configureTalk(connection.url, connection.token)
       .then(() => startTalk())
       .catch(failed('start'));
   },
   stop: () => {
+    log.info('talk.engine_stopping');
     subscription?.remove();
     subscription = null;
     stopTalk().catch(failed('stop'));
@@ -54,15 +56,19 @@ export const talkEngine: TalkEngine = {
     }));
   },
   press: (channelId) => {
+    log.debug('talk.press', { channelId });
     pressTalk(channelId).catch(failed('press'));
   },
   listen: (channelId, cameraId) => {
+    log.debug('talk.listen', { channelId, cameraId });
     listenTalk(channelId, cameraId).catch(failed('listen'));
   },
   release: () => {
+    log.debug('talk.release');
     releaseTalk().catch(failed('release'));
   },
   leaveLive: () => {
+    log.debug('talk.leave_live');
     releaseTalk().catch(failed('leave'));
   },
 };

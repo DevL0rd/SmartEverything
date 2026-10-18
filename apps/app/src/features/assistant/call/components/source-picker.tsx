@@ -37,6 +37,7 @@ function Thumb({
         <Icon name={choice.icon} size={20} tone="variant" />
       ) : (
         <Image
+          resizeMethod="resize"
           source={{ uri: choice.thumbnail }}
           accessibilityIgnoresInvertColors
           resizeMode="cover"

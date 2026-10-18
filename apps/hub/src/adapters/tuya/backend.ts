@@ -1,6 +1,6 @@
-import type { TuyaLinkMethod } from '@smarteverything/domain';
+import { chunk, type TuyaLinkMethod } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { STATUS_BATCH_SIZE, batches } from '@smarteverything/tuya';
+import { STATUS_BATCH_SIZE } from '@smarteverything/tuya';
 import type { CloudDevice, CloudMessage, DataPointWrite, StatusItem } from '@smarteverything/tuya';
 import type { TuyaCloud } from './cloud-client';
 import type { LoadedInventory } from './cloud-inventory';
@@ -40,7 +40,7 @@ export async function statusesInBatches(
   read: (batch: readonly string[]) => Promise<readonly DeviceStatus[]>,
 ): Promise<readonly DeviceStatus[]> {
   const statuses: DeviceStatus[] = [];
-  for (const batch of batches(deviceIds, STATUS_BATCH_SIZE)) {
+  for (const batch of chunk(deviceIds, STATUS_BATCH_SIZE)) {
     statuses.push(...(await read(batch)));
   }
   return statuses;

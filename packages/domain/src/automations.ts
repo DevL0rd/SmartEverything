@@ -84,7 +84,7 @@ export type Trigger = z.infer<typeof TRIGGER>;
 export type TimedTrigger = Extract<Trigger, { type: 'time' | 'sun' | 'interval' }>;
 
 export { ACTION, COMMAND_ACTION } from './automation-actions';
-export type { Action, CommandAction, LegacyAction } from './automation-actions';
+export type { Action, CommandAction } from './automation-actions';
 
 export const SCENE_ACTIONS = z.array(COMMAND_ACTION);
 

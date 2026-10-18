@@ -1,0 +1,35 @@
+diff --git a/lib/invariant.d.ts b/lib/invariant.d.ts
+deleted file mode 100644
+index e65a04726fce3e56800648b53e05f51de38bef3e..0000000000000000000000000000000000000000
+diff --git a/lib/invariant.js b/lib/invariant.js
+deleted file mode 100644
+index a3fe8368a76765808c4de10f614d6bfe918ea388..0000000000000000000000000000000000000000
+diff --git a/package.json b/package.json
+index 9b371cfbc9ddeab0379c3fd0a903f0d81881a3c0..39bcb3047953992e149ddae7e57a111af02684b6 100644
+--- a/package.json
++++ b/package.json
+@@ -31,10 +31,6 @@
+       "types": "./lib/index.d.ts",
+       "default": "./lib/index.js"
+     },
+-    "./invariant": {
+-      "types": "./lib/invariant.d.ts",
+-      "default": "./lib/invariant.js"
+-    },
+     "./package.json": "./package.json"
+   },
+   "files": [
+@@ -48,13 +44,6 @@
+   "peerDependencies": {
+     "@deepseek-ai/cordis": ">=4.0.1",
+     "@deepseek-ai/dsh-brand": ">=0.1.0-rc.6",
+-    "@deepseek-ai/dsh-invariants": ">=0.1.0-rc.6",
+     "@deepseek-ai/dsh-llm": ">=0.1.0-rc.6"
+-  },
+-  "devDependencies": {
+-    "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-brand": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-invariants": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-llm": "0.1.0-rc.6"
+   }
+ }

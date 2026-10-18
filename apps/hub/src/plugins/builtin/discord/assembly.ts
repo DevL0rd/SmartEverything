@@ -5,7 +5,6 @@ import { ContextIndex } from './context-index';
 import { Directory } from './directory';
 import { Identity } from './identity';
 import { Interactions } from './interactions';
-import { Journal } from './journal';
 import type { DiscordRest } from './link';
 import type { Downloader } from './media-download';
 import { MediaIndex } from './media-index';
@@ -17,11 +16,6 @@ import { Sender } from './sender';
 import type { ActivityVisibility, DiscordServices } from './services';
 import type { DiscordSettings } from './settings';
 import { StatusBoard } from './status-board';
-import { Uploads } from './uploads';
-
-const DAY_MS = 86_400_000;
-const OPERATION_JOURNAL = { capacity: 4096, retentionMs: DAY_MS };
-const REPLY_JOURNAL = { capacity: 16_384, retentionMs: 7 * DAY_MS };
 
 export interface Assembled {
   readonly services: DiscordServices;
@@ -31,28 +25,11 @@ export interface Assembled {
 
 type Context = PluginContext<DiscordSettings>;
 
-function journalOf(
-  ctx: Context,
-  collection: string,
-  shape: { readonly capacity: number; readonly retentionMs: number },
-): Journal {
-  const journal = new Journal(ctx.records(collection), shape.capacity, shape.retentionMs, Date.now);
-  journal.load();
-  return journal;
-}
-
 function namesOf(ctx: Context): () => readonly string[] {
   return () => {
     const { name, aliases } = ctx.assistant.settings();
     return [...(name === null ? [] : [name]), ...aliases];
   };
-}
-
-function sendRootsOf(ctx: Context): DiscordServices['sendRoots'] {
-  return (chatId) => [
-    ctx.files.outbox,
-    ...(chatId === null ? [] : ctx.files.attachmentsOf(chatId)),
-  ];
 }
 
 function activityOf(ctx: Context): ActivityVisibility {
@@ -127,7 +104,7 @@ function coreOf(ctx: Context, rest: DiscordRest, report: (cause: unknown) => voi
     channels,
     origins,
     directory: new Directory(policy, ctx.people, rest, { now: Date.now, report }),
-    authority: new Authority({ policy, origins, channels, rest, people: ctx.people }),
+    authority: new Authority({ policy, origins, channels, people: ctx.people }),
     interactions: new Interactions(rest, Date.now, report),
   };
 }
@@ -149,7 +126,6 @@ export function assemble(
     authority,
     channels,
     interactions,
-    journal: journalOf(ctx, 'reply-journal', REPLY_JOURNAL),
     statuses: statusBoardOf(rest, report),
     now: Date.now,
     report,
@@ -169,14 +145,12 @@ export function assemble(
     identity,
     people: ctx.people,
     sender,
-    journal: journalOf(ctx, 'journal', OPERATION_JOURNAL),
     context: indexes.context,
     media,
-    uploads: new Uploads(Date.now),
     flows: new Flows(policy, () => identity.botId),
     assistant: ctx.assistant,
-    fetchUrl: (url, signal) => fetch(url, { signal }),
-    sendRoots: sendRootsOf(ctx),
+    download,
+    machineFile: ctx.files.fromMachine,
     activity: activityOf(ctx),
     now: Date.now,
   };

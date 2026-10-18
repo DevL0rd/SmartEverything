@@ -8,7 +8,6 @@ import {
   HEALTH_OUTBOX_ACK,
 } from '../body-readings';
 import { NEW_PROFILE, PROFILE_CHANGE, PROFILE_ROW } from '../profiles';
-import { SEALED } from '../sealed';
 import { NO_BODY, endpoint } from './endpoint';
 import { SESSION } from './endpoints-access';
 import { DONE, ID, NOTHING } from './primitives';
@@ -46,7 +45,7 @@ export const LOCAL_DEVICE_SETUP = z.union([
     source: z.literal('manual'),
     name: DEVICE_NAME,
     address: BLUETOOTH_ADDRESS,
-    bindKey: SEALED,
+    bindKey: BIND_KEY,
   }),
   z.strictObject({
     driver: z.literal('xiaomi_watch'),
@@ -183,7 +182,7 @@ const LOCAL_DEVICE_ENDPOINTS = {
   readHealthOutbox: endpoint({
     method: 'GET',
     path: '/api/health/outbox',
-    access: 'health_source',
+    access: 'member',
     summary: 'Scale readings of this phone’s person not yet saved to its Health Connect',
     params: NOTHING,
     query: NOTHING,
@@ -193,7 +192,7 @@ const LOCAL_DEVICE_ENDPOINTS = {
   ackHealthOutbox: endpoint({
     method: 'POST',
     path: '/api/health/outbox',
-    access: 'health_source',
+    access: 'member',
     summary: 'Readings this phone saved to Health Connect, with the version it saved',
     params: NOTHING,
     query: NOTHING,

@@ -1,7 +1,5 @@
-import { appPlatform, desktopBridge } from '../../../design/platform';
 import { performBrowserTabAction } from './browser-tab-commands';
 import { BrowserTabError } from './browser-tab-errors';
-export { BrowserTabError } from './browser-tab-errors';
 import { browserTabOperation } from './browser-tab-operation';
 import { BrowserTabAdmissions } from './browser-tab-admissions';
 import {
@@ -15,6 +13,7 @@ import { Linking } from 'react-native';
 import {
   BROWSER_RETIRED_PROBLEM,
   type AiPreviewCatalogue,
+  type EmbeddedBrowserAction,
   type BrowserStatus,
 } from '@smarteverything/domain';
 import { ValueStore } from '../../../design/external-store';
@@ -35,9 +34,9 @@ import {
   type BrowserTab,
   type BrowserTabId,
   type BrowserTabsSnapshot,
-  type BrowserTabsAction,
 } from './browser-tab-state';
 export class BrowserTabs {
+  readonly viewerId = Crypto.randomUUID();
   private readonly state = new ValueStore<BrowserTabsSnapshot>({
     tabs: [],
     selectedId: null,
@@ -118,7 +117,7 @@ export class BrowserTabs {
     );
     if (current === undefined) return;
     if (status.problem === BROWSER_RETIRED_PROBLEM) {
-      browserTabOperation(this.unavailable(id, status.problem));
+      browserTabOperation(this.renew(id));
       return;
     }
     this.update(id, (tab) => {
@@ -174,25 +173,19 @@ export class BrowserTabs {
         problem: null,
       }));
       this.admissions.expire(id, selection, () => {
-        browserTabOperation(this.unavailable(id, 'Preview access expired. Reload to renew it.'));
+        browserTabOperation(this.renew(id));
       });
     } catch (error: unknown) {
       if (!this.matches(id, generation)) return;
       const problem =
         error instanceof Error ? error.message : 'The browser page could not be opened.';
-      this.update(id, (tab) => ({
-        ...tab,
-        phase: 'unavailable',
-        selection: null,
-        problem,
-        status: EMPTY_BROWSER_STATUS,
-      }));
+      this.markUnavailable(id, problem);
       throw error;
     }
   }
-  async navigate(id: string, address: string): Promise<void> {
+  async navigate(id: string, address: string, byAssistant = false): Promise<void> {
     const tab = this.tab(id);
-    const parsed = browserTabAddress(tab, address, this.catalogue?.publications ?? []);
+    const parsed = this.parseAddress(tab, address, byAssistant);
     if (parsed.kind === 'document') return this.reload(id);
     if (parsed.kind === 'rejected') {
       this.update(id, (entry) => ({ ...entry, problem: parsed.reason }));
@@ -210,6 +203,18 @@ export class BrowserTabs {
       return;
     }
     await this.navigatePublic(tab, parsed.url);
+  }
+  private parseAddress(
+    tab: BrowserTab,
+    address: string,
+    byAssistant: boolean,
+  ): ReturnType<typeof browserTabAddress> {
+    return browserTabAddress(
+      tab,
+      address,
+      this.catalogue?.publications ?? [],
+      byAssistant ? 'public-hosts' : 'any-host',
+    );
   }
   private async navigatePublic(tab: BrowserTab, url: string): Promise<void> {
     const publicBrowsing = browserCapability().publicBrowsing;
@@ -244,7 +249,7 @@ export class BrowserTabs {
         kind: 'public',
         id: `public:${Crypto.randomUUID()}`,
         url,
-        ...publicProfileData(this.profileId),
+        ...(this.profileId === undefined ? {} : { profileId: this.profileId }),
       },
     };
     this.update(tab.id, (entry) => ({
@@ -265,11 +270,17 @@ export class BrowserTabs {
     if (tab.source.kind === 'public') return this.navigatePublic(tab, tab.source.url);
     if (tab.source.kind !== 'publication')
       throw new BrowserTabError('Enter an address to open this tab.');
-    const sourceId = tab.source.publication.id;
-    const current = browserPublications(this.catalogue).find((row) => row.id === sourceId);
+    await this.renew(tab.id);
+  }
+  async renew(id: BrowserTabId): Promise<void> {
+    const { source } = this.tab(id);
+    if (source.kind !== 'publication') return;
+    const current = browserPublications(this.catalogue).find(
+      (row) => row.id === source.publication.id,
+    );
     if (current === undefined)
       throw new BrowserTabError('This page is no longer shared with this chat.');
-    await this.replacePublication(tab.id, current);
+    await this.replacePublication(id, current);
   }
   async close(id: string): Promise<void> {
     const tab = this.tab(id);
@@ -297,6 +308,10 @@ export class BrowserTabs {
   async unavailable(id: BrowserTabId, problem: string): Promise<void> {
     const tab = this.tab(id);
     this.admissions.cancel(id);
+    this.markUnavailable(id, problem);
+    if (tab.selection !== null) await retireBrowserSelection(tab.selection);
+  }
+  private markUnavailable(id: BrowserTabId, problem: string): void {
     this.update(id, (entry) => ({
       ...entry,
       phase: 'unavailable',
@@ -304,9 +319,8 @@ export class BrowserTabs {
       problem,
       status: EMPTY_BROWSER_STATUS,
     }));
-    if (tab.selection !== null) await retireBrowserSelection(tab.selection);
   }
-  perform(action: BrowserTabsAction, signal?: AbortSignal): Promise<void> {
+  perform(action: EmbeddedBrowserAction, signal?: AbortSignal): Promise<void> {
     return performBrowserTabAction(this, action, this.catalogue, signal);
   }
   async guardAdmission(
@@ -383,11 +397,4 @@ export class BrowserTabs {
       tabs: snapshot.tabs.map((tab) => (tab.id === id ? change(tab) : tab)),
     });
   }
-}
-
-function publicProfileData(profileId: string | undefined): { readonly profileId?: string } {
-  if (profileId === undefined) return {};
-  if (appPlatform() === 'desktop' && (desktopBridge()?.browser?.publicSessionVersion?.() ?? 0) < 1)
-    return {};
-  return { profileId };
 }

@@ -1,0 +1,11 @@
+{
+  "packageManager": "pnpm",
+  "testRunner": "vitest",
+  "vitest": { "configFile": "vitest.mutation.core.config.ts", "related": false },
+  "reporters": ["clear-text"],
+  "coverageAnalysis": "perTest",
+  "tempDirName": ".stryker-tmp-core",
+  "cleanTempDir": true,
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "ignorePatterns": [".claude", ".agents", ".cache", "apps/app", "apps/desktop", "dist", "dist-types", "coverage", "reports", "tmp", "tooling", "node_modules/.cache"]
+}

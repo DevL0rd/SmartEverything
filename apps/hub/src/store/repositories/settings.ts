@@ -1,7 +1,14 @@
 import {
+  EMPTY_IR_REMOTE_STATE,
   SETTINGS_ROW,
+  withIrChange,
+  withRefill,
+  type HistorySettings,
   type IceServer,
+  type IrRemoteChange,
+  type IrRemoteState,
   type McpToolName,
+  type PauseChoiceMs,
   type SettingsRow,
 } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
@@ -10,11 +17,19 @@ import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 
 const STORED_SETTINGS = storedRow(SETTINGS_ROW, {
-  json: ['ice_servers', 'webrtc_candidates', 'fitness_goals', 'mcp_disabled_tools'],
+  json: [
+    'ice_servers',
+    'webrtc_candidates',
+    'fitness_goals',
+    'mcp_disabled_tools',
+    'history_settings',
+    'device_refills',
+    'ir_remotes',
+  ],
 });
 
 const COLUMNS =
-  'home_name, time_zone, latitude, longitude, location_name, public_url, public_url_checked_at, public_url_verified_at, public_url_error, ice_servers, webrtc_candidates, push_project_id, fitness_goals, max_heart_rate, mcp_disabled_tools, updated_at';
+  'home_name, time_zone, latitude, longitude, location_name, public_url, public_url_checked_at, public_url_verified_at, public_url_error, ice_servers, webrtc_candidates, push_project_id, fitness_goals, max_heart_rate, mcp_disabled_tools, history_settings, device_refills, ir_remotes, end_of_speech_pause_ms, ear_host_device_id, updated_at';
 
 export interface HomeChange {
   readonly home_name?: string | undefined;
@@ -115,6 +130,53 @@ export class SettingsRepository {
 
   setPushProject(projectId: string | null): SettingsRow {
     return this.update({ push_project_id: projectId });
+  }
+
+  setHistorySettings(history: HistorySettings): SettingsRow {
+    return this.update({ history_settings: jsonText(history) });
+  }
+
+  setEndOfSpeechPause(pauseMs: PauseChoiceMs): SettingsRow {
+    return this.update({ end_of_speech_pause_ms: pauseMs });
+  }
+
+  setEarHost(deviceId: string | null): SettingsRow {
+    return this.update({ ear_host_device_id: deviceId });
+  }
+
+  recordRefill(deviceId: string): SettingsRow {
+    return this.context.write(() =>
+      this.update({
+        device_refills: jsonText(
+          withRefill(this.read().device_refills, deviceId, new Date(this.context.now())),
+        ),
+      }),
+    );
+  }
+
+  irRemote(remoteId: string): IrRemoteState {
+    return this.read().ir_remotes[remoteId] ?? EMPTY_IR_REMOTE_STATE;
+  }
+
+  changeIrRemote(remoteId: string, change: (state: IrRemoteState) => IrRemoteState): SettingsRow {
+    return this.context.write(() => {
+      const next = { ...this.read().ir_remotes, [remoteId]: change(this.irRemote(remoteId)) };
+      return this.update({ ir_remotes: jsonText(next) });
+    });
+  }
+
+  setIrRemote(remoteId: string, change: IrRemoteChange): SettingsRow {
+    return this.changeIrRemote(remoteId, (state) => withIrChange(state, change));
+  }
+
+  forgetIrRemote(remoteId: string): void {
+    this.context.write(() => {
+      const current = this.read().ir_remotes;
+      if (current[remoteId] !== undefined) {
+        const rest = Object.entries(current).filter(([id]) => id !== remoteId);
+        this.update({ ir_remotes: jsonText(Object.fromEntries(rest)) });
+      }
+    });
   }
 
   setDisabledMcpTools(disabled: readonly McpToolName[]): SettingsRow {

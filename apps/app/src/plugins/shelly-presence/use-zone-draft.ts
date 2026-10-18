@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import {
-  SHELLY_PRESENCE_ACTION,
-  type ShellyArea,
-  type ShellyPresenceAction,
-  type ShellyPresenceDevice,
-  type ShellyPresenceZone,
-} from '@smarteverything/domain';
+import type { ShellyArea, ShellyDevice, ShellyZone } from '@smarteverything/shelly';
 import { usePresenceOperation, type PresenceOperation } from './use-presence-operation';
+import type { PresenceRequest } from './presence-operation';
+import { background } from '@smarteverything/logging';
 
 function delayText(value: number | null | undefined): string {
   return value === undefined || value === null ? '' : String(value);
 }
+
+function delayValue(text: string): number | null {
+  return text === '' ? null : Number(text);
+}
+
 interface ZoneValues {
   readonly name: string;
   readonly enable: boolean;
@@ -19,10 +20,9 @@ interface ZoneValues {
   readonly absent: string;
   readonly color: readonly number[] | undefined;
 }
+
 export interface ZoneDraft extends ZoneValues {
   readonly validArea: boolean;
-  readonly conflict: boolean;
-  readonly validation: string | null;
   readonly operation: PresenceOperation;
   readonly setName: (value: string) => void;
   readonly setEnable: (value: boolean) => void;
@@ -34,82 +34,74 @@ export interface ZoneDraft extends ZoneValues {
   readonly save: () => void;
 }
 
-function zoneAction(
-  zone: ShellyPresenceZone | null,
-  values: ZoneValues,
-  revision: number | null,
-): ShellyPresenceAction {
+function zoneRequest(zone: ShellyZone | null, values: ZoneValues): PresenceRequest {
   const config = {
     ...(zone?.main === true ? {} : { name: values.name }),
     enable: values.enable,
     area: values.area,
     ...(values.color === undefined ? {} : { color: values.color }),
-    presence_delay: values.present === '' ? null : Number(values.present),
-    absence_delay: values.absent === '' ? null : Number(values.absent),
+    presence_delay: delayValue(values.present),
+    absence_delay: delayValue(values.absent),
   };
-  return SHELLY_PRESENCE_ACTION.parse({
-    action: zone === null ? 'add_zone' : 'set_zone',
-    ...(zone === null ? {} : { id: zone.config.id }),
-    config,
-    ...(revision === null ? {} : { expectedRevision: revision }),
-  });
+  return zone === null
+    ? { action: 'add_zone', params: { config } }
+    : { action: 'set_zone', params: { id: zone.config.id, config } };
 }
 
-export function useZoneDraft(
-  sensor: ShellyPresenceDevice,
-  zone: ShellyPresenceZone | null,
-): ZoneDraft {
+const BLANK_ZONE: ZoneValues = {
+  name: '',
+  enable: true,
+  area: [],
+  present: '',
+  absent: '',
+  color: undefined,
+};
+
+function initialZone(zone: ShellyZone | null): ZoneValues {
+  if (zone === null) return BLANK_ZONE;
+  const { config } = zone;
+  return {
+    name: config.name ?? '',
+    enable: config.enable ?? true,
+    area: config.area ?? [],
+    present: delayText(config.presence_delay),
+    absent: delayText(config.absence_delay),
+    color: config.color ?? undefined,
+  };
+}
+
+export function useZoneDraft(sensor: ShellyDevice, zone: ShellyZone | null): ZoneDraft {
   const [values, setValues] = useState<ZoneValues>(initialZone(zone));
   const [validArea, setValidArea] = useState(true);
-  const [validation, setValidation] = useState<string | null>(null);
-  const [revision] = useState(sensor.revision);
   const operation = usePresenceOperation(sensor);
-  const acceptedRevision = operation.acceptedRevision ?? revision;
-  const save = (): void => {
-    try {
-      const action = zoneAction(zone, values, acceptedRevision);
-      setValidation(null);
-      void operation.run(action);
-    } catch (caught) {
-      setValidation(caught instanceof Error ? caught.message : String(caught));
-    }
+  const patch = (change: Partial<ZoneValues>): void => {
+    setValues({ ...values, ...change });
   };
   return {
     ...values,
     validArea,
-    conflict: acceptedRevision !== sensor.revision,
-    validation,
     operation,
     setValidArea,
-    save,
+    save: (): void => {
+      background(operation.run(zoneRequest(zone, values)), 'operation.run_failed');
+    },
     setName: (name): void => {
-      setValues({ ...values, name });
+      patch({ name });
     },
     setEnable: (enable): void => {
-      setValues({ ...values, enable });
+      patch({ enable });
     },
     setArea: (area): void => {
-      setValues({ ...values, area });
+      patch({ area });
     },
     setPresent: (present): void => {
-      setValues({ ...values, present });
+      patch({ present });
     },
     setAbsent: (absent): void => {
-      setValues({ ...values, absent });
+      patch({ absent });
     },
     setColor: (color): void => {
-      setValues({ ...values, color });
+      patch({ color });
     },
-  };
-}
-
-function initialZone(zone: ShellyPresenceZone | null): ZoneValues {
-  return {
-    name: zone?.config.name ?? '',
-    enable: zone?.config.enable ?? true,
-    area: zone?.config.area ?? [],
-    present: delayText(zone?.config.presence_delay),
-    absent: delayText(zone?.config.absence_delay),
-    color: zone?.config.color,
   };
 }

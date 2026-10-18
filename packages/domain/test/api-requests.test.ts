@@ -11,44 +11,11 @@ type Name = keyof typeof API_ENDPOINTS;
 
 const NAMES = Object.keys(API_ENDPOINTS).filter((name): name is Name => name in API_ENDPOINTS);
 
-const BODIED: readonly Name[] = [
-  'startPairing',
-  'claimPairing',
-  'updateClient',
-  'updateHome',
-  'updateNetwork',
-  'setPublicUrl',
-  'setPushAccount',
-  'saveSmartThingsApp',
-  'createRoom',
-  'updateRoom',
-  'updateDevice',
-  'sendCommand',
-  'sendCommands',
-  'updateCamera',
-  'offerCamera',
-  'recordingLinks',
-  'createIrRemote',
-  'saveIrCode',
-  'createScene',
-  'updateScene',
-  'orderScenes',
-  'createAutomation',
-  'updateAutomation',
-  'saveLayout',
-  'savePushTarget',
-  'removePushTarget',
-  'createHealthSource',
-  'ingestHealth',
-  'createMcpToken',
-];
-
 const ACTION = { type: 'command', deviceId: SECOND, capability: 'power', value: true };
 
 const DEFINITION = {
-  triggers: [{ type: 'interval', everyMinutes: 5 }],
-  conditions: { mode: 'all', items: [] },
-  actions: [{ type: 'notify', message: 'Ran.' }],
+  when: [{ on: 'every', minutes: 5 }],
+  steps: [{ do: 'notify', message: 'Ran.' }],
 };
 
 const SERVICE_ACCOUNT = {
@@ -93,10 +60,23 @@ function expectPatch(name: Name, fields: Readonly<Record<string, unknown>>): voi
   expectRefused(name, [{ ...fields, unknown: 1 }]);
 }
 
+function takesNoBody(name: Name): boolean {
+  const parsed = bodyOf(name).safeParse(undefined);
+  return parsed.success && parsed.data === undefined && !bodyOf(name).safeParse({}).success;
+}
+
 describe('bodiless endpoints', () => {
-  it.each(NAMES.filter((name) => !BODIED.includes(name)))('%s takes no body', (name) => {
+  it.each(NAMES.filter(takesNoBody))('%s takes no body', (name) => {
     expect(bodyOf(name).parse(undefined)).toBeUndefined();
     expectRefused(name, [{}]);
+  });
+});
+
+describe('optional empty bodies', () => {
+  it('declineOutreach takes no body or an empty one', () => {
+    expect(bodyOf('declineOutreach').parse(undefined)).toBeUndefined();
+    expectKept('declineOutreach', {});
+    expectRefused('declineOutreach', [{ extra: 1 }]);
   });
 });
 
@@ -105,6 +85,18 @@ describe('access request bodies', () => {
     expectKept('startPairing', { role: 'member' });
     expectKept('startPairing', { role: 'owner' });
     expectRefused('startPairing', [{ role: 'admin' }, {}, { role: 'member', extra: 1 }]);
+  });
+
+  it('proveHub takes a 32-hex nonce and a 64-hex proof', () => {
+    const proof = { nonce: 'ab'.repeat(16), proof: 'cd'.repeat(32) };
+    expectKept('proveHub', proof);
+    expectRefused('proveHub', [
+      {},
+      { nonce: proof.nonce },
+      { ...proof, nonce: 'xyz' },
+      { ...proof, proof: 'cd' },
+      { ...proof, extra: 1 },
+    ]);
   });
 
   it('claimPairing takes a code, a client name and an Android or web platform', () => {
@@ -178,18 +170,15 @@ describe('settings request bodies', () => {
     expectRefused('setPushAccount', [{ serviceAccount: SERVICE_ACCOUNT, extra: 1 }, {}]);
   });
 
-  it('saveSmartThingsApp takes a trimmed client id and secret of up to 200 characters', () => {
-    expectKept('saveSmartThingsApp', { clientId: 'id', clientSecret: 's'.repeat(200) });
-    expect(
-      bodyOf('saveSmartThingsApp').parse({ clientId: ' id ', clientSecret: ' s ' }),
-    ).toStrictEqual({ clientId: 'id', clientSecret: 's' });
-    expectRefused('saveSmartThingsApp', [
-      { clientId: ' ', clientSecret: 's' },
-      { clientId: 'id', clientSecret: '' },
-      { clientId: 'i'.repeat(201), clientSecret: 's' },
-      { clientId: 'id', clientSecret: 's'.repeat(201) },
-      { clientId: 'id' },
-      { clientId: 'id', clientSecret: 's', extra: 1 },
+  it('setUpSmartThings takes a trimmed token of up to 200 characters', () => {
+    expectKept('setUpSmartThings', { token: 't'.repeat(200) });
+    expect(bodyOf('setUpSmartThings').parse({ token: ' t ' })).toStrictEqual({ token: 't' });
+    expectRefused('setUpSmartThings', [
+      { token: ' ' },
+      { token: '' },
+      { token: 't'.repeat(201) },
+      {},
+      { token: 't', extra: 1 },
     ]);
   });
 
@@ -300,10 +289,18 @@ describe('media request bodies', () => {
     expectRefused('offerCamera', [{ sdp: '' }, { sdp: 'v'.repeat(200_001) }, {}]);
   });
 
-  it('recordingLinks takes one to 200 recording ids', () => {
-    expectKept('recordingLinks', { ids: [FIRST] });
-    expectKept('recordingLinks', { ids: [FIRST, SECOND] });
-    expectKept('recordingLinks', { ids: Array.from({ length: 200 }, () => FIRST) });
+  it('recordingLinks takes one to 200 recording ids and a size that is full by default', () => {
+    expect(bodyOf('recordingLinks').parse({ ids: [FIRST] })).toStrictEqual({
+      ids: [FIRST],
+      size: 'full',
+    });
+    expectKept('recordingLinks', { ids: [FIRST, SECOND], size: 'full' });
+    expectKept('recordingLinks', { ids: [FIRST], size: 'thumb' });
+    expectRefused('recordingLinks', [{ ids: [FIRST], size: 'huge' }]);
+    expectKept('recordingLinks', {
+      ids: Array.from({ length: 200 }, () => FIRST),
+      size: 'full',
+    });
     expectRefused('recordingLinks', [
       { ids: [] },
       { ids: Array.from({ length: 201 }, () => FIRST) },
@@ -376,15 +373,20 @@ describe('scene and automation request bodies', () => {
     ).toStrictEqual({ name: 'Porch light', enabled: true, definition: DEFINITION });
     expectKept('createAutomation', { name: 'Porch light', enabled: false, definition: DEFINITION });
     expectRefused('createAutomation', [
-      { name: 'Porch light', definition: { ...DEFINITION, triggers: [] } },
+      { name: 'Porch light', definition: { ...DEFINITION, steps: [] } },
       { name: '', definition: DEFINITION },
       { name: 'Porch light', definition: DEFINITION, extra: 1 },
     ]);
   });
 
-  it('updateAutomation changes the name, enabled state or definition', () => {
-    expectPatch('updateAutomation', { name: 'Porch', enabled: false, definition: DEFINITION });
-    expectRefused('updateAutomation', [{ enabled: 'no' }]);
+  it('updateAutomation changes the name, enabled state or definition and may require the revision it read', () => {
+    expectPatch('updateAutomation', {
+      name: 'Porch',
+      enabled: false,
+      definition: DEFINITION,
+      expectedRevision: 2,
+    });
+    expectRefused('updateAutomation', [{ enabled: 'no' }, { expectedRevision: 0 }]);
   });
 });
 

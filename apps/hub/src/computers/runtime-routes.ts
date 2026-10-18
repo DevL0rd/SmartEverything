@@ -5,7 +5,7 @@ import {
   COMPUTER_RUNTIME_REPLY,
   type ComputerRuntimeTarget,
 } from '@smarteverything/domain';
-import { bound, type Bound, type RouteTable } from '../server/router';
+import { bound, type RouteOf, type RouteTable } from '../server/router';
 import type { ComputerAiDirectory } from './ai-directory';
 import { computerMcpPolicyRoutes } from './mcp-policy-routes';
 import { assertPublicRuntimeRequest } from './runtime-access';
@@ -58,7 +58,10 @@ export function computerRuntimeRoutes(
   };
 }
 
-function preferenceRoute(directory: ComputerAiDirectory, store: Store): Bound {
+function preferenceRoute(
+  directory: ComputerAiDirectory,
+  store: Store,
+): RouteOf<'updateAiRuntimeEnginePreference'> {
   return bound(API_ENDPOINTS.updateAiRuntimeEnginePreference, async ({ params, body }) => {
     const models = await directory.runtimeModels({
       device_id: body.device_id,
@@ -70,7 +73,7 @@ function preferenceRoute(directory: ComputerAiDirectory, store: Store): Bound {
   });
 }
 
-function receiptRoute(directory: ComputerAiDirectory): Bound {
+function receiptRoute(directory: ComputerAiDirectory): RouteOf<'readComputerRuntimeReceipt'> {
   return bound(API_ENDPOINTS.readComputerRuntimeReceipt, async ({ params, caller }) => {
     const request =
       params.runtime === 'claude'

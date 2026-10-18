@@ -73,3 +73,11 @@ export function describeFailure(cause: unknown): FailureDetail {
 
   return describeReported(cause) ?? { name: 'UnknownFailure', message: String(cause) };
 }
+
+export function messageOf(cause: unknown): string {
+  return describeFailure(cause).message;
+}
+
+export function failureLine(cause: unknown): string {
+  return cause instanceof Error ? `${cause.name}: ${cause.message}` : messageOf(cause);
+}

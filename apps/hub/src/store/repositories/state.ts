@@ -9,16 +9,17 @@ import {
   type JsonValue,
   type StateRow,
 } from '@smarteverything/domain';
-import type { SQLInputValue } from 'node:sqlite';
+import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, moment, type StoreContext } from '../context';
-import { jsonText } from '../sql';
+import { allOf, inList, jsonText, type SqlFilter } from '../sql';
 import { DeviceMetricsRepository } from './device-metrics';
-import { listFilter, type Filter } from './series-filter';
 
 const STORED_STATE = storedRow(STATE_ROW, { json: ['value'] });
+const STORED_VALUE = storedRow(STATE_ROW.pick({ value: true }), { json: ['value'] });
 const STORED_HISTORY = storedRow(HISTORY_ROW, { json: ['value'] });
 const STORED_BUCKET = storedRow(HISTORY_BUCKET, { json: ['last'] });
+const FIRST_ID = z.strictObject({ id: z.int().positive() });
 
 export interface StateWrite {
   readonly deviceId: string;
@@ -59,22 +60,15 @@ function bucketOrder(a: HistoryBucket, b: HistoryBucket): number {
   );
 }
 
-function seriesFilter(query: SeriesQuery): Filter {
-  const filters = [
-    listFilter('capability', 'capability', query.capabilities),
-    ...(query.deviceIds === undefined ? [] : [listFilter('device_id', 'device', query.deviceIds)]),
+function seriesFilter(query: SeriesQuery): SqlFilter {
+  return allOf([
+    inList('capability', 'capabilities', query.capabilities),
+    ...(query.deviceIds === undefined ? [] : [inList('device_id', 'devices', query.deviceIds)]),
     { text: 'observed_at >= $from', parameters: { from: moment(query.from) } },
     ...(query.to === undefined
       ? []
       : [{ text: 'observed_at < $to', parameters: { to: moment(query.to) } }]),
-  ];
-  return {
-    text: filters.map((filter) => filter.text).join(' and '),
-    parameters: filters.reduce<Record<string, SQLInputValue>>(
-      (all, filter) => ({ ...all, ...filter.parameters }),
-      {},
-    ),
-  };
+  ]);
 }
 
 const NUMERIC = "json_type(value) in ('integer', 'real')";
@@ -93,6 +87,22 @@ export class StateRepository {
     );
   }
 
+  ofDevice(deviceId: string): StateRow[] {
+    return this.context.sql.all(
+      STORED_STATE,
+      'select device_id, capability, value, observed_at from device_state where device_id = $deviceId order by capability',
+      { deviceId },
+    );
+  }
+
+  value(deviceId: string, capability: string): JsonValue | undefined {
+    return this.context.sql.get(
+      STORED_VALUE,
+      'select value from device_state where device_id = $deviceId and capability = $capability',
+      { deviceId, capability },
+    )?.value;
+  }
+
   write(rows: readonly StateWrite[]): void {
     this.context.write(() => {
       for (const row of rows) {
@@ -109,6 +119,19 @@ export class StateRepository {
       `select id, device_id, capability, value, observed_at from state_history
        where ${filter.text} order by observed_at ${direction}, id ${direction} limit $limit`,
       { ...filter.parameters, limit: query.limit },
+    );
+  }
+
+  firstHistoryIds(deviceId: string, capabilities: readonly string[]): ReadonlySet<number> {
+    const named = inList('capability', 'capabilities', capabilities);
+    return new Set(
+      this.context.sql
+        .all(
+          FIRST_ID,
+          `select min(id) as id from state_history where device_id = $deviceId and ${named.text} group by capability`,
+          { ...named.parameters, deviceId },
+        )
+        .map((row) => row.id),
     );
   }
 

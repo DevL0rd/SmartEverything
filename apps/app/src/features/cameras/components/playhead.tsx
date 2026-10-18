@@ -74,6 +74,7 @@ export function ScrubPreview({
           />
         ) : (
           <Image
+            resizeMethod="resize"
             source={{ uri: item.thumb }}
             resizeMode="cover"
             accessibilityIgnoresInvertColors

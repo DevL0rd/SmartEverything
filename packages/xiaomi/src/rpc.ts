@@ -1,6 +1,7 @@
 import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
 import { z } from 'zod';
 import { MiioDeviceError, MiioPacketError } from './errors';
+import { parseJson } from './json';
 
 const LAST_MESSAGE_ID = 2_147_483_647;
 
@@ -26,23 +27,23 @@ export function encodeRequest(request: RpcRequest): string {
   return JSON.stringify({ id: request.id, method: request.method, params: request.params });
 }
 
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch (cause) {
-    throw new MiioPacketError('a JSON body', `${text} (${String(cause)})`);
-  }
+function parseBody(text: string): unknown {
+  return parseJson(
+    text,
+    (cause) =>
+      new MiioPacketError('a JSON body', `text that is not JSON (${cause.split(':', 1).join('')})`),
+  );
 }
 
 export function responseId(text: string): number | null {
-  const parsed = z.object({ id: z.number().int() }).safeParse(parseJson(text));
+  const parsed = z.object({ id: z.number().int() }).safeParse(parseBody(text));
   return parsed.success ? parsed.data.id : null;
 }
 
 export function parseResponse(request: RpcRequest, text: string): JsonValue {
-  const parsed = RPC_RESPONSE.safeParse(parseJson(text));
+  const parsed = RPC_RESPONSE.safeParse(parseBody(text));
   if (!parsed.success) {
-    throw new MiioPacketError('an RPC result or error', text);
+    throw new MiioPacketError('an RPC result or error', 'a reply of another shape');
   }
   if (parsed.data.id !== request.id) {
     throw new MiioPacketError(`message id ${String(request.id)}`, String(parsed.data.id));

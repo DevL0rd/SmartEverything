@@ -12,3 +12,11 @@ export interface NewChat {
   readonly branchMessageId?: string | null;
   readonly titleAuto?: boolean;
 }
+
+export function modelKey(engine: Engine): string {
+  return JSON.stringify([
+    engine.kind,
+    engine.model,
+    'model_route_id' in engine ? engine.model_route_id : null,
+  ]);
+}

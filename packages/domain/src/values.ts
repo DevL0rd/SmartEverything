@@ -3,16 +3,32 @@ import { z } from 'zod';
 export type JsonValue =
   string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
-export const JSON_VALUE: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(JSON_VALUE),
-    z.record(z.string(), JSON_VALUE),
-  ]),
-);
+function isJsonArray(value: readonly unknown[]): boolean {
+  for (const item of value) {
+    if (!isJsonValue(item)) return false;
+  }
+  return true;
+}
+
+function isJsonRecord(value: object): boolean {
+  if (!z.core.util.isPlainObject(value)) return false;
+  for (const key of Reflect.ownKeys(value)) {
+    if (key === '__proto__' || !Object.prototype.propertyIsEnumerable.call(value, key)) continue;
+    if (typeof key !== 'string' || !isJsonValue(Reflect.get(value, key))) return false;
+  }
+  return true;
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (typeof value === 'string' || typeof value === 'boolean' || value === null) return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object') return false;
+  return Array.isArray(value) ? isJsonArray(value) : isJsonRecord(value);
+}
+
+export const JSON_VALUE: z.ZodType<JsonValue> = z
+  .any()
+  .refine(isJsonValue, { message: 'must be a JSON value' });
 
 export const BOOLEAN_VALUE = z.object({ kind: z.literal('boolean') });
 
@@ -63,6 +79,9 @@ export const HSV_COLOR = z.object({
 
 export type HsvColor = z.infer<typeof HSV_COLOR>;
 
+export const COLOR_FORMAT_REASON =
+  'not an object {"hue": 0 to 360, "saturation": 0 to 100, "value": 0 to 100}, for example {"hue": 0, "saturation": 100, "value": 100} for red';
+
 export class InvalidValueError extends Error {
   override readonly name = 'InvalidValueError';
 
@@ -80,8 +99,12 @@ function isOnStep(value: number, min: number, step: number): boolean {
   return Number(snapped.toPrecision(12)) === Number(value.toPrecision(12));
 }
 
+const FINITE_NUMBER = z.number();
+
+const ACTION_ARGUMENTS = z.record(z.string(), JSON_VALUE);
+
 function checkNumber(descriptor: z.infer<typeof NUMBER_VALUE>, value: unknown): JsonValue {
-  const parsed = z.number().safeParse(value);
+  const parsed = FINITE_NUMBER.safeParse(value);
   if (!parsed.success) {
     throw new InvalidValueError(descriptor, value, 'not a finite number');
   }
@@ -107,7 +130,7 @@ function checkActionArguments(descriptor: z.infer<typeof ACTION_VALUE>, value: u
     return null;
   }
   const allowed = new Set(descriptor.arguments);
-  const parsed = z.record(z.string(), JSON_VALUE).safeParse(value);
+  const parsed = ACTION_ARGUMENTS.safeParse(value);
   if (!parsed.success) {
     throw new InvalidValueError(descriptor, value, 'arguments must be an object');
   }
@@ -140,7 +163,7 @@ function checkText(descriptor: z.infer<typeof TEXT_VALUE>, value: unknown): Json
 function checkColor(descriptor: z.infer<typeof COLOR_VALUE>, value: unknown): JsonValue {
   const parsed = HSV_COLOR.safeParse(value);
   if (!parsed.success) {
-    throw new InvalidValueError(descriptor, value, 'not a hue, saturation and value');
+    throw new InvalidValueError(descriptor, value, COLOR_FORMAT_REASON);
   }
   return parsed.data;
 }

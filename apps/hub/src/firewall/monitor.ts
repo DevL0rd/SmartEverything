@@ -9,6 +9,7 @@ import type {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { DeviceRecord } from '../database/port';
+import { ANNOUNCEMENT_PORTS } from '../adapters/announcements';
 import { cameraSourceOf, pushSourceOf } from '../state/inventory';
 import { lanNetworks } from './lan-networks';
 import { probeLinux } from './linux';
@@ -18,6 +19,7 @@ import {
   always,
   cameraAddressOf,
   requiredOpenings,
+  type AnnouncementNeed,
   type ConnectionPortNeed,
   type DeviceAddress,
   type OpeningState,
@@ -28,6 +30,7 @@ import {
 } from './openings';
 import type { FirewallPlatform, FirewallSystem } from './system';
 import { probeWindows } from './windows';
+import { messageOf } from '@smarteverything/logging';
 
 const PROBES: Readonly<Record<FirewallPlatform, Prober>> = {
   linux: probeLinux,
@@ -57,7 +60,7 @@ function failedProbe(cause: unknown): Probe {
   return {
     backend: 'unknown',
     filtering: null,
-    detail: `The firewall could not be read: ${cause instanceof Error ? cause.message : String(cause)}`,
+    detail: `The firewall could not be read: ${messageOf(cause)}`,
     stateOf: always('unknown'),
     draft: null,
     fixable: new Set(),
@@ -121,9 +124,19 @@ function pushingOf(devices: readonly DeviceRecord[], log: Logger): readonly Devi
   });
 }
 
+function announcementsOf(devices: readonly DeviceRecord[]): readonly AnnouncementNeed[] {
+  return devices.flatMap((device) =>
+    (ANNOUNCEMENT_PORTS[device.provider] ?? []).map((listen): AnnouncementNeed => ({
+      deviceId: device.id,
+      ...listen,
+    })),
+  );
+}
+
 export class FirewallMonitor {
   private cameras: readonly DeviceAddress[] = [];
   private pushing: readonly DeviceAddress[] = [];
+  private announcements: readonly AnnouncementNeed[] = [];
   private plugins: readonly PluginPortNeed[] = [];
   private devicesKey = '';
   private pluginsKey = '';
@@ -171,12 +184,14 @@ export class FirewallMonitor {
   devicesChanged(devices: readonly DeviceRecord[]): void {
     const cameras = camerasOf(devices, this.options.log);
     const pushing = pushingOf(devices, this.options.log);
-    const key = JSON.stringify({ cameras, pushing });
+    const announcements = announcementsOf(devices);
+    const key = JSON.stringify({ cameras, pushing, announcements });
     if (key === this.devicesKey) {
       return;
     }
     this.cameras = cameras;
     this.pushing = pushing;
+    this.announcements = announcements;
     this.devicesKey = key;
     this.recheck();
   }
@@ -264,17 +279,18 @@ export class FirewallMonitor {
     const { system, webrtcPort, log } = this.options;
     const probe = await PROBES[system.platform](system).catch((cause: unknown) => {
       log.warn('firewall.read_failed', {
-        reason: cause instanceof Error ? cause.message : String(cause),
+        reason: messageOf(cause),
       });
       return failedProbe(cause);
     });
-    const networks = this.plugins.length === 0 ? [] : await lanNetworks(system.read);
+    const networks = this.needsNetworks() ? await lanNetworks(system.read) : [];
     this.warnNoLan(networks);
     const needs = {
       connections: this.connectionNeeds,
       cameras: this.cameras,
       pushing: this.pushing,
       plugins: this.plugins,
+      announcements: this.announcements,
       networks,
       webrtcPort,
     };
@@ -298,13 +314,18 @@ export class FirewallMonitor {
     return this.publish(checked);
   }
 
+  private needsNetworks(): boolean {
+    return this.plugins.length > 0 || this.announcements.length > 0;
+  }
+
   private warnNoLan(networks: readonly string[]): void {
-    if (this.plugins.length === 0 || networks.length > 0 || this.warnedNoLan) {
+    if (!this.needsNetworks() || networks.length > 0 || this.warnedNoLan) {
       return;
     }
     this.warnedNoLan = true;
     this.options.log.warn('firewall.no_lan_network', {
-      reason: 'no private IPv4 network on the default route; plugin ports get no opening',
+      reason:
+        'no private IPv4 network on the default route; plugin and announcement ports get no opening',
     });
   }
 

@@ -1,28 +1,32 @@
-import type { DesktopTalkShortcuts } from '@smarteverything/domain';
 import { globalShortcut } from 'electron';
-import { TALK_SHORTCUTS, type TalkCommandSink, type TalkKeys } from './talk-keys.js';
+import type { DesktopTalkCommand } from '@smarteverything/domain';
+import {
+  TALK_SHORTCUTS,
+  talkShortcutStatus,
+  type TalkCommandSink,
+  type TalkShortcut,
+  type TalkKeys,
+} from './talk-keys.js';
 
-function label(accelerator: string): string {
-  return accelerator.replaceAll('+', ' ').replace('Control', 'Ctrl');
+function electronCommand(id: TalkShortcut['id']): DesktopTalkCommand {
+  if (id === 'talk') {
+    return { kind: 'toggle' };
+  }
+  if (id === 'next') {
+    return { kind: 'next' };
+  }
+  return id === 'assistant_mute'
+    ? { kind: 'assistant_mute' }
+    : { kind: 'assistant', phase: 'toggle' };
 }
 
 export function electronTalkKeys(sink: TalkCommandSink): TalkKeys {
   const registered = TALK_SHORTCUTS.filter((shortcut) =>
     globalShortcut.register(shortcut.accelerator, () => {
-      sink(shortcut.id === 'talk' ? { kind: 'toggle' } : { kind: 'next' });
+      sink(electronCommand(shortcut.id));
     }),
   );
-  const missing = TALK_SHORTCUTS.filter((shortcut) => !registered.includes(shortcut));
-  const status: DesktopTalkShortcuts = {
-    backend: 'electron',
-    hold: false,
-    talk: registered.some((shortcut) => shortcut.id === 'talk') ? label('Control+Alt+Space') : null,
-    next: registered.some((shortcut) => shortcut.id === 'next') ? label('Control+Alt+N') : null,
-    problem:
-      missing.length === 0
-        ? null
-        : `Another app already uses ${missing.map((shortcut) => label(shortcut.accelerator)).join(' and ')}`,
-  };
+  const status = talkShortcutStatus(registered);
   return {
     status: () => status,
     configure: () => Promise.resolve(status),

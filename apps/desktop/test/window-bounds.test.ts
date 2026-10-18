@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import fc from 'fast-check';
+import { Logger, type LogRecord } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { centredOn, isVisibleOn, placeWindow, type WindowState } from '../src/window-bounds.js';
-import { readWindowState, WindowStateInvalidError, writeWindowState } from '../src/window-state.js';
+import { readWindowState, writeWindowState } from '../src/window-state.js';
 
 const PRIMARY = { x: 0, y: 0, width: 1920, height: 1040 };
 const SECOND = { x: 1920, y: 0, width: 2560, height: 1400 };
@@ -78,12 +79,17 @@ describe('placeWindow', () => {
 
 describe('window state file', () => {
   let directory = '';
+  const logged: LogRecord[] = [];
 
   beforeEach(() => {
     directory = mkdtempSync(path.join(tmpdir(), 'desktop-window-state-'));
+    logged.length = 0;
+    Logger.reset();
+    Logger.configure({ level: 'trace', sink: (record) => logged.push(record) });
   });
 
   afterEach(() => {
+    Logger.reset();
     rmSync(directory, { recursive: true, force: true });
   });
 
@@ -100,20 +106,36 @@ describe('window state file', () => {
     });
   });
 
-  it('readWindowState names the file when the content is not JSON', () => {
+  it('readWindowState opens centred and logs once when the file is not JSON', () => {
     const file = path.join(directory, 'window-state.json');
     writeFileSync(file, '{not json', 'utf8');
-    expect(() => readWindowState(file)).toThrow(WindowStateInvalidError);
-    expect(() => readWindowState(file)).toThrow(file);
+    expect(readWindowState(file)).toBeUndefined();
+    expect(logged).toHaveLength(1);
+    expect(logged[0]?.event).toBe('window.state_unreadable');
+    expect(logged[0]?.payload).toMatchObject({ file });
   });
 
-  it('readWindowState refuses bounds below the minimum window size', () => {
+  it('readWindowState opens centred and logs once when the bounds are below the minimum window size', () => {
     const file = path.join(directory, 'window-state.json');
     writeFileSync(
       file,
       JSON.stringify({ bounds: { x: 0, y: 0, width: 10, height: 10 }, maximized: false }),
       'utf8',
     );
-    expect(() => readWindowState(file)).toThrow(WindowStateInvalidError);
+    expect(readWindowState(file)).toBeUndefined();
+    expect(logged).toHaveLength(1);
+  });
+
+  it('readWindowState stays quiet when no state was saved yet and after a broken file is overwritten', () => {
+    const file = path.join(directory, 'window-state.json');
+    expect(readWindowState(file)).toBeUndefined();
+    writeFileSync(file, '{not json', 'utf8');
+    writeWindowState(file, { bounds: { x: 0, y: 0, width: 900, height: 600 }, maximized: false });
+    logged.length = 0;
+    expect(readWindowState(file)).toEqual({
+      bounds: { x: 0, y: 0, width: 900, height: 600 },
+      maximized: false,
+    });
+    expect(logged).toHaveLength(0);
   });
 });

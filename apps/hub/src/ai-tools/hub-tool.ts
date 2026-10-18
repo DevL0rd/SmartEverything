@@ -7,7 +7,7 @@ export interface ToolSpec {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: JsonSchema;
-  readonly variants?: readonly Readonly<Record<string, unknown>>[];
+  readonly variants?: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
 }
 
 export interface ToolAnnotationHints {
@@ -18,7 +18,7 @@ export interface ToolAnnotationHints {
   readonly openWorldHint: boolean;
 }
 
-export type ToolOrigin =
+type ToolOrigin =
   | { readonly kind: 'se' }
   | { readonly kind: 'core' }
   | { readonly kind: 'plugin'; readonly pluginId: string };
@@ -30,7 +30,7 @@ export interface HubTool extends ToolSpec {
   readonly humanOnly: boolean;
 }
 
-export type ToolVia = 'chat' | 'voice' | 'wake' | 'plugin' | 'schedule' | 'automation' | 'app';
+type ToolVia = 'chat' | 'voice' | 'wake' | 'plugin' | 'schedule' | 'automation' | 'app';
 
 export interface ToolCaller {
   readonly authority?: ConversationAuthority;
@@ -41,12 +41,6 @@ export interface ToolCaller {
   readonly clientId: string | null;
   readonly pluginRequester?: PluginRequester;
   readonly pluginId?: string;
-}
-
-export function needsOwnDevice(caller: ToolCaller): boolean {
-  return (
-    caller.clientId === null && caller.role !== 'owner' && caller.authority?.kind !== 'service'
-  );
 }
 
 export interface ToolPicture {

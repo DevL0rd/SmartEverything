@@ -1,10 +1,11 @@
+import { Logger, background } from '@smarteverything/logging';
 import {
   useMutation,
-  useQuery,
   useQueryClient,
   type UseQueryResult,
   type UseMutationResult,
 } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import type { PROVIDER_READ_QUERY } from '@smarteverything/domain';
 import {
   API_ENDPOINTS as E,
@@ -15,26 +16,18 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
-import { useServerComputerAi } from '../../../api/connection/server-capabilities';
-import { api, useConnection } from '../../../api/transport';
+import { api } from '../../../api/transport';
 import { notify } from '../../../components/toast-store';
 import { providerKey } from '../../../queries/keys';
-import { mergeProviderSnapshot } from '../../../queries/provider-notices';
 import { engineCatalogue, type EngineCatalogue } from './engine-catalogue';
-import { serverSupportsComputerAiV2 } from '../../../api/connection/server-capabilities';
 import type { AiRuntimeEnginePreference, ComputerAiRuntime } from '@smarteverything/domain';
+
+const log = new Logger('app.provider');
 
 export const ENGINE_CATALOGUE_KEY = ['window', 'ai-engines'] as const;
 
-export function useComputerProviderSupported(): boolean {
-  const connection = useConnection();
-  return useServerComputerAi(connection.status === 'paired' ? connection.connection.url : null);
-}
-
 export function useEngineCatalogue(): UseQueryResult<EngineCatalogue> {
-  const supported = useComputerProviderSupported();
-  return useQuery({
-    enabled: supported,
+  return useScreenQuery({
     queryKey: ENGINE_CATALOGUE_KEY,
     queryFn: async () => engineCatalogue(await api().call(E.readAiEngineCatalogue, {})),
   });
@@ -47,13 +40,21 @@ export function useEngineDefaultChange(): UseMutationResult<
 > {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (engine: Engine | null) =>
-      api().call(E.updateAiEngineDefault, { body: { engine } }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ENGINE_CATALOGUE_KEY });
+    mutationFn: (engine: Engine | null) => {
+      log.info('engine_default.change_started', { engineKind: engine?.kind ?? null });
+      return api().call(E.updateAiEngineDefault, { body: { engine } });
     },
-    onError: (error) =>
-      notify({ message: 'Default engine wasn’t changed', error, tone: 'critical' }),
+    onSuccess: () => {
+      log.info('engine_default.change_succeeded');
+      background(
+        client.invalidateQueries({ queryKey: ENGINE_CATALOGUE_KEY }),
+        'queries.invalidate_failed',
+      );
+    },
+    onError: (error) => {
+      log.error('engine_default.change_failed', error);
+      notify({ message: 'Default engine wasn’t changed', error, tone: 'critical' });
+    },
   });
 }
 
@@ -65,31 +66,30 @@ export function useModelMachineChange(): UseMutationResult<
   const client = useQueryClient();
   return useMutation({
     mutationFn: async ({ runtime, model, deviceId }) => {
-      if (serverSupportsComputerAiV2(api().baseUrl))
-        return api().call(E.updateAiRuntimeEnginePreference, {
-          params: { runtime, modelId: model },
-          body: { device_id: deviceId },
-        });
-      if (runtime !== 'claude') throw new Error('This hub needs an update to select Codex.');
-      const preference = await api().call(E.updateAiEnginePreference, {
-        params: { modelId: model },
+      log.info('model_machine.change_started', { runtime, model, deviceId });
+      return api().call(E.updateAiRuntimeEnginePreference, {
+        params: { runtime, modelId: model },
         body: { device_id: deviceId },
       });
-      return { ...preference, runtime };
     },
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ENGINE_CATALOGUE_KEY });
+    onSuccess: (_result, { runtime, model, deviceId }) => {
+      log.info('model_machine.change_succeeded', { runtime, model, deviceId });
+      background(
+        client.invalidateQueries({ queryKey: ENGINE_CATALOGUE_KEY }),
+        'queries.invalidate_failed',
+      );
     },
-    onError: (error) =>
-      notify({ message: 'Supplying computer wasn’t saved', error, tone: 'critical' }),
+    onError: (error, { runtime, model, deviceId }) => {
+      log.error('model_machine.change_failed', error, { runtime, model, deviceId });
+      notify({ message: 'Supplying computer wasn’t saved', error, tone: 'critical' });
+    },
   });
 }
 
 export function useChatProvider(chatId: string, enabled = true): UseQueryResult<AiChatProvider> {
-  const client = useQueryClient();
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...providerKey(chatId), 'state'],
-    queryFn: async () => mergeProviderSnapshot(client, chatId, await readClaudeProvider(chatId)),
+    queryFn: () => readClaudeProvider(chatId),
     enabled,
   });
 }
@@ -106,7 +106,7 @@ export function useProviderRead(
   body: z.infer<typeof PROVIDER_READ_QUERY>,
   enabled: boolean,
 ): UseQueryResult<JsonValue> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...providerKey(chatId), 'read', body],
     queryFn: () => api().call(E.readAiChatProviderState, { params: { chatId }, body }),
     enabled,
@@ -118,12 +118,21 @@ export function useProviderControl(
 ): UseMutationResult<JsonValue, Error, ProviderControl> {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: ProviderControl) =>
-      api().call(E.controlAiChatProvider, { params: { chatId }, body }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: providerKey(chatId) });
+    mutationFn: (body: ProviderControl) => {
+      log.info('provider_control.started', { chatId, control: body.action });
+      return api().call(E.controlAiChatProvider, { params: { chatId }, body });
     },
-    onError: (error) => notify({ message: 'Provider action failed', error, tone: 'critical' }),
+    onSuccess: (_result, body) => {
+      log.info('provider_control.succeeded', { chatId, control: body.action });
+      background(
+        client.invalidateQueries({ queryKey: providerKey(chatId) }),
+        'queries.invalidate_failed',
+      );
+    },
+    onError: (error, body) => {
+      log.error('provider_control.failed', error, { chatId, control: body.action });
+      notify({ message: 'Provider action failed', error, tone: 'critical' });
+    },
   });
 }
 
@@ -133,12 +142,20 @@ export function useProviderAnswer(
 ): UseMutationResult<unknown, Error, ProviderAnswer> {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: ProviderAnswer) =>
-      api().call(E.answerAiChatProvider, { params: { chatId, promptId }, body }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: providerKey(chatId) });
+    mutationFn: (body: ProviderAnswer) => {
+      log.info('provider_answer.started', { chatId, promptId });
+      return api().call(E.answerAiChatProvider, { params: { chatId, promptId }, body });
     },
-    onError: (error) =>
-      notify({ message: 'Provider prompt wasn’t answered', error, tone: 'critical' }),
+    onSuccess: () => {
+      log.info('provider_answer.succeeded', { chatId, promptId });
+      background(
+        client.invalidateQueries({ queryKey: providerKey(chatId) }),
+        'queries.invalidate_failed',
+      );
+    },
+    onError: (error) => {
+      log.error('provider_answer.failed', error, { chatId, promptId });
+      notify({ message: 'Your answer wasn’t sent', error, tone: 'critical' });
+    },
   });
 }

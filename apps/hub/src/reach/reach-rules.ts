@@ -1,8 +1,8 @@
 import {
   QUIET_HOURS,
+  insideClockWindow,
   isCamera,
   localClock,
-  minuteOfClock,
   type QuietHours,
   type ReachSettings,
   type ReachSettingsChange,
@@ -16,7 +16,9 @@ const STORED_BLOCKED = z.strictObject({ blocked: z.array(z.uuid()) });
 
 const WAKE_OFF_KEY = 'reach.wake_off';
 
-const STORED_WAKE_OFF = z.strictObject({ cameras: z.array(z.uuid()) });
+const STORED_CAMERA_LIST = z.strictObject({ cameras: z.array(z.uuid()) });
+
+const STANDBY_OFF_KEY = 'reach.speaker_standby_off';
 
 const QUIET_KEY = 'reach.quiet';
 
@@ -24,15 +26,10 @@ const STORED_QUIET = z.strictObject({ people: z.record(z.uuid(), QUIET_HOURS) })
 
 type StoredQuiet = z.infer<typeof STORED_QUIET>;
 
-export type ReachRulesStore = Pick<Store, 'aiChats' | 'settings' | 'devices'>;
+export type ReachRulesStore = Pick<Store, 'settingsKv' | 'settings' | 'devices'>;
 
 export function insideQuiet(quiet: QuietHours, minute: number): boolean {
-  const from = minuteOfClock(quiet.from);
-  const to = minuteOfClock(quiet.to);
-  if (from === to) {
-    return false;
-  }
-  return from < to ? minute >= from && minute < to : minute >= from || minute < to;
+  return insideClockWindow(quiet, minute);
 }
 
 export class ReachRules {
@@ -55,15 +52,15 @@ export class ReachRules {
     if (change.quiet !== undefined) {
       const { [profileId]: _previous, ...others } = this.storedQuiet().people;
       const people = change.quiet === null ? others : { ...others, [profileId]: change.quiet };
-      this.store.aiChats.saveSetting(QUIET_KEY, { people });
+      this.store.settingsKv.save(QUIET_KEY, { people });
     }
     if (change.cameras !== undefined) {
       const allowed = new Set(change.cameras);
       const blocked = this.allCameras().filter((id) => !allowed.has(id));
-      this.store.aiChats.saveSetting(BLOCKED_KEY, { blocked });
+      this.store.settingsKv.save(BLOCKED_KEY, { blocked });
     }
     if (change.wakeOff !== undefined) {
-      this.store.aiChats.saveSetting(WAKE_OFF_KEY, { cameras: [...new Set(change.wakeOff)] });
+      this.store.settingsKv.save(WAKE_OFF_KEY, { cameras: [...new Set(change.wakeOff)] });
     }
     if (change.cameras !== undefined || change.wakeOff !== undefined) {
       this.listeners.forEach((listener) => {
@@ -81,8 +78,13 @@ export class ReachRules {
   }
 
   wakeOff(): readonly string[] {
-    const stored = this.store.aiChats.setting(WAKE_OFF_KEY);
-    return stored === null ? [] : STORED_WAKE_OFF.parse(stored).cameras;
+    const stored = this.store.settingsKv.read(WAKE_OFF_KEY);
+    return stored === null ? [] : STORED_CAMERA_LIST.parse(stored).cameras;
+  }
+
+  standbyOff(): readonly string[] {
+    const stored = this.store.settingsKv.read(STANDBY_OFF_KEY);
+    return stored === null ? [] : STORED_CAMERA_LIST.parse(stored).cameras;
   }
 
   quiet(profileId: string): QuietHours | null {
@@ -90,12 +92,12 @@ export class ReachRules {
   }
 
   private storedQuiet(): StoredQuiet {
-    const stored = this.store.aiChats.setting(QUIET_KEY);
+    const stored = this.store.settingsKv.read(QUIET_KEY);
     return stored === null ? { people: {} } : STORED_QUIET.parse(stored);
   }
 
   cameras(): readonly string[] {
-    const stored = this.store.aiChats.setting(BLOCKED_KEY);
+    const stored = this.store.settingsKv.read(BLOCKED_KEY);
     const blocked = new Set(stored === null ? [] : STORED_BLOCKED.parse(stored).blocked);
     return this.allCameras().filter((id) => !blocked.has(id));
   }

@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileTypeFromBuffer } from 'file-type';
 
 const PHOTOS_KEPT = 100;
 
 const FOLDER = 'photos';
 const FOLDER_MODE = 0o700;
 const FILE_MODE = 0o600;
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const DEFAULT_IMAGE_TYPE = 'image/jpeg';
 
-export function imageTypeOf(body: Buffer): 'image/png' | 'image/jpeg' {
-  return body.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE) ? 'image/png' : 'image/jpeg';
+export async function imageTypeOf(body: Buffer): Promise<string> {
+  return (await fileTypeFromBuffer(body))?.mime ?? DEFAULT_IMAGE_TYPE;
 }
 
 export class Photos {

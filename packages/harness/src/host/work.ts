@@ -19,13 +19,24 @@ export function sessionWork(
   interactions: HarnessInteractions,
   cleanup: HarnessCleanup,
 ): HarnessWork {
-  return {
+  const live = {
     turn: agent.status === 'running',
     interactions: interactions.count(agent.id),
     shells: ownedRunningJobs(ctx, agent).map((job) => job.id),
-    cleanup,
+  };
+  return {
+    ...live,
+    cleanup: liveCleanup(cleanup, live),
     queuedMessages: agent.inbox.nextTurn.length + agent.inbox.nextStep.length,
   };
+}
+
+export function liveCleanup(
+  cleanup: HarnessCleanup,
+  live: Pick<HarnessWork, 'turn' | 'interactions' | 'shells'>,
+): HarnessCleanup {
+  const idle = !live.turn && live.interactions === 0 && live.shells.length === 0;
+  return cleanup.state === 'unknown' && idle ? { state: 'completed' } : cleanup;
 }
 
 export function assertDrained(work: HarnessWork): void {
@@ -39,7 +50,6 @@ export function assertDrained(work: HarnessWork): void {
 export function workDrained(work: HarnessWork): boolean {
   return !(
     work.cleanup.state === 'running' ||
-    work.cleanup.state === 'unknown' ||
     work.turn ||
     work.interactions > 0 ||
     work.shells.length > 0 ||

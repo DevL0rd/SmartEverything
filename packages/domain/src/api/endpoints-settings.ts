@@ -1,14 +1,20 @@
 import { z } from 'zod';
+import { PROVIDER } from '../devices';
+import { PROVIDER_CREDENTIALS } from '../hub-commands';
 import { PLACE_NAME } from '../places';
 import { TIME_ZONE } from '../automations';
 import { FITNESS_SETTINGS_CHANGE } from '../fitness-settings';
+import { HISTORY_SETTINGS_CHANGE } from '../history-settings';
+import { PAUSE_MS } from '../voice-activity';
 import { PROVIDER_LINK_ROW, HOME_NAME, LATITUDE, LONGITUDE, SETTINGS_ROW } from './rows-home';
 import { NO_BODY, endpoint } from './endpoint';
 import { SMARTTHINGS_ENDPOINTS } from './endpoints-smartthings';
 import {
   COUNT,
+  DONE,
   HTTPS_URL,
   ICE_SERVER,
+  ID,
   MOMENT,
   NOTHING,
   WEBRTC_CANDIDATE,
@@ -36,7 +42,9 @@ export const PUSH_SERVICE_ACCOUNT = z.object({
 
 export type PushServiceAccount = z.infer<typeof PUSH_SERVICE_ACCOUNT>;
 
-export const SEALING_KEY = z.strictObject({ publicKey: z.string().regex(/^[0-9a-f]{64}$/) });
+const PROVIDER_ANSWER = z.strictObject({ provider: PROVIDER, answer: z.string().min(1) });
+
+const PROVIDER_CANCEL = z.strictObject({ provider: PROVIDER });
 
 export const PUSH_STATUS = z.strictObject({
   lastAttemptAt: MOMENT.nullable(),
@@ -99,6 +107,31 @@ const SETTINGS_ENDPOINTS = {
     body: FITNESS_SETTINGS_CHANGE,
     response: SETTINGS_ROW,
   }),
+  updateHistorySettings: endpoint({
+    method: 'PATCH',
+    path: '/api/settings/history',
+    access: 'owner',
+    summary:
+      'Change how often readings are recorded and how long they are kept, for a kind of source or one device; null removes a device override',
+    params: NOTHING,
+    query: NOTHING,
+    body: HISTORY_SETTINGS_CHANGE,
+    response: SETTINGS_ROW,
+  }),
+  updateListeningSettings: endpoint({
+    method: 'PATCH',
+    path: '/api/settings/listening',
+    access: 'owner',
+    summary:
+      'Change the end-of-speech pause (how long the shared speech gate waits after someone stops talking, for calls and every listening ear) or the computer that listens on behalf of cameras, walkie channels and Discord (null picks the first online computer that can)',
+    params: NOTHING,
+    query: NOTHING,
+    body: somethingToChange({
+      end_of_speech_pause_ms: PAUSE_MS,
+      ear_host_device_id: ID.nullable(),
+    }),
+    response: SETTINGS_ROW,
+  }),
   setPublicUrl: endpoint({
     method: 'PUT',
     path: '/api/settings/public-url',
@@ -159,15 +192,35 @@ const SETTINGS_ENDPOINTS = {
     body: NO_BODY,
     response: z.array(PROVIDER_LINK_ROW),
   }),
-  sealingKey: endpoint({
-    method: 'GET',
-    path: '/api/providers/key',
+  linkProvider: endpoint({
+    method: 'POST',
+    path: '/api/providers/link',
     access: 'owner',
-    summary: 'The public key provider credentials and prompt answers are sealed to',
+    summary: 'Start signing in to a provider with these credentials; progress is on its link row',
     params: NOTHING,
     query: NOTHING,
-    body: NO_BODY,
-    response: SEALING_KEY,
+    body: PROVIDER_CREDENTIALS,
+    response: DONE,
+  }),
+  answerProviderPrompt: endpoint({
+    method: 'POST',
+    path: '/api/providers/answer',
+    access: 'owner',
+    summary: 'Answer the question a provider sign-in is waiting on',
+    params: NOTHING,
+    query: NOTHING,
+    body: PROVIDER_ANSWER,
+    response: DONE,
+  }),
+  cancelProviderLink: endpoint({
+    method: 'POST',
+    path: '/api/providers/cancel',
+    access: 'owner',
+    summary: 'Stop a sign-in in progress; a stored account stays linked',
+    params: NOTHING,
+    query: NOTHING,
+    body: PROVIDER_CANCEL,
+    response: DONE,
   }),
 } as const;
 

@@ -9,7 +9,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../../design/theme-scope';
 import { Text } from '../../../../components/text';
 import { cn } from '../../../../design/cn';
 import { SPRING } from '../../../../design/motion';
@@ -168,11 +168,11 @@ export function SelfViewTile(props: SelfViewTileProps): ReactNode {
             facing={video.facing}
             light={false}
           />
-          <ScopedTheme theme="dark">
+          <ThemeScope theme="dark">
             <View className="absolute bottom-1 left-1 rounded-full bg-black/60 px-2 py-0.5">
               <Text variant="caption">You</Text>
             </View>
-          </ScopedTheme>
+          </ThemeScope>
         </View>
       </Animated.View>
     </GestureDetector>

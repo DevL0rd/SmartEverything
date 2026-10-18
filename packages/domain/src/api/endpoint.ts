@@ -4,7 +4,7 @@ export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 
 export type HttpMethod = (typeof HTTP_METHODS)[number];
 
-export const ACCESS_LEVELS = ['public', 'member', 'owner', 'health_source'] as const;
+export const ACCESS_LEVELS = ['public', 'member', 'owner'] as const;
 
 export type Access = (typeof ACCESS_LEVELS)[number];
 

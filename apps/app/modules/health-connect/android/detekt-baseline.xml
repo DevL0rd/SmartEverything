@@ -1,0 +1,56 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:ActivityData.kt$ActivityData$fun describe(record: Record): JsonObject?</ID>
+    <ID>CyclomaticComplexMethod:BodyData.kt$BodyData$private fun vital(record: Record): JsonObject?</ID>
+    <ID>CyclomaticComplexMethod:HubBrowserDiagnostics.kt$HubBrowserDiagnostics$@Synchronized fun console(message: ConsoleMessage)</ID>
+    <ID>CyclomaticComplexMethod:HubHtmlAssets.kt$HubHtmlAssets$private fun transfer(context: ChannelHandlerContext, method: String, path: String, range: String?)</ID>
+    <ID>CyclomaticComplexMethod:HubHtmlHttp.kt$HubHtmlHttp$private fun allowsPath(path: String): Boolean</ID>
+    <ID>CyclomaticComplexMethod:HubHtmlView.kt$HubHtmlView$fun allows(url: String): Boolean</ID>
+    <ID>CyclomaticComplexMethod:HubPairingInspection.kt$HubPairingInspection$private fun handshake(input: JSONObject, operation: Pending, literal: java.net.InetAddress, address: String, port: Int): Map&lt;String, Any?&gt;</ID>
+    <ID>CyclomaticComplexMethod:HubPairingInspection.kt$HubPairingInspection$private fun parse(json: String): JSONObject</ID>
+    <ID>CyclomaticComplexMethod:HubResourceFileProvider.kt$HubResourceFileProvider$override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor</ID>
+    <ID>CyclomaticComplexMethod:HubResourceFiles.kt$HubResourceFiles$fun fetch(context: Context, grant: HubResourceGrant, grants: HubResourceGrants): HubResourceFile</ID>
+    <ID>CyclomaticComplexMethod:PhoneContextEngine.kt$PhoneContextEngine$private fun derive(snapshot: PhoneContextSnapshot): Pair&lt;ContextState, Int&gt;</ID>
+    <ID>CyclomaticComplexMethod:PlannedExerciseData.kt$PlannedExerciseData$private fun goal(goal: ExerciseCompletionGoal): JsonObject</ID>
+    <ID>CyclomaticComplexMethod:RecordTiming.kt$RecordTiming$private fun instant(record: Record): Timing?</ID>
+    <ID>CyclomaticComplexMethod:RecordTiming.kt$RecordTiming$private fun interval(record: Record): Timing?</ID>
+    <ID>CyclomaticComplexMethod:VoiceService.kt$VoiceService$private fun handle(client: TalkClient, action: String, intent: Intent?)</ID>
+    <ID>CyclomaticComplexMethod:VoiceSocket.kt$VoiceSocket$private fun connect()</ID>
+    <ID>CyclomaticComplexMethod:WatchMonitor.kt$WatchMonitor$override fun live(steps: Int?, heartRate: Int?, activeKcal: Int?)</ID>
+    <ID>CyclomaticComplexMethod:WatchRecords.kt$WatchRecords$private fun hourRecords(hour: Instant, minutes: List&lt;MinuteSample&gt;): List&lt;HealthEnvelope&gt;</ID>
+    <ID>CyclomaticComplexMethod:WatchRemote.kt$WatchRemote$fun run(context: Context, deviceId: String, actionJson: String, reply: (ActionOutcome) -&gt; Unit)</ID>
+    <ID>CyclomaticComplexMethod:XiaomiActions.kt$XiaomiActions$fun encode(action: WatchAction, context: Context): ByteArray</ID>
+    <ID>CyclomaticComplexMethod:XiaomiConfig.kt$XiaomiConfig$fun handle(command: XiaomiCommand): Boolean</ID>
+    <ID>CyclomaticComplexMethod:XiaomiDailyParsers.kt$MinuteReader$fun read(time: Instant): MinuteSample</ID>
+    <ID>CyclomaticComplexMethod:XiaomiDailyParsers.kt$XiaomiDailyParsers$private fun manualV2(id: XiaomiFileId, file: ByteArray): List&lt;SpotSample&gt;</ID>
+    <ID>CyclomaticComplexMethod:XiaomiGpsParser.kt$XiaomiGpsParser$fun route(id: XiaomiFileId, file: ByteArray): List&lt;Route&gt;</ID>
+    <ID>CyclomaticComplexMethod:XiaomiSession.kt$XiaomiSession$override fun packet(channel: XiaomiChannel, payload: ByteArray)</ID>
+    <ID>CyclomaticComplexMethod:XiaomiSession.kt$XiaomiSession$private fun system(command: XiaomiCommand)</ID>
+    <ID>CyclomaticComplexMethod:XiaomiSettingGroups.kt$HeartRateGroup$override fun apply(key: String, raw: Any)</ID>
+    <ID>CyclomaticComplexMethod:XiaomiSync.kt$XiaomiFileParser$fun parse(id: XiaomiFileId, file: ByteArray): WatchFile</ID>
+    <ID>EmptyCatchBlock:NativeLog.kt$NativeLog${ }</ID>
+    <ID>LongMethod:HealthConnectModule.kt$HealthConnectModule$override fun definition()</ID>
+    <ID>LongMethod:NutritionEntry.kt$NutritionEntry$fun of(t: HealthEnvelope, d: JsonObject, m: Metadata): Record?</ID>
+    <ID>LongMethod:TalkModule.kt$TalkModule$override fun definition()</ID>
+    <ID>SwallowedException:AssistantCall.kt$AssistantCall$failure: JSONException</ID>
+    <ID>SwallowedException:HubClient.kt$HubClient$failure: IllegalArgumentException</ID>
+    <ID>SwallowedException:HubClient.kt$HubClient$failure: JSONException</ID>
+    <ID>SwallowedException:HubClient.kt$HubClient$failure: java.net.URISyntaxException</ID>
+    <ID>SwallowedException:HubConnectivity.kt$HubConnectivity$failure: SecurityException</ID>
+    <ID>SwallowedException:HubDiscovery.kt$HubDiscovery$failure: SecurityException</ID>
+    <ID>SwallowedException:HubResourceFileProvider.kt$HubResourceFileProvider$failure: Exception</ID>
+    <ID>SwallowedException:HubResourceHttp.kt$HubResourceHttp$failure: RejectedExecutionException</ID>
+    <ID>SwallowedException:HubRouteProbe.kt$HubRouteProbe$failure: ExecutionException</ID>
+    <ID>SwallowedException:HubRouteProbe.kt$HubRouteProbe$failure: TimeoutException</ID>
+    <ID>SwallowedException:NativeTrace.kt$NativeTrace$failure: Exception</ID>
+    <ID>SwallowedException:OpusEncoderPipe.kt$OpusEncoderPipe.Companion$failure: IOException</ID>
+    <ID>SwallowedException:OpusPlayer.kt$OpusPlayer$failure: IOException</ID>
+    <ID>SwallowedException:VendorApps.kt$VendorApps$missing: PackageManager.NameNotFoundException</ID>
+    <ID>SwallowedException:VoiceService.kt$VoiceService$failure: IllegalStateException</ID>
+    <ID>SwallowedException:VoiceService.kt$VoiceService$failure: SecurityException</ID>
+    <ID>SwallowedException:VoiceSocket.kt$VoiceSocket$failure: java.io.IOException</ID>
+    <ID>SwallowedException:XiaomiSleepParsers.kt$XiaomiSleepParsers$underflow: BufferUnderflowException</ID>
+  </CurrentIssues>
+</SmellBaseline>

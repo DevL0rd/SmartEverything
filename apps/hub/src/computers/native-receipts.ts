@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ApiError, type ComputerAiRequest } from '@smarteverything/domain';
+import { trimOldest } from '../trim-oldest';
 import { canonicalRuntimeInput } from './runtime-receipts';
 
 export type NativeReceiptRequest = Extract<
@@ -62,12 +63,8 @@ export class NativeReceipts<A> {
         );
       return;
     }
-    if (this.bindings.size >= KEPT_RECEIPT_BINDINGS)
-      throw new ApiError(
-        'conflict',
-        'The native receipt binding limit has been reached; old IDs cannot be reused safely.',
-      );
     this.bindings.set(id, { deviceId, ...owner, attachment, signature });
+    trimOldest(this.bindings, KEPT_RECEIPT_BINDINGS);
   }
 
   profile(id: string, deviceId: string, attachment: A | undefined): string | null {

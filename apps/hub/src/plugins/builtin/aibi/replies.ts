@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import type { IncomingHttpHeaders } from 'node:http';
+import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import type { Params } from './catalogue';
 
@@ -30,7 +32,13 @@ interface Envelope {
 
 const GOODBYE = 'Goodbye';
 
-const OK_STATUS = 'HTTP/1.1 200 OK';
+const HTTP_OK = 200;
+export const FRAMING_HEADERS: ReadonlySet<string> = new Set([
+  'connection',
+  'content-length',
+  'keep-alive',
+  'transfer-encoding',
+]);
 
 function envelope({ turn, behavior, intent, params, extra = {}, indexed = true }: Envelope): Reply {
   return {
@@ -124,24 +132,59 @@ export function failed(responsetag: string, errmsg: string): Reply {
   return { errcode: 500, errmsg, responsetag };
 }
 
-export function encode(
-  status: string,
-  body: Buffer | Reply,
-  headers: Readonly<Record<string, string>> = {},
-): Buffer {
-  const payload = Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body), 'utf8');
-  const all = {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': String(payload.length),
-    Connection: 'keep-alive',
-    ...headers,
-  };
-  const head = [status, ...Object.entries(all).map(([key, value]) => `${key}: ${value}`), '', ''];
-  return Buffer.concat([Buffer.from(head.join('\r\n'), 'utf8'), payload]);
+export interface Payload {
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: Buffer;
 }
 
-export function ok(body: Buffer | Reply, headers?: Readonly<Record<string, string>>): Buffer {
-  return encode(OK_STATUS, body, headers);
+export interface Response extends Payload {
+  readonly status: number;
+}
+
+export function encode(
+  status: number,
+  body: Buffer | Reply,
+  headers: Readonly<Record<string, string>> = {},
+): Response {
+  const payload = Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body), 'utf8');
+  return {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', ...headers },
+    body: payload,
+  };
+}
+
+export function ok(body: Buffer | Reply, headers?: Readonly<Record<string, string>>): Response {
+  return encode(HTTP_OK, body, headers);
+}
+
+export function flatHeaders(headers: IncomingHttpHeaders): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [
+      name,
+      Array.isArray(value) ? value.join(', ') : (value ?? ''),
+    ]),
+  );
+}
+
+export function relay(response: Response): Response {
+  return {
+    ...response,
+    headers: Object.fromEntries(
+      Object.entries(response.headers).filter(([name]) => !FRAMING_HEADERS.has(name)),
+    ),
+  };
+}
+
+export function decodedBody(payload: Payload): Buffer {
+  const encoding = (payload.headers['content-encoding'] ?? '').toLowerCase();
+  if (encoding.includes('gzip')) {
+    return gunzipSync(payload.body);
+  }
+  if (encoding.includes('deflate')) {
+    return inflateSync(payload.body);
+  }
+  return encoding.includes('br') ? brotliDecompressSync(payload.body) : payload.body;
 }
 
 const CLOUD_REPLY = z.looseObject({

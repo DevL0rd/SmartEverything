@@ -1,4 +1,4 @@
-import { APP_PLUGINS } from '../../plugins/registry';
+import { pluginDevicePage } from '../../app-shell/device-pages';
 import { useDevice } from '../../store/selectors';
 import type { ReactNode } from 'react';
 import { EmptyState } from '../../components/empty-state';
@@ -11,11 +11,15 @@ import {
   ComputerCodexScreen,
   ComputerCodexSessionsScreen,
   ComputerCodexProviderScreen,
+  COMPUTER_SCREENS,
 } from '../computers';
 import { CameraSettingsScreen } from '../cameras';
 import { DeviceDiagnosticsScreen, DeviceRemotesScreen } from '../devices';
+import { PHONE_SCREENS } from '../phone';
 
-const PAGES: Readonly<Record<string, (props: { readonly deviceId: string }) => ReactNode>> = {
+type DeviceScreenOf = (props: { readonly deviceId: string }) => ReactNode;
+
+const PAGES: Readonly<Record<string, DeviceScreenOf>> = {
   claude: ComputerClaudeScreen,
   codex: ComputerCodexScreen,
   'codex-sessions': ComputerCodexSessionsScreen,
@@ -27,6 +31,11 @@ const PAGES: Readonly<Record<string, (props: { readonly deviceId: string }) => R
   camera: CameraSettingsScreen,
 };
 
+const KIND_SCREENS: Readonly<Record<string, Readonly<Record<string, DeviceScreenOf>>>> = {
+  computer: COMPUTER_SCREENS,
+  phone: PHONE_SCREENS,
+};
+
 export function DeviceSettingsPage({
   deviceId,
   page,
@@ -35,14 +44,9 @@ export function DeviceSettingsPage({
   readonly page: string;
 }): ReactNode {
   const device = useDevice(deviceId);
-  const contribution =
-    device === null
-      ? undefined
-      : APP_PLUGINS.flatMap((plugin) => plugin.deviceSettingsPages ?? []).find(
-          (item) => item.id === page && item.applies(device),
-        );
+  const contribution = device === null ? undefined : pluginDevicePage(device, page);
   if (contribution !== undefined && device !== null) return contribution.render(device);
-  const Page = PAGES[page];
+  const Page = PAGES[page] ?? (device === null ? undefined : KIND_SCREENS[device.kind]?.[page]);
   if (Page === undefined) {
     return (
       <Screen header={<PageHeader title="Settings" />} maxWidth="reading">

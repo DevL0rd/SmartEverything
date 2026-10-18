@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
 import { Icon } from '../../../components/icon';
+import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
@@ -10,7 +11,15 @@ import { decimal } from '../../../format/number';
 import { joinParts, plural } from '../../../format/text';
 import { useComfortReadings, type ComfortMetric } from '../../climate';
 import { familyIcon } from '../../device-visuals';
-import { sameRoom, type RoomMember, type RoomSummary } from '../model/rooms';
+import { setRoomLights } from '../data/room-lights';
+import {
+  lightsToggleOf,
+  sameRoom,
+  type LightsToggle,
+  type RoomMember,
+  type RoomSummary,
+} from '../model/rooms';
+import { background } from '@smarteverything/logging';
 
 const ROOM_METRICS: readonly ComfortMetric[] = ['temperature', 'humidity'];
 
@@ -59,48 +68,53 @@ interface RoomCardProps {
   readonly dense: boolean;
 }
 
+function LightsButton({ toggle }: { readonly toggle: LightsToggle }): ReactNode {
+  return (
+    <View className="absolute right-1 top-1">
+      <IconButton
+        icon="bulb"
+        label={toggle.label}
+        variant={toggle.on ? 'tonal' : 'filled'}
+        onPress={() => {
+          background(setRoomLights(toggle), 'room_lights.set_failed');
+        }}
+      />
+    </View>
+  );
+}
+
 function Card({ room, dense }: RoomCardProps): ReactNode {
   const climate = useRoomClimate(room.id);
+  const toggle = lightsToggleOf(room);
   return (
-    <Interactive
-      href={href.room(room.id)}
-      label={`${room.name}, ${plural(room.devices, 'device')}`}
-      className="h-full justify-between gap-1.5 rounded-md bg-surface-2 p-3"
-      layerClassName="rounded-md"
-    >
-      <View className="flex-row items-center gap-2">
-        <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
+    <View className="relative h-full">
+      <Interactive
+        href={href.room(room.id)}
+        label={`${room.name}, ${plural(room.devices, 'device')}`}
+        className="h-full justify-between gap-1.5 rounded-md bg-surface-2 p-2.5"
+        layerClassName="rounded-md"
+      >
+        <Text variant="callout" numberOfLines={2} className={toggle === null ? '' : 'pr-touch-min'}>
           {room.name}
         </Text>
-        {dense && climate !== '' ? (
-          <Text variant="footnote" tone="variant" className="tabular" numberOfLines={1}>
-            {climate}
-          </Text>
-        ) : null}
-      </View>
-      {dense ? null : (
-        <View className="gap-0.5">
-          {climate === '' ? null : (
-            <Text variant="title-2" numberOfLines={1}>
-              {climate}
-            </Text>
-          )}
-          <Text
-            variant="footnote"
-            tone={room.offline > 0 ? 'warning' : 'variant'}
-            numberOfLines={1}
-          >
-            {room.offline === 0
-              ? plural(room.devices, 'device')
-              : `${plural(room.devices, 'device')} · ${String(room.offline)} offline`}
-          </Text>
-        </View>
-      )}
-      <View className="flex-row items-center justify-between gap-2">
-        <Members room={room} />
-        {room.on === 0 ? null : <Badge label={`${String(room.on)} on`} tone="primary" />}
-      </View>
-    </Interactive>
+        <Text variant="footnote" tone={room.offline > 0 ? 'warning' : 'variant'} numberOfLines={1}>
+          {joinParts([
+            plural(room.devices, 'device'),
+            room.offline > 0 && `${String(room.offline)} offline`,
+            climate,
+          ])}
+        </Text>
+        {dense ? null : (
+          <View className="flex-row items-center justify-between gap-2">
+            <Members room={room} />
+            {room.on === 0 || toggle !== null ? null : (
+              <Badge label={`${String(room.on)} on`} tone="primary" />
+            )}
+          </View>
+        )}
+      </Interactive>
+      {toggle === null ? null : <LightsButton toggle={toggle} />}
+    </View>
   );
 }
 

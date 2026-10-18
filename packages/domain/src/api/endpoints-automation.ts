@@ -1,8 +1,10 @@
-import { AUTOMATION_SEQUENCE_ENDPOINTS } from './endpoints-automation-sequences';
 import { AUTOMATION_RUNTIME_ENDPOINTS } from './endpoints-automation-runtime';
 import { z } from 'zod';
 import { SPEECH_SOURCES } from '../speech-triggers';
-import { AUTOMATION_DEFINITION, SCENE_ACTIONS } from '../automations';
+import { JSON_VALUE } from '../values';
+import { SCENE_ACTIONS } from '../automations';
+import { AUTOMATION_V2 } from '../automation-v2-schema';
+import { AUTOMATION_RUN_ROW } from '../automation-runs';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, JSON_OBJECT, NOTHING, POSITION, somethingToChange } from './primitives';
 import { COMMAND_ROW } from './rows-home';
@@ -18,10 +20,25 @@ import {
   SCENE_ROW,
 } from './rows-media';
 
+export const AUTOMATION_TOOL_ROW = z.strictObject({
+  name: z.string().min(1).max(120),
+  title: z.string().min(1).max(200),
+  description: z.string().max(4000),
+  input_schema: JSON_OBJECT,
+  read_only: z.boolean(),
+  destructive: z.boolean(),
+});
+
+export type AutomationToolRow = z.infer<typeof AUTOMATION_TOOL_ROW>;
+
 const SCENE_ICON = z.string().min(1).max(40);
 const SCENE_PARAMS = z.strictObject({ sceneId: ID });
 const AUTOMATION_PARAMS = z.strictObject({ automationId: ID });
 const LAYOUT_PARAMS = z.strictObject({ page: LAYOUT_PAGE_NAME });
+const RUN_INPUTS = z.record(z.string(), JSON_VALUE);
+const RUN_REQUEST = z
+  .strictObject({ inputs: RUN_INPUTS.optional(), wait: z.boolean().optional() })
+  .default({});
 
 export const STORED_LAYOUT = z.strictObject({ layout: JSON_OBJECT.nullable() });
 
@@ -120,13 +137,13 @@ const AUTOMATION_ENDPOINTS = {
     path: '/api/automations',
     access: 'member',
     summary:
-      'Add an automation; speech triggers match literal finalized words or contiguous phrases from currently authorized sources, with bot speech excluded by default',
+      'Add an automation: when (triggers), onlyIf (one condition), steps and optional inputs and run mode. An automation without triggers is only started by hand or by another automation. Speech triggers match literal finalized words or contiguous phrases from currently authorized sources, with bot speech excluded by default',
     params: NOTHING,
     query: NOTHING,
     body: z.strictObject({
       name: AUTOMATION_NAME,
       enabled: z.boolean().default(true),
-      definition: AUTOMATION_DEFINITION,
+      definition: AUTOMATION_V2,
     }),
     response: AUTOMATION_ROW,
   }),
@@ -134,14 +151,15 @@ const AUTOMATION_ENDPOINTS = {
     method: 'PATCH',
     path: '/api/automations/:automationId',
     access: 'member',
-    summary: 'Change, enable or pause an automation; a new definition clears its last error',
+    summary:
+      'Change, enable or pause an automation; a new definition clears its last error. expectedRevision is optional and refuses the save when the automation changed since it was read',
     params: AUTOMATION_PARAMS,
     query: NOTHING,
     body: somethingToChange({
       name: AUTOMATION_NAME,
       enabled: z.boolean(),
-      definition: AUTOMATION_DEFINITION,
-      expectedRevision: z.string().regex(/^[a-f0-9]{64}$/),
+      definition: AUTOMATION_V2,
+      expectedRevision: z.int().positive(),
     }),
     response: AUTOMATION_ROW,
   }),
@@ -149,7 +167,7 @@ const AUTOMATION_ENDPOINTS = {
     method: 'DELETE',
     path: '/api/automations/:automationId',
     access: 'member',
-    summary: 'Delete an automation',
+    summary: 'Delete an automation that no other automation runs',
     params: AUTOMATION_PARAMS,
     query: NOTHING,
     body: NO_BODY,
@@ -160,11 +178,38 @@ const AUTOMATION_ENDPOINTS = {
     path: '/api/automations/:automationId/run',
     access: 'member',
     summary:
-      'Run an automation’s actions now, skipping its triggers and conditions; the run is recorded like any other',
+      'Run an automation’s steps now, skipping its triggers and onlyIf; the run is recorded like any other. With wait the reply comes when the run has finished',
     params: AUTOMATION_PARAMS,
     query: NOTHING,
+    body: RUN_REQUEST,
+    response: AUTOMATION_RUN_ROW,
+  }),
+  listAutomationTools: endpoint({
+    method: 'GET',
+    path: '/api/automations/tools',
+    access: 'owner',
+    summary:
+      'Every tool a tool step can call, with its exact input schema; the same tools the AI uses',
+    params: NOTHING,
+    query: NOTHING,
     body: NO_BODY,
-    response: DONE,
+    response: z.array(AUTOMATION_TOOL_ROW),
+  }),
+  testAutomation: endpoint({
+    method: 'POST',
+    path: '/api/automations/test',
+    access: 'member',
+    summary:
+      'Run an unsaved draft on the hub as a real run, skipping its triggers and onlyIf; nothing is saved. With wait the reply comes when the run has finished',
+    params: NOTHING,
+    query: NOTHING,
+    body: z.strictObject({
+      automationId: ID.optional(),
+      definition: AUTOMATION_V2,
+      inputs: RUN_INPUTS.optional(),
+      wait: z.boolean().optional(),
+    }),
+    response: AUTOMATION_RUN_ROW,
   }),
 } as const;
 
@@ -223,7 +268,6 @@ const CLIENT_ENDPOINTS = {
 
 export const AUTOMATION_AREA_ENDPOINTS = {
   ...AUTOMATION_RUNTIME_ENDPOINTS,
-  ...AUTOMATION_SEQUENCE_ENDPOINTS,
   ...SCENE_ENDPOINTS,
   ...AUTOMATION_ENDPOINTS,
   ...CLIENT_ENDPOINTS,

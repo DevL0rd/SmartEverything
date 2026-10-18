@@ -80,14 +80,12 @@ export class StoreContext {
     }
     this.feed.hold();
     try {
-      const previous = this.sql.mutationCount();
-      const result = this.sql.transaction(() => {
-        const value = work();
-        return { value, mutated: this.sql.mutationCount() !== previous };
-      });
+      const before = this.sql.mutations;
+      const value = this.sql.transaction(work);
+      const mutated = this.sql.mutations !== before;
       this.feed.release();
-      if (result.mutated) this.feed.committed();
-      return result.value;
+      if (mutated) this.feed.committed();
+      return value;
     } catch (cause) {
       this.feed.discard();
       throw cause;

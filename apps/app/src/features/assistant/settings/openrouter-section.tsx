@@ -3,6 +3,7 @@ import type { OpenRouterAccount } from '@smarteverything/domain';
 import { List } from '../../../components/section';
 import { useIsOwner } from '../../../store/selectors';
 import { useOpenRouterAccount, useOpenRouterStatus } from '../data/openrouter';
+import { MEMBER_FOOTER } from './key-paste-sheet';
 import { DefaultModelRow } from './default-model-row';
 import { CreditRow, KeyLimitRow, KeySpendRow } from './openrouter-credits';
 import { KeyStatusRow, PasteKeyRow, RemoveKeyRow } from './openrouter-key';
@@ -47,7 +48,7 @@ export function OpenRouterSection(): ReactNode {
   const { owner, keySet } = facts;
   return (
     <>
-      <List inset title="OpenRouter">
+      <List inset title="OpenRouter" {...(owner ? {} : { footer: MEMBER_FOOTER })}>
         <KeyStatusRow key="status" />
         {owner ? <PasteKeyRow key="paste" /> : null}
         {owner && keySet ? <RemoveKeyRow key="remove" /> : null}

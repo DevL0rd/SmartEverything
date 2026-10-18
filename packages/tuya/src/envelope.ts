@@ -1,4 +1,3 @@
-import { issuesOf } from './issues';
 import { z } from 'zod';
 
 export const TUYA_ERROR_KINDS = [
@@ -59,10 +58,10 @@ export class TuyaResponseError extends Error {
 
   constructor(
     readonly operation: string,
-    readonly problems: readonly string[],
+    readonly problems: string,
   ) {
     super(
-      `Tuya cloud answered ${operation} with a body that is not a success or failure envelope of the expected shape: ${problems.join('; ')}.`,
+      `Tuya cloud answered ${operation} with a body that is not a success or failure envelope of the expected shape: ${problems}.`,
     );
   }
 }
@@ -81,7 +80,7 @@ export function readResult<S extends z.ZodType>(
 ): z.output<S> {
   const parsed = result.safeParse(candidate);
   if (!parsed.success) {
-    throw new TuyaResponseError(operation, issuesOf(parsed.error));
+    throw new TuyaResponseError(operation, z.prettifyError(parsed.error));
   }
   return parsed.data;
 }
@@ -94,7 +93,7 @@ export function readEnvelope<S extends z.ZodType>(
   readFailure(operation, body);
   const envelope = SUCCESS.safeParse(body);
   if (!envelope.success) {
-    throw new TuyaResponseError(operation, issuesOf(envelope.error));
+    throw new TuyaResponseError(operation, z.prettifyError(envelope.error));
   }
   return readResult(operation, result, envelope.data.result);
 }

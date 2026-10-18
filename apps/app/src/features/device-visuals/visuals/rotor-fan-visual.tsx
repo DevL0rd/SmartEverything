@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Ellipse, Path } from 'react-native-svg';
+import { Circle, Ellipse, Path } from 'react-native-svg';
 import { SPIN, loopStyle } from '../../../design/loops';
-import { Canvas, FULL, Layer, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, Layer, useSvgId } from '../parts/frame';
 import { BodyGradient, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
 import { bladesPath, rounded, spinPeriod } from '../parts/shapes';
 import { ContactShadow, Shine } from '../parts/material';
@@ -14,9 +14,7 @@ function Stand({ ink, tint }: { readonly ink: VisualInk; readonly tint: string }
   const body = useSvgId('stand');
   return (
     <>
-      <Defs>
-        <BodyGradient id={body} ink={ink} />
-      </Defs>
+      <BodyGradient id={body} ink={ink} />
       <ContactShadow cx={50} cy={91} rx={22} ry={3.5} />
       <Ellipse
         cx={50}
@@ -67,11 +65,9 @@ export function RotorFanVisual({ state, px, tone, moving }: VisualProps): ReactN
           <Path d={BLADES} fill={tone === 'active' ? tint : ink.ink} fillOpacity={0.8} />
         </Canvas>
       </Layer>
-      <Layer box={FULL} px={px}>
-        <Canvas px={px}>
-          <Circle cx={50} cy={38} r={5} fill={ink.light} stroke={ink.edge} strokeWidth={0.6} />
-        </Canvas>
-      </Layer>
+      <Canvas px={px} layer>
+        <Circle cx={50} cy={38} r={5} fill={ink.light} stroke={ink.edge} strokeWidth={0.6} />
+      </Canvas>
     </>
   );
 }

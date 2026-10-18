@@ -44,8 +44,16 @@
       "entry": ["test/**/*.test.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
-    "apps/hub": {
+    "packages/shelly": {
       "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
+    "apps/hub": {
+      "entry": [
+        "test/**/*.test.ts",
+        "src/claude/hook-helper.ts",
+        "src/plugins/builtin/discord/voice/isolated/worker.ts"
+      ],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
     "apps/desktop": {

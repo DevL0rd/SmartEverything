@@ -11,7 +11,7 @@ export function acceptsEventStream(request: IncomingMessage): boolean {
 
 export class EventStream {
   private readonly heartbeat: NodeJS.Timeout;
-  private readonly closers = new Set<() => void>();
+  private closer: (() => void) | null = null;
 
   constructor(private readonly response: ServerResponse) {
     response.writeHead(200, {
@@ -25,15 +25,12 @@ export class EventStream {
     }, HEARTBEAT_MS);
     response.once('close', () => {
       clearInterval(this.heartbeat);
-      for (const closer of this.closers) {
-        closer();
-      }
-      this.closers.clear();
+      this.closer?.();
     });
   }
 
   onClose(closer: () => void): void {
-    this.closers.add(closer);
+    this.closer = closer;
   }
 
   send(event: string, data: string): void {

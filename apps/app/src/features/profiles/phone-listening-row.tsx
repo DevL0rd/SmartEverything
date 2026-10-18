@@ -6,6 +6,7 @@ import { joinParts } from '../../format/text';
 import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
 import { listenAgain, useRelayState, useWriteState, type RelayState } from './scale-listener';
+import { background } from '@smarteverything/logging';
 
 function since(label: string, at: string | null, now: number): string | null {
   return at === null ? null : `${label} ${relative(at, now)}`;
@@ -20,7 +21,7 @@ function blocked(native: ScaleRelayStatus): ReactNode {
         subtitleTone="warning"
         icon="smartphone"
         onPress={() => {
-          void listenAgain();
+          background(listenAgain(), 'again.listen_failed');
         }}
       />
     );
@@ -48,7 +49,7 @@ function listening(native: ScaleRelayStatus, live: boolean, now: number): ReactN
         ])}
         icon="smartphone"
         onPress={() => {
-          void listenAgain();
+          background(listenAgain(), 'again.listen_failed');
         }}
       />
       {native.lastError === null ? null : (
@@ -86,7 +87,7 @@ function relayRows(state: RelayState, now: number): ReactNode {
           subtitleTone="critical"
           icon="smartphone"
           onPress={() => {
-            void listenAgain();
+            background(listenAgain(), 'again.listen_failed');
           }}
         />
       );
@@ -107,7 +108,7 @@ export function PhoneListeningRows({ health = true }: { readonly health?: boolea
       {health && write.kind === 'needs_permission' ? (
         <ListRow
           title="Save weigh-ins to Health Connect"
-          subtitle={`${String(write.waiting)} waiting · Review access in Fitness settings`}
+          subtitle={`${String(write.waiting)} waiting · Allow in Health Connect`}
           subtitleTone="warning"
           icon="heartPulse"
           href={href.settings.focus('health', 'health-connect')}

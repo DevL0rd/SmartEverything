@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
 import { TimeField } from '../../../components/time-field';
+import { HOUR_MS } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import {
   DEFAULT_WHEN,
@@ -31,7 +32,7 @@ const PRESETS: readonly { readonly value: Preset; readonly label: string }[] = [
 ];
 
 function soonTime(now: number): When {
-  const soon = new Date(now + 60 * 60_000);
+  const soon = new Date(now + HOUR_MS);
   return { kind: 'at', time: { hour: soon.getHours(), minute: 0 } };
 }
 

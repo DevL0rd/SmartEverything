@@ -11,9 +11,9 @@ const FENCE_LINE_PX = 20;
 const ROW_PX = 56;
 const ATTACHMENT_PX = 200;
 const EMBED_PX = 120;
-const FILL = 1.3;
+const FILL = 1;
 const FLOOR = 3;
-const CEILING = 10;
+const CEILING = 6;
 const TABLE_LINE = /^\s*\|/;
 
 function textHeight(text: string): number {

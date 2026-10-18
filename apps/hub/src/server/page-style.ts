@@ -13,3 +13,29 @@ main { max-width: 420px; width: 100%; background: var(--card); border-radius: 20
 h1 { font-size: 22px; margin: 0 0 8px; }
 p { margin: 0; color: var(--muted); }
 `;
+
+export function escapeHtml(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+export interface HtmlPage {
+  readonly title: string;
+  readonly body: string;
+  readonly style?: string;
+  readonly script?: string;
+}
+
+export function htmlPage({ title, body, style = PAGE_STYLE, script = '' }: HtmlPage): string {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>${escapeHtml(title)}</title><style>${style}</style></head>
+<body><main>${body}</main>${script}</body></html>
+`;
+}

@@ -3,11 +3,11 @@ import { JSON_VALUE, type ProviderMetadata } from '@smarteverything/domain';
 import { z } from 'zod';
 import { SDK_VERSION } from './options';
 import type { ProviderCommandCatalogue } from './command-catalogue';
-import { requireSubscription } from './job';
+import { requireSubscription } from './job-state';
 import { nativeSubscriptionBilling } from './billing';
 import { FLAG_SETTINGS_SCHEMA, SETTINGS_EXCLUSIONS, SETTINGS_WRITER_SCHEMA } from './settings';
 
-export const PROVIDER_OPERATIONS = [
+const PROVIDER_OPERATIONS = [
   'seed_read_state',
   'account_info',
   'set_mcp_servers',
@@ -177,7 +177,10 @@ function metadataInitialization(
 ): ProviderMetadata['initialization'] {
   return {
     ...z.record(z.string(), JSON_VALUE).parse(json),
-    billing_guard: { state: 'blocked', ...billing },
+    billing_guard:
+      billing.state === 'eligible'
+        ? { state: 'eligible' }
+        : { state: 'blocked', code: billing.code, reason: billing.reason },
     native_commands: JSON_VALUE.parse(JSON.parse(JSON.stringify(commands))),
     unavailable_operations: {
       set_thinking:

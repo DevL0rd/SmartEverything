@@ -39,8 +39,8 @@ describe('router collect parsing', () => {
   });
 
   it('computes rates and carries slow and static data forward', () => {
-    const one = buildFrame(parseCollectOutput(first), null);
-    const two = buildFrame(parseCollectOutput(second), one.state);
+    const one = buildFrame(parseCollectOutput(first), null, 1_000_000);
+    const two = buildFrame(parseCollectOutput(second), one.state, 1_002_000);
     const network = two.parts.network;
     expect(network?.downloadMbps).toBe(100);
     expect(network?.uploadMbps).toBe(10);
@@ -56,7 +56,7 @@ describe('router collect parsing', () => {
   });
 
   it('merges leases, Wi-Fi stations, ARP and blocks into clients', () => {
-    const { parts } = buildFrame(parseCollectOutput(first), null);
+    const { parts } = buildFrame(parseCollectOutput(first), null, 1_000_000);
     expect(
       parts.clients.map((client) => [
         client.name,
@@ -74,7 +74,7 @@ describe('router collect parsing', () => {
   });
 
   it('produces snapshots the shared contract accepts', () => {
-    const { parts } = buildFrame(parseCollectOutput(first), null);
+    const { parts } = buildFrame(parseCollectOutput(first), null, 1_000_000);
     const snapshot = {
       at: new Date(0).toISOString(),
       connection: { state: 'online' },

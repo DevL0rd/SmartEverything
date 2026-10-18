@@ -65,6 +65,20 @@ export function minuteOfClock(clock: string): number {
   return Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
 }
 
+export interface ClockWindow {
+  readonly from: string;
+  readonly to: string;
+}
+
+export function insideClockWindow(window: ClockWindow, minute: number): boolean {
+  const from = minuteOfClock(window.from);
+  const to = minuteOfClock(window.to);
+  if (from === to) {
+    return false;
+  }
+  return from < to ? minute >= from && minute < to : minute >= from || minute < to;
+}
+
 export function shiftedDate(
   date: CalendarDate,
   days: number,

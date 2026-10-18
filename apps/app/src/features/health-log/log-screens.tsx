@@ -2,10 +2,9 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../queries/use-screen-query';
 import type { HealthEntryRow } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
-import { readEntries } from '../../api/nutrition';
 import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { ErrorState } from '../../components/error-state';
@@ -14,34 +13,29 @@ import { NavRow } from '../../components/rows';
 import { List } from '../../components/section';
 import { Skeleton } from '../../components/skeleton';
 import { Text } from '../../components/text';
-import { entriesKey } from '../../queries/health-entries';
-import { useMinute } from '../../store/clock';
+import { entryKey } from '../../queries/health-entries';
+import { readMinute } from '../../store/clock';
+import { findEntry } from './entry-read';
 import { saveProblemOf, useEntryWrites, useRetryEntry } from './entry-writes';
 import { entryOfForm, initialTime, initialValues } from './form-values';
 import { LOG_FORMS, LOG_GROUPS, logFormOf, type LogForm } from './forms';
 import { LogFields, LogTimeFields } from './log-fields';
+import { background } from '@smarteverything/logging';
 
-const MINUTE_MS = 60_000;
-
-function useEntry(
-  form: LogForm,
-  id: string | undefined,
-  at: number,
-): {
+function useEntry(id: string | undefined): {
   readonly entry: HealthEntryRow | null;
   readonly loading: boolean;
   readonly error: Error | null;
 } {
-  const from = at - MINUTE_MS;
-  const to = at + MINUTE_MS;
-  const query = useQuery({
-    queryKey: entriesKey(from, to, form.type),
-    queryFn: () => readEntries(from, to, [form.type]),
+  const query = useScreenQuery({
+    queryKey: entryKey(id ?? ''),
+    queryFn: () => findEntry(id ?? ''),
     enabled: id !== undefined,
+    retry: false,
   });
   return {
-    entry: query.data?.find((row) => row.id === id) ?? null,
-    loading: id !== undefined && query.data === undefined && query.error === null,
+    entry: query.data ?? null,
+    loading: id !== undefined && query.isPending,
     error: query.error,
   };
 }
@@ -84,23 +78,17 @@ function EditorFooter({
   );
 }
 
-function useFinish(): {
-  readonly busy: boolean;
-  readonly finish: (work: Promise<unknown>) => void;
-} {
+function useFinish(): (work: Promise<unknown>) => void {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  return {
-    busy,
-    finish: (work): void => {
-      setBusy(true);
-      void work.then((done) => {
-        setBusy(false);
+  return (work): void => {
+    background(
+      work.then((done) => {
         if (done !== null && done !== false) {
           router.back();
         }
-      });
-    },
+      }),
+      'log_screens.background_failed',
+    );
   };
 }
 
@@ -113,10 +101,9 @@ function LogEditor({
 }): ReactNode {
   const router = useRouter();
   const writes = useEntryWrites();
-  const now = useMinute();
   const [values, setValues] = useState(initialValues(form, entry));
-  const [time, setTime] = useState(initialTime(form, entry, now));
-  const { busy, finish } = useFinish();
+  const [time, setTime] = useState(() => initialTime(form, entry, readMinute()));
+  const finish = useFinish();
   const input = entryOfForm(form, values, time);
   return (
     <FlowFrame
@@ -127,7 +114,7 @@ function LogEditor({
       footer={
         <EditorFooter
           entry={entry}
-          busy={busy}
+          busy={writes.busy}
           onSave={() => {
             finish(
               entry === null
@@ -176,13 +163,11 @@ function Notice({
 function Loaded({
   form,
   entryId,
-  at,
 }: {
   readonly form: LogForm;
   readonly entryId: string | undefined;
-  readonly at: number;
 }): ReactNode {
-  const found = useEntry(form, entryId, at);
+  const found = useEntry(entryId);
   if (found.error !== null) {
     return (
       <Notice title={form.title}>
@@ -210,7 +195,7 @@ function Loaded({
 }
 
 export function LogEntryScreen(): ReactNode {
-  const params = useLocalSearchParams<{ type: string; entry?: string; at?: string }>();
+  const params = useLocalSearchParams<{ type: string; entry?: string }>();
   const form = logFormOf(params.type);
   if (form === null) {
     return (
@@ -221,7 +206,7 @@ export function LogEntryScreen(): ReactNode {
       </Notice>
     );
   }
-  return <Loaded form={form} entryId={params.entry} at={Number(params.at ?? '0')} />;
+  return <Loaded form={form} entryId={params.entry} />;
 }
 
 export function LogPickerScreen(): ReactNode {

@@ -29,7 +29,7 @@ function imageTerminalStatus(receipt: ImageOperationReceipt): string {
   }
 }
 
-export function isActiveImageReceipt(receipt: ImageOperationReceipt): boolean {
+function isActiveImageReceipt(receipt: ImageOperationReceipt): boolean {
   return receipt.state === 'reserved' || receipt.state === 'running';
 }
 

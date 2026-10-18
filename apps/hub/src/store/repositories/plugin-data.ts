@@ -40,24 +40,53 @@ export interface PluginRecordRow {
   readonly value: JsonValue;
 }
 
+const LIVE_KEPT = 1;
+
+const ENABLED_PLUGIN = z.strictObject({ id: z.string() });
+
+function liveKey(pluginId: string, stream: string): string {
+  return `${pluginId}\u0000${stream}`;
+}
+
 export class PluginDataRepository {
+  private readonly live = new Map<string, PluginStreamRow>();
+  private readonly unsaved = new Set<string>();
+
   constructor(private readonly context: StoreContext) {}
+
+  publishLive(pluginId: string, point: PluginDataPoint): void {
+    const key = liveKey(pluginId, point.stream);
+    const before = this.live.get(key);
+    const row = { plugin_id: pluginId, ...point };
+    this.live.set(key, row);
+    this.unsaved.add(key);
+    this.context.changed(
+      'plugin_streams',
+      before === undefined ? 'INSERT' : 'UPDATE',
+      row,
+      before ?? null,
+    );
+  }
+
+  saveLive(pluginId: string): number {
+    const saving = [...this.unsaved].flatMap((key) => {
+      const row = this.live.get(key);
+      if (row?.plugin_id !== pluginId) return [];
+      return [{ key, row }];
+    });
+    this.context.write(() => {
+      for (const { key, row } of saving) {
+        this.insert(pluginId, row, LIVE_KEPT);
+        this.unsaved.delete(key);
+      }
+    });
+    return saving.length;
+  }
 
   publish(pluginId: string, point: PluginDataPoint, keep: number): void {
     this.context.write(() => {
       const before = this.stream(pluginId, point.stream);
-      this.context.sql.run(
-        'save the plugin data',
-        `insert into plugin_data (plugin_id, stream, at, value) values ($pluginId, $stream, $at, $value)`,
-        { pluginId, stream: point.stream, at: point.at, value: jsonText(point.value) },
-      );
-      this.context.sql.run(
-        'trim the plugin data',
-        `delete from plugin_data where plugin_id = $pluginId and stream = $stream and rowid not in (
-           select rowid from plugin_data where plugin_id = $pluginId and stream = $stream
-           order by at desc limit $keep)`,
-        { pluginId, stream: point.stream, keep: Math.max(keep, 1) },
-      );
+      this.insert(pluginId, point, keep);
       const row = { plugin_id: pluginId, ...point };
       this.context.changed(
         'plugin_streams',
@@ -78,7 +107,30 @@ export class PluginDataRepository {
   }
 
   streams(): PluginStreamRow[] {
-    return this.context.sql.all(STORED_STREAM, `${LATEST} group by d.plugin_id, d.stream`);
+    const saved = this.context.sql.all(STORED_STREAM, `${LATEST} group by d.plugin_id, d.stream`);
+    const newer = new Map(saved.map((row) => [liveKey(row.plugin_id, row.stream), row]));
+    const enabled = new Set(
+      this.context.sql
+        .all(ENABLED_PLUGIN, 'select id from plugins where enabled = 1')
+        .map((row) => row.id),
+    );
+    for (const [key, row] of this.live) if (enabled.has(row.plugin_id)) newer.set(key, row);
+    return [...newer.values()];
+  }
+
+  private insert(pluginId: string, point: PluginDataPoint, keep: number): void {
+    this.context.sql.run(
+      'save the plugin data',
+      `insert into plugin_data (plugin_id, stream, at, value) values ($pluginId, $stream, $at, $value)`,
+      { pluginId, stream: point.stream, at: point.at, value: jsonText(point.value) },
+    );
+    this.context.sql.run(
+      'trim the plugin data',
+      `delete from plugin_data where plugin_id = $pluginId and stream = $stream and rowid not in (
+         select rowid from plugin_data where plugin_id = $pluginId and stream = $stream
+         order by at desc limit $keep)`,
+      { pluginId, stream: point.stream, keep: Math.max(keep, 1) },
+    );
   }
 
   history(pluginId: string, stream: string, limit: number): PluginDataPoint[] {

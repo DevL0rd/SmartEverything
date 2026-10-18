@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
@@ -14,11 +14,13 @@ import {
   toggleAutomation,
   type SavedAutomation,
 } from '../data/actions';
-import { triggerIcon } from '../editor/kinds';
+import { triggerV2Icon } from '../editor/kinds';
 import { leadTrigger } from '../model/rules';
+import { shallowEqual } from '../../../store/store-context';
+import { background } from '@smarteverything/logging';
 
 function subtitleOf(rule: RuleView): string {
-  if (rule.definition === null) {
+  if (rule.automation === null) {
     return 'Can’t be read. Open to fix.';
   }
   if (rule.row.last_error !== null) {
@@ -40,7 +42,7 @@ function runItems(
       label: 'Run now',
       icon: 'play',
       onPress: (): void => {
-        void testSavedRun(automationId, saved.name);
+        background(testSavedRun(automationId, saved.name), 'saved_run.test_failed');
       },
     },
     {
@@ -53,29 +55,33 @@ function runItems(
   ];
 }
 
-function deleteItem(row: AutomationRecord, saved: SavedAutomation | null): MenuItem {
+function deleteItem(row: AutomationRecord): MenuItem {
   return {
     label: 'Delete',
     icon: 'trash',
     destructive: true,
     onPress: (): void => {
-      void confirm({
-        title: `Delete ${row.name}?`,
-        confirmLabel: 'Delete',
-        tone: 'destructive',
-      }).then((accepted) => {
-        if (accepted) {
-          void removeAutomation(row.id, saved);
-        }
-      });
+      background(
+        confirm({
+          title: `Delete ${row.name}?`,
+          confirmLabel: 'Delete',
+          tone: 'destructive',
+        }).then((accepted) => {
+          if (accepted) {
+            removeAutomation(row.id);
+          }
+        }),
+        'automation_row.confirm_failed',
+      );
     },
   };
 }
 
 function useRowMenu(rule: RuleView, taken: readonly string[]): MenuItem[] {
   const router = useRouter();
-  const { row, definition } = rule;
-  const saved = definition === null ? null : { name: row.name, enabled: row.enabled, definition };
+  const { row, automation } = rule;
+  const saved =
+    automation === null ? null : { name: row.name, enabled: row.enabled, definition: automation };
   return [
     ...runItems(row.id, saved, taken),
     {
@@ -92,29 +98,40 @@ function useRowMenu(rule: RuleView, taken: readonly string[]): MenuItem[] {
         toggleAutomation(row.id, !row.enabled);
       },
     },
-    deleteItem(row, saved),
+    deleteItem(row),
   ];
 }
 
-export function AutomationRow({
-  rule,
-  catalog,
-  taken,
-  selected = false,
-}: {
+interface AutomationRowProps {
   readonly rule: RuleView;
   readonly catalog: Catalog;
   readonly taken: readonly string[];
   readonly selected?: boolean;
-}): ReactNode {
-  const lead = leadTrigger(rule.definition);
+}
+
+function sameRow(left: AutomationRowProps, right: AutomationRowProps): boolean {
+  return (
+    left.rule === right.rule &&
+    left.catalog === right.catalog &&
+    left.selected === right.selected &&
+    shallowEqual(left.taken, right.taken)
+  );
+}
+
+export const AutomationRow = memo(function AutomationRow({
+  rule,
+  catalog,
+  taken,
+  selected = false,
+}: AutomationRowProps): ReactNode {
+  const lead = leadTrigger(rule.automation);
   const attention = rule.section === 'attention';
   return (
     <ListRow
       title={rule.row.name}
       subtitle={subtitleOf(rule)}
       subtitleTone={attention ? 'critical' : 'variant'}
-      icon={attention || lead === null ? 'alert' : triggerIcon(lead, catalog.allDevices)}
+      icon={attention ? 'alert' : triggerV2Icon(lead, catalog.allDevices)}
       iconTone={attention ? 'critical' : 'primary'}
       href={href.automation(rule.row.id)}
       selected={selected}
@@ -123,7 +140,7 @@ export function AutomationRow({
         <Switch
           label={`${rule.row.name} on`}
           value={rule.row.enabled}
-          disabled={rule.definition === null}
+          disabled={rule.automation === null}
           onChange={(enabled) => {
             toggleAutomation(rule.row.id, enabled);
           }}
@@ -131,4 +148,4 @@ export function AutomationRow({
       }
     />
   );
-}
+}, sameRow);

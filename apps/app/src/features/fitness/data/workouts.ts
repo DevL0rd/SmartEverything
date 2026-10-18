@@ -4,7 +4,7 @@ import { DAY_MS, startOfDayKey } from '../../../format/time';
 import { workoutOf, type Workout } from '../model/workouts';
 import { useRecords } from './queries';
 
-export const WORKOUT_RELATED: readonly HealthRecordType[] = [
+const WORKOUT_RELATED: readonly HealthRecordType[] = [
   'HeartRate',
   'Distance',
   'ActiveCaloriesBurned',
@@ -30,10 +30,16 @@ export function useLatestWorkout(day: string): WorkoutRead {
   return useWorkoutOf(latest, sessions.data !== undefined, sessions.error);
 }
 
+export function useRelatedRecords(session: Session | null): ReturnType<typeof useRecords> {
+  return useRecords(
+    session === null ? [] : WORKOUT_RELATED,
+    session === null ? 0 : startOf(session),
+    session === null ? 0 : endOf(session),
+  );
+}
+
 function useWorkoutOf(session: Session | null, loaded: boolean, error: Error | null): WorkoutRead {
-  const from = session === null ? 0 : startOf(session);
-  const to = session === null ? 0 : endOf(session);
-  const related = useRecords(session === null ? [] : WORKOUT_RELATED, from, to);
+  const related = useRelatedRecords(session);
   if (session === null) {
     return { workout: null, loaded, error };
   }

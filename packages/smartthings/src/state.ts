@@ -119,7 +119,7 @@ function eventDetails(
     : {
         ...details,
         summary,
-        topic: mapping.topic ?? event.attribute,
+        topic: mapping.topic,
         capability: rawAttributeKey(event.componentId, event.capability, event.attribute),
       };
 }

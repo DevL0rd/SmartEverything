@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Ellipse, Path } from 'react-native-svg';
+import { Circle, Ellipse, Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { RING, loopStyle } from '../../../design/loops';
 import { Canvas, FULL, Layer, useSvgId } from '../parts/frame';
@@ -35,27 +35,16 @@ export function PresenceVisual({ state, size, px, tone, moving }: VisualProps): 
   return (
     <>
       {home && moving && size !== 'tile' ? <Ripple px={px} colour={colour} /> : null}
-      <Layer box={FULL} px={px}>
-        <Canvas px={px}>
-          <Defs>
-            <BodyGradient id={body} ink={ink} />
-          </Defs>
-          <ContactShadow cx={50} cy={86} rx={28} ry={5} />
-          <Ellipse
-            cx={50}
-            cy={86}
-            rx={22}
-            ry={4.5}
-            fill={colour}
-            fillOpacity={home ? 0.22 : 0.08}
-          />
-          <Path d={PHONE} fill={`url(#${body})`} stroke={ink.edge} strokeWidth={0.6} />
-          <Shine d={PHONE} gloss />
-          <Path d={SCREEN} fill={ink.well} fillOpacity={WELL} />
-          <Path d={PIN} fill={colour} fillOpacity={home ? 0.95 : 0.5} />
-          <Circle cx={50} cy={38.5} r={3.4} fill={ink.well} fillOpacity={WELL} />
-        </Canvas>
-      </Layer>
+      <Canvas px={px} layer>
+        <BodyGradient id={body} ink={ink} />
+        <ContactShadow cx={50} cy={86} rx={28} ry={5} />
+        <Ellipse cx={50} cy={86} rx={22} ry={4.5} fill={colour} fillOpacity={home ? 0.22 : 0.08} />
+        <Path d={PHONE} fill={`url(#${body})`} stroke={ink.edge} strokeWidth={0.6} />
+        <Shine d={PHONE} gloss />
+        <Path d={SCREEN} fill={ink.well} fillOpacity={WELL} />
+        <Path d={PIN} fill={colour} fillOpacity={home ? 0.95 : 0.5} />
+        <Circle cx={50} cy={38.5} r={3.4} fill={ink.well} fillOpacity={WELL} />
+      </Canvas>
     </>
   );
 }

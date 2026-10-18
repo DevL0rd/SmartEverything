@@ -5,20 +5,17 @@ import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { QrCode } from '../../../components/qr-code';
 import { Text } from '../../../components/text';
-import { useSizeClass } from '../../../design/size-class';
+import { useIsPhone } from '../../../design/size-class';
 import { plural } from '../../../format/text';
 import { useMinute } from '../../../store/clock';
 import { useProviderLink } from '../../../store/selectors';
-
-const QR_LIFETIME_MS = 5 * 60_000;
+import { qrMinutesLeft } from '../model/qr-expiry';
 
 function MinutesLeft(): ReactNode {
-  const row = useProviderLink('tuya');
-  const now = useMinute();
-  if (row === null) {
+  const left = qrMinutesLeft(useProviderLink('tuya'), useMinute());
+  if (left === null) {
     return null;
   }
-  const left = Math.ceil((Date.parse(row.updated_at) + QR_LIFETIME_MS - now) / 60_000);
   return (
     <Text variant="footnote" tone="variant" align="center">
       {left > 0 ? `Expires in about ${plural(left, 'minute')}` : 'Expiring now'}
@@ -51,9 +48,8 @@ export function TuyaQr({
   readonly app: string;
   readonly content: string;
 }): ReactNode {
-  const { idiom, width } = useSizeClass();
+  const phone = useIsPhone();
   const [here, setHere] = useState(false);
-  const phone = idiom === 'touch' && (width === 'compact' || width === 'medium');
   if (!phone || here) {
     return <ShownCode app={app} content={content} />;
   }

@@ -73,6 +73,21 @@ export class SessionBus {
     this.bus.on('error', listener);
   }
 
+  connected(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const connect = (): void => {
+        this.bus.removeListener('error', fail);
+        resolve();
+      };
+      const fail = (cause: unknown): void => {
+        this.bus.removeListener('connect', connect);
+        reject(cause instanceof Error ? cause : new Error(String(cause)));
+      };
+      this.bus.once('connect', connect);
+      this.bus.once('error', fail);
+    });
+  }
+
   async call(request: BusCall): Promise<readonly unknown[]> {
     const reply = await this.bus.call(
       new dbus.Message({

@@ -9,6 +9,7 @@ import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.request.ChangesTokenRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
+import expo.modules.healthconnect.diagnostics.NativeLog
 import java.time.Duration
 import java.time.Instant
 import kotlin.reflect.KClass
@@ -28,8 +29,13 @@ class SyncEngine(private val context: Context) {
   suspend fun run(trigger: SyncTrigger): SyncReport = lock.withLock {
     val startedAt = Instant.now()
     val tally = Tally()
+    val clock = System.nanoTime()
+    NativeLog.info(SCOPE, "run.started") { mapOf("trigger" to trigger.label) }
     val report = try {
       val plan = plan(trigger, tally)
+      NativeLog.debug(SCOPE, "run.planned", NativeLog.elapsedMs(clock)) {
+        mapOf("types" to plan.types.size, "history" to plan.historyAllowed)
+      }
       for (type in plan.types) {
         sync(plan, type)
       }
@@ -39,7 +45,13 @@ class SyncEngine(private val context: Context) {
       reportOf(trigger, startedAt, tally, SyncOutcome.SUCCEEDED, null)
     } catch (failure: SyncFailure) {
       val outcome = if (failure.retryable) SyncOutcome.RETRYING else SyncOutcome.FAILED
+      NativeLog.warn(SCOPE, "run.failed", failure, NativeLog.elapsedMs(clock)) {
+        mapOf("trigger" to trigger.label, "outcome" to outcome.label, "retryable" to failure.retryable, "records" to tally.records, "deletions" to tally.deletions)
+      }
       reportOf(trigger, startedAt, tally, outcome, failure.message)
+    }
+    NativeLog.info(SCOPE, "run.finished", NativeLog.elapsedMs(clock)) {
+      mapOf("trigger" to trigger.label, "outcome" to report.outcome.label, "records" to report.records, "deletions" to report.deletions, "types" to report.types.size)
     }
     state.saveReport(report)
     report
@@ -83,10 +95,18 @@ class SyncEngine(private val context: Context) {
 
   private suspend fun sync(plan: SyncPlan, type: RecordType) {
     val cursor = state.changes(type)
-    if (cursor == null) {
-      backfill(plan, type)
-    } else {
-      changes(plan, type, cursor)
+    val started = System.nanoTime()
+    NativeLog.debug(SCOPE, "type.started") { mapOf("type" to type.name, "mode" to if (cursor == null) "backfill" else "changes") }
+    try {
+      if (cursor == null) {
+        backfill(plan, type)
+      } else {
+        changes(plan, type, cursor)
+      }
+      NativeLog.debug(SCOPE, "type.finished", NativeLog.elapsedMs(started)) { mapOf("type" to type.name) }
+    } catch (failure: SyncFailure) {
+      NativeLog.warn(SCOPE, "type.failed", failure, NativeLog.elapsedMs(started)) { mapOf("type" to type.name, "retryable" to failure.retryable) }
+      throw failure
     }
   }
 
@@ -108,6 +128,7 @@ class SyncEngine(private val context: Context) {
     do {
       val response = HealthConnectAccess.call { plan.client.getChanges(token) }
       if (response.changesTokenExpired) {
+        NativeLog.info(SCOPE, "token.expired") { mapOf("type" to type.name, "action" to "recover", "syncedAt" to cursor.syncedAt.toString()) }
         recover(plan, type, cursor)
         return
       }
@@ -184,6 +205,7 @@ class SyncEngine(private val context: Context) {
   )
 
   private companion object {
+    private const val SCOPE = "health-sync"
     val lock = Mutex()
     val DEFAULT_WINDOW: Duration = Duration.ofDays(30)
     val RECOVERY_OVERLAP: Duration = Duration.ofDays(1)

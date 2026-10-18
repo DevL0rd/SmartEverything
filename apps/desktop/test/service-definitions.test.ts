@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ServiceDefinitionError,
   launchAgent,
+  nodeSystemdUnit,
   systemdUnit,
   windowsLauncher,
   windowsRunCommand,
@@ -26,11 +27,37 @@ describe('systemdUnit', () => {
         'RestartSec=5',
         'TimeoutStopSec=30',
         'UMask=0077',
+        'IOSchedulingClass=best-effort',
+        'IOSchedulingPriority=7',
+        'CPUWeight=1000',
         '',
         '[Install]',
         'WantedBy=default.target',
         '',
       ].join('\n'),
+    );
+  });
+
+  it('pins the service to the efficiency cores of a hybrid CPU', () => {
+    const unit = systemdUnit({ ...LAUNCH, efficiencyCores: '16-31' });
+    expect(unit).toContain('CPUAffinity=16-31\n');
+  });
+
+  it('does not pin on a CPU without efficiency cores', () => {
+    const unit = systemdUnit(LAUNCH);
+    expect(unit).not.toContain('CPUAffinity');
+  });
+
+  it('gives the server and the computer client a high CPU weight and no nice value so a busy machine cannot starve live audio', () => {
+    const unit = systemdUnit({ ...LAUNCH, efficiencyCores: '16-31' });
+    expect(unit).not.toContain('Nice=');
+    expect(unit).toContain('CPUWeight=1000\n');
+    expect(systemdUnit(LAUNCH)).toContain('CPUWeight=1000\n');
+  });
+
+  it('refuses a core list that is not a CPU list', () => {
+    expect(() => systemdUnit({ ...LAUNCH, efficiencyCores: '16-31\nNice=-5' })).toThrow(
+      ServiceDefinitionError,
     );
   });
 
@@ -52,6 +79,34 @@ describe('systemdUnit', () => {
     expect(() => systemdUnit({ ...LAUNCH, entry: 'a\0b' })).toThrow(
       'the service entry must be a single line without a NUL; received "a\\u0000b"',
     );
+  });
+});
+
+describe('nodeSystemdUnit', () => {
+  const NODE_LAUNCH = {
+    ...LAUNCH,
+    dataDirectory: '/home/ann/.config/SmartEverything-node',
+    efficiencyCores: '16-31',
+  };
+
+  it('is the server unit with the computer client description, so no unit is edited by hand', () => {
+    const node = nodeSystemdUnit(NODE_LAUNCH);
+    expect(node).toContain('Description=SmartEverything computer client\n');
+    expect(node).toContain('WorkingDirectory=/home/ann/.config/SmartEverything-node\n');
+    expect(node.replace('SmartEverything computer client', 'SmartEverything server')).toBe(
+      systemdUnit(NODE_LAUNCH),
+    );
+  });
+
+  it('pins the computer client to the efficiency cores only on a hybrid CPU', () => {
+    expect(nodeSystemdUnit(NODE_LAUNCH)).toContain('CPUAffinity=16-31\n');
+    expect(nodeSystemdUnit({ ...NODE_LAUNCH, efficiencyCores: null })).not.toContain('CPUAffinity');
+  });
+
+  it('keeps the same priority as the server', () => {
+    const unit = nodeSystemdUnit({ ...NODE_LAUNCH, efficiencyCores: null });
+    expect(unit).not.toContain('Nice=');
+    expect(unit).toContain('CPUWeight=1000\n');
   });
 });
 
@@ -90,7 +145,8 @@ describe('windowsLauncher', () => {
     entry:
       'C:\\Users\\Ann\\AppData\\Local\\smarteverything\\app-1.0.0\\resources\\service\\service.mjs',
     dataDirectory: 'C:\\Users\\Ann\\AppData\\Roaming\\SmartEverything',
-    path: 'C:\\Windows\\system32;C:\\ffmpeg\\bin',
+    path: 'C:\\Windows\\system32;C:\\Tools\\bin',
+    efficiencyCores: null,
   };
 
   it('starts the supervisor hidden as Node with the data directory and PATH', () => {
@@ -99,7 +155,7 @@ describe('windowsLauncher', () => {
       'var environment = shell.Environment("PROCESS");',
       'environment("ELECTRON_RUN_AS_NODE") = "1";',
       'environment("SMARTEVERYTHING_DATA_DIRECTORY") = "C:\\\\Users\\\\Ann\\\\AppData\\\\Roaming\\\\SmartEverything";',
-      'environment("PATH") = "C:\\\\Windows\\\\system32;C:\\\\ffmpeg\\\\bin";',
+      'environment("PATH") = "C:\\\\Windows\\\\system32;C:\\\\Tools\\\\bin";',
       'shell.CurrentDirectory = "C:\\\\Users\\\\Ann\\\\AppData\\\\Roaming\\\\SmartEverything";',
       'shell.Run("\\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\smarteverything.exe\\" \\"C:\\\\Users\\\\Ann\\\\AppData\\\\Local\\\\smarteverything\\\\app-1.0.0\\\\resources\\\\service\\\\service.mjs\\" --supervise", 0, false);',
       '',

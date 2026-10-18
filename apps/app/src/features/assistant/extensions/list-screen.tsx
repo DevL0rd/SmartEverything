@@ -9,10 +9,10 @@ import { NavRow } from '../../../components/rows';
 import { VirtualList, type VirtualSection } from '../../../components/virtual-list';
 import { SearchField } from '../../../components/search-field';
 import { Text } from '../../../components/text';
-import { useIsOwner } from '../../../store/selectors';
+import { Button } from '../../../components/button';
 import { useExtensions, useExtensionConfiguration } from './queries';
-import { ExtensionReadStatus } from './query-status';
-import { installedItems } from './items';
+import { ExtensionReadStatus, useMemberBanner } from './query-status';
+import { pageKind } from './items';
 import {
   catalogueItemIcon,
   catalogueItemHref,
@@ -24,6 +24,7 @@ import { EmptyState } from '../../../components/empty-state';
 import { devicesSummary, itemSummary } from './status';
 import { ExtensionDevicesSheet } from './devices-sheet';
 import { ClaudeCollectionControl } from './collection-control';
+import { background } from '@smarteverything/logging';
 
 type ConfigurationQuery = ReturnType<typeof useExtensionConfiguration>;
 
@@ -51,15 +52,15 @@ function InstalledHeader({
         loading={configuration.isFetching ? configuration.data === undefined : false}
         error={configuration.error ?? catalogue.error}
         retry={() => {
-          void configuration.refetch();
-          void catalogue.refetch();
+          background(configuration.refetch(), 'configuration.refetch_failed');
+          background(catalogue.refetch(), 'catalogue.refetch_failed');
         }}
       />
       <Text variant="callout" tone="variant">
         {kind === 'skill'
           ? (catalogue.data?.bundled_skills?.length ?? 0) > 0
             ? 'Included skills guide SmartEverything through useful tasks. Add shared skills for compatible workspaces.'
-            : 'This hub does not list its included skills yet. Imported workspace skills are shown below.'
+            : 'Update the hub to see included skills. Workspace skills are below.'
           : 'Choose once for your compatible devices. File access and sign-ins stay on each device.'}
       </Text>
       <ClaudeCollectionControl kind={kind} />
@@ -69,6 +70,7 @@ function InstalledHeader({
           value={query}
           onChange={setQuery}
           placeholder={kind === 'skill' ? 'Search skills' : 'Search added extensions'}
+          variant="field"
         />
       ) : null}
     </View>
@@ -76,9 +78,8 @@ function InstalledHeader({
 }
 
 function InstalledFooter({ kind }: { readonly kind: 'extension' | 'skill' }): ReactNode {
-  const owner = useIsOwner();
   return (
-    <View className="gap-3 px-gutter pt-3">
+    <View className="px-gutter pt-3">
       <List inset>
         <NavRow
           icon="plus"
@@ -96,11 +97,6 @@ function InstalledFooter({ kind }: { readonly kind: 'extension' | 'skill' }): Re
           />
         ) : null}
       </List>
-      {owner ? null : (
-        <Text variant="footnote" tone="variant">
-          Managed by the home owner
-        </Text>
-      )}
     </View>
   );
 }
@@ -110,21 +106,21 @@ function sectionsOf(items: readonly CatalogueItem[]): readonly VirtualSection<Ca
     {
       key: 'included',
       title: 'Included',
-      data: items.filter((item) => item.kind === 'bundled_skill' || item.included),
+      data: items.filter(
+        (item) => item.kind === 'bundled_skill' || item.source.kind === 'included',
+      ),
     },
     {
       key: 'added',
       title: 'Added',
-      data: items.filter((item) => item.kind !== 'bundled_skill' && !item.included),
+      data: items.filter(
+        (item) => item.kind !== 'bundled_skill' && item.source.kind !== 'included',
+      ),
     },
   ].filter((section) => section.data.length > 0);
 }
 
-export function AiExtensionsScreen({
-  kind = 'extension',
-}: {
-  readonly kind?: 'extension' | 'skill';
-}): ReactNode {
+function InstalledList({ kind }: { readonly kind: 'extension' | 'skill' }): ReactNode {
   const configuration = useExtensionConfiguration();
   const catalogue = useExtensions();
   const params = z.object({ section: z.string().optional() }).parse(useLocalSearchParams());
@@ -132,10 +128,7 @@ export function AiExtensionsScreen({
   const [query, setQuery] = useState('');
   const items = useInstalledItems(kind);
   return (
-    <SettingsFrame
-      page={kind === 'skill' ? 'assistant/skills' : 'assistant/extensions'}
-      scroll={false}
-    >
+    <>
       <VirtualList
         header={
           <InstalledHeader
@@ -154,7 +147,15 @@ export function AiExtensionsScreen({
         keyOf={(item) => item.id}
         renderItem={(item) => <InstalledRow item={item} />}
         footer={<InstalledFooter kind={kind} />}
-        empty={<CatalogueEmpty kind={kind} />}
+        empty={
+          <CatalogueEmpty
+            kind={kind}
+            query={query}
+            clear={() => {
+              setQuery('');
+            }}
+          />
+        }
       />
       {configuration.data === undefined ? null : (
         <ExtensionDevicesSheet
@@ -165,20 +166,33 @@ export function AiExtensionsScreen({
           configuration={configuration.data}
         />
       )}
+    </>
+  );
+}
+
+export function AiExtensionsScreen({
+  kind = 'extension',
+}: {
+  readonly kind?: 'extension' | 'skill';
+}): ReactNode {
+  const banner = useMemberBanner(
+    kind === 'skill' ? 'add, update or remove skills' : 'add, update or remove extensions',
+  );
+  return (
+    <SettingsFrame
+      page={kind === 'skill' ? 'assistant/skills' : 'assistant/extensions'}
+      scroll={false}
+      {...(banner === undefined ? {} : { banner })}
+    >
+      <InstalledList kind={kind} />
     </SettingsFrame>
   );
 }
 
 function useInstalledItems(kind: 'extension' | 'skill'): readonly CatalogueItem[] {
-  const configuration = useExtensionConfiguration();
-  const catalogue = useExtensions();
-  const selected =
-    configuration.data === undefined
-      ? []
-      : installedItems(catalogue.data?.items ?? [], configuration.data.desired).filter(
-          (item) => item.kind === kind,
-        );
-  return kind === 'skill' ? [...(catalogue.data?.bundled_skills ?? []), ...selected] : selected;
+  const catalogue = useExtensions().data;
+  const installed = (catalogue?.items ?? []).filter((item) => pageKind(item) === kind);
+  return kind === 'skill' ? [...(catalogue?.bundled_skills ?? []), ...installed] : installed;
 }
 
 function InstalledRow({ item }: { readonly item: CatalogueItem }): ReactNode {
@@ -223,17 +237,33 @@ function DeviceLink({
   );
 }
 
-function CatalogueEmpty({ kind }: { readonly kind: 'extension' | 'skill' }): ReactNode {
+function CatalogueEmpty({
+  kind,
+  query,
+  clear,
+}: {
+  readonly kind: 'extension' | 'skill';
+  readonly query: string;
+  readonly clear: () => void;
+}): ReactNode {
   const catalogue = useExtensions();
+  const noun = kind === 'skill' ? 'skills' : 'extensions';
+  if (query !== '')
+    return (
+      <EmptyState
+        icon="search"
+        title={`No ${noun} match “${query}”`}
+        body="Try a different word."
+        action={<Button label="Clear search" variant="text" onPress={clear} />}
+      />
+    );
+  if (catalogue.data === undefined) return null;
   return (
     <EmptyState
       icon={kind === 'skill' ? 'fileText' : 'puzzle'}
-      title={kind === 'skill' ? 'No matching skills' : 'No matching extensions'}
-      body={
-        catalogue.data === undefined
-          ? 'Reconnect or refresh to load the catalogue.'
-          : 'Browse the catalogue to add a shared selection.'
-      }
+      title={`No ${noun} yet`}
+      body="Extensions and skills add tools to the assistant. Browse the catalogue to add one."
+      action={<Button label={`Browse ${noun}`} variant="tonal" href={extensionBrowseHref(kind)} />}
     />
   );
 }

@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { HubHarnessControl } from './node/harness-frames';
 import { DSH_WRITER_CLAIM_WRITE } from './dsh-sessions';
-import { JSON_VALUE } from './values';
 import { AI_PREVIEW_HTML_MAX } from './ai-preview-documents';
 export const AI_PREVIEW_FILE_CAPABILITY = 'preview-files-v1';
 export const AI_FILE_PREVIEW_WRITE = z.strictObject({
@@ -16,9 +15,6 @@ export const AI_FILE_PREVIEW_NATIVE_REQUEST = z.discriminatedUnion('operation', 
   }),
   z.strictObject({
     operation: z.literal('preview_file_publish'),
-    call_id: z.string().min(1).max(200),
-    call_seq: z.int().nonnegative(),
-    arguments: z.record(z.string(), JSON_VALUE),
     claim: DSH_WRITER_CLAIM_WRITE,
     workspace: z.string().min(1).max(4096),
     file_path: z.string().min(1).max(4096),

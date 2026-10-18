@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
+  COLOR_FORMAT_REASON,
   InvalidValueError,
   JSON_VALUE,
   NUMBER_VALUE,
@@ -57,6 +58,10 @@ describe('value descriptors', () => {
   });
 });
 
+function sparse(length: number): unknown[] {
+  return Array.from<unknown>({ length: 0 }).concat(new Array<unknown>(length));
+}
+
 describe('JSON values', () => {
   it('accepts nested JSON', () => {
     expect(JSON_VALUE.parse({ a: [1, 'b', null, true, { c: [] }] })).toStrictEqual({
@@ -67,6 +72,33 @@ describe('JSON values', () => {
   it('refuses what JSON cannot hold', () => {
     expect(JSON_VALUE.safeParse(undefined).success).toBe(false);
     expect(JSON_VALUE.safeParse({ a: () => 1 }).success).toBe(false);
+    expect(JSON_VALUE.safeParse([1, { b: undefined }]).success).toBe(false);
+    expect(JSON_VALUE.safeParse(Number.NaN).success).toBe(false);
+    expect(JSON_VALUE.safeParse(Number.POSITIVE_INFINITY).success).toBe(false);
+    expect(JSON_VALUE.safeParse(new Date()).success).toBe(false);
+  });
+
+  it('refuses sparse arrays, symbol keys and inherited properties like the union did', () => {
+    expect(JSON_VALUE.safeParse(sparse(3)).success).toBe(false);
+    expect(JSON_VALUE.safeParse({ a: sparse(2) }).success).toBe(false);
+    expect(JSON_VALUE.safeParse({ [Symbol('s')]: 1, a: 1 }).success).toBe(false);
+    expect(JSON_VALUE.safeParse(10n).success).toBe(false);
+    expect(JSON_VALUE.safeParse(new Map()).success).toBe(false);
+    expect(
+      JSON_VALUE.safeParse([
+        new (class Box {
+          readonly size = 1;
+        })(),
+      ]).success,
+    ).toBe(false);
+  });
+
+  it('accepts null-prototype and inherited plain objects like the union did', () => {
+    expect(JSON_VALUE.safeParse(Object.assign(Object.create(null), { a: 1 })).success).toBe(true);
+    expect(JSON_VALUE.safeParse(Object.create({ a: 1 })).success).toBe(true);
+    expect(JSON_VALUE.safeParse(Object.defineProperty({}, 'x', { value: () => 1 })).success).toBe(
+      true,
+    );
   });
 });
 
@@ -133,10 +165,10 @@ describe('checkValue', () => {
       { hue: 0, saturation: 0, value: 101 },
       { hue: 0, saturation: 0, value: -1 },
     ]) {
-      expect(refusal({ kind: 'color' }, outside).reason).toBe('not a hue, saturation and value');
+      expect(refusal({ kind: 'color' }, outside).reason).toBe(COLOR_FORMAT_REASON);
     }
     expect(refusal({ kind: 'color' }, { hue: 361, saturation: 0, value: 0 }).reason).toBe(
-      'not a hue, saturation and value',
+      COLOR_FORMAT_REASON,
     );
   });
 

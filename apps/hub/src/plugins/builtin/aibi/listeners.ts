@@ -4,13 +4,14 @@ import { DnsServer } from './dns';
 import type { AibiEnvironment } from './runtime';
 import type { RobotState } from './robot-state';
 import type { RobotServer } from './server';
-import type { AibiSettings } from './settings';
+import { AIBI_PORTS, type AibiSettings } from './settings';
 import { tlsPair } from './tls-cert';
+import { background, messageOf } from '@smarteverything/logging';
 
 const REASON_MAX = 400;
 
 function reasonOf(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, REASON_MAX);
+  return messageOf(error).slice(0, REASON_MAX);
 }
 
 export interface ListenersOptions {
@@ -74,8 +75,8 @@ export class AibiListeners {
     }
     await server.start({
       network: ctx.network,
-      httpPort: settings.http_port,
-      httpsPort: settings.https_port,
+      httpPort: AIBI_PORTS.http,
+      httpsPort: AIBI_PORTS.https,
       key: pair.key,
       cert: pair.cert,
       cloud: environment.cloud(settings.dns_upstream),
@@ -83,7 +84,7 @@ export class AibiListeners {
     state.server = { state: 'running', reason: null };
     activity.add(
       'network',
-      `Listening for AIBI on ports ${String(settings.http_port)} and ${String(settings.https_port)}`,
+      `Listening for AIBI on ports ${String(AIBI_PORTS.http)} and ${String(AIBI_PORTS.https)}`,
       `Mode: ${settings.mode}`,
     );
   }
@@ -94,7 +95,7 @@ export class AibiListeners {
     try {
       const stop = await watch(
         (): void => {
-          void this.refreshAddress();
+          background(this.refreshAddress(), 'address.refresh_failed');
         },
         (cause): void => {
           this.watchFailed(cause);
@@ -158,7 +159,7 @@ export class AibiListeners {
     const dns = new DnsServer(
       {
         address,
-        port: ctx.settings.dns_port,
+        port: AIBI_PORTS.dns,
         upstream: ctx.settings.dns_upstream,
         network: ctx.network,
       },

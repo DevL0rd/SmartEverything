@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Logger } from '@smarteverything/logging';
+import { ffmpegPath } from '../media/ffmpeg-path';
 import { OggPacketReader, OggStreamError } from './ogg';
 
 const STDERR_KEPT = 600;
@@ -97,13 +98,13 @@ export class CameraMicrophones {
     }
     const reader: Reader = { subscribers: new Set(), stop: () => undefined };
     this.readers.set(cameraId, reader);
-    reader.stop = this.spawn(cameraId, reader);
+    reader.stop = this.launch(cameraId, reader);
     return reader;
   }
 
-  private spawn(cameraId: string, reader: Reader): () => void {
+  private launch(cameraId: string, reader: Reader): () => void {
     const url = `rtsp://127.0.0.1:${String(this.options.rtspPort)}/${encodeURIComponent(cameraId)}?audio`;
-    const child = spawn('ffmpeg', argumentsFor(url), { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(ffmpegPath(), argumentsFor(url), { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     let stopped = false;
     const ogg = new OggPacketReader((packet) => {

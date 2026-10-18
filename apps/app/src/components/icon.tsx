@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { createElement } from 'react';
+import { createElement, memo } from 'react';
 import { useColour } from '../design/colour';
 import type { ColourRole } from '../design/tokens';
 import { GLYPHS, type IconName } from './icon-glyphs';
@@ -17,7 +17,12 @@ export interface IconProps {
   readonly colour?: ColourRole;
 }
 
-export function Icon({ name, size = 20, tone = 'variant', colour }: IconProps): ReactNode {
+export const Icon = memo(function Icon({
+  name,
+  size = 20,
+  tone = 'variant',
+  colour,
+}: IconProps): ReactNode {
   const color = useColour(colour ?? TONE_ROLE[tone]);
   return createElement(GLYPHS[name], {
     size,
@@ -25,4 +30,4 @@ export function Icon({ name, size = 20, tone = 'variant', colour }: IconProps): 
     color,
     'aria-hidden': true,
   });
-}
+});

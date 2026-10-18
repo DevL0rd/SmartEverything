@@ -9,6 +9,7 @@ import { useToday } from '../data/day';
 import { useSightings } from '../data/queries';
 import { SERIES_GROUPS, seriesOfType } from '../model/catalogue';
 import { appsOf, typeLabel, type SourceApp } from '../model/sources';
+import { background } from '@smarteverything/logging';
 
 const SHOWN_TYPES = 3;
 
@@ -57,7 +58,14 @@ function AppRow({ app }: { readonly app: SourceApp }): ReactNode {
 export function AppsRows(): ReactNode {
   const sightings = useSightings(useToday());
   if (sightings.error !== null) {
-    return <ErrorState error={sightings.error} retry={() => void sightings.refetch()} />;
+    return (
+      <ErrorState
+        error={sightings.error}
+        retry={() => {
+          background(sightings.refetch(), 'sightings.refetch_failed');
+        }}
+      />
+    );
   }
   if (sightings.data === undefined) {
     return <Skeleton shape="line" />;

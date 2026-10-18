@@ -1,14 +1,22 @@
+import {
+  createServer as createHttpServer,
+  type Server as HttpServer,
+  type ServerOptions,
+} from 'node:http';
+import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https';
 import type { Server, Socket } from 'node:net';
-import { createServer as createSecureServer, type Server as SecureServer } from 'node:tls';
 import type { PluginNetwork } from '../../plugin-listen';
-import type { Cloud, Scheme } from './cloud';
-import { Connection, type Routes } from './connection';
+import { Upstream, type Cloud } from './cloud';
+import { requestListener, unreadable, type Routes } from './connection';
 
 const ALL_ADDRESSES = '0.0.0.0';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1']);
 const IPV4_MAPPED = /^::ffff:/;
 const REJECTED_CERTIFICATE = /certificate unknown|unknown ca|bad certificate/i;
+const NEVER = 0;
+
+const HTTP_OPTIONS: ServerOptions = { keepAliveTimeout: NEVER, requestTimeout: NEVER };
 
 export interface RobotServerOptions {
   readonly network: Pick<PluginNetwork, 'listenTcp'>;
@@ -21,14 +29,12 @@ export interface RobotServerOptions {
 
 function secureServerFor(
   options: RobotServerOptions,
-  track: (socket: Socket, scheme: Scheme) => void,
   routes: Routes,
-): SecureServer {
-  const secure = createSecureServer(
-    { key: options.key, cert: options.cert, minVersion: 'TLSv1.2' },
-    (socket) => {
-      track(socket, 'https');
-    },
+  upstream: Upstream,
+): HttpsServer {
+  const secure = createHttpsServer(
+    { ...HTTP_OPTIONS, key: options.key, cert: options.cert, minVersion: 'TLSv1.2' },
+    requestListener('https', routes, upstream),
   );
   secure.on('tlsClientError', (error, socket) => {
     const from = (socket.remoteAddress ?? 'unknown').replace(IPV4_MAPPED, '');
@@ -43,30 +49,46 @@ function secureServerFor(
   return secure;
 }
 
+function plainServerFor(routes: Routes, upstream: Upstream): HttpServer {
+  return createHttpServer(HTTP_OPTIONS, requestListener('http', routes, upstream));
+}
+
 export class RobotServer {
-  private readonly sockets = new Set<Socket>();
+  private upstreams: Upstream[] = [];
   private listeners: Server[] = [];
+  private readonly sockets = new Set<Socket>();
 
   constructor(private readonly routes: Routes) {}
 
   async start(options: RobotServerOptions): Promise<void> {
-    const track = (socket: Socket, scheme: Scheme): void => {
+    const { routes } = this;
+    const plainUpstream = new Upstream('http', options.cloud);
+    const secureUpstream = new Upstream('https', options.cloud);
+    this.upstreams.push(plainUpstream, secureUpstream);
+    const secure = secureServerFor(options, routes, secureUpstream);
+    const plain = plainServerFor(routes, plainUpstream);
+    for (const app of [secure, plain]) {
+      app.on('clientError', (error, socket) => {
+        unreadable(routes, error, socket);
+      });
+    }
+    await this.accept(options.network, options.httpsPort, secure);
+    await this.accept(options.network, options.httpPort, plain);
+  }
+
+  private async accept(
+    network: Pick<PluginNetwork, 'listenTcp'>,
+    port: number,
+    app: HttpServer | HttpsServer,
+  ): Promise<void> {
+    const listener = await network.listenTcp(port, ALL_ADDRESSES);
+    this.listeners.push(listener);
+    listener.on('connection', (socket) => {
       this.sockets.add(socket);
       socket.once('close', () => {
         this.sockets.delete(socket);
       });
-      new Connection(socket, scheme, this.routes, options.cloud);
-    };
-    const secure = secureServerFor(options, track, this.routes);
-    const https = await options.network.listenTcp(options.httpsPort, ALL_ADDRESSES);
-    this.listeners.push(https);
-    https.on('connection', (socket) => {
-      secure.emit('connection', socket);
-    });
-    const http = await options.network.listenTcp(options.httpPort, ALL_ADDRESSES);
-    this.listeners.push(http);
-    http.on('connection', (socket) => {
-      track(socket, 'http');
+      app.emit('connection', socket);
     });
   }
 
@@ -75,9 +97,13 @@ export class RobotServer {
       socket.destroy();
     });
     this.sockets.clear();
+    this.upstreams.forEach((upstream) => {
+      upstream.close();
+    });
     this.listeners.forEach((listener) => {
       listener.close();
     });
+    this.upstreams = [];
     this.listeners = [];
   }
 

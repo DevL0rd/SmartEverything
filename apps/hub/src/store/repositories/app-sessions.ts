@@ -1,8 +1,6 @@
 import { APP_USAGE, type AppUsage } from '@smarteverything/domain';
 import type { StoreContext } from '../context';
 
-const KEEP_DAYS = 90;
-const DAY_MS = 86_400_000;
 const USAGE_LIMIT = 20;
 
 export interface NewAppSession {
@@ -17,7 +15,6 @@ export class AppSessionsRepository {
   constructor(private readonly context: StoreContext) {}
 
   add(session: NewAppSession): void {
-    const before = new Date(session.endedAt.getTime() - KEEP_DAYS * DAY_MS).toISOString();
     this.context.write(() => {
       this.context.sql.run(
         'save the app time',
@@ -30,13 +27,6 @@ export class AppSessionsRepository {
           startedAt: session.startedAt.toISOString(),
           endedAt: session.endedAt.toISOString(),
           seconds: (session.endedAt.getTime() - session.startedAt.getTime()) / 1000,
-        },
-      );
-      this.context.sql.run(
-        'forget old app time',
-        'delete from app_sessions where ended_at < $before',
-        {
-          before,
         },
       );
     });

@@ -11,7 +11,7 @@ export function contextUsage(
   fallback: number | null,
   native: boolean,
 ): ContextUsage {
-  const percent = context === undefined ? fallback : harnessContextPercent(context, true);
+  const percent = context === undefined ? fallback : harnessContextPercent(context);
   return {
     percent: percent === null ? null : Math.round(percent),
     label: contextLabel(context, native),

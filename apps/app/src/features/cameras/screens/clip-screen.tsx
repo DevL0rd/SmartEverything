@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { Image, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import type { RecordingRow } from '@smarteverything/domain';
+import { Logger, background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { PageHeader } from '../../../components/page-header';
+import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { Screen } from '../../../components/screen';
 import { Skeleton } from '../../../components/skeleton';
 import { joinParts } from '../../../format/text';
@@ -19,6 +22,8 @@ import { useCameraEntry, useCameraRecordings, useRecording } from '../data/use-c
 import { useRecordingLinks } from '../data/use-media-links';
 import { eventLook } from '../../activity';
 import { ClipSurface } from '../player/video-surface';
+
+const log = new Logger('app.cameras');
 
 function Picture({
   recording,
@@ -34,7 +39,7 @@ function Picture({
       <ErrorState
         error={links.error}
         retry={() => {
-          void links.refetch();
+          background(links.refetch(), 'links.refetch_failed');
         }}
       />
     );
@@ -69,7 +74,8 @@ function useNeighbours(recording: RecordingRow): {
   return { newer: shown[index - 1] ?? null, older: shown[index + 1] ?? null };
 }
 
-function saveClip(recordingUrl: string | null): void {
+function saveClip(recordingId: string, recordingUrl: string | null): void {
+  log.info('clip.save_requested', { recordingId, hasLink: recordingUrl !== null });
   if (recordingUrl !== null) {
     openClip(recordingUrl);
   }
@@ -116,7 +122,7 @@ function ClipActions({ recording }: { readonly recording: RecordingRow }): React
         variant="tonal"
         disabled={links.data === undefined}
         onPress={() => {
-          saveClip(links.data?.[recording.id]?.url ?? null);
+          saveClip(recording.id, links.data?.[recording.id]?.url ?? null);
         }}
       />
       <Button
@@ -124,6 +130,7 @@ function ClipActions({ recording }: { readonly recording: RecordingRow }): React
         icon="trash"
         variant="destructive"
         onPress={() => {
+          log.info('clip.delete_requested', { recordingId: recording.id });
           deleting.remove(
             recording.id,
             recording.event_id === null
@@ -176,6 +183,13 @@ export function ClipScreen(): ReactNode {
   }>();
   const recording = useRecording(recordingId);
   const entry = useCameraEntry(cameraId);
+  const found = recording !== null && entry !== null;
+  useLifecycleLog(log, 'clip', recordingId);
+  useEffect(() => {
+    if (!found) {
+      log.warn('clip.missing', { cameraId, recordingId });
+    }
+  }, [cameraId, recordingId, found]);
   if (recording === null || entry === null) {
     return (
       <Screen header={<PageHeader title="Clip" />} maxWidth="reading">

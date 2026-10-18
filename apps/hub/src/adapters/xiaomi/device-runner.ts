@@ -1,7 +1,5 @@
 import {
   CommandRefusedError,
-  JSON_VALUE,
-  checkValue,
   validateCommand,
   type AdapterSink,
   type CameraDetection,
@@ -26,19 +24,21 @@ import {
   toDevice,
   supportsLegacyButton,
   XiaomiCloudError,
-  type ActionBinding,
   type PropertyBinding,
   type PropertyReading,
   type Uplink,
   type LegacyChildEvent,
 } from '@smarteverything/xiaomi';
-import { z } from 'zod';
+import { RepeatLog } from '../../providers/repeat-log';
+import type { PassiveSource } from '../../local/passive-observations';
+import { actionInputs } from './action-inputs';
 import type { CameraMotor } from './camera-motor';
 import { CameraPtz } from './camera-ptz';
 import type { DeviceIo } from './device-io';
 import { DeviceLink, type LinkContext, type Opened, type RefreshTrigger } from './device-link';
 import type { InventoryEntry, TransportState } from './inventory';
 import { MiioTimeoutError } from './miio-client';
+import { background, failureLine } from '@smarteverything/logging';
 
 export interface RunnerContext extends LinkContext {
   readonly sink: () => AdapterSink | null;
@@ -50,21 +50,27 @@ export interface RunnerContext extends LinkContext {
 
 const CALL_STATUS = 'key-call-status';
 const CALL_START = 'key-call-start';
+const UNMAPPED_REPEAT_MS = 3_600_000;
 
 export class DeviceRunner {
   private readonly values = new Map<CapabilityKey, JsonValue>();
   private readonly raw = new Map<CapabilityKey, JsonValue>();
   private readonly generations = new Map<CapabilityKey, number>();
+  private passiveKeys: ReadonlySet<CapabilityKey> = new Set();
   private passiveFreshUntil = 0;
   private lanFailures = 0;
   private readonly ptz: CameraPtz | null;
   private readonly link: DeviceLink;
+  private readonly repeat: RepeatLog;
+  private readonly unmapped: RepeatLog;
 
   constructor(
     readonly entry: InventoryEntry,
     opened: Opened,
     private readonly context: RunnerContext,
   ) {
+    this.repeat = new RepeatLog(context.log);
+    this.unmapped = new RepeatLog(context.log, UNMAPPED_REPEAT_MS);
     this.ptz =
       entry.ptz === null
         ? null
@@ -103,12 +109,11 @@ export class DeviceRunner {
     );
   }
 
-  observePassive(update: StateUpdate | null, freshUntil: number): void {
-    this.passiveFreshUntil = freshUntil;
-    this.advance('contact');
-    if (update !== null) {
-      this.values.set(update.capability, update.value);
-    }
+  observePassive(source: PassiveSource | null): void {
+    this.passiveKeys = new Set(source?.keys);
+    this.passiveFreshUntil = source?.freshUntil ?? 0;
+    for (const key of this.passiveKeys) this.advance(key);
+    for (const [key, value] of source?.values ?? []) this.values.set(key, value);
   }
 
   transportState(): TransportState {
@@ -155,7 +160,7 @@ export class DeviceRunner {
       this.link.reach.heard();
       return;
     }
-    void this.link.reach.disputed(usable);
+    background(this.link.reach.disputed(usable), 'reach.disputed_failed');
   }
 
   private publish(updates: readonly StateUpdate[]): void {
@@ -255,7 +260,8 @@ export class DeviceRunner {
     const key = propertyKeyOf(this.entry.model, reading.siid, reading.piid);
     if (
       generations !== undefined &&
-      key === 'contact' &&
+      key !== null &&
+      this.passiveKeys.has(key) &&
       this.io.transport === 'cloud' &&
       this.context.now() < this.passiveFreshUntil
     ) {
@@ -294,7 +300,7 @@ export class DeviceRunner {
       this.context.log.warn('xiaomi_device.value_refused', {
         did: this.did,
         capability: key,
-        reason: String(error),
+        reason: failureLine(error),
       });
       return null;
     }
@@ -320,10 +326,10 @@ export class DeviceRunner {
       trigger === 'poll'
         ? 'xiaomi_device.poll_failed'
         : 'xiaomi_device.subscription_refresh_failed';
-    this.context.log.warn(event, {
+    this.repeat.warn(event, `${this.did}|${event}`, {
       did: this.did,
       transport: this.io.transport,
-      reason: String(error),
+      reason: failureLine(error),
     });
     this.context.sink()?.failure({
       provider: 'xiaomi',
@@ -332,7 +338,7 @@ export class DeviceRunner {
       cause: error,
     });
     if (this.io.transport === 'cloud' && error instanceof XiaomiCloudError) {
-      void this.link.reach.disputed(false);
+      background(this.link.reach.disputed(false), 'reach.disputed_failed');
     }
     if (this.io.transport !== 'lan' || !(error instanceof MiioTimeoutError)) {
       return;
@@ -346,12 +352,7 @@ export class DeviceRunner {
   }
 
   legacyChildDelivery(gatewayDid: string, uplink: LegacyChildEvent): (() => void) | null {
-    if (
-      this.did !== uplink.childDid ||
-      this.entry.cloud.parentDid !== gatewayDid ||
-      this.entry.cloud.model !== uplink.model ||
-      !supportsLegacyButton(uplink.model)
-    ) {
+    if (this.entry.cloud.model !== uplink.model || !supportsLegacyButton(uplink.model)) {
       return null;
     }
     return (): void => {
@@ -394,7 +395,7 @@ export class DeviceRunner {
   private emit(name: string, occurredAt: string, details: Record<string, JsonValue>): void {
     const event = deviceEventFromMiot(name, { externalId: this.did, occurredAt, details });
     if (event === null) {
-      this.context.log.warn('xiaomi_device.event_unmapped', { did: this.did, event: name });
+      this.unmapped.warn('xiaomi_device.event_unmapped', name, { did: this.did, event: name });
       return;
     }
     const detection = isCameraModel(this.entry.cloud.model) ? miotDetection(name) : null;
@@ -410,23 +411,4 @@ export class DeviceRunner {
       (binding) => binding.kind === 'property' && binding.name === CALL_STATUS,
     );
   }
-}
-
-function actionInputs(
-  capability: CapabilityKey,
-  binding: ActionBinding,
-  value: JsonValue,
-): JsonValue[] {
-  const args = z.record(z.string(), JSON_VALUE).parse(value ?? {});
-  return binding.inputs.map((input) => {
-    const argument = args[input.name];
-    if (argument === undefined) {
-      throw new CommandRefusedError(capability, `the argument ${input.name} is missing`);
-    }
-    return toDevice(
-      `${capability}.${input.name}`,
-      input.codec,
-      checkValue(input.descriptor, argument),
-    );
-  });
 }

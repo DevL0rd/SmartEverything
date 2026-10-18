@@ -1,7 +1,7 @@
 import { rulePort, ruleSource, type PortRule } from '@smarteverything/domain';
 import { z } from 'zod';
-import { addressIn, portIn, sourceEdges, type OpeningState, type Probe } from './openings';
-import type { FirewallSystem } from './system';
+import { addressIn, always, portIn, sourceEdges, type OpeningState, type Probe } from './openings';
+import { errorCode, type FirewallSystem } from './system';
 
 const UFW_DIRECTORY = '/etc/ufw';
 const UFW_CONF = `${UFW_DIRECTORY}/ufw.conf`;
@@ -169,7 +169,7 @@ export async function ufwEnabled(system: FirewallSystem): Promise<boolean> {
   return conf !== null && valueOf(conf, 'ENABLED') === 'yes';
 }
 
-export async function probeUfw(system: FirewallSystem): Promise<Probe> {
+async function readableProbe(system: FirewallSystem): Promise<Probe> {
   const policy = valueOf(await requiredText(system, UFW_DEFAULTS), 'DEFAULT_INPUT_POLICY');
   if (policy === null) {
     throw new UfwSettingMissingError(UFW_DEFAULTS, 'DEFAULT_INPUT_POLICY');
@@ -194,4 +194,28 @@ export async function probeUfw(system: FirewallSystem): Promise<Probe> {
     fixable: new Set(['missing', 'unknown', 'denied']),
     watch: [UFW_DIRECTORY],
   };
+}
+
+function rootOnlyProbe(): Probe {
+  return {
+    backend: 'ufw',
+    filtering: null,
+    detail:
+      'ufw is active, but only root can read its rules, so SmartEverything cannot tell which openings exist. Allow the openings below in ufw if they are not open yet.',
+    stateOf: always('unknown'),
+    draft: null,
+    fixable: new Set(),
+    watch: [UFW_DIRECTORY],
+  };
+}
+
+export async function probeUfw(system: FirewallSystem): Promise<Probe> {
+  try {
+    return await readableProbe(system);
+  } catch (cause) {
+    if (errorCode(cause) === 'EACCES') {
+      return rootOnlyProbe();
+    }
+    throw cause;
+  }
 }

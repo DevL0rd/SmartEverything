@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { createContext, Profiler, useContext, useLayoutEffect, useRef, useState } from 'react';
-import { developerFlags } from '../developer/flags';
+import { readDeveloperFlags } from '../developer/flags';
 import { sinkOf } from './sink';
 
 const LayerContext = createContext('');
@@ -39,5 +39,9 @@ function ProbedLayer({ route, children }: ScreenProbeArgs): ReactElement {
 }
 
 export function probedScreen(args: ScreenProbeArgs): ReactElement {
-  return __DEV__ && developerFlags['perf.profilers'] ? <ProbedLayer {...args} /> : args.children;
+  return __DEV__ && readDeveloperFlags()['perf.profilers'] ? (
+    <ProbedLayer {...args} />
+  ) : (
+    args.children
+  );
 }

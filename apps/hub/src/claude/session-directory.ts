@@ -135,6 +135,10 @@ export class SessionDirectory {
     this.tails.stop();
   }
 
+  async settled(): Promise<void> {
+    await Promise.all([this.liveHistory.settled(), this.index.settled()]);
+  }
+
   sessions(): readonly ClaudeSession[] {
     return this.refresh().map((view) => view.row);
   }

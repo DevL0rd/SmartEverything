@@ -7,12 +7,12 @@ import {
   focusOf,
   historyFocus,
   learnRemoteFocus,
-  searchIndex,
+  rankSearch,
   typedNumberEntries,
   type SearchDevice,
   type SearchEntry,
   type SearchIrRemote,
-  type SearchOptions,
+  type RankOptions,
   type SearchSources,
 } from '../src';
 
@@ -21,6 +21,7 @@ const purifier: SearchDevice = {
   name: 'Living room purifier',
   room: 'Living room',
   kind: 'air_purifier',
+  model: 'Model',
   online: true,
   favourite: false,
   capabilities: [
@@ -52,6 +53,7 @@ const blaster: SearchDevice = {
   name: 'IR hub',
   room: null,
   kind: 'ir_blaster',
+  model: 'Model',
   online: true,
   favourite: false,
   capabilities: [
@@ -107,7 +109,7 @@ const sources: SearchSources = {
   cameras: [],
 };
 
-const options: SearchOptions = { recent: {}, now: 0, limit: 50, group: null };
+const options: RankOptions = { recent: {}, now: 0, limit: 50 };
 
 function entry(id: string): SearchEntry {
   const found = devicePageEntries(sources).find((candidate) => candidate.id === id);
@@ -118,7 +120,7 @@ function entry(id: string): SearchEntry {
 }
 
 function titles(query: string): string[] {
-  return searchIndex(buildSearchIndex(sources), query, options).map((result) => result.entry.title);
+  return rankSearch(buildSearchIndex(sources), query, options).map((result) => result.entry.title);
 }
 
 describe('device page focus', () => {
@@ -156,50 +158,12 @@ describe('device page focus', () => {
 });
 
 describe('device page entries', () => {
-  it('opens the full page of every device', () => {
-    expect(entry('device-page:purifier')).toStrictEqual({
-      id: 'device-page:purifier',
+  it('shows the history of a device that has numbers worth charting', () => {
+    expect(entry('history:purifier')).toMatchObject({
+      id: 'history:purifier',
       group: 'page',
-      title: 'Living room purifier — full page',
+      title: 'History — Living room purifier',
       detail: 'Living room · Living room purifier',
-      keywords: ['page', 'details', 'history', 'events', 'settings', 'air purifier', 'Living room'],
-      state: null,
-      run: null,
-      runLabel: null,
-      open: { kind: 'device-page', deviceId: 'purifier', focus: null },
-      openLabel: 'Open',
-      suggested: false,
-    });
-    expect(entry('device-page:blaster').keywords).toStrictEqual([
-      'page',
-      'details',
-      'history',
-      'events',
-      'settings',
-      'ir blaster',
-    ]);
-  });
-
-  it('shows the history of every number, readable or writable', () => {
-    expect(entry('history:purifier:pm25')).toStrictEqual({
-      id: 'history:purifier:pm25',
-      group: 'page',
-      title: 'PM2.5 history — Living room purifier',
-      detail: 'Living room · Living room purifier',
-      keywords: [
-        'history',
-        'chart',
-        'graph',
-        'trend',
-        'show',
-        'Living room purifier',
-        'air purifier',
-        'Living room',
-        'PM2.5',
-        'pm25',
-        'air quality',
-        'dust',
-      ],
       state: null,
       run: { kind: 'device-page', deviceId: 'purifier', focus: 'history:pm25' },
       runLabel: 'Show',
@@ -207,12 +171,23 @@ describe('device page entries', () => {
       openLabel: 'Open',
       suggested: false,
     });
-    expect(entry('history:purifier:fan_speed').title).toBe(
-      'Fan level history — Living room purifier',
+    expect(entry('history:purifier').keywords).toEqual(
+      expect.arrayContaining([
+        'history',
+        'chart',
+        'graph',
+        'trend',
+        'show',
+        'PM2.5',
+        'air quality',
+      ]),
     );
-    expect(devicePageEntries(sources).map((found) => found.id)).not.toContain(
-      'history:purifier:purifier_mode',
-    );
+  });
+
+  it('offers no history for a device without numbers worth charting', () => {
+    const ids = devicePageEntries(sources).map((found) => found.id);
+    expect(ids).not.toContain('history:blaster');
+    expect(ids).not.toContain('history:listener');
   });
 
   it('learns a new button only on a blaster that can be asked to learn', () => {
@@ -323,7 +298,7 @@ describe('finding what a person says', () => {
 
   it('finds a typed value said as a sentence', () => {
     expect(titles('set purifier fan level to 7')).toStrictEqual([
-      'Fan level 7 — Living room purifier',
+      'Fan speed 7 — Living room purifier',
     ]);
     expect(typedNumberEntries(buildSearchIndex(sources), 7)[0]?.keywords).toContain('to');
   });
@@ -335,7 +310,7 @@ describe('finding what a person says', () => {
   });
 
   it('finds a history and a remote to learn', () => {
-    expect(titles('show pm2.5 history')).toStrictEqual(['PM2.5 history — Living room purifier']);
+    expect(titles('show pm2.5 history')).toStrictEqual(['History — Living room purifier']);
     expect(titles('learn a new tv remote button').slice(0, 2)).toStrictEqual([
       'Learn a new button — Bedroom TV',
       'Learn a new remote button — IR hub',

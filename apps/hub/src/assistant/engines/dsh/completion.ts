@@ -4,9 +4,11 @@ import type { AiChatRow, AiHarnessEvent } from '@smarteverything/domain';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import type { ConversationLog } from '../../conversation-log';
 import type { HarnessService } from '../../../harness/service';
-import { eventAuthority, withExecutionAuthority } from '../../execution-authority';
+import { eventAuthority, withExecutionAuthority } from '../../turn-authority';
 import type { ConversationAuthority } from '../../../harness/authority-contract';
 import type { TurnStream } from '../../conversation/stream';
+import type { AssistantReasonCode } from '@smarteverything/domain';
+import { CONNECTION_LOST, STOPPED_BY_USER } from '../../interruption';
 
 export type NativeCompletion =
   | Pick<Extract<AiHarnessEvent, { kind: 'completed' }>, 'kind' | 'interrupted'>
@@ -22,12 +24,12 @@ interface Completion {
   readonly conversation: ConversationLog;
   readonly turn: NativeCompletionTurn;
   readonly event: NativeCompletion;
-  readonly ack: (() => void) | undefined;
   readonly admissionRefused?: boolean;
   readonly finished: (event: StoredEvent, text: string, ok: boolean) => void;
   readonly retire: () => void;
 }
 const log = new Logger('hub.harness');
+const OUT_OF_CREDIT = /\b402\b|insufficient (?:credits?|funds)|out of credits?|payment required/i;
 function unconfirmedCompletion(): NativeCompletion {
   return {
     kind: 'failed',
@@ -79,35 +81,43 @@ function persistCompletion(input: Completion, event: NativeCompletion): void {
     event.kind === 'failed' && event.failure.code === 'source_outcome_unknown'
       ? 'unknown'
       : 'completed',
-    text,
     () => {
-      if (ok)
+      if (ok) {
         conversation.finishReply(turn.replyId, text, {
           model: service.binding(turn.chat).model,
           steps: turn.stream.settled(),
           sources: savedWebSources(service, turn.replyId),
         });
-      else
-        conversation.failReply(
-          turn.replyId,
-          {
-            text,
-            reason: event.kind === 'failed' ? event.failure.message : 'Stopped.',
-            code:
-              input.admissionRefused === true
-                ? 'stopped'
-                : event.kind === 'failed'
-                  ? 'unknown'
-                  : 'interrupted',
-          },
-          turn.stream.settled(),
-        );
-      conversation.stateOf(turn.event.message_id, ok ? 'answered' : 'failed');
+        conversation.stateOf(turn.event.message_id, 'answered');
+      } else {
+        const failure = completionFailure(event, input.admissionRefused === true);
+        log.warn('native_completion.failed', {
+          eventId: turn.event.id,
+          chatId: turn.chat.id,
+          outcome: event.kind,
+          reasonCode: failure.code,
+          reason: failure.reason,
+          refused: input.admissionRefused === true,
+        });
+        conversation.failReply(turn.replyId, { text, ...failure }, turn.stream.settled());
+        conversation.failedMessage(turn.event.message_id, failure.reason, failure.code);
+      }
       service.store.harnessChildren.finish(turn.event.id, ok ? 'completed' : 'failed', text);
       service.store.assistantEvents.mark(turn.event.id, 'answered_at');
-      input.ack?.();
     },
   );
+}
+export function completionFailure(
+  event: NativeCompletion,
+  admissionRefused: boolean,
+): { readonly reason: string; readonly code: AssistantReasonCode } {
+  if (event.kind === 'completed') return { reason: STOPPED_BY_USER, code: 'stopped' };
+  if (!admissionRefused && event.failure.code === 'source_outcome_unknown')
+    return { reason: CONNECTION_LOST, code: 'interrupted' };
+  return {
+    reason: event.failure.message,
+    code: OUT_OF_CREDIT.test(event.failure.message) ? 'credits' : 'unknown',
+  };
 }
 function notifyCompletion(input: Completion, event: NativeCompletion): void {
   const authority = completionAuthority(input.service, input.turn.event);
@@ -122,6 +132,13 @@ function notifyCompletion(input: Completion, event: NativeCompletion): void {
 }
 function retireCompletion(input: Completion, event: NativeCompletion): void {
   const ok = event.kind === 'completed' && !event.interrupted;
+  log.info('native_completion.retired', {
+    eventId: input.turn.event.id,
+    chatId: input.turn.chat.id,
+    ok,
+    outcome: event.kind,
+    replyLength: input.turn.stream.spoken.length,
+  });
   try {
     input.turn.stream.snapshot(
       ok ? 'idle' : 'failed',

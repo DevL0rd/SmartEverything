@@ -4,10 +4,8 @@ import type * as Codegraph from 'dsh-plugin-codegraph-service';
 import type * as SqliteStore from 'dsh-plugin-codegraph-sqlite';
 import type * as TreeSitterIndexer from 'dsh-plugin-codegraph-tree-sitter';
 import type * as CodegraphTools from 'dsh-plugin-codegraph-tool';
-import type * as CodegraphGrammar from 'dsh-plugin-codegraph-tree-sitter/grammar';
 import { z } from 'zod';
 import { HarnessRuntimeError } from '../host/errors';
-import { verifyCodegraphPackages } from './indexer-provenance';
 import { IndexerPermission } from './indexer-permission';
 
 const loadCodegraph = createLazyRequire<typeof Codegraph>(
@@ -26,11 +24,6 @@ const loadCodegraphTools = createLazyRequire<typeof CodegraphTools>(
   'dsh-plugin-codegraph-tool',
   import.meta.url,
 );
-const loadGrammar = createLazyRequire<typeof CodegraphGrammar>(
-  'dsh-plugin-codegraph-tree-sitter/grammar',
-  import.meta.url,
-);
-
 const ACTIVE_PLUGIN_STATE: Fiber['state'] = 2;
 
 const INDEXER_CONFIG = z.strictObject({
@@ -45,12 +38,10 @@ export async function mountCodeIndexer(
   raw: unknown,
 ): Promise<{ readonly dispose: () => Promise<void> }> {
   const config = INDEXER_CONFIG.parse(raw);
-  await verifyCodegraphPackages();
   const codegraph = loadCodegraph();
   const store = loadSqliteStore();
   const indexer = loadTreeSitterIndexer();
   const tools = loadCodegraphTools();
-  await verifyParserAndStore(indexer, loadGrammar());
   const fiber = ctx.plugin(async (scope: Context): Promise<void> => {
     await scope.plugin(codegraph.default);
     await scope.plugin(store, { maxOpenDatabases: 4, maxStalenessChecks: 2_000 });
@@ -62,7 +53,7 @@ export async function mountCodeIndexer(
       concurrency: config.concurrency,
     });
     const injected = await scope.inject(
-      ['sandboxPolicy', 'tools', 'workingDirectory', 'nativeExecutionGuard'],
+      ['sandboxPolicy', 'tools', 'workingDirectory'],
       async (active: Context): Promise<void> => {
         const permission = new IndexerPermission(active);
         const toolsContext = await permission.context();
@@ -86,28 +77,6 @@ export async function mountCodeIndexer(
   } catch (error) {
     await fiber.dispose();
     throw error;
-  }
-}
-
-async function verifyParserAndStore(
-  indexer: typeof TreeSitterIndexer,
-  grammar: typeof CodegraphGrammar,
-): Promise<void> {
-  const { DatabaseSync } = await import('node:sqlite');
-  const database = new DatabaseSync(':memory:');
-  try {
-    database.exec('CREATE VIRTUAL TABLE readiness USING fts5(value)');
-  } finally {
-    database.close();
-  }
-  for (const language of ['typescript', 'python']) {
-    const spec = indexer.LANGUAGE_TABLE.find((entry) => entry.language === language);
-    if (spec === undefined)
-      throw new HarnessRuntimeError(
-        'runtime_unavailable',
-        `Codegraph grammar ${language} is absent.`,
-      );
-    await grammar.loadGrammar(spec);
   }
 }
 

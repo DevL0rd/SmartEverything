@@ -8,13 +8,15 @@ import { ApiError } from '@smarteverything/domain';
 import { historyTimeline } from './history-timeline';
 import { nativeDeliveryHistory } from './native-history';
 import type { NativeInputHistory } from '@smarteverything/harness';
-import type { ChatTimelineEmbed, SettledStep } from '@smarteverything/domain';
+import type { AssistantReasonCode, ChatTimelineEmbed, SettledStep } from '@smarteverything/domain';
+import { HUB_RESTARTED, STOPPED_BY_USER } from '../../interruption';
 import { z } from 'zod';
 const log = new Logger('hub.harness');
 type NativeHistory = ReturnType<typeof readNativeHistory>;
 interface NativeOutcome {
   readonly known: boolean;
   readonly ok: boolean;
+  readonly stopped: boolean;
   readonly text: string;
   readonly end: number | null;
   readonly steps: readonly SettledStep[];
@@ -47,9 +49,11 @@ function reconcile(
   ports: { readonly conversation: ConversationLog; readonly finished: TurnEnded },
 ): void {
   const event = store.assistantEvents.event(delivery.delivery_id);
+  const reply = delivery.reply_id === null ? null : store.assistantChat.message(delivery.reply_id);
   const outcome = nativeOutcome(
     nativeDeliveryHistory(store, delivery, event.profile_id, event.chat_id).events,
     delivery,
+    reply?.text ?? '',
   );
   log.warn('reply.reconciled', {
     delivery_id: delivery.delivery_id,
@@ -59,20 +63,17 @@ function reconcile(
     end_seq: outcome.end,
     settled_steps: outcome.steps,
   });
-  const reason = outcome.known
-    ? 'Native turn ended without successful completion.'
-    : 'The hub restarted before the reply completed; its retained native history was not replayed.';
+  const failure = failureOf(outcome);
   const replyId = delivery.reply_id;
-  const model =
-    replyId === null ? null : z.string().parse(store.assistantChat.message(replyId).model);
+  const model = reply === null ? null : z.string().parse(reply.model);
   store.harnessDeliveries.update(
     delivery.delivery_id,
     outcome.known ? 'completed' : 'unknown',
-    outcome.text,
     () => {
       if (replyId !== null && model !== null)
-        projectReply(ports.conversation, { id: replyId, model }, outcome, reason);
-      ports.conversation.stateOf(event.message_id, outcome.ok ? 'answered' : 'failed');
+        projectReply(ports.conversation, { id: replyId, model }, outcome, failure);
+      if (outcome.ok) ports.conversation.stateOf(event.message_id, 'answered');
+      else ports.conversation.failedMessage(event.message_id, failure.reason, failure.code);
       store.harnessChildren.finish(
         event.id,
         outcome.known ? (outcome.ok ? 'completed' : 'failed') : 'unknown',
@@ -88,7 +89,7 @@ function projectReply(
   conversation: ConversationLog,
   reply: { readonly id: string; readonly model: string },
   outcome: NativeOutcome,
-  reason: string,
+  failure: { readonly reason: string; readonly code: AssistantReasonCode },
 ): void {
   conversation.timeline(reply.id, outcome.timeline);
   if (outcome.ok)
@@ -97,12 +98,16 @@ function projectReply(
       steps: outcome.steps,
       sources: [],
     });
-  else
-    conversation.failReply(
-      reply.id,
-      { text: outcome.text, reason, code: outcome.known ? 'interrupted' : 'unknown' },
-      outcome.steps,
-    );
+  else conversation.failReply(reply.id, { text: outcome.text, ...failure }, outcome.steps);
+}
+
+function failureOf(outcome: NativeOutcome): {
+  readonly reason: string;
+  readonly code: AssistantReasonCode;
+} {
+  if (!outcome.known) return { reason: HUB_RESTARTED, code: 'interrupted' };
+  if (outcome.stopped) return { reason: STOPPED_BY_USER, code: 'stopped' };
+  return { reason: 'Native turn ended without successful completion.', code: 'unknown' };
 }
 
 function restorePending(store: Store, delivery: HarnessDelivery, messageId: string | null): void {
@@ -121,7 +126,11 @@ function restorePending(store: Store, delivery: HarnessDelivery, messageId: stri
       });
   });
 }
-function nativeOutcome(history: NativeHistory, delivery: HarnessDelivery): NativeOutcome {
+function nativeOutcome(
+  history: NativeHistory,
+  delivery: HarnessDelivery,
+  kept: string,
+): NativeOutcome {
   const index = history.findIndex(
     (record) => record.type === 'user/message' && record.data.id === delivery.delivery_id,
   );
@@ -143,7 +152,8 @@ function nativeOutcome(history: NativeHistory, delivery: HarnessDelivery): Nativ
   return {
     known,
     ok,
-    text: text === '' ? delivery.text : text,
+    stopped: nativeInterrupted(ended),
+    text: text === '' ? kept : text,
     end: ended?.seq ?? null,
     steps: toolSteps(entered),
     timeline: historyTimeline(entered, nativeInterrupted(ended)),

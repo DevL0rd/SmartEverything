@@ -1,127 +1,76 @@
-import {
-  VOICE_PREVIEW_SECONDS,
-  VOICE_PREVIEW_TIMEOUT_MS,
-  type VoicePreview,
-  type VoicePreviewRequest,
-} from '@smarteverything/domain';
+import type { CallVoice, VoiceSample } from '@smarteverything/domain';
 import { ValueStore } from '../../../design/external-store';
 
 export type VoicePreviewState =
   | { readonly kind: 'idle' }
-  | {
-      readonly kind: 'loading' | 'playing';
-      readonly voice: VoicePreviewRequest['voice'];
-      readonly requestId: string;
-    }
-  | {
-      readonly kind: 'error';
-      readonly voice: VoicePreviewRequest['voice'];
-      readonly message: string;
-    };
-export interface PreviewPorts {
-  readonly load: (request: VoicePreviewRequest) => Promise<VoicePreview>;
-  readonly cancel: (request: VoicePreviewRequest) => void;
-  readonly play: (sample: VoicePreview, events: PreviewPlaybackEvents) => () => void;
-}
+  | { readonly kind: 'loading' | 'playing'; readonly voice: CallVoice }
+  | { readonly kind: 'error'; readonly voice: CallVoice; readonly message: string };
 export interface PreviewPlaybackEvents {
   readonly playing: () => void;
   readonly finished: () => void;
   readonly failed: (message: string) => void;
 }
-interface PreviewRun {
-  readonly request: VoicePreviewRequest;
-  readonly ports: PreviewPorts;
-  release: (() => void) | null;
-  timer: ReturnType<typeof setTimeout>;
+export interface PreviewPorts {
+  readonly load: (voice: CallVoice, signal: AbortSignal) => Promise<VoiceSample>;
+  readonly play: (sample: VoiceSample, events: PreviewPlaybackEvents) => () => void;
 }
-const active: { controller: VoicePreviewController | null } = { controller: null };
+interface PreviewRun {
+  readonly voice: CallVoice;
+  readonly abort: AbortController;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : 'The voice sample could not play.';
+}
+
 export class VoicePreviewController {
   readonly state = new ValueStore<VoicePreviewState>({ kind: 'idle' });
   private run: PreviewRun | null = null;
+  private release: (() => void) | null = null;
   stop(): void {
-    const run = this.run;
+    this.run?.abort.abort();
+    this.release?.();
+    this.release = null;
     this.run = null;
-    if (active.controller === this) active.controller = null;
-    if (run !== null) {
-      clearTimeout(run.timer);
-      run.ports.cancel(run.request);
-      run.release?.();
-    }
     this.state.set({ kind: 'idle' });
   }
-  toggle(request: VoicePreviewRequest, ports: PreviewPorts): void {
-    if (this.run?.request.voice === request.voice) {
-      this.stop();
-      return;
-    }
-    active.controller?.stop();
+  toggle(voice: CallVoice, ports: PreviewPorts): void {
+    const replaced = this.run?.voice === voice;
     this.stop();
-    active.controller = this;
-    const run: PreviewRun = {
-      request,
-      ports,
-      release: null,
-      timer: setTimeout(() => {
-        this.fail(request.requestId, 'The voice sample did not load in time. Try again.');
-      }, VOICE_PREVIEW_TIMEOUT_MS),
-    };
+    if (replaced) return;
+    const run: PreviewRun = { voice, abort: new AbortController() };
     this.run = run;
-    this.state.set({ kind: 'loading', voice: request.voice, requestId: request.requestId });
-    void ports.load(request).then(
+    this.state.set({ kind: 'loading', voice });
+    ports.load(voice, run.abort.signal).then(
       (sample) => {
-        this.loaded(run, sample);
+        this.loaded(run, sample, ports);
       },
       (error: unknown) => {
-        this.fail(
-          request.requestId,
-          error instanceof Error ? error.message : 'The voice sample could not load.',
-        );
+        this.fail(run, messageOf(error));
       },
     );
   }
-  private loaded(run: PreviewRun, sample: VoicePreview): void {
+  private loaded(run: PreviewRun, sample: VoiceSample, ports: PreviewPorts): void {
     if (this.run !== run) return;
-    if (sample.requestId !== run.request.requestId || sample.voice !== run.request.voice) {
-      this.fail(run.request.requestId, 'The hub returned a sample for a different voice.');
-      return;
-    }
-    clearTimeout(run.timer);
-    this.run.timer = setTimeout(
-      () => {
-        this.fail(run.request.requestId, 'The voice sample could not finish playing. Try again.');
-      },
-      (VOICE_PREVIEW_SECONDS + 3) * 1000,
-    );
     try {
-      const release = run.ports.play(sample, {
+      this.release = ports.play(sample, {
         playing: (): void => {
-          if (this.run === run)
-            this.state.set({
-              kind: 'playing',
-              voice: run.request.voice,
-              requestId: run.request.requestId,
-            });
+          if (this.run === run) this.state.set({ kind: 'playing', voice: run.voice });
         },
         finished: (): void => {
           if (this.run === run) this.stop();
         },
         failed: (message): void => {
-          this.fail(run.request.requestId, message);
+          this.fail(run, message);
         },
       });
-      if (this.run === run) this.run.release = release;
-      else release();
     } catch (error) {
-      this.fail(
-        run.request.requestId,
-        error instanceof Error ? error.message : 'This device could not play the voice sample.',
-      );
+      this.fail(run, messageOf(error));
     }
   }
-  private fail(requestId: string, message: string): void {
-    const run = this.run;
-    if (run?.request.requestId !== requestId) return;
+  private fail(run: PreviewRun, message: string): void {
+    if (this.run !== run) return;
     this.stop();
-    this.state.set({ kind: 'error', voice: run.request.voice, message });
+    this.state.set({ kind: 'error', voice: run.voice, message });
   }
 }

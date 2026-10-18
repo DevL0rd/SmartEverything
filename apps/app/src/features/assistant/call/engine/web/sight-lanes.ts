@@ -5,6 +5,7 @@ import {
   type SightSource,
 } from '@smarteverything/domain';
 import { SightStartError } from '../sight-failure';
+import { chooseDesktopSource } from './desktop-choice';
 import { openCamera, openScreen, type CameraRequest, type OpenedSight } from './sight-devices';
 
 export type Lane = 'camera' | 'screen';
@@ -27,13 +28,17 @@ export function facingOfTarget(target: string | null, fallback: SightFacing): Si
   return parsed.success ? parsed.data : fallback;
 }
 
-export function opening(source: AppSightSource, camera: CameraRequest): Promise<OpenedSight> {
+export interface OpenRequest extends CameraRequest {
+  readonly target: string | null;
+}
+
+export function opening(source: AppSightSource, request: OpenRequest): Promise<OpenedSight> {
   switch (source) {
     case 'phone_camera':
-      return openCamera(camera);
+      return openCamera(request);
     case 'desktop_screen':
     case 'desktop_window':
-      return openScreen(source);
+      return chooseDesktopSource(source, request.target).then(() => openScreen(source));
     case 'phone_screen':
       return Promise.reject(
         new SightStartError(source, 'unsupported', 'A browser cannot share a phone screen'),

@@ -1,9 +1,9 @@
-import type { SignalInput, SignalTrigger } from '@smarteverything/domain';
+import type { SignalInput, SignalTriggerV2 } from '@smarteverything/domain';
 import type { Clock } from '../clock';
 import { SignalWatch } from './signal-watch';
 
 export interface WatchedTrigger {
-  readonly trigger: SignalTrigger;
+  readonly trigger: SignalTriggerV2;
   readonly pulse: boolean;
 }
 

@@ -18,7 +18,6 @@ import {
   LocalKeyRejectedError,
   LocalLink,
   LocalLinkUnavailableError,
-  describeLocalError,
   sameTarget,
   type LinkTarget,
 } from './local-link';
@@ -33,6 +32,7 @@ import {
   withObserved,
   type DeviceRecord,
 } from './records';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface RuntimeOptions {
   readonly backend: TuyaBackend;
@@ -252,7 +252,7 @@ export class TuyaRuntime {
           this.onLinkState(id, 'device_offline');
         },
         keyMismatch: (): void => {
-          void this.refetchKey(id);
+          background(this.refetchKey(id), 'key.refetch_failed');
         },
       },
     });
@@ -308,7 +308,7 @@ export class TuyaRuntime {
           .catch((cause: unknown) => {
             this.log.warn('tuya.sub_device_query_failed', {
               deviceId: record.cloud.id,
-              reason: describeLocalError(cause),
+              reason: messageOf(cause),
             });
           });
       }

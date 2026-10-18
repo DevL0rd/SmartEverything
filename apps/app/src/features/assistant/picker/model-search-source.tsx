@@ -5,6 +5,11 @@ import type { AiModelSearchSource, AiModelSearchSort } from '@smarteverything/do
 import { Text } from '../../../components/text';
 import { Button } from '../../../components/button';
 import type { SearchModelPages } from './model-search-queries';
+export function openSourceWebsite(url: string): void {
+  void Linking.openURL(url).catch((error: unknown) => {
+    notify({ message: 'Source website could not be opened', tone: 'critical', error });
+  });
+}
 function sourceNote(source: AiModelSearchSource, sort: AiModelSearchSort): string {
   if (source.status === 'unavailable') return 'Ranking unavailable';
   const order = source.status === 'stale' ? 'Saved OpenRouter order' : 'OpenRouter order';
@@ -40,9 +45,7 @@ function SourceDetails({ source }: { readonly source: AiModelSearchSource }): Re
       <Button
         label="Source website"
         onPress={(): void => {
-          void Linking.openURL(source.source_url).catch((error: unknown) => {
-            notify({ message: 'Source website could not be opened', tone: 'critical', error });
-          });
+          openSourceWebsite(source.source_url);
         }}
         variant="text"
       />

@@ -18,11 +18,17 @@ export interface Reply {
 export async function call(
   base: string,
   token: string | null,
-  request: { readonly method: string; readonly path: string; readonly body?: unknown },
+  request: {
+    readonly method: string;
+    readonly path: string;
+    readonly body?: unknown;
+    readonly headers?: Readonly<Record<string, string>>;
+  },
 ): Promise<Reply> {
   const response = await fetch(`${base}${request.path}`, {
     method: request.method,
     headers: {
+      ...request.headers,
       ...(token === null ? {} : { authorization: `Bearer ${token}` }),
       ...(request.body === undefined ? {} : { 'content-type': 'application/json' }),
     },
@@ -52,9 +58,11 @@ const FAKE_GO2RTC = [
   "const http = require('node:http');",
   "const fs = require('node:fs');",
   'const { WebSocketServer } = require(WS_PATH);',
+  'const { parse } = require(YAML_PATH);',
   "const config = fs.readFileSync(process.argv[3], 'utf8');",
-  'const port = Number(/listen: "127\\.0\\.0\\.1:(\\d+)"/.exec(config)[1]);',
+  "const port = Number(parse(config).api.listen.split(':')[1]);",
   'const replies = {',
+  "  'GET /api/streams': () => '{\"consumers\":[]}',",
   "  'PUT /api/streams': () => '',",
   "  'DELETE /api/streams': () => '',",
   "  'GET /api/frame.jpeg': () => Buffer.from([0xff, 0xd8, 0xff]),",
@@ -80,8 +88,10 @@ const FAKE_GO2RTC = [
 
 export async function fakeGo2rtcServer(directory: string): Promise<string> {
   const path = join(directory, 'go2rtc-server');
-  const ws = JSON.stringify(createRequire(import.meta.url).resolve('ws'));
-  await writeFile(path, FAKE_GO2RTC.replace('WS_PATH', ws));
+  const resolve = createRequire(import.meta.url).resolve;
+  const ws = JSON.stringify(resolve('ws'));
+  const yaml = JSON.stringify(resolve('yaml'));
+  await writeFile(path, FAKE_GO2RTC.replace('WS_PATH', ws).replace('YAML_PATH', yaml));
   await chmod(path, 0o700);
   return path;
 }

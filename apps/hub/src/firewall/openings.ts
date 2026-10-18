@@ -1,3 +1,4 @@
+import { appendTo } from '@smarteverything/domain';
 import { BlockList, isIP } from 'node:net';
 import type {
   FirewallBackend,
@@ -27,6 +28,12 @@ export interface PluginPortNeed {
   readonly port: number;
 }
 
+export interface AnnouncementNeed {
+  readonly deviceId: string;
+  readonly protocol: 'tcp' | 'udp';
+  readonly port: number;
+}
+
 export interface ConnectionPortNeed {
   readonly purpose: 'hub' | 'discovery';
   readonly protocol: 'tcp' | 'udp';
@@ -38,6 +45,7 @@ export interface OpeningNeeds {
   readonly cameras: readonly DeviceAddress[];
   readonly pushing: readonly DeviceAddress[];
   readonly plugins: readonly PluginPortNeed[];
+  readonly announcements?: readonly AnnouncementNeed[];
   readonly networks: readonly string[];
   readonly webrtcPort: number;
   readonly connections?: readonly ConnectionPortNeed[];
@@ -72,7 +80,7 @@ function sourceOpenings(
 ): RequiredOpening[] {
   const byAddress = new Map<string, string[]>();
   for (const device of devices) {
-    byAddress.set(device.address, [...(byAddress.get(device.address) ?? []), device.deviceId]);
+    appendTo(byAddress, device.address, device.deviceId);
   }
   return [...byAddress].map(([address, deviceIds]): RequiredOpening => ({
     id: `${purpose}:${address}`,
@@ -103,10 +111,32 @@ function pluginOpenings(
   );
 }
 
+function announcementOpenings(
+  announcements: readonly AnnouncementNeed[],
+  networks: readonly string[],
+): RequiredOpening[] {
+  const byPort = new Map<string, { need: AnnouncementNeed; deviceIds: string[] }>();
+  for (const need of announcements) {
+    const key = `${need.protocol}:${String(need.port)}`;
+    const entry = byPort.get(key) ?? { need, deviceIds: [] };
+    entry.deviceIds.push(need.deviceId);
+    byPort.set(key, entry);
+  }
+  return [...byPort.values()].flatMap(({ need, deviceIds }) =>
+    networks.map((source): RequiredOpening => ({
+      id: `announcement:${need.protocol}:${String(need.port)}:${source}`,
+      deviceIds,
+      pluginIds: [],
+      rule: { purpose: 'announcement', protocol: need.protocol, port: need.port, source },
+    })),
+  );
+}
+
 export function requiredOpenings({
   cameras,
   pushing,
   plugins,
+  announcements = [],
   networks,
   webrtcPort,
   connections = [],
@@ -121,6 +151,7 @@ export function requiredOpenings({
     ...sourceOpenings('camera', cameras),
     ...sourceOpenings('device', pushing),
     ...pluginOpenings(plugins, networks),
+    ...announcementOpenings(announcements, networks),
     ...connectionOpenings(connections),
     ...webrtc,
   ];

@@ -60,7 +60,7 @@ describe('the API client', () => {
       {
         url: 'https://home.example.com/api/history?capabilities=power%2Cbrightness&from=2026-10-08T00%3A00%3A00.000Z&limit=10',
         method: 'GET',
-        headers: { accept: 'application/json', authorization: `Bearer ${TOKEN}` },
+        headers: { authorization: `Bearer ${TOKEN}` },
         body: null,
       },
     ]);
@@ -173,5 +173,39 @@ describe('the API client', () => {
       url: `https://home.example.com/api/cameras/${ROOM.id}/snapshot`,
       method: 'GET',
     });
+  });
+
+  it('keeps an answer that arrives after the route was reselected, and passes cancellation on', async () => {
+    let current = true;
+    let seen: AbortSignal | null | undefined;
+    const lease = {
+      baseUrl: 'https://hub.local:7880',
+      scopeId: 'scope',
+      generation: 1,
+      endpoint: { kind: 'lan', url: 'https://hub.local:7880' } as const,
+      fetch: (_url: string, init: RequestInit): Promise<Response> => {
+        seen = init.signal;
+        current = false;
+        return Promise.resolve(new Response('[]'));
+      },
+      isCurrent: (): boolean => current,
+      failed: (): void => undefined,
+    };
+    const client = new ApiClient({
+      baseUrl: 'https://hub.local:7880',
+      token: TOKEN,
+      fetch: (): Promise<Response> => Promise.reject(new Error('unused')),
+      onUnauthorized: (): void => undefined,
+      route: (): typeof lease => lease,
+    });
+    const controller = new AbortController();
+    await expect(
+      client.call(
+        E.readHistory,
+        { query: { capabilities: ['power'], from: AT } },
+        { signal: controller.signal },
+      ),
+    ).resolves.toEqual([]);
+    expect(seen).toBe(controller.signal);
   });
 });

@@ -1,94 +1,129 @@
 import { z } from 'zod';
-import {
-  HARNESS_ARTIFACT_INTEGRITY,
-  HARNESS_DESIRED_ENTRY,
-  HARNESS_SKILL_ASSET,
-} from './ai-harness-configuration';
+import { JSON_VALUE } from './values';
 
-export const HARNESS_SKILL_IMPORT_FORMATS = [
-  'immutable-github-skill-v1',
-  'immutable-json-skill-bundle-v1',
-] as const;
-export const HARNESS_SKILL_SOURCE_URL = z
-  .url({ protocol: /^https$/ })
-  .max(4096)
+export const HARNESS_EXTENSION_NAME = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u);
+export const HARNESS_RELATIVE_PATH = z
+  .string()
+  .min(1)
   .refine(
-    immutableGithubSkillUrl,
-    'Expected a public raw GitHub skill URL pinned to a full commit.',
+    (value) =>
+      !value.includes('\\') &&
+      !value.includes('\0') &&
+      value.split('/').every((part) => part !== '' && part !== '.' && part !== '..'),
+    'Expected a relative path inside the folder.',
   );
-export const HARNESS_SKILL_RESOLVE = z.strictObject({
-  url: HARNESS_SKILL_SOURCE_URL,
-  integrity: HARNESS_ARTIFACT_INTEGRITY.optional(),
-});
+
 export const HARNESS_SKILL_PRESENTATION = z.strictObject({
-  name: z.string().min(1).max(200),
-  description: z.string().min(1).max(2000),
-  publisher: z.string().min(1).max(200),
+  name: z.string().min(1),
+  description: z.string().min(1),
+  publisher: z.string().min(1),
 });
-export type HarnessSkillPresentation = z.infer<typeof HARNESS_SKILL_PRESENTATION>;
+
+export const HARNESS_EXTENSION_SOURCE = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('included') }),
+  z.strictObject({
+    kind: z.literal('git'),
+    url: z.string().min(1),
+    ref: z.string().min(1).nullable(),
+    path: HARNESS_RELATIVE_PATH.nullable(),
+    commit: z
+      .string()
+      .regex(/^[a-f0-9]{40}$/u)
+      .nullable(),
+  }),
+  z.strictObject({ kind: z.literal('editor') }),
+]);
+
 export const HARNESS_EXTENSION_ITEM = z.object({
-  id: z.string().min(1).max(400),
-  kind: z.enum(['extension', 'skill']),
-  included: z.boolean(),
+  id: z.string().min(1),
+  kind: z.enum(['builtin', 'skill', 'plugin']),
   ...HARNESS_SKILL_PRESENTATION.shape,
-  capabilities: z.array(z.string().min(1).max(1000)).max(30),
-  requirements: z.array(z.string().min(1).max(1000)).max(30),
-  runtimes: z.array(z.literal('smarteverything')).max(1),
-  platforms: z.array(z.enum(['linux', 'macos', 'windows', 'android'])).max(4),
-  selection: z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('entry'), entry: HARNESS_DESIRED_ENTRY }),
-    z.object({
-      kind: z.literal('skill_asset'),
-      parent_id: z.enum(['skills', 'claude-plugins']),
-      asset: HARNESS_SKILL_ASSET,
-    }),
-  ]),
-  acquisition: z.discriminatedUnion('state', [
-    z.object({
-      state: z.literal('available'),
-      format: z.enum(['builtin', ...HARNESS_SKILL_IMPORT_FORMATS]),
-    }),
-    z.object({ state: z.literal('unsupported'), reason: z.string().min(1).max(2000) }),
-  ]),
+  license: z.string().min(1).nullable(),
+  capabilities: z.array(z.string().min(1)),
+  requirements: z.array(z.string().min(1)),
+  platforms: z.array(z.enum(['linux', 'macos', 'windows', 'android'])),
+  enabled: z.boolean(),
+  config: z.record(z.string(), JSON_VALUE),
+  source: HARNESS_EXTENSION_SOURCE,
+  version: z.string().min(1).nullable(),
+  executes: z.boolean(),
+  confirmed: z.boolean(),
 });
 export type HarnessExtensionItem = z.infer<typeof HARNESS_EXTENSION_ITEM>;
-export type HarnessSkillResolve = z.infer<typeof HARNESS_SKILL_RESOLVE>;
+
 export const HARNESS_BUNDLED_SKILL = z.object({
   id: z.string().regex(/^smarteverything-[a-z0-9]+(?:-[a-z0-9]+)*$/u),
   kind: z.literal('bundled_skill'),
-  name: z.string().min(1).max(200),
-  description: z.string().min(1).max(500),
+  name: z.string().min(1),
+  description: z.string().min(1),
   publisher: z.literal('SmartEverything'),
   revision: z.string().regex(/^[a-f0-9]{64}$/u),
-  content: z.string().min(1).max(100_000),
+  content: z.string().min(1),
 });
 export const AI_HARNESS_EXTENSIONS = z.object({
-  items: z.array(HARNESS_EXTENSION_ITEM).max(1200),
-  bundled_skills: z.array(HARNESS_BUNDLED_SKILL).max(32).optional(),
-  import_formats: z.array(z.enum(HARNESS_SKILL_IMPORT_FORMATS)).max(2),
+  items: z.array(HARNESS_EXTENSION_ITEM),
+  bundled_skills: z.array(HARNESS_BUNDLED_SKILL).optional(),
 });
 export type AiHarnessExtensions = z.infer<typeof AI_HARNESS_EXTENSIONS>;
-export const HARNESS_CONFIGURATION_NOTICE_CAPABILITY = 'ai-harness-configuration-notices-v1';
+
+export const HARNESS_EXTENSION_SOURCE_REQUEST = z.strictObject({
+  url: z.string().min(1),
+  ref: z.string().min(1).optional(),
+  path: HARNESS_RELATIVE_PATH.optional(),
+});
+export type HarnessExtensionSourceRequest = z.infer<typeof HARNESS_EXTENSION_SOURCE_REQUEST>;
+export const HARNESS_EXTENSION_CANDIDATE = z.object({
+  kind: z.enum(['skill', 'plugin']),
+  name: HARNESS_EXTENSION_NAME,
+  description: z.string().min(1),
+  path: z.string(),
+  license: z.string().min(1).nullable(),
+  executes: z.boolean(),
+  source: HARNESS_EXTENSION_SOURCE_REQUEST.optional(),
+});
+export type HarnessExtensionCandidate = z.infer<typeof HARNESS_EXTENSION_CANDIDATE>;
+export const HARNESS_EXTENSION_RESOLUTION = z.object({
+  url: z.string().min(1),
+  ref: z.string().min(1).nullable(),
+  commit: z.string().regex(/^[a-f0-9]{40}$/u),
+  candidates: z.array(HARNESS_EXTENSION_CANDIDATE),
+});
+export type HarnessExtensionResolution = z.infer<typeof HARNESS_EXTENSION_RESOLUTION>;
+export const HARNESS_EXTENSION_INSTALL = z.strictObject({
+  source: HARNESS_EXTENSION_SOURCE_REQUEST,
+  select: z.array(HARNESS_EXTENSION_NAME).optional(),
+  confirm_executes: z.boolean().default(false),
+});
+export const HARNESS_EXTENSION_PATCH = z.strictObject({
+  enabled: z.boolean().optional(),
+  config: z.record(z.string(), JSON_VALUE).optional(),
+  confirm_executes: z.boolean().optional(),
+});
+export type HarnessExtensionPatch = z.infer<typeof HARNESS_EXTENSION_PATCH>;
+export const HARNESS_SKILL_FILES = z.strictObject({
+  files: z
+    .array(z.strictObject({ path: HARNESS_RELATIVE_PATH, content: z.string() }))
+    .min(1)
+    .refine(
+      (files) => files.some((file) => file.path === 'SKILL.md'),
+      'A skill needs a SKILL.md file.',
+    ),
+});
+
+export const HARNESS_EXTENSION_TREE = z.object({
+  files: z.array(
+    z.object({
+      path: HARNESS_RELATIVE_PATH,
+      base64: z.string(),
+      executable: z.boolean().optional(),
+    }),
+  ),
+});
+export type HarnessExtensionTree = z.infer<typeof HARNESS_EXTENSION_TREE>;
+
 export const AI_HARNESS_CONFIGURATION_NOTICE = z.object({
   type: z.literal('ai_harness_configuration'),
   reason: z.enum(['desired', 'report', 'host']),
-  revision: z.string().min(1).max(200),
+  revision: z.string().min(1),
 });
 export type AiHarnessConfigurationNotice = z.infer<typeof AI_HARNESS_CONFIGURATION_NOTICE>;
-
-function immutableGithubSkillUrl(value: string): boolean {
-  if (!URL.canParse(value)) return false;
-  const url = new URL(value);
-  return (
-    url.hostname === 'raw.githubusercontent.com' &&
-    url.port === '' &&
-    url.username === '' &&
-    url.password === '' &&
-    url.search === '' &&
-    url.hash === '' &&
-    /^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/[a-f0-9]{40}\/(?:[A-Za-z0-9_.-]+\/)*(?:SKILL\.md|[A-Za-z0-9_.-]+\.json)$/.test(
-      url.pathname,
-    ) &&
-    url.pathname.split('/').every((part) => part !== '.' && part !== '..')
-  );
-}

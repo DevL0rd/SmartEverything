@@ -2,14 +2,12 @@ import { API_ENDPOINTS as E, ApiError, type CallRow } from '@smarteverything/dom
 import type { AssistantVoice } from '../../assistant-voice/assistant-voice';
 import { SightError } from '../../assistant-voice/sight-error';
 import { NoSuchCallError } from '../../assistant-voice/video';
-import { clientOf, profileIdOf, type Caller } from '../auth';
+import { clientOf, isOwnerOrSelf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
-import { bound, type Bound } from '../router';
-
-export type CallRoutes = Record<'listCalls' | 'showCameraInCall' | 'stopSightInCall', Bound>;
+import { bound } from '../router';
 
 function visible(context: ServerContext, caller: Caller, row: CallRow): boolean {
-  return clientOf(caller).role === 'owner' || row.profileId === profileIdOf(context.store, caller);
+  return isOwnerOrSelf(clientOf(caller).role, row.profileId === profileIdOf(context.store, caller));
 }
 
 function refusing<T>(work: () => T): T {
@@ -26,25 +24,29 @@ function refusing<T>(work: () => T): T {
   }
 }
 
-export function callRoutes(context: ServerContext, voice: AssistantVoice): CallRoutes {
-  const calls = voice.sightCalls;
-  const own = (callId: string, caller: Caller): void => {
-    const row = calls.rows().find((candidate) => candidate.callId === callId);
-    if (row === undefined || !visible(context, caller, row)) {
-      throw new ApiError('not_found', `There is no call ${callId} of yours running.`);
-    }
-  };
-  return {
+function own(
+  context: ServerContext,
+  calls: AssistantVoice['sightCalls'],
+  callId: string,
+  caller: Caller,
+): void {
+  const row = calls.rows().find((candidate) => candidate.callId === callId);
+  if (row === undefined || !visible(context, caller, row)) {
+    throw new ApiError('not_found', `There is no call ${callId} of yours running.`);
+  }
+}
+
+export const callRoutes = (context: ServerContext, { sightCalls: calls }: AssistantVoice) =>
+  ({
     listCalls: bound(E.listCalls, ({ caller }) =>
       calls.rows().filter((row) => visible(context, caller, row)),
     ),
     showCameraInCall: bound(E.showCameraInCall, ({ params, body, caller }) => {
-      own(params.callId, caller);
+      own(context, calls, params.callId, caller);
       return refusing(() => calls.show(params.callId, body.cameraId));
     }),
     stopSightInCall: bound(E.stopSightInCall, ({ params, caller }) => {
-      own(params.callId, caller);
+      own(context, calls, params.callId, caller);
       return refusing(() => calls.stop(params.callId));
     }),
-  };
-}
+  }) as const;

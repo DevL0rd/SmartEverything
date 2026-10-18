@@ -24,7 +24,7 @@ function shapeOf(
   return {
     airQuality: readingsOf(sources, ['pm25']).length > 0,
     comfort: comfortOf(sources, rooms, INDOOR_METRICS).length > 0,
-    airHistory: chartedMetric(sources) !== null,
+    airHistory: chartedMetric(sources.map((source) => source.model)) !== null,
     supplies: sources.some(hasSupplies),
   };
 }

@@ -11,7 +11,7 @@ export const WEEKDAYS = z
   .min(1)
   .refine((days) => new Set(days).size === days.length, { message: 'weekdays must not repeat' });
 
-export const LEGACY_CONDITION = z.discriminatedUnion('type', [
+const LEGACY_CONDITION = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('state'),
     deviceId: z.uuid(),

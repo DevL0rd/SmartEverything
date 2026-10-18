@@ -1,23 +1,23 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../design/theme-scope';
 import { useContextMenu } from '../../../components/menu';
 import { StatusChip } from '../../../components/status-chip';
 import { EdgeScrim } from '../../../components/edge-scrim';
 import { Text } from '../../../components/text';
 import { CardPicture } from '../components/card-picture';
 import { cameraStatusOf, useCardMenu } from './tile-status';
-import { useCameraCondition } from '../data/use-camera-condition';
 import type { CameraEntry } from '../logic/cameras';
+import type { CameraCondition } from '../player/player-state';
 
 export interface CameraTileProps {
   readonly entry: CameraEntry;
   readonly live: boolean;
+  readonly condition: CameraCondition;
 }
 
-export function CameraTile({ entry, live }: CameraTileProps): ReactNode {
-  const condition = useCameraCondition(entry);
+export function CameraTile({ entry, live, condition }: CameraTileProps): ReactNode {
   const status = cameraStatusOf(condition);
   const menu = useContextMenu(useCardMenu(entry), entry.name);
   const [hovered, setHovered] = useState(false);
@@ -32,7 +32,7 @@ export function CameraTile({ entry, live }: CameraTileProps): ReactNode {
       className="h-full w-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-2 elevation-1"
     >
       <CardPicture entry={entry} live={live} hovered={hovered} onMenu={menu.onLongPress} />
-      <ScopedTheme theme="dark">
+      <ThemeScope theme="dark">
         <View
           pointerEvents="none"
           className="absolute inset-x-0 bottom-0 flex-row items-end gap-2 px-3 pb-2 pt-10"
@@ -43,7 +43,7 @@ export function CameraTile({ entry, live }: CameraTileProps): ReactNode {
           </Text>
           {status === null ? null : <StatusChip {...status} />}
         </View>
-      </ScopedTheme>
+      </ThemeScope>
       {menu.host}
     </View>
   );

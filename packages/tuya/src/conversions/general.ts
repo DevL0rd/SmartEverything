@@ -61,22 +61,15 @@ const unlockMethods: Converter = (raw) => {
     return [];
   }
   const indexes = new Set<number>();
-  try {
-    const bytes = base64Bytes('ms_dp_syn_alg', raw);
-    for (let index = 0; index < bytes.length; index += 2) {
-      const partition = byteAt('ms_dp_syn_alg', bytes, index) & 0x7f;
-      const value = byteAt('ms_dp_syn_alg', bytes, index + 1);
-      for (let bit = 0; bit < 8; bit += 1) {
-        if ((value & (1 << bit)) !== 0) {
-          indexes.add((partition - 1) * 8 + bit);
-        }
+  const bytes = base64Bytes('ms_dp_syn_alg', raw);
+  for (let index = 0; index < bytes.length; index += 2) {
+    const partition = byteAt('ms_dp_syn_alg', bytes, index) & 0x7f;
+    const value = byteAt('ms_dp_syn_alg', bytes, index + 1);
+    for (let bit = 0; bit < 8; bit += 1) {
+      if ((value & (1 << bit)) !== 0) {
+        indexes.add((partition - 1) * 8 + bit);
       }
     }
-  } catch (cause) {
-    if (!(cause instanceof ConversionError)) {
-      throw cause;
-    }
-    return [];
   }
   return [...indexes].sort((left, right) => left - right);
 };

@@ -65,6 +65,9 @@ export const CLAUDE_MCP_SERVERS = z
   );
 export type ClaudeMcpServers = z.infer<typeof CLAUDE_MCP_SERVERS>;
 
+export const CLAUDE_SETTING_SOURCES = ['user', 'project', 'local'] as const;
+export const CLAUDE_DEFAULT_SETTING_SOURCES = ['user', 'project'] as const;
+
 export const CLAUDE_PROVIDER_OPTIONS = z.strictObject({
   flag_settings: z.record(z.string().min(1).max(100), JSON_VALUE).optional(),
   mcp_servers: CLAUDE_MCP_SERVERS.optional(),
@@ -80,7 +83,12 @@ export const CLAUDE_PROVIDER_OPTIONS = z.strictObject({
   thinking: z.enum(['adaptive', 'enabled', 'disabled']).optional(),
   thinking_budget: z.int().positive().optional(),
   fast: z.boolean().optional(),
-  setting_sources: z.array(z.enum(['user', 'project', 'local'])).optional(),
+  setting_sources: z
+    .array(z.enum(CLAUDE_SETTING_SOURCES))
+    .optional()
+    .describe(
+      "Which of Claude's own settings (user, project, local) app chats load: custom commands, skills, CLAUDE.md and hooks. Defaults to user and project; hooks on that computer then apply to app chats. Chats without a working directory never load them.",
+    ),
   builtin_tools: z.array(z.string().min(1).max(200)).max(500).default([]),
   additional_directories: z.array(z.string().min(1).max(4096)).max(100).optional(),
   plugins: z
@@ -189,10 +197,13 @@ export const COMPUTER_AI_OPERATIONS = [
   'configure',
   'provider_metadata',
   'provider_read',
+  'provider_files',
   'provider_control',
   'provider_start',
   'provider_tool_result',
   'provider_interrupt',
+  'provider_steer',
+  'provider_adopt',
   'provider_answer',
 ] as const;
 export const COMPUTER_AI_CAPABILITIES = z.strictObject({

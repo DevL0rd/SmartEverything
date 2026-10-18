@@ -2,40 +2,29 @@ import { randomUUID } from 'node:crypto';
 import { HarnessRuntimeError } from '../host/errors';
 import type { AiNativeReferenceResult } from '@smarteverything/domain';
 
-const CURSOR_MAX = 64;
 const CURSOR_MS = 60_000;
 export interface NativeReferenceProgress {
   readonly scope: string;
   readonly next: (limit: number, signal?: AbortSignal) => Promise<AiNativeReferenceResult>;
-  readonly close: () => Promise<void>;
+}
+interface Entry {
+  readonly owner: string;
+  readonly progress: NativeReferenceProgress;
+  readonly timer: ReturnType<typeof setTimeout>;
 }
 export class NativeReferenceCursors {
-  private readonly entries = new Map<
-    string,
-    {
-      readonly owner: string;
-      readonly progress: NativeReferenceProgress;
-      readonly timer: ReturnType<typeof setTimeout>;
-    }
-  >();
-  private readonly pending = new Set<Promise<void>>();
-  private readonly failures: unknown[] = [];
+  private readonly entries = new Map<string, Entry>();
+
   keep(owner: string, progress: NativeReferenceProgress): string {
-    if (this.entries.size + this.pending.size >= CURSOR_MAX)
-      throw new HarnessRuntimeError(
-        'operation_failed',
-        'Native reference cursor capacity is exhausted.',
-      );
     const id = randomUUID();
     const timer = setTimeout(() => {
-      void this.release(id).catch((error: unknown) => {
-        this.failures.push(error);
-      });
+      this.entries.delete(id);
     }, CURSOR_MS);
     timer.unref();
     this.entries.set(id, { owner, progress, timer });
     return id;
   }
+
   take(id: string, scope: string): NativeReferenceProgress {
     const entry = this.entries.get(id);
     if (entry?.progress.scope !== scope)
@@ -43,49 +32,31 @@ export class NativeReferenceCursors {
         'operation_failed',
         'Native reference cursor expired or its exact scope changed.',
       );
-    clearTimeout(entry.timer);
-    this.entries.delete(id);
+    this.drop(id, entry);
     return entry.progress;
   }
-  release(id: string, owner?: string): Promise<void> {
+
+  release(id: string, owner: string): void {
     const entry = this.entries.get(id);
-    if (entry === undefined) return Promise.resolve();
-    if (owner !== undefined && entry.owner !== owner)
-      return Promise.reject(
-        new HarnessRuntimeError(
-          'ownership_lost',
-          'Native reference cursor belongs to another conversation.',
-        ),
+    if (entry === undefined) return;
+    if (entry.owner !== owner)
+      throw new HarnessRuntimeError(
+        'ownership_lost',
+        'Native reference cursor belongs to another conversation.',
       );
+    this.drop(id, entry);
+  }
+
+  releaseOwner(owner: string): void {
+    for (const [id, entry] of this.entries) if (entry.owner === owner) this.drop(id, entry);
+  }
+
+  clear(): void {
+    for (const [id, entry] of this.entries) this.drop(id, entry);
+  }
+
+  private drop(id: string, entry: Entry): void {
     clearTimeout(entry.timer);
     this.entries.delete(id);
-    const work = Promise.resolve().then(() => entry.progress.close());
-    this.pending.add(work);
-    void work.then(
-      () => {
-        this.pending.delete(work);
-      },
-      () => {
-        this.pending.delete(work);
-      },
-    );
-    return work;
-  }
-  async releaseOwner(owner: string): Promise<void> {
-    const work = [...this.entries].flatMap(([id, entry]) =>
-      entry.owner === owner ? [this.release(id, owner)] : [],
-    );
-    await this.finish(work);
-  }
-  async close(): Promise<void> {
-    const owned = [...this.entries.keys()].map((id) => this.release(id));
-    await this.finish([...new Set([...owned, ...this.pending])]);
-  }
-  private async finish(work: readonly Promise<void>[]): Promise<void> {
-    const results = await Promise.allSettled(work);
-    const failures: unknown[] = [...this.failures];
-    for (const result of results) if (result.status === 'rejected') failures.push(result.reason);
-    if (failures.length > 0)
-      throw new AggregateError(failures, 'Native reference cursor cleanup failed.');
   }
 }

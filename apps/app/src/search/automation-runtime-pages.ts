@@ -1,14 +1,7 @@
 import type { Href } from 'expo-router';
+import type { AutomationRow, AutomationValueRow, SearchSources } from '@smarteverything/domain';
 import {
-  AUTOMATION_DEFINITION,
-  type AutomationRow,
-  type AutomationValueRow,
-  type AutomationSequenceRow,
-  type SearchSources,
-} from '@smarteverything/domain';
-import {
-  automationFocusTargets,
-  sequenceFocusTargets,
+  storedFocusTargets,
   valueFocusTargets,
   type AutomationFocusTarget,
   type AutomationNames,
@@ -49,7 +42,6 @@ function namesOf(tables: SearchTables): AutomationNames {
     people: [],
     chats: tables.chats,
     values: tables.automationValues === undefined ? [] : rowsOf(tables.automationValues),
-    sequences: tables.automationSequences === undefined ? [] : rowsOf(tables.automationSequences),
     automations: rowsOf(tables.automations),
     groups: rowsOf(tables.deviceGroups),
     rooms: rowsOf(tables.rooms),
@@ -88,48 +80,18 @@ function valuePages(row: AutomationValueRow): readonly RuntimePage[] {
     }),
   ];
 }
-function sequencePages(row: AutomationSequenceRow, names: AutomationNames): readonly RuntimePage[] {
-  const base = `automation-sequence:${row.id}`;
-  return [
-    {
-      path: base,
-      title: row.name,
-      parent: 'page:automations.sequences',
-      to: href.automationSequence(row.id),
-      icon: 'layers',
-      keywords: [
-        'sequence',
-        'parameters',
-        'reusable',
-        'steps',
-        'run',
-        'test',
-        'stop',
-        'history',
-        'single',
-        'restart',
-        'queue',
-        'parallel',
-      ],
-    },
-    ...focusPages({
-      base,
-      parent: `page:${base}`,
-      targets: sequenceFocusTargets(row.definition, names),
-      link: (focus) => href.automationSequence(row.id, focus),
-    }),
-  ];
-}
 function automationPages(row: AutomationRow, names: AutomationNames): readonly RuntimePage[] {
-  const parsed = AUTOMATION_DEFINITION.safeParse(row.definition);
-  return parsed.success
-    ? focusPages({
-        base: `automation-editor:${row.id}`,
-        parent: `automation:${row.id}`,
-        targets: automationFocusTargets(parsed.data, names),
-        link: (focus) => href.automation(row.id, undefined, focus),
-      })
-    : [];
+  const stored = storedFocusTargets(row, names);
+  if (stored === null) return [];
+  return focusPages({
+    base: `automation-editor:${row.id}`,
+    parent: `automation:${row.id}`,
+    targets: stored.targets,
+    link: (focus) =>
+      stored.reusable
+        ? href.automationSequence(row.id, focus)
+        : href.automation(row.id, undefined, focus),
+  });
 }
 function runtimePages(tables: SearchTables): readonly RuntimePage[] {
   const names = namesOf(tables);
@@ -137,29 +99,8 @@ function runtimePages(tables: SearchTables): readonly RuntimePage[] {
     ...(tables.automationValues === undefined
       ? []
       : rowsOf(tables.automationValues).flatMap(valuePages)),
-    ...(tables.automationSequences === undefined
-      ? []
-      : rowsOf(tables.automationSequences).flatMap((row) => sequencePages(row, names))),
     ...rowsOf(tables.automations).flatMap((row) => automationPages(row, names)),
-    ...runPages(tables),
   ];
-}
-function runPages(tables: SearchTables): readonly RuntimePage[] {
-  const runs = tables.automationRuns === undefined ? [] : rowsOf(tables.automationRuns);
-  return runs.map((row) => ({
-    path: `automation-run:${row.id}`,
-    title: `Run · ${row.status} · ${new Date(row.created_at).toLocaleString()}`,
-    parent:
-      row.target_type === 'sequence'
-        ? `page:automation-sequence:${row.automation_id}`
-        : `automation:${row.automation_id}`,
-    to:
-      row.target_type === 'sequence'
-        ? href.automationSequence(row.automation_id, `run:${row.id}`)
-        : href.automationRuns(row.automation_id, `run:${row.id}`),
-    icon: 'activity',
-    keywords: ['run', 'history', 'trace', 'status', 'stop', row.status, row.id],
-  }));
 }
 export function automationRuntimePages(
   tables: SearchTables,

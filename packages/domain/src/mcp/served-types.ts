@@ -3,7 +3,11 @@ import type { McpPartName } from './names';
 
 export type McpRoute =
   | { readonly part: McpPartName }
-  | { readonly key: string; readonly parts: Readonly<Record<string, McpPartName>> }
+  | {
+      readonly key: string;
+      readonly parts: Readonly<Record<string, McpPartName>>;
+      readonly says?: Readonly<Record<string, string>>;
+    }
   | { readonly compose: readonly McpPartName[] }
   | { readonly custom: true };
 

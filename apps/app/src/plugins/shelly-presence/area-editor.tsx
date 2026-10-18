@@ -1,4 +1,4 @@
-import type { ShellyArea, ShellyTrack } from '@smarteverything/domain';
+import type { ShellyArea, ShellyTrack } from '@smarteverything/shelly';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../components/button';

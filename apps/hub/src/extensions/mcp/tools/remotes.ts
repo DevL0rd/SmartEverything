@@ -1,17 +1,16 @@
-import type { IrCodeRow, IrRemoteRow } from '@smarteverything/domain';
+import {
+  EMPTY_IR_REMOTE_STATE,
+  type DeviceScope,
+  type IrCodeRow,
+  type IrRemoteRow,
+  type IrRemoteState,
+} from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Store } from '../../../store/store';
 import { reported, sendAndWait } from './commanding';
-import { PHYSICAL, READS, ToolError, defineTool, type Tool } from './registry';
-import { inRooms, placedDevices, type Placed } from './targets';
-
-function pick<T>(rows: readonly T[], wanted: string, fields: (row: T) => readonly string[]): T[] {
-  const text = wanted.trim().toLowerCase();
-  const exact = rows.filter((row) => fields(row).some((field) => field.toLowerCase() === text));
-  return exact.length > 0
-    ? exact
-    : rows.filter((row) => fields(row).some((field) => field.toLowerCase().includes(text)));
-}
+import { deviceScopeOfActor } from './person-reach';
+import { PHYSICAL, READS, defineTool, type Tool } from './registry';
+import { inRooms, placedDevices, resolveNamed, type Placed } from './targets';
 
 interface Remote {
   readonly row: IrRemoteRow;
@@ -19,14 +18,17 @@ interface Remote {
   readonly buttons: readonly IrCodeRow[];
 }
 
-function remotes(store: Store): Remote[] {
-  const blasters = new Map(placedDevices(store).map((placed) => [placed.device.id, placed]));
+function remotes(store: Store, scope: DeviceScope | null): Remote[] {
+  const blasters = new Map(placedDevices(store, scope).map((placed) => [placed.device.id, placed]));
   const codes = store.infrared.codes();
-  return store.infrared.remotes().map((row) => ({
-    row,
-    blaster: blasters.get(row.blaster_id),
-    buttons: codes.filter((code) => code.remote_id === row.id),
-  }));
+  return store.infrared
+    .remotes()
+    .filter((row) => scope === null || blasters.has(row.blaster_id))
+    .map((row) => ({
+      row,
+      blaster: blasters.get(row.blaster_id),
+      buttons: codes.filter((code) => code.remote_id === row.id),
+    }));
 }
 
 function where(blaster: Placed | undefined): Record<string, unknown> {
@@ -41,7 +43,10 @@ function where(blaster: Placed | undefined): Record<string, unknown> {
   };
 }
 
-function summary({ row, blaster, buttons }: Remote): Record<string, unknown> {
+function summary(
+  { row, blaster, buttons }: Remote,
+  assumed: IrRemoteState,
+): Record<string, unknown> {
   return {
     id: row.id,
     name: row.name,
@@ -50,18 +55,8 @@ function summary({ row, blaster, buttons }: Remote): Record<string, unknown> {
     blaster_id: row.blaster_id,
     ...where(blaster),
     buttons: buttons.map((button) => button.button),
+    assumed,
   };
-}
-
-function only<T>(found: readonly T[], what: string, wanted: string): T {
-  const [first, second] = found;
-  if (first === undefined) {
-    throw new ToolError(`There is no ${what} "${wanted}"; list_remotes shows them`, 'not_found');
-  }
-  if (second !== undefined) {
-    throw new ToolError(`"${wanted}" names more than one ${what}; use its id or full name`);
-  }
-  return first;
 }
 
 export const REMOTE_TOOLS: readonly Tool[] = [
@@ -71,16 +66,20 @@ export const REMOTE_TOOLS: readonly Tool[] = [
       rooms: z.array(z.string().min(1)).min(1).optional().describe('Room ids or names'),
     }),
     annotations: READS,
-    run: ({ store }, input) => ({
-      structured: {
-        remotes: remotes(store)
-          .filter(
-            (remote) =>
-              input.rooms === undefined || inRooms(remote.blaster?.room ?? null, input.rooms),
-          )
-          .map(summary),
-      },
-    }),
+    run: (context, input) => {
+      const { store } = context;
+      const states = store.settings.read().ir_remotes;
+      return {
+        structured: {
+          remotes: remotes(store, deviceScopeOfActor(context))
+            .filter(
+              (remote) =>
+                input.rooms === undefined || inRooms(remote.blaster?.room ?? null, input.rooms),
+            )
+            .map((remote) => summary(remote, states[remote.row.id] ?? EMPTY_IR_REMOTE_STATE)),
+        },
+      };
+    },
   }),
   defineTool({
     name: 'press_remote_button',
@@ -90,19 +89,20 @@ export const REMOTE_TOOLS: readonly Tool[] = [
     }),
     annotations: PHYSICAL,
     run: async (context, input) => {
-      const remote = only(
-        pick(remotes(context.store), input.remote, (candidate) => [
-          candidate.row.id,
-          candidate.row.name,
-        ]),
-        'remote',
+      const remote = resolveNamed(
+        remotes(context.store, deviceScopeOfActor(context)),
         input.remote,
+        'remote',
+        {
+          names: (candidate) => [candidate.row.name],
+          label: (candidate) => candidate.row.name,
+          id: (candidate) => candidate.row.id,
+        },
       );
-      const button = only(
-        pick(remote.buttons, input.button, (code) => [code.button]),
-        `button on ${remote.row.name}`,
-        input.button,
-      );
+      const button = resolveNamed(remote.buttons, input.button, `button on ${remote.row.name}`, {
+        names: (code) => [code.button],
+        label: (code) => code.button,
+      });
       const outcome = await sendAndWait(context, [
         {
           device_id: remote.row.blaster_id,

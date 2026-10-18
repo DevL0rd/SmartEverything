@@ -63,8 +63,3 @@ export async function talkMessageUrl(messageId: string): Promise<string> {
   }
   return client.resourceUrl(link.url, link.expiresAt, 'audio');
 }
-
-export async function removeTalkMessage(messageId: string): Promise<void> {
-  await api().call(E.removeTalkMessage, { params: { messageId } });
-  log.info('talk.message_removed', { messageId });
-}

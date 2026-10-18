@@ -17,10 +17,9 @@ import type { ColourRole } from '../../../design/tokens';
 import { joinParts } from '../../../format/text';
 import { useHistory } from '../../../queries/history';
 import { memoOnInputs } from '../../../store/memo-selector';
-import { useDeviceValues } from '../../../store/selectors';
+import { useDeviceDerived } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceValuesOf, type Device, type DeviceValues } from '../../../store/state';
-import { ColourShortcut } from '../controls/colour-shortcut';
 import { PowerToggle } from '../controls/power-toggle';
 import { splitUnit } from '../detail/device-hero';
 import { useOfflineLine, useSeenLine } from '../detail/offline-banner';
@@ -42,7 +41,15 @@ const FACT_ICONS: Partial<Readonly<Record<CapabilityRole, IconName>>> = {
   power_draw: 'plug',
 };
 
-type NamesLook = 'large' | 'card' | 'tile' | 'line';
+type NamesLook = 'large' | 'card' | 'tile' | 'row' | 'line';
+
+const NAME_VARIANT: Readonly<Record<NamesLook, 'title-3' | 'body-strong' | 'callout'>> = {
+  large: 'title-3',
+  card: 'body-strong',
+  tile: 'body-strong',
+  row: 'callout',
+  line: 'body-strong',
+};
 
 const BARE_STATES: ReadonlySet<string> = new Set(['On', 'Online']);
 
@@ -61,43 +68,91 @@ function stateText(model: DeviceModel, values: DeviceValues, reading: boolean): 
     : joinParts([state, doing]);
 }
 
-function asleepText(
-  model: DeviceModel,
-  values: DeviceValues,
-  seen: string | null,
-  look: NamesLook,
-): string {
-  const state = stateLine(model, values, false);
-  return model.sleepy && look !== 'tile' && look !== 'line'
-    ? joinParts([state, seen])
-    : (seen ?? state);
+interface StateRead {
+  readonly text: string;
+  readonly on: boolean;
 }
 
-function useNamesText(device: Device, model: DeviceModel, look: NamesLook): string {
-  const offline = useOfflineLine(device.id);
-  const seen = useSeenLine(device.id, look !== 'tile' && look !== 'line');
-  const awake = device.online || model.sleepy;
+function sameState(left: StateRead, right: StateRead): boolean {
+  return left.text === right.text && left.on === right.on;
+}
+
+function readOf(model: DeviceModel, values: DeviceValues, text: string): StateRead {
+  return { text, on: powerStateOf(model, values) === 'on' };
+}
+
+function useAwakeState(model: DeviceModel, look: NamesLook): StateRead {
   const select = useMemo(
     () =>
       memoOnInputs(
-        (state) => [deviceValuesOf(state, device.id)],
+        (state) => [deviceValuesOf(state, model.device.id)],
         (state) => {
-          const values = deviceValuesOf(state, device.id);
-          return awake
-            ? stateText(model, values, look !== 'large')
-            : asleepText(model, values, look === 'large' ? offline : seen, look);
+          const values = deviceValuesOf(state, model.device.id);
+          return readOf(model, values, stateText(model, values, look !== 'large'));
         },
       ),
-    [device.id, model, awake, look, offline, seen],
+    [model, look],
   );
-  return useStoreSelector(select);
+  return useStoreSelector(select, sameState);
 }
 
-function useIsOn(model: DeviceModel): boolean {
-  return useStoreSelector(
-    (state) => powerStateOf(model, deviceValuesOf(state, model.device.id)) === 'on',
-    Object.is,
-    [model],
+function useAsleepState(model: DeviceModel, line: string | null): StateRead {
+  const select = useMemo(
+    () =>
+      memoOnInputs(
+        (state) => [deviceValuesOf(state, model.device.id)],
+        (state) => {
+          const values = deviceValuesOf(state, model.device.id);
+          return readOf(model, values, line ?? stateLine(model, values, false));
+        },
+      ),
+    [model, line],
+  );
+  return useStoreSelector(select, sameState);
+}
+
+interface NamesStateProps {
+  readonly model: DeviceModel;
+  readonly look: NamesLook;
+}
+
+function StateText({
+  look,
+  read,
+}: {
+  readonly look: NamesLook;
+  readonly read: StateRead;
+}): ReactNode {
+  return (
+    <Text
+      variant={look === 'row' ? 'footnote' : 'callout'}
+      tone={read.on ? 'primary' : 'variant'}
+      numberOfLines={look === 'line' ? 2 : 1}
+    >
+      {read.text}
+    </Text>
+  );
+}
+
+function AwakeState({ model, look }: NamesStateProps): ReactNode {
+  return <StateText look={look} read={useAwakeState(model, look)} />;
+}
+
+function OfflineState({ model, look }: NamesStateProps): ReactNode {
+  const line = useOfflineLine(model.device.id);
+  return <StateText look={look} read={useAsleepState(model, line)} />;
+}
+
+function SeenState({ model, look }: NamesStateProps): ReactNode {
+  const line = useSeenLine(model.device.id, look === 'large' || look === 'card');
+  return <StateText look={look} read={useAsleepState(model, line)} />;
+}
+
+function AsleepState({ model, look }: NamesStateProps): ReactNode {
+  return look === 'large' ? (
+    <OfflineState model={model} look={look} />
+  ) : (
+    <SeenState model={model} look={look} />
   );
 }
 
@@ -109,23 +164,13 @@ export function Names({
   readonly look: NamesLook;
 }): ReactNode {
   const model = useDeviceModel(device);
-  const text = useNamesText(device, model, look);
-  const on = useIsOn(model);
+  const awake = device.online || model.sleepy;
   return (
     <View className="min-w-0 gap-0.5" pointerEvents="none">
-      <Text
-        variant={look === 'large' ? 'title-3' : 'body-strong'}
-        numberOfLines={look === 'tile' ? 1 : 2}
-      >
+      <Text variant={NAME_VARIANT[look]} numberOfLines={look === 'tile' || look === 'row' ? 1 : 2}>
         {device.label}
       </Text>
-      <Text
-        variant="callout"
-        tone={on ? 'primary' : 'variant'}
-        numberOfLines={look === 'line' ? 2 : 1}
-      >
-        {text}
-      </Text>
+      {awake ? <AwakeState model={model} look={look} /> : <AsleepState model={model} look={look} />}
     </View>
   );
 }
@@ -137,7 +182,6 @@ export function Corner({ device }: { readonly device: Device }): ReactNode {
   }
   return (
     <View className="flex-row items-center">
-      <ColourShortcut device={device} />
       <PowerToggle device={device} />
     </View>
   );
@@ -197,9 +241,14 @@ export function Facts({
   readonly large: boolean;
 }): ReactNode {
   const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
-  const off = powerStateOf(model, values) === 'off';
-  const facts = cardFacts(model, values, hidden, off).slice(0, max);
+  const { off, facts } = useDeviceDerived(
+    device.id,
+    (values) => {
+      const asleep = powerStateOf(model, values) === 'off';
+      return { off: asleep, facts: cardFacts(model, values, hidden, asleep).slice(0, max) };
+    },
+    [model, hidden, max],
+  );
   if (facts.length === 0 || (!device.online && !model.sleepy)) {
     return null;
   }
@@ -273,8 +322,12 @@ function TrendLine({
 
 export function Trend({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
-  const hero = heroReadingOf(model, values);
+  const hero = useDeviceDerived(
+    device.id,
+    (values) => heroReadingOf(model, values),
+    [model],
+    Object.is,
+  );
   if (hero?.capability.value.kind !== 'number') {
     return null;
   }

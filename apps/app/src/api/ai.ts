@@ -1,6 +1,7 @@
 import {
   AI_CHAT_AREA_ENDPOINTS as C,
   AI_MODEL_ENDPOINTS as M,
+  type AiChatBranch,
   type AiChatChange,
   type AiChatHit,
   type AiChatNew,
@@ -13,6 +14,7 @@ import {
   type AiModelRow,
   type AiModelSuggested,
   type AiProviderCount,
+  type AiToolResultPage,
   type AiRetryFrom,
   type AiMessageReference,
   type AssistantMessageRow,
@@ -20,7 +22,6 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
-import { serverSupportsAiReferences } from './connection/server-capabilities';
 
 const log = new Logger('app.assistant');
 
@@ -60,6 +61,8 @@ export async function readAiModel(id: string): Promise<AiModelRow> {
 
 interface ChatListQuery {
   readonly archived?: boolean;
+  readonly before?: string;
+  readonly limit?: number;
   readonly unread?: boolean;
   readonly pinned?: boolean;
   readonly source?: MessageSource;
@@ -98,11 +101,11 @@ export async function setAiChatRead(chatId: string, read: boolean): Promise<AiCh
 export async function branchAiChat(
   chatId: string,
   messageId: string,
-  title?: string,
+  engine?: AiChatBranch['engine'],
 ): Promise<AiChatRow> {
   const row = await api().call(C.branchAiChat, {
     params: { chatId },
-    body: title === undefined ? { messageId } : { messageId, title },
+    body: engine === undefined ? { messageId } : { messageId, engine },
   });
   log.info('chat.branched', { chatId, messageId, branchId: row.id });
   return row;
@@ -126,6 +129,10 @@ export async function olderChatMessages(
   return api().call(C.listAiChatMessages, { params: { chatId }, query: { before, limit: 50 } });
 }
 
+export async function latestChatMessages(chatId: string): Promise<AssistantMessageRow[]> {
+  return api().call(C.listAiChatMessages, { params: { chatId }, query: { limit: 50 } });
+}
+
 export async function sendAiChatMessage(
   chatId: string,
   text: string,
@@ -136,7 +143,6 @@ export async function sendAiChatMessage(
   } = {},
 ): Promise<AssistantMessageRow> {
   const { clientMessageId, references = [] } = options;
-  assertReferencesSupported(references);
   const row = await api().call(C.sendAiChatMessage, {
     params: { chatId },
     body: {
@@ -173,7 +179,6 @@ export async function editAiChatMessage(
   } = {},
 ): Promise<AssistantMessageRow> {
   const { attachments, references } = options;
-  assertReferencesSupported(references ?? []);
   const row = await api().call(C.editAiChatMessage, {
     params: { chatId, messageId },
     body: {
@@ -197,13 +202,16 @@ export async function compactAiChat(chatId: string): Promise<boolean> {
   return result.compacted;
 }
 
-function assertReferencesSupported(references: readonly AiMessageReference[]): void {
-  if (references.length > 0 && !serverSupportsAiReferences(api().baseUrl))
-    throw new AiReferencesUnavailableError();
-}
-export class AiReferencesUnavailableError extends Error {
-  override readonly name = 'AiReferencesUnavailableError';
-  constructor() {
-    super('Update the hub to send selected references. Your draft has been kept.');
+export async function readFullToolOutput(chatId: string, callId: string): Promise<string> {
+  let text = '';
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const page: AiToolResultPage = await api().call(C.readAiToolResult, {
+      params: { chatId, callId },
+      query: { field: 'output', offset },
+    });
+    text += page.text;
+    offset = page.next_offset;
   }
+  return text;
 }

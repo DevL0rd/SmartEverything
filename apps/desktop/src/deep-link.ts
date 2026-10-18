@@ -1,4 +1,4 @@
-import { parsePairingInvitation } from '../../../packages/domain/src/pairing-invitation';
+import { parsePairingInvitation } from '@smarteverything/domain';
 import { DEEP_LINK_SCHEME } from './origin.js';
 
 const DEEP_LINK_ROUTES = ['auth/callback', 'pair'] as const;

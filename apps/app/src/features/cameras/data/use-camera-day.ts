@@ -8,6 +8,7 @@ import {
   type TimelineItem,
 } from '../logic/timeline';
 import { useScreenQuery } from '../../../queries/use-screen-query';
+import { background } from '@smarteverything/logging';
 
 export type CameraItem = TimelineItem<EventRow, RecordingRow>;
 
@@ -40,7 +41,7 @@ export function useCameraDay(
       status: 'failed',
       error: read.error,
       retry: (): void => {
-        void read.refetch();
+        background(read.refetch(), 'read.refetch_failed');
       },
     };
   }

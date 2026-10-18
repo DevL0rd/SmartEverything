@@ -12,7 +12,7 @@ interface MediaNoteCharge {
   readonly meta: Readonly<Record<string, JsonValue>>;
 }
 
-function tokenMeters(
+export function tokenMeters(
   usage: OrUsage | null,
 ): Pick<AiUsageRow, 'tokens_in' | 'tokens_out' | 'tokens_cached' | 'tokens_reasoning'> {
   if (usage === null) return { tokens_in: 0, tokens_out: 0, tokens_cached: 0, tokens_reasoning: 0 };

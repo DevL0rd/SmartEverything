@@ -38,6 +38,10 @@ export class DeviceMirror<T> {
     }
   }
 
+  get attached(): boolean {
+    return this.#sink !== null;
+  }
+
   detach(): void {
     this.#sink = null;
   }

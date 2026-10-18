@@ -2,6 +2,7 @@ import { ApiError, type ImageProviderReadiness } from '@smarteverything/domain';
 import type { ImageActor } from '../assistant/image/contract';
 import type { ImageOperationService } from '../assistant/image/service';
 import { BudgetStopError } from '../ledger/budget';
+import { PersonBudgetStopError } from '../ledger/person-budget';
 import { ImageAdmissionError } from './image-admission';
 
 export function imageReadiness(
@@ -16,7 +17,6 @@ export function imageReadiness(
     spend_granted: false,
     ready: false,
     active: availability.active,
-    capacity: availability.capacity,
   };
   if (chatId === undefined)
     return {
@@ -34,20 +34,6 @@ export function imageReadiness(
       spend_granted: true,
       reason: 'service_stopping',
       detail: 'The image service is stopping.',
-    };
-  if (availability.rasterIssue !== null)
-    return {
-      ...base,
-      spend_granted: true,
-      reason: 'catalog_unavailable',
-      detail: availability.rasterIssue,
-    };
-  if (availability.active >= availability.capacity)
-    return {
-      ...base,
-      spend_granted: true,
-      reason: 'busy',
-      detail: 'Two image operations are active. Wait for one to finish.',
     };
   return { ...base, spend_granted: true, ready: true, reason: null, detail: null };
 }
@@ -67,6 +53,8 @@ function imageRefusal(
         reason: 'budget_blocked',
         detail: 'The current AI budget has paused background image spending.',
       };
+    if (cause instanceof PersonBudgetStopError)
+      return { reason: 'budget_blocked', detail: cause.message };
     if (cause instanceof ApiError)
       return {
         reason: 'authority_revoked',

@@ -10,18 +10,15 @@ import {
   type ServiceReady,
 } from './configuration';
 import { LogLines } from './log-lines';
+import { isMissing } from '../fs-util';
 
 const LOG_ROTATE_BYTES = 10 * 1024 * 1024;
-
-function hasCode(error: unknown, code: string): boolean {
-  return error instanceof Error && 'code' in error && error.code === code;
-}
 
 async function sizeOf(path: string): Promise<number> {
   try {
     return (await stat(path)).size;
   } catch (error) {
-    if (hasCode(error, 'ENOENT')) {
+    if (isMissing(error)) {
       return 0;
     }
     throw error;
@@ -62,12 +59,8 @@ export interface PidFile {
   readonly remove: () => Promise<void>;
 }
 
-export async function writePidFile(
-  dataDirectory: string,
-  processId: number,
-  name = SERVICE_PID_FILE,
-): Promise<PidFile> {
-  const path = join(dataDirectory, name);
+export async function writePidFile(dataDirectory: string, processId: number): Promise<PidFile> {
+  const path = join(dataDirectory, SERVICE_PID_FILE);
   await writeFile(path, `${String(processId)}\n`, { mode: 0o600 });
   return { remove: () => rm(path, { force: true }) };
 }
@@ -96,7 +89,7 @@ async function exists(path: string): Promise<boolean> {
     await stat(path);
     return true;
   } catch (error) {
-    if (hasCode(error, 'ENOENT')) {
+    if (isMissing(error)) {
       return false;
     }
     throw error;

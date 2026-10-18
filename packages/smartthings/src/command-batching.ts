@@ -1,6 +1,6 @@
 import type { SmartThingsCommand } from './bindings';
 import { COMMAND_RESPONSE } from './rest-schemas';
-import { SmartThingsResponseError } from './errors';
+import { issuePaths, SmartThingsResponseError } from './errors';
 
 export const MAX_COMMANDS_PER_REQUEST = 10;
 
@@ -57,7 +57,7 @@ export interface CommandOutcome {
 export function outcomesOf(received: unknown, count: number): readonly CommandOutcome[] {
   const parsed = COMMAND_RESPONSE.safeParse(received);
   if (!parsed.success) {
-    throw new SmartThingsResponseError('command response', received, parsed.error.message);
+    throw new SmartThingsResponseError('command response', received, issuePaths(parsed.error));
   }
   if (parsed.data.results.length !== count) {
     throw new SmartThingsResponseError(

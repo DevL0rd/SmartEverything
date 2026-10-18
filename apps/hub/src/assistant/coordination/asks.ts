@@ -1,10 +1,6 @@
-import { nativeForkIntent } from '../../harness/forks';
-import {
-  admitExecutionTarget,
-  issueEventAuthority,
-  currentExecutionAuthority,
-} from '../execution-authority';
+import { admitExecutionTarget, eventAuthority, currentExecutionAuthority } from '../turn-authority';
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@smarteverything/logging';
 import {
   AI_HOPS_MAX,
   ApiError,
@@ -58,6 +54,8 @@ interface RelayInput {
   readonly wait: boolean;
   readonly seconds: number;
 }
+
+const log = new Logger('hub.assistant-coordination');
 
 function titleOf(task: string): string {
   const line = task.trim().split('\n')[0]?.slice(0, 60).trim() ?? '';
@@ -142,7 +140,6 @@ export class Coordination {
         engine: independentEngine(body.engine ?? parent.engine),
         parent_id: parent.id,
       });
-      nativeForkIntent(this.deps.store, parent, child);
       const target = this.deps.store.aiChats.update(child.id, {
         tools,
       });
@@ -160,7 +157,21 @@ export class Coordination {
       prepared?.(target, eventId);
       return { target, eventId };
     });
+    this.launched(parent, accepted, { hops, wait: body.wait, taskChars: body.task.length });
     return this.acceptedChild(parent, accepted, body);
+  }
+  private launched(
+    parent: AiChatRow,
+    accepted: { readonly target: AiChatRow; readonly eventId: string },
+    detail: { readonly hops: number; readonly wait: boolean; readonly taskChars: number },
+  ): void {
+    log.info('subagent.launched', {
+      parentId: parent.id,
+      childId: accepted.target.id,
+      eventId: accepted.eventId,
+      engine: accepted.target.engine.kind,
+      ...detail,
+    });
   }
   private async acceptedChild(
     parent: AiChatRow,
@@ -179,7 +190,11 @@ export class Coordination {
   }
   cancelQueuedChild(eventId: string): boolean {
     const event = this.deps.store.assistantEvents.event(eventId);
-    if (event.delivered_at !== null || event.answered_at !== null) return false;
+    if (event.delivered_at !== null || event.answered_at !== null) {
+      log.debug('subagent.cancel_too_late', { eventId, chatId: event.chat_id });
+      return false;
+    }
+    log.info('subagent.cancelled_queued', { eventId, chatId: event.chat_id });
     this.deps.store.durableWrite(() => {
       this.deps.store.assistantEvents.mark(event.id, 'answered_at');
       this.deps.conversation.failedMessage(event.message_id, 'Stopped.', 'interrupted');
@@ -213,6 +228,16 @@ export class Coordination {
     }
     const eventId = this.postRelay(sender, relay, hops);
     const chatId = relay.target.id;
+    log.info('relay.queued', {
+      eventId,
+      sourceId: relay.source?.id,
+      targetId: chatId,
+      hops,
+      wait: relay.wait,
+      seconds: relay.wait ? relay.seconds : undefined,
+      textChars: relay.text.length,
+      targetKind: relay.target.kind,
+    });
     const waiting = relay.wait
       ? this.waiters.wait(eventId, relay.source?.id ?? null, chatId, relay.seconds)
       : null;
@@ -229,7 +254,6 @@ export class Coordination {
       return this.post(sender, relay, hops);
     const parent = this.deps.store.aiChats.chat(target.parent_id);
     this.admission.preflight(relay.source ?? parent, relay.wait);
-    this.assertRelayGrant(relay);
     return this.deps.store.write(() => {
       const eventId = this.post(sender, relay, hops);
       this.lifecycle.queued(relay.source ?? parent, target, eventId, relay.text);
@@ -237,27 +261,10 @@ export class Coordination {
     });
   }
 
-  private assertRelayGrant(relay: RelayInput): void {
-    if (relay.source !== null)
-      childTools(
-        { ...relay.source, tools: inheritedTools(this.deps.store, relay.source) },
-        {
-          task: relay.text,
-          wait: relay.wait,
-          timeoutSeconds: relay.seconds,
-          tools: childTools(
-            { ...relay.target, tools: inheritedTools(this.deps.store, relay.target) },
-            { task: relay.text, wait: false, timeoutSeconds: relay.seconds },
-            this.deps.tools?.() ?? null,
-          ),
-          engine: relay.target.engine,
-        },
-        this.deps.tools?.() ?? null,
-      );
-  }
-
   private refuse(relay: RelayInput, hops: number): void {
+    const fields = { sourceId: relay.source?.id, targetId: relay.target.id, hops };
     if (hops > AI_HOPS_MAX) {
+      log.warn('relay.refused', { ...fields, reason: 'too_many_hops', max: AI_HOPS_MAX });
       throw new ApiError('conflict', TOO_MANY_HOPS);
     }
     if (
@@ -265,9 +272,11 @@ export class Coordination {
       relay.source !== null &&
       this.waiters.waitsOn(relay.target.id, relay.source.id)
     ) {
+      log.warn('relay.refused', { ...fields, reason: 'deadlock' });
       throw new ApiError('conflict', DEADLOCK_TEXT);
     }
     if (!this.guard.admits(relay.target)) {
+      log.warn('relay.refused', { ...fields, reason: 'paused' });
       throw new ApiError('conflict', PAUSED_TEXT);
     }
   }
@@ -302,7 +311,7 @@ export class Coordination {
       report_to: relay.source?.id ?? null,
       hops,
     });
-    issueEventAuthority(store, queued, sender.clientId === null);
+    eventAuthority(store, queued);
     return eventId;
   }
   private admitTarget(target: AiChatRow): void {

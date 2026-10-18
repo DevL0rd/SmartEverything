@@ -1,8 +1,8 @@
 import { withRole } from '@smarteverything/domain';
 import { memoOnInputs } from '../../../store/memo-selector';
-import type { Device, StoreState } from '../../../store/state';
+import type { Device, DeviceValues } from '../../../store/state';
 import type { DeviceModel } from '../../devices';
-import { homeDeviceModels } from './devices';
+import { DeviceFold } from './device-fold';
 
 export interface PowerUse {
   readonly watts: number;
@@ -18,33 +18,42 @@ interface Draw {
   readonly unit: string | null;
 }
 
-function drawOf(state: StoreState, model: DeviceModel): Draw | null {
-  const device = model.device;
+function drawOf(model: DeviceModel, values: DeviceValues): Draw | null {
   const presented = withRole(model.presentation, 'power_draw');
-  const value =
-    presented === undefined ? undefined : state.deviceValues[device.id]?.[presented.key]?.value;
-  if (presented === undefined || typeof value !== 'number' || !Number.isFinite(value)) {
+  const value = presented === undefined ? undefined : values[presented.key]?.value;
+  if (
+    presented === undefined ||
+    !model.device.online ||
+    typeof value !== 'number' ||
+    !Number.isFinite(value)
+  ) {
     return null;
   }
-  return { device, key: presented.key, value, unit: presented.unit };
+  return { device: model.device, key: presented.key, value, unit: presented.unit };
 }
 
+const draws = new DeviceFold<Draw>({
+  includes: (model): boolean => withRole(model.presentation, 'power_draw') !== undefined,
+  usesValues: (): boolean => true,
+  projected: false,
+  contribution: drawOf,
+  same: (left, right): boolean =>
+    left.value === right.value && left.key === right.key && left.unit === right.unit,
+});
+
 export const powerOf = memoOnInputs(
-  (state) => [state.tables.devices, state.deviceValues],
+  (state) => [draws.read(state)],
   (state): PowerUse | null => {
-    const draws = homeDeviceModels(state).flatMap((model) => {
-      const draw = model.device.online ? drawOf(state, model) : null;
-      return draw === null ? [] : [draw];
-    });
-    const [first] = draws;
+    const found = draws.read(state).entries.map((entry) => entry.value);
+    const [first] = found;
     if (first === undefined) {
       return null;
     }
     return {
-      watts: draws.reduce((total, draw) => total + draw.value, 0),
-      keys: [...new Set(draws.map((draw) => draw.key))],
+      watts: found.reduce((total, draw) => total + draw.value, 0),
+      keys: [...new Set(found.map((draw) => draw.key))],
       unit: first.unit,
-      sources: draws.map((draw) => draw.device),
+      sources: found.map((draw) => draw.device),
     };
   },
 );
@@ -54,7 +63,7 @@ export function samePower(left: PowerUse | null, right: PowerUse | null): boolea
     return left === right;
   }
   return (
-    left.watts === right.watts &&
+    Math.round(left.watts) === Math.round(right.watts) &&
     left.unit === right.unit &&
     left.sources.length === right.sources.length &&
     left.sources.every((device, index) => device === right.sources[index])

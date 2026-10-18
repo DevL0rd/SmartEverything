@@ -1,4 +1,3 @@
-import { assetProviderName } from './items';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -8,45 +7,53 @@ import {
   type AiHarnessConfigurationCatalogue,
   type HarnessExtensionItem,
 } from '@smarteverything/domain';
+import { cn } from '../../../design/cn';
+import { useIdiom } from '../../../design/platform';
+import { TurnChevron } from '../../../components/disclosure';
 import { Sheet } from '../../../components/sheet';
+import { List } from '../../../components/section';
 import { ListRow } from '../../../components/list-row';
 import { SearchField } from '../../../components/search-field';
-import { VirtualList } from '../../../components/virtual-list';
 import { Text } from '../../../components/text';
 import { useHarnessCatalogue } from '../data/harness';
-import { deviceStatus, hostDescription } from './status';
-import { entryId } from './selection';
+import { deviceStatus, hostDescription, readinessOf, type ItemScope } from './status';
+
+const SEARCHABLE_FROM = 8;
 
 function DeviceReport({
   host,
-  item,
+  scope,
 }: {
   readonly host: AiHarnessConfigurationHostStatus;
-  readonly item: HarnessExtensionItem | undefined;
+  readonly scope: ItemScope | undefined;
 }): ReactNode {
+  const pointer = useIdiom() === 'pointer';
   const report = host.report;
-  const entry =
-    item === undefined ? undefined : report?.readiness.find((row) => row.id === entryId(item));
-  if (report === null)
-    return (
-      <Text variant="callout" tone="variant">
-        No status received from this device yet.
-      </Text>
-    );
+  const entry = scope === undefined ? undefined : readinessOf(host, scope);
   return (
-    <View className="gap-1 px-4 pb-3">
-      <Text variant="callout" tone="variant">
-        {host.freshness === 'current' ? 'Applied status' : 'Last known status'} · received{' '}
-        {new Date(report.received_at).toLocaleString()}
-      </Text>
+    <View className={cn('gap-1 pb-3 pr-4', pointer ? 'pl-16' : 'pl-18')}>
+      {report === null ? (
+        <Text variant="callout" tone="variant">
+          No status received from this device yet.
+        </Text>
+      ) : (
+        <>
+          <Text variant="callout" tone="variant">
+            {host.freshness === 'current' ? 'Applied status' : 'Last known status'} · received{' '}
+            {new Date(report.received_at).toLocaleString()}
+          </Text>
+          {report.pending_revision === undefined ? null : (
+            <Text variant="callout" tone="variant">
+              The saved choice applies after current sessions finish.
+            </Text>
+          )}
+        </>
+      )}
       {entry === undefined ? null : (
         <>
           <Text variant="callout">
             Requested version {entry.requestedVersion} · installed{' '}
             {entry.installedVersion ?? 'not reported'}
-          </Text>
-          <Text variant="callout" tone="variant">
-            Currently {entry.state === 'disabled' ? 'off' : entry.state}
           </Text>
           {entry.reason === null ? null : (
             <Text variant="callout" tone="warning">
@@ -55,29 +62,24 @@ function DeviceReport({
           )}
         </>
       )}
-      {report.pending_revision === undefined ? null : (
-        <Text variant="callout" tone="variant">
-          The saved choice applies after current sessions finish.
-        </Text>
-      )}
     </View>
   );
 }
 
 function DeviceRow({
   host,
-  item,
+  scope,
   expanded,
   onPress,
 }: {
   readonly host: AiHarnessConfigurationHostStatus;
-  readonly item: HarnessExtensionItem | undefined;
+  readonly scope: ItemScope | undefined;
   readonly expanded: boolean;
   readonly onPress: () => void;
 }): ReactNode {
   const inventory = useHarnessCatalogue();
   const description = hostDescription(host, inventory.data);
-  const status = deviceStatus(host, item);
+  const status = deviceStatus(host, scope);
   return (
     <View>
       <ListRow
@@ -87,11 +89,45 @@ function DeviceRow({
         subtitleTone={status.tone}
         wrapSubtitle
         label={`${description.name}, ${status.title}`}
-        chevron
+        trailing={<TurnChevron open={expanded} />}
         onPress={onPress}
       />
-      {expanded ? <DeviceReport host={host} item={item} /> : null}
+      {expanded ? <DeviceReport host={host} scope={scope} /> : null}
     </View>
+  );
+}
+
+function DevicesList({
+  hosts,
+  scope,
+}: {
+  readonly hosts: readonly AiHarnessConfigurationHostStatus[];
+  readonly scope: ItemScope | undefined;
+}): ReactNode {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  if (hosts.length === 0)
+    return (
+      <Text tone="variant" className="px-4">
+        No device status is available.
+      </Text>
+    );
+  return (
+    <List inset>
+      {hosts.map((host) => {
+        const key = harnessTargetKey(host.target);
+        return (
+          <DeviceRow
+            key={key}
+            host={host}
+            scope={scope}
+            expanded={expanded === key}
+            onPress={() => {
+              setExpanded(expanded === key ? null : key);
+            }}
+          />
+        );
+      })}
+    </List>
   );
 }
 
@@ -108,85 +144,23 @@ export function ExtensionDevicesSheet({
 }): ReactNode {
   const inventory = useHarnessCatalogue();
   const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
   const hosts = configuration.hosts.filter((host) =>
     hostDescription(host, inventory.data).name.toLowerCase().includes(query.toLowerCase()),
   );
+  const scope = item === undefined ? undefined : { item, desired: configuration.desired };
   return (
     <Sheet
       open={open}
       onClose={onClose}
       title={item === undefined ? 'Devices' : `${item.name} on your devices`}
-      scroll={false}
+      detents={['fit', 'full']}
     >
-      <View className="min-h-0 flex-1 gap-3">
-        <DevicesHeader
-          searchable={configuration.hosts.length > 8}
-          query={query}
-          setQuery={setQuery}
-          item={item}
-        />
-        <DevicesList hosts={hosts} item={item} expanded={expanded} setExpanded={setExpanded} />
+      <View className="gap-3">
+        {configuration.hosts.length > SEARCHABLE_FROM ? (
+          <SearchField value={query} onChange={setQuery} placeholder="Search devices" />
+        ) : null}
+        <DevicesList hosts={hosts} scope={scope} />
       </View>
     </Sheet>
-  );
-}
-
-function DevicesHeader({
-  searchable,
-  query,
-  setQuery,
-  item,
-}: {
-  readonly searchable: boolean;
-  readonly query: string;
-  readonly setQuery: (value: string) => void;
-  readonly item: HarnessExtensionItem | undefined;
-}): ReactNode {
-  return (
-    <>
-      {searchable ? (
-        <SearchField value={query} onChange={setQuery} placeholder="Search devices" />
-      ) : null}
-      {item?.selection.kind === 'skill_asset' ? (
-        <Text variant="footnote" tone="variant">
-          Status is for {assetProviderName(item.selection.parent_id)}. Individual asset readiness is
-          not reported.
-        </Text>
-      ) : null}
-    </>
-  );
-}
-
-function DevicesList({
-  hosts,
-  item,
-  expanded,
-  setExpanded,
-}: {
-  readonly hosts: readonly AiHarnessConfigurationHostStatus[];
-  readonly item: HarnessExtensionItem | undefined;
-  readonly expanded: string | null;
-  readonly setExpanded: (value: string | null) => void;
-}): ReactNode {
-  return (
-    <VirtualList
-      sections={[{ key: 'devices', title: '', data: hosts }]}
-      keyOf={(host) => harnessTargetKey(host.target)}
-      empty={<Text tone="variant">No device status is available.</Text>}
-      renderItem={(host) => {
-        const key = harnessTargetKey(host.target);
-        return (
-          <DeviceRow
-            host={host}
-            item={item}
-            expanded={expanded === key}
-            onPress={() => {
-              setExpanded(expanded === key ? null : key);
-            }}
-          />
-        );
-      }}
-    />
   );
 }

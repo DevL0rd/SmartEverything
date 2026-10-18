@@ -18,7 +18,6 @@ import {
   chooseTransport,
   isCameraModel,
   parseToken,
-  type LegacyChildEvent,
   type SourceList,
 } from '@smarteverything/xiaomi';
 import { CameraEventPoller, cameraEventsDetail } from './camera-events';
@@ -34,6 +33,7 @@ import { MiioClient } from './miio-client';
 import type { CloudLookup } from './reachability';
 import { lookupDeviceAddress } from './device-address';
 import type { SpecStore } from './spec-store';
+import { failureLine } from '@smarteverything/logging';
 
 const VIRTUAL_DID_BYTES = 8;
 
@@ -76,8 +76,6 @@ export class XiaomiAdapter implements ProviderAdapter {
   readonly provider = 'xiaomi';
   private discovery: Promise<readonly DiscoveredDevice[]> = Promise.resolve([]);
   private discoveryGeneration = 0;
-  private inventoryReady = false;
-  private readonly runnerGenerations = new WeakMap<DeviceRunner, number>();
   private runners = new Map<string, DeviceRunner>();
   private readonly addresses = new WeakMap<DeviceRunner, string>();
   private cameras: { readonly did: string; readonly poller: CameraEventPoller }[] = [];
@@ -98,7 +96,6 @@ export class XiaomiAdapter implements ProviderAdapter {
 
   private readonly discoverDevices = async (): Promise<readonly DiscoveredDevice[]> => {
     const generation = ++this.discoveryGeneration;
-    this.inventoryReady = false;
     const { cloud, specs, log, motor } = this.options;
     const entries = await fetchInventory({ cloud, specs, log, cameraMotor: motor !== null });
     await this.stopRunning();
@@ -107,20 +104,18 @@ export class XiaomiAdapter implements ProviderAdapter {
       const runner = new DeviceRunner(entry, opened, this.runnerContext(generation));
       await runner.loadPtzPositions();
       this.runners.set(entry.cloud.did, runner);
-      this.runnerGenerations.set(runner, generation);
       const passive = this.passive.get(entry.cloud.did);
       if (
         passive !== undefined &&
         entry.cloud.model === XIAOMI_MAGNET_MODEL &&
         entry.cloud.mac?.toUpperCase() === passive.address
       ) {
-        runner.observePassive(passive.source.update, passive.source.freshUntil);
+        runner.observePassive(passive.source);
       }
     }
     this.cameras = entries
       .filter((entry) => isCameraModel(entry.cloud.model))
       .map((entry) => this.cameraPoller(entry));
-    this.inventoryReady = generation === this.discoveryGeneration;
     this.rebuild();
     if (this.sink !== null) {
       this.startRunning();
@@ -172,7 +167,7 @@ export class XiaomiAdapter implements ProviderAdapter {
         } catch (error) {
           this.options.log.warn('xiaomi_device.refresh_failed', {
             did: externalId,
-            reason: String(error),
+            reason: failureLine(error),
           });
         }
       }
@@ -184,7 +179,8 @@ export class XiaomiAdapter implements ProviderAdapter {
     const { dependencies, cloud, log } = this.options;
     return {
       sink: () => this.sink,
-      childEvent: (gateway, uplink) => this.childEvent(generation, gateway, uplink),
+      childEvent: (gateway, uplink) =>
+        this.runners.get(uplink.childDid)?.legacyChildDelivery(gateway.did, uplink) ?? null,
       log,
       now: dependencies.now,
       jitter: dependencies.jitter,
@@ -222,26 +218,6 @@ export class XiaomiAdapter implements ProviderAdapter {
     };
   }
 
-  private childEvent(
-    generation: number,
-    gateway: DeviceRunner,
-    uplink: LegacyChildEvent,
-  ): (() => void) | null {
-    const child = this.runners.get(uplink.childDid);
-    if (
-      !this.inventoryReady ||
-      generation !== this.discoveryGeneration ||
-      this.sink === null ||
-      this.runners.get(gateway.did) !== gateway ||
-      gateway.entry.cloud.parentDid !== null ||
-      child === undefined ||
-      this.runnerGenerations.get(child) !== generation
-    ) {
-      return null;
-    }
-    return child.legacyChildDelivery(gateway.did, uplink);
-  }
-
   passiveEligible(did: string, model: string, address: string, scope: string): boolean {
     const device = this.runners.get(did)?.entry.cloud;
     return (
@@ -261,7 +237,7 @@ export class XiaomiAdapter implements ProviderAdapter {
     } else {
       this.passive.set(did, { source, address });
     }
-    this.runners.get(did)?.observePassive(source?.update ?? null, source?.freshUntil ?? 0);
+    this.runners.get(did)?.observePassive(source);
     this.rebuild();
     this.sink?.devices([...this.devices.values()]);
   }
@@ -346,8 +322,8 @@ export class XiaomiAdapter implements ProviderAdapter {
       const client = await this.connect(ip, token);
       return { host: ip, client, io: lanIo(did, client), reason: choice.reason, retryHost: null };
     } catch (error) {
-      log.warn('xiaomi_device.lan_unreachable', { did, reason: String(error) });
-      return toCloud(`the LAN handshake with ${ip} failed: ${String(error)}`, ip);
+      log.warn('xiaomi_device.lan_unreachable', { did, reason: failureLine(error) });
+      return toCloud(`the LAN handshake with ${ip} failed: ${failureLine(error)}`, ip);
     }
   }
 
@@ -421,7 +397,6 @@ export class XiaomiAdapter implements ProviderAdapter {
   }
 
   private async stopRunning(): Promise<void> {
-    this.inventoryReady = false;
     for (const { poller } of this.cameras) {
       poller.stop();
     }

@@ -1,22 +1,32 @@
 import type { FunctionDeclaration, UsageMetadata } from '@google/genai';
 import { assistantLabel, type CallEnding } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { stringArgument } from '../ai-tools/arguments';
-import type { ToolCaller } from '../ai-tools/hub-tool';
-import { limitsOf } from '../ai-tools/plugin-turn';
 import type { PriceBook } from '../ledger/gemini-live';
 import { meter, type Metered } from './call-parts';
 import { CallRecord, type RecordedTurn } from './call-record';
+import { currentEvents } from './conversation-live';
+import { ConversationTrace } from './conversation-trace';
+import { SessionRenewer } from './conversation-renew';
 import type { LiveEvents, LiveSession, Picture, ToolScheduling, VoiceProvider } from './gemini';
+import { LiveRenewal, trackedSession, type RenewReason } from './live-renewal';
+import { ModelReplies } from './model-replies';
+import { ReplyWatchdog } from './reply-watchdog';
 import { connectWithin } from './live-connect';
 import { liveWindow } from './live-window';
-import { failedAnswer, type ToolAnswer } from './tool-answer';
-import { deliverToolAnswer, timingOf } from './tool-delivery';
-import { declarationOf, stringsOf } from './turn-tool';
-import { trackToolProgress } from './tool-progress';
+import { TurnSessionTrace } from './turn-session-trace';
+import type { ToolAnswer } from './tool-answer';
+import { TurnTools } from './turn-session-tools';
 import { TurnText } from './turn-text';
-import { declarationsOf, systemOf, voiceHub, type VoiceKit, type VoiceWho } from './voice-kit';
-import { VOICE_TOOL_NAMES } from './voice-tools';
+import type { ToolHub } from '../ai-tools/tool-hub';
+import {
+  callSearchesWeb,
+  declarationsOf,
+  turnSystemOf,
+  voiceHub,
+  type VoiceKit,
+  type VoiceWho,
+} from './voice-kit';
+import { background } from '@smarteverything/logging';
 
 interface TurnToolParameter {
   readonly description: string;
@@ -65,25 +75,33 @@ class TurnToolNameTakenError extends Error {
 
 export class TurnSession {
   private session: LiveSession | null = null;
-  private resume: string | null = null;
   private generation = 0;
-  private reconnected = false;
   private closed = false;
   private userTalking = false;
   private assistantTalking = false;
   private readonly text = new TurnText();
+  private readonly renewal = new LiveRenewal();
+  private readonly watchdog = new ReplyWatchdog();
   private readonly record: CallRecord;
-  private readonly tasks = new Map<string, { readonly id: string; readonly name: string }>();
+  private readonly hub: ToolHub;
+  private readonly trace: TurnSessionTrace;
+  private readonly renewer: SessionRenewer;
+  private readonly replies: ModelReplies;
+  private readonly tools: TurnTools;
+  private readonly now: () => number;
 
   constructor(private readonly options: TurnSessionOptions) {
     const { kit, who } = options;
+    this.now = (): number => kit.now().getTime();
+    this.trace = new TurnSessionTrace(
+      kit.log,
+      { sessionId: options.id, chatId: who.chatId, pluginId: options.pluginId },
+      () => this.generation,
+    );
+    this.hub = voiceHub(kit, () => who);
     const own = [
       ...this.assistantTools().map((declaration) => declaration.name),
-      ...(options.bare === true
-        ? []
-        : voiceHub(kit, who)
-            .list()
-            .map((tool) => tool.name)),
+      ...(options.bare === true ? [] : this.hub.list().map((tool) => tool.name)),
     ];
     options.tools.forEach((tool) => {
       if (own.includes(tool.name)) {
@@ -97,6 +115,10 @@ export class TurnSession {
       author: assistantLabel(kit.store.assistantChat.settings()),
       person: who.caller.person,
     });
+    const conversation = new ConversationTrace(() => options.id);
+    this.replies = new ModelReplies(this.watchdog, this.renewal, conversation, this.now);
+    this.renewer = this.renewerOf(conversation);
+    this.tools = this.toolsOf();
   }
 
   get id(): string {
@@ -108,18 +130,28 @@ export class TurnSession {
   }
 
   async start(opening: string | null): Promise<void> {
-    this.session = await this.open();
+    const startedAt = performance.now();
+    try {
+      this.session = await this.open(null, null);
+    } catch (cause) {
+      this.trace.openFailed(cause, startedAt);
+      throw cause;
+    }
+    this.trace.opened(startedAt);
     if (!this.active) {
+      this.trace.closedWhileOpening();
       this.session.close();
       return;
     }
     if (opening !== null) {
       this.session.text(opening, true);
+      this.watchdog.asked(this.now());
     }
   }
 
   begin(): void {
     this.userTalking = true;
+    this.watchdog.turnStarted(this.now());
     this.session?.speaking(true);
   }
 
@@ -129,6 +161,7 @@ export class TurnSession {
 
   finish(): void {
     this.userTalking = false;
+    this.watchdog.turnEnded(this.now());
     this.session?.speaking(false);
   }
 
@@ -137,6 +170,9 @@ export class TurnSession {
       this.session?.picture(picture);
     }
     this.session?.text(text, respond);
+    if (respond) {
+      this.watchdog.asked(this.now());
+    }
   }
 
   owns(callMessageId: string): boolean {
@@ -144,36 +180,12 @@ export class TurnSession {
   }
 
   taskUpdate(eventId: string, text: string): boolean {
-    const call = this.tasks.get(eventId);
-    if (this.closed || call === undefined || this.session === null) {
-      return false;
-    }
-    const scheduling = timingOf(this.options.kit.store.assistantChat.settings().voice);
-    this.session.toolResult(call.id, call.name, { update: text }, { scheduling, more: true });
-    return true;
+    return this.tools.taskUpdate(eventId, text);
   }
 
-  async reopen(options: { readonly fresh: boolean }): Promise<void> {
-    if (this.closed) {
-      return;
-    }
-    const previous = this.session;
-    this.session = null;
-    this.generation += 1;
-    if (options.fresh) {
-      this.resume = null;
-    }
-    previous?.close();
-    try {
-      const next = await this.open();
-      if (!this.active) {
-        next.close();
-        return;
-      }
-      this.session = next;
-    } catch (cause) {
-      this.end('failed', cause instanceof Error ? cause.message : 'Gemini did not reopen');
-    }
+  async reopen(): Promise<void> {
+    this.renewal.forget();
+    await this.renewer.renew('stalled');
   }
 
   end(reason: CallEnding, detail: string | null = null): void {
@@ -181,6 +193,7 @@ export class TurnSession {
       return;
     }
     this.closed = true;
+    this.trace.ended(reason, detail);
     this.generation += 1;
     this.session?.close();
     this.flush();
@@ -190,75 +203,148 @@ export class TurnSession {
   }
 
   private assistantTools(): readonly FunctionDeclaration[] {
-    return this.options.bare === true ? [] : declarationsOf(this.options.kit, this.options.who);
+    return this.options.bare === true
+      ? []
+      : declarationsOf(this.options.kit, this.hub, this.options.who);
   }
 
-  private open(): Promise<LiveSession> {
-    const { kit, who, tools } = this.options;
+  private renewerOf(trace: ConversationTrace): SessionRenewer {
+    return new SessionRenewer({
+      renewal: this.renewal,
+      watchdog: this.watchdog,
+      trace,
+      now: this.now,
+      session: (): LiveSession | null => this.session,
+      hold: (buffer): void => {
+        this.session = buffer;
+        this.generation += 1;
+        this.assistantTalking = false;
+        this.replies.cut();
+        this.flush();
+      },
+      attach: (session): void => {
+        this.session = session;
+      },
+      open: (resume, reason): Promise<LiveSession> => this.open(resume, reason),
+      talking: (): boolean => this.userTalking,
+      active: (): boolean => this.active,
+      end: (reason, detail): Promise<void> => {
+        this.end(reason, detail);
+        return Promise.resolve();
+      },
+    });
+  }
+
+  private toolsOf(): TurnTools {
+    const { kit, who, bare = false } = this.options;
+    return new TurnTools({
+      kit,
+      who,
+      hub: this.hub,
+      tools: this.options.tools,
+      bare,
+      assistantTools: () => this.assistantTools(),
+      messageId: this.record.messageId,
+      trace: this.trace,
+      renewal: this.renewal,
+      watchdog: this.watchdog,
+      text: this.text,
+      record: this.recorded,
+      now: this.now,
+      session: (): LiveSession | null => this.session,
+      closed: (): boolean => this.closed,
+      userSpeaking: (): boolean => this.userTalking,
+      assistantSpeaking: (): boolean => this.assistantTalking,
+    });
+  }
+
+  private open(resume: string | null, reason: RenewReason | null): Promise<LiveSession> {
+    const { kit, who } = this.options;
     const settings = kit.store.assistantChat.settings();
     this.generation += 1;
     const generation = this.generation;
+    this.renewal.opening(reason, resume !== null, this.now());
     return connectWithin(
       this.options.provider.live(
         {
           model: settings.voice.model,
           voice: settings.voice.voice,
-          system: this.options.bare === true ? (who.place ?? '') : systemOf(kit, who),
-          tools: [...this.assistantTools(), ...tools.map(declarationOf)],
-          resume: this.resume,
+          system: turnSystemOf(kit, this.hub, who, this.options.bare === true),
+          tools: [...this.assistantTools(), ...this.tools.declarations()],
+          webSearch: callSearchesWeb(this.hub),
+          resume,
           window: liveWindow(settings),
           automatic: false,
         },
         this.events(() => generation === this.generation, settings.voice.model),
       ),
-    );
+    ).then((session) => trackedSession(session, this.renewal));
   }
 
   private events(current: () => boolean, model: string): LiveEvents {
-    const live =
-      <A extends unknown[]>(handle: (...args: A) => void) =>
-      (...args: A): void => {
-        if (current()) {
-          handle(...args);
-        }
-      };
     const { events } = this.options;
-    return {
-      audio: live((pcm: Int16Array) => {
+    return currentEvents(current, this.renewal, {
+      audio: (pcm) => {
+        this.replies.output();
         this.assistantTalking = true;
         events.audio(pcm);
-      }),
-      said: live((text: string) => {
+      },
+      said: (text) => {
+        this.replies.output();
         events.said(text);
         this.text.said(text);
-      }),
-      heard: live((text: string) => {
+      },
+      heard: (text) => {
         events.heard(text);
         this.text.heard(text);
-      }),
-      interrupted: live(() => {
+      },
+      interrupted: () => {
         this.assistantTalking = false;
+        this.replies.cut();
         this.flush();
         events.interrupted();
-      }),
-      turnComplete: live(() => {
+      },
+      turnComplete: () => {
         this.assistantTalking = false;
+        this.replies.completed();
         this.flush();
         events.turnComplete();
-      }),
-      tool: live((id: string, name: string, args: Readonly<Record<string, unknown>>) => {
-        void this.tool(id, name, args);
-      }),
-      resumable: live((handle: string) => {
-        this.resume = handle;
-      }),
-      usage: (usage: UsageMetadata): void => {
+        this.renewIfDue();
+      },
+      tool: (id, name, args) => {
+        this.replies.output();
+        this.tools.handle(id, name, args);
+      },
+      resumable: (handle) => {
+        this.renewal.resumable(handle);
+        this.renewIfDue();
+      },
+      goAway: () => {
+        this.renewal.want('go_away');
+        this.renewIfDue();
+      },
+      usage: (usage: UsageMetadata) => {
         meter(this.options.kit, this.metered(), usage, model);
       },
-      closed: live((reason: string) => {
-        void this.dropped(reason);
-      }),
-    };
+      closed: (reason, code) => {
+        this.dropped(reason, code);
+      },
+    });
+  }
+
+  private dropped(reason: string, code: number): void {
+    this.trace.dropped(reason, code);
+    background(this.renewer.renew('dropped', { reason, code }), 'turn_session.renew_failed');
+  }
+
+  private renewIfDue(): void {
+    if (this.closed || this.userTalking || this.assistantTalking || this.watchdog.busy()) {
+      return;
+    }
+    const due = this.renewal.due(false);
+    if (due !== null) {
+      background(this.renewer.renew(due), 'turn_session.renew_failed');
+    }
   }
 
   private metered(): Metered {
@@ -266,131 +352,19 @@ export class TurnSession {
     return { id, chatId: who.chatId, pluginId, caller: who.caller, record: this.record };
   }
 
+  private readonly recorded = (turn: RecordedTurn): void => {
+    this.renewal.recorded(turn);
+    this.record.add(turn);
+  };
+
   private flush(): void {
     const heard = this.text.takeHeard();
     if (heard !== '') {
-      this.record.add({ who: 'person', text: heard, ok: true, detail: null });
+      this.recorded({ who: 'person', text: heard, ok: true, detail: null });
     }
     const said = this.text.takeSaid();
     if (said !== '' && (this.options.events.spoken?.() ?? true)) {
-      this.record.add({ who: 'assistant', text: said, ok: true, detail: null });
+      this.recorded({ who: 'assistant', text: said, ok: true, detail: null });
     }
-  }
-
-  private async tool(
-    id: string,
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-  ): Promise<void> {
-    const own = this.options.tools.find((tool) => tool.name === name);
-    if (own === undefined && name === VOICE_TOOL_NAMES.task) {
-      if (!this.assistantTools().some((tool) => tool.name === name)) {
-        this.session?.toolResult(
-          id,
-          name,
-          { error: 'Background tasks are unavailable in this call' },
-          { scheduling: 'silent', more: false },
-        );
-        return;
-      }
-      this.startTask(id, name, stringArgument(args, 'task'));
-      return;
-    }
-    const stopProgress = trackToolProgress(name, {
-      session: () => this.session,
-      closed: () => this.closed,
-      userSpeaking: () => this.userTalking,
-      assistantSpeaking: () => this.assistantTalking,
-      now: Date.now,
-    });
-    const answer = await this.answer(name, args, own).catch(failedAnswer);
-    stopProgress();
-    if (this.closed) {
-      return;
-    }
-    const scheduling =
-      own?.delivery ?? timingOf(this.options.kit.store.assistantChat.settings().voice);
-    const to = { session: this.session, record: this.recorder(), scheduling };
-    deliverToolAnswer(to, { id, name }, answer);
-  }
-
-  private answer(
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-    own: TurnTool | undefined,
-  ): Promise<ToolAnswer> {
-    if (own !== undefined) {
-      return own.run(stringsOf(args));
-    }
-    if (this.options.bare === true) {
-      return Promise.resolve(failedAnswer(new Error(`There is no turn tool named ${name}`)));
-    }
-    return voiceHub(this.options.kit, this.options.who)
-      .call(name, args, this.toolCaller())
-      .then((result) => ({
-        response: result.response,
-        line: result.line,
-        pictures: result.pictures,
-      }));
-  }
-
-  private toolCaller(): ToolCaller {
-    const { caller, chatId } = this.options.who;
-    return {
-      profileId: caller.profileId,
-      role: caller.role,
-      chatId,
-      via: 'voice',
-      clientId: caller.clientId,
-      ...limitsOf(caller.requester, caller.pluginId),
-    };
-  }
-
-  private recorder(): (turn: RecordedTurn) => void {
-    return (turn): void => {
-      this.record.add(turn);
-    };
-  }
-
-  private startTask(id: string, name: string, task: string): void {
-    const reply = (response: Readonly<Record<string, unknown>>, more: boolean): void => {
-      this.session?.toolResult(id, name, response, { scheduling: more ? 'idle' : 'silent', more });
-    };
-    if (task === '') {
-      reply({ error: 'No task was given' }, false);
-      return;
-    }
-    const { kit, who } = this.options;
-    try {
-      const eventId = kit.responder.request({
-        profileId: who.caller.profileId,
-        clientId: who.caller.clientId,
-        device: who.caller.device,
-        task,
-        said: this.text.recentHeard(),
-        callMessageId: this.record.messageId,
-        chatId: who.chatId,
-      });
-      this.tasks.set(eventId, { id, name });
-      this.record.add({ who: 'tool', text: 'Handed over a task', ok: true, detail: null });
-      reply({ status: 'started; it is running now' }, true);
-    } catch (cause) {
-      reply(
-        { error: cause instanceof Error ? cause.message : 'That cannot be done from here' },
-        false,
-      );
-    }
-  }
-
-  private async dropped(reason: string): Promise<void> {
-    if (this.closed) {
-      return;
-    }
-    if (this.reconnected || this.resume === null) {
-      this.end('failed', reason);
-      return;
-    }
-    this.reconnected = true;
-    await this.reopen({ fresh: false });
   }
 }

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Message, MessageType, Variant, sessionBus, type MessageBus } from '@jellybrick/dbus-next';
-import type { DesktopTalkShortcuts } from '@smarteverything/domain';
+import type { DesktopTalkCommand, DesktopTalkShortcuts } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { TALK_SHORTCUTS, type TalkCommandSink, type TalkKeys } from './talk-keys.js';
@@ -73,7 +73,12 @@ function connected(bus: MessageBus): Promise<void> {
 class Portal {
   private readonly waiting = new Map<string, (results: Record<string, unknown>) => void>();
   private session: string | null = null;
-  private triggers: { talk: string | null; next: string | null } = { talk: null, next: null };
+  private triggers: {
+    talk: string | null;
+    next: string | null;
+    assistant: string | null;
+    assistantMute: string | null;
+  } = { talk: null, next: null, assistant: null, assistantMute: null };
   private problem: string | null = null;
 
   constructor(
@@ -142,7 +147,12 @@ class Portal {
       const text = VARIANT_TEXT.safeParse(found?.[1]['trigger_description']);
       return text.success && text.data.value !== '' ? text.data.value : null;
     };
-    this.triggers = { talk: describe('talk'), next: describe('next') };
+    this.triggers = {
+      talk: describe('talk'),
+      next: describe('next'),
+      assistant: describe('assistant'),
+      assistantMute: describe('assistant_mute'),
+    };
   }
 
   private async request(
@@ -209,14 +219,28 @@ class Portal {
     if (!parsed.success || parsed.data[0] !== this.session) {
       return;
     }
-    const id = parsed.data[1];
-    const down = message.member === 'Activated';
-    if (id === 'talk' && (down || message.member === 'Deactivated')) {
-      this.sink({ kind: down ? 'press' : 'release' });
-    } else if (id === 'next' && down) {
-      this.sink({ kind: 'next' });
+    const command = shortcutCommand(parsed.data[1], message.member === 'Activated', message.member);
+    if (command !== null) {
+      this.sink(command);
     }
   }
+}
+
+function shortcutCommand(id: string, down: boolean, member: string): DesktopTalkCommand | null {
+  const edge = down ? 'press' : 'release';
+  if (!down && member !== 'Deactivated') {
+    return null;
+  }
+  if (id === 'talk') {
+    return { kind: edge };
+  }
+  if (id === 'assistant') {
+    return { kind: 'assistant', phase: edge };
+  }
+  if (id === 'assistant_mute') {
+    return down ? { kind: 'assistant_mute' } : null;
+  }
+  return id === 'next' && down ? { kind: 'next' } : null;
 }
 
 export function portalTalkKeys(sink: TalkCommandSink): TalkKeys {

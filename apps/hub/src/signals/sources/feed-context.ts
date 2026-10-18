@@ -20,7 +20,7 @@ function padded(value: number, width: number): string {
   return String(value).padStart(width, '0');
 }
 
-export function homeDay(instant: Date, timeZone: string): string {
+function homeDay(instant: Date, timeZone: string): string {
   const { year, month, day } = localClock(instant, timeZone);
   return `${padded(year, 4)}-${padded(month, 2)}-${padded(day, 2)}`;
 }

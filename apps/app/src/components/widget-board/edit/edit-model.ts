@@ -9,9 +9,7 @@ import { aspectRows, type Cell } from '../board-geometry';
 import type { WidgetDefinition } from '../types';
 
 export const SIZE_LABELS: Readonly<Record<WidgetSize, string>> = {
-  S: 'Small',
   M: 'Medium',
-  L: 'Large',
   W: 'Wide',
   XL: 'Extra large',
 };
@@ -147,9 +145,10 @@ export function added(
   widgets: readonly BoardWidget[],
   type: string,
   size: WidgetSize,
+  options?: NonNullable<BoardWidget['options']>,
 ): readonly BoardWidget[] {
   const key = freshKey(type, new Set(widgets.map((widget) => widget.key)));
-  return [...widgets, { key, type, size }];
+  return [...widgets, options === undefined ? { key, type, size } : { key, type, size, options }];
 }
 
 export type InstanceCheck = (widget: BoardWidget) => boolean;
@@ -180,13 +179,7 @@ function offerable(
 export function addable(
   catalogue: readonly WidgetDefinition[],
   availability: Availability,
-  placed: readonly BoardWidget[],
   board: BoardClass,
 ): readonly WidgetDefinition[] {
-  const used = new Set(placed.map((widget) => widget.type));
-  return catalogue.filter(
-    (definition) =>
-      offerable(definition, board, availability) &&
-      (definition.instanceOptions !== undefined || !used.has(definition.type)),
-  );
+  return catalogue.filter((definition) => offerable(definition, board, availability));
 }

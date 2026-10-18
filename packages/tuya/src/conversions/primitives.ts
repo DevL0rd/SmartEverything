@@ -63,14 +63,6 @@ export function base64Hex(conversion: string, raw: unknown): string {
   return base64Bytes(conversion, raw).toHex();
 }
 
-export function chunks(text: string, width: number): readonly string[] {
-  const parts: string[] = [];
-  for (let start = 0; start < text.length; start += width) {
-    parts.push(text.slice(start, start + width));
-  }
-  return parts;
-}
-
 export function pythonRound(value: number, digits: number): number {
   const factor = 10 ** digits;
   const scaled = value * factor;
@@ -87,7 +79,7 @@ function pythonModulo(value: number, divisor: number): number {
 
 export type Triple = readonly [number, number, number];
 
-export function rgbToHsv(red: number, green: number, blue: number): Triple {
+export function colorsysRgbToHsv(red: number, green: number, blue: number): Triple {
   const max = Math.max(red, green, blue);
   const min = Math.min(red, green, blue);
   if (max === min) {
@@ -108,7 +100,7 @@ export function rgbToHsv(red: number, green: number, blue: number): Triple {
   return [pythonModulo(hue / 6, 1), range / max, max];
 }
 
-export function hsvToRgb(hue: number, saturation: number, value: number): Triple {
+export function colorsysHsvToRgb(hue: number, saturation: number, value: number): Triple {
   if (saturation === 0) {
     return [value, value, value];
   }

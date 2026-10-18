@@ -1,0 +1,35 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1 gap-2" pointerEvents="box-none"
+      View className="flex-row items-start justify-between" pointerEvents="box-none"
+        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
+          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(76, 80, 84, 0.3) 0%, rgba(76, 80, 84, 0.09999999999999999) 60%, rgba(76, 80, 84, 0) 100%)"}]
+          View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+            Svg.default height=48 viewBox="0 0 100 100" width=48
+              Svg.Ellipse cx=50 cy=80 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=44 ry=7
+            Anim.View pointerEvents="none" style={position:"absolute",left:4.8,top:8.64,width:38.4,height:38.4,transform:[{scaleY:0.5}]}
+              Svg.default height=38.4 viewBox="0 0 100 100" width=38.4
+                Svg.Path d="M20 2 H80 A18 18 0 0 1 98 20 V80 A18 18 0 0 1 80 98 H20 A18 18 0 0 1 2 80 V20 A18 18 0 0 1 20 2 Z" fill="#1a2836" stroke="#3d444b" strokeWidth=1
+            Anim.View pointerEvents="none" style={position:"absolute",left:4.8,top:5.76,width:38.4,height:38.4,transform:[{scaleY:0.5}]}
+              Svg.default height=38.4 viewBox="0 0 100 100" width=38.4
+                Svg.Path d="M20 2 H80 A18 18 0 0 1 98 20 V80 A18 18 0 0 1 80 98 H20 A18 18 0 0 1 2 80 V20 A18 18 0 0 1 20 2 Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#3d444b" strokeWidth=1
+                Svg.Path d="M20 2 H80 A18 18 0 0 1 98 20 V80 A18 18 0 0 1 80 98 H20 A18 18 0 0 1 2 80 V20 A18 18 0 0 1 20 2 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+                Svg.Path d="M32 28 H68 A10 10 0 0 1 78 38 V58 A10 10 0 0 1 68 68 H32 A10 10 0 0 1 22 58 V38 A10 10 0 0 1 32 28 Z" fill="#474c51" fillOpacity=0.6
+                Svg.Circle cx=14 cy=14 fill="#3d444b" r=3
+                Svg.Circle cx=86 cy=14 fill="#3d444b" r=3
+                Svg.Circle cx=14 cy=86 fill="#3d444b" r=3
+                Svg.Circle cx=86 cy=86 fill="#3d444b" r=3
+        View className="flex-row items-center"
+      View className="min-w-0 gap-0.5" pointerEvents="none"
+        Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+        Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
+      View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+        View className="gap-2 flex-row flex-wrap" pointerEvents="none"
+          View className="min-w-24 gap-0.5 rounded-md bg-surface-2 px-3 py-2"
+            View className="flex-row items-center gap-1.5"
+              Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=16 ref=null stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2 viewBox="0 0 24 24" width=16 xmlns="http://www.w3.org/2000/svg"
+                Svg.Path aria-hidden=true d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" fill="none" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+              Text className="font-sans-medium text-caption text-on-surface-variant text-left shrink" numberOfLines=1 selectable=false
+            View className="flex-row items-baseline gap-1" onLayout=undefined ref={current:null}
+              Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-s text-on-surface" selectable=false
+              Text className="font-sans text-footnote text-on-surface-variant text-left" selectable=false

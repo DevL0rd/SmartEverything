@@ -1,3 +1,4 @@
+import { perSecond } from '@smarteverything/domain';
 import type { Connections } from './rest-schemas';
 
 interface Rate {
@@ -18,19 +19,21 @@ function rateOf(
   before: { readonly in: number; readonly out: number } | undefined,
   seconds: number,
 ): Rate {
-  if (before === undefined || seconds <= 0) {
-    return IDLE;
-  }
   return {
-    inBytesPerSecond: Math.max(0, (now.in - before.in) / seconds),
-    outBytesPerSecond: Math.max(0, (now.out - before.out) / seconds),
+    inBytesPerSecond: perSecond(now.in, before?.in, seconds),
+    outBytesPerSecond: perSecond(now.out, before?.out, seconds),
   };
 }
 
 export class TransferRates {
   #previous: Sample | null = null;
   #total: Rate = IDLE;
+  #baselined = false;
   #devices = new Map<string, Rate>();
+
+  get ready(): boolean {
+    return this.#baselined;
+  }
 
   get total(): Rate {
     return this.#total;
@@ -52,6 +55,7 @@ export class TransferRates {
       ),
     };
     const previous = this.#previous;
+    this.#baselined = previous !== null;
     const seconds = previous === null ? 0 : (at - previous.at) / 1000;
     this.#total = rateOf(current.total, previous?.total, seconds);
     this.#devices = new Map(
@@ -67,6 +71,7 @@ export class TransferRates {
 
   reset(): void {
     this.#previous = null;
+    this.#baselined = false;
     this.#total = IDLE;
     this.#devices = new Map();
   }

@@ -2,34 +2,55 @@ import {
   NODE_FRAME,
   type AdapterSink,
   type ComputerAction,
+  type ComputerLiveNotice,
+  type ComputerParts,
+  type ComputerPartsUpdate,
+  type ComputerRole,
   type ComputerScopes,
   type ComputerSessionState,
-  type ComputerSnapshot,
+  type HistoryPolicy,
   type JsonValue,
+  type ListeningNodeMessage,
+  type MachineActionSupport,
   type NodeHello,
   type NodeRequest,
+  type NodeResult,
+  type NodeSampleFrame,
+  type RemoteEarNodeMessage,
+  type ProcessWindow,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { MetricHistory } from '../metrics/history';
-import { deviceTarget, type Viewers } from '../metrics/viewers';
+import { deviceTarget, type ViewDemand, type Viewers } from '../metrics/viewers';
 import type { HubLink } from '../node/link';
 import { AppFocusTracker, type AppTime } from './app-focus';
+import { demandedTopics, nodeDemandOf } from './computer-demand';
+import { FrameCounter } from './frame-counter';
+import { FreshRead, type FreshViewers } from './fresh-read';
+import type { SessionEars } from './computer-ears';
+import type { SessionEarHosts } from '../listening/ear-hosts';
 import { computerExternalId, describeComputer } from './computer-device';
+import { offeredMachineActions } from './machine-requests';
+import type { ComputerDirectory } from './computer-directory';
 import { ComputerOfflineError } from './computer-errors';
-import { headlineCapabilities, headlineValues } from './headlines';
+import { MergedParts, visibleParts } from './computer-view';
+import { HeadlineRecorder, headlineCapabilities } from './headlines';
 import { NodeCalls } from './node-calls';
 import { sessionCapabilities, sessionReadings } from './session-readings';
-
-const STATE_EVERY_MS = 10_000;
 
 export interface ComputerSessionOptions {
   readonly link: HubLink;
   readonly sink: AdapterSink;
   readonly history: Pick<MetricHistory, 'push'>;
-  readonly viewers: Pick<Viewers, 'watch' | 'watched'>;
+  readonly viewers: Pick<Viewers<ProcessWindow>, 'follow'> & FreshViewers;
+  readonly policyOf: (deviceId: string, role: ComputerRole) => HistoryPolicy;
+  readonly publish: (notice: ComputerLiveNotice) => void;
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly scopesOf: (deviceId: string) => ComputerScopes;
-  readonly host: boolean;
+  readonly directory: Pick<ComputerDirectory, 'isHubMachine'>;
+  readonly hubComputerResolved: (deviceId: string) => void;
+  readonly ears?: SessionEars;
+  readonly earHosts?: SessionEarHosts;
   readonly recordAppTime: (time: AppTime) => void;
   readonly now: () => Date;
   readonly log: Logger;
@@ -37,9 +58,10 @@ export interface ComputerSessionOptions {
 
 export interface ComputerView {
   readonly deviceId: string;
+  readonly role: ComputerRole;
   readonly hello: NodeHello;
-  readonly snapshot: ComputerSnapshot | null;
-  readonly session: ComputerSessionState | null;
+  readonly at: string | null;
+  readonly parts: ComputerParts;
   readonly scopes: ComputerScopes;
 }
 
@@ -50,19 +72,24 @@ interface Known {
 
 export class ComputerSession {
   private known: Known | null = null;
-  private snapshot: ComputerSnapshot | null = null;
-  private session: ComputerSessionState | null = null;
+  private readonly merged = new MergedParts();
+  private readonly headlines: HeadlineRecorder;
   private readonly focus: AppFocusTracker;
   private capabilities = '';
   private deviceId: string | null = null;
   private scopes: ComputerScopes | null = null;
-  private stateAt = 0;
+  private readonly counter: FrameCounter;
   private readonly calls: NodeCalls;
+  private readonly fresh: FreshRead;
   private readonly stops: (() => void)[] = [];
+  private unfollow: (() => void) | null = null;
 
   constructor(private readonly options: ComputerSessionOptions) {
     this.calls = new NodeCalls(options.link.send);
+    this.fresh = new FreshRead(options.viewers);
     this.focus = new AppFocusTracker(options.recordAppTime);
+    this.counter = new FrameCounter(options.log);
+    this.headlines = new HeadlineRecorder(options.history, options.sink);
     this.stops.push(
       options.link.onFrame((raw) => {
         this.received(raw);
@@ -70,10 +97,28 @@ export class ComputerSession {
     );
   }
 
+  get role(): ComputerRole {
+    const machineId = this.known?.hello.machineId;
+    const hubMachine = machineId !== undefined && this.options.directory.isHubMachine(machineId);
+    return hubMachine ? 'hub' : 'pc';
+  }
+
+  machineActions(): readonly MachineActionSupport[] {
+    return this.known?.hello.actions ?? [];
+  }
+
   stop(): void {
+    this.earsOffline();
+    this.options.log.info('computer.session_stopped', {
+      externalId: this.known?.externalId,
+      deviceId: this.deviceId ?? undefined,
+      role: this.role,
+    });
     this.focus.end(this.options.now());
     this.calls.close();
     this.known = null;
+    this.unfollow?.();
+    this.unfollow = null;
     this.stops.splice(0).forEach((stop) => {
       stop();
     });
@@ -84,11 +129,19 @@ export class ComputerSession {
   }
 
   view(): ComputerView | null {
-    const { known, deviceId, scopes } = this;
+    const { known, scopes } = this;
+    const deviceId = known === null ? null : this.resolve(known);
     if (known === null || deviceId === null || scopes === null) {
       return null;
     }
-    return { deviceId, hello: known.hello, snapshot: this.snapshot, session: this.session, scopes };
+    return {
+      deviceId,
+      role: this.role,
+      hello: known.hello,
+      at: this.merged.latestAt,
+      parts: visibleParts(this.merged.latest, scopes),
+      scopes,
+    };
   }
 
   call(request: NodeRequest): Promise<JsonValue> {
@@ -98,16 +151,33 @@ export class ComputerSession {
     return this.calls.call(request);
   }
 
+  sampled(): Promise<void> {
+    return this.deviceId === null ? Promise.resolve() : this.fresh.sample(this.deviceId);
+  }
+
   allow(scopes: ComputerScopes): void {
+    this.options.log.info('computer.scopes_sent', {
+      externalId: this.known?.externalId,
+      deviceId: this.deviceId ?? undefined,
+      power: scopes.power,
+      apps: scopes.apps,
+      system: scopes.system,
+    });
     this.scopes = scopes;
     this.options.link.send({ type: 'scopes', scopes });
-    const { known, deviceId, session } = this;
+    const { known, deviceId } = this;
     if (known !== null) {
       this.describeIfChanged(known);
     }
-    if (deviceId !== null && session !== null) {
+    const session = this.merged.latest.session;
+    if (deviceId !== null && session !== undefined) {
       this.focus.observe(deviceId, session, scopes.apps);
     }
+    if (deviceId !== null) this.sendDemand(deviceId);
+  }
+
+  retune(): void {
+    if (this.deviceId !== null) this.sendDemand(this.deviceId);
   }
 
   private received(raw: unknown): void {
@@ -116,57 +186,125 @@ export class ComputerSession {
       this.options.log.warn('computer.frame_invalid', { reason: frame.error.message });
       return;
     }
-    if (frame.data.type === 'hello') {
-      this.greeted(frame.data.hello);
+    const { data } = frame;
+    switch (data.type) {
+      case 'hello':
+        this.greeted(data.hello);
+        return;
+      case 'sample':
+        this.sampleReceived(data);
+        return;
+      case 'state':
+        this.measured(data.at, data.parts);
+        return;
+      case 'reply':
+        this.replied(data.id, data.result);
+        return;
+      case 'ear':
+        this.heardEar(data.ear);
+        return;
+      case 'ears':
+        this.relayedEar(data.key, data.ear);
+        return;
+      case 'machine':
+        this.machineReported(data.actions, data.permissions);
+        return;
+      case 'report':
+        return;
+    }
+  }
+
+  private sampleReceived(frame: NodeSampleFrame): void {
+    this.measured(frame.at, frame.parts);
+    if (frame.key === true) this.fresh.keyFrame();
+  }
+
+  private replied(id: string, result: NodeResult): void {
+    if (!this.calls.settle(id, result)) {
+      this.options.log.warn('computer.reply_unexpected', { id });
+    }
+  }
+
+  private machineReported(
+    actions: NodeHello['actions'],
+    permissions: NodeHello['permissions'],
+  ): void {
+    const { known } = this;
+    if (known === null) {
+      this.options.log.warn('computer.frame_before_hello', {});
       return;
     }
-    if (frame.data.type === 'snapshot') {
-      this.measured(frame.data.snapshot);
-      return;
-    }
-    if (frame.data.type === 'session') {
-      this.sessionChanged(frame.data.session);
-      return;
-    }
-    if (frame.data.type === 'reply' && !this.calls.settle(frame.data.id, frame.data.result)) {
-      this.options.log.warn('computer.reply_unexpected', { id: frame.data.id });
-    }
+    this.known = { ...known, hello: { ...known.hello, actions, permissions } };
+    this.describeIfChanged(this.known);
   }
 
   private greeted(hello: NodeHello): void {
-    this.known = { hello, externalId: computerExternalId(hello) };
+    const externalId = computerExternalId(hello.machineId);
+    this.options.log.info('computer.hello_received', {
+      externalId,
+      role: this.role,
+      os: hello.os.name,
+      threads: hello.cpu.threads,
+      features: hello.features.length,
+      reconnect: this.known !== null,
+    });
+    this.known = { hello, externalId };
+    this.merged.clear();
+    this.headlines.reset();
     this.capabilities = '';
-    this.stateAt = 0;
+    if (this.deviceId === null) {
+      this.resolve(this.known);
+      return;
+    }
+    this.allow(this.options.scopesOf(this.deviceId));
+    this.earsOnline(this.deviceId);
   }
 
-  private measured(snapshot: ComputerSnapshot): void {
+  private heardEar(message: ListeningNodeMessage): void {
+    if (this.deviceId !== null) this.options.ears?.heard(this.deviceId, message);
+  }
+
+  private relayedEar(key: string, ear: RemoteEarNodeMessage): void {
+    if (this.deviceId !== null) this.options.earHosts?.relayed(this.deviceId, key, ear);
+  }
+
+  private earsOffline(): void {
+    if (this.deviceId === null) return;
+    this.options.ears?.offline(this.deviceId);
+    this.options.earHosts?.leave(this.deviceId);
+  }
+
+  private earsOnline(deviceId: string): void {
+    this.options.earHosts?.join(deviceId, this.known?.hello.features ?? [], (frame) => {
+      this.options.link.send(frame);
+    });
+    this.options.ears?.online(deviceId, (ear) => {
+      this.options.link.send({ type: 'ear', ear });
+    });
+  }
+
+  private measured(at: string, parts: ComputerPartsUpdate): void {
     const known = this.known;
     if (known === null) {
-      this.options.log.warn('computer.snapshot_before_hello', {});
+      this.options.log.warn('computer.frame_before_hello', {});
       return;
     }
-    this.snapshot = snapshot;
-    this.describeIfChanged(known);
+    this.merged.merge(at, parts);
+    this.counter.count(this.options.now().getTime(), known.externalId, this.deviceId);
     const deviceId = this.resolve(known);
-    if (deviceId === null) {
-      return;
+    if (parts.session !== undefined) this.sessionChanged(known, parts.session);
+    this.describeIfChanged(known);
+    if (deviceId === null) return;
+    if (parts.summary !== undefined) {
+      this.headlines.record({ deviceId, externalId: known.externalId }, parts.summary, at);
     }
-    const at = new Date(snapshot.at);
-    const values = headlineValues(snapshot);
-    values.forEach((item) => {
-      this.options.history.push(deviceId, item.key, item.value, at);
-    });
-    if (at.getTime() - this.stateAt < STATE_EVERY_MS) {
-      return;
-    }
-    this.stateAt = at.getTime();
-    values.forEach((item) => {
-      this.options.sink.state({
-        externalId: known.externalId,
-        capability: item.key,
-        value: item.rounded,
-        observedAt: snapshot.at,
-      });
+    const scopes = this.scopes;
+    if (scopes === null) return;
+    this.options.publish({
+      type: 'computer_live',
+      deviceId,
+      at,
+      parts: visibleParts(parts, scopes),
     });
   }
 
@@ -175,19 +313,13 @@ export class ComputerSession {
     if (known === null || this.scopes?.power !== true) {
       return [];
     }
-    const wake = !this.options.host && known.hello.interfaces.length > 0 ? ['wake' as const] : [];
+    const wake = this.role === 'pc' && known.hello.interfaces.length > 0 ? ['wake' as const] : [];
     return [...known.hello.power, ...wake];
   }
 
-  private sessionChanged(session: ComputerSessionState): void {
-    const known = this.known;
-    if (known === null) {
-      this.options.log.warn('computer.session_before_hello', {});
-      return;
-    }
-    this.session = session;
-    this.describeIfChanged(known);
-    const deviceId = this.resolve(known);
+  private sessionChanged(known: Known, session: ComputerSessionState): void {
+    this.options.log.trace('computer.session_state', { externalId: known.externalId });
+    const deviceId = this.deviceId;
     if (deviceId === null) {
       return;
     }
@@ -204,13 +336,23 @@ export class ComputerSession {
   }
 
   private describeIfChanged(known: Known): void {
+    const { summary, session } = this.merged.latest;
     const readings = [
-      ...(this.snapshot === null ? [] : headlineCapabilities(this.snapshot)),
-      ...sessionCapabilities(this.session, this.scopes?.apps === true),
+      ...(summary === undefined ? [] : headlineCapabilities(summary)),
+      ...sessionCapabilities(session ?? null, this.scopes?.apps === true),
     ];
-    const device = describeComputer(known.hello, readings, this.actions());
+    const device = describeComputer(known.hello, this.role, readings, {
+      power: this.actions(),
+      machine: offeredMachineActions(this.scopes),
+    });
     const capabilities = device.capabilities.map((capability) => capability.key).join(',');
     if (capabilities !== this.capabilities) {
+      this.options.log.debug('computer.capabilities_changed', () => ({
+        externalId: known.externalId,
+        count: device.capabilities.length,
+        actions: this.actions().length,
+        first: this.capabilities === '',
+      }));
       this.capabilities = capabilities;
       this.options.sink.devices([device]);
     }
@@ -225,17 +367,43 @@ export class ComputerSession {
       return null;
     }
     this.deviceId = deviceId;
+    this.options.log.info('computer.session_resolved', {
+      externalId: known.externalId,
+      deviceId,
+      role: this.role,
+    });
+    if (this.role === 'hub') this.options.hubComputerResolved(deviceId);
     this.allow(this.options.scopesOf(deviceId));
     this.follow(deviceId);
+    this.earsOnline(deviceId);
     return deviceId;
   }
 
   private follow(deviceId: string): void {
-    const target = deviceTarget(deviceId);
-    const pace = (watched: boolean): void => {
-      this.options.link.send({ type: 'pace', pace: watched ? 'live' : 'idle' });
-    };
-    this.stops.push(this.options.viewers.watch(target, pace));
-    pace(this.options.viewers.watched(target));
+    this.unfollow = this.options.viewers.follow(deviceTarget(deviceId), (demand) => {
+      this.demanded(deviceId, demand);
+    });
+  }
+
+  private demanded(deviceId: string, demand: ViewDemand<ProcessWindow>): void {
+    this.merged.retain(demandedTopics(demand));
+    this.sendDemand(deviceId);
+  }
+
+  private sendDemand(deviceId: string): void {
+    if (this.known === null || this.scopes === null) return;
+    const demand = nodeDemandOf(
+      this.options.viewers.demand(deviceTarget(deviceId)),
+      this.options.policyOf(deviceId, this.role),
+      this.scopes.processes,
+    );
+    this.options.log.debug('computer.demand_sent', () => ({
+      deviceId,
+      topics: Object.keys(demand.topics).join(','),
+      processes: demand.processes !== undefined,
+      intervalMs: demand.history?.interval_ms,
+      windowMs: demand.history?.window_ms,
+    }));
+    this.options.link.send({ type: 'demand', demand });
   }
 }

@@ -1,19 +1,15 @@
 import type { ReactNode } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ENGINE, type Engine, type ComputerAiRuntime } from '@smarteverything/domain';
-import { ModelSourceStatus } from '../picker/model-source-status';
 import { useIsOwner } from '../../../store/selectors';
 import { useFavouriteModels } from '../data/favourites';
 import type { ModelChoice, ModelPick } from '../picker/model-choice';
-import type { CandidateSource, ModelCandidate } from '../picker/model-candidates';
+import type { CandidateSource, ModelCandidate } from '../data/model-candidates';
 import { ModelRow } from '../picker/model-row';
 import { isComputerEngine, nativeModelKey, COMPUTER_ENGINE_LABELS } from './computer-engine';
 import type { EngineCatalogue, EngineComputer } from './engine-catalogue';
-import {
-  useComputerProviderSupported,
-  useEngineCatalogue,
-  ENGINE_CATALOGUE_KEY,
-} from './provider-data';
+import { useEngineCatalogue, ENGINE_CATALOGUE_KEY } from './provider-data';
+import { background } from '@smarteverything/logging';
 
 export interface NativeModelRequest {
   readonly runtime: ComputerAiRuntime;
@@ -155,24 +151,21 @@ function nativeCandidate(supply: NativeSupply, context: CandidateContext): Model
 }
 export function useSubscriptionPicker(props: Props, enabled: boolean): CandidateSource {
   const client = useQueryClient();
-  const supported = useComputerProviderSupported();
   const catalogue = useEngineCatalogue();
   const favorites = useFavouriteModels();
   const owner = useIsOwner();
-  if (!enabled || !supported) return { candidates: [], status: null };
+  if (!enabled) return { candidates: [], status: null };
   if (catalogue.data === undefined)
     return {
       candidates: [],
-      status: (
-        <ModelSourceStatus
-          name="native"
-          pending={catalogue.isPending}
-          error={catalogue.error}
-          retry={(): void => {
-            void catalogue.refetch();
-          }}
-        />
-      ),
+      status: {
+        name: 'native',
+        pending: catalogue.isPending,
+        error: catalogue.error,
+        retry: (): void => {
+          background(catalogue.refetch(), 'catalogue.refetch_failed');
+        },
+      },
     };
   const data = catalogue.data;
   const candidates = data.computers.flatMap((computer) =>

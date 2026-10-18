@@ -46,9 +46,9 @@ export const VOICE_SETTINGS_FORM: Form = {
   },
   voice_pause_ms: {
     type: 'number',
-    title: 'End-of-speech pause (ms)',
+    title: 'Conversation end-of-speech pause (ms)',
     description:
-      'How long Gemini waits after someone stops speaking before it answers. 0 lets Gemini decide.',
+      'How long the AI waits after someone stops speaking before it answers in a call. It does not change how speech is written down. 0 lets Gemini decide.',
     minimum: 0,
     maximum: 3000,
     default: DEFAULT_PAUSE_MS,

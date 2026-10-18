@@ -7,12 +7,13 @@ import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';
 import type { DeviceValues } from '../../../store/state';
 import { CommandFields } from '../editor/action-fields';
-import { actionIcon } from '../editor/kinds';
+import { actionIcon } from '../editor/action-kinds';
 import { BlockProblems, StepCard, movesOf } from '../editor/step-card';
 import { deviceOptions } from '../editor/target-fields';
-import { commandAction } from '../model/blanks';
+import { commandAction } from '../model/action-blanks';
 import { writableCapabilities, type DeviceLike } from '../model/capability-choices';
-import { describeAction, type Names } from '../model/describe';
+import { describeAction } from '../model/describe-action';
+import type { Names } from '../model/describe';
 import { capturedActions, type SceneChange, type SceneDraft } from '../model/scene-state';
 
 export interface StepsProps {

@@ -19,7 +19,7 @@ export const CLAUDE_CLI_ENDPOINTS = {
     path: '/api/computers/:deviceId/claude/cli/sessions',
     access: 'owner',
     summary:
-      'Start an owned Claude CLI chat and queue its first actual native turn on this computer',
+      'Start an owned Claude CLI chat and queue its first actual native turn on this computer; continue_from.session_id continues a copy of an earlier Claude Desktop or terminal session (listed by sessions) and leaves the original untouched; the first message is optional only when continuing, in which case the chat opens ready for the next message',
     params: DEVICE,
     query: NOTHING,
     body: CLAUDE_CLI_START,
@@ -62,7 +62,7 @@ export const CLAUDE_CLI_ENDPOINTS = {
     path: '/api/computers/:deviceId/claude/cli/sessions/:chatId/actions',
     access: 'owner',
     summary:
-      'Send, explicitly resume, stop, close or configure the exact owned Claude CLI session and job',
+      'Send, explicitly resume, stop, close or configure the exact owned Claude CLI session and job; a send while its reply is running steers that running reply',
     params: CHAT,
     query: NOTHING,
     body: CLAUDE_CLI_ACTION,

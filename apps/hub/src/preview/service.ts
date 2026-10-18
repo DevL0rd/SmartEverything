@@ -13,6 +13,7 @@ import type { AssistantService } from '../assistant/service';
 import { PreviewPublications } from './publications';
 import { PreviewDocuments } from './documents';
 import { PreviewSources } from './sources';
+import { ViewerFocus } from './viewer-focus';
 import { PreviewFileDocuments } from './file-documents';
 import { PreviewLeases } from './leases';
 import { PreviewDataSockets } from './data-sockets';
@@ -46,29 +47,23 @@ export class PreviewService {
       log,
     );
     this.files = new PreviewFileDocuments(harness, this.documents, log);
-    this.leases = new PreviewLeases(
-      harness.store,
-      new PreviewSources(this.publications, this.documents),
-    );
+    const sources = new PreviewSources(this.publications, this.documents);
+    const focus = new ViewerFocus();
+    this.leases = new PreviewLeases(harness.store, sources);
     this.diagnostics = new PreviewDiagnostics(
       harness.store,
-      new PreviewDiagnosticAuthority(
-        harness.store,
-        new PreviewSources(this.publications, this.documents),
-        this.leases,
-      ),
+      new PreviewDiagnosticAuthority(harness.store, sources),
       options.assistant,
+      focus,
     );
     this.browserControllers = new EmbeddedBrowserControllers(
       harness.store,
-      new EmbeddedBrowserAuthority(
-        harness.store,
-        new PreviewSources(this.publications, this.documents),
-      ),
+      new EmbeddedBrowserAuthority(harness.store, sources),
+      focus,
     );
     this.browserSockets = new EmbeddedBrowserSockets(harness.store, this.browserControllers);
     this.diagnosticSockets = new PreviewDiagnosticSockets(harness.store, this.diagnostics);
-    this.data = new PreviewDataSockets(access, this.leases);
+    this.data = new PreviewDataSockets(access, log);
     this.gateway = new PreviewGateway(options.config, this.leases, this.data, log);
     this.gateway.configurePages(new GatewayPages(harness.store, this.documents));
   }

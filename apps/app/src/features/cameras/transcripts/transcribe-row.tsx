@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import type { CameraRow } from '@smarteverything/domain';
 import { changeCamera } from '../../../api/media';
+import { confirm } from '../../../components/confirm-store';
 import { SwitchRow } from '../../../components/rows';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { useIsOwner } from '../../../store/selectors';
 import { useTranscriptActions, useTranscriptStatus } from '../data/use-transcripts';
-import { listeningDetail, listeningLabel } from './transcript-model';
+import { listeningDetail } from './transcript-model';
 
 export function TranscribeRow({ camera }: { readonly camera: CameraRow }): ReactNode {
   const owner = useIsOwner();
@@ -13,20 +14,28 @@ export function TranscribeRow({ camera }: { readonly camera: CameraRow }): React
   const actions = useTranscriptActions();
   const listening = status.data?.cameras.find((one) => one.camera_id === camera.device_id);
   const detail = camera.transcribe && listening !== undefined ? listeningDetail(listening) : null;
-  const label = listening === undefined ? null : listeningLabel(listening);
+  const change = async (transcribe: boolean): Promise<void> => {
+    if (
+      transcribe &&
+      !(await confirm({
+        title: 'Transcribe what this camera hears?',
+        body: 'Anyone who can view this camera can read the text. Audio is never kept.',
+        confirmLabel: 'Turn on',
+      }))
+    )
+      return;
+    await changeCamera(camera.device_id, { transcribe });
+    actions.refreshStatus();
+  };
   return (
     <SwitchRow
       title="Transcribe what it hears"
       icon="fileText"
       value={camera.transcribe}
       disabled={!owner && !camera.transcribe}
-      {...(label === null ? {} : { subtitle: detail === null ? label : `${label} · ${detail}` })}
+      {...(detail === null ? {} : { subtitle: detail })}
       onChange={(transcribe) => {
-        changeCamera(camera.device_id, { transcribe })
-          .then(actions.refreshStatus)
-          .catch((error: unknown) => {
-            notify({ message: 'Transcribing wasn’t changed', error, tone: 'critical' });
-          });
+        change(transcribe).catch(notifyFailure('Transcribing wasn’t changed'));
       }}
     />
   );

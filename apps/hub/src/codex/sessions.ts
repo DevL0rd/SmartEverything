@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { type CodexProviderTurn } from '@smarteverything/domain';
 import { CodexRuntimeError } from './errors';
+import { isMissing } from '../fs-util';
 const RECORD = z.strictObject({
   session_id: z.string().min(1).max(200),
   chat_id: z.uuid(),
@@ -27,6 +28,7 @@ export class CodexSessions {
           ? cause
           : new CodexRuntimeError('session', 'Codex binding load failed.'),
       );
+      // eslint-disable-next-line local/no-swallowed-errors -- the failure is rethrown to every caller that awaits the write
       void this.writing.catch((): void => undefined);
     });
   }
@@ -121,7 +123,7 @@ export class CodexSessions {
         await handle.close();
       }
     } catch (cause) {
-      if (!(cause instanceof Error && 'code' in cause && cause.code === 'ENOENT'))
+      if (!isMissing(cause))
         throw new CodexRuntimeError(
           'session',
           'The local Codex provider binding file is invalid or unreadable.',

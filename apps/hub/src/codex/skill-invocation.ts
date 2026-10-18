@@ -20,6 +20,7 @@ import { requireCommandIdle } from './command-admission';
 import { codexSkillDescriptor } from './skill-catalogue';
 import { SKILL_USER_INPUT, type SKILLS_LIST_REPLY } from './skills-protocol';
 import type { CommandPorts } from './provider-commands';
+import { messageOf } from '@smarteverything/logging';
 export interface SkillOperation {
   readonly input: AiNativeCommandWrite;
   receipt: AiNativeCommandReceipt;
@@ -174,10 +175,7 @@ export class CodexSkillInvocation {
       await this.acknowledge(job, pending);
       return true;
     } catch (cause) {
-      if (job !== null)
-        job.rejected(
-          cause instanceof Error ? cause.message : 'Native skill dispatch was rejected.',
-        );
+      if (job !== null) job.rejected(messageOf(cause));
       this.reject(operation, cause);
       return false;
     } finally {
@@ -220,10 +218,7 @@ export class CodexSkillInvocation {
     this.ports.save(operation, {
       ...operation.receipt,
       status: 'rejected',
-      text:
-        cause instanceof Error
-          ? cause.message.slice(0, 2000)
-          : 'Native skill admission was rejected.',
+      text: messageOf(cause).slice(0, 2000),
     });
   }
 }

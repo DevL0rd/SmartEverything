@@ -63,4 +63,3 @@ export interface PreviewDiagnostics {
   readonly setVisible: (visible: boolean) => void;
   readonly dispose: () => void;
 }
-export type PreviewDiagnosticsAdapter = (scope: PreviewViewScope) => PreviewDiagnostics;

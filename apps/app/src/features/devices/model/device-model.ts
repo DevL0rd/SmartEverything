@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
 import {
+  curatedControls,
   deviceFamily,
   presentDevice,
   presentValue,
@@ -16,6 +16,7 @@ export interface DeviceModel {
   readonly device: Device;
   readonly family: DeviceFamily;
   readonly presentation: DevicePresentation;
+  readonly curated: readonly PresentedCapability[];
   readonly power: PresentedCapability | null;
   readonly sleepy: boolean;
 }
@@ -29,19 +30,28 @@ function powerOf(presentation: DevicePresentation): PresentedCapability | null {
     : null;
 }
 
+const models = new WeakMap<Device, DeviceModel>();
+
 export function deviceModelOf(device: Device): DeviceModel {
+  const known = models.get(device);
+  if (known !== undefined) {
+    return known;
+  }
   const presentation = presentDevice(device);
-  return {
+  const model: DeviceModel = {
     device,
     family: deviceFamily(device),
     presentation,
+    curated: curatedControls(presentation),
     power: powerOf(presentation),
     sleepy: sleepsBetweenUse(device),
   };
+  models.set(device, model);
+  return model;
 }
 
 export function useDeviceModel(device: Device): DeviceModel {
-  return useMemo(() => deviceModelOf(device), [device]);
+  return deviceModelOf(device);
 }
 
 export function valueOf(

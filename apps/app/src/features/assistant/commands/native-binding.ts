@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
   type AiChatRow,
@@ -11,6 +11,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import { nativeProviderContext, useNativeProvider } from './native-provider';
 import { nativeCatalogueRevision, nativeRuntimeAdapter } from './native-registry';
 import type { CommandBinding, NativeExpectation } from './types';
+import { background } from '@smarteverything/logging';
 export function useNativeCommandBinding(chat: AiChatRow | undefined): CommandBinding {
   const owner = useIsOwner();
   const profileId = useActiveProfile()?.id;
@@ -36,10 +37,10 @@ function nativeChat(chat: AiChatRow | undefined): NativeChat | undefined {
 function useNativeRuntime(
   chat: NativeChat | undefined,
   owner: boolean,
-): ReturnType<typeof useQuery<ComputerRuntimeStatus>> {
+): ReturnType<typeof useScreenQuery<ComputerRuntimeStatus>> {
   const deviceId = chat?.engine.device_id ?? '';
   const runtime = chat?.engine.kind ?? 'codex';
-  return useQuery({
+  return useScreenQuery({
     queryKey: ['window', 'computer-runtime', deviceId, runtime, 'status'],
     enabled: chat !== undefined && owner,
     queryFn: () => api().call(E.readComputerRuntime, { params: { deviceId, runtime } }),
@@ -67,8 +68,8 @@ function nativeBinding(
     target: expected === null ? null : { kind: 'native', expected },
     reason: nativeBindingReason(input, expected, provider.error, runtime.error),
     retry: (): void => {
-      void provider.refetch();
-      void runtime.refetch();
+      background(provider.refetch(), 'provider.refetch_failed');
+      background(runtime.refetch(), 'runtime.refetch_failed');
     },
   };
 }
@@ -124,23 +125,24 @@ function sameNativeContext(
   );
 }
 function nativeReason(input: NativeInput, expected: NativeExpectation | null): string | null {
-  if (!input.owner) return 'Only the owner can run native commands.';
+  if (!input.owner) return 'Only the home owner can run commands here.';
   const { status, state } = input;
-  if (status === undefined || state === undefined) return 'Finding native commands…';
+  if (status === undefined || state === undefined) return 'Finding commands…';
   return nativeStatusReason(status) ?? nativeStateReason(state, expected);
 }
 function nativeStatusReason(status: ComputerRuntimeStatus): string | null {
-  if (!status.online) return 'Reconnect the selected computer to use native commands.';
+  if (!status.online) return 'Reconnect the selected computer to use commands.';
   if (
     !nativeRuntimeAdapter(status.runtime).revisions.includes(
       status.capabilities.capability_revision,
     ) ||
     !status.capabilities.operations.includes('provider_start')
   )
-    return 'Update the selected native runtime to use native commands.';
+    return 'Update SmartEverything on the selected computer to use commands.';
   if (!status.settings.settings.provider.enabled || status.capabilities.provider_reason !== null)
     return (
-      status.capabilities.provider_reason ?? 'Enable the selected native provider to use commands.'
+      status.capabilities.provider_reason ??
+      'Turn on Claude or Codex on the selected computer to use commands.'
     );
   return null;
 }
@@ -150,15 +152,15 @@ function nativeStateReason(
 ): string | null {
   if (state.state === 'unknown')
     return (
-      state.reason ?? 'Native effects are unknown. Reconcile this session before running commands.'
+      state.reason ?? 'The last command may not have finished. Refresh commands, then try again.'
     );
   if (
     !['idle', 'completed', 'interrupted'].includes(state.state) ||
     state.prompts.some((prompt) => prompt.status === 'pending')
   )
-    return 'Wait for native work and questions to finish before running commands.';
+    return 'Wait for the current work and questions to finish before running commands.';
   return expected === null
-    ? 'Commands become available after this chat has an owned native session.'
+    ? 'Commands become available after this chat has a Claude or Codex session.'
     : null;
 }
 

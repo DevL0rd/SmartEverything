@@ -15,7 +15,7 @@ const GRANTED_WITHOUT_MEDIA = new Set([
 const CALL_MEDIA_TYPES = new Set(['audio', 'video']);
 
 function isCallMedia(mediaTypes: readonly string[]): boolean {
-  return mediaTypes.length > 0 && mediaTypes.every((mediaType) => CALL_MEDIA_TYPES.has(mediaType));
+  return mediaTypes.every((mediaType) => CALL_MEDIA_TYPES.has(mediaType));
 }
 
 export function isPermissionGranted(
@@ -31,6 +31,8 @@ export function isPermissionGranted(
   return GRANTED_WITHOUT_MEDIA.has(question.permission);
 }
 
+const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:']);
+
 export function isSafeExternalUrl(candidate: string): boolean {
-  return URL.canParse(candidate) && new URL(candidate).protocol === 'https:';
+  return URL.canParse(candidate) && EXTERNAL_PROTOCOLS.has(new URL(candidate).protocol);
 }

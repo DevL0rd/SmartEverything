@@ -1,5 +1,3 @@
-import type { HarnessDispatcherOptions } from './dispatcher-options';
-import { transferNativeImageNote } from './native-media-note';
 import { SubscriptionInferenceSupplier } from '../providers/inference-supplier';
 import type {
   SubscriptionInferenceRequest,
@@ -9,6 +7,7 @@ import { NativePreviewTools, type NativePreviewAdapter } from './preview-tools';
 import { NativePreviewFileTools } from './preview-file-tools';
 import { ProcessSubscriptions } from './subscriptions';
 import { ComputerModelRoutes } from './computer-models';
+import { join } from 'node:path';
 import { z } from 'zod';
 import {
   HARNESS_CONFIGURATION_CAPABILITY,
@@ -16,6 +15,7 @@ import {
   AI_PREVIEW_CAPABILITY,
   AI_PREVIEW_FILE_CAPABILITY,
   NODE_HARNESS_FRAME,
+  HARNESS_PUBLICATION,
   HARNESS_PLUGIN_AGENT_RESULT,
 } from '@smarteverything/domain';
 import type {
@@ -31,18 +31,17 @@ import type {
 import { HarnessRuntimeError } from '../host/errors';
 import { HARNESS_BOOT, processHarnessHost } from './boot';
 import type { HarnessBoot } from './boot';
-import { HarnessHttp } from './http';
+import { HarnessHub, type HarnessCallPort } from './http';
+import { transferNativeImageNote } from './native-media-note';
 import { ProcessHarnessConfiguration } from './configuration';
 import { installedHarnessBuiltins } from '../composition/builtins';
-import { sharedHarnessSkillAssets } from '../composition/github-skill-source';
+import { HarnessSkillAssets } from '../composition/skill-assets';
+import { hubExtensionSource } from './extension-source';
 import { DurablePluginAgents } from './plugin-agents';
 import { CentralHarnessTools } from './central-tools';
-import { NativeProjectFiles } from './project-files';
-import { AI_PROJECT_RESULT } from '@smarteverything/domain';
-import { HttpHarnessPersistence } from './persistence';
+import { HubSessionLog } from './persistence';
 import { transferAttachments } from './attachments';
 import { createHarnessDispatcher, type HarnessDispatcher } from './dispatcher';
-import { guestHubFetch } from './guest-transport';
 
 const DONE = z.object({ ok: z.literal(true) });
 export class ComputerHarness {
@@ -51,7 +50,7 @@ export class ComputerHarness {
   constructor(
     readonly hello: Extract<NodeHarnessFrame, { type: 'harness_hello' }>,
     private readonly dispatcher: HarnessDispatcher,
-    private readonly persistence: HttpHarnessPersistence,
+    private readonly persistence: HubSessionLog,
     private readonly ports: {
       readonly abort: AbortController;
       readonly models: ComputerModelRoutes;
@@ -70,8 +69,7 @@ export class ComputerHarness {
         'ownership_lost',
         'Computer execution channel is disconnected.',
       );
-    if (request.kind === 'open' || request.kind === 'preflight')
-      await this.installRoute(request.route, route);
+    if (request.kind === 'open') await this.installRoute(request.route, route);
     this.assertConnected();
     if (request.kind === 'open') this.sessions.set(request.claim.session_id, request.claim.epoch);
     const receipt = await this.dispatcher.execute(id, request);
@@ -130,6 +128,7 @@ export class ComputerHarness {
   async lose(id: string): Promise<void> {
     const epoch = this.sessions.get(id);
     const present = epoch !== undefined && this.dispatcher.hasSession(id, epoch);
+    this.sessions.delete(id);
     this.persistence.lose(id);
     if (present) await this.dispatcher.runtime.whenOwnershipLossSettled(id);
   }
@@ -144,22 +143,21 @@ export class ComputerHarness {
     await this.dispatcher.dispose();
   }
 }
+export interface ComputerHarnessOptions {
+  readonly publishSubscription?: (status: AiSubscriptionHostStatus) => Promise<void>;
+  readonly preview?: NativePreviewAdapter;
+  readonly fetch?: typeof fetch;
+}
 export async function createComputerHarness(
   raw: HarnessBoot,
-  publishSubscription?: (status: AiSubscriptionHostStatus) => Promise<void>,
-  preview?: NativePreviewAdapter,
-  injectedFetch: typeof fetch = fetch,
+  port: HarnessCallPort,
+  options: ComputerHarnessOptions = {},
 ): Promise<ComputerHarness> {
+  const { publishSubscription, preview, fetch: injectedFetch = fetch } = options;
   const boot = HARNESS_BOOT.parse(raw);
-  if (boot.platform !== 'linux' && boot.platform !== 'macos')
-    throw new HarnessRuntimeError(
-      'runtime_unavailable',
-      'Computer DSH execution supports Linux and macOS; Windows runtime is unavailable.',
-    );
   const abort = new AbortController();
-  const scopedFetch = guestHubFetch(boot, injectedFetch);
   const fetcher: typeof fetch = (input, init): Promise<Response> =>
-    scopedFetch(input, {
+    injectedFetch(input, {
       ...init,
       signal: AbortSignal.any([
         abort.signal,
@@ -167,8 +165,8 @@ export async function createComputerHarness(
         ...(init?.signal === undefined || init.signal === null ? [] : [init.signal]),
       ]),
     });
-  const http = new HarnessHttp(boot, fetcher);
-  const persistence = new HttpHarnessPersistence(http);
+  const http = new HarnessHub(boot, port, fetcher);
+  const persistence = new HubSessionLog(http);
   const subscriptions = await ProcessSubscriptions.open(
     boot,
     publishSubscription ?? subscriptionPublisher(http),
@@ -197,8 +195,8 @@ export async function createComputerHarness(
 function composeComputer(input: {
   readonly preview?: NativePreviewAdapter;
   readonly boot: HarnessBoot;
-  readonly http: HarnessHttp;
-  readonly persistence: HttpHarnessPersistence;
+  readonly http: HarnessHub;
+  readonly persistence: HubSessionLog;
   readonly models: ComputerModelRoutes;
   readonly configuration: ProcessHarnessConfiguration;
 }): Promise<HarnessDispatcher> {
@@ -207,12 +205,7 @@ function composeComputer(input: {
   const pluginAgents = new DurablePluginAgents(persistence, (request, signal) =>
     http.call(request, HARNESS_PLUGIN_AGENT_RESULT, signal),
   );
-  const projectFiles = new NativeProjectFiles(persistence, (request, signal) =>
-    http.call(request, AI_PROJECT_RESULT, signal),
-  );
   return createHarnessDispatcher({
-    projectFiles: projectFiles.execute,
-    validateReferences: computerReferenceValidation(http, persistence),
     host,
     persistence,
     loadAttachments: (id, ids) => transferAttachments(http, persistence, id, ids),
@@ -220,7 +213,10 @@ function composeComputer(input: {
     desiredConfiguration: boot.configuration ?? { revision: 'initial', entries: [] },
     installedPlugins: installedHarnessBuiltins(
       host,
-      sharedHarnessSkillAssets(host.stateDirectory),
+      new HarnessSkillAssets(
+        join(host.stateDirectory, 'shared-skill-assets'),
+        hubExtensionSource(http),
+      ),
       pluginAgents,
     ),
     configurationChanged: configuration.changed,
@@ -228,16 +224,18 @@ function composeComputer(input: {
     route: (id): AiModelRoute => models.get(id),
     installModelRoutes: (ctx): Promise<void> => {
       models.bind(ctx);
-      pluginAgents.install(ctx);
       if (input.preview !== undefined) {
         new NativePreviewTools(http, persistence, input.preview).install(ctx);
         new NativePreviewFileTools(http, persistence, input.preview).install(ctx);
       }
-      projectFiles.install(ctx);
       return new CentralHarnessTools(http, persistence).install(ctx);
     },
-    publish: async (event): Promise<void> => {
-      const frame = NODE_HARNESS_FRAME.parse({ ...http.identity(), type: 'harness_event', event });
+    publish: async (native): Promise<void> => {
+      const frame = HARNESS_PUBLICATION.parse({
+        ...http.identity(),
+        type: 'harness_native',
+        frame: native,
+      });
       await http.call({ operation: 'publish', frame }, DONE);
     },
   });
@@ -267,19 +265,18 @@ function computerHello(
       name: boot.name,
       platform: boot.platform,
       home_directory: boot.home_directory,
-      inbound_execution: true,
     },
   });
 }
 
 function subscriptionPublisher(
-  http: HarnessHttp,
+  http: HarnessHub,
 ): (status: AiSubscriptionHostStatus) => Promise<void> {
   return async (status): Promise<void> => {
     await http.call(
       {
         operation: 'publish',
-        frame: NODE_HARNESS_FRAME.parse({
+        frame: HARNESS_PUBLICATION.parse({
           ...http.identity(),
           type: 'harness_subscription_status',
           status,
@@ -287,26 +284,5 @@ function subscriptionPublisher(
       },
       DONE,
     );
-  };
-}
-
-function computerReferenceValidation(
-  http: HarnessHttp,
-  persistence: HttpHarnessPersistence,
-): NonNullable<HarnessDispatcherOptions['validateReferences']> {
-  return async (id, deliveryId, references, signal): Promise<void> => {
-    const claim = persistence.claim(id);
-    await persistence.verify(claim);
-    await http.call(
-      {
-        operation: 'reference_validate',
-        claim,
-        delivery_id: deliveryId,
-        references: [...references],
-      },
-      DONE,
-      signal,
-    );
-    await persistence.verify(claim);
   };
 }

@@ -1,28 +1,20 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import type { CameraRow } from '@smarteverything/domain';
-import { CLIP_SECONDS, CameraService, UnknownStreamError } from '../src/cameras/camera-service';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
+import {
+  CLIP_SECONDS,
+  CameraService,
+  UnknownStreamError,
+  tileStreamOf,
+} from '../src/cameras/camera-service';
 import { go2rtcConfig } from '../src/cameras/go2rtc-config';
 import { Go2rtcError, go2rtcClient, type Go2rtcClient } from '../src/cameras/go2rtc-client';
 import type { DeviceRecord } from '../src/database/port';
-import { FakeDatabase } from './support/fake-database';
+import type { RecordedEvent } from '../src/state/event-router';
+import type { RecordingFile, RecordingInsert } from '../src/database/port';
+import { testDatabase, type TestDatabase } from './support/database';
 import { captureLogs, testLogger, type CapturedLogs } from './support/logs';
 
 const CAMERA_ID = '2a000000-0000-4000-8000-000000000001';
-const EVENT_ID = '2b000000-0000-4000-8000-000000000001';
-
-function camera(details: DeviceRecord['details']): DeviceRecord {
-  return {
-    id: CAMERA_ID,
-    provider: 'xiaomi',
-    externalId: 'cam',
-    parentId: null,
-    kind: 'camera',
-    online: true,
-    roomId: null,
-    capabilities: [],
-    details,
-  };
-}
 
 interface Request {
   readonly method: string;
@@ -48,67 +40,51 @@ function recordingFetch(requests: Request[], reply: (url: URL) => Response): typ
 }
 
 describe('go2rtc config', () => {
-  it('binds the API and the transcoding RTSP server to loopback with local auth, disables SRTP and lists candidates and ICE servers', () => {
-    expect(
-      go2rtcConfig({
-        apiPort: 1984,
-        rtspPort: 8554,
-        webrtcPort: 8555,
-        username: 'hub',
-        password: 'p"w',
+  const settings = {
+    apiPort: 1984,
+    rtspPort: 8554,
+    webrtcPort: 8555,
+    username: 'hub',
+    password: 'p"w',
+    candidates: ['192.168.1.2:8555'],
+    iceServers: [
+      { urls: ['stun:stun.example.com:3478'] },
+      { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'c' },
+    ],
+    xiaomi: { '1234567': 'pass"token' },
+    ffmpegBinary: '/opt/service/ffmpeg',
+  };
+
+  it('binds the API and the transcoding RTSP server to loopback with local auth, disables SRTP, lists candidates and ICE servers and names the bundled ffmpeg', () => {
+    expect(parse(go2rtcConfig(settings))).toStrictEqual({
+      api: { listen: '127.0.0.1:1984', username: 'hub', password: 'p"w', local_auth: true },
+      rtsp: { listen: '127.0.0.1:8554' },
+      srtp: { listen: '' },
+      webrtc: {
+        listen: ':8555',
         candidates: ['192.168.1.2:8555'],
-        iceServers: [
+        ice_servers: [
           { urls: ['stun:stun.example.com:3478'] },
           { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'c' },
         ],
-        xiaomi: { '1234567': 'pass"token' },
-      }),
-    ).toBe(
-      [
-        'api:',
-        '  listen: "127.0.0.1:1984"',
-        '  username: "hub"',
-        '  password: "p\\"w"',
-        '  local_auth: true',
-        'rtsp:',
-        '  listen: "127.0.0.1:8554"',
-        'srtp:',
-        '  listen: ""',
-        'webrtc:',
-        '  listen: ":8555"',
-        '  candidates:',
-        '    - "192.168.1.2:8555"',
-        '  ice_servers:',
-        '    - urls:',
-        '        - "stun:stun.example.com:3478"',
-        '    - urls:',
-        '        - "turn:turn.example.com:3478"',
-        '      username: "u"',
-        '      credential: "c"',
-        'xiaomi:',
-        '  1234567: "pass\\"token"',
-        'log:',
-        '  output: "stdout"',
-        '  format: "json"',
-        '  level: "info"',
-        '',
-      ].join('\n'),
-    );
+      },
+      ffmpeg: { bin: '/opt/service/ffmpeg' },
+      xiaomi: { '1234567': 'pass"token' },
+      log: { output: 'stdout', format: 'json', level: 'info' },
+    });
   });
 
   it('writes empty lists explicitly so go2rtc does not fall back to its own defaults', () => {
-    const config = go2rtcConfig({
-      apiPort: 1,
-      rtspPort: 3,
-      webrtcPort: 2,
-      username: 'a',
-      password: 'b',
-      candidates: [],
-      iceServers: [],
-      xiaomi: {},
-    });
-    expect(config).toContain('  candidates: []\n  ice_servers: []\n');
-    expect(config).toContain('\nxiaomi: {}\n');
+    const config: unknown = parse(
+      go2rtcConfig({ ...settings, candidates: [], iceServers: [], xiaomi: {} }),
+    );
+    expect(config).toMatchObject({ webrtc: { candidates: [], ice_servers: [] }, xiaomi: {} });
+  });
+
+  it('is block-style YAML so go2rtc can patch the file when streams are added and removed', () => {
+    const text = go2rtcConfig(settings);
+    expect(text.startsWith('api:\n  listen: ')).toBe(true);
+    expect(text).not.toMatch(/^[{[]/m);
   });
 });
 
@@ -132,7 +108,9 @@ describe('go2rtc client', () => {
     ]);
     await client.deleteStream(CAMERA_ID);
     expect(await client.answer(CAMERA_ID, 'v=0 offer')).toBe('v=0 answer');
-    expect([...(await client.frame(CAMERA_ID))]).toStrictEqual([1, 2, 3]);
+    expect([
+      ...(await client.frame(CAMERA_ID, 'full', new AbortController().signal)),
+    ]).toStrictEqual([1, 2, 3]);
     expect([...(await client.clip(CAMERA_ID, 15))]).toStrictEqual([1, 2, 3]);
     expect(requests).toStrictEqual([
       {
@@ -196,7 +174,7 @@ describe('go2rtc client', () => {
       ...base,
       fetch: recordingFetch([], () => new Response('stream not found\n', { status: 404 })),
     });
-    await expect(client.frame('x')).rejects.toThrow(
+    await expect(client.frame('x', 'full', new AbortController().signal)).rejects.toThrow(
       'go2rtc refused frame.jpeg with HTTP 404: stream not found.',
     );
     const empty = go2rtcClient({
@@ -228,50 +206,27 @@ function fakeGo2rtc(failing: ReadonlySet<string> = new Set()): FakeGo2rtc {
     deleteStream: (name) => act(`delete ${name}`, undefined),
     answer: (stream, offer) => act(`answer ${stream} ${offer}`, `answer-to-${offer}`),
     frame: (stream) => act(`frame ${stream}`, new Uint8Array([9])),
+    consumers: () => Promise.resolve([]),
+    closeConsumer: () => Promise.resolve(),
+    play: () => Promise.resolve(),
     clip: (stream, seconds) => act(`clip ${stream} ${String(seconds)}`, new Uint8Array([1, 2])),
     socketOf: (stream) => ({ url: `ws://go2rtc/api/ws?src=${stream}`, authorization: 'Basic x' }),
   };
 }
 
+interface Recording {
+  readonly file: RecordingFile;
+  readonly row: RecordingInsert;
+}
+
 interface ServiceSetup {
-  db: FakeDatabase;
+  db: TestDatabase;
   go2rtc: FakeGo2rtc;
   service: CameraService;
-}
-
-function service(failing: ReadonlySet<string> = new Set()): ServiceSetup {
-  const db = new FakeDatabase();
-  const go2rtc = fakeGo2rtc(failing);
-  return {
-    db,
-    go2rtc,
-    service: new CameraService({
-      client: go2rtc,
-      store: db,
-      now: () => new Date('2026-10-08T10:00:05.000Z'),
-      log: testLogger(),
-    }),
-  };
-}
-
-const event = {
-  id: EVENT_ID,
-  deviceId: CAMERA_ID,
-  kind: 'doorbell',
-  occurredAt: '2026-10-08T10:00:00.123Z',
-  details: {},
-} as const;
-
-function cameraRow(recordEvents: boolean): CameraRow {
-  return {
-    device_id: CAMERA_ID,
-    stream_name: CAMERA_ID,
-    source_url_kind: 'rtsp',
-    physical_ptz: false,
-    two_way_audio: false,
-    record_events: recordEvents,
-    wake_sensitivity: 'standard',
-  };
+  recordings: Recording[];
+  cameraId: string;
+  event: RecordedEvent;
+  camera: (details: DeviceRecord['details']) => DeviceRecord;
 }
 
 let logs: CapturedLogs;
@@ -280,109 +235,213 @@ beforeEach(() => {
   logs = captureLogs();
 });
 
+const open: TestDatabase[] = [];
+
+afterEach(async () => {
+  await Promise.all(open.splice(0).map((db) => db.close()));
+});
+
+async function service(failing: ReadonlySet<string> = new Set()): Promise<ServiceSetup> {
+  const db = await testDatabase();
+  open.push(db);
+  const [stored] = await db.database.upsertDevices([
+    {
+      provider: 'xiaomi',
+      externalId: 'cam',
+      parentId: null,
+      kind: 'camera',
+      name: 'Cam',
+      model: 'cam',
+      manufacturer: 'cam',
+      providerRoom: null,
+      roomId: null,
+      online: true,
+      capabilities: [],
+      details: {},
+    },
+  ]);
+  const device = stored;
+  if (device === undefined) throw new Error('The camera device was not stored.');
+  const cameraId = device.id;
+  await db.database.upsertCameras([
+    {
+      deviceId: cameraId,
+      streamName: cameraId,
+      sourceUrlKind: 'rtsp',
+      physicalPtz: false,
+      twoWayAudio: false,
+    },
+  ]);
+  const [eventId] = await db.database.insertEvents([
+    { deviceId: cameraId, kind: 'doorbell', occurredAt: '2026-10-08T10:00:00.123Z', details: {} },
+  ]);
+  const go2rtc = fakeGo2rtc(failing);
+  const recordings: Recording[] = [];
+  return {
+    db,
+    go2rtc,
+    recordings,
+    cameraId,
+    camera: (details) => ({ ...device, details }),
+    event: {
+      id: eventId ?? '',
+      deviceId: cameraId,
+      kind: 'doorbell',
+      occurredAt: '2026-10-08T10:00:00.123Z',
+      details: {},
+    },
+    service: new CameraService({
+      client: go2rtc,
+      conditions: { online: () => true, privacyOn: () => false, twoWayAudio: () => false },
+      store: {
+        ...db.database,
+        storeRecording: (file, row): Promise<void> => {
+          recordings.push({ file, row });
+          return db.database.storeRecording(file, row);
+        },
+      },
+      now: () => new Date('2026-10-08T10:00:05.000Z'),
+      log: testLogger(),
+    }),
+  };
+}
+
 describe('CameraService', () => {
   it('adds, updates and removes go2rtc streams as camera sources change', async () => {
-    const { go2rtc, service: cameras } = service();
+    const { go2rtc, service: cameras, cameraId, camera } = await service();
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
     await cameras.sync([camera({ go2rtcSource: 'rtsp://b' })]);
     await cameras.sync([camera({})]);
     await cameras.sync([camera({})]);
     expect(go2rtc.calls).toStrictEqual([
-      `put ${CAMERA_ID} rtsp://a ffmpeg:${CAMERA_ID}#video=h264`,
-      `put ${CAMERA_ID} rtsp://b ffmpeg:${CAMERA_ID}#video=h264`,
-      `delete ${CAMERA_ID}`,
+      `put ${cameraId} rtsp://a ffmpeg:${cameraId}#video=h264`,
+      `put ${cameraId} rtsp://b ffmpeg:${cameraId}#video=h264`,
+      `delete ${cameraId}`,
     ]);
   });
 
   it('registers every camera stream again after a go2rtc restart', async () => {
-    const { go2rtc, service: cameras } = service();
+    const { go2rtc, service: cameras, cameraId, camera } = await service();
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
     await cameras.resync([camera({ go2rtcSource: 'rtsp://a' })]);
     expect(go2rtc.calls).toStrictEqual([
-      `put ${CAMERA_ID} rtsp://a ffmpeg:${CAMERA_ID}#video=h264`,
-      `put ${CAMERA_ID} rtsp://a ffmpeg:${CAMERA_ID}#video=h264`,
+      `put ${cameraId} rtsp://a ffmpeg:${cameraId}#video=h264`,
+      `put ${cameraId} rtsp://a ffmpeg:${cameraId}#video=h264`,
     ]);
   });
 
   it('answers a WebRTC offer for a known stream through go2rtc', async () => {
-    const { go2rtc, service: cameras } = service();
+    const { go2rtc, service: cameras, cameraId, camera } = await service();
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
-    expect(cameras.hasStream(CAMERA_ID)).toBe(true);
-    await expect(cameras.answer(CAMERA_ID, 'offer')).resolves.toBe('answer-to-offer');
-    expect(go2rtc.calls).toContain(`answer ${CAMERA_ID} offer`);
+    expect(cameras.hasStream(cameraId)).toBe(true);
+    await expect(cameras.answer(cameraId, 'offer', 'client-1', 'full')).resolves.toBe(
+      'answer-to-offer',
+    );
+    expect(go2rtc.calls).toContain(`answer ${cameraId} offer`);
     expect(logs.events()).toContain('webrtc.answered');
   });
 
+  it('serves picture tiles a small second stream of a Xiaomi camera, and the full stream otherwise', async () => {
+    const { go2rtc, service: cameras, cameraId, camera } = await service();
+    const source = 'xiaomi://1:de@10.0.0.9?did=7&model=m.c.1';
+    await cameras.sync([camera({ go2rtcSource: source })]);
+    expect(go2rtc.calls).toStrictEqual([
+      `put ${cameraId} ${source} ffmpeg:${cameraId}#video=h264`,
+      `put ${tileStreamOf(cameraId)} ${source}&subtype=sd ${source} ffmpeg:${tileStreamOf(cameraId)}#video=h264`,
+    ]);
+    await cameras.answer(cameraId, 'offer', 'client-1', 'tile');
+    await cameras.answer(cameraId, 'offer', 'client-1', 'full');
+    expect(go2rtc.calls.slice(-2)).toStrictEqual([
+      `answer ${tileStreamOf(cameraId)} offer`,
+      `answer ${cameraId} offer`,
+    ]);
+    await cameras.sync([camera({})]);
+    expect(go2rtc.calls.slice(-2)).toStrictEqual([
+      `delete ${cameraId}`,
+      `delete ${tileStreamOf(cameraId)}`,
+    ]);
+  });
+
+  it('gives a camera without a smaller stream the full one for tiles', async () => {
+    const { go2rtc, service: cameras, cameraId, camera } = await service();
+    await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
+    await cameras.answer(cameraId, 'offer', 'client-1', 'tile');
+    expect(go2rtc.calls).toContain(`answer ${cameraId} offer`);
+  });
+
   it('refuses an offer for an unknown stream and lets a go2rtc failure surface', async () => {
-    const { service: cameras } = service(new Set(['answer']));
+    const { service: cameras, cameraId, camera } = await service(new Set(['answer']));
     expect(cameras.hasStream('other')).toBe(false);
-    await expect(cameras.answer('other', 'offer')).rejects.toThrow(
+    await expect(cameras.answer('other', 'offer', 'client-1', 'full')).rejects.toThrow(
       'There is no camera stream named other on this hub.',
     );
     await expect(cameras.streamReady('other')).rejects.toThrow(UnknownStreamError);
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
-    await expect(cameras.answer(CAMERA_ID, 'offer')).rejects.toThrow(
-      `answer ${CAMERA_ID} offer broke`,
+    await expect(cameras.answer(cameraId, 'offer', 'client-1', 'full')).rejects.toThrow(
+      `answer ${cameraId} offer broke`,
     );
   });
 
   it('stores a snapshot and a clip for a camera event, linked to the event', async () => {
-    const { db, go2rtc, service: cameras } = service();
+    const { go2rtc, service: cameras, cameraId, camera, event, recordings } = await service();
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
     await cameras.record(event);
-    expect(go2rtc.calls).toContain(`frame ${CAMERA_ID}`);
-    expect(go2rtc.calls).toContain(`clip ${CAMERA_ID} ${String(CLIP_SECONDS)}`);
-    expect(db.recordings).toStrictEqual([
-      {
-        file: {
-          path: `${CAMERA_ID}/20261008T100000123Z.jpg`,
-          bytes: new Uint8Array([9]),
-          contentType: 'image/jpeg',
+    expect(go2rtc.calls).toContain(`frame ${cameraId}`);
+    expect(go2rtc.calls).toContain(`clip ${cameraId} ${String(CLIP_SECONDS)}`);
+    expect(recordings).toHaveLength(2);
+    expect(recordings).toEqual(
+      expect.arrayContaining([
+        {
+          file: {
+            path: `${cameraId}/20261008T100000123Z.jpg`,
+            bytes: new Uint8Array([9]),
+            contentType: 'image/jpeg',
+          },
+          row: {
+            deviceId: cameraId,
+            eventId: event.id,
+            kind: 'snapshot',
+            storagePath: `${cameraId}/20261008T100000123Z.jpg`,
+            startedAt: '2026-10-08T10:00:05.000Z',
+            durationMs: null,
+            bytes: 1,
+          },
         },
-        row: {
-          deviceId: CAMERA_ID,
-          eventId: EVENT_ID,
-          kind: 'snapshot',
-          storagePath: `${CAMERA_ID}/20261008T100000123Z.jpg`,
-          startedAt: '2026-10-08T10:00:05.000Z',
-          durationMs: null,
-          bytes: 1,
+        {
+          file: {
+            path: `${cameraId}/20261008T100000123Z.mp4`,
+            bytes: new Uint8Array([1, 2]),
+            contentType: 'video/mp4',
+          },
+          row: {
+            deviceId: cameraId,
+            eventId: event.id,
+            kind: 'clip',
+            storagePath: `${cameraId}/20261008T100000123Z.mp4`,
+            startedAt: '2026-10-08T10:00:05.000Z',
+            durationMs: CLIP_SECONDS * 1000,
+            bytes: 2,
+          },
         },
-      },
-      {
-        file: {
-          path: `${CAMERA_ID}/20261008T100000123Z.mp4`,
-          bytes: new Uint8Array([1, 2]),
-          contentType: 'video/mp4',
-        },
-        row: {
-          deviceId: CAMERA_ID,
-          eventId: EVENT_ID,
-          kind: 'clip',
-          storagePath: `${CAMERA_ID}/20261008T100000123Z.mp4`,
-          startedAt: '2026-10-08T10:00:05.000Z',
-          durationMs: CLIP_SECONDS * 1000,
-          bytes: 2,
-        },
-      },
-    ]);
+      ]),
+    );
   });
 
   it('records a clip of the asked length on demand, not linked to any event', async () => {
-    const { db, go2rtc, service: cameras } = service();
+    const { go2rtc, service: cameras, cameraId, camera, recordings } = await service();
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
-    const path = `${CAMERA_ID}/20261008T100005000Z-manual.mp4`;
-    await expect(cameras.recordClip(CAMERA_ID, 45)).resolves.toStrictEqual({
+    const path = `${cameraId}/20261008T100005000Z-manual.mp4`;
+    await expect(cameras.recordClip(cameraId, 45)).resolves.toStrictEqual({
       storagePath: path,
       bytes: 2,
     });
-    expect(go2rtc.calls).toContain(`clip ${CAMERA_ID} 45`);
-    expect(db.recordings).toStrictEqual([
+    expect(go2rtc.calls).toContain(`clip ${cameraId} 45`);
+    expect(recordings).toStrictEqual([
       {
         file: { path, bytes: new Uint8Array([1, 2]), contentType: 'video/mp4' },
         row: {
-          deviceId: CAMERA_ID,
+          deviceId: cameraId,
           eventId: null,
           kind: 'clip',
           storagePath: path,
@@ -395,47 +454,40 @@ describe('CameraService', () => {
   });
 
   it('refuses to record a camera go2rtc does not stream', async () => {
-    const { service: cameras } = service();
-    await expect(cameras.recordClip(CAMERA_ID, 10)).rejects.toThrow(
-      `There is no camera stream named ${CAMERA_ID} on this hub.`,
+    const { service: cameras, cameraId } = await service();
+    await expect(cameras.recordClip(cameraId, 10)).rejects.toThrow(
+      `There is no camera stream named ${cameraId} on this hub.`,
     );
   });
 
   it('records nothing for other kinds, other devices, unregistered cameras or cameras with recording off', async () => {
-    const { db, service: cameras } = service();
+    const { db, service: cameras, cameraId, camera, event, recordings } = await service();
     await cameras.record(event);
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
     await cameras.record({ ...event, kind: 'button' });
     await cameras.record({ ...event, deviceId: null });
-    cameras.cameraChanged(cameraRow(false));
+    cameras.cameraChanged(db.store.cameras.change(cameraId, { record_events: false }));
     await cameras.record(event);
-    expect(db.recordings).toStrictEqual([]);
-    cameras.cameraChanged(cameraRow(true));
+    expect(recordings).toStrictEqual([]);
+    cameras.cameraChanged(db.store.cameras.change(cameraId, { record_events: true }));
     await cameras.record(event);
-    expect(db.recordings).toHaveLength(2);
+    expect(recordings).toHaveLength(2);
   });
 
   it('loads the recording setting of each camera', async () => {
-    const { db, service: cameras } = service();
-    db.cameras.set(CAMERA_ID, {
-      deviceId: CAMERA_ID,
-      streamName: CAMERA_ID,
-      sourceUrlKind: 'rtsp',
-      physicalPtz: false,
-      twoWayAudio: false,
-      recordEvents: false,
-    });
+    const { db, service: cameras, cameraId, camera, event, recordings } = await service();
+    db.store.cameras.change(cameraId, { record_events: false });
     await cameras.load();
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
     await cameras.record(event);
-    expect(db.recordings).toStrictEqual([]);
+    expect(recordings).toStrictEqual([]);
   });
 
   it('reports a capture that failed and still stores the other one', async () => {
-    const { db, service: cameras } = service(new Set(['frame']));
+    const { service: cameras, camera, event, recordings } = await service(new Set(['frame']));
     await cameras.sync([camera({ go2rtcSource: 'rtsp://a' })]);
     await cameras.record(event);
-    expect(db.recordings.map((entry) => entry.row.kind)).toStrictEqual(['clip']);
+    expect(recordings.map((entry) => entry.row.kind)).toStrictEqual(['clip']);
     expect(logs.events()).toContain('recording.failed');
   });
 });

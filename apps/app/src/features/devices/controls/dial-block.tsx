@@ -9,6 +9,7 @@ import { useDeviceValues } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useDeviceModel, valueOf } from '../model/device-model';
 import type { NumberDescriptor } from './number-kind';
+import { background } from '@smarteverything/logging';
 
 const DIAL_CURRENT: Partial<Readonly<Record<CapabilityRole, CapabilityRole>>> = {
   target_humidity: 'humidity',
@@ -61,7 +62,7 @@ export function DialBlock({
         label={presented.label}
         disabled={disabled}
         onChange={(next) => {
-          void control.set(next);
+          background(control.set(next), 'control.set_failed');
         }}
       />
     );
@@ -79,7 +80,7 @@ export function DialBlock({
         size={200}
         colour={(presented.role === null ? undefined : DIAL_COLOUR[presented.role]) ?? 'primary'}
         onCommit={(next) => {
-          void control.set(next);
+          background(control.set(next), 'control.set_failed');
         }}
       />
     </View>

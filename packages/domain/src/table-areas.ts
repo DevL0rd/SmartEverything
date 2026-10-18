@@ -1,0 +1,45 @@
+import type { LiveTable } from './api/live';
+import type { McpToolArea } from './mcp/areas';
+
+export const TABLE_AREAS: Readonly<Partial<Record<LiveTable, McpToolArea>>> = {
+  provider_links: 'home',
+  rooms: 'home',
+  weather: 'home',
+  devices: 'devices',
+  device_groups: 'devices',
+  device_effect_targets: 'devices',
+  television_settings: 'devices',
+  device_state: 'devices',
+  ir_remotes: 'devices',
+  ir_codes: 'devices',
+  state_history: 'history',
+  events: 'history',
+  commands: 'control',
+  cameras: 'cameras',
+  recordings: 'cameras',
+  scenes: 'automations',
+  automations: 'automations',
+  automation_values: 'automations',
+  automation_runs: 'automations',
+  scheduled_actions: 'automations',
+  health_sources: 'health',
+  health_daily: 'health',
+  health_entries: 'health',
+  watch_days: 'health',
+  foods: 'nutrition',
+  body_readings: 'people',
+  talk_channels: 'talk',
+  talk_members: 'talk',
+  talk_messages: 'talk',
+  assistant_messages: 'assistant',
+  ai_chats: 'assistant',
+  ai_usage: 'assistant',
+  ai_outreach: 'assistant',
+  plugin_streams: 'plugins',
+};
+
+export const SNAPSHOT_ONLY_AREAS: Readonly<Record<string, McpToolArea>> = {
+  talk_presence: 'talk',
+  assistant_status: 'assistant',
+  chat_activity: 'assistant',
+};

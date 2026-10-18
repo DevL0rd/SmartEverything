@@ -26,7 +26,7 @@ export class CodexIdentityChangedError extends SubscriptionProviderError {
   }
 }
 
-export class CodexRouteUnsupportedError extends SubscriptionProviderError {
+class CodexRouteUnsupportedError extends SubscriptionProviderError {
   constructor() {
     super('AUTH_DENIED', 'Own Codex subscription transport does not support FedRAMP accounts.');
   }

@@ -1,9 +1,20 @@
+import { Logger, describeFailure } from '@smarteverything/logging';
 import type { z } from 'zod';
+import { IMAGE_OUTPUT_BYTES_MAX } from '@smarteverything/domain';
 import { OPENROUTER_WEB_SEARCH_TOOL } from '../assistant/web-search';
-import type { ChatChunk, ChatRequest, Credits, GenerationStats, KeyInfo } from './chat-types';
-import { errorCodeOf, networkFailure, openRouterError, OpenRouterError, readJson } from './errors';
+import type { ChatRequest, Credits, GenerationStats, KeyInfo } from './chat-types';
+import {
+  errorCodeOf,
+  networkFailure,
+  openRouterError,
+  OpenRouterError,
+  readAs,
+  readJson,
+} from './errors';
+import { IMAGE_ENDPOINTS_WIRE, type ImageEndpointWire } from './image-wire';
 import { sseData } from './sse';
-import { ChunkReader } from './stream';
+import { retryTransient } from './transient';
+import { parseChunk } from './stream';
 import { responseText } from './response';
 import {
   OR_CREDITS,
@@ -14,21 +25,27 @@ import {
   OR_KEY,
   OR_MODELS,
   OR_VIDEO_MODELS,
+  type OrChunk,
   type OrImageModel,
   type OrImagePrice,
   type OrModel,
   type OrVideoModel,
 } from './wire';
 
+const log = new Logger('hub.openrouter');
+
 export const OPENROUTER_API = 'https://openrouter.ai/api/v1';
 
 const REFERER = 'https://github.com/DevL0rd/SmartEverything';
 const TITLE = 'SmartEverything';
 const TIMEOUT_MS = 20_000;
+const IMAGE_STREAM_IDLE_MS = 120_000;
+const IMAGE_RESPONSE_BYTES_MAX = Math.ceil(IMAGE_OUTPUT_BYTES_MAX / 3) * 4 + 1024 * 1024;
 
 export interface OpenRouterClientOptions {
   readonly fetch: typeof fetch;
   readonly key: () => string | null;
+  readonly shutdown?: AbortSignal;
 }
 
 export interface OpenRouterCall {
@@ -74,34 +91,47 @@ function requestBody(req: ChatRequest): Record<string, unknown> {
 }
 
 async function failureOf(response: Response, limit?: number): Promise<OpenRouterError> {
-  const text = await responseText(response, limit);
+  const text = await responseText(response, limit).catch((cause: unknown) => {
+    log.debug('error_body.unreadable', () => ({
+      status: response.status,
+      error: describeFailure(cause).message,
+    }));
+    return '';
+  });
   const json = readJson(text);
   const parsed = json.ok ? OR_ERROR.safeParse(json.value) : null;
   const detail =
     parsed?.success === true
       ? parsed.data.error.message.slice(0, 200)
       : `HTTP ${String(response.status)}, ${text.slice(0, 80)}`;
-  return openRouterError(errorCodeOf(response.status), detail, response.status);
+  return openRouterError(
+    errorCodeOf(response.status),
+    detail,
+    response.status,
+    retryAfterOf(response.headers.get('retry-after')),
+  );
 }
 
-function readAs<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
-  const parsed = schema.safeParse(value);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const where = issue === undefined ? what : `${what} ${issue.path.join('.')}: ${issue.message}`;
-    throw openRouterError('unreadable', where);
-  }
-  return parsed.data;
+function retryAfterOf(header: string | null): number | null {
+  if (header === null || header.trim() === '') return null;
+  const seconds = Number(header);
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - Date.now();
+  return Number.isFinite(ms) && ms > 0 ? ms : null;
 }
 
 export class OpenRouterClient {
   constructor(private readonly options: OpenRouterClientOptions) {}
 
+  retrying<T>(run: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
+    const signals = [signal, this.options.shutdown].filter((entry) => entry !== undefined);
+    return retryTransient(run, { signal: AbortSignal.any(signals) });
+  }
+
   usingFetch(scope: (fetcher: typeof fetch) => typeof fetch): OpenRouterClient {
     return new OpenRouterClient({ ...this.options, fetch: scope(this.options.fetch) });
   }
 
-  async *chat(req: ChatRequest, signal: AbortSignal): AsyncGenerator<ChatChunk> {
+  async *chat(req: ChatRequest, signal: AbortSignal): AsyncGenerator<OrChunk> {
     const response = await this.send({
       path: '/chat/completions',
       method: 'POST',
@@ -111,13 +141,11 @@ export class OpenRouterClient {
     if (response.body === null) {
       throw openRouterError('unreadable', 'empty stream');
     }
-    const reader = new ChunkReader();
     let finished = false;
     for await (const data of sseData(response.body, signal)) {
-      for (const chunk of reader.read(data)) {
-        finished ||= chunk.type === 'usage';
-        yield chunk;
-      }
+      const chunk = parseChunk(data);
+      finished ||= chunk.usage !== undefined && chunk.usage !== null;
+      yield chunk;
     }
     if (!finished && !signal.aborted) {
       throw openRouterError('unavailable', 'the answer stopped before it finished');
@@ -143,9 +171,47 @@ export class OpenRouterClient {
       .data;
   }
 
-  async imageModels(): Promise<OrImageModel[]> {
-    return (await this.json({ path: '/images/models', key: null }, OR_IMAGE_MODELS, 'image list'))
-      .data;
+  async imageModels(signal?: AbortSignal): Promise<OrImageModel[]> {
+    const call: OpenRouterCall = { path: '/images/models', key: null };
+    return (
+      await this.json(
+        signal === undefined ? call : { ...call, signal },
+        OR_IMAGE_MODELS,
+        'image list',
+      )
+    ).data;
+  }
+
+  async imageEndpoints(model: OrImageModel, signal: AbortSignal): Promise<ImageEndpointWire[]> {
+    const path = model.endpoints.replace(/^\/api\/v1/, '');
+    const answer = await this.json(
+      { path, key: null, signal },
+      IMAGE_ENDPOINTS_WIRE,
+      `${model.id} image endpoints`,
+    );
+    return answer.endpoints;
+  }
+
+  image<T>(body: unknown, schema: z.ZodType<T>, signal: AbortSignal): Promise<T> {
+    return this.json(
+      { path: '/images', method: 'POST', body, signal, responseBytesMax: IMAGE_RESPONSE_BYTES_MAX },
+      schema,
+      'image response',
+    );
+  }
+
+  async *imageEvents(body: unknown, signal: AbortSignal): AsyncGenerator<string> {
+    const response = await this.send({
+      path: '/images',
+      method: 'POST',
+      body,
+      signal,
+      responseBytesMax: IMAGE_RESPONSE_BYTES_MAX,
+    });
+    if (response.body === null) {
+      throw openRouterError('unreadable', 'empty stream');
+    }
+    yield* sseData(response.body, signal, IMAGE_STREAM_IDLE_MS);
   }
 
   async imagePrices(model: OrImageModel): Promise<OrImagePrice[] | null> {
@@ -211,6 +277,16 @@ export class OpenRouterClient {
     const json = readJson(await responseText(response, call.responseBytesMax));
     if (!json.ok) {
       throw openRouterError('unreadable', `${what} wasn’t JSON: ${json.reason}`);
+    }
+    const refused = OR_ERROR.safeParse(json.value);
+    if (refused.success) {
+      const { code, message } = refused.data.error;
+      const status = typeof code === 'number' ? code : null;
+      throw openRouterError(
+        status === null ? 'unavailable' : errorCodeOf(status),
+        message.slice(0, 200),
+        status,
+      );
     }
     return readAs(schema, json.value, what);
   }

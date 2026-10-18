@@ -1,63 +1,70 @@
+import type { PluginSearchEntry } from '@smarteverything/domain';
 import {
-  SHELLY_PRESENCE_FIELDS,
-  SHELLY_PRESENCE_OPERATIONS,
-  SHELLY_PRESENCE_PAGES,
-  type PluginSearchEntry,
-  type ShellyPresenceDevice,
-} from '@smarteverything/domain';
-export function shellySearch(devices: readonly ShellyPresenceDevice[]): PluginSearchEntry[] {
-  return devices.flatMap((sensor) => [
-    ...SHELLY_PRESENCE_PAGES.map((page) =>
-      entry(sensor, page.id, page.title, { page: page.id, focus: '', keywords: page.keywords }),
-    ),
-    ...SHELLY_PRESENCE_FIELDS.filter((field) =>
-      sensor.features.some((feature) => feature.id === field.id && feature.available),
-    ).map((field) =>
-      entry(sensor, field.id, field.title, {
-        page: field.page,
-        focus: field.focus,
-        keywords: field.keywords,
-      }),
-    ),
-    ...SHELLY_PRESENCE_OPERATIONS.filter((op) =>
-      sensor.features.some((feature) => feature.id === op.action && feature.available),
-    ).map((op) =>
-      entry(sensor, op.action, op.title, { page: op.page, focus: op.focus, keywords: op.keywords }),
-    ),
-    ...sensor.zones
-      .filter((zone) => !zone.main)
-      .map((zone) => ({
-        ...entry(sensor, zone.externalId, zone.config.name ?? 'Zone', {
-          page: 'presence-room',
-          focus: 'zones',
-          keywords: ['zone', 'presence'],
-        }),
-        target: {
-          kind: 'device' as const,
-          externalId: sensor.externalId,
-          section: 'presence-room',
-          query: { zone: String(zone.config.id), focus: 'zones' },
-        },
-      })),
-  ]);
+  SHELLY_ACTIONS,
+  SHELLY_PAGES,
+  SHELLY_SETTING_ROWS,
+  shellyOperation,
+  type ShellyDevice,
+} from '@smarteverything/shelly';
+
+interface Place {
+  readonly page: string;
+  readonly group: string;
+  readonly keywords: readonly string[];
 }
-function entry(
-  sensor: ShellyPresenceDevice,
-  id: string,
-  title: string,
-  metadata: { readonly page: string; readonly focus: string; readonly keywords: readonly string[] },
-): PluginSearchEntry {
-  const { page, focus, keywords } = metadata;
+
+function entry(sensor: ShellyDevice, id: string, title: string, place: Place): PluginSearchEntry {
   return {
-    id: `${sensor.id}.${id}`.slice(0, 200),
+    id: `${sensor.id}.${id}`,
     title,
     subtitle: sensor.name,
-    keywords: [...keywords],
+    keywords: [...place.keywords],
     target: {
       kind: 'device',
       externalId: sensor.externalId,
-      section: page,
-      query: focus === '' ? {} : { focus },
+      section: place.page,
+      query: place.group === '' ? {} : { focus: place.group },
     },
   };
+}
+
+function zoneEntries(sensor: ShellyDevice): PluginSearchEntry[] {
+  return sensor.zones
+    .filter((zone) => !zone.main)
+    .map((zone) => ({
+      ...entry(sensor, zone.externalId, zone.config.name ?? 'Zone', {
+        page: 'presence-room',
+        group: 'zones',
+        keywords: ['zone', 'presence'],
+      }),
+      target: {
+        kind: 'device' as const,
+        externalId: sensor.externalId,
+        section: 'presence-room',
+        query: { zone: String(zone.config.id), focus: 'zones' },
+      },
+    }));
+}
+
+function sensorEntries(sensor: ShellyDevice): PluginSearchEntry[] {
+  const available = new Set(
+    sensor.features.filter((feature) => feature.available).map((feature) => feature.id),
+  );
+  return [
+    ...SHELLY_PAGES.map((page) =>
+      entry(sensor, page.id, page.title, { page: page.id, group: '', keywords: page.keywords }),
+    ),
+    ...SHELLY_SETTING_ROWS.filter((row) => available.has(row.id)).map((row) =>
+      entry(sensor, row.id, row.title, row),
+    ),
+    ...SHELLY_ACTIONS.filter((action) => available.has(action)).map((action) => {
+      const row = shellyOperation(action);
+      return entry(sensor, action, row.title, row);
+    }),
+    ...zoneEntries(sensor),
+  ];
+}
+
+export function shellySearch(devices: readonly ShellyDevice[]): PluginSearchEntry[] {
+  return devices.flatMap(sensorEntries);
 }

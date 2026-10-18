@@ -17,8 +17,8 @@ describe('endpoint vocabulary', () => {
     expect(HTTP_METHODS).toStrictEqual(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
   });
 
-  it('ACCESS_LEVELS lists exactly public, member, owner and health_source', () => {
-    expect(ACCESS_LEVELS).toStrictEqual(['public', 'member', 'owner', 'health_source']);
+  it('ACCESS_LEVELS lists exactly public, member and owner', () => {
+    expect(ACCESS_LEVELS).toStrictEqual(['public', 'member', 'owner']);
   });
 
   it('NO_BODY accepts only an absent body', () => {

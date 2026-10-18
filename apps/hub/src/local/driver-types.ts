@@ -18,7 +18,7 @@ export type WatchEntry = BleWatch['devices'][number];
 
 export type Observed = Readonly<Record<string, JsonValue>>;
 
-export interface AdvertHooks {
+interface AdvertHooks {
   readonly watch: (entry: LocalDeviceEntry) => WatchEntry;
   readonly decode: (entry: LocalDeviceEntry, advert: BleAdvert, key: string) => DecodedAdvert;
 }

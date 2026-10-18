@@ -1,4 +1,4 @@
-import type { JsonValue } from '@smarteverything/domain';
+import { TV_KEY, TV_KEYS, TV_SMARTTHINGS_PAD, type JsonValue } from '@smarteverything/domain';
 import { SmartThingsCommandError } from './errors';
 import { enumControl, levelControl, toggle, type NumberRange } from './mapper-factories';
 import { PERCENT } from './mappers-lighting';
@@ -180,8 +180,6 @@ const launchAppMapper: CapabilityMapper = {
   ],
 };
 
-const REMOTE_KEYS = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'OK', 'BACK', 'MENU', 'HOME'];
-
 const remoteControlMapper: CapabilityMapper = {
   capability: 'samsungvd.remoteControl',
   attributes: [],
@@ -190,15 +188,21 @@ const remoteControlMapper: CapabilityMapper = {
     {
       key: 'remote_key',
       access: 'write',
-      value: { kind: 'enum', options: REMOTE_KEYS },
+      value: { kind: 'enum', options: [...TV_KEYS] },
       sources: [],
       read: () => undefined,
       write: (value): readonly CommandCall[] => {
         const key = stringOf('samsungvd.remoteControl', value);
-        if (!REMOTE_KEYS.includes(key)) {
-          throw new SmartThingsCommandError('samsungvd.remoteControl', value, 'not a remote key');
+        const named = TV_KEY.safeParse(key);
+        const sent = named.success ? TV_SMARTTHINGS_PAD[named.data] : undefined;
+        if (sent === undefined) {
+          throw new SmartThingsCommandError(
+            'samsungvd.remoteControl',
+            value,
+            'SmartThings cannot send this key',
+          );
         }
-        return [call('samsungvd.remoteControl', 'send', [key, 'PRESS_AND_RELEASED'])];
+        return [call('samsungvd.remoteControl', 'send', [sent, 'PRESS_AND_RELEASED'])];
       },
     },
   ],

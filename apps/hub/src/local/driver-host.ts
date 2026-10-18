@@ -6,6 +6,7 @@ import {
   type DeviceDriverContext,
   type DeviceDriverRegistry,
 } from './device-driver';
+import { background } from '@smarteverything/logging';
 
 export interface DriverHostOptions {
   readonly registry: DeviceDriverRegistry;
@@ -36,7 +37,7 @@ export class DriverHost {
         this.launch(driver);
         return;
       }
-      void this.halt(driver.id);
+      background(this.halt(driver.id), 'driver_host.halt_failed');
     });
   }
 

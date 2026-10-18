@@ -1,22 +1,21 @@
 import type { ReactNode } from 'react';
-import type { ShellyPresencePage } from '@smarteverything/domain';
-import { SHELLY_PRESENCE_PAGES } from '@smarteverything/domain';
+import { SHELLY_PAGES, type ShellyPage } from '@smarteverything/shelly';
 import { EmptyState } from '../../components/empty-state';
 import { DeviceSettingsFrame } from '../../features/devices/device-settings/settings-frame';
 import type { Device } from '../../store/state';
+import { CataloguePage } from './catalogue-page';
 import { usePresence } from './presence-data';
 import { RoomSettings } from './room-settings';
-import { PresenceNativeSettings } from './native-settings';
 
 export function PresencePage({
   device,
   page,
 }: {
   readonly device: Device;
-  readonly page: ShellyPresencePage;
+  readonly page: ShellyPage;
 }): ReactNode {
   const stream = usePresence(device);
-  const title = SHELLY_PRESENCE_PAGES.find((item) => item.id === page)?.title ?? 'Shelly Presence';
+  const title = SHELLY_PAGES.find((item) => item.id === page)?.title ?? 'Shelly Presence';
   return (
     <DeviceSettingsFrame deviceId={device.id} name={device.label} title={title}>
       {stream.state !== 'ready' ? (
@@ -28,7 +27,7 @@ export function PresencePage({
       ) : page === 'presence-room' ? (
         <RoomSettings sensor={stream.value} />
       ) : (
-        <PresenceNativeSettings sensor={stream.value} page={page} />
+        <CataloguePage sensor={stream.value} page={page} />
       )}
     </DeviceSettingsFrame>
   );

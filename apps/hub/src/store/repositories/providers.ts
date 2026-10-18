@@ -2,7 +2,7 @@ import { PROVIDER_LINK_ROW, type Provider, type ProviderLinkRow } from '@smartev
 import type { ProviderLinkChange } from '../../database/port';
 import type { SQLInputValue } from 'node:sqlite';
 import { storedRow } from '../codec';
-import { assignments, type StoreContext } from '../context';
+import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 
 const STORED_LINK = storedRow(PROVIDER_LINK_ROW, { json: ['prompt'] });
@@ -59,10 +59,7 @@ export class ProvidersRepository {
         `update provider_links set ${set.text} where provider = $provider`,
         { ...set.parameters, provider },
       );
-      const after = this.find(provider);
-      if (after === undefined) {
-        throw new Error(`The provider link for ${provider} vanished while it was written.`);
-      }
+      const after = found(this.find(provider), 'provider link', provider);
       this.context.changed(
         'provider_links',
         before === undefined ? 'INSERT' : 'UPDATE',

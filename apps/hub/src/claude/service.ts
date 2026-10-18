@@ -24,15 +24,11 @@ import type { Requester } from './prompt-broker';
 import { JsonSnapshots } from './json-snapshots';
 import type { ClaudeLocations } from './locations';
 import { PLAN_USAGE_FILE, PLAN_USAGE_FILE_NAME, usageOf, type PlanUsageFile } from './plan-usage';
+import type { OwnedSessions } from './provider/owned-sessions';
+import { listSessions, type SessionQuery } from './session-listing';
 import { SessionDirectory } from './session-directory';
 
 const SETTLE_MS = 75;
-
-export interface SessionQuery {
-  readonly state?: ClaudeSession['state'] | undefined;
-  readonly archived: boolean;
-  readonly limit: number;
-}
 
 export interface ThreadQuery {
   readonly before?: string | undefined;
@@ -53,11 +49,6 @@ interface Watching {
   readonly plan: JsonSnapshots<PlanUsageFile>;
 }
 
-function byRecency(left: ClaudeSession, right: ClaudeSession): number {
-  const running = Number(right.state !== 'stopped') - Number(left.state !== 'stopped');
-  return running === 0 ? (right.updated_at ?? '').localeCompare(left.updated_at ?? '') : running;
-}
-
 function usageFrom(plan: JsonSnapshots<PlanUsageFile>): ClaudeUsage {
   return usageOf([...plan.all().values()].find((entry) => entry.present)?.value);
 }
@@ -68,6 +59,7 @@ export class ClaudeService {
   private booted: Promise<void> = Promise.resolve();
   private unsubscribe: (() => void) | null = null;
   private lastStatus: string | null = null;
+  private owned: OwnedSessions = { settled: () => Promise.resolve(), owns: () => false };
   private readonly listeners = new Set<(notice: ClaudeNotice) => void>();
 
   constructor(private readonly options: ClaudeServiceOptions) {
@@ -97,6 +89,12 @@ export class ClaudeService {
     this.listeners.clear();
   }
 
+  async settled(): Promise<void> {
+    // eslint-disable-next-line local/no-swallowed-errors -- the boot failure is logged where boot starts
+    await this.booted.catch((): void => undefined);
+    await Promise.all([this.watching.directory.settled(), this.watching.plan.settled()]);
+  }
+
   onNotice(listener: (notice: ClaudeNotice) => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -105,9 +103,24 @@ export class ClaudeService {
   }
 
   private publish(notice: ClaudeNotice): void {
+    if (this.ownedNotice(notice)) return;
     this.options.publish(notice);
     for (const listener of this.listeners) {
       listener(notice);
+    }
+  }
+
+  private ownedNotice(notice: ClaudeNotice): boolean {
+    switch (notice.type) {
+      case 'claude_session':
+        return this.owned.owns(notice.session);
+      case 'claude_session_gone':
+        return this.owned.owns({ id: notice.id, cwd: null });
+      case 'claude_thread':
+        return this.owned.owns({ id: notice.session_id, cwd: null });
+      case 'claude_operation':
+      case 'claude_status':
+        return false;
     }
   }
 
@@ -116,17 +129,14 @@ export class ClaudeService {
     return this.statusNow();
   }
 
+  ownSessions(owned: OwnedSessions): void {
+    this.owned = owned;
+  }
+
   async sessions(query: SessionQuery): Promise<ClaudeSession[]> {
     const { directory } = await this.ready();
-    return directory
-      .sessions()
-      .filter(
-        (session) =>
-          session.archived === query.archived &&
-          (query.state === undefined || session.state === query.state),
-      )
-      .sort(byRecency)
-      .slice(0, query.limit);
+    await this.owned.settled();
+    return listSessions(directory.sessions(), query, this.owned.owns);
   }
 
   async session(id: string): Promise<ClaudeSession> {

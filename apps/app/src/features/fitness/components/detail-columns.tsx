@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { cn } from '../../../design/cn';
 import { useSizeClass } from '../../../design/size-class';
 
 export function DetailColumns({
@@ -10,18 +11,10 @@ export function DetailColumns({
   readonly side: ReactNode;
 }): ReactNode {
   const { split } = useSizeClass();
-  if (!split) {
-    return (
-      <View className="gap-4">
-        {main}
-        {side}
-      </View>
-    );
-  }
   return (
-    <View className="flex-row gap-6">
-      <View className="min-w-0 flex-2">{main}</View>
-      <View className="min-w-0 flex-1 gap-3">{side}</View>
+    <View className={cn(split ? 'flex-row gap-6' : 'gap-4')}>
+      <View className={cn(split ? 'min-w-0 flex-2' : 'gap-4')}>{main}</View>
+      <View className={cn(split ? 'min-w-0 flex-1 gap-3' : 'gap-4')}>{side}</View>
     </View>
   );
 }

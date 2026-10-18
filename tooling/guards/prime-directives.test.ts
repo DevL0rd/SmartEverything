@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ESLint } from 'eslint';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -16,15 +17,50 @@ const stryker = z.object({
   thresholds: z.object({ high: z.number(), low: z.number(), break: z.number() }),
   mutate: z.array(z.string()),
 });
+const projectConfig = z.looseObject({
+  test: z.looseObject({
+    projects: z.array(z.looseObject({ test: z.looseObject({ name: z.string() }) })),
+    coverage: z.looseObject({ include: z.array(z.string()).default([]) }).default({ include: [] }),
+  }),
+});
 const duplication = z.object({ threshold: z.number(), minLines: z.number() });
 const compiler = z.object({ compilerOptions: z.record(z.string(), z.unknown()) });
 const resolved = z.object({ rules: z.record(z.string(), z.unknown()).default({}) });
+
+const MEASURED_PACKAGES = ['logging', 'domain', 'xiaomi', 'ble', 'tuya', 'smartthings', 'shelly'];
+
+const UNMEASURED_PACKAGES: Readonly<Record<string, string>> = {
+  harness:
+    'hosts the vendored agent runtime and is checked by behaviour tests, not held to the shared-package 100% rule',
+};
+
+async function projectsOf(file: string): Promise<readonly string[]> {
+  const loaded: unknown = await import(pathToFileURL(join(root, file)).href);
+  const parsed = z.object({ default: projectConfig }).parse(loaded).default;
+  return parsed.test.projects.map((project) => project.test.name);
+}
+
+async function coverageIncludeOf(file: string): Promise<readonly string[]> {
+  const loaded: unknown = await import(pathToFileURL(join(root, file)).href);
+  return z.object({ default: projectConfig }).parse(loaded).default.test.coverage.include;
+}
+
+function packagesWithSource(): readonly string[] {
+  return readdirSync(join(root, 'packages')).filter((name) =>
+    existsSync(join(root, 'packages', name, 'src')),
+  );
+}
+
+function coverageProjects(): readonly string[] {
+  const script = readJson('package.json', manifest).scripts['test:coverage'] ?? '';
+  return [...script.matchAll(/--project (\S+)/g)].map((match) => match[1] ?? '');
+}
 
 let rules: Record<string, unknown> = {};
 
 beforeAll(async () => {
   const raw: unknown = await new ESLint({ cwd: root }).calculateConfigForFile(
-    join(root, 'packages/logging/src/logger.ts'),
+    join(root, 'packages/logging/src/index.ts'),
   );
   rules = resolved.parse(raw).rules;
 });
@@ -54,9 +90,50 @@ describe('directive 3 — 100% mutation score', () => {
     expect(config.thresholds.high).toBe(100);
   });
 
-  it('mutates every package that ships logic', () => {
-    for (const workspace of ['logging', 'domain', 'xiaomi', 'tuya', 'smartthings']) {
+  it('mutates every measured package', () => {
+    for (const workspace of MEASURED_PACKAGES) {
       expect(config.mutate).toContain(`packages/${workspace}/src/**/*.ts`);
+    }
+  });
+
+  it('mutates only measured packages', () => {
+    const named = config.mutate
+      .filter((pattern) => pattern.startsWith('packages/') && !pattern.startsWith('!'))
+      .map((pattern) => pattern.split('/')[1]);
+    expect([...named].sort()).toStrictEqual([...MEASURED_PACKAGES].sort());
+  });
+});
+
+describe('directive 2 and 3 — every package is measured or says why not', () => {
+  it('lists every package with source as measured or unmeasured with a reason', () => {
+    const known = [...MEASURED_PACKAGES, ...Object.keys(UNMEASURED_PACKAGES)].sort();
+    expect([...packagesWithSource()].sort()).toStrictEqual(known);
+  });
+
+  it('runs the coverage gate on every measured package and on no other', () => {
+    expect([...coverageProjects()].sort()).toStrictEqual([...MEASURED_PACKAGES].sort());
+  });
+
+  it('collects coverage from every measured package and from no other', async () => {
+    const include = await coverageIncludeOf('vitest.config.ts');
+    expect(include).toStrictEqual([`packages/{${MEASURED_PACKAGES.join(',')}}/src/**/*.ts`]);
+  });
+
+  it('runs the mutation gate on a test project of every measured package', async () => {
+    const projects = await projectsOf('vitest.mutation.config.ts');
+    expect([...projects].sort()).toStrictEqual([...MEASURED_PACKAGES].sort());
+  });
+
+  it('defines the test project each measured package is run by', async () => {
+    const projects = await projectsOf('vitest.config.ts');
+    for (const name of [...MEASURED_PACKAGES, ...Object.keys(UNMEASURED_PACKAGES)]) {
+      expect(projects).toContain(name);
+    }
+  });
+
+  it('gives every unmeasured package a reason', () => {
+    for (const reason of Object.values(UNMEASURED_PACKAGES)) {
+      expect(reason.length).toBeGreaterThan(20);
     }
   });
 });

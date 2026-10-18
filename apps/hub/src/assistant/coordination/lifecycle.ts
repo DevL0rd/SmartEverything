@@ -2,6 +2,7 @@ import type { AiChatRow, AiAgentRun } from '@smarteverything/domain';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
 import type { Store } from '../../store/store';
 import { agentProjection } from './agent-projection';
+import { computerEngine } from '../engine-kind';
 export class AgentLifecycle {
   constructor(
     private readonly store: Store,
@@ -72,9 +73,14 @@ function engineProjection(
   child: AiChatRow,
 ): Pick<AiAgentRun, 'device_id' | 'runtime' | 'cwd'> {
   const engine = child.engine;
-  if (engine.kind === 'openrouter') return { device_id: null, runtime: null, cwd: null };
-  if (engine.kind !== 'dsh')
-    return { device_id: engine.device_id, runtime: engine.kind, cwd: engine.settings.cwd ?? null };
+  const computer = computerEngine(engine);
+  if (computer !== null)
+    return {
+      device_id: computer.device_id,
+      runtime: computer.kind,
+      cwd: computer.settings.cwd ?? null,
+    };
+  if (engine.kind !== 'dsh') return { device_id: null, runtime: null, cwd: null };
   return {
     device_id: engine.execution_target.kind === 'device' ? engine.execution_target.device_id : null,
     runtime: engine.kind,

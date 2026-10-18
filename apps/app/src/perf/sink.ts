@@ -1,5 +1,3 @@
-import { perfRuntime } from './runtime';
-
 export interface PerfSink {
   record(id: string, ms: number, mounted: boolean): void;
   screenCommit(label: string, phase: string, ms: number): void;
@@ -13,13 +11,35 @@ export interface PerfSink {
   listCell(list: string, index: number, y: number, height: number): void;
   listGone(list: string, index: number): void;
   listViewport(list: string, height: number): void;
+  listContent(list: string, height: number): void;
   listScroll(list: string, offset: number): void;
 }
 
+export interface ProbeSession {
+  readonly sink: PerfSink;
+  readonly stop: () => void;
+}
+
+let session: ProbeSession | null = null;
+let currentScreen = '';
+
 export function sinkOf(): PerfSink | null {
-  return perfRuntime.state.status === 'running' ? perfRuntime.state.session.sink : null;
+  return session === null ? null : session.sink;
 }
 
 export function rememberScreen(screen: string): void {
-  perfRuntime.screen = screen;
+  currentScreen = screen;
+}
+
+export function attachSession(next: ProbeSession): void {
+  session = next;
+  if (currentScreen !== '') {
+    next.sink.screen(currentScreen);
+  }
+}
+
+export function detachSession(): ProbeSession | null {
+  const previous = session;
+  session = null;
+  return previous;
 }

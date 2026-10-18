@@ -27,8 +27,7 @@ export interface SuggestionDeps {
 }
 
 function favouriteIds(personal: PersonalRepository, owner: LayoutOwner): readonly string[] {
-  const pref = CLIENT_PREFS.ai_models;
-  const read = pref.decode(personal.layout(owner, pref.storageKey)?.layout);
+  const read = personal.pref(CLIENT_PREFS.ai_models, owner);
   if (read.status === 'invalid') {
     throw new ApiError('conflict', read.reason);
   }

@@ -2,10 +2,6 @@ package expo.modules.healthconnect.phone
 
 sealed class PhoneFailure(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-class PhonePushPayloadInvalid(command: String, detail: String) : PhoneFailure(
-  "The \"$command\" push carried a payload that could not be read: $detail"
-)
-
 class PhoneActionUnknown(type: String) : PhoneFailure(
   "The hub asked this phone for \"$type\", which this app version does not know; expected one of ${PhoneActionType.entries.map { it.wire }}"
 )

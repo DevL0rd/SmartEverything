@@ -8,7 +8,6 @@ import {
   type StateUpdate,
   type Unsubscribe,
 } from '@smarteverything/domain';
-import type { SmartThingsCommand } from '@smarteverything/smartthings';
 import type { RunContext } from '../contract';
 import { DeviceQueue } from './device-queue';
 import { EventSubscriptions } from './event-subscriptions';
@@ -48,26 +47,20 @@ class SmartThingsDevices {
 
   async execute(command: DeviceCommand): Promise<JsonValue> {
     await this.ensureInventory();
-    this.buildCommand(command);
-    const outcomes = await this.queueFor(command.externalId).commands(() =>
-      this.buildCommand(command),
-    );
-    if (outcomes.some((outcome) => outcome.status === 'FAILED')) {
-      throw new SmartThingsCommandFailedError(command.externalId, command.capability);
-    }
-    return outcomes.map((outcome) => outcome.status);
-  }
-
-  private buildCommand(command: DeviceCommand): readonly SmartThingsCommand[] {
-    const binding = this.parts.inventory.bindingFor(command.externalId, command.capability);
+    const { inventory } = this.parts;
+    const binding = inventory.bindingFor(command.externalId, command.capability);
     if (binding === undefined) {
       throw new CommandRefusedError(command.capability, 'the device does not have it');
     }
     if (binding.write === null) {
       throw new CommandRefusedError(command.capability, 'it can only be read');
     }
-    this.parts.inventory.validateWrite(command.externalId, binding, command.value);
-    return binding.write(command.value);
+    inventory.validateWrite(command.externalId, binding, command.value);
+    const outcomes = await this.queueFor(command.externalId).commands(binding.write(command.value));
+    if (outcomes.some((outcome) => outcome.status === 'FAILED')) {
+      throw new SmartThingsCommandFailedError(command.externalId, command.capability);
+    }
+    return outcomes.map((outcome) => outcome.status);
   }
 
   async refresh(externalIds: readonly string[]): Promise<readonly StateUpdate[]> {

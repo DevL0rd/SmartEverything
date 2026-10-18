@@ -6,25 +6,25 @@ const SYNCTHING_DEVICE_ID = z
   .string()
   .regex(/^[A-Z2-7]{7}(-[A-Z2-7]{7}){7}$/, 'a Syncthing device ID');
 
-const FOLDER_ID = z.string().min(1).max(200);
+const FOLDER_ID = z.string().min(1);
 
 export const SYNC_STATES = ['in_sync', 'syncing', 'paused', 'error', 'offline', 'empty'] as const;
 
 export type SyncState = (typeof SYNC_STATES)[number];
 
 const SYNCTHING_CONNECTION = z.discriminatedUnion('state', [
-  z.strictObject({ state: z.literal('not_set_up') }),
-  z.strictObject({ state: z.literal('connecting') }),
-  z.strictObject({ state: z.literal('online') }),
-  z.strictObject({ state: z.literal('key_rejected') }),
-  z.strictObject({ state: z.literal('unreachable'), reason: z.string(), since: MOMENT }),
+  z.object({ state: z.literal('not_set_up') }),
+  z.object({ state: z.literal('connecting') }),
+  z.object({ state: z.literal('online') }),
+  z.object({ state: z.literal('key_rejected') }),
+  z.object({ state: z.literal('unreachable'), reason: z.string(), since: MOMENT }),
 ]);
 
 export const FOLDER_TYPES = ['sendreceive', 'sendonly', 'receiveonly', 'receiveencrypted'] as const;
 
-const LAST_FILE = z.strictObject({ name: z.string(), at: MOMENT, deleted: z.boolean() });
+const LAST_FILE = z.object({ name: z.string(), at: MOMENT, deleted: z.boolean() });
 
-const SYNCTHING_FOLDER = z.strictObject({
+const SYNCTHING_FOLDER = z.object({
   id: FOLDER_ID,
   label: z.string(),
   path: z.string(),
@@ -35,7 +35,7 @@ const SYNCTHING_FOLDER = z.strictObject({
   needBytes: z.number().nonnegative(),
   needItems: z.number().int().nonnegative(),
   localChanges: z.number().int().nonnegative(),
-  errors: z.array(z.strictObject({ path: z.string(), error: z.string() })).max(20),
+  errors: z.array(z.object({ path: z.string(), error: z.string() })),
   errorCount: z.number().int().nonnegative(),
   stateError: z.string().nullable(),
   sharedWith: z.array(SYNCTHING_DEVICE_ID),
@@ -45,7 +45,7 @@ const SYNCTHING_FOLDER = z.strictObject({
 
 export type SyncthingFolder = z.output<typeof SYNCTHING_FOLDER>;
 
-const SYNCTHING_PEER = z.strictObject({
+const SYNCTHING_PEER = z.object({
   id: SYNCTHING_DEVICE_ID,
   name: z.string(),
   connected: z.boolean(),
@@ -62,17 +62,17 @@ const SYNCTHING_PEER = z.strictObject({
 
 export type SyncthingPeer = z.output<typeof SYNCTHING_PEER>;
 
-const PENDING_DEVICE = z.strictObject({
+const PENDING_DEVICE = z.object({
   id: SYNCTHING_DEVICE_ID,
   name: z.string(),
   address: z.string().nullable(),
   at: MOMENT,
 });
 
-const PENDING_FOLDER = z.strictObject({
+const PENDING_FOLDER = z.object({
   id: FOLDER_ID,
   label: z.string(),
-  offeredBy: z.array(z.strictObject({ id: SYNCTHING_DEVICE_ID, name: z.string(), at: MOMENT })),
+  offeredBy: z.array(z.object({ id: SYNCTHING_DEVICE_ID, name: z.string(), at: MOMENT })),
   encrypted: z.boolean(),
 });
 
@@ -83,7 +83,7 @@ const SYNC_ATTENTION_KINDS = [
   'system_error',
 ] as const;
 
-const SYNC_ATTENTION = z.strictObject({
+const SYNC_ATTENTION = z.object({
   kind: z.enum(SYNC_ATTENTION_KINDS),
   text: z.string(),
   folderId: FOLDER_ID.nullable(),
@@ -92,7 +92,7 @@ const SYNC_ATTENTION = z.strictObject({
 
 export type SyncAttention = z.output<typeof SYNC_ATTENTION>;
 
-const SYNC_SUMMARY = z.strictObject({
+const SYNC_SUMMARY = z.object({
   state: z.enum(SYNC_STATES),
   needBytes: z.number().nonnegative(),
   foldersBehind: z.number().int().nonnegative(),
@@ -102,7 +102,7 @@ const SYNC_SUMMARY = z.strictObject({
   uploadBytesPerSecond: z.number().nonnegative(),
 });
 
-export const SYNCTHING_SNAPSHOT = z.strictObject({
+export const SYNCTHING_SNAPSHOT = z.object({
   at: MOMENT,
   connection: SYNCTHING_CONNECTION,
   version: z.string().nullable(),
@@ -130,7 +130,7 @@ const SYNC_ACTIVITY_KINDS = [
   'error',
 ] as const;
 
-export const SYNC_ACTIVITY = z.strictObject({
+export const SYNC_ACTIVITY = z.object({
   id: z.number().int().nonnegative(),
   at: MOMENT,
   kind: z.enum(SYNC_ACTIVITY_KINDS),

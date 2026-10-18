@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { failure, type HubToolResult, type ToolCaller } from '../../ai-tools/hub-tool';
+import { messageOf } from '@smarteverything/logging';
 
 export const READ_HINTS = {
   readOnlyHint: true,
@@ -28,7 +29,7 @@ export async function attemptTool(
   try {
     return toolResult(await work());
   } catch (error) {
-    return failure(error instanceof Error ? error.message : String(error));
+    return failure(messageOf(error));
   }
 }
 

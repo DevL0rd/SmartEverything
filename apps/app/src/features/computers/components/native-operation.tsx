@@ -9,17 +9,17 @@ import { rawErrorText } from '../../../format/errors';
 import type { NativeOperationState } from '../data/native-operation';
 
 const OPERATION_LABELS = {
-  pending: 'Accepted on this computer; waiting for completion.',
-  completed: 'Native action completed.',
-  failed: 'Native action failed.',
-  uncertain: 'Delivery is uncertain. Check this operation before sending another action.',
+  pending: 'Running on this computer…',
+  completed: 'Done.',
+  failed: 'Couldn’t finish it.',
+  uncertain: 'Couldn’t confirm it arrived. Check status before trying again.',
 } as const;
 
 function operationMessage(receipt: z.output<typeof CODEX_OPERATION>): string {
   if (receipt.state === 'completed' && receipt.operation === 'control') {
     const result = CLAUDE_CONTROLLED.safeParse(receipt.value);
     if (result.success && result.data.delivery === 'queued_unverified')
-      return 'Queued on this computer; delivery is not confirmed yet.';
+      return 'Sent to this computer…';
   }
   return OPERATION_LABELS[receipt.state];
 }

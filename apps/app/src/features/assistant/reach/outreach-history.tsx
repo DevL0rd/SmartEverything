@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import type { AiOutreachRow } from '@smarteverything/domain';
-import { ErrorState } from '../../../components/error-state';
+import { LoadedQuery } from '../../../components/loaded-query';
 import { ListRow } from '../../../components/list-row';
-import { Skeleton } from '../../../components/skeleton';
 import { relative } from '../../../format/time';
 import type { IconName } from '../../../components/icon-glyphs';
 import { useMinute } from '../../../store/clock';
@@ -40,22 +39,23 @@ function titleOf(row: AiOutreachRow): string {
 export function OutreachHistory(): ReactNode {
   const outreach = useOutreach();
   const now = useMinute();
-  if (outreach.isError) {
-    return <ErrorState error={outreach.error} retry={() => void outreach.refetch()} />;
-  }
-  if (outreach.data === undefined) {
-    return <Skeleton shape="line" className="h-12" />;
-  }
-  if (outreach.data.length === 0) {
-    return <ListRow title="Nothing yet" subtitle="Calls and messages the AI starts show here" />;
-  }
-  return outreach.data.map((row) => (
-    <ListRow
-      key={row.id}
-      title={titleOf(row)}
-      subtitle={row.reason}
-      icon={HOW[row.how].icon}
-      value={`${STATE[row.state]} · ${relative(row.created_at, now)}`}
-    />
-  ));
+  return (
+    <LoadedQuery query={outreach}>
+      {(rows) =>
+        rows.length === 0 ? (
+          <ListRow title="Nothing yet" subtitle="Calls and messages the AI starts show here" />
+        ) : (
+          rows.map((row) => (
+            <ListRow
+              key={row.id}
+              title={titleOf(row)}
+              subtitle={row.reason}
+              icon={HOW[row.how].icon}
+              value={`${STATE[row.state]} · ${relative(row.created_at, now)}`}
+            />
+          ))
+        )
+      }
+    </LoadedQuery>
+  );
 }

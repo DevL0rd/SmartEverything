@@ -4,6 +4,8 @@ import type { SettingEnv, SettingsPageDefinition } from './types';
 
 const ownerOnly = (env: SettingEnv): boolean => env.owner;
 
+const androidOnly = (env: SettingEnv): boolean => env.platform === 'android';
+
 function assistantSummary(state: StoreState): string | null {
   return state.assistant === null ? null : state.assistant.settings.name;
 }
@@ -15,9 +17,19 @@ export const ASSISTANT_PAGES: readonly SettingsPageDefinition[] = [
     icon: 'sparkles',
     parent: null,
     group: 'App',
-    subPagesFirst: true,
+    childrenInline: false,
     summary: assistantSummary,
     keywords: ['ai', 'chat', 'openrouter', 'api key', 'credits', 'default model'],
+  },
+  {
+    id: 'assistant/response-style',
+    title: 'Response style',
+    icon: 'textCursor',
+    parent: 'assistant',
+    group: null,
+    subtitle: 'Tone, detail and formatting of replies',
+    keywords: ['tone', 'personality', 'verbosity', 'formatting', 'style'],
+    visible: ownerOnly,
   },
   {
     id: 'assistant/extensions',
@@ -121,6 +133,54 @@ export const ASSISTANT_PAGES: readonly SettingsPageDefinition[] = [
     group: null,
     subtitle: 'Quiet hours and the cameras the AI may talk through',
     keywords: ['reaching you', 'ai calls', 'quiet hours', 'camera speaker', 'call me'],
+  },
+  {
+    id: 'assistant/listening',
+    title: 'Listening',
+    icon: 'mic',
+    parent: 'assistant',
+    group: null,
+    subtitle: 'Which devices hear the AI’s name, and what they write down',
+    keywords: [
+      'listening',
+      'wake word',
+      'hey',
+      'hands free',
+      'microphone',
+      'write down',
+      'transcribe',
+      'privacy',
+      'discord call',
+      'walkie',
+      'loudest',
+      'sensitivity',
+    ],
+  },
+  {
+    id: 'assistant/phone',
+    title: 'Phone assistant',
+    icon: 'smartphone',
+    parent: 'assistant',
+    group: null,
+    platform: 'android',
+    visible: androidOnly,
+    subtitle: 'Side key or assist gesture to start a call, and the wake word on this phone',
+    keywords: [
+      'phone assistant',
+      'digital assistant',
+      'default assistant',
+      'side key',
+      'side button',
+      'power button',
+      'assist gesture',
+      'voice bar',
+      'overlay',
+      'wake word',
+      'battery',
+      'power mode',
+      'charging',
+      'away from home',
+    ],
   },
   {
     id: 'assistant/calls',

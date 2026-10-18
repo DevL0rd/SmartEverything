@@ -6,7 +6,7 @@ import { SNOWFLAKE } from '../ids';
 import { MEDIA_HISTORY, MEDIA_READ } from '../media-service';
 import { MEDIA_SEARCH } from '../media-index';
 import type { DiscordServices } from '../services';
-import { eventsAction } from './owner-actions';
+import { eventsAction } from './events-action';
 import { actionTool, plain, type LocalAction, type LocalOutput } from './action-tool';
 
 const LIMIT = z
@@ -88,20 +88,13 @@ export function contextTool(services: DiscordServices): PluginTool {
   });
 }
 
-const READ_SHAPE = {
-  ...MEDIA_READ.shape,
-  channelId: SNOWFLAKE.optional().describe(
-    'The channel the handle came from, when no eventId is given.',
-  ),
-};
-
 function mediaActions(services: DiscordServices): readonly LocalAction[] {
   const { media, authority } = services;
   return [
     {
       action: 'search',
       description:
-        'Latest, specific or several attachments or images in the bounded observed index of the same server (or the same DM). Filter by user, channel, message, IDs and time; newest first with a cursor. Incomplete; no search across all of Discord.',
+        'Latest, specific or several attachments or images in the bounded observed index of the same server (or the same DM). Filter by user, channel, message, IDs and time; newest first. Incomplete; no search across all of Discord. Each result has messageId and attachmentId for read.',
       shape: MEDIA_SEARCH.shape,
       run: async (args, caller, eventId): Promise<LocalOutput> => {
         const input = MEDIA_SEARCH.parse(args);
@@ -112,7 +105,7 @@ function mediaActions(services: DiscordServices): readonly LocalAction[] {
     {
       action: 'history',
       description:
-        'Scan one channel history page or one exact message for attachments. Filter by user, message, time and kind. nextBefore pages through messages; truncated attachment references allow an exact follow-up.',
+        'Scan one channel history page or one exact message for attachments. Filter by user, message, time and kind. nextBefore pages through messages. Each result has messageId and attachmentId for read.',
       shape: MEDIA_HISTORY.shape,
       run: async (args, caller, eventId): Promise<LocalOutput> => {
         const input = MEDIA_HISTORY.parse(args);
@@ -123,13 +116,13 @@ function mediaActions(services: DiscordServices): readonly LocalAction[] {
     {
       action: 'read',
       description:
-        'Read up to 128 KiB of an attachment from a fresh handle (sourceId from search or history). Only Discord’s own file server is contacted. A complete small picture comes back as an image (imageContent true); larger files need chunks with offset.',
-      shape: READ_SHAPE,
+        'Read an attachment by messageId and attachmentId (add channelId when it is not in the request’s channel). A picture comes back as an image (imageContent true); other files come in chunks of up to 128 KiB, continue with offset.',
+      shape: MEDIA_READ.shape,
       run: async (args, caller, eventId): Promise<LocalOutput> => {
-        const { channelId, ...rest } = z.object(READ_SHAPE).parse(args);
-        const reach = await authority.reach(caller, eventId, channelId);
-        const read = await media.read(reach, MEDIA_READ.parse(rest));
-        if (read.complete && read.image) {
+        const input = MEDIA_READ.parse(args);
+        const reach = await authority.reach(caller, eventId, input.channelId);
+        const read = await media.read(reach, input);
+        if (read.image) {
           return {
             response: { ...read.info, imageContent: true },
             pictures: [{ data: read.chunk, mimeType: read.mimeType }],

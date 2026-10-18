@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../../design/theme-scope';
 import { EdgeScrim } from '../../../../components/edge-scrim';
 import { Icon } from '../../../../components/icon';
 import { Interactive } from '../../../../components/interactive';
@@ -49,9 +49,9 @@ function FlipButton({ onFlip }: { readonly onFlip: () => void }): ReactNode {
       className="size-12 items-center justify-center rounded-full bg-black/55"
       layerClassName="rounded-full"
     >
-      <ScopedTheme theme="dark">
+      <ThemeScope theme="dark">
         <Icon name="switchCamera" size={24} tone="default" />
-      </ScopedTheme>
+      </ThemeScope>
     </Interactive>
   );
 }
@@ -64,12 +64,12 @@ function NameChip({
   readonly icon: 'camera' | 'screenShare';
 }): ReactNode {
   return (
-    <ScopedTheme theme="dark">
+    <ThemeScope theme="dark">
       <View className="absolute bottom-3 left-3 flex-row items-center gap-1.5 rounded-full bg-black/60 px-3 py-1">
         <Icon name={icon} size={16} tone="default" />
         <Text variant="caption">{text}</Text>
       </View>
-    </ScopedTheme>
+    </ThemeScope>
   );
 }
 

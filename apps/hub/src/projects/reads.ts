@@ -1,4 +1,5 @@
-import { opendir } from 'node:fs/promises';
+import { open, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   ApiError,
   AI_PROJECT_CHUNK_BYTES,
@@ -7,52 +8,71 @@ import {
   type AiProjectResult,
 } from '@smarteverything/domain';
 import type { HarnessLocalFileSystem } from '@smarteverything/harness';
-import { missing, type ProjectPaths } from './paths';
-import type { ProjectAuthority } from './authority';
+
+export interface ProjectBytes {
+  readonly bytes: Buffer;
+  readonly size: number;
+  readonly version: string;
+}
+interface Folder {
+  readonly root: string;
+  readonly fs: HarnessLocalFileSystem;
+}
+const SEARCH_VISIT_MAX = 1000;
+
 export async function projectStat(
-  paths: ProjectPaths,
-  fs: HarnessLocalFileSystem,
-  chat: string,
+  folder: Folder,
   path: string,
+  absolute: string,
 ): Promise<AiProjectFile | null> {
-  const absolute = await paths.resolve(chat, path, true);
-  const info = await fs.stat(await fs.resolve(absolute));
+  const info = await folder.fs.stat(await folder.fs.resolve(absolute));
   if (info === undefined) return null;
   if (info.type === 'other')
     throw new ApiError('forbidden', 'Project entries must be regular files or directories.');
   return { path, type: info.type, version: info.version, bytes: info.size ?? 0 };
 }
+
 export async function projectList(
-  paths: ProjectPaths,
-  fs: HarnessLocalFileSystem,
-  chat: string,
+  folder: Folder,
   options: { readonly path: string; readonly limit: number },
 ): Promise<{ readonly entries: AiProjectFile[]; readonly truncated: boolean }> {
-  const { path, limit } = options;
-  const directory = await opendir(await paths.resolve(chat, path));
+  const names = (await readdir(join(folder.root, options.path))).sort();
   const entries: AiProjectFile[] = [];
-  for await (const child of directory) {
-    if (child.name === '.operations') continue;
-    if (entries.length >= limit) return { entries, truncated: true };
-    try {
-      const entry = await projectStat(paths, fs, chat, `${path}/${child.name}`);
-      if (entry !== null) entries.push(entry);
-    } catch (cause) {
-      if (!missing(cause)) throw cause;
-    }
+  for (const name of names) {
+    if (entries.length >= options.limit) return { entries, truncated: true };
+    const path = `${options.path}/${name}`;
+    const entry = await projectStat(folder, path, join(folder.root, path));
+    if (entry !== null) entries.push(entry);
   }
-  return { entries: entries.sort((a, b) => a.path.localeCompare(b.path)), truncated: false };
+  return { entries, truncated: false };
 }
+
+export async function readProjectBytes(
+  folder: Folder,
+  path: string,
+  range: { readonly offset: number; readonly length: number },
+): Promise<ProjectBytes> {
+  const absolute = join(folder.root, path);
+  const handle = await open(absolute, 'r');
+  try {
+    const buffer = Buffer.alloc(range.length);
+    const read = await handle.read(buffer, 0, range.length, range.offset);
+    const file = await projectStat(folder, path, absolute);
+    if (file?.type !== 'file')
+      throw new ApiError('invalid_request', 'Only regular project files can be read.');
+    return { bytes: buffer.subarray(0, read.bytesRead), size: file.bytes, version: file.version };
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function projectRead(
-  paths: ProjectPaths,
-  authority: ProjectAuthority,
+  folder: Folder,
   request: Extract<AiProjectRequest, { operation: 'read' }>,
 ): Promise<AiProjectResult> {
-  const read = await paths.bytes(authority.chatId, request.path, request.offset, {
+  const read = await readProjectBytes(folder, request.path, {
+    offset: request.offset,
     length: request.length + (request.encoding === 'utf8' ? 3 : 0),
-    validate: (): void => {
-      authority.validate(false);
-    },
   });
   const end =
     request.encoding === 'utf8'
@@ -73,6 +93,7 @@ export async function projectRead(
     next_offset: next < read.size ? next : null,
   };
 }
+
 function textEnd(bytes: Buffer, requested: number, offset: number): number {
   const first = bytes[0];
   if (offset > 0 && first !== undefined && (first & 0xc0) === 0x80)
@@ -84,74 +105,72 @@ function textEnd(bytes: Buffer, requested: number, offset: number): number {
   while (end < bytes.length && (bytes[end] ?? 0) >> 6 === 2) end += 1;
   return end;
 }
+
 export async function projectSearch(
-  paths: ProjectPaths,
-  fs: HarnessLocalFileSystem,
-  authority: ProjectAuthority,
+  folder: Folder,
   request: Extract<AiProjectRequest, { operation: 'search' }>,
 ): Promise<AiProjectResult> {
   const pending = [request.path];
   const hits: NonNullable<AiProjectResult['hits']> = [];
-  let visited = 0;
   let truncated = false;
-  while (pending.length > 0 && hits.length < request.limit && visited < 1000) {
-    authority.validate(false);
+  for (let visited = 0; visited < SEARCH_VISIT_MAX && hits.length < request.limit; visited += 1) {
     const path = pending.shift();
     if (path === undefined) break;
-    visited += 1;
-    const file = await projectStat(paths, fs, authority.chatId, path);
-    if (file === null) continue;
-    if (file.type === 'directory') {
-      const list = await projectList(paths, fs, authority.chatId, { path, limit: 1000 - visited });
-      const remaining = Math.max(0, 1000 - visited - pending.length);
-      truncated = truncated || list.truncated || list.entries.length > remaining;
-      pending.push(...list.entries.slice(0, remaining).map((entry) => entry.path));
-      continue;
-    }
-    const matches = await searchFile(paths, authority, file, {
+    const visit = await searchPath(folder, path, {
       text: request.text,
       limit: request.limit - hits.length,
+      budget: SEARCH_VISIT_MAX - visited,
     });
-    hits.push(...matches.hits);
-    truncated = truncated || matches.truncated;
+    pending.push(...visit.children);
+    hits.push(...visit.hits);
+    truncated = truncated || visit.truncated;
   }
   return {
     operation: 'search',
     path: request.path,
     hits,
-    truncated: searchIncomplete(truncated, pending.length, hits.length, request.limit),
+    truncated: truncated || pending.length > 0 || hits.length >= request.limit,
   };
 }
 
+interface Visit {
+  readonly children: readonly string[];
+  readonly hits: NonNullable<AiProjectResult['hits']>;
+  readonly truncated: boolean;
+}
+async function searchPath(
+  folder: Folder,
+  path: string,
+  options: { readonly text: string; readonly limit: number; readonly budget: number },
+): Promise<Visit> {
+  const file = await projectStat(folder, path, join(folder.root, path));
+  if (file === null) return { children: [], hits: [], truncated: false };
+  if (file.type === 'file') {
+    const found = await searchFile(folder, file, options.text, options.limit);
+    return { children: [], ...found };
+  }
+  const list = await projectList(folder, { path, limit: options.budget });
+  return { children: list.entries.map((entry) => entry.path), hits: [], truncated: list.truncated };
+}
+
 async function searchFile(
-  paths: ProjectPaths,
-  authority: ProjectAuthority,
+  folder: Folder,
   file: AiProjectFile,
-  options: { readonly text: string; readonly limit: number },
+  needle: string,
+  limit: number,
 ): Promise<{ readonly hits: NonNullable<AiProjectResult['hits']>; readonly truncated: boolean }> {
   if (file.bytes > AI_PROJECT_CHUNK_BYTES) return { hits: [], truncated: true };
-  const bytes = await paths.bytes(authority.chatId, file.path, 0, {
+  const read = await readProjectBytes(folder, file.path, {
+    offset: 0,
     length: AI_PROJECT_CHUNK_BYTES,
-    validate: (): void => {
-      authority.validate(false);
-    },
   });
-  const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.bytes);
-  if (text.includes('\0') || text.includes('\ufffd')) return { hits: [], truncated: false };
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(read.bytes);
+  if (text.includes('\0') || text.includes('�')) return { hits: [], truncated: false };
   const hits: NonNullable<AiProjectResult['hits']> = [];
   for (const [line, value] of text.split(/\r?\n/u).entries()) {
-    if (hits.length >= options.limit) return { hits, truncated: true };
-    if (value.includes(options.text))
+    if (hits.length >= limit) return { hits, truncated: true };
+    if (value.includes(needle))
       hits.push({ path: file.path, line: line + 1, text: value.slice(0, 1000) });
   }
   return { hits, truncated: false };
-}
-
-function searchIncomplete(
-  truncated: boolean,
-  pending: number,
-  hits: number,
-  limit: number,
-): boolean {
-  return truncated || pending > 0 || hits >= limit;
 }

@@ -5,16 +5,17 @@ import {
   weatherKindOf,
   weatherLabelOf,
   type WeatherKind,
-  type AirBand,
   type WeatherDay,
   type WeatherForecast,
   type WeatherHour,
 } from '@smarteverything/domain';
+import { US_AQI_BAND_TONE } from '../../../components/air-look';
 import type { IconName } from '../../../components/icon';
 import type { StatusTone } from '../../../components/tone';
+import { AIR_BAND_COLOUR } from '../../../design/data-colours';
 import type { ColourRole } from '../../../design/tokens';
 import { decimal } from '../../../format/number';
-import { localDayKey, shortClock } from '../../../format/time';
+import { HOUR_MS, localDayKey, shortClock } from '../../../format/time';
 
 export function degrees(celsius: number): string {
   return `${decimal(celsius)}°`;
@@ -79,7 +80,7 @@ export function upcomingHours(
   now: number,
   count: number,
 ): readonly WeatherHour[] {
-  const start = now - (now % 3_600_000);
+  const start = now - (now % HOUR_MS);
   return forecast.hourly.filter((hour) => Date.parse(hour.at) >= start).slice(0, count);
 }
 
@@ -89,8 +90,12 @@ export function hourName(hour: WeatherHour, index: number, timeZone: string): st
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: 'UTC' });
 
+export function weekdayOf(day: string): string {
+  return WEEKDAY.format(new Date(`${day}T12:00:00Z`));
+}
+
 export function dayName(day: WeatherDay, today: string): string {
-  return day.day === today ? 'Today' : WEEKDAY.format(new Date(`${day.day}T12:00:00Z`));
+  return day.day === today ? 'Today' : weekdayOf(day.day);
 }
 
 const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
@@ -111,24 +116,6 @@ export function uvText(index: number): string {
   return `${decimal(index)} · ${UV_BAND_LABELS[uvBandOf(index)]}`;
 }
 
-export const AIR_TONES: Readonly<Record<AirBand, StatusTone>> = {
-  good: 'positive',
-  fair: 'positive',
-  moderate: 'warning',
-  poor: 'critical',
-  bad: 'critical',
-  severe: 'critical',
-};
-
-export const AIR_ROLES: Readonly<Record<AirBand, ColourRole>> = {
-  good: 'air-good',
-  fair: 'air-fair',
-  moderate: 'air-moderate',
-  poor: 'air-poor',
-  bad: 'air-bad',
-  severe: 'air-severe',
-};
-
 export interface AqiLook {
   readonly value: string;
   readonly label: string;
@@ -141,7 +128,7 @@ export function aqiLook(aqi: number): AqiLook {
   return {
     value: decimal(aqi),
     label: verdict.label,
-    tone: AIR_TONES[verdict.band],
-    role: AIR_ROLES[verdict.band],
+    tone: US_AQI_BAND_TONE[verdict.band],
+    role: AIR_BAND_COLOUR[verdict.band],
   };
 }

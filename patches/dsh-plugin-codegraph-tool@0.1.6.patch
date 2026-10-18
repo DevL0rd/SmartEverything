@@ -1,0 +1,197 @@
+diff --git a/lib/index.d.ts b/lib/index.d.ts
+index fc656c2d778e7f945dfc5d29c801c58b5dda2443..79020c66a21b8812ce4886c6fdef69d17ca493a3 100644
+--- a/lib/index.d.ts
++++ b/lib/index.d.ts
+@@ -17,7 +17,6 @@
+  */
+ import type { Context } from '@deepseek-ai/cordis';
+ import z from '@deepseek-ai/schemastery';
+-import type { ToolExecution } from '@deepseek-ai/dsh-tools';
+ import type { CodegraphToolArgs } from './schema.ts';
+ export { CODEGRAPH_INDEX_PARAMETERS, CODEGRAPH_OPERATIONS, CODEGRAPH_OUTPUT_SCHEMA, CODEGRAPH_PARAMETERS, type CodegraphIndexToolArgs, type CodegraphToolArgs, type CodegraphToolOperation, type CodegraphToolValue, type CodegraphValueFor, } from './schema.ts';
+ export { declarationsOnly, groupByFile, mergeByHits, mergeRelations, taskTerms } from './compose.ts';
+@@ -64,16 +63,6 @@ export interface Config {
+     indexTimeoutMs?: number;
+ }
+ export declare const Config: z<Config>;
+-/**
+- * The project root a call runs against: the model's explicit `project_path`, else the calling
+- * agent's session workspace. There is no process-cwd fallback — a graph query that silently answered
+- * about a different checkout than the session is working in would be wrong in a way the model cannot
+- * detect.
+- * @param args - the validated tool arguments.
+- * @param exec - the tool-execution context; only its optional `agent` is read.
+- * @returns the absolute project root.
+- */
+-export declare function projectRoot(args: CodegraphToolArgs, exec: ToolExecution): string;
+ /**
+  * Register the `codegraph` tool and its system-prompt guidance.
+  * @param ctx - the plugin context (must inject `tools`, `codegraph`, `fs`, `systemPrompt`).
+diff --git a/lib/index.js b/lib/index.js
+index a3f49d86dd5d6f519cf23369b4f453b50350fc05..f773612ff87eabce4d637a9e5e05650ec51206b1 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -16,9 +16,10 @@
+  * @module dsh-plugin-codegraph-tool
+  */
+ import z from '@deepseek-ai/schemastery';
++import { resolveProjectRoot } from './workspace.js';
+ import { defineTool } from '@deepseek-ai/dsh-tools';
+ import { CodegraphError } from 'dsh-plugin-codegraph-service';
+-import { assertNever } from '@deepseek-ai/dsh-llm';
++import { assertNever } from '@deepseek-ai/dsh-util-values';
+ import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout';
+ import { declarationsOnly, groupByFile, mergeByHits, mergeRelations, taskTerms } from "./compose.js";
+ import { toAffected, toHop, toRelation, toSymbol } from "./projection.js";
+@@ -33,7 +34,7 @@ export { readSlice } from "./source.js";
+ /** Cordis plugin name for loader diagnostics. */
+ export const name = 'tool-codegraph';
+ /** Services required by this plugin. */
+-export const inject = ['tools', 'codegraph', 'fs', 'systemPrompt'];
++export const inject = ['tools', 'codegraph', 'fs', 'systemPrompt', 'workingDirectory', 'sandboxPolicy'];
+ /** Default tool-call timeout budget (ms) for the query-side `codegraph` tool. */
+ export const DEFAULT_CODEGRAPH_TOOL_TIMEOUT_MS = 30_000;
+ /** Default timeout budget (ms) for the `codegraph_index` tool. Indexing a monorepo is a different order of work than a query. */
+@@ -64,24 +65,6 @@ export const Config = z.object({
+  * @param exec - the tool-execution context; only its optional `agent` is read.
+  * @returns the absolute project root.
+  */
+-export function projectRoot(args, exec) {
+-    return resolvedProjectRoot(args.project_path, exec);
+-}
+-/**
+- * Shared root-resolution logic behind {@link projectRoot} and the index tool's own argument shape.
+- * @param explicit - the model's `project_path`, if given.
+- * @param exec - the tool-execution context; only its optional `agent` is read.
+- * @returns the absolute project root.
+- */
+-function resolvedProjectRoot(explicit, exec) {
+-    if (explicit !== undefined && explicit.trim() !== '')
+-        return explicit;
+-    const sessionCwd = exec.agent?.session.header.cwd;
+-    if (sessionCwd === undefined) {
+-        throw new CodegraphError('the codegraph tool requires a session workspace or an explicit project_path', 'CODEGRAPH_WORKSPACE_REQUIRED');
+-    }
+-    return sessionCwd;
+-}
+ /** Read a required string argument, rejecting an absent or blank value. */
+ function required(args, field) {
+     const value = args[field];
+@@ -171,7 +154,7 @@ export function callTitle(args) {
+  * @returns the index operation's canonical value.
+  */
+ async function runIndex(ctx, args, exec) {
+-    const root = resolvedProjectRoot(args.project_path, exec);
++    const root = resolveProjectRoot(ctx, args.project_path, exec, true);
+     const report = await ctx.codegraph.index(root, exec.signal);
+     return {
+         operation: 'index',
+@@ -194,7 +177,7 @@ async function runIndex(ctx, args, exec) {
+  * @returns the canonical value for the requested operation.
+  */
+ async function run(ctx, config, args, exec) {
+-    const root = projectRoot(args, exec);
++    const root = resolveProjectRoot(ctx, args.project_path, exec, false);
+     const limit = bounded(args.limit, config.defaultLimit, config.maxLimit);
+     const depth = bounded(args.depth, config.defaultDepth, config.maxDepth);
+     const projection = {
+diff --git a/lib/invariant.d.ts b/lib/invariant.d.ts
+deleted file mode 100644
+index 8a01ea59f1a79dba1ac8f90d5277c25f02c74d75..0000000000000000000000000000000000000000
+diff --git a/lib/invariant.js b/lib/invariant.js
+deleted file mode 100644
+index 234bde85508bc1ccf1cb2cd1d6e434d59766a83d..0000000000000000000000000000000000000000
+diff --git a/lib/render.js b/lib/render.js
+index 9a063c708411150046697e56dcc4e705c16a8ad1..0397b7e6f21b7f4776971525ef8c901ef53aa4aa 100644
+--- a/lib/render.js
++++ b/lib/render.js
+@@ -6,7 +6,7 @@
+  * concludes it has seen everything.
+  * @module dsh-plugin-codegraph-tool/render
+  */
+-import { assertNever } from '@deepseek-ai/dsh-llm';
++import { assertNever } from '@deepseek-ai/dsh-util-values';
+ /** A symbol as one scannable line. */
+ function symbolLine(symbol) {
+     const exported = symbol.exported ? '' : ' (local)';
+diff --git a/lib/source.js b/lib/source.js
+index 81f5c01c4583aa02c668207555119b6bf1a19afc..00a9f31bf2e7dcd110f598b1fd6eb9911c86cccd 100644
+--- a/lib/source.js
++++ b/lib/source.js
+@@ -24,6 +24,8 @@ export async function readSlice(ctx, projectRoot, filePath, startLine, endLine,
+     let text;
+     try {
+         const target = await ctx.fs.resolve(filePath, { cwd: projectRoot, ...signal === undefined ? {} : { signal } });
++        const root = await ctx.fs.resolve(projectRoot, { signal });
++        if (!ctx.fs.contains(root, target)) throw new Error('Codegraph source escaped its workspace.');
+         text = await ctx.fs.readText(target, signal);
+     }
+     catch {
+diff --git a/lib/workspace.js b/lib/workspace.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..066f7128fda5a7b6b5f45f80be0f9cdf3e8d058b
+--- /dev/null
++++ b/lib/workspace.js
+@@ -0,0 +1,21 @@
++import { lstatSync, realpathSync } from 'node:fs';
++import { isAbsolute, relative, resolve, sep } from 'node:path';
++import { CodegraphError } from 'dsh-plugin-codegraph-service';
++
++export function resolveProjectRoot(ctx, explicit, exec, write) {
++    if (exec.agent === undefined)
++        throw new CodegraphError('Codegraph requires an owned session with a current workspace.', 'CODEGRAPH_WORKSPACE_REQUIRED');
++    exec.signal.throwIfAborted();
++    const workspace = realpathSync(ctx.workingDirectory.get(exec.agent.session));
++    const requested = explicit === undefined ? workspace : resolve(workspace, explicit);
++    const root = realpathSync(requested);
++    const path = relative(workspace, root);
++    if (isAbsolute(path) || path === '..' || path.startsWith(`..${sep}`))
++        throw new CodegraphError('Codegraph project_path must remain in the effective current workspace.', 'CODEGRAPH_PERMISSION_DENIED');
++    const policy = ctx.sandboxPolicy.resolve({ session: exec.agent.session });
++    if (write && policy.mode === 'read-only')
++        throw new CodegraphError('Read-only sessions cannot build or refresh a code index.', 'CODEGRAPH_PERMISSION_DENIED');
++    if (!lstatSync(root).isDirectory())
++        throw new CodegraphError('Codegraph project_path must be a directory.', 'CODEGRAPH_WORKSPACE_REQUIRED');
++    return root;
++}
+diff --git a/package.json b/package.json
+index e0ab93d4d462131552b243fc049e0d0966b5e0c3..b90fa5f1db52719e5f21c77c67cd23135a753063 100644
+--- a/package.json
++++ b/package.json
+@@ -33,10 +33,6 @@
+       "types": "./lib/index.d.ts",
+       "default": "./lib/index.js"
+     },
+-    "./invariant": {
+-      "types": "./lib/invariant.d.ts",
+-      "default": "./lib/invariant.js"
+-    },
+     "./package.json": "./package.json"
+   },
+   "files": [
+@@ -54,21 +50,12 @@
+   "peerDependencies": {
+     "@deepseek-ai/cordis": ">=4.0.1",
+     "@deepseek-ai/dsh-fs": ">=0.1.0-rc.6",
+-    "@deepseek-ai/dsh-invariants": ">=0.1.0-rc.6",
+     "@deepseek-ai/dsh-llm": ">=0.1.0-rc.6",
+     "@deepseek-ai/dsh-system-prompt": ">=0.1.0-rc.6",
+     "@deepseek-ai/dsh-timeout": ">=0.1.0-rc.6",
+-    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.6"
+-  },
+-  "devDependencies": {
+-    "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-fs": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-invariants": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-system-prompt": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+-    "dsh-plugin-codegraph-sqlite": "^0.1.6",
+-    "dsh-plugin-codegraph-tree-sitter": "^0.1.6"
++    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.6",
++    "@deepseek-ai/dsh-working-directory": ">=0.2.1-alpha.2",
++    "@deepseek-ai/dsh-sandbox-policy": ">=0.2.1-alpha.2",
++    "@deepseek-ai/dsh-util-values": ">=0.2.1-alpha.2"
+   }
+ }

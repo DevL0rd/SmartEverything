@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Modal, View } from 'react-native';
+import { View } from 'react-native';
 import { cn } from '../design/cn';
-import { useMotion } from '../design/motion';
 import { useIdiom } from '../design/platform';
 import { dateFormat } from '../format/locale';
 import { dayLabel, localDayKey } from '../format/time';
@@ -10,6 +9,7 @@ import { startOf } from './charts/scale';
 import { Icon } from './icon';
 import { IconButton } from './icon-button';
 import { Interactive } from './interactive';
+import { Sheet } from './sheet';
 import { Text } from './text';
 
 type DateRange = 'day' | 'week' | 'month' | 'year';
@@ -207,44 +207,20 @@ function Calendar({ value, today, max, onPick }: CalendarProps): ReactNode {
   );
 }
 
-function CalendarModal({
+function CalendarSheet({
   open,
   onClose,
-  children,
-}: {
+  onPick,
+  ...calendar
+}: Omit<CalendarProps, 'onPick'> & {
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly children: ReactNode;
+  readonly onPick: (day: Date) => void;
 }): ReactNode {
-  const touch = useIdiom() === 'touch';
-  const { reduced } = useMotion();
   return (
-    <Modal
-      transparent
-      visible={open}
-      animationType={reduced ? 'none' : 'fade'}
-      onRequestClose={onClose}
-    >
-      <View className={cn('flex-1', touch ? 'justify-end' : 'items-center justify-center')}>
-        <Interactive
-          label="Close calendar"
-          onPress={onClose}
-          className="absolute inset-0 bg-scrim"
-          layerClassName="hidden"
-        >
-          <View />
-        </Interactive>
-        <View
-          accessibilityViewIsModal
-          className={cn(
-            'bg-surface-raised p-4 elevation-3',
-            touch ? 'w-full rounded-t-xxl pb-8' : 'w-80 rounded-xl border border-outline-variant',
-          )}
-        >
-          {open ? children : null}
-        </View>
-      </View>
-    </Modal>
+    <Sheet open={open} onClose={onClose} label="Choose date" detents={['fit']}>
+      <Calendar {...calendar} onPick={onPick} />
+    </Sheet>
   );
 }
 
@@ -298,22 +274,19 @@ export function DateNav({ value, range, onChange, max }: DateNavProps): ReactNod
           onPress={go(capped(next, max))}
         />
       ) : null}
-      <CalendarModal
+      <CalendarSheet
         open={open}
+        value={value}
+        today={today}
+        max={max}
         onClose={() => {
           setOpen(false);
         }}
-      >
-        <Calendar
-          value={value}
-          today={today}
-          max={max}
-          onPick={(day) => {
-            setOpen(false);
-            onChange(day);
-          }}
-        />
-      </CalendarModal>
+        onPick={(day) => {
+          setOpen(false);
+          onChange(day);
+        }}
+      />
     </View>
   );
 }

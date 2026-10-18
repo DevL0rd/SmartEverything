@@ -204,7 +204,7 @@ export const PLUGIN_ENDPOINTS = {
     path: '/api/plugins/:pluginId/people',
     access: 'owner',
     summary:
-      'The people a plugin lets act through it: approved, or the owner of this home, with the plugin’s own id for each',
+      'The people a plugin lets act through it: approved, or the owner of this home, with the plugin’s own id for each and the person of the home they act as (profile_id; empty means a limited guest in the owner’s chat)',
     params: PLUGIN_PARAMS,
     query: NOTHING,
     body: NO_BODY,
@@ -215,7 +215,7 @@ export const PLUGIN_ENDPOINTS = {
     path: '/api/plugins/:pluginId/people/:externalId',
     access: 'owner',
     summary:
-      'Approve a person of a plugin, or make them the owner of this home there; only a person in the app can do this',
+      'Approve a person of a plugin and link them to a person of the home (profile_id: they then act with that person’s role and chats; leave it out to keep the link, null for a limited guest), or make them the owner of this home there; only a person in the app can do this',
     params: PERSON_PARAMS,
     query: NOTHING,
     body: PLUGIN_PERSON_CHANGE,

@@ -3,8 +3,11 @@ import { Pressable, View, type AccessibilityActionEvent } from 'react-native';
 import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import type { WidgetSize } from '@smarteverything/domain';
+import { useAnimationGate } from '../../../design/animation-gate';
 import { cn } from '../../../design/cn';
 import type { Cell, Frame } from '../board-geometry';
+import { frameBoxOf } from '../frame-class';
+import { renderWidget } from '../widget-scope';
 import type { BoardWidget, WidgetDefinition } from '../types';
 import type { DragState } from './drag-state';
 import { SIZE_LABELS, type SizeOption } from './edit-model';
@@ -54,7 +57,7 @@ function isCommand(name: string): name is WidgetCommand {
 }
 
 function Body(props: EditableWidgetProps): ReactNode {
-  const { widget, definition, handlers, touch, picked, lifted, reduced } = props;
+  const { widget, definition, handlers, touch, picked, lifted, reduced, frame, cell } = props;
   const label = `${definition.title}, ${SIZE_LABELS[widget.size]}`;
   return (
     <Pressable
@@ -84,7 +87,16 @@ function Body(props: EditableWidgetProps): ReactNode {
       )}
     >
       <View pointerEvents="none" className="h-full">
-        {definition.render({ size: widget.size, options: widget.options, editing: true })}
+        {renderWidget(
+          definition,
+          {
+            size: widget.size,
+            options: widget.options,
+            editing: true,
+            frame: frameBoxOf(frame, cell.pad, touch ? 'touch' : 'pointer'),
+          },
+          null,
+        )}
       </View>
     </Pressable>
   );
@@ -115,7 +127,7 @@ function Chrome({
         <CornerButton
           corner="top-right"
           icon="settings"
-          label={`${definition.title} options`}
+          label={definition.optionsLabel?.(widget.options) ?? `${definition.title} options`}
           onPress={() => {
             handlers.openOptions(widget.key);
           }}
@@ -131,7 +143,8 @@ function Chrome({
 export function EditableWidget(props: EditableWidgetProps): ReactNode {
   const { widget, frame, cell, order, sizes, drag, handlers, touch, reduced } = props;
   const motion = useWidgetMotion(frame, reduced);
-  const rotation = useJiggle(!reduced && !props.resizing, order);
+  const jiggling = useAnimationGate(!reduced && !props.resizing, true).moving;
+  const rotation = useJiggle(jiggling, order);
   const style = useWidgetStyle(widget.key, motion, drag, rotation);
   const move = useMoveGesture({
     key: widget.key,

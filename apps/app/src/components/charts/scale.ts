@@ -1,6 +1,10 @@
+import { bisector, extent, greatest, least } from 'd3-array';
+import { scaleLinear } from 'd3-scale';
+import { area, line } from 'd3-shape';
 import { dateFormat } from '../../format/locale';
-import { clock, shortClock } from '../../format/time';
-import { fitTicks, fitWindow } from './fit-window';
+import { DAY_MS, HOUR_MS, MINUTE_MS, clock } from '../../format/time';
+import { fitTicks, fitWindow, rangeTicks } from './time-ticks';
+import type { XY } from './geometry';
 
 export type ChartRange = '24h' | '7d' | '30d' | 'day' | 'week' | 'month' | 'year';
 
@@ -14,19 +18,10 @@ export interface Extent {
   readonly max: number;
 }
 
-interface Tick {
+export interface Tick {
   readonly at: number;
   readonly label: string;
 }
-
-export interface XY {
-  readonly x: number;
-  readonly y: number;
-}
-
-const MINUTE_MS = 60_000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
 
 const ROLLING: Readonly<Partial<Record<ChartRange, number>>> = {
   '24h': DAY_MS,
@@ -44,67 +39,38 @@ const MIN_GAP: Readonly<Record<ChartRange, number>> = {
   year: 10 * DAY_MS,
 };
 
-type TickUnit = 'hour' | 'day' | 'month';
-
-interface TickRule {
-  readonly unit: TickUnit;
-  readonly every: number;
-  readonly style: 'clock' | 'weekday' | 'date' | 'month';
+export function extentOf(values: Iterable<number>): Extent | null {
+  const bounds = extent(values);
+  return bounds[0] === undefined ? null : { min: bounds[0], max: bounds[1] };
 }
 
-const TICK_RULE: Readonly<Record<ChartRange, TickRule>> = {
-  '24h': { unit: 'hour', every: 6, style: 'clock' },
-  day: { unit: 'hour', every: 6, style: 'clock' },
-  '7d': { unit: 'day', every: 1, style: 'weekday' },
-  week: { unit: 'day', every: 1, style: 'weekday' },
-  '30d': { unit: 'day', every: 7, style: 'date' },
-  month: { unit: 'day', every: 7, style: 'date' },
-  year: { unit: 'month', every: 1, style: 'month' },
-};
+function padded(bounds: Extent): Extent {
+  if (bounds.max > bounds.min) {
+    return bounds;
+  }
+  const pad = bounds.min === 0 ? 1 : Math.abs(bounds.min) * 0.1;
+  return { min: bounds.min - pad, max: bounds.max + pad };
+}
 
 const NICE_FACTORS = [1, 2, 2.5, 5, 10] as const;
-const WIDEST_FACTOR = 20;
-
-export function scaleLinear(domain: Extent, range: Extent): (value: number) => number {
-  const span = domain.max - domain.min;
-  const middle = (range.min + range.max) / 2;
-  return (value) =>
-    span === 0 ? middle : range.min + ((value - domain.min) / span) * (range.max - range.min);
-}
-
-export function extentOf(values: readonly number[]): Extent | null {
-  const [first] = values;
-  if (first === undefined) {
-    return null;
-  }
-  return values.reduce<Extent>(
-    (extent, value) => ({ min: Math.min(extent.min, value), max: Math.max(extent.max, value) }),
-    { min: first, max: first },
-  );
-}
-
-function padded(extent: Extent): Extent {
-  if (extent.max > extent.min) {
-    return extent;
-  }
-  const pad = extent.min === 0 ? 1 : Math.abs(extent.min) * 0.1;
-  return { min: extent.min - pad, max: extent.max + pad };
-}
 
 function tidy(value: number): number {
   return Number(value.toPrecision(12));
 }
 
-export function niceTicks(extent: Extent, count = 3): number[] {
-  const bounds = padded(extent);
+export function niceTicks(bounds: Extent, count = 3): number[] {
+  const { min, max } = padded(bounds);
   const intervals = Math.max(1, count - 1);
-  const raw = (bounds.max - bounds.min) / intervals;
-  const magnitude = 10 ** Math.floor(Math.log10(raw));
-  const fits = (step: number): boolean =>
-    Math.floor(bounds.min / step) * step + step * intervals >= bounds.max;
-  const factor = NICE_FACTORS.find((candidate) => fits(candidate * magnitude)) ?? WIDEST_FACTOR;
-  const step = factor * magnitude;
-  const low = Math.floor(bounds.min / step) * step;
+  const magnitude = 10 ** Math.floor(Math.log10((max - min) / intervals));
+  const step =
+    magnitude *
+    (NICE_FACTORS.find(
+      (factor) =>
+        Math.floor(min / (factor * magnitude)) * factor * magnitude +
+          factor * magnitude * intervals >=
+        max,
+    ) ?? 20);
+  const low = Math.floor(min / step) * step;
   return Array.from({ length: intervals + 1 }, (_, index) => tidy(low + index * step));
 }
 
@@ -149,56 +115,6 @@ function windowOf(range: ChartRange, times: Extent): Extent {
   }
   const start = startOf(times.min, range);
   return { min: start.getTime(), max: endOf(start, range) };
-}
-
-function advance(date: Date, unit: TickUnit, by: number): void {
-  if (unit === 'hour') {
-    date.setHours(date.getHours() + by);
-  } else if (unit === 'day') {
-    date.setDate(date.getDate() + by);
-  } else {
-    date.setMonth(date.getMonth() + by);
-  }
-}
-
-function firstTick(from: number, rule: TickRule): Date {
-  const date = new Date(from);
-  date.setMinutes(0, 0, 0);
-  if (rule.unit !== 'hour') {
-    date.setHours(0);
-  }
-  if (rule.unit === 'month') {
-    date.setDate(1);
-  }
-  while (date.getTime() < from || (rule.unit === 'hour' && date.getHours() % rule.every !== 0)) {
-    advance(date, rule.unit, 1);
-  }
-  return date;
-}
-
-function tickLabel(at: number, style: TickRule['style']): string {
-  const date = new Date(at);
-  if (style === 'clock') {
-    return shortClock(date);
-  }
-  if (style === 'weekday') {
-    return dateFormat({ weekday: 'short' }).format(date);
-  }
-  if (style === 'date') {
-    return dateFormat({ day: 'numeric', month: 'short' }).format(date);
-  }
-  return dateFormat({ month: 'short' }).format(date);
-}
-
-function timeTicks(window: Extent, range: ChartRange): Tick[] {
-  const rule = TICK_RULE[range];
-  const ticks: Tick[] = [];
-  const cursor = firstTick(window.min, rule);
-  while (cursor.getTime() <= window.max) {
-    ticks.push({ at: cursor.getTime(), label: tickLabel(cursor.getTime(), rule.style) });
-    advance(cursor, rule.unit, rule.every);
-  }
-  return ticks;
 }
 
 export function thinned<T>(items: readonly T[], width: number, minGap: number): T[] {
@@ -249,9 +165,9 @@ function gapThreshold(points: readonly ChartPoint[], range: ChartRange): number 
   return Math.max(MIN_GAP[range], 3 * medianStep(points));
 }
 
-function within(points: readonly ChartPoint[], window: Extent): ChartPoint[] {
+function within(points: readonly ChartPoint[], bounds: Extent): ChartPoint[] {
   return points
-    .filter((point) => point.t >= window.min && point.t <= window.max && Number.isFinite(point.v))
+    .filter((point) => point.t >= bounds.min && point.t <= bounds.max && Number.isFinite(point.v))
     .sort((a, b) => a.t - b.t);
 }
 
@@ -279,51 +195,37 @@ export interface Extrema {
 }
 
 export function extremaOf(points: readonly ChartPoint[]): Extrema | null {
-  const [first] = points;
-  if (first === undefined) {
-    return null;
-  }
-  return points.reduce<Extrema>(
-    (found, point) => ({
-      peak: point.v > found.peak.v ? point : found.peak,
-      low: point.v < found.low.v ? point : found.low,
-    }),
-    { peak: first, low: first },
+  const peak = greatest(points, (point) => point.v);
+  const low = least(points, (point) => point.v);
+  return peak === undefined || low === undefined ? null : { peak, low };
+}
+
+const nearest = bisector((point: ChartPoint) => point.t);
+
+const stroke = line<XY>()
+  .x((point) => point.x)
+  .y((point) => point.y);
+
+export function linePath(points: readonly XY[]): string {
+  return stroke(points) ?? '';
+}
+
+export function areaPath(points: readonly XY[], baseline: number): string {
+  return (
+    area<XY>()
+      .x((point) => point.x)
+      .y0(baseline)
+      .y1((point) => point.y)(points) ?? ''
   );
 }
 
-function nearest(points: readonly ChartPoint[], t: number): ChartPoint | null {
-  let low = 0;
-  let high = points.length - 1;
-  while (high - low > 1) {
-    const middle = Math.floor((low + high) / 2);
-    if ((points[middle]?.t ?? t) < t) {
-      low = middle;
-    } else {
-      high = middle;
-    }
-  }
-  const before = points[low];
-  const after = points[high];
-  if (before === undefined || after === undefined) {
-    return before ?? after ?? null;
-  }
-  return t - before.t <= after.t - t ? before : after;
+export function clamp(value: number, bounds: Extent): number {
+  return Math.min(bounds.max, Math.max(bounds.min, value));
 }
 
-export function linePath(points: readonly XY[]): string {
-  return points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
-    .join(' ');
-}
-
-export function clamp(value: number, extent: Extent): number {
-  return Math.min(extent.max, Math.max(extent.min, value));
-}
-
-export function snap(value: number, extent: Extent, step: number): number {
-  const steps = Math.round((clamp(value, extent) - extent.min) / step);
-  return clamp(Number((extent.min + steps * step).toFixed(decimalsOf(step))), extent);
+export function snap(value: number, bounds: Extent, step: number): number {
+  const steps = Math.round((clamp(value, bounds) - bounds.min) / step);
+  return clamp(Number((bounds.min + steps * step).toFixed(decimalsOf(step))), bounds);
 }
 
 export interface PlotSeries {
@@ -375,17 +277,24 @@ function drawnOf<S extends PlotSeries>(
   return { window, drawn };
 }
 
-function tickDomain(ticks: readonly number[], values: Extent): { domain: Extent; step: number } {
-  const domain = { min: ticks[0] ?? values.min, max: ticks[ticks.length - 1] ?? values.max };
-  return { domain, step: (ticks[1] ?? domain.max) - domain.min };
+function xTicksOf(window: Extent, range: ChartRange, fit: boolean): ReturnType<typeof rangeTicks> {
+  return fit ? fitTicks(window) : rangeTicks(window, range);
 }
+
+export interface PlotView {
+  readonly fit: boolean;
+  readonly domain: Extent | null;
+}
+
+const NO_VIEW: PlotView = { fit: false, domain: null };
 
 export function plotModel<S extends PlotSeries>(
   series: readonly S[],
   range: ChartRange,
   box: PlotBox,
-  fit = false,
+  view: PlotView = NO_VIEW,
 ): PlotModel<S> | null {
+  const { fit, domain } = view;
   const data = drawnOf(series, range, fit);
   const values = extentOf(
     data?.drawn.flatMap((entry) => entry.points.map((point) => point.v)) ?? [],
@@ -393,20 +302,50 @@ export function plotModel<S extends PlotSeries>(
   if (data === null || values === null) {
     return null;
   }
-  const yTicks = niceTicks(values);
-  const { domain, step } = tickDomain(yTicks, values);
-  const across = { min: box.left, max: box.right };
-  const x = scaleLinear(data.window, across);
-  const ticks = fit ? fitTicks(data.window) : timeTicks(data.window, range);
+  const yTicks = niceTicks(domain ?? values);
+  const low = yTicks[0] ?? values.min;
+  const high = yTicks[yTicks.length - 1] ?? values.max;
+  const x = scaleLinear([data.window.min, data.window.max], [box.left, box.right]);
+  const ticks = xTicksOf(data.window, range, fit);
   return {
     box,
     yTicks,
-    xTicks: spaced(ticks, x, across, X_LABEL_GAP),
-    step,
+    xTicks: spaced(ticks, x, { min: box.left, max: box.right }, X_LABEL_GAP),
+    step: (yTicks[1] ?? high) - low,
     drawn: data.drawn,
     x,
-    y: scaleLinear(domain, { min: box.bottom, max: box.top }),
-    invert: scaleLinear(across, data.window),
+    y: scaleLinear([low, high], [box.bottom, box.top]),
+    invert: (px) => x.invert(px),
+  };
+}
+
+export interface LiveFrame {
+  readonly window: Extent;
+  readonly domain: Extent;
+  readonly ticks: readonly Tick[];
+  readonly maxGap: number;
+}
+
+export function livePlotModel<S extends PlotSeries>(
+  series: readonly S[],
+  frame: LiveFrame,
+  box: PlotBox,
+): PlotModel<S> {
+  const { window, domain } = frame;
+  const middle = (domain.min + domain.max) / 2;
+  const x = scaleLinear([window.min, window.max], [box.left, box.right]);
+  return {
+    box,
+    yTicks: [domain.min, middle, domain.max],
+    xTicks: frame.ticks,
+    step: middle - domain.min,
+    drawn: series.map((entry) => {
+      const points = within(entry.points, window);
+      return { series: entry, points, segments: segmentsOf(points, frame.maxGap) };
+    }),
+    x,
+    y: scaleLinear([domain.min, domain.max], [box.bottom, box.top]),
+    invert: (px) => x.invert(px),
   };
 }
 
@@ -418,7 +357,7 @@ export interface Hit<S extends PlotSeries> {
 export function hitsAt<S extends PlotSeries>(model: PlotModel<S>, x: number): Hit<S>[] {
   const t = model.invert(clamp(x, { min: model.box.left, max: model.box.right }));
   return model.drawn.flatMap((drawn) => {
-    const point = nearest(drawn.points, t);
-    return point === null ? [] : [{ series: drawn.series, point }];
+    const point = drawn.points[nearest.center(drawn.points, t)];
+    return point === undefined ? [] : [{ series: drawn.series, point }];
   });
 }

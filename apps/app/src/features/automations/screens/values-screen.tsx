@@ -8,14 +8,15 @@ import { EmptyState } from '../../../components/empty-state';
 import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
-import { NavRow } from '../../../components/rows';
 import { SearchField } from '../../../components/search-field';
 import { Sheet } from '../../../components/sheet';
 import { useRows } from '../../../store/selectors';
 import { operateValue } from '../../../api/automation-runtime';
 import { attempt } from '../data/actions';
-import { defaultOperation, valueText } from '../model/value-content';
+import { defaultOperation } from '../model/value-content';
+import { ValueRowItem } from '../components/value-row';
 import { ValueOperationFields } from '../editor/value-operation-fields';
+import { background } from '@smarteverything/logging';
 
 interface ValueOperationProps {
   readonly row: AutomationValueRow;
@@ -33,13 +34,19 @@ function ValueOperation({ row, onClose }: ValueOperationProps): ReactNode {
         loading={busy}
         onPress={() => {
           setBusy(true);
-          void attempt('The Value didn’t change', () => operateValue(row.id, operation))
-            .then((saved) => {
-              if (saved) onClose();
+          background(
+            attempt('The Value didn’t change', () => operateValue(row.id, operation), {
+              action: 'operate-value',
+              valueId: row.id,
             })
-            .finally(() => {
-              setBusy(false);
-            });
+              .then((saved) => {
+                if (saved) onClose();
+              })
+              .finally(() => {
+                setBusy(false);
+              }),
+            'values_screen.attempt_failed',
+          );
         }}
       />
       <Button
@@ -71,15 +78,7 @@ function ValueRows({ rows, visible, onSelect }: ValueRowsProps): ReactNode {
   return (
     <List>
       {visible.map((row) => (
-        <NavRow
-          key={row.id}
-          title={row.content.name}
-          subtitle={row.content.kind}
-          value={valueText(row.content)}
-          onPress={() => {
-            onSelect(row.id);
-          }}
-        />
+        <ValueRowItem key={row.id} row={row} onOpen={onSelect} />
       ))}
     </List>
   );
@@ -99,14 +98,14 @@ export function ValuesScreen(): ReactNode {
       maxWidth="reading"
       header={<PageHeader title="Values" />}
       primaryAction={{
-        label: 'New Value',
+        label: 'New value',
         icon: 'plus',
         onPress: () => {
           router.push(href.automationValue('new'));
         },
       }}
     >
-      <SearchField value={query} onChange={setQuery} placeholder="Find a Value" variant="field" />
+      <SearchField value={query} onChange={setQuery} placeholder="Find a value" variant="field" />
       <ValueRows rows={rows} visible={visible} onSelect={setSelected} />
       <Sheet
         open={current !== undefined}

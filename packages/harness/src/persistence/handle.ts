@@ -34,7 +34,7 @@ export interface NativeHandleOptions {
   readonly closed: () => void;
 }
 
-export class HubSessionHandle implements SessionHandle {
+export class MachineSessionHandle implements SessionHandle {
   readonly id: SessionId;
   readonly header: SessionHeader;
   readonly inheritedEventCount: SessionLogOffset;
@@ -42,13 +42,11 @@ export class HubSessionHandle implements SessionHandle {
   private readonly pending: PendingAppend[] = [];
   private accepted: number;
   private queued: number;
-  private observed: number;
   private ownershipLost = false;
   private closing: Promise<void> | undefined;
   private closeRequested = false;
   private closeFailure: unknown;
   private tail: Promise<void> = Promise.resolve();
-  private readonly releaseOperation = randomUUID();
 
   constructor(
     private readonly port: NativeSessionPersistencePort,
@@ -59,7 +57,6 @@ export class HubSessionHandle implements SessionHandle {
     this.inheritedEventCount = SessionLogOffset(options.inheritedEventCount);
     this.accepted = options.eventCount;
     this.queued = options.eventCount;
-    this.observed = options.eventCount;
     this.access = options.claim === undefined ? 'read' : 'write';
   }
 
@@ -83,17 +80,15 @@ export class HubSessionHandle implements SessionHandle {
   ): Promise<SessionHandleReadResult> {
     this.assertOpen('read');
     options?.signal?.throwIfAborted();
-    const events = nativeEvents(this.header, await this.port.read(this.id, options?.signal));
-    if (events.length < this.observed)
-      throw new HarnessRuntimeError(
-        'operation_failed',
-        `Session ${this.id} read retreated below ${String(this.observed)} events.`,
-      );
-    this.observed = events.length;
-    return {
-      eventState: 'shared-frozen',
-      events: events.slice(offset, length === undefined ? undefined : offset + length),
-    };
+    const events = nativeEvents(
+      this.header,
+      await this.port.read(
+        this.id,
+        { offset, ...(length === undefined ? {} : { length }) },
+        options?.signal,
+      ),
+    );
+    return { eventState: 'shared-frozen', events };
   }
 
   append(events: readonly SessionEvent[], options?: SessionHandleAppendOptions): Promise<void> {
@@ -149,7 +144,6 @@ export class HubSessionHandle implements SessionHandle {
       await this.port.append(claim, batch.operationId, batch.events);
       this.pending.shift();
       this.accepted += batch.events.length;
-      this.observed = Math.max(this.observed, this.accepted);
     }
   }
 
@@ -159,10 +153,7 @@ export class HubSessionHandle implements SessionHandle {
   }
 
   private async finishClose(): Promise<void> {
-    if (this.access === 'write' && !this.ownershipLost) {
-      await this.barrier();
-      await this.port.release(this.claim('close'), this.releaseOperation, this.accepted);
-    }
+    if (this.access === 'write' && !this.ownershipLost) await this.barrier();
     this.options.closed();
   }
 

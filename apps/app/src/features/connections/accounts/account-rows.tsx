@@ -12,20 +12,16 @@ import { discoverDevices, unlinkProvider } from '../../../api/providers';
 import { confirm } from '../../../components/confirm-store';
 import { ActionRow, NavRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notify, notifyFailure } from '../../../components/toast-store';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useDevices, useSmartThingsWebhook } from '../../../store/selectors';
 import { CONNECT_FLOW, isAddable } from '../model/brands';
 import { openInBrowser } from '../flows/prompt-body';
-import { closeFlow } from '../flows/use-link-flow';
+import { leaveFlow } from '../flows/leave-flow';
 
-function failed(message: string): (error: unknown) => void {
-  return (error) => {
-    notify({ message, error, tone: 'critical' });
-  };
-}
-
+import { trackConnection } from '../connections-log';
+import { background } from '@smarteverything/logging';
 function webhookText(webhook: SmartThingsWebhook | null, now: number): string {
   const confirmedAt = webhook?.confirmedAt ?? null;
   if (webhook === null || confirmedAt === null) {
@@ -87,16 +83,22 @@ function providerRow(provider: Provider): ReactNode {
 
 function unlink(provider: Provider): void {
   const name = PROVIDER_INFO[provider].name;
-  void confirm({
-    title: `Unlink ${name}?`,
-    body: 'Its devices disappear until you link it again.',
-    confirmLabel: 'Unlink',
-    tone: 'destructive',
-  }).then((accepted) => {
-    if (accepted) {
-      unlinkProvider(provider).then(closeFlow, failed(`${name} wasn’t unlinked`));
-    }
-  });
+  background(
+    confirm({
+      title: `Unlink ${name}?`,
+      body: 'Its devices disappear until you link it again.',
+      confirmLabel: 'Unlink',
+      tone: 'destructive',
+    }).then((accepted) => {
+      if (accepted) {
+        trackConnection('provider.unlink', { provider }, () => unlinkProvider(provider)).then(
+          leaveFlow,
+          notifyFailure(`${name} wasn’t unlinked`),
+        );
+      }
+    }),
+    'account_rows.confirm_failed',
+  );
 }
 
 function signInAgainRow(provider: Provider): ReactNode {
@@ -106,7 +108,10 @@ function signInAgainRow(provider: Provider): ReactNode {
         icon="refresh"
         title="Sign in to Samsung again"
         onPress={() => {
-          authorizeSmartThings().then(openInBrowser, failed('Sign-in didn’t open'));
+          trackConnection('smartthings.authorize', {}, () => authorizeSmartThings()).then(
+            openInBrowser,
+            notifyFailure('Sign-in didn’t open'),
+          );
         }}
       />
     );
@@ -132,9 +137,11 @@ export function AccountRows({ row }: { readonly row: ProviderLinkRow }): ReactNo
           icon="search"
           title="Find new devices"
           onPress={() => {
-            discoverDevices(provider).then(() => {
+            trackConnection('provider.discover', { provider }, () =>
+              discoverDevices(provider),
+            ).then(() => {
               notify({ message: 'Looking for new devices' });
-            }, failed('The search didn’t start'));
+            }, notifyFailure('The search didn’t start'));
           }}
         />
         {signInAgainRow(provider)}

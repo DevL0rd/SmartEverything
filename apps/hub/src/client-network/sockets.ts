@@ -1,12 +1,13 @@
 import WebSocket from 'ws';
 import {
+  HUB_REQUEST_TIMEOUT_MS,
   NATIVE_HUB_SOCKET_OPEN,
   NATIVE_HUB_SOCKET_SEND,
   type NativeHubSocketEvent,
 } from '@smarteverything/domain';
-import { HubTransportError } from './policy.js';
-import type { HubLeasePort } from './lease.js';
-const MAX_BYTES = 1024 * 1024;
+import { HubTransportError } from './policy';
+import type { HubLeasePort } from './lease';
+
 export interface HubSocketOwner {
   readonly id: number;
   isDestroyed(): boolean;
@@ -25,17 +26,15 @@ export class HubSockets<Owner extends HubSocketOwner> {
   open(owner: Owner, value: unknown): void {
     const input = NATIVE_HUB_SOCKET_OPEN.parse(value);
     const key = `${String(owner.id)}:${input.id}`;
-    if (this.#sockets.has(key) || this.#sockets.size >= 32)
-      throw new HubTransportError('Hub socket ID exists or socket limit reached');
+    if (this.#sockets.has(key)) throw new HubTransportError('Hub socket ID exists');
     const httpUrl = input.url.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
     const lease = this.policies.lease(input.scopeId, httpUrl, input.binding, input.routeGeneration);
     const url = lease.url.href.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
     const socket = new WebSocket(url, input.protocols, {
-      agent: lease.agent,
-      ...(lease.signal === undefined ? {} : { signal: lease.signal, hubAbortSignal: lease.signal }),
+      ...(lease.agent === undefined ? {} : { agent: lease.agent }),
+      ...(lease.signal === undefined ? {} : { signal: lease.signal }),
       followRedirects: false,
-      handshakeTimeout: 15_000,
-      maxPayload: MAX_BYTES,
+      handshakeTimeout: HUB_REQUEST_TIMEOUT_MS,
       perMessageDeflate: false,
     });
     const abort = (): void => {
@@ -65,7 +64,7 @@ export class HubSockets<Owner extends HubSocketOwner> {
       if (this.#unexpectedClose(code, lease.signal) && this.#sockets.get(key)?.socket === socket)
         this.policies.failed?.(input.scopeId, input.routeGeneration);
       lease.signal?.removeEventListener('abort', abort);
-      send({ id: input.id, kind: 'close', code, reason: reason.toString('utf8').slice(0, 500) });
+      send({ id: input.id, kind: 'close', code, reason: reason.toString('utf8') });
       if (this.#sockets.get(key)?.socket === socket) this.#sockets.delete(key);
     });
   }
@@ -77,13 +76,7 @@ export class HubSockets<Owner extends HubSocketOwner> {
     const socket = this.#sockets.get(`${String(owner.id)}:${input.id}`)?.socket;
     if (socket?.readyState !== WebSocket.OPEN)
       throw new HubTransportError('Hub socket is not open');
-    const data = typeof input.data === 'string' ? input.data : Buffer.from(input.data);
-    if (
-      Buffer.byteLength(data) > MAX_BYTES ||
-      socket.bufferedAmount + Buffer.byteLength(data) > MAX_BYTES
-    )
-      throw new HubTransportError('Hub socket send buffer limit reached');
-    socket.send(data);
+    socket.send(typeof input.data === 'string' ? input.data : Buffer.from(input.data));
   }
   close(owner: Owner, id: string): void {
     const key = `${String(owner.id)}:${id}`;

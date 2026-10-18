@@ -9,7 +9,7 @@ export const absentWhenEmpty = z
   .nullish()
   .transform((value) => (value === undefined || value === '' ? null : value));
 
-const identifier = z.union([z.string().min(1), z.number().int()]).transform(String);
+export const IDENTIFIER = z.union([z.string().min(1), z.number().int()]).transform(String);
 
 export const CLOUD_DEVICE = z.object({
   id: z.string().min(1),
@@ -50,7 +50,7 @@ export const SPECIFICATION = z.object({
 
 export type Specification = z.output<typeof SPECIFICATION>;
 
-const STATUS_ITEM = z.object({ code: z.string().min(1), value: z.unknown() });
+export const STATUS_ITEM = z.object({ code: z.string().min(1), value: z.unknown() });
 
 export type StatusItem = z.output<typeof STATUS_ITEM>;
 
@@ -58,10 +58,10 @@ export const DEVICE_STATUSES = z.array(
   z.object({ id: z.string().min(1), status: z.array(STATUS_ITEM) }),
 );
 
-export const HOMES = z.array(z.object({ home_id: identifier, name: z.string() }));
+export const HOMES = z.array(z.object({ home_id: IDENTIFIER, name: z.string() }));
 
 export const ROOMS = z.object({
-  rooms: z.array(z.object({ room_id: identifier, name: z.string().min(1) })).default([]),
+  rooms: z.array(z.object({ room_id: IDENTIFIER, name: z.string().min(1) })).default([]),
 });
 
 export const ROOM_DEVICES = z.array(z.object({ id: z.string().min(1) }));
@@ -118,14 +118,6 @@ export function deviceListQuery(
     page_size: String(DEVICE_PAGE_SIZE),
     ...(cursor === null ? {} : { last_row_key: cursor }),
   };
-}
-
-export function batches<T>(items: readonly T[], size: number): readonly (readonly T[])[] {
-  const result: T[][] = [];
-  for (let start = 0; start < items.length; start += size) {
-    result.push(items.slice(start, start + size));
-  }
-  return result;
 }
 
 export function commandsOf(writes: readonly { code: string; value: unknown }[]): {

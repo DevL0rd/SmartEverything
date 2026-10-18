@@ -3,13 +3,12 @@ import type { Authority } from './authority';
 import type { Channels } from './channels';
 import { DiscordInputError } from './errors';
 import type { Interactions, LiveInteraction } from './interactions';
-import type { Journal } from './journal';
 import type { EventOrigin } from './origins';
 import type { DiscordRest } from './link';
 import {
   NO_MENTIONS,
   mentionRule,
-  nonceOf,
+  newNonce,
   partBody,
   withMention,
   type Delivery,
@@ -31,7 +30,6 @@ interface Checked {
 
 interface Reply extends Rich {
   readonly eventId: string;
-  readonly key: string;
   readonly notifyRequester?: boolean;
   readonly status?: boolean;
 }
@@ -43,7 +41,6 @@ export interface SendInput extends Rich {
   readonly files: readonly OutFile[];
   readonly notifyUserId?: string | undefined;
   readonly progress?: boolean | undefined;
-  readonly idempotencyKey: string;
 }
 
 export interface SenderDeps {
@@ -52,17 +49,12 @@ export interface SenderDeps {
   readonly authority: Authority;
   readonly channels: Channels;
   readonly interactions: Interactions;
-  readonly journal: Journal;
   readonly statuses: StatusBoard;
   readonly now: () => number;
   readonly report: (cause: unknown) => void;
 }
 
 const SENT_DM = z.looseObject({ id: z.string() });
-
-function fingerprint(input: SendInput): Readonly<Record<string, unknown>> {
-  return { ...input, files: input.files.map((file) => ({ name: file.name, sha256: file.sha256 })) };
-}
 
 function hasBody(input: Rich & { readonly files?: readonly OutFile[] }): boolean {
   return input.content !== '' || (input.embeds?.length ?? 0) > 0 || (input.files?.length ?? 0) > 0;
@@ -98,27 +90,24 @@ export class Sender {
   }
 
   async respond(input: Reply): Promise<unknown> {
-    const { journal, authority, interactions } = this.deps;
-    await authority.originOf(input.eventId);
-    return journal.execute(input.key, { operation: 'respond', ...input }, async () => {
-      const origin = await authority.originOf(input.eventId);
-      const live = interactions.get(input.eventId);
-      if (live !== undefined) {
-        const answered = await this.interactionReply(input, live, origin.channelId).catch(
-          (cause: unknown) => {
-            this.deps.report(cause);
-            return null;
-          },
-        );
-        if (answered !== null) {
-          return answered;
-        }
+    const { authority, interactions } = this.deps;
+    const origin = await authority.originOf(input.eventId);
+    const live = interactions.get(input.eventId);
+    if (live !== undefined) {
+      const answered = await this.interactionReply(input, live, origin.channelId).catch(
+        (cause: unknown) => {
+          this.deps.report(cause);
+          return null;
+        },
+      );
+      if (answered !== null) {
+        return answered;
       }
-      return this.channelReply(input, origin);
-    });
+    }
+    return this.channelReply(input, origin);
   }
 
-  async deliver(eventId: string, delivery: Delivery, key: string): Promise<Posted> {
+  async deliver(eventId: string, delivery: Delivery): Promise<Posted> {
     const { authority, interactions, rest, statuses } = this.deps;
     const origin = await authority.originOf(eventId);
     const live = interactions.get(eventId);
@@ -137,14 +126,14 @@ export class Sender {
       components: delivery.components,
       embeds: delivery.embeds,
       allowed_mentions: NO_MENTIONS,
-      nonce: nonceOf(key),
+      nonce: newNonce(),
       enforce_nonce: true,
       ...(files.length > 0
         ? { attachments: files.map((file, id) => ({ id, filename: file.name })) }
         : {}),
       ...(origin.messageId === undefined
         ? {}
-        : { message_reference: { message_id: origin.messageId, fail_if_not_exists: true } }),
+        : { message_reference: { message_id: origin.messageId, fail_if_not_exists: false } }),
     };
     const route = `/channels/${origin.channelId}/messages`;
     const sent = POSTED.parse(
@@ -170,8 +159,7 @@ export class Sender {
   }
 
   private async reply(input: SendInput, eventId: string): Promise<unknown> {
-    const { journal, authority } = this.deps;
-    const origin = await authority.originOf(eventId);
+    const origin = await this.deps.authority.originOf(eventId);
     if (input.notifyUserId !== undefined && input.notifyUserId !== origin.actorId) {
       throw new DiscordInputError('A reply can only ping the person who asked');
     }
@@ -182,55 +170,41 @@ export class Sender {
         ...(input.embeds === undefined ? {} : { embeds: input.embeds }),
         notifyRequester: input.notifyUserId === origin.actorId,
         status: input.progress === true,
-        key: input.idempotencyKey,
       });
     }
-    return journal.execute(input.idempotencyKey, { operation: 'send', ...fingerprint(input) }, () =>
-      this.deliver(
-        eventId,
-        { content: input.content, embeds: input.embeds, files: input.files },
-        input.idempotencyKey,
-      ),
-    );
+    return this.deliver(eventId, {
+      content: input.content,
+      embeds: input.embeds,
+      files: input.files,
+    });
   }
 
   private async post(input: SendInput, channelId: string): Promise<unknown> {
-    const { policy, journal, channels, rest } = this.deps;
-    const check = async (): Promise<void> => {
-      policy.assertProactive(channelId);
-      if (input.notifyUserId !== undefined) {
-        policy.assertUser(input.notifyUserId);
-      }
-      if (policy.dmUser(channelId) === undefined) {
-        await channels.guildChannel(channelId);
-      }
-    };
-    await check();
-    return journal.execute(
-      input.idempotencyKey,
-      { operation: 'send', ...fingerprint(input) },
-      async () => {
-        await check();
-        const options: SendOptions = { notify: input.notifyUserId };
-        if (input.files.length === 0) {
-          return this.sendParts(channelId, input, input.idempotencyKey, options);
-        }
-        const content = withMention(input.content, options);
-        return POSTED.parse(
-          await rest.postFiles(
-            `/channels/${channelId}/messages`,
-            {
-              content,
-              ...(input.embeds === undefined ? {} : { embeds: input.embeds }),
-              allowed_mentions: mentionRule(options),
-              nonce: nonceOf(input.idempotencyKey),
-              enforce_nonce: true,
-              attachments: input.files.map((file, id) => ({ id, filename: file.name })),
-            },
-            input.files,
-          ),
-        );
-      },
+    const { policy, channels, rest } = this.deps;
+    policy.assertProactive(channelId);
+    if (input.notifyUserId !== undefined) {
+      policy.assertUser(input.notifyUserId);
+    }
+    if (policy.dmUser(channelId) === undefined) {
+      await channels.guildChannel(channelId);
+    }
+    const options: SendOptions = { notify: input.notifyUserId };
+    if (input.files.length === 0) {
+      return this.sendParts(channelId, input, options);
+    }
+    return POSTED.parse(
+      await rest.postFiles(
+        `/channels/${channelId}/messages`,
+        {
+          content: withMention(input.content, options),
+          ...(input.embeds === undefined ? {} : { embeds: input.embeds }),
+          allowed_mentions: mentionRule(options),
+          nonce: newNonce(),
+          enforce_nonce: true,
+          attachments: input.files.map((file, id) => ({ id, filename: file.name })),
+        },
+        input.files,
+      ),
     );
   }
 
@@ -247,14 +221,14 @@ export class Sender {
     const replyTo = origin.messageId;
     if (input.status === true) {
       return statuses.show(input.eventId, input.content, (content) =>
-        this.sendParts(origin.channelId, { content }, input.key, { replyTo }),
+        this.sendParts(origin.channelId, { content }, { replyTo }),
       );
     }
     const options: SendOptions = {
       replyTo,
       notify: input.notifyRequester === true ? origin.actorId : undefined,
     };
-    const sent = await this.sendParts(origin.channelId, input, input.key, options);
+    const sent = await this.sendParts(origin.channelId, input, options);
     await statuses.settle(
       input.eventId,
       sent.parts === undefined
@@ -276,7 +250,7 @@ export class Sender {
       status: input.status,
     });
     if (rest.length > 0) {
-      await this.sendParts(channelId, { content: rest.join('\n') }, `${input.key}:rest`, {});
+      await this.sendParts(channelId, { content: rest.join('\n') }, {});
     }
     return done;
   }
@@ -284,7 +258,6 @@ export class Sender {
   private async sendParts(
     channelId: string,
     message: Rich,
-    key: string,
     options: SendOptions,
   ): Promise<Posted & { readonly parts?: number }> {
     if (!hasBody(message)) {
@@ -298,7 +271,7 @@ export class Sender {
         POSTED.parse(
           await this.deps.rest.post(
             `/channels/${channelId}/messages`,
-            partBody({ content, index, count: parts.length, message, key }, options),
+            partBody({ content, index, count: parts.length, message }, options),
           ),
         ),
       );

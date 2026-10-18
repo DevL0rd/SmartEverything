@@ -8,11 +8,12 @@ import {
   type AiNativeCommandReceipt,
   type AiNativeCommandDescriptor,
 } from '@smarteverything/domain';
+import { effectiveClientById } from '../../../server/person-access';
 import type { z } from 'zod';
 import type { ComputerRunnerDeps } from './ports';
 import type { ProviderState } from './provider-state';
 import { pendingCommand } from '../../../codex/provider-commands';
-import { issueEventAuthority } from '../../execution-authority';
+import { eventAuthority } from '../../turn-authority';
 import { nativeCommandAdapter } from './native-command-adapters';
 import {
   commandAuthority,
@@ -44,7 +45,9 @@ export function retainManualCommand(
   const { input, command } = invocation;
   commandAuthority(deps, chat, input.scope);
   const client =
-    input.scope.client_id === null ? undefined : deps.store.clients.byId(input.scope.client_id);
+    input.scope.client_id === null
+      ? undefined
+      : effectiveClientById(deps.store, input.scope.client_id);
   if (client === undefined)
     throw new ApiError('forbidden', 'A native manual command needs its genuine initiating client.');
   const text = `/${command.native_name}${input.arguments === '' ? '' : ` ${input.arguments}`}`;
@@ -68,7 +71,7 @@ export function retainManualCommand(
       text,
     });
     deps.store.assistantEvents.mark(event.id, 'delivered_at');
-    issueEventAuthority(deps.store, event, false);
+    eventAuthority(deps.store, event);
     manualCommandCaller(deps, chat, input);
     deps.store.nativeCommandOperations.reserve(input, pendingCommand(input));
     deps.conversation.stateOf(message.id, 'working');

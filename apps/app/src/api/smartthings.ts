@@ -1,4 +1,5 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
   type SmartThingsAppStatus,
@@ -11,7 +12,7 @@ import { api } from './transport';
 const log = new Logger('app.smartthings');
 
 export function useSmartThingsApp(): UseQueryResult<SmartThingsAppStatus> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: SMARTTHINGS_APP_KEY,
     queryFn: () => api().call(E.readSmartThingsApp, {}),
   });

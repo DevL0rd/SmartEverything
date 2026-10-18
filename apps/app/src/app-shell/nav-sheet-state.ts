@@ -19,7 +19,7 @@ export const navSheetQuery = new ValueStore('');
 export const navSheetFocus = new ValueStore(false);
 export const navCurrent = new ValueStore<TabKey>('home');
 
-export function liftOf(phase: NavSheetPhase, stops: NavSheetStops): number {
+function liftOf(phase: NavSheetPhase, stops: NavSheetStops): number {
   'worklet';
   if (phase === 'closed') {
     return 0;

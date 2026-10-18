@@ -1,6 +1,6 @@
 import type {
   AppSightSource,
-  CallAudioPref,
+  CallAudio,
   CallSource,
   EchoTestOutcome,
   SightFacing,
@@ -33,16 +33,34 @@ export interface SightStart {
   readonly target?: string;
 }
 
+export interface CallLevels {
+  readonly in: number;
+  readonly out: number;
+}
+
+export type CallLevelListener = (levels: CallLevels) => void;
+
+interface LevelEvents {
+  readonly kind: 'events';
+  readonly subscribe: (listener: CallLevelListener) => () => void;
+}
+
+interface LevelPoll {
+  readonly kind: 'poll';
+  readonly read: () => CallLevels;
+}
+
+export type LevelFeed = LevelEvents | LevelPoll;
+
 export interface CallEngine {
   readonly supported: () => string | null;
   readonly start: (request: CallRequest) => void;
   readonly end: () => void;
   readonly mute: (muted: boolean) => void;
   readonly allowMicrophone: () => Promise<boolean>;
-  readonly inputLevel: () => number;
-  readonly outputLevel: () => number;
+  readonly levels: LevelFeed;
   readonly capabilities: () => EngineCapabilities;
-  readonly applyAudio: (pref: CallAudioPref) => void;
+  readonly applyAudio: (pref: CallAudio) => void;
   readonly startSight: (start: SightStart) => Promise<void>;
   readonly stopSight: (source: SightSource) => void;
   readonly switchCamera: () => Promise<void>;
@@ -54,19 +72,3 @@ export interface CallEngine {
   readonly echoTest: () => Promise<EchoTestOutcome>;
   readonly interrupt: () => void;
 }
-
-export type CallFeatureEngine = Pick<
-  CallEngine,
-  | 'capabilities'
-  | 'applyAudio'
-  | 'startSight'
-  | 'stopSight'
-  | 'switchCamera'
-  | 'pauseSight'
-  | 'setLight'
-  | 'showThis'
-  | 'watchCamera'
-  | 'answerRequest'
-  | 'echoTest'
-  | 'interrupt'
->;

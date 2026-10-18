@@ -49,5 +49,6 @@ export function inlineImageItem(row: AssistantMessageRow): MessageItem {
     multiParty: false,
     waiting: false,
     replied: false,
+    segment: null,
   };
 }

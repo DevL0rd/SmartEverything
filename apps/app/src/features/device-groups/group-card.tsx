@@ -1,54 +1,70 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Card } from '../../components/card';
-import { Button } from '../../components/button';
-import { Text } from '../../components/text';
-import type { Device } from '../../store/state';
-import { groupControlChoices } from './model';
-import { GroupControl } from './group-control';
+import type { Href } from 'expo-router';
+import type { DeviceTarget } from '@smarteverything/domain';
+import { Interactive } from '../../components/interactive';
+import { WIDGET_SURFACE } from '../../components/widget-board';
+import { useIdiom } from '../../design/platform';
+import { cn } from '../../design/cn';
+import { miniStageOf } from './model/mini-stage';
+import { GroupGlyph, GroupTitle, MasterPower } from './widget/group-header';
+import { MiniStageDots } from './widget/mini-stage';
+import { useGroupLoad, type GroupData } from './widget/use-group-data';
+
+const CARD_BOUNDS = { minWidth: 232, maxWidth: 280 } as const;
+
+function CardBody({ data }: { readonly data: GroupData }): ReactNode {
+  const { state } = data.view;
+  return (
+    <View className="min-w-0 flex-1 gap-1.5">
+      <View className="min-w-0 flex-row items-center gap-2">
+        <GroupGlyph on={state.on > 0} lights={data.lights} />
+        <GroupTitle name={data.name} state={state} strong />
+      </View>
+      <MiniStageDots
+        stage={miniStageOf(
+          data.members.map((member) => member.id),
+          data.view,
+        )}
+      />
+    </View>
+  );
+}
 
 export function DeviceGroupCard({
-  devices,
+  target,
   title,
-  onEdit,
+  href,
 }: {
-  readonly devices: readonly Device[];
-  readonly title: string;
-  readonly onEdit?: () => void;
+  readonly target: DeviceTarget;
+  readonly title?: string;
+  readonly href?: Href;
 }): ReactNode {
-  const controls = groupControlChoices(devices);
-  const power = controls.find((choice) => choice.presented.role === 'power');
-  const others = controls.filter((choice) => choice !== power);
+  const load = useGroupLoad(target, title);
+  const touch = useIdiom() === 'touch';
+  if (load.status !== 'ready') return null;
+  const { data } = load;
+  const { state } = data.view;
   return (
-    <Card
-      title={title}
-      icon="bulb"
-      action={
-        <View className="flex-row items-center gap-2">
-          {power === undefined ? null : <GroupControl devices={devices} choice={power} />}
-          {onEdit === undefined ? null : <Button label="Edit" variant="text" onPress={onEdit} />}
-        </View>
-      }
+    <View
+      role="group"
+      aria-label={data.name}
+      className={cn(
+        'flex-row items-center gap-1 pl-3 pr-1',
+        WIDGET_SURFACE,
+        touch ? 'h-24' : 'h-20',
+      )}
+      style={CARD_BOUNDS}
     >
-      <Text
-        variant="callout"
-        tone="variant"
-      >{`${String(devices.length)} devices · ${String(devices.filter((device) => device.online).length)} online`}</Text>
-      <View className="flex-row flex-wrap gap-3">
-        {others.map((choice) => (
-          <View
-            key={choice.reference}
-            className="w-full min-w-0 medium:w-auto medium:min-w-64 medium:flex-1"
-          >
-            <GroupControl devices={devices} choice={choice} />
-          </View>
-        ))}
-      </View>
-      {controls.length === 0 ? (
-        <Text variant="callout" tone="variant">
-          These devices have no shared controls.
-        </Text>
-      ) : null}
-    </Card>
+      <Interactive
+        href={href ?? data.href}
+        label={`${data.name}, see all`}
+        className="min-w-0 flex-1 rounded-sm py-2"
+        layerClassName="rounded-sm"
+      >
+        <CardBody data={data} />
+      </Interactive>
+      <MasterPower state={state} master={data.master} name={data.name} lights={data.lights} />
+    </View>
   );
 }

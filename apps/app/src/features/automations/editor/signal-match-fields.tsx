@@ -3,19 +3,22 @@ import { View } from 'react-native';
 import {
   SIGNAL_SOURCES,
   kindSpecOf,
+  type JsonValue,
   type SignalMatchSpec,
-  type SignalTrigger,
 } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Select } from '../../../components/select';
 import { TextField } from '../../../components/text-field';
-import { changedMatch, matchValue } from '../model/signal-match';
+import { changedMatch, matchValue, type Match } from '../model/signal-match';
 
-interface MatchProps extends Pick<SignalTrigger, 'source' | 'kind' | 'match'> {
-  readonly onChange: (match: SignalTrigger['match']) => void;
+interface MatchProps {
+  readonly source: string;
+  readonly kind: string;
+  readonly match: Match | undefined;
+  readonly onChange: (match: Match | undefined) => void;
 }
 
-function valueText(value: SignalTrigger['match'][string]): string {
+function valueText(value: JsonValue): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
@@ -23,7 +26,7 @@ function TextMatchField({
   spec,
   ...props
 }: MatchProps & { readonly spec: SignalMatchSpec }): ReactNode {
-  const value = props.match[spec.key];
+  const value = props.match?.[spec.key];
   return (
     <View className="gap-1">
       <TextField
@@ -49,8 +52,8 @@ function MatchField({
   spec,
   ...props
 }: MatchProps & { readonly spec: SignalMatchSpec }): ReactNode {
-  const value = props.match[spec.key];
-  const change = (next: SignalTrigger['match'][string] | undefined): void => {
+  const value = props.match?.[spec.key];
+  const change = (next: JsonValue | undefined): void => {
     props.onChange(changedMatch(props.match, spec.key, next));
   };
   if (spec.values === null) {
@@ -87,10 +90,9 @@ function MatchField({
 
 export function SignalMatchFields(props: MatchProps): ReactNode {
   const specs = kindSpecOf(SIGNAL_SOURCES, props)?.match ?? [];
-  const shown = specs.filter(
-    (spec) => spec.key === 'detection' || Object.hasOwn(props.match, spec.key),
-  );
-  const unknown = Object.keys(props.match).filter((key) => !specs.some((spec) => spec.key === key));
+  const match = props.match ?? {};
+  const shown = specs.filter((spec) => spec.key === 'detection' || Object.hasOwn(match, spec.key));
+  const unknown = Object.keys(match).filter((key) => !specs.some((spec) => spec.key === key));
   const available = specs.filter((spec) => !shown.includes(spec));
   return (
     <View className="gap-3">

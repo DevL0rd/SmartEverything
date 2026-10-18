@@ -1,12 +1,15 @@
 import {
   UNSET_FITNESS_GOALS,
+  deviceFamily,
   effectiveFitnessGoals,
   type BodyReadingRow,
+  type DeviceFamily,
 } from '@smarteverything/domain';
 import { count, decimal } from '../../../format/number';
 import { counted, useActiveProfile } from '../../../store/people';
-import { useDeviceValues, useSession } from '../../../store/selectors';
+import { useDeviceDerived, useSession } from '../../../store/selectors';
 import type { Device, StoreState } from '../../../store/state';
+import { sameJson } from '../../../store/same-json';
 import { useStoreSelector } from '../../../store/store-context';
 import type { VisualState } from '../types';
 import { visualStateOf } from './visual-state';
@@ -54,8 +57,44 @@ function latestWeight(
   return best === null || weight === null ? null : { value: weight, at: best.measured_at };
 }
 
+function sameExcept<T extends object>(left: T, right: T, skipped: keyof T): boolean {
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every(
+      (key) =>
+        key === skipped ||
+        (Object.hasOwn(right, key) && sameJson(Reflect.get(left, key), Reflect.get(right, key))),
+    )
+  );
+}
+
+function sameIgnoringStamp(left: VisualState, right: VisualState): boolean {
+  if (left === right) return true;
+  if (!sameExcept(left, right, 'reading')) return false;
+  const { reading } = left;
+  const other = right.reading;
+  return reading === null || other === null ? reading === other : sameExcept(reading, other, 'at');
+}
+
+export function useDeviceColour(device: Device): string | null {
+  return useDeviceDerived(
+    device.id,
+    (values) => visualStateOf(device, values).colour,
+    [device],
+    Object.is,
+  );
+}
+
+const SENSING_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['sensor', 'presence_phone']);
+
 export function useDeviceVisualState(device: Device): VisualState {
-  return visualStateOf(device, useDeviceValues(device.id));
+  return useDeviceDerived(
+    device.id,
+    (values) => visualStateOf(device, values),
+    [device],
+    SENSING_FAMILIES.has(deviceFamily(device)) ? sameJson : sameIgnoringStamp,
+  );
 }
 
 export function useScaleVisualState(device: Device): VisualState {

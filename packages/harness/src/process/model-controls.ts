@@ -1,5 +1,3 @@
-import { stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import {
   createAssistantMessage,
@@ -15,11 +13,30 @@ import type {
 } from '@smarteverything/domain';
 import { HarnessRuntimeError } from '../host/errors';
 
+const AUXILIARY_IDLE_MS = 60_000;
 type Auxiliary = Extract<HarnessRuntimeRequest, { kind: 'auxiliary' }>;
 export async function auxiliaryText(
   ctx: Context,
   selection: AiModelRouteSelection,
   input: Auxiliary,
+): Promise<string> {
+  const controller = new AbortController();
+  const idle = setTimeout(() => {
+    controller.abort(
+      new HarnessRuntimeError('source_outcome_unknown', 'The auxiliary stream went silent.'),
+    );
+  }, AUXILIARY_IDLE_MS);
+  try {
+    return await auxiliaryStream(ctx, selection, input, { controller, idle });
+  } finally {
+    clearTimeout(idle);
+  }
+}
+async function auxiliaryStream(
+  ctx: Context,
+  selection: AiModelRouteSelection,
+  input: Auxiliary,
+  watch: { readonly controller: AbortController; readonly idle: NodeJS.Timeout },
 ): Promise<string> {
   let text = '';
   let finished = false;
@@ -30,8 +47,9 @@ export async function auxiliaryText(
     ...(selection.effort === null ? {} : { reasoningEffort: ReasoningEffortId(selection.effort) }),
     messages: input.messages.map((message) => auxiliaryMessage(message, selection)),
     maxTokens: input.max_tokens,
-    signal: AbortSignal.timeout(30_000),
+    signal: watch.controller.signal,
   })) {
+    watch.idle.refresh();
     if (chunk.type === 'text-delta') text += chunk.text;
     if (chunk.type === 'finish') {
       if (chunk.reason.kind !== 'stop' && chunk.reason.kind !== 'max-tokens')
@@ -48,17 +66,6 @@ export async function auxiliaryText(
       'Auxiliary stream ended without a native terminal outcome.',
     );
   return text;
-}
-export async function preflightRoute(
-  ctx: Context,
-  input: Extract<HarnessRuntimeRequest, { kind: 'preflight' }>,
-): Promise<void> {
-  if (!isAbsolute(input.cwd) || !(await stat(input.cwd)).isDirectory())
-    throw new HarnessRuntimeError(
-      'directory_unavailable',
-      'The target host workspace must be an existing absolute directory.',
-    );
-  await ctx.llm.resolveModelInfo(input.route.route_id, input.route.model);
 }
 function auxiliaryMessage(
   message: Auxiliary['messages'][number],

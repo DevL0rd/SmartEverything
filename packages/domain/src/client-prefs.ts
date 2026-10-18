@@ -8,13 +8,19 @@ import {
 } from './call-sight';
 import { NUTRITION_PREF } from './foods';
 import {
-  DEFAULT_PAUSE_MS,
   DEFAULT_VOICE_DETECTION,
   ECHO_MODES,
-  PAUSE_CHOICES_MS,
   VOICE_DETECTIONS,
+  type PauseChoiceMs,
 } from './voice-activity';
 import { REGION_PREF } from './region';
+import {
+  DEFAULT_NAVIGATION_LAYOUT,
+  NAVIGATION_DEVICE_PREF,
+  NAVIGATION_LAYOUT,
+} from './navigation-layout';
+import { DEVICE_ALERTS_PREF } from './device-alerts';
+import { SHARED_CLIPBOARD_PREF } from './shared-clipboard';
 import {
   clientPref,
   noLegacy,
@@ -100,14 +106,6 @@ export type EchoTestOutcome = (typeof ECHO_TEST_OUTCOMES)[number];
 
 export const CALL_FACINGS = ['front', 'back'] as const;
 
-const PAUSE_MS = z.union([
-  z.literal(PAUSE_CHOICES_MS[0]),
-  z.literal(PAUSE_CHOICES_MS[1]),
-  z.literal(PAUSE_CHOICES_MS[2]),
-  z.literal(PAUSE_CHOICES_MS[3]),
-  z.literal(PAUSE_CHOICES_MS[4]),
-]);
-
 export const CALL_AUDIO_PREF = z.strictObject({
   echo: z
     .enum(ECHO_MODES)
@@ -119,9 +117,6 @@ export const CALL_AUDIO_PREF = z.strictObject({
     .describe(
       'Voice detection: less ignores quiet voices and background talk, standard suits most rooms, more picks up quiet or distant speech',
     ),
-  pause_ms: PAUSE_MS.describe(
-    'How long to wait after the person stops talking before the assistant answers, in milliseconds: 200, 320, 640, 1000 or 2500',
-  ),
   noise_suppression: z.boolean().describe('Remove steady noise such as fans'),
   auto_gain: z.boolean().describe('Even out the person’s volume (automatic gain control)'),
   input: z
@@ -161,6 +156,27 @@ export const CALL_AUDIO_PREF = z.strictObject({
 
 export type CallAudioPref = z.infer<typeof CALL_AUDIO_PREF>;
 
+export type CallAudio = CallAudioPref & { readonly pause_ms: PauseChoiceMs };
+
+export function callAudioWith(pref: CallAudioPref, pauseMs: PauseChoiceMs): CallAudio {
+  return { ...pref, pause_ms: pauseMs };
+}
+
+function legacyCallAudio(stored: unknown): CallAudioPref | null {
+  const parsed = z
+    .strictObject({
+      version: z.literal(1),
+      value: z.record(z.string(), z.unknown()),
+    })
+    .safeParse(stored);
+  if (!parsed.success) {
+    return null;
+  }
+  const kept = Object.entries(parsed.data.value).filter(([key]) => key !== 'pause_ms');
+  const value = CALL_AUDIO_PREF.safeParse(Object.fromEntries(kept));
+  return value.success ? value.data : null;
+}
+
 export const CAMERAS_PREF = z.strictObject({ muted: z.boolean() });
 
 export type CamerasPref = z.infer<typeof CAMERAS_PREF>;
@@ -188,13 +204,12 @@ export const HEALTH_SYNC_PREF = z.strictObject({
 
 export type HealthSyncPref = z.infer<typeof HEALTH_SYNC_PREF>;
 
-export const AI_MODELS_PREF = z.strictObject({
-  favourites: z.array(z.string().min(1).max(200)).max(100),
+const AI_MODELS_PREF = z.strictObject({
+  favourites: z.array(z.string().min(1)),
+  recent: z.array(z.string().min(1)).default([]),
 });
 
-export type AiModelsPref = z.infer<typeof AI_MODELS_PREF>;
-
-export const AI_SPEECH_PREF = z.strictObject({ showText: z.boolean() });
+const AI_SPEECH_PREF = z.strictObject({ showText: z.boolean() });
 
 export type AiSpeechPref = z.infer<typeof AI_SPEECH_PREF>;
 
@@ -234,11 +249,10 @@ export const CLIENT_PREFS = {
   call_audio: clientPref({
     storageKey: 'call-audio',
     scope: 'client',
-    version: 1,
+    version: 2,
     defaultValue: {
       echo: 'normal',
       detection: DEFAULT_VOICE_DETECTION,
-      pause_ms: DEFAULT_PAUSE_MS,
       noise_suppression: true,
       auto_gain: true,
       input: 'auto',
@@ -251,7 +265,7 @@ export const CLIENT_PREFS = {
       last_echo_test: null,
     },
     schema: CALL_AUDIO_PREF,
-    legacy: noLegacy,
+    legacy: legacyCallAudio,
   }),
   health_sync: clientPref({
     storageKey: 'health-sync',
@@ -279,7 +293,7 @@ export const CLIENT_PREFS = {
     storageKey: 'ai-models',
     scope: 'profile',
     version: 1,
-    defaultValue: { favourites: [] },
+    defaultValue: { favourites: [], recent: [] },
     schema: AI_MODELS_PREF,
     legacy: noLegacy,
   }),
@@ -299,6 +313,38 @@ export const CLIENT_PREFS = {
     schema: REGION_PREF,
     legacy: noLegacy,
   }),
+  device_alerts: clientPref({
+    storageKey: 'device-alerts',
+    scope: 'profile',
+    version: 1,
+    defaultValue: { muted: [] },
+    schema: DEVICE_ALERTS_PREF,
+    legacy: noLegacy,
+  }),
+  shared_clipboard: clientPref({
+    storageKey: 'shared-clipboard',
+    scope: 'profile',
+    version: 1,
+    defaultValue: { enabled: true },
+    schema: SHARED_CLIPBOARD_PREF,
+    legacy: noLegacy,
+  }),
+  navigation: clientPref({
+    storageKey: 'navigation',
+    scope: 'profile',
+    version: 1,
+    defaultValue: DEFAULT_NAVIGATION_LAYOUT,
+    schema: NAVIGATION_LAYOUT,
+    legacy: noLegacy,
+  }),
+  navigation_device: clientPref({
+    storageKey: 'navigation-device',
+    scope: 'client',
+    version: 1,
+    defaultValue: { override: null },
+    schema: NAVIGATION_DEVICE_PREF,
+    legacy: noLegacy,
+  }),
 } as const;
 
 export type ClientPrefKey = keyof typeof CLIENT_PREFS;
@@ -316,6 +362,10 @@ export const CLIENT_PREF_KEYS: readonly ClientPrefKey[] = [
   'ai_models',
   'ai_speech',
   'region',
+  'device_alerts',
+  'shared_clipboard',
+  'navigation',
+  'navigation_device',
 ];
 
 export const RESERVED_LAYOUT_KEYS: ReadonlySet<string> = new Set(

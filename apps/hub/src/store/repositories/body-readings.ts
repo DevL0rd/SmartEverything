@@ -5,7 +5,6 @@ import {
   type BodyReadingRow,
 } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
-import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, moment, type StoreContext } from '../context';
 import { jsonText } from '../sql';
@@ -39,8 +38,6 @@ export interface Merged {
   readonly before: BodyReadingRow | undefined;
   readonly after: BodyReadingRow;
 }
-
-const LAST_WEIGHT = z.object({ profile_id: z.string(), weight_kg: z.number() });
 
 function impedancesOf(
   before: BodyReadingRow | undefined,
@@ -139,18 +136,6 @@ export class BodyReadingsRepository {
        order by r.measured_at`,
       { profileId },
     );
-  }
-
-  lastWeights(since: string): ReadonlyMap<string, number> {
-    const rows = this.context.sql.all(
-      LAST_WEIGHT,
-      `select profile_id, weight_kg from body_readings
-       where profile_id is not null and weight_kg is not null and measured_at >= $since
-         and attribution not in ('pending', 'ignored')
-       order by measured_at`,
-      { since: moment(since) },
-    );
-    return new Map(rows.map((row) => [row.profile_id, row.weight_kg]));
   }
 
   outbox(profileId: string, sourceId: string): BodyReadingRow[] {

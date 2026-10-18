@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError } from '@smarteverything/domain';
 import type { ViewerLease } from './leases';
+import { pageHeaders } from './headers';
 import { serveProjectAsset } from './project-response';
 import { isHtmlPreview } from './sources';
 export async function servePreviewHtml(
@@ -30,12 +31,9 @@ export async function servePreviewHtml(
   const html = await lease.publication.readHtml();
   lease.abort.signal.throwIfAborted();
   response.writeHead(200, {
+    ...pageHeaders(ancestors),
     'content-type': 'text/html; charset=utf-8',
     'content-length': Buffer.byteLength(html),
-    'cache-control': 'no-store',
-    'referrer-policy': 'no-referrer',
-    'x-content-type-options': 'nosniff',
-    'content-security-policy': `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; frame-ancestors ${ancestors.join(' ')}`,
   });
   response.end(request.method === 'HEAD' ? undefined : html);
   return true;

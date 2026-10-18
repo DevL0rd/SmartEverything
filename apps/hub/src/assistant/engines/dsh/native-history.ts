@@ -14,11 +14,6 @@ export function nativeDeliveryHistory(
   const metadata = store.dshSessions.stat(delivery.session_id, profile);
   if (metadata?.chat_id !== chat)
     throw new ApiError('forbidden', 'Retained delivery/native conversation binding differs.');
-  const records = [];
-  for (let offset = 0; offset < metadata.next_seq; offset += 10_000)
-    records.push(
-      ...store.dshSessions.read({ session_id: delivery.session_id, offset, limit: 10_000 }, profile)
-        .events,
-    );
+  const records = store.dshSessions.readAll(delivery.session_id, profile);
   return { metadata, events: readNativeHistory(metadata.header, records) };
 }

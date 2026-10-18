@@ -1,16 +1,28 @@
-const UNIT_WORDS: Readonly<Record<string, string>> = {
-  arcdegrees: '°',
-  percentage: '%',
-  celsius: '°C',
-  fahrenheit: '°F',
-  seconds: 's',
-  minutes: 'min',
-  hours: 'h',
-  days: 'd',
-  kelvin: 'K',
-  watt: 'W',
-  lux: 'lx',
-};
+const UNIT_WORDS: ReadonlyMap<string, string> = new Map([
+  ['arcdegrees', '°'],
+  ['percentage', '%'],
+  ['celsius', '°C'],
+  ['fahrenheit', '°F'],
+  ['seconds', 's'],
+  ['minutes', 'min'],
+  ['hours', 'h'],
+  ['days', 'd'],
+  ['kelvin', 'K'],
+  ['watt', 'W'],
+  ['lux', 'lx'],
+  ['μg/m3', 'µg/m³'],
+  ['mg/m3', 'mg/m³'],
+]);
+
+const WORD_START = /([a-z0-9])([A-Z])(?=[a-z0-9])/g;
+
+const ACRONYM_START = /([a-z0-9])([A-Z])/g;
+
+const KEY_SEPARATORS = /[\s._-]+/g;
+
+function capitalised(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
 
 function wordsOf(text: string): string[] {
   return text
@@ -26,8 +38,19 @@ function isAcronym(word: string): boolean {
 
 function sentenceCase(words: readonly string[], shouting: boolean): string {
   const cased = words.map((word) => (!shouting && isAcronym(word) ? word : word.toLowerCase()));
-  const text = cased.join(' ');
-  return text.charAt(0).toUpperCase() + text.slice(1);
+  return capitalised(cased.join(' '));
+}
+
+export function humanizeKey(key: string): string {
+  const words = key
+    .replace(
+      WORD_START,
+      (_, before: string, capital: string) => `${before} ${capital.toLowerCase()}`,
+    )
+    .replace(ACRONYM_START, '$1 $2')
+    .replace(KEY_SEPARATORS, ' ')
+    .trim();
+  return words === '' ? key : capitalised(words);
 }
 
 export function humanizeEnum(value: string): string {
@@ -55,5 +78,5 @@ export function friendlyUnit(unit: string | undefined): string | null {
   if (unit === undefined || unit === '') {
     return null;
   }
-  return UNIT_WORDS[unit.toLowerCase()] ?? unit;
+  return UNIT_WORDS.get(unit.toLowerCase()) ?? unit;
 }

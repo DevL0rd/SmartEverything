@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "noEmit": true,
+    "rootDir": "../..",
+    "baseUrl": "../..",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@smarteverything/domain": ["packages/domain/src/index.ts"],
+      "@smarteverything/logging": ["packages/logging/src/index.ts"],
+      "@smarteverything/smartthings": ["packages/smartthings/src/index.ts"],
+      "@smarteverything/xiaomi": ["packages/xiaomi/src/index.ts"],
+      "@smarteverything/tuya": ["packages/tuya/src/index.ts"],
+      "@smarteverything/ble": ["packages/ble/src/index.ts"],
+      "@smarteverything/harness": ["packages/harness/src/index.ts"],
+      "@smarteverything/shelly": ["packages/shelly/src/index.ts"],
+      "@smarteverything/shelly/rpc": ["packages/shelly/src/rpc-entry.ts"]
+    },
+    "lib": ["ES2023", "ESNext.TypedArrays"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "package.json"],
+  "references": []
+}

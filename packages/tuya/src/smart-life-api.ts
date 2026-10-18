@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { CLOUD_DEVICE, absentWhenEmpty } from './cloud-api';
+import { CLOUD_DEVICE, IDENTIFIER, STATUS_ITEM, absentWhenEmpty } from './cloud-api';
 import { TuyaResponseError, readFailure, readResult } from './envelope';
-import { issuesOf } from './issues';
+import { JSON_TEXT } from './json-text';
 import type { HttpMethod } from './signing';
 import {
   openPayload,
@@ -12,10 +12,6 @@ import {
   type SmartLifeHeaders,
 } from './smart-life-crypto';
 import { SMART_LIFE_CLIENT_ID, type SmartLifeSession } from './smart-life-login';
-
-const identifier = z.union([z.string().min(1), z.number().int()]).transform(String);
-
-const STATUS_ITEM = z.object({ code: z.string().min(1), value: z.unknown() });
 
 export const SMART_LIFE_PATHS = {
   homes: '/v1.0/m/life/users/homes',
@@ -31,7 +27,7 @@ export const SMART_LIFE_PATHS = {
   expireTerminal: '/v1.0/m/token/terminal/expire',
 } as const;
 
-export const SMART_LIFE_HOMES = z.array(z.object({ ownerId: identifier, name: z.string() }));
+export const SMART_LIFE_HOMES = z.array(z.object({ ownerId: IDENTIFIER, name: z.string() }));
 
 export const SMART_LIFE_DEVICES = z.array(
   CLOUD_DEVICE.extend({
@@ -79,7 +75,7 @@ export const CUSTOM_TYPE = z
   );
 
 export const SMART_LIFE_ROOM = z
-  .object({ id: identifier, name: z.string().min(1) })
+  .object({ id: IDENTIFIER, name: z.string().min(1) })
   .nullish()
   .transform((room) => room?.name ?? null);
 
@@ -177,14 +173,8 @@ const SEALED_SUCCESS = z.object({
 });
 
 function decoded(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch (cause) {
-    if (cause instanceof SyntaxError) {
-      return text;
-    }
-    throw cause;
-  }
+  const parsed = JSON_TEXT.safeParse(text);
+  return parsed.success ? parsed.data : text;
 }
 
 export interface SealedReply<T> {
@@ -201,7 +191,7 @@ export function readSealedReply<S extends z.ZodType>(
   readFailure(operation, body);
   const envelope = SEALED_SUCCESS.safeParse(body);
   if (!envelope.success) {
-    throw new TuyaResponseError(operation, issuesOf(envelope.error));
+    throw new TuyaResponseError(operation, z.prettifyError(envelope.error));
   }
   const sealedResult = envelope.data.result;
   const opened =

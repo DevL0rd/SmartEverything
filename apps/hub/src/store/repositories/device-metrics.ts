@@ -4,10 +4,9 @@ import {
   type HistoryBucket,
   type MetricPoint,
 } from '@smarteverything/domain';
-import type { SQLInputValue } from 'node:sqlite';
 import { storedRow } from '../codec';
 import type { StoreContext } from '../context';
-import { listFilter } from './series-filter';
+import { allOf, inList, type SqlFilter } from '../sql';
 
 export type StoredResolution = 'minute' | 'hour';
 
@@ -33,22 +32,15 @@ const STORED_BUCKET = storedRow(HISTORY_BUCKET, { json: ['last'] });
 
 const HOUR_SECONDS = 3600;
 
-function bucketFilter(query: MetricBucketQuery): [string, Record<string, SQLInputValue>] {
-  const filters = [
-    listFilter('capability', 'capability', query.capabilities),
-    ...(query.deviceIds === undefined ? [] : [listFilter('device_id', 'device', query.deviceIds)]),
-  ];
-  const text = [
-    ...filters.map((filter) => filter.text),
-    'resolution = $resolution',
-    'bucket_start >= $from',
-    'bucket_start < $to',
-  ].join(' and ');
-  const parameters = filters.reduce<Record<string, SQLInputValue>>(
-    (all, filter) => ({ ...all, ...filter.parameters }),
-    {},
-  );
-  return [text, parameters];
+function bucketFilter(query: MetricBucketQuery): SqlFilter {
+  return allOf([
+    inList('capability', 'capabilities', query.capabilities),
+    ...(query.deviceIds === undefined ? [] : [inList('device_id', 'devices', query.deviceIds)]),
+    {
+      text: 'resolution = $resolution and bucket_start >= $from and bucket_start < $to',
+      parameters: {},
+    },
+  ]);
 }
 
 export class DeviceMetricsRepository {
@@ -118,13 +110,13 @@ export class DeviceMetricsRepository {
     if (query.capabilities.length === 0) {
       return [];
     }
-    const [filter, parameters] = bucketFilter(query);
+    const filter = bucketFilter(query);
     return this.context.sql.all(
       STORED_BUCKET,
       `with series as (
          select device_id, capability, bucket_start, average, minimum, maximum, count,
                 (cast(unixepoch(bucket_start) as integer) / cast($seconds as integer)) * cast($seconds as integer) as bucket
-         from device_metrics where ${filter}
+         from device_metrics where ${filter.text}
        )
        select device_id, capability,
               strftime('%Y-%m-%dT%H:%M:%fZ', bucket, 'unixepoch') as bucket_start,
@@ -139,7 +131,7 @@ export class DeviceMetricsRepository {
        from series group by device_id, capability, bucket
        order by device_id, capability, bucket`,
       {
-        ...parameters,
+        ...filter.parameters,
         resolution: query.bucketSeconds >= HOUR_SECONDS ? 'hour' : 'minute',
         from: new Date(query.from).toISOString(),
         to: new Date(query.to).toISOString(),

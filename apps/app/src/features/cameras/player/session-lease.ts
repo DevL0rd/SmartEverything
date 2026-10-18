@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import { ValueStore } from '../../../design/external-store';
 import {
   acquireSession,
@@ -5,6 +6,24 @@ import {
   type SessionKey,
   type SharedSession,
 } from './session-registry';
+
+const log = new Logger('app.camera-lease');
+
+export type PauseReason = 'focus' | 'app';
+
+export function startPausesOf(start: {
+  readonly waitForFocus: boolean;
+  readonly backgrounded: boolean;
+}): readonly PauseReason[] {
+  const reasons: PauseReason[] = [];
+  if (start.waitForFocus) {
+    reasons.push('focus');
+  }
+  if (start.backgrounded) {
+    reasons.push('app');
+  }
+  return reasons;
+}
 
 export interface LeaseState {
   readonly session: SharedSession | null;
@@ -16,14 +35,20 @@ export class SessionLease {
   private held: SharedSession | null = null;
   private key: SessionKey | null = null;
   private wanted = false;
-  private paused: boolean;
+  private readonly pauses = new Set<PauseReason>();
   private listening: boolean | null = null;
   private readonly player = Symbol('player');
   private readonly suspendListeners = new Set<() => void>();
 
-  constructor(startPaused: boolean) {
-    this.paused = startPaused;
-    this.current = new ValueStore<LeaseState>({ session: null, suspended: startPaused });
+  constructor(startPaused: readonly PauseReason[]) {
+    for (const reason of startPaused) {
+      this.pauses.add(reason);
+    }
+    this.current = new ValueStore<LeaseState>({ session: null, suspended: this.paused });
+  }
+
+  private get paused(): boolean {
+    return this.pauses.size > 0;
   }
 
   want(key: SessionKey, wanted: boolean): void {
@@ -31,20 +56,28 @@ export class SessionLease {
       this.key !== null &&
       (this.key.deviceId !== key.deviceId ||
         this.key.client !== key.client ||
-        JSON.stringify(this.key.iceServers) !== JSON.stringify(key.iceServers));
+        this.key.quality !== key.quality ||
+        this.key.iceServers !== key.iceServers);
     this.key = key;
     this.wanted = wanted;
     if (moved) {
+      log.debug('lease.moved', { deviceId: key.deviceId, quality: key.quality });
       this.letGo();
     }
     this.settle();
   }
 
-  readonly suspend = (): void => {
-    if (this.paused) {
+  readonly suspend = (reason: PauseReason): void => {
+    const was = this.paused;
+    this.pauses.add(reason);
+    if (was) {
       return;
     }
-    this.paused = true;
+    log.info('lease.suspended', {
+      deviceId: this.key?.deviceId ?? null,
+      reason,
+      held: this.held !== null,
+    });
     this.held?.setListening(this.player, null);
     this.bump();
     for (const listener of this.suspendListeners) {
@@ -53,11 +86,15 @@ export class SessionLease {
     this.settle();
   };
 
-  readonly resume = (): void => {
-    if (!this.paused) {
+  readonly resume = (reason: PauseReason): void => {
+    if (!this.pauses.delete(reason) || this.paused) {
       return;
     }
-    this.paused = false;
+    log.info('lease.resumed', {
+      deviceId: this.key?.deviceId ?? null,
+      reason,
+      wanted: this.wanted,
+    });
     this.settle();
     this.bump();
   };
@@ -78,6 +115,7 @@ export class SessionLease {
     if (this.held === null) {
       return;
     }
+    log.debug('lease.released', { deviceId: this.held.key.deviceId });
     this.held.setListening(this.player, null);
     releaseSession(this.held);
     this.held = null;
@@ -87,6 +125,7 @@ export class SessionLease {
   private settle(): void {
     if (this.wanted && !this.paused && this.key !== null) {
       if (this.held === null) {
+        log.debug('lease.acquiring', { deviceId: this.key.deviceId, quality: this.key.quality });
         this.held = acquireSession(this.key);
         this.held.setListening(this.player, this.listening);
         this.bump();

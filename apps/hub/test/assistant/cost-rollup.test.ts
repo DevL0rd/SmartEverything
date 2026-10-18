@@ -79,4 +79,22 @@ describe('a generation priced after its reply was deleted by a retry', () => {
     expect(store.assistantChat.message(messageId).cost_micros).toBe(700);
     expect(store.aiChats.chat(chatId).cost_micros).toBe(700);
   });
+
+  it('still settles the usage when the whole chat was deleted', () => {
+    const { store } = opened;
+    const { chatId, profileId } = replyInNewChat();
+    store.ledger.rollup(costRolledUp(store));
+    const usage = store.ledger.record({
+      profile_id: profileId,
+      chat_id: chatId,
+      source: 'openrouter',
+      work: 'chat',
+      model_id: 'openai/gpt-6-luna',
+      generation_id: 'gen-3',
+      cost_micros: 0,
+      cost_state: 'reported',
+    });
+    store.aiChats.remove(chatId);
+    expect(store.ledger.reconcile(usage.id, { cost_micros: 900 }).cost_micros).toBe(900);
+  });
 });

@@ -2,9 +2,9 @@ import type { ReactNode } from 'react';
 import type { ViewStyle } from 'react-native';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import Svg, { Circle, Defs, Ellipse, Path } from 'react-native-svg';
+import Svg, { Circle, Ellipse, Path } from 'react-native-svg';
 import { EASE_IN_OUT, drift, loopStyle, sweep } from '../../../design/loops';
-import { Canvas, FULL, Layer, Squash, boxStyle, scaled, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, FULL, Layer, Squash, boxStyle, scaled, useSvgId } from '../parts/frame';
 import { BodyGradient, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
 import { arcPath, rounded, type Ring } from '../parts/shapes';
 import { ContactShadow, Shine } from '../parts/material';
@@ -22,9 +22,7 @@ function Tower({ ink, tint }: { readonly ink: VisualInk; readonly tint: string }
   const body = useSvgId('tower');
   return (
     <>
-      <Defs>
-        <BodyGradient id={body} ink={ink} />
-      </Defs>
+      <BodyGradient id={body} ink={ink} />
       <ContactShadow cx={50} cy={90} rx={26} ry={5} />
       <Ellipse
         cx={50}

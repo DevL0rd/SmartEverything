@@ -1,23 +1,16 @@
 import { DEVICE_GROUP_ROW } from '../device-groups';
-import { AUTOMATION_SEQUENCE_ROW } from '../automation-sequences';
 import { AUTOMATION_VALUE_ROW } from '../automation-values';
-import { AUTOMATION_RUN_ROW, AUTOMATION_RUN_HISTORY_LIMIT } from '../automation-runs';
+import { AUTOMATION_RUN_ROW } from '../automation-runs';
 import { z } from 'zod';
-import { BODY_READINGS_SNAPSHOT, BODY_READING_ROW } from '../body-readings';
+import { BODY_READING_ROW } from '../body-readings';
 import { PROFILE_ROW } from '../profiles';
 import { SCHEDULE_ROW } from '../schedules';
 import { PLUGIN_ROW, PLUGIN_STREAM_ROW } from '../plugins';
-import {
-  TALK_CHANNEL_ROW,
-  TALK_MEMBER_ROW,
-  TALK_MESSAGES_SNAPSHOT,
-  TALK_MESSAGE_ROW,
-  TALK_PRESENCE,
-} from '../talk';
+import { TALK_CHANNEL_ROW, TALK_MEMBER_ROW, TALK_MESSAGE_ROW, TALK_PRESENCE } from '../talk';
 import { WEATHER_ROW } from '../weather/forecast';
 import { EXCHANGE_RATES_ROW } from '../exchange-rates';
 import { AI_CHAT_ROW, CHAT_ACTIVITY_NOTICE } from '../ai-chats';
-import { ASSISTANT_MESSAGES_SNAPSHOT, ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS } from '../assistant';
+import { ASSISTANT_MESSAGE_ROW, ASSISTANT_STATUS } from '../assistant';
 import { NO_BODY, endpoint } from './endpoint';
 import { SESSION } from './endpoints-access';
 import { FIREWALL_STATUS } from './firewall';
@@ -37,6 +30,7 @@ import {
   ROOM_ROW,
   SETTINGS_ROW,
   STATE_ROW,
+  TELEVISION_SETTINGS_ROW,
 } from './rows-home';
 import {
   AUTOMATION_ROW,
@@ -56,36 +50,36 @@ export const SNAPSHOT_WINDOWS = {
   healthDailyDays: 30,
 } as const;
 
-export const SNAPSHOT_TABLES = z.strictObject({
+export const SNAPSHOT_TABLES = z.object({
   settings: SETTINGS_ROW,
   rooms: z.array(ROOM_ROW),
   device_groups: z.array(DEVICE_GROUP_ROW).optional(),
   devices: z.array(DEVICE_ROW),
+  television_settings: z.array(TELEVISION_SETTINGS_ROW).optional(),
   device_state: z.array(STATE_ROW),
   cameras: z.array(CAMERA_ROW),
   scenes: z.array(SCENE_ROW),
   automations: z.array(AUTOMATION_ROW),
   automation_values: z.array(AUTOMATION_VALUE_ROW).optional(),
-  automation_sequences: z.array(AUTOMATION_SEQUENCE_ROW).optional(),
-  automation_runs: z.array(AUTOMATION_RUN_ROW).max(AUTOMATION_RUN_HISTORY_LIMIT).optional(),
+  automation_runs: z.array(AUTOMATION_RUN_ROW).optional(),
   provider_links: z.array(PROVIDER_LINK_ROW),
   ir_remotes: z.array(IR_REMOTE_ROW),
   ir_codes: z.array(IR_CODE_ROW),
   layouts: z.array(LAYOUT_ROW),
-  events: z.array(EVENT_ROW).max(SNAPSHOT_WINDOWS.events),
-  commands: z.array(COMMAND_ROW).max(SNAPSHOT_WINDOWS.commands),
-  recordings: z.array(RECORDING_ROW).max(SNAPSHOT_WINDOWS.recordings),
+  events: z.array(EVENT_ROW),
+  commands: z.array(COMMAND_ROW),
+  recordings: z.array(RECORDING_ROW),
   health_sources: z.array(HEALTH_SOURCE_ROW),
   health_daily: z.array(HEALTH_DAILY_ROW),
   profiles: z.array(PROFILE_ROW).default([]),
-  body_readings: z.array(BODY_READING_ROW).max(BODY_READINGS_SNAPSHOT).default([]),
+  body_readings: z.array(BODY_READING_ROW).default([]),
   weather: WEATHER_ROW.optional(),
   exchange_rates: EXCHANGE_RATES_ROW.optional(),
   talk_channels: z.array(TALK_CHANNEL_ROW).optional(),
   talk_members: z.array(TALK_MEMBER_ROW).optional(),
-  talk_messages: z.array(TALK_MESSAGE_ROW).max(TALK_MESSAGES_SNAPSHOT).optional(),
+  talk_messages: z.array(TALK_MESSAGE_ROW).optional(),
   talk_presence: TALK_PRESENCE.optional(),
-  assistant_messages: z.array(ASSISTANT_MESSAGE_ROW).max(ASSISTANT_MESSAGES_SNAPSHOT).optional(),
+  assistant_messages: z.array(ASSISTANT_MESSAGE_ROW).optional(),
   assistant_status: ASSISTANT_STATUS.optional(),
   ai_chats: z.array(AI_CHAT_ROW).optional(),
   chat_activity: z.array(CHAT_ACTIVITY_NOTICE).optional(),
@@ -95,7 +89,7 @@ export const SNAPSHOT_TABLES = z.strictObject({
 
 export type SnapshotTables = z.infer<typeof SNAPSHOT_TABLES>;
 
-export const OWNER_SNAPSHOT_TABLES = z.strictObject({
+export const OWNER_SNAPSHOT_TABLES = z.object({
   clients: z.array(CLIENT_ROW),
   push_targets: z.array(PUSH_TARGET_ROW),
   mcp_tokens: z.array(MCP_TOKEN_ROW),
@@ -105,7 +99,7 @@ export const OWNER_SNAPSHOT_TABLES = z.strictObject({
 
 export type OwnerSnapshotTables = z.infer<typeof OWNER_SNAPSHOT_TABLES>;
 
-export const SNAPSHOT = z.strictObject({
+export const SNAPSHOT = z.object({
   seq: SEQ,
   session: SESSION,
   firewall: FIREWALL_STATUS,

@@ -1,12 +1,8 @@
 import { ApiError } from '@smarteverything/domain';
-import {
-  currentExecutionAuthorities,
-  validateExecutionAuthority,
-} from '../assistant/execution-authority';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { Store } from '../store/store';
 interface PluginCall {
-  readonly authorities: readonly ConversationAuthority[];
+  readonly authority: ConversationAuthority;
   active: number;
 }
 const calls = new WeakMap<Store, Map<string, PluginCall>>();
@@ -17,12 +13,7 @@ export function pluginCallAuthority(
   store: Store,
   plugin: string,
 ): ConversationAuthority | undefined {
-  const call = calls.get(store)?.get(plugin);
-  if (call === undefined) return undefined;
-  if (call.active === 0)
-    throw new ApiError('forbidden', 'This plugin callback belongs to a completed scoped call.');
-  for (const authority of call.authorities) validateExecutionAuthority(store, authority);
-  return call.authorities[0];
+  return calls.get(store)?.get(plugin)?.authority;
 }
 export async function withPluginCallAuthority<T>(
   store: Store,
@@ -30,38 +21,22 @@ export async function withPluginCallAuthority<T>(
   authority: ConversationAuthority,
   work: () => Promise<T>,
 ): Promise<T> {
-  const authorities = [
-    ...new Map(
-      [authority, ...currentExecutionAuthorities()].map(
-        (source) => [source.event_id, source] as const,
-      ),
-    ).values(),
-  ];
-  for (const source of authorities) validateExecutionAuthority(store, source);
+  if (store.plugins.byId(plugin).source === 'builtin') return work();
   const scopes = calls.get(store) ?? new Map<string, PluginCall>();
   calls.set(store, scopes);
   const previous = scopes.get(plugin);
-  if (
-    previous !== undefined &&
-    previous.active > 0 &&
-    JSON.stringify(previous.authorities) !== JSON.stringify(authorities)
-  )
-    throw new ApiError('conflict', 'Concurrent plugin calls have ambiguous initiating grants.');
-  const call =
-    previous !== undefined && previous.active > 0 ? previous : { authorities, active: 0 };
+  if (previous !== undefined && previous.authority.event_id !== authority.event_id)
+    throw new ApiError(
+      'conflict',
+      'This plugin is already serving another request; try again when it finishes.',
+    );
+  const call = previous ?? { authority, active: 0 };
   scopes.set(plugin, call);
   call.active++;
   try {
     return await work();
   } finally {
     call.active--;
+    if (call.active === 0 && scopes.get(plugin) === call) scopes.delete(plugin);
   }
-}
-
-export function pluginCallAuthorities(
-  store: Store,
-  plugin: string,
-): readonly ConversationAuthority[] {
-  pluginCallAuthority(store, plugin);
-  return calls.get(store)?.get(plugin)?.authorities ?? [];
 }

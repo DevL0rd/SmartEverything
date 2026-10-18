@@ -1,5 +1,6 @@
 import process from 'node:process';
 import { FRAME, READY_EVENT, type Frame } from './frames';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface ChildHandlers {
   readonly call: (name: string, payload: unknown) => Promise<unknown>;
@@ -41,7 +42,7 @@ async function answer(
       id,
       ok: false,
       payload: null,
-      error: cause instanceof Error ? cause.message : String(cause),
+      error: messageOf(cause),
     });
   }
 }
@@ -52,7 +53,10 @@ export function serveChild(handlers: ChildHandlers): ChildChannel {
     if (!frame.success) {
       die(frame.error);
     } else if (frame.data.kind === 'call') {
-      void answer(handlers, frame.data.id, frame.data.name, frame.data.payload);
+      background(
+        answer(handlers, frame.data.id, frame.data.name, frame.data.payload),
+        'child_serve.answer_failed',
+      );
     } else if (frame.data.kind === 'event') {
       handlers.event(frame.data.name, frame.data.payload);
     }

@@ -4,18 +4,27 @@ import { join } from 'node:path';
 import { cpus, hostname, networkInterfaces, platform, release, totalmem, uptime } from 'node:os';
 import { NODE_HELLO, type NodeHello } from '@smarteverything/domain';
 import { readIdentity } from './collectors/linux/identity';
+import { isMissing } from '../fs-util';
+
+const MACHINE_ID_FILE = '/etc/machine-id';
 
 async function installationId(directory: string): Promise<string> {
   const file = join(directory, 'computer-node.id');
   try {
     return (await readFile(file, 'utf8')).trim();
   } catch (cause) {
-    if (!(cause instanceof Error && 'code' in cause && cause.code === 'ENOENT')) throw cause;
+    if (!isMissing(cause)) throw cause;
     const id = randomBytes(16).toString('hex');
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await writeFile(file, `${id}\n`, { mode: 0o600, flag: 'wx' });
     return id;
   }
+}
+
+export async function computerMachineId(directory: string): Promise<string> {
+  return platform() === 'linux'
+    ? (await readFile(MACHINE_ID_FILE, 'utf8')).trim()
+    : installationId(directory);
 }
 
 export async function nodeIdentity(directory: string): Promise<NodeHello> {

@@ -1,5 +1,6 @@
 import type { DeskAnswer } from './conversation-types';
 import type { BodyOutcome } from './turn';
+import { messageOf } from '@smarteverything/logging';
 
 export const WAITING =
   '[This is waiting for them. First do what they ask now; then mention briefly that you have an update and tell it if they want.]';
@@ -20,9 +21,5 @@ export function combined(notes: readonly string[]): string {
 }
 
 export function failedTool(error: unknown): DeskAnswer {
-  return { result: { error: error instanceof Error ? error.message : 'That did not work' } };
-}
-
-export function clean(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  return { result: { error: messageOf(error) } };
 }

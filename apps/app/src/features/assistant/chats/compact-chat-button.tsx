@@ -12,6 +12,7 @@ import { nativeRuntimeAdapter } from '../commands/native-registry';
 import type { CommandReceipt } from '../commands/panels';
 import type { CommandDescriptor } from '../commands/types';
 import { notify } from '../../../components/toast-store';
+import { background } from '@smarteverything/logging';
 
 export function CompactChatButton({
   chat,
@@ -42,9 +43,12 @@ function LegacyCompactChatButton({
       layerClassName="rounded-md"
       onPress={(): void => {
         setPending(true);
-        void compactChat(chat.id).finally(() => {
-          setPending(false);
-        });
+        background(
+          compactChat(chat.id).finally(() => {
+            setPending(false);
+          }),
+          'chat.compact_failed',
+        );
       }}
     >
       <Icon name={pending ? 'clock' : 'minimize'} size={16} tone="variant" />
@@ -75,7 +79,7 @@ function NativeCompactChatButton({
   const catalogue = useCommands(chat, true);
   const commands = compactCommands(catalogue);
   const compact = compactDefinition(commands);
-  const submission = useCommandSubmission({ ...catalogue, commands }, '', '/compact', {
+  const submission = useCommandSubmission({ ...catalogue, commands }, '', () => '/compact', {
     preserveDraft: true,
     definitionId: compact?.id ?? null,
   });
@@ -90,7 +94,7 @@ function NativeCompactChatButton({
       className="min-h-touch-min flex-row items-center gap-1 rounded-md px-1.5"
       layerClassName="rounded-md"
       onPress={(): void => {
-        void submission.submit(null, []);
+        background(submission.submit(null, []), 'submission.submit_failed');
       }}
     >
       <Icon name={pending ? 'clock' : 'minimize'} size={16} tone="variant" />
@@ -107,11 +111,11 @@ function compactReason(
   count: number,
 ): string | null {
   if (reason === null && command === undefined && count > 1)
-    return 'The native compact definition is ambiguous. Refresh commands before compacting.';
+    return 'Couldn’t find the compact command. Refresh commands and try again.';
   return (
     reason ??
     command?.unavailableReason ??
-    (command?.enabled === true ? null : 'This native session does not advertise compaction.')
+    (command?.enabled === true ? null : 'This session has no compact command.')
   );
 }
 

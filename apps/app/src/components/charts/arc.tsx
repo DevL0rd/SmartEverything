@@ -5,32 +5,19 @@ import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
 import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
-import type { XY } from './scale';
+import { arcLength, arcPath, pointOn, type XY } from './geometry';
 
-export function polar(centre: number, radius: number, degrees: number): XY {
-  const radians = ((degrees - 90) * Math.PI) / 180;
-  return { x: centre + radius * Math.cos(radians), y: centre + radius * Math.sin(radians) };
-}
-
-export function arcPath(centre: number, radius: number, from: number, sweep: number): string {
-  const r = String(radius);
-  const start = polar(centre, radius, from);
-  const head = `M${start.x.toFixed(2)} ${start.y.toFixed(2)}`;
-  if (sweep >= 360) {
-    const half = polar(centre, radius, from + 180);
-    return `${head} A${r} ${r} 0 1 1 ${half.x.toFixed(2)} ${half.y.toFixed(2)} A${r} ${r} 0 1 1 ${start.x.toFixed(2)} ${start.y.toFixed(2)}`;
-  }
-  const end = polar(centre, radius, from + sweep);
-  return `${head} A${r} ${r} 0 ${sweep > 180 ? '1' : '0'} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
-}
-
-export function angleAt(centre: number, point: XY): number {
-  const degrees = (Math.atan2(point.x - centre, centre - point.y) * 180) / Math.PI;
-  return (degrees + 360) % 360;
-}
+export { angleAt, polar } from './geometry';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+export interface ArcTick {
+  readonly start: number;
+  readonly sweep: number;
+  readonly colour: ColourRole;
+  readonly thickness: number;
+}
 
 export interface ArcProps {
   readonly value: number;
@@ -41,6 +28,7 @@ export interface ArcProps {
   readonly startAngle?: number;
   readonly sweep?: number;
   readonly tinted?: boolean;
+  readonly ticks?: readonly ArcTick[];
 }
 
 function ArcStroke({
@@ -88,10 +76,6 @@ function StartDot({
       animatedProps={animated}
     />
   );
-}
-
-export function arcLength(radius: number, sweep: number): number {
-  return (radius * Math.PI * Math.min(sweep, 360)) / 180;
 }
 
 export function DrawnStroke({
@@ -149,12 +133,14 @@ export function Arc({
   startAngle = 0,
   sweep = 360,
   tinted = false,
+  ticks = [],
 }: ArcProps): ReactNode {
   const centre = size / 2;
   const radius = (size - thickness) / 2;
   const target = Math.min(1, Math.max(0, value));
   const drawn = useDraw(target, !useMotion().reduced);
-  const path = arcPath(centre, radius, startAngle, sweep);
+  const ring = { cx: centre, cy: centre, r: radius };
+  const path = arcPath(ring, startAngle, startAngle + sweep);
   return (
     <Svg width={size} height={size} aria-hidden>
       {trackColour === null ? null : (
@@ -167,9 +153,17 @@ export function Arc({
         thickness={thickness}
         drawn={drawn}
       />
+      {ticks.map((tick) => (
+        <ArcStroke
+          key={`${String(tick.start)}-${tick.colour}`}
+          d={arcPath(ring, tick.start, tick.start + tick.sweep)}
+          colour={tick.colour}
+          thickness={tick.thickness}
+        />
+      ))}
       {tinted ? (
         <StartDot
-          at={polar(centre, radius, startAngle)}
+          at={pointOn(ring, startAngle)}
           colour={colour}
           thickness={thickness}
           drawn={drawn}

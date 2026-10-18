@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../components/button';
 import { Sheet } from '../../components/sheet';
+import { twoDigits } from '../../format/number';
 import { TimeField, localeUsesHour12, type TimeOfDay } from '../../components/time-field';
+import { clock } from '../../format/time';
 
 export function timeOf(text: string): TimeOfDay {
   const [hour = 0, minute = 0] = text.split(':').map(Number);
@@ -11,15 +13,12 @@ export function timeOf(text: string): TimeOfDay {
 }
 
 export function clockText({ hour, minute }: TimeOfDay): string {
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  return `${twoDigits(hour)}:${twoDigits(minute)}`;
 }
 
 export function timeLabel(text: string): string {
   const { hour, minute } = timeOf(text);
-  return new Date(2000, 0, 1, hour, minute).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return clock(new Date(2000, 0, 1, hour, minute));
 }
 
 export interface TimeSheetField {

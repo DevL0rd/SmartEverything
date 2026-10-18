@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
   type AiChatRow,
@@ -8,23 +8,18 @@ import {
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
 import { useCodexProvider } from '../provider/codex-provider-data';
-import { mergeProviderSnapshot } from '../../../queries/provider-notices';
 import { nativeRuntimeAdapter } from './native-registry';
 export function useNativeProvider(
   chat: AiChatRow | undefined,
   enabled: boolean,
-): ReturnType<typeof useQuery<AiChatRuntimeProvider>> {
-  const client = useQueryClient();
+): ReturnType<typeof useScreenQuery<AiChatRuntimeProvider>> {
   const chatId = chat?.id ?? '';
   const runtime = chat?.engine.kind;
   const codex = useCodexProvider(chatId, enabled && runtime === 'codex');
-  const claude = useQuery<AiChatRuntimeProvider>({
+  const claude = useScreenQuery<AiChatRuntimeProvider>({
     queryKey: nativeRuntimeAdapter('claude').key(chatId),
     enabled: enabled && runtime === 'claude',
-    queryFn: async () => {
-      const state = await readNativeClaude(chatId);
-      return { ...state, ...mergeProviderSnapshot(client, chatId, state) };
-    },
+    queryFn: () => readNativeClaude(chatId),
   });
   return runtime === 'codex' ? codex : claude;
 }

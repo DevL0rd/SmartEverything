@@ -10,7 +10,7 @@ export interface PluginNoticeText {
   readonly settings: boolean;
 }
 
-export function PluginNotice({
+export function ServiceNotice({
   pluginId,
   notice,
 }: {

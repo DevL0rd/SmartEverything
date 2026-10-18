@@ -4,9 +4,9 @@ import type {
   ComputerAiRuntime,
   AI_CHAT_RUNTIME_PROVIDER_NOTICE,
   AiChatRow,
-  Engine as ChatEngine,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { ComputerEngine } from '../../engine-kind';
 import type { ToolHub } from '../../../ai-tools/tool-hub';
 import type { ToolCaller } from '../../../ai-tools/hub-tool';
 import type { ComputerAiDirectory } from '../../../computers/ai-directory';
@@ -21,7 +21,7 @@ export interface Turn {
   readonly jobId: string;
   readonly event: StoredEvent;
   readonly chat: AiChatRow & {
-    readonly engine: Exclude<ChatEngine, { kind: 'openrouter' | 'dsh' }>;
+    readonly engine: ComputerEngine;
   };
   readonly replies: ProviderReplies;
   readonly stream: TurnStream;
@@ -30,6 +30,7 @@ export interface Turn {
   readonly done: Promise<void>;
   readonly finish: () => void;
   readonly calls: Set<string>;
+  readonly steered: StoredEvent[];
 }
 export interface ComputerRunnerDeps {
   readonly store: Store;

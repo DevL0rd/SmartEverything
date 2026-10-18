@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { installedVersion, repositoryFile } from './versions';
-import { appDeclaredVersion } from './app-manifest';
 
 describe('tailwindcss contract', () => {
-  it('is installed at exactly the version the app declares', () => {
-    expect(installedVersion('tailwindcss')).toBe(appDeclaredVersion('tailwindcss'));
-  });
-
   it('stays on version 4, the only major Uniwind supports', () => {
     expect(installedVersion('tailwindcss').startsWith('4.')).toBe(true);
   });

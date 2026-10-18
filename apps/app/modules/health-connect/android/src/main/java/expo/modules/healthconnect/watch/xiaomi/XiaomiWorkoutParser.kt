@@ -40,9 +40,9 @@ object XiaomiWorkoutParser {
 
   fun summary(id: XiaomiFileId, file: ByteArray): List<Workout> {
     val layout = LAYOUTS[id.subtype]
-      ?: throw UnsupportedFile(id, "workout type 0x%02x has no summary layout in Gadgetbridge".format(id.subtype))
+      ?: throw UnsupportedFile(id, "workout type 0x%02x has no known summary layout".format(id.subtype))
     val headerSize = layout.headers[id.version]
-      ?: throw UnsupportedFile(id, "${layout.title} summary version ${id.version} is not known (Gadgetbridge reads ${layout.headers.keys.sorted()})")
+      ?: throw UnsupportedFile(id, "${layout.title} summary version ${id.version} is not known (this app reads ${layout.headers.keys.sorted()})")
     val buffer = FileAssembler.body(file)
     buffer.position(buffer.position() + headerSize)
     val code = if (layout.typeFirst) buffer.getShort().toInt() and 0xffff else null

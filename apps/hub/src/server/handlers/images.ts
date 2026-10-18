@@ -5,7 +5,7 @@ import {
 } from '@smarteverything/domain';
 import type { ImageActor, ImageOperationService } from '../../assistant/image/service';
 import type { Caller } from '../auth';
-import { bound, type Bound } from '../router';
+import { bound } from '../router';
 import { currentRequestSignal } from '../request-signal';
 
 export interface ImageRouteContext {
@@ -17,12 +17,10 @@ export interface ImageRouteContext {
     refresh?: boolean,
   ) => Promise<ImageProviderCatalog>;
 }
-export type ImageRoutes = Record<keyof typeof E, Bound>;
-export function imageRoutes(context: ImageRouteContext): ImageRoutes {
-  const { images, imageActor } = context;
-  return {
+export const imageRoutes = ({ images, imageActor, imageCatalog }: ImageRouteContext) =>
+  ({
     listImageEndpoints: bound(E.listImageEndpoints, ({ caller, query }) =>
-      context.imageCatalog(caller, query.chat_id, query.refresh),
+      imageCatalog(caller, query.chat_id, query.refresh),
     ),
     resolveImageInput: bound(E.resolveImageInput, ({ caller, body }) =>
       images.resolve(imageActor(caller), body.chat_id, body.selector),
@@ -46,5 +44,4 @@ export function imageRoutes(context: ImageRouteContext): ImageRoutes {
     cancelImageOperation: bound(E.cancelImageOperation, ({ caller, params }) =>
       images.cancel(imageActor(caller), params.operationId),
     ),
-  };
-}
+  }) as const;

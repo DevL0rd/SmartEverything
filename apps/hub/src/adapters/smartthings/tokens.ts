@@ -16,6 +16,7 @@ import {
   type AccessTokens,
   type SmartThingsIo,
 } from './http';
+import { background, failureLine } from '@smarteverything/logging';
 
 const REFRESH_RETRY_MS = 5 * 60 * 1000;
 
@@ -102,7 +103,7 @@ export class TokenKeeper implements AccessTokens {
     this.stop();
     const delay = refreshDelayMs(this.account, this.options.io.now());
     this.timer = setTimeout(() => {
-      void this.scheduledRefresh();
+      background(this.scheduledRefresh(), 'refresh.scheduled_failed');
     }, delay).unref();
   }
 
@@ -122,10 +123,10 @@ export class TokenKeeper implements AccessTokens {
       }
       this.options.context.log.warn('token.refresh_failed', {
         retryInMs: REFRESH_RETRY_MS,
-        reason: String(cause),
+        reason: failureLine(cause),
       });
       this.timer = setTimeout(() => {
-        void this.scheduledRefresh();
+        background(this.scheduledRefresh(), 'refresh.scheduled_failed');
       }, REFRESH_RETRY_MS).unref();
     }
   }

@@ -1,13 +1,6 @@
-import { automationDefinitionRevision } from '../../store/repositories/automation-revisions';
-import {
-  API_ENDPOINTS as E,
-  ApiError,
-  AutomationValueError,
-  automationRunForReader,
-  automationRunVisible,
-} from '@smarteverything/domain';
+import { API_ENDPOINTS as E, ApiError, AutomationValueError } from '@smarteverything/domain';
 import type { ServerContext } from '../context';
-import { bound, DONE_REPLY, type Bound } from '../router';
+import { bound, DONE_REPLY } from '../router';
 
 function valueWrite<T>(work: () => T): T {
   try {
@@ -18,31 +11,8 @@ function valueWrite<T>(work: () => T): T {
   }
 }
 
-export function automationRuntimeRoutes({
-  store,
-  hub,
-}: Pick<ServerContext, 'store' | 'hub'>): Record<
-  | 'readAutomationRevision'
-  | 'listAutomationValues'
-  | 'createAutomationValue'
-  | 'updateAutomationValue'
-  | 'applyAutomationValueOperation'
-  | 'removeAutomationValue'
-  | 'listAutomationRuns'
-  | 'readAutomationRun'
-  | 'stopAutomationRun'
-  | 'stopAutomationRuns'
-  | 'startAutomation',
-  Bound
-> {
-  return {
-    readAutomationRevision: bound(E.readAutomationRevision, ({ params }) => {
-      const automation = store.automations.byId(params.automationId);
-      return {
-        automation,
-        definitionRevision: automationDefinitionRevision(automation.definition),
-      };
-    }),
+export const automationRuntimeRoutes = ({ store, hub }: Pick<ServerContext, 'store' | 'hub'>) =>
+  ({
     listAutomationValues: bound(E.listAutomationValues, () => store.automationValues.list()),
     createAutomationValue: bound(E.createAutomationValue, ({ body }) =>
       valueWrite(() => store.automationValues.create(body.content)),
@@ -59,45 +29,18 @@ export function automationRuntimeRoutes({
       store.automationValues.remove(params.valueId);
       return DONE_REPLY;
     }),
-    ...automationRunRoutes({ store, hub }),
-  };
-}
-
-function automationRunRoutes({
-  store,
-  hub,
-}: Pick<ServerContext, 'store' | 'hub'>): Record<
-  | 'listAutomationRuns'
-  | 'readAutomationRun'
-  | 'stopAutomationRun'
-  | 'stopAutomationRuns'
-  | 'startAutomation',
-  Bound
-> {
-  return {
     listAutomationRuns: bound(E.listAutomationRuns, ({ query }) =>
-      store.automationRuns
-        .list(query.automationId, query.targetType)
-        .filter((run) => automationRunVisible(run, query.runDetails))
-        .map((run) => automationRunForReader(run, query.runDetails)),
+      store.automationRuns.list(query.automationId),
     ),
-    readAutomationRun: bound(E.readAutomationRun, ({ params, query }) =>
-      automationRunForReader(store.automationRuns.byId(params.runId), query.runDetails),
+    readAutomationRun: bound(E.readAutomationRun, ({ params }) =>
+      store.automationRuns.byId(params.runId),
     ),
-    stopAutomationRun: bound(E.stopAutomationRun, ({ params, query }) =>
-      automationRunForReader(hub.stopAutomationRun(params.runId), query.runDetails),
+    stopAutomationRun: bound(E.stopAutomationRun, ({ params }) =>
+      hub.stopAutomationRun(params.runId),
     ),
     stopAutomationRuns: bound(E.stopAutomationRuns, ({ params, body }) => {
       store.automations.byId(params.automationId);
-      hub.stopAutomationRuns(params.automationId, body.controlKey);
+      hub.stopAutomationRuns(params.automationId, body.key);
       return DONE_REPLY;
     }),
-    startAutomation: bound(E.startAutomation, async ({ params, query }) => {
-      const run = await hub.startAutomation(params.automationId);
-      return automationRunForReader(
-        query.runDetails ? store.automationRuns.byId(run.id) : run,
-        query.runDetails,
-      );
-    }),
-  };
-}
+  }) as const;

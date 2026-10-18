@@ -6,23 +6,14 @@ import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { SwitchRow } from '../../../components/rows';
 import { Sheet } from '../../../components/sheet';
-import { TimeField, localeUsesHour12, type TimeOfDay } from '../../../components/time-field';
-import { twoDigits } from '../../../format/number';
+import { TimeField, localeUsesHour12 } from '../../../components/time-field';
+import { clockTextOfTime, timeOfClockText } from '../../../format/clock-text';
 import { useReachUpdate } from './reach-data';
 import { ReachLoaded, unsaved } from './reach-loaded';
 
 const STANDARD: QuietHours = { from: '22:00', to: '07:00', urgent: true };
 
-function timeOf(text: string): TimeOfDay {
-  const [hour = 0, minute = 0] = text.split(':').map(Number);
-  return { hour, minute };
-}
-
-function textOf(time: TimeOfDay): string {
-  return `${twoDigits(time.hour)}:${twoDigits(time.minute)}`;
-}
-
-export function quietSummary(quiet: QuietHours | null): string {
+function quietSummary(quiet: QuietHours | null): string {
   return quiet === null ? 'Off' : `${quiet.from}–${quiet.to}`;
 }
 
@@ -43,18 +34,18 @@ function QuietFields({
     <View className="gap-4 py-2">
       <TimeField
         label="From"
-        value={timeOf(quiet.from)}
+        value={timeOfClockText(quiet.from)}
         hour12={hour12}
         onChange={(time) => {
-          onChange({ ...quiet, from: textOf(time) });
+          onChange({ ...quiet, from: clockTextOfTime(time) });
         }}
       />
       <TimeField
         label="To"
-        value={timeOf(quiet.to)}
+        value={timeOfClockText(quiet.to)}
         hour12={hour12}
         onChange={(time) => {
-          onChange({ ...quiet, to: textOf(time) });
+          onChange({ ...quiet, to: clockTextOfTime(time) });
         }}
       />
       <SwitchRow

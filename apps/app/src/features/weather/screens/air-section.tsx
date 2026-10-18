@@ -1,5 +1,6 @@
 import {
   POLLEN_KINDS,
+  US_AQI_BANDS,
   type AirDay,
   type PollenKind,
   type WeatherAir,
@@ -8,7 +9,8 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Dot } from '../../../components/badge';
 import { Card } from '../../../components/card';
-import { Gauge, type GaugeBand } from '../../../components/charts';
+import { airGauge } from '../../../components/air-look';
+import { Gauge } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Grid } from '../../../components/grid';
 import { StatTile } from '../../../components/stat-tile';
@@ -16,29 +18,19 @@ import { Text } from '../../../components/text';
 import { decimal } from '../../../format/number';
 import { titleCase } from '../../../format/text';
 import { Details, RetryButton } from '../components/weather-notice';
-import { aqiLook } from '../model/present';
+import { aqiLook, weekdayOf } from '../model/present';
 
-const AQI_MAX = 300;
-
-const AQI_BANDS: readonly GaugeBand[] = [
-  { upTo: 50, colour: 'air-good' },
-  { upTo: 100, colour: 'air-fair' },
-  { upTo: 150, colour: 'air-moderate' },
-  { upTo: 200, colour: 'air-poor' },
-  { upTo: AQI_MAX, colour: 'air-bad' },
-];
-
-const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: 'short', timeZone: 'UTC' });
+const AQI = airGauge(US_AQI_BANDS);
 
 function Headline({ aqi }: { readonly aqi: number }): ReactNode {
   const look = aqiLook(aqi);
   return (
     <View className="flex-row items-center gap-4">
       <Gauge
-        value={Math.min(aqi, AQI_MAX)}
+        value={Math.min(aqi, AQI.max)}
         min={0}
-        max={AQI_MAX}
-        bands={AQI_BANDS}
+        max={AQI.max}
+        bands={AQI.bands}
         size={112}
         thickness={10}
         label={`US AQI ${look.value}, ${look.label}`}
@@ -64,7 +56,7 @@ function Days({ days }: { readonly days: readonly AirDay[] }): ReactNode {
         day.usAqiMax === null ? null : (
           <View key={day.day} className="min-w-0 flex-1 items-center gap-1">
             <Text variant="caption" tone="variant">
-              {WEEKDAY.format(new Date(`${day.day}T12:00:00Z`))}
+              {weekdayOf(day.day)}
             </Text>
             <Dot tone={aqiLook(day.usAqiMax).tone} />
             <Text variant="footnote">{decimal(day.usAqiMax)}</Text>

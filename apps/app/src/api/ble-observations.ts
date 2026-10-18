@@ -1,5 +1,6 @@
 import type { z } from 'zod';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../queries/use-screen-query';
 import { API_ENDPOINTS as E, type DeviceRow } from '@smarteverything/domain';
 import { api } from './transport';
 
@@ -13,7 +14,7 @@ export function useBleObservation(
   deviceId: string,
   revision: unknown,
 ): UseQueryResult<Awaited<ReturnType<typeof readObservation>>> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: ['window', 'ble-observation', deviceId, revision],
     queryFn: () => readObservation(deviceId),
   });

@@ -1,6 +1,6 @@
 import type { IconName } from '../../../components/icon';
 import type { Tone } from '../../../components/tone';
-import { plural } from '../../../format/text';
+import { compareText, plural } from '../../../format/text';
 import type { ActivityAtom, ActivityCategory } from './atoms';
 import { runsOf, type Run } from './grouping';
 
@@ -59,7 +59,7 @@ function itemOf(run: Run<ActivityAtom>): ActivityItem | null {
 }
 
 export function coalesce(atoms: readonly ActivityAtom[]): readonly ActivityItem[] {
-  const sorted = [...atoms].sort((left, right) => right.at.localeCompare(left.at));
+  const sorted = [...atoms].sort((left, right) => compareText(right.at, left.at));
   const runs = runsOf(
     sorted,
     (atom) => atom.group,
@@ -69,4 +69,23 @@ export function coalesce(atoms: readonly ActivityAtom[]): readonly ActivityItem[
     const item = itemOf(run);
     return item === null ? [] : [item];
   });
+}
+
+function sameItem(left: ActivityItem, right: ActivityItem): boolean {
+  return Object.entries(left).every(([key, value]) => Object.is(value, Reflect.get(right, key)));
+}
+
+export function reuseItems(
+  previous: readonly ActivityItem[],
+  next: readonly ActivityItem[],
+): readonly ActivityItem[] {
+  const known = new Map(previous.map((item) => [item.id, item]));
+  const shared = next.map((item) => {
+    const kept = known.get(item.id);
+    return kept !== undefined && sameItem(kept, item) ? kept : item;
+  });
+  return shared.length === previous.length &&
+    shared.every((item, index) => item === previous[index])
+    ? previous
+    : shared;
 }

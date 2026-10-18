@@ -1,7 +1,13 @@
-import { PLUGIN_PERSON, type PluginPerson, type PluginPersonChange } from '@smarteverything/domain';
-import type { StoreContext } from '../context';
+import { PLUGIN_PERSON, type PluginPerson } from '@smarteverything/domain';
+import { found, type StoreContext } from '../context';
 
-const COLUMNS = 'plugin_id, external_id, name, status, created_at as added_at';
+const COLUMNS = 'plugin_id, external_id, name, status, profile_id, created_at as added_at';
+
+export interface PluginPersonRecord {
+  readonly name: string;
+  readonly status: PluginPerson['status'];
+  readonly profile_id: string | null;
+}
 
 export class PluginPeopleRepository {
   constructor(private readonly context: StoreContext) {}
@@ -22,22 +28,26 @@ export class PluginPeopleRepository {
     );
   }
 
-  save(pluginId: string, externalId: string, change: PluginPersonChange): PluginPerson {
+  save(pluginId: string, externalId: string, record: PluginPersonRecord): PluginPerson {
     return this.context.write(() => {
       const now = this.context.now();
       this.context.sql.run(
         'save the plugin person',
-        `insert into plugin_people (plugin_id, external_id, name, status, created_at, updated_at)
-         values ($pluginId, $externalId, $name, $status, $now, $now)
+        `insert into plugin_people (plugin_id, external_id, name, status, profile_id, created_at, updated_at)
+         values ($pluginId, $externalId, $name, $status, $profileId, $now, $now)
          on conflict (plugin_id, external_id) do update set name = excluded.name,
-           status = excluded.status, updated_at = excluded.updated_at`,
-        { pluginId, externalId, name: change.name, status: change.status, now },
+           status = excluded.status, profile_id = excluded.profile_id,
+           updated_at = excluded.updated_at`,
+        {
+          pluginId,
+          externalId,
+          name: record.name,
+          status: record.status,
+          profileId: record.profile_id,
+          now,
+        },
       );
-      const saved = this.find(pluginId, externalId);
-      if (saved === undefined) {
-        throw new Error(`The plugin person ${externalId} was saved but cannot be read back.`);
-      }
-      return saved;
+      return found(this.find(pluginId, externalId), 'plugin person', externalId);
     });
   }
 

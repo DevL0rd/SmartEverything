@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { AppState } from 'react-native';
-import { Logger } from '@smarteverything/logging';
+import { useQueryClient } from '@tanstack/react-query';
+import { Logger, background } from '@smarteverything/logging';
 import {
   AppUpdateNeededError,
   addPhoneEventListener,
@@ -11,11 +11,15 @@ import {
   type PhoneNativeEvent,
   type PhoneNodeStatus,
 } from '../../../modules/health-connect';
-import { ValueStore, useValue } from '../../design/external-store';
+import { notify } from '../../components/toast-store';
+import { ValueStore } from '../../design/external-store';
 import { rawErrorText } from '../../format/errors';
+import { useScreenQuery } from '../../queries/use-screen-query';
 import type { RelayServer } from '../profiles';
 
 const log = new Logger('app.phone');
+
+const PHONE_NODE_KEY = ['native', 'phone-node'] as const;
 
 export type PhoneNodeState =
   | { readonly kind: 'unsupported' }
@@ -24,28 +28,37 @@ export type PhoneNodeState =
   | { readonly kind: 'update_needed'; readonly reason: string }
   | { readonly kind: 'failed'; readonly reason: string };
 
-const node = new ValueStore<PhoneNodeState>(
-  phoneNodeLinked ? { kind: 'loading' } : { kind: 'unsupported' },
-);
-
-function failed(event: string, error: unknown): void {
+export function phoneNodeStateOf(
+  linked: boolean,
+  status: PhoneNodeStatus | undefined,
+  error: Error | null,
+): PhoneNodeState {
+  if (!linked) {
+    return { kind: 'unsupported' };
+  }
+  if (status !== undefined) {
+    return { kind: 'ready', status };
+  }
+  if (error === null) {
+    return { kind: 'loading' };
+  }
   const reason = rawErrorText(error);
-  const updateNeeded = error instanceof AppUpdateNeededError;
-  log.warn(event, { reason });
-  node.set({ kind: updateNeeded ? 'update_needed' : 'failed', reason });
+  return error instanceof AppUpdateNeededError
+    ? { kind: 'update_needed', reason }
+    : { kind: 'failed', reason };
 }
+
+const changes = new ValueStore(0);
 
 export async function changePhoneNode(work: () => Promise<unknown>): Promise<void> {
   try {
     await work();
-    node.set({ kind: 'ready', status: await phoneNodeStatus() });
   } catch (error) {
-    failed('phone.change_failed', error);
+    log.warn('phone.change_failed', { reason: rawErrorText(error) });
+    notify({ message: 'The phone setting was not changed', error, tone: 'critical' });
+  } finally {
+    changes.update((count) => count + 1);
   }
-}
-
-function reloadPhoneNode(): Promise<void> {
-  return changePhoneNode(() => Promise.resolve());
 }
 
 const NOTABLE = new Set(['post_failed', 'post_retrying', 'places_error', 'parked_spot_skipped']);
@@ -57,27 +70,39 @@ function noted(event: PhoneNativeEvent): void {
   } else {
     log.info(`phone.native_${event.event}`, payload);
   }
-  void reloadPhoneNode();
 }
 
 export function usePhoneNode(): PhoneNodeState {
+  const client = useQueryClient();
+  const query = useScreenQuery({
+    queryKey: PHONE_NODE_KEY,
+    queryFn: phoneNodeStatus,
+    enabled: phoneNodeLinked,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
   useEffect(() => {
     if (!phoneNodeLinked) {
       return undefined;
     }
-    void reloadPhoneNode();
-    const events = addPhoneEventListener(noted);
-    const back = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void reloadPhoneNode();
-      }
+    const refresh = (): void => {
+      background(
+        client.invalidateQueries({ queryKey: PHONE_NODE_KEY }),
+        'queries.invalidate_failed',
+      );
+    };
+    const events = addPhoneEventListener((event) => {
+      noted(event);
+      refresh();
     });
+    const off = changes.subscribe(refresh);
     return (): void => {
       events.remove();
-      back.remove();
+      off();
     };
-  }, []);
-  return useValue(node);
+  }, [client]);
+  return phoneNodeStateOf(phoneNodeLinked, query.data, query.error);
 }
 
 export async function setPhoneNodeOn(on: boolean, server: RelayServer | null): Promise<void> {

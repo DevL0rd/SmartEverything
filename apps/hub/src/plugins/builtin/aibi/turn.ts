@@ -1,5 +1,5 @@
 import type { Params } from './catalogue';
-import type { SpeechKind, SpeechStream, Speeches } from './speech-stream';
+import { clean, type SpeechKind, type SpeechStream, type Speeches } from './speech-stream';
 
 export const TURN_TIMEOUT_MS = 15_000;
 const TRANSCRIPT_WAIT_MS = 250;
@@ -25,10 +25,6 @@ export type BodyOutcome = Extract<Outcome, { readonly kind: 'action' | 'look' }>
 
 function wordy(text: string): boolean {
   return /[\p{L}\p{N}]/u.test(text);
-}
-
-function clean(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
 }
 
 export class Turn {

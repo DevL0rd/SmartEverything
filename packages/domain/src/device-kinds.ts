@@ -93,16 +93,6 @@ export function baseNameOf(device: Pick<NamedDevice, 'name' | 'display_name'>): 
   return device.display_name ?? device.name;
 }
 
-function sameName(left: NamedDevice, right: NamedDevice): boolean {
-  return baseNameOf(left).trim().toLowerCase() === baseNameOf(right).trim().toLowerCase();
-}
-
-function roomPrefixed(device: NamedDevice, room: string): string {
-  const name = baseNameOf(device);
-  const generic = name.trim().toLowerCase() === DEVICE_KIND_LABELS[device.kind].toLowerCase();
-  return generic ? `${room} ${name.toLowerCase()}` : `${room} ${name}`;
-}
-
 export function roomNameOf(
   device: { readonly room_id: string | null },
   rooms: readonly NamedRoom[],
@@ -119,30 +109,4 @@ export function replacedIds(devices: readonly NamedDevice[]): ReadonlySet<string
     }
   }
   return ids;
-}
-
-export function displayName(
-  device: NamedDevice,
-  allDevices: readonly NamedDevice[],
-  rooms: readonly NamedRoom[],
-): string {
-  if (device.display_name !== null) {
-    return device.display_name;
-  }
-  const replaced = replacedIds(allDevices);
-  if (replaced.has(device.id)) {
-    return baseNameOf(device);
-  }
-  const twins = allDevices.filter((other) => !replaced.has(other.id) && sameName(other, device));
-  if (twins.length < 2) {
-    return baseNameOf(device);
-  }
-  const room = roomNameOf(device, rooms);
-  const peers = twins.filter((other) => roomNameOf(other, rooms) === room);
-  const named = room === null ? baseNameOf(device) : roomPrefixed(device, room);
-  if (peers.length < 2) {
-    return named;
-  }
-  const ordinal = peers.findIndex((other) => other.id === device.id) + 1;
-  return `${named} ${String(ordinal)}`;
 }

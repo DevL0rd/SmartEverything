@@ -78,12 +78,9 @@ const MOMENT = z.iso.datetime({ offset: true });
 const ZONE_OFFSET = z.int().min(-64_800).max(64_800).nullable();
 const ID = z.uuid();
 
-export const MULTIPLIER_MIN = 0.1;
-export const MULTIPLIER_MAX = 20;
+const LEGACY_MULTIPLIER = z.number().min(0.1).max(20);
 
-export const FOOD_MULTIPLIER = z.number().min(MULTIPLIER_MIN).max(MULTIPLIER_MAX);
-
-const LARGEST_PORTION = 10_000 * MULTIPLIER_MAX;
+const LARGEST_PORTION = 10_000 * 20;
 
 export const FOOD_PORTION = z.strictObject({
   foodId: ID.nullable(),
@@ -92,7 +89,7 @@ export const FOOD_PORTION = z.strictObject({
   unit: z.enum(PORTION_UNITS),
   label: z.string().trim().max(60),
   waterMl: z.number().min(0).max(LARGEST_PORTION),
-  multiplier: FOOD_MULTIPLIER.optional(),
+  multiplier: LEGACY_MULTIPLIER.optional(),
 });
 
 export type FoodPortion = z.infer<typeof FOOD_PORTION>;
@@ -134,7 +131,7 @@ function recordOf(entry: EntryShape, type: HealthRecordType, data: unknown): unk
 
 const PROBE_ID = '00000000-0000-4000-8000-000000000000';
 
-export const HEALTH_ENTRY_INPUT = z.strictObject(ENTRY_FIELDS).superRefine((input, context) => {
+export const HEALTH_ENTRY_INPUT = z.strictObject(ENTRY_FIELDS).transform((input, context) => {
   if (input.food !== null && input.type !== 'Nutrition') {
     context.addIssue({
       code: 'custom',
@@ -145,9 +142,17 @@ export const HEALTH_ENTRY_INPUT = z.strictObject(ENTRY_FIELDS).superRefine((inpu
   const probe = HEALTH_RECORD.safeParse(
     recordOf({ ...input, id: PROBE_ID, updatedAt: input.startTime }, input.type, input.data),
   );
-  for (const issue of probe.success ? [] : probe.error.issues) {
-    context.addIssue({ code: 'custom', message: issue.message, path: issue.path });
+  if (!probe.success) {
+    for (const issue of probe.error.issues) {
+      context.addIssue({ code: 'custom', message: issue.message, path: issue.path });
+    }
+    return z.NEVER;
   }
+  const kept: Record<string, unknown> = probe.data.data;
+  for (const key of Object.keys(input.data).filter((name) => !(name in kept))) {
+    context.addIssue({ code: 'custom', message: 'unknown field', path: ['data', key] });
+  }
+  return { ...input, data: kept };
 });
 
 export type HealthEntryInput = z.infer<typeof HEALTH_ENTRY_INPUT>;

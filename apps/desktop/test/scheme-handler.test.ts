@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   declaresScheme,
-  planSchemeRegistration,
-  SCHEME_HANDLER_FILE,
   SCHEME_MIME_TYPE,
   schemeHandlerEntry,
   xdgDataLocations,
@@ -90,59 +88,5 @@ describe('XDG data locations', () => {
       home: '/home/ann/.local/share',
       directories: ['/usr/local/share', '/usr/share'],
     });
-  });
-});
-
-describe('scheme registration plan', () => {
-  it('leaves the scheme to an installed package', () => {
-    expect(
-      planSchemeRegistration({
-        packagedHandlers: ['/usr/share/applications/smarteverything.desktop'],
-        userEntry: undefined,
-        desiredEntry: ENTRY,
-        currentDefault: '',
-      }),
-    ).toEqual({ kind: 'packaged', handlers: ['/usr/share/applications/smarteverything.desktop'] });
-  });
-
-  it('does nothing when the entry and the default already point here', () => {
-    expect(
-      planSchemeRegistration({
-        packagedHandlers: [],
-        userEntry: ENTRY,
-        desiredEntry: ENTRY,
-        currentDefault: SCHEME_HANDLER_FILE,
-      }),
-    ).toEqual({ kind: 'current' });
-  });
-
-  it('writes the entry on first run and after the app moved', () => {
-    expect(
-      planSchemeRegistration({
-        packagedHandlers: [],
-        userEntry: undefined,
-        desiredEntry: ENTRY,
-        currentDefault: '',
-      }),
-    ).toEqual({ kind: 'register', writeEntry: true });
-    expect(
-      planSchemeRegistration({
-        packagedHandlers: [],
-        userEntry: schemeHandlerEntry('SmartEverything', '/old/place/smarteverything'),
-        desiredEntry: ENTRY,
-        currentDefault: SCHEME_HANDLER_FILE,
-      }),
-    ).toEqual({ kind: 'register', writeEntry: true });
-  });
-
-  it('only resets the default when another handler took it', () => {
-    expect(
-      planSchemeRegistration({
-        packagedHandlers: [],
-        userEntry: ENTRY,
-        desiredEntry: ENTRY,
-        currentDefault: 'other.desktop',
-      }),
-    ).toEqual({ kind: 'register', writeEntry: false });
   });
 });

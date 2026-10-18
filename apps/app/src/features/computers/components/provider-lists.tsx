@@ -1,23 +1,24 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { CLAUDE_PROVIDER_OPTIONS, type ClaudeProviderOptions } from '@smarteverything/domain';
+import type { ClaudeProviderOptions } from '@smarteverything/domain';
 import { TextField } from '../../../components/text-field';
+import { checkOptions } from './provider-check';
 
 const FIELDS = [
   {
     key: 'builtin_tools',
     title: 'Built-in tools',
-    help: 'One exact runtime tool name per line. Empty keeps the SDK default preset.',
+    help: 'One exact runtime tool name per line. Leave empty for the default.',
   },
   {
     key: 'additional_directories',
     title: 'Additional directories',
-    help: 'One absolute directory on the supplying computer per line',
+    help: 'One absolute directory on this computer per line',
   },
   {
     key: 'plugins',
     title: 'Local plugins',
-    help: 'One absolute plugin directory on the supplying computer per line',
+    help: 'One absolute plugin directory on this computer per line',
   },
 ] as const;
 type Key = (typeof FIELDS)[number]['key'];
@@ -49,14 +50,7 @@ export function ProviderLists({
             const lines = text.split('\n').filter((line) => line !== '');
             const next =
               field.key === 'plugins' ? lines.map((path) => ({ type: 'local', path })) : lines;
-            const checked = CLAUDE_PROVIDER_OPTIONS.safeParse({ ...value, [field.key]: next });
-            invalid(
-              field.key,
-              checked.success
-                ? null
-                : checked.error.issues.map((issue) => issue.message).join('; '),
-            );
-            if (checked.success) change(checked.data);
+            checkOptions({ ...value, [field.key]: next }, field.key, change, invalid);
           }}
         />
       ))}

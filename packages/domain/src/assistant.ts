@@ -1,21 +1,19 @@
 import { AI_MESSAGE_REFERENCES } from './ai-references';
 import { z } from 'zod';
 export * from './assistant-response-style';
-export * from './assistant-settings-patch';
 import { AI_MESSAGE_FIELDS, CHAT_STEP_OUTCOMES } from './ai-chats';
-import { ASSISTANT_VOICE_SETTINGS } from './assistant-voice';
+import { ASSISTANT_VOICE_CHANGE, ASSISTANT_VOICE_SETTINGS } from './assistant-voice';
 import {
   ASSISTANT_RESPONSE_STYLE,
+  ASSISTANT_RESPONSE_STYLE_CHANGE,
   ASSISTANT_RESPONSE_STYLE_WRITE,
 } from './assistant-response-style';
 
 const ID = z.uuid();
 const MOMENT = z.iso.datetime({ offset: true });
 
-export const ASSISTANT_TEXT_MAX = 16_000;
 export const ASSISTANT_STEP_MAX = 200;
 export const ASSISTANT_STEPS_KEPT = 40;
-export const ASSISTANT_ATTACHMENTS_MAX = 10;
 export const ASSISTANT_ATTACHMENT_BYTES_MAX = 25 * 1024 * 1024;
 export const ASSISTANT_UPLOAD_CHUNK_BYTES = 512 * 1024;
 export const ASSISTANT_MESSAGES_SNAPSHOT = 60;
@@ -28,39 +26,51 @@ export const REUSE_CHAT_MINUTES = 120;
 
 export const COMPACT_AT_PERCENT = { min: 50, max: 95, step: 5, fallback: 85 } as const;
 
-const SETTINGS_FIELDS = {
-  response_style: ASSISTANT_RESPONSE_STYLE.optional(),
-  instructions: z.string().max(ASSISTANT_INSTRUCTIONS_MAX).default(''),
-  activity_steps: z.boolean().default(true),
-  name: ASSISTANT_NAME.nullable().default('Coordinator'),
-  aliases: z.array(ASSISTANT_NAME).max(10).default([]),
-  voice: ASSISTANT_VOICE_SETTINGS.prefault({}),
-  compact_at_percent: z
-    .int()
-    .min(COMPACT_AT_PERCENT.min)
-    .max(COMPACT_AT_PERCENT.max)
-    .default(COMPACT_AT_PERCENT.fallback),
+const SETTINGS_SHAPE = {
+  instructions: z.string().max(ASSISTANT_INSTRUCTIONS_MAX),
+  activity_steps: z.boolean(),
+  name: ASSISTANT_NAME.nullable(),
+  aliases: z.array(ASSISTANT_NAME).max(10),
+  voice: ASSISTANT_VOICE_CHANGE,
+  compact_at_percent: z.int().min(COMPACT_AT_PERCENT.min).max(COMPACT_AT_PERCENT.max),
   reuse_chat_minutes: z
     .int()
     .min(0)
     .max(1440)
-    .default(REUSE_CHAT_MINUTES)
     .describe(
       'Conversations the AI starts (calls, camera and channel talks, wake words) continue the person’s latest conversation chat if it was active within this many minutes; 0 starts a new chat every time',
     ),
-  reply_cost: z.boolean().default(true).describe('Show what each reply cost under it in the chat'),
+  describe_images: z
+    .boolean()
+    .describe(
+      'For models that can already see images, also store a short background description to carry in later turns; models that cannot see images always get one. Off leaves only the image details and the read_chats view attachment hint',
+    ),
+  reply_cost: z.boolean().describe('Show what each reply cost under it in the chat'),
   reply_suggestions: z
     .boolean()
-    .default(false)
     .describe(
       'After a reply in an app chat, ask a cheap model for up to three short follow-up replies to offer as taps; costs a little per reply',
     ),
   claude_link_auto: z
     .boolean()
-    .default(true)
     .describe(
       'When the hub starts and Claude Desktop is on this computer, install or repair the SmartEverything link in it automatically; false leaves the link as it is',
     ),
+};
+
+const SETTINGS_FIELDS = {
+  response_style: ASSISTANT_RESPONSE_STYLE.optional(),
+  instructions: SETTINGS_SHAPE.instructions.default(''),
+  activity_steps: SETTINGS_SHAPE.activity_steps.default(true),
+  name: SETTINGS_SHAPE.name.default('Coordinator'),
+  aliases: SETTINGS_SHAPE.aliases.default([]),
+  voice: ASSISTANT_VOICE_SETTINGS.prefault({}),
+  compact_at_percent: SETTINGS_SHAPE.compact_at_percent.default(COMPACT_AT_PERCENT.fallback),
+  reuse_chat_minutes: SETTINGS_SHAPE.reuse_chat_minutes.default(REUSE_CHAT_MINUTES),
+  describe_images: SETTINGS_SHAPE.describe_images.default(false),
+  reply_cost: SETTINGS_SHAPE.reply_cost.default(true),
+  reply_suggestions: SETTINGS_SHAPE.reply_suggestions.default(false),
+  claude_link_auto: SETTINGS_SHAPE.claude_link_auto.default(true),
 };
 
 export const ASSISTANT_SETTINGS = z.object(SETTINGS_FIELDS);
@@ -71,9 +81,12 @@ export const ASSISTANT_SETTINGS_WRITE = z.strictObject({
 
 export type AssistantSettings = z.output<typeof ASSISTANT_SETTINGS>;
 
-export const ASSISTANT_SETTINGS_CHANGE = ASSISTANT_SETTINGS_WRITE.omit({ response_style: true })
+export const ASSISTANT_SETTINGS_CHANGE = z
+  .strictObject({
+    ...SETTINGS_SHAPE,
+    response_style: ASSISTANT_RESPONSE_STYLE_CHANGE,
+  })
   .partial()
-  .extend({ response_style: ASSISTANT_RESPONSE_STYLE_WRITE.partial().optional() })
   .refine((patch) => Object.keys(patch).length > 0, {
     message: 'name at least one field to change',
   });
@@ -110,6 +123,10 @@ export const ASSISTANT_REASON_CODES = [
 
 export type AssistantReasonCode = (typeof ASSISTANT_REASON_CODES)[number];
 
+export function isInterruption(code: AssistantReasonCode | null): boolean {
+  return code === 'interrupted' || code === 'stopped';
+}
+
 export const ASSISTANT_ATTACHMENT = z.strictObject({
   id: ID,
   name: z.string().min(1).max(200),
@@ -117,7 +134,7 @@ export const ASSISTANT_ATTACHMENT = z.strictObject({
   bytes: z.int().min(1).max(ASSISTANT_ATTACHMENT_BYTES_MAX),
   width: z.int().min(1).nullable(),
   height: z.int().min(1).nullable(),
-  transcript: z.string().max(8000).nullable().optional(),
+  transcript: z.string().nullable().optional(),
 });
 
 export type AssistantAttachment = z.infer<typeof ASSISTANT_ATTACHMENT>;
@@ -129,8 +146,8 @@ export const ASSISTANT_MESSAGE_ROW = z.strictObject({
   role: z.enum(ASSISTANT_MESSAGE_ROLES),
   kind: z.enum(ASSISTANT_MESSAGE_KINDS),
   author: z.string().min(1).max(120),
-  text: z.string().max(ASSISTANT_TEXT_MAX),
-  attachments: z.array(ASSISTANT_ATTACHMENT).max(ASSISTANT_ATTACHMENTS_MAX),
+  text: z.string(),
+  attachments: z.array(ASSISTANT_ATTACHMENT),
   references: AI_MESSAGE_REFERENCES.default([]).optional(),
   state: z.enum(ASSISTANT_REQUEST_STATES).nullable(),
   reason: z.string().max(400).nullable(),

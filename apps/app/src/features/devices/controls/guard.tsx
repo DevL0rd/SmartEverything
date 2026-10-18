@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { Logger } from '@smarteverything/logging';
 import { Interactive } from '../../../components/interactive';
 import { notify } from '../../../components/toast-store';
+
+const log = new Logger('app.devices');
 
 export function Guard({
   reason,
@@ -21,6 +24,7 @@ export function Guard({
         className="absolute inset-0"
         layerClassName="rounded-md"
         onPress={() => {
+          log.debug('control.blocked', { reason });
           notify({ message: reason });
         }}
       >
@@ -29,6 +33,8 @@ export function Guard({
     </View>
   );
 }
+
+export const UNREACHABLE_REASON = 'Not reachable. Check its Wi‑Fi.';
 
 export function offlineReason(name: string): string {
   return `${name} is offline`;

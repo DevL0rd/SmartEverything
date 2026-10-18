@@ -1,7 +1,12 @@
 import { MEDIA_SIZES, isPrivate, privacySwitchOf, type MediaSize } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { Clock } from '../../../clock';
+import type { RunningHub } from '../../../hub';
+import type { Store } from '../../../store/store';
+import { deviceScopeOfActor } from './person-reach';
 import { READS, defineTool, type Tool, type ToolContext, type ToolImage } from './registry';
 import { inRooms, placedDevices, type Placed } from './targets';
+import { messageOf } from '@smarteverything/logging';
 
 export const IMAGE_LIMIT_BYTES = 4 * 1024 * 1024;
 
@@ -33,7 +38,7 @@ export interface Shot {
 
 function chosenCameras(context: ToolContext, input: Look): Placed[] {
   const cameras = new Set(context.store.cameras.list().map((camera) => camera.device_id));
-  return placedDevices(context.store).filter(
+  return placedDevices(context.store, deviceScopeOfActor(context)).filter(
     ({ device, room }) =>
       cameras.has(device.id) &&
       (input.deviceIds === undefined || input.deviceIds.includes(device.id)) &&
@@ -42,18 +47,23 @@ function chosenCameras(context: ToolContext, input: Look): Placed[] {
   );
 }
 
-function blocked(context: ToolContext, { device }: Placed): string | null {
+export interface ShotContext {
+  readonly store: Store;
+  readonly hub: Pick<RunningHub, 'snapshot'>;
+  readonly clock: Clock;
+}
+
+function blocked(context: ShotContext, { device }: Placed): string | null {
   if (!device.online) {
     return 'offline';
   }
   const privacy = privacySwitchOf(device);
-  const state = context.store.state
-    .list()
-    .find((row) => row.device_id === device.id && row.capability === privacy?.key);
-  return privacy !== null && isPrivate(privacy, state?.value) ? 'privacy_on' : null;
+  return privacy !== null && isPrivate(privacy, context.store.state.value(device.id, privacy.key))
+    ? 'privacy_on'
+    : null;
 }
 
-export async function shotOf(context: ToolContext, placed: Placed, size: MediaSize): Promise<Shot> {
+export async function shotOf(context: ShotContext, placed: Placed, size: MediaSize): Promise<Shot> {
   const item = {
     deviceId: placed.device.id,
     camera: placed.name,
@@ -77,7 +87,7 @@ export async function shotOf(context: ToolContext, placed: Placed, size: MediaSi
       image: { data: Buffer.from(frame).toString('base64'), mimeType: SNAPSHOT_TYPE },
     };
   } catch (cause) {
-    const reason = cause instanceof Error ? cause.message : String(cause);
+    const reason = messageOf(cause);
     return { item: { ...item, status: 'failed', reason }, image: null };
   }
 }

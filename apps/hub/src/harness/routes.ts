@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { meteredRouteId } from '../openrouter/metered-engine';
 import {
   ApiError,
   AI_MODEL_ROUTE,
@@ -10,6 +11,7 @@ import type {
   AiModelRoute,
   AiModelRouteSelection,
   AiModelRow,
+  AiPricing,
   AiHarnessTarget,
 } from '@smarteverything/domain';
 import type { Catalogue } from '../openrouter/catalogue';
@@ -36,17 +38,17 @@ export class HarnessRoutes {
       ...[...this.supplierRoutes.values()].filter((route) => route.profile_id === profileId),
     ];
   }
+  priceOf(modelId: string): AiPricing | null {
+    return this.catalogue.rows('chat').find((row) => row.id === modelId)?.pricing ?? null;
+  }
   resolve(profileId: string, model: string | null, effort: string | null): AiModelRouteSelection {
     const resolved = this.catalogue.resolve(
       model === null ? null : AI_MODEL_CHOICE.parse(model),
       effort === null ? null : AI_EFFORT.parse(effort),
     );
     const row = this.catalogue.model(resolved.model_id);
-    if (row.provider !== 'openrouter' || /^(?:anthropic|openai)\//.test(row.id))
-      throw new ApiError(
-        'conflict',
-        'This model requires an explicit supported subscription supplier; paid Claude and OpenAI routes are unavailable.',
-      );
+    if (row.provider !== 'openrouter')
+      throw new ApiError('conflict', 'Only OpenRouter models use the metered route.');
     const route = this.metered(profileId);
     const selected = {
       route_id: route.id,
@@ -109,15 +111,10 @@ export class HarnessRoutes {
   private metered(profileId: string): AiModelRoute {
     const rows = this.catalogue
       .rows('chat')
-      .filter(
-        (row) =>
-          row.provider === 'openrouter' &&
-          row.gone_at === null &&
-          !/^(?:anthropic|openai)\//.test(row.id),
-      );
+      .filter((row) => row.provider === 'openrouter' && row.gone_at === null);
     const revision = capabilityRevision(rows);
     const fields = {
-      id: routeId(profileId),
+      id: meteredRouteId(profileId),
       profile_id: profileId,
       supplier: { kind: 'server' } as const,
       subscriber_id: profileId,
@@ -142,10 +139,6 @@ export class HarnessRoutes {
           },
     );
   }
-}
-function routeId(profileId: string): string {
-  const digest = createHash('sha256').update(`harness-openrouter:${profileId}`).digest('hex');
-  return `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-8${digest.slice(17, 20)}-${digest.slice(20, 32)}`;
 }
 function model(row: AiModelRow, revision: string): AiModelRoute['models'][number] {
   return {

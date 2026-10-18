@@ -4,33 +4,51 @@ import type { Cancel, Clock } from '../clock';
 
 export const OPUS_SILENCE = Uint8Array.of(0xf8, 0xff, 0xfe);
 
+export const SPEAKER_LEAD_MS = 600;
+
+export interface TurnStats {
+  readonly lateMs: number;
+  readonly underrunMs: number;
+}
+
 export interface PacerOptions {
   readonly idle: Uint8Array | null;
-  readonly spoke: (frames: number) => void;
+  readonly spoke: (frames: number, stats: TurnStats) => void;
+  readonly leadMs?: number;
 }
 
 const NO_FILL: PacerOptions = { idle: null, spoke: () => undefined };
+const RESYNC_AFTER_MS = 1000;
 
 export class SpeakerPacer {
   private readonly queue: Uint8Array[] = [];
   private timer: Cancel | null = null;
   private readonly drained: (() => void)[] = [];
   private frames = 0;
+  private active = false;
+  private horizon = 0;
+  private plannedAt = 0;
+  private lateMs = 0;
+  private underrunMs = 0;
+  private readonly leadMs: number;
 
   constructor(
     private readonly clock: Pick<Clock, 'now' | 'at'>,
     private readonly play: (packet: Uint8Array) => void,
     private readonly options: PacerOptions = NO_FILL,
   ) {
+    this.leadMs = options.leadMs ?? SPEAKER_LEAD_MS;
     if (options.idle !== null) {
-      this.next();
+      this.start();
     }
   }
 
   push(packet: Uint8Array): void {
     this.queue.push(packet);
-    if (this.timer === null) {
-      this.next();
+    if (this.active) {
+      this.pump();
+    } else {
+      this.start();
     }
   }
 
@@ -48,33 +66,81 @@ export class SpeakerPacer {
 
   stop(): void {
     this.cut();
+    this.active = false;
     this.timer?.();
     this.timer = null;
   }
 
-  private next(): void {
-    const packet = this.queue.shift();
-    if (packet === undefined) {
+  private start(): void {
+    this.active = true;
+    this.horizon = this.clock.now().getTime();
+    this.pump();
+  }
+
+  private pump(): void {
+    const now = this.clock.now().getTime();
+    this.timer?.();
+    this.timer = null;
+    if (this.queue.length > 0 && this.horizon < now && this.frames > 0) {
+      this.underrunMs += now - this.horizon;
+    }
+    this.fill(now);
+    if (this.queue.length === 0 && this.horizon <= now) {
       this.finishTurn();
       if (this.options.idle === null) {
-        this.timer = null;
+        this.active = false;
         return;
       }
-      this.play(this.options.idle);
-    } else {
+      this.idle(now);
+    }
+    this.schedule();
+  }
+
+  private fill(now: number): void {
+    if (this.queue.length > 0) {
+      this.horizon = Math.max(this.horizon, now);
+    }
+    while (this.queue.length > 0 && this.horizon - now < this.leadMs) {
+      const packet = this.queue.shift();
+      if (packet === undefined) {
+        return;
+      }
       this.frames += 1;
       this.play(packet);
+      this.horizon += TALK_FRAME_MS;
     }
-    const due = new Date(this.clock.now().getTime() + TALK_FRAME_MS);
-    this.timer = this.clock.at(due, () => {
-      this.next();
+  }
+
+  private idle(now: number): void {
+    const silence = this.options.idle;
+    if (silence === null) {
+      return;
+    }
+    if (now - this.horizon > RESYNC_AFTER_MS) {
+      this.horizon = now;
+    }
+    while (this.horizon <= now) {
+      this.play(silence);
+      this.horizon += TALK_FRAME_MS;
+    }
+  }
+
+  private schedule(): void {
+    const wake = this.queue.length > 0 ? this.horizon - this.leadMs + TALK_FRAME_MS : this.horizon;
+    this.plannedAt = wake;
+    this.timer = this.clock.at(new Date(wake), () => {
+      this.timer = null;
+      this.lateMs = Math.max(this.lateMs, this.clock.now().getTime() - this.plannedAt);
+      this.pump();
     });
   }
 
   private finishTurn(): void {
     if (this.frames > 0) {
-      this.options.spoke(this.frames);
+      this.options.spoke(this.frames, { lateMs: this.lateMs, underrunMs: this.underrunMs });
       this.frames = 0;
+      this.lateMs = 0;
+      this.underrunMs = 0;
     }
     this.drained.splice(0).forEach((listener) => {
       listener();

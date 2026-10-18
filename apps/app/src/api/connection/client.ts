@@ -1,13 +1,8 @@
 import { z } from 'zod';
 import {
-  AI_ENGINE_HEADER,
+  API_ENDPOINTS as E,
   LIVE_SEQUENCE_HEADER,
   SEQ,
-  AI_ENGINE_HEADER_VALUE,
-  AI_ENGINE_HEADER_VALUE_V2,
-  AI_HARNESS_HEADER_VALUE,
-  AI_REFERENCE_HEADER_VALUE,
-  AI_ENGINE_CAPABILITIES_HEADER,
   apiErrorOf,
   buildPath,
   encodeQuery,
@@ -18,11 +13,11 @@ import { jsonText } from '../../format/json-text';
 import { WIRE_QUERY, wireQueryOf, type CallInput, type TypedEndpoint } from './request';
 import { Logger } from '@smarteverything/logging';
 import { rawErrorText } from '../../format/errors';
-import { noteServerCapabilities } from './server-capabilities';
 import { readLeniently, readTablesLeniently } from './readable';
 import { assertHubLease, type HubRouteLease } from './active-route';
 import { hubNetwork } from './route-platform';
 import { presentMediaResource } from './media-resources';
+import { RequestTrace, noteSendFailure } from './request-log';
 
 const log = new Logger('app.api');
 
@@ -87,6 +82,7 @@ function checked<S extends z.ZodType>(
 ): z.output<S> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
+    log.warn('api.request_invalid', { route, part, issues: issuesOf(parsed.error) });
     throw new InvalidRequestError(route, part, issuesOf(parsed.error));
   }
   return parsed.data;
@@ -104,6 +100,7 @@ function noteIgnored(route: string, ignored: readonly string[]): void {
 function answered<S extends z.ZodType>(route: string, schema: S, value: unknown): z.output<S> {
   const read = readLeniently(schema, value);
   if (!read.ok) {
+    log.warn('api.answer_unreadable', { route, issues: issuesOf(read.error) });
     throw new UnreadableAnswerError(route, issuesOf(read.error));
   }
   noteIgnored(route, read.ignored);
@@ -123,6 +120,7 @@ function answeredTables<S extends z.ZodType>(
 ): TablesAnswer<z.output<S>> {
   const read = readTablesLeniently(schema, value, roots);
   if (!read.ok) {
+    log.warn('api.answer_unreadable', { route, issues: issuesOf(read.error), roots });
     throw new UnreadableAnswerError(route, issuesOf(read.error));
   }
   noteIgnored(route, read.ignored);
@@ -208,13 +206,10 @@ export class ApiClient {
     } = {},
   ): Promise<z.output<R>> {
     let sequence: number | null = null;
-    let pinned: HubRouteLease | undefined;
-    const answer = await this.answerOf(endpoint, input, options.signal, (value, lease) => {
+    const answer = await this.answerOf(endpoint, input, options.signal, (value) => {
       sequence = value;
-      pinned = lease;
     });
     const result = answered(routeOf(endpoint), endpoint.response, answer);
-    if (pinned !== undefined) assertHubLease(pinned, endpoint.method);
     options.onSequence?.(sequence);
     return result;
   }
@@ -242,7 +237,7 @@ export class ApiClient {
     endpoint: TypedEndpoint<P, Q, B, R>,
     input: CallInput<P, Q, B>,
     signal?: AbortSignal,
-    sequence?: (seq: number | null, lease: HubRouteLease | undefined) => void,
+    sequence?: (seq: number | null) => void,
   ): Promise<unknown> {
     const route = routeOf(endpoint);
     const params = PATH_PARAMS.parse(checked(route, 'path', endpoint.params, input.params ?? {}));
@@ -251,6 +246,7 @@ export class ApiClient {
     const body: unknown = checked(route, 'body', endpoint.body, input.body);
     const path = `${buildPath(endpoint.path, params)}${encodeQuery(query)}`;
     return this.exchange(path, endpoint.method, body, {
+      route: endpoint.path === E.reportClientFailures.path ? null : route,
       authenticated: endpoint.access !== 'public',
       signal,
       sequence,
@@ -262,31 +258,41 @@ export class ApiClient {
     method: string,
     body: unknown,
     options: {
+      readonly route: string | null;
       readonly authenticated: boolean;
       readonly signal: AbortSignal | undefined;
-      readonly sequence:
-        ((seq: number | null, lease: HubRouteLease | undefined) => void) | undefined;
+      readonly sequence: ((seq: number | null) => void) | undefined;
     },
   ): Promise<unknown> {
-    await this.options.ready?.();
-    assertRequestActive(options.signal);
-    const lease = this.options.route?.();
-    const baseUrl = lease?.baseUrl ?? this.options.baseUrl;
-    const response = await this.send(`${baseUrl}${path}`, method, body, {
-      lease,
-      signal: options.signal,
-    });
-    const answer = await bodyOf(response);
-    if (lease !== undefined) assertHubLease(lease, method);
-    if (!response.ok) {
-      const refusal = apiErrorOf(response.status, answer);
-      if (refusal.code === 'unauthorized' && options.authenticated) {
-        this.options.onUnauthorized();
+    const trace = new RequestTrace(options.route, method, options.signal);
+    try {
+      await this.options.ready?.();
+      trace.ready();
+      assertRequestActive(options.signal);
+      const lease = this.options.route?.();
+      trace.lease = lease;
+      const baseUrl = lease?.baseUrl ?? this.options.baseUrl;
+      const response = await this.send(`${baseUrl}${path}`, method, body, {
+        lease,
+        signal: options.signal,
+      });
+      trace.status = response.status;
+      const answer = await bodyOf(response);
+      if (!response.ok) {
+        const refusal = apiErrorOf(response.status, answer);
+        if (refusal.code === 'unauthorized' && options.authenticated) {
+          log.warn('api.unauthorized', { route: options.route, status: trace.status });
+          this.options.onUnauthorized();
+        }
+        throw refusal;
       }
-      throw refusal;
+      options.sequence?.(sequenceOf(response));
+      trace.finish();
+      return answer;
+    } catch (error) {
+      trace.finish(error);
+      throw error;
     }
-    options.sequence?.(sequenceOf(response), lease);
-    return answer;
   }
 
   private async send(
@@ -306,20 +312,15 @@ export class ApiClient {
         redirect: 'error',
         ...(signal === undefined ? {} : { signal }),
         headers: {
-          [AI_ENGINE_HEADER]: `${AI_REFERENCE_HEADER_VALUE}, ${AI_HARNESS_HEADER_VALUE}, ${AI_ENGINE_HEADER_VALUE_V2}, ${AI_ENGINE_HEADER_VALUE}`,
           ...(token === null ? {} : { authorization: `Bearer ${token}` }),
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      if (lease !== undefined) assertHubLease(lease, method);
-      noteServerCapabilities(
-        this.options.baseUrl,
-        response.headers.get(AI_ENGINE_CAPABILITIES_HEADER),
-      );
       return response;
     } catch (error) {
       assertNotAborted(signal, error);
+      noteSendFailure(method, lease, signal, error);
       if (lease !== undefined) {
         assertHubLease(lease, method);
         lease.failed();

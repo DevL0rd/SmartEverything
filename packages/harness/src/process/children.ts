@@ -2,9 +2,9 @@ import { z } from 'zod';
 import type { HarnessRuntimeEvent } from '../host/events';
 import type { HarnessRuntime } from '../host/runtime';
 import type { HarnessControlPersistence } from './contracts';
-import type { ProcessProjection } from './projection';
-import { projectHarnessWork } from './projection';
-import type { AiHarnessSession, DshWriterClaim } from '@smarteverything/domain';
+import type { NativeForward } from './native-forward';
+import { projectHarnessWork } from './work-projection';
+import type { AiHarnessSession } from '@smarteverything/domain';
 const LINEAGE = z.object({ origin: z.string().optional(), parentSession: z.string().optional() });
 export class ProcessChildren {
   private readonly parents = new Map<string, string>();
@@ -12,15 +12,14 @@ export class ProcessChildren {
     private readonly runtime: HarnessRuntime,
     private readonly persistence: HarnessControlPersistence,
     private readonly ports: {
-      readonly projection: ProcessProjection;
+      readonly forward: NativeForward;
       readonly opened: Map<string, unknown>;
-      readonly closed: Map<string, DshWriterClaim>;
     },
   ) {
-    this.ports.projection.idle = async (id): Promise<void> => {
+    this.ports.forward.idle = async (id): Promise<void> => {
       await runtime.get(id).flush();
     };
-    this.ports.projection.workFor = (id): AiHarnessSession['work'] => [
+    this.ports.forward.workFor = (id): AiHarnessSession['work'] => [
       ...projectHarnessWork(id, runtime.get(id).work()),
       ...this.work(id),
     ];
@@ -36,7 +35,7 @@ export class ProcessChildren {
     if (event.kind !== 'status') return;
     let parent = this.parents.get(event.sessionId);
     while (parent !== undefined) {
-      this.ports.projection.event({
+      this.ports.forward.event({
         kind: 'status',
         sessionId: parent,
         status: this.runtime.get(parent).work().turn ? 'running' : 'idle',
@@ -59,18 +58,17 @@ export class ProcessChildren {
           ];
     });
   }
-  async settle(id: string, mode: 'drain' | 'close' | 'interrupt'): Promise<void> {
+  async settle(id: string, mode: 'close' | 'interrupt'): Promise<void> {
     for (const child of this.descendants(id)) {
       const session = this.runtime.get(child);
       if (mode === 'interrupt') await session.interrupt();
       else await session.drain();
-      await this.ports.projection.flush(child);
+      await this.ports.forward.flush(child);
       if (mode === 'close') {
-        const claim = this.persistence.claim(child);
         await this.runtime.close(child);
-        this.ports.projection.close(child);
+        this.persistence.lose(child);
+        this.ports.forward.close(child);
         this.ports.opened.delete(child);
-        this.ports.closed.set(child, claim);
         this.parents.delete(child);
       }
     }

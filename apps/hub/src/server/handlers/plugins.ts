@@ -5,26 +5,7 @@ import { searchHitsOf } from '../../plugins/search-hits';
 import type { Store } from '../../store/store';
 import type { SettingsAuthor } from '../../plugins/plugin-settings';
 import { clientOf, profileIdOf, type Caller } from '../auth';
-import { DONE_REPLY, bound, type Bound } from '../router';
-
-export type PluginRouteName =
-  | 'listPlugins'
-  | 'installPlugin'
-  | 'updatePlugin'
-  | 'restartPlugin'
-  | 'removePlugin'
-  | 'readPluginTools'
-  | 'callPluginTool'
-  | 'readPluginLog'
-  | 'readPluginData'
-  | 'listPluginSearch'
-  | 'readPluginOptions'
-  | 'listPluginPeople'
-  | 'setPluginPerson'
-  | 'removePluginPerson'
-  | 'postPluginMessage';
-
-type PluginRoutes = Record<PluginRouteName, Bound>;
+import { DONE_REPLY, bound } from '../router';
 
 function toolCallerOf(store: Store, caller: Caller): ToolCaller {
   const client = clientOf(caller);
@@ -65,8 +46,8 @@ function onThisComputer(caller: Caller): void {
   }
 }
 
-export function pluginRoutes(store: Store, admin: PluginAdmin): PluginRoutes {
-  return {
+export const pluginRoutes = (store: Store, admin: PluginAdmin) =>
+  ({
     listPlugins: bound(E.listPlugins, () => admin.list()),
     installPlugin: bound(E.installPlugin, ({ body, caller }) => {
       if (body.source === 'local') {
@@ -111,5 +92,4 @@ export function pluginRoutes(store: Store, admin: PluginAdmin): PluginRoutes {
       admin.post(caller.pluginId, body);
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;

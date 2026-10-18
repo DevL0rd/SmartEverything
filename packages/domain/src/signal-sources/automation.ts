@@ -1,6 +1,6 @@
 import type { SignalSourceSpec } from './spec';
 
-export const AUTOMATION_VALUE_SIGNALS: SignalSourceSpec = {
+const AUTOMATION_VALUE_SIGNALS: SignalSourceSpec = {
   source: 'automation_value',
   label: 'Automation Values',
   kinds: [
@@ -16,7 +16,7 @@ export const AUTOMATION_VALUE_SIGNALS: SignalSourceSpec = {
     },
   ],
 };
-export const AUTOMATION_RUN_SIGNALS: SignalSourceSpec = {
+const AUTOMATION_RUN_SIGNALS: SignalSourceSpec = {
   source: 'automation_run',
   label: 'Automation runs',
   kinds: [

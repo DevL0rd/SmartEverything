@@ -1,17 +1,23 @@
 import { previewCaptureImage } from './preview-capture-image';
 import {
+  API_ENDPOINTS,
   MCP_HUMAN_ONLY_OPERATIONS,
   MCP_UNAVAILABLE_OPERATIONS,
   MCP_OPERATION_TOOLS,
   MCP_TOOL_AREAS,
+  endpointAccessArea,
   mcpOperationArea,
+  mcpOperationTraits,
   type EndpointName,
   type McpPartName,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { OperationInput } from '../../../server/operations';
 import { operate } from './acting';
+import { areaRefusal, reachableAreas } from './person-reach';
 import { operationNamed } from './operation-names';
 import {
+  ACTING_FIELD,
   CALLABLE_OPERATIONS,
   isEndpointName,
   operationInput,
@@ -19,9 +25,10 @@ import {
   type OperationShape,
 } from './operation-shape';
 import {
-  PROFILE,
+  PERSON,
   READS,
   ToolError,
+  combinedAnnotations,
   REMOVES,
   WRITES,
   defineTool,
@@ -32,54 +39,39 @@ import {
   type ToolAnnotations,
   type ToolContext,
   type ToolOutput,
+  validArguments,
 } from './registry';
 
-const PROFILE_ID = z.uuid().optional();
+const PERSON_ID = z.uuid().optional();
+
+function inputOf(shape: OperationShape, args: Readonly<Record<string, unknown>>): OperationInput {
+  const input = operationInput(shape, args);
+  const { [ACTING_FIELD]: acting, ...rest } = args;
+  validArguments(shape.input, shape.acting ? { ...rest, [ACTING_FIELD]: acting } : rest);
+  return input;
+}
 
 async function called(
   context: ToolContext,
   shape: OperationShape,
   args: Readonly<Record<string, unknown>>,
 ): Promise<ToolOutput> {
-  const profileId = PROFILE_ID.parse(args['profileId']);
-  const result = await operate(context, shape.name, operationInput(shape, args), { profileId });
-  if (shape.name === 'capturePreviewViewport') return previewCaptureImage(context, result);
-  return { structured: { result: result ?? null } };
+  const personId = shape.acting ? PERSON_ID.parse(args[ACTING_FIELD]) : undefined;
+  const result = await operate(context, shape.name, inputOf(shape, args), { personId });
+  if (mcpOperationTraits(shape.name).returnsImage === true) {
+    return previewCaptureImage(context, result);
+  }
+  return { structured: { result: result ?? null }, action: reports(shape) };
 }
 
-const IMAGE_READ_OPERATIONS: ReadonlySet<EndpointName> = new Set([
-  'readPreviewLogs',
-  'searchPreviewLogs',
-  'capturePreviewViewport',
-  'resolveImageInput',
-  'waitForImages',
-]);
+function reports(shape: OperationShape): boolean {
+  return (
+    !annotationsFor(shape.name).readOnlyHint && mcpOperationTraits(shape.name).answers !== true
+  );
+}
 
-const SPECIAL_ANNOTATIONS: ReadonlyMap<EndpointName, ToolAnnotations> = new Map([
-  ['readAiProjectFiles', READS],
-  ['writeAiProjectFiles', { ...WRITES, idempotentHint: true, destructiveHint: true }],
-  ['removeAiProjectFiles', REMOVES],
-  ['readEmbeddedBrowser', READS],
-  ['clearPreviewWebsiteData', { ...REMOVES, openWorldHint: true }],
-  [
-    'startClaudeCliSession',
-    { ...WRITES, idempotentHint: true, destructiveHint: true, openWorldHint: true },
-  ],
-  [
-    'controlClaudeCliSession',
-    { ...WRITES, idempotentHint: true, destructiveHint: true, openWorldHint: true },
-  ],
-  ['answerClaudeCliPrompt', { ...WRITES, destructiveHint: true, openWorldHint: true }],
-  ['startImageOperation', { ...WRITES, openWorldHint: true }],
-  ['cancelImageOperation', { ...WRITES, idempotentHint: true, openWorldHint: true }],
-  ['listImageEndpoints', { ...READS, openWorldHint: true }],
-]);
-
-function annotationsOf(shape: OperationShape): ToolAnnotations {
-  const special = SPECIAL_ANNOTATIONS.get(shape.name);
-  if (special !== undefined) return special;
-  if (IMAGE_READ_OPERATIONS.has(shape.name)) return READS;
-  switch (shape.endpoint.method) {
+function annotationsByMethod(name: EndpointName): ToolAnnotations {
+  switch (API_ENDPOINTS[name].method) {
     case 'GET':
       return READS;
     case 'DELETE':
@@ -92,18 +84,22 @@ function annotationsOf(shape: OperationShape): ToolAnnotations {
   }
 }
 
+function annotationsFor(name: EndpointName): ToolAnnotations {
+  return { ...annotationsByMethod(name), ...mcpOperationTraits(name).hints };
+}
+
 export function operationTool(name: McpPartName, operation: EndpointName): Tool {
   const shape = operationShape(operation);
   return {
     name,
-    listing: listingOf(name, shape.input, annotationsOf(shape)),
+    input: shape.input,
+    listing: listingOf(name, jsonSchemaOf(shape.input, 'input'), annotationsFor(operation)),
     call: (context, args) => called(context, shape, args),
     check: (context, args): string | null => {
-      const profileId = PROFILE_ID.safeParse(args['profileId']);
-      if (!profileId.success) {
-        return 'profileId must be a person id from list_people';
+      if (!PERSON_ID.safeParse(args[ACTING_FIELD]).success) {
+        return 'personId must be a person id from list_people';
       }
-      return context.operations.check(shape.name, operationInput(shape, args));
+      return context.operations.check(shape.name, inputOf(shape, args));
     },
   };
 }
@@ -132,7 +128,6 @@ const LIST = z.strictObject({
   operations: z
     .array(z.string().min(1))
     .min(1)
-    .max(20)
     .optional()
     .describe(
       'Give the input JSON schema of these operations, named as in the listing (camelCase, such as listClaudeSessions)',
@@ -140,9 +135,18 @@ const LIST = z.strictObject({
   responses: z.boolean().default(false).describe('Also give their response JSON schemas'),
 });
 
+function availableOperation(asked: string): EndpointName {
+  const name = operationNamed(asked);
+  const reason = MCP_UNAVAILABLE_OPERATIONS[name];
+  if (reason !== undefined)
+    throw new ToolError(`${name} is unavailable to AI: ${reason}`, 'unsupported_operation');
+  return name;
+}
+
 function operationInScope(context: ToolContext, shape: OperationShape): boolean {
-  const areas = context.caller?.areas;
-  return areas === undefined || areas.includes(mcpOperationArea(shape.endpoint));
+  const areas = reachableAreas(context);
+  const area = endpointAccessArea(shape.endpoint);
+  return areas === undefined || area === null || areas.includes(area);
 }
 
 function detailed(
@@ -150,20 +154,15 @@ function detailed(
   asked: string,
   responses: boolean,
 ): Record<string, unknown> {
-  const name = operationNamed(asked);
-  const reason = MCP_UNAVAILABLE_OPERATIONS[name];
-  if (reason !== undefined)
-    throw new ToolError(`${name} is unavailable to AI: ${reason}`, 'unsupported_operation');
+  const name = availableOperation(asked);
   const shape = operationShape(name);
   if (!operationInScope(context, shape)) {
-    throw new ToolError(
-      `This caller may not discover ${name}; the owner chooses its operation areas`,
-      'forbidden',
-    );
+    throw areaRefusal(context, name, mcpOperationArea(shape.endpoint));
   }
   return {
     ...listed(name),
-    input: shape.input,
+    annotations: annotationsFor(name),
+    input: jsonSchemaOf(shape.input, 'input'),
     ...(responses ? { response: jsonSchemaOf(shape.endpoint.response, 'output') } : {}),
   };
 }
@@ -208,14 +207,11 @@ const CALL = z.strictObject({
     .describe(
       'Path parameters, query and body fields as list_operations gives them; a field it shows as body goes under a body key',
     ),
-  profileId: PROFILE,
+  personId: PERSON,
 });
 
 function callable(asked: string): EndpointName {
-  const name = operationNamed(asked);
-  const unavailable = MCP_UNAVAILABLE_OPERATIONS[name];
-  if (unavailable !== undefined)
-    throw new ToolError(`${name} is unavailable to AI: ${unavailable}`, 'unsupported_operation');
+  const name = availableOperation(asked);
   const reason = MCP_HUMAN_ONLY_OPERATIONS[name];
   if (reason !== undefined) {
     throw new ToolError(`${name} stays with the person: ${reason}`, 'human_only');
@@ -233,11 +229,11 @@ export const OPERATION_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'call_operation',
     input: CALL,
-    annotations: { ...WRITES, destructiveHint: true, openWorldHint: true },
+    annotations: combinedAnnotations(CALLABLE_OPERATIONS.map(annotationsFor)),
     run: (context, input) =>
       called(context, operationShape(callable(input.operation)), {
         ...input.arguments,
-        ...(input.profileId === undefined ? {} : { profileId: input.profileId }),
+        ...(input.personId === undefined ? {} : { personId: input.personId }),
       }),
   }),
   ...MCP_OPERATION_TOOLS.map(([name, operation]) => operationTool(name, operation)),

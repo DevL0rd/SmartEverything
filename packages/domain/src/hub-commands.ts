@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { MOMENT } from './api/primitives';
 import { PROVIDER } from './devices';
-import { SEALED } from './sealed';
+import { MAC_ADDRESS } from './mac-address';
 
 export const XIAOMI_REGIONS = ['cn', 'de', 'i2', 'ru', 'sg', 'us'] as const;
 
@@ -46,8 +47,9 @@ export const SMARTTHINGS_CREDENTIALS = z.object({
 export const SAMSUNG_TV_CREDENTIALS = z.object({
   provider: z.literal('samsung_tv'),
   host: z.string().min(1),
-  macAddress: z.string().regex(/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i),
+  macAddress: MAC_ADDRESS,
   name: z.string().min(1),
+  attachTo: z.uuid().optional(),
 });
 
 export const PROVIDER_CREDENTIALS = z.discriminatedUnion('provider', [
@@ -60,14 +62,6 @@ export const PROVIDER_CREDENTIALS = z.discriminatedUnion('provider', [
 export type ProviderCredentials = z.infer<typeof PROVIDER_CREDENTIALS>;
 
 export const HUB_COMMAND = z.discriminatedUnion('capability', [
-  z.object({
-    capability: z.literal('hub:link_provider'),
-    value: z.object({ provider: PROVIDER, credentials: SEALED }),
-  }),
-  z.object({
-    capability: z.literal('hub:answer_prompt'),
-    value: z.object({ provider: PROVIDER, answer: SEALED }),
-  }),
   z.object({
     capability: z.literal('hub:unlink_provider'),
     value: z.object({ provider: PROVIDER }),
@@ -95,7 +89,12 @@ export const PROVIDER_PROMPT = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('verification_code'), destination: z.string().min(1) }),
   z.object({ kind: z.literal('accept_on_device'), device: z.string().min(1) }),
   z.object({ kind: z.literal('authorize'), url: z.url() }),
-  z.object({ kind: z.literal('scan_qr'), app: z.string().min(1), content: z.string().min(1) }),
+  z.object({
+    kind: z.literal('scan_qr'),
+    app: z.string().min(1),
+    content: z.string().min(1),
+    expiresAt: MOMENT,
+  }),
 ]);
 
 export type ProviderPrompt = z.infer<typeof PROVIDER_PROMPT>;

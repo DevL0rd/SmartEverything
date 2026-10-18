@@ -12,7 +12,7 @@ import { Arc, angleAt, polar } from './charts/arc';
 import { clamp, snap, type Extent } from './charts/scale';
 import { Figure } from './figure';
 import { stepFormat } from './number-stepper';
-import { useFocusedKeys } from './slider';
+import { useFocusedKeys } from './focused-keys';
 import { Text } from './text';
 
 export interface TargetDialProps {

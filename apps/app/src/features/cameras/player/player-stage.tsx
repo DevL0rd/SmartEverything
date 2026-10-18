@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { GestureDetector, type ComposedGesture } from 'react-native-gesture-handler';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../design/theme-scope';
 import { cn } from '../../../design/cn';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
@@ -95,5 +95,5 @@ export function PlayerStage({
       {children}
     </View>
   );
-  return muted ? stage : <ScopedTheme theme="dark">{stage}</ScopedTheme>;
+  return muted ? stage : <ThemeScope theme="dark">{stage}</ThemeScope>;
 }

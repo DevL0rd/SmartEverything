@@ -1,5 +1,7 @@
+import { z } from 'zod';
 import {
   ApiError,
+  CLAUDE_SESSION_ID,
   type ClaudeCliAction,
   type ClaudeCliReceipt,
   type ClaudeCliSession,
@@ -14,6 +16,9 @@ import {
   type ManagedClaudeContext,
 } from './managed-scope';
 import { applyCliAction, validateCliAction } from './managed-operations';
+import { messageOf } from '@smarteverything/logging';
+
+const ADOPTED = z.strictObject({ session_id: CLAUDE_SESSION_ID });
 
 export class ManagedClaudeService {
   private readonly controlling = new Set<string>();
@@ -54,14 +59,54 @@ export class ManagedClaudeService {
     if (known !== undefined) return known;
     readyClaudeScope(this.context, deviceId);
     const receipt = this.reserveStart(actor, deviceId, input, request);
-    return this.deliver(receipt, () => {
+    return this.deliver(receipt, async () => {
+      if (input.continue_from !== undefined)
+        await this.adoptOrDiscard(actor, deviceId, receipt.chat_id, {
+          source: input.continue_from.session_id,
+          cwd: input.settings.cwd,
+        });
+      if (input.message === undefined) return { message_id: null, application: 'native' };
       const message = this.context.assistant.send(
         actor,
         { ...input.message, client_message_id: input.operation_id },
         receipt.chat_id,
       );
-      return Promise.resolve({ message_id: message.id, application: 'native' });
+      return { message_id: message.id, application: 'native' };
     });
+  }
+  private async adoptOrDiscard(
+    actor: ManagedClaudeActor,
+    deviceId: string,
+    chatId: string,
+    from: { readonly source: string; readonly cwd: string },
+  ): Promise<void> {
+    try {
+      await this.adopt(actor, deviceId, chatId, from);
+    } catch (cause) {
+      await this.context.assistant.removeChat(actor, chatId);
+      throw cause;
+    }
+  }
+  private async adopt(
+    actor: ManagedClaudeActor,
+    deviceId: string,
+    chatId: string,
+    from: { readonly source: string; readonly cwd: string },
+  ): Promise<void> {
+    const scope = ownedClaudeScope(this.context, actor, deviceId, chatId);
+    const adopted = await this.context.computerAi.request(
+      deviceId,
+      {
+        operation: 'provider_adopt',
+        session_id: from.source,
+        chat_id: chatId,
+        profile_id: actor.profileId,
+        cwd: from.cwd,
+      },
+      ADOPTED,
+    );
+    const state = scope.runner.state.read(scope.chat);
+    scope.runner.state.save(scope.chat, { ...state, session_id: adopted.session_id });
   }
   private reserveStart(
     actor: ManagedClaudeActor,
@@ -77,6 +122,9 @@ export class ManagedClaudeService {
           model: input.model,
           effort: input.effort,
           settings: input.settings,
+          ...(input.continue_from === undefined
+            ? {}
+            : { continued_from: input.continue_from.session_id }),
         },
         ...(input.title === undefined ? {} : { title: input.title }),
       });
@@ -153,10 +201,7 @@ export class ManagedClaudeService {
       return this.context.store.claudeCliOperations.save({
         ...receipt,
         state: 'unknown',
-        reason:
-          cause instanceof Error
-            ? cause.message.slice(0, 2000)
-            : 'The CLI operation was not acknowledged. Its outcome is unknown and it will not be repeated.',
+        reason: messageOf(cause).slice(0, 2000),
       });
     }
   }

@@ -11,12 +11,16 @@ import {
   seriesOf,
   seriesOfType,
 } from './catalogue';
-import { baselineOf, figureOn, latestFigure, seriesFor } from './daily';
-import { pointsOfDaily, pointsOfRecords } from './points';
+import { baselineOf, figureOn, latestFigure, pointsOfDaily } from './daily';
+import { pointsOfRecords } from './points';
 import { trendWords } from './format';
-import { vitalOf } from './vitals';
+import { barsOf, headlineLabel, rangeBucketsOf, seriesStats } from './series-stats';
 import { at, seedRecord } from './test-support';
 import { windowOf } from './window';
+import { DAY_MS, startOfDayKey } from '../../../format/time';
+
+const THURSDAY_END = startOfDayKey('2026-10-08') + DAY_MS;
+const FAR_FUTURE = startOfDayKey('2027-01-01');
 
 describe('the health series catalogue', () => {
   it('maps every Health Connect record type to exactly one series', () => {
@@ -31,8 +35,25 @@ describe('the health series catalogue', () => {
       spec.dailyRange?.min ?? null,
       spec.dailyRange?.max ?? null,
     ]);
+    const shownElsewhere = new Set<string>([
+      'protein',
+      'carbohydrate',
+      'fat',
+      'fiber',
+      'sugar',
+      'saturated_fat',
+      'sodium',
+      'caffeine',
+      'stress_average',
+      'stress_maximum',
+      'vitality',
+    ]);
     for (const metric of HEALTH_METRICS) {
-      expect(covered).toContain(metric);
+      if (shownElsewhere.has(metric)) {
+        expect(covered).not.toContain(metric);
+      } else {
+        expect(covered).toContain(metric);
+      }
     }
   });
 
@@ -48,10 +69,11 @@ describe('the health series catalogue', () => {
   });
 
   it('formats amounts with their scale and unit', () => {
-    expect(formatReading(seriesOf('distance'), 5230)).toBe('5.23 km');
-    expect(formatReading(seriesOf('height'), 1.82)).toBe('182 cm');
-    expect(formatAmount(seriesOf('steps'), 12_400)).toBe('12.4k');
-    expect(formatAmount(seriesOf('steps'), 8204)).toBe('8204');
+    expect(formatReading(seriesOf('distance'), 5230)).toBe('5.23\u00a0km');
+    expect(formatReading(seriesOf('height'), 1.82)).toBe('182\u00a0cm');
+    expect(formatReading(seriesOf('oxygen_saturation'), 97)).toBe('97%');
+    expect(formatAmount(seriesOf('steps'), 12_400)).toBe('12.4K');
+    expect(formatAmount(seriesOf('steps'), 8204)).toBe('8,204');
   });
 });
 
@@ -71,7 +93,7 @@ describe('series points and aggregation', () => {
 
   it('sums buckets for summed measures and leaves empty buckets empty', () => {
     const window = windowOf('week', '2026-10-08');
-    const buckets = bucketise(steps, window, pointsOfRecords(steps, records));
+    const buckets = bucketise(steps, window, pointsOfRecords(steps, records), THURSDAY_END);
     expect(buckets.map((bucket) => bucket.value)).toEqual([
       null,
       5000,
@@ -84,16 +106,26 @@ describe('series points and aggregation', () => {
     expect(bestBucket(steps, buckets)?.label).toBe('Tue');
   });
 
-  it('summarises a period as a daily average with the total beside it', () => {
+  it('averages a running period over the days elapsed so far, not only the days with data', () => {
     const summary = summarise(
       steps,
       windowOf('week', '2026-10-08'),
       pointsOfRecords(steps, records),
+      THURSDAY_END,
     );
     expect(summary.total).toBe(9000);
-    expect(summary.headline).toBe(4500);
-    expect(summary.daysWithData).toBe(2);
+    expect(summary.headline).toBe(2250);
     expect(summary.count).toBe(3);
+  });
+
+  it('averages a finished period over all of its days', () => {
+    const summary = summarise(
+      steps,
+      windowOf('week', '2026-10-08'),
+      pointsOfRecords(steps, records),
+      FAR_FUTURE,
+    );
+    expect(summary.headline).toBe(9000 / 7);
   });
 
   it('a single day headline is the day total', () => {
@@ -101,6 +133,7 @@ describe('series points and aggregation', () => {
       steps,
       windowOf('day', '2026-10-06'),
       pointsOfRecords(steps, records),
+      FAR_FUTURE,
     );
     expect(summary.headline).toBe(5000);
   });
@@ -110,6 +143,7 @@ describe('series points and aggregation', () => {
       steps,
       windowOf('day', '2026-10-01'),
       pointsOfRecords(steps, records),
+      FAR_FUTURE,
     );
     expect(summary).toEqual({
       headline: null,
@@ -117,7 +151,6 @@ describe('series points and aggregation', () => {
       low: null,
       high: null,
       latest: null,
-      daysWithData: 0,
       count: 0,
     });
   });
@@ -128,7 +161,7 @@ describe('series points and aggregation', () => {
       seedRecord({ type: 'Weight', start: at(3, 7), data: { kilograms: 81 } }),
       seedRecord({ type: 'Weight', start: at(5, 7), data: { kilograms: 79.5 } }),
     ]);
-    const summary = summarise(weight, windowOf('week', '2026-10-05'), points);
+    const summary = summarise(weight, windowOf('week', '2026-10-05'), points, FAR_FUTURE);
     expect(summary.headline).toBe(79.5);
     expect(summary.low).toBe(79.5);
   });
@@ -171,13 +204,76 @@ describe('series points and aggregation', () => {
     expect(pointsOfDaily(seriesOf('blood_pressure'), [])).toEqual([]);
   });
 
-  it('year buckets average summed measures per day with data', () => {
+  it('year buckets average summed measures per elapsed day of the month', () => {
     const points = pointsOfDaily(steps, [
       { day: '2026-10-01', metric: 'steps', value: 6000 },
       { day: '2026-10-02', metric: 'steps', value: 10_000 },
     ]);
-    const buckets = bucketise(steps, windowOf('year', '2026-10-08'), points);
-    expect(buckets[9]?.value).toBe(8000);
+    const year = windowOf('year', '2026-10-08');
+    expect(bucketise(steps, year, points, THURSDAY_END)[9]?.value).toBe(16_000 / 8);
+    expect(bucketise(steps, year, points, FAR_FUTURE)[9]?.value).toBe(16_000 / 31);
+  });
+
+  it('counts occurrence series instead of averaging them', () => {
+    const tests = seriesOf('ovulation_test');
+    const points = pointsOfRecords(tests, [
+      seedRecord({ type: 'OvulationTest', start: at(7, 8), data: { result: 1 } }),
+    ]);
+    const summary = summarise(tests, windowOf('week', '2026-10-08'), points, THURSDAY_END);
+    expect(summary.headline).toBe(1);
+    expect(headlineLabel(tests, 'week')).toBe('Count');
+    expect(headlineLabel(tests, 'day')).toBe('Count');
+    expect(headlineLabel(steps, 'week')).toBe('Daily average');
+    expect(headlineLabel(steps, 'day')).toBe('Total');
+  });
+
+  it('keeps every bucket for range charts, empty ones as gaps, with the bar tick labels', () => {
+    const heart = seriesOf('heart_rate');
+    const week = windowOf('week', '2026-10-08');
+    const points = pointsOfDaily(heart, [
+      { day: '2026-10-06', metric: 'heart_rate_average', value: 70 },
+      { day: '2026-10-06', metric: 'heart_rate_minimum', value: 50 },
+      { day: '2026-10-06', metric: 'heart_rate_maximum', value: 150 },
+    ]);
+    const buckets = bucketise(heart, week, points, THURSDAY_END);
+    const ranges = rangeBucketsOf('week', buckets);
+    expect(ranges).toHaveLength(7);
+    expect(ranges.map((bucket) => bucket.label)).toEqual(
+      barsOf('week', buckets).map((bar) => bar.label),
+    );
+    expect(ranges.map((bucket) => [bucket.min, bucket.max])).toEqual([
+      [null, null],
+      [50, 150],
+      [null, null],
+      [null, null],
+      [null, null],
+      [null, null],
+      [null, null],
+    ]);
+  });
+
+  it('labels the previous period by name only when it is the one just gone', () => {
+    const week = windowOf('week', '2026-10-08');
+    const points = pointsOfRecords(steps, records);
+    const facts = (current: boolean): ReturnType<typeof seriesStats> =>
+      seriesStats({
+        spec: steps,
+        range: 'week',
+        current,
+        summary: summarise(steps, week, points, THURSDAY_END),
+        previous: {
+          headline: 100,
+          total: 700,
+          low: 100,
+          high: 100,
+          latest: 100,
+          count: 1,
+        },
+        trend: null,
+        buckets: [],
+      });
+    expect(facts(true).map((stat) => stat.label)).toContain('Last week');
+    expect(facts(false).map((stat) => stat.label)).toContain('Previous week');
   });
 
   it('trends say whether a change is good for the measure', () => {
@@ -233,19 +329,14 @@ describe('daily figures', () => {
     expect(latestFigure(figures, 'resting_heart_rate', '2026-10-09')?.value).toBe(60);
     expect(latestFigure(figures, 'weight', '2026-10-09')).toBeNull();
   });
-
-  it('lines a metric up against a list of days', () => {
-    expect(seriesFor(figures, 'resting_heart_rate', ['2026-10-05', '2026-10-06'])).toEqual([
-      null,
-      56,
-    ]);
-  });
 });
 
 describe('trend wording', () => {
   it('scales the change into the shown unit and adds the percentage', () => {
     const distance = seriesOf('distance');
-    expect(trendWords(distance, trendOf(5500, 5000, 'higher'), true)).toBe('↑ +0.50 km (+10%)');
+    expect(trendWords(distance, trendOf(5500, 5000, 'higher'), true)).toBe(
+      '↑ +0.50\u00a0km (+10%)',
+    );
     expect(trendWords(distance, trendOf(4000, 5000, 'higher'), false)).toBe('↓ −1.00 (−20%)');
     expect(trendWords(distance, trendOf(1, 0, 'higher'), false)).toBe('→ steady');
     expect(trendWords(distance, trendOf(20, 0, 'higher'), false)).toBe('↑ +0.02');
@@ -254,29 +345,25 @@ describe('trend wording', () => {
   });
 });
 
-describe('vital readings', () => {
-  const resting = seriesOf('resting_heart_rate');
-  const figures = [
-    { day: '2026-10-05', metric: 'resting_heart_rate', value: 56 },
-    { day: '2026-10-06', metric: 'resting_heart_rate', value: 54 },
-    { day: '2026-10-07', metric: 'resting_heart_rate', value: 52 },
-  ];
-
-  it('reads the newest value, its trend against earlier days and a sparkline', () => {
-    const reading = vitalOf(resting, figures, '2026-10-08', 3);
-    expect(reading.value).toBe(52);
-    expect(reading.spark).toEqual([54, 52]);
-    expect(reading.trend).toMatchObject({ delta: -3, good: true });
-    expect(reading.when).toBe('Yesterday');
-    expect(vitalOf(resting, figures, '2026-10-07', 3).when).toBe('today');
-  });
-
-  it('says when nothing was synced', () => {
-    expect(vitalOf(resting, [], '2026-10-08', 3)).toEqual({
-      value: null,
-      spark: [],
-      trend: null,
-      when: 'not synced yet',
+describe('sleep duration points', () => {
+  it('reads a staged night as asleep minutes, not time in bed', () => {
+    const night = seedRecord({
+      type: 'SleepSession',
+      start: at(7, 23),
+      end: at(8, 7),
+      data: {
+        title: null,
+        notes: null,
+        stages: [
+          { startTime: at(7, 23).toISOString(), endTime: at(8, 1).toISOString(), stage: 4 },
+          { startTime: at(8, 1).toISOString(), endTime: at(8, 2).toISOString(), stage: 1 },
+          { startTime: at(8, 2).toISOString(), endTime: at(8, 7).toISOString(), stage: 5 },
+        ],
+      },
     });
+    const points = pointsOfRecords(seriesOfType('SleepSession'), [night]);
+    expect(points).toHaveLength(1);
+    expect(points[0]?.value).toBe(420);
+    expect(points[0]?.at).toBe(at(8, 7).getTime());
   });
 });

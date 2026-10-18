@@ -1,4 +1,5 @@
-import { ASSISTANT_TEXT_MAX, type CallTranscript, type CallTurn } from '@smarteverything/domain';
+import type { CallTranscript, CallTurn } from '@smarteverything/domain';
+import { systemClock, type Cancel, type Clock } from '../clock';
 import type { Store } from '../store/store';
 import type { Speaker } from './call-link';
 
@@ -12,8 +13,7 @@ export interface CallRecordStart {
 
 export type RecordedTurn = CallTurn;
 
-const TURN_TEXT_MAX = 2000;
-const TURNS_KEPT = 400;
+const SAVE_EVERY_MS = 3000;
 
 function labelOf(speaker: Speaker, start: CallRecordStart): string {
   if (speaker === 'person') {
@@ -24,11 +24,15 @@ function labelOf(speaker: Speaker, start: CallRecordStart): string {
 
 export class CallRecord {
   readonly messageId: string;
-  private turns: CallTurn[] = [];
+  private readonly turns: CallTurn[] = [];
+  private pending: Cancel | null = null;
+  private savedAt = 0;
+  private final: string | null = null;
 
   constructor(
     private readonly store: Store,
     private readonly start: CallRecordStart,
+    private readonly clock: Pick<Clock, 'now' | 'at'> = systemClock,
   ) {
     this.messageId = store.assistantChat.addMessage({
       profile_id: start.profileId,
@@ -53,36 +57,42 @@ export class CallRecord {
   }
 
   add(turn: RecordedTurn): void {
-    this.turns = [...this.turns, { ...turn, text: turn.text.slice(0, TURN_TEXT_MAX) }].slice(
-      -TURNS_KEPT,
-    );
-    this.save();
+    this.turns.push(turn);
+    this.schedule();
   }
 
   transcript(): string {
-    return this.lines();
+    return this.final ?? this.text();
   }
 
   close(): void {
-    this.save();
+    this.pending?.();
+    this.pending = null;
+    this.final = this.text();
+    this.store.assistantChat.updateMessage(this.messageId, {
+      text: this.final,
+      embeds: [this.embed()],
+    });
     this.store.aiChats.touched(this.start.chatId, 0);
   }
 
-  private save(): void {
-    const embed: CallTranscript = { kind: 'call_transcript', turns: this.turns };
-    this.store.assistantChat.updateMessage(this.messageId, {
-      text: this.lines(),
-      embeds: [embed],
+  private schedule(): void {
+    if (this.pending !== null) {
+      return;
+    }
+    const wait = Math.max(0, this.savedAt + SAVE_EVERY_MS - this.clock.now().getTime());
+    this.pending = this.clock.at(new Date(this.clock.now().getTime() + wait), () => {
+      this.pending = null;
+      this.savedAt = this.clock.now().getTime();
+      this.store.assistantChat.updateMessage(this.messageId, { embeds: [this.embed()] });
     });
   }
 
-  private lines(): string {
-    const lines = this.turns.map((turn) => `${labelOf(turn.who, this.start)}${turn.text}`);
-    let text = lines.join('\n');
-    while (text.length > ASSISTANT_TEXT_MAX && lines.length > 0) {
-      lines.shift();
-      text = lines.join('\n');
-    }
-    return text;
+  private embed(): CallTranscript {
+    return { kind: 'call_transcript', turns: this.turns };
+  }
+
+  private text(): string {
+    return this.turns.map((turn) => `${labelOf(turn.who, this.start)}${turn.text}`).join('\n');
   }
 }

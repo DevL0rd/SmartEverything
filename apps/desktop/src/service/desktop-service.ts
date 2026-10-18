@@ -1,23 +1,32 @@
 import { statSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import type { DesktopFfmpeg, DesktopPlatform } from '@smarteverything/domain';
+import type { DesktopPlatform } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { app } from 'electron';
 import { readSearchPath, readXdgEnvironment } from '../environment.js';
 import type { DesktopPaths } from '../paths.js';
 import type { DesktopVariant } from '../variant.js';
 import { ServiceController } from './controller.js';
-import type { ServiceLaunch } from './definitions.js';
+import {
+  HUB_SERVICE_NAMES,
+  NODE_SERVICE_NAMES,
+  type ServiceLaunch,
+  type ServiceNames,
+} from './definitions.js';
 import { linuxManager } from './linux-manager.js';
-import { linuxSystemManager } from './linux-system-manager.js';
 import { openWebSocket } from './live-link.js';
-import { serviceLocations } from './locations.js';
+import { companionDirectory, serviceLocations } from './locations.js';
 import { macManager } from './mac-manager.js';
 import type { ManagerContext, ServiceManager } from './manager.js';
-import { ffmpegCheck, servicePath } from './search-path.js';
-import { nodeSystem, runAwaitingApproval } from './system.js';
+import type { Companion } from './companion.js';
+import { efficiencyCores } from './efficiency-cores.js';
+import { servicePath } from './search-path.js';
+import { nodeSystem } from './system.js';
 import { windowsManager } from './windows-manager.js';
 
 const READY_TIMEOUT_MS = 60_000;
+
+const log = new Logger('desktop.service');
 
 class ServiceResourceMissingError extends Error {
   readonly file: string;
@@ -51,9 +60,7 @@ function isFile(candidate: string): boolean {
 function managerFor(platform: DesktopPlatform, context: ManagerContext): ServiceManager {
   switch (platform) {
     case 'linux':
-      return isFile(context.locations.systemUnitFile)
-        ? linuxSystemManager(context, runAwaitingApproval)
-        : linuxManager(context);
+      return linuxManager(context);
     case 'darwin':
       return macManager(context);
     case 'win32':
@@ -63,10 +70,57 @@ function managerFor(platform: DesktopPlatform, context: ManagerContext): Service
 
 export interface DesktopService {
   readonly controller: ServiceController;
+  readonly companion: Companion;
   readonly launch: ServiceLaunch;
-  readonly user: string;
-  readonly ffmpeg: () => DesktopFfmpeg;
   readonly checkResources: () => void;
+}
+
+interface RoleInput {
+  readonly names: ServiceNames;
+  readonly platform: DesktopPlatform;
+  readonly dataDirectory: string;
+  readonly paths: DesktopPaths;
+  readonly failed: (cause: unknown) => void;
+  readonly managedBy: DesktopVariant['managedBy'];
+}
+
+function createRole(input: RoleInput): Companion {
+  const { names, platform, dataDirectory, paths } = input;
+  const launch: ServiceLaunch = {
+    executable: process.execPath,
+    entry: paths.serviceEntry,
+    dataDirectory,
+    path: servicePath(platform, readSearchPath()),
+    efficiencyCores: efficiencyCores(platform),
+  };
+  const locations = serviceLocations(
+    {
+      home: app.getPath('home'),
+      dataDirectory,
+      xdgConfigHome: readXdgEnvironment().XDG_CONFIG_HOME,
+    },
+    names,
+  );
+  const account = userInfo();
+  const user = { name: account.username, uid: account.uid };
+  const manager = managerFor(platform, { names, launch, locations, system: nodeSystem, user });
+  log.info('service.created', { platform, manager: manager.kind, role: names.role });
+  return {
+    manager,
+    locations,
+    system: nodeSystem,
+    launch,
+    controller: new ServiceController({
+      manager,
+      locations,
+      system: nodeSystem,
+      go2rtcBinary: paths.go2rtcBinary,
+      openSocket: openWebSocket,
+      timeoutMs: READY_TIMEOUT_MS,
+      failed: input.failed,
+      managedBy: input.managedBy,
+    }),
+  };
 }
 
 export function createDesktopService(
@@ -75,42 +129,31 @@ export function createDesktopService(
   variant: DesktopVariant,
   failed: (cause: unknown) => void,
 ): DesktopService {
-  const launch: ServiceLaunch = {
-    executable: process.execPath,
-    entry: paths.serviceEntry,
+  const shared = { platform, paths, failed, managedBy: variant.managedBy };
+  const primary = createRole({
+    ...shared,
+    names: HUB_SERVICE_NAMES,
     dataDirectory: paths.dataDirectory,
-    path: servicePath(platform, readSearchPath()),
-  };
-  const locations = serviceLocations({
-    home: app.getPath('home'),
-    dataDirectory: paths.dataDirectory,
-    xdgConfigHome: readXdgEnvironment().XDG_CONFIG_HOME,
   });
-  const account = userInfo();
-  const user = { name: account.username, uid: account.uid };
-  const manager = managerFor(platform, { launch, locations, system: nodeSystem, user });
+  const companion = createRole({
+    ...shared,
+    names: NODE_SERVICE_NAMES,
+    dataDirectory: companionDirectory(paths.dataDirectory),
+  });
   const remedy = app.isPackaged
     ? 'Reinstall SmartEverything.'
     : 'Run "pnpm run build:go2rtc" and "pnpm --filter @smarteverything/desktop run build".';
   return {
-    controller: new ServiceController({
-      manager,
-      locations,
-      system: nodeSystem,
-      go2rtcBinary: paths.go2rtcBinary,
-      openSocket: openWebSocket,
-      timeoutMs: READY_TIMEOUT_MS,
-      failed,
-      managedBy: variant.managedBy,
-    }),
-    launch,
-    user: user.name,
-    ffmpeg: () => ffmpegCheck(platform, launch.path, isFile),
+    controller: primary.controller,
+    companion,
+    launch: primary.launch,
     checkResources: (): void => {
-      if (!isFile(paths.serviceEntry)) {
+      const entry = isFile(paths.serviceEntry);
+      const go2rtc = isFile(paths.go2rtcBinary);
+      if (!entry) {
         throw new ServiceResourceMissingError('The server program', paths.serviceEntry, remedy);
       }
-      if (!isFile(paths.go2rtcBinary)) {
+      if (!go2rtc) {
         throw new ServiceResourceMissingError('go2rtc', paths.go2rtcBinary, remedy);
       }
     },

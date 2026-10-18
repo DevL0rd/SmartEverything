@@ -20,9 +20,7 @@ export interface RatesFailed {
 }
 
 export class ExchangeRatesRepository {
-  constructor(private readonly context: StoreContext) {}
-
-  ensure(): void {
+  constructor(private readonly context: StoreContext) {
     this.context.sql.run(
       'create the exchange rates row',
       `insert or ignore into exchange_rates (id, updated_at) values ('usd', $now)`,

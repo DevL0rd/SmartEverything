@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError } from '@smarteverything/domain';
+import { messageOf } from '@smarteverything/logging';
 
 export const PUBLIC_BODY_LIMIT = 64 * 1024;
 
@@ -42,10 +43,7 @@ export function parseJsonBody(request: IncomingMessage, raw: Buffer): unknown {
     const parsed: unknown = JSON.parse(raw.toString('utf8'));
     return parsed;
   } catch (error) {
-    throw new ApiError(
-      'invalid_request',
-      `The body is not JSON: ${error instanceof Error ? error.message : String(error)}.`,
-    );
+    throw new ApiError('invalid_request', `The body is not JSON: ${messageOf(error)}.`);
   }
 }
 

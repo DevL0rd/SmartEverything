@@ -22,7 +22,7 @@ export function CopyField({ label, value }: CopyFieldProps): ReactNode {
         >
           {value}
         </NativeText>
-        <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} />
+        <CopyButton value={value} label={`Copy ${label.toLowerCase()}`} what={label} />
       </View>
     </View>
   );

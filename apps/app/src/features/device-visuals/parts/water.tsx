@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ViewStyle } from 'react-native';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { LinearGradient, Path, Stop } from 'react-native-svg';
 import { loopStyle, sway } from '../../../design/loops';
 import { boxStyle, scaled, useSvgId, type Box } from './frame';
 
@@ -12,12 +12,10 @@ function Wave({ height, colour }: { readonly height: number; readonly colour: st
   const depth = useSvgId('water');
   return (
     <Svg width="100%" height="100%" viewBox={`0 0 80 ${String(height)}`} preserveAspectRatio="none">
-      <Defs>
-        <LinearGradient id={depth} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor={colour} stopOpacity={0.85} />
-          <Stop offset="1" stopColor={colour} stopOpacity={0.45} />
-        </LinearGradient>
-      </Defs>
+      <LinearGradient id={depth} x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0" stopColor={colour} stopOpacity={0.85} />
+        <Stop offset="1" stopColor={colour} stopOpacity={0.45} />
+      </LinearGradient>
       <Path d={WAVE} fill={`url(#${depth})`} />
     </Svg>
   );

@@ -1,15 +1,15 @@
 import type { ReactNode } from 'react';
-import { SCENE_ACTIONS, type SceneRow } from '@smarteverything/domain';
+import type { SceneRow } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import { useRows } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
-import { runSceneNow, sceneIcon } from '../../automations';
+import { readScene, runSceneNow, sceneIcon } from '../../automations';
 
 function touches(scene: SceneRow, ids: ReadonlySet<string>): boolean {
-  const actions = SCENE_ACTIONS.safeParse(scene.actions);
-  return actions.success && actions.data.some((action) => ids.has(action.deviceId));
+  const reading = readScene(scene);
+  return reading.readable && reading.draft.actions.some((action) => ids.has(action.deviceId));
 }
 
 export function RoomScenes({ devices }: { readonly devices: readonly Device[] }): ReactNode {

@@ -10,11 +10,12 @@ import { notify } from '../../../../components/toast-store';
 import { useRows } from '../../../../store/selectors';
 import { errorText } from '../../../../format/errors';
 import { Attachments } from '../../components/attachments';
-import { CollapseBody, CollapseRoot, TurnChevron } from '../../components/disclosure';
+import { CollapseBody, CollapseRoot, TurnChevron } from '../../../../components/disclosure';
 import type { MessageItem } from '../../data/thread';
 import { useImageActions, useImagePreview } from '../data/image-queries';
 import { imageReceiptStatus } from '../model/image-receipt';
 import { pendingImageFrame, type ImageOperationItem } from '../model/image-thread';
+import { background } from '@smarteverything/logging';
 
 function PendingImage({ receipt }: { readonly receipt: ImageOperationReceipt }): ReactNode {
   const preview = useImagePreview(receipt.id);
@@ -176,7 +177,7 @@ function TerminalImageNotice({ receipt }: { readonly receipt: ImageOperationRece
     <Text variant="footnote" tone={receipt.state === 'failed' ? 'critical' : 'warning'}>
       {receipt.state === 'failed'
         ? 'The image request could not finish. No result was saved.'
-        : 'The image request was interrupted. No result was saved; provider delivery or billing is unconfirmed. Check the receipt before trying again.'}
+        : 'The image request stopped. Nothing was saved. You may still be charged; check Costs before trying again.'}
     </Text>
   );
 }
@@ -231,7 +232,7 @@ function ReceiptActions({ receipt }: { readonly receipt: ImageOperationReceipt }
             loading={pending === 'cancel'}
             disabled={pending !== null || requested}
             onPress={() => {
-              void request(true);
+              background(request(true), 'image_receipts.request_failed');
             }}
           />
         ) : null}
@@ -242,7 +243,7 @@ function ReceiptActions({ receipt }: { readonly receipt: ImageOperationReceipt }
             loading={pending === 'read'}
             disabled={pending !== null}
             onPress={() => {
-              void request(false);
+              background(request(false), 'image_receipts.request_failed');
             }}
           />
         ) : null}

@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 export const SHELLY_PRESENCE_PLUGIN_ID = 'shelly-presence';
 export const SHELLY_PRESENCE_STREAM = 'shelly-presence.snapshot';
+export const SHELLY_PRESENCE_TRACKS_STREAM = 'shelly-presence.tracks';
+export function shellyComponentCapability(key: string): `raw:${string}` {
+  return `raw:shelly.component.${key}`;
+}
 export const SHELLY_PRESENCE_OPERATION_CAPABILITY = 'raw:shelly.operation';
 export const SHELLY_PRESENCE_DETECTION_CAPABILITY = 'raw:shelly.detection_enabled';
 export const SHELLY_PRESENCE_PAGES = [

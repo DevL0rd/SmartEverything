@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { memo } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import type { AiChatRow } from '@smarteverything/domain';
@@ -37,7 +38,7 @@ function IntroChip({
   );
 }
 
-export function ChatIntro({ chat }: { readonly chat: AiChatRow }): ReactNode {
+function ChatIntroBase({ chat }: { readonly chat: AiChatRow }): ReactNode {
   const model = useChatModel(chat.engine);
   const now = useMinute();
   const timeZone = useStoreSelector((state) => state.settings?.time_zone ?? null);
@@ -59,3 +60,24 @@ export function ChatIntro({ chat }: { readonly chat: AiChatRow }): ReactNode {
     </View>
   );
 }
+
+function sameIntro(
+  left: { readonly chat: AiChatRow },
+  right: { readonly chat: AiChatRow },
+): boolean {
+  const [a, b] = [left.chat, right.chat];
+  return (
+    a === b ||
+    (a.id === b.id &&
+      a.title === b.title &&
+      a.created_at === b.created_at &&
+      a.pinned === b.pinned &&
+      a.engine === b.engine &&
+      a.parent_id === b.parent_id &&
+      a.kind === b.kind &&
+      a.origin === b.origin &&
+      a.source_key === b.source_key)
+  );
+}
+
+export const ChatIntro = memo(ChatIntroBase, sameIntro);

@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useScreenQuery } from '../../queries/use-screen-query';
 import type { ProfileRow, WatchCandidate } from '@smarteverything/domain';
 import { addXiaomiWatch, listWatchCandidates } from '../../api/people';
 import { Banner } from '../../components/banner';
@@ -16,6 +17,7 @@ import { appPlatform } from '../../design/platform';
 import { errorText } from '../../format/errors';
 import { WATCH_CANDIDATES_KEY } from '../../queries/keys';
 import { useActiveProfile, useProfiles } from '../../store/people';
+import { background } from '@smarteverything/logging';
 
 function problemOf(error: unknown): string {
   const text = errorText(error);
@@ -92,6 +94,28 @@ function Added({ name, here }: { readonly name: string; readonly here: boolean }
   );
 }
 
+function CandidatesError({
+  error,
+  refetch,
+}: {
+  readonly error: unknown;
+  readonly refetch: () => Promise<unknown>;
+}): ReactNode {
+  return (
+    <Banner
+      tone="critical"
+      title="Couldn’t read your watches"
+      body={problemOf(error)}
+      action={{
+        label: 'Try again',
+        onPress: () => {
+          background(refetch(), 'candidates.refetch_failed');
+        },
+      }}
+    />
+  );
+}
+
 function Picking({
   chosen,
   profileId,
@@ -104,7 +128,7 @@ function Picking({
   readonly onProfile: (profileId: string) => void;
 }): ReactNode {
   const profiles = useProfiles();
-  const candidates = useQuery({
+  const candidates = useScreenQuery({
     queryKey: WATCH_CANDIDATES_KEY,
     queryFn: listWatchCandidates,
     retry: false,
@@ -113,14 +137,7 @@ function Picking({
     return <Text tone="variant">Looking in your Mi Fitness account…</Text>;
   }
   if (candidates.isError) {
-    return (
-      <Banner
-        tone="critical"
-        title="Couldn’t read your watches"
-        body={problemOf(candidates.error)}
-        action={{ label: 'Try again', onPress: () => void candidates.refetch() }}
-      />
-    );
+    return <CandidatesError error={candidates.error} refetch={candidates.refetch} />;
   }
   if (candidates.data.watches.length === 0) {
     return (
@@ -150,29 +167,31 @@ interface AddWatch {
 
 function useAddWatch(): AddWatch {
   const client = useQueryClient();
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [added, setAdded] = useState<string | null>(null);
+  const [missing, setMissing] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: ({ address, profileId }: { address: string; profileId: string }) =>
+      addXiaomiWatch(address, profileId),
+    onSuccess: (): void => {
+      background(
+        client.invalidateQueries({ queryKey: WATCH_CANDIDATES_KEY }),
+        'queries.invalidate_failed',
+      );
+    },
+  });
   const add = (address: string | null, profileId: string | null): void => {
     if (address === null || profileId === null) {
-      setProblem(address === null ? 'Pick a watch' : 'Pick whose watch it is');
+      setMissing(address === null ? 'Pick a watch' : 'Pick whose watch it is');
       return;
     }
-    setBusy(true);
-    setProblem(null);
-    addXiaomiWatch(address, profileId).then(
-      (device) => {
-        setBusy(false);
-        setAdded(device.name);
-        void client.invalidateQueries({ queryKey: WATCH_CANDIDATES_KEY });
-      },
-      (error: unknown) => {
-        setBusy(false);
-        setProblem(problemOf(error));
-      },
-    );
+    setMissing(null);
+    mutation.mutate({ address, profileId });
   };
-  return { busy, problem, added, add };
+  return {
+    busy: mutation.isPending,
+    problem: missing ?? (mutation.error === null ? null : problemOf(mutation.error)),
+    added: mutation.data?.name ?? null,
+    add,
+  };
 }
 
 export function WatchSetupFlow(): ReactNode {

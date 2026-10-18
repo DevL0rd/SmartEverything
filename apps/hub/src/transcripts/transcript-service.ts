@@ -1,11 +1,8 @@
 import type { PluginSpeechReader } from '../store/repositories/speech';
-import type {
-  PluginTranscriptPage,
-  PluginTranscriptPageQuery,
-} from '../store/repositories/plugin-transcript-page';
 import type { TranscriptFeedQuery, TranscriptScope } from '../store/repositories/transcript-reader';
 import {
   ApiError,
+  TRANSCRIPT_SOURCES,
   type TranscriptPage,
   type TranscriptRange,
   type TranscriptDetail,
@@ -20,10 +17,12 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { Store } from '../store/store';
+import { LineLevels } from './line-levels';
+import { collapseHeard } from './merged-read';
 import { TranscriptSettingsStore } from './transcript-settings';
 
 export interface TranscriptsOptions {
-  readonly store: Pick<Store, 'transcripts' | 'aiChats' | 'speech'>;
+  readonly store: Pick<Store, 'transcripts' | 'settingsKv' | 'speech'>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
@@ -45,6 +44,7 @@ export interface TranscriptFilter {
 
 export class Transcripts {
   private readonly saved: TranscriptSettingsStore;
+  private readonly levels = new LineLevels();
   private timer: Cancel | null = null;
 
   constructor(private readonly options: TranscriptsOptions) {
@@ -54,7 +54,10 @@ export class Transcripts {
   start(): void {
     const { transcripts } = this.options.store;
     const at = this.now().toISOString();
-    const closed = transcripts.closeOpen('camera', at) + transcripts.closeOpen('plugin', at);
+    const closed = TRANSCRIPT_SOURCES.reduce(
+      (total, source) => total + transcripts.closeOpen(source, at),
+      0,
+    );
     if (closed > 0) {
       this.options.log.info('transcripts.unfinished_closed', { count: closed });
     }
@@ -90,8 +93,12 @@ export class Transcripts {
     return this.options.store.speech.register(pluginId, reader);
   }
 
-  add(sessionId: string, line: TranscriptLineInput): TranscriptLine {
-    return this.options.store.transcripts.append(sessionId, line);
+  add(sessionId: string, line: TranscriptLineInput, levelDbfs?: number): TranscriptLine {
+    const added = this.options.store.transcripts.append(sessionId, line);
+    if (levelDbfs !== undefined) {
+      this.levels.note(added.id, levelDbfs, this.now().getTime());
+    }
+    return added;
   }
 
   close(sessionId: string, endedAt?: string): TranscriptSession {
@@ -123,7 +130,17 @@ export class Transcripts {
   search(
     filter: TranscriptFilter & { readonly words: string; readonly limit: number },
   ): TranscriptHit[] {
-    return this.options.store.transcripts.search(filter);
+    const hits = this.options.store.transcripts.search(filter);
+    const kept = new Set(
+      collapseHeard(
+        hits.map((hit) => ({
+          line: hit.line,
+          origin: `${hit.session.source}:${hit.session.source_id}`,
+          levelDbfs: this.levels.of(hit.line.id),
+        })),
+      ).map((heard) => heard.line.id),
+    );
+    return hits.filter((hit) => kept.has(hit.line.id));
   }
 
   feed(scope: TranscriptScope, query: TranscriptFeedQuery): TranscriptPage {
@@ -132,14 +149,6 @@ export class Transcripts {
 
   range(scope: TranscriptScope, anchor: number, limit: number): TranscriptRange {
     return this.options.store.transcripts.reader.range(scope, anchor, limit);
-  }
-
-  pluginPage(
-    pluginId: string,
-    sessionId: string,
-    query: PluginTranscriptPageQuery,
-  ): PluginTranscriptPage {
-    return this.options.store.transcripts.pluginPage.read(pluginId, sessionId, query);
   }
 
   remove(sessionId: string): void {
@@ -152,6 +161,10 @@ export class Transcripts {
     }
     this.options.store.transcripts.remove(sessionId);
     this.arm();
+  }
+
+  removeLine(sessionId: string, lineId: number): void {
+    this.options.store.transcripts.removeLine(sessionId, lineId);
   }
 
   private prune(): void {

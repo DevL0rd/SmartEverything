@@ -6,10 +6,12 @@ import Animated, {
   useSharedValue,
   type AnimatedRef,
 } from 'react-native-reanimated';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useIsFocused, useScrollToTop } from 'expo-router';
+import { withUniwind } from 'uniwind';
 import { cn } from '../design/cn';
+import { useScreenViewport } from '../design/viewport';
 import { Ambient } from './ambient';
-import { KeyboardViewport } from './keyboard-viewport';
 import { useToastObstacle } from './toast-obstacles';
 import {
   PrimaryAction,
@@ -17,6 +19,8 @@ import {
   type PrimaryActionProps,
 } from './primary-action';
 import { HeaderSlotContext, ScreenContext, useScreen, type ScreenValue } from './screen-context';
+
+const KeyboardViewport = withUniwind(KeyboardAvoidingView);
 
 type ScreenWidth = 'dashboard' | 'detail' | 'reading' | 'full';
 
@@ -124,9 +128,10 @@ function useScreenValue(
   primaryAction: PrimaryActionProps | undefined,
   scrollable: boolean,
 ): ScreenValue {
+  const viewport = useScreenViewport(scrollY);
   return useMemo(
-    () => ({ scrollY, scrollRef, scrollable, primaryAction: primaryAction ?? null }),
-    [scrollY, scrollRef, scrollable, primaryAction],
+    () => ({ scrollY, scrollRef, scrollable, primaryAction: primaryAction ?? null, viewport }),
+    [scrollY, scrollRef, scrollable, primaryAction, viewport],
   );
 }
 
@@ -200,7 +205,7 @@ export function Screen({
   );
   return (
     <ScreenContext.Provider value={value}>
-      <KeyboardViewport>
+      <KeyboardViewport behavior="padding" automaticOffset className="flex-1">
         <Ambient />
         {header}
         <ContentBody

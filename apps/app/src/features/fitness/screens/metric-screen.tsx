@@ -12,7 +12,7 @@ import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
 import { joinParts } from '../../../format/text';
 import { FitnessToolbar } from '../components/fitness-toolbar';
-import { MetricSection } from '../components/metric-section';
+import { MetricCard } from '../components/metric-section';
 import { useFitnessParams } from '../data/day';
 import { useSeries } from '../data/series';
 import { isSeriesKey, seriesOf } from '../model/catalogue';
@@ -21,7 +21,7 @@ import { newestFirst, startOf } from '../model/records';
 import type { SeriesSpec } from '../model/series-spec';
 import { appName } from '../model/sources';
 import { clock, dayKeyOf, dayLabel, startOfDayKey } from '../../../format/time';
-import { RANGES, windowOf, type Window } from '../model/window';
+import { RANGES, windowOf } from '../model/window';
 
 const SHOWN_RECORDS = 30;
 
@@ -69,22 +69,19 @@ function logAction(spec: SeriesSpec): HeaderAction | null {
 }
 
 function Records({
-  spec,
-  window,
+  records,
   today,
 }: {
-  readonly spec: SeriesSpec;
-  readonly window: Window;
+  readonly records: readonly HealthRecord[];
   readonly today: string;
 }): ReactNode {
-  const view = useSeries(spec, window, true);
-  const records = newestFirst(view.records).slice(0, SHOWN_RECORDS);
-  if (records.length === 0) {
+  const shown = newestFirst(records).slice(0, SHOWN_RECORDS);
+  if (shown.length === 0) {
     return null;
   }
   return (
     <List title="Entries" inset>
-      {records.map((record) => (
+      {shown.map((record) => (
         <RecordRow key={record.recordId} record={record} today={today} />
       ))}
     </List>
@@ -93,12 +90,12 @@ function Records({
 
 function MetricBody({ spec }: { readonly spec: SeriesSpec }): ReactNode {
   const { day, today, range } = useFitnessParams(spec.daily === null ? 'month' : 'week');
-  const window = windowOf(range, day);
+  const view = useSeries(spec, windowOf(range, day), true);
   return (
     <>
       <FitnessToolbar day={day} today={today} range={range} ranges={RANGES} />
-      <MetricSection spec={spec} window={window} link={false} />
-      <Records spec={spec} window={window} today={today} />
+      <MetricCard spec={spec} view={view} link={false} />
+      <Records records={view.records} today={today} />
     </>
   );
 }

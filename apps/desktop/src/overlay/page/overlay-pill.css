@@ -1,0 +1,558 @@
+.ov {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: clip;
+  font-family: Geist-Regular, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --spring-pill: linear(
+    0,
+    0.18 6%,
+    0.55 13%,
+    0.9 22%,
+    1.04 31%,
+    1.05 38%,
+    1.03 47%,
+    1.01 56%,
+    1 70%,
+    1
+  );
+  --spring-level: linear(0, 0.45 10%, 0.88 24%, 1.06 40%, 1.02 58%, 1 78%, 1);
+}
+.pos-left .pill {
+  margin: 0 auto 0 0;
+}
+.pos-right .pill {
+  margin: 0 0 0 auto;
+}
+.ov[hidden] {
+  display: none;
+}
+.pill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: var(--pw, 360px);
+  height: 64px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  column-gap: 12px;
+  padding: 0 12px;
+  border-radius: 32px;
+  border: 1px solid var(--color-outline);
+  background: var(--overlay-surface);
+  box-shadow: var(--overlay-shadow), var(--overlay-highlight);
+  isolation: isolate;
+  color: var(--color-on-surface);
+  pointer-events: auto;
+  cursor: default;
+  transition: width 240ms var(--ease);
+  will-change: transform;
+}
+.pill.noctl {
+  padding-right: 20px;
+}
+.pill.in {
+  animation: ov-in 380ms var(--spring-pill) both;
+}
+.pill.out {
+  animation: ov-out 200ms ease-in both;
+  pointer-events: none;
+}
+@keyframes ov-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ov-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+@keyframes ov-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ov-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.txt {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 40px;
+  position: relative;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.txt-in {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.txt-in.swap {
+  animation: ov-swap 160ms ease-out both;
+}
+.txt-in.out {
+  animation: ov-swap-out 160ms ease-in both;
+  pointer-events: none;
+}
+@keyframes ov-swap {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ov-swap-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.swap {
+  animation: ov-fade 160ms ease-out both;
+}
+.st {
+  font:
+    500 12px/16px Geist-Medium,
+    system-ui;
+  letter-spacing: 0.2px;
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cap {
+  font:
+    15px/20px Geist-Regular,
+    system-ui;
+  color: var(--color-on-surface);
+  display: flex;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.cap span {
+  flex: none;
+}
+.cap.over {
+  justify-content: flex-end;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0 6px, #000 30px);
+  mask-image: linear-gradient(90deg, transparent 0 6px, #000 30px);
+}
+.single .st {
+  font:
+    500 15px/20px Geist-Medium,
+    system-ui;
+  letter-spacing: 0;
+  color: var(--color-on-surface);
+}
+.rib {
+  flex: none;
+  width: 56px;
+  height: 28px;
+  display: flex;
+  gap: 3.5px;
+  align-items: center;
+  justify-content: center;
+  margin-right: -4px;
+  --rib: var(--color-primary);
+}
+.rib i {
+  flex: none;
+  width: 3px;
+  height: 28px;
+  border-radius: 1.5px;
+  background: var(--rib);
+  transform-origin: center;
+  transform: scaleY(0.143);
+  will-change: transform;
+  transition: transform 180ms var(--spring-level);
+}
+[data-orb='speaking'] ~ .rib {
+  --rib: var(--color-viz-1);
+}
+.muted .rib {
+  --rib: var(--color-on-surface-faint);
+}
+.b {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-on-surface-variant);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 50%;
+  position: relative;
+  font: inherit;
+}
+.b + .b {
+  margin-left: -8px;
+}
+.bi {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: background-color 120ms;
+}
+.b:hover .bi {
+  background: var(--color-surface-3);
+}
+.b:active .bi {
+  background: var(--color-surface-3);
+}
+.b[aria-pressed='true'] .bi {
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+}
+.b .bi.crit,
+.b:hover .bi.crit {
+  background: var(--color-critical);
+  color: var(--overlay-on-critical);
+}
+.b:hover .bi.crit {
+  filter: brightness(1.08);
+}
+.b:focus-visible {
+  outline: none;
+}
+.b:focus-visible .bi {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.t {
+  flex: none;
+  height: 32px;
+  border: 0;
+  border-radius: 16px;
+  padding: 0 14px;
+  background: var(--color-primary-container);
+  color: var(--color-on-primary-container);
+  font:
+    500 14px/20px Geist-Medium,
+    system-ui;
+  cursor: pointer;
+}
+.t:hover {
+  filter: brightness(1.1);
+}
+.t:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.t + .b {
+  margin-left: -6px;
+}
+.st::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--dot, var(--color-primary));
+  box-shadow: 0 0 6px var(--dot, var(--color-primary));
+}
+.single .st::before {
+  vertical-align: 2px;
+}
+[data-state='speaking'] {
+  --dot: var(--color-viz-1);
+}
+[data-state='error'] {
+  --dot: var(--color-critical);
+}
+[data-state='reconnecting'],
+[data-state='elsewhere'],
+[data-state='ended'] {
+  --dot: var(--color-on-surface-faint);
+}
+[data-state='listening'] .st::before,
+[data-state='wake'] .st::before,
+[data-state='thinking'] .st::before {
+  animation: o-breathe 1100ms ease-in-out infinite alternate;
+}
+.pill.in .rib.swap,
+.pill.in .b.swap,
+.pill.in .t.swap {
+  animation-delay: 110ms;
+  animation-duration: 260ms;
+}
+.pill.out {
+  animation: ov-out 200ms ease-in both;
+}
+@keyframes ov-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+  }
+}
+.rib i {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rib) 70%, #fff), var(--rib));
+}
+.ov.rm .pill.in .rib.swap,
+.ov.rm .pill.in .b.swap,
+.ov.rm .pill.in .t.swap {
+  animation: none;
+}
+.single .st,
+.pill.narrow .err .st {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.pill.narrow .err .cap {
+  display: none;
+}
+.pill.narrow .err .st {
+  font-size: 13px;
+  line-height: 16px;
+  color: var(--color-on-surface);
+}
+.pill.narrow .t {
+  padding: 0 10px;
+}
+.err .st {
+  font:
+    500 15px/20px Geist-Medium,
+    system-ui;
+  letter-spacing: 0;
+  color: var(--color-on-surface);
+}
+.err .cap {
+  font:
+    12px/16px Geist-Regular,
+    system-ui;
+  color: var(--color-on-surface-variant);
+}
+.st2 {
+  font:
+    12px/16px Geist-Regular,
+    system-ui;
+  color: var(--color-on-surface-variant);
+  letter-spacing: 0;
+}
+.ldot {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-viz-1);
+  box-shadow: 0 0 0 2px var(--color-surface-raised);
+  pointer-events: none;
+}
+.b[aria-expanded='true'] .bi {
+  background: var(--color-surface-3);
+  color: var(--color-on-surface);
+}
+.b.more .bi {
+  color: var(--color-on-surface-variant);
+}
+.chip {
+  flex: none;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 0 10px;
+  border: 0;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-critical) 16%, transparent);
+  color: var(--overlay-critical-text);
+  font:
+    500 13px/18px Geist-Medium,
+    system-ui;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chip:hover {
+  background: color-mix(in srgb, var(--color-critical) 24%, transparent);
+}
+.chip:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.ov.bar .glow,
+.ov.bar .edge,
+.ov.bar .orb {
+  display: none;
+}
+.ov.bar .pill {
+  height: 44px;
+  border-radius: 22px;
+  padding: 0 6px 0 14px;
+  column-gap: 10px;
+}
+.ov.compact .pill {
+  top: 0;
+  bottom: auto;
+}
+.ov.bar .pill.in {
+  animation: ov-fade 160ms linear both;
+}
+.ov.bar .pill.in .orb,
+.ov.bar .swap,
+.ov.bar .txt-in.swap {
+  animation: none;
+}
+.ov.bar .txt {
+  height: 24px;
+}
+.ov.bar .single .st {
+  font:
+    500 13px/18px Geist-Medium,
+    system-ui;
+  color: var(--color-on-surface);
+  white-space: nowrap;
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+}
+.ov.bar .st::before {
+  display: none;
+}
+.ov.bar .st2 {
+  font:
+    13px/18px Geist-Regular,
+    system-ui;
+  color: var(--color-on-surface-variant);
+}
+.ov.bar .st.clip {
+  text-overflow: ellipsis;
+}
+.ov.bar .b {
+  width: 36px;
+  height: 36px;
+}
+.ov.bar .bi {
+  width: 32px;
+  height: 32px;
+}
+.ov.bar .b + .b {
+  margin-left: -10px;
+}
+.ov.bar .chip + .b {
+  margin-left: -6px;
+}
+.ov.bar .t {
+  height: 28px;
+  border-radius: 14px;
+}
+.ov.bar .ldot {
+  right: 4px;
+  top: 4px;
+}
+.mini {
+  flex: none;
+  width: 21px;
+  height: 16px;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  --mc: var(--color-primary);
+}
+.mini i {
+  flex: none;
+  width: 3px;
+  height: 16px;
+  border-radius: 1.5px;
+  background: var(--mc);
+  transform: scaleY(0.375);
+  transform-origin: center;
+}
+.pill.narrow .mini {
+  margin: 0 4px 0 2px;
+}
+[data-state='speaking'] .mini {
+  --mc: var(--color-viz-1);
+}
+.ov.muted:not([data-state='speaking']) .mini,
+[data-state='reconnecting'] .mini {
+  --mc: var(--color-on-surface-faint);
+}
+.mb {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin: 0 -8px 0 -8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  position: relative;
+}
+.mb:hover {
+  background: var(--color-surface-3);
+}
+.mb:hover .mini {
+  --mc: var(--color-on-surface);
+}
+.mb:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 0;
+}
+.pill .txt {
+  -webkit-app-region: drag;
+  cursor: grab;
+}

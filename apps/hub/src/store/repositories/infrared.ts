@@ -70,9 +70,21 @@ export class InfraredRepository {
   removeRemote(id: string): void {
     this.context.write(() => {
       const before = this.remote(id);
-      for (const code of this.codes().filter((candidate) => candidate.remote_id === id)) {
-        this.removeCode(code.id);
-      }
+      const codes = this.context.sql.all(
+        IR_CODE_ROW,
+        `select ${CODE_COLUMNS} from ir_codes where remote_id = $id`,
+        { id },
+      );
+      this.context.sql.run(
+        'remove the remote codes',
+        'delete from ir_codes where remote_id = $id',
+        {
+          id,
+        },
+      );
+      codes.forEach((code) => {
+        this.context.changed('ir_codes', 'DELETE', null, code);
+      });
       this.context.sql.run('remove the remote', 'delete from ir_remotes where id = $id', { id });
       this.context.changed('ir_remotes', 'DELETE', null, before);
     });

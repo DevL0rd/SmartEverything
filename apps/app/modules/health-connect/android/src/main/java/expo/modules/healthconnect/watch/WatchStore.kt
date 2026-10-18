@@ -2,10 +2,10 @@ package expo.modules.healthconnect.watch
 
 import android.content.Context
 import expo.modules.healthconnect.KeystoreBox
-import expo.modules.healthconnect.jsonOf
-import org.json.JSONArray
-import org.json.JSONObject
+import expo.modules.healthconnect.HubJson
+import kotlinx.serialization.Serializable
 
+@Serializable
 class WatchConfig(
   val deviceId: String,
   val family: String,
@@ -13,41 +13,23 @@ class WatchConfig(
   val model: String?,
   val address: String,
   val authKey: String
-) {
-  fun toJson(): JSONObject = jsonOf(
-    "deviceId" to deviceId,
-    "family" to family,
-    "name" to name,
-    "model" to model,
-    "address" to address,
-    "authKey" to authKey
-  )
+)
 
-  companion object {
-    fun of(json: JSONObject) = WatchConfig(
-      json.getString("deviceId"),
-      json.getString("family"),
-      json.getString("name"),
-      if (json.isNull("model")) null else json.getString("model"),
-      json.getString("address").uppercase(),
-      json.getString("authKey").lowercase()
-    )
-  }
-}
+@Serializable
+class PhoneWatches(val watches: List<WatchConfig>)
 
 class WatchStore(context: Context) {
   private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
   private val box = KeystoreBox(KEY_ALIAS)
 
   fun save(watches: List<WatchConfig>) {
-    val sealed = box.seal(JSONArray(watches.map { it.toJson() }).toString())
+    val sealed = box.seal(HubJson.encode(watches))
     preferences.edit().putString(WATCHES, sealed).apply()
   }
 
   fun watches(): List<WatchConfig> {
     val sealed = preferences.getString(WATCHES, null) ?: return emptyList()
-    val array = JSONArray(box.open(sealed))
-    return (0 until array.length()).map { WatchConfig.of(array.getJSONObject(it)) }
+    return HubJson.decode(box.open(sealed))
   }
 
   fun byAddress(address: String): WatchConfig? = watches().firstOrNull { it.address == address.uppercase() }

@@ -1,5 +1,6 @@
 import { useDebouncedValue } from '../../../design/use-debounced-value';
-import { usePickerData, type ModelPickerProps, type PickerData } from './model-picker';
+import type { ModelPickerProps } from '../data/model-candidates';
+import { useModelCandidates, type ModelCandidatesResult } from '../data/use-model-candidates';
 import { usePickerSession } from './model-search-session';
 import {
   useSearchModelPages,
@@ -22,7 +23,7 @@ export interface SearchPickerOptions {
 }
 export interface SearchPickerData {
   readonly key: string;
-  readonly sources: PickerData;
+  readonly sources: ModelCandidatesResult;
   readonly rows: SearchCandidates;
   readonly pages: SearchModelPages;
   readonly validation: SearchValidation;
@@ -47,7 +48,12 @@ export function useSearchPickerData(
   const visiblePages = enabled
     ? pages
     : { ...pages, models: [], total: null, error: null, loading: false, more: null };
-  const sources = usePickerData(props, '', visiblePages, false);
+  const sources = useModelCandidates({
+    props,
+    query: '',
+    catalogue: visiblePages,
+    enabled: false,
+  });
   const rows = searchCandidates(sources.candidates, visiblePages.models, query);
   const makers = useSearchMakers(props.kind ?? 'chat', session, options.expanded);
   return {

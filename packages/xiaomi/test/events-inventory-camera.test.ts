@@ -49,7 +49,22 @@ describe('MIoT events', () => {
     for (const [name, kind] of Object.entries(kinds)) {
       expect(miotEventKind(name)).toBe(kind);
     }
-    expect(miotEventKind('ir-turned-on')).toBeNull();
+    expect(miotEventKind('ir-turned-on')).toBe('activity');
+    expect(miotEventKind('someone-move')).toBe('motion');
+    expect(miotEventKind('nobody-move')).toBe('no_motion');
+    expect(miotEventKind('auto-fragrance')).toBe('activity');
+    expect(miotEventKind('auto-light')).toBe('activity');
+    expect(miotEventKind('click')).toBe('button');
+    expect(miotEventKind('low-battery')).toBe('maintenance');
+    expect(deviceEventFromMiot('double-click', observed)?.details).toMatchObject({
+      action: 'double_press',
+      miotEvent: 'double-click',
+    });
+    expect(deviceEventFromMiot('low-battery', observed)?.details).toMatchObject({
+      item: 'battery',
+      state: 'low',
+    });
+    expect(miotEventKind('door-opened')).toBe('opened');
     expect(miotEventKind('camera-hang-up')).toBeNull();
   });
 
@@ -60,7 +75,34 @@ describe('MIoT events', () => {
       kind: 'call',
       details: { a: 1, miotEvent: 'key-call-start', detection: 'call' },
     });
-    expect(deviceEventFromMiot('cruise-ended', observed)).toBeNull();
+    expect(deviceEventFromMiot('cruise-ended', observed)).toStrictEqual({
+      externalId: '42',
+      occurredAt: '2026-10-08T10:00:00.000Z',
+      kind: 'activity',
+      details: { a: 1, miotEvent: 'cruise-ended' },
+    });
+    expect(deviceEventFromMiot('camera-hang-up', observed)).toBeNull();
+  });
+
+  it('turn the washer events into laundry cycle and dispenser events', () => {
+    const shared = { externalId: '42', occurredAt: '2026-10-08T10:00:00.000Z' };
+    expect(deviceEventFromMiot('wash-end', observed)).toStrictEqual({
+      ...shared,
+      kind: 'cycle_finished',
+      details: { a: 1, family: 'laundry', miotEvent: 'wash-end' },
+    });
+    expect(deviceEventFromMiot('wash-end-log', observed)?.kind).toBe('cycle_finished');
+    expect(deviceEventFromMiot('clean-completed', observed)).toStrictEqual({
+      ...shared,
+      kind: 'maintenance',
+      details: {
+        a: 1,
+        item: 'dispenser',
+        state: 'cleaned',
+        family: 'laundry',
+        miotEvent: 'clean-completed',
+      },
+    });
   });
 
   it('are derived only from key-call status changes into calling', () => {
@@ -171,6 +213,7 @@ describe('the device list', () => {
             model: 'zhimi.airp.mb5',
             token: 'ab',
             localip: '10.0.0.2',
+            mac: 'AA:BB:CC:DD:EE:FF',
             parent_id: '',
             isOnline: true,
             spec_type: 'urn:x',
@@ -187,6 +230,7 @@ describe('the device list', () => {
           model: 'zhimi.airp.mb5',
           token: 'ab',
           ip: '10.0.0.2',
+          mac: 'AA:BB:CC:DD:EE:FF',
           parentDid: null,
           online: true,
           specType: 'urn:x',
@@ -197,6 +241,7 @@ describe('the device list', () => {
           model: 'm',
           token: null,
           ip: null,
+          mac: null,
           parentDid: null,
           online: false,
           specType: null,
@@ -233,6 +278,7 @@ describe('transport choice', () => {
     model: 'm',
     token: '00112233445566778899aabbccddeeff',
     ip: '10.0.0.2',
+    mac: null,
     parentDid: null,
     online: true,
     specType: null,
@@ -243,6 +289,25 @@ describe('transport choice', () => {
       transport: 'lan',
       reason: 'it has a LAN token and the address 10.0.0.2',
     });
+  });
+
+  it('uses the LAN for private and loopback addresses and the cloud for public ones', () => {
+    for (const ip of [
+      '10.1.2.3',
+      '172.16.0.1',
+      '172.31.255.1',
+      '192.168.1.9',
+      '169.254.3.4',
+      '127.0.0.2',
+    ]) {
+      expect(chooseTransport({ ...lan, ip }).transport).toBe('lan');
+    }
+    for (const ip of ['8.8.8.8', '172.32.0.1', '172.15.0.1', '192.169.0.1', '300.1.1.1', 'host']) {
+      expect(chooseTransport({ ...lan, ip })).toStrictEqual({
+        transport: 'cloud',
+        reason: `its reported address ${ip} is not a private IPv4 LAN address`,
+      });
+    }
   });
 
   it('uses the cloud otherwise and says why', () => {

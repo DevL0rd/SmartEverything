@@ -26,7 +26,7 @@ export function subscriptionUse(
       return {
         profileId: metadata.profile_id,
         source: options.purpose === undefined ? 'interactive' : 'maintenance',
-        authorizationId: claim.token,
+        authorizationId: `${claim.session_id}:${String(claim.epoch)}`,
         sessionId: String(options.sessionId),
       };
     },

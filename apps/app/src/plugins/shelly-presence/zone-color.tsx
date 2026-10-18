@@ -23,12 +23,12 @@ export function ZoneColor({
   const selected = value === undefined ? null : value.join(',');
   const options =
     selected !== null && !COLORS.some((option) => option.value === selected)
-      ? [...COLORS, { value: selected, label: 'Custom RGB color' }]
+      ? [...COLORS, { value: selected, label: 'Custom RGB colour' }]
       : COLORS;
   return (
     <View className="gap-3">
       <Select
-        label="Zone color"
+        label="Zone colour"
         options={options}
         value={selected}
         onChange={(color) => {

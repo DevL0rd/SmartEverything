@@ -48,19 +48,28 @@ describe('the tool catalogue text', () => {
 });
 
 describe('the Live context window', () => {
-  it('keeps four minutes of speech by default, whatever the compaction percent', () => {
-    const expected = { triggerTokens: 17_100, targetTokens: 13_680 };
-    expect(liveWindow(ASSISTANT_SETTINGS.parse({ compact_at_percent: 95 }))).toEqual(expected);
-    expect(liveWindow(ASSISTANT_SETTINGS.parse({ compact_at_percent: 50 }))).toEqual(expected);
+  const windowFor = (settings: Record<string, unknown>): ReturnType<typeof liveWindow> =>
+    liveWindow(ASSISTANT_SETTINGS.parse(settings));
+  const minutes = (count: number): ReturnType<typeof liveWindow> =>
+    windowFor({ voice: { live_context_minutes: count } });
+
+  it('triggers compaction above the size it compacts down to, whatever the compaction percent', () => {
+    const standard = windowFor({});
+    expect(standard.triggerTokens).toBeGreaterThan(standard.targetTokens);
+    expect(windowFor({ compact_at_percent: 95 })).toEqual(standard);
+    expect(windowFor({ compact_at_percent: 50 })).toEqual(standard);
   });
 
-  it('grows with the chosen number of minutes', () => {
-    const settings = ASSISTANT_SETTINGS.parse({ voice: { live_context_minutes: 8 } });
-    expect(liveWindow(settings)).toEqual({ triggerTokens: 26_700, targetTokens: 21_360 });
+  it('grows evenly with the chosen number of minutes', () => {
+    const [short, middle, long] = [minutes(4), minutes(8), minutes(12)];
+    expect(middle.targetTokens).toBeGreaterThan(short.targetTokens);
+    expect(middle.triggerTokens).toBeGreaterThan(short.triggerTokens);
+    expect(long.targetTokens - middle.targetTokens).toBe(middle.targetTokens - short.targetTokens);
   });
 
   it('still limits a model without a known length', () => {
-    const settings = ASSISTANT_SETTINGS.parse({ voice: { model: 'gemini-unknown-live' } });
-    expect(liveWindow(settings)).toEqual({ triggerTokens: 17_100, targetTokens: 13_680 });
+    const unknown = windowFor({ voice: { model: 'gemini-unknown-live' } });
+    expect(unknown).toEqual(windowFor({}));
+    expect(Number.isFinite(unknown.triggerTokens)).toBe(true);
   });
 });

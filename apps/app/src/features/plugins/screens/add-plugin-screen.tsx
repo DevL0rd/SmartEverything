@@ -11,6 +11,9 @@ import { appPlatform } from '../../../design/platform';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 
+import { Logger } from '@smarteverything/logging';
+
+const log = new Logger('app.plugins');
 type Source = PluginInstall['source'];
 
 const LINK = /^https?:\/\/[^\s/?#]+[^\s]*$/;
@@ -53,8 +56,15 @@ export function AddPluginScreen(): ReactNode {
   const router = useRouter();
   const [source, setSource] = useState<Source | null>(null);
   const install = async (body: PluginInstall): Promise<void> => {
-    const row = await installPlugin(body);
-    router.replace(href.pluginSettings(row.id));
+    const operation = log.operation('plugin.install', { source: body.source });
+    try {
+      const row = await installPlugin(body);
+      operation.succeeded({ pluginId: row.id });
+      router.replace(href.pluginSettings(row.id));
+    } catch (error) {
+      operation.failed(error);
+      throw error;
+    }
   };
   return (
     <SettingsFrame page="plugins/add">

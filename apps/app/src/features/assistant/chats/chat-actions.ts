@@ -1,3 +1,4 @@
+import { Logger, background } from '@smarteverything/logging';
 import {
   NEW_CHAT_TITLE,
   type AiChatChange,
@@ -13,27 +14,49 @@ import {
   sendAiChatMessage,
   updateAiChat,
 } from '../../../api/ai';
-import { confirm } from '../../../components/confirm-store';
+import { deferAction } from '../../../components/deferred-action';
 import { notify } from '../../../components/toast-store';
 import type { MessageSender } from '../components/composer';
 import { trimmedReferences } from '../references/spans';
 import { clearUploads } from '../data/uploads';
+import { forgetBrowserChat } from '../browser/browser-runtime';
 
-async function attempt<T>(work: () => Promise<T>, failure: string): Promise<T | null> {
+const log = new Logger('app.chat');
+
+async function attempt<T>(
+  operationName: string,
+  ids: Readonly<Record<string, unknown>>,
+  work: () => Promise<T>,
+  failure: string,
+): Promise<T | null> {
+  const operation = log.operation(operationName, ids);
   try {
-    return await work();
+    const result = await work();
+    operation.succeeded();
+    return result;
   } catch (error) {
+    operation.failed(error, { failure });
     notify({ message: failure, error, tone: 'critical' });
     return null;
   }
 }
 
-export function newChat(chat: AiChatNew): Promise<AiChatRow | null> {
-  return attempt(() => createAiChat(chat), 'Chat not created');
+function newChat(chat: AiChatNew): Promise<AiChatRow | null> {
+  return attempt(
+    'chat.create',
+    { engineKind: chat.engine?.kind ?? null },
+    () => createAiChat(chat),
+    'Chat not created',
+  );
 }
 
 export function changeChat(chatId: string, change: AiChatChange): Promise<AiChatRow | null> {
-  return attempt(() => updateAiChat(chatId, change), 'Chat not changed');
+  return attempt(
+    'chat.update',
+    { chatId, fields: Object.keys(change).join(',') },
+    () => updateAiChat(chatId, change),
+    'Chat not changed',
+  );
 }
 
 export async function setChatPinned(chatId: string, pinned: boolean): Promise<void> {
@@ -44,44 +67,65 @@ export async function setChatRead(chatId: string, read: boolean): Promise<void> 
   await changeChat(chatId, { read });
 }
 
-export async function setChatArchived(chatId: string, archived: boolean): Promise<void> {
-  const row = await changeChat(chatId, { archived });
-  if (row === null || !archived) {
+export function setChatArchived(chatId: string, archived: boolean): void {
+  if (!archived) {
+    background(changeChat(chatId, { archived: false }), 'chat.change_failed');
     return;
   }
-  notify({
+  log.info('chat.archive_deferred', { chatId });
+  deferAction({
+    key: chatId,
     message: 'Chat archived',
-    detail: row.title,
-    action: {
-      label: 'Undo',
-      onPress: (): void => {
-        void changeChat(chatId, { archived: false });
-      },
+    failure: 'Chat not archived',
+    commit: async () => {
+      const operation = log.operation('chat.archive', { chatId });
+      try {
+        await updateAiChat(chatId, { archived: true });
+        operation.succeeded();
+      } catch (error) {
+        operation.failed(error);
+        throw error;
+      }
     },
   });
 }
 
-export async function deleteChat(chat: Pick<AiChatRow, 'id' | 'title'>): Promise<boolean> {
-  const sure = await confirm({
-    title: `Delete “${chat.title}”?`,
-    body: 'Its messages, attachments and spawned subagent chats are deleted too.',
-    confirmLabel: 'Delete',
-    tone: 'destructive',
+export function deleteChat(chat: Pick<AiChatRow, 'id'>): void {
+  log.info('chat.delete_deferred', { chatId: chat.id });
+  deferAction({
+    key: chat.id,
+    message: 'Chat deleted',
+    failure: 'Chat not deleted',
+    commit: async () => {
+      const operation = log.operation('chat.delete', { chatId: chat.id });
+      try {
+        await removeAiChat(chat.id);
+        forgetBrowserChat(chat.id);
+        operation.succeeded();
+      } catch (error) {
+        operation.failed(error);
+        throw error;
+      }
+    },
   });
-  if (!sure) {
-    return false;
-  }
-  return (await attempt(() => removeAiChat(chat.id), 'Chat not deleted')) !== null;
 }
 
 export async function stopChat(chatId: string): Promise<void> {
-  await attempt(() => interruptAiChat(chatId), 'Couldn’t stop it');
+  await attempt('chat.stop', { chatId }, () => interruptAiChat(chatId), 'Couldn’t stop it');
 }
 
-export function chatSender(chatId: string): MessageSender {
+function chatSender(chatId: string): MessageSender {
   return async (text, attachments, references = [], clientMessageId) => {
     const message = trimmedReferences({ text, references });
     const sent = await attempt(
+      'chat_message.send',
+      {
+        chatId,
+        clientMessageId: clientMessageId ?? null,
+        length: message.text.length,
+        attachments: attachments.length,
+        references: message.references.length,
+      },
       () =>
         sendAiChatMessage(chatId, message.text, attachments, {
           references: message.references,
@@ -104,8 +148,9 @@ export function chatStarter(
   return async (text, attachments, references = [], clientMessageId) => {
     const selected = resolve === undefined ? engine : resolve();
     if (selected === null) {
+      log.warn('chat.start_blocked', { reason: 'machine-offline', requested: engine.kind });
       notify({
-        message: 'The selected device is unavailable. Check Machine before sending.',
+        message: 'That machine is offline. Switch machine to send.',
         tone: 'critical',
       });
       return false;
@@ -114,6 +159,7 @@ export function chatStarter(
     if (chat === null) {
       return false;
     }
+    log.info('chat.started', { chatId: chat.id, engineKind: selected.kind });
     const sent = await chatSender(chat.id)(text, attachments, references, clientMessageId);
     opened(chat.id);
     return sent;
@@ -121,7 +167,12 @@ export function chatStarter(
 }
 
 export async function compactChat(chatId: string): Promise<void> {
-  const result = await attempt(() => compactAiChat(chatId), 'Chat could not be compacted');
+  const result = await attempt(
+    'chat.compact',
+    { chatId },
+    () => compactAiChat(chatId),
+    'Chat could not be compacted',
+  );
   if (result === null) return;
   notify({ message: result ? 'Chat compacted' : 'Nothing needed compacting' });
 }

@@ -79,7 +79,7 @@ export type WatchActionRequest = z.infer<typeof WATCH_ACTION>;
 
 export const WATCH_ACTION_RESULT = z.strictObject({
   ok: z.boolean(),
-  detail: z.string().max(400),
+  detail: z.string(),
 });
 
 export type WatchActionResult = z.infer<typeof WATCH_ACTION_RESULT>;
@@ -94,15 +94,6 @@ export const WATCH_ACTION_PUSH = z.strictObject({
 });
 
 export type WatchActionPush = z.infer<typeof WATCH_ACTION_PUSH>;
-
-export const WATCH_ACTION_NOTICE = z.strictObject({
-  type: z.literal('watch_action'),
-  requestId: z.uuid(),
-  deviceId: z.uuid(),
-  action: WATCH_ACTION,
-});
-
-export type WatchActionNotice = z.infer<typeof WATCH_ACTION_NOTICE>;
 
 export const WATCH_GOAL_KEYS = ['steps', 'move_kcal', 'active_minutes', 'standing_hours'] as const;
 

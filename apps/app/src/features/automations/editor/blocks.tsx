@@ -1,19 +1,19 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { Trigger } from '@smarteverything/domain';
 import { Section } from '../../../components/section';
 import type { Catalog } from '../data/use-automations';
-import { TRIGGER_TYPES, blankTrigger } from '../model/blanks';
+import { TRIGGER_KINDS, blankTrigger, triggerAvailable } from '../model/blanks';
 import { describeTrigger } from '../model/describe';
-import type { Draft, DraftChange, ListChange } from '../model/editor-state';
+import type { Draft, DraftChange } from '../model/editor-state';
+import { triggerKindOf } from '../model/kind-labels';
 import type { Problems } from '../model/validate';
-import { ProgramSteps } from './program-steps';
-import { ProgramConditions } from './program-conditions';
-import { addItems, choicesOf } from './add-items';
-import { AddMenu } from './add-menu';
-import { TRIGGER_KINDS, triggerIcon } from './kinds';
+import { AddMenu, groupedOptions } from './add-menu';
+import { OnlyIfFields } from './condition-list';
+import { TRIGGER_LOOKS, triggerIcon } from './kinds';
+import { StepList } from './step-list';
 import { BlockProblems, StepCard } from './step-card';
 import { TriggerFields } from './trigger-fields';
+import { ROOT_BLOCK } from '../model/steps';
 
 export interface BlockProps {
   readonly draft: Draft;
@@ -22,41 +22,49 @@ export interface BlockProps {
   readonly problems: Problems | null;
 }
 
+const UNAVAILABLE: Readonly<Partial<Record<(typeof TRIGGER_KINDS)[number], string>>> = {
+  device: 'Needs a device with a reading.',
+  signal: 'No other signals are available.',
+};
+
 export function WhenBlock({ draft, change, catalog, problems }: BlockProps): ReactNode {
-  const apply = (next: ListChange<Trigger>): void => {
-    change({ type: 'triggers', change: next });
-  };
+  const { when } = draft.automation;
   return (
     <Section title="When">
       <View className="gap-3">
-        {draft.triggers.map((trigger, index) => (
+        {when.map((trigger, index) => (
           <StepCard
-            key={`${String(index)}:${trigger.type}`}
+            key={trigger.id ?? String(index)}
             icon={triggerIcon(trigger, catalog.allDevices)}
-            kind={TRIGGER_KINDS[trigger.type].label}
+            kind={TRIGGER_LOOKS[triggerKindOf(trigger)].label}
             summary={describeTrigger(catalog.names, trigger)}
             onRemove={() => {
-              apply({ kind: 'remove', index });
+              change({ type: 'when', change: { kind: 'remove', index } });
             }}
           >
             <TriggerFields
+              catalog={catalog}
               trigger={trigger}
-              devices={catalog.devices}
               onChange={(item) => {
-                apply({ kind: 'set', index, item });
+                change({ type: 'when', change: { kind: 'set', index, item } });
               }}
             />
           </StepCard>
         ))}
         <BlockProblems problems={problems?.when ?? []} />
         <AddMenu
-          label={draft.triggers.length === 0 ? 'Add a trigger' : 'Add another trigger'}
-          items={addItems(
-            TRIGGER_TYPES,
-            TRIGGER_KINDS,
-            (type) => blankTrigger(type, choicesOf(catalog)),
-            apply,
-          )}
+          label={when.length === 0 ? 'Add a trigger' : 'Add another trigger'}
+          groups={() =>
+            groupedOptions(
+              TRIGGER_KINDS,
+              TRIGGER_LOOKS,
+              (kind) => {
+                const item = blankTrigger(kind, catalog);
+                if (item !== null) change({ type: 'when', change: { kind: 'add', item } });
+              },
+              (kind) => (triggerAvailable(kind, catalog) ? undefined : UNAVAILABLE[kind]),
+            )
+          }
         />
       </View>
     </Section>
@@ -64,13 +72,17 @@ export function WhenBlock({ draft, change, catalog, problems }: BlockProps): Rea
 }
 
 export function OnlyIfBlock({ draft, change, catalog, problems }: BlockProps): ReactNode {
+  const { onlyIf } = draft.automation;
   return (
-    <Section title="Only if" footer="Optional. With no conditions it always runs.">
-      <ProgramConditions
-        conditions={{ mode: draft.mode, items: [...draft.conditions] }}
+    <Section
+      title="Only if"
+      {...(onlyIf === undefined ? { footer: 'Optional. Without a condition it always runs.' } : {})}
+    >
+      <OnlyIfFields
         catalog={catalog}
-        onChange={(conditions) => {
-          change({ type: 'replace-conditions', conditions });
+        condition={onlyIf}
+        onChange={(condition) => {
+          change({ type: 'only-if', condition });
         }}
       />
       <BlockProblems problems={problems?.only ?? []} />
@@ -78,16 +90,10 @@ export function OnlyIfBlock({ draft, change, catalog, problems }: BlockProps): R
   );
 }
 
-export function ThenBlock({ draft, change, catalog, problems }: BlockProps): ReactNode {
+export function ThenBlock({ draft, problems }: BlockProps): ReactNode {
   return (
     <Section title="Then">
-      <ProgramSteps
-        actions={draft.actions}
-        catalog={catalog}
-        onChange={(actions) => {
-          change({ type: 'replace-actions', actions });
-        }}
-      />
+      <StepList block={ROOT_BLOCK} steps={draft.automation.steps} />
       <BlockProblems problems={problems?.then ?? []} />
     </Section>
   );

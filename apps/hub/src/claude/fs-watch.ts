@@ -2,6 +2,7 @@ import { existsSync, watch, type FSWatcher } from 'node:fs';
 import { dirname, relative, sep } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { ClaudeWatchError } from './errors';
+import { isMissing } from '../fs-util';
 
 export interface PathWatchOptions {
   readonly directory: string;
@@ -10,10 +11,6 @@ export interface PathWatchOptions {
   readonly accepts: (name: string) => boolean;
   readonly changed: (name: string | null) => void;
   readonly log: Logger;
-}
-
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
 
 const WHOLE_DIRECTORY = '';

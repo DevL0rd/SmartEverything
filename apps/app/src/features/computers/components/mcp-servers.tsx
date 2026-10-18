@@ -17,8 +17,8 @@ function ServerRows({
 }): ReactNode {
   return (
     <List
-      title="Native MCP servers"
-      footer="User servers run on the supplying computer. The protected home bridge and its permissions stay managed by the hub."
+      title="Claude’s MCP servers"
+      footer="These servers run on this computer. The home tools server is managed by SmartEverything."
     >
       {Object.entries(servers).map(([name, server]) => (
         <View key={name}>
@@ -43,7 +43,7 @@ function ServerRows({
         </View>
       ))}
       <ActionRow
-        title="Add native MCP server"
+        title="Add MCP server"
         onPress={() => {
           edit(null);
         }}
@@ -72,7 +72,7 @@ export function McpServers({
       />
       <Sheet
         open={open}
-        title={editing === null ? 'Add native MCP server' : `Edit ${editing}`}
+        title={editing === null ? 'Add MCP server' : `Edit ${editing}`}
         onClose={() => {
           setOpen(false);
         }}

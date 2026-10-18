@@ -15,10 +15,10 @@ import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.records.WheelchairPushesRecord
 import java.time.Instant
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonObject
 
 object ActivityData {
-  fun describe(record: Record): JSONObject? = when (record) {
+  fun describe(record: Record): JsonObject? = when (record) {
     is StepsRecord -> jsonOf("count" to record.count)
     is WheelchairPushesRecord -> jsonOf("count" to record.count)
     is DistanceRecord -> jsonOf("meters" to record.distance.inMeters)
@@ -43,7 +43,7 @@ object ActivityData {
     items: List<T>,
     timeOf: (T) -> Instant,
     valueOf: (T) -> Pair<String, Any>
-  ): JSONObject = jsonOf(
+  ): JsonObject = jsonOf(
     "samples" to jsonArrayOf(items) { jsonOf("time" to moment(timeOf(it)), valueOf(it)) }
   )
 }

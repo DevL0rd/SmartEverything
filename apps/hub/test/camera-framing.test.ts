@@ -2,7 +2,6 @@ import type { JsonValue, StateRow } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { CameraFraming, type FramedCamera } from '../src/reach/camera-framing';
 import type { NewCommand } from '../src/store/repositories/commands';
-import { FakeClock } from './support/fake-clock';
 import { captureLogs, testLogger, type CapturedLogs } from './support/logs';
 
 const CAMERA_ID = '1d000000-0000-4000-8000-000000000021';
@@ -45,40 +44,41 @@ interface Bench {
   readonly framing: CameraFraming;
   readonly sent: NewCommand[];
   readonly state: Map<string, JsonValue>;
-  readonly clock: FakeClock;
 }
 
-function bench(initial: Readonly<Record<string, JsonValue>>): Bench {
+function bench(initial: Readonly<Record<string, JsonValue>>, writeBack = true): Bench {
   const settings = new Map<string, Readonly<Record<string, unknown>>>();
   const state = new Map<string, JsonValue>(Object.entries(initial));
   const sent: NewCommand[] = [];
-  const clock = new FakeClock(AT);
   const framing = new CameraFraming({
     store: {
-      aiChats: {
-        setting: (key): Readonly<Record<string, unknown>> | null => settings.get(key) ?? null,
-        saveSetting: (key, value): void => {
+      settingsKv: {
+        read: (key): Readonly<Record<string, unknown>> | null => settings.get(key) ?? null,
+        save: (key, value): void => {
           settings.set(key, value);
         },
       },
       state: {
-        list: (): StateRow[] =>
-          [...state].map(([capability, value]) => ({
-            device_id: CAMERA_ID,
-            capability,
-            value,
-            observed_at: AT,
-          })),
+        ofDevice: (deviceId): StateRow[] =>
+          deviceId === CAMERA_ID
+            ? [...state].map(([capability, value]) => ({
+                device_id: CAMERA_ID,
+                capability,
+                value,
+                observed_at: AT,
+              }))
+            : [],
       },
     },
     submit: (commands): void => {
       sent.push(...commands);
-      commands.forEach((entry) => state.set(entry.capability, entry.value));
+      if (writeBack) {
+        commands.forEach((entry) => state.set(entry.capability, entry.value));
+      }
     },
-    clock,
     log: testLogger('framing'),
   });
-  return { framing, sent, state, clock };
+  return { framing, sent, state };
 }
 
 describe('camera framing for AI conversations', () => {
@@ -117,24 +117,63 @@ describe('camera framing for AI conversations', () => {
     framing.begin(CALL, LIVING_ROOM);
     expect(sent).toHaveLength(0);
     framing.restore(CALL);
+    expect(sent.map((entry) => [entry.capability, entry.value])).toEqual([
+      ['raw:8.8', true],
+      ['raw:2.11', true],
+      ['raw:8.30', true],
+      ['raw:2.21', 40],
+    ]);
+    sent.length = 0;
     framing.restore(CALL);
     expect(sent).toHaveLength(0);
   });
 
-  it('logs what it read, set and what the camera reported back afterwards', () => {
-    const logs: CapturedLogs = captureLogs();
-    const { framing, clock, state } = bench({
+  it('restores the zoom when the stored state never changed after the command', () => {
+    const { framing, sent } = bench(
+      { 'raw:8.8': false, 'raw:2.11': false, 'raw:8.30': false, 'raw:2.21': 10 },
+      false,
+    );
+    framing.begin(CALL, LIVING_ROOM);
+    sent.length = 0;
+    framing.restore(CALL);
+    expect(sent.map((entry) => [entry.capability, entry.value])).toEqual([
+      ['raw:8.8', false],
+      ['raw:2.11', false],
+      ['raw:8.30', false],
+      ['raw:2.21', 10],
+    ]);
+  });
+
+  it('keeps the original framing while two calls overlap on one camera', () => {
+    const { framing, sent, state } = bench({
+      'raw:8.8': false,
       'raw:2.11': false,
-      'raw:8.30': true,
+      'raw:8.30': false,
       'raw:2.21': 10,
     });
+    const SECOND = '1d000000-0000-4000-8000-000000000023';
     framing.begin(CALL, LIVING_ROOM);
-    state.set('raw:2.11', false);
-    clock.advanceTo('2026-10-10T10:00:04.000Z');
-    const readBack = logs.records.find(
-      (record) => record.event === 'reach.camera_framing_read_back',
-    );
-    expect(readBack?.payload).toMatchObject({ step: 'on', notApplied: 'raw:2.11=true' });
+    state.set('raw:2.21', 22);
+    sent.length = 0;
+    framing.begin(SECOND, LIVING_ROOM);
+    expect(sent).toHaveLength(0);
+    framing.restore(CALL);
+    expect(sent).toHaveLength(0);
+    framing.restore(SECOND);
+    expect(sent.map((entry) => [entry.capability, entry.value])).toContainEqual(['raw:2.21', 10]);
+    expect(sent).toHaveLength(4);
+    sent.length = 0;
+    framing.restoreAll();
+    expect(sent).toHaveLength(0);
+  });
+
+  it('logs what it read and set, with no delayed read-back', () => {
+    const logs: CapturedLogs = captureLogs();
+    const { framing } = bench({ 'raw:2.11': false, 'raw:8.30': true, 'raw:2.21': 10 });
+    framing.begin(CALL, LIVING_ROOM);
+    const events = logs.events();
+    expect(events).toContain('reach.camera_framing');
+    expect(events).not.toContain('reach.camera_framing_read_back');
   });
 
   it('restores leftovers after a restart', () => {
@@ -144,8 +183,12 @@ describe('camera framing for AI conversations', () => {
     framing.restoreAll();
     expect(sent.map((entry) => [entry.capability, entry.value])).toEqual([
       ['raw:2.11', false],
+      ['raw:8.30', true],
       ['raw:2.21', 10],
     ]);
+    sent.length = 0;
+    framing.restoreAll();
+    expect(sent).toHaveLength(0);
   });
 
   it('skips cameras without people tracking or auto zoom', () => {

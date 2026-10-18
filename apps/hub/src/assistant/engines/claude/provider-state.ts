@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { ComputerAiDirectory } from '../../../computers/ai-directory';
 import type { Store } from '../../../store/store';
 
-export function emptyProvider(chat: AiChatRow): AiChatProvider {
+function emptyProvider(chat: AiChatRow): AiChatProvider {
   if (chat.engine.kind !== 'claude')
     throw new ApiError('invalid_request', 'This chat uses a different engine.');
   return {

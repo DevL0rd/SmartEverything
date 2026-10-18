@@ -13,7 +13,6 @@ import type { DeviceMirrorSpec } from '../device-mirror';
 import { RobotActionNotEnabledError, RobotActionParamError } from './catalogue';
 import type { VoiceDesk } from './desk';
 import type { RobotIdentity } from './identity';
-import type { Scope } from './settings';
 
 export interface RobotSnapshot {
   readonly identity: RobotIdentity | null;
@@ -107,16 +106,9 @@ function played(
 export function performAction(
   command: DeviceCommand,
   desk: Pick<VoiceDesk, 'playAction'>,
-  scopes: readonly Scope[],
 ): JsonValue {
   if (command.capability !== ROBOT_ACTION_CAPABILITY) {
     throw new CommandRefusedError(command.capability, 'AIBI only moves or acts');
-  }
-  if (!scopes.includes('aibi.act')) {
-    throw new CommandRefusedError(
-      command.capability,
-      'the settings do not let the assistant move AIBI',
-    );
   }
   const value = ACTION_VALUE.parse(command.value);
   if (!played(command.capability, desk, value)) {

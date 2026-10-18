@@ -1,6 +1,6 @@
 import type {
   AssistantVoiceServerMessage,
-  CallAudioPref,
+  CallAudio,
   CallEnding,
   EchoTestOutcome,
   SightSource,
@@ -18,14 +18,22 @@ import {
   type CallFix,
 } from '../../call-state';
 import { applyServerMessage } from '../call-messages';
-import type { CallEngine, CallRequest, EngineCapabilities, SightStart } from '../call-engine';
+import type {
+  CallEngine,
+  CallLevelListener,
+  CallRequest,
+  LevelFeed,
+  EngineCapabilities,
+  SightStart,
+} from '../call-engine';
 import { CallFeatureUnavailableError } from '../unavailable';
 import { DEFAULT_CALL_AUDIO, sinkIdOf } from './audio-settings';
 import { CallLink, type LinkPorts } from './call-link';
 import { applyLive } from './call-tuning';
 import { refreshDevices, watchDevices } from './device-feed';
 import { measureAlone, measureInCall } from './echo-run';
-import { HUB_TOO_OLD, engineCapabilities } from './engine-support';
+import { HUB_TOO_OLD } from '../hub-reasons';
+import { engineCapabilities } from './engine-support';
 import { MicrophoneChain, type MicrophoneHandlers } from './microphone';
 import { SightActions } from './sight-actions';
 import type { SightPorts } from './sight-desk';
@@ -36,11 +44,14 @@ const SETTING_FAILED = 'That setting could not be applied. Your other changes we
 
 export class WebCallEngine implements CallEngine {
   private mic: MicrophoneChain | null = null;
-  private audio: CallAudioPref = DEFAULT_CALL_AUDIO;
+  private audio: CallAudio = DEFAULT_CALL_AUDIO;
   private muted = false;
   private testing = false;
   private request: CallRequest | null = null;
   private applying: Promise<void> = Promise.resolve();
+  private readonly levelListeners = new Set<CallLevelListener>();
+  private levelIn = 0;
+  private levelOut = 0;
   private readonly playback = new Playback((error) => {
     this.fail('Speaker stopped working', error);
   });
@@ -49,6 +60,10 @@ export class WebCallEngine implements CallEngine {
 
   constructor() {
     watchDevices((inputs) => this.mic?.deviceListChanged(inputs) ?? Promise.resolve());
+    this.playback.onLevel((level) => {
+      this.levelOut = level;
+      this.publishLevels();
+    });
   }
 
   readonly supported = webTalkSupport;
@@ -93,6 +108,10 @@ export class WebCallEngine implements CallEngine {
     this.muted = muted;
     changeCall(() => ({ muted }));
     this.sendMute(muted);
+    if (muted) {
+      this.levelIn = 0;
+      this.publishLevels();
+    }
   };
 
   readonly allowMicrophone = async (): Promise<boolean> => {
@@ -108,11 +127,18 @@ export class WebCallEngine implements CallEngine {
     }
   };
 
-  readonly inputLevel = (): number => (this.muted ? 0 : (this.mic?.level ?? 0));
+  readonly levels: LevelFeed = {
+    kind: 'events',
+    subscribe: (listener) => {
+      this.levelListeners.add(listener);
+      listener({ in: this.levelIn, out: this.levelOut });
+      return (): void => {
+        this.levelListeners.delete(listener);
+      };
+    },
+  };
 
-  readonly outputLevel = (): number => this.playback.outputLevel();
-
-  readonly applyAudio = (pref: CallAudioPref): void => {
+  readonly applyAudio = (pref: CallAudio): void => {
     const previous = this.audio;
     this.audio = pref;
     if (callActive(callState.get())) {
@@ -279,6 +305,10 @@ export class WebCallEngine implements CallEngine {
       },
       assistantAudible: () => this.playback.playing(),
       muted: () => this.muted,
+      level: (level) => {
+        this.levelIn = this.muted ? 0 : level;
+        this.publishLevels();
+      },
       failure: (problem, error) => {
         this.fail(problem, error);
       },
@@ -299,6 +329,13 @@ export class WebCallEngine implements CallEngine {
         this.finish('failed', 'Microphone not available', 'microphone');
       },
     );
+  }
+
+  private publishLevels(): void {
+    const levels = { in: this.levelIn, out: this.levelOut };
+    for (const listener of this.levelListeners) {
+      listener(levels);
+    }
   }
 
   private heard(speaking: boolean): void {
@@ -326,7 +363,7 @@ export class WebCallEngine implements CallEngine {
     }
   }
 
-  private tune(previous: CallAudioPref, next: CallAudioPref): Promise<void> {
+  private tune(previous: CallAudio, next: CallAudio): Promise<void> {
     return applyLive(previous, next, {
       mic: this.mic,
       playback: this.playback,

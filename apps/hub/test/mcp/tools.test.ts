@@ -5,7 +5,7 @@ import { CAMERA, LAMP } from '../support/fake-provider';
 import { bootServer, linkFakeProvider, verifiedPublicUrl, type Booted } from '../support/booted';
 import { captureLogs } from '../support/logs';
 import { call, openLive, temporaryDirectory } from '../support/server';
-import { callTool, structured, type ToolResult } from './client';
+import { answerOf, callTool, structured, type ToolResult } from './client';
 
 let directory: { path: string; remove: () => Promise<void> };
 let booted: Booted;
@@ -22,6 +22,8 @@ beforeEach(async () => {
   directory = await temporaryDirectory();
   booted = await bootServer(directory.path);
   await verifiedPublicUrl(booted);
+  await owner('POST', '/api/rooms', { name: 'Study', position: 0 });
+  await owner('POST', '/api/rooms', { name: 'Hall', position: 1 });
   await linkFakeProvider(booted);
   const created = await call(booted.base, booted.owner, {
     method: 'POST',
@@ -96,6 +98,10 @@ describe('the home tools', () => {
     ]);
   });
 
+  it('refuse an argument get_home does not declare', async () => {
+    expect(await refusal('get_home', { homeId: lamp })).toContain('not valid');
+  });
+
   it('list, filter, describe and search devices', async () => {
     const ids = (args: Record<string, unknown>): Promise<string[]> =>
       tool('find_devices', args).then((result) =>
@@ -119,6 +125,7 @@ describe('the home tools', () => {
       camera: { physical_ptz: true, two_way_audio: false },
     });
     expect(described['capabilities']).toMatchObject([{ key: 'privacy_mode' }]);
+    expect(described['device']).toHaveProperty('capabilities', ['privacy_mode']);
     expect(await refusal('get_device', { deviceId: NOT_FOUND_ID })).toContain('There is no device');
     expect(await refusal('get_device', { deviceId: 'nope' })).toContain('deviceId');
     const found = structured(await tool('search_everything', { query: 'dim' }));
@@ -145,13 +152,20 @@ describe('the control tools', () => {
       'No device matches',
     );
     const done = structured(await tool('control_devices', change('power', false, [lamp])));
-    expect(done).toMatchObject({
-      allFinished: true,
-      commands: [{ device_id: lamp, capability: 'power', value: false, status: 'succeeded' }],
+    expect(done).toStrictEqual({
+      ok: true,
+      summary: 'Controlled devices: 1 of 1 commands done',
+      changed: [{ device: 'Desk lamp', capability: 'power' }],
     });
     booted.fake.adapter.failure = new Error('The lamp is unplugged');
     const failed = structured(await tool('control_devices', change('power', true, [lamp])));
-    expect(failed).toMatchObject({ allFinished: true, commands: [{ status: 'failed' }] });
+    expect(failed).toMatchObject({
+      ok: false,
+      summary: 'Controlled devices: 0 of 1 commands done, 1 failed',
+      failed: [
+        { device: 'Desk lamp', capability: 'power', reason: 'Error: The lamp is unplugged' },
+      ],
+    });
   });
 
   it('run a scene, list scenes and switch an automation off', async () => {
@@ -169,14 +183,14 @@ describe('the control tools', () => {
     );
     const ran = structured(await tool('run_scene', { sceneId: scene.id }));
     expect(ran).toMatchObject({
-      scene: { id: scene.id, name: 'Evening' },
-      allFinished: true,
-      commands: [{ status: 'succeeded' }, { status: 'succeeded' }],
+      ok: true,
+      id: scene.id,
+      summary: 'Ran scene “Evening”: 2 of 2 commands done',
     });
     const sources = API_ENDPOINTS.listCommands.response
       .parse(await owner('GET', '/api/commands'))
       .map((command) => command.source);
-    expect(sources).toStrictEqual(['scene', 'scene', 'app']);
+    expect(sources).toStrictEqual(['scene', 'scene']);
     expect(await refusal('run_scene', { sceneId: empty.id })).toContain('has no actions');
     expect(await refusal('run_scene', { sceneId: NOT_FOUND_ID })).toContain('There is no scene');
     expect(structured(await tool('list_scenes'))['scenes']).toMatchObject([
@@ -193,9 +207,8 @@ describe('the control tools', () => {
       await owner('POST', '/api/automations', {
         name: 'Night check',
         definition: {
-          triggers: [{ type: 'event', deviceId: null, kind: 'motion' }],
-          conditions: { mode: 'all', items: [] },
-          actions: [{ type: 'notify', message: 'Motion' }],
+          when: [{ on: 'signal', source: 'event', kind: 'motion' }],
+          steps: [{ do: 'notify', message: 'Motion' }],
         },
       }),
     );
@@ -210,7 +223,12 @@ describe('the control tools', () => {
           enabled: false,
         }),
       ),
-    ).toMatchObject({ result: { id: automation.id, name: 'Night check', enabled: false } });
+    ).toMatchObject({
+      ok: true,
+      id: automation.id,
+      enabled: false,
+      summary: 'Updated automation “Night check”',
+    });
     expect(
       await refusal('edit_automation', {
         action: 'update',
@@ -228,7 +246,7 @@ describe('the control tools', () => {
 describe('the history, event, health and camera tools', () => {
   it('return history raw or bucketed, and refuse buckets of values that are not numbers', async () => {
     const live = await openLive(booted.base, booted.owner);
-    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['state_history'] }));
+    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['state_history'], streams: [] }));
     await live.next((message) => message.type === 'subscribed');
     for (let index = 0; index < 9; index += 1) {
       booted.fake.adapter.sink?.state({
@@ -295,7 +313,9 @@ describe('the history, event, health and camera tools', () => {
 
   it('list events by kind and return the latest snapshot as an image', async () => {
     const live = await openLive(booted.base, booted.owner);
-    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['recordings', 'events'] }));
+    live.socket.send(
+      JSON.stringify({ type: 'subscribe', tables: ['recordings', 'events'], streams: [] }),
+    );
     await live.next((message) => message.type === 'subscribed');
     const happened = (externalId: string, kind: 'motion' | 'doorbell', hour: number): void => {
       booted.fake.adapter.sink?.event({
@@ -325,7 +345,7 @@ describe('the history, event, health and camera tools', () => {
       data: Buffer.from([0xff, 0xd8, 0xff]).toString('base64'),
       mimeType: 'image/jpeg',
     });
-    expect(snapshot.structuredContent).toMatchObject({
+    expect(answerOf(snapshot.content)).toMatchObject({
       deviceId: camera,
       device: 'Front door',
       mimeType: 'image/jpeg',
@@ -336,7 +356,7 @@ describe('the history, event, health and camera tools', () => {
   });
 
   it('summarise health days for a range and a set of metrics', async () => {
-    const source = API_ENDPOINTS.createHealthSource.response.parse(
+    API_ENDPOINTS.createHealthSource.response.parse(
       await owner('POST', '/api/health/sources', { name: 'Pixel' }),
     );
     const steps = (day: string, count: number): Record<string, unknown> => ({
@@ -349,7 +369,7 @@ describe('the history, event, health and camera tools', () => {
       lastModified: `${day}T07:00:00Z`,
       data: { count },
     });
-    const ingested = await call(booted.base, source.token, {
+    const ingested = await call(booted.base, booted.owner, {
       method: 'POST',
       path: '/api/health/ingest',
       body: {

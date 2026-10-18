@@ -1,396 +1,232 @@
+import { isIP } from 'node:net';
 import {
-  NATIVE_HUB_ROUTE_CONFIGURATION,
-  NATIVE_HUB_ROUTE_SNAPSHOT,
-  type NativeHubCredentialBinding,
+  type HubEndpoint,
+  type NativeHubRouteConfiguration,
   type NativeHubRouteSnapshot,
 } from '@smarteverything/domain';
-import type { HubLeasePort } from '../../../hub/src/client-network/lease';
-import type { NodeRouteView } from '../../../hub/src/service/route-view';
-import { writeRouteNotice } from '../../../hub/src/service/route-notices';
-import { Logger } from '@smarteverything/logging';
-import { DesktopAuthorityView } from './authority-view.js';
+import type { HubLease, HubLeasePort } from '@smarteverything/hub/client-network/lease';
+import { HubPolicies, HubTransportError } from '@smarteverything/hub/client-network/policy';
 import {
-  enrollDesktopClient,
-  refreshDesktopEndpoint,
-  type DesktopClientEnrollment,
-} from './authority-enrollment.js';
-import { HubPolicies, HubTransportError } from './policy.js';
+  probeNodeRoute,
+  ROUTE_PROBE_TIMEOUT_MS,
+} from '@smarteverything/hub/client-network/route-probes';
+import { Logger } from '@smarteverything/logging';
+
 const log = new Logger('desktop.hub-route');
-interface ClientScope {
-  readonly enrollment: DesktopClientEnrollment;
-  readonly controller: AbortController;
-  snapshot: NativeHubRouteSnapshot;
+const CHOOSING = 'Choosing the best route to your home.';
+const UNREACHABLE = 'No enrolled hub endpoint is reachable.';
+
+export interface RouteProbe {
+  readonly endpoint: HubEndpoint;
+  readonly outcome: 'pending' | 'ok' | 'failed';
 }
-export class DesktopRouteAuthority implements HubLeasePort {
-  private readonly view: DesktopAuthorityView;
-  private readonly policies = new HubPolicies();
-  private readonly clients = new Map<string, ClientScope>();
-  private readonly operations = new Map<string, AbortController>();
-  private readonly refreshes = new Map<string, AbortController>();
-  private observed: NodeRouteView | null = null;
-  private generation = 0;
-  private networkGeneration = 0;
-  private starting: Promise<void> | null = null;
-  private stopped = false;
-  private readonly failures = new Set<string>();
-  private pendingRevision: { readonly authorityId: string; readonly revision: number } | null =
-    null;
-  constructor(
-    readonly directory: string,
-    readonly emit: (state: NativeHubRouteSnapshot) => void,
-  ) {
-    this.view = new DesktopAuthorityView(directory, (): void => {
-      this.clearAll();
-    });
-    this.view.subscribe((view): void => {
-      this.changed(view);
-    });
+type RouteState =
+  | { readonly readiness: 'pending' | 'unavailable' }
+  | { readonly readiness: 'ready'; readonly endpoint: HubEndpoint };
+type Lease = HubLease & { readonly signal: AbortSignal };
+
+class RouteScope {
+  trust = new AbortController();
+  probes = new AbortController();
+  routeGeneration = 0;
+  networkGeneration = 0;
+  snapshot: NativeHubRouteSnapshot;
+  private running: Promise<void> | null = null;
+  private rerun = false;
+  private retired = false;
+  constructor(public configuration: NativeHubRouteConfiguration) {
+    this.snapshot = this.describe({ readiness: 'pending' }, CHOOSING);
   }
-  async configure(value: unknown): Promise<NativeHubRouteSnapshot> {
-    const configuration = NATIVE_HUB_ROUTE_CONFIGURATION.parse(value);
-    const scopeId = configuration.trust.scopeId;
-    if (this.stopped || (!this.clients.has(scopeId) && this.clients.size >= 32))
-      throw new HubTransportError('Desktop route authority is stopped or full');
-    this.generation += 1;
-    this.clear(scopeId);
-    const operation = new AbortController();
-    this.operations.set(scopeId, operation);
-    try {
-      this.starting ??= this.view.start().catch((cause: unknown): never => {
-        this.starting = null;
-        throw cause;
-      });
-      await this.starting;
-      const enrollment = await enrollDesktopClient(this.directory, configuration, operation.signal);
-      if (this.operations.get(scopeId) !== operation || operation.signal.aborted)
-        throw new HubTransportError('Desktop client enrollment was withdrawn');
-      const client = {
-        enrollment,
-        controller: new AbortController(),
-        snapshot: this.snapshot(enrollment, this.view.value),
-      };
-      this.policies.configure(configuration.trust);
-      this.clients.set(scopeId, client);
-      this.refreshEndpoint(scopeId, client, this.view.value);
-      return client.snapshot;
-    } finally {
-      if (this.operations.get(scopeId) === operation) this.operations.delete(scopeId);
-    }
+  get endpoint(): HubEndpoint | null {
+    return this.snapshot.readiness === 'ready' ? this.snapshot.endpoint : null;
   }
-  clear(scopeId: string): void {
-    this.refreshes.get(scopeId)?.abort();
-    this.refreshes.delete(scopeId);
-    this.operations.get(scopeId)?.abort();
-    this.operations.delete(scopeId);
-    this.clients
-      .get(scopeId)
-      ?.controller.abort(new HubTransportError('Client route scope withdrawn'));
-    this.clients.delete(scopeId);
-    this.policies.clear(scopeId);
+  async settled(): Promise<void> {
+    while (this.running !== null) await this.running;
   }
-  private clearAll(): void {
-    this.pendingRevision = null;
-    this.changed(null);
-    for (const scope of new Set([...this.clients.keys(), ...this.operations.keys()]))
-      this.clear(scope);
+  describe(state: RouteState, detail: string): NativeHubRouteSnapshot {
+    return { ...this.header(), detail, ...state };
   }
-  state(scopeId: string): NativeHubRouteSnapshot {
-    const client = this.clients.get(scopeId);
-    if (client === undefined) throw new HubTransportError('Client route scope is not enrolled');
-    return client.snapshot;
-  }
-  private snapshot(
-    enrollment: DesktopClientEnrollment,
-    view: NodeRouteView | null,
-    previous?: NativeHubRouteSnapshot,
-  ): NativeHubRouteSnapshot {
-    const configuration = enrollment.configuration;
-    const base = {
-      scopeId: configuration.trust.scopeId,
-      canonicalOrigin: configuration.canonicalOrigin,
-      hubId: configuration.trust.identity.id,
-      routeGeneration: previous?.routeGeneration ?? this.generation,
-      networkGeneration: previous?.networkGeneration ?? this.networkGeneration,
-    };
-    if (this.checkingUnavailable(enrollment, view))
-      return NATIVE_HUB_ROUTE_SNAPSHOT.parse({
-        ...base,
-        readiness: 'pending',
-        detail: 'Node authority is checking its cached route.',
-      });
-    if (view === null)
-      return NATIVE_HUB_ROUTE_SNAPSHOT.parse({
-        ...base,
-        readiness: 'unavailable',
-        detail: 'Owned Node route authority is unavailable.',
-      });
-    const endpoint = view.state.endpoint;
-    if (endpoint === null)
-      return NATIVE_HUB_ROUTE_SNAPSHOT.parse({
-        ...base,
-        readiness: 'unavailable',
-        detail: view.state.detail,
-      });
-    if (!this.allowed(enrollment, view))
-      return NATIVE_HUB_ROUTE_SNAPSHOT.parse({
-        ...base,
-        readiness: 'unavailable',
-        detail: 'Node route is not independently enrolled for this client.',
-      });
-    return NATIVE_HUB_ROUTE_SNAPSHOT.parse({
-      ...base,
-      readiness: 'ready',
-      endpoint,
-      detail: view.state.detail,
-    });
-  }
-  private checkingUnavailable(
-    enrollment: DesktopClientEnrollment,
-    view: NodeRouteView | null,
-  ): boolean {
-    return this.pendingRevision !== null && (view === null || !this.allowed(enrollment, view));
-  }
-  private allowed(enrollment: DesktopClientEnrollment, view: NodeRouteView): boolean {
-    const endpoint = view.state.endpoint;
-    if (endpoint === null || view.canonicalOrigin !== enrollment.configuration.canonicalOrigin)
-      return false;
-    if (endpoint.kind !== 'lan')
-      return new URL(endpoint.url).origin === enrollment.configuration.canonicalOrigin;
-    return (
-      view.state.localSupported &&
-      view.trust !== null &&
-      JSON.stringify(view.trust.identity) === JSON.stringify(enrollment.metadata.identity) &&
-      enrollment.metadata.endpoints.some(
-        (candidate) => candidate.kind === 'lan' && candidate.url === endpoint.url,
-      ) &&
-      enrollment.configuration.trust.endpoints.some(
-        (candidate) => candidate.kind === 'lan' && candidate.url === endpoint.url,
-      )
-    );
-  }
-  async supported(): Promise<boolean> {
-    try {
-      if (!(await this.view.supported())) return false;
-    } catch (cause) {
-      log.warn('route.authority_unsupported', {
-        error_name: cause instanceof Error ? cause.name : 'unknown',
-      });
-      return false;
-    }
-    try {
-      await this.view.start();
-    } catch (cause) {
-      log.warn('route.view_unavailable', {
-        error_name: cause instanceof Error ? cause.name : 'unknown',
-      });
-    }
-    return true;
-  }
-  async refresh(scopeId: string): Promise<NativeHubRouteSnapshot> {
-    this.state(scopeId);
-    const view = this.view.value;
-    if (view === null) throw new HubTransportError('Node authority is unavailable');
-    this.pendingRevision = { authorityId: view.authorityId, revision: view.revision };
-    this.publishPending();
-    try {
-      await writeRouteNotice(this.directory, view, 'refresh');
-    } catch (cause) {
-      this.pendingRevision = null;
-      this.changed(this.view.value);
-      throw cause;
-    }
-    const latest = this.view.value;
-    if (latest !== null && latest.revision > view.revision) this.changed(latest);
-    return this.state(scopeId);
-  }
-  failed(scopeId: string, generation: number | undefined): void {
-    const client = this.clients.get(scopeId);
-    const view = this.view.value;
-    if (client === undefined || view === null || generation !== client.snapshot.routeGeneration)
+  reconfigure(configuration: NativeHubRouteConfiguration, identityChanged: boolean): void {
+    this.configuration = configuration;
+    this.probes.abort();
+    if (!identityChanged) {
+      this.rebuild();
       return;
-    const key = `${view.authorityId}:${String(view.state.routeGeneration)}`;
-    if (this.failures.has(key)) return;
-    this.failures.add(key);
-    if (this.failures.size > 64) this.failures.clear();
-    void writeRouteNotice(this.directory, view, 'failed').catch((cause: unknown): void => {
-      log.warn('route.notice_failed', {
-        error_name: cause instanceof Error ? cause.name : 'unknown',
-      });
-    });
-  }
-  private sameLease(previous: NodeRouteView | null, next: NodeRouteView | null): boolean {
-    if (previous === null || next === null) return previous === next;
-    const leaseIdentity = (view: NodeRouteView): string =>
-      JSON.stringify({
-        authorityId: view.authorityId,
-        pid: view.pid,
-        processStart: view.processStart,
-        canonicalOrigin: view.canonicalOrigin,
-        endpoint: view.state.endpoint,
-        routeGeneration: view.state.routeGeneration,
-        networkGeneration: view.state.networkGeneration,
-        localSupported: view.state.localSupported,
-        identity: view.trust?.identity,
-      });
-    return leaseIdentity(previous) === leaseIdentity(next);
-  }
-  private publishPending(): void {
-    for (const [scopeId, client] of this.clients) {
-      client.snapshot = this.snapshot(client.enrollment, this.observed, client.snapshot);
-      this.emit(client.snapshot);
-      this.clients.set(scopeId, client);
     }
+    this.trust.abort(new HubTransportError('Hub identity changed'));
+    this.trust = new AbortController();
+    this.routeGeneration += 1;
+    this.snapshot = this.describe({ readiness: 'pending' }, CHOOSING);
   }
-  private changed(view: NodeRouteView | null): void {
-    if (
-      view !== null &&
-      (view.authorityId !== this.pendingRevision?.authorityId ||
-        view.revision > this.pendingRevision.revision)
-    )
-      this.pendingRevision = null;
-    const retired = !this.sameLease(this.observed, view);
-    this.observed = view;
-    if (retired) {
-      this.generation += 1;
-      this.networkGeneration += 1;
-    }
-    for (const [scopeId, previous] of this.clients) {
-      if (retired)
-        previous.controller.abort(
-          new HubTransportError('Owned Node route changed; effects may be unknown'),
-        );
-      const client = {
-        enrollment: previous.enrollment,
-        controller: retired ? new AbortController() : previous.controller,
-        snapshot: this.snapshot(previous.enrollment, view, retired ? undefined : previous.snapshot),
-      };
-      this.clients.set(scopeId, client);
-      this.emit(client.snapshot);
-      this.refreshEndpoint(scopeId, client, view, retired);
-    }
+  beginProbes(): AbortController {
+    this.probes = new AbortController();
+    return this.probes;
   }
-  private refreshable(
-    enrollment: DesktopClientEnrollment,
-    view: NodeRouteView | null,
-  ): view is NodeRouteView {
+  networkChanged(): void {
+    this.networkGeneration += 1;
+    this.rebuild();
+    this.probes.abort();
+  }
+  retire(): void {
+    this.retired = true;
+    this.probes.abort();
+    this.trust.abort(new HubTransportError('Client route scope withdrawn'));
+  }
+  acceptsFailure(routeGeneration: number | undefined): boolean {
+    return (routeGeneration ?? this.routeGeneration) === this.routeGeneration;
+  }
+  publish(endpoint: HubEndpoint | null): boolean {
+    const previous = this.snapshot;
+    if (endpoint?.url !== this.endpoint?.url) this.routeGeneration += 1;
+    this.snapshot =
+      endpoint === null
+        ? this.describe({ readiness: 'unavailable' }, UNREACHABLE)
+        : this.describe({ readiness: 'ready', endpoint }, '');
     return (
-      view !== null &&
-      view.state.endpoint?.kind === 'lan' &&
-      view.state.localSupported &&
-      view.canonicalOrigin === enrollment.configuration.canonicalOrigin &&
-      JSON.stringify(view.trust?.identity) === JSON.stringify(enrollment.metadata.identity) &&
-      !this.allowed(enrollment, view)
+      this.snapshot.readiness !== previous.readiness ||
+      this.routeGeneration !== previous.routeGeneration
     );
   }
-  private refreshEndpoint(
-    scopeId: string,
-    client: ClientScope,
-    view: NodeRouteView | null,
-    retired = true,
-  ): void {
-    if (!retired) return;
-    this.refreshes.get(scopeId)?.abort();
-    this.refreshes.delete(scopeId);
-    if (!this.refreshable(client.enrollment, view)) return;
-    const endpoint = view.state.endpoint;
-    if (endpoint === null) return;
-    const operation = new AbortController();
-    this.refreshes.set(scopeId, operation);
-    void refreshDesktopEndpoint(client.enrollment, endpoint, operation.signal)
-      .then((enrollment): void => {
-        const current = this.clients.get(scopeId);
-        if (
-          current?.enrollment !== client.enrollment ||
-          current.controller !== client.controller ||
-          operation.signal.aborted ||
-          this.stopped
-        )
-          return;
-        this.policies.configure(enrollment.configuration.trust);
-        const updated = {
-          ...current,
-          enrollment,
-          snapshot: this.snapshot(enrollment, this.observed, current.snapshot),
-        };
-        this.clients.set(scopeId, updated);
-        this.emit(updated.snapshot);
-      })
+  reselect(run: () => Promise<void>): void {
+    if (this.running !== null) {
+      this.rerun = true;
+      return;
+    }
+    this.running = run()
       .catch((cause: unknown): void => {
-        if (!operation.signal.aborted)
-          log.warn('route.client_inventory_failed', {
-            error_name: cause instanceof Error ? cause.name : 'unknown',
-          });
+        log.error('route.select_failed', cause);
       })
       .finally((): void => {
-        if (this.refreshes.get(scopeId) === operation) this.refreshes.delete(scopeId);
+        this.running = null;
+        if (!this.rerun || this.retired) return;
+        this.rerun = false;
+        this.reselect(run);
       });
   }
-  authorize(scopeId: string, bearer: string | undefined): void {
-    const token = this.clients.get(scopeId)?.enrollment.token;
-    if (token === undefined || bearer !== `Bearer ${token}`)
-      throw new HubTransportError('Request credential differs from independently paired client');
+  private header(): Omit<NativeHubRouteSnapshot, 'readiness' | 'detail'> {
+    return {
+      scopeId: this.configuration.trust.scopeId,
+      canonicalOrigin: this.configuration.canonicalOrigin,
+      hubId: this.configuration.trust.identity.id,
+      routeGeneration: this.routeGeneration,
+      networkGeneration: this.networkGeneration,
+    };
   }
-  authorizeSocket(scopeId: string, protocols: readonly string[]): void {
-    const token = this.clients.get(scopeId)?.enrollment.token;
-    const bearers = protocols.filter((protocol) => protocol.startsWith('bearer.'));
-    if (token === undefined || bearers.length !== 1 || bearers[0] !== `bearer.${token}`)
-      throw new HubTransportError('Socket credential differs from independently paired client');
+  private rebuild(): void {
+    this.snapshot = { ...this.snapshot, ...this.header() };
   }
-  private validateUrl(input: string, endpoint: string): URL {
+}
+
+export function routeCandidates(
+  configuration: NativeHubRouteConfiguration,
+): readonly HubEndpoint[] {
+  const { endpoints } = configuration.trust;
+  const addresses = endpoints.filter(
+    (endpoint) =>
+      endpoint.kind === 'lan' && isIP(new URL(endpoint.url).hostname.replace(/^\[|\]$/g, '')) > 0,
+  );
+  const canonical = endpoints.filter(
+    (endpoint) =>
+      endpoint.kind !== 'lan' && new URL(endpoint.url).origin === configuration.canonicalOrigin,
+  );
+  return [...addresses.reverse(), ...canonical];
+}
+
+export function preferredRoute(
+  probes: readonly RouteProbe[],
+  provisional: boolean,
+): HubEndpoint | null {
+  const chosen = probes.find((probe) => probe.outcome === 'ok');
+  if (chosen === undefined) return null;
+  const nearer = probes.slice(0, probes.indexOf(chosen));
+  return provisional || nearer.every((probe) => probe.outcome !== 'pending')
+    ? chosen.endpoint
+    : null;
+}
+
+export class DesktopRouteAuthority implements HubLeasePort {
+  private readonly policies = new HubPolicies();
+  private readonly scopes = new Map<string, RouteScope>();
+  private closed = false;
+  constructor(readonly emit: (state: NativeHubRouteSnapshot) => void) {}
+  configure(configuration: NativeHubRouteConfiguration): NativeHubRouteSnapshot {
+    const scopeId = configuration.trust.scopeId;
+    const identityChanged = this.policies.configure(configuration.trust);
+    const scope = this.scopes.get(scopeId) ?? new RouteScope(configuration);
+    scope.reconfigure(configuration, identityChanged);
+    this.scopes.set(scopeId, scope);
+    this.reselect(scope);
+    return scope.snapshot;
+  }
+  clear(scopeId: string): void {
+    this.scopes.get(scopeId)?.retire();
+    this.scopes.delete(scopeId);
+    this.policies.clear(scopeId);
+  }
+  state(scopeId: string): NativeHubRouteSnapshot {
+    return this.scope(scopeId).snapshot;
+  }
+  async refresh(scopeId: string): Promise<NativeHubRouteSnapshot> {
+    const scope = this.scope(scopeId);
+    this.reselect(scope);
+    await scope.settled();
+    return scope.snapshot;
+  }
+  networkChanged(): void {
+    for (const scope of this.scopes.values()) {
+      scope.networkChanged();
+      this.reselect(scope);
+    }
+  }
+  failed(scopeId: string, routeGeneration: number | undefined): void {
+    const scope = this.scopes.get(scopeId);
+    if (scope?.acceptsFailure(routeGeneration) === true) this.reselect(scope);
+  }
+  lease(scopeId: string, input: string): Lease {
+    return { ...this.policies.lease(scopeId, input), signal: this.scope(scopeId).trust.signal };
+  }
+  resourceLease(scopeId: string, input: string): Lease {
+    const endpoint = this.scope(scopeId).endpoint;
+    if (endpoint === null) throw new HubTransportError('Your home is not reachable right now.');
     const url = new URL(input);
-    if (
-      url.username !== '' ||
-      url.password !== '' ||
-      url.hash !== '' ||
-      url.origin !== new URL(endpoint).origin
-    )
-      throw new HubTransportError('Request URL differs from the selected Node route');
-    return url;
-  }
-  lease(
-    scopeId: string,
-    input: string,
-    binding?: NativeHubCredentialBinding,
-    routeGeneration?: number,
-  ): ReturnType<HubLeasePort['lease']> {
-    const client = this.clients.get(scopeId);
-    if (client?.snapshot.readiness !== 'ready' || this.stopped || !this.view.admitting)
-      throw new HubTransportError('Client route authority has no ready lease');
-    if (
-      binding === undefined ||
-      JSON.stringify(binding) !== JSON.stringify(client.enrollment.configuration.bindings[0]) ||
-      routeGeneration !== client.snapshot.routeGeneration
-    )
-      throw new HubTransportError('Client principal or route generation is stale');
-    const url = this.validateUrl(input, client.snapshot.endpoint.url);
-    const transport =
-      client.snapshot.endpoint.kind === 'lan'
-        ? this.policies.lease(scopeId, input)
-        : { url, agent: undefined };
-    return { ...transport, signal: client.controller.signal };
-  }
-  resourceLease(
-    scopeId: string,
-    input: string,
-    binding?: NativeHubCredentialBinding,
-    routeGeneration?: number,
-  ): ReturnType<HubLeasePort['lease']> {
-    const client = this.clients.get(scopeId);
-    if (client?.snapshot.readiness !== 'ready' || binding === undefined)
-      throw new HubTransportError('Resource client has no observed ready route');
-    const url = this.validateUrl(input, client.enrollment.configuration.canonicalOrigin);
-    const selected = new URL(client.snapshot.endpoint.url);
-    return this.lease(
-      scopeId,
-      `${selected.origin}${url.pathname}${url.search}`,
-      binding,
-      routeGeneration ?? client.snapshot.routeGeneration,
-    );
+    return this.lease(scopeId, `${new URL(endpoint.url).origin}${url.pathname}${url.search}`);
   }
   close(): void {
-    this.stopped = true;
-    this.clearAll();
-    this.view.stop();
+    this.closed = true;
+    for (const scopeId of [...this.scopes.keys()]) this.clear(scopeId);
     this.policies.close();
+  }
+  private scope(scopeId: string): RouteScope {
+    const scope = this.scopes.get(scopeId);
+    if (scope === undefined) throw new HubTransportError('Client route scope is not configured');
+    return scope;
+  }
+  private reselect(scope: RouteScope): void {
+    scope.reselect(() => this.select(scope));
+  }
+  private async select(scope: RouteScope): Promise<void> {
+    const probes = scope.beginProbes();
+    const trust = scope.configuration.trust;
+    const signal = AbortSignal.any([probes.signal, AbortSignal.timeout(ROUTE_PROBE_TIMEOUT_MS)]);
+    const candidates = routeCandidates(scope.configuration);
+    const asked: RouteProbe[] = candidates.map((endpoint) => ({ endpoint, outcome: 'pending' }));
+    if (candidates.length === 0) this.publish(scope, null);
+    await Promise.all(
+      candidates.map(async (endpoint, index) => {
+        const answered = await probeNodeRoute(
+          { policies: this.policies, trust, log },
+          endpoint,
+          signal,
+        );
+        asked[index] = { endpoint, outcome: answered ? 'ok' : 'failed' };
+        if (probes.signal.aborted || scope.probes !== probes || this.closed) return;
+        const best = preferredRoute(asked, scope.endpoint === null);
+        if (best !== null) this.publish(scope, best);
+        else if (asked.every((probe) => probe.outcome !== 'pending')) this.publish(scope, null);
+      }),
+    );
+  }
+  private publish(scope: RouteScope, endpoint: HubEndpoint | null): void {
+    if (scope.publish(endpoint)) this.emit(scope.snapshot);
   }
 }

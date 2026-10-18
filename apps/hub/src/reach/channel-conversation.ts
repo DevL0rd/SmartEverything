@@ -5,6 +5,7 @@ import type { LiveOpening } from '../talk/relay';
 import { hostLine, once, type HostedVoiceDeps } from './hosted-call';
 import { ReachRefusedError } from './reach-errors';
 import { OpusSpeech } from './voice-pacing';
+import { background } from '@smarteverything/logging';
 
 export type OpenLive = (channelId: string, conversation: LiveConversation) => LiveOpening;
 
@@ -75,7 +76,7 @@ export async function channelConversation(
   detach.push(
     listen(live, line.call.hear),
     live.onEnd(() => {
-      void line.call.end('finished');
+      background(line.call.end('finished'), 'call.end_failed');
     }),
   );
   return line.call;

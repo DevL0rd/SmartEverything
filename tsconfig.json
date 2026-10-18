@@ -24,10 +24,16 @@
       "path": "./packages/smartthings"
     },
     {
+      "path": "./packages/shelly"
+    },
+    {
       "path": "./apps/hub"
     },
     {
       "path": "./apps/desktop"
+    },
+    {
+      "path": "./apps/desktop/src/overlay/page"
     },
     {
       "path": "./tooling/dependency-contracts"

@@ -1,7 +1,7 @@
 import type { AddressInfo } from 'node:net';
-import { networkInterfaces } from 'node:os';
 import type { ConnectionPortNeed } from '../firewall/openings';
 import { lanEndpoints } from './addresses';
+import { interfaceEntries } from './lan';
 
 const MDNS_PORT = 5353;
 
@@ -16,10 +16,8 @@ export function connectionPortNeeds(
   );
   const networks = [
     ...new Set(
-      Object.values(networkInterfaces()).flatMap((entries) =>
-        (entries ?? []).flatMap((entry) =>
-          addresses.has(entry.address) && entry.cidr !== null ? [entry.cidr] : [],
-        ),
+      interfaceEntries().flatMap((entry) =>
+        addresses.has(entry.address) && entry.cidr !== null ? [entry.cidr] : [],
       ),
     ),
   ];

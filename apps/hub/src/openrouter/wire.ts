@@ -16,7 +16,7 @@ const PRICE_OVERRIDE = z.looseObject({
   input_cache_write: PRICE.optional(),
 });
 
-export const OR_PRICING = z.looseObject({
+const OR_PRICING = z.looseObject({
   prompt: PRICE,
   completion: PRICE,
   request: PRICE.optional(),
@@ -33,7 +33,7 @@ export const OR_PRICING = z.looseObject({
 
 export type OrPricing = z.infer<typeof OR_PRICING>;
 
-export const OR_MODEL = z.looseObject({
+const OR_MODEL = z.looseObject({
   id: z.string().min(3).max(200),
   name: z.string().min(1).max(200),
   created: z.number().int().min(0),
@@ -67,7 +67,7 @@ export type OrModel = z.infer<typeof OR_MODEL>;
 
 export const OR_MODELS = z.looseObject({ data: z.array(OR_MODEL) });
 
-export const OR_VIDEO_MODEL = z.looseObject({
+const OR_VIDEO_MODEL = z.looseObject({
   id: z.string().min(3).max(200),
   name: z.string().min(1).max(200),
   created: z.number().int().min(0),
@@ -80,7 +80,7 @@ export type OrVideoModel = z.infer<typeof OR_VIDEO_MODEL>;
 
 export const OR_VIDEO_MODELS = z.looseObject({ data: z.array(OR_VIDEO_MODEL) });
 
-export const OR_IMAGE_MODEL = z.looseObject({
+const OR_IMAGE_MODEL = z.looseObject({
   id: z.string().min(3).max(200),
   name: z.string().min(1).max(200),
   created: z.number().int().min(0),
@@ -96,7 +96,7 @@ export type OrImageModel = z.infer<typeof OR_IMAGE_MODEL>;
 
 export const OR_IMAGE_MODELS = z.looseObject({ data: z.array(OR_IMAGE_MODEL) });
 
-export const OR_IMAGE_PRICE = z.looseObject({
+const OR_IMAGE_PRICE = z.looseObject({
   billable: z.string().min(1),
   unit: z.string().min(1),
   cost_usd: z.number().min(0),

@@ -8,12 +8,15 @@ import { Card } from '../../../components/card';
 import { confirm } from '../../../components/confirm-store';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
+import { useSizeClass } from '../../../design/size-class';
 import { useMinute } from '../../../store/clock';
 import { useIsOwner, useSettings } from '../../../store/selectors';
 import { LocationSheet } from './location-sheet';
-import { sunText } from './place';
+import { sunLines } from './place';
 
+import { trackSetting } from '../settings-log';
+import { background } from '@smarteverything/logging';
 const PLACE_UNNAMED = 'Your home';
 
 function pointOf(settings: ReturnType<typeof useSettings>): GeoPoint | null {
@@ -31,15 +34,37 @@ async function removeLocation(): Promise<void> {
   if (!sure) {
     return;
   }
-  await updateHome({ latitude: null, longitude: null }).catch((error: unknown) => {
-    notify({ message: 'The location was not removed', error, tone: 'critical' });
-  });
+  await trackSetting('home_location.remove', {}, () =>
+    updateHome({ latitude: null, longitude: null }),
+  ).catch(notifyFailure('The location was not removed'));
 }
 
 function PlaceTile(): ReactNode {
   return (
     <View className="size-12 items-center justify-center rounded-lg bg-primary-container">
       <Icon name="mapPin" size={24} colour="on-primary-container" />
+    </View>
+  );
+}
+
+function SunLines({
+  point,
+  zone,
+  now,
+}: {
+  readonly point: GeoPoint;
+  readonly zone: string;
+  readonly now: number;
+}): ReactNode {
+  const lines = sunLines(point, zone, new Date(now));
+  const stacked = useSizeClass().width === 'compact';
+  return (
+    <View>
+      {(stacked ? lines : [lines.join(' · ')]).map((line) => (
+        <Text key={line} variant="footnote" tone="variant" numberOfLines={1}>
+          {line}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -65,9 +90,7 @@ function SetPlace({
           <Text variant="title-2" numberOfLines={2}>
             {name ?? PLACE_UNNAMED}
           </Text>
-          <Text variant="footnote" tone="variant" numberOfLines={1}>
-            {sunText(point, zone, new Date(now))}
-          </Text>
+          <SunLines point={point} zone={zone} now={now} />
         </View>
       </View>
       {owner ? (
@@ -78,7 +101,7 @@ function SetPlace({
             variant="text"
             icon="trash"
             onPress={() => {
-              void removeLocation();
+              background(removeLocation(), 'location.remove_failed');
             }}
           />
         </View>

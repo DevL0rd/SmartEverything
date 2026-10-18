@@ -1,9 +1,5 @@
-import { providerHubOsBan } from '../assistant/engines/computer/tool-authority';
 import { localPluginTransport } from './local-transport';
-import {
-  currentExecutionAuthority,
-  currentExecutionAuthorities,
-} from '../assistant/execution-authority';
+import { currentExecutionAuthority, hubOriginated } from '../assistant/turn-authority';
 import { resetPluginCallAuthority, withPluginCallAuthority } from './call-authority';
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -83,7 +79,11 @@ export class PluginHost {
         ),
       status: (status, detail): void => {
         this.options.store.plugins.update(id, { status, statusDetail: detail });
-        this.options.log.info('plugin.status', { plugin: id, status });
+        this.options.log.info('plugin.status', {
+          plugin: id,
+          status,
+          ...(detail === null ? {} : { detail }),
+        });
       },
       toolsChanged: (): void => {
         this.changed();
@@ -143,8 +143,7 @@ export class PluginHost {
     if (authority === undefined) return slot.call(tool, args, caller);
     const plugin = this.options.store.plugins.byId(pluginId);
     if (
-      (providerHubOsBan() ||
-        [authority, ...currentExecutionAuthorities()].some((source) => source.hub_os_ban)) &&
+      hubOriginated(authority) &&
       plugin.source !== 'builtin' &&
       localPluginTransport(plugin.manifest.mcp, this.options.mcpUrl())
     )

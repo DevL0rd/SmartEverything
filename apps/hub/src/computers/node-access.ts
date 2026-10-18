@@ -2,19 +2,23 @@ import { createHash, randomBytes } from 'node:crypto';
 import {
   ApiError,
   NODE_AI_TOKEN,
+  createClientToken,
   createPairingCode,
+  hashClientToken,
   hashPairingCode,
   type NodeHello,
   type ComputerNodeRow,
 } from '@smarteverything/domain';
+import { canonicalEndpoint } from '../client-network/route-trust';
 import type { Store } from '../store/store';
 import { describeComputer, computerExternalId } from './computer-device';
+import { messageOf } from '@smarteverything/logging';
 
 const PAIRING_LIFETIME_MS = 10 * 60_000;
 const CLAIM_WINDOW_MS = 60_000;
 const CLAIM_LIMIT = 10;
 
-export function hashNodeToken(token: string): string {
+function hashNodeToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
@@ -30,17 +34,11 @@ export class ComputerNodeAccess {
     url: string,
     ownerId: string,
   ): { readonly code: string; readonly expires_at: string; readonly url: string } {
-    const parsed = new URL(url);
-    if (
-      parsed.username.length > 0 ||
-      parsed.password.length > 0 ||
-      parsed.hash.length > 0 ||
-      parsed.search.length > 0
-    )
-      throw new ApiError(
-        'invalid_request',
-        'The hub URL must not contain credentials, a query or a fragment.',
-      );
+    try {
+      canonicalEndpoint(url);
+    } catch (cause) {
+      throw new ApiError('invalid_request', messageOf(cause));
+    }
     const code = createPairingCode();
     const expiresAt = new Date(this.now().getTime() + PAIRING_LIFETIME_MS).toISOString();
     this.store.computerNodes.pairing(hashPairingCode(code), url, ownerId, expiresAt);
@@ -51,27 +49,54 @@ export class ComputerNodeAccess {
     code: string,
     hello: NodeHello,
     remote: string,
-  ): { readonly token: string; readonly device_id: string; readonly hub_url: string } {
+  ): {
+    readonly paired: {
+      readonly token: string;
+      readonly device_id: string;
+      readonly hub_url: string;
+      readonly window_token: string;
+    };
+    readonly replacedWindow: string | null;
+  } {
     this.limit(remote);
-    const paired = this.store.computerNodes.claim(hashPairingCode(code), (hubUrl) => {
-      const previous = this.store.computerNodes.byMachine(hello.machineId);
-      if (previous?.revoked_at === null)
-        throw new ApiError(
-          'conflict',
-          'This computer is already paired; revoke its node connection before pairing again.',
-        );
+    const claimed = this.store.computerNodes.claim(hashPairingCode(code), (hubUrl) => {
+      const replacedWindow =
+        this.store.computerNodes.byMachine(hello.machineId)?.window_client_id ?? null;
+      if (replacedWindow !== null) this.store.clients.remove(replacedWindow);
       const deviceId = this.device(hello);
       const token = `sen_${randomBytes(32).toString('base64url')}`;
-      this.store.computerNodes.bind(deviceId, hello.machineId, hashNodeToken(token), hubUrl);
+      const windowToken = createClientToken();
+      const windowClient = this.store.clients.create({
+        name: `${hello.hostname} desktop`.slice(0, 80),
+        platform: 'web',
+        role: 'owner',
+        tokenHash: hashClientToken(windowToken),
+      });
+      this.store.computerNodes.bind({
+        deviceId,
+        machineId: hello.machineId,
+        tokenHash: hashNodeToken(token),
+        hubUrl,
+        windowClientId: windowClient.id,
+      });
       this.store.computerAi.saveSettings(deviceId, this.store.computerAi.settings(deviceId));
-      return { token, device_id: deviceId, hub_url: hubUrl };
+      return {
+        paired: { token, device_id: deviceId, hub_url: hubUrl, window_token: windowToken },
+        replacedWindow,
+      };
     });
-    if (paired === null)
+    if (claimed === null)
       throw new ApiError(
         'pairing_code_invalid',
         'The computer pairing code is unknown, expired or already used.',
       );
-    return paired;
+    return claimed;
+  }
+
+  revoke(deviceId: string): string | null {
+    const windowClient = this.store.computerNodes.revoke(deviceId);
+    if (windowClient !== null) this.store.clients.remove(windowClient);
+    return windowClient;
   }
 
   authenticate(token: string | null): ComputerNodeRow {
@@ -90,10 +115,11 @@ export class ComputerNodeAccess {
     const known = this.store.devices
       .list()
       .find(
-        (device) => device.provider === 'local' && device.external_id === computerExternalId(hello),
+        (device) =>
+          device.provider === 'local' && device.external_id === computerExternalId(hello.machineId),
       );
     if (known !== undefined) return known.id;
-    const discovered = describeComputer(hello, [], []);
+    const discovered = describeComputer(hello, 'pc', [], { power: [], machine: [] });
     const row = this.store.devices.upsert([
       { ...discovered, parentId: null, providerRoom: null, roomId: null, online: false },
     ])[0];

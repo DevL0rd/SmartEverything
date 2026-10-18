@@ -3,7 +3,7 @@ import { workoutsOf, type Workout } from '../model/workouts';
 import type { Window } from '../model/window';
 import { useRecords } from './queries';
 
-const LIST_TYPES: readonly HealthRecordType[] = [
+export const LIST_TYPES: readonly HealthRecordType[] = [
   'ExerciseSession',
   'Distance',
   'ActiveCaloriesBurned',

@@ -1,15 +1,17 @@
 export const EDITOR_FIELDS = {
   name: { title: 'Name', keywords: ['rename', 'title'] },
-  when: { title: 'When', keywords: ['trigger', 'time', 'event', 'signal'] },
+  when: { title: 'When', keywords: ['trigger', 'time', 'event', 'signal', 'speech'] },
   conditions: { title: 'Only if', keywords: ['conditions', 'all', 'any', 'compare'] },
-  steps: { title: 'Steps', keywords: ['actions', 'choose', 'repeat', 'wait', 'stop'] },
-  policy: { title: 'Run behavior', keywords: ['single', 'restart', 'queue', 'parallel', 'policy'] },
-  controlKey: { title: 'Control key', keywords: ['stop', 'key', 'matching'] },
-  parameters: { title: 'Parameters', keywords: ['inputs', 'arguments', 'type'] },
+  steps: { title: 'Steps', keywords: ['actions', 'if', 'repeat', 'wait', 'stop', 'control'] },
+  advanced: {
+    title: 'Advanced',
+    keywords: ['single', 'restart', 'queue', 'parallel', 'run behaviour', 'again', 'key'],
+  },
+  inputs: { title: 'Inputs', keywords: ['arguments', 'type', 'parameters'] },
   value: { title: 'Current value', keywords: ['set', 'toggle', 'add', 'subtract'] },
   bounds: {
     title: 'Bounds and overflow',
-    keywords: ['minimum', 'maximum', 'quantum', 'clamp', 'wrap'],
+    keywords: ['minimum', 'maximum', 'step', 'clamp', 'wrap'],
   },
   choices: { title: 'Choices', keywords: ['options', 'order', 'next', 'previous', 'cycle'] },
 } as const;
@@ -20,23 +22,18 @@ export const AUTOMATION_EDITOR_FIELDS = [
   'when',
   'conditions',
   'steps',
-  'policy',
-  'controlKey',
+  'advanced',
 ] as const;
-export const SEQUENCE_EDITOR_FIELDS = [
-  'name',
-  'parameters',
-  'steps',
-  'policy',
-  'controlKey',
-] as const;
+export const REUSABLE_EDITOR_FIELDS = ['name', 'inputs', 'steps', 'advanced'] as const;
+
 export function automationEditorField(
   value: EditorField | null,
 ): value is (typeof AUTOMATION_EDITOR_FIELDS)[number] {
   return AUTOMATION_EDITOR_FIELDS.some((field) => field === value);
 }
-export function sequenceEditorField(
+
+export function reusableEditorField(
   value: EditorField | null,
-): value is (typeof SEQUENCE_EDITOR_FIELDS)[number] {
-  return SEQUENCE_EDITOR_FIELDS.some((field) => field === value);
+): value is (typeof REUSABLE_EDITOR_FIELDS)[number] {
+  return REUSABLE_EDITOR_FIELDS.some((field) => field === value);
 }

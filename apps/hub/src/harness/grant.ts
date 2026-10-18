@@ -3,7 +3,6 @@ import {
   AI_MODEL_ROUTE_SELECTION,
   AI_HARNESS_TARGET,
   AI_HARNESS_PERMISSION,
-  AI_HARNESS_STORAGE_BINDING,
 } from '@smarteverything/domain';
 import { HARNESS_AUTHORITY } from '@smarteverything/harness';
 export const HARNESS_GRANT = z.strictObject({
@@ -19,6 +18,5 @@ export const HARNESS_GRANT = z.strictObject({
   route: AI_MODEL_ROUTE_SELECTION,
   permission: AI_HARNESS_PERMISSION,
   cwd: z.string().min(1),
-  storage_binding: AI_HARNESS_STORAGE_BINDING.optional(),
 });
 export type HarnessGrant = z.infer<typeof HARNESS_GRANT>;

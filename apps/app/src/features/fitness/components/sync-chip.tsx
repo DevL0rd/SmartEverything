@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
+import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
@@ -12,9 +13,9 @@ import { Sheet } from '../../../components/sheet';
 import { ListRow } from '../../../components/list-row';
 import { Text } from '../../../components/text';
 import { relative } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useMinute, useMinuteOf } from '../../../store/clock';
 import { HEALTH_CONNECT_ON_DEVICE } from '../data/health-connect';
-import { latestSyncOf, useActiveSources } from '../data/sources';
+import { latestSyncOf, useSources } from '../data/sources';
 import { useHealthConnect } from '../data/use-health-connect';
 
 function syncedText(at: string | null, now: number): string {
@@ -36,8 +37,9 @@ function SyncNowButton(): ReactNode {
   );
 }
 
-function SourceRows({ now }: { readonly now: number }): ReactNode {
-  const sources = useActiveSources();
+function SourceRows(): ReactNode {
+  const sources = useSources();
+  const now = useMinute();
   if (sources.length === 0) {
     return null;
   }
@@ -45,7 +47,7 @@ function SourceRows({ now }: { readonly now: number }): ReactNode {
     <List title="Phones" inset>
       {sources.map((source) => (
         <ListRow
-          key={source.id}
+          key={source.client_id}
           icon="smartphone"
           title={source.name}
           subtitle={source.last_error ?? syncedText(source.last_sync_at, now)}
@@ -59,18 +61,16 @@ function SourceRows({ now }: { readonly now: number }): ReactNode {
 function SyncSheet({
   open,
   onClose,
-  now,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly now: number;
 }): ReactNode {
   const router = useRouter();
   return (
     <Sheet open={open} onClose={onClose} title="Health sync" detents={['fit']}>
       <View className="gap-4">
         {HEALTH_CONNECT_ON_DEVICE ? <SyncNowButton /> : null}
-        <SourceRows now={now} />
+        <SourceRows />
         <List inset>
           <NavRow
             title="Fitness settings"
@@ -86,37 +86,44 @@ function SyncSheet({
   );
 }
 
-export function SyncChip(): ReactNode {
-  const now = useMinute();
-  const sources = useActiveSources();
+export function SyncChip({ compact = false }: { readonly compact?: boolean }): ReactNode {
+  const sources = useSources();
   const [open, setOpen] = useState(false);
   const failed = sources.some((source) => source.last_error !== null);
-  const label = syncedText(latestSyncOf(sources), now);
+  const latest = latestSyncOf(sources);
+  const label = useMinuteOf((now) => syncedText(latest, now));
+  const glyph = failed ? 'warning' : 'refresh';
+  const show = (): void => {
+    setOpen(true);
+  };
   return (
     <>
-      <Interactive
-        label={`${label}, sync details`}
-        onPress={() => {
-          setOpen(true);
-        }}
-        className="h-control-h flex-row items-center gap-2 rounded-full bg-surface-2 px-4"
-        layerClassName="rounded-full"
-      >
-        <Icon
-          name={failed ? 'warning' : 'refresh'}
-          size={16}
+      {compact ? (
+        <IconButton
+          icon={glyph}
+          label={`${label}, sync details`}
+          variant="tonal"
           tone={failed ? 'warning' : 'variant'}
+          onPress={show}
         />
-        <Text variant="label" tone="variant" numberOfLines={1}>
-          {label}
-        </Text>
-      </Interactive>
+      ) : (
+        <Interactive
+          label={`${label}, sync details`}
+          onPress={show}
+          className="h-control-h flex-row items-center gap-2 rounded-full bg-surface-2 px-4"
+          layerClassName="rounded-full"
+        >
+          <Icon name={glyph} size={16} tone={failed ? 'warning' : 'variant'} />
+          <Text variant="label" tone="variant" numberOfLines={1}>
+            {label}
+          </Text>
+        </Interactive>
+      )}
       <SyncSheet
         open={open}
         onClose={() => {
           setOpen(false);
         }}
-        now={now}
       />
     </>
   );

@@ -64,12 +64,6 @@ export const AI_MODEL_ROUTE = z
         path: ['billing'],
         message: 'Billing must match the explicit provider route.',
       });
-    if (!subscription && route.models.some((model) => /^(?:anthropic|openai)\//.test(model.id)))
-      context.addIssue({
-        code: 'custom',
-        path: ['models'],
-        message: 'Claude and ChatGPT models require their explicit subscription routes.',
-      });
   });
 export type AiModelRoute = z.infer<typeof AI_MODEL_ROUTE>;
 

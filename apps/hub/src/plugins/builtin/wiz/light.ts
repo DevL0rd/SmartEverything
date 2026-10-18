@@ -1,8 +1,8 @@
 import {
   checkValue,
   HSV_COLOR,
-  hsvToPackedRgb,
-  packedRgbToHsv,
+  hsvToRgbChannels,
+  rgbChannelsToHsv,
   CommandRefusedError,
   type CapabilityKey,
   type DeviceCapability,
@@ -11,7 +11,7 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { WIZ_SCENES, wizBulbClass, wizScenes } from './scenes';
+import { WIZ_SCENES, wizBulbClass, wizScenes, type WizBulbClass } from './scenes';
 import { WIZ_MIN_BRIGHTNESS, type WizConfig, type WizSaved } from './protocol';
 
 export function wizExternalId(mac: string): string {
@@ -62,6 +62,19 @@ export function wizCapabilities(bulb: WizSaved): DeviceCapability[] {
     });
   return result;
 }
+const KIND_NAMES: Readonly<Record<WizBulbClass, string>> = {
+  rgb: 'WiZ colour light',
+  tunable: 'WiZ white light',
+  dimmable: 'WiZ dimmable light',
+  unknown: 'WiZ light',
+};
+const MAC_TAIL_DIGITS = 4;
+
+function wizName(bulb: WizSaved): string {
+  const kind = KIND_NAMES[wizBulbClass(bulb.config.moduleName)];
+  return `${kind} ${bulb.mac.slice(-MAC_TAIL_DIGITS).toUpperCase()}`;
+}
+
 export function wizDevice(bulb: WizSaved, online: boolean): DiscoveredDevice {
   const capabilities = wizCapabilities(bulb);
   return {
@@ -69,7 +82,7 @@ export function wizDevice(bulb: WizSaved, online: boolean): DiscoveredDevice {
     externalId: wizExternalId(bulb.mac),
     parentExternalId: null,
     kind: 'light',
-    name: 'WiZ light',
+    name: wizName(bulb),
     model: bulb.config.moduleName ?? 'WiZ light',
     manufacturer: 'WiZ',
     room: null,
@@ -94,7 +107,7 @@ export function wizReadings(bulb: WizSaved): ReadonlyMap<CapabilityKey, JsonValu
     values.set('color_temperature', pilot.temp);
     values.set('color', null);
   } else if (pilot.r !== undefined && pilot.g !== undefined && pilot.b !== undefined) {
-    values.set('color', packedRgbToHsv((pilot.r << 16) | (pilot.g << 8) | pilot.b));
+    values.set('color', rgbChannelsToHsv({ r: pilot.r, g: pilot.g, b: pilot.b }));
     values.set('color_temperature', null);
   }
   const scene = Object.entries(WIZ_SCENES).find(([, id]) => id === pilot.sceneId)?.[0];
@@ -123,10 +136,8 @@ export function wizCommand(
       return { dimming: z.number().parse(value) };
     case 'color_temperature':
       return { temp: z.number().parse(value) };
-    case 'color': {
-      const packed = hsvToPackedRgb(HSV_COLOR.parse(value));
-      return { r: (packed >> 16) & 255, g: (packed >> 8) & 255, b: packed & 255 };
-    }
+    case 'color':
+      return { ...hsvToRgbChannels(HSV_COLOR.parse(value)) };
     case 'light_effect':
       return { sceneId: z.number().parse(WIZ_SCENES[z.string().parse(value)]) };
   }

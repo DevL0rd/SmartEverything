@@ -1,14 +1,10 @@
 import type { ReactNode } from 'react';
-import { mainPageSettings } from '../../app-shell/main-pages';
 import { View } from 'react-native';
 import { fitnessReady } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 import { Button } from '../../components/button';
-import type { WidgetSize } from '@smarteverything/domain';
 import { Card } from '../../components/card';
 import { WidgetEmpty, WidgetFrame } from '../../components/widget-board';
-import { PageHeader } from '../../components/page-header';
-import { Screen } from '../../components/screen';
 import { Text } from '../../components/text';
 import { useActiveProfile } from '../../store/people';
 
@@ -33,33 +29,15 @@ export function FinishFitnessCard({ compact = false }: { readonly compact?: bool
   );
 }
 
-export function FitnessSetupScreen(): ReactNode {
+export function FitnessSetupWidget({ title }: { readonly title: string }): ReactNode {
   return (
-    <Screen
-      header={<PageHeader title="Fitness" settings={mainPageSettings('fitness')} back={false} />}
-      maxWidth="reading"
-    >
-      <FinishFitnessCard />
-    </Screen>
-  );
-}
-
-export function FitnessSetupWidget({
-  title,
-  size,
-}: {
-  readonly title: string;
-  readonly size: WidgetSize;
-}): ReactNode {
-  return (
-    <WidgetFrame title={title} icon="fitness" accent="move" href={href.fitnessSetup()} size={size}>
+    <WidgetFrame title={title} icon="fitness" accent="move" href={href.fitnessSetup()}>
       <WidgetEmpty
         icon="user"
         colour="move"
         title="Finish setting up Fitness"
         body="Add your height, birthday and sex."
         action={{ label: 'Set up', href: href.fitnessSetup() }}
-        size={size}
       />
     </WidgetFrame>
   );

@@ -6,26 +6,14 @@ import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
 import type { Device } from '../../store/state';
 import { WatchAlarms } from './watch-alarm-rows';
-import { configOf, useWatchCommand } from './watch-config';
+import { configOf, useWatchCommand, type WatchOutcome } from './watch-config';
 import { WatchFaces } from './watch-face-rows';
 import { WatchSettingSections } from './watch-settings-rows';
 import { useMyWatch } from './watch-glance';
-import { WatchWorkoutProbe } from './watch-workout-probe';
 
-function Outcome({
-  outcome,
-}: {
-  readonly outcome: { readonly ok: boolean; readonly detail: string } | null;
-}): ReactNode {
-  if (outcome === null) {
-    return null;
-  }
-  return (
-    <Banner
-      tone={outcome.ok ? 'positive' : 'critical'}
-      title={outcome.ok ? 'Sent to the watch' : 'The watch didn’t change'}
-      body={outcome.detail}
-    />
+function Failure({ outcome }: { readonly outcome: WatchOutcome | null }): ReactNode {
+  return outcome === null || outcome.ok ? null : (
+    <Banner tone="critical" title="The watch didn’t change" body={outcome.detail} />
   );
 }
 
@@ -57,7 +45,7 @@ function Configured({ watch }: { readonly watch: Device }): ReactNode {
   }
   return (
     <View className="gap-section-gap">
-      <Outcome outcome={command.outcome} />
+      <Failure outcome={command.outcome} />
       <WatchSettingSections
         settings={state.config.settings}
         goals={state.config.goals}
@@ -65,7 +53,6 @@ function Configured({ watch }: { readonly watch: Device }): ReactNode {
       />
       <WatchAlarms alarms={state.config.alarms} command={command} />
       <WatchFaces faces={state.config.faces} command={command} />
-      <WatchWorkoutProbe deviceId={watch.id} />
     </View>
   );
 }

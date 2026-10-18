@@ -9,6 +9,8 @@ import { plural } from '../../format/text';
 import { useLocalSearchParams } from 'expo-router';
 import { DISCORD_PLUGIN } from './discord-data';
 
+export const CALL_TRANSCRIPTS = 'call-transcripts';
+
 export const NO_CALL_HINT =
   'It joins when an approved person enters a voice channel, or with /join.';
 
@@ -52,7 +54,7 @@ export function VoiceCalls({ calls }: { readonly calls: readonly DiscordCall[] }
         calls.map((call) => <CallRow key={call.id} call={call} />)
       )}
       <ListRow
-        selected={focus === 'call-transcripts'}
+        selected={focus === CALL_TRANSCRIPTS}
         icon="messageCircle"
         title="Call transcripts"
         subtitle="Read and search an approved call’s saved transcript"

@@ -7,13 +7,11 @@ export function StringListInput({
   title,
   value,
   change,
-  maximum = 5,
   url = false,
 }: {
   readonly title: string;
   readonly value: readonly string[];
   readonly change: (value: readonly string[]) => void;
-  readonly maximum?: number;
   readonly url?: boolean;
 }): ReactNode {
   return (
@@ -41,7 +39,6 @@ export function StringListInput({
         label={`Add ${title.toLowerCase()}`}
         variant="tonal"
         icon="plus"
-        disabled={value.length >= maximum}
         onPress={() => {
           change([...value, '']);
         }}

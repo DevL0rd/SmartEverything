@@ -1,22 +1,24 @@
 import type { ReactNode } from 'react';
+import { max } from 'd3-array';
 import { View } from 'react-native';
 import { Card } from '../../../components/card';
-import { percentOf } from '../../../components/charts/stage-timeline';
+import { ProgressBar } from '../../../components/charts';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
+import type { ColourRole } from '../../../design/tokens';
 import { useMaxHeartRateSetting } from '../data/goals';
 import { useBestDay, useRecords } from '../data/queries';
+import { count, withUnit } from '../../../format/number';
 import { hoursMinutes } from '../../../format/time';
 import { ZONES, heartSamplesOf, maximumHeartRate, zoneMinutes, type ZoneKey } from '../model/heart';
 import type { Window } from '../model/window';
 
-const ZONE_FILL: Readonly<Record<ZoneKey, string>> = {
-  warm: 'bg-viz-6',
-  easy: 'bg-viz-1',
-  aerobic: 'bg-viz-5',
-  hard: 'bg-viz-2',
-  peak: 'bg-critical',
+const ZONE_COLOUR: Readonly<Record<ZoneKey, ColourRole>> = {
+  warm: 'viz-6',
+  easy: 'viz-1',
+  aerobic: 'viz-5',
+  hard: 'viz-2',
+  peak: 'critical',
 };
 
 function ZoneRow({
@@ -32,7 +34,6 @@ function ZoneRow({
   readonly share: number;
   readonly zone: ZoneKey;
 }): ReactNode {
-  const fill = { width: percentOf(share) };
   return (
     <View className="gap-1">
       <View className="flex-row items-baseline gap-2">
@@ -40,15 +41,13 @@ function ZoneRow({
           {label}
         </Text>
         <Text variant="footnote" tone="variant" className="tabular">
-          {`${String(from)}+ bpm`}
+          {withUnit(`${count(from)}+`, 'bpm')}
         </Text>
         <Text variant="callout" className="w-16 text-right tabular">
           {hoursMinutes(minutes)}
         </Text>
       </View>
-      <View className="h-2 overflow-hidden rounded-full bg-surface-2">
-        <View style={fill} className={cn('h-full rounded-full', ZONE_FILL[zone])} />
-      </View>
+      <ProgressBar progress={share} colour={ZONE_COLOUR[zone]} label={label} thick />
     </View>
   );
 }
@@ -57,11 +56,10 @@ export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
   const records = useRecords(['HeartRate'], window.start, window.end);
   const highest = useBestDay('heart_rate_maximum', false);
   const samples = heartSamplesOf(records.data ?? []);
-  const observed = highest.data === undefined || highest.data === null ? [] : [highest.data.value];
-  const maximum = maximumHeartRate(useMaxHeartRateSetting(), [
-    ...observed,
-    ...samples.map((s) => s.bpm),
-  ]);
+  const observed = [highest.data?.value, max(samples, (sample) => sample.bpm)].flatMap(
+    (bpm) => bpm ?? [],
+  );
+  const maximum = maximumHeartRate(useMaxHeartRateSetting(), observed);
   if (records.data === undefined) {
     return <Skeleton shape="block" className="h-56" />;
   }
@@ -69,7 +67,7 @@ export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
     return null;
   }
   const zones = zoneMinutes(samples, maximum.bpm);
-  const most = Math.max(1, ...ZONES.map((zone) => zones[zone.key]));
+  const most = ZONES.reduce((largest, zone) => Math.max(largest, zones[zone.key]), 1);
   return (
     <Card title="Heart rate zones" icon="gauge">
       <View className="gap-3">
@@ -86,8 +84,8 @@ export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
       </View>
       <Text variant="footnote" tone="variant">
         {maximum.basis === 'setting'
-          ? `Based on your maximum of ${String(maximum.bpm)} bpm`
-          : `Based on the highest in your data, ${String(maximum.bpm)} bpm`}
+          ? `Based on your maximum of ${withUnit(count(maximum.bpm), 'bpm')}`
+          : `Based on the highest in your data, ${withUnit(count(maximum.bpm), 'bpm')}`}
       </Text>
     </Card>
   );

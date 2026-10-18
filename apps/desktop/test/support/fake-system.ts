@@ -15,6 +15,7 @@ export const LAUNCH: ServiceLaunch = {
   entry: '/opt/SmartEverything/resources/service/service.mjs',
   dataDirectory: DATA,
   path: '/usr/local/bin:/usr/bin',
+  efficiencyCores: null,
 };
 
 export const LOCATIONS: ServiceLocations = serviceLocations({

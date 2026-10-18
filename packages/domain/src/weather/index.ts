@@ -33,6 +33,7 @@ export type {
 } from './forecast';
 export {
   UV_BANDS,
+  US_AQI_BANDS,
   UV_BAND_LABELS,
   WEATHER_KINDS,
   WEATHER_KIND_LABELS,

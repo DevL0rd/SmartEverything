@@ -7,14 +7,11 @@ import {
   type NativeBrowserDiagnostic,
   type PreviewPixels,
 } from '@smarteverything/domain';
-import { subscribeNativeBrowserDiagnostic } from '../../../src/platform/browser-diagnostics-events';
+import { subscribeNativeBrowserDiagnostic } from './browser-diagnostics-events';
 type BrowserEvents = Readonly<Record<string, (value: unknown) => void>>;
 declare class BrowserNative extends NativeModule<BrowserEvents> {
-  browserDiagnosticsVersion(): number;
   browserProfileReady(): boolean;
-  browserObserve(): Promise<void>;
-  browserDiagnosticsRawVersion?(): number;
-  browserObserveRaw?(): Promise<void>;
+  browserObserveRaw(): Promise<void>;
   browserPerform(json: string): Promise<unknown>;
 }
 const browserLog = new Logger('app.preview-diagnostics');
@@ -23,27 +20,13 @@ export function androidBrowserDiagnostics(nativeHtml: boolean): NativeBrowserDia
   if (
     (!nativeHtml && !androidBrowserProfileReady()) ||
     native === null ||
-    typeof native.browserDiagnosticsVersion !== 'function' ||
-    native.browserDiagnosticsVersion() !== 1
+    typeof native.browserObserveRaw !== 'function'
   )
     return null;
   return {
-    version: 1,
-    ...(native.browserDiagnosticsRawVersion?.() === 2 && native.browserObserveRaw !== undefined
-      ? {
-          rawVersion: 2 as const,
-          subscribeRaw: (listener: (event: NativeBrowserDiagnostic) => void): (() => void) => {
-            const stop = subscribeNativeBrowserDiagnostic(listener);
-            void native.browserObserveRaw?.().catch((cause: unknown) => {
-              browserLog.error('preview.observe_failed', cause);
-            });
-            return stop;
-          },
-        }
-      : {}),
     subscribe: (listener: (event: NativeBrowserDiagnostic) => void): (() => void) => {
       const stop = subscribeNativeBrowserDiagnostic(listener);
-      void native.browserObserve().catch((cause: unknown) => {
+      void native.browserObserveRaw().catch((cause: unknown) => {
         browserLog.error('preview.observe_failed', cause);
       });
       return stop;

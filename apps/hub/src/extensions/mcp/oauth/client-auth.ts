@@ -4,6 +4,7 @@ import type { Store } from '../../../store/store';
 import { single } from '../respond';
 import { hashSecret, sameHash } from '../secrets';
 import { OAuthError } from './errors';
+import { failureLine } from '@smarteverything/logging';
 
 interface Presented {
   readonly clientId: string;
@@ -24,7 +25,10 @@ function percentDecoded(text: string): string {
   try {
     return decodeURIComponent(text);
   } catch (cause) {
-    throw invalidClient(`The Basic credentials are not percent-encoded: ${String(cause)}.`, true);
+    throw invalidClient(
+      `The Basic credentials are not percent-encoded: ${failureLine(cause)}.`,
+      true,
+    );
   }
 }
 

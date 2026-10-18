@@ -11,7 +11,7 @@ import { href } from '../../../app-shell/hrefs';
 import { NavRow, SelectRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { savePlugin } from '../data/plugin-actions';
+import { changePlugin, savePlugin } from '../data/plugin-actions';
 import { settingGroups } from '../model/setting-groups';
 import {
   listItems,
@@ -21,6 +21,7 @@ import {
   shownValue,
   type TextSetting,
 } from '../model/setting-values';
+import { background } from '@smarteverything/logging';
 
 interface FieldProps<S extends PluginSetting> {
   readonly row: PluginRow;
@@ -29,12 +30,12 @@ interface FieldProps<S extends PluginSetting> {
   readonly edit: (request: TextEditRequest) => void;
 }
 
-function saver(row: PluginRow, name: string, title: string): (value: JsonValue) => Promise<void> {
-  return (value) => savePlugin(row, { settings: { [name]: value } }, `${title} wasn’t saved`);
+function saver(row: PluginRow, name: string): (value: JsonValue) => Promise<void> {
+  return (value) => savePlugin(row, { settings: { [name]: value } });
 }
 
 function textRequest(row: PluginRow, name: string, setting: TextSetting): TextEditRequest {
-  const save = saver(row, name, setting.title);
+  const save = saver(row, name);
   const description = setting.description ?? undefined;
   const base = {
     title: setting.title,
@@ -88,7 +89,12 @@ function ListSettingRow({
 }
 
 function Field({ row, name, setting, edit }: FieldProps<PluginSetting>): ReactNode {
-  const save = saver(row, name, setting.title);
+  const change = (value: JsonValue): void => {
+    background(
+      changePlugin(row, { settings: { [name]: value } }, `${setting.title} wasn’t saved`),
+      'plugin.change_failed',
+    );
+  };
   const subtitle = setting.description ?? undefined;
   const common = {
     title: setting.title,
@@ -96,11 +102,7 @@ function Field({ row, name, setting, edit }: FieldProps<PluginSetting>): ReactNo
   };
   if (setting.type === 'boolean') {
     return (
-      <SwitchRow
-        {...common}
-        value={settingValue(row, name, setting) === true}
-        onChange={(on) => void save(on)}
-      />
+      <SwitchRow {...common} value={settingValue(row, name, setting) === true} onChange={change} />
     );
   }
   if (setting.type === 'enum') {
@@ -110,7 +112,7 @@ function Field({ row, name, setting, edit }: FieldProps<PluginSetting>): ReactNo
         {...common}
         options={setting.options}
         value={typeof value === 'string' ? value : null}
-        onChange={(picked) => void save(picked)}
+        onChange={change}
       />
     );
   }

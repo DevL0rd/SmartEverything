@@ -1,0 +1,24 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1" onLayout=undefined pointerEvents="box-none" ref={current:null}
+      View className="flex-1 gap-1.5" pointerEvents="box-none"
+        View className="flex-1 flex-row gap-3" pointerEvents="box-none"
+          View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
+            View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
+              Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
+                Svg.Ellipse cx=50 cy=80 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=34 ry=5
+                Svg.Path d="M36 34 H64 A20 20 0 0 1 84 54 V54 A20 20 0 0 1 64 74 H36 A20 20 0 0 1 16 54 V54 A20 20 0 0 1 36 34 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#3d444b" strokeWidth=0.6
+                Svg.Path d="M36 34 H64 A20 20 0 0 1 84 54 V54 A20 20 0 0 1 64 74 H36 A20 20 0 0 1 16 54 V54 A20 20 0 0 1 36 34 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+                Svg.Ellipse cx=50 cy=54 fill="none" rx=22 ry=9 stroke="#606060" strokeOpacity=0.95 strokeWidth=2.4
+                Svg.Circle cx=50 cy=54 fill="#606060" r=2.6
+                Svg.Path d="M38 28 A16 16 0 0 1 62 28" fill="none" stroke="#606060" strokeLinecap="round" strokeOpacity=0.8 strokeWidth=2
+                Svg.Path d="M31 21 A26 26 0 0 1 69 21" fill="none" stroke="#606060" strokeLinecap="round" strokeOpacity=0.8 strokeWidth=2
+          View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
+            View accessibilityLabel="Device 0, Room 0. No devices connected yet" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
+              View className="flex-row flex-wrap items-center justify-between gap-x-2"
+                Text className="font-sans-medium text-body text-on-surface text-left max-w-full shrink" numberOfLines=1 selectable=false
+                View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-surface-3"
+                  Text className="font-sans-medium text-caption text-on-surface-variant text-left" numberOfLines=1 selectable=false
+              Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=2 selectable=false
+        View className="flex-row items-center gap-2" pointerEvents="box-none"
+          View className="min-w-0 flex-1 items-end" pointerEvents="none"

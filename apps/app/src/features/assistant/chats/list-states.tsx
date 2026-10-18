@@ -1,48 +1,56 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import { href } from '../../../app-shell/hrefs';
+import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
+import { EmptyState } from '../../../components/empty-state';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { emptyTitleOf, type ChatFilter } from './list-filters';
 
 const SKELETON_ROWS = 6;
 
+const HIT_SKELETON_ROWS = 3;
+
+function SkeletonRow(): ReactNode {
+  return (
+    <View className="h-16 flex-row items-center gap-3">
+      <Skeleton shape="circle" />
+      <View className="flex-1 gap-2">
+        <Skeleton shape="text" className="w-2/5" />
+        <Skeleton shape="text" className="w-4/5" />
+      </View>
+    </View>
+  );
+}
+
 export function ListSkeleton(): ReactNode {
   return (
-    <View accessibilityLabel="Loading chats" className="gap-4 px-gutter pt-2">
+    <View accessibilityLabel="Loading chats" className="px-gutter pt-2">
       {Array.from({ length: SKELETON_ROWS }, (_, index) => (
-        <View key={index} className="flex-row items-center gap-3">
-          <Skeleton shape="circle" />
-          <View className="flex-1 gap-2">
-            <Skeleton shape="text" className="w-2/5" />
-            <Skeleton shape="text" className="w-4/5" />
-          </View>
-        </View>
+        <SkeletonRow key={index} />
       ))}
     </View>
   );
 }
 
-function Message({
-  title,
-  body,
-  action,
-}: {
-  readonly title: string;
-  readonly body?: string;
-  readonly action?: ReactNode;
-}): ReactNode {
+export function MoreSkeleton(): ReactNode {
   return (
-    <View className="items-center gap-2 px-gutter py-10">
-      <Text variant="body-strong" align="center">
-        {title}
+    <View accessibilityLabel="Loading more chats" className="px-gutter">
+      <SkeletonRow />
+    </View>
+  );
+}
+
+export function HitsSkeleton(): ReactNode {
+  return (
+    <View accessibilityLabel="Searching messages" className="pt-2">
+      <Text variant="footnote" tone="variant" className="pb-1 pt-2">
+        In messages
       </Text>
-      {body === undefined ? null : (
-        <Text variant="callout" tone="variant" align="center">
-          {body}
-        </Text>
-      )}
-      {action === undefined ? null : <View className="pt-1">{action}</View>}
+      {Array.from({ length: HIT_SKELETON_ROWS }, (_, index) => (
+        <SkeletonRow key={index} />
+      ))}
     </View>
   );
 }
@@ -50,41 +58,78 @@ function Message({
 export interface EmptyListProps {
   readonly filter: ChatFilter;
   readonly query: string;
+  readonly offline: boolean;
   readonly onShowAll: () => void;
   readonly onClearSearch: () => void;
+  readonly onNewChat: () => void;
 }
 
-export function EmptyList({ filter, query, onShowAll, onClearSearch }: EmptyListProps): ReactNode {
+export function EmptyList({
+  filter,
+  query,
+  offline,
+  onShowAll,
+  onClearSearch,
+  onNewChat,
+}: EmptyListProps): ReactNode {
   const text = query.trim();
   if (text !== '') {
     return (
-      <Message
-        title={`Nothing matches “${text}”.`}
-        action={<Button label="Clear search" variant="text" onPress={onClearSearch} />}
+      <EmptyState
+        icon="search"
+        title={`No chats match “${text}”`}
+        body={
+          offline
+            ? 'Message search needs a connection to your hub.'
+            : 'Try a different word, or search the messages inside chats.'
+        }
+        action={<Button label="Clear search" variant="outlined" onPress={onClearSearch} />}
       />
     );
   }
   if (filter !== 'all') {
     return (
-      <Message
+      <EmptyState
+        icon="messageCircle"
         title={emptyTitleOf(filter)}
-        action={<Button label="Show all" variant="text" onPress={onShowAll} />}
+        body="Chats that match this filter show up here."
+        action={<Button label="Show all chats" variant="outlined" onPress={onShowAll} />}
       />
     );
   }
   return (
-    <Message
-      title="Your chats appear here"
-      body="Start with a question or a task. Each chat is remembered separately."
+    <EmptyState
+      icon="messageCircle"
+      title="No chats yet"
+      body="Start a chat to ask about your home or work on a computer."
+      action={<Button label="New chat" onPress={onNewChat} />}
+    />
+  );
+}
+
+export function OfflineEmptyList(): ReactNode {
+  return (
+    <EmptyState
+      icon="wifiOff"
+      title="Can’t reach your hub"
+      body="Your saved chats aren’t on this device yet. Check your connection."
+      action={
+        <Button label="Server settings" variant="outlined" href={href.settings.page('server')} />
+      }
     />
   );
 }
 
 export function ListFailure({ onRetry }: { readonly onRetry: () => void }): ReactNode {
   return (
-    <Message
-      title="Couldn’t load archived chats"
-      action={<Button label="Try again" variant="text" onPress={onRetry} />}
-    />
+    <View className="px-gutter pt-4">
+      <Banner
+        tone="critical"
+        title="Couldn’t load archived chats"
+        body="Check your connection and try again."
+        wrapBody
+        action={{ label: 'Try again', onPress: onRetry }}
+      />
+    </View>
   );
 }

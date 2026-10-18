@@ -1,8 +1,5 @@
-import { levelOf } from '@smarteverything/domain';
 import { toSpeech } from '../../../../assistant-voice/audio';
 import { Opus } from '../../../../assistant-voice/opus';
-
-export const SPEECH_RATE = 16_000;
 
 const DISCORD_RATE = 48_000;
 const DISCORD_CHANNELS = 2;
@@ -17,17 +14,10 @@ function monoOf(stereo: Int16Array): Int16Array {
   return mono;
 }
 
-export function loudness(pcm: Int16Array): number {
-  return levelOf(pcm, 1);
-}
-
 export class SpeechDecoder {
-  private codec = new Opus(DISCORD_RATE, DISCORD_CHANNELS);
+  private readonly codec = new Opus(DISCORD_RATE, DISCORD_CHANNELS);
 
   decode(packet: Uint8Array): Int16Array {
-    if (this.codec.stale) {
-      this.codec = new Opus(DISCORD_RATE, DISCORD_CHANNELS);
-    }
     return toSpeech(monoOf(this.codec.decode(packet)));
   }
 

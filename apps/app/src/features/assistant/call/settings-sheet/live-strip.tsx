@@ -10,7 +10,8 @@ import Animated, {
 import { Text } from '../../../../components/text';
 import { cn } from '../../../../design/cn';
 import { DURATION, useMotion } from '../../../../design/motion';
-import { callActive, orbStateOf, type CallView } from '../call-state';
+import { useAssistantName } from '../../data/assistant-data';
+import { callActive, orbStateOf, useCall, type CallView } from '../call-state';
 import { AssistantOrb } from '../orb';
 import { useCallAudio } from './call-audio-pref';
 import { MicMeter } from './mic-meter';
@@ -45,6 +46,9 @@ function HeardDot({ on }: { readonly on: boolean }): ReactNode {
 }
 
 function captionOf(call: CallView, name: string): string {
+  if (!callActive(call)) {
+    return 'Your level shows here during a call';
+  }
   if (call.echoTest.status === 'running') {
     return 'Paused during the echo test';
   }
@@ -74,4 +78,8 @@ export function LiveStrip({
       <HeardDot on={heard} />
     </View>
   );
+}
+
+export function CallAudioPageStrip(): ReactNode {
+  return <LiveStrip call={useCall()} name={useAssistantName()} />;
 }

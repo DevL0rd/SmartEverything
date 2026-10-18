@@ -25,7 +25,7 @@ export interface BuiltinRuntimeOptions {
 
 type SettingsListener = (settings: Readonly<Record<string, JsonValue>>) => void;
 
-export class BuiltinPluginStartError extends Error {
+class BuiltinPluginStartError extends Error {
   override readonly name = 'BuiltinPluginStartError';
 }
 

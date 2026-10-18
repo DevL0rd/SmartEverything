@@ -4,7 +4,7 @@ import {
   mergeSetCookies,
   type CookieJar,
 } from '@smarteverything/xiaomi';
-import type { Fetch } from './dependencies';
+import type { FetchLike } from '../../plugins/builtin/fetch-like';
 
 const MAX_REDIRECTS = 10;
 const ACCOUNT_HOST = new URL(ACCOUNT_BASE).host;
@@ -26,7 +26,7 @@ export class AccountHttp {
   private jar: CookieJar;
 
   constructor(
-    private readonly fetch: Fetch,
+    private readonly fetch: FetchLike,
     cookies: Readonly<Record<string, string>>,
   ) {
     this.jar = new Map(Object.entries(cookies));

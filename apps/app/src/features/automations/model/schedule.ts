@@ -1,17 +1,17 @@
 import {
   GEO_POINT,
   TIME_ZONE,
-  isTimedTrigger,
   localClock,
   nextOccurrence,
+  timedTriggerOf,
   zonedInstant,
-  type AutomationDefinition,
+  type AutomationV2,
   type CalendarDate,
   type Place,
   type TimedTrigger,
 } from '@smarteverything/domain';
+import { MINUTE_MS } from '../../../format/time';
 
-const MINUTE_MS = 60_000;
 const MOST_IN_WINDOW = 300;
 
 export interface HomePlace {
@@ -36,7 +36,7 @@ export function placeOf(home: HomePlace): PlaceReading {
 }
 
 export interface Scheduled {
-  readonly definition: AutomationDefinition;
+  readonly automation: AutomationV2;
   readonly enabled: boolean;
   readonly lastRunAt: string | null;
 }
@@ -90,18 +90,51 @@ function clockTimes(trigger: TimedTrigger, window: Window, place: Place): Date[]
   return times;
 }
 
-function occurrencesIn(scheduled: Scheduled, window: Window, place: Place): Date[] {
-  if (!scheduled.enabled) {
-    return [];
-  }
-  return scheduled.definition.triggers
-    .filter(isTimedTrigger)
+interface CachedOccurrences {
+  readonly signature: string;
+  readonly times: readonly Date[];
+}
+
+const OCCURRENCES = new WeakMap<AutomationV2, CachedOccurrences>();
+
+function signatureOf(scheduled: Scheduled, window: Window, place: Place): string {
+  const { location } = place;
+  return [
+    scheduled.enabled,
+    scheduled.lastRunAt,
+    window.start.getTime(),
+    window.end.getTime(),
+    place.timeZone,
+    location === null ? null : `${String(location.latitude)},${String(location.longitude)}`,
+  ].join('|');
+}
+
+function computeOccurrences(scheduled: Scheduled, window: Window, place: Place): Date[] {
+  return scheduled.automation.when
+    .flatMap((trigger) => {
+      const timed = timedTriggerOf(trigger);
+      return timed === null ? [] : [timed];
+    })
     .flatMap((trigger) =>
       trigger.type === 'interval'
         ? intervalTimes(trigger.everyMinutes, scheduled.lastRunAt, window)
         : clockTimes(trigger, window, place),
     )
     .sort((left, right) => left.getTime() - right.getTime());
+}
+
+function occurrencesIn(scheduled: Scheduled, window: Window, place: Place): readonly Date[] {
+  if (!scheduled.enabled) {
+    return [];
+  }
+  const signature = signatureOf(scheduled, window, place);
+  const cached = OCCURRENCES.get(scheduled.automation);
+  if (cached?.signature === signature) {
+    return cached.times;
+  }
+  const times = computeOccurrences(scheduled, window, place);
+  OCCURRENCES.set(scheduled.automation, { signature, times });
+  return times;
 }
 
 export interface Upcoming {

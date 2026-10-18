@@ -62,6 +62,11 @@ export class Go2rtcSupervisor {
 
   async start(config: Go2rtcConfig): Promise<RunningGo2rtc> {
     this.config = config;
+    this.options.log.debug('go2rtc.starting', () => ({
+      xiaomiLogins: Object.keys(config.xiaomi).length,
+      candidates: config.candidates.length,
+      iceServers: config.iceServers.length,
+    }));
     const running = await this.launch({ ...this.options, ...config, password: this.password });
     this.running = running;
     return running;

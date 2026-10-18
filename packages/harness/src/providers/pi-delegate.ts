@@ -1,6 +1,7 @@
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai';
 import type { PiAiAdapterOptions, ResolvedPiAiProviderProfile } from '@deepseek-ai/dsh-llm-pi-ai';
-import { resolveRetryPolicy, attributionHeaders } from '@deepseek-ai/dsh-llm';
+import { attributionHeaders } from '@deepseek-ai/dsh-llm';
+import { TRANSIENT_RETRY_POLICY } from './transient-retry';
 import { lazyStream } from '@earendil-works/pi-ai/api/lazy';
 import type {
   AssistantMessageEvent,
@@ -49,7 +50,7 @@ export function subscriptionPiDelegate(
     maxRequestImageBytes: MAX_REQUEST_IMAGE_BYTES,
     requestImagePixelBudget: REQUEST_IMAGE_PIXEL_BUDGET,
     requestImageMaxBytes: REQUEST_IMAGE_MAX_BYTES,
-    retryPolicy: resolveRetryPolicy(undefined, record.routeId),
+    retryPolicy: TRANSIENT_RETRY_POLICY,
     modelErrors: new Map(),
     configuredMaxTokens: new Map(),
   };

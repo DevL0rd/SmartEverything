@@ -10,15 +10,15 @@ import {
   type DshEngine,
 } from '@smarteverything/domain';
 import { Text } from '../../../components/text';
-import { useHarnessCatalogue, useHarnessSupported, HARNESS_CATALOGUE_KEY } from '../data/harness';
+import { useHarnessCatalogue, HARNESS_CATALOGUE_KEY } from '../data/harness';
 import { useFavouriteModels } from '../data/favourites';
 import { keptEffort, type ModelChoice, type ModelPick } from '../picker/model-choice';
-import type { CandidateSource, ModelCandidate } from '../picker/model-candidates';
+import type { CandidateSource, ModelCandidate } from '../data/model-candidates';
 import { ModelRow } from '../picker/model-row';
-import { ModelSourceStatus } from '../picker/model-source-status';
 import { useEngineAccessory } from '../chats/engine-accessories';
 import { harnessHostReason } from '../model/harness-context';
 import { useHarnessHostChoice } from './harness-host-choice';
+import { background } from '@smarteverything/logging';
 
 interface Props {
   readonly picked: ModelPick | null;
@@ -139,13 +139,12 @@ function candidate(
 }
 export function useHarnessPicker(props: Props, enabled: boolean): CandidateSource {
   const client = useQueryClient();
-  const supported = useHarnessSupported();
   const catalogue = useHarnessCatalogue();
   const favorites = useFavouriteModels();
   const accessory = useEngineAccessory();
   const hostChoice = useHarnessHostChoice(catalogue.data, null);
   const selection = pickerSelection(props.picked, catalogue.data, accessory, hostChoice.key);
-  if (!enabled || !supported) return { candidates: [], status: null };
+  if (!enabled) return { candidates: [], status: null };
   const routes = catalogue.data === undefined ? [] : catalogue.data.routes;
   return {
     candidates: routes.flatMap((route) =>
@@ -167,16 +166,16 @@ export function useHarnessPicker(props: Props, enabled: boolean): CandidateSourc
         ),
     ),
     status:
-      catalogue.data === undefined ? (
-        <ModelSourceStatus
-          name="account"
-          pending={catalogue.isPending}
-          error={catalogue.error}
-          retry={(): void => {
-            void catalogue.refetch();
-          }}
-        />
-      ) : null,
+      catalogue.data === undefined
+        ? {
+            name: 'account',
+            pending: catalogue.isPending,
+            error: catalogue.error,
+            retry: (): void => {
+              background(catalogue.refetch(), 'catalogue.refetch_failed');
+            },
+          }
+        : null,
   };
 }
 

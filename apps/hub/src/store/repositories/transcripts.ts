@@ -1,5 +1,4 @@
 import { SpeechRepository } from './speech';
-import { PluginTranscriptPageRepository } from './plugin-transcript-page';
 import { transcriptMatch } from './transcript-reader-scope';
 import { TranscriptReaderRepository } from './transcript-reader';
 import {
@@ -15,7 +14,7 @@ import {
 import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
 import { storedRow } from '../codec';
-import { found, moment, type StoreContext } from '../context';
+import { found, moment, StoreNotFoundError, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 
 const STORED_SESSION = storedRow(TRANSCRIPT_SESSION, { json: ['participants'] });
@@ -26,6 +25,9 @@ const SESSION_COLUMNS =
   'id, source, source_id, plugin_id, title, retention_days, started_at, ended_at, last_line_at, line_count, participants';
 
 const LINE_COLUMNS = 'id, session_id, at, ended_at, timing, speaker_id, speaker, text, bot';
+
+const JOINED_LINE_COLUMNS =
+  'l.id, l.session_id, l.at, l.ended_at, l.timing, l.speaker_id, l.speaker, l.text, l.bot';
 
 const SPENT = z.strictObject({ spent: z.int().min(0) });
 
@@ -83,11 +85,9 @@ function sourceFilter(query: {
 
 export class TranscriptsRepository {
   readonly reader: TranscriptReaderRepository;
-  readonly pluginPage: PluginTranscriptPageRepository;
 
   constructor(private readonly context: StoreContext) {
     this.reader = new TranscriptReaderRepository(context);
-    this.pluginPage = new PluginTranscriptPageRepository(context);
   }
 
   open(session: NewTranscriptSession): TranscriptSession {
@@ -147,8 +147,8 @@ export class TranscriptsRepository {
       const session = this.byId(sessionId);
       this.context.sql.run(
         'add the transcript line',
-        `insert into transcript_lines (id, session_id, at, ended_at, timing, speaker_id, speaker, text, bot)
-         values ((select next_id from transcript_line_sequence where singleton = 1), $sessionId, $at, $endedAt, $timing, $speakerId, $speaker, $text, $bot)`,
+        `insert into transcript_lines (session_id, at, ended_at, timing, speaker_id, speaker, text, bot)
+         values ($sessionId, $at, $endedAt, $timing, $speakerId, $speaker, $text, $bot)`,
         {
           sessionId,
           at: moment(line.at),
@@ -160,10 +160,6 @@ export class TranscriptsRepository {
           text: line.text,
           bot: line.bot ? 1 : 0,
         },
-      );
-      this.context.sql.run(
-        'advance the transcript line identity',
-        'update transcript_line_sequence set next_id = next_id + 1 where singleton = 1',
       );
       const added = found(
         this.context.sql.get(
@@ -204,6 +200,18 @@ export class TranscriptsRepository {
         { sessionId, since: moment(since), limit },
       )
       .reverse();
+  }
+
+  heardOn(source: TranscriptSource, sourceId: string, since: string): TranscriptLine[] {
+    return this.context.sql.all(
+      STORED_LINE,
+      `select ${JOINED_LINE_COLUMNS} from transcript_sessions s
+         join transcript_lines l on l.session_id = s.id
+         where s.source = $source and s.source_id = $sourceId and coalesce(s.last_line_at, s.started_at) >= $since
+           and l.at >= $since and l.bot = 0
+         order by l.at desc, l.id desc`,
+      { source, sourceId, since: moment(since) },
+    );
   }
 
   search(query: TranscriptSearchQuery): { session: TranscriptSession; line: TranscriptLine }[] {
@@ -277,6 +285,26 @@ export class TranscriptsRepository {
       );
       this.notify(session, 'delete');
       return session;
+    });
+  }
+
+  removeLine(sessionId: string, lineId: number): TranscriptSession {
+    return this.context.write(() => {
+      this.byId(sessionId);
+      const removed = this.context.sql.run(
+        'remove the transcript line',
+        'delete from transcript_lines where id = $lineId and session_id = $sessionId',
+        { sessionId, lineId },
+      );
+      if (removed === 0) throw new StoreNotFoundError('transcript line', String(lineId));
+      this.context.sql.run(
+        'recount the transcript lines',
+        `update transcript_sessions set line_count = line_count - 1 where id = $sessionId`,
+        { sessionId },
+      );
+      const saved = this.byId(sessionId);
+      this.notify(saved, 'update');
+      return saved;
     });
   }
 

@@ -15,9 +15,9 @@ import { projectOf } from './backend';
 import type { LoadedRemote } from './cloud-inventory';
 import { learnIr, sendIr } from './ir-control';
 import { writeTo } from './writes';
-import { describeLocalError } from './local-link';
 import { TuyaDeviceUnknownError, reportOf, stateUpdates, type DeviceRecord } from './records';
 import type { TuyaRuntime } from './runtime';
+import { messageOf } from '@smarteverything/logging';
 
 async function pressRemoteKey(
   runtime: TuyaRuntime,
@@ -79,7 +79,7 @@ async function refreshLocal(
   } catch (cause) {
     runtime.log.warn('tuya.refresh_failed', {
       deviceId: record.cloud.id,
-      reason: describeLocalError(cause),
+      reason: messageOf(cause),
     });
     return [];
   }

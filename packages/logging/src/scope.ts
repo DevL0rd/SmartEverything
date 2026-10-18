@@ -2,7 +2,7 @@ export const RUNTIMES = ['app', 'edge', 'db', 'tool', 'hub', 'desktop'] as const
 
 export type Runtime = (typeof RUNTIMES)[number];
 
-const SCOPE = /^(app|edge|db|tool|hub|desktop)\.([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/;
+const SCOPE = new RegExp(`^(${RUNTIMES.join('|')})\\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`);
 
 export class InvalidScopeError extends Error {
   readonly received: string;
@@ -36,13 +36,4 @@ export function runtimeOf(scope: string): Runtime {
     throw new InvalidScopeError(scope);
   }
   return runtime;
-}
-
-export function areaOf(scope: string): string {
-  const matched = SCOPE.exec(scope);
-  const area = matched?.[2];
-  if (area === undefined) {
-    throw new InvalidScopeError(scope);
-  }
-  return area;
 }

@@ -1,13 +1,10 @@
 import { createContext, useContext } from 'react';
-interface AccessoryLayout {
-  readonly compact: boolean;
-  readonly modelLabelWidth: number;
-}
-const AccessoryLayoutContext = createContext<AccessoryLayout>({
-  compact: false,
-  modelLabelWidth: 156,
-});
-export const ComposerAccessoryLayoutProvider = AccessoryLayoutContext.Provider;
-export function useComposerAccessoryLayout(): AccessoryLayout {
-  return useContext(AccessoryLayoutContext);
+import type { ComposerClass } from '../model/ai-layout';
+
+const ComposerClassContext = createContext<ComposerClass>('regular');
+
+export const ComposerClassProvider = ComposerClassContext.Provider;
+
+export function useComposerClass(): ComposerClass {
+  return useContext(ComposerClassContext);
 }

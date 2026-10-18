@@ -1,6 +1,5 @@
-import { pickableControls, presentCapability } from './capability-presentation';
+import { pickableControls } from './capability-presentation';
 import { DEVICE_KIND_LABELS } from './device-kinds';
-import type { DeviceCapability } from './devices';
 import { accepts, detailOf, deviceSummary, keywordsOf, numberPresets } from './search';
 import { formatValue } from './value-format';
 import type {
@@ -16,6 +15,7 @@ import type {
   SearchSources,
   SearchTarget,
 } from './search';
+import type { PresentedCapability } from './presentation/types';
 import type { JsonValue } from './values';
 import { devicePageEntries } from './search-device-pages';
 import { cameraEntries } from './search-cameras';
@@ -34,20 +34,19 @@ interface ActionPhrase {
   readonly value: JsonValue;
 }
 
-function booleanPhrases(capability: DeviceCapability, label: string): readonly ActionPhrase[] {
-  const verbs = BOOLEAN_VERBS[capability.key] ?? [`${label} on`, `${label} off`];
+function booleanPhrases(key: string, label: string): readonly ActionPhrase[] {
+  const verbs = BOOLEAN_VERBS[key] ?? [`${label} on`, `${label} off`];
   return [
     { phrase: verbs[0], value: true },
     { phrase: verbs[1], value: false },
   ];
 }
 
-function phrasesOf(device: SearchDevice, capability: DeviceCapability): readonly ActionPhrase[] {
+function phrasesOf({ capability, label }: PresentedCapability): readonly ActionPhrase[] {
   const descriptor = capability.value;
-  const label = presentCapability(device, capability).label;
   switch (descriptor.kind) {
     case 'boolean':
-      return booleanPhrases(capability, label);
+      return booleanPhrases(capability.key, label);
     case 'enum':
       return descriptor.options.map((option) => ({
         phrase: `${label} → ${option}`,
@@ -68,16 +67,17 @@ function phrasesOf(device: SearchDevice, capability: DeviceCapability): readonly
 
 function commandEntry(
   device: SearchDevice,
-  capability: DeviceCapability,
+  presented: PresentedCapability,
   action: ActionPhrase,
 ): SearchEntry {
+  const { capability } = presented;
   return {
     id: `action:${device.id}:${capability.key}:${JSON.stringify(action.value)}`,
     group: 'action',
     title: `${action.phrase} — ${device.name}`,
     detail: detailOf(device),
     keywords: [
-      ...keywordsOf(device, capability),
+      ...keywordsOf(device, capability, presented),
       ...(capability.value.kind === 'enum' || capability.value.kind === 'number'
         ? SETTING_WORDS
         : []),
@@ -91,13 +91,13 @@ function commandEntry(
   };
 }
 
-function openOnlyEntry(device: SearchDevice, capability: DeviceCapability): SearchEntry {
+function openOnlyEntry(device: SearchDevice, presented: PresentedCapability): SearchEntry {
   return {
-    id: `control:${device.id}:${capability.key}`,
+    id: `control:${device.id}:${presented.capability.key}`,
     group: 'action',
-    title: `${presentCapability(device, capability).label} — ${device.name}`,
+    title: `${presented.label} — ${device.name}`,
     detail: detailOf(device),
-    keywords: keywordsOf(device, capability),
+    keywords: keywordsOf(device, presented.capability, presented),
     state: null,
     run: null,
     runLabel: null,
@@ -110,17 +110,16 @@ function openOnlyEntry(device: SearchDevice, capability: DeviceCapability): Sear
 function actionEntries(device: SearchDevice): SearchEntry[] {
   const entries: SearchEntry[] = [];
   for (const presented of pickableControls(device)) {
-    const capability = presented.capability;
     if (presented.colorEncoding !== undefined) {
-      entries.push(openOnlyEntry(device, capability));
+      entries.push(openOnlyEntry(device, presented));
       continue;
     }
-    const phrases = phrasesOf(device, capability);
+    const phrases = phrasesOf(presented);
     if (phrases.length === 0) {
-      entries.push(openOnlyEntry(device, capability));
+      entries.push(openOnlyEntry(device, presented));
     }
     for (const phrase of phrases) {
-      entries.push(commandEntry(device, capability, phrase));
+      entries.push(commandEntry(device, presented, phrase));
     }
   }
   return entries;
@@ -254,9 +253,9 @@ function numberTemplates(devices: readonly SearchDevice[]): NumberTemplate[] {
   const templates: NumberTemplate[] = [];
   for (const device of devices) {
     for (const presented of pickableControls(device)) {
-      const capability = presented.capability;
-      if (capability.value.kind === 'number' && presented.colorEncoding === undefined) {
-        templates.push({ device, capability, descriptor: capability.value });
+      const descriptor = presented.capability.value;
+      if (descriptor.kind === 'number' && presented.colorEncoding === undefined) {
+        templates.push({ device, presented, descriptor });
       }
     }
   }
@@ -281,8 +280,8 @@ export function typedNumberEntries(index: SearchIndex, value: number | null): Se
   return index.numbers
     .filter((template) => accepts(template.descriptor, value))
     .map((template) =>
-      commandEntry(template.device, template.capability, {
-        phrase: `${presentCapability(template.device, template.capability).label} ${formatValue(template.capability.key, template.descriptor, value)}`,
+      commandEntry(template.device, template.presented, {
+        phrase: `${template.presented.label} ${formatValue(template.presented.capability.key, template.descriptor, value)}`,
         value,
       }),
     );

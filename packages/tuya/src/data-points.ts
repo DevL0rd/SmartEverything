@@ -1,4 +1,3 @@
-import { describeIssues } from './issues';
 import { z } from 'zod';
 import type { SpecificationItem } from './cloud-api';
 
@@ -97,7 +96,7 @@ function parsed<S extends z.ZodType, T>(
   }
   const result = schema.safeParse(values.value);
   if (!result.success) {
-    return refused(describeIssues(result.error));
+    return refused(z.prettifyError(result.error));
   }
   return accepted(shape(result.data));
 }

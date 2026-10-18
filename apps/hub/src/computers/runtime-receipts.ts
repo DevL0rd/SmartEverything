@@ -6,6 +6,7 @@ import {
   type ComputerRuntimeExecute,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { trimOldest } from '../trim-oldest';
 
 interface Binding<A> {
   readonly target: ComputerRuntimeTarget;
@@ -14,7 +15,7 @@ interface Binding<A> {
   readonly attachment: A;
   readonly signature: string;
 }
-const LIMIT = 10_000;
+const KEPT = 10_000;
 const RECORD = z.record(z.string(), z.unknown());
 export function canonicalRuntimeInput(value: unknown): string {
   if (Array.isArray(value))
@@ -69,12 +70,8 @@ export class RuntimeReceipts<A> {
         );
       return;
     }
-    if (this.bindings.size >= LIMIT)
-      throw new ApiError(
-        'conflict',
-        'The native receipt limit was reached; old IDs cannot be safely reused.',
-      );
     this.bindings.set(id, { target, ...owner, attachment, signature });
+    trimOldest(this.bindings, KEPT);
   }
   profile(id: string, target: ComputerRuntimeTarget, attachment: A): string | null {
     const known = this.bindings.get(id);

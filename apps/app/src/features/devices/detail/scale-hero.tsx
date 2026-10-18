@@ -1,60 +1,24 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { Badge } from '../../../components/badge';
+import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
-import { Sparkline, type ChartPoint } from '../../../components/charts';
+import { Gauge } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
-import { ListRow } from '../../../components/list-row';
-import { List } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { href } from '../../../app-shell/hrefs';
-import { decimal, kilograms } from '../../../format/number';
-import { joinParts } from '../../../format/text';
-import { moment, relative } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
-import { useActiveProfile, useBodyReadings, type WeighedReading } from '../../../store/people';
-import { useSettings } from '../../../store/selectors';
+import { decimal } from '../../../format/number';
 import type { Device } from '../../../store/state';
 import { DeviceVisual } from '../../device-visuals';
 import { useDayReadings } from '../model/health-readings';
+import { AssignSheet } from '../scale/assign-sheet';
+import { targetsFor } from '../scale/assign-model';
+import { readingsLabel, scaleActions, scaleLine, type ScaleAction } from '../scale/card-model';
+import { BANNER_BODY, SCORE_BANDS, deltaChips, scoreWord } from '../scale/hero-model';
+import { PersonChip } from '../scale/person-chip';
+import { useScale, useScaleStage, type Scale } from '../scale/use-scale';
 import { useDay } from './health-hero';
-
-function newestFirst(readings: readonly WeighedReading[]): readonly WeighedReading[] {
-  return [...readings].sort((left, right) => right.measured_at.localeCompare(left.measured_at));
-}
-
-function composition(reading: WeighedReading): string {
-  return joinParts([
-    reading.composition === null
-      ? null
-      : `Body fat ${decimal(reading.composition.body_fat_percent, 1)} %`,
-    reading.bmi === null ? null : `BMI ${decimal(reading.bmi, 1)}`,
-  ]);
-}
-
-function Trend({ points }: { readonly points: readonly ChartPoint[] }): ReactNode {
-  if (points.length < 2) {
-    return null;
-  }
-  return (
-    <View className="w-full max-w-reading">
-      <Sparkline points={points} colour="viz-1" height={56} />
-    </View>
-  );
-}
-
-function WeighIn({ reading }: { readonly reading: WeighedReading }): ReactNode {
-  const now = useMinute();
-  const detail = composition(reading);
-  return (
-    <View className="items-center gap-1">
-      <Figure value={decimal(reading.weight_kg, 1)} unit="kg" size="xl" />
-      <Text variant="footnote" tone="variant">
-        {joinParts([relative(reading.measured_at, now), detail])}
-      </Text>
-    </View>
-  );
-}
 
 function FromHealthConnect(): ReactNode {
   const weights = useDayReadings('weight');
@@ -77,52 +41,137 @@ function FromHealthConnect(): ReactNode {
   );
 }
 
-function RecentWeighIns({ readings }: { readonly readings: readonly WeighedReading[] }): ReactNode {
-  const now = useMinute();
-  const zone = useSettings().time_zone;
-  if (readings.length < 2) {
-    return null;
-  }
+function Score({ score }: { readonly score: number }): ReactNode {
   return (
-    <List title="Recent weigh-ins">
-      {readings.slice(0, 5).map((reading) => {
-        const detail = composition(reading);
-        return (
-          <ListRow
-            key={reading.id}
-            title={kilograms(reading.weight_kg)}
-            {...(detail === '' ? {} : { subtitle: detail })}
-            value={moment(reading.measured_at, now, zone)}
-          />
-        );
-      })}
-    </List>
+    <View className="flex-row items-center gap-3">
+      <Gauge
+        value={score}
+        min={0}
+        max={100}
+        bands={SCORE_BANDS}
+        size={84}
+        label={`Body score ${decimal(score, 0)}`}
+      >
+        <Text variant="title-3" className="tabular">
+          {decimal(score, 0)}
+        </Text>
+      </Gauge>
+      <View>
+        <Text variant="caption" tone="variant">
+          Body score
+        </Text>
+        <Text variant="callout">{scoreWord(score)}</Text>
+      </View>
+    </View>
+  );
+}
+
+function WeighInFigure({ scale }: { readonly scale: Scale }): ReactNode {
+  const { latest, weekDelta, monthDelta, latestCounted } = scale.facts;
+  if (latest === null) {
+    return <FromHealthConnect />;
+  }
+  const line = scaleLine(scale.facts, scale.when);
+  const score = latestCounted?.composition?.body_score;
+  return (
+    <View className="items-center gap-2">
+      <Figure
+        value={decimal(latest.kg, 1)}
+        unit="kg"
+        size="xl"
+        tone={latest.outlier ? 'warning' : 'default'}
+        stale={scale.facts.stale}
+      />
+      <Text variant="footnote" tone={line.tone} align="center">
+        {line.text}
+      </Text>
+      <View className="flex-row flex-wrap items-center justify-center gap-2">
+        {deltaChips(weekDelta, monthDelta).map((chip) => (
+          <Badge key={chip} label={chip} />
+        ))}
+      </View>
+      {score === undefined ? null : <Score score={score} />}
+    </View>
+  );
+}
+
+function HeroActions({
+  scale,
+  onOpen,
+}: {
+  readonly scale: Scale;
+  readonly onOpen: (kind: ScaleAction['kind']) => void;
+}): ReactNode {
+  return (
+    <View className="flex-row flex-wrap items-center justify-center gap-2">
+      <PersonChip deviceId={scale.device.id} people={scale.people} person={scale.person} />
+      {scaleActions(scale.facts, 0).map((action) => (
+        <Button
+          key={action.kind}
+          label={action.label}
+          variant={action.filled ? 'filled' : 'text'}
+          icon="user"
+          onPress={() => {
+            onOpen(action.kind);
+          }}
+        />
+      ))}
+      <Button
+        label="Open in Fitness"
+        icon="fitness"
+        variant="tonal"
+        href={href.fitnessPage('body')}
+      />
+    </View>
+  );
+}
+
+function PendingBanner({
+  count,
+  onAssign,
+}: {
+  readonly count: number;
+  readonly onAssign: () => void;
+}): ReactNode {
+  return count === 0 ? null : (
+    <Banner
+      tone="warning"
+      title={readingsLabel(count)}
+      body={BANNER_BODY}
+      wrapBody
+      action={{ label: 'Assign', onPress: onAssign }}
+    />
   );
 }
 
 export function ScaleHero({ device }: { readonly device: Device }): ReactNode {
-  const profile = useActiveProfile();
-  const readings = newestFirst(useBodyReadings(profile?.id ?? null));
-  const latest = readings[0];
-  const points = [...readings]
-    .reverse()
-    .map((reading) => ({ t: Date.parse(reading.measured_at), v: reading.weight_kg }));
+  const scale = useScale(device);
+  const stage = useScaleStage(device, scale.facts);
+  const [open, setOpen] = useState<ScaleAction['kind'] | null>(null);
+  const { pending, person, facts } = scale;
   return (
     <View className="gap-section-gap">
+      <PendingBanner
+        count={pending.length}
+        onAssign={() => {
+          setOpen('queue');
+        }}
+      />
       <Card>
         <View className="items-center gap-4 py-2">
-          <DeviceVisual device={device} size="hero" />
-          {latest === undefined ? <FromHealthConnect /> : <WeighIn reading={latest} />}
-          <Trend points={points} />
-          <Button
-            label="Open in Fitness"
-            icon="fitness"
-            variant="tonal"
-            href={href.fitnessPage('body')}
-          />
+          <DeviceVisual device={device} size="hero" state={stage} />
+          <WeighInFigure scale={scale} />
+          <HeroActions scale={scale} onOpen={setOpen} />
         </View>
       </Card>
-      <RecentWeighIns readings={readings} />
+      {open === null ? null : (
+        <AssignSheet
+          queue={targetsFor(open, facts.latest, person?.profile.id ?? null, pending)}
+          onClose={() => {
+            setOpen(null);
+          }}
+        />
+      )}
     </View>
   );
 }

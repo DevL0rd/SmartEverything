@@ -3,18 +3,23 @@ import {
   type AiHarnessConfigurationHostStatus,
   type AiHarnessCatalogue,
   type AiHarnessConfigurationCatalogue,
+  type HarnessDesiredConfiguration,
   type HarnessExtensionItem,
   type HarnessPluginReadiness,
 } from '@smarteverything/domain';
 import type { Tone } from '../../../components/tone';
-import { entryId, selectedEntry } from './selection';
-import { assetProviderName } from './items';
+import { platformLabel } from './items';
 
 export interface ExtensionDeviceStatus {
   readonly title: string;
   readonly tone: Tone;
   readonly reason: string | null;
   readonly current: boolean;
+}
+
+export interface ItemScope {
+  readonly item: HarnessExtensionItem;
+  readonly desired: HarnessDesiredConfiguration;
 }
 
 const READINESS: Readonly<Record<HarnessPluginReadiness['state'], string>> = {
@@ -34,18 +39,30 @@ function freshnessStatus(host: AiHarnessConfigurationHostStatus): string | null 
   return host.freshness === 'stale' ? 'Waiting for current status' : null;
 }
 
+function readinessId(scope: ItemScope): string | undefined {
+  const { item, desired } = scope;
+  if (item.kind === 'builtin') return item.id;
+  return desired.entries.find(
+    (entry) => entry.metadata?.skill_assets.some((asset) => asset.id === item.id) === true,
+  )?.id;
+}
+
 export function deviceStatus(
   host: AiHarnessConfigurationHostStatus,
-  item?: HarnessExtensionItem,
+  scope?: ItemScope,
 ): ExtensionDeviceStatus {
   const base = { current: false, tone: 'variant' as const, reason: null };
   const title = freshnessStatus(host);
   if (title !== null) return { ...base, title };
-  if (item !== undefined) {
-    const entry = host.report?.readiness.find((row) => row.id === entryId(item));
-    return entry === undefined ? { ...base, title: 'Waiting for device' } : readinessStatus(entry);
-  }
-  return overallStatus(host);
+  if (scope === undefined) return overallStatus(host);
+  if (!scope.item.enabled) return { ...base, title: READINESS.disabled };
+  const id = readinessId(scope);
+  const row = host.report?.readiness.find((entry) => entry.id === id);
+  return row === undefined ? { ...base, title: 'Waiting for device' } : readinessStatus(row);
+}
+
+function waitingLabel(count: number): string {
+  return `${String(count)} ${count === 1 ? 'item' : 'items'} waiting`;
 }
 
 function overallStatus(host: AiHarnessConfigurationHostStatus): ExtensionDeviceStatus {
@@ -57,8 +74,15 @@ function overallStatus(host: AiHarnessConfigurationHostStatus): ExtensionDeviceS
     return { ...base, tone: 'warning', title: 'Needs attention' };
   if (readiness.every((row) => row.state === 'incompatible'))
     return { ...base, title: 'Not supported here' };
-  if (readiness.every((row) => row.state === 'ready' || row.state === 'disabled'))
-    return { ...base, current: true, tone: 'positive', title: 'Ready' };
+  const waiting = readiness.filter((row) => row.state === 'pending' || row.state === 'missing');
+  if (waiting.length === 0) return { ...base, current: true, tone: 'positive', title: 'Ready' };
+  if (readiness.some((row) => row.state === 'ready'))
+    return {
+      ...base,
+      current: true,
+      tone: 'positive',
+      title: `Ready · ${waitingLabel(waiting.length)}`,
+    };
   return { ...base, title: 'Waiting for device' };
 }
 
@@ -81,10 +105,10 @@ export function itemSummary(
   item: HarnessExtensionItem,
   configuration: AiHarnessConfigurationCatalogue,
 ): string {
-  if (item.selection.kind === 'skill_asset')
-    return `Included in ${assetProviderName(item.selection.parent_id)} · device status is for the provider`;
-  if (selectedEntry(item, configuration.desired)?.enabled === false) return 'Off · saved choice';
-  const statuses = configuration.hosts.map((host) => deviceStatus(host, item));
+  if (!item.enabled) return 'Off';
+  if (item.executes && !item.confirmed) return 'Needs your approval to run programs';
+  const scope = { item, desired: configuration.desired };
+  const statuses = configuration.hosts.map((host) => deviceStatus(host, scope));
   const ready = statuses.filter((status) => status.current).length;
   if (ready > 0) return `Ready on ${String(ready)} ${ready === 1 ? 'device' : 'devices'}`;
   if (statuses.some((status) => status.tone === 'critical')) return 'Needs attention on a device';
@@ -100,26 +124,16 @@ export function hostDescription(
   );
   return {
     name: inventory?.name ?? (host.target.kind === 'server' ? 'Home hub' : 'Enrolled device'),
-    platform: inventory?.platform ?? 'SmartEverything',
+    platform: inventory === undefined ? 'SmartEverything' : platformLabel(inventory.platform),
   };
 }
 
-export function canInstall(
-  item: HarnessExtensionItem,
-  catalogue: AiHarnessCatalogue | undefined,
-): boolean {
-  if (
-    item.acquisition.state !== 'available' ||
-    catalogue === undefined ||
-    !item.runtimes.includes('smarteverything')
-  )
-    return false;
-  return catalogue.hosts.some(
-    (host) =>
-      host.target.kind === 'device' &&
-      item.platforms.includes(host.platform) &&
-      host.configuration_sync === true,
-  );
+export function readinessOf(
+  host: AiHarnessConfigurationHostStatus,
+  scope: ItemScope,
+): HarnessPluginReadiness | undefined {
+  const id = readinessId(scope);
+  return host.report?.readiness.find((row) => row.id === id);
 }
 
 function currentPending(host: AiHarnessConfigurationHostStatus): boolean {

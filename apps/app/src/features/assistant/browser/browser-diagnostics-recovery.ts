@@ -1,6 +1,6 @@
-const MAX_RECOVERIES = 3;
 const HEALTHY_MS = 30_000;
-const RETRY_DELAYS = [0, 250, 1000] as const;
+const FIRST_RETRY_MS = 250;
+const LONGEST_RETRY_MS = 30_000;
 interface RecoveryPorts {
   readonly connect: () => void;
   readonly eligible: () => boolean;
@@ -41,18 +41,12 @@ export class DiagnosticsRecovery {
       return;
     }
     this.cancel();
+    this.nextAt = Date.now() + Math.min(LONGEST_RETRY_MS, FIRST_RETRY_MS * 2 ** this.attempts);
     this.attempts += 1;
-    const delay = RETRY_DELAYS[this.attempts] ?? HEALTHY_MS;
-    this.nextAt = Date.now() + delay;
     this.ports.connect();
   }
   private available(): boolean {
-    return (
-      !this.disposed &&
-      !this.ports.connected() &&
-      this.ports.eligible() &&
-      this.attempts < MAX_RECOVERIES
-    );
+    return !this.disposed && !this.ports.connected() && this.ports.eligible();
   }
   private schedule(): void {
     if (!this.available() || this.timer !== null) return;

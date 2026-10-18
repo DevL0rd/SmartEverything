@@ -4,10 +4,8 @@ import {
   describeCommandValue,
   EXACT_SCORE,
   RECENCY_WEIGHT,
-  SEARCH_GROUPS,
   accepts,
   buildSearchIndex,
-  countByGroup,
   deviceSummary,
   formatValue,
   isSubsequence,
@@ -15,14 +13,18 @@ import {
   numberPresets,
   recencyBoost,
   scoreEntry,
-  searchIndex,
+  rankSearch,
   tokenScore,
+  loweredText,
+  loweredTokenScore,
   tokensOf,
   typedNumberEntries,
+  wantsActions,
   type DeviceCapability,
   type SearchDevice,
   type SearchEntry,
-  type SearchOptions,
+  type SearchGroup,
+  type RankOptions,
   type SearchSources,
   type ValueDescriptor,
 } from '../src';
@@ -41,6 +43,7 @@ const purifier: SearchDevice = {
   name: 'Air purifier',
   room: 'Living room',
   kind: 'air_purifier',
+  model: 'Model',
   online: true,
   favourite: true,
   capabilities: [
@@ -81,6 +84,7 @@ const conditioner: SearchDevice = {
   name: 'Air conditioner',
   room: 'Bedroom',
   kind: 'air_conditioner',
+  model: 'Model',
   online: true,
   favourite: false,
   capabilities: [
@@ -100,6 +104,7 @@ const door: SearchDevice = {
   name: 'Front door',
   room: null,
   kind: 'lock',
+  model: 'Model',
   online: false,
   favourite: false,
   capabilities: [
@@ -114,6 +119,7 @@ const sensor: SearchDevice = {
   name: 'Leak sensor',
   room: 'Laundry',
   kind: 'sensor',
+  model: 'Model',
   online: true,
   favourite: false,
   capabilities: [
@@ -160,7 +166,7 @@ const sources: SearchSources = {
   cameras: [],
 };
 
-const options: SearchOptions = { recent: {}, now: 10 * DAY, limit: 50, group: null };
+const options: RankOptions = { recent: {}, now: 10 * DAY, limit: 50 };
 
 function entry(id: string): SearchEntry {
   const found = buildSearchIndex(sources).entries.find((candidate) => candidate.id === id);
@@ -170,10 +176,14 @@ function entry(id: string): SearchEntry {
   return found;
 }
 
-function titles(query: string, given: Partial<SearchOptions> = {}): string[] {
-  return searchIndex(buildSearchIndex(sources), query, { ...options, ...given }).map(
-    (result) => result.entry.title,
-  );
+function titles(
+  query: string,
+  given: Partial<RankOptions & { readonly group: SearchGroup }> = {},
+): string[] {
+  const { group, ...rank } = given;
+  return rankSearch(buildSearchIndex(sources), query, { ...options, ...rank })
+    .filter((result) => group === undefined || result.entry.group === group)
+    .map((result) => result.entry.title);
 }
 
 describe('describing what a command asked for', () => {
@@ -327,25 +337,13 @@ describe('whether a value is accepted', () => {
 });
 
 describe('the search index', () => {
-  it('lists every group', () => {
-    expect(SEARCH_GROUPS).toStrictEqual([
-      'action',
-      'device',
-      'room',
-      'setting',
-      'scene',
-      'page',
-      'automation',
-    ]);
-  });
-
   it('describes a device with its state and a quick power toggle', () => {
     expect(entry('device:purifier')).toStrictEqual({
       id: 'device:purifier',
       group: 'device',
       title: 'Air purifier',
-      detail: 'Living room · air purifier',
-      keywords: ['air purifier', 'Living room', 'device'],
+      detail: 'Living room · Air purifier',
+      keywords: ['Air purifier', 'Living room', 'device'],
       state: 'On · Auto',
       run: { kind: 'command', deviceId: 'purifier', capability: 'power', value: false },
       runLabel: 'Turn off',
@@ -360,8 +358,8 @@ describe('the search index', () => {
       value: true,
     });
     expect(entry('device:conditioner').runLabel).toBe('Turn on');
-    expect(entry('device:door').detail).toBe('lock');
-    expect(entry('device:door').keywords).toStrictEqual(['lock', 'device']);
+    expect(entry('device:door').detail).toBe('Lock');
+    expect(new Set(entry('device:door').keywords)).toStrictEqual(new Set(['Lock', 'device']));
     expect(entry('device:door').run).toBeNull();
     expect(entry('device:door').runLabel).toBeNull();
   });
@@ -383,21 +381,19 @@ describe('the search index', () => {
     expect(actions).toStrictEqual([
       'Turn on — Air purifier',
       'Turn off — Air purifier',
-      'Mode → Auto — Air purifier',
-      'Mode → Sleep — Air purifier',
-      'Reset filter — Air purifier',
-      'Send IR code — Air purifier',
+      'Purifier mode → Auto — Air purifier',
+      'Purifier mode → Sleep — Air purifier',
       'Colour — Air purifier',
-      'Display text — Air purifier',
       'Child lock on — Air purifier',
       'Child lock off — Air purifier',
+      'Display text — Air purifier',
       'Turn on — Air conditioner',
       'Turn off — Air conditioner',
-      'Target 16.0°C — Air conditioner',
-      'Target 19.5°C — Air conditioner',
-      'Target 23.0°C — Air conditioner',
-      'Target 26.5°C — Air conditioner',
-      'Target 30.0°C — Air conditioner',
+      'Target temperature 16.0°C — Air conditioner',
+      'Target temperature 19.5°C — Air conditioner',
+      'Target temperature 23.0°C — Air conditioner',
+      'Target temperature 26.5°C — Air conditioner',
+      'Target temperature 30.0°C — Air conditioner',
       'Lock — Front door',
       'Unlock — Front door',
       'Mute — Front door',
@@ -405,22 +401,18 @@ describe('the search index', () => {
     ]);
   });
 
+  it('leaves out actions that could do harm or only report on the device', () => {
+    const ids = buildSearchIndex(sources).entries.map((candidate) => candidate.id);
+    expect(ids).not.toContain('action:purifier:filter_reset:null');
+    expect(ids).not.toContain('control:purifier:ir_send');
+  });
+
   it('runs an action as a command and opens its device', () => {
-    expect(entry('action:purifier:purifier_mode:"Sleep"')).toStrictEqual({
+    expect(entry('action:purifier:purifier_mode:"Sleep"')).toMatchObject({
       id: 'action:purifier:purifier_mode:"Sleep"',
       group: 'action',
-      title: 'Mode → Sleep — Air purifier',
+      title: 'Purifier mode → Sleep — Air purifier',
       detail: 'Living room · Air purifier',
-      keywords: [
-        'Air purifier',
-        'air purifier',
-        'Living room',
-        'Mode',
-        'purifier mode',
-        'purifier',
-        'set',
-        'to',
-      ],
       state: null,
       run: { kind: 'command', deviceId: 'purifier', capability: 'purifier_mode', value: 'Sleep' },
       runLabel: 'Run',
@@ -428,27 +420,29 @@ describe('the search index', () => {
       openLabel: 'Open',
       suggested: false,
     });
+    expect(new Set(entry('action:purifier:purifier_mode:"Sleep"').keywords)).toStrictEqual(
+      new Set([
+        'Air purifier',
+        'Living room',
+        'Mode',
+        'Purifier mode',
+        'Air',
+        'purifier mode',
+        'purifier',
+        'set',
+        'to',
+      ]),
+    );
     expect(entry('action:purifier:power:false').run).toStrictEqual({
       kind: 'command',
       deviceId: 'purifier',
       capability: 'power',
       value: false,
     });
-    expect(entry('action:purifier:filter_reset:null').run).toStrictEqual({
-      kind: 'command',
-      deviceId: 'purifier',
-      capability: 'filter_reset',
-      value: null,
-    });
     expect(entry('action:door:lock:true').detail).toBe('Front door');
-    expect(entry('action:door:lock:true').keywords).toStrictEqual([
-      'Front door',
-      'lock',
-      'Lock',
-      'lock',
-      'door',
-      'unlock',
-    ]);
+    expect(new Set(entry('action:door:lock:true').keywords)).toStrictEqual(
+      new Set(['Front door', 'Lock', 'Security', 'lock', 'door', 'unlock']),
+    );
   });
 
   it('suggests the power actions of favourite devices', () => {
@@ -458,19 +452,11 @@ describe('the search index', () => {
   });
 
   it('opens the device for a control that needs more than one tap', () => {
-    expect(entry('control:purifier:ir_send')).toStrictEqual({
-      id: 'control:purifier:ir_send',
+    expect(entry('control:purifier:raw:led_text')).toMatchObject({
+      id: 'control:purifier:raw:led_text',
       group: 'action',
-      title: 'Send IR code — Air purifier',
+      title: 'Display text — Air purifier',
       detail: 'Living room · Air purifier',
-      keywords: [
-        'Air purifier',
-        'air purifier',
-        'Living room',
-        'Send IR code',
-        'ir send',
-        'remote',
-      ],
       state: null,
       run: null,
       runLabel: null,
@@ -478,13 +464,9 @@ describe('the search index', () => {
       openLabel: 'Open',
       suggested: false,
     });
-    expect(entry('control:purifier:raw:led_text').keywords).toStrictEqual([
-      'Air purifier',
-      'air purifier',
-      'Living room',
-      'Display text',
-      'raw:led text',
-    ]);
+    expect(new Set(entry('control:purifier:raw:led_text').keywords)).toStrictEqual(
+      new Set(['Air purifier', 'Living room', 'Display text', 'Device', 'raw:led text']),
+    );
   });
 
   it('indexes rooms, pages, settings, scenes and automations', () => {
@@ -557,13 +539,17 @@ describe('the search index', () => {
   });
 
   it('counts what it holds in each group', () => {
-    expect(countByGroup(buildSearchIndex(sources))).toStrictEqual({
-      action: 21,
+    const counts: Record<string, number> = {};
+    for (const candidate of buildSearchIndex(sources).entries) {
+      counts[candidate.group] = (counts[candidate.group] ?? 0) + 1;
+    }
+    expect(counts).toStrictEqual({
+      action: 19,
       device: 4,
       room: 1,
       setting: 2,
       scene: 1,
-      page: 7,
+      page: 3,
       automation: 2,
     });
   });
@@ -571,10 +557,10 @@ describe('the search index', () => {
   it('keeps every writable number as a template for typed values', () => {
     const index = buildSearchIndex(sources);
     expect(
-      index.numbers.map((template) => `${template.device.id}:${template.capability.key}`),
+      index.numbers.map((template) => `${template.device.id}:${template.presented.capability.key}`),
     ).toStrictEqual(['conditioner:target_temperature']);
     expect(typedNumberEntries(index, 21.5).map((typed) => typed.title)).toStrictEqual([
-      'Target 21.5°C — Air conditioner',
+      'Target temperature 21.5°C — Air conditioner',
     ]);
     expect(typedNumberEntries(index, 21.3)).toStrictEqual([]);
     expect(typedNumberEntries(index, 31)).toStrictEqual([]);
@@ -605,6 +591,18 @@ describe('ranking', () => {
     expect(tokenScore('a', 'b a', '')).toBe(6);
     expect(tokenScore('r', 'ab', 'x')).toBe(0);
     expect(tokenScore('ae', 'plate', '')).toBe(1);
+  });
+
+  it("scores the same from an entry's pre-split words as from its text", () => {
+    const text = fc.stringMatching(/^[a-z ·—→,/()-]{0,24}$/);
+    fc.assert(
+      fc.property(fc.stringMatching(/^[a-z]{1,4}$/), text, text, (token, title, detail) => {
+        const lowered = loweredText({ ...entry('device:purifier'), title, detail, keywords: [] });
+        expect(loweredTokenScore(token, lowered)).toBe(
+          tokenScore(token, lowered.title, lowered.extra),
+        );
+      }),
+    );
   });
 
   it('splits words on the separators titles use', () => {
@@ -640,7 +638,7 @@ describe('ranking', () => {
   it('weighs each group', () => {
     const weights = [
       ['action:purifier:power:true', 0],
-      ['room:living', 1],
+      ['room:living', 1 + 3],
       ['setting:members', 0.5],
       ['scene:evening', 1],
       ['page:/climate', 1],
@@ -648,7 +646,7 @@ describe('ranking', () => {
     ] as const;
     for (const [id, weight] of weights) {
       const found = entry(id);
-      expect(scoreEntry(found, [found.title.toLowerCase()], options)).toBe(100 + 8 + weight);
+      expect(scoreEntry(found, [found.title.toLowerCase()], options), id).toBe(100 + 8 + weight);
     }
   });
 
@@ -672,13 +670,7 @@ describe('ranking', () => {
 describe('searching', () => {
   it('suggests favourites and recent entries when nothing is typed, most recent first', () => {
     const recent = { 'scene:evening': options.now, 'page:/climate': options.now - DAY };
-    expect(titles('', { recent })).toStrictEqual([
-      'Evening',
-      'Climate',
-      'Air purifier',
-      'Turn off — Air purifier',
-      'Turn on — Air purifier',
-    ]);
+    expect(titles('', { recent })).toStrictEqual(['Evening', 'Climate', 'Air purifier']);
     expect(titles('', { recent, limit: 1 })).toStrictEqual(['Evening']);
     expect(
       titles('', {
@@ -689,9 +681,18 @@ describe('searching', () => {
   });
 
   it('ranks the best match first and keeps every query word', () => {
-    expect(titles('purifier sleep')).toStrictEqual(['Mode → Sleep — Air purifier']);
+    expect(titles('set purifier sleep')).toStrictEqual(['Purifier mode → Sleep — Air purifier']);
     expect(titles('air purifier')[0]).toBe('Air purifier');
     expect(titles('air purifier')).toContain('Climate');
+  });
+
+  it('keeps actions out of results until the query asks to do something', () => {
+    expect(wantsActions(tokensOf('purifier sleep'))).toBe(false);
+    expect(titles('purifier sleep')).toStrictEqual([]);
+    expect(wantsActions(tokensOf('turn off ac'))).toBe(true);
+    expect(wantsActions(tokensOf('bedroom 21'))).toBe(true);
+    expect(titles('purifier')).not.toContain('Turn on — Air purifier');
+    expect(titles('turn on purifier')).toContain('Turn on — Air purifier');
   });
 
   it('finds an action from the words a person would say', () => {
@@ -708,8 +709,8 @@ describe('searching', () => {
   });
 
   it('offers a typed value when a device accepts it, once', () => {
-    expect(titles('bedroom 21.5')).toStrictEqual(['Target 21.5°C — Air conditioner']);
-    expect(titles('bedroom 23')).toStrictEqual(['Target 23.0°C — Air conditioner']);
+    expect(titles('bedroom 21.5')).toStrictEqual(['Target temperature 21.5°C — Air conditioner']);
+    expect(titles('bedroom 23')).toStrictEqual(['Target temperature 23.0°C — Air conditioner']);
     expect(titles('bedroom 99')).toStrictEqual([]);
   });
 
@@ -720,23 +721,28 @@ describe('searching', () => {
 
   it('breaks ties by title and marks where the first word matched', () => {
     const index = buildSearchIndex(sources);
-    const [first, second] = searchIndex(index, 'air', { ...options, group: 'device' });
+    const [first, second] = rankSearch(index, 'air', options).filter(
+      (result) => result.entry.group === 'device',
+    );
     expect(first?.highlight).toStrictEqual({ start: 0, end: 3 });
     expect(second?.score).toBe(first?.score);
-    expect(searchIndex(index, 'apr', options)[0]?.highlight).toBeNull();
-    expect(searchIndex(index, 'zzz air', options)).toStrictEqual([]);
-    expect(searchIndex(index, 'living purifier', options)[0]?.highlight).toStrictEqual({
+    expect(rankSearch(index, 'apr', options)[0]?.highlight).toBeNull();
+    expect(rankSearch(index, 'zzz air', options)).toStrictEqual([]);
+    expect(rankSearch(index, 'living purifier', options)[0]?.highlight).toStrictEqual({
       start: 4,
       end: 12,
     });
-    expect(searchIndex(index, 'sleep', options)[0]?.highlight).toStrictEqual({ start: 7, end: 12 });
+    expect(rankSearch(index, 'set sleep', options)[0]?.highlight).toStrictEqual({
+      start: 16,
+      end: 21,
+    });
   });
 
   it('only ever returns entries holding every word, best first', () => {
     const index = buildSearchIndex(sources);
     fc.assert(
       fc.property(fc.stringMatching(/^[a-z ]{0,12}$/), (query) => {
-        const results = searchIndex(index, query, options);
+        const results = rankSearch(index, query, options);
         for (const [position, result] of results.entries()) {
           const next = results[position + 1];
           if (next !== undefined) {

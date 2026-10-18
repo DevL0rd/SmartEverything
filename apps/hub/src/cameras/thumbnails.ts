@@ -3,12 +3,13 @@ import { rename, rm, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { promisify } from 'node:util';
 import { THUMBNAIL_WIDTH } from '@smarteverything/domain';
+import { ffmpegPath } from '../media/ffmpeg-path';
+import { isMissing } from '../fs-util';
+import { messageOf } from '@smarteverything/logging';
 
 const run = promisify(execFile);
 
 const FFMPEG_TIMEOUT_MS = 20_000;
-
-const NOT_FOUND = 'ENOENT';
 
 export class ThumbnailError extends Error {
   override readonly name = 'ThumbnailError';
@@ -17,9 +18,7 @@ export class ThumbnailError extends Error {
     source: string,
     override readonly cause: unknown,
   ) {
-    super(
-      `ffmpeg could not make a thumbnail of ${basename(source)}: ${cause instanceof Error ? cause.message : String(cause)}`,
-    );
+    super(`ffmpeg could not make a thumbnail of ${basename(source)}: ${messageOf(cause)}`);
   }
 }
 
@@ -32,7 +31,7 @@ async function exists(path: string): Promise<boolean> {
     await stat(path);
     return true;
   } catch (cause) {
-    if (cause instanceof Error && 'code' in cause && cause.code === NOT_FOUND) {
+    if (isMissing(cause)) {
       return false;
     }
     throw cause;
@@ -43,7 +42,7 @@ async function render(source: string, target: string): Promise<void> {
   const partial = `${target}.part`;
   try {
     await run(
-      'ffmpeg',
+      ffmpegPath(),
       [
         '-v',
         'error',

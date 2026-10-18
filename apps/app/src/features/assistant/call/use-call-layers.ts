@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { SourceScope } from './model/call-sources';
 
-export type CallLayer =
+type CallLayer =
   | { readonly kind: 'settings' }
   | { readonly kind: 'explainer' }
   | { readonly kind: 'menu'; readonly which: 'camera' | 'share' }

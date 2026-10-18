@@ -1,17 +1,15 @@
 import {
-  JSON_VALUE,
+  ROBOT_ONLINE_WINDOW_MS,
   ROBOT_REPORT,
   type RobotReport,
   type RobotStatus,
-  type JsonValue,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { PluginRecords } from '../contract';
+import { jsonOf } from '../json-value';
 import { ROBOT_IDENTITY, type RobotIdentity } from './identity';
 import type { DeskStatus } from './desk';
-import type { AibiSettings } from './settings';
-
-export const ONLINE_WINDOW_MS = 5 * 60_000;
+import { AIBI_PORTS, type AibiSettings } from './settings';
 
 const CONTACT_SAVE_GAP_MS = 60_000;
 const CALLS_SHOWN = 12;
@@ -37,10 +35,6 @@ export interface StatusInputs {
   readonly configured: boolean;
   readonly lines: RobotStatus['lines'];
   readonly now: Date;
-}
-
-export function jsonOf(value: object): JsonValue {
-  return JSON_VALUE.parse(value);
 }
 
 export class RobotState {
@@ -69,7 +63,8 @@ export class RobotState {
 
   online(): boolean {
     return (
-      this.contact !== null && this.now().getTime() - Date.parse(this.contact.at) < ONLINE_WINDOW_MS
+      this.contact !== null &&
+      this.now().getTime() - Date.parse(this.contact.at) < ROBOT_ONLINE_WINDOW_MS
     );
   }
 
@@ -108,7 +103,7 @@ export class RobotState {
       address: this.address,
       server: this.server,
       dns: settings.dns ? this.dns : { state: 'off', reason: null },
-      ports: { http: settings.http_port, https: settings.https_port, dns: settings.dns_port },
+      ports: AIBI_PORTS,
       contact: this.contact,
       calls: [...this.calls.entries()]
         .map(([path, seen]) => ({ path, ...seen }))

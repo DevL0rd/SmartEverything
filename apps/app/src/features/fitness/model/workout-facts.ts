@@ -1,6 +1,6 @@
 import { hoursMinutes } from '../../../format/time';
 import { tempoText, type Workout } from './workouts';
-import { kilocalories, kilometres } from '../../../format/number';
+import { count, kilocalories, kilometres, withUnit } from '../../../format/number';
 
 export interface WorkoutFact {
   readonly key: 'duration' | 'distance' | 'energy' | 'heart' | 'tempo';
@@ -30,7 +30,7 @@ export function workoutFacts(workout: Workout): readonly WorkoutFact[] {
     facts.push({
       key: 'heart',
       label: 'Avg heart rate',
-      text: `${String(Math.round(workout.averageBpm))} bpm`,
+      text: withUnit(count(workout.averageBpm), 'bpm'),
     });
   }
   if (workout.secondsPerKm !== null) {

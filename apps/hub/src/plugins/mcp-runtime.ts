@@ -15,6 +15,7 @@ import { failure, type HubToolResult } from '../ai-tools/hub-tool';
 import type { Connection } from './connection';
 import type { PluginRuntime, RuntimeSinks, RuntimeTool } from './runtime';
 import { hubResultOf } from './tool-results';
+import { failureLine } from '@smarteverything/logging';
 
 const CALL_TIMEOUT_MS = 120_000;
 
@@ -161,7 +162,7 @@ export class McpRuntime implements PluginRuntime {
   private listen(client: Client): void {
     client.setNotificationHandler('notifications/tools/list_changed', () => {
       this.refreshTools().catch((cause: unknown) => {
-        this.sinks.log(`Could not refresh the tool list: ${String(cause)}`);
+        this.sinks.log(`Could not refresh the tool list: ${failureLine(cause)}`);
       });
     });
     client.setNotificationHandler(

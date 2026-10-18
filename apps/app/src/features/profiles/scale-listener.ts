@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { AppState, PermissionsAndroid } from 'react-native';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import {
   AppUpdateNeededError,
   addScaleEventListener,
-  configureScaleRelay,
+  configureServer,
   deliverBodyReadings,
   healthConnectConfigured,
   isHealthConnectLinked,
@@ -80,7 +80,7 @@ export interface RelayServer {
 
 async function startListening(server: RelayServer): Promise<void> {
   try {
-    await configureScaleRelay(server.url, server.token);
+    await configureServer(server.url, server.token);
     if (await permitted()) {
       const scales = await startScaleRelay();
       log.info('scale.listening', { scales });
@@ -161,7 +161,7 @@ function logEvent(event: ScaleEvent): void {
   } else {
     log.info(`scale.native_${event.event}`, payload);
   }
-  void refreshRelay();
+  background(refreshRelay(), 'relay.refresh_failed');
 }
 
 function passiveAddresses(state: StoreState): string {
@@ -222,14 +222,17 @@ function useListening(addresses: string): void {
     }
     server = { url, token };
     const events = addScaleEventListener(logEvent);
-    void startListening(server).then(() => setLive(AppState.currentState === 'active'));
+    background(
+      startListening(server).then(() => setLive(AppState.currentState === 'active')),
+      'listening.start_failed',
+    );
     const app = AppState.addEventListener('change', (state) => {
-      void setLive(state === 'active');
+      background(setLive(state === 'active'), 'live.set_failed');
     });
     return (): void => {
       events.remove();
       app.remove();
-      void setLive(false);
+      background(setLive(false), 'live.set_failed');
     };
   }, [addresses, url, token]);
 }
@@ -240,7 +243,7 @@ export function ScaleListenerHost(): null {
   useListening(addresses);
   useEffect(() => {
     if (isHealthConnectLinked && unsaved !== '') {
-      void retryHealthConnectWrites();
+      background(retryHealthConnectWrites(), 'health_connect_writes.retry_failed');
     }
   }, [unsaved]);
   return null;

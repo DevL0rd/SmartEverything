@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ClaudeUsage, AiSubscriptionUsage } from '@smarteverything/domain';
+import { dateFormat, dateTimeText } from '../../../format/locale';
 export interface SubscriptionWindow {
   readonly key: string;
   readonly label: string;
@@ -41,7 +42,7 @@ function windows(snapshot: z.output<typeof SNAPSHOT>, id: string): SubscriptionW
         reset:
           window.resetsAt === undefined || window.resetsAt === null
             ? null
-            : new Date(window.resetsAt * 1000).toLocaleString(),
+            : dateTimeText(new Date(window.resetsAt * 1000)),
       },
     ];
   });
@@ -81,12 +82,12 @@ export function projectedSubscriptionWindows(
       reset:
         window.resets_at === null
           ? null
-          : new Date(window.resets_at).toLocaleString([], {
+          : dateFormat({
               month: 'short',
               day: 'numeric',
               hour: 'numeric',
               minute: '2-digit',
-            }),
+            }).format(new Date(window.resets_at)),
     })) ?? []
   );
 }

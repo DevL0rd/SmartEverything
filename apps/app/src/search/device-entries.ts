@@ -3,6 +3,7 @@ import type { StoreState } from '../store/state';
 import type { Href } from 'expo-router';
 import {
   CAPABILITY_CATALOGUE,
+  isBleObservable,
   isCamera,
   isStandardCapability,
   privacySwitchOf,
@@ -20,6 +21,8 @@ import {
   type DevicePage,
   type DevicePlace,
 } from './device-places';
+import { familySearchItems } from './family-items';
+import { remoteActionsOf } from './remote-actions';
 import type { NamedDevice, SourceLinks } from './sources';
 
 export interface DeviceControl {
@@ -243,38 +246,61 @@ function addPlace(builder: Builder, place: DevicePlace): void {
   }
 }
 
-function addBluetoothObservation(builder: Builder): void {
-  const device = builder.named.device;
-  if (device.provider !== 'xiaomi' || device.model !== 'isa.magnet.dw2hl') {
-    return;
-  }
-  const parent = `devpage:${device.id}:settings`;
-  for (const title of ['Bluetooth updates', 'Listen for this door', 'Your server', 'This phone']) {
+function addRemoteActions(builder: Builder): void {
+  const { named } = builder;
+  const id = named.device.id;
+  const page = `devpage:${id}:remote`;
+  for (const action of remoteActionsOf(named.device.kind)) {
     add(
       builder,
       {
-        id: `${parent}:bluetooth:${title}`,
-        title,
-        keywords: [
-          'Bluetooth',
-          'BLE',
-          'door',
-          'sensor',
-          'contact',
-          'listen',
-          'receiver',
-          'instant',
-          'passive',
-          'broadcast',
-          'nearby',
-        ],
-        parent,
-        link: href.settings.device(device.id),
-        icon: 'bluetooth',
+        id: `remote-action:${id}:${action.key}`,
+        title: action.title,
+        keywords: action.keywords,
+        parent: page,
+        link:
+          action.settings === true
+            ? href.settings.device(id, 'remotes')
+            : sectionHref(id, 'remote'),
+        icon: 'remote',
       },
       'setting',
     );
   }
+}
+
+function addBluetoothObservation(builder: Builder): void {
+  const device = builder.named.device;
+  if (!isBleObservable(device)) {
+    return;
+  }
+  const parent = `devpage:${device.id}:settings`;
+  add(
+    builder,
+    {
+      id: `${parent}:bluetooth`,
+      title: 'Bluetooth updates',
+      keywords: [
+        'Bluetooth',
+        'BLE',
+        'door',
+        'sensor',
+        'contact',
+        'listen',
+        'receiver',
+        'server',
+        'phone',
+        'instant',
+        'passive',
+        'broadcast',
+        'nearby',
+      ],
+      parent,
+      link: href.settings.device(device.id),
+      icon: 'bluetooth',
+    },
+    'setting',
+  );
 }
 
 function addContributedPages(builder: Builder): void {
@@ -296,13 +322,33 @@ function addContributedPages(builder: Builder): void {
   }
 }
 
+function addFamilyItems(builder: Builder): void {
+  const { named } = builder;
+  const links = pageLinks(named);
+  for (const item of familySearchItems(deviceModelOf(named.device).family)) {
+    const page = links[item.page];
+    add(
+      builder,
+      {
+        id: `devitem:${named.device.id}:${item.key}`,
+        title: item.title,
+        keywords: item.keywords,
+        parent: page.id,
+        link: page.link,
+        icon: item.icon,
+      },
+      'action',
+    );
+  }
+}
+
 function addPluginControls(
   builder: Builder,
   streams: StoreState['tables']['plugin_streams'],
 ): void {
   const device = builder.named.device;
   for (const plugin of APP_PLUGINS) {
-    for (const item of plugin.deviceSearch?.(device, streams) ?? []) {
+    for (const item of plugin.devicePages?.search?.(device, streams) ?? []) {
       add(
         builder,
         {
@@ -334,7 +380,9 @@ export function deviceSources(
     addPages(builder, places);
     addCameraOptions(builder);
     addBluetoothObservation(builder);
+    addRemoteActions(builder);
     addContributedPages(builder);
+    addFamilyItems(builder);
     addPluginControls(builder, streams);
     for (const place of places) {
       addPlace(builder, place);

@@ -37,7 +37,7 @@ export const IMAGE_AREA_ENDPOINTS = {
     path: '/api/assistant/images/operations',
     access: 'member',
     summary:
-      'Start a metered image request and return immediately; the UI shows the result automatically. Only wait_for_images when further user-requested work needs saved images; never poll or repeat the request',
+      'Start a metered image request and return immediately; the UI shows the result automatically. Only edit_image action wait when further user-requested work needs saved images; never poll or repeat the request',
     params: NOTHING,
     query: NOTHING,
     body: IMAGE_OPERATION_REQUEST,

@@ -3,6 +3,7 @@ import { ASSISTANT_COMMANDS, assistantCommand } from './assistant-commands';
 import { checkAction, enabledActions, type Abilities, type Params } from './catalogue';
 import type { DeskAnswer, DeskTool } from './conversation-types';
 import { actionToolDescription } from './place-instructions';
+import { messageOf } from '@smarteverything/logging';
 
 export interface DeskToolHost {
   readonly abilities: () => Abilities;
@@ -46,7 +47,7 @@ function settled(work: Promise<string>): Promise<DeskAnswer> {
   return work.then(
     (status): DeskAnswer => ({ result: { status } }),
     (error: unknown): DeskAnswer => ({
-      result: { error: error instanceof Error ? error.message : 'That did not work' },
+      result: { error: messageOf(error) },
     }),
   );
 }

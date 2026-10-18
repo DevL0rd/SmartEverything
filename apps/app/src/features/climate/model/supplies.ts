@@ -91,6 +91,12 @@ export function needsAttention(line: SupplyLine): boolean {
   return line.tone !== 'positive';
 }
 
+const supplied = new WeakMap<ClimateSource, boolean>();
+
 export function hasSupplies(source: ClimateSource): boolean {
-  return suppliesOf(source).length > 0;
+  const known = supplied.get(source);
+  if (known !== undefined) return known;
+  const has = suppliesOf(source).length > 0;
+  supplied.set(source, has);
+  return has;
 }

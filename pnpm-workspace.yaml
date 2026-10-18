@@ -30,6 +30,7 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  ffmpeg-static: true
   koffi: true
   node-pty: true
   protobufjs: false
@@ -38,21 +39,44 @@ allowBuilds:
 
 overrides:
   '@earendil-works/pi-ai': 1.0.2
-  react-native-worklets: 0.10.1
+  react-native-worklets: 0.13.0
   '@react-native/metro-config': 0.86.3
   uuid@<11.1.1: '>=11.1.1'
   qs@<6.16.0: '>=6.16.0'
   decode-uri-component@<=0.4.2: 0.5.0
   basic-ftp@<=6.2.0: 6.2.1
+  '@deepseek-ai/schemastery': 3.18.5-alpha.1
 
 patchedDependencies:
   '@deepseek-ai/dsh-session@0.2.1-alpha.2': patches/@deepseek-ai__dsh-session@0.2.1-alpha.2.patch
   '@deepseek-ai/dsh-working-directory@0.2.1-alpha.2': patches/@deepseek-ai__dsh-working-directory@0.2.1-alpha.2.patch
   braces@3.0.3: patches/braces@3.0.3.patch
   decode-uri-component@0.5.0: patches/decode-uri-component@0.5.0.patch
+  dsh-plugin-codegraph-service@0.1.6: patches/dsh-plugin-codegraph-service@0.1.6.patch
+  dsh-plugin-codegraph-sqlite@0.1.6: patches/dsh-plugin-codegraph-sqlite@0.1.6.patch
+  dsh-plugin-codegraph-tool@0.1.6: patches/dsh-plugin-codegraph-tool@0.1.6.patch
+  dsh-plugin-codegraph-tree-sitter@0.1.6: patches/dsh-plugin-codegraph-tree-sitter@0.1.6.patch
   node-forge@1.4.0: patches/node-forge@1.4.0.patch
-  react-native-webview@13.16.1: patches/react-native-webview@13.16.1.patch
+  react-native-webrtc@124.0.8: patches/react-native-webrtc@124.0.8.patch
   react-native@0.86.3: patches/react-native@0.86.3.patch
+
+packageExtensions:
+  dsh-plugin-codegraph-service:
+    peerDependenciesMeta:
+      '@deepseek-ai/dsh-invariants':
+        optional: true
+  dsh-plugin-codegraph-sqlite:
+    peerDependenciesMeta:
+      '@deepseek-ai/dsh-invariants':
+        optional: true
+  dsh-plugin-codegraph-tool:
+    peerDependenciesMeta:
+      '@deepseek-ai/dsh-invariants':
+        optional: true
+  dsh-plugin-codegraph-tree-sitter:
+    peerDependenciesMeta:
+      '@deepseek-ai/dsh-invariants':
+        optional: true
 
 auditConfig:
   ignoreGhsas:

@@ -6,6 +6,8 @@ import {
   type CalendarDate,
   type EventKind,
 } from '@smarteverything/domain';
+import { compareText } from '../../../format/text';
+import { DAY_MS } from '../../../format/time';
 
 export const CAMERA_EVENT_KINDS: readonly EventKind[] = [
   'doorbell',
@@ -21,8 +23,6 @@ export const CAMERA_EVENT_KINDS: readonly EventKind[] = [
 export type TimelineKind = EventKind | 'recording';
 
 const MINUTES_A_DAY = 1440;
-
-const DAY_MS = 86_400_000;
 
 export interface TimelineEvent {
   readonly id: string;
@@ -120,7 +120,7 @@ function soundShown(filter: TimelineFilter, event: TimelineEvent): boolean {
 }
 
 function byNewest(left: { readonly at: string }, right: { readonly at: string }): number {
-  return right.at.localeCompare(left.at);
+  return compareText(right.at, left.at);
 }
 
 function recordingsOf<R extends TimelineRecording>(

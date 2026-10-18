@@ -5,12 +5,10 @@ import type { DiscordServices } from '../services';
 import type { Status } from '../status';
 import { actionTool } from './action-tool';
 import { localActions } from './local-actions';
-import { authorizeContextAction } from './owner-actions';
 import { promptTool } from './prompt-tool';
 import { contextTool, mediaTool } from './reading-tools';
 import { replyTool, type ReplyHooks } from './reply-tool';
 import { sendTool } from './send-tool';
-import { uploadTool } from './upload-tool';
 import { voiceActions, type VoiceTools } from '../voice/tools';
 
 const ACT_IN =
@@ -39,7 +37,7 @@ export function discordTools(
       intro: `Post, edit, create and configure things in Discord: messages, reactions, polls, threads, channels, roles, invites, events, emoji and rules. Everything stays inside the servers and channels the settings allow. ${ACT_IN}`,
       annotations: WRITE_HINTS,
       operations: operationsOf('change'),
-      local: [authorizeContextAction(services)],
+      local: [],
     }),
     actionTool(services, {
       name: 'remove',
@@ -59,7 +57,6 @@ export function discordTools(
     }),
     contextTool(services),
     mediaTool(services),
-    uploadTool(services),
     replyTool(services, hooks),
   ];
 }

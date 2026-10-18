@@ -1,18 +1,16 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { presentValue, type PresentedCapability } from '@smarteverything/domain';
-import { Badge } from '../../../components/badge';
+import { presentValue, type DeviceFamily, type PresentedCapability } from '@smarteverything/domain';
 import { Card } from '../../../components/card';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
 import { useDeviceValues } from '../../../store/selectors';
 import type { Device, DeviceValues } from '../../../store/state';
-import { DeviceVisual } from '../../device-visuals';
 import { dialReading } from '../controls/dial-block';
 import { usePrimaryControls } from '../controls/primary-controls';
-import { powerStateOf, useDeviceModel, valueOf } from '../model/device-model';
+import { useDeviceModel, valueOf } from '../model/device-model';
 import { airOf, heroReadingOf } from '../model/readings';
-import { stateLine } from '../model/state-line';
+import { DeviceStage } from './device-stage';
 
 export function splitUnit(
   text: string,
@@ -56,6 +54,10 @@ function Reading({
 
 const NO_EXCLUSIONS = new Set<never>();
 
+function drawnByVisual(family: DeviceFamily, hero: PresentedCapability | null): boolean {
+  return family === 'sensor' && hero?.capability.value.kind === 'number';
+}
+
 export function DeviceHero({ device }: { readonly device: Device }): ReactNode {
   const model = useDeviceModel(device);
   const values = useDeviceValues(device.id);
@@ -64,20 +66,16 @@ export function DeviceHero({ device }: { readonly device: Device }): ReactNode {
     return role === null ? [] : [role];
   });
   const reading = heroReadingOf(model, values);
-  const hero = dialled.some((role) => role === reading?.role) ? null : reading;
-  const power = powerStateOf(model, values);
+  const hero =
+    dialled.some((role) => role === reading?.role) || drawnByVisual(model.family, reading)
+      ? null
+      : reading;
   const stale = !device.online;
   return (
     <Card>
       <View className="items-center gap-4 py-2">
-        <DeviceVisual device={device} size="hero" />
+        <DeviceStage device={device} />
         {hero === null ? null : <Reading hero={hero} values={values} stale={stale} />}
-        <View className="flex-row justify-center">
-          <Badge
-            label={stateLine(model, values, false)}
-            tone={power === 'on' ? 'primary' : 'neutral'}
-          />
-        </View>
       </View>
     </Card>
   );

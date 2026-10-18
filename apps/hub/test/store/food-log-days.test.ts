@@ -61,14 +61,13 @@ describe('logging on an earlier day', () => {
     foodEntryOf({
       food: CRISPS,
       foodId: null,
-      amount: 200,
-      multiplier: 0.5,
+      amount: 100,
       mealType: 4,
       span: spanAt(justAfterMidnight),
     }),
     'f1',
   );
-  const water = recordOf(waterEntryOf(500, spanAt(thisMorning), 2), 'w1');
+  const water = recordOf(waterEntryOf(1000, spanAt(thisMorning)), 'w1');
 
   it('puts an entry after local midnight on the next local day, not the UTC day', () => {
     expect(localDayOf(food)).toBe('2026-10-11');
@@ -80,8 +79,7 @@ describe('logging on an earlier day', () => {
       foodEntryOf({
         food: CRISPS,
         foodId: null,
-        amount: 200,
-        multiplier: 0.5,
+        amount: 100,
         mealType: 4,
         span: spanAt(new Date('2026-10-10T14:00:00Z')),
       }),

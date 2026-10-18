@@ -3,60 +3,44 @@ package expo.modules.healthconnect.watch
 import android.content.Context
 import android.util.Log
 import androidx.work.WorkManager
+import expo.modules.healthconnect.HubJson
 import expo.modules.healthconnect.NativeGuard
 import expo.modules.healthconnect.ServiceStartRefused
 import expo.modules.healthconnect.phone.PhonePostWorker
+import expo.modules.healthconnect.push.ActionAnswer
 import expo.modules.healthconnect.push.PushCommandHandler
+import expo.modules.healthconnect.push.WatchActionPayload
+import expo.modules.healthconnect.push.pushPayload
 import java.time.Instant
-import java.time.format.DateTimeParseException
 import java.util.concurrent.atomic.AtomicBoolean
-import org.json.JSONException
-import org.json.JSONObject
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonObject
 
 object WatchActionPush : PushCommandHandler {
   private const val TAG = "SmartEverythingWatch"
   private const val READY_TIMEOUT_MS = 18_000L
   private const val EXPIRY_MARGIN_MS = 2_000L
-  private const val MAX_DETAIL = 400
 
   override fun handle(context: Context, data: Map<String, String>) {
     val payload = try {
-      JSONObject(data["payload"].orEmpty())
-    } catch (failure: JSONException) {
+      data.pushPayload<WatchActionPayload>()
+    } catch (failure: SerializationException) {
       Log.e(TAG, "A watch action push could not be read: ${failure.message}")
       return
     }
-    val requestId = payload.optString("requestId")
-    val deviceId = payload.optString("deviceId")
-    val action = payload.optJSONObject("action")
-    if (requestId.isEmpty() || deviceId.isEmpty() || action == null) {
-      Log.e(TAG, "A watch action push needs requestId, deviceId and action; received ${payload.keys().asSequence().toList()}")
+    if (WatchStore(context).active().none { it.deviceId == payload.deviceId }) {
+      Log.i(TAG, "Watch action ${payload.requestId} left to the phone that bridges ${payload.deviceId}")
       return
     }
-    if (WatchStore(context).active().none { it.deviceId == deviceId }) {
-      Log.i(TAG, "Watch action $requestId left to the phone that bridges $deviceId")
-      return
-    }
-    val wait = waitOf(payload.optString("expiresAt"))
+    val wait = minOf(READY_TIMEOUT_MS, payload.expiresAt.toEpochMilli() - System.currentTimeMillis() - EXPIRY_MARGIN_MS)
     if (wait <= 0) {
-      Log.w(TAG, "Watch action $requestId expired before it arrived (hub deadline ${payload.optString("expiresAt")}, phone clock ${Instant.now()}); if this repeats the phone clock is ahead of the hub")
+      Log.w(TAG, "Watch action ${payload.requestId} expired before it arrived (hub deadline ${payload.expiresAt}, phone clock ${Instant.now()}); if this repeats the phone clock is ahead of the hub")
       return
     }
-    run(context, requestId, deviceId, action, wait)
+    run(context, payload.requestId, payload.deviceId, payload.action, wait)
   }
 
-  private fun waitOf(expiresAt: String): Long {
-    if (expiresAt.isEmpty()) return READY_TIMEOUT_MS
-    return try {
-      val left = Instant.parse(expiresAt).toEpochMilli() - System.currentTimeMillis() - EXPIRY_MARGIN_MS
-      minOf(READY_TIMEOUT_MS, left)
-    } catch (failure: DateTimeParseException) {
-      Log.e(TAG, "A watch action push carried an unreadable expiresAt \"$expiresAt\"")
-      READY_TIMEOUT_MS
-    }
-  }
-
-  private fun run(context: Context, requestId: String, deviceId: String, action: JSONObject, wait: Long) {
+  private fun run(context: Context, requestId: String, deviceId: String, action: JsonObject, wait: Long) {
     val answered = AtomicBoolean(false)
     val reply = { outcome: ActionOutcome ->
       if (answered.compareAndSet(false, true)) answer(context, requestId, outcome)
@@ -78,7 +62,7 @@ object WatchActionPush : PushCommandHandler {
   }
 
   private fun answer(context: Context, requestId: String, outcome: ActionOutcome) {
-    val body = JSONObject().put("requestId", requestId).put("ok", outcome.ok).put("detail", outcome.detail.take(MAX_DETAIL))
-    WorkManager.getInstance(context).enqueue(PhonePostWorker.request(PhonePostWorker.WATCH_ANSWER_PATH, body))
+    val body = HubJson.encode(ActionAnswer(requestId, outcome.ok, outcome.detail))
+    WorkManager.getInstance(context).enqueue(PhonePostWorker.requestText(PhonePostWorker.WATCH_ANSWER_PATH, body))
   }
 }

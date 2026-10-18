@@ -5,7 +5,8 @@ import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
 import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
-import { DrawnStroke, arcLength, arcPath } from './arc';
+import { DrawnStroke } from './arc';
+import { arcLength, arcPath } from './geometry';
 import { clamp } from './scale';
 
 const START = -135;
@@ -50,20 +51,6 @@ function GaugeStroke({ d, colour, thickness, opacity }: Stroke): ReactNode {
   );
 }
 
-class GaugeBandsError extends Error {
-  override readonly name = 'GaugeBandsError';
-
-  constructor(readonly value: number) {
-    super(`No gauge band covers ${String(value)}; the last band's upTo must reach max.`);
-  }
-}
-
-function assertCovered(bands: readonly GaugeBand[], value: number): void {
-  if (!bands.some((candidate) => value <= candidate.upTo)) {
-    throw new GaugeBandsError(value);
-  }
-}
-
 interface BandArc {
   readonly key: string;
   readonly from: number;
@@ -88,14 +75,14 @@ function bandArcs(props: GaugeProps): BandArc[] {
 }
 
 function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNode {
-  const { value, min, max, bands, size, thickness } = props;
+  const { value, min, max, size, thickness } = props;
   const centre = size / 2;
   const radius = (size - thickness) / 2;
   const shown = clamp(value, { min, max });
-  assertCovered(bands, shown);
   const share = max === min ? 0 : (shown - min) / (max - min);
   const drawn = useDraw(share, !useMotion().reduced);
-  const full = arcPath(centre, radius, START, SWEEP);
+  const ring = { cx: centre, cy: centre, r: radius };
+  const full = arcPath(ring, START, START + SWEEP);
   const length = arcLength(radius, SWEEP);
   const arcs = bandArcs(props);
   return (
@@ -105,7 +92,7 @@ function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNod
           band.sweep > 0 ? (
             <GaugeStroke
               key={band.key}
-              d={arcPath(centre, radius, band.from, band.sweep)}
+              d={arcPath(ring, band.from, band.from + band.sweep)}
               colour={band.colour}
               thickness={thickness}
               opacity={BAND_OPACITY}

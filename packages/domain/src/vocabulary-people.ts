@@ -6,6 +6,7 @@ export {
   PROFILE_CHANGE,
   PROFILE_DETAILS_PUSH_DATA,
   PROFILE_NAME,
+  PROFILE_NAME_MAX,
   PROFILE_ROW,
   SCALE_USER,
   SEXES,
@@ -40,10 +41,8 @@ export type { BodyComposition, CompositionInput } from './body-composition';
 
 export {
   ATTRIBUTIONS,
-  ATTRIBUTION_RULES,
   BLE_ADVERT,
   BLE_ADVERT_BATCH,
-  BLE_ADVERT_LIMIT,
   BLE_RELAY_RESULT,
   BLE_WATCH,
   BODY_READINGS_SNAPSHOT,
@@ -75,7 +74,6 @@ export { suggestedGoals } from './fitness-defaults';
 export {
   PHONE_WATCH,
   PHONE_WATCHES,
-  WATCH_ADDRESS,
   WATCH_AUTH_KEY,
   WATCH_BRIDGE,
   WATCH_CANDIDATE,
@@ -111,7 +109,6 @@ export type {
 export {
   WATCH_ACTION,
   WATCH_ACTION_ANSWER,
-  WATCH_ACTION_NOTICE,
   WATCH_ACTION_PUSH,
   WATCH_ACTION_RESULT,
   WATCH_ALARM,
@@ -138,7 +135,6 @@ export {
 } from './watch-workouts';
 export type { WatchSport, WatchWorkout, WatchWorkoutReport } from './watch-workouts';
 export type {
-  WatchActionNotice,
   WatchActionPush,
   WatchActionRequest,
   WatchActionResult,

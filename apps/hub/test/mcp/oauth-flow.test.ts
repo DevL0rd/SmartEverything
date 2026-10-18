@@ -8,9 +8,11 @@ import {
   PUBLIC_URL,
   REDIRECT_URI,
   approvalCode,
+  answerOf,
   approvedCode,
   connect,
   consentPage,
+  initialize,
   oauthError,
   pkce,
   postForm,
@@ -98,12 +100,12 @@ describe('OAuth discovery', () => {
   });
 
   it('challenges a caller without a usable token towards the resource metadata', async () => {
-    const anonymous = await rpc(booted.base, null, { method: 'initialize', params: {} });
+    const anonymous = await rpc(booted.base, null, initialize());
     expect(anonymous.status).toBe(401);
     expect(anonymous.headers.get('www-authenticate')).toBe(
       `Bearer resource_metadata="${METADATA}", scope="mcp"`,
     );
-    const wrong = await rpc(booted.base, 'mca_nope', { method: 'initialize', params: {} });
+    const wrong = await rpc(booted.base, 'mca_nope', initialize());
     expect(wrong.status).toBe(401);
     expect(wrong.headers.get('www-authenticate')).toBe(
       `Bearer error="invalid_token", resource_metadata="${METADATA}", scope="mcp"`,
@@ -121,10 +123,7 @@ describe('connecting an assistant', () => {
     expect(tokens.refresh_token).toMatch(/^mcr_[0-9a-f]{64}$/);
     expect(tokens).toMatchObject({ token_type: 'Bearer', expires_in: 3600, scope: 'mcp' });
     const initialized = await resultOf(
-      await rpc(booted.base, tokens.access_token, {
-        method: 'initialize',
-        params: { protocolVersion: '2025-06-18', capabilities: {} },
-      }),
+      await rpc(booted.base, tokens.access_token, initialize('2025-06-18')),
     );
     expect(initialized['protocolVersion']).toBe('2025-06-18');
     const devices = await call(booted.base, booted.owner, { method: 'GET', path: '/api/devices' });
@@ -142,9 +141,9 @@ describe('connecting an assistant', () => {
         },
       }),
     );
-    expect(done['structuredContent']).toMatchObject({
-      allFinished: true,
-      commands: [{ capability: 'brightness', value: 40, status: 'succeeded' }],
+    expect(answerOf(done['content'])).toMatchObject({
+      ok: true,
+      changed: [{ capability: 'brightness' }],
     });
     const commands = API_ENDPOINTS.listCommands.response.parse(
       (await call(booted.base, booted.owner, { method: 'GET', path: '/api/commands' })).body,

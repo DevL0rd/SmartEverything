@@ -1,41 +1,38 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Button } from '../../components/button';
+import type { DeviceTarget, GroupControlChoice } from '@smarteverything/domain';
+import { Switch } from '../../components/switch';
 import { Text } from '../../components/text';
 import { CapabilityControl, ColourBlock } from '../devices';
 import type { Device } from '../../store/state';
 import type { Control } from '../../store/control';
-import type { GroupControlChoice } from './model';
 import { useGroupControl } from './use-group-control';
+import { background } from '@smarteverything/logging';
 
-function PowerControl({ control }: { readonly control: Control }): ReactNode {
+function powerText(value: Control['value']): string {
+  if (value === undefined) return 'Some on';
+  return value === true ? 'All on' : 'All off';
+}
+
+function PowerControl({
+  control,
+  label,
+}: {
+  readonly control: Control;
+  readonly label: string;
+}): ReactNode {
   return (
-    <View className="flex-row items-center justify-between gap-2">
-      <Text variant="callout" tone="variant">
-        {control.value === undefined
-          ? 'Mixed / unknown'
-          : control.value === true
-            ? 'All on'
-            : 'All off'}
-      </Text>
-      <View className="flex-row gap-2">
-        <Button
-          label="On"
-          variant="tonal"
-          disabled={control.offline}
-          onPress={() => {
-            void control.set(true);
-          }}
-        />
-        <Button
-          label="Off"
-          variant="tonal"
-          disabled={control.offline}
-          onPress={() => {
-            void control.set(false);
-          }}
-        />
-      </View>
+    <View className="min-h-touch-min flex-row items-center justify-between gap-3">
+      <Text variant="body">{powerText(control.value)}</Text>
+      <Switch
+        label={label}
+        value={control.value === true}
+        mixed={control.value === undefined}
+        disabled={control.offline}
+        onChange={(next) => {
+          background(control.set(next), 'control.set_failed');
+        }}
+      />
     </View>
   );
 }
@@ -45,9 +42,10 @@ function Body({
   choice,
 }: {
   readonly control: Control;
-  readonly choice: GroupControlChoice;
+  readonly choice: GroupControlChoice<Device>;
 }): ReactNode {
-  if (choice.presented.role === 'power') return <PowerControl control={control} />;
+  if (choice.presented.role === 'power')
+    return <PowerControl control={control} label={choice.presented.label} />;
   if (
     choice.presented.colorEncoding !== undefined ||
     choice.presented.capability.value.kind === 'color'
@@ -66,28 +64,29 @@ function Body({
       presented={choice.presented}
       control={control}
       disabled={control.offline}
-      continuous
-      unknownValue="Mixed / unknown"
+      unknownValue="Differs between lights"
     />
   );
 }
 
 export function GroupControl({
-  devices,
+  target,
+  members,
   choice,
 }: {
-  readonly devices: readonly Device[];
-  readonly choice: GroupControlChoice;
+  readonly target: DeviceTarget;
+  readonly members: readonly Device[];
+  readonly choice: GroupControlChoice<Device>;
 }): ReactNode {
-  const control = useGroupControl(devices, choice);
+  const control = useGroupControl(target, members, choice);
   return (
     <View className="gap-1">
       <Body control={control} choice={choice} />
-      {choice.supported === devices.length ? null : (
+      {choice.supported === members.length ? null : (
         <Text
           variant="footnote"
           tone="variant"
-        >{`${String(choice.supported)} of ${String(devices.length)} support ${choice.presented.label.toLowerCase()}`}</Text>
+        >{`${String(choice.supported)} of ${String(members.length)} support ${choice.presented.label.toLowerCase()}`}</Text>
       )}
       {control.issues.map((issue) => (
         <Text key={issue} variant="footnote" tone="critical" accessibilityLiveRegion="polite">

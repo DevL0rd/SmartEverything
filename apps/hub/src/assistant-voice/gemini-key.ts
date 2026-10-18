@@ -9,6 +9,7 @@ import {
   type GeminiKeySource,
 } from '@smarteverything/domain';
 import type { SecretStore } from '../secrets/store';
+import { isMissing } from '../fs-util';
 
 const MODELS_URL = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1';
 const CHECK_TIMEOUT_MS = 15_000;
@@ -20,7 +21,7 @@ function envFileOf(source: GeminiKeySource): string {
 
 async function keyIn(source: GeminiKeySource): Promise<string | null> {
   const text = await readFile(envFileOf(source), 'utf8').catch((cause: unknown) => {
-    if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
+    if (isMissing(cause)) {
       return '';
     }
     throw cause;

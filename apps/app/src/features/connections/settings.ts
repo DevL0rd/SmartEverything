@@ -86,7 +86,7 @@ const ASSISTANT_SETTINGS: readonly SettingDefinition[] = [
     scope: 'server',
     visible: owner,
     control: 'link',
-    href: href.settings.page('assistant/integrations'),
+    href: href.settings.focus('assistant/integrations', 'assistants.code'),
   },
 ];
 
@@ -120,6 +120,7 @@ const SERVER: readonly SettingDefinition[] = [
     icon: 'signOut',
     keywords: ['switch server', 'disconnect', 'forget'],
     scope: 'device-local',
+    visible: (env) => env.platform !== 'desktop',
     control: 'link',
     href: href.settings.page('server'),
   },

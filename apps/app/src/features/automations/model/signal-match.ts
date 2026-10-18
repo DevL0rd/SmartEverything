@@ -1,19 +1,15 @@
-import {
-  JSON_VALUE,
-  SIGNAL_TRIGGER,
-  type JsonValue,
-  type SignalTrigger,
-  type Trigger,
-} from '@smarteverything/domain';
-import { withTiming, type SignalTiming, type TimedBase } from './signal-triggers';
+import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
+
+export type Match = Readonly<Record<string, JsonValue>>;
 
 export function changedMatch(
-  match: SignalTrigger['match'],
+  match: Match | undefined,
   key: string,
   value: JsonValue | undefined,
-): SignalTrigger['match'] {
-  const kept = Object.fromEntries(Object.entries(match).filter(([name]) => name !== key));
-  return value === undefined ? kept : { ...kept, [key]: value };
+): Match | undefined {
+  const kept = Object.fromEntries(Object.entries(match ?? {}).filter(([name]) => name !== key));
+  const next = value === undefined ? kept : { ...kept, [key]: value };
+  return Object.keys(next).length === 0 ? undefined : next;
 }
 
 export function matchValue(text: string): JsonValue {
@@ -26,25 +22,4 @@ export function matchValue(text: string): JsonValue {
     }
     throw error;
   }
-}
-
-export function withEventMatch(
-  base: Extract<TimedBase, { type: 'event' }>,
-  timing: SignalTiming,
-  original: Trigger,
-  match: SignalTrigger['match'],
-): Trigger {
-  const current = withTiming(base, timing, original);
-  if (current.type === 'signal') {
-    return { ...current, match };
-  }
-  return Object.keys(match).length === 0
-    ? current
-    : SIGNAL_TRIGGER.parse({
-        type: 'signal',
-        source: 'event',
-        kind: base.kind,
-        subject: base.deviceId,
-        match,
-      });
 }

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import type { PresentedCapability, JsonValue } from '@smarteverything/domain';
+import { Logger, background } from '@smarteverything/logging';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { Select } from '../../../components/select';
@@ -12,22 +13,50 @@ import { useControl } from '../../../store/control';
 import { useDeviceValues } from '../../../store/selectors';
 import type { Device, DeviceValues } from '../../../store/state';
 import { microwaveReason } from './model';
-import { MICROWAVE_FORM_SPECS, type MicrowaveFormSpec, type MicrowaveField } from './form-specs';
+import {
+  MICROWAVE_FORM_SPECS,
+  UPDATE_AVAILABLE_KEY,
+  type MicrowaveFormSpec,
+  type MicrowaveField,
+} from './form-specs';
 import { rawErrorText } from '../../../format/errors';
+import {
+  DateField,
+  DEFAULT_UPDATE_TIME,
+  defaultUpdateDate,
+  TimeOfDayField,
+} from './schedule-fields';
 
+function defaultValue(field: MicrowaveField): string {
+  switch (field.kind) {
+    case 'date':
+      return defaultUpdateDate();
+    case 'time':
+      return DEFAULT_UPDATE_TIME;
+    case 'text':
+    case 'number':
+    case 'json':
+    case 'enum':
+      return '';
+  }
+}
 function initialValues(
   spec: MicrowaveFormSpec,
   current: JsonValue | undefined,
 ): Readonly<Record<string, string>> {
   if (typeof current !== 'object' || current === null || Array.isArray(current)) {
-    return {};
+    return Object.fromEntries(spec.fields.map((field) => [field.key, defaultValue(field)]));
   }
   return Object.fromEntries(
     spec.fields.map((field) => {
       const value = Object.entries(current).find(([key]) => key === field.key)?.[1];
       return [
         field.key,
-        value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value),
+        value === undefined
+          ? defaultValue(field)
+          : typeof value === 'string'
+            ? value
+            : JSON.stringify(value),
       ];
     }),
   );
@@ -41,6 +70,14 @@ function Field({
   readonly value: string;
   readonly onChange: (text: string) => void;
 }): ReactNode {
+  if (field.kind === 'date') {
+    return <DateField label={field.label} value={value} onChange={onChange} />;
+  }
+  if (field.kind === 'time') {
+    return (
+      <TimeOfDayField label={field.label} value={value} helper={field.helper} onChange={onChange} />
+    );
+  }
   return field.kind === 'enum' ? (
     <Select
       label={field.label}
@@ -65,14 +102,26 @@ interface FormProps {
   readonly spec: MicrowaveFormSpec;
   readonly onClose: () => void;
 }
+const log = new Logger('app.devices');
+
+function logSkipped(device: Device, presented: PresentedCapability, blocked: boolean): void {
+  log.debug('form.save_skipped', { deviceId: device.id, capability: presented.key, blocked });
+}
+
+function buildFailure(device: Device, presented: PresentedCapability, cause: unknown): string {
+  const reason = rawErrorText(cause);
+  log.warn('form.build_failed', { deviceId: device.id, capability: presented.key, reason });
+  return reason;
+}
+
 function StructuredSheet({ device, presented, spec, onClose }: FormProps): ReactNode {
   const control = useControl(device.id, presented.key);
-  const values = useDeviceValues(device.id);
   const [given, setGiven] = useState(initialValues(spec, control.value));
   const [error, setError] = useState<string | null>(null);
-  const reason = formReason(device, spec, values);
+  const reason = formReason(device, spec, useDeviceValues(device.id));
   const save = async (): Promise<void> => {
     if (reason !== null || control.pending) {
+      logSkipped(device, presented, reason !== null);
       return;
     }
     try {
@@ -82,7 +131,7 @@ function StructuredSheet({ device, presented, spec, onClose }: FormProps): React
         onClose();
       }
     } catch (cause) {
-      setError(rawErrorText(cause));
+      setError(buildFailure(device, presented, cause));
     }
   };
   return (
@@ -98,7 +147,7 @@ function StructuredSheet({ device, presented, spec, onClose }: FormProps): React
           disabled={reason !== null}
           onClose={onClose}
           onSave={() => {
-            void save();
+            background(save(), 'structured_row.save_failed');
           }}
         />
       }
@@ -123,8 +172,9 @@ export function MicrowaveStructuredRow({
   readonly presented: PresentedCapability;
 }): ReactNode {
   const [open, setOpen] = useState(false);
+  const values = useDeviceValues(device.id);
   const spec = MICROWAVE_FORM_SPECS[presented.key];
-  if (spec === undefined) {
+  if (spec === undefined || (!spec.cooking && values[UPDATE_AVAILABLE_KEY]?.value !== true)) {
     return null;
   }
   return (

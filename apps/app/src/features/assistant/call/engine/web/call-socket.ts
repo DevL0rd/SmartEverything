@@ -59,21 +59,21 @@ export function openCallSocket(
   };
   return {
     send: (message): void => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket.sendable()) {
         socket.send(JSON.stringify(message));
       }
     },
     sendAudio: (packet): void => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket.sendable()) {
         socket.send(audioFrameOf(packet));
       }
     },
     sendPicture: (frame): void => {
-      if (socket.readyState === WebSocket.OPEN) {
+      if (socket.sendable()) {
         socket.send(frame);
       }
     },
-    isOpen: (): boolean => socket.readyState === WebSocket.OPEN,
+    isOpen: (): boolean => socket.sendable(),
     close: (): void => {
       socket.close(1000, 'call ended');
     },

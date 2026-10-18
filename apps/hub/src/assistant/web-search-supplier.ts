@@ -1,10 +1,8 @@
-import type { Context } from '@deepseek-ai/cordis';
 import { z } from 'zod';
 import {
   ApiError,
   AI_EFFORT,
   WEB_SOURCE,
-  WEB_SOURCES_MAX,
   type AiEffort,
   WEB_SOURCES_EMBED,
   type AiChatRow,
@@ -16,9 +14,9 @@ import type { OpenRouterClient } from '../openrouter/client';
 import type { ChatRequest } from '../openrouter/chat-types';
 import { TurnAccumulator } from '../openrouter/turn';
 import { meteredAccountingFetch } from '../harness/metered-accounting';
+import { currentRequestSignal } from '../server/request-signal';
 import { mergedSources } from './web-search';
-const SEARCH_TIMEOUT_MS = 30_000;
-const INPUT = z.strictObject({ query: z.string().trim().min(1).max(4000) });
+const INPUT = z.strictObject({ query: z.string().trim().min(1) });
 const TOOL: HubTool = {
   name: 'web_search',
   title: 'Search the web',
@@ -52,9 +50,7 @@ export function webSearchSource(service: HarnessService, client: OpenRouterClien
     tools: () => [TOOL],
     validate: (_tool, input): string | null => {
       const parsed = INPUT.safeParse(input);
-      return parsed.success
-        ? null
-        : 'Expected a nonempty web search query of at most 4000 characters.';
+      return parsed.success ? null : 'Expected a nonempty web search query.';
     },
     changes: (): (() => void) => (): void => undefined,
     call: (_tool, input, caller) => search(service, client, caller, INPUT.parse(input).query),
@@ -70,15 +66,7 @@ async function search(
   const scoped = client.usingFetch((fetcher) =>
     meteredAccountingFetch(service, id, fetcher, { verify }),
   );
-  const turn = new TurnAccumulator();
-  for await (const chunk of scoped.chat(
-    searchRequest(model, effort, query),
-    AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-  )) {
-    verify();
-    turn.feed(chunk);
-  }
-  const result = turn.result();
+  const result = (await groundedTurn(scoped, searchRequest(model, effort, query))).result();
   if (result.toolCalls.length !== 0)
     throw new ApiError(
       'upstream_failed',
@@ -99,6 +87,16 @@ async function search(
     line: 'Searched the web',
     pictures: [],
   };
+}
+export function groundedTurn(
+  client: OpenRouterClient,
+  request: ChatRequest,
+): Promise<TurnAccumulator> {
+  return client.retrying(async (signal) => {
+    const attempt = new TurnAccumulator();
+    for await (const chunk of client.chat(request, signal)) attempt.feed(chunk);
+    return attempt;
+  }, currentRequestSignal());
 }
 function searchRequest(model: string, effort: AiEffort | null, query: string): ChatRequest {
   return {
@@ -132,37 +130,16 @@ function searchAdmission(service: HarnessService, caller: ToolCaller): SearchAdm
   )
     throw new ApiError(
       'forbidden',
-      'This conversation has no authorized OpenRouter web-search route. Subscription and native routes have no paid fallback.',
+      'Web search needs a chat on an OpenRouter model. Subscription and native routes have no paid fallback.',
     );
-  const id = chat.engine.session_id;
-  const claim = service.store.dshSessions.writerState(id, caller.profileId).claim;
-  if (claim === null) throw new ApiError('conflict', 'Web search lost its native writer.');
-  const verify = (): void => {
-    const current = service.store.aiChats.chat(chat.id);
-    if (!openRouterSearchAvailable(service, current))
-      throw new ApiError('forbidden', 'This chat’s web-search supplier changed.');
-    const grant = service.storage.grant(id);
-    if (
-      current.engine.kind !== 'dsh' ||
-      current.engine.session_id !== id ||
-      current.engine.model_route_id !== grant.route.route_id ||
-      current.engine.model !== grant.route.model
-    )
-      throw new ApiError(
-        'conflict',
-        'Web search no longer matches its exact admitted native route.',
-      );
-    service.routes.selected(caller.profileId, grant.route, grant.authority.kind === 'trigger');
-    service.store.dshSessions.verifyWriter(
-      claim,
-      service.hostPrincipal(caller.profileId, service.directory.get(claim.target).host),
-    );
-  };
   return {
-    id,
+    id: chat.engine.session_id,
     model: chat.engine.model,
     effort: AI_EFFORT.nullable().parse(chat.engine.effort),
-    verify,
+    verify: (): void => {
+      if (!openRouterSearchAvailable(service, service.store.aiChats.chat(chat.id)))
+        throw new ApiError('forbidden', 'This chat’s web-search supplier changed.');
+    },
   };
 }
 function rememberSources(service: HarnessService, id: string, sources: readonly WebSource[]): void {
@@ -175,7 +152,7 @@ function rememberSources(service: HarnessService, id: string, sources: readonly 
     const parsed = WEB_SOURCES_EMBED.safeParse(embed);
     return parsed.success ? parsed.data.sources : [];
   });
-  const merged = mergedSources(prior, sources).slice(0, WEB_SOURCES_MAX);
+  const merged = mergedSources(prior, sources);
   if (merged.length > 0)
     service.store.assistantChat.updateMessage(row.id, {
       embeds: [
@@ -188,23 +165,5 @@ export function savedWebSources(service: HarnessService, message: string): reado
   return service.store.assistantChat.message(message).embeds.flatMap((embed) => {
     const parsed = WEB_SOURCES_EMBED.safeParse(embed);
     return parsed.success ? parsed.data.sources : [];
-  });
-}
-
-export function limitSearchToolSchemas(ctx: Context, service: HarnessService): void {
-  ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
-    const assembled = await next();
-    if (context.agent !== undefined) {
-      const grant = service.storage.grant(context.agent.id);
-      const metadata = service.store.dshSessions.stat(context.agent.id, grant.profile_id);
-      if (metadata === undefined)
-        throw new ApiError('conflict', 'Web-search discovery lost its initiating chat.');
-      const available = openRouterSearchAvailable(
-        service,
-        service.store.aiChats.chat(metadata.chat_id),
-      );
-      if (!available) assembled.tools = assembled.tools.filter((tool) => tool.name !== TOOL.name);
-    }
-    return assembled;
   });
 }

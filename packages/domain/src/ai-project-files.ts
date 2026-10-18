@@ -8,17 +8,16 @@ export const AI_PROJECT_PATH = z
   .max(4096)
   .refine(
     (path) =>
-      /^(workspace|temporary|transfers)(\/|$)/u.test(path) &&
+      /^(workspace|temporary)(\/|$)/u.test(path) &&
       !path.includes('\\') &&
       !path.includes('\0') &&
       !path.includes('%') &&
       !path.split('/').some((part) => part === '.' || part === '..' || part === ''),
-    'Use a plain relative path below workspace, temporary or transfers.',
+    'Use a plain relative path below workspace or temporary.',
   );
 const PATH = { path: AI_PROJECT_PATH };
 const VERSION = z.string().min(1).max(300);
 const GUARD = { version: VERSION.nullable() };
-const MUTATION = { operation_id: z.uuid() };
 export const AI_PROJECT_READ = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('stat'), ...PATH }),
   z.strictObject({
@@ -42,39 +41,9 @@ export const AI_PROJECT_READ = z.discriminatedUnion('operation', [
 ]);
 export const AI_PROJECT_WRITE = z.discriminatedUnion('operation', [
   z.strictObject({
-    operation: z.literal('transfer_start'),
-    ...PATH,
-    ...GUARD,
-    ...MUTATION,
-    transfer_id: z.uuid(),
-    total_bytes: z.int().min(1).max(AI_PROJECT_BYTES_MAX),
-    encoding: z.enum(['utf8', 'base64']).default('base64'),
-  }),
-  z.strictObject({
-    operation: z.literal('transfer_chunk'),
-    ...PATH,
-    ...MUTATION,
-    transfer_id: z.uuid(),
-    offset: z.int().nonnegative(),
-    content: z.string().max(AI_PROJECT_CHUNK_BYTES * 2),
-  }),
-  z.strictObject({
-    operation: z.literal('transfer_finish'),
-    ...PATH,
-    ...MUTATION,
-    transfer_id: z.uuid(),
-  }),
-  z.strictObject({
-    operation: z.literal('transfer_cancel'),
-    ...PATH,
-    ...MUTATION,
-    transfer_id: z.uuid(),
-  }),
-  z.strictObject({
     operation: z.literal('write'),
     ...PATH,
     ...GUARD,
-    ...MUTATION,
     content: z.string().max(AI_PROJECT_BYTES_MAX * 2),
     encoding: z.enum(['utf8', 'base64']).default('utf8'),
   }),
@@ -82,17 +51,15 @@ export const AI_PROJECT_WRITE = z.discriminatedUnion('operation', [
     operation: z.literal('edit'),
     ...PATH,
     version: VERSION,
-    ...MUTATION,
     old_string: z.string().min(1).max(AI_PROJECT_BYTES_MAX),
     new_string: z.string().max(AI_PROJECT_BYTES_MAX),
     replace_all: z.boolean().default(false),
   }),
-  z.strictObject({ operation: z.literal('mkdir'), ...PATH, ...MUTATION }),
+  z.strictObject({ operation: z.literal('mkdir'), ...PATH }),
   z.strictObject({
     operation: z.literal('move'),
     ...PATH,
     ...GUARD,
-    ...MUTATION,
     destination: AI_PROJECT_PATH,
   }),
 ]);
@@ -100,7 +67,6 @@ export const AI_PROJECT_REMOVE = z.strictObject({
   operation: z.literal('remove'),
   ...PATH,
   ...GUARD,
-  ...MUTATION,
   recursive: z.boolean().default(false),
 });
 export const AI_PROJECT_REQUEST = z.union([AI_PROJECT_READ, AI_PROJECT_WRITE, AI_PROJECT_REMOVE]);
@@ -111,21 +77,7 @@ export const AI_PROJECT_FILE = z.object({
   bytes: z.int().nonnegative(),
 });
 export const AI_PROJECT_RESULT = z.object({
-  operation: z.enum([
-    'stat',
-    'list',
-    'read',
-    'search',
-    'write',
-    'edit',
-    'mkdir',
-    'move',
-    'remove',
-    'transfer_start',
-    'transfer_chunk',
-    'transfer_finish',
-    'transfer_cancel',
-  ]),
+  operation: z.enum(['stat', 'list', 'read', 'search', 'write', 'edit', 'mkdir', 'move', 'remove']),
   path: AI_PROJECT_PATH,
   file: AI_PROJECT_FILE.nullable().optional(),
   entries: z.array(AI_PROJECT_FILE).optional(),

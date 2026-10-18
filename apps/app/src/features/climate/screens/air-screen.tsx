@@ -24,7 +24,8 @@ import {
   type AirRange,
   type MetricSource,
 } from '../data/air-history';
-import { useClimateSources } from '../model/climate-devices';
+import { useClimateModels } from '../model/climate-devices';
+import { background } from '@smarteverything/logging';
 
 const CHART_HEIGHT = 220;
 
@@ -42,7 +43,14 @@ function MetricChart({
     return <Skeleton shape="block" className="h-55" />;
   }
   if (history.isError) {
-    return <ErrorState error={history.error} retry={() => void history.refetch()} />;
+    return (
+      <ErrorState
+        error={history.error}
+        retry={() => {
+          background(history.refetch(), 'history.refetch_failed');
+        }}
+      />
+    );
   }
   const series = seriesOf(history.data, sources, metric, range);
   if (series.length === 0) {
@@ -83,7 +91,7 @@ function MetricCard({
 }
 
 export function AirScreen(): ReactNode {
-  const sources = useClimateSources(null);
+  const sources = useClimateModels(null);
   const [range, setRange] = useState<AirRange>('24h');
   const metrics = AIR_METRICS.flatMap((metric) => {
     const found = metricSources(sources, metric);

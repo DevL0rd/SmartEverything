@@ -21,13 +21,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+
+@Serializable
+class AiSpeechNotice(val id: String, val from: String, val text: String, val audio: String, val showText: Boolean = false)
 
 class AiSpeechService : Service() {
   private val handler = Handler(Looper.getMainLooper())
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val player by lazy { AiSpeechPlayer(this) }
-  private val queue = ArrayDeque<JSONObject>()
+  private val queue = ArrayDeque<AiSpeechNotice>()
   private var lastStartId = 0
   private var fetching = 0
   private var playing = false
@@ -51,7 +55,7 @@ class AiSpeechService : Service() {
     fetching += 1
     scope.launch {
       try {
-        val notice = HubClient(relayTarget(this@AiSpeechService)).post("$PATH$id/claim", JSONObject())
+        val notice = HubClient(relayTarget(this@AiSpeechService)).post<JsonObject, AiSpeechNotice>("$PATH$id/claim", JsonObject(emptyMap()))
         handler.post { arrived(notice) }
       } catch (failure: SyncFailure) {
         handler.post { dropped("the speech could not be fetched: ${failure.message}") }
@@ -70,7 +74,7 @@ class AiSpeechService : Service() {
     super.onDestroy()
   }
 
-  private fun arrived(notice: JSONObject) {
+  private fun arrived(notice: AiSpeechNotice) {
     fetching -= 1
     queue.addLast(notice)
     if (!playing) playNext()
@@ -90,9 +94,8 @@ class AiSpeechService : Service() {
     }
     playing = true
     try {
-      val from = notice.getString("from")
-      foreground("$from is speaking", if (notice.optBoolean("showText", false)) notice.getString("text") else null)
-      player.play(notice.getString("id"), notice.getString("audio"), { finished() }) { reason -> failed(reason) }
+      foreground("${notice.from} is speaking", if (notice.showText) notice.text else null)
+      player.play(notice.id, notice.audio, { finished() }) { reason -> failed(reason) }
     } catch (failure: Exception) {
       failed("the speech could not be read: ${failure.javaClass.simpleName}: ${failure.message}")
     }

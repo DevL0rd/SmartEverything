@@ -1,6 +1,9 @@
+import { Logger, describeFailure } from '@smarteverything/logging';
 import { createHash } from 'node:crypto';
 import { Client, type ClientChannel } from 'ssh2';
 import type { RouterShell, RunResult } from './router-shell';
+
+const log = new Logger('hub.router-ssh');
 
 const DONE_MARKER = '__LRM_DONE__';
 const COLLECT_TIMEOUT_MS = 20_000;
@@ -20,7 +23,9 @@ class HostKeyMismatchError extends Error {
   override readonly name = 'HostKeyMismatchError';
 
   constructor() {
-    super('The router presented a different SSH host key than the one saved at setup');
+    super(
+      'The router presented a different SSH host key than the one saved at setup. If it was reset or replaced, run Use Router Monitor settings again to trust the new key.',
+    );
   }
 }
 
@@ -50,6 +55,7 @@ export class SshRouterShell implements RouterShell {
 
   collect(line: string): Promise<string> {
     const next = this.#queue.then(() => this.#collectNow(line));
+    // eslint-disable-next-line local/no-swallowed-errors -- the caller receives the same failure from the collected line
     this.#queue = next.catch(() => undefined);
     return next;
   }
@@ -70,7 +76,11 @@ export class SshRouterShell implements RouterShell {
   close(): void {
     const connection = this.#connection;
     this.#connection = null;
-    void connection?.then(({ client }) => client.end()).catch(() => undefined);
+    void connection
+      ?.then(({ client }) => client.end())
+      .catch((cause: unknown) => {
+        log.debug('connection.close_failed', () => ({ error: describeFailure(cause).message }));
+      });
   }
 
   async #collectNow(line: string): Promise<string> {

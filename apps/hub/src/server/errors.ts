@@ -4,7 +4,6 @@ import {
   AutomationValueError,
   CommandRefusedError,
   InvalidValueError,
-  UnsealError,
   type ApiErrorCode,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
@@ -50,7 +49,6 @@ const KNOWN_ERRORS: readonly (readonly [ErrorClass, ApiErrorCode])[] = [
   [StoreConflictError, 'conflict'],
   [CommandRefusedError, 'command_refused'],
   [InvalidValueError, 'command_refused'],
-  [UnsealError, 'invalid_request'],
   [UnknownStreamError, 'camera_unavailable'],
   [CameraOfflineError, 'camera_offline'],
   [CameraPrivacyError, 'camera_privacy_on'],

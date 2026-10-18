@@ -1,0 +1,23 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1 flex-row items-center gap-3" pointerEvents="none"
+      View accessibilityLabel="Up to date, 100 percent complete" accessibilityRole="image" className="shrink-0" style={width:48,height:48}
+        View className="absolute" pointerEvents="none" style={left:-14.399999999999999,top:-14.399999999999999,width:76.80000000000001,height:76.80000000000001}
+          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(96, 96, 96, 0.35) 0%, rgba(96, 96, 96, 0.11666666666666665) 60%, rgba(96, 96, 96, 0) 100%)"}]
+        View aria-hidden=true className="absolute items-center justify-center rounded-full border-hairline border-outline-variant bg-surface-1 elevation-1" style={left:3.3600000000000003,top:3.3600000000000003,width:41.28,height:41.28}
+          Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=24 ref=null stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75 viewBox="0 0 24 24" width=24 xmlns="http://www.w3.org/2000/svg"
+            Svg.Path aria-hidden=true d="M9 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v.5" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+            Svg.Path aria-hidden=true d="M12 10v4h4" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+            Svg.Path aria-hidden=true d="m12 14 1.535-1.605a5 5 0 0 1 8 1.5" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+            Svg.Path aria-hidden=true d="M22 22v-4h-4" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+            Svg.Path aria-hidden=true d="m22 18-1.535 1.605a5 5 0 0 1-8-1.5" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+        View aria-hidden=true className="absolute inset-0"
+          Svg.default aria-hidden=true height=48 width=48
+            Svg.Path d="M24.00 1.50 A22.5 22.5 0 1 1 24.00 46.50 A22.5 22.5 0 1 1 24.00 1.50" fill="none" stroke="#42484e" strokeLinecap="round" strokeOpacity=1 strokeWidth=3
+            Anim.created animatedProps={} d="M24.00 1.50 A22.5 22.5 0 1 1 24.00 46.50 A22.5 22.5 0 1 1 24.00 1.50" fill="none" stroke="#606060" strokeDasharray="141.3716694115407 141.3716694115407" strokeLinecap="round" strokeWidth=3
+        View aria-hidden=true className="absolute rounded-full border-2 border-surface-1 bg-positive" style={left:34.944,top:1.056000000000001,width:12,height:12}
+      View className="min-w-0 flex-1"
+        View className="min-w-0 gap-0.5"
+          Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+          Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+          Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false

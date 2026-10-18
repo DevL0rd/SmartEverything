@@ -5,7 +5,7 @@ export interface RecordedDiffSource {
   readonly label: 'Before' | 'After' | 'Patch' | 'Result';
   readonly text: string;
 }
-export const RECORDED_SOURCE_PAGE_CHARACTERS = 8192;
+const RECORDED_SOURCE_PAGE_CHARACTERS = 8192;
 const RECORDED_SOURCE_PAGE_LINES = 200;
 const pagesBySource = new WeakMap<RecordedDiffSource, readonly number[]>();
 export function recordedDiffSource(

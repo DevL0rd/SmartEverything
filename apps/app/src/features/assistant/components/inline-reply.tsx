@@ -1,60 +1,46 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import Animated from 'react-native-reanimated';
-import { useMotion } from '../../../design/motion';
-import { WORK_COLLAPSE } from './thread-motion';
-import { Interactive } from '../../../components/interactive';
-import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
 import { useChatMessages } from '../data/chat-store';
-import { useOlderMessages, mergedRows } from '../data/history';
+import { useOlderRows, mergedRows } from '../data/history';
 import { useAssistantStatus } from '../data/assistant-data';
-import { replyTimeline } from '../model/reply-timeline';
-import { inlineTimeline, type InlineTimelinePart } from '../model/inline-timeline';
-import type { MessageItem } from '../data/thread';
+import { STREAM_FLUSH_MS, useFlushedAt } from '../data/stream-flush';
+import { replyParts } from '../model/reply-timeline';
+import { streamingKey, type InlineTimelinePart } from '../model/inline-timeline';
+import { endsMessage, type MessageItem } from '../data/thread';
 import { useImageOperations } from '../images/data/image-queries';
 import { ImageOperationBubble } from '../images/components/image-receipts';
 import { resultMessageId } from '../images/model/image-thread';
 import type { MessageActions } from './message-actions';
-import { readableText } from './markdown/parse';
+import { readableBlocks } from './markdown/parse';
 import { StreamBlocks } from './streamed-text';
-import { streamView, finalView } from '../model/stream-view';
-import { usePendingDeletes } from '../data/pending-deletes';
+import { StreamParser, finalView } from '../model/stream-view';
+import { usePendingKeys } from '../../../components/deferred-action';
 import { InlineTool } from './inline-tool';
+import { Disclosure } from '../../../components/disclosure';
+import { TypingDots } from './typing-dots';
 import { inlineImageItem, renderInlineImageMessage } from './inline-image-message';
 import { WebSources } from './web-sources';
 import { timelineSources, webSourcesOf, type NumberedSource } from '../model/web-sources';
 
 function Thinking({ text, live }: { readonly text: string; readonly live: boolean }): ReactNode {
   const [open, setOpen] = useState(false);
-  const motion = useMotion();
   return (
-    <View className="gap-1">
-      <View className="min-h-touch-min max-w-full justify-center self-start">
-        <Interactive
-          label={open ? 'Hide thinking' : 'Show thinking'}
-          checked={open}
-          hitSlop={10}
-          onPress={() => {
-            setOpen(!open);
-          }}
-          className="min-h-6 flex-row items-center gap-1.5 self-start rounded-sm px-1"
-        >
-          <Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} tone="variant" />
-          <Text variant="caption" tone="variant">
-            {live ? 'Thinking…' : 'Thinking'}
-          </Text>
-        </Interactive>
-      </View>
-      {open ? (
-        <Animated.View {...(motion.reduced ? {} : { layout: WORK_COLLAPSE })}>
-          <Text variant="footnote" tone="variant" selectable>
-            {text}
-          </Text>
-        </Animated.View>
-      ) : null}
-    </View>
+    <Disclosure
+      label={live ? 'Thinking…' : 'Thinking'}
+      trailing={live ? <TypingDots tone="primary" /> : undefined}
+      open={open}
+      onToggle={() => {
+        setOpen(!open);
+      }}
+      hint={open ? 'Hide thinking' : 'Show thinking'}
+      bodyClassName="pl-4"
+    >
+      <Text variant="footnote" tone="variant" selectable>
+        {text}
+      </Text>
+    </Disclosure>
   );
 }
 function InlineImage({
@@ -66,8 +52,8 @@ function InlineImage({
 }): ReactNode {
   const operations = useImageOperations(chatId);
   const rows = useChatMessages(chatId);
-  const older = useOlderMessages(chatId);
-  const hidden = usePendingDeletes();
+  const older = useOlderRows(chatId);
+  const hidden = usePendingKeys();
   const receipt = operations.data?.find((entry) => entry.id === operationId);
   if (
     receipt === undefined ||
@@ -75,7 +61,7 @@ function InlineImage({
     hidden.has(resultMessageId(receipt) ?? receipt.id)
   )
     return null;
-  const saved = mergedRows(rows, older.rows).find((row) => row.id === resultMessageId(receipt));
+  const saved = mergedRows(rows, older).find((row) => row.id === resultMessageId(receipt));
   return (
     <ImageOperationBubble
       item={{
@@ -90,35 +76,90 @@ function InlineImage({
   );
 }
 function ToolPart({
+  chatId,
   part,
   live,
+  active,
   showSteps,
   sources,
 }: {
+  readonly chatId: string;
   readonly part: Extract<InlineTimelinePart, { readonly kind: 'tools' }>;
   readonly live: boolean;
+  readonly active: boolean;
   readonly showSteps: boolean;
   readonly sources: readonly NumberedSource[];
 }): ReactNode {
   if (showSteps)
     return (
-      <InlineTool tools={part.tools} activities={part.activities} sources={sources} live={live} />
+      <InlineTool
+        chatId={chatId}
+        tools={part.tools}
+        activities={part.activities}
+        sources={sources}
+        live={live}
+        active={active}
+      />
     );
   return (
     <View>
       {part.activities.map((activity) =>
         activity.kind === 'reasoning' ? (
-          <Thinking key={activity.key} text={activity.text} live={live} />
+          <Thinking key={activity.key} text={activity.text} live={active} />
         ) : null,
       )}
     </View>
   );
 }
 
-function ReplyPart({
+function TextPart({
+  text,
+  live,
+  streaming,
+  at,
+  selectable,
+  accessibility,
+}: {
+  readonly text: string;
+  readonly live: boolean;
+  readonly streaming: boolean;
+  readonly at: number | null;
+  readonly selectable: boolean;
+  readonly accessibility: MessageActions['accessibility'];
+}): ReactNode {
+  const [parser] = useState(() => new StreamParser());
+  const view = streaming ? parser.view(text) : finalView(text);
+  return (
+    <View
+      {...(live
+        ? {}
+        : { accessible: true, accessibilityLabel: readableBlocks(view), ...accessibility })}
+    >
+      <StreamBlocks
+        view={view}
+        caret={streaming}
+        streaming={streaming}
+        at={at}
+        selectable={selectable}
+      />
+    </View>
+  );
+}
+
+const NO_SOURCES: readonly NumberedSource[] = [];
+
+const NO_PARTS: readonly InlineTimelinePart[] = [];
+
+const NO_ACCESSIBILITY: MessageActions['accessibility'] = {
+  accessibilityActions: [],
+  onAccessibilityAction: () => undefined,
+};
+
+const ReplyPart = memo(function ReplyPart({
   part,
   live,
-  tail,
+  streaming,
+  at,
   chatId,
   showSteps,
   accessibility,
@@ -127,36 +168,43 @@ function ReplyPart({
   readonly sources: readonly NumberedSource[];
   readonly part: InlineTimelinePart;
   readonly live: boolean;
-  readonly tail: boolean;
+  readonly streaming: boolean;
+  readonly at: number | null;
   readonly chatId: string;
   readonly showSteps: boolean;
   readonly accessibility: MessageActions['accessibility'];
 }): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const streaming = tail ? live : false;
   switch (part.kind) {
     case 'text':
       return (
-        <View
-          {...(live
-            ? {}
-            : { accessible: true, accessibilityLabel: readableText(part.text), ...accessibility })}
-        >
-          <StreamBlocks
-            view={streaming ? streamView(part.text) : finalView(part.text)}
-            caret={streaming}
-            selectable={pointer}
-          />
-        </View>
+        <TextPart
+          text={part.text}
+          live={live}
+          streaming={streaming}
+          at={at}
+          selectable={pointer}
+          accessibility={accessibility}
+        />
       );
     case 'reasoning':
       return <Thinking text={part.text} live={streaming} />;
     case 'tools':
-      return <ToolPart part={part} live={live} showSteps={showSteps} sources={sources} />;
+      return (
+        <ToolPart
+          chatId={chatId}
+          part={part}
+          live={live}
+          active={streaming}
+          showSteps={showSteps}
+          sources={sources}
+        />
+      );
     case 'image':
       return <InlineImage chatId={chatId} operationId={part.operationId} />;
   }
-}
+});
+
 export function InlineReply({
   item,
   live,
@@ -166,10 +214,11 @@ export function InlineReply({
   readonly live: boolean;
   readonly actions: MessageActions;
 }): ReactNode {
-  const timeline = replyTimeline(item.row);
+  const { value: row, at } = useFlushedAt(item.row, STREAM_FLUSH_MS, live);
+  const parts = replyParts(row);
   const showSteps = useAssistantStatus()?.settings.activity_steps !== false;
-  const sources = live ? [] : webSourcesOf(item.row);
-  if (timeline === null)
+  const sources = live ? NO_SOURCES : webSourcesOf(row);
+  if (parts === null)
     return (
       <View className="gap-2">
         <Text tone="warning">
@@ -178,23 +227,26 @@ export function InlineReply({
         <WebSources sources={sources} />
       </View>
     );
-  const parts = inlineTimeline(timeline.parts);
-  const associated = timelineSources(showSteps ? parts : [], sources);
+  const streamingTail = streamingKey(parts, live);
+  const associated = timelineSources(showSteps ? parts : NO_PARTS, sources);
+  const { segment } = item;
+  const shown = segment === null ? parts : parts.slice(segment.from, segment.to);
   return (
     <View className="w-full gap-2.5">
-      {parts.map((part, index) => (
+      {shown.map((part) => (
         <ReplyPart
           key={part.key}
           part={part}
           live={live}
-          tail={index === parts.length - 1}
-          chatId={item.row.chat_id}
+          streaming={part.key === streamingTail}
+          at={part.key === streamingTail ? at : null}
+          chatId={row.chat_id}
           showSteps={showSteps}
-          accessibility={actions.accessibility}
-          sources={associated.groups.get(part.key) ?? []}
+          accessibility={live ? NO_ACCESSIBILITY : actions.accessibility}
+          sources={associated.groups.get(part.key) ?? NO_SOURCES}
         />
       ))}
-      <WebSources sources={associated.remaining} />
+      {endsMessage(item) ? <WebSources sources={associated.remaining} /> : null}
     </View>
   );
 }

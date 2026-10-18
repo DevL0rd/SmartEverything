@@ -225,6 +225,7 @@ export function StillsLog(): ReactNode {
                 <Icon name={sourceIconOf(look.source)} size={20} tone="variant" />
               ) : (
                 <Image
+                  resizeMethod="resize"
                   source={{ uri: `data:image/jpeg;base64,${look.picture}` }}
                   accessibilityIgnoresInvertColors
                   className="size-full"

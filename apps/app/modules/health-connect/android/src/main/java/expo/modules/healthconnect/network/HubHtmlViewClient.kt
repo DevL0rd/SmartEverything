@@ -39,10 +39,10 @@ class HubHtmlViewClient(private val owner: HubHtmlView) : WebViewClient() {
     if (owner.allows(url) && owner.finished(url)) owner.status(false, null)
   }
   override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-    if (request.isForMainFrame) owner.status(false, "The HTML preview could not be loaded.")
+    if (request.isForMainFrame) owner.status(false, "The HTML preview could not be loaded (${error.description}).")
   }
   override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
-    if (request.isForMainFrame) owner.status(false, "The HTML page is unavailable.")
+    if (request.isForMainFrame) owner.status(false, "The HTML page is unavailable (HTTP ${response.statusCode}).")
   }
   override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) { handler.cancel() }
   override fun onReceivedHttpAuthRequest(view: WebView, handler: HttpAuthHandler, host: String, realm: String) { handler.cancel() }

@@ -1,6 +1,7 @@
 package expo.modules.healthconnect.network
 
 import android.content.Context
+import expo.modules.healthconnect.diagnostics.NativeLog
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
@@ -10,8 +11,6 @@ class HubResourceFile(val file: File, val mime: String, val name: String) {
   @Volatile var shared = false
   @Volatile var withdrawPermission: (() -> Unit)? = null
   @Volatile var withdrawalKey: String? = null
-  val expiresAt = System.currentTimeMillis() + MAX_PRESENTATION_MILLIS
-  companion object { private const val MAX_PRESENTATION_MILLIS = 10 * 60 * 1000L }
 }
 
 object HubResourceFiles {
@@ -19,7 +18,7 @@ object HubResourceFiles {
   fun fetch(context: Context, grant: HubResourceGrant, grants: HubResourceGrants): HubResourceFile {
     grant.check()
     grant.downloaded?.let {
-      if (it.expiresAt > System.currentTimeMillis() && it.file.exists()) return it
+      if (it.file.exists()) return it
       grants.retireFile(grant, it)
     }
     val directory = directory(context, grant)
@@ -27,6 +26,8 @@ object HubResourceFiles {
     try { grant.track(file) } catch (failure: Exception) { delete(file); throw failure }
     val call = try { HubResourceStream.request(grant) } catch (failure: Exception) { delete(file); throw failure }
     var completedFile: File? = null
+    val started = System.nanoTime()
+    NativeLog.debug("hub-resource", "download.started") { mapOf("grant" to grant.id.take(8)) }
     try {
       return HubResourceStream.response(grant, call, grants).use { response ->
         require(response.isSuccessful) { "Hub refused the signed resource download (${response.code})" }
@@ -39,9 +40,13 @@ object HubResourceFiles {
         grant.track(completed)
         require(!completed.exists() && file.renameTo(completed)) { "Private resource completion failed" }
         grant.check()
-        HubResourceFile(completed, mime, name).also { grant.downloaded = it; grants.completed(grant, it) }
+        HubResourceFile(completed, mime, name).also {
+          grant.downloaded = it
+          NativeLog.info("hub-resource", "download.finished", NativeLog.elapsedMs(started)) { mapOf("grant" to grant.id.take(8), "status" to response.code, "bytes" to completed.length(), "mime" to mime) }
+        }
       }
     } catch (failure: Exception) {
+      NativeLog.warn("hub-resource", "download.failed", failure, NativeLog.elapsedMs(started)) { mapOf("grant" to grant.id.take(8)) }
       if (!file.delete() && file.exists()) throw IOException("Private resource cleanup failed", failure)
       completedFile?.let { delete(it) }
       throw failure

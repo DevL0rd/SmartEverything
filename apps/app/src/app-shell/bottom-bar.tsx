@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { Interactive } from '../components/interactive';
+import { cn } from '../design/cn';
 import { useToastObstacle } from '../components/toast-obstacles';
 import { navEntries, type NavEntry, type NavModel } from './nav-model';
 import { NavItem } from './nav-item';
@@ -15,7 +16,7 @@ export interface NavViewProps {
   readonly intent: (entry: NavEntry) => void;
 }
 
-function SheetHandle(): ReactNode {
+function SheetHandle({ active }: { readonly active: boolean }): ReactNode {
   return (
     <View pointerEvents="box-none" className="absolute inset-x-0 top-0 items-center">
       <Interactive
@@ -23,10 +24,13 @@ function SheetHandle(): ReactNode {
         label="Open navigation"
         hint="Swipe up on the bar to open"
         onPress={openNavSheet}
+        selected={active}
         className="h-6 w-32 items-center justify-center"
         layerClassName="rounded-full"
       >
-        <View className="h-1 w-8 rounded-full bg-on-surface-faint" />
+        <View
+          className={cn('h-1 rounded-full', active ? 'w-12 bg-primary' : 'w-8 bg-on-surface-faint')}
+        />
       </Interactive>
     </View>
   );
@@ -59,7 +63,7 @@ export function BottomBar({ model, go, intent }: NavViewProps): ReactNode {
         accessibilityRole="tablist"
         className="flex-row border-t border-outline-variant bg-chrome px-2 pb-safe pt-6"
       >
-        <SheetHandle />
+        <SheetHandle active={model.sheetActive} />
         {entries.slice(0, middle).map(item)}
         {orb === null ? null : (
           <NavOrb

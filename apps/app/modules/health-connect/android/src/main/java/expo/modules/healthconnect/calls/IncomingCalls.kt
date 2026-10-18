@@ -16,7 +16,10 @@ import androidx.work.WorkManager
 import expo.modules.healthconnect.NativeGuard
 import expo.modules.healthconnect.phone.PhonePostWorker
 import expo.modules.healthconnect.push.PushCommandHandler
-import org.json.JSONException
+import expo.modules.healthconnect.DomainConstants
+import expo.modules.healthconnect.push.IncomingCallCancelPayload
+import expo.modules.healthconnect.push.pushPayload
+import kotlinx.serialization.SerializationException
 import org.json.JSONObject
 
 object IncomingCalls {
@@ -30,10 +33,6 @@ object IncomingCalls {
   var appForeground = false
 
   fun ring(context: Context, call: IncomingCall) {
-    if (call.expired()) {
-      Log.w(TAG, "AI call ${call.outreachId} had already ended when it arrived (ended at ${call.expiresAt}, phone clock ${System.currentTimeMillis()}); a wrong phone clock also causes this")
-      return
-    }
     val manager = context.getSystemService(NotificationManager::class.java)
     manager.createNotificationChannel(channel())
     manager.notify(call.notificationId, notification(context, call))
@@ -50,7 +49,7 @@ object IncomingCalls {
 
   fun decline(context: Context, outreachId: String) {
     ended(context, outreachId)
-    WorkManager.getInstance(context).enqueue(PhonePostWorker.request("../reach/outreach/$outreachId/decline", JSONObject()))
+    WorkManager.getInstance(context).enqueue(PhonePostWorker.request("/api/reach/outreach/$outreachId/decline", JSONObject()))
   }
 
   private fun channel(): NotificationChannel = NotificationChannel(CHANNEL, "AI calls", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -85,7 +84,7 @@ object IncomingCalls {
       .setOnlyAlertOnce(true)
       .setFullScreenIntent(screen(context, call, null), true)
       .setContentIntent(screen(context, call, null))
-      .setTimeoutAfter((call.expiresAt - System.currentTimeMillis()).coerceAtLeast(1_000L))
+      .setTimeoutAfter(call.remainingMs().coerceAtLeast(1_000L))
     val answer = screen(context, call, ACTION_ANSWER)
     val decline = declining(context, call)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -109,7 +108,7 @@ class IncomingCallDeclineReceiver : BroadcastReceiver() {
 object IncomingCallPush : PushCommandHandler {
   override fun handle(context: Context, data: Map<String, String>) {
     try {
-      val call = IncomingCall.fromPayload(data["payload"].orEmpty())
+      val call = IncomingCall.fromPayload(data[DomainConstants.PUSH_PAYLOAD_KEY].orEmpty())
       if (IncomingCalls.appForeground) {
         Log.i(IncomingCalls.TAG, "AI call ${call.outreachId} left to the open app")
         return
@@ -126,13 +125,9 @@ object IncomingCallPush : PushCommandHandler {
 object IncomingCallCancelPush : PushCommandHandler {
   override fun handle(context: Context, data: Map<String, String>) {
     val outreachId = try {
-      JSONObject(data["payload"].orEmpty()).optString("outreachId")
-    } catch (failure: JSONException) {
+      data.pushPayload<IncomingCallCancelPayload>().outreachId
+    } catch (failure: SerializationException) {
       Log.e(IncomingCalls.TAG, "An AI call cancel push could not be read: ${failure.message}")
-      return
-    }
-    if (outreachId.isEmpty()) {
-      Log.e(IncomingCalls.TAG, "An AI call cancel push named no outreachId")
       return
     }
     IncomingCalls.ended(context, outreachId)

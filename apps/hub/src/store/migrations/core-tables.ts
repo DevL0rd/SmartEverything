@@ -7,6 +7,9 @@ const JSON_ARRAY = (column: string): string =>
 const JSON_OBJECT = (column: string): string =>
   `${column} text not null default '{}' check (json_valid(${column}) and json_type(${column}) = 'object')`;
 
+const METER = (column: string): string =>
+  `${column} integer not null default 0 check (${column} >= 0)`;
+
 const NAMED = (column: string, longest: number): string =>
   `${column} text not null check (length(${column}) between 1 and ${String(longest)})`;
 
@@ -128,4 +131,4 @@ export const CORE_TABLES: readonly string[] = [
   'create index events_device_idx on events (device_id, occurred_at)',
 ];
 
-export const COLUMN_TYPES = { BOOLEAN, JSON_ARRAY, JSON_OBJECT, NAMED };
+export const COLUMN_TYPES = { BOOLEAN, JSON_ARRAY, JSON_OBJECT, METER, NAMED };

@@ -1,4 +1,4 @@
-import { ApiError, type IceServer } from '@smarteverything/domain';
+import { ApiError, type CameraQuality, type IceServer } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { answerCameraOffer, cameraRelayUrl } from '../../../api/media';
 import { ServerUnreachableError } from '../../../api/transport';
@@ -21,6 +21,7 @@ export interface SessionTarget {
   readonly client: ApiClient;
   readonly deviceId: string;
   readonly iceServers: readonly IceServer[];
+  readonly quality: CameraQuality;
 }
 
 export interface SessionHooks {
@@ -68,13 +69,21 @@ function wire(link: MediaLink, transport: Transport, hooks: SessionHooks): void 
   link.onVideoFlow(hooks.onFlow);
   link.onState((state) => {
     const phase = phaseOfPeer(state);
+    log.debug('camera.link_state', { transport, state, phase: phase?.kind ?? null });
     if (phase !== null) {
       hooks.report(phase);
     }
   });
 }
 
-function failed(hooks: SessionHooks, _deviceId: string, error: unknown): void {
+function failed(hooks: SessionHooks, deviceId: string, error: unknown): void {
+  log.warn('camera.start_failed', {
+    deviceId,
+    error: error instanceof Error ? error.name : typeof error,
+    detail: rawErrorText(error),
+    code: error instanceof ApiError ? error.code : null,
+    active: hooks.active(),
+  });
   hooks.report({ kind: 'failed', error: errorOf(error) });
 }
 
@@ -93,17 +102,36 @@ export function startDirect(target: SessionTarget, hooks: SessionHooks): void {
     video: true,
     iceServers: target.iceServers,
   });
+  const startedAt = Date.now();
   wire(peer, 'webrtc', hooks);
   hooks.report({ kind: 'reaching' });
   peer
     .offer()
-    .then((offer) =>
-      hooks.active() ? answerCameraOffer(target.deviceId, offer, target.client) : null,
-    )
+    .then((offer) => {
+      log.debug('camera.offer_created', () => ({
+        deviceId: target.deviceId,
+        elapsedMs: Date.now() - startedAt,
+        offerLength: offer.length,
+        active: hooks.active(),
+      }));
+      return hooks.active()
+        ? answerCameraOffer(target.deviceId, offer, target.client, target.quality)
+        : null;
+    })
     .then(async (answer) => {
+      log.debug('camera.answer_received', () => ({
+        deviceId: target.deviceId,
+        elapsedMs: Date.now() - startedAt,
+        received: answer !== null,
+        active: hooks.active(),
+      }));
       if (answer !== null && hooks.active()) {
         hooks.report({ kind: 'starting' });
         await peer.answer(answer);
+        log.debug('camera.answer_applied', () => ({
+          deviceId: target.deviceId,
+          elapsedMs: Date.now() - startedAt,
+        }));
       }
     })
     .catch((error: unknown) => {
@@ -113,6 +141,7 @@ export function startDirect(target: SessionTarget, hooks: SessionHooks): void {
 
 export function startRelay(target: SessionTarget, hooks: SessionHooks): void {
   if (!relaySupported()) {
+    log.warn('camera.relay_unsupported', { deviceId: target.deviceId });
     hooks.report({ kind: 'failed', error: { kind: 'relayUnsupported' } });
     return;
   }
@@ -120,6 +149,7 @@ export function startRelay(target: SessionTarget, hooks: SessionHooks): void {
   cameraRelayUrl(target.deviceId, target.client)
     .then((url) => {
       if (!hooks.active()) {
+        log.debug('camera.relay_skipped', { deviceId: target.deviceId, reason: 'inactive' });
         return;
       }
       log.info('camera.relay_started', { deviceId: target.deviceId });

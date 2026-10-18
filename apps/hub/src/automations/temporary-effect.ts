@@ -1,200 +1,226 @@
 import {
   ApiError,
+  conditionClockMinutes,
   deviceEffectSupport,
+  localClock,
+  shiftedDate,
   targetCapability,
   validateDeviceEffect,
-  type TemporaryEffectAction,
-  type Conditions,
-  localClock,
-  minuteOfClock,
-  shiftedDate,
   zonedInstant,
+  type ConditionV2,
+  type DeviceEffectOperation,
+  type DeviceTarget,
+  type GroupCommandPlan,
+  type SkippedGroupDevice,
 } from '@smarteverything/domain';
-import type { DeviceEffects } from '../commands/effects';
 import type { Clock } from '../clock';
-import { resolveTarget } from '../device-groups/commands';
+import type { DeviceEffects } from '../commands/effects';
+import { resolveTarget, skippedMembersNote } from '../device-groups/commands';
 import type { Store } from '../store/store';
-import { admitRun, AutomationRunCancelledError, type ActionExecutionContext } from './run-context';
-import type { StructuredActionServices } from './structured-actions';
+import { admitRun, AutomationRunCancelledError, type RunContext } from './run-context';
+import type { AutomationWorld } from './world';
+import { messageOf } from '@smarteverything/logging';
+
+interface TemporaryChange {
+  readonly target: DeviceTarget;
+  readonly control: string;
+  readonly operation: DeviceEffectOperation;
+  readonly durationMs: number;
+  readonly priority: number;
+  readonly whileHolds: ConditionV2 | undefined;
+  readonly nodeId: string;
+}
+
+interface Member {
+  readonly id: string;
+  readonly capability: string;
+}
+
+interface Lifetime {
+  readonly change: TemporaryChange;
+  readonly context: RunContext;
+  readonly ids: readonly string[];
+  readonly expires: number;
+  readonly holds: () => boolean;
+}
+
+const WATCHED_TABLES: ReadonlySet<string> = new Set([
+  'device_state',
+  'device_effect_targets',
+  'automation_values',
+  'weather',
+  'settings',
+]);
 
 export function effectMembers(
   store: Store,
-  action: TemporaryEffectAction,
-): {
-  readonly members: readonly { readonly id: string; readonly capability: string }[];
-  readonly skipped: readonly string[];
-} {
-  const members: { readonly id: string; readonly capability: string }[] = [];
-  const skipped: string[] = [];
-  for (const device of resolveTarget(store, action.target)) {
-    const presented = targetCapability(device, action.capability);
+  change: Pick<TemporaryChange, 'target' | 'control' | 'operation'>,
+): { readonly members: readonly Member[]; readonly skipped: GroupCommandPlan['skipped'] } {
+  const members: Member[] = [];
+  const skipped: SkippedGroupDevice[] = [];
+  for (const device of resolveTarget(store, change.target)) {
+    const presented = targetCapability(device, change.control);
     try {
       if (presented === undefined)
         throw new ApiError('command_refused', 'This control is unsupported.');
       const reason = deviceEffectSupport(presented.capability);
       if (reason !== null) throw new ApiError('command_refused', reason);
-      validateDeviceEffect(presented.capability.value, action.operation);
+      validateDeviceEffect(presented.capability.value, change.operation);
       members.push({ id: device.id, capability: presented.key });
     } catch (cause) {
-      skipped.push(`${device.id}: ${cause instanceof Error ? cause.message : String(cause)}`);
+      skipped.push({ deviceId: device.id, reason: 'unsupported', detail: messageOf(cause) });
     }
   }
   return { members, skipped };
 }
-function nextBoundary(
-  conditions: Conditions,
-  store: Store,
-  clock: Clock,
-  deadline: number,
-): number {
-  const now = clock.now();
-  const zone = store.settings.read().time_zone;
-  const local = localClock(now, zone);
-  const minutes = conditions.items.flatMap((condition) => {
-    if (condition.type === 'weekday') return [0];
-    if (condition.type === 'time_window')
-      return [minuteOfClock(condition.after), minuteOfClock(condition.before)];
-    return [];
-  });
-  const times = [0, 1]
-    .flatMap((day) =>
-      minutes.map((minute) => zonedInstant(shiftedDate(local, day), minute, zone).getTime()),
-    )
-    .filter((time) => time > now.getTime());
-  return Math.min(deadline, ...times);
-}
-interface Lifetime {
-  readonly action: TemporaryEffectAction;
-  readonly context: ActionExecutionContext;
-  readonly ids: readonly string[];
-  readonly expires: number;
-  readonly holds: () => boolean;
-}
-function waitEffect(store: Store, clock: Clock, lifetime: Lifetime): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let cancelTimer = (): void => undefined;
-    let stopFeed = (): void => undefined;
-    const finish = (cause?: unknown): void => {
-      cancelTimer();
-      stopFeed();
-      lifetime.context.signal.removeEventListener('abort', abort);
-      if (cause === undefined) resolve();
-      else
-        reject(
-          cause instanceof Error
-            ? cause
-            : new ApiError('upstream_failed', 'The temporary change could not finish.'),
-        );
-    };
-    const abort = (): void => {
-      finish(new AutomationRunCancelledError(lifetime.context.runId));
-    };
-    const evaluate = (): void => {
-      cancelTimer();
-      try {
-        admitRun(lifetime.context);
-        const active = store.deviceEffects
-          .list()
-          .flatMap((target) => target.effects.map((effect) => effect.id));
-        if (
-          clock.now().getTime() >= lifetime.expires ||
-          !lifetime.holds() ||
-          lifetime.ids.every((id) => !active.includes(id))
-        ) {
-          finish();
-          return;
-        }
-        const next =
-          lifetime.action.while === undefined
-            ? lifetime.expires
-            : nextBoundary(lifetime.action.while, store, clock, lifetime.expires);
-        cancelTimer = clock.at(new Date(next), evaluate);
-      } catch (cause) {
-        finish(cause);
-      }
-    };
-    lifetime.context.signal.addEventListener('abort', abort, { once: true });
-    stopFeed = store.feed.subscribeCommitted(evaluate);
-    evaluate();
-  });
-}
-function startMember(
-  effects: DeviceEffects,
-  request: {
-    readonly member: { readonly id: string; readonly capability: string };
-    readonly action: TemporaryEffectAction;
-    readonly context: ActionExecutionContext;
-    readonly expires: number;
-  },
-): Promise<string> {
-  const { member, action, context, expires } = request;
-  return effects.activate(member.id, member.capability, {
-    effect: {
-      runId: context.runId,
-      nodeId: action.nodeId,
-      operation: action.operation,
-      priority: action.priority,
-      expiresAt: new Date(expires).toISOString(),
-    },
-    authorize: (): void => {
-      admitRun(context);
-    },
-    record: context.commands,
-  });
-}
-async function releaseEffects(
-  effects: DeviceEffects,
-  ids: readonly string[],
-  context: ActionExecutionContext,
-): Promise<void> {
-  const results = await Promise.allSettled(
-    ids.map((id) => effects.end(id, context.authorize, context.commands)),
-  );
-  const failed = results.find((result) => result.status === 'rejected');
-  if (failed?.status === 'rejected') throw failed.reason;
-}
-function requireEffectMembers(
-  store: Store,
-  action: TemporaryEffectAction,
-): ReturnType<typeof effectMembers> {
-  const plan = effectMembers(store, action);
-  if (plan.members.length === 0)
-    throw new ApiError(
-      'command_refused',
-      plan.skipped.length > 0 ? plan.skipped.join('; ') : 'This target has no supported controls.',
-    );
-  return plan;
-}
-export function temporaryEffectService(
-  store: Store,
-  clock: Clock,
-  effects: DeviceEffects,
-  conditions: StructuredActionServices['conditions'],
-): NonNullable<StructuredActionServices['temporaryEffect']> {
-  return async (action, context, parameters): Promise<string | null> => {
-    const holds = (): boolean => action.while === undefined || conditions(action.while, parameters);
+
+export class TemporaryChanges {
+  constructor(
+    private readonly store: Store,
+    private readonly clock: Clock,
+    private readonly effects: DeviceEffects,
+    private readonly world: AutomationWorld,
+  ) {}
+
+  async run(change: TemporaryChange, context: RunContext): Promise<string | null> {
+    const holds = (): boolean =>
+      change.whileHolds === undefined || this.world.holds(change.whileHolds, context.inputs);
     admitRun(context);
     if (!holds()) return 'The temporary condition is false.';
-    const { members, skipped } = requireEffectMembers(store, action);
-    const expires = clock.now().getTime() + action.durationMs;
+    const { members, skipped } = this.requiredMembers(change);
+    const expires = this.clock.now().getTime() + change.durationMs;
     const ids: string[] = [];
     let failure: unknown;
     try {
-      for (const member of members)
-        ids.push(await startMember(effects, { member, action, context, expires }));
-      await waitEffect(store, clock, { action, context, ids, expires, holds });
+      for (const member of members) ids.push(await this.start(member, change, context, expires));
+      await this.wait({ change, context, ids, expires, holds });
     } catch (cause) {
       failure = cause;
     }
     try {
-      await releaseEffects(effects, ids, context);
+      await this.release(ids, context);
     } catch (cause) {
-      if (failure === undefined) failure = cause;
+      failure ??= cause;
     }
     if (failure !== undefined)
       throw failure instanceof Error
         ? failure
         : new ApiError('upstream_failed', 'The temporary change could not finish.');
-    return skipped.length === 0 ? null : `Skipped members: ${skipped.join('; ')}`;
-  };
+    return skippedMembersNote(this.store, skipped);
+  }
+
+  private requiredMembers(change: TemporaryChange): ReturnType<typeof effectMembers> {
+    const plan = effectMembers(this.store, change);
+    if (plan.members.length === 0)
+      throw new ApiError(
+        'command_refused',
+        skippedMembersNote(this.store, plan.skipped) ?? 'This target has no supported controls.',
+      );
+    return plan;
+  }
+
+  private start(
+    member: Member,
+    change: TemporaryChange,
+    context: RunContext,
+    expires: number,
+  ): Promise<string> {
+    return this.effects.activate(member.id, member.capability, {
+      effect: {
+        runId: context.runId,
+        nodeId: change.nodeId,
+        operation: change.operation,
+        priority: change.priority,
+        expiresAt: new Date(expires).toISOString(),
+      },
+      authorize: (): void => {
+        admitRun(context);
+      },
+      record: context.commands,
+    });
+  }
+
+  private async release(ids: readonly string[], context: RunContext): Promise<void> {
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        this.effects.end(
+          id,
+          () => {
+            admitRun(context);
+          },
+          context.commands,
+        ),
+      ),
+    );
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
+  }
+
+  private nextBoundary(whileHolds: ConditionV2 | undefined, deadline: number): number {
+    if (whileHolds === undefined) return deadline;
+    const now = this.clock.now();
+    const zone = this.store.settings.read().time_zone;
+    const local = localClock(now, zone);
+    const times = [0, 1]
+      .flatMap((day) =>
+        conditionClockMinutes(whileHolds).map((minute) =>
+          zonedInstant(shiftedDate(local, day), minute, zone).getTime(),
+        ),
+      )
+      .filter((time) => time > now.getTime());
+    return Math.min(deadline, ...times);
+  }
+
+  private wait(lifetime: Lifetime): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let cancelTimer = (): void => undefined;
+      const finish = (cause?: unknown): void => {
+        cancelTimer();
+        stopFeed();
+        lifetime.context.signal.removeEventListener('abort', abort);
+        if (cause === undefined) resolve();
+        else
+          reject(
+            cause instanceof Error
+              ? cause
+              : new ApiError('upstream_failed', 'The temporary change could not finish.'),
+          );
+      };
+      const abort = (): void => {
+        finish(new AutomationRunCancelledError(lifetime.context.runId));
+      };
+      const evaluate = (): void => {
+        cancelTimer();
+        try {
+          admitRun(lifetime.context);
+          if (this.finished(lifetime)) {
+            finish();
+            return;
+          }
+          cancelTimer = this.clock.at(
+            new Date(this.nextBoundary(lifetime.change.whileHolds, lifetime.expires)),
+            evaluate,
+          );
+        } catch (cause) {
+          finish(cause);
+        }
+      };
+      lifetime.context.signal.addEventListener('abort', abort, { once: true });
+      const stopFeed = this.store.feed.subscribe((change) => {
+        if (WATCHED_TABLES.has(change.table)) evaluate();
+      });
+      evaluate();
+    });
+  }
+
+  private finished(lifetime: Lifetime): boolean {
+    const active = this.store.deviceEffects
+      .list()
+      .flatMap((target) => target.effects.map((effect) => effect.id));
+    return (
+      this.clock.now().getTime() >= lifetime.expires ||
+      !lifetime.holds() ||
+      lifetime.ids.every((id) => !active.includes(id))
+    );
+  }
 }

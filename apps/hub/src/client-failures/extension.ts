@@ -30,7 +30,6 @@ function logFailure(log: Logger, reporter: Reporter, failure: ClientFailure): vo
     message: failure.message,
     stack: failure.stack,
     ...(failure.processExit === undefined ? {} : { processExit: failure.processExit }),
-    ...(failure.harnessStartup === undefined ? {} : { harnessStartup: failure.harnessStartup }),
   };
   if (failure.level === 'warn') {
     log.warn('client.failure_reported', payload);
@@ -76,12 +75,18 @@ export function clientFailureRoutes(log: Logger, perf: PerfSamples): ExtensionRo
         platform: report.platform,
         release: report.release,
       };
+      let sampled = 0;
       report.failures.forEach((failure) => {
-        logFailure(reports, reporter, failure);
         if (failure.scope === PERF_SCOPE) {
           recordPerf(perf, reporter, failure);
+          sampled += 1;
+          return;
         }
+        logFailure(reports, reporter, failure);
       });
+      if (sampled > 0) {
+        reports.debug('client.perf_reported', { clientId: reporter.clientId, lines: sampled });
+      }
       logCrumbs(reports, reporter, report.recent ?? []);
       return DONE_REPLY;
     }),

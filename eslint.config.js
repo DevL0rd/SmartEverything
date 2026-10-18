@@ -42,6 +42,9 @@ export default tseslint.config(
     plugins: { local },
     rules: {
       'local/no-comments': 'error',
+      'local/lazy-debug-payload': 'error',
+      'local/no-swallowed-errors': 'error',
+      'local/no-void-promise': 'error',
       'no-empty': ['error', { allowEmptyCatch: false }],
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
@@ -83,6 +86,12 @@ export default tseslint.config(
           message: 'Read environment variables through the validated env module only.',
         },
         {
+          selector:
+            "CallExpression[callee.property.name='set'] > ArrayExpression > SpreadElement > LogicalExpression[operator='??'] > CallExpression[callee.property.name='get']",
+          message:
+            'Copying a group on every add is quadratic. Use appendTo from @smarteverything/domain.',
+        },
+        {
           selector: 'CatchClause[param=null]',
           message:
             'A catch that does not bind the error discards it. Bind it and say what failed, what was expected and what was received.',
@@ -96,17 +105,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/desktop/src/preload.cts'],
-    rules: {
-      '@typescript-eslint/no-require-imports': ['error', { allow: ['^electron$'] }],
-    },
-  },
-  {
     files: ['**/*.test.ts', '**/*.test.tsx', '**/*.contract.test.ts'],
     rules: {
       'max-lines': 'off',
       'max-lines-per-function': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
+      'local/no-swallowed-errors': 'off',
+      'local/no-void-promise': 'off',
     },
   },
   {
@@ -127,6 +132,8 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       ...jsxA11y.flatConfigs.strict.rules,
       'local/worklet-calls-worklets': 'error',
+      'local/frame-budget': 'error',
+      'local/no-stray-text': ['error', { textComponents: ['Overline'] }],
       'react/jsx-no-leaked-render': 'error',
       'react/no-unstable-nested-components': 'error',
       'react/jsx-key': 'error',
@@ -140,6 +147,17 @@ export default tseslint.config(
         {
           selector: "MemberExpression[object.name='process'][property.name='env']",
           message: 'Read environment variables through the validated env module only.',
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name='set'] > ArrayExpression > SpreadElement > LogicalExpression[operator='??'] > CallExpression[callee.property.name='get']",
+          message:
+            'Copying a group on every add is quadratic. Use appendTo from @smarteverything/domain.',
+        },
+        {
+          selector: "CallExpression[callee.property.name='localeCompare']",
+          message:
+            'localeCompare looks the locale up on every call. Use compareText or naturalCompare from format/text, which share one collator.',
         },
         {
           selector: "JSXAttribute[name.name='style'] > JSXExpressionContainer > ObjectExpression",
@@ -180,8 +198,12 @@ export default tseslint.config(
       ],
     },
   },
-  {
-    files: ['apps/app/src/features/**'],
+  ...[
+    'apps/app/src/features/*/*.{ts,tsx}',
+    'apps/app/src/features/*/*/*.{ts,tsx}',
+    'apps/app/src/features/*/*/*/**/*.{ts,tsx}',
+  ].map((files, depth) => ({
+    files: [files],
     ignores: ['apps/app/src/features/root/**'],
     rules: {
       'no-restricted-imports': [
@@ -189,20 +211,14 @@ export default tseslint.config(
         {
           patterns: [
             {
-              regex:
-                '^\\.\\./(activity|automations|cameras|climate|connections|devices|device-visuals|fitness|health-log|home|more|nutrition|pairing|privacy|profiles|settings)/(?!index$)',
-              message: 'Import another feature only through its public features/<name>/index.ts.',
-            },
-            {
-              regex:
-                '^\\.\\./\\.\\./(activity|automations|cameras|climate|connections|devices|device-visuals|fitness|health-log|home|more|nutrition|pairing|privacy|profiles)/(?!index$)',
+              regex: `^(\\.\\./){${depth + 1}}(activity|automations|cameras|climate|connections|devices|device-visuals|fitness|health-log|home|more|nutrition|pairing|privacy|profiles${depth === 0 ? '|settings' : ''})/(?!index$)`,
               message: 'Import another feature only through its public features/<name>/index.ts.',
             },
           ],
         },
       ],
     },
-  },
+  })),
   {
     files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
     ...tseslint.configs.disableTypeChecked,
@@ -220,6 +236,28 @@ export default tseslint.config(
   {
     files: ['apps/app/app.config.ts', 'apps/app/src/platform/build-env.ts'],
     rules: { 'no-restricted-syntax': 'off' },
+  },
+  {
+    files: ['packages/logging/src/logger.ts'],
+    rules: { 'no-console': 'off' },
+  },
+  {
+    files: ['packages/domain/src/**/*.ts', 'packages/logging/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: { 'local/frame-budget': 'error' },
+  },
+  {
+    files: [
+      'apps/app/src/dev/**',
+      'apps/app/src/perf/**',
+      'apps/app/**/*.test.ts',
+      'apps/app/**/*.test.tsx',
+    ],
+    rules: { 'local/frame-budget': 'off' },
+  },
+  {
+    files: ['apps/app/src/features/assistant/call/components/use-call-level.ts'],
+    rules: { 'local/frame-budget': 'off' },
   },
   {
     files: ['apps/app/src/features/cameras/player/video-surface.web.tsx'],

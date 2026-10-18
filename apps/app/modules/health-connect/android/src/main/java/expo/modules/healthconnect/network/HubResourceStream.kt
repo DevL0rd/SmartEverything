@@ -1,5 +1,6 @@
 package expo.modules.healthconnect.network
 
+import expo.modules.healthconnect.diagnostics.NativeLog
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.*
@@ -10,6 +11,7 @@ import okhttp3.Request
 import okhttp3.Response
 
 object HubResourceStream {
+  private const val SCOPE = "hub-resource"
   private const val CHUNK_BYTES = 32768
   private val REQUEST_HEADERS = setOf("range", "if-range", "if-none-match", "if-modified-since", "if-match", "if-unmodified-since")
   private val RESPONSE_HEADERS = setOf("content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified", "cache-control", "expires", "content-disposition", "content-encoding", "vary")
@@ -31,23 +33,38 @@ object HubResourceStream {
     catch (failure: Exception) { response.close(); throw failure }
   }
   fun relay(grants: HubResourceGrants, grant: HubResourceGrant, call: Call, head: Boolean, context: ChannelHandlerContext) {
+    val started = System.nanoTime()
+    var status = 0
+    val progress = LongArray(1)
+    var outcome = "completed"
     try {
       response(grant, call, grants).use { response ->
+        status = response.code
         val message = DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.valueOf(response.code))
         response.headers.names().filter { it.lowercase() in RESPONSE_HEADERS }.forEach { message.headers().set(it, response.headers.values(it)) }
         message.headers().set(HttpHeaderNames.CONNECTION, "close").set("Referrer-Policy", "no-referrer")
         val bodyless = head || response.code in listOf(204, 205, 304)
         if (!bodyless && !message.headers().contains(HttpHeaderNames.CONTENT_LENGTH)) HttpUtil.setTransferEncodingChunked(message, true)
         write(grant, context, message)
-        if (!bodyless) pump(grants, grant, call, response, context)
+        if (!bodyless) pump(grants, grant, call, response, context, progress)
         else call.cancel()
         write(grant, context, LastHttpContent.EMPTY_LAST_CONTENT)
       }
-    } catch (failure: IOException) { context.close() }
-    catch (failure: Exception) { context.close() }
-    finally { grant.untrack(call); context.close() }
+    } catch (failure: IOException) {
+      outcome = "io_failed"
+      NativeLog.warn(SCOPE, "relay.failed", failure, NativeLog.elapsedMs(started)) { mapOf("status" to status, "bytes" to progress[0], "head" to head) }
+      context.close()
+    } catch (failure: Exception) {
+      outcome = "refused"
+      NativeLog.warn(SCOPE, "relay.failed", failure, NativeLog.elapsedMs(started)) { mapOf("status" to status, "bytes" to progress[0], "head" to head) }
+      context.close()
+    } finally {
+      NativeLog.debug(SCOPE, "relay.finished", NativeLog.elapsedMs(started)) { mapOf("status" to status, "bytes" to progress[0], "head" to head, "outcome" to outcome) }
+      grant.untrack(call)
+      context.close()
+    }
   }
-  private fun pump(grants: HubResourceGrants, grant: HubResourceGrant, call: Call, response: Response, context: ChannelHandlerContext) {
+  private fun pump(grants: HubResourceGrants, grant: HubResourceGrant, call: Call, response: Response, context: ChannelHandlerContext, progress: LongArray) {
     val input = response.body?.byteStream() ?: return
     val bytes = ByteArray(CHUNK_BYTES)
     while (true) {
@@ -56,6 +73,7 @@ object HubResourceStream {
       if (count < 0) return
       grant.check(call)
       write(grant, context, DefaultHttpContent(Unpooled.wrappedBuffer(bytes.copyOf(count))))
+      progress[0] += count
     }
   }
   private fun write(grant: HubResourceGrant, context: ChannelHandlerContext, message: HttpObject) {

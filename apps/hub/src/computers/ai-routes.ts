@@ -9,17 +9,16 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { ComputerAiDirectory } from './ai-directory';
-import { bound, type Bound } from '../server/router';
+import { bound, type Routes } from '../server/router';
 import { roleOfCaller } from '../server/auth';
 
 export function computerAiRoutes(
   directory: ComputerAiDirectory,
-): Record<
+): Routes<
   Exclude<
     keyof typeof COMPUTER_AI_ENDPOINTS,
     'readComputerNativeMcpPolicy' | 'updateComputerNativeMcpPolicy'
-  >,
-  Bound
+  >
 > {
   return {
     readComputerClaudeOperation: bound(E.readComputerClaudeOperation, ({ params, caller }) =>
@@ -42,7 +41,7 @@ export function computerAiRoutes(
 
 function settingsRoutes(
   directory: ComputerAiDirectory,
-): Record<'readComputerAi' | 'updateComputerAi' | 'readComputerClaudeStatus', Bound> {
+): Routes<'readComputerAi' | 'updateComputerAi' | 'readComputerClaudeStatus'> {
   return {
     readComputerAi: bound(E.readComputerAi, ({ params, caller }) => {
       const status = directory.status(params.deviceId);
@@ -79,7 +78,7 @@ function settingsRoutes(
 
 function providerDiscoveryRoutes(
   directory: ComputerAiDirectory,
-): Record<'listComputerClaudeModels' | 'readComputerClaudeProviderMetadata', Bound> {
+): Routes<'listComputerClaudeModels' | 'readComputerClaudeProviderMetadata'> {
   return {
     listComputerClaudeModels: bound(E.listComputerClaudeModels, ({ params }) =>
       directory.models(params.deviceId),
@@ -92,10 +91,7 @@ function providerDiscoveryRoutes(
 
 function sessionReadRoutes(
   directory: ComputerAiDirectory,
-): Record<
-  'listComputerClaudeSessions' | 'readComputerClaudeSession' | 'listComputerClaudeThread',
-  Bound
-> {
+): Routes<'listComputerClaudeSessions' | 'readComputerClaudeSession' | 'listComputerClaudeThread'> {
   return {
     listComputerClaudeSessions: bound(E.listComputerClaudeSessions, ({ params, query }) =>
       directory.request(
@@ -123,7 +119,7 @@ function sessionReadRoutes(
 
 function promptReadRoutes(
   directory: ComputerAiDirectory,
-): Record<'readComputerClaudeUsage' | 'listComputerClaudePrompts', Bound> {
+): Routes<'readComputerClaudeUsage' | 'listComputerClaudePrompts'> {
   return {
     readComputerClaudeUsage: bound(E.readComputerClaudeUsage, ({ params }) =>
       directory.request(
@@ -147,7 +143,7 @@ function promptReadRoutes(
 
 function sessionActionRoutes(
   directory: ComputerAiDirectory,
-): Record<'controlComputerClaudeSession' | 'startComputerClaudeSession', Bound> {
+): Routes<'controlComputerClaudeSession' | 'startComputerClaudeSession'> {
   return {
     controlComputerClaudeSession: bound(
       E.controlComputerClaudeSession,
@@ -184,12 +180,11 @@ function sessionActionRoutes(
 
 function linkRoutes(
   directory: ComputerAiDirectory,
-): Record<
+): Routes<
   | 'installComputerClaudeLink'
   | 'removeComputerClaudeLink'
   | 'registerComputerClaudeController'
-  | 'removeComputerClaudeController',
-  Bound
+  | 'removeComputerClaudeController'
 > {
   return {
     installComputerClaudeLink: bound(E.installComputerClaudeLink, ({ params }) =>
@@ -225,10 +220,7 @@ function linkRoutes(
 
 function promptAndToolRoutes(
   directory: ComputerAiDirectory,
-): Record<
-  'answerComputerClaudePrompt' | 'listComputerClaudeTools' | 'callComputerClaudeTool',
-  Bound
-> {
+): Routes<'answerComputerClaudePrompt' | 'listComputerClaudeTools' | 'callComputerClaudeTool'> {
   return {
     answerComputerClaudePrompt: bound(E.answerComputerClaudePrompt, ({ params, body, caller }) =>
       directory.request(

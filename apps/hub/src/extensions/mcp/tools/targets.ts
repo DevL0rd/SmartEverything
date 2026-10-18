@@ -1,14 +1,16 @@
 import {
   DEVICE_FAMILIES,
   deviceFamily,
-  displayName,
+  baseNameOf,
   presentDevice,
   type DeviceFamily,
   type DeviceRow,
+  type DeviceScope,
   type PresentedCapability,
   type RoomRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { deviceHidden } from '../../../server/person-scope';
 import type { Store } from '../../../store/store';
 import { ToolError, matches } from './registry';
 
@@ -41,8 +43,8 @@ export const TARGET = z
 
 export type Target = z.infer<typeof TARGET>;
 
-export function nameOf(store: Store, device: DeviceRow): string {
-  return displayName(device, store.devices.list(), store.rooms.list());
+export function deviceNames(store: Store): ReadonlyMap<string, string> {
+  return new Map(store.devices.list().map((device) => [device.id, baseNameOf(device)] as const));
 }
 
 function order(left: Placed, right: Placed): number {
@@ -54,17 +56,26 @@ function order(left: Placed, right: Placed): number {
   );
 }
 
-export function placedDevices(store: Store): Placed[] {
+function placedOf(device: DeviceRow, name: string, rooms: ReadonlyMap<string, RoomRow>): Placed {
+  return {
+    name,
+    device,
+    room: device.room_id === null ? null : (rooms.get(device.room_id) ?? null),
+    family: deviceFamily(device),
+  };
+}
+
+function roomsById(roomRows: readonly RoomRow[]): ReadonlyMap<string, RoomRow> {
+  return new Map(roomRows.map((room) => [room.id, room]));
+}
+
+export function placedDevices(store: Store, scope: DeviceScope | null): Placed[] {
   const roomRows = store.rooms.list();
-  const devices = store.devices.list();
-  const rooms = new Map(roomRows.map((room) => [room.id, room]));
-  return devices
-    .map((device) => ({
-      name: displayName(device, devices, roomRows),
-      device,
-      room: device.room_id === null ? null : (rooms.get(device.room_id) ?? null),
-      family: deviceFamily(device),
-    }))
+  const rooms = roomsById(roomRows);
+  return store.devices
+    .list()
+    .filter((device) => !deviceHidden(scope, device))
+    .map((device) => placedOf(device, baseNameOf(device), rooms))
     .sort(order);
 }
 
@@ -103,35 +114,87 @@ function selected(target: Target, placed: Placed): boolean {
   );
 }
 
-export function targeted(store: Store, target: Target): Placed[] {
-  const found = placedDevices(store).filter((placed) => selected(target, placed));
+export function targeted(store: Store, scope: DeviceScope | null, target: Target): Placed[] {
+  const found = placedDevices(store, scope).filter((placed) => selected(target, placed));
   if (found.length === 0) {
     throw new ToolError(
-      `No device matches ${JSON.stringify(target)}; list_devices and list_rooms show what exists`,
+      `No device matches ${JSON.stringify(target)}; find_devices and get_home show what exists`,
       'not_found',
     );
   }
   return found;
 }
 
-export function placedDevice(store: Store, deviceId: string): Placed {
-  const found = placedDevices(store).find((placed) => placed.device.id === deviceId);
-  if (found === undefined) {
+export function placedDevice(store: Store, scope: DeviceScope | null, deviceId: string): Placed {
+  const device = store.devices.find(deviceId);
+  if (device === undefined) {
     throw new ToolError(`There is no device ${deviceId} in your home`, 'not_found');
   }
-  return found;
+  if (deviceHidden(scope, device)) {
+    throw new ToolError('That device is not part of your access; ask the owner.', 'forbidden');
+  }
+  const roomRows = store.rooms.list();
+  return placedOf(device, baseNameOf(device), roomsById(roomRows));
+}
+
+export interface Naming<T> {
+  readonly names: (row: T) => readonly (string | null)[];
+  readonly label: (row: T) => string;
+  readonly id?: (row: T) => string;
+}
+
+function candidateOf<T>(naming: Naming<T>, row: T): string {
+  const id = naming.id?.(row);
+  return id === undefined ? naming.label(row) : `${naming.label(row)} (id ${id})`;
+}
+
+export function closestMatches<T>(rows: readonly T[], wanted: string, naming: Naming<T>): T[] {
+  const text = wanted.trim().toLowerCase();
+  const lowered = (row: T): (string | null)[] =>
+    naming.names(row).map((name) => (name === null ? null : name.toLowerCase()));
+  const byId = rows.filter((row) => naming.id?.(row).toLowerCase() === text);
+  if (byId.length > 0) {
+    return byId;
+  }
+  const width = Math.max(0, ...rows.map((row) => naming.names(row).length));
+  for (let position = 0; position < width; position += 1) {
+    const exact = rows.filter((row) => lowered(row)[position] === text);
+    if (exact.length > 0) {
+      return exact;
+    }
+  }
+  return rows.filter((row) => lowered(row).some((name) => name?.includes(text) === true));
+}
+
+export function resolveNamed<T>(
+  rows: readonly T[],
+  wanted: string,
+  noun: string,
+  naming: Naming<T>,
+): T {
+  const found = closestMatches(rows, wanted, naming);
+  const [first, second] = found;
+  if (first === undefined) {
+    throw new ToolError(`There is no ${noun} matching "${wanted}"`, 'not_found');
+  }
+  if (second !== undefined) {
+    throw new ToolError(
+      `"${wanted}" matches more than one ${noun}: ${found.map((row) => candidateOf(naming, row)).join(', ')}; use the id`,
+    );
+  }
+  return first;
 }
 
 function byLabel(
   presented: readonly PresentedCapability[],
   wanted: string,
 ): PresentedCapability | undefined {
-  const exact = presented.find((candidate) => candidate.label.toLowerCase() === wanted);
-  if (exact !== undefined) {
-    return exact;
-  }
-  const partial = presented.filter((candidate) => candidate.label.toLowerCase().includes(wanted));
-  return partial.length === 1 ? partial[0] : undefined;
+  const found = closestMatches(presented, wanted, {
+    names: (candidate) => [candidate.label],
+    label: (candidate) => candidate.label,
+  });
+  const [first] = found;
+  return found.length === 1 || first?.label.toLowerCase() === wanted ? first : undefined;
 }
 
 export function findCapability(

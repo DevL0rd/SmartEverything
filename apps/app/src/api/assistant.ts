@@ -10,7 +10,6 @@ import type { SignedLink } from './media';
 import { api } from './transport';
 import {
   assertAssistantWriteCurrent,
-  responseStyleSupported,
   type AssistantWriteScope,
 } from '../store/assistant-response-style';
 
@@ -30,11 +29,6 @@ export async function sendAssistantMessage(
 export async function removeAssistantMessage(messageId: string): Promise<void> {
   await api().call(E.removeAssistantMessage, { params: { messageId } });
   log.info('assistant.message_removed', { messageId });
-}
-
-export async function clearAssistantMessages(): Promise<void> {
-  await api().call(E.clearAssistantMessages, {});
-  log.info('assistant.cleared', {});
 }
 
 export interface UploadStart {
@@ -90,11 +84,9 @@ export async function updateAssistantSettings(
   scope?: AssistantWriteScope,
 ): Promise<AssistantStatus> {
   const client = scope?.client ?? api();
-  const enrich = change.response_style !== undefined || responseStyleSupported();
   const status = await client.call(E.updateAssistantSettings, { body: change });
   if (scope !== undefined) assertAssistantWriteCurrent(scope);
   log.info('assistant.settings_updated', { fields: Object.keys(change) });
-  if (!enrich) return status;
   const style = await client.call(E.readAssistantResponseStyle, {});
   if (scope !== undefined) assertAssistantWriteCurrent(scope);
   return { ...status, settings: { ...status.settings, response_style: style } };

@@ -1,6 +1,9 @@
+import { Logger, describeFailure } from '@smarteverything/logging';
 import { randomUUID } from 'node:crypto';
 import type { SpeedTestProgress, SpeedTestResult } from '@smarteverything/domain';
 import { roundTo } from './frame-math';
+
+const log = new Logger('hub.router-speed-test');
 
 const BASE_URL = 'https://speed.cloudflare.com';
 const DOWNLOAD_BYTES = 50_000_000;
@@ -156,7 +159,10 @@ async function measureUpload(report: (mbps: number) => void, signal: AbortSignal
       method: 'POST',
       body: payload,
       signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS * 4)]),
-    }).catch(() => null);
+    }).catch((cause: unknown) => {
+      log.warn('upload.request_failed', { error: describeFailure(cause).message });
+      return null;
+    });
     if (response?.ok !== true) {
       throw new SpeedTestError('The upload test was interrupted');
     }

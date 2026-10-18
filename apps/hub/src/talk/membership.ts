@@ -1,9 +1,12 @@
-import type {
-  LiveChange,
-  TalkChannelRow,
-  TalkMemberKind,
-  TalkMemberRow,
+import {
+  channelInScope,
+  type LiveChange,
+  type TalkChannelRow,
+  type TalkMemberKind,
+  type TalkMemberRow,
 } from '@smarteverything/domain';
+import { effectiveRow } from '../server/person-access';
+import { scopesOfClient } from '../server/person-scope';
 import type { Store } from '../store/store';
 
 const TALK_TABLES: ReadonlySet<LiveChange['table']> = new Set(['talk_channels', 'talk_members']);
@@ -22,7 +25,15 @@ export class TalkMembership {
 
   reload(): void {
     this.channels = new Map(this.store.talk.channels().map((row) => [row.id, row]));
-    this.members = this.store.talk.members();
+    this.members = this.store.talk.members().filter((row) => this.may(row));
+  }
+
+  private may(row: TalkMemberRow): boolean {
+    if (row.member_kind !== 'client') return true;
+    const client = this.store.clients.find(row.member_id);
+    if (client === undefined) return false;
+    const scopes = scopesOfClient(this.store, effectiveRow(this.store, client));
+    return scopes === null || channelInScope(scopes.channels, row.channel_id);
   }
 
   channel(channelId: string): TalkChannelRow | undefined {

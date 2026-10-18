@@ -20,8 +20,6 @@ export const SCHEDULE_LIMITS = {
   lateAfterMs: 60_000,
 } as const;
 
-export const SCHEDULED_AI_STEPS_REASON = 'AI steps arrive with AI chats.';
-
 const STOP_ON_FAILURE = z
   .boolean()
   .default(false)

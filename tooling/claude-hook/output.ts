@@ -42,6 +42,12 @@ export function flushNotices(): void {
   notices.length = 0;
 }
 
+export function skippedNotice(check: string, result: Run): boolean {
+  if (result.skipped === undefined) return false;
+  warnUser(`${check} skipped, ${result.skipped}; nothing was checked`);
+  return true;
+}
+
 export function timedOut(check: string, timeoutMs: number): Section {
   return {
     check,

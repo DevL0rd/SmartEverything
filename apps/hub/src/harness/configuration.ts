@@ -1,6 +1,5 @@
 import {
   ApiError,
-  AI_HARNESS_CONFIGURATION_REPLACE,
   deriveHarnessConfigurationHostStatus,
   harnessTargetKey,
   type AiHarnessConfigurationCatalogue,
@@ -9,38 +8,27 @@ import {
   type AiHarnessManifest,
   type AiHarnessConfigurationNotice,
   type HarnessDesiredConfiguration,
-  type HarnessDesiredEntry,
-  type JsonValue,
 } from '@smarteverything/domain';
-import { defaultHarnessBuiltins, upgradeHarnessBuiltins } from '@smarteverything/harness';
+import { desiredHarnessConfiguration } from '@smarteverything/harness';
 import {
   HarnessConfigurationStorageError,
   type HarnessConfigurationRepository,
 } from '../store/repositories/harness-configuration';
+import type { HarnessExtensionsRepository } from '../store/repositories/harness-extensions';
 import type { HarnessConnection, HarnessDirectory } from './directory';
 import { Logger } from '@smarteverything/logging';
-
-const PRIVATE_CONFIGURATION_KEY =
-  /(?:token|secret|password|credential|authorization|api[_-]?key|cookie|subscription)/i;
 
 export class HarnessConfigurationService {
   private readonly listeners = new Set<(notice: AiHarnessConfigurationNotice) => void>();
   private readonly log = new Logger('hub.harness-configuration');
+  private current: HarnessDesiredConfiguration;
+
   constructor(
     private readonly repository: HarnessConfigurationRepository,
+    private readonly extensions: HarnessExtensionsRepository,
     private readonly directory: HarnessDirectory,
   ) {
-    const current = repository.desired();
-    if (current.revision === 'initial' && current.entries.length === 0)
-      repository.replace({
-        expected_revision: current.revision,
-        configuration: defaultHarnessBuiltins(),
-      });
-    else {
-      const upgraded = upgradeHarnessBuiltins(current);
-      if (upgraded !== current)
-        repository.replace({ expected_revision: current.revision, configuration: upgraded });
-    }
+    this.current = repository.record(this.derive());
     directory.onRegister((connection) => {
       this.push(connection);
       this.changed('host');
@@ -61,7 +49,7 @@ export class HarnessConfigurationService {
     const notice: AiHarnessConfigurationNotice = {
       type: 'ai_harness_configuration',
       reason,
-      revision: this.desired().revision,
+      revision: this.current.revision,
     };
     for (const listener of this.listeners) {
       try {
@@ -77,40 +65,52 @@ export class HarnessConfigurationService {
   }
 
   desired(): HarnessDesiredConfiguration {
-    return this.repository.desired();
+    return this.current;
+  }
+
+  refresh(): void {
+    const next = this.derive();
+    if (next.revision === this.current.revision) return;
+    this.current = this.repository.record(next);
+    for (const host of this.directory.list()) this.push(this.directory.registered(host.target));
+    this.changed('desired');
+  }
+
+  private derive(): HarnessDesiredConfiguration {
+    const rows = this.extensions.list().filter((row) => row.enabled);
+    const assetsOf = (
+      kind: 'skill' | 'plugin',
+    ): { id: string; version: string; executes: boolean }[] =>
+      rows
+        .filter((row) => row.kind === kind)
+        .flatMap((row) =>
+          row.version === null
+            ? []
+            : [{ id: row.id, version: row.version, executes: row.executes && row.confirmed }],
+        );
+    return desiredHarnessConfiguration({
+      selections: this.extensions.builtins(),
+      skills: assetsOf('skill'),
+      plugins: assetsOf('plugin'),
+    });
   }
 
   catalogue(role: 'owner' | 'member', clientId: string): AiHarnessConfigurationCatalogue {
-    const desired = this.desired();
     const reports = this.repository.reports();
     return {
-      desired,
+      desired: this.current,
       hosts: this.directory
         .visible(role, clientId)
         .map((host) =>
           deriveHarnessConfigurationHostStatus(
             host,
-            desired,
+            this.current,
             reports.find(
               (report) => harnessTargetKey(report.target) === harnessTargetKey(host.target),
             ) ?? null,
           ),
         ),
     };
-  }
-
-  replace(input: unknown, role: 'owner' | 'member'): HarnessDesiredConfiguration {
-    if (role !== 'owner')
-      throw new ApiError('forbidden', 'Only an owner may replace shared extensions.');
-    const request = AI_HARNESS_CONFIGURATION_REPLACE.parse(input);
-    for (const entry of request.configuration.entries) requirePublicEntry(entry);
-    const previous = this.desired();
-    const desired = storageResult(() => this.repository.replace(request));
-    if (desired.revision !== previous.revision) {
-      for (const host of this.directory.list()) this.push(this.directory.registered(host.target));
-      this.changed('desired');
-    }
-    return desired;
   }
 
   report(
@@ -123,7 +123,6 @@ export class HarnessConfigurationService {
     const current = this.directory.get(connection.host.target);
     if (current !== connection)
       throw new ApiError('conflict', 'This report belongs to a replaced configuration connection.');
-    requireCompatibleReadiness(report, manifest, connection);
     const stored = storageResult(() => this.repository.report(report, connection.host));
     if (
       report.pending_revision === undefined &&
@@ -136,7 +135,7 @@ export class HarnessConfigurationService {
 
   private push(connection: HarnessConnection): void {
     if (!connection.host.online || connection.host.configuration_sync !== true) return;
-    connection.configure?.(this.desired());
+    connection.configure?.(this.current);
   }
 }
 
@@ -147,66 +146,5 @@ function storageResult<T>(work: () => T): T {
     if (cause instanceof HarnessConfigurationStorageError)
       throw new ApiError('conflict', cause.reason);
     throw cause;
-  }
-}
-
-function requirePublicConfiguration(value: JsonValue): void {
-  if (configurationArray(value)) {
-    for (const entry of value) requirePublicConfiguration(entry);
-    return;
-  }
-  if (value === null || typeof value !== 'object') return;
-  for (const [key, entry] of Object.entries<JsonValue>(value)) {
-    if (PRIVATE_CONFIGURATION_KEY.test(key))
-      throw new ApiError(
-        'invalid_request',
-        'Shared extension settings cannot contain host credentials.',
-      );
-    requirePublicConfiguration(entry);
-  }
-}
-
-function requireCompatibleReadiness(
-  report: AiHarnessConfigurationReport,
-  manifest: AiHarnessManifest,
-  connection: HarnessConnection,
-): void {
-  for (const readiness of report.readiness) {
-    if (readiness.state !== 'ready') continue;
-    const metadata = readiness.installedMetadata;
-    if (
-      metadata === undefined ||
-      metadata === null ||
-      !metadata.platforms.includes(connection.host.platform) ||
-      (connection.host.target.kind === 'server' && !metadata.server_safe) ||
-      metadata.dsh_version !== manifest.composition.dsh_version ||
-      metadata.runtime_version !== manifest.revision
-    )
-      throw new ApiError(
-        'forbidden',
-        'Ready extension metadata does not match this host composition.',
-      );
-  }
-}
-
-function configurationArray(value: JsonValue): value is readonly JsonValue[] {
-  return Array.isArray(value);
-}
-
-function requirePublicEntry(entry: HarnessDesiredEntry): void {
-  requirePublicConfiguration(entry.config);
-  if (entry.metadata === undefined) return;
-  const sources = [
-    entry.metadata.source,
-    ...entry.metadata.skill_assets.map((asset) => asset.source),
-  ];
-  for (const source of sources) {
-    if (source.kind !== 'artifact') continue;
-    const url = new URL(source.url);
-    if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '')
-      throw new ApiError(
-        'invalid_request',
-        'Shared artifact identities require public URLs without credentials, query strings or fragments.',
-      );
   }
 }

@@ -1,9 +1,16 @@
-import type { Options } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderTurn, ClaudeProviderOptions } from '@smarteverything/domain';
+import type { Options, SettingSource } from '@anthropic-ai/claude-agent-sdk';
+import {
+  CLAUDE_DEFAULT_SETTING_SOURCES,
+  type ProviderTurn,
+  type ClaudeProviderOptions,
+} from '@smarteverything/domain';
 import { agentDefinitions } from './agents';
 import { managedConfiguration } from './managed-project';
 import { initialSettings } from './settings';
 
+export function effectiveSettingSources(options: ClaudeProviderOptions): readonly SettingSource[] {
+  return options.setting_sources ?? CLAUDE_DEFAULT_SETTING_SOURCES;
+}
 function thinkingOptions(options: ClaudeProviderOptions): Options['thinking'] {
   if (options.thinking === undefined) return undefined;
   if (options.thinking === 'disabled') return { type: 'disabled' };
@@ -52,7 +59,7 @@ export function configurationOptions(options: ClaudeProviderOptions): Options {
   return {
     permissionMode: options.permission_mode ?? 'default',
     allowDangerouslySkipPermissions: options.permission_mode === 'bypassPermissions',
-    settingSources: options.setting_sources ?? [],
+    settingSources: [...effectiveSettingSources(options)],
     settings: { fastMode: options.fast ?? false, ...initialSettings(options.flag_settings ?? {}) },
     ...sessionOptions(options),
     ...(thinking === undefined ? {} : { thinking }),

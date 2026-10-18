@@ -1,24 +1,24 @@
 import type { ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { API_ENDPOINTS as E, type HarnessSkillUpdates } from '@smarteverything/domain';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { List } from '../../../components/section';
-import { Text } from '../../../components/text';
 import { ActionRow, SwitchRow } from '../../../components/rows';
 import { notify } from '../../../components/toast-store';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { useMutationState } from '../../../store/mutation';
 import { api } from '../../../api/transport';
 import { SKILL_UPDATES_KEY } from '../../../queries/extension-keys';
-import { useHarnessSupported } from '../data/harness';
-import { ExtensionReadStatus } from './query-status';
 
-function useUpdateSettings(): ReturnType<typeof useQuery<HarnessSkillUpdates>> {
-  const supported = useHarnessSupported();
+import { ExtensionReadStatus, useMemberBanner } from './query-status';
+import { background } from '@smarteverything/logging';
+
+function useUpdateSettings(): ReturnType<typeof useScreenQuery<HarnessSkillUpdates>> {
   const sync = useSyncStatus();
-  return useQuery({
+  return useScreenQuery({
     queryKey: SKILL_UPDATES_KEY,
-    enabled: supported && sync.status === 'live',
+    enabled: sync.status === 'live',
     queryFn: () => api().call(E.readAiHarnessSkillUpdates, {}),
   });
 }
@@ -26,22 +26,18 @@ export function SkillUpdatesScreen(): ReactNode {
   const owner = useIsOwner();
   const mutation = useMutationState();
   const query = useUpdateSettings();
+  const banner = useMemberBanner('change how skills and plugins update');
   return (
-    <SettingsFrame page="assistant/skills/updates">
+    <SettingsFrame page="assistant/skills/updates" {...(banner === undefined ? {} : { banner })}>
       <ExtensionReadStatus
         kind="skill"
         loading={query.isFetching ? query.data === undefined : false}
         error={query.error}
         retry={() => {
-          void query.refetch();
+          background(query.refetch(), 'query.refetch_failed');
         }}
       />
       <UpdateControls query={query} owner={owner} mutation={mutation} />
-      {owner ? null : (
-        <Text variant="footnote" tone="variant">
-          Managed by the home owner
-        </Text>
-      )}
     </SettingsFrame>
   );
 }

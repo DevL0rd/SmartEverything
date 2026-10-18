@@ -1,16 +1,25 @@
-import type { ShellyArea, ShellyPresenceDevice, ShellyTrack } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Defs, G, Line, Path, Pattern } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
+import type { ShellyArea, ShellyDevice, ShellyZone, ShellyTrack } from '@smarteverything/shelly';
 import { Text } from '../../components/text';
-import { useColour } from '../../design/colour';
+import { useMeasuredWidth } from '../../components/use-measured-width';
+import { cn } from '../../design/cn';
 import { useSvgId } from '../../features/device-visuals';
-import { sensorOrigin } from './area-context';
-import { painterViewport } from './painter-viewport';
-
-function segmentPath([x1, y1, x2, y2]: ShellyArea[number]): string {
-  return `M${String(8 - x1)} ${String(y1)} H${String(8 - x2)} V${String(y2)} H${String(8 - x1)} Z`;
-}
+import { zoneState } from './presence-model';
+import { modelFor, sizeOf, type MapModel, type Rect } from './room-geometry';
+import {
+  Backdrop,
+  MapDefs,
+  SensorMark,
+  useMapColours,
+  ZoneLayer,
+  type Paint,
+} from './room-map-layers';
+import { useZoneColours, zoneName } from './room-map-legend';
+import { LabelLayer, Ruler } from './room-map-ruler';
+import { TrackDots, TrailLayer } from './track-dots';
+import { NO_TRAIL, type Trail } from './track-trail';
 
 export function PresenceTracks({
   tracks,
@@ -24,114 +33,180 @@ export function PresenceTracks({
   ));
 }
 
-function MapAreas({
-  sensor,
-  area,
-  primary,
-  edge,
-}: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly area: ShellyArea | undefined;
-  readonly primary: string;
-  readonly edge: string;
-}): ReactNode {
-  if (area !== undefined)
-    return area.map((segment, index) => (
-      <Path
-        key={index}
-        d={segmentPath(segment)}
-        fill={primary}
-        fillOpacity={0.16}
-        stroke={primary}
-        strokeWidth={0.07}
-      />
-    ));
-  return sensor.zones.map((zone) => (
-    <G key={zone.key}>
-      {zone.config.area.map((segment, index) => (
-        <Path
-          key={index}
-          d={segmentPath(segment)}
-          fill={zone.config.color === undefined ? primary : `rgb(${zone.config.color.join(',')})`}
-          fillOpacity={zone.status?.value === true ? 0.2 : 0.06}
-          stroke={zone.main ? primary : edge}
-          {...(zone.config.enable ? {} : { strokeDasharray: '0.15 0.15' })}
-          strokeWidth={0.07}
-        />
-      ))}
-    </G>
-  ));
+const HERO_WIDTH = 300;
+const MIN_HEIGHT = 240;
+const MAX_HEIGHT = 520;
+
+function spoken(sensor: ShellyDevice, zone: ShellyZone): string {
+  const state = zoneState(sensor, zone);
+  if (state === 'Disabled') return 'detection off';
+  if (state !== 'Occupied') return state.toLowerCase();
+  const count = zone.status?.num_objects ?? 0;
+  return `occupied, ${String(count)} ${count === 1 ? 'object' : 'objects'}`;
 }
 
-function MapCanvas({
+function summaryOf(sensor: ShellyDevice, model: MapModel): string {
+  const { width, height } = sizeOf(model.frame.room);
+  const zones = sensor.zones
+    .filter((zone) => !zone.main)
+    .map((zone) => `${zoneName(zone)}: ${spoken(sensor, zone)}.`);
+  const count = model.blind.count;
+  const blind = count === 1 ? '1 blind spot.' : `${String(count)} blind spots.`;
+  return [
+    `Room map. Main zone ${String(width)} by ${String(height)} metres.`,
+    ...zones,
+    ...(count === 0 ? [] : [blind]),
+  ].join(' ');
+}
+
+export interface RoomMapProps {
+  readonly sensor: ShellyDevice;
+  readonly area?: ShellyArea;
+  readonly live?: boolean;
+  readonly trail?: Trail;
+  readonly mini?: boolean;
+  readonly selected?: string | null;
+  readonly onZone?: (key: string) => void;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+interface Box {
+  readonly width: number;
+  readonly height: number;
+}
+
+function boxOf(props: RoomMapProps, measured: number, view: Rect): Box {
+  const width = props.width ?? measured;
+  const { width: metresWide, height: metresHigh } = sizeOf(view);
+  const natural = (width * metresHigh) / metresWide;
+  return { width, height: props.height ?? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, natural)) };
+}
+
+function usePaint(model: MapModel, box: Box, mini: boolean): Paint {
+  const { width, height } = sizeOf(model.frame.view);
+  return {
+    u: 1 / Math.min(box.width / width, box.height / height),
+    c: useMapColours(),
+    hatch: useSvgId('blind'),
+    clip: useSvgId('room'),
+    hero: !mini && box.width >= HERO_WIDTH,
+  };
+}
+
+type CanvasProps = RoomMapProps & {
+  readonly model: MapModel;
+  readonly box: Box;
+  readonly colours: ReadonlyMap<string, string>;
+};
+
+function Shapes({
   sensor,
   area,
-  live,
-  compact,
-}: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly area: ShellyArea | undefined;
-  readonly live: boolean;
-  readonly compact: boolean;
+  selected = null,
+  onZone,
+  colours,
+  model,
+  paint,
+  tracks,
+}: Pick<CanvasProps, 'sensor' | 'area' | 'selected' | 'onZone' | 'colours' | 'model'> & {
+  readonly paint: Paint;
+  readonly tracks: readonly ShellyTrack[];
 }): ReactNode {
-  const primary = useColour('primary');
-  const edge = useColour('outline');
-  const faint = useColour('on-surface-faint');
-  const positive = useColour('positive');
-  const hatch = useSvgId('blind');
-  const blind = sensor.config?.blind ?? [];
-  const zones = area ?? sensor.zones.flatMap((zone) => zone.config.area);
-  const viewport = painterViewport([...zones, ...blind]);
-  const origin = sensorOrigin(sensor.config?.sensor?.position);
+  if (area !== undefined)
+    return model.area === null ? null : (
+      <Path
+        d={model.area.path}
+        fill={paint.c.primary}
+        fillOpacity={0.16}
+        stroke={paint.c.primary}
+        strokeWidth={1.5 * paint.u}
+      />
+    );
+  return (
+    <ZoneLayer
+      sensor={sensor}
+      model={model}
+      paint={paint}
+      colours={colours}
+      tracks={tracks}
+      selected={selected}
+      onZone={onZone}
+    />
+  );
+}
+
+function Annotations({
+  sensor,
+  area,
+  mini = false,
+  selected = null,
+  trail = NO_TRAIL,
+  model,
+  paint,
+  tracks,
+}: Pick<CanvasProps, 'sensor' | 'area' | 'mini' | 'selected' | 'trail' | 'model'> & {
+  readonly paint: Paint;
+  readonly tracks: readonly ShellyTrack[];
+}): ReactNode {
+  return (
+    <>
+      {mini || area !== undefined ? null : (
+        <LabelLayer sensor={sensor} model={model} paint={paint} selected={selected} />
+      )}
+      {mini ? null : <Ruler model={model} paint={paint} />}
+      <SensorMark model={model} paint={paint} />
+      <TrailLayer trail={trail} origin={model.origin} paint={paint} />
+      <TrackDots tracks={tracks} origin={model.origin} paint={paint} />
+    </>
+  );
+}
+
+function MapCanvas(props: CanvasProps): ReactNode {
+  const { sensor, mini = false, live = false, model, box } = props;
+  const paint = usePaint(model, box, mini);
+  const { view } = model.frame;
+  const { width, height } = sizeOf(view);
+  const tracks = live && sensor.connection.state === 'online' ? sensor.tracks : [];
   return (
     <Svg
-      width="100%"
-      height={compact ? 96 : 280}
-      viewBox={`${String(viewport.left)} ${String(viewport.top)} ${String(viewport.columns)} ${String(viewport.rows)}`}
+      width={box.width}
+      height={box.height}
+      viewBox={`${String(view.left)} ${String(view.top)} ${String(width)} ${String(height)}`}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
     >
-      <Defs>
-        <Pattern id={hatch} width={0.4} height={0.4} patternUnits="userSpaceOnUse">
-          <Path d="M0 0 L0.4 0.4" stroke={faint} strokeWidth={0.06} />
-        </Pattern>
-      </Defs>
-      <MapAreas sensor={sensor} area={area} primary={primary} edge={edge} />
-      {blind.map((segment, index) => (
+      <MapDefs model={model} paint={paint} />
+      <Backdrop model={model} paint={paint} />
+      <Shapes {...props} paint={paint} tracks={tracks} />
+      {model.blind.count === 0 ? null : (
         <Path
-          key={index}
-          d={segmentPath(segment)}
-          fill={`url(#${hatch})`}
-          stroke={faint}
-          strokeWidth={0.05}
+          d={model.blind.path}
+          fill={`url(#${paint.hatch})`}
+          stroke={paint.c.edge}
+          strokeWidth={paint.u}
         />
-      ))}
-      <Line x1={8} y1={0} x2={8} y2={viewport.rows} stroke={edge} strokeWidth={0.03} />
-      {live && sensor.connection.state === 'online' ? (
-        <PresenceTracks tracks={sensor.tracks} colour={positive} />
-      ) : null}
-      <Circle cx={origin} cy={0} r={0.22} fill={primary} />
+      )}
+      <Annotations {...props} paint={paint} tracks={tracks} />
     </Svg>
   );
 }
 
-export function RoomMap({
-  sensor,
-  area,
-  live = false,
-  compact = false,
-}: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly area?: ShellyArea;
-  readonly live?: boolean;
-  readonly compact?: boolean;
-}): ReactNode {
+export function RoomMap(props: RoomMapProps): ReactNode {
+  const { sensor, area, mini = false } = props;
+  const measured = useMeasuredWidth();
+  const model = modelFor(sensor, area, mini);
+  const box = boxOf(props, measured.width, model.frame.view);
+  const colours = useZoneColours(sensor);
   return (
-    <View className="gap-2" accessibilityLabel="Sensor room and zones map">
-      <MapCanvas sensor={sensor} area={area} live={live} compact={compact} />
-      {compact ? null : (
-        <Text variant="caption" tone="variant">
-          Sensor x ← · y ↓ · boundary grid units (0.5 m)
-        </Text>
-      )}
+    <View
+      className={cn(sensor.connection.state !== 'online' && 'opacity-60')}
+      {...(props.width === undefined ? { onLayout: measured.onLayout } : {})}
+    >
+      <Text className="absolute size-px opacity-0" accessibilityLiveRegion="polite">
+        {summaryOf(sensor, model)}
+      </Text>
+      {box.width > 0 ? <MapCanvas {...props} model={model} box={box} colours={colours} /> : null}
     </View>
   );
 }

@@ -4,28 +4,16 @@ import { View } from 'react-native';
 import {
   PROVIDER_CONTROL,
   PROVIDER_READ_QUERY,
-  type JsonValue,
   type ProviderReadQuery,
 } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
-import { QueryState } from '../../computers/components/query-state';
-import { OperationFieldInput } from './operation-fields';
+import { QueryState } from '../../computers';
+import { OperationFields, initialFields } from './operation-fields';
 import { useProviderControl, useProviderRead } from './provider-data';
 import { ProviderResult } from './provider-result';
 import type { ProviderOperation } from './provider-operations';
-
-function initialFields(
-  operation: ProviderOperation,
-  sessionId: string | null,
-): Readonly<Record<string, JsonValue | undefined>> {
-  return Object.fromEntries(
-    operation.fields.map((field) => [
-      field.key,
-      field.key === 'session_id' ? (sessionId ?? '') : field.initial,
-    ]),
-  );
-}
+import { background } from '@smarteverything/logging';
 
 function ReadResult({
   chatId,
@@ -41,35 +29,10 @@ function ReadResult({
         error={read.error}
         pending={read.isPending}
         retry={() => {
-          void read.refetch();
+          background(read.refetch(), 'read.refetch_failed');
         }}
       />
       {read.data === undefined ? null : <ProviderResult value={read.data} />}
-    </>
-  );
-}
-
-function OperationInputs({
-  operation,
-  fields,
-  change,
-}: {
-  readonly operation: ProviderOperation;
-  readonly fields: Readonly<Record<string, JsonValue | undefined>>;
-  readonly change: (fields: Readonly<Record<string, JsonValue | undefined>>) => void;
-}): ReactNode {
-  return (
-    <>
-      {operation.fields.map((field) => (
-        <OperationFieldInput
-          key={field.key}
-          field={field}
-          value={fields[field.key]}
-          change={(value) => {
-            change({ ...fields, [field.key]: value });
-          }}
-        />
-      ))}
     </>
   );
 }
@@ -83,7 +46,7 @@ export function OperationForm({
   readonly operation: ProviderOperation;
   readonly sessionId: string | null;
 }): ReactNode {
-  const [fields, setFields] = useState(initialFields(operation, sessionId));
+  const [fields, setFields] = useState(initialFields(operation.fields, sessionId));
   const [reading, setReading] = useState<ProviderReadQuery | null>(null);
   const control = useProviderControl(chatId);
   const record = Object.fromEntries(
@@ -96,7 +59,7 @@ export function OperationForm({
   return (
     <View className="gap-4">
       <Text tone="variant">{operation.description}</Text>
-      <OperationInputs operation={operation} fields={fields} change={setFields} />
+      <OperationFields fields={operation.fields} values={fields} change={setFields} />
       <Button
         label={operation.kind === 'read' ? 'Read from provider' : 'Apply to provider'}
         loading={control.isPending}

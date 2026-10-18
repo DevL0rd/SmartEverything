@@ -17,7 +17,7 @@ import java.time.Instant
 import java.util.UUID
 import org.json.JSONObject
 
-class HubBrowserDiagnostics(private val view: WebView, private val owner: () -> Boolean, private val activity: () -> Activity?, private val profile: () -> Any?, private val deliver: (Map<String, Any?>) -> Unit, private val refusal: (String) -> Unit) {
+class HubBrowserDiagnostics(private val view: WebView, private val owner: () -> Boolean, private val activity: () -> Activity?, private val profile: () -> Any?, private val restore: suspend () -> Unit, private val deliver: (Map<String, Any?>) -> Unit, private val refusal: (String) -> Unit) {
   private val cookies = HubBrowserCookies { requireNotNull(profile()) { "The browser has no owned profile" } }
   private var id = ""
   private var epoch = ""
@@ -156,6 +156,7 @@ class HubBrowserDiagnostics(private val view: WebView, private val owner: () -> 
       check(expected)
       check(profile() === owned) { "The preview profile owner changed during cookie clearing" }
     }
+    restore()
   }
   private suspend fun clearStorage(expected: String) {
     check(expected)
@@ -168,6 +169,7 @@ class HubBrowserDiagnostics(private val view: WebView, private val owner: () -> 
     }
     check(expected)
     check(profile() === owned) { "Website data profile changed while clearing" }
+    restore()
     suspendCoroutine<Unit> { continuation ->
       view.evaluateJavascript("sessionStorage.clear();localStorage.clear();", { continuation.resume(Unit) })
     }

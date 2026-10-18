@@ -1,4 +1,5 @@
-import { useQuery, type Query, type UseQueryResult } from '@tanstack/react-query';
+import { type Query, type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { assistantAttachmentLinks } from '../../../api/assistant';
 import { linkLifetimeMs, type SignedLink } from '../../../api/media';
 import { assistantLinksKey } from '../../../queries/keys';
@@ -11,7 +12,7 @@ function linksFresh(query: Query<Links, Error, Links, readonly string[]>): numbe
 }
 
 export function useAttachmentLinks(ids: readonly string[]): UseQueryResult<Links> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: assistantLinksKey(ids),
     queryFn: () => assistantAttachmentLinks(ids),
     staleTime: linksFresh,

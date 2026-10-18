@@ -13,6 +13,7 @@ const PURPOSE_ICON = {
   plugin: 'puzzle',
   hub: 'server',
   discovery: 'wifi',
+  announcement: 'wifi',
 } as const;
 
 function useDeviceName(): (id: string) => string | null {

@@ -3,13 +3,12 @@ import { useState } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import { revokeOAuthGrant } from '../../../api/access';
 import { RowBrand } from '../row-brand';
-import { Button } from '../../../components/button';
-import { confirm } from '../../../components/confirm-store';
+import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
 import { ActionRow, NavRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { useMinute } from '../../../store/clock';
 import { useConsentRequests, useRows, useSettings } from '../../../store/selectors';
 import { ApprovalCode } from '../consent/approval-code';
@@ -17,7 +16,10 @@ import { assistantStatus } from '../model/assistant-status';
 import { ASSISTANTS } from '../model/assistants';
 import { toolsSummary } from '../model/tools';
 import { SettingsFrame } from '../../../settings/settings-frame';
+import { confirmRevoke, useHubLive, useOfflineBanner } from './revoke-access';
 
+import { trackConnection } from '../connections-log';
+import { background } from '@smarteverything/logging';
 function Waiting(): ReactNode {
   const requests = useConsentRequests();
   if (requests.length === 0) {
@@ -65,27 +67,30 @@ function Assistants(): ReactNode {
 }
 
 function revoke(clientId: string, name: string): void {
-  void confirm({
-    title: `Revoke ${name}?`,
-    body: 'It stops working at once.',
-    confirmLabel: 'Revoke',
-    tone: 'destructive',
-  }).then((accepted) => {
-    if (accepted) {
-      revokeOAuthGrant(clientId).catch((error: unknown) => {
-        notify({ message: `${name} wasn’t revoked`, error, tone: 'critical' });
-      });
-    }
-  });
+  background(
+    confirmRevoke(name).then((accepted) => {
+      if (accepted) {
+        trackConnection('oauth_grant.revoke', { clientId }, () => revokeOAuthGrant(clientId)).catch(
+          notifyFailure(`${name} wasn’t revoked`),
+        );
+      }
+    }),
+    'revoke.confirm_failed',
+  );
 }
 
 function Allowed(): ReactNode {
   const clients = useRows('oauth_clients');
+  const live = useHubLive();
   if (clients.length === 0) {
     return null;
   }
   return (
-    <List inset title="Apps you allowed">
+    <List
+      inset
+      title="Apps you allowed"
+      footer="Apps act as you and only see the tools you expose."
+    >
       {clients.map((client) => {
         const onRevoke = (): void => {
           revoke(client.id, client.name);
@@ -96,7 +101,14 @@ function Allowed(): ReactNode {
             icon="sparkles"
             title={client.name}
             {...(client.uri === null ? {} : { subtitle: client.uri })}
-            trailing={<Button label="Revoke" variant="text" onPress={onRevoke} />}
+            trailing={
+              <IconButton
+                icon="trash"
+                label={`Revoke ${client.name}`}
+                disabled={!live}
+                onPress={onRevoke}
+              />
+            }
           />
         );
       })}
@@ -108,6 +120,7 @@ function More(): ReactNode {
   const disabled = useSettings().mcp_disabled_tools;
   const tokens = useRows('mcp_tokens').filter((token) => token.revoked_at === null).length;
   const [code, setCode] = useState(false);
+  const live = useHubLive();
   return (
     <>
       <List inset>
@@ -126,7 +139,8 @@ function More(): ReactNode {
         <ActionRow
           icon="qr"
           title="Show a code"
-          subtitle="For assistants that ask for one"
+          subtitle={live ? 'For assistants that ask for one' : 'Needs your home hub'}
+          disabled={!live}
           onPress={() => {
             setCode(true);
           }}
@@ -147,8 +161,9 @@ function More(): ReactNode {
 }
 
 export function AssistantsScreen(): ReactNode {
+  const banner = useOfflineBanner();
   return (
-    <SettingsFrame page="assistant/integrations">
+    <SettingsFrame page="assistant/integrations" {...(banner === undefined ? {} : { banner })}>
       <Waiting />
       <Assistants />
       <Allowed />

@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { WebSocketServer, WebSocket, type RawData } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import {
   ApiError,
   PREVIEW_DIAGNOSTICS_PATH,
@@ -12,8 +12,12 @@ import {
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import type { Store } from '../store/store';
+import { socketText } from './socket-text';
 import { socketClient } from '../server/socket-auth';
+import { clientSocketsOf } from '../server/client-sockets';
 import type { PreviewDiagnostics } from './diagnostics';
+import { DiagnosticsLog } from './diagnostic-log';
+import { messageOf } from '@smarteverything/logging';
 interface Pending {
   readonly request: z.infer<typeof PREVIEW_BROWSER_REQUEST>;
   readonly resolve: (pixels: PreviewPixels | null) => void;
@@ -40,23 +44,29 @@ export class PreviewDiagnosticSockets {
       PREVIEW_DIAGNOSTICS_PATH,
     );
     this.server.handleUpgrade(request, socket, head, (connected) => {
+      clientSocketsOf(this.store).track(client.id, connected);
       this.connect(connected, client.id);
     });
   }
   private connect(socket: WebSocket, clientId: string): void {
     const pending = new Map<string, Pending>();
+    const trace = new DiagnosticsLog(clientId);
     const close = (): void => {
       socket.close(1001, 'Preview authority ended');
     };
     const capture = (
       request: z.infer<typeof PREVIEW_BROWSER_REQUEST>,
     ): Promise<PreviewPixels | null> => {
-      if (pending.size >= 2 || socket.readyState !== WebSocket.OPEN)
+      if (socket.readyState !== WebSocket.OPEN) {
+        trace.captureRefused(request.requestId, socket.readyState);
         return Promise.reject(
           new ApiError('conflict', 'The viewing device is busy or disconnected.'),
         );
+      }
+      trace.captureRequested(request.requestId, pending.size);
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
+          trace.captureTimedOut(request.requestId, 15_000);
           pending.delete(request.requestId);
           reject(new ApiError('upstream_failed', 'The viewing device did not answer capture.'));
         }, 15_000);
@@ -73,26 +83,28 @@ export class PreviewDiagnosticSockets {
         if (message.kind === 'write') {
           if (message.value.scope.clientId !== clientId)
             throw new ApiError('forbidden', 'A viewer cannot report another client.');
-          const viewer = this.diagnostics.write(message.value, { capture, close });
+          trace.write();
           send(socket, {
             kind: 'accepted',
-            epoch: viewer.scope.epoch,
-            delivery: viewer.shared ? 'shared' : 'none',
+            ...this.diagnostics.write(message.value, { capture, close }),
           });
-        } else this.answer(pending, message);
+        } else this.answer(pending, message, trace);
       } catch (cause) {
-        send(socket, {
-          kind: 'refused',
-          reason:
-            cause instanceof Error ? cause.message : 'Preview diagnostics rejected the input.',
-        });
+        trace.inputRefused(cause, binary);
+        send(socket, { kind: 'refused', reason: messageOf(cause) });
         close();
       }
     });
-    this.ended(socket, pending, close);
+    this.ended(socket, pending, close, trace);
   }
-  private ended(socket: WebSocket, pending: Map<string, Pending>, close: () => void): void {
-    socket.once('close', () => {
+  private ended(
+    socket: WebSocket,
+    pending: Map<string, Pending>,
+    close: () => void,
+    trace: DiagnosticsLog,
+  ): void {
+    socket.once('close', (code) => {
+      trace.closed(code, pending.size);
       this.diagnostics.disconnect(close);
       for (const task of pending.values()) {
         clearTimeout(task.timer);
@@ -100,14 +112,26 @@ export class PreviewDiagnosticSockets {
       }
       pending.clear();
     });
-    socket.on('error', close);
+    socket.on('error', (cause) => {
+      trace.failed(cause);
+      close();
+    });
   }
   private answer(
     pending: Map<string, Pending>,
     message: Extract<z.infer<typeof PREVIEW_VIEW_MESSAGE>, { kind: 'operation-result' }>,
+    trace: DiagnosticsLog,
   ): void {
     const task = pending.get(message.request.requestId);
-    if (task === undefined) return;
+    if (task === undefined) {
+      trace.resultUnmatched(message.request.requestId);
+      return;
+    }
+    trace.captureAnswered(
+      message.request.requestId,
+      message.reason === null,
+      message.pixels !== null,
+    );
     if (
       JSON.stringify(PREVIEW_VIEW_SCOPE.parse(message.request.scope)) !==
       JSON.stringify(task.request.scope)
@@ -127,14 +151,9 @@ function send(socket: WebSocket, value: unknown): void {
   if (socket.readyState !== WebSocket.OPEN)
     throw new ApiError('conflict', 'Preview diagnostics disconnected.');
   if (socket.bufferedAmount > 1024 * 1024) {
+    DiagnosticsLog.backpressure(socket.bufferedAmount);
     socket.close(1008, 'Preview diagnostics backpressure');
     return;
   }
   socket.send(JSON.stringify(value));
-}
-
-function socketText(data: RawData): string {
-  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
-  if (data instanceof ArrayBuffer) return Buffer.from(new Uint8Array(data)).toString('utf8');
-  return data.toString('utf8');
 }

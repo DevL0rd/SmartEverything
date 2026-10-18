@@ -66,6 +66,24 @@ export function IconButton({
 }: IconButtonProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const [hovered, setHovered] = useState(false);
+  const button = (
+    <Interactive
+      onPress={onPress}
+      onLongPress={onLongPress}
+      href={href}
+      label={label}
+      selected={selected}
+      disabled={disabled}
+      onTone={variant === 'filled' ? 'primary' : 'surface'}
+      className={frameOf(variant, selected)}
+      layerClassName="rounded-full"
+    >
+      <Icon name={icon} size={pointer ? 20 : 24} tone={toneOf(variant, selected, tone)} />
+    </Interactive>
+  );
+  if (!pointer) {
+    return button;
+  }
   return (
     <View
       className="relative"
@@ -76,20 +94,8 @@ export function IconButton({
         setHovered(false);
       }}
     >
-      <Interactive
-        onPress={onPress}
-        onLongPress={onLongPress}
-        href={href}
-        label={label}
-        selected={selected}
-        disabled={disabled}
-        onTone={variant === 'filled' ? 'primary' : 'surface'}
-        className={frameOf(variant, selected)}
-        layerClassName="rounded-full"
-      >
-        <Icon name={icon} size={pointer ? 20 : 24} tone={toneOf(variant, selected, tone)} />
-      </Interactive>
-      {pointer && hovered ? (
+      {button}
+      {hovered ? (
         <Tooltip text={shortcut === undefined ? label : `${label} · ${shortcut}`} />
       ) : null}
     </View>

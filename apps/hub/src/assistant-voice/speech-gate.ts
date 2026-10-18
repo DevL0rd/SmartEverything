@@ -5,20 +5,23 @@ import {
 import { Message } from '@ricky0123/vad-web/dist/messages.js';
 import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
 import {
+  DEFAULT_PAUSE_MS,
+  DEFAULT_VOICE_DETECTION,
   Preroll,
-  SPEECH_DETECTION,
   SPEECH_PREROLL_MS,
   TalkGate,
   levelOf,
+  speechDetectionOf,
 } from '@smarteverything/domain';
 import { concat } from './audio';
+import { messageOf } from '@smarteverything/logging';
 
-export const VAD_FRAME_SAMPLES = 512;
+const VAD_FRAME_SAMPLES = 512;
 const VAD_FRAME_MS = 32;
 const PCM_FULL_SCALE = 32_768;
 
 export interface SpeechGateEvents {
-  readonly start: () => void;
+  readonly start: (firstSample: number) => void;
   readonly audio: (pcm: Int16Array) => void;
   readonly end: () => void;
   readonly failed: (reason: string) => void;
@@ -28,6 +31,7 @@ export interface SpeechGateOptions {
   readonly bargeInLevel: number;
   readonly assistantAudible: () => boolean;
   readonly now: () => number;
+  readonly pauseMs?: number;
 }
 
 interface FrameOutcome {
@@ -52,6 +56,7 @@ export class SpeechGate {
   private readonly preroll = new Preroll<Int16Array>(SPEECH_PREROLL_MS);
   private readonly talk: TalkGate;
   private remainder = new Int16Array(0);
+  private routed = 0;
   private queue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -64,15 +69,16 @@ export class SpeechGate {
       () => {
         model.reset_state();
       },
-      { ...SPEECH_DETECTION },
+      { ...speechDetectionOf(DEFAULT_VOICE_DETECTION, options.pauseMs ?? DEFAULT_PAUSE_MS) },
       VAD_FRAME_MS,
     );
     this.processor.resume();
     this.talk = new TalkGate(
       {
         open: (): void => {
-          events.start();
-          events.audio(concat(this.preroll.take()));
+          const opening = concat(this.preroll.take());
+          events.start(this.routed - opening.length);
+          events.audio(opening);
         },
         close: (): void => {
           events.end();
@@ -92,9 +98,22 @@ export class SpeechGate {
     }
   }
 
+  skip(samples: number): void {
+    this.queue = this.queue.then(() => {
+      this.routed += samples;
+    });
+  }
+
+  pause(pauseMs: number): void {
+    this.queue = this.queue.then(() => {
+      this.processor.setOptions({ redemptionMs: pauseMs });
+    });
+  }
+
   reset(): void {
     this.queue = this.queue.then(() => {
       this.talk.speechEnded();
+      this.routed += this.remainder.length;
       this.remainder = new Int16Array(0);
       this.preroll.take();
       this.processor.reset();
@@ -108,6 +127,7 @@ export class SpeechGate {
   }
 
   private async step(frame: Int16Array): Promise<void> {
+    this.routed += frame.length;
     const seen: FrameProcessorEvent[] = [];
     try {
       await this.processor.process(
@@ -117,7 +137,7 @@ export class SpeechGate {
         },
       );
     } catch (cause) {
-      this.events.failed(cause instanceof Error ? cause.message : 'Speech detection stopped');
+      this.events.failed(messageOf(cause));
       return;
     }
     this.route(frame, outcomeOf(seen));

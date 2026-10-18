@@ -9,7 +9,7 @@ import { Text } from '../../../components/text';
 import { entering, useMotion } from '../../../design/motion';
 import { useAvailability } from '../../../store/selectors';
 import { AssistantOrb } from '../call/orb';
-import type { ChatState } from '../data/assistant-data';
+import type { BlockedAreaStatus } from '../model/area-status';
 
 interface Suggestion {
   readonly icon: IconName;
@@ -94,38 +94,23 @@ export function EmptyChat({
   );
 }
 
-export function NoKeyChat({ name }: { readonly name: string }): ReactNode {
-  return (
-    <Hero
-      title="Add an OpenRouter key to start"
-      body={`${name} needs a key to answer. Add it once in Settings, Assistant.`}
-    >
-      <Button label="Open Assistant settings" href={href.settings.assistant()} />
-    </Hero>
-  );
-}
-
-export function BlockedChat({
-  state,
-}: {
-  readonly state: Exclude<ChatState, { kind: 'ready' }>;
-}): ReactNode {
+export function BlockedChat({ state }: { readonly state: BlockedAreaStatus }): ReactNode {
   switch (state.kind) {
-    case 'update-hub':
+    case 'loading':
       return (
         <Hero
-          title="Your hub needs an update"
-          body="This version of the app needs a newer hub for chats. Update the hub, then come back."
+          title="Connecting to your Home Hub"
+          body="Your chats appear as soon as the connection is up."
+        />
+      );
+    case 'offline-empty':
+      return (
+        <Hero
+          title="Can’t reach your Home Hub"
+          body="Your chats appear again as soon as it is reachable."
         >
           <Button label="Open server settings" href={href.settings.page('server')} />
         </Hero>
-      );
-    case 'offline':
-      return (
-        <Hero
-          title="Can’t reach your server"
-          body="Chats are read-only until your computer is reachable again."
-        />
       );
   }
 }

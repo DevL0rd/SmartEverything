@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
 import ReanimatedSwipeable, {
   SwipeDirection,
@@ -20,6 +20,8 @@ import { DURATION, useMotion } from '../../../design/motion';
 import { selectionTick } from '../../../platform/haptics';
 
 const ARM_PX = 56;
+
+const GHOST_SLOT = 'w-18 items-start justify-start pl-2 pt-1';
 
 function useArmed(translation: SharedValue<number>, reduced: boolean): SharedValue<number> {
   const armed = useSharedValue(0);
@@ -53,7 +55,7 @@ function Ghost({ translation }: { readonly translation: SharedValue<number> }): 
   }));
   const fill = useAnimatedStyle(() => ({ opacity: armed.get() }));
   return (
-    <View className="w-18 items-start justify-start pl-2 pt-1">
+    <View className={GHOST_SLOT}>
       <Animated.View
         style={grow}
         className="size-10 items-center justify-center overflow-hidden rounded-full bg-surface-3"
@@ -75,6 +77,15 @@ export function SwipeToQuote({
   readonly children: ReactNode;
 }): ReactNode {
   const ref = useRef<SwipeableMethods>(null);
+  const [armed, setArmed] = useState(false);
+  const arm = useCallback(() => {
+    setArmed(true);
+  }, []);
+  const renderLeftActions = useCallback(
+    (_progress: SharedValue<number>, translation: SharedValue<number>) =>
+      armed ? <Ghost translation={translation} /> : <View className={GHOST_SLOT} />,
+    [armed],
+  );
   return (
     <ReanimatedSwipeable
       ref={ref}
@@ -83,7 +94,8 @@ export function SwipeToQuote({
       overshootLeft={false}
       overshootRight={false}
       friction={1.4}
-      renderLeftActions={(_progress, translation) => <Ghost translation={translation} />}
+      renderLeftActions={renderLeftActions}
+      onSwipeableOpenStartDrag={arm}
       onSwipeableOpen={(direction) => {
         if (direction === SwipeDirection.RIGHT) {
           onQuote();
@@ -91,7 +103,7 @@ export function SwipeToQuote({
         ref.current?.close();
       }}
     >
-      {children}
+      <View onTouchStart={arm}>{children}</View>
     </ReanimatedSwipeable>
   );
 }

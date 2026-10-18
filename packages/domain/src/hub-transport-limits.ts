@@ -1,0 +1,5 @@
+export const HUB_REQUEST_TIMEOUT_MS = 15_000;
+export const HUB_STREAM_IDLE_TIMEOUT_MS = 60_000;
+export const HUB_ROUTE_PROBE_TIMEOUT_MS = 4000;
+export const HUB_ROUTE_DOCUMENT_BYTES = 16_384;
+export const HUB_ROUTE_LAN_PROBES = 3;

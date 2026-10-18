@@ -6,6 +6,7 @@ import { TextField, type FieldKind } from '../components/text-field';
 import { useMutationState, type MutationState } from '../store/mutation';
 
 export interface TextEditRequest {
+  readonly id?: string;
   readonly title: string;
   readonly label: string;
   readonly initial: string;
@@ -118,6 +119,10 @@ function Editor({
   );
 }
 
+export function editorKeyOf(request: TextEditRequest): string {
+  return request.id ?? request.title;
+}
+
 export function TextEditSheet({
   request,
   onClose,
@@ -128,5 +133,5 @@ export function TextEditSheet({
   if (request === null) {
     return null;
   }
-  return <Editor key={request.title} request={request} onClose={onClose} />;
+  return <Editor key={editorKeyOf(request)} request={request} onClose={onClose} />;
 }

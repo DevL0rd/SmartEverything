@@ -9,7 +9,7 @@ import { Segmented } from '../../../components/segmented';
 import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
-import { NUTRIENT_FIELDS, withKind, type FoodForm } from '../model/food-form';
+import { NUTRIENT_FIELDS, nutrientProblemKey, withKind, type FoodForm } from '../model/food-form';
 
 export type Problems = ReadonlyMap<string, string>;
 
@@ -70,7 +70,7 @@ export function NutrientFields({
             onChange={(value) => {
               set({ ...form, nutrients: { ...form.nutrients, [field.nutrient]: value } });
             }}
-            problem={problems.get('grams')}
+            problem={problems.get(nutrientProblemKey(field.nutrient))}
           />
         ))}
         {more ? null : (

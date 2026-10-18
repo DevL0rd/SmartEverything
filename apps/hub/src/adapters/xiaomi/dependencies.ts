@@ -1,8 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createSocket, type Socket } from 'node:dgram';
 import { MIIO_PORT } from '@smarteverything/xiaomi';
-
-export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
+import type { FetchLike } from '../../plugins/builtin/fetch-like';
 
 export interface CameraFollowUps {
   readonly delaysMs: readonly number[];
@@ -28,7 +27,7 @@ export interface XiaomiTiming {
 }
 
 export interface XiaomiDependencies {
-  readonly fetch: Fetch;
+  readonly fetch: FetchLike;
   readonly createSocket: () => Socket;
   readonly randomBytes: (length: number) => Uint8Array;
   readonly now: () => number;

@@ -6,31 +6,42 @@ import {
   type AiBudgetChange,
   type AiBudgetSettings,
 } from '@smarteverything/domain';
-import { ErrorState } from '../../../components/error-state';
+import { LoadedQuery } from '../../../components/loaded-query';
 import { ListRow } from '../../../components/list-row';
 import { NumberStepper } from '../../../components/number-stepper';
 import { SwitchRow } from '../../../components/rows';
-import { Skeleton } from '../../../components/skeleton';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import type { IconName } from '../../../components/icon-glyphs';
 import { useIsOwner } from '../../../store/selectors';
 import { useBudgetStatus, useBudgetUpdate } from '../data/budget';
 import { useMoney, type Money } from '../../region';
 import { BudgetSheet, type BudgetField, type BudgetValues } from './budget-sheet';
 
+const USD_MIN = 0.01;
 const USD_MAX = 100_000;
 
 export interface LimitSpec {
   readonly title: string;
   readonly icon: IconName;
   readonly value: (settings: AiBudgetSettings, money: Money) => string;
-  readonly fields: (settings: AiBudgetSettings) => readonly BudgetField[];
-  readonly change: (values: BudgetValues) => AiBudgetChange;
+  readonly fields: (settings: AiBudgetSettings, money: Money) => readonly BudgetField[];
+  readonly change: (values: BudgetValues, money: Money) => AiBudgetChange;
   readonly off: AiBudgetChange;
 }
 
-function money(key: string, label: string, helper: string, initial: number | null): BudgetField {
-  return { key, label, helper, unit: 'usd', initial, min: 0.01, max: USD_MAX };
+const USD_KEY = 'usd';
+
+function moneyField(money: Money, label: string, helper: string, usd: number | null): BudgetField {
+  const { min, max } = money.bounds(USD_MIN, USD_MAX);
+  return {
+    key: USD_KEY,
+    label: `${label}, in ${money.format.currency}`,
+    helper,
+    unit: 'money',
+    initial: usd === null ? null : money.toLocal(usd),
+    min,
+    max,
+  };
 }
 
 function amountOf(values: BudgetValues, key: string): number {
@@ -46,18 +57,16 @@ export const LIMITS: Readonly<Record<'daily' | 'monthly' | 'burn' | 'credits', L
     title: 'Daily limit',
     icon: 'sun',
     value: (s, m) => (s.daily_usd === null ? 'Off' : m.dollars(s.daily_usd)),
-    fields: (s) => [money('usd', 'Per day, in US dollars', 'Counts every AI source.', s.daily_usd)],
-    change: (v) => ({ daily_usd: amountOf(v, 'usd') }),
+    fields: (s, m) => [moneyField(m, 'Per day', 'Counts every AI source.', s.daily_usd)],
+    change: (v, m) => ({ daily_usd: m.toUsd(amountOf(v, USD_KEY)) }),
     off: { daily_usd: null },
   },
   monthly: {
     title: 'Monthly limit',
     icon: 'calendar',
     value: (s, m) => (s.monthly_usd === null ? 'Off' : m.dollars(s.monthly_usd)),
-    fields: (s) => [
-      money('usd', 'Per month, in US dollars', 'Counts every AI source.', s.monthly_usd),
-    ],
-    change: (v) => ({ monthly_usd: amountOf(v, 'usd') }),
+    fields: (s, m) => [moneyField(m, 'Per month', 'Counts every AI source.', s.monthly_usd)],
+    change: (v, m) => ({ monthly_usd: m.toUsd(amountOf(v, USD_KEY)) }),
     off: { monthly_usd: null },
   },
   burn: {
@@ -65,13 +74,8 @@ export const LIMITS: Readonly<Record<'daily' | 'monthly' | 'burn' | 'credits', L
     icon: 'flame',
     value: (s, m) =>
       s.burn === null ? 'Off' : `${m.dollars(s.burn.usd)} in ${String(s.burn.minutes)} min`,
-    fields: (s) => [
-      money(
-        'usd',
-        'Alert when more than, in US dollars',
-        'Spent within the time below.',
-        s.burn?.usd ?? null,
-      ),
+    fields: (s, m) => [
+      moneyField(m, 'Alert when more than', 'Spent within the time below.', s.burn?.usd ?? null),
       {
         key: 'minutes',
         label: 'Within, in minutes',
@@ -82,17 +86,17 @@ export const LIMITS: Readonly<Record<'daily' | 'monthly' | 'burn' | 'credits', L
         max: BURN_MINUTES_MAX,
       },
     ],
-    change: (v) => ({ burn: { usd: amountOf(v, 'usd'), minutes: amountOf(v, 'minutes') } }),
+    change: (v, m) => ({
+      burn: { usd: m.toUsd(amountOf(v, USD_KEY)), minutes: amountOf(v, 'minutes') },
+    }),
     off: { burn: null },
   },
   credits: {
     title: 'Low credits alert',
     icon: 'battery',
     value: (s, m) => (s.low_credits_usd === null ? 'Off' : `Below ${m.dollars(s.low_credits_usd)}`),
-    fields: (s) => [
-      money('usd', 'Alert below, in US dollars', 'OpenRouter credits left.', s.low_credits_usd),
-    ],
-    change: (v) => ({ low_credits_usd: amountOf(v, 'usd') }),
+    fields: (s, m) => [moneyField(m, 'Alert below', 'OpenRouter credits left.', s.low_credits_usd)],
+    change: (v, m) => ({ low_credits_usd: m.toUsd(amountOf(v, USD_KEY)) }),
     off: { low_credits_usd: null },
   },
 };
@@ -109,14 +113,9 @@ function Loaded({
 }: {
   readonly children: (settings: AiBudgetSettings) => ReactNode;
 }): ReactNode {
-  const status = useBudgetStatus();
-  if (status.isError) {
-    return <ErrorState error={status.error} retry={() => void status.refetch()} />;
-  }
-  if (status.data === undefined) {
-    return <Skeleton shape="line" className="h-12" />;
-  }
-  return children(status.data.settings);
+  return (
+    <LoadedQuery query={useBudgetStatus()}>{(status) => children(status.settings)}</LoadedQuery>
+  );
 }
 
 export function LimitRow({ spec }: { readonly spec: LimitSpec }): ReactNode {
@@ -141,12 +140,12 @@ export function LimitRow({ spec }: { readonly spec: LimitSpec }): ReactNode {
           {open ? (
             <BudgetSheet
               title={spec.title}
-              fields={spec.fields(settings)}
+              fields={spec.fields(settings, money)}
               open
               onClose={() => {
                 setOpen(false);
               }}
-              onSave={(values) => change(spec.change(values))}
+              onSave={(values) => change(spec.change(values, money))}
               onTurnOff={() => change(spec.off)}
             />
           ) : null}
@@ -156,9 +155,7 @@ export function LimitRow({ spec }: { readonly spec: LimitSpec }): ReactNode {
   );
 }
 
-function failed(error: unknown): void {
-  notify({ message: 'The budget was not changed', error });
-}
+const failed = notifyFailure('The budget was not changed');
 
 export function WarnAtRow(): ReactNode {
   const owner = useIsOwner();

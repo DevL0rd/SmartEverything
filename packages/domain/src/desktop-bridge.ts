@@ -9,9 +9,11 @@ import type {
   NativeHubSocketSend,
   NativeHubNetworkChange,
 } from './hub-native';
-import type { HubConnectionMetadata } from './hub-connections';
+import { HUB_CONNECTION_METADATA, type HubConnectionMetadata } from './hub-connections';
 import type { NativeHtmlPreview } from './native-html-preview';
 import type { DesktopBrowser } from './desktop-browser';
+import type { MachineUpdateStatus } from './machine-updates';
+import type { OverlayAction, OverlayHostView } from './voice-overlay';
 export const DESKTOP_COMPUTER_IDENTITY = z.object({
   device_id: z.uuid().nullable(),
   machine_id: z
@@ -32,12 +34,17 @@ export interface DesktopServer {
   readonly url: string;
   readonly token: string;
 }
+export const DESKTOP_SERVER: z.ZodType<DesktopServer> = z.object({
+  url: z.string(),
+  token: z.string(),
+  connection: z.exactOptional(HUB_CONNECTION_METADATA),
+});
 
 export type DesktopServiceManager = 'systemd' | 'launchd' | 'windows-run';
 
 export type DesktopServiceHealth = 'not-installed' | 'stopped' | 'starting' | 'running' | 'failed';
 
-export type DesktopLinger = 'enabled' | 'disabled' | 'before-login' | 'unsupported';
+export type DesktopLinger = 'enabled' | 'disabled' | 'unsupported';
 
 export interface DesktopServiceStatus {
   readonly manager: DesktopServiceManager;
@@ -49,12 +56,6 @@ export interface DesktopServiceStatus {
   readonly detail: string;
   readonly linger: DesktopLinger;
   readonly managedBy?: 'stable-app';
-}
-
-export interface DesktopFfmpeg {
-  readonly found: boolean;
-  readonly path: string | null;
-  readonly instructions: string;
 }
 
 export type DesktopFirewallOutcome = 'applied' | 'declined' | 'failed' | 'stale';
@@ -75,7 +76,9 @@ export type DesktopTalkCommand =
   | { readonly kind: 'toggle' }
   | { readonly kind: 'next' }
   | { readonly kind: 'select'; readonly channelId: string }
-  | { readonly kind: 'open' };
+  | { readonly kind: 'open' }
+  | { readonly kind: 'assistant'; readonly phase: 'press' | 'release' | 'toggle' }
+  | { readonly kind: 'assistant_mute' };
 
 export type DesktopTalkBackend = 'portal' | 'electron';
 
@@ -84,6 +87,8 @@ export interface DesktopTalkShortcuts {
   readonly hold: boolean;
   readonly talk: string | null;
   readonly next: string | null;
+  readonly assistant: string | null;
+  readonly assistantMute: string | null;
   readonly problem: string | null;
 }
 
@@ -124,6 +129,12 @@ export interface DesktopStill {
   readonly dataBase64: string;
 }
 
+export const OVERLAY_LEVELS_PORT_MESSAGE = 'smarteverything:overlay-levels';
+
+export type DesktopOverlayHelper =
+  | { readonly kind: 'unused' | 'ready' | 'absent' }
+  | { readonly kind: 'failed'; readonly reason: string };
+
 export interface SmartEverythingDesktop {
   readonly browser?: DesktopBrowser;
   readonly htmlPreview?: NativeHtmlPreview;
@@ -136,7 +147,8 @@ export interface SmartEverythingDesktop {
   setStartOnLogin(enabled: boolean): Promise<boolean>;
   onDeepLink(listener: (url: string) => void): () => void;
   takePendingDeepLinks(): Promise<readonly string[]>;
-  server(): Promise<DesktopServer>;
+  server(): Promise<DesktopServer | null>;
+  setWindow(window: DesktopServer | null): Promise<void>;
   serviceStatus(): Promise<DesktopServiceStatus>;
   startService(): Promise<DesktopServiceStatus>;
   stopService(): Promise<DesktopServiceStatus>;
@@ -145,17 +157,25 @@ export interface SmartEverythingDesktop {
   enableServiceLinger(): Promise<DesktopServiceStatus>;
   serviceLogs(): Promise<DesktopServiceLogs>;
   onServiceStatus(listener: (status: DesktopServiceStatus) => void): () => void;
-  checkFfmpeg(): Promise<DesktopFfmpeg>;
   applyFirewall(revision: string): Promise<DesktopFirewallResult>;
   onTalkCommand?(listener: (command: DesktopTalkCommand) => void): () => void;
   talkShortcuts?(): Promise<DesktopTalkShortcuts>;
   configureTalkShortcuts?(): Promise<DesktopTalkShortcuts>;
   setTalkTray?(tray: DesktopTalkTray): Promise<void>;
   attention?(): Promise<void>;
+  setOverlay?(view: OverlayHostView): Promise<void>;
+  onOverlayAction?(listener: (action: OverlayAction) => void): () => void;
+  onOverlayHold?(listener: (active: boolean) => void): () => void;
+  overlayHelper?(): Promise<DesktopOverlayHelper>;
+  onOverlayHelper?(listener: (helper: DesktopOverlayHelper) => void): () => void;
   captureMode?(): Promise<DesktopCaptureMode>;
   listCaptureSources?(): Promise<readonly DesktopCaptureSource[]>;
   chooseCaptureSource?(sourceId: string | null): Promise<void>;
   captureStill?(sourceId: string | null): Promise<DesktopStill>;
+  updateStatus?(): Promise<MachineUpdateStatus>;
+  checkForUpdate?(): Promise<MachineUpdateStatus>;
+  installUpdate?(): Promise<MachineUpdateStatus>;
+  onUpdateStatus?(listener: (status: MachineUpdateStatus) => void): () => void;
 }
 
 export interface DesktopInvokeChannels {
@@ -210,7 +230,14 @@ export interface DesktopInvokeChannels {
     readonly request: undefined;
     readonly response: DesktopComputerIdentity;
   };
-  readonly 'desktop:server': { readonly request: undefined; readonly response: DesktopServer };
+  readonly 'desktop:server': {
+    readonly request: undefined;
+    readonly response: DesktopServer | null;
+  };
+  readonly 'desktop:set-window': {
+    readonly request: DesktopServer | null;
+    readonly response: undefined;
+  };
   readonly 'desktop:service-status': ServiceCall;
   readonly 'desktop:service-start': ServiceCall;
   readonly 'desktop:service-stop': ServiceCall;
@@ -221,7 +248,6 @@ export interface DesktopInvokeChannels {
     readonly request: undefined;
     readonly response: DesktopServiceLogs;
   };
-  readonly 'desktop:ffmpeg': { readonly request: undefined; readonly response: DesktopFfmpeg };
   readonly 'desktop:talk-shortcuts': {
     readonly request: undefined;
     readonly response: DesktopTalkShortcuts;
@@ -231,6 +257,14 @@ export interface DesktopInvokeChannels {
     readonly response: DesktopTalkShortcuts;
   };
   readonly 'desktop:talk-tray': { readonly request: DesktopTalkTray; readonly response: undefined };
+  readonly 'desktop:overlay-view': {
+    readonly request: OverlayHostView;
+    readonly response: undefined;
+  };
+  readonly 'desktop:overlay-helper': {
+    readonly request: undefined;
+    readonly response: DesktopOverlayHelper;
+  };
   readonly 'desktop:attention': { readonly request: undefined; readonly response: undefined };
   readonly 'desktop:capture-mode': {
     readonly request: undefined;
@@ -252,6 +286,14 @@ export interface DesktopInvokeChannels {
     readonly request: string;
     readonly response: DesktopFirewallResult;
   };
+  readonly 'desktop:update-status': UpdateCall;
+  readonly 'desktop:update-check': UpdateCall;
+  readonly 'desktop:update-install': UpdateCall;
+}
+
+interface UpdateCall {
+  readonly request: undefined;
+  readonly response: MachineUpdateStatus;
 }
 
 interface ServiceCall {
@@ -264,10 +306,16 @@ export type DesktopInvokeChannel = keyof DesktopInvokeChannels;
 export type DesktopEventChannel =
   | 'desktop:deep-link'
   | 'desktop:service-status-changed'
+  | 'desktop:update-status-changed'
   | 'desktop:talk-command'
+  | 'desktop:overlay-action'
+  | 'desktop:overlay-hold'
+  | 'desktop:overlay-helper'
   | 'desktop:hub-discovery'
   | 'desktop:hub-socket'
   | 'desktop:hub-network';
+
+export type DesktopPortChannel = 'desktop:overlay-levels';
 
 export type DesktopGlobalName = 'smartEverythingDesktop';
 

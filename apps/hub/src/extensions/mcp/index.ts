@@ -27,7 +27,7 @@ import { exchangeToken } from './oauth/token';
 import { BodyFormatError, replyJson } from './respond';
 import { siteOf, type Site } from './site';
 import { ToolListFeed } from './tool-list-feed';
-import { postMcp, refuseMcpDelete, streamMcp, type TransportOptions } from './transport';
+import { handleMcp, streamMcp, type TransportOptions } from './transport';
 
 export interface McpOptions {
   readonly clock: Clock;
@@ -161,7 +161,7 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
     {
       method: 'POST',
       path: MCP_PATHS.mcp,
-      handle: (request, response) => postMcp(transport, request, response),
+      handle: (request, response) => handleMcp(transport, request, response),
     },
     {
       method: 'GET',
@@ -171,7 +171,7 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
     {
       method: 'DELETE',
       path: MCP_PATHS.mcp,
-      handle: (_request, response) => refuseMcpDelete(response),
+      handle: (request, response) => handleMcp(transport, request, response),
     },
   ];
 }
@@ -192,7 +192,7 @@ function partsOf(context: ExtensionContext, options: McpOptions): Parts {
       }),
       log: context.log.forArea('hub.oauth'),
     },
-    toolList: new ToolListFeed(context.store),
+    toolList: new ToolListFeed(context.store, context.log.forArea('hub.mcp')),
   };
 }
 

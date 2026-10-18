@@ -1,46 +1,23 @@
-import { API_ENDPOINTS as E, ApiError, DEFAULT_RESPONSE_STYLE } from '@smarteverything/domain';
-import { clientOf, roleOfCaller, profileIdOf, type Caller } from '../auth';
+import { API_ENDPOINTS as E, DEFAULT_RESPONSE_STYLE } from '@smarteverything/domain';
+import { chatOwnerOf, clientOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
-import { DONE_REPLY, bound, type Bound } from '../router';
-
-type AssistantChatRoutes = Record<
-  | 'readAssistant'
-  | 'listAssistantMessages'
-  | 'sendAssistantMessage'
-  | 'removeAssistantMessage'
-  | 'clearAssistantMessages'
-  | 'startAssistantUpload'
-  | 'sendAssistantUploadChunk'
-  | 'finishAssistantUpload'
-  | 'assistantAttachmentLinks'
-  | 'readAssistantResponseStyle'
-  | 'updateAssistantSettings'
-  | 'postAssistant',
-  Bound
->;
+import { DONE_REPLY, bound } from '../router';
+import { wireMessages } from '../../assistant/wire-message';
 
 function local(caller: Caller): boolean {
   return caller.kind === 'client' && caller.via === 'assistant' && caller.local === true;
 }
 
-function chatRoutes(
-  context: ServerContext,
-): Pick<
-  AssistantChatRoutes,
-  | 'readAssistant'
-  | 'listAssistantMessages'
-  | 'sendAssistantMessage'
-  | 'removeAssistantMessage'
-  | 'clearAssistantMessages'
-> {
-  const { store, assistant } = context;
-  return {
+const chatRoutes = ({ store, assistant }: ServerContext) =>
+  ({
     readAssistant: bound(E.readAssistant, () => assistant.status()),
     listAssistantMessages: bound(E.listAssistantMessages, ({ query, caller }) =>
-      assistant.messages(
-        assistant.chats.defaultChat(profileIdOf(store, caller)).id,
-        query.before,
-        query.limit,
+      wireMessages(
+        assistant.messages(
+          assistant.chats.chatOf(chatOwnerOf(store, caller)).id,
+          query.before,
+          query.limit,
+        ),
       ),
     ),
     sendAssistantMessage: bound(E.sendAssistantMessage, ({ body, caller }) =>
@@ -48,38 +25,25 @@ function chatRoutes(
         caller,
         { clientId: clientOf(caller).id, profileId: profileIdOf(store, caller) },
         body,
+        assistant.chats.chatOf(chatOwnerOf(store, caller)).id,
       ),
     ),
     removeAssistantMessage: bound(E.removeAssistantMessage, async ({ params, caller }) => {
-      await assistant.remove(
-        { profileId: profileIdOf(store, caller), role: roleOfCaller(caller) },
-        [params.messageId],
-      );
+      await assistant.remove(chatOwnerOf(store, caller), [params.messageId]);
       return DONE_REPLY;
     }),
     clearAssistantMessages: bound(E.clearAssistantMessages, async ({ caller }) => {
-      const profileId = profileIdOf(store, caller);
-      const chatId = assistant.chats.defaultChat(profileId).id;
+      const owner = chatOwnerOf(store, caller);
       await assistant.remove(
-        { profileId, role: roleOfCaller(caller) },
-        store.assistantChat.messageIdsOf(chatId),
+        owner,
+        store.assistantChat.messageIdsOf(assistant.chats.chatOf(owner).id),
       );
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
 
-function fileRoutes(
-  context: ServerContext,
-): Pick<
-  AssistantChatRoutes,
-  | 'startAssistantUpload'
-  | 'sendAssistantUploadChunk'
-  | 'finishAssistantUpload'
-  | 'assistantAttachmentLinks'
-> {
-  const { store, assistant, links } = context;
-  return {
+const fileRoutes = ({ store, assistant, links }: ServerContext) =>
+  ({
     startAssistantUpload: bound(E.startAssistantUpload, ({ body, caller }) =>
       assistant.files.start({ ...body, profileId: profileIdOf(store, caller) }),
     ),
@@ -106,40 +70,30 @@ function fileRoutes(
       };
     }),
     assistantAttachmentLinks: bound(E.assistantAttachmentLinks, ({ body, caller }) => {
-      const profileId = profileIdOf(store, caller);
+      const owner = chatOwnerOf(store, caller);
       return body.ids.map((id) => {
-        if (store.assistantChat.attachment(id).profile_id !== profileId) {
-          throw new ApiError('forbidden', 'That attachment belongs to another person’s chat.');
-        }
+        assistant.chats.attachment(owner, id);
         return { id, ...links.assistantAttachment(id) };
       });
     }),
-  };
-}
+  }) as const;
 
-function settingsRoutes(
-  context: ServerContext,
-): Pick<
-  AssistantChatRoutes,
-  'readAssistantResponseStyle' | 'updateAssistantSettings' | 'postAssistant'
-> {
-  const { assistant } = context;
-  return {
+const settingsRoutes = ({ assistant, store }: ServerContext) =>
+  ({
     readAssistantResponseStyle: bound(
       E.readAssistantResponseStyle,
       () => assistant.settings().response_style ?? DEFAULT_RESPONSE_STYLE,
     ),
     updateAssistantSettings: bound(E.updateAssistantSettings, ({ body }) => assistant.update(body)),
-    postAssistant: bound(E.postAssistant, ({ body, caller }) =>
-      assistant.post(body, local(caller)),
-    ),
-  };
-}
+    postAssistant: bound(E.postAssistant, ({ body, caller }) => {
+      const owner = chatOwnerOf(store, caller);
+      return assistant.post(body, local(caller) && owner.role === 'owner', owner);
+    }),
+  }) as const;
 
-export function assistantChatRoutes(context: ServerContext): AssistantChatRoutes {
-  return {
+export const assistantChatRoutes = (context: ServerContext) =>
+  ({
     ...chatRoutes(context),
     ...fileRoutes(context),
     ...settingsRoutes(context),
-  };
-}
+  }) as const;

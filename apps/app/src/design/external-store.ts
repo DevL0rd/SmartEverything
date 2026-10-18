@@ -1,4 +1,4 @@
-import { use, useRef, useSyncExternalStore } from 'react';
+import { use, useCallback, useRef, useSyncExternalStore } from 'react';
 import { ScreenPausedContext } from './screen-pause';
 
 export class ValueStore<T> {
@@ -30,20 +30,28 @@ export class ValueStore<T> {
   };
 }
 
-export const IDLE_SUBSCRIBE = (): (() => void) => () => undefined;
-
 export function usePausable<T>(subscribe: (listener: () => void) => () => void, read: () => T): T {
-  const paused = use(ScreenPausedContext);
+  const pause = use(ScreenPausedContext);
   const last = useRef<{ readonly value: T } | null>(null);
+  const gated = useCallback(
+    (wake: () => void) => {
+      const off = subscribe(pause.gate(wake));
+      return (): void => {
+        off();
+        pause.release(wake);
+      };
+    },
+    [subscribe, pause],
+  );
   const snapshot = (): T => {
-    if (paused && last.current !== null) {
+    if (pause.isPaused() && last.current !== null) {
       return last.current.value;
     }
     const value = read();
     last.current = { value };
     return value;
   };
-  return useSyncExternalStore(paused ? IDLE_SUBSCRIBE : subscribe, snapshot, snapshot);
+  return useSyncExternalStore(gated, snapshot, snapshot);
 }
 
 export function useSelected<T, S extends string | number | boolean | null>(

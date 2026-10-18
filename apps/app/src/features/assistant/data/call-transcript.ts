@@ -70,7 +70,7 @@ export function callTurnsOf(row: AssistantMessageRow): readonly CallTurn[] {
   return legacyTurns(row);
 }
 
-export function callLengthOf(row: AssistantMessageRow): string {
+function callLengthOf(row: AssistantMessageRow): string {
   const seconds = Math.max(
     1,
     Math.round((Date.parse(row.updated_at) - Date.parse(row.created_at)) / 1000),

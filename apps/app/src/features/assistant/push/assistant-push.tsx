@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { router, type Href } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import { z } from 'zod';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import type { EntityStore } from '../../../store/entity-store';
 import { useEntityStore } from '../../../store/store-context';
@@ -55,7 +55,7 @@ function handle(response: Notifications.NotificationResponse, store: EntityStore
   const text = response.userText?.trim() ?? '';
   if (response.actionIdentifier === REPLY_ACTION && text !== '') {
     log.info('push.inline_reply', {});
-    void sendMessage(text, []);
+    background(sendMessage(text, []), 'message.send_failed');
   }
   router.navigate(chatHref(store, tap.data));
 }

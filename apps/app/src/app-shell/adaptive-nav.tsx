@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { IconButton } from '../components/icon-button';
 import { modifierLabel } from '../design/platform';
-import { useSizeClass } from '../design/size-class';
+import { setSidebarCollapsed, useSizeClass } from '../design/size-class';
 import { useUnreadChatCount } from '../features/assistant';
 import { setLocalPref, useLocalPref } from '../store/local-prefs';
 import { RailSearch } from '../search/rail-search';
@@ -140,6 +140,9 @@ export function AdaptiveNav(props: BottomTabBarProps): ReactNode {
   }, [current]);
   const entries = navEntries(model);
   const pointerCollapsed = collapsed && idiom === 'pointer';
+  useEffect(() => {
+    setSidebarCollapsed(pointerCollapsed);
+  }, [pointerCollapsed]);
   const toggle = (): void => {
     setLocalPref('sidebarCollapsed', !collapsed);
   };

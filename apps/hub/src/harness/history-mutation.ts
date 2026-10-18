@@ -36,11 +36,10 @@ export function rewriteNativeHistory(
 ): void {
   if (chat.engine.kind !== 'dsh' || chat.engine.session_id === null) return;
   const id = chat.engine.session_id;
-  const host = service.directory.get(chat.engine.execution_target).host;
   const metadata = service.store.dshSessions.stat(id, chat.profile_id);
   if (metadata?.chat_id !== chat.id)
     throw new ApiError('forbidden', 'Native history belongs to another conversation.');
-  const history = nativeHistory(service, chat, id, metadata.next_seq);
+  const history = nativeHistory(service, chat, id);
   const removed = new Set(
     history.flatMap((event) =>
       hasType(event, HISTORY_EDIT) ? REMOVAL.parse(event.data).removed : [],
@@ -52,44 +51,17 @@ export function rewriteNativeHistory(
   if (removed.size === priorRemoved) return;
   const replacements = replacementEvents(history, removed);
   if (replacements.length === 0) return;
-  service.store.durableWrite(() => {
-    const principal = service.hostPrincipal(chat.profile_id, host);
-    const opened = service.store.dshSessions.acquire(
-      {
-        session_id: id,
-        target: host.target,
-        runtime_instance: host.runtime_instance,
-        connection_generation: host.connection_generation,
-        operation_id: randomUUID(),
-        lease_ms: 120_000,
-      },
-      principal,
-    );
-    if (opened.metadata.next_seq !== metadata.next_seq)
-      throw new ApiError('conflict', 'Native history changed while its edit was being admitted.');
-    const appended = service.store.dshSessions.append(
-      { claim: opened.claim, operation_id: randomUUID(), events: replacements },
-      principal,
-    );
-    service.store.dshSessions.release(
-      { claim: opened.claim, operation_id: randomUUID(), expected_next_seq: appended.next_seq },
-      principal,
-    );
-  });
+  service.store.dshSessions.rewrite(id, chat.profile_id, replacements);
 }
 function nativeHistory(
   service: HarnessService,
   chat: AiChatRow,
   id: string,
-  count: number,
 ): ReturnType<typeof readNativeHistory> {
-  const events = [];
-  for (let offset = 0; offset < count; offset += 10_000)
-    events.push(
-      ...service.store.dshSessions.read({ session_id: id, offset, limit: 10_000 }, chat.profile_id)
-        .events,
-    );
-  return readNativeHistory(service.store.dshSessions.stat(id, chat.profile_id)?.header, events);
+  return readNativeHistory(
+    service.store.dshSessions.stat(id, chat.profile_id)?.header,
+    service.store.dshSessions.readAll(id, chat.profile_id),
+  );
 }
 function removedSequences(
   service: HarnessService,
@@ -98,11 +70,6 @@ function removedSequences(
   history: ReturnType<typeof readNativeHistory>,
 ): readonly number[] {
   const cut = service.store.harnessDeliveries.cutOfMessage(row.id);
-  if (cut?.session_id === id && cut.state !== 'completed')
-    throw new ApiError(
-      'conflict',
-      'This native delivery has no confirmed outcome; its history cannot be rewritten or retried.',
-    );
   const imported = history.findIndex(
     (event) =>
       hasType(event, 'plugin:smarteverything/legacy-message') &&

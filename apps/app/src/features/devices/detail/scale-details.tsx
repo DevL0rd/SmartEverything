@@ -1,22 +1,27 @@
 import type { ReactNode } from 'react';
-import { useActiveProfile, useBodyReadings } from '../../../store/people';
+import { Text } from '../../../components/text';
+import { ScaleStatus } from '../../profiles';
 import type { Device } from '../../../store/state';
-import { CompositionGrid, ScaleStatus } from '../../profiles';
+import { CompositionCard } from '../scale/composition-card';
+import { PeopleBlock } from '../scale/people-block';
+import { RecentWeighIns } from '../scale/recent-weigh-ins';
+import { TrendCard } from '../scale/trend-card';
+import { useScale } from '../scale/use-scale';
 
-function LatestComposition({ scale }: { readonly scale: Device }): ReactNode {
-  const profile = useActiveProfile();
-  const latest = useBodyReadings(profile?.id ?? null).find(
-    (reading) => reading.device_id === scale.id,
-  );
-  const composition = latest?.composition ?? null;
-  return composition === null ? null : <CompositionGrid composition={composition} />;
-}
+const NO_SETTINGS = 'The scale has no settings here. Step on it with your phone nearby.';
 
-export function ScaleDetails({ scale }: { readonly scale: Device }): ReactNode {
+export function ScaleDetails({ scale: device }: { readonly scale: Device }): ReactNode {
+  const scale = useScale(device);
   return (
     <>
-      <LatestComposition scale={scale} />
-      <ScaleStatus scale={scale} />
+      <CompositionCard scale={scale} />
+      <TrendCard scale={scale} />
+      <RecentWeighIns scale={scale} />
+      <PeopleBlock scale={scale} />
+      <ScaleStatus scale={device} />
+      <Text variant="footnote" tone="variant">
+        {NO_SETTINGS}
+      </Text>
     </>
   );
 }

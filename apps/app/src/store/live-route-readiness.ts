@@ -1,5 +1,25 @@
+import { Logger } from '@smarteverything/logging';
+import { errorFields } from '../design/log-tally';
 import type { ActiveHubRoute } from '../api/connection/active-route';
 import { StaleHubRouteError } from '../api/connection/route-policy';
+
+const log = new Logger('app.live-route');
+
+interface RouteIds {
+  readonly generation: number;
+  readonly scopeId: string | number;
+  readonly startedAt: number;
+}
+
+function noteRoute(event: string, ids: RouteIds, stale: boolean, error?: unknown): void {
+  log.info(event, {
+    generation: ids.generation,
+    scopeId: ids.scopeId,
+    durationMs: Date.now() - ids.startedAt,
+    stale,
+    ...(error === undefined ? {} : errorFields(error)),
+  });
+}
 
 interface LiveRouteReadiness {
   readonly generation: () => number;
@@ -22,13 +42,18 @@ export function followLiveRouteReadiness(
       scopeId === manager.scopeId &&
       handlers.active() &&
       manager.running;
+    const ids = { generation, scopeId, startedAt: Date.now() };
     void manager
       .ready()
       .then(() => {
-        if (current()) handlers.ready();
+        const live = current();
+        noteRoute('route.ready', ids, !live);
+        if (live) handlers.ready();
       })
       .catch((error: unknown) => {
-        if (!current() || error instanceof StaleHubRouteError) return;
+        const stale = !current() || error instanceof StaleHubRouteError;
+        noteRoute('route.failed', ids, stale, error);
+        if (stale) return;
         retryCurrent = current;
         handlers.failed(error);
       });

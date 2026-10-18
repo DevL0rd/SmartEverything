@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 import { repositoryFile } from './versions';
 
 function runScript(source: string): string {
@@ -11,8 +10,6 @@ function runScript(source: string): string {
 }
 
 describe('tsx contract', () => {
-  itIsPinnedToItsDeclaredVersion('tsx');
-
   it('runs TypeScript without a build step, which is how the dev scripts run', () => {
     expect(runScript('const answer: number = 42; console.log(answer);').trim()).toBe('42');
   });

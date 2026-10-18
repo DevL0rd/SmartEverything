@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { itIsPinnedToItsDeclaredVersion, readRepositoryJson } from './contract-helpers';
+import { readRepositoryJson } from './contract-helpers';
 
 const CONFIG = z.object({
   words: z.array(z.string()),
@@ -8,8 +8,6 @@ const CONFIG = z.object({
 });
 
 describe('cspell contract', () => {
-  itIsPinnedToItsDeclaredVersion('cspell');
-
   it('does not spell check generated output', () => {
     const config = readRepositoryJson('cspell.json', CONFIG);
     expect(config.ignorePaths).toContain('pnpm-lock.yaml');

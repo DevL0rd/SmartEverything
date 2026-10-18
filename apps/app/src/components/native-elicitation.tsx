@@ -4,10 +4,10 @@ import { Linking, View } from 'react-native';
 import { z } from 'zod';
 import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
 import { Button } from './button';
-import { SelectRow, SwitchRow } from './rows';
+import { SchemaEditor } from './schema-editor';
+import { schemaOf, type Schema } from './schema-values';
 import { Text } from './text';
 import { notify } from './toast-store';
-import { TextField } from './text-field';
 
 const FIELD = z.looseObject({
   type: z.enum(['string', 'number', 'integer', 'boolean', 'array']),
@@ -27,59 +27,6 @@ const REQUEST = z.looseObject({
   requestedSchema: SCHEMA.optional(),
 });
 
-function elicitationText(value: JsonValue | undefined): string {
-  if (value === undefined) return '';
-  if (Array.isArray(value)) return z.array(z.string()).parse(value).join('\n');
-  return typeof value === 'object' ? JSON.stringify(value) : String(value);
-}
-
-function ElicitationField({
-  name,
-  field,
-  value,
-  change,
-  pending,
-}: {
-  readonly pending: boolean;
-  readonly name: string;
-  readonly field: z.infer<typeof FIELD>;
-  readonly value: JsonValue | undefined;
-  readonly change: (value: JsonValue) => void;
-}): ReactNode {
-  const title = field.title ?? name;
-  if (field.type === 'boolean')
-    return <SwitchRow title={title} value={value === true} disabled={pending} onChange={change} />;
-  if (field.enum !== undefined)
-    return (
-      <SelectRow
-        title={title}
-        disabled={pending}
-        value={typeof value === 'string' ? value : null}
-        options={field.enum.map((item) => ({ value: item, label: item }))}
-        onChange={change}
-      />
-    );
-  return (
-    <TextField
-      label={title}
-      disabled={pending}
-      value={elicitationText(value)}
-      {...(field.description === undefined ? {} : { helper: field.description })}
-      multiline={field.type === 'array'}
-      kind={field.type === 'number' || field.type === 'integer' ? 'number' : 'text'}
-      onChange={(text) => {
-        change(
-          field.type === 'number' || field.type === 'integer'
-            ? Number(text)
-            : field.type === 'array'
-              ? text.split('\n').filter((line) => line.trim() !== '')
-              : text,
-        );
-      }}
-    />
-  );
-}
-
 function RequestedWebsite({
   url,
   pending,
@@ -95,6 +42,7 @@ function RequestedWebsite({
       variant="tonal"
       onPress={() => {
         void Linking.openURL(url).catch((error: unknown) => {
+          log.warn('elicitation.open_failed', { reason: String(error), urlLength: url.length });
           notify({ message: 'Requested website could not be opened', error, tone: 'critical' });
         });
       }}
@@ -104,16 +52,17 @@ function RequestedWebsite({
 
 function RequestFields({
   request,
+  schema,
   values,
   change,
   pending,
 }: {
   readonly pending: boolean;
   readonly request: z.infer<typeof REQUEST> | null;
-  readonly values: Readonly<Record<string, JsonValue>>;
-  readonly change: (values: Readonly<Record<string, JsonValue>>) => void;
+  readonly schema: Schema;
+  readonly values: Schema;
+  readonly change: (values: Schema) => void;
 }): ReactNode {
-  const schema = request?.requestedSchema;
   return (
     <>
       <Text variant="title-3">Native MCP request</Text>
@@ -123,20 +72,13 @@ function RequestFields({
           : 'Unsupported request shape. Answer on the supplying computer or cancel.'}
       </Text>
       <RequestedWebsite url={request?.url} pending={pending} />
-      {schema === undefined
-        ? null
-        : Object.entries(schema.properties).map(([name, field]) => (
-            <ElicitationField
-              key={name}
-              pending={pending}
-              name={name}
-              field={field}
-              value={values[name]}
-              change={(value) => {
-                change({ ...values, [name]: value });
-              }}
-            />
-          ))}
+      <SchemaEditor
+        mode="elicitation"
+        schema={schema}
+        value={values}
+        change={change}
+        disabled={pending}
+      />
     </>
   );
 }
@@ -178,12 +120,15 @@ function ElicitationButtons({
         disabled={!enabled}
         loading={pending}
         onPress={() => {
-          const content = z.record(z.string(), JSON_VALUE).parse(values);
-          submit({ action: 'accept', content });
+          submit({ action: 'accept', content: values });
         }}
       />
     </View>
   );
+}
+
+export function formSchemaOf(input: Readonly<Record<string, JsonValue>>): Schema {
+  return REQUEST.safeParse(input).success ? schemaOf(input['requestedSchema']) : {};
 }
 
 const log = new Logger('app.provider');
@@ -218,7 +163,7 @@ export function NativeElicitation({
     readonly content?: Readonly<Record<string, JsonValue>>;
   }) => void;
 }): ReactNode {
-  const [values, setValues] = useState<Readonly<Record<string, JsonValue>>>({});
+  const [values, setValues] = useState<Schema>({});
   const request = REQUEST.safeParse(input);
   const schema = request.success ? request.data.requestedSchema : undefined;
   const validation = validForm(schema, values);
@@ -227,6 +172,7 @@ export function NativeElicitation({
     <View className="gap-4">
       <RequestFields
         request={request.success ? request.data : null}
+        schema={formSchemaOf(input)}
         values={values}
         change={setValues}
         pending={pending}

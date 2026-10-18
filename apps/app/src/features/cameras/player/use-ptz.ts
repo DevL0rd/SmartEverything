@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react';
+import { Logger, background } from '@smarteverything/logging';
 import { isFinished } from '@smarteverything/domain';
 import type { EntityStore } from '../../../store/entity-store';
 import type { Device } from '../../../store/state';
 import { useEntityStore, useLedger } from '../../../store/store-context';
+
+const log = new Logger('app.camera-ptz');
 
 export type PtzDirection = 'up' | 'down' | 'left' | 'right';
 
@@ -39,6 +42,28 @@ function finished(store: EntityStore, commandId: string): Promise<void> {
   });
 }
 
+async function sendLogged(
+  ledger: ReturnType<typeof useLedger>,
+  store: EntityStore,
+  device: Device,
+  direction: PtzDirection | 'home',
+): Promise<boolean> {
+  const startedAt = Date.now();
+  const outcome = await ledger.send(device, 'ptz', { direction });
+  if (!outcome.sent) {
+    log.warn('ptz.refused', { deviceId: device.id, direction });
+    return false;
+  }
+  await finished(store, outcome.row.id);
+  log.debug('ptz.finished', () => ({
+    deviceId: device.id,
+    commandId: outcome.row.id,
+    direction,
+    latencyMs: Date.now() - startedAt,
+  }));
+  return true;
+}
+
 export function usePtz(device: Device, physical: boolean): Ptz {
   const ledger = useLedger();
   const store = useEntityStore();
@@ -46,13 +71,8 @@ export function usePtz(device: Device, physical: boolean): Ptz {
   const held = useRef<PtzDirection | null>(null);
   const running = useRef(false);
   const supported = supportsPtz(device, physical);
-  const send = async (direction: PtzDirection | 'home'): Promise<boolean> => {
-    const outcome = await ledger.send(device, 'ptz', { direction });
-    if (outcome.sent) {
-      await finished(store, outcome.row.id);
-    }
-    return outcome.sent;
-  };
+  const send = (direction: PtzDirection | 'home'): Promise<boolean> =>
+    sendLogged(ledger, store, device, direction);
   const keepMoving = async (): Promise<void> => {
     running.current = true;
     let direction = held.current;
@@ -70,7 +90,7 @@ export function usePtz(device: Device, physical: boolean): Ptz {
       held.current = supported ? direction : null;
       setMoving(held.current);
       if (held.current !== null && !running.current) {
-        void keepMoving();
+        background(keepMoving(), 'moving.keep_failed');
       }
     },
     step: (direction): void => {
@@ -78,9 +98,12 @@ export function usePtz(device: Device, physical: boolean): Ptz {
         return;
       }
       running.current = true;
-      void send(direction).finally(() => {
-        running.current = false;
-      });
+      background(
+        send(direction).finally(() => {
+          running.current = false;
+        }),
+        'use_ptz.send_failed',
+      );
     },
   };
 }

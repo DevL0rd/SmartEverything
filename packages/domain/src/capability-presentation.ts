@@ -1,10 +1,9 @@
 import { CAPABILITY_CATALOGUE, isStandardCapability, type CapabilityGroup } from './capabilities';
 import type { DeviceCapability } from './devices';
-import { microwaveReading } from './microwave-readings';
 import { dangerOf } from './presentation/danger';
 import { deviceFamily } from './presentation/device-family';
 import { friendlyUnit, humanizeEnum, providerLabelOf, serviceOf } from './presentation/humanize';
-import { KIND_OVERRIDES, MODEL_OVERRIDES } from './presentation/overrides/index';
+import { KIND_OVERRIDES, modelOverrideOf } from './presentation/overrides/index';
 import {
   CAPABILITY_GROUP_LABELS,
   READ_ONLY_STANDARD,
@@ -23,7 +22,7 @@ import {
   type PresentationTier,
   type PresentedCapability,
 } from './presentation/types';
-import { decimalsOf, formatValue, withUnit } from './value-format';
+import { formatNumber, formatValue } from './value-format';
 import type { JsonValue } from './values';
 
 const DIAGNOSTIC_LABEL =
@@ -31,8 +30,21 @@ const DIAGNOSTIC_LABEL =
 
 const HIDDEN_ACTION = /toggle|webrtc|p2p|stream/i;
 
-function overrideFor(device: PresentableDevice, key: string): CapabilityOverride | undefined {
-  return MODEL_OVERRIDES[device.model]?.capabilities[key] ?? KIND_OVERRIDES[device.kind]?.[key];
+function overrideFor(
+  device: PresentableDevice,
+  capability: DeviceCapability,
+): CapabilityOverride | undefined {
+  const model = modelOverrideOf(device);
+  const listed =
+    model?.capabilities[capability.key] ?? KIND_OVERRIDES[device.kind]?.[capability.key];
+  if (
+    listed !== undefined ||
+    model?.unlisted === undefined ||
+    isStandardCapability(capability.key)
+  ) {
+    return listed;
+  }
+  return { label: providerLabelOf(capability.label), ...model.unlisted };
 }
 
 function rawTier(capability: DeviceCapability): PresentationTier {
@@ -135,10 +147,11 @@ function roleOf(
 
 function metadataOf(
   override: CapabilityOverride | undefined,
-): Pick<CapabilityPresentation, 'colorEncoding' | 'keywords'> {
+): Pick<CapabilityPresentation, 'colorEncoding' | 'keywords' | 'format'> {
   return {
     ...(override?.colorEncoding === undefined ? {} : { colorEncoding: override.colorEncoding }),
     ...(override?.keywords === undefined ? {} : { keywords: override.keywords }),
+    ...(override?.format === undefined ? {} : { format: override.format }),
   };
 }
 
@@ -146,7 +159,7 @@ export function presentCapability(
   device: PresentableDevice,
   capability: DeviceCapability,
 ): CapabilityPresentation {
-  const override = overrideFor(device, capability.key);
+  const override = overrideFor(device, capability);
   return {
     key: capability.key,
     label: labelOf(capability, override),
@@ -181,24 +194,30 @@ function byTierAndRole(
   );
 }
 
+const PRESENTATIONS = new WeakMap<PresentableDeviceWithCapabilities, DevicePresentation>();
+
 export function presentDevice(device: PresentableDeviceWithCapabilities): DevicePresentation {
+  const known = PRESENTATIONS.get(device);
+  if (known !== undefined) {
+    return known;
+  }
   const presented = device.capabilities.map((capability, index) => ({
     presented: { ...presentCapability(device, capability), capability },
     index,
   }));
-  return {
+  const presentation: DevicePresentation = {
     family: deviceFamily(device),
     capabilities: presented.sort(byTierAndRole).map((entry) => entry.presented),
   };
+  PRESENTATIONS.set(device, presentation);
+  return presentation;
 }
 
 export const CURATED_CONTROL_LIMIT = 6;
 
-export function curatedControls(
-  device: PresentableDeviceWithCapabilities,
-): readonly PresentedCapability[] {
-  return presentDevice(device)
-    .capabilities.filter(
+export function curatedControls(presentation: DevicePresentation): readonly PresentedCapability[] {
+  return presentation.capabilities
+    .filter(
       (presented) =>
         presented.tier === 'primary' && presented.writable && presented.role !== 'power',
     )
@@ -226,11 +245,24 @@ export function inTier(
   return presentation.capabilities.filter((presented) => presented.tier === tier);
 }
 
+const roleIndexes = new WeakMap<
+  DevicePresentation,
+  Map<CapabilityRole, PresentedCapability | undefined>
+>();
+
 export function withRole(
   presentation: DevicePresentation,
   role: CapabilityRole,
 ): PresentedCapability | undefined {
-  return presentation.capabilities.find((presented) => presented.role === role);
+  let index = roleIndexes.get(presentation);
+  if (index === undefined) {
+    index = new Map();
+    roleIndexes.set(presentation, index);
+  }
+  if (index.has(role)) return index.get(role);
+  const found = presentation.capabilities.find((presented) => presented.role === role);
+  index.set(role, found);
+  return found;
 }
 
 function stateOf(presented: PresentedCapability, value: JsonValue): string | null {
@@ -246,7 +278,7 @@ function basePresentValue(presented: PresentedCapability, value: JsonValue): str
     return presented.options.find((option) => option.value === value)?.label ?? humanizeEnum(value);
   }
   if (descriptor.kind === 'number' && typeof value === 'number') {
-    return withUnit(value.toFixed(decimalsOf(descriptor.step)), presented.unit);
+    return formatNumber(value, presented.unit, descriptor.step);
   }
   if (descriptor.kind === 'action') {
     return presented.label;
@@ -257,7 +289,10 @@ function basePresentValue(presented: PresentedCapability, value: JsonValue): str
 }
 
 export function presentValue(presented: PresentedCapability, value: JsonValue): string {
-  return value === null && presented.capability.value.kind !== 'action'
-    ? 'Unknown'
-    : (microwaveReading(presented.key, value) ?? basePresentValue(presented, value));
+  if (value === null && presented.capability.value.kind !== 'action') {
+    return 'Unknown';
+  }
+  return presented.format === undefined
+    ? basePresentValue(presented, value)
+    : presented.format(value);
 }

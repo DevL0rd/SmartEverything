@@ -1,6 +1,7 @@
 import { cameraDetectionsOf, miotDeviceEventsOf, type EventKind } from '../events';
 import { CAMERA_DETECTION_PRESENTATIONS } from '../event-labels';
 import { COMPUTER_ACTIONS } from '../node/node-requests';
+import { MACHINE_ACTIONS } from '../machine-actions';
 import { PHONE_CONTEXT_STATES } from '../phones';
 import type { SignalMatchSpec } from './spec';
 
@@ -46,7 +47,8 @@ const PRESENCE: readonly SignalMatchSpec[] = [
 export const EVENT_MATCH: Readonly<Record<EventKind, readonly SignalMatchSpec[]>> = {
   doorbell: [cameraDetection('doorbell'), ...TUYA_ALERT],
   call: [cameraDetection('call')],
-  motion: [cameraDetection('motion'), ...TUYA_ALERT, COMPONENT],
+  motion: [cameraDetection('motion'), ...xiaomiEvent('motion'), ...TUYA_ALERT, COMPONENT],
+  no_motion: xiaomiDevice('no_motion'),
   person: [cameraDetection('person'), ...xiaomiEvent('person')],
   sound: [cameraDetection('sound')],
   pet: [cameraDetection('pet')],
@@ -68,6 +70,11 @@ export const EVENT_MATCH: Readonly<Record<EventKind, readonly SignalMatchSpec[]>
   maintenance: xiaomiDevice('maintenance'),
   fault: xiaomiDevice('fault'),
   activity: xiaomiDevice('activity'),
+  cycle_finished: [
+    SOURCE,
+    { key: 'outcome', label: 'How the cycle ended', values: ['completed', 'stopped'] },
+    { key: 'program', label: 'Program', values: ANY },
+  ],
   device_online: PRESENCE,
   device_offline: PRESENCE,
   automation_run: [
@@ -81,6 +88,11 @@ export const EVENT_MATCH: Readonly<Record<EventKind, readonly SignalMatchSpec[]>
   provider_error: [],
   computer_power: [
     { key: 'action', label: 'Power action', values: COMPUTER_ACTIONS },
+    { key: 'source', label: 'Who asked', values: ANY },
+    { key: 'client', label: 'Which app asked', values: ANY },
+  ],
+  machine_action: [
+    { key: 'action', label: 'Action', values: MACHINE_ACTIONS },
     { key: 'source', label: 'Who asked', values: ANY },
     { key: 'client', label: 'Which app asked', values: ANY },
   ],

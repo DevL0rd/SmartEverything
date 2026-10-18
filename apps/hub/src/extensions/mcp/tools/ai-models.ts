@@ -129,7 +129,7 @@ export const AI_MODEL_TOOLS: readonly Tool[] = [
     name: 'set_ai_defaults',
     input: z.strictObject({
       model: AI_MODEL_CHOICE.describe(
-        'auto:latest-gemini-flash (follows new releases) or a chat model id from list_models',
+        'auto:latest-gemini-flash (follows new releases) or a chat model id from read_models view list',
       ),
       thinking: AI_EFFORT.describe('Thinking level; clamped to what the model supports'),
     }),

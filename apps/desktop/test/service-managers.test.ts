@@ -1,70 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HUB_SERVICE_NAMES,
   launchAgent,
-  systemdUnit,
   windowsLauncher,
   windowsRunCommand,
 } from '../src/service/definitions.js';
-import { linuxManager } from '../src/service/linux-manager.js';
 import { macManager } from '../src/service/mac-manager.js';
 import { LingerUnsupportedError, type ManagerContext } from '../src/service/manager.js';
 import { windowsManager } from '../src/service/windows-manager.js';
 import { LAUNCH, LOCATIONS, failure, fakeSystem, type FakeSystem } from './support/fake-system.js';
 
 function context(system: FakeSystem): ManagerContext {
-  return { launch: LAUNCH, locations: LOCATIONS, system, user: { name: 'ann', uid: 501 } };
+  return {
+    names: HUB_SERVICE_NAMES,
+    launch: LAUNCH,
+    locations: LOCATIONS,
+    system,
+    user: { name: 'ann', uid: 501 },
+  };
 }
-
-describe('linuxManager', () => {
-  it('writes, enables and controls the systemd user unit', async () => {
-    const system = fakeSystem();
-    system.respond((_file, args) =>
-      args.includes('show')
-        ? 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nResult=success'
-        : '',
-    );
-    const manager = linuxManager(context(system));
-    expect(await manager.state()).toStrictEqual({
-      installed: false,
-      current: false,
-      active: false,
-      detail: 'systemd reports inactive (dead)',
-    });
-    await manager.install();
-    await manager.start();
-    await manager.restart();
-    await manager.stop();
-    expect(system.stored.get(LOCATIONS.unitFile)).toBe(systemdUnit(LAUNCH));
-    expect(system.modes.get(LOCATIONS.unitFile)).toBe(0o644);
-    system.respond(() => 'ActiveState=active\nSubState=running\nResult=success');
-    expect(await manager.state()).toMatchObject({ installed: true, current: true, active: true });
-    await manager.uninstall();
-    expect(system.stored.has(LOCATIONS.unitFile)).toBe(false);
-    await manager.uninstall();
-    expect(system.commands.filter((command) => !command.includes(' show '))).toStrictEqual([
-      'systemctl --user daemon-reload',
-      'systemctl --user enable smarteverything.service',
-      'systemctl --user start smarteverything.service',
-      'systemctl --user restart smarteverything.service',
-      'systemctl --user stop smarteverything.service',
-      'systemctl --user disable --now smarteverything.service',
-      'systemctl --user daemon-reload',
-      'systemctl --user daemon-reload',
-    ]);
-  });
-
-  it('reads and enables lingering for the signed-in user', async () => {
-    const system = fakeSystem();
-    system.respond(() => 'no\n');
-    const manager = linuxManager(context(system));
-    expect(await manager.linger()).toBe('disabled');
-    await manager.enableLinger();
-    expect(system.commands).toStrictEqual([
-      'loginctl show-user ann --property=Linger --value',
-      'loginctl enable-linger ann',
-    ]);
-  });
-});
 
 describe('macManager', () => {
   it('bootstraps the agent when launchd has not loaded it and kickstarts it when it has', async () => {

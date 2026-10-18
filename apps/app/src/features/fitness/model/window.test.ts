@@ -1,4 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import type * as Locale from '../../../format/locale';
+
+vi.mock('../../../format/locale', async (importOriginal) => {
+  const original = await importOriginal<typeof Locale>();
+  return {
+    ...original,
+    dateFormat: (options: Intl.DateTimeFormatOptions, locale?: string): Intl.DateTimeFormat =>
+      original.dateFormat(options, locale ?? 'en-GB'),
+    zonedDateFormat: (
+      options: Intl.DateTimeFormatOptions,
+      locale?: string,
+    ): ReturnType<typeof Locale.zonedDateFormat> =>
+      original.zonedDateFormat(options, locale ?? 'en-GB'),
+  };
+});
+
 import { clock, dayKeyOf, dayLabel, shiftDay, startOfDayKey } from '../../../format/time';
 import { daysIn, previousWindow, shiftAnchor, windowLabel, windowOf } from './window';
 

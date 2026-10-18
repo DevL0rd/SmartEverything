@@ -1,15 +1,14 @@
-export type SlotKind = 'tile' | 'half' | 'wide' | 'note';
+type SlotKind = 'tile' | 'half' | 'wide' | 'note';
 
 export interface Slot {
   readonly kind: SlotKind;
   readonly aspect: number | null;
+  readonly rows: number;
 }
 
 export interface Metrics {
   readonly gap: number;
-  readonly tile: number;
   readonly line: number;
-  readonly unit: number;
 }
 
 export interface Placed {
@@ -31,14 +30,19 @@ function capacityOf(kind: SlotKind, width: number, gap: number): number {
   return kind === 'half' && width >= TWO_UP_MIN ? 2 : 1;
 }
 
-function heightOf(slot: Slot, count: number, width: number, metrics: Metrics): number | null {
+export function rowsHeight(rows: number, metrics: Pick<Metrics, 'gap' | 'line'>): number {
+  return rows * metrics.line + (rows - 1) * metrics.gap;
+}
+
+function heightOf(slot: Slot, width: number, metrics: Metrics): number | null {
   switch (slot.kind) {
     case 'tile':
-      return count > 1 ? metrics.tile : metrics.line;
     case 'half':
-      return metrics.unit;
+      return rowsHeight(slot.rows, metrics);
     case 'wide':
-      return slot.aspect === null ? metrics.unit : Math.round(width / slot.aspect);
+      return slot.aspect === null
+        ? rowsHeight(slot.rows, metrics)
+        : Math.round(width / slot.aspect);
     case 'note':
       return null;
   }
@@ -62,7 +66,7 @@ function rowOf(
     return {
       index,
       width: slot.kind === 'note' ? null : each,
-      height: heightOf(slot, count, each, metrics),
+      height: heightOf(slot, each, metrics),
       shared: count > 1,
     };
   });
@@ -70,6 +74,7 @@ function rowOf(
 
 interface Run {
   readonly kind: SlotKind;
+  readonly rows: number;
   readonly indices: number[];
 }
 
@@ -82,11 +87,11 @@ export function placeSlots(
   slots.forEach((slot, index) => {
     const last = runs.at(-1);
     const room = capacityOf(slot.kind, width, metrics.gap);
-    if (last?.kind === slot.kind && last.indices.length < room) {
+    if (last?.kind === slot.kind && last.rows === slot.rows && last.indices.length < room) {
       last.indices.push(index);
       return;
     }
-    runs.push({ kind: slot.kind, indices: [index] });
+    runs.push({ kind: slot.kind, rows: slot.rows, indices: [index] });
   });
   return runs.map((run) => rowOf(run.indices, slots, width, metrics));
 }

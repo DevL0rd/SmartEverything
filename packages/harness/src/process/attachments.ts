@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { AttachmentAdmissionPart } from '@deepseek-ai/dsh-attachment';
 import type { HarnessRuntime } from '../host/runtime';
-import { createHash } from 'node:crypto';
-import { HARNESS_ATTACHMENT_TRANSFER } from '@smarteverything/domain';
+import { attachmentNote, HARNESS_ATTACHMENT_TRANSFER } from '@smarteverything/domain';
+import type { HarnessControlPersistence } from './contracts';
+import type { HarnessHub } from './http';
 export interface HarnessAttachment {
   readonly id?: string;
   readonly name: string;
@@ -10,32 +11,28 @@ export interface HarnessAttachment {
   readonly data: Uint8Array;
   readonly transcript: string | null;
 }
-import type { HarnessControlPersistence } from './contracts';
-import type { HarnessHttp } from './http';
-import { HarnessRuntimeError } from '../host/errors';
 
 export async function* transferAttachments(
-  http: HarnessHttp,
-  persistence: HarnessControlPersistence,
+  hub: HarnessHub,
+  persistence: Pick<HarnessControlPersistence, 'claim'>,
   id: string,
   ids: readonly string[],
 ): AsyncIterable<HarnessAttachment> {
   for (const attachmentId of ids) {
-    const file = await http.call(
-      { operation: 'attachment', claim: persistence.claim(id), attachment_id: attachmentId },
-      HARNESS_ATTACHMENT_TRANSFER,
-    );
-    const data = Buffer.from(file.data, 'base64');
-    if (
-      data.byteLength !== file.bytes ||
-      data.toString('base64') !== file.data ||
-      createHash('sha256').update(data).digest('hex') !== file.sha256
-    )
-      throw new HarnessRuntimeError(
-        'operation_failed',
-        'Transferred attachment does not match its admitted original bytes.',
-      );
-    yield { id: attachmentId, name: file.name, mime: file.mime, data, transcript: file.transcript };
+    const [file, bytes] = await Promise.all([
+      hub.call(
+        { operation: 'attachment', claim: persistence.claim(id), attachment_id: attachmentId },
+        HARNESS_ATTACHMENT_TRANSFER,
+      ),
+      hub.download(`/api/ai/harness/sessions/${id}/attachments/${attachmentId}`),
+    ]);
+    yield {
+      id: attachmentId,
+      name: file.name,
+      mime: file.mime,
+      data: bytes,
+      transcript: file.transcript,
+    };
   }
 }
 
@@ -66,29 +63,35 @@ export async function nativeAttachmentParts(
   });
   const content: AttachmentAdmissionPart[] = [{ type: 'file', attachment }];
   if (file.mime.startsWith('text/') || file.mime === 'application/json') {
-    if (file.data.byteLength > TEXT_ATTACHMENT_BYTES_MAX)
-      throw new HarnessRuntimeError(
-        'capability_unsupported',
-        'This text attachment exceeds the admitted inline provider bound; its original bytes remain stored.',
-      );
     content.push({
       type: 'text',
-      text: `[Attached file: ${file.name}]\n${new TextDecoder('utf-8', { fatal: true }).decode(file.data)}`,
+      text:
+        file.data.byteLength > TEXT_ATTACHMENT_BYTES_MAX
+          ? largeFileNote(file, runtime.attachmentPath(attachment))
+          : `[Attached file: ${file.name}]\n${new TextDecoder('utf-8', { fatal: true }).decode(file.data)}`,
     });
   } else if (file.transcript !== null)
     content.push({ type: 'text', text: `[Transcript of ${file.name}]\n${file.transcript}` });
   return content;
 }
 
+function largeFileNote(file: HarnessAttachment, path: string | undefined): string {
+  const where = path ?? 'its attachment store';
+  return `[Attached file: ${file.name}, ${String(file.data.byteLength)} bytes, too large to include inline. Read it from ${where}.]`;
+}
+
 export function cachedMediaText(file: HarnessAttachment): string {
-  if (file.transcript === null || file.transcript.trim() === '')
-    throw new HarnessRuntimeError(
-      'capability_unsupported',
-      `Cached media text for ${file.name} is missing; older originals will not be resent automatically.`,
-    );
-  const reference =
-    file.id === undefined
-      ? ''
-      : ` Original attachment: ${file.id}; use read_assistant_attachment for explicit inspection.`;
-  return `[Attached ${file.name} (${file.mime}).${reference}]\n${file.transcript}`;
+  const note = file.transcript?.trim() ?? '';
+  return attachmentNote(
+    {
+      id: file.id ?? file.name,
+      name: file.name,
+      mime: file.mime,
+      bytes: file.data.byteLength,
+      width: null,
+      height: null,
+    },
+    note === '' ? null : note,
+    { pending: note === '' },
+  );
 }

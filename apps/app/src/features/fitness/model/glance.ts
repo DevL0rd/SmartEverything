@@ -1,4 +1,5 @@
 import type { HealthMetric } from '@smarteverything/domain';
+import { extent } from 'd3-array';
 import type { FillValue } from '../../../components/charts';
 import { shiftDay } from '../../../format/time';
 import { figureOn, latestFigure } from './daily';
@@ -68,12 +69,13 @@ export function glanceOf(
   const values = keys.map((key) => ({ key, value: figureOn(figures, key, metric) }));
   const known = values.flatMap((item) => (item.value === null ? [] : [item.value]));
   const latest = latestFigure(figures, metric, day);
+  const [low, high] = extent(known);
   return {
     latest: latest === null ? null : { day: latest.day, value: latest.value },
     values,
     average: meanOf(known),
-    low: known.length === 0 ? null : Math.min(...known),
-    high: known.length === 0 ? null : Math.max(...known),
+    low: low ?? null,
+    high: high ?? null,
     delta: latest === null ? null : deltaOf(figures, metric, latest, better),
   };
 }

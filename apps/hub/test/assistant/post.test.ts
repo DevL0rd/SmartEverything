@@ -50,6 +50,7 @@ describe('assistant posts', () => {
       { text: 'Dinner is ready', files: [], profileId: owner, notify: false },
       true,
       () => owner,
+      { profileId: owner, role: 'owner' },
     );
     expect(opened.store.aiChats.chat(row.chat_id).profile_id).toBe(owner);
   });
@@ -59,9 +60,26 @@ describe('assistant posts', () => {
       { text: 'Hi', files: [], profileId: '6b1f2a10-3c4d-4e5f-8a9b-0c1d2e3f4a5b', notify: false },
       true,
       () => owner,
+      { profileId: owner, role: 'owner' },
     );
     await expect(post).rejects.toBeInstanceOf(ApiError);
     await expect(post).rejects.toThrow('take it from list_people');
     expect(opened.store.aiChats.chats({ profileId: owner, archived: false })).toHaveLength(0);
+  });
+
+  it('keeps a member’s post in their own chat', async () => {
+    const other = opened.store.profiles.create({ name: 'Robin' }).id;
+    const post = requests.post(
+      { text: 'Hi', files: [], profileId: owner, notify: false },
+      true,
+      () => owner,
+      { profileId: other, role: 'member' },
+    );
+    await expect(post).rejects.toThrow('only to your own chat');
+    const row = await requests.post({ text: 'Hi', files: [], notify: false }, true, () => owner, {
+      profileId: other,
+      role: 'member',
+    });
+    expect(opened.store.aiChats.chat(row.chat_id).profile_id).toBe(other);
   });
 });

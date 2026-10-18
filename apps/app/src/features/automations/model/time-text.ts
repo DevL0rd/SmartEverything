@@ -1,9 +1,26 @@
 import type { SunEvent } from '@smarteverything/domain';
+import { dateFormat } from '../../../format/locale';
 import { duration } from '../../../format/time';
 
-export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+const FIRST_SUNDAY = 7;
+
+function weekdayShort(day: Weekday): string {
+  return dateFormat({ weekday: 'short' }).format(new Date(2024, 0, FIRST_SUNDAY + day));
+}
+
+export const WEEKDAY_SHORT: Readonly<Record<Weekday, string>> = {
+  0: weekdayShort(0),
+  1: weekdayShort(1),
+  2: weekdayShort(2),
+  3: weekdayShort(3),
+  4: weekdayShort(4),
+  5: weekdayShort(5),
+  6: weekdayShort(6),
+};
+
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const satisfies readonly Weekday[];
 
 function sameDays(days: readonly number[], wanted: readonly number[]): boolean {
   return days.length === wanted.length && wanted.every((day) => days.includes(day));

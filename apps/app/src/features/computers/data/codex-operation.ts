@@ -1,8 +1,9 @@
 import type { z } from 'zod';
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { CODEX_OPERATION, type CodexAiReply, type CodexAiExecute } from '@smarteverything/domain';
 import { readCodex, runtimeKey } from './computer-runtime';
 import type { NativeOperationState } from './native-operation';
+import { background } from '@smarteverything/logging';
 export function useCodexOperation(
   deviceId: string,
   result: CodexAiReply | undefined,
@@ -10,7 +11,7 @@ export function useCodexOperation(
   failure?: Error | null,
 ): NativeOperationState {
   const receipt = receivedOperation(result, request, failure);
-  const query = useQuery({
+  const query = useScreenQuery({
     queryKey: [...runtimeKey(deviceId), 'operation', receipt?.id ?? 'none'],
     enabled: false,
     initialData: receipt ?? undefined,
@@ -31,7 +32,7 @@ export function useCodexOperation(
     checking: query.isFetching,
     error: query.error,
     check: (): void => {
-      void query.refetch();
+      background(query.refetch(), 'query.refetch_failed');
     },
   };
 }

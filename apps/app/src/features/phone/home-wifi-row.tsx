@@ -2,6 +2,19 @@ import type { ReactNode } from 'react';
 import type { PhoneNodeStatus } from '../../../modules/health-connect';
 import { ListRow } from '../../components/list-row';
 import { allowWifiName, changeHomeWifi } from './phone-permissions';
+import { background } from '@smarteverything/logging';
+
+function allowName(): void {
+  background(allowWifiName(), 'wifi_name.allow_failed');
+}
+
+function forgetHome(): void {
+  background(changeHomeWifi(false), 'home_wifi.change_failed');
+}
+
+function adoptCurrent(): void {
+  background(changeHomeWifi(true), 'home_wifi.change_failed');
+}
 
 export function HomeWifiRow({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
   const { homeWifi, currentWifi } = status;
@@ -12,7 +25,7 @@ export function HomeWifiRow({ status }: { readonly status: PhoneNodeStatus }): R
         subtitle="Android needs location access to read the Wi-Fi name. It stays on this phone."
         icon="wifi"
         chevron
-        onPress={() => void allowWifiName()}
+        onPress={allowName}
       />
     );
   }
@@ -25,12 +38,7 @@ export function HomeWifiRow({ status }: { readonly status: PhoneNodeStatus }): R
           subtitle="You’re home whenever this phone is on it"
           icon="wifi"
         />
-        <ListRow
-          title="Forget home Wi-Fi"
-          icon="trash"
-          destructive
-          onPress={() => void changeHomeWifi(false)}
-        />
+        <ListRow title="Forget home Wi-Fi" icon="trash" destructive onPress={forgetHome} />
       </>
     );
   }
@@ -45,7 +53,7 @@ export function HomeWifiRow({ status }: { readonly status: PhoneNodeStatus }): R
       icon="wifi"
       chevron={currentWifi !== null}
       disabled={currentWifi === null}
-      onPress={() => void changeHomeWifi(true)}
+      onPress={adoptCurrent}
     />
   );
 }

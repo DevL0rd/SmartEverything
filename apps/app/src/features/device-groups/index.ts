@@ -1,3 +1,10 @@
 export { DeviceGroupCard } from './group-card';
-export { DeviceGroups } from './group-manager';
-export { groupControlChoices } from './model';
+export { LightGroupCard } from './light-group-card';
+export { DEVICE_GROUP_WIDGET } from './device-group-widget';
+export { groupControlChoices } from './group-choices';
+export {
+  lightGroupWidgets,
+  selectLightGroupDefaults,
+  useLightGroupDefaults,
+  type LightGroupDefault,
+} from './group-defaults';

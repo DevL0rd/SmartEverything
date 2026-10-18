@@ -28,3 +28,17 @@ function nativeEfforts(
   );
   return computer?.models.find((row) => row.id === engine.model)?.efforts ?? [];
 }
+
+export function cycleEffort(
+  efforts: readonly string[],
+  current: string | null,
+  step: 1 | -1,
+  wrap: boolean,
+): string | null {
+  const levels = [null, ...efforts];
+  const at = Math.max(levels.indexOf(current), 0);
+  const next = wrap
+    ? (at + step + levels.length) % levels.length
+    : Math.min(Math.max(at + step, 0), levels.length - 1);
+  return levels[next] ?? null;
+}

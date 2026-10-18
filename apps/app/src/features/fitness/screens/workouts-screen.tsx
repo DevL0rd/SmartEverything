@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Card } from '../../../components/card';
 import { ErrorState } from '../../../components/error-state';
 import { List } from '../../../components/section';
@@ -52,7 +52,10 @@ export function WorkoutsScreen(): ReactNode {
   const window = windowOf(range === 'day' ? 'week' : range, day);
   const list = useWorkouts(window);
   const { start } = useLocalSearchParams<{ start?: string }>();
-  const workout = useStartWorkout(start === '1');
+  const router = useRouter();
+  const workout = useStartWorkout(start === '1', () => {
+    if (start === '1') router.setParams({ start: undefined });
+  });
   return (
     <FitnessFrame
       tab="workouts"

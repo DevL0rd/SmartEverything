@@ -1,4 +1,4 @@
-import type { DeviceCapability } from '@smarteverything/domain';
+import { normalKey, type DeviceCapability } from '@smarteverything/domain';
 
 const PAD_DIRECTIONS = ['up', 'down', 'left', 'right', 'ok'] as const;
 
@@ -12,10 +12,6 @@ const PAD_WORDS: Readonly<Record<PadDirection, readonly string[]>> = {
   ok: ['ok', 'enter', 'select', 'key_enter', 'confirm'],
 };
 
-function normal(option: string): string {
-  return option.toLowerCase().replace(/[\s-]+/g, '_');
-}
-
 export interface RemoteLayout {
   readonly pad: Readonly<Partial<Record<PadDirection, string>>>;
   readonly rest: readonly string[];
@@ -26,7 +22,8 @@ export function remoteLayout(options: readonly string[]): RemoteLayout {
   const rest: string[] = [];
   for (const option of options) {
     const direction = PAD_DIRECTIONS.find(
-      (candidate) => pad[candidate] === undefined && PAD_WORDS[candidate].includes(normal(option)),
+      (candidate) =>
+        pad[candidate] === undefined && PAD_WORDS[candidate].includes(normalKey(option)),
     );
     if (direction === undefined) {
       rest.push(option);
@@ -35,13 +32,6 @@ export function remoteLayout(options: readonly string[]): RemoteLayout {
     }
   }
   return { pad, rest };
-}
-
-export function buttonLabel(option: string): string {
-  const spaced = option.replace(/^key_/i, '').replaceAll('_', ' ').trim();
-  const shouted = /[A-Z]{2}/.test(spaced) && spaced === spaced.toUpperCase();
-  const cased = shouted ? spaced.toLowerCase() : spaced;
-  return cased.length === 0 ? option : cased.charAt(0).toUpperCase() + cased.slice(1);
 }
 
 export function isButtonName(name: string): boolean {

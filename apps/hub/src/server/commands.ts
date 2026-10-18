@@ -1,10 +1,6 @@
-import {
-  executionRole,
-  currentExecutionAuthority,
-  currentExecutionAuthorities,
-  validateExecutionAuthority,
-} from '../assistant/execution-authority';
-import { roleOfCaller, clientOf } from './auth';
+import { executionRole, currentExecutionAuthority } from '../assistant/turn-authority';
+import { roleOfCaller, clientOf, profileIdOf } from './auth';
+import { assertDeviceReach, scopesOf, scopesOfClient } from './person-scope';
 import type { COMMAND_INPUT } from '@smarteverything/domain';
 import {
   ApiError,
@@ -13,18 +9,16 @@ import {
   isHubCapability,
   validateCommand,
   type ClientRow,
+  type DeviceScope,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import type { NewCommand } from '../store/repositories/commands';
 import type { Store } from '../store/store';
 import type { Caller } from './auth';
 import { invalid } from './errors';
+import { assertPhoneCommandAllowed } from '../phones/phone-access';
 
-const OWNER_HUB_COMMANDS: ReadonlySet<string> = new Set([
-  'hub:link_provider',
-  'hub:answer_prompt',
-  'hub:unlink_provider',
-]);
+const OWNER_HUB_COMMANDS: ReadonlySet<string> = new Set(['hub:unlink_provider']);
 
 export type CheckedInput = Omit<z.output<typeof COMMAND_INPUT>, 'source'> & {
   readonly source: NewCommand['source'];
@@ -33,23 +27,39 @@ export type CheckedInput = Omit<z.output<typeof COMMAND_INPUT>, 'source'> & {
 export interface CommandPrincipal {
   readonly clientId: string | null;
   readonly role: 'owner' | 'member';
+  readonly profileId: string;
+  readonly devices: DeviceScope | null;
 }
+
+export function commandRole(caller: Caller): CommandPrincipal['role'] {
+  const authority = caller.kind === 'service' ? undefined : currentExecutionAuthority();
+  const member = authority !== undefined && executionRole(authority) === 'member';
+  return member ? 'member' : roleOfCaller(caller);
+}
+
 export function commandPrincipal(store: Store, caller: Caller): CommandPrincipal {
-  if (caller.kind === 'service') {
-    validateExecutionAuthority(store, caller.authority);
-    if (caller.authority.profile_id !== caller.profileId)
-      throw new ApiError('forbidden', 'Command changed its initiating service profile.');
-    return { clientId: null, role: 'member' };
-  }
-  const member = currentExecutionAuthorities().some(
-    (authority) => executionRole(store, authority) === 'member',
-  );
-  return { clientId: clientOf(caller).id, role: member ? 'member' : roleOfCaller(caller) };
+  const role = commandRole(caller);
+  const profileId = profileIdOf(store, caller);
+  return {
+    clientId: caller.kind === 'service' ? null : clientOf(caller).id,
+    role,
+    profileId,
+    devices: role === 'owner' ? null : scopesOf(store, profileId).devices,
+  };
 }
-function principalOf(client: ClientRow | CommandPrincipal): CommandPrincipal {
-  return 'clientId' in client ? client : { clientId: client.id, role: client.role };
+
+function principalOf(store: Store, client: ClientRow | CommandPrincipal): CommandPrincipal {
+  if ('clientId' in client) return client;
+  const scopes = scopesOfClient(store, client);
+  return {
+    clientId: client.id,
+    role: client.role,
+    profileId: store.profiles.activeOf(client.id).id,
+    devices: scopes?.devices ?? null,
+  };
 }
-export function hubCommandRequiresOwner(capability: string): boolean {
+
+function hubCommandRequiresOwner(capability: string): boolean {
   return OWNER_HUB_COMMANDS.has(capability);
 }
 function hubCommand(input: CheckedInput, client: CommandPrincipal): NewCommand {
@@ -77,11 +87,18 @@ function deviceCommand(store: Store, input: CheckedInput, client: CommandPrincip
     );
   }
   const device = store.devices.byId(input.device_id);
+  assertDeviceReach(
+    store,
+    { id: client.clientId, profile_id: client.profileId },
+    client.devices,
+    device,
+  );
   const capability = CAPABILITY_KEY.safeParse(input.capability);
   if (!capability.success) {
     throw invalid('capability', capability.error);
   }
   const value = validateCommand(device, { capability: capability.data, value: input.value });
+  assertPhoneCommandAllowed(device, capability.data, client);
   return {
     deviceId: device.id,
     capability: capability.data,
@@ -99,8 +116,8 @@ export function checkedCommands(
 ): NewCommand[] {
   return inputs.map((input) =>
     isHubCapability(input.capability)
-      ? hubCommand(input, principalOf(client))
-      : deviceCommand(store, input, principalOf(client)),
+      ? hubCommand(input, principalOf(store, client))
+      : deviceCommand(store, input, principalOf(store, client)),
   );
 }
 

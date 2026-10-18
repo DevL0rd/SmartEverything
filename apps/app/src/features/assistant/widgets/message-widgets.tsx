@@ -1,28 +1,28 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { useWindowDimensions, View } from 'react-native';
+import { View } from 'react-native';
 import {
   chatWidgetsOf,
   isChatLink,
   type AssistantMessageRow,
   type ChatWidget,
+  WIDGET_FOOTPRINTS,
 } from '@smarteverything/domain';
 import { SEMANTIC_SIZES, type SemanticSizes } from '../../../design/tokens';
 import { useIdiom } from '../../../design/platform';
-import { useAppliedTheme } from '../../../design/theme';
-import type { WidgetSize } from '../../../components/widget-board';
+import { useThemeSetting } from '../../../design/theme';
+import { renderWidget, type WidgetSize } from '../../../components/widget-board';
 import { LinkCards } from './link-card';
+import { frameOfPlaced, type LaneFrameContext } from './lane-frame';
 import { useLaneEntries, type LaneEntry } from './lane-entries';
 import { placeSlots, type Metrics, type Placed, type Slot } from './lane-layout';
 import { LiveCaption } from './live-caption';
 import { UnavailableTile } from './unavailable-tile';
 import { type BoardChatWidget, type ResolvedWidget } from './widget-sources';
 
-const TILE_ROWS = 1.8;
-
 function sizeOf(widget: ResolvedWidget, shared: boolean): WidgetSize {
   if (widget.compact) {
-    return 'S';
+    return 'M';
   }
   const allowed = widget.definition.sizes.compact;
   const wanted: WidgetSize = shared ? 'M' : 'W';
@@ -34,27 +34,22 @@ function sizeOf(widget: ResolvedWidget, shared: boolean): WidgetSize {
 
 function slotOf(entry: LaneEntry): Slot {
   if (entry.status === 'unavailable') {
-    return { kind: 'note', aspect: null };
+    return { kind: 'note', aspect: null, rows: 0 };
   }
   const { widget } = entry;
   const { aspect } = widget.definition;
+  const rows = WIDGET_FOOTPRINTS.compact[sizeOf(widget, false)].rows;
   if (aspect !== undefined) {
-    return { kind: 'wide', aspect };
+    return { kind: 'wide', aspect, rows };
   }
   if (widget.compact) {
-    return { kind: 'tile', aspect: null };
+    return { kind: 'tile', aspect: null, rows };
   }
-  return { kind: widget.wide ? 'wide' : 'half', aspect: null };
+  return { kind: widget.wide ? 'wide' : 'half', aspect: null, rows };
 }
 
-function metricsOf(sizes: SemanticSizes, fontScale: number): Metrics {
-  const scale = Math.max(1, fontScale);
-  return {
-    gap: sizes.gridGap,
-    unit: sizes.rowUnit * 2 + sizes.gridGap,
-    line: sizes.rowUnit,
-    tile: Math.round(sizes.rowUnit * TILE_ROWS * scale),
-  };
+function metricsOf(sizes: SemanticSizes): Metrics {
+  return { gap: sizes.gridGap, line: sizes.rowUnit };
 }
 
 function boxStyle(placed: Placed): {
@@ -67,15 +62,22 @@ function boxStyle(placed: Placed): {
 function OneWidget({
   widget,
   placed,
+  frame,
 }: {
   readonly widget: ResolvedWidget;
   readonly placed: Placed;
+  readonly frame: LaneFrameContext;
 }): ReactNode {
-  const rendered = widget.definition.render({
-    size: sizeOf(widget, placed.shared),
-    options: widget.options,
-    editing: false,
-  });
+  const rendered = renderWidget(
+    widget.definition,
+    {
+      size: sizeOf(widget, placed.shared),
+      options: widget.options,
+      editing: false,
+      frame: frameOfPlaced(placed, frame),
+    },
+    null,
+  );
   return (
     <View style={boxStyle(placed)} className="overflow-hidden rounded-lg">
       {widget.scope === null ? rendered : widget.scope(rendered)}
@@ -86,12 +88,14 @@ function OneWidget({
 function LaneItem({
   entry,
   placed,
+  frame,
 }: {
   readonly entry: LaneEntry;
   readonly placed: Placed;
+  readonly frame: LaneFrameContext;
 }): ReactNode {
   return entry.status === 'ready' ? (
-    <OneWidget widget={entry.widget} placed={placed} />
+    <OneWidget widget={entry.widget} placed={placed} frame={frame} />
   ) : (
     <UnavailableTile entry={entry} />
   );
@@ -100,10 +104,11 @@ function LaneItem({
 function WidgetLane({ widgets }: { readonly widgets: readonly BoardChatWidget[] }): ReactNode {
   const entries = useLaneEntries(widgets);
   const idiom = useIdiom();
-  const { density } = useAppliedTheme().settings;
-  const { fontScale } = useWindowDimensions();
+  const density = useThemeSetting('density');
   const [width, setWidth] = useState(0);
-  const metrics = metricsOf(SEMANTIC_SIZES[idiom][density], fontScale);
+  const sizes = SEMANTIC_SIZES[idiom][density];
+  const metrics = metricsOf(sizes);
+  const frame: LaneFrameContext = { idiom, padding: sizes.cardPad };
   const rows = width === 0 ? [] : placeSlots(entries.map(slotOf), width, metrics);
   return (
     <View
@@ -124,6 +129,7 @@ function WidgetLane({ widgets }: { readonly widgets: readonly BoardChatWidget[] 
                   key={entry.status === 'ready' ? entry.widget.key : entry.key}
                   entry={entry}
                   placed={placed}
+                  frame={frame}
                 />
               );
             })}

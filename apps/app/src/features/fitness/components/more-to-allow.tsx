@@ -43,11 +43,7 @@ function Allow(): ReactNode {
     return null;
   }
   return (
-    <List
-      title="More you can add"
-      inset
-      footer="Review Health Connect access in Fitness settings to share more kinds of data."
-    >
+    <List title="More you can add" inset footer="Allow these in Health Connect to see them here.">
       {groups.map((group) => (
         <ListRow
           key={group.label}

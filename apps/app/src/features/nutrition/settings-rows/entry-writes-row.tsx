@@ -10,7 +10,7 @@ export function EntryWritesRow(): ReactNode {
       <ListRow
         icon="fitness"
         title="Save what you log to Health Connect"
-        subtitle={`Review access in Fitness settings · ${String(state.waiting)} waiting`}
+        subtitle={`${String(state.waiting)} waiting · Allow in Health Connect`}
         subtitleTone="warning"
         href={href.settings.focus('health', 'health-connect')}
         chevron

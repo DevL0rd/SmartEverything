@@ -1,4 +1,5 @@
 import type { Picture } from './gemini';
+import { messageOf } from '@smarteverything/logging';
 
 export interface ToolAnswer {
   readonly response: Readonly<Record<string, unknown>>;
@@ -8,7 +9,7 @@ export interface ToolAnswer {
 
 export function failedAnswer(cause: unknown): ToolAnswer {
   return {
-    response: { error: cause instanceof Error ? cause.message : 'That did not work' },
+    response: { error: messageOf(cause) },
     line: '',
     pictures: [],
   };

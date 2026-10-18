@@ -1,20 +1,22 @@
-import {
-  useInfiniteQuery,
-  type InfiniteData,
-  type UseInfiniteQueryResult,
-} from '@tanstack/react-query';
+import { Logger } from '@smarteverything/logging';
+import { type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
+import { useScreenInfiniteQuery } from '../use-screen-query';
 import type { TranscriptPage } from '@smarteverything/domain';
 import {
   TRANSCRIPT_CHUNK_SIZE,
   TRANSCRIPT_KEPT_CHUNKS,
   transcriptReaderKey,
-  type TranscriptFeedPort,
-} from '../../components/transcript-feed/port';
+  type TranscriptSelection,
+} from './selection';
+import { errorFields } from '../../design/log-tally';
+import { readTranscriptPage, readTranscriptRange } from './transcript-requests';
 
 export type Position =
   | { readonly kind: 'latest' }
   | { readonly kind: 'anchor'; readonly id: number }
   | { readonly kind: 'cursor'; readonly cursor: string; readonly direction: 'before' | 'after' };
+
+const log = new Logger('app.transcripts');
 
 export interface Chunk {
   readonly page: TranscriptPage;
@@ -22,15 +24,43 @@ export interface Chunk {
 }
 
 async function readChunk(
-  port: TranscriptFeedPort,
+  selection: TranscriptSelection,
+  words: string,
+  position: Position,
+): Promise<Chunk> {
+  const startedAt = Date.now();
+  const base = { position: position.kind, searchLength: words.length };
+  try {
+    const chunk = await readChunkUnlogged(selection, words, position);
+    log.debug('transcript_chunk.read', () => ({
+      ...base,
+      items: chunk.page.items.length,
+      hasBefore: chunk.page.before !== null,
+      hasAfter: chunk.page.after !== null,
+      missingAnchor: chunk.missingAnchor,
+      durationMs: Date.now() - startedAt,
+    }));
+    return chunk;
+  } catch (error) {
+    log.warn('transcript_chunk.failed', {
+      ...base,
+      durationMs: Date.now() - startedAt,
+      ...errorFields(error),
+    });
+    throw error;
+  }
+}
+
+async function readChunkUnlogged(
+  selection: TranscriptSelection,
   words: string,
   position: Position,
 ): Promise<Chunk> {
   if (position.kind === 'anchor') {
-    const range = await port.range(position.id, TRANSCRIPT_CHUNK_SIZE);
+    const range = await readTranscriptRange(selection, position.id, TRANSCRIPT_CHUNK_SIZE);
     return { page: range.page, missingAnchor: range.anchor === null };
   }
-  const page = await port.read({
+  const page = await readTranscriptPage(selection, {
     words,
     limit: TRANSCRIPT_CHUNK_SIZE,
     direction: position.kind === 'cursor' ? position.direction : 'before',
@@ -44,14 +74,14 @@ function boundary(cursor: string | null, direction: 'before' | 'after'): Positio
 }
 
 export function useTranscriptReader(
-  port: TranscriptFeedPort,
+  selection: TranscriptSelection,
   words: string,
   anchor: number | null,
   enabled: boolean,
 ): UseInfiniteQueryResult<InfiniteData<Chunk, Position>> {
   const initialPageParam: Position =
     anchor === null ? { kind: 'latest' } : { kind: 'anchor', id: anchor };
-  return useInfiniteQuery<
+  return useScreenInfiniteQuery<
     Chunk,
     Error,
     InfiniteData<Chunk, Position>,
@@ -59,13 +89,12 @@ export function useTranscriptReader(
     Position
   >({
     enabled,
-    queryKey: transcriptReaderKey(port, words, anchor),
+    queryKey: transcriptReaderKey(selection, words, anchor),
     initialPageParam,
-    queryFn: ({ pageParam }) => readChunk(port, anchor === null ? words : '', pageParam),
+    queryFn: ({ pageParam }) => readChunk(selection, anchor === null ? words : '', pageParam),
     getNextPageParam: (last) => boundary(last.page.before, 'before'),
     getPreviousPageParam: (first) => boundary(first.page.after, 'after'),
     maxPages: TRANSCRIPT_KEPT_CHUNKS,
     gcTime: 0,
-    retry: false,
   });
 }

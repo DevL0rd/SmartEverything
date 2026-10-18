@@ -1,37 +1,72 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { DeviceFamily } from '@smarteverything/domain';
+import { familyDefinition } from '@smarteverything/domain';
 import { cn } from '../../../design/cn';
 import { Glow } from '../../../components/glow';
 import { AIR_BAND_COLOUR } from '../../../design/data-colours';
 import type { ColourRole } from '../../../design/tokens';
 import type { Device } from '../../../store/state';
-import { DeviceVisual, useDeviceVisualState, type VisualSize } from '../../device-visuals';
+import {
+  DeviceVisual,
+  ownsVisualState,
+  useDeviceVisualState,
+  visualStateOf,
+  type VisualSize,
+  type VisualState,
+} from '../../device-visuals';
+import { useDeviceDerived } from '../../../store/selectors';
 import { useDeviceModel } from '../model/device-model';
 
-const FAMILY_ROLE: Readonly<Partial<Record<DeviceFamily, ColourRole | null>>> = {
-  humidifier: 'humidity',
-  diffuser: null,
-  dehumidifier: 'humidity',
-  tower_fan: 'temp-cool',
-  fan: 'temp-cool',
-  heater: 'temp-warm',
-  air_conditioner: 'temp-cool',
-  thermostat: 'temp-warm',
-  light: 'temp-warm',
-};
+function glowRoleOf(tone: ColourRole | null, state: VisualState): ColourRole | null {
+  if (tone === null || !state.online || state.power === 'off') {
+    return null;
+  }
+  return state.band === null ? tone : AIR_BAND_COLOUR[state.band];
+}
 
 function useGlowRole(device: Device): ColourRole | null {
-  const model = useDeviceModel(device);
+  const tone = familyDefinition(useDeviceModel(device).family).glow;
+  return useDeviceDerived(
+    device.id,
+    (values) => glowRoleOf(tone, visualStateOf(device, values)),
+    [device, tone],
+    Object.is,
+  );
+}
+
+interface IllustrationProps {
+  readonly device: Device;
+  readonly size: VisualSize;
+}
+
+function HostedIllustration({ device, size }: IllustrationProps): ReactNode {
+  const role = useGlowRole(device);
+  return (
+    <>
+      {role === null ? null : <Glow colour={role} />}
+      <DeviceVisual device={device} size={size} />
+    </>
+  );
+}
+
+function PlainIllustration({ device, size }: IllustrationProps): ReactNode {
+  const tone = familyDefinition(useDeviceModel(device).family).glow;
   const state = useDeviceVisualState(device);
-  const role = FAMILY_ROLE[model.family];
-  if (role === null) {
-    return null;
-  }
-  if (!state.online || state.power === 'off') {
-    return null;
-  }
-  return state.band === null ? (role ?? 'primary') : AIR_BAND_COLOUR[state.band];
+  const role = glowRoleOf(tone, state);
+  return (
+    <>
+      {role === null ? null : <Glow colour={role} />}
+      <DeviceVisual device={device} size={size} state={state} />
+    </>
+  );
+}
+
+function Illustration(props: IllustrationProps): ReactNode {
+  return ownsVisualState(props.device) ? (
+    <HostedIllustration {...props} />
+  ) : (
+    <PlainIllustration {...props} />
+  );
 }
 
 export function Visual({
@@ -41,7 +76,6 @@ export function Visual({
   readonly device: Device;
   readonly size: VisualSize;
 }): ReactNode {
-  const role = useGlowRole(device);
   return (
     <View
       pointerEvents="none"
@@ -50,8 +84,7 @@ export function Visual({
         size === 'tile' ? 'rounded-md' : 'rounded-lg',
       )}
     >
-      {role === null ? null : <Glow colour={role} />}
-      <DeviceVisual device={device} size={size} />
+      <Illustration device={device} size={size} />
     </View>
   );
 }

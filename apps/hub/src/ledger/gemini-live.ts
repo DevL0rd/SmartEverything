@@ -22,7 +22,7 @@ export interface LiveTurn {
   readonly usage: UsageMetadata;
 }
 
-export class MissingPriceError extends Error {
+class MissingPriceError extends Error {
   override readonly name = 'MissingPriceError';
 
   constructor(modelId: string, rate: string) {
@@ -59,7 +59,7 @@ interface Priced {
   estimated: boolean;
 }
 
-function rateOf(pricing: AiPricing, modelId: string, rate: Rate): number {
+export function rateOf(pricing: AiPricing, modelId: string, rate: Rate): number {
   const value = pricing[rate];
   if (value === null) {
     throw new MissingPriceError(modelId, rate);
@@ -201,27 +201,5 @@ export function recordLiveTurn(ledger: Ledger, prices: PriceBook, turn: LiveTurn
     prices,
     { source: 'gemini_live', work: 'voice' },
     { ...turn, meta: {} },
-  );
-}
-
-export interface TranscriptionTurn {
-  readonly profileId: string;
-  readonly messageId: string | null;
-  readonly pluginId: string | null;
-  readonly model: string;
-  readonly usage: UsageMetadata;
-  readonly meta: Readonly<Record<string, JsonValue>>;
-}
-
-export function recordTranscription(
-  ledger: Ledger,
-  prices: PriceBook,
-  turn: TranscriptionTurn,
-): AiUsageRow {
-  return recordGeminiTurn(
-    ledger,
-    prices,
-    { source: 'gemini', work: 'transcribe' },
-    { ...turn, clientId: null, chatId: null, callId: null },
   );
 }

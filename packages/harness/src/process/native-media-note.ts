@@ -2,7 +2,7 @@ import { HARNESS_NATIVE_MEDIA_NOTE } from '@smarteverything/domain';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ImageBlock } from '@deepseek-ai/dsh-llm';
 import type { SessionSeq } from '@deepseek-ai/dsh-session';
-import type { HarnessHttp } from './http';
+import type { HarnessHub } from './http';
 import type { HarnessControlPersistence } from './contracts';
 
 export interface NativeMediaNoteInput {
@@ -25,7 +25,7 @@ export async function nativeImageNote(
 }
 
 export async function transferNativeImageNote(
-  http: HarnessHttp,
+  http: HarnessHub,
   persistence: HarnessControlPersistence,
   input: NativeMediaNoteInput,
 ): Promise<string> {

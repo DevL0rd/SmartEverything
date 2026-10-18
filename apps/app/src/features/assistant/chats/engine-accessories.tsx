@@ -1,10 +1,10 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState } from 'react';
 import type { AiChatRow, Engine } from '@smarteverything/domain';
 import { useHarnessCatalogue } from '../data/harness';
+import { machineSwitchOf } from '../model/harness-handoff';
+import { recentIdOfNative, useRecentModels } from '../picker/panel/panel-recent';
 import { useHarnessHostChoice } from '../provider/harness-host-choice';
 import type { NativeModelRequest } from '../provider/subscription-models';
-import { DeviceChip, DraftDeviceChip, NativeDeviceChip } from './device-chip';
-import { isComputerEngine } from '../provider/computer-engine';
 
 interface EngineAccessory {
   readonly chat: AiChatRow | undefined;
@@ -26,44 +26,27 @@ export function useEngineControls(
 ): EngineAccessory {
   const [pending, request] = useState<NativeModelRequest | null>(null);
   const catalogue = useHarnessCatalogue();
+  const recent = useRecentModels();
   const host = useHarnessHostChoice(
     catalogue.data,
     engine.kind === 'dsh' ? engine.execution_target : null,
     chat === undefined,
   );
-  return useMemo(
-    () => ({
-      chat,
-      pending,
-      request,
-      host,
-      cancel: (): void => {
-        request(null);
-      },
-      change: (next: Engine): void => {
-        request(null);
-        onChange(next);
-      },
-    }),
-    [pending, host, onChange, chat],
-  );
+  return {
+    chat,
+    pending,
+    request,
+    host,
+    cancel: (): void => {
+      request(null);
+    },
+    change: (next: Engine): void => {
+      if (pending !== null) recent.record(recentIdOfNative(pending));
+      request(null);
+      onChange(next);
+    },
+  };
 }
-export function ChatDeviceControl({
-  engine,
-  chat,
-  blocked = false,
-}: {
-  readonly engine: Engine;
-  readonly chat?: AiChatRow;
-  readonly blocked?: boolean;
-}): ReactNode {
-  const control = useEngineAccessory();
-  if (control === null) return null;
-  if (control.pending !== null || isComputerEngine(engine))
-    return <NativeDeviceChip engine={engine} blocked={blocked} />;
-  return chat === undefined ? (
-    <DraftDeviceChip engine={engine} onChange={control.change} />
-  ) : (
-    <DeviceChip chat={chat} />
-  );
+export function useMachineSwitchPending(chat: AiChatRow | undefined): boolean {
+  return machineSwitchOf(chat?.pending_execution_target).kind === 'pending';
 }

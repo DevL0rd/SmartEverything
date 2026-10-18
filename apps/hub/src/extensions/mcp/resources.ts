@@ -1,8 +1,9 @@
+import type { ListResourcesResult, ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { catalogueText } from '../../ai-tools/catalogue-text';
 import type { Tool } from './tools/registry';
 
-export const TOOLS_DOC_URI = 'smarteverything://docs/tools';
+const TOOLS_DOC_URI = 'smarteverything://docs/tools';
 
 const LISTED = z.looseObject({
   name: z.string(),
@@ -10,9 +11,7 @@ const LISTED = z.looseObject({
   inputSchema: z.record(z.string(), z.unknown()),
 });
 
-const READ = z.object({ uri: z.string() });
-
-export function resourceList(): Readonly<Record<string, unknown>> {
+export function resourceList(): ListResourcesResult {
   return {
     resources: [
       {
@@ -26,12 +25,8 @@ export function resourceList(): Readonly<Record<string, unknown>> {
   };
 }
 
-export function resourceRead(
-  params: unknown,
-  tools: readonly Tool[],
-): Readonly<Record<string, unknown>> | null {
-  const read = READ.safeParse(params);
-  if (!read.success || read.data.uri !== TOOLS_DOC_URI) {
+export function resourceRead(uri: string, tools: readonly Tool[]): ReadResourceResult | null {
+  if (uri !== TOOLS_DOC_URI) {
     return null;
   }
   const text = catalogueText(tools.map((tool) => LISTED.parse(tool.listing)));

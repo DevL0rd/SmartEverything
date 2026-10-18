@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import type { AssistantMessageRow } from '@smarteverything/domain';
+import type { AssistantMessageRow, ImageOperationReceipt } from '@smarteverything/domain';
 import { useMinute } from '../../../store/clock';
+import { usePendingKeys } from '../../../components/deferred-action';
 import { useRow } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { timed } from '../../../perf/probe-kit';
-import { mergedRows, useOlderMessages } from '../data/history';
+import { mergedRows, useOlderComplete, useOlderRows } from '../data/history';
 import { usePendingMessages, type PendingMessage } from '../data/outbox';
-import { usePendingDeletes } from '../data/pending-deletes';
 import { isFooter, threadOf, type MessageItem } from '../data/thread';
 import { imageTimelineIds } from '../model/reply-timeline';
 import { useImageOperations } from '../images/data/image-queries';
@@ -28,7 +28,6 @@ export interface ThreadRows {
   readonly data: readonly ThreadRow[];
   readonly all: readonly AssistantMessageRow[];
   readonly readAt: string | null;
-  readonly loading: boolean;
   readonly complete: boolean;
 }
 
@@ -47,19 +46,31 @@ function withOutbox(
   return [...items.slice(0, at), ...outbox, ...items.slice(at)];
 }
 
+function withoutBoundResults(
+  items: readonly MessageItem[],
+  receipts: readonly ImageOperationReceipt[],
+  boundImages: ReadonlySet<string>,
+): readonly MessageItem[] {
+  const bound = new Set(
+    receipts.filter((receipt) => boundImages.has(receipt.id)).map(resultMessageId),
+  );
+  return bound.size === 0 ? items : items.filter((item) => !bound.has(item.row.id));
+}
+
 export function useThreadRows(
   historyKey: string,
   rows: readonly AssistantMessageRow[],
 ): ThreadRows {
-  const older = useOlderMessages(historyKey);
+  const olderRows = useOlderRows(historyKey);
+  const complete = useOlderComplete(historyKey);
   const now = useMinute();
   const timeZone = useStoreSelector((state) => state.settings?.time_zone ?? null);
   const chat = useRow('ai_chats', historyKey);
   const [opened] = useState(() => ({ at: Date.now(), readAt: chat?.read_at ?? null }));
-  const hidden = usePendingDeletes();
+  const hidden = usePendingKeys();
   const pending = usePendingMessages(historyKey);
   const operations = useImageOperations(historyKey);
-  const all = useMemo(() => mergedRows(rows, older.rows), [rows, older.rows]);
+  const all = useMemo(() => mergedRows(rows, olderRows), [rows, olderRows]);
   const boundImages = useMemo(() => imageTimelineIds(all), [all]);
   const items = useMemo(
     () =>
@@ -78,13 +89,7 @@ export function useThreadRows(
     () =>
       withOutbox(
         withImageOperations(
-          items.filter(
-            (item) =>
-              !(operations.data ?? []).some(
-                (receipt) =>
-                  boundImages.has(receipt.id) && resultMessageId(receipt) === item.row.id,
-              ),
-          ),
+          withoutBoundResults(items, operations.data ?? [], boundImages),
           (operations.data ?? []).filter(
             (receipt) =>
               !boundImages.has(receipt.id) && !hidden.has(resultMessageId(receipt) ?? receipt.id),
@@ -94,5 +99,5 @@ export function useThreadRows(
       ),
     [pending, items, operations.data, hidden, boundImages],
   );
-  return { data, all, readAt: opened.readAt, loading: older.loading, complete: older.complete };
+  return { data, all, readAt: opened.readAt, complete };
 }

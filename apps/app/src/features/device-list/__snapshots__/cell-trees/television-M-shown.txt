@@ -1,0 +1,79 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1" pointerEvents="box-none"
+      View className="absolute -inset-5 bg-linear-to-br to-transparent from-viz-2/12" pointerEvents="none"
+      View className="flex-1 gap-3" pointerEvents="box-none"
+        View className="h-14 flex-row items-center gap-3" pointerEvents="box-none"
+          View className="size-14" pointerEvents="none"
+            View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+              Anim.View pointerEvents="none" renderToHardwareTextureAndroid=true style=[{position:"absolute",left:0,top:0,width:48,height:48},{animationName:{cssRules_:{from:{opacity:0.45},to:{opacity:0.95}},cssText_:"{\"from\":{\"opacity\":0.45},\"to\":{\"opacity\":0.95}}",length_:2,name_:"REA-CSS-1",processedKeyframes_:"from { opacity: 0.45 } to { opacity: 0.95 }"},animationDuration:4200,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}]
+                Svg.default height=48 viewBox="0 0 100 100" width=48
+                  Svg.Ellipse cx=50 cy=44 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#888078" stopOpacity=0.45; ); Svg.Stop(offset="1" stopColor="#888078" stopOpacity=0; ))) rx=50 ry=42
+              Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+                Svg.Ellipse cx=50 cy=86 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=30 ry=4.5
+                Svg.Path d="M44 72 H56 L57 82 H43 Z" fill="#1a2836"
+                Svg.Ellipse cx=50 cy=83 fill="#1f2c39" rx=16 ry=2.6 stroke="#3d444b" strokeWidth=0.5
+                Svg.Path d="M11 16 H89 A5 5 0 0 1 94 21 V67 A5 5 0 0 1 89 72 H11 A5 5 0 0 1 6 67 V21 A5 5 0 0 1 11 16 Z" fill="#1a2836" stroke="#3d444b" strokeWidth=0.6
+                Svg.Path d="M11 16 H89 A5 5 0 0 1 94 21 V67 A5 5 0 0 1 89 72 H11 A5 5 0 0 1 6 67 V21 A5 5 0 0 1 11 16 Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+                Svg.Path d="M12 19 H88 A3 3 0 0 1 91 22 V66 A3 3 0 0 1 88 69 H12 A3 3 0 0 1 9 66 V22 A3 3 0 0 1 12 19 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#888078" stopOpacity=0.9; ); Svg.Stop(offset="1" stopColor="#7e7872" stopOpacity=0.8; ))) fillOpacity=1
+                Svg.Path d="M9 58 Q26 46 42 54 T74 50 T91 54 V66 Q91 69 88 69 H12 Q9 69 9 66 Z" fill="#FFFFFF" fillOpacity=0.14
+                Svg.Path d="M16 62 L38 24" stroke="#FFFFFF" strokeLinecap="round" strokeOpacity=0.14 strokeWidth=6
+          View className="min-w-0 flex-1 justify-center" pointerEvents="none"
+            Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+            Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+          Pressable accessibilityHint=undefined accessibilityLabel="Turn off" accessibilityRole="button" accessibilityState={disabled:false,selected:false} android_ripple={color:"#515457",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 size-touch-min items-center justify-center rounded-full bg-primary" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onLongPress=undefined onPress=fn onPressIn=fn
+        View className="flex-row items-center gap-2.5" pointerEvents="box-none"
+          View className="min-w-0 flex-1 gap-3" pointerEvents="box-none"
+            View className="flex-row items-center gap-1.5"
+              View accessibilityActions=[{name:"increment",label:"Up"},{name:"decrement",label:"Down"},{name:"seam",label:"Set volume"}] accessibilityLabel="Volume" accessibilityRole="adjustable" accessibilityValue={text:"35"} accessible=true className="overflow-hidden rounded-full bg-surface-3 border border-on-surface-variant/80 h-12 w-30" onAccessibilityAction=fn
+                View accessibilityElementsHidden=true className="flex-1 flex-row" importantForAccessibility="no-hide-descendants"
+                  Pressable accessibilityLabel="Volume down" accessibilityRole="button" accessibilityState={disabled:false,selected:false} className="items-center justify-center active:scale-95 focus:outline-2 focus:outline-offset-2 focus:outline-focus flex-1 self-stretch" hitSlop=undefined onBlur=fn onPress=fn onPressIn=fn onPressOut=fn
+                    Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=20 ref=null stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75 viewBox="0 0 24 24" width=20 xmlns="http://www.w3.org/2000/svg"
+                      Svg.Path aria-hidden=true d="M5 12h14" fill="none" stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                  View className="items-center justify-center bg-surface-2 h-full w-8" pointerEvents="none"
+                    Text className="font-sans-medium text-label text-on-surface text-left tabular" selectable=false
+                  Pressable accessibilityLabel="Volume up" accessibilityRole="button" accessibilityState={disabled:false,selected:false} className="items-center justify-center active:scale-95 focus:outline-2 focus:outline-offset-2 focus:outline-focus flex-1 self-stretch" hitSlop=undefined onBlur=fn onPress=fn onPressIn=fn onPressOut=fn
+                    Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=20 ref=null stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75 viewBox="0 0 24 24" width=20 xmlns="http://www.w3.org/2000/svg"
+                      Svg.Path aria-hidden=true d="M5 12h14" fill="none" stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                      Svg.Path aria-hidden=true d="M12 5v14" fill="none" stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+              Pressable accessibilityLabel="Mute" accessibilityRole="button" accessibilityState={disabled:false,selected:false} className="items-center justify-center active:scale-95 focus:outline-2 focus:outline-offset-2 focus:outline-focus size-11 rounded-full border border-on-surface-variant/80 bg-linear-to-b from-surface-raised to-surface-3 active:from-primary-container active:to-primary-container" hitSlop=2 onBlur=fn onPress=fn onPressIn=fn onPressOut=fn
+                Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=20 ref=null stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75 viewBox="0 0 24 24" width=20 xmlns="http://www.w3.org/2000/svg"
+                  Svg.Path aria-hidden=true d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z" fill="none" stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                  Svg.Path aria-hidden=true d="M16 9a5 5 0 0 1 0 6" fill="none" stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                  Svg.Path aria-hidden=true d="M19.364 18.364a9 9 0 0 0 0-12.728" fill="none" stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+            View accessibilityLabel="Input and apps" className="relative" onPointerEnter=fn onPointerLeave=fn
+              ScrollView className="grow-0" contentContainerClassName="gap-grid-gap" decelerationRate="fast" horizontal=true onScroll=fn ref={current:null} scrollEventThrottle=64 showsHorizontalScrollIndicator=false
+                Pressable accessibilityLabel="Input. Change input" accessibilityRole="button" className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-2 active:scale-95 active:bg-surface-3 border border-on-surface-variant/80 focus:outline-2 focus:outline-offset-2 focus:outline-focus pl-3.5 pr-3" onPress=fn
+                  Text className="font-sans-medium text-label text-on-surface text-left" selectable=false
+                  Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=16 ref=null stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2 viewBox="0 0 24 24" width=16 xmlns="http://www.w3.org/2000/svg"
+                    Svg.Path aria-hidden=true d="m6 9 6 6 6-6" fill="none" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+                Pressable accessibilityLabel="Open YouTube" accessibilityRole="button" accessibilityState={selected:true} className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-2 active:scale-95 active:bg-surface-3 border border-on-surface-variant/80 focus:outline-2 focus:outline-offset-2 focus:outline-focus pl-2 pr-3.5 border-primary bg-primary-container" onPress=fn
+                  View className="items-center justify-center bg-viz-2/25 size-5 rounded-sm" pointerEvents="none"
+                    Text className="font-sans-medium text-caption text-on-surface text-left font-sans-semibold" selectable=false
+                  Text className="font-sans-medium text-label text-on-surface text-left" numberOfLines=1 selectable=false
+                Pressable accessibilityLabel="Open Netflix" accessibilityRole="button" accessibilityState={selected:false} className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-2 active:scale-95 active:bg-surface-3 border border-on-surface-variant/80 focus:outline-2 focus:outline-offset-2 focus:outline-focus pl-2 pr-3.5" onPress=fn
+                  View className="items-center justify-center bg-viz-1/25 size-5 rounded-sm" pointerEvents="none"
+                    Text className="font-sans-medium text-caption text-on-surface text-left font-sans-semibold" selectable=false
+                  Text className="font-sans-medium text-label text-on-surface text-left" numberOfLines=1 selectable=false
+                Pressable accessibilityLabel="Open Prime Video" accessibilityRole="button" accessibilityState={selected:false} className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-2 active:scale-95 active:bg-surface-3 border border-on-surface-variant/80 focus:outline-2 focus:outline-offset-2 focus:outline-focus pl-2 pr-3.5" onPress=fn
+                  View className="items-center justify-center bg-viz-4/25 size-5 rounded-sm" pointerEvents="none"
+                    Text className="font-sans-medium text-caption text-on-surface text-left font-sans-semibold" selectable=false
+                  Text className="font-sans-medium text-label text-on-surface text-left" numberOfLines=1 selectable=false
+                Pressable accessibilityLabel="Open Disney+" accessibilityRole="button" accessibilityState={selected:false} className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-2 active:scale-95 active:bg-surface-3 border border-on-surface-variant/80 focus:outline-2 focus:outline-offset-2 focus:outline-focus pl-2 pr-3.5" onPress=fn
+                  View className="items-center justify-center bg-viz-5/25 size-5 rounded-sm" pointerEvents="none"
+                    Text className="font-sans-medium text-caption text-on-surface text-left font-sans-semibold" selectable=false
+                  Text className="font-sans-medium text-label text-on-surface text-left" numberOfLines=1 selectable=false
+                Pressable accessibilityLabel="More apps" accessibilityRole="button" className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-2 active:scale-95 active:bg-surface-3 border border-on-surface-variant/80 focus:outline-2 focus:outline-offset-2 focus:outline-focus pl-3 pr-3.5" onPress=fn
+                  Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=16 ref=null stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2 viewBox="0 0 24 24" width=16 xmlns="http://www.w3.org/2000/svg"
+                    Svg.Path aria-hidden=true d="M5 12h14" fill="none" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+                    Svg.Path aria-hidden=true d="M12 5v14" fill="none" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+                  Text className="font-sans-medium text-label text-on-surface text-left" selectable=false
+              View className="absolute inset-y-0 right-0 w-8 bg-linear-to-r from-surface-1/0 to-surface-1" pointerEvents="none"
+          View className="items-center justify-center size-24"
+            Svg.default height=96 viewBox="0 0 96 96" width=96
+              Svg.Defs 
+              Svg.Path d="M34.66 34.19L15.35 14.19A47 47 0 0 1 80.65 14.19L61.34 34.19A19.200000000000003 19.200000000000003 0 0 0 34.66 34.19ZM61.81 34.66L81.81 15.35A47 47 0 0 1 81.81 80.65L61.81 61.34A19.200000000000003 19.200000000000003 0 0 0 61.81 34.66ZM61.34 61.81L80.65 81.81A47 47 0 0 1 15.35 81.81L34.66 61.81A19.200000000000003 19.200000000000003 0 0 0 61.34 61.81ZM34.19 61.34L14.19 80.65A47 47 0 0 1 14.19 15.35L34.19 34.66A19.200000000000003 19.200000000000003 0 0 0 34.19 61.34Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#24303c"; ); Svg.Stop(offset="1" stopColor="#1f2c39"; ))) stroke="#333c45" strokeOpacity=0.8 strokeWidth=1
+              Svg.Path d="M44.52 19.76L48.00 16.28L51.48 19.76M76.24 44.52L79.72 48.00L76.24 51.48M51.48 76.24L48.00 79.72L44.52 76.24M19.76 51.48L16.28 48.00L19.76 44.52" fill="none" stroke="#2e3842" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2.2
+            Pressable accessibilityActions=[{name:"up",label:"Up"},{name:"right",label:"Right"},{name:"down",label:"Down"},{name:"left",label:"Left"}] accessibilityLabel="Navigation" accessibilityRole="adjustable" accessible=true className="absolute size-24" focusable=true onAccessibilityAction=fn onBlur=fn onPress=fn onPressIn=fn onPressOut=fn
+            Pressable accessibilityLabel="Select" accessibilityRole="button" accessibilityState={disabled:false} className="absolute items-center justify-center rounded-full active:scale-95 border border-on-surface-variant/80 bg-linear-to-b from-surface-raised to-surface-3 active:from-primary-container active:to-primary-container to-primary-container focus:outline-2 focus:outline-offset-2 focus:outline-focus size-10" hitSlop=4 onBlur=fn onPress=fn onPressIn=fn onPressOut=fn
+              Text className="font-sans-medium text-caption text-on-surface text-left" selectable=false

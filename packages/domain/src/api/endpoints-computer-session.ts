@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { APP_CLOSED, COMPUTER_APPS } from '../node/computer-apps';
 import { CAPTURE_TARGETS, COMPUTER_CAPTURE } from '../node/computer-capture';
-import { FILE_CONTENT, FILE_LIST, FILE_PATH } from '../node/computer-files';
+import { FILE_CONTENT, FILE_LIST, FILE_PATH, LIST_CURSOR } from '../node/computer-files';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, NOTHING } from './primitives';
 
@@ -13,7 +13,7 @@ export const COMPUTER_SESSION_ENDPOINTS = {
   listComputerApps: endpoint({
     method: 'GET',
     path: '/api/computers/:deviceId/apps',
-    access: 'owner',
+    access: 'member',
     summary:
       'Apps installed on a computer, the app in front now and how long each app was in front today and this week',
     params: COMPUTER_PARAMS,
@@ -24,7 +24,7 @@ export const COMPUTER_SESSION_ENDPOINTS = {
   openComputerApp: endpoint({
     method: 'POST',
     path: '/api/computers/:deviceId/apps/open',
-    access: 'owner',
+    access: 'member',
     summary: 'Open an installed app on a computer for the signed-in person',
     params: COMPUTER_PARAMS,
     query: NOTHING,
@@ -34,7 +34,7 @@ export const COMPUTER_SESSION_ENDPOINTS = {
   closeComputerApp: endpoint({
     method: 'POST',
     path: '/api/computers/:deviceId/apps/close',
-    access: 'owner',
+    access: 'member',
     summary:
       'Close every window of an app on a computer; force ends its programs at once and unsaved work is lost',
     params: COMPUTER_PARAMS,
@@ -45,20 +45,20 @@ export const COMPUTER_SESSION_ENDPOINTS = {
   listComputerFiles: endpoint({
     method: 'GET',
     path: '/api/computers/:deviceId/files',
-    access: 'owner',
+    access: 'member',
     summary:
-      'Files and folders in a folder of the signed-in person’s home on a computer (the home folder when no path), up to 500',
+      'Files and folders in any folder the computer’s user can read (the home folder when no path), 500 at a time: pass next from the answer as cursor for the following page',
     params: COMPUTER_PARAMS,
-    query: z.strictObject({ path: FILE_PATH.optional() }),
+    query: z.strictObject({ path: FILE_PATH.optional(), cursor: LIST_CURSOR }),
     body: NO_BODY,
     response: FILE_LIST,
   }),
   readComputerFile: endpoint({
     method: 'GET',
     path: '/api/computers/:deviceId/file',
-    access: 'owner',
+    access: 'member',
     summary:
-      'One file from the signed-in person’s home on a computer, up to 5 MB: text as text, anything else as base64',
+      'One file the computer’s user can read, up to 5 MB, to put in a message: text as text, anything else as base64. Larger files download from /api/computers/:deviceId/download?path= with Range support',
     params: COMPUTER_PARAMS,
     query: z.strictObject({ path: FILE_PATH }),
     body: NO_BODY,
@@ -67,7 +67,7 @@ export const COMPUTER_SESSION_ENDPOINTS = {
   captureComputer: endpoint({
     method: 'POST',
     path: '/api/computers/:deviceId/capture',
-    access: 'owner',
+    access: 'member',
     summary: 'A screenshot of a computer’s whole screen or of the window in front, as a JPEG',
     params: COMPUTER_PARAMS,
     query: NOTHING,

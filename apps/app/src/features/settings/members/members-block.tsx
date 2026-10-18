@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { ROLES, type ClientRow, type Role } from '@smarteverything/domain';
+import { ROLES, type ClientRow } from '@smarteverything/domain';
 import { changeClientRole, removeClient } from '../../../api/settings';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
@@ -10,23 +10,23 @@ import { List } from '../../../components/section';
 import { Segmented } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { useMinute } from '../../../store/clock';
 import { useRows, useSession } from '../../../store/selectors';
 import { ClientProfile } from './client-profile';
-import { ROLE_HELP, ROLE_LABEL, clientViews, platformIcon, type ClientView } from './clients';
+import {
+  ROLE_HELP,
+  ROLE_LABEL,
+  clientViews,
+  livePending,
+  platformIcon,
+  shownRole,
+  type ClientView,
+  type PendingRole,
+} from './clients';
 
+import { trackSetting } from '../settings-log';
 const ROLE_OPTIONS = ROLES.map((role) => ({ value: role, label: ROLE_LABEL[role] }));
-
-function failed(message: string): (error: unknown) => void {
-  return (error) => {
-    notify({
-      message,
-      error,
-      tone: 'critical',
-    });
-  };
-}
 
 async function unpair(client: ClientRow, close: () => void): Promise<void> {
   const accepted = await confirm({
@@ -36,13 +36,18 @@ async function unpair(client: ClientRow, close: () => void): Promise<void> {
     tone: 'destructive',
   });
   if (accepted) {
-    await removeClient(client.id);
+    await trackSetting('client.unpair', { clientId: client.id }, () => removeClient(client.id));
     close();
   }
 }
 
 function RoleChoice({ client }: { readonly client: ClientRow }): ReactNode {
-  const [role, setRole] = useState<Role>(client.role);
+  const [pending, setPending] = useState<PendingRole | null>(null);
+  const live = livePending(client.role, pending);
+  if (live !== pending) {
+    setPending(live);
+  }
+  const role = shownRole(client.role, live);
   return (
     <View className="gap-2">
       <Segmented
@@ -50,10 +55,14 @@ function RoleChoice({ client }: { readonly client: ClientRow }): ReactNode {
         options={ROLE_OPTIONS}
         value={role}
         onChange={(next) => {
-          setRole(next);
-          changeClientRole(client.id, next).catch((error: unknown) => {
-            setRole(client.role);
-            failed('The role was not changed')(error);
+          setPending({ from: client.role, to: next });
+          trackSetting(
+            'client.role_change',
+            { clientId: client.id, from: client.role, to: next },
+            () => changeClientRole(client.id, next),
+          ).catch((error: unknown) => {
+            setPending(null);
+            notifyFailure('The role was not changed')(error);
           });
         }}
       />
@@ -64,7 +73,7 @@ function RoleChoice({ client }: { readonly client: ClientRow }): ReactNode {
   );
 }
 
-function ClientSheet({
+export function ClientSheet({
   view,
   onClose,
 }: {
@@ -83,7 +92,9 @@ function ClientSheet({
           icon="trash"
           variant="destructive"
           onPress={() => {
-            unpair(view.client, onClose).catch(failed(`${view.client.name} was not unpaired`));
+            unpair(view.client, onClose).catch(
+              notifyFailure(`${view.client.name} was not unpaired`),
+            );
           }}
         />
       }

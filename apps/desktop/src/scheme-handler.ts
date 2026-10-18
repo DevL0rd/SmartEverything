@@ -67,26 +67,3 @@ export function xdgDataLocations(
     directories: directories.filter((directory) => path.resolve(directory) !== path.resolve(home)),
   };
 }
-
-export type SchemeRegistrationPlan =
-  | { readonly kind: 'packaged'; readonly handlers: readonly string[] }
-  | { readonly kind: 'current' }
-  | { readonly kind: 'register'; readonly writeEntry: boolean };
-
-export interface SchemeRegistrationState {
-  readonly packagedHandlers: readonly string[];
-  readonly userEntry: string | undefined;
-  readonly desiredEntry: string;
-  readonly currentDefault: string;
-}
-
-export function planSchemeRegistration(state: SchemeRegistrationState): SchemeRegistrationPlan {
-  if (state.packagedHandlers.length > 0) {
-    return { kind: 'packaged', handlers: state.packagedHandlers };
-  }
-  const entryIsCurrent = state.userEntry === state.desiredEntry;
-  if (entryIsCurrent && state.currentDefault === SCHEME_HANDLER_FILE) {
-    return { kind: 'current' };
-  }
-  return { kind: 'register', writeEntry: !entryIsCurrent };
-}

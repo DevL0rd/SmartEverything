@@ -1,232 +1,190 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
-import { Icon } from '../../../components/icon';
-import { Section, List } from '../../../components/section';
-import type { MenuItem } from '../../../components/menu';
+import { Disclosure } from '../../../components/disclosure';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { SwitchRow } from '../../../components/rows';
 import { Screen } from '../../../components/screen';
-import { Text } from '../../../components/text';
-import { TextField } from '../../../components/text-field';
-import { useRouter } from 'expo-router';
-import { href } from '../../../app-shell/hrefs';
+import { Section } from '../../../components/section';
 import { useIdiom } from '../../../design/platform';
 import { useSizeClass } from '../../../design/size-class';
-import { duplicateAutomation } from '../data/actions';
-import type { Catalog } from '../data/use-automations';
-import { summarize, sentenceOf } from '../model/describe';
-import type { Draft } from '../model/editor-state';
-import { OnlyIfBlock, ThenBlock, WhenBlock } from './blocks';
 import { OwnedRunSheet } from '../components/owned-runs';
-import { RunPolicyFields } from './run-policy-fields';
+import { TestInputsSheet } from '../components/test-inputs-sheet';
+import type { Catalog } from '../data/use-automations';
+import type { Draft } from '../model/editor-state';
+import { automationEditorField, reusableEditorField } from '../model/focus-targets';
+import { OnlyIfBlock, ThenBlock, WhenBlock, type BlockProps } from './blocks';
 import { EditorFocusProvider, FocusedFields, focusedField, useEditorFocus } from './editor-focus';
-import { automationEditorField } from '../model/focus-targets';
+import { FooterBar, NameBlock, Preview, TestNote, previewOf, useOverflow } from './editor-parts';
 import { FocusedRun } from './focused-run';
-import { ProgramConditionFields } from './program-conditions';
-import { ProgramLibraryProvider } from './program-library';
-import { useReloadSaved } from './editor-navigation';
+import { InputsFields } from './inputs-section';
+import { RunBehaviourFields } from './run-behaviour-fields';
+import { StepInspector } from './step-inspector';
+import { StepTreeProvider } from './step-tree';
 import { useEditor, type Editor } from './use-editor';
 
-function previewOf(catalog: Catalog, draft: Draft): string | null {
-  return sentenceOf(
-    summarize(catalog.names, {
-      triggers: [...draft.triggers],
-      conditions: { mode: draft.mode, items: [...draft.conditions] },
-      actions: [...draft.actions],
-    }),
-  );
+interface PartProps extends BlockProps {
+  readonly reusable: boolean;
 }
 
-interface PreviewProps {
-  readonly sentence: string | null;
-}
-
-function Preview({ sentence }: PreviewProps): ReactNode {
+function AdvancedBlock({ draft, change }: BlockProps): ReactNode {
+  const { mode, max, key } = draft.automation;
+  const [open, setOpen] = useState(false);
   return (
-    <View accessibilityLiveRegion="polite" className="flex-row items-start gap-3">
-      <Icon name="sparkles" size={20} tone="primary" />
-      <Text
-        variant="body"
-        tone={sentence === null ? 'faint' : 'default'}
-        numberOfLines={3}
-        className="flex-1"
-      >
-        {sentence ?? 'Pick when it runs and what it does.'}
-      </Text>
-    </View>
-  );
-}
-
-interface NameBlockProps {
-  readonly editor: Editor;
-  readonly focused?: boolean;
-}
-
-function NameBlock({ editor, focused }: NameBlockProps): ReactNode {
-  return (
-    <View className="gap-3">
-      <TextField
-        label="Name"
-        focusOnMount={focused === true}
-        value={editor.draft.name}
-        placeholder="Bedtime air"
-        error={editor.problems?.name[0] ?? null}
-        onChange={(name) => {
-          editor.change({ type: 'rename', name });
+    <Disclosure
+      label="Advanced"
+      hint="Shows what happens when it starts again while running"
+      open={open}
+      onToggle={() => {
+        setOpen(!open);
+      }}
+    >
+      <RunBehaviourFields
+        run={{ mode, max, key }}
+        onChange={(run) => {
+          change({ type: 'run', run });
         }}
       />
-      <List>
-        <SwitchRow
-          title="On"
-          subtitle={editor.draft.enabled ? 'Runs when triggered' : 'Paused. It won’t run.'}
-          value={editor.draft.enabled}
-          onChange={(enabled) => {
-            editor.change({ type: 'enable', enabled });
-          }}
-        />
-      </List>
-    </View>
+    </Disclosure>
   );
 }
 
-interface FooterBarProps {
-  readonly editor: Editor;
-  readonly sentence: string | null;
-}
-
-function FooterBar({ editor, sentence }: FooterBarProps): ReactNode {
-  const { height, width } = useSizeClass();
+function InputsBlock({ draft, change }: BlockProps): ReactNode {
   return (
-    <View className="w-full max-w-reading gap-3 self-center">
-      {height === 'compact' ? null : <Preview sentence={sentence} />}
-      <View className="flex-row justify-end gap-3">
-        <Button
-          label={editor.testLabel}
-          icon="play"
-          variant="tonal"
-          disabled={!editor.canTest}
-          loading={editor.testing}
-          onPress={editor.test}
-        />
-        <Button
-          label="Save"
-          icon="check"
-          grow={width === 'compact'}
-          loading={editor.saving}
-          onPress={editor.save}
-        />
-      </View>
-    </View>
-  );
-}
-
-function useOverflow(editor: Editor, takenNames: readonly string[]): MenuItem[] {
-  const router = useRouter();
-  const { automationId, validation } = editor;
-  const reload = useReloadSaved();
-  if (automationId === null) {
-    return [];
-  }
-  return [
-    { label: 'Reload saved', icon: 'refresh', onPress: reload },
-    {
-      label: 'Run history',
-      icon: 'activity',
-      onPress: (): void => {
-        router.push(href.automationRuns(automationId));
-      },
-    },
-    {
-      label: 'Duplicate',
-      icon: 'copy',
-      disabled: !validation.valid,
-      onPress: (): void => {
-        if (validation.valid) {
-          duplicateAutomation({ ...validation, enabled: editor.draft.enabled }, takenNames);
-        }
-      },
-    },
-    { label: 'Delete', icon: 'trash', destructive: true, onPress: editor.remove },
-  ];
-}
-
-interface EditorHeaderProps {
-  readonly editor: Editor;
-  readonly takenNames: readonly string[];
-  readonly touch: boolean;
-}
-
-function EditorHeader({ editor, takenNames, touch }: EditorHeaderProps): ReactNode {
-  const overflow = useOverflow(editor, takenNames);
-  const actions: HeaderAction[] = touch
-    ? []
-    : [
-        ...(editor.canTest
-          ? [{ icon: 'play', label: editor.testLabel, onPress: editor.test } as const]
-          : []),
-        { icon: 'check', label: 'Save', onPress: editor.save, primary: true },
-      ];
-  const title = editor.automationId === null ? 'New automation' : editor.draft.name.trim();
-  return (
-    <PageHeader
-      title={title === '' ? 'Automation' : title}
-      {...(editor.status === 'New' ? {} : { subtitle: editor.status })}
-      actions={actions}
-      overflow={overflow}
-    />
-  );
-}
-
-interface EditorBodyProps {
-  readonly editor: Editor;
-  readonly catalog: Catalog;
-  readonly showPreview: boolean;
-  readonly sentence: string | null;
-}
-function UndoActions({ editor }: NameBlockProps): ReactNode {
-  return (
-    <View className="flex-row flex-wrap gap-2">
-      <Button
-        label="Undo"
-        icon="undo"
-        variant="tonal"
-        disabled={editor.undo === null}
-        onPress={() => editor.undo?.()}
-      />
-      <Button
-        label="Redo"
-        variant="tonal"
-        disabled={editor.redo === null}
-        onPress={() => editor.redo?.()}
-      />
-    </View>
-  );
-}
-function EditorPolicy({ editor, focused }: NameBlockProps): ReactNode {
-  return (
-    <Section title="Run behavior">
-      <RunPolicyFields
-        focusControlKey={focused === true}
-        policy={editor.draft.runPolicy}
-        controlKey={editor.draft.controlKey}
-        onChange={(runPolicy, controlKey) => {
-          editor.change({ type: 'policy', runPolicy, controlKey });
+    <Section
+      title="Inputs"
+      footer="Whoever runs these steps gives each input a value. Use them inside the steps."
+    >
+      <InputsFields
+        inputs={draft.automation.inputs ?? []}
+        onChange={(inputs) => {
+          change({ type: 'inputs', inputs });
         }}
       />
     </Section>
   );
 }
-function testExplanation(editor: Editor): string {
-  if (editor.status === 'Saved')
-    return 'Test run executes saved actions now, including waits and AI steps.';
-  return editor.canTest
-    ? 'Draft tests send commands and skip waits and AI steps.'
-    : 'Save this program before testing. Tests run saved steps, including branches, waits and AI.';
+
+function ProgramBlocks({ reusable, ...blocks }: PartProps): ReactNode {
+  return reusable ? (
+    <>
+      <InputsBlock {...blocks} />
+      <ThenBlock {...blocks} />
+    </>
+  ) : (
+    <>
+      <WhenBlock {...blocks} />
+      <OnlyIfBlock {...blocks} />
+      <ThenBlock {...blocks} />
+    </>
+  );
 }
-function EditorBody({ editor, catalog, showPreview, sentence }: EditorBodyProps): ReactNode {
-  const blocks = { draft: editor.draft, change: editor.change, catalog, problems: editor.problems };
+
+function focusField(target: string | null): ReturnType<typeof focusedField> {
+  if (target?.startsWith('condition:') === true) return 'conditions';
+  if (target?.startsWith('input:') === true) return 'inputs';
+  return focusedField(target);
+}
+
+function FocusedInputs({ editor }: { readonly editor: Editor }): ReactNode {
+  const { target } = useEditorFocus();
+  return (
+    <InputsFields
+      inputs={editor.draft.automation.inputs ?? []}
+      focusName={target?.startsWith('input:') === true ? target.slice('input:'.length) : null}
+      onChange={(inputs) => {
+        editor.change({ type: 'inputs', inputs });
+      }}
+    />
+  );
+}
+
+function FocusedBlock({
+  editor,
+  field,
+}: {
+  readonly editor: Editor;
+  readonly field: string;
+}): ReactNode {
+  const blocks = {
+    draft: editor.draft,
+    change: editor.change,
+    catalog: editor.catalog,
+    problems: editor.problems,
+  };
+  switch (field) {
+    case 'when':
+      return <WhenBlock {...blocks} />;
+    case 'conditions':
+      return <OnlyIfBlock {...blocks} />;
+    case 'steps':
+      return <ThenBlock {...blocks} />;
+    case 'advanced':
+      return <AdvancedBlock {...blocks} />;
+    default:
+      return null;
+  }
+}
+
+function FocusedContent({
+  editor,
+  reusable,
+}: {
+  readonly editor: Editor;
+  readonly reusable: boolean;
+}): ReactNode {
+  const field = focusField(useEditorFocus().target);
+  const allowed = reusable ? reusableEditorField(field) : automationEditorField(field);
+  if (!allowed || field === null) return null;
+  if (field === 'name') return <NameBlock editor={editor} reusable={reusable} focused />;
+  return field === 'inputs' ? (
+    <FocusedInputs editor={editor} />
+  ) : (
+    <FocusedBlock editor={editor} field={field} />
+  );
+}
+
+function TestInputs({ editor }: { readonly editor: Editor }): ReactNode {
+  if (!editor.validation.valid) return null;
+  return (
+    <TestInputsSheet
+      automationId={editor.automationId}
+      definition={editor.validation.automation}
+      name={editor.draft.name}
+      inputs={editor.validation.automation.inputs ?? []}
+      catalog={editor.catalog}
+      open={editor.asking}
+      onClose={() => {
+        editor.setAsking(false);
+      }}
+      onRun={(run) => {
+        editor.setAsking(false);
+        editor.setRun(run);
+      }}
+    />
+  );
+}
+
+function EditorBody({
+  editor,
+  reusable,
+  showPreview,
+  sentence,
+}: {
+  readonly editor: Editor;
+  readonly reusable: boolean;
+  readonly showPreview: boolean;
+  readonly sentence: string | null;
+}): ReactNode {
+  const blocks = {
+    draft: editor.draft,
+    change: editor.change,
+    catalog: editor.catalog,
+    problems: editor.problems,
+    reusable,
+  };
+  const focus = useEditorFocus();
   return (
     <>
       {showPreview ? (
@@ -234,90 +192,185 @@ function EditorBody({ editor, catalog, showPreview, sentence }: EditorBodyProps)
           <Preview sentence={sentence} />
         </Card>
       ) : null}
-      <NameBlock editor={editor} />
-      <WhenBlock {...blocks} />
-      <OnlyIfBlock {...blocks} />
-      <UndoActions editor={editor} />
-      <ThenBlock {...blocks} />
-      <EditorPolicy editor={editor} />
-      <Text variant="footnote" tone="variant" className="px-4">
-        {testExplanation(editor)}
-      </Text>
-      <AutomationFocus editor={editor} catalog={catalog} />
-      <OwnedRunSheet run={editor.run} onClose={editor.closeRun} />
+      <NameBlock editor={editor} reusable={reusable} />
+      <ProgramBlocks {...blocks} />
+      <AdvancedBlock {...blocks} />
+      <TestNote />
+      <FocusedFields field={focusField(focus.target)}>
+        <FocusedContent editor={editor} reusable={reusable} />
+      </FocusedFields>
+      <FocusedRun />
+      <OwnedRunSheet
+        run={editor.run}
+        onClose={() => {
+          editor.setRun(null);
+        }}
+      />
+      <TestInputs editor={editor} />
     </>
   );
 }
 
-interface AutomationFocusProps {
+interface ShellProps {
   readonly editor: Editor;
-  readonly catalog: Catalog;
+  readonly reusable: boolean;
+  readonly takenNames: readonly string[];
 }
-function FocusedCondition({ editor, catalog }: AutomationFocusProps): ReactNode {
-  const focus = useEditorFocus();
-  const target = focus.target;
-  const index =
-    target?.startsWith('condition:') === true ? Number(target.slice('condition:'.length)) : null;
-  const condition = index === null ? undefined : editor.draft.conditions[index];
-  if (condition === undefined || index === null)
-    return (
-      <OnlyIfBlock
-        draft={editor.draft}
-        change={editor.change}
-        catalog={catalog}
-        problems={editor.problems}
-      />
-    );
+
+function EditorHeader({
+  editor,
+  reusable,
+  takenNames,
+  touch,
+  onTest,
+}: ShellProps & { readonly touch: boolean; readonly onTest: () => void }): ReactNode {
+  const overflow = useOverflow(editor, takenNames);
+  const actions: HeaderAction[] = [
+    ...(editor.undo === null
+      ? []
+      : [{ icon: 'undo', label: 'Undo', onPress: editor.undo, iconOnly: true } as const]),
+    ...(touch
+      ? []
+      : [
+          ...(editor.canTest
+            ? [{ icon: 'play', label: 'Test run', onPress: onTest } as const]
+            : []),
+          { icon: 'check', label: 'Save', onPress: editor.save, primary: true } as const,
+        ]),
+  ];
+  const fallback = reusable ? 'Reusable steps' : 'Automation';
+  const title =
+    editor.automationId === null ? `New ${fallback.toLowerCase()}` : editor.draft.name.trim();
   return (
-    <ProgramConditionFields
-      condition={condition}
-      catalog={catalog}
-      onChange={(next) => {
-        editor.change({ type: 'conditions', change: { kind: 'set', index, item: next } });
-      }}
+    <PageHeader
+      title={title === '' ? fallback : title}
+      {...(editor.status === 'New' ? {} : { subtitle: editor.status })}
+      actions={actions}
+      overflow={overflow}
     />
   );
 }
-function AutomationFocusedFields({ editor, catalog }: AutomationFocusProps): ReactNode {
-  const { target } = useEditorFocus();
-  const field = focusedField(target);
-  const blocks = { draft: editor.draft, change: editor.change, catalog, problems: editor.problems };
-  if (target?.startsWith('condition:') === true)
-    return <FocusedCondition editor={editor} catalog={catalog} />;
-  if (!automationEditorField(field)) return null;
-  switch (field) {
-    case 'name':
-      return <NameBlock editor={editor} focused />;
-    case 'when':
-      return <WhenBlock {...blocks} />;
-    case 'conditions':
-      return <FocusedCondition editor={editor} catalog={catalog} />;
-    case 'steps':
-      return <ThenBlock {...blocks} />;
-    case 'policy':
-      return <EditorPolicy editor={editor} />;
-    case 'controlKey':
-      return <EditorPolicy editor={editor} focused />;
-  }
-}
-function AutomationFocus(props: AutomationFocusProps): ReactNode {
-  const focus = useEditorFocus();
-  const field =
-    focus.target?.startsWith('condition:') === true ? 'conditions' : focusedField(focus.target);
+
+function Actions({
+  editor,
+  onTest,
+}: {
+  readonly editor: Editor;
+  readonly onTest: () => void;
+}): ReactNode {
   return (
-    <>
-      <FocusedFields field={field}>
-        <AutomationFocusedFields {...props} />
-      </FocusedFields>
-      <FocusedRun />
-    </>
+    <View className="flex-row justify-end gap-3">
+      <Button
+        label="Test run"
+        icon="play"
+        variant="tonal"
+        disabled={!editor.canTest}
+        loading={editor.testing}
+        onPress={onTest}
+      />
+      <Button label="Save" icon="check" loading={editor.saving} onPress={editor.save} />
+    </View>
+  );
+}
+
+function useInspector(): {
+  readonly selected: string | null;
+  readonly open: (id: string) => void;
+  readonly close: () => void;
+} {
+  const focus = useEditorFocus();
+  const [selected, setSelected] = useState<string | null>(null);
+  const focusedNode = focus.target?.startsWith('node:') === true ? focus.target.slice(5) : null;
+  return {
+    selected: selected ?? focusedNode,
+    open: setSelected,
+    close: (): void => {
+      if (focusedNode !== null) focus.close();
+      setSelected(null);
+    },
+  };
+}
+
+function ProgramTree({
+  editor,
+  reusable,
+  showPreview,
+  sentence,
+}: {
+  readonly editor: Editor;
+  readonly reusable: boolean;
+  readonly showPreview: boolean;
+  readonly sentence: string | null;
+}): ReactNode {
+  const inspector = useInspector();
+  return (
+    <StepTreeProvider
+      tree={{
+        root: editor.draft.automation.steps,
+        catalog: editor.catalog,
+        problems: editor.problems?.nodes ?? {},
+        change: (steps) => {
+          editor.change({ type: 'steps', steps });
+        },
+        open: inspector.open,
+      }}
+    >
+      <EditorBody
+        editor={editor}
+        reusable={reusable}
+        showPreview={showPreview}
+        sentence={sentence}
+      />
+      <StepInspector selected={inspector.selected} onClose={inspector.close} />
+    </StepTreeProvider>
+  );
+}
+
+function Shell({ editor, reusable, takenNames }: ShellProps): ReactNode {
+  const touch = useIdiom() === 'touch';
+  const { height } = useSizeClass();
+  const sentence = previewOf(editor.catalog, editor.draft);
+  const body = (
+    <ProgramTree
+      editor={editor}
+      reusable={reusable}
+      showPreview={!touch || height === 'compact'}
+      sentence={sentence}
+    />
+  );
+  if (editor.embedded)
+    return (
+      <View className="gap-section-gap">
+        {body}
+        <Actions editor={editor} onTest={editor.test} />
+      </View>
+    );
+  return (
+    <Screen
+      maxWidth="reading"
+      header={
+        <EditorHeader
+          editor={editor}
+          reusable={reusable}
+          takenNames={takenNames}
+          touch={touch}
+          onTest={editor.test}
+        />
+      }
+      {...(touch
+        ? { footer: <FooterBar editor={editor} sentence={sentence} onTest={editor.test} /> }
+        : {})}
+    >
+      {body}
+    </Screen>
   );
 }
 
 interface AutomationEditorProps {
   readonly start: Draft;
   readonly savedId: string | null;
-  readonly revision: string | null;
+  readonly revision: number | null;
+  readonly reusable: boolean;
   readonly catalog: Catalog;
   readonly takenNames: readonly string[];
 }
@@ -326,29 +379,14 @@ export function AutomationEditor({
   start,
   savedId,
   revision,
+  reusable,
   catalog,
   takenNames,
 }: AutomationEditorProps): ReactNode {
-  const editor = useEditor(start, savedId, catalog, revision);
-  const touch = useIdiom() === 'touch';
-  const { height } = useSizeClass();
-  const sentence = previewOf(catalog, editor.draft);
+  const editor = useEditor({ draft: start, savedId, revision, reusable }, catalog);
   return (
     <EditorFocusProvider>
-      <ProgramLibraryProvider>
-        <Screen
-          maxWidth="reading"
-          header={<EditorHeader editor={editor} takenNames={takenNames} touch={touch} />}
-          {...(touch ? { footer: <FooterBar editor={editor} sentence={sentence} /> } : {})}
-        >
-          <EditorBody
-            editor={editor}
-            catalog={catalog}
-            showPreview={!touch || height === 'compact'}
-            sentence={sentence}
-          />
-        </Screen>
-      </ProgramLibraryProvider>
+      <Shell editor={editor} reusable={reusable} takenNames={takenNames} />
     </EditorFocusProvider>
   );
 }

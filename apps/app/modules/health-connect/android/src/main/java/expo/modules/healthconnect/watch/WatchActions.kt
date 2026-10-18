@@ -5,6 +5,7 @@ import android.os.Looper
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.serialization.Serializable
 
 class PhoneNotification(
   val id: Int,
@@ -25,6 +26,7 @@ class MusicState(
   val volumePercent: Int
 )
 
+@Serializable
 class WatchUser(
   val heightCm: Int,
   val weightKg: Double,

@@ -21,6 +21,7 @@ import { EMPTY_SCENE, readScene, type SceneDraft } from '../model/scene-state';
 import { IconRow } from '../scenes/icon-sheet';
 import { SceneSteps } from '../scenes/scene-steps';
 import { useSceneEditor, type SceneEditor } from '../scenes/use-scene-editor';
+import { background } from '@smarteverything/logging';
 
 const PARAMS = z.object({ sceneId: z.string() });
 
@@ -143,7 +144,7 @@ function Editor({
         draft={editor.draft}
         change={editor.change}
         devices={catalog.devices}
-        valuesOf={(deviceId) => store.get().deviceValues[deviceId]}
+        valuesOf={(deviceId) => store.get().deviceValues.get(deviceId)}
         names={catalog.names}
         problems={editor.problems?.steps ?? []}
       />
@@ -175,11 +176,14 @@ function Gone({
               label="Delete"
               variant="destructive"
               onPress={() => {
-                void removeScene(row.id, null).then((removed) => {
-                  if (removed) {
-                    router.back();
-                  }
-                });
+                background(
+                  removeScene(row.id, null).then((removed) => {
+                    if (removed) {
+                      router.back();
+                    }
+                  }),
+                  'scene.remove_failed',
+                );
               }}
             />
           )

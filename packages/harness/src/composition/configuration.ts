@@ -6,27 +6,25 @@ import {
   withHarnessMountRevision,
   type HarnessMountRevisionBinding,
 } from './mount-revision';
-import { createHash } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
 import type { AiHarnessManifest, HarnessPluginMetadata } from '@smarteverything/domain';
 import { deepFreeze } from '@deepseek-ai/dsh-util-values';
-import { HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
+import { HARNESS_DESIRED_CONFIGURATION, HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
 import type { JSON_VALUE } from '@smarteverything/domain';
 import type {
   HarnessDesiredConfiguration,
   HarnessDesiredEntry,
   HarnessPluginReadiness,
 } from '@smarteverything/domain';
-import { HarnessConfigurationRevisions } from './configuration-revisions';
 
-export { HARNESS_DESIRED_CONFIGURATION } from '@smarteverything/domain';
+export { HARNESS_DESIRED_CONFIGURATION };
 export type {
   HarnessDesiredConfiguration,
   HarnessDesiredEntry,
   HarnessPluginReadiness,
 } from '@smarteverything/domain';
 
-export interface HarnessRestoreSchema {
+interface HarnessRestoreSchema {
   readonly name: string;
   readonly revision: string;
 }
@@ -64,17 +62,13 @@ export class HarnessConfiguration {
   private readonly mounted = new Map<string, MountedPlugin>();
   private current: HarnessDesiredConfiguration | undefined;
   private tail: Promise<void> = Promise.resolve();
-  private readonly revisions = new HarnessConfigurationRevisions();
   private readiness: readonly HarnessPluginReadiness[] = [];
 
   constructor(
     private readonly ctx: Context,
     private readonly host: { readonly platform: string; readonly server: boolean },
     private readonly installed: readonly InstalledHarnessPlugin[],
-    private readonly changed: (
-      revision: string,
-      readiness: readonly HarnessPluginReadiness[],
-    ) => void,
+    private readonly changed: () => void,
   ) {}
 
   snapshot(): readonly HarnessPluginReadiness[] {
@@ -83,46 +77,6 @@ export class HarnessConfiguration {
 
   revision(): string | null {
     return this.current?.revision ?? null;
-  }
-
-  fingerprint(): string {
-    const readiness = this.readiness
-      .map(({ id, package: name, requestedVersion, installedVersion, state }) => ({
-        id,
-        package: name,
-        requestedVersion,
-        installedVersion,
-        state,
-      }))
-      .sort(orderById);
-    const mounted = [...this.mounted]
-      .map(([id, plugin]) => ({
-        id,
-        package: plugin.entry.package,
-        version: plugin.entry.version,
-        config: plugin.entry.config,
-        provenance: plugin.provenance,
-        metadata: plugin.metadata,
-        restoreSchemas: plugin.restoreSchemas,
-      }))
-      .sort(orderById);
-    return createHash('sha256').update(JSON.stringify({ readiness, mounted })).digest('hex');
-  }
-
-  restoreFingerprint(): string {
-    const schemas = [...this.mounted.values()]
-      .flatMap((plugin) =>
-        plugin.restoreSchemas.map((schema) => ({
-          id: `${plugin.entry.package}/${schema.name}`,
-          revision: schema.revision,
-        })),
-      )
-      .sort(orderById);
-    return createHash('sha256').update(JSON.stringify(schemas)).digest('hex');
-  }
-
-  desiredFingerprint(): string {
-    return createHash('sha256').update(JSON.stringify(this.current)).digest('hex');
   }
 
   features(): AiHarnessManifest['features'] {
@@ -147,7 +101,7 @@ export class HarnessConfiguration {
   }
 
   validate(input: HarnessDesiredConfiguration): HarnessDesiredConfiguration {
-    return this.revisions.accept(input);
+    return deepFreeze(HARNESS_DESIRED_CONFIGURATION.parse(input));
   }
 
   private async apply(desired: HarnessDesiredConfiguration): Promise<void> {
@@ -166,7 +120,7 @@ export class HarnessConfiguration {
       );
     this.readiness = deepFreeze(readiness);
     this.current = desired;
-    this.changed(desired.revision, this.readiness);
+    this.changed();
   }
 
   async dispose(): Promise<void> {
@@ -295,12 +249,6 @@ export class HarnessConfiguration {
       };
     }
   }
-}
-
-function orderById(left: { readonly id: string }, right: { readonly id: string }): number {
-  if (left.id < right.id) return -1;
-  if (left.id > right.id) return 1;
-  return 0;
 }
 
 function readinessIdentity(

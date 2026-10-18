@@ -1,6 +1,6 @@
 import type { SleepNight } from './sleep';
 import { hoursMinutes } from '../../../format/time';
-import { count, kilocalories, percent } from '../../../format/number';
+import { count, kilocalories, percent, withUnit } from '../../../format/number';
 
 interface ScorePart {
   readonly key: string;
@@ -95,7 +95,7 @@ function restingPart(today: number, baseline: number): ScorePart {
     label: 'Resting heart rate',
     weight: 25,
     score: clamp(NEUTRAL_SCORE - change * 8, 0, 100),
-    explanation: `${count(today)} bpm, usual ${count(baseline)}`,
+    explanation: `${withUnit(count(today), 'bpm')}, usual ${count(baseline)}`,
   };
 }
 

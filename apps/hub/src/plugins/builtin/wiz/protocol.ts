@@ -3,6 +3,11 @@ import { JSON_VALUE } from '@smarteverything/domain';
 
 export const WIZ_CONTROL_PORT = 38899;
 export const WIZ_PUSH_PORT = 38900;
+export interface WizPorts {
+  readonly control: number;
+  readonly push: number;
+}
+export const WIZ_PORTS: WizPorts = { control: WIZ_CONTROL_PORT, push: WIZ_PUSH_PORT };
 export const WIZ_REGISTRATION_MS = 20_000;
 export const WIZ_OFFLINE_MS = 75_000;
 export const WIZ_MIN_BRIGHTNESS = 1;

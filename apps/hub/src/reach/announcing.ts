@@ -15,10 +15,11 @@ import type { OpenLive } from './channel-conversation';
 import { ReachRefusedError } from './reach-errors';
 import type { ResolvedTarget } from './targets';
 import { SpeakerPacer } from './voice-pacing';
+import { background, messageOf } from '@smarteverything/logging';
 
 export const FEED_TAIL_MS = 1500;
 
-export type Say = (request: SpeechRequest) => Promise<Saying>;
+type Say = (request: SpeechRequest) => Promise<Saying>;
 
 export interface AnnouncingDeps {
   readonly say: Say;
@@ -48,11 +49,7 @@ interface Output {
 function sinkOf(deps: AnnouncingDeps, job: SpeakJob): PacketSink {
   const { target } = job;
   if (target.kind === 'camera') {
-    const sink = deps.camera.speakers.open(target.device.id, job.id, 'assistant');
-    if (sink === null) {
-      throw new ReachRefusedError(`${target.label}’s speaker is in use right now.`);
-    }
-    return sink;
+    return deps.camera.speakers.open(target.device.id, job.id, 'speech');
   }
   if (target.kind === 'channel') {
     const opened = deps.openLive(target.channel.id, {
@@ -115,7 +112,7 @@ function appOutput(deps: AnnouncingDeps, job: SpeakJob, client: ClientRow): Outp
         audio,
       };
       deps.app.play(client, notice).then(done, (cause: unknown) => {
-        done(cause instanceof Error ? cause.message : String(cause));
+        done(messageOf(cause));
       });
     },
     close: (): void => undefined,
@@ -144,6 +141,13 @@ function sinkFor(output: Output, settle: (failure: string | null) => void): Spee
   };
 }
 
+function anchorOf(target: SpeakJob['target']): Pick<SpeechRequest, 'at'> {
+  if (target.kind === 'camera') {
+    return { at: { deviceId: target.device.id, clientId: null } };
+  }
+  return target.kind === 'app' ? { at: { deviceId: null, clientId: target.client.id } } : {};
+}
+
 export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<void> {
   const output = outputOf(deps, job);
   const holder: { current: Saying | null; finished: boolean } = {
@@ -160,7 +164,7 @@ export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<vo
     }
     holder.finished = true;
     output.close();
-    void holder.current?.end(failure === null ? 'finished' : 'failed');
+    background(holder.current?.end(failure === null ? 'finished' : 'failed'), 'current.end_failed');
     job.done(failure);
     settled();
   };
@@ -171,17 +175,18 @@ export async function speakOnce(deps: AnnouncingDeps, job: SpeakJob): Promise<vo
       profileId: job.profileId,
       clientId: job.clientId,
       text: job.text,
+      ...anchorOf(job.target),
       sink,
     })
     .then(
       (announcement) => {
         holder.current = announcement;
         if (holder.finished) {
-          void announcement.end('failed');
+          background(announcement.end('failed'), 'announcement.end_failed');
         }
       },
       (cause: unknown) => {
-        settle(cause instanceof Error ? cause.message : String(cause));
+        settle(messageOf(cause));
       },
     );
   await Promise.race([started, ended]);

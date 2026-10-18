@@ -1,24 +1,16 @@
 import {
-  AUTOMATION_DEFINITION,
-  type Action,
-  type AutomationDefinition,
-  type Condition,
-  type Conditions,
-  type Trigger,
+  AUTOMATION_V2,
+  type AutomationV2,
+  type ConditionV2,
+  type InputDeclarationV2,
+  type StepV2,
+  type TriggerV2,
 } from '@smarteverything/domain';
-
-import { omittedDefinitionFields } from './retained-definition';
 
 export interface Draft {
   readonly name: string;
   readonly enabled: boolean;
-  readonly triggers: readonly Trigger[];
-  readonly mode: Conditions['mode'];
-  readonly conditions: readonly Condition[];
-  readonly actions: readonly Action[];
-  readonly origin?: AutomationDefinition['origin'];
-  readonly runPolicy?: AutomationDefinition['runPolicy'];
-  readonly controlKey?: string | undefined;
+  readonly automation: AutomationV2;
 }
 
 export type ListChange<T> =
@@ -27,28 +19,25 @@ export type ListChange<T> =
   | { readonly kind: 'remove'; readonly index: number }
   | { readonly kind: 'move'; readonly index: number; readonly by: -1 | 1 };
 
+export interface RunBehaviour {
+  readonly mode: AutomationV2['mode'];
+  readonly max: AutomationV2['max'];
+  readonly key: AutomationV2['key'];
+}
+
 export type DraftChange =
-  | {
-      readonly type: 'policy';
-      readonly runPolicy: AutomationDefinition['runPolicy'];
-      readonly controlKey: string | undefined;
-    }
-  | { readonly type: 'replace-conditions'; readonly conditions: Conditions }
-  | { readonly type: 'replace-actions'; readonly actions: readonly Action[] }
   | { readonly type: 'rename'; readonly name: string }
   | { readonly type: 'enable'; readonly enabled: boolean }
-  | { readonly type: 'mode'; readonly mode: Conditions['mode'] }
-  | { readonly type: 'triggers'; readonly change: ListChange<Trigger> }
-  | { readonly type: 'conditions'; readonly change: ListChange<Condition> }
-  | { readonly type: 'actions'; readonly change: ListChange<Action> };
+  | { readonly type: 'when'; readonly change: ListChange<TriggerV2> }
+  | { readonly type: 'only-if'; readonly condition: ConditionV2 | undefined }
+  | { readonly type: 'steps'; readonly steps: readonly StepV2[] }
+  | { readonly type: 'inputs'; readonly inputs: readonly InputDeclarationV2[] }
+  | { readonly type: 'run'; readonly run: RunBehaviour };
 
 export const EMPTY_DRAFT: Draft = {
   name: '',
   enabled: true,
-  triggers: [],
-  mode: 'all',
-  conditions: [],
-  actions: [],
+  automation: { when: [], steps: [] },
 };
 
 export function replaced<T>(items: readonly T[], index: number, item: T): T[] {
@@ -82,79 +71,86 @@ export function changeList<T>(items: readonly T[], change: ListChange<T>): reado
   }
 }
 
-export function changeDraft(draft: Draft, change: DraftChange): Draft {
+function withoutRun(automation: AutomationV2): AutomationV2 {
+  const { mode: _mode, max: _max, key: _key, ...rest } = automation;
+  return rest;
+}
+
+function withRun(automation: AutomationV2, run: RunBehaviour): AutomationV2 {
+  return {
+    ...withoutRun(automation),
+    ...(run.mode === undefined ? {} : { mode: run.mode }),
+    ...(run.max === undefined ? {} : { max: run.max }),
+    ...(run.key === undefined ? {} : { key: run.key }),
+  };
+}
+
+function withOnlyIf(automation: AutomationV2, condition: ConditionV2 | undefined): AutomationV2 {
+  const { onlyIf: _onlyIf, ...rest } = automation;
+  return condition === undefined ? rest : { ...rest, onlyIf: condition };
+}
+
+function withInputs(automation: AutomationV2, inputs: readonly InputDeclarationV2[]): AutomationV2 {
+  const { inputs: _inputs, ...rest } = automation;
+  return { ...rest, inputs: [...inputs] };
+}
+
+function changeAutomation(
+  automation: AutomationV2,
+  change: Exclude<DraftChange, { type: 'rename' | 'enable' }>,
+): AutomationV2 {
   switch (change.type) {
-    case 'policy':
-      return { ...draft, runPolicy: change.runPolicy, controlKey: change.controlKey };
-    case 'replace-conditions':
-      return { ...draft, mode: change.conditions.mode, conditions: change.conditions.items };
-    case 'replace-actions':
-      return { ...draft, actions: change.actions };
-    case 'rename':
-      return { ...draft, name: change.name };
-    case 'enable':
-      return { ...draft, enabled: change.enabled };
-    case 'mode':
-      return { ...draft, mode: change.mode };
-    case 'triggers':
-      return { ...draft, triggers: changeList(draft.triggers, change.change) };
-    case 'conditions':
-      return { ...draft, conditions: changeList(draft.conditions, change.change) };
-    case 'actions':
-      return { ...draft, actions: changeList(draft.actions, change.change) };
+    case 'when':
+      return { ...automation, when: [...changeList(automation.when, change.change)] };
+    case 'only-if':
+      return withOnlyIf(automation, change.condition);
+    case 'steps':
+      return { ...automation, steps: [...change.steps] };
+    case 'inputs':
+      return withInputs(automation, change.inputs);
+    case 'run':
+      return withRun(automation, change.run);
   }
 }
 
-function draftOf(name: string, enabled: boolean, definition: AutomationDefinition): Draft {
-  return {
-    name,
-    enabled,
-    triggers: definition.triggers,
-    mode: definition.conditions.mode,
-    conditions: definition.conditions.items,
-    actions: definition.actions,
-    origin: definition.origin,
-    runPolicy: definition.runPolicy,
-    controlKey: definition.controlKey,
-  };
+export function changeDraft(draft: Draft, change: DraftChange): Draft {
+  if (change.type === 'rename') return { ...draft, name: change.name };
+  if (change.type === 'enable') return { ...draft, enabled: change.enabled };
+  return { ...draft, automation: changeAutomation(draft.automation, change) };
 }
 
 export type ReadDraft =
   | { readonly readable: true; readonly draft: Draft }
   | { readonly readable: false; readonly problem: string };
 
-export function readDraft(row: {
+interface StoredRow {
   readonly name: string;
   readonly enabled: boolean;
   readonly definition: unknown;
-}): ReadDraft {
-  const parsed = AUTOMATION_DEFINITION.safeParse(row.definition);
-  if (!parsed.success) {
-    return {
-      readable: false,
-      problem: `The saved definition of ${row.name} cannot be read: ${parsed.error.issues
-        .map((issue) => `${issue.path.join('.')} ${issue.message}`)
-        .join('; ')}`,
-    };
-  }
-  const omitted = omittedDefinitionFields(row.definition, parsed.data);
-  if (omitted.length > 0)
-    return {
-      readable: false,
-      problem: `The saved definition contains unsupported fields: ${omitted.join(', ')}. It is preserved; use a compatible app to edit it.`,
-    };
-  return { readable: true, draft: draftOf(row.name, row.enabled, parsed.data) };
 }
 
-export function definitionOf(draft: Draft): unknown {
+export function readDraft(row: StoredRow): ReadDraft {
+  const parsed = AUTOMATION_V2.safeParse(row.definition);
+  if (parsed.success)
+    return {
+      readable: true,
+      draft: { name: row.name, enabled: row.enabled, automation: parsed.data },
+    };
+  const problem = parsed.error.issues
+    .map((issue) => `${issue.path.join('.')} ${issue.message}`)
+    .join('; ');
   return {
-    triggers: draft.triggers,
-    conditions: { mode: draft.mode, items: draft.conditions },
-    actions: draft.actions,
-    origin: draft.origin ?? null,
-    ...(draft.runPolicy === undefined ? {} : { runPolicy: draft.runPolicy }),
-    ...(draft.controlKey === undefined ? {} : { controlKey: draft.controlKey }),
+    readable: false,
+    problem: `The saved definition of ${row.name} cannot be read: ${problem}`,
   };
+}
+
+export function sameDraft(left: Draft, right: Draft): boolean {
+  return (
+    left.name === right.name &&
+    left.enabled === right.enabled &&
+    JSON.stringify(left.automation) === JSON.stringify(right.automation)
+  );
 }
 
 export function uniqueName(base: string, taken: readonly string[]): string {

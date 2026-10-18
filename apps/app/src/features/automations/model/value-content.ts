@@ -4,6 +4,7 @@ import {
   type AutomationValueOperation,
 } from '@smarteverything/domain';
 import { randomUUID } from 'expo-crypto';
+import { durationText } from './describe-values';
 
 export function blankValue(kind: AutomationValueContent['kind']): AutomationValueContent {
   if (kind === 'boolean') return { kind, name: '', value: false };
@@ -14,11 +15,36 @@ export function blankValue(kind: AutomationValueContent['kind']): AutomationValu
   return { kind, name: '', value: 0, bounds: { overflow: 'reject' } };
 }
 
+export const VALUE_TYPE_LABELS: Readonly<Record<AutomationValueContent['kind'], string>> = {
+  boolean: 'On / off',
+  number: 'Number',
+  duration: 'Duration',
+  choice: 'List',
+};
+
 export function valueText(content: AutomationValueContent): string {
   if (content.kind === 'boolean') return content.value ? 'On' : 'Off';
   if (content.kind === 'choice')
     return content.choices.find((choice) => choice.id === content.value)?.label ?? 'Removed choice';
-  return content.kind === 'duration' ? `${String(content.value)} ms` : String(content.value);
+  return content.kind === 'duration' ? durationText(content.value) : String(content.value);
+}
+
+const QUICK_DURATION_STEP_MS = 1000;
+const QUICK_NUMBER_STEP = 1;
+
+export function quickOperation(
+  content: AutomationValueContent,
+  direction: 'up' | 'down' | 'toggle' | 'next',
+): AutomationValueOperation {
+  if (content.kind === 'boolean') return { kind: content.kind, operation: { type: 'toggle' } };
+  if (content.kind === 'choice') return { kind: content.kind, operation: { type: 'next' } };
+  const step =
+    content.bounds.quantum ??
+    (content.kind === 'duration' ? QUICK_DURATION_STEP_MS : QUICK_NUMBER_STEP);
+  return {
+    kind: content.kind,
+    operation: { type: direction === 'down' ? 'subtract' : 'add', value: step },
+  };
 }
 
 export function defaultOperation(content: AutomationValueContent): AutomationValueOperation {

@@ -1,8 +1,8 @@
 import type { HealthSourceRow } from '@smarteverything/domain';
 import { useRows } from '../../../store/selectors';
 
-export function useActiveSources(): readonly HealthSourceRow[] {
-  return useRows('health_sources').filter((source) => source.revoked_at === null);
+export function useSources(): readonly HealthSourceRow[] {
+  return useRows('health_sources');
 }
 
 export function latestSyncOf(sources: readonly HealthSourceRow[]): string | null {

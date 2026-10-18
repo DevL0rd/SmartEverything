@@ -1,6 +1,6 @@
 import type { PluginPermissions } from '@smarteverything/domain';
 
-export const BWRAP = '/usr/bin/bwrap';
+const BWRAP = '/usr/bin/bwrap';
 
 export interface SandboxPlan {
   readonly command: string;

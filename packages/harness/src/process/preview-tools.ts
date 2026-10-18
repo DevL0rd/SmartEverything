@@ -1,15 +1,11 @@
 import { z } from 'zod';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
-import {
-  AI_PREVIEW_SERVICE_WRITE,
-  AI_PREVIEW_PUBLICATION,
-  JSON_VALUE,
-} from '@smarteverything/domain';
-import type { AiPreviewServiceWrite, JsonValue } from '@smarteverything/domain';
+import { AI_PREVIEW_SERVICE_WRITE, AI_PREVIEW_PUBLICATION } from '@smarteverything/domain';
+import type { AiPreviewServiceWrite } from '@smarteverything/domain';
 import { HarnessRuntimeError } from '../host/errors';
-import type { HarnessHttp } from './http';
-import type { HttpHarnessPersistence } from './persistence';
+import type { HarnessHub } from './http';
+import type { HubSessionLog } from './persistence';
 export interface NativePreviewAdapter {
   publish(session: string, workspace: string, service: AiPreviewServiceWrite): Promise<string>;
   forget(handle: string): void;
@@ -18,32 +14,13 @@ export interface NativePreviewAdapter {
 }
 const REVOKE = z.strictObject({ publication_id: z.uuid() });
 const DONE = z.object({ ok: z.literal(true) });
-const CALL = z.object({ callId: z.string(), name: z.string(), arguments: z.string() });
 export class NativePreviewTools {
-  private readonly calls = new Map<
-    string,
-    { readonly seq: number; readonly args: string; readonly name: string }
-  >();
   constructor(
-    private readonly http: HarnessHttp,
-    private readonly persistence: HttpHarnessPersistence,
+    private readonly http: HarnessHub,
+    private readonly persistence: HubSessionLog,
     private readonly adapter: NativePreviewAdapter,
   ) {}
   install(ctx: Context): void {
-    ctx.on('session/event', (session, event) => {
-      if (event.type !== 'tool/call') return;
-      const call = CALL.parse(event.data);
-      if (!['publish_preview', 'revoke_preview'].includes(call.name)) return;
-      this.calls.set(`${session.id}:${call.callId}`, {
-        seq: event.seq,
-        args: call.arguments,
-        name: call.name,
-      });
-    });
-    ctx.on('tools/result', (execution) => {
-      if (execution.agent !== undefined)
-        this.calls.delete(`${execution.agent.id}:${execution.callId}`);
-    });
     for (const definition of [
       {
         name: 'publish_preview',
@@ -84,8 +61,8 @@ export class NativePreviewTools {
     const agent = execution.agent;
     if (agent === undefined)
       throw new HarnessRuntimeError(
-        'ownership_lost',
-        'Preview publication requires an owned native chat.',
+        'operation_failed',
+        'Preview publication requires a native chat.',
       );
     const policy = ctx.permissionPresets.resolve(ctx.permissionPresets.current(agent.session));
     if (policy.sandbox === 'read-only')
@@ -93,58 +70,23 @@ export class NativePreviewTools {
         'capability_unsupported',
         'Sharing requires current native write authority.',
       );
-    const call = this.calls.get(`${agent.id}:${execution.callId}`);
-    const raw = z.record(z.string(), JSON_VALUE).parse(input.raw);
-    if (call?.name !== input.name || JSON.stringify(JSON.parse(call.args)) !== JSON.stringify(raw))
-      throw new HarnessRuntimeError(
-        'ownership_lost',
-        'The preview grant has no exact native tool lineage.',
-      );
     const claim = this.persistence.claim(agent.id);
-    await this.persistence.verify(claim);
-    await ctx.sessions.flush(agent.session);
-    const lineage = { call_id: execution.callId, call_seq: call.seq, arguments: raw };
     if (input.name === 'revoke_preview')
       return this.http.call(
         {
           operation: 'preview_revoke',
           claim,
-          publication_id: REVOKE.parse(raw).publication_id,
-          ...lineage,
+          publication_id: REVOKE.parse(input.raw).publication_id,
         },
         DONE,
         execution.signal,
       );
-    return this.publish(ctx, { agent, claim, raw, lineage }, execution);
-  }
-  private async publish(
-    ctx: Context,
-    input: {
-      readonly agent: NonNullable<ToolRunContext['agent']>;
-      readonly claim: ReturnType<HttpHarnessPersistence['claim']>;
-      readonly raw: Readonly<Record<string, JsonValue>>;
-      readonly lineage: {
-        readonly call_id: string;
-        readonly call_seq: number;
-        readonly arguments: Readonly<Record<string, JsonValue>>;
-      };
-    },
-    execution: ToolRunContext,
-  ): Promise<unknown> {
-    const { agent, claim, raw, lineage } = input;
-    const service = AI_PREVIEW_SERVICE_WRITE.parse(raw);
+    const service = AI_PREVIEW_SERVICE_WRITE.parse(input.raw);
     const workspace = ctx.workingDirectory.get(agent.session);
     const handle = await this.adapter.publish(agent.id, workspace, service);
     try {
       return await this.http.call(
-        {
-          operation: 'preview_publish',
-          claim,
-          service,
-          workspace,
-          service_handle: handle,
-          ...lineage,
-        },
+        { operation: 'preview_publish', claim, service, workspace, service_handle: handle },
         AI_PREVIEW_PUBLICATION,
         execution.signal,
       );

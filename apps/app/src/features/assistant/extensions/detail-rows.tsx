@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useRouter } from 'expo-router';
 import type {
   AiHarnessConfigurationCatalogue,
   HarnessExtensionItem,
@@ -9,90 +10,69 @@ import { ActionRow, NavRow, SwitchRow } from '../../../components/rows';
 import { ListRow } from '../../../components/list-row';
 import { Text } from '../../../components/text';
 import { useIsOwner } from '../../../store/selectors';
-import { useHarnessCatalogue } from '../data/harness';
-import { isSelected, selectedEntry, requiresSkillUpdate } from './selection';
-import { canInstall, itemSummary } from './status';
-import { assetProviderName } from './items';
-import type { useExtensionWriter } from './change';
+import { itemSummary } from './status';
+import { platformLabel } from './items';
+import type { ExtensionActions } from './change';
+import { background } from '@smarteverything/logging';
 
 interface Props {
   readonly item: HarnessExtensionItem;
   readonly configuration: AiHarnessConfigurationCatalogue;
-  readonly writer: ReturnType<typeof useExtensionWriter>;
+  readonly actions: ExtensionActions;
   readonly onDevices: () => void;
   readonly onSource: () => void;
 }
 
-function SelectionRows({
-  item,
-  configuration,
-  writer,
-}: Pick<Props, 'item' | 'configuration' | 'writer'>): ReactNode {
+function SelectionRows({ item, actions }: Pick<Props, 'item' | 'actions'>): ReactNode {
   const owner = useIsOwner();
-  const selected = isSelected(item, configuration.desired);
   if (!owner)
     return (
       <Text variant="footnote" tone="variant">
         Managed by the home owner
       </Text>
     );
-  if (!selected || requiresSkillUpdate(item, configuration.desired))
-    return <InstallRows item={item} configuration={configuration} writer={writer} />;
-  if (item.selection.kind === 'skill_asset')
-    return (
-      <Text variant="footnote" tone="variant">
-        Included in {assetProviderName(item.selection.parent_id)}. Use its On switch to enable the
-        collection.
-      </Text>
-    );
   return (
-    <List inset>
-      <SwitchRow
-        icon="power"
-        title="On"
-        subtitle="Saved choice · devices apply it after current sessions finish"
-        value={selectedEntry(item, configuration.desired)?.enabled === true}
-        disabled={!writer.allowed}
-        onChange={(enabled) => {
-          void writer.save({ kind: 'switch', item, enabled }, configuration.desired);
-        }}
-      />
-    </List>
+    <>
+      <List inset>
+        <SwitchRow
+          icon="power"
+          title="On"
+          subtitle="Saved choice · devices apply it after current sessions finish"
+          value={item.enabled}
+          disabled={!actions.allowed}
+          onChange={(enabled) => {
+            actions.setEnabled(item, enabled);
+          }}
+        />
+      </List>
+      <ConfirmRow item={item} actions={actions} />
+    </>
   );
 }
 
-function InstallRows({
-  item,
-  configuration,
-  writer,
-}: Pick<Props, 'item' | 'configuration' | 'writer'>): ReactNode {
-  const inventory = useHarnessCatalogue();
+function ConfirmRow({ item, actions }: Pick<Props, 'item' | 'actions'>): ReactNode {
+  if (!item.executes || item.confirmed) return null;
   return (
     <List inset>
-      {canInstall(item, inventory.data) ? (
-        <ActionRow
-          icon="plus"
-          title={
-            isSelected(item, configuration.desired) ? 'Update to this inspected version' : 'Install'
-          }
-          subtitle="Add the inspected version for compatible devices"
-          disabled={!writer.allowed}
-          onPress={() => {
-            void writer.save({ kind: 'install', item }, configuration.desired);
-          }}
-        />
-      ) : (
-        <ListRow
-          icon="info"
-          title="No compatible device"
-          subtitle={
-            item.acquisition.state === 'unsupported'
-              ? item.acquisition.reason
-              : 'Requires an enrolled Linux device with configuration sync.'
-          }
-          wrapSubtitle
-        />
-      )}
+      <ActionRow
+        icon="shield"
+        title="Allow it to run programs"
+        subtitle="Its hooks or servers run on your computers. Allow only a source you trust."
+        wrapSubtitle
+        disabled={!actions.allowed}
+        onPress={() => {
+          background(
+            confirm({
+              title: `Allow ${item.name} to run programs?`,
+              body: 'It can start programs on your computers while you chat. Allow it only if you trust the source.',
+              confirmLabel: 'Allow',
+            }).then((accepted) => {
+              if (accepted) actions.confirmExecutes(item);
+            }),
+            'detail_rows.confirm_failed',
+          );
+        }}
+      />
     </List>
   );
 }
@@ -110,13 +90,11 @@ function AbilityRows({ item }: { readonly item: HarnessExtensionItem }): ReactNo
       <List inset title="Works with">
         <ListRow
           icon="sparkles"
-          title={
-            item.runtimes.includes('smarteverything')
-              ? 'SmartEverything'
-              : 'Compatibility not verified'
-          }
+          title="SmartEverything"
           subtitle={
-            item.platforms.length === 0 ? 'Compatibility not verified' : item.platforms.join(', ')
+            item.platforms.length === 0
+              ? 'Compatibility not verified'
+              : item.platforms.map(platformLabel).join(', ')
           }
         />
         {item.requirements.map((title) => (
@@ -127,28 +105,28 @@ function AbilityRows({ item }: { readonly item: HarnessExtensionItem }): ReactNo
   );
 }
 
-function RemoveRow({
-  item,
-  configuration,
-  writer,
-}: Pick<Props, 'item' | 'configuration' | 'writer'>): ReactNode {
+function RemoveRow({ item, actions }: Pick<Props, 'item' | 'actions'>): ReactNode {
   const owner = useIsOwner();
-  if (!owner || item.included || !isSelected(item, configuration.desired)) return null;
+  const router = useRouter();
+  if (!owner || item.kind === 'builtin') return null;
   return (
     <ActionRow
       icon="trash"
       title={`Remove ${item.name}`}
       destructive
-      disabled={!writer.allowed}
+      disabled={!actions.allowed}
       onPress={() => {
-        void confirm({
-          title: `Remove ${item.name}?`,
-          body: 'Remove the shared selection from compatible devices after active sessions finish. Local project files and sign-ins stay on each device.',
-          confirmLabel: 'Remove',
-          tone: 'destructive',
-        }).then((accepted) => {
-          if (accepted) void writer.save({ kind: 'remove', item }, configuration.desired);
-        });
+        background(
+          confirm({
+            title: `Remove ${item.name}?`,
+            body: 'Its tools and skills are removed from the assistant.',
+            confirmLabel: item.kind === 'skill' ? 'Remove skill' : 'Remove extension',
+            tone: 'destructive',
+          }).then(async (accepted) => {
+            if (accepted && (await actions.remove(item))) router.back();
+          }),
+          'detail_rows.confirm_failed',
+        );
       }}
     />
   );
@@ -158,7 +136,7 @@ export function ExtensionDetailRows(props: Props): ReactNode {
   const { item, configuration, onDevices, onSource } = props;
   return (
     <>
-      <SelectionRows {...props} />
+      <SelectionRows item={item} actions={props.actions} />
       <List inset>
         <NavRow
           icon="monitor"
@@ -171,7 +149,7 @@ export function ExtensionDetailRows(props: Props): ReactNode {
       <AbilityRows item={item} />
       <List inset>
         <NavRow icon="link" title="Source" subtitle={item.publisher} onPress={onSource} />
-        <RemoveRow {...props} />
+        <RemoveRow item={item} actions={props.actions} />
       </List>
     </>
   );

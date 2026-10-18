@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { EmptyState } from '../../../components/empty-state';
 import { FlowFrame } from '../../../components/flow-frame';
-import { closeFlow } from '../flows/use-link-flow';
+import { leaveFlow } from '../flows/leave-flow';
 import { assistantOf } from '../model/assistants';
 import { OAuthFlow } from './oauth-flow';
 import { TokenFlow } from './token-flow';
@@ -12,7 +12,7 @@ export function AssistantFlow(): ReactNode {
   const assistant = assistantOf(key);
   if (assistant === null) {
     return (
-      <FlowFrame title="Connect an assistant" onCancel={closeFlow}>
+      <FlowFrame title="Connect an assistant" onCancel={leaveFlow}>
         <EmptyState
           icon="sparkles"
           title="Unknown assistant"

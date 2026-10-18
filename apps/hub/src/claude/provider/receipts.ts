@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { platform } from 'node:process';
 import { z } from 'zod';
 import { ProviderInputError } from './input';
+import { isMissing } from '../../fs-util';
 
 const RECEIPT = z.strictObject({
   job_id: z.uuid(),
@@ -18,6 +19,7 @@ export class ProviderReceipts {
   private writing = Promise.resolve();
   constructor(private readonly directory: string) {
     this.loaded = this.load();
+    // eslint-disable-next-line local/no-swallowed-errors -- the failure is rethrown to every caller that awaits the load
     void this.loaded.catch((): void => undefined);
   }
   async admit(receipt: ProviderReceipt): Promise<ProviderReceipt | null> {
@@ -75,7 +77,7 @@ export class ProviderReceipts {
           'The durable provider receipt store contains duplicate job IDs.',
         );
     } catch (cause) {
-      if (!(cause instanceof Error && 'code' in cause && cause.code === 'ENOENT'))
+      if (!isMissing(cause))
         throw new ProviderInputError(
           'The durable provider receipt store is invalid or unreadable; no work will be replayed.',
         );

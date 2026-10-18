@@ -1,7 +1,14 @@
+import {
+  appendTo,
+  asleepMinutes,
+  SLEEP_STAGE_KINDS,
+  type SleepStageKind,
+} from '@smarteverything/domain';
 import { endOf, startOf, type RecordOf } from './records';
 import { HOUR_MS, MINUTE_MS, dayKeyOf, minutesOfDay, startOfDayKey } from '../../../format/time';
+import { compareText } from '../../../format/text';
 
-export type StageKind = 'awake' | 'rem' | 'light' | 'deep' | 'asleep' | 'unknown';
+export type StageKind = SleepStageKind;
 
 export const STAGE_LABELS: Readonly<Record<StageKind, string>> = {
   awake: 'Awake',
@@ -12,19 +19,8 @@ export const STAGE_LABELS: Readonly<Record<StageKind, string>> = {
   unknown: 'Unknown',
 };
 
-const STAGE_CODES: Readonly<Record<number, StageKind>> = {
-  0: 'unknown',
-  1: 'awake',
-  2: 'asleep',
-  3: 'awake',
-  4: 'light',
-  5: 'deep',
-  6: 'rem',
-  7: 'awake',
-};
-
 export function stageKindOf(code: number): StageKind {
-  return STAGE_CODES[code] ?? 'unknown';
+  return SLEEP_STAGE_KINDS[code] ?? 'unknown';
 }
 
 interface StageSpan {
@@ -76,7 +72,7 @@ export function nightOf(record: SleepRecord): SleepNight {
   }
   const inBed = (endOf(record) - startOf(record)) / MINUTE_MS;
   const hasStages = record.data.stages.length > 0;
-  const asleep = hasStages ? totals.rem + totals.light + totals.deep + totals.asleep : inBed;
+  const asleep = asleepMinutes(record);
   return {
     recordId: record.recordId,
     day: dayKeyOf(endOf(record)),
@@ -103,7 +99,7 @@ export interface SleepDay {
 export function sleepDaysOf(records: readonly SleepRecord[]): SleepDay[] {
   const byDay = new Map<string, SleepNight[]>();
   for (const night of records.map(nightOf)) {
-    byDay.set(night.day, [...(byDay.get(night.day) ?? []), night]);
+    appendTo(byDay, night.day, night);
   }
   const days: SleepDay[] = [];
   for (const [day, nights] of byDay) {
@@ -114,7 +110,7 @@ export function sleepDaysOf(records: readonly SleepRecord[]): SleepDay[] {
       days.push({ day, main, naps, asleepMinutes });
     }
   }
-  return days.sort((left, right) => left.day.localeCompare(right.day));
+  return days.sort((left, right) => compareText(left.day, right.day));
 }
 
 function eveningMinutes(moment: number): number {

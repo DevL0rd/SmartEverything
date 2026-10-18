@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
-import { useNavigation, type Href } from 'expo-router';
+import { router, useNavigation, type Href } from 'expo-router';
 import Head from 'expo-router/head';
 import { useNavigationState } from 'expo-router/react-navigation';
 import { PageSettingsButton, type PageSettingsLink } from './page-settings-button';
@@ -45,6 +45,7 @@ interface HeaderProps {
   readonly breadcrumbs?: readonly Crumb[];
   readonly search?: boolean;
   readonly onTitlePress?: () => void;
+  readonly titleLines?: 1 | 2;
 }
 
 export type PageHeaderProps = HeaderProps &
@@ -54,6 +55,8 @@ export type PageHeaderProps = HeaderProps &
   );
 
 const COLLAPSE_AT = 48;
+
+const TOUCH_ACTIONS = 2;
 
 function useBack(back: boolean | undefined): (() => void) | null {
   const navigation = useNavigation();
@@ -89,19 +92,45 @@ function SearchAction(): ReactNode {
   return <IconButton icon="search" label="Search" onPress={openSearch} />;
 }
 
+function settingsMenuItem(settings: PageSettingsLink): MenuItem {
+  return {
+    label: settings.label,
+    icon: 'settings',
+    onPress: (): void => {
+      router.push(settings.href);
+    },
+  };
+}
+
+function TouchMenu({
+  rest,
+  settings,
+}: {
+  readonly rest: readonly MenuItem[];
+  readonly settings: PageSettingsLink | undefined;
+}): ReactNode {
+  if (settings === undefined) {
+    return rest.length === 0 ? null : <OverflowButton items={rest} />;
+  }
+  if (rest.length === 0) {
+    return <PageSettingsButton settings={settings} />;
+  }
+  return <OverflowButton items={[...rest, settingsMenuItem(settings)]} />;
+}
+
 function TouchActions({
   actions,
   overflow,
   search,
-  directSettings,
+  settings,
 }: {
   readonly actions: readonly HeaderAction[];
   readonly overflow: readonly MenuItem[];
   readonly search: boolean;
-  readonly directSettings: boolean;
+  readonly settings: PageSettingsLink | undefined;
 }): ReactNode {
-  const shown = directSettings ? actions : actions.slice(0, 2);
-  const rest = overflowItems(actions.slice(shown.length), overflow);
+  const shown = actions.slice(0, TOUCH_ACTIONS);
+  const rest = overflowItems(actions.slice(TOUCH_ACTIONS), overflow);
   const { primaryAction } = useScreen();
   const placed = usePrimaryActionPlacement() === 'header' ? primaryAction : null;
   return (
@@ -120,17 +149,23 @@ function TouchActions({
           {...(action.href === undefined ? {} : { href: action.href })}
         />
       ))}
-      {rest.length === 0 ? null : <OverflowButton items={rest} />}
+      <TouchMenu rest={rest} settings={settings} />
     </View>
   );
 }
 
-function PointerAction({ action }: { readonly action: HeaderAction }): ReactNode {
+function PointerAction({
+  action,
+  compact,
+}: {
+  readonly action: HeaderAction;
+  readonly compact: boolean;
+}): ReactNode {
   const press = {
     ...(action.onPress === undefined ? {} : { onPress: action.onPress }),
     ...(action.href === undefined ? {} : { href: action.href }),
   };
-  if (action.iconOnly === true) {
+  if (action.iconOnly === true || compact) {
     return (
       <IconButton
         icon={action.icon}
@@ -159,17 +194,14 @@ function PointerActions({
   readonly overflow: readonly MenuItem[];
 }): ReactNode {
   const { primaryAction } = useScreen();
+  const compact = useSizeClass().width === 'compact';
   return (
     <View className="flex-row flex-wrap items-center justify-end gap-2">
       {actions.map((action) => (
-        <PointerAction key={action.label} action={action} />
+        <PointerAction key={action.label} action={action} compact={compact} />
       ))}
       {primaryAction === null ? null : (
-        <Button
-          label={primaryAction.label}
-          icon={primaryAction.icon}
-          onPress={primaryAction.onPress}
-        />
+        <PointerAction action={{ ...primaryAction, primary: true }} compact={compact} />
       )}
       {overflow.length === 0 ? null : <OverflowButton items={overflow} />}
     </View>
@@ -202,10 +234,12 @@ function Trailing(props: PageHeaderProps & { readonly kind: HeaderKind }): React
           actions={actions}
           overflow={overflow}
           search={props.search ?? true}
-          directSettings={props.settings !== undefined}
+          settings={props.settings}
         />
       )}
-      {props.settings === undefined ? null : <PageSettingsButton settings={props.settings} />}
+      {props.kind === 'desktop' && props.settings !== undefined ? (
+        <PageSettingsButton settings={props.settings} />
+      ) : null}
     </View>
   );
 }
@@ -298,7 +332,7 @@ function DesktopHeader(props: PageHeaderProps): ReactNode {
         )}
         <View className="min-w-0 flex-1 gap-0.5">
           {props.breadcrumbs === undefined ? null : <Breadcrumbs crumbs={props.breadcrumbs} />}
-          <Text variant="title-1" accessibilityRole="header" numberOfLines={2}>
+          <Text variant="title-1" accessibilityRole="header" numberOfLines={props.titleLines ?? 1}>
             {props.title}
           </Text>
           {props.subtitle === undefined ? null : (

@@ -1,10 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { memo, useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { ChatTimelineTool } from '@smarteverything/domain';
 import { Text } from '../../../components/text';
 import { Interactive } from '../../../components/interactive';
 import {
-  toolFileDiffs,
+  cachedToolFileDiffs,
   visibleDiffLines,
   DIFF_PREVIEW_LINES,
   DIFF_RENDER_LINES,
@@ -148,12 +148,14 @@ function FileDiff({ diff }: { readonly diff: ToolFileDiff }): ReactNode {
     </View>
   );
 }
-export function ToolFileDiffs({ tool }: { readonly tool: ChatTimelineTool }): ReactNode {
-  const { input, output, name, state, redacted } = tool;
-  const diffs = useMemo(
-    () => toolFileDiffs({ input, output, name, state, redacted }),
-    [input, output, name, state, redacted],
-  );
+export const ToolFileDiffs = memo(function ToolFileDiffs({
+  tool,
+  state,
+}: {
+  readonly tool: ChatTimelineTool;
+  readonly state: ChatTimelineTool['state'];
+}): ReactNode {
+  const diffs = cachedToolFileDiffs(tool, state);
   if (diffs.length === 0) return null;
   return (
     <View className="min-w-0 gap-2 pl-6">
@@ -162,7 +164,7 @@ export function ToolFileDiffs({ tool }: { readonly tool: ChatTimelineTool }): Re
       ))}
     </View>
   );
-}
+});
 
 function countDescription(diff: ToolFileDiff): string {
   return `${diff.truncated ? 'Partial counts. ' : ''}${String(diff.added)} added lines${diff.removed === null ? ', previous content unavailable' : `, ${String(diff.removed)} removed lines`}`;

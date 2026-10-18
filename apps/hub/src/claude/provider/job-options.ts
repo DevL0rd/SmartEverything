@@ -1,4 +1,9 @@
-import type { Options, HookInput, HookJSONOutput } from '@anthropic-ai/claude-agent-sdk';
+import type {
+  Options,
+  HookCallback,
+  HookInput,
+  HookJSONOutput,
+} from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudeMcpServers, ProviderTurn } from '@smarteverything/domain';
 import type { ProviderJobOptions } from './job';
 import type { ProviderTools } from './tools';
@@ -15,6 +20,7 @@ interface JobContext {
   readonly prompts: ProviderPrompts;
   readonly dialogs: ProviderDialogs;
   readonly session: () => string;
+  readonly toolBoundary: () => void;
   readonly toolHook: (input: HookInput, allowed: ReadonlySet<string>) => Promise<HookJSONOutput>;
 }
 export function jobOptions(context: JobContext): Options {
@@ -43,10 +49,21 @@ export function jobOptions(context: JobContext): Options {
       PreToolUse: [
         { hooks: [(input): Promise<HookJSONOutput> => context.toolHook(input, allowed)] },
       ],
+      PostToolUse: [{ hooks: [boundaryHook(context.toolBoundary)] }],
+      PostToolUseFailure: [{ hooks: [boundaryHook(context.toolBoundary)] }],
     },
     ...managedJobOptions(turn),
     ...(turn.session_id === null ? { sessionId: turn.job_id } : { resume: turn.session_id }),
     ...(executable === undefined ? {} : { pathToClaudeCodeExecutable: executable }),
+  };
+}
+
+function boundaryHook(boundary: () => void): HookCallback {
+  return (input): Promise<HookJSONOutput> => {
+    const toolEnded =
+      input.hook_event_name === 'PostToolUse' || input.hook_event_name === 'PostToolUseFailure';
+    if (toolEnded && input.agent_id === undefined) boundary();
+    return Promise.resolve({});
   };
 }
 

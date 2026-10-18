@@ -57,15 +57,6 @@ function Single({
   readonly readings: readonly MetricReading[];
   readonly size: WidgetSize;
 }): ReactNode {
-  if (size === 'S') {
-    return (
-      <View className="flex-1 justify-end gap-2">
-        {readings.map((reading) => (
-          <Line key={reading.metric} reading={reading} />
-        ))}
-      </View>
-    );
-  }
   return (
     <View className="flex-1 flex-row items-center justify-around gap-3">
       {readings.map((reading) => (
@@ -104,7 +95,7 @@ export function ComfortWidget({
   const comfort = useIndoorComfort(room);
   const single = comfort.length === 1 ? comfort[0] : undefined;
   return (
-    <WidgetFrame title="Indoors" icon="thermometer" accent="temp-warm" size={size}>
+    <WidgetFrame title="Indoors" icon="thermometer" accent="temp-warm">
       {single === undefined ? (
         <View className="flex-1 gap-2 overflow-hidden">
           {comfort.map((entry) => (

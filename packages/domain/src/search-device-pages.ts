@@ -1,4 +1,5 @@
 import { isStandardCapability } from './capabilities';
+import { presentCapability } from './capability-presentation';
 import type { DeviceCapability } from './devices';
 import { detailOf, keywordsOf } from './search';
 import type {
@@ -90,7 +91,9 @@ function historyOf(device: SearchDevice, charted: readonly DeviceCapability[]): 
       detail: detailOf(device),
       keywords: [
         ...HISTORY_WORDS,
-        ...charted.flatMap((capability) => keywordsOf(device, capability)),
+        ...charted.flatMap((capability) =>
+          keywordsOf(device, capability, presentCapability(device, capability)),
+        ),
       ],
       page: pageOf(device.id, historyFocus(first.key)),
       runLabel: 'Show',

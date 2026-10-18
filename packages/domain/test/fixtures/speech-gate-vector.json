@@ -1,0 +1,450 @@
+{
+  "description": "Frame sequences for the speech gate, 32 ms per frame. A run of voiced frames is confirmed as speech on frame minSpeechMs / frameMs of the run (counting from 0) and the first silent frame ends it. Events name the frame on which the gate opens or closes.",
+  "frameMs": 32,
+  "cases": [
+    {
+      "name": "speech in a quiet room opens when it is confirmed and closes when it ends",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 5,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 4,
+          "event": "open"
+        },
+        {
+          "frame": 7,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "quiet speech while the assistant is audible never opens the gate",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": true
+        },
+        {
+          "count": 12,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": true
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "loud speech over the assistant barges in once the sustain time is reached",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 10,
+          "voiced": true,
+          "level": 0.125,
+          "audible": true
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 7,
+          "event": "open"
+        },
+        {
+          "frame": 10,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "loud speech shorter than the sustain time does not barge in",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 6,
+          "voiced": true,
+          "level": 0.125,
+          "audible": true
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "loud speech over the assistant never opens when interruption is off",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": false,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 20,
+          "voiced": true,
+          "level": 0.125,
+          "audible": true
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": []
+    },
+    {
+      "name": "a clear room still opens when interruption is off",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": false,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 5,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 1,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 2,
+          "event": "open"
+        },
+        {
+          "frame": 5,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "speech that began over the assistant stays blocked until the next utterance",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 3,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": true
+        },
+        {
+          "count": 40,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 1,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 3,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 46,
+          "event": "open"
+        },
+        {
+          "frame": 47,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "loud speech that began over the assistant opens by barge-in after the assistant falls silent",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 640,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 3,
+          "voiced": true,
+          "level": 0.125,
+          "audible": true
+        },
+        {
+          "count": 30,
+          "voiced": true,
+          "level": 0.125,
+          "audible": false
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 19,
+          "event": "open"
+        },
+        {
+          "frame": 33,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "speech starting inside the echo tail is blocked and a later utterance opens",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 256,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": true
+        },
+        {
+          "count": 1,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 15,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 1,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 3,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": false
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 21,
+          "event": "open"
+        },
+        {
+          "frame": 22,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "ignoring the assistant opens the gate even while it is audible",
+      "settings": {
+        "echoTailMs": 0,
+        "sustainMs": 0,
+        "bargeInLevel": 0.0625,
+        "ignoreAssistantAudible": true,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 5,
+          "voiced": true,
+          "level": 0.00390625,
+          "audible": true
+        },
+        {
+          "count": 1,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 2,
+          "event": "open"
+        },
+        {
+          "frame": 5,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "soft speech over the assistant barges in at the default sustain and level",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 192,
+        "bargeInLevel": 0.03,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 8,
+          "voiced": true,
+          "level": 0.0390625,
+          "audible": true
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": [
+        {
+          "frame": 5,
+          "event": "open"
+        },
+        {
+          "frame": 8,
+          "event": "close"
+        }
+      ]
+    },
+    {
+      "name": "residual echo below the default barge in level never opens the gate",
+      "settings": {
+        "echoTailMs": 300,
+        "sustainMs": 192,
+        "bargeInLevel": 0.03,
+        "ignoreAssistantAudible": false,
+        "interruptible": true,
+        "minSpeechMs": 64
+      },
+      "frames": [
+        {
+          "count": 20,
+          "voiced": true,
+          "level": 0.0234375,
+          "audible": true
+        },
+        {
+          "count": 2,
+          "voiced": false,
+          "level": 0.00390625,
+          "audible": false
+        }
+      ],
+      "events": []
+    }
+  ]
+}

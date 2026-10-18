@@ -76,7 +76,7 @@ function useSubscriptionAvailability(binding: Binding): {
 function routeDetail(route: AiModelRoute | undefined): string {
   if (route === undefined) return 'Open Subscription to check sign-in and billing.';
   return route.state === 'ready'
-    ? 'Select this computer as the execution host.'
+    ? 'Pick this computer with Switch machine to use it.'
     : route.failure.message;
 }
 function SubscriptionContent(binding: Binding): ReactNode {
@@ -93,10 +93,7 @@ function SubscriptionContent(binding: Binding): ReactNode {
   };
   return (
     <>
-      <List
-        title="Subscription"
-        footer="Sign-in for SmartEverything is separate from native session control."
-      >
+      <List title="Subscription" footer="This sign-in is only for SmartEverything chats.">
         <NavRow
           title="Subscription"
           subtitle={detail}
@@ -168,7 +165,6 @@ function subscriptionAvailability({
   if (!owner) return 'Only the owner can manage subscription sign-in.';
   if (!live) return subscriptionUnavailable(host, false);
   if (pending) return 'Checking this computer’s runtime…';
-  if (error !== null)
-    return 'Computer runtime information could not be loaded. Reconnect and try again.';
+  if (error !== null) return 'Couldn’t read this computer. Reconnect and try again.';
   return subscriptionUnavailable(host, true);
 }

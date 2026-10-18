@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TvDidNotWakeError } from '../../src/adapters/samsung-tv/adapter';
 import { TvConnectionError, TvRefusedError } from '../../src/adapters/samsung-tv/connection';
 import { createSamsungTvModule, samsungTvModule } from '../../src/adapters/samsung-tv/index';
+import { FRESH_MS } from '../../src/adapters/samsung-tv/power-polling';
 import { openTvSocket } from '../../src/adapters/samsung-tv/io';
 import { udpSender } from '../../src/network/udp-sender';
 import { TvLinkError } from '../../src/adapters/samsung-tv/link';
@@ -187,6 +188,7 @@ describe('the Samsung TV adapter', () => {
     expect(remoteMessages()[0]).toMatchObject({ params: { Cmd: 'Click', DataOfCmd: 'KEY_POWER' } });
     expect(tv.sleeps).toEqual([]);
     tv.power = 'standby';
+    tv.clockMs += FRESH_MS;
     await expect(
       adapter.execute({ ...COMMAND, capability: 'remote_key', value: 'KEY_HOME' }),
     ).rejects.toThrow(new CommandRefusedError('remote_key', 'the television is off'));
@@ -195,6 +197,20 @@ describe('the Samsung TV adapter', () => {
     ).rejects.toThrow(new CommandRefusedError('app_launch', 'the television is off'));
     await adapter.execute({ ...COMMAND, capability: 'power', value: false });
     expect(remoteMessages()).toHaveLength(1);
+    await stop();
+  });
+
+  it('sends remote keys from the last polled state without probing the TV again', async () => {
+    const { adapter, stop } = await subscribed();
+    await until(() => tv.openSockets === 1);
+    const probes = tv.restRequests;
+    for (let press = 0; press < 5; press += 1) {
+      await adapter.execute({ ...COMMAND, capability: 'remote_key', value: 'KEY_VOLUP' });
+    }
+    expect(tv.restRequests).toBe(probes);
+    tv.clockMs += FRESH_MS;
+    await adapter.execute({ ...COMMAND, capability: 'remote_key', value: 'KEY_VOLUP' });
+    expect(tv.restRequests).toBe(probes + 1);
     await stop();
   });
 
@@ -258,7 +274,7 @@ describe('the Samsung TV adapter', () => {
     const { stop } = await subscribed();
     await until(() => record.attention.length === 1);
     expect(record.attention).toEqual([
-      'The Samsung TV at tv.test refused the remote control: the request was declined on the TV or the token was rejected. Link the TV again.',
+      'The Samsung TV at tv.test refused the remote control: the request was declined on the TV or the token was rejected.',
     ]);
     expect(record.logs.map((line) => line.event)).toContain('remote.connect_failed');
     await stop();

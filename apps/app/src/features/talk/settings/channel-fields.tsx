@@ -7,6 +7,7 @@ import { List, Section } from '../../../components/section';
 import { Segmented } from '../../../components/segmented';
 import { TextField } from '../../../components/text-field';
 import { KEEP_OPTIONS, PRIORITY_OPTIONS, type ChannelFields } from './channel-draft';
+import { ICON_LABELS } from './channel-icon-labels';
 
 export interface ChannelFieldsProps {
   readonly fields: ChannelFields;
@@ -35,12 +36,16 @@ function NameAndIcon({ fields, onChange, onNameDone, nameError }: ChannelFieldsP
         />
       </Section>
       <Section title="Icon">
-        <View className="flex-row flex-wrap gap-1">
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Icon"
+          className="flex-row flex-wrap gap-1"
+        >
           {TALK_ICONS.map((icon) => (
             <IconButton
               key={icon}
               icon={icon}
-              label={`Icon ${icon}`}
+              label={ICON_LABELS[icon]}
               variant={fields.icon === icon ? 'filled' : 'tonal'}
               selected={fields.icon === icon}
               onPress={() => {

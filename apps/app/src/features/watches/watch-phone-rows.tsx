@@ -16,6 +16,7 @@ import {
   setPaused,
   syncNow,
 } from './watch-link';
+import { background } from '@smarteverything/logging';
 
 export const PHASE_TEXT: Readonly<Record<WatchPhase, string>> = {
   paused: 'Paused for Mi Fitness',
@@ -56,7 +57,9 @@ export function VendorBanner({ watch }: { readonly watch: PhoneWatchStatus }): R
       body={`Turn off ${vendor.label}’s Nearby devices permission so this phone keeps the watch. For watch faces or updates in ${vendor.label}: turn on Pause, allow Nearby devices again, finish, then turn it off and Pause off.`}
       action={{
         label: 'Open settings',
-        onPress: () => void openVendorSettings(vendor.packageName),
+        onPress: () => {
+          background(openVendorSettings(vendor.packageName), 'vendor_settings.open_failed');
+        },
       }}
     />
   );
@@ -83,7 +86,7 @@ function ConnectionRows({ watch }: { readonly watch: PhoneWatchStatus }): ReactN
         icon="refresh"
         disabled={watch.syncing || watch.phase !== 'connected'}
         onPress={() => {
-          void syncNow();
+          background(syncNow(), 'now.sync_failed');
         }}
       />
       {watch.firmware === null ? null : (
@@ -104,7 +107,7 @@ function FindRow({ watch }: { readonly watch: PhoneWatchStatus }): ReactNode {
       onPress={() => {
         const on = !ringing;
         setRinging(on);
-        void ringWatch(watch.deviceId, on);
+        background(ringWatch(watch.deviceId, on), 'watch.ring_failed');
       }}
     />
   );
@@ -120,7 +123,7 @@ function ControlRows({ watch }: { readonly watch: PhoneWatchStatus }): ReactNode
         role="switch"
         checked={watch.paused}
         onPress={() => {
-          void setPaused(watch.deviceId, !watch.paused);
+          background(setPaused(watch.deviceId, !watch.paused), 'paused.set_failed');
         }}
       />
       <ListRow
@@ -130,7 +133,7 @@ function ControlRows({ watch }: { readonly watch: PhoneWatchStatus }): ReactNode
         chevron={!watch.associated}
         disabled={watch.associated}
         onPress={() => {
-          void keepInBackground(watch.deviceId);
+          background(keepInBackground(watch.deviceId), 'in_background.keep_failed');
         }}
       />
       <ListRow
@@ -145,7 +148,7 @@ function ControlRows({ watch }: { readonly watch: PhoneWatchStatus }): ReactNode
           title="Reconnect now"
           icon="refresh"
           onPress={() => {
-            void reconnect();
+            background(reconnect(), 'watch_phone_rows.reconnect_failed');
           }}
         />
       )}

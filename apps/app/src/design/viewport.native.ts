@@ -1,93 +1,79 @@
 import type { RefObject } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWindowDimensions, type View } from 'react-native';
-import { useIsFocused } from 'expo-router';
-import { useAnimatedReaction } from 'react-native-reanimated';
+import { useAnimatedReaction, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useScreen } from '../components/screen-context';
 import { useInsideOverlay } from '../components/overlay-shown';
-import { useForeground } from './animation-gate';
+import { useScreenLive, type ScreenLive } from './animation-gate';
 import type { ViewportOptions, ViewportVisibility } from './viewport';
+import { ViewportRegistry, type ViewportMembership } from './viewport-registry';
 
-const SCROLL_STEP = 48;
+const SCROLL_STEP = 24;
 
-interface ViewportBounds {
-  readonly margin: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-function useMeasurement(
-  ref: RefObject<View | null>,
-  { width, height, margin }: ViewportBounds,
-  enabled: boolean,
-  change: (visible: boolean) => void,
-): () => void {
-  const scope = useMemo(
-    () => ({ ref, width, height, enabled, margin, change }),
-    [ref, width, height, enabled, margin, change],
+export function useScreenViewport(scrollY: SharedValue<number>): ViewportRegistry {
+  const watching = useSharedValue(false);
+  const size = useWindowDimensions();
+  const [registry] = useState(
+    () =>
+      new ViewportRegistry(size, (next) => {
+        watching.set(next);
+      }),
   );
-  const lifetime = useRef<{ scope: typeof scope | null; measurement: number }>({
-    scope: null,
-    measurement: 0,
-  });
-  const measure = useCallback((): void => {
-    const active = lifetime.current;
-    const node = scope.ref.current;
-    if (node === null || !scope.enabled || active.scope !== scope) return;
-    const measurement = ++active.measurement;
-    node.measureInWindow((x, y, w, h) => {
-      if (
-        active.scope !== scope ||
-        scope.ref.current !== node ||
-        measurement !== active.measurement
-      )
-        return;
-      scope.change(
-        w > 0 &&
-          h > 0 &&
-          y < scope.height + scope.margin &&
-          y + h > -scope.margin &&
-          x < scope.width &&
-          x + w > 0,
-      );
-    });
-  }, [scope]);
+  const deliver = useCallback(
+    (offset: number): void => {
+      registry.scrolled(offset);
+    },
+    [registry],
+  );
   useEffect(() => {
-    const active = lifetime.current;
-    active.scope = scope;
-    measure();
-    return (): void => {
-      if (active.scope === scope) active.scope = null;
-      active.measurement++;
-    };
-  }, [measure, scope]);
-  return measure;
+    registry.resized(size);
+  }, [registry, size]);
+  useEffect(
+    () => (): void => {
+      registry.dispose();
+    },
+    [registry],
+  );
+  useAnimatedReaction(
+    () => (watching.get() ? Math.round(scrollY.get() / SCROLL_STEP) : null),
+    (step, previous) => {
+      if (step !== null && step !== previous) scheduleOnRN(deliver, scrollY.get());
+    },
+    [deliver],
+  );
+  return registry;
 }
 
 export function useViewport(
   ref: RefObject<View | null>,
-  { margin = 0, screenOnly = false }: ViewportOptions = {},
+  options: ViewportOptions = {},
+): ViewportVisibility {
+  return useLiveViewport(ref, options, useScreenLive());
+}
+
+export function useLiveViewport(
+  ref: RefObject<View | null>,
+  { margin = 0, tracking = true }: ViewportOptions,
+  { focused, foreground }: ScreenLive,
 ): ViewportVisibility {
   const [visible, setVisible] = useState(true);
-  const size = useWindowDimensions();
-  const { scrollY, scrollable } = useScreen();
-  const focused = useIsFocused();
-  const foreground = useForeground();
+  const { scrollable, viewport } = useScreen();
   const overlay = useInsideOverlay();
-  const tracked = !screenOnly || (scrollable && !overlay);
-  const measure = useMeasurement(
-    ref,
-    { ...size, margin },
-    tracked && focused && foreground,
-    setVisible,
-  );
-  useAnimatedReaction(
-    () => Math.round(scrollY.get() / SCROLL_STEP),
-    (step, previous) => {
-      if (step !== previous) scheduleOnRN(measure);
-    },
-    [measure],
-  );
-  return { onLayout: measure, visible: !tracked || visible };
+  const tracked = scrollable && !overlay && tracking;
+  const enabled = tracked && focused && foreground;
+  const membership = useRef<ViewportMembership | null>(null);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const joined = viewport.join({ ref, margin, change: setVisible });
+    membership.current = joined;
+    return (): void => {
+      joined.leave();
+      membership.current = null;
+    };
+  }, [viewport, ref, margin, enabled]);
+  const onLayout = useCallback((): void => {
+    membership.current?.measure();
+  }, []);
+  return { onLayout: tracked ? onLayout : undefined, visible: !tracked || visible };
 }

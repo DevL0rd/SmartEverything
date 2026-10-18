@@ -34,7 +34,7 @@ export type ChatMessage =
       readonly content: string | readonly ContentPart[];
     };
 
-export interface ChatTool {
+interface ChatTool {
   readonly type: 'function';
   readonly function: {
     readonly name: string;
@@ -57,39 +57,6 @@ export interface ChatRequest {
   readonly cacheControl?: boolean;
   readonly prefixBreakpoint?: boolean;
 }
-
-export interface ChatUsage {
-  readonly cost: number | null;
-  readonly promptTokens: number;
-  readonly completionTokens: number;
-  readonly cachedTokens: number;
-  readonly cacheWriteTokens: number;
-  readonly reasoningTokens: number;
-  readonly audioTokens: number;
-  readonly upstreamCost: number | null;
-  readonly searchRequests: number;
-}
-
-export type ChatChunk =
-  | { readonly type: 'start'; readonly generationId: string; readonly model: string }
-  | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'reasoning'; readonly text: string }
-  | { readonly type: 'reasoning_details'; readonly details: readonly JsonValue[] }
-  | {
-      readonly type: 'tool_call';
-      readonly index: number;
-      readonly id: string | null;
-      readonly name: string | null;
-      readonly arguments: string;
-    }
-  | { readonly type: 'citation'; readonly url: string; readonly title: string }
-  | { readonly type: 'finish'; readonly reason: string }
-  | {
-      readonly type: 'usage';
-      readonly generationId: string;
-      readonly model: string;
-      readonly usage: ChatUsage;
-    };
 
 export interface GenerationStats {
   readonly id: string;

@@ -15,13 +15,17 @@ import type { ClaudeService } from './service';
 import type { LinkPlane } from './link-plane';
 import type { NativeTools } from './native-tools';
 import { ClaudeProviderRuntime } from './provider/runtime';
-import { providerSettings } from './provider/metadata';
+import { searchProjectFiles } from './provider/file-search';
 import { providerDiscoveryReason } from './provider/runtime-reads';
-import { SDK_VERSION } from './provider/options';
 import { CLAUDE_COMMAND_CAPABILITY_REVISION } from './provider/command-catalogue';
 import { isProviderCommand, executeProviderCommand } from './provider/host-commands';
+import { executeLive, isLiveRequest } from './host-live';
 import { ClaudeNotReadyError } from './errors';
+import { traceHostCall } from '../node/host-trace';
+import { HostLog } from './host-log';
+import { claudeCapabilities } from './host-capabilities';
 import { NativeOperations, isNativeOperation } from './native-operations';
+import { messageOf } from '@smarteverything/logging';
 export interface ClaudeHostOptions {
   readonly service: ClaudeService;
   readonly plane: LinkPlane;
@@ -40,11 +44,13 @@ class ClaudeHost implements ComputerAiHost {
     this.publish({ kind: 'native', notice: { type: 'claude_operation', operation } });
   });
   private readonly unsubscribe: () => void;
+  private readonly trace: HostLog;
   private settings: ComputerAiSettings;
   private publishedCapabilities: string | null = null;
   private providerReason: string | null =
     'The local official Claude runtime has not yet verified subscription sign-in.';
   constructor(private readonly options: ClaudeHostOptions) {
+    this.trace = new HostLog(options.log, options.deviceId);
     this.settings = COMPUTER_AI_SETTINGS.parse(options.settings ?? DEFAULT_COMPUTER_AI_SETTINGS);
     this.provider = new ClaudeProviderRuntime({
       deviceId: options.deviceId,
@@ -57,11 +63,28 @@ class ClaudeHost implements ComputerAiHost {
     });
     this.provider.configure(this.settings.provider.enabled, this.settings.provider.options);
     this.native = options.plane.native;
+    options.service.ownSessions(this.provider.ownedSessions());
     this.unsubscribe = options.service.onNotice((notice) => {
       this.publish({ kind: 'native', notice });
     });
   }
-  async read(request: ComputerAiRead): Promise<ComputerAiReply> {
+  read(request: ComputerAiRead): Promise<ComputerAiReply> {
+    return traceHostCall(
+      { log: this.options.log, runtime: 'claude' },
+      'read',
+      request.operation,
+      () => this.readRequest(request),
+    );
+  }
+  execute(request: ComputerAiExecute): Promise<ComputerAiReply> {
+    return traceHostCall(
+      { log: this.options.log, runtime: 'claude' },
+      'execute',
+      request.operation,
+      () => this.executeRequest(request),
+    );
+  }
+  private async readRequest(request: ComputerAiRead): Promise<ComputerAiReply> {
     if (nativeReadRequest(request)) {
       if (request.operation !== 'native_operation') this.controlReady(request.operation);
       return this.nativeRead(request);
@@ -79,6 +102,8 @@ class ClaudeHost implements ComputerAiHost {
         return this.providerRead('provider_metadata', () => this.provider.metadata(request.job_id));
       case 'provider_commands':
         return { operation: request.operation, value: await this.provider.commands(request.scope) };
+      case 'provider_files':
+        return { operation: request.operation, value: await searchProjectFiles(request) };
       case 'provider_command_receipt':
         return {
           operation: request.operation,
@@ -91,12 +116,13 @@ class ClaudeHost implements ComputerAiHost {
         };
     }
   }
-  async execute(request: ComputerAiExecute): Promise<ComputerAiReply> {
+  private async executeRequest(request: ComputerAiExecute): Promise<ComputerAiReply> {
     if (nativeExecuteRequest(request)) {
       this.controlReady(request.operation);
       return this.dispatchNative(request);
     }
     if (isProviderCommand(request)) return executeProviderCommand(this.provider, request);
+    if (isLiveRequest(request)) return executeLive(this.provider, request);
     switch (request.operation) {
       case 'configure':
         return this.configure(request.settings);
@@ -107,29 +133,6 @@ class ClaudeHost implements ComputerAiHost {
           operation: request.operation,
           value: await this.provider.control(request.job_id, request.control),
         };
-      case 'provider_interrupt':
-        return {
-          operation: request.operation,
-          value: { interrupted: await this.provider.interrupt(request.job_id) },
-        };
-      case 'provider_answer':
-        return {
-          operation: request.operation,
-          value: {
-            answered: this.provider.answer(request.job_id, request.prompt_id, request.answer),
-          },
-        };
-      case 'provider_tool_result':
-        return {
-          operation: request.operation,
-          value: {
-            delivered: this.provider.toolResult(request.job_id, request.call_id, {
-              text: request.text,
-              failed: request.failed,
-              ...(request.content === undefined ? {} : { content: request.content }),
-            }),
-          },
-        };
     }
   }
   private dispatchNative(request: NativeExecute): Promise<ComputerAiReply> {
@@ -139,15 +142,18 @@ class ClaudeHost implements ComputerAiHost {
   }
   onEvent(listener: (event: ComputerAiHostEvent) => void): () => void {
     this.listeners.add(listener);
+    this.trace.listener('added', this.listeners.size);
     const capabilities = this.capabilities();
     this.publishedCapabilities ??= JSON.stringify(capabilities);
     listener({ kind: 'capabilities', capabilities });
     return () => {
       this.listeners.delete(listener);
+      this.trace.listener('removed', this.listeners.size);
     };
   }
 
   stop(): void {
+    this.trace.stopping(this.listeners.size);
     this.operations.stop();
     this.provider.stop();
     this.unsubscribe();
@@ -157,49 +163,7 @@ class ClaudeHost implements ComputerAiHost {
   }
 
   private capabilities(): ComputerAiCapabilities {
-    const operations: ComputerAiCapabilities['operations'] = [
-      'status',
-      'configure',
-      'native_operation',
-    ];
-    if (this.settings.control.enabled) {
-      operations.push(
-        'native_tools_list',
-        'native_tools_call',
-        'sessions',
-        'session',
-        'thread',
-        'usage',
-        'prompts',
-        'install_link',
-        'remove_link',
-        'answer',
-      );
-    }
-    if (this.settings.provider.enabled) {
-      operations.push(
-        'models',
-        'provider_metadata',
-        'provider_read',
-        'provider_control',
-        'provider_interrupt',
-        'provider_answer',
-        'provider_tool_result',
-      );
-      if (this.providerReason === null) operations.push('provider_start');
-    }
-    return {
-      runtime_version: SDK_VERSION,
-      managed_projects: { protocol: 1 },
-      operations,
-      settings: providerSettings(),
-      control_reason: this.settings.control.enabled
-        ? 'Legacy Desktop controls are retired. Use owned Claude CLI chats; direct tools require an attached CLI session.'
-        : 'Claude session control is disabled on this computer.',
-      provider_reason: this.settings.provider.enabled
-        ? this.providerReason
-        : 'The Claude model provider is disabled on this computer.',
-    };
+    return claudeCapabilities(this.settings, this.providerReason);
   }
 
   private publish(event: ComputerAiHostEvent): void {
@@ -207,6 +171,7 @@ class ClaudeHost implements ComputerAiHost {
       const signature = JSON.stringify(event.capabilities);
       if (signature === this.publishedCapabilities) return;
       this.publishedCapabilities = signature;
+      this.trace.capabilities(event.capabilities, this.listeners.size);
     }
     for (const listener of this.listeners) {
       listener(event);
@@ -224,6 +189,7 @@ class ClaudeHost implements ComputerAiHost {
   private async configure(raw: ComputerAiSettings): Promise<ComputerAiReply> {
     const previous = this.settings;
     this.settings = COMPUTER_AI_SETTINGS.parse(raw);
+    this.trace.settings(this.settings, previous);
     this.provider.configure(this.settings.provider.enabled, this.settings.provider.options);
     this.options.plane.configureControl(this.settings.control.enabled);
     if (!this.settings.control.enabled) {
@@ -231,13 +197,13 @@ class ClaudeHost implements ComputerAiHost {
       this.options.plane.broker.stop();
       this.options.plane.streams.stop();
     }
+    this.publish({ kind: 'capabilities', capabilities: this.capabilities() });
     if (
       this.settings.control.enabled &&
       this.settings.control.auto_link &&
       !previous.control.auto_link
     )
       await this.options.service.installLink();
-    this.publish({ kind: 'capabilities', capabilities: this.capabilities() });
     return { operation: 'configure', value: this.settings };
   }
 
@@ -247,14 +213,14 @@ class ClaudeHost implements ComputerAiHost {
   ): Promise<ComputerAiReply> {
     try {
       const reply = COMPUTER_AI_REPLY.parse({ operation, value: await read() });
-      this.providerReason = providerDiscoveryReason(reply);
+      const reason = providerDiscoveryReason(reply);
+      if (reason !== this.providerReason) this.trace.reason(operation, reason);
+      this.providerReason = reason;
       this.publish({ kind: 'capabilities', capabilities: this.capabilities() });
       return reply;
     } catch (cause) {
-      this.providerReason =
-        cause instanceof Error
-          ? cause.message.slice(0, 500)
-          : 'The local Claude runtime could not initialize.';
+      this.trace.discoveryFailed(operation, cause);
+      this.providerReason = messageOf(cause).slice(0, 500);
       this.publish({ kind: 'capabilities', capabilities: this.capabilities() });
       throw cause;
     }
@@ -270,6 +236,7 @@ class ClaudeHost implements ComputerAiHost {
           | 'provider_metadata'
           | 'provider_read'
           | 'provider_commands'
+          | 'provider_files'
           | 'provider_command_receipt';
       }
     >,
@@ -307,6 +274,8 @@ class ClaudeHost implements ComputerAiHost {
           | 'provider_start'
           | 'provider_control'
           | 'provider_interrupt'
+          | 'provider_steer'
+          | 'provider_adopt'
           | 'provider_answer'
           | 'provider_tool_result';
       }
@@ -356,6 +325,7 @@ type NativeRead = Exclude<
       | 'provider_metadata'
       | 'provider_read'
       | 'provider_commands'
+      | 'provider_files'
       | 'provider_command_receipt';
   }
 >;
@@ -369,6 +339,8 @@ type NativeExecute = Exclude<
       | 'provider_start'
       | 'provider_control'
       | 'provider_interrupt'
+      | 'provider_steer'
+      | 'provider_adopt'
       | 'provider_answer'
       | 'provider_tool_result';
   }
@@ -379,6 +351,7 @@ const PROVIDER_READS = new Set([
   'provider_metadata',
   'provider_read',
   'provider_commands',
+  'provider_files',
   'provider_command_receipt',
 ]);
 function nativeReadRequest(request: ComputerAiRead): request is NativeRead {

@@ -10,8 +10,7 @@ import { jsonText } from '../sql';
 
 const STORED_SOURCE = storedRow(HEALTH_SOURCE_ROW, { json: ['granted_types'] });
 
-const COLUMNS =
-  'id, client_id, name, granted_types, last_sync_at, last_error, created_at, revoked_at';
+const COLUMNS = 'client_id, name, granted_types, last_sync_at, last_error, created_at';
 
 export class HealthSourcesRepository {
   constructor(private readonly context: StoreContext) {}
@@ -23,68 +22,75 @@ export class HealthSourcesRepository {
     );
   }
 
-  byId(id: string): HealthSourceRow {
-    return found(
-      this.context.sql.get(STORED_SOURCE, `select ${COLUMNS} from health_sources where id = $id`, {
-        id,
-      }),
-      'health source',
-      id,
-    );
-  }
-
-  activeByTokenHash(tokenHash: string): HealthSourceRow | undefined {
+  find(clientId: string): HealthSourceRow | undefined {
     return this.context.sql.get(
       STORED_SOURCE,
-      `select ${COLUMNS} from health_sources where token_hash = $tokenHash and revoked_at is null`,
-      { tokenHash },
+      `select ${COLUMNS} from health_sources where client_id = $clientId`,
+      { clientId },
     );
   }
 
-  create(name: string, clientId: string, tokenHash: string): HealthSourceRow {
+  byClient(clientId: string): HealthSourceRow {
+    return found(this.find(clientId), 'health source', clientId);
+  }
+
+  register(clientId: string, name: string): HealthSourceRow {
     return this.context.write(() => {
-      const id = this.context.newId();
+      const before = this.find(clientId);
       this.context.sql.run(
         'add the health source',
-        `insert into health_sources (id, client_id, name, token_hash, created_at)
-         values ($id, $clientId, $name, $tokenHash, $now)`,
-        { id, clientId, name, tokenHash, now: this.context.now() },
+        `insert into health_sources (client_id, name, created_at) values ($clientId, $name, $now)
+         on conflict (client_id) do update set name = excluded.name`,
+        { clientId, name, now: this.context.now() },
       );
-      const row = this.byId(id);
-      this.context.changed('health_sources', 'INSERT', row, null);
+      const row = this.byClient(clientId);
+      this.context.changed(
+        'health_sources',
+        before === undefined ? 'INSERT' : 'UPDATE',
+        row,
+        before ?? null,
+      );
       return row;
     });
   }
 
-  revoke(id: string): HealthSourceRow {
-    return this.change(id, { revoked_at: this.context.now() });
+  remove(clientId: string): void {
+    this.context.write(() => {
+      const before = this.byClient(clientId);
+      this.context.sql.run(
+        'remove the health source',
+        'delete from health_sources where client_id = $clientId',
+        { clientId },
+      );
+      this.context.changed('health_sources', 'DELETE', null, before);
+    });
   }
 
-  synced(id: string, grantedTypes: readonly HealthRecordType[]): HealthSourceRow {
-    return this.change(id, {
+  synced(clientId: string, grantedTypes: readonly HealthRecordType[]): HealthSourceRow {
+    return this.change(clientId, {
       last_sync_at: this.context.now(),
       granted_types: jsonText(grantedTypes),
       last_error: null,
     });
   }
 
-  failed(id: string, problem: string): HealthSourceRow {
-    return this.change(id, { last_error: problem });
+  failed(clientId: string, problem: string): HealthSourceRow {
+    return this.change(clientId, { last_error: problem });
   }
 
-  private change(id: string, values: Readonly<Record<string, SQLInputValue>>): HealthSourceRow {
+  private change(
+    clientId: string,
+    values: Readonly<Record<string, SQLInputValue>>,
+  ): HealthSourceRow {
     return this.context.write(() => {
-      const before = this.byId(id);
+      const before = this.byClient(clientId);
       const set = assignments(values);
       this.context.sql.run(
         'change the health source',
-        `update health_sources set ${set.text} where id = $id`,
-        {
-          ...set.parameters,
-          id,
-        },
+        `update health_sources set ${set.text} where client_id = $clientId`,
+        { ...set.parameters, clientId },
       );
-      const after = this.byId(id);
+      const after = this.byClient(clientId);
       this.context.changed('health_sources', 'UPDATE', after, before);
       return after;
     });

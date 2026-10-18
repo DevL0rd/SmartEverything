@@ -5,10 +5,13 @@ import { useToday } from './day';
 
 export function useSyncedAt(metric: HealthMetric, day: string | null): string | null {
   const today = useToday();
-  return useStoreSelector((state) =>
-    day !== today
-      ? null
-      : (rowsOf(state.tables.health_daily).find((row) => row.metric === metric && row.day === day)
-          ?.updated_at ?? null),
+  return useStoreSelector(
+    (state) =>
+      day !== today
+        ? null
+        : (rowsOf(state.tables.health_daily).find((row) => row.metric === metric && row.day === day)
+            ?.updated_at ?? null),
+    Object.is,
+    [metric, day, today],
   );
 }

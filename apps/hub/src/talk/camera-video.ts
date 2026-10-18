@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import type { Logger } from '@smarteverything/logging';
 import type { VideoFrame } from '../assistant-voice/video';
+import { ffmpegPath } from '../media/ffmpeg-path';
+import { messageOf } from '@smarteverything/logging';
 
 const FRAME_WIDTH = 640;
 const JPEG_END = Buffer.from([0xff, 0xd9]);
@@ -59,7 +61,7 @@ export class CameraVideo {
     this.start(cameraId, listener, watching).catch((cause: unknown) => {
       this.options.log.warn('talk.camera_video_failed', {
         cameraId,
-        reason: cause instanceof Error ? cause.message : String(cause),
+        reason: messageOf(cause),
       });
     });
     return (): void => {
@@ -77,7 +79,7 @@ export class CameraVideo {
       return;
     }
     const url = `rtsp://127.0.0.1:${String(this.options.rtspPort)}/${encodeURIComponent(cameraId)}?video`;
-    const child = spawn('ffmpeg', argumentsFor(url), { stdio: ['ignore', 'pipe', 'ignore'] });
+    const child = spawn(ffmpegPath(), argumentsFor(url), { stdio: ['ignore', 'pipe', 'ignore'] });
     const splitter = new JpegSplitter((jpeg) => {
       listener({ data: Buffer.from(jpeg), mimeType: 'image/jpeg' });
     });

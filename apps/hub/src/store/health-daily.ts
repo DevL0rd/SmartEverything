@@ -2,6 +2,7 @@ import {
   HEALTH_METRICS,
   HEALTH_METRIC_UNITS,
   NUTRITION_METRICS,
+  asleepMinutes,
   hydrationAmounts,
   type Nutrient,
   type HealthMetric,
@@ -72,7 +73,7 @@ function amounts(records: readonly HealthRecord[]): Partial<Record<HealthMetric,
     ),
     floors: preferred(records, 'FloorsClimbed').map((record) => record.data.floors),
     hydration: hydrationAmounts(records),
-    sleep: preferred(records, 'SleepSession').map(minutesOf),
+    sleep: preferred(records, 'SleepSession').map(asleepMinutes),
     exercise: preferred(records, 'ExerciseSession').map(minutesOf),
   };
 }
@@ -102,12 +103,19 @@ function heartRates(records: readonly HealthRecord[]): { all: number[]; resting:
   };
 }
 
+function extremum(
+  values: readonly number[],
+  pick: (left: number, right: number) => number,
+): number[] {
+  return values.length === 0 ? [] : [values.reduce((found, value) => pick(found, value))];
+}
+
 function measures(records: readonly HealthRecord[]): Partial<Record<HealthMetric, number[]>> {
   const heart = heartRates(records);
   return {
     heart_rate_average: heart.resting,
-    heart_rate_minimum: heart.resting.length === 0 ? [] : [Math.min(...heart.resting)],
-    heart_rate_maximum: heart.all.length === 0 ? [] : [Math.max(...heart.all)],
+    heart_rate_minimum: extremum(heart.resting, Math.min),
+    heart_rate_maximum: extremum(heart.all, Math.max),
     resting_heart_rate: preferred(records, 'RestingHeartRate').map((record) => record.data.bpm),
     heart_rate_variability: preferred(records, 'HeartRateVariabilityRmssd').map(
       (record) => record.data.milliseconds,

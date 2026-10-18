@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { z } from 'zod';
-import { humanizeEnum, type PresentedCapability } from '@smarteverything/domain';
+import { humanizeEnum, MICROWAVE_KEYS, type PresentedCapability } from '@smarteverything/domain';
 import { SelectRow, ValueRow } from '../../../components/rows';
 import { useControl } from '../../../store/control';
 import { useDeviceValues } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
+import { background } from '@smarteverything/logging';
 export function MicrowaveLampRow({
   device,
   presented,
@@ -14,9 +15,7 @@ export function MicrowaveLampRow({
 }): ReactNode {
   const control = useControl(device.id, presented.key);
   const values = useDeviceValues(device.id);
-  const supported = z
-    .array(z.string())
-    .safeParse(values['raw:samsungce.lamp.supported_brightness_level']?.value);
+  const supported = z.array(z.string()).safeParse(values[MICROWAVE_KEYS.supportedLamp]?.value);
   if (!supported.success || supported.data.length === 0) {
     return <ValueRow title={presented.label} value="Supported light settings not reported" />;
   }
@@ -27,7 +26,7 @@ export function MicrowaveLampRow({
       options={supported.data.map((value) => ({ value, label: humanizeEnum(value) }))}
       disabled={!device.online || control.pending}
       onChange={(value) => {
-        void control.set(value);
+        background(control.set(value), 'control.set_failed');
       }}
     />
   );

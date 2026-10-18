@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { JSON_VALUE, type AdapterSink, type ShellyPresenceDevice } from '@smarteverything/domain';
+import { JSON_VALUE, type AdapterSink } from '@smarteverything/domain';
+import type { ShellyDevice } from '@smarteverything/shelly';
 import { redact, redactText } from '@smarteverything/logging';
 import type { ShellyEvent } from './notifications';
 export function componentEvent(
   sink: AdapterSink,
-  snapshot: ShellyPresenceDevice,
+  snapshot: ShellyDevice,
   event: ShellyEvent,
 ): void {
   if (!snapshot.componentKeys.includes(event.component)) return;
@@ -30,12 +31,13 @@ export function componentEvent(
 }
 export function faultTransition(
   sink: AdapterSink,
-  before: ShellyPresenceDevice,
-  after: ShellyPresenceDevice,
-): void {
+  before: ShellyDevice,
+  after: ShellyDevice,
+): boolean {
+  if (before.status === after.status) return false;
   const previous = before.status?.errors ?? [];
   const errors = after.status?.errors ?? [];
-  if (JSON.stringify(previous) === JSON.stringify(errors)) return;
+  if (JSON.stringify(previous) === JSON.stringify(errors)) return false;
   sink.event({
     externalId: after.externalId,
     kind: errors.length > 0 ? 'fault' : 'activity',
@@ -47,12 +49,13 @@ export function faultTransition(
       errors: errors.map((error) => redactText(error, 100)),
     },
   });
+  return true;
 }
 
 export function sensorTransition(
   sink: AdapterSink,
-  before: ShellyPresenceDevice,
-  after: ShellyPresenceDevice,
+  before: ShellyDevice,
+  after: ShellyDevice,
 ): void {
   if (before.observedAt === null) return;
   const connectionChanged = before.connection.state !== after.connection.state;

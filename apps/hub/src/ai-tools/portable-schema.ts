@@ -4,7 +4,7 @@ type Json = Readonly<Record<string, unknown>>;
 
 const DROPPED_KEYS: ReadonlySet<string> = new Set(['$defs', '$schema', 'definitions']);
 
-export class ToolSchemaReferenceError extends Error {
+class ToolSchemaReferenceError extends Error {
   override readonly name = 'ToolSchemaReferenceError';
 
   constructor(
@@ -74,51 +74,65 @@ function isJsonValue(schema: unknown, reference: string): boolean {
     .safeParse(schema).success;
 }
 
-function inlineReference(
-  node: Json,
-  root: Json,
-  open: ReadonlySet<string>,
-  reference: string,
-): unknown {
-  if (open.has(reference)) {
-    throw new ToolSchemaReferenceError(reference, 'recursive schemas cannot be inlined');
+const ANNOTATION_KEYS: ReadonlySet<string> = new Set([
+  'description',
+  'title',
+  'default',
+  'examples',
+]);
+
+function withSiblings(target: unknown, siblings: unknown): unknown {
+  if (!isRecord(siblings) || Object.keys(siblings).length === 0) {
+    return target;
   }
-  const raw = referenceTarget(root, reference);
-  const target = isJsonValue(raw, reference)
-    ? { type: ['string', 'number', 'boolean', 'null', 'array', 'object'] }
-    : inline(raw, root, new Set([...open, reference]));
-  const siblings = inline(
-    Object.fromEntries(Object.entries(node).filter(([key]) => key !== '$ref')),
-    root,
-    open,
-  );
-  return isRecord(siblings) && Object.keys(siblings).length > 0
-    ? { allOf: [target, siblings] }
-    : target;
+  if (isRecord(target) && Object.keys(siblings).every((key) => ANNOTATION_KEYS.has(key))) {
+    return { ...target, ...siblings };
+  }
+  return { allOf: [target, siblings] };
 }
 
-function inline(node: unknown, root: Json, open: ReadonlySet<string>): unknown {
+interface Walk {
+  readonly root: Json;
+  readonly open: ReadonlySet<string>;
+}
+
+function inlineReference(node: Json, walk: Walk, reference: string): unknown {
+  const siblings = inline(
+    Object.fromEntries(Object.entries(node).filter(([key]) => key !== '$ref')),
+    walk,
+  );
+  if (walk.open.has(reference)) {
+    return siblings;
+  }
+  const raw = referenceTarget(walk.root, reference);
+  const target = isJsonValue(raw, reference)
+    ? { type: ['string', 'number', 'boolean', 'null', 'array', 'object'] }
+    : inline(raw, { ...walk, open: new Set([...walk.open, reference]) });
+  return withSiblings(target, siblings);
+}
+
+function inline(node: unknown, walk: Walk): unknown {
   if (Array.isArray(node)) {
-    return node.map((entry) => inline(entry, root, open));
+    return node.map((entry) => inline(entry, walk));
   }
   if (!isRecord(node)) {
     return node;
   }
   const reference = node['$ref'];
   if (typeof reference === 'string') {
-    return inlineReference(node, root, open, reference);
+    return inlineReference(node, walk, reference);
   }
   return Object.fromEntries(
     Object.entries(node)
       .filter(([key]) => !DROPPED_KEYS.has(key))
-      .map(([key, value]) => [key, inline(value, root, open)]),
+      .map(([key, value]) => [key, inline(value, walk)]),
   );
 }
 
 export function portableSchemaOf(schema: Json): Json {
-  const inlined = inline(schema, schema, new Set());
-  if (!isRecord(inlined)) {
+  const result = inline(schema, { root: schema, open: new Set() });
+  if (!isRecord(result)) {
     throw new ToolSchemaReferenceError('#', 'root is not an object schema');
   }
-  return inlined;
+  return result;
 }

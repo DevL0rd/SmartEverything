@@ -1,4 +1,5 @@
 import {
+  appendTo,
   WEB_SOURCES_EMBED,
   type AssistantMessageRow,
   type WebSource,
@@ -36,14 +37,34 @@ function outputMentionsUrl(output: string | null, url: string): boolean {
   return false;
 }
 
+export interface TimelineSources {
+  readonly groups: ReadonlyMap<string, readonly NumberedSource[]>;
+  readonly remaining: readonly NumberedSource[];
+}
+
+const ASSOCIATED = new WeakMap<
+  readonly InlineTimelinePart[],
+  WeakMap<readonly NumberedSource[], TimelineSources>
+>();
+
 export function timelineSources(
   parts: readonly InlineTimelinePart[],
   sources: readonly NumberedSource[],
-): {
-  readonly groups: ReadonlyMap<string, readonly NumberedSource[]>;
-  readonly remaining: readonly NumberedSource[];
-} {
-  const groups = new Map<string, readonly NumberedSource[]>();
+): TimelineSources {
+  const bySources = ASSOCIATED.get(parts) ?? new WeakMap();
+  ASSOCIATED.set(parts, bySources);
+  const known = bySources.get(sources);
+  if (known !== undefined) return known;
+  const associated = associate(parts, sources);
+  bySources.set(sources, associated);
+  return associated;
+}
+
+function associate(
+  parts: readonly InlineTimelinePart[],
+  sources: readonly NumberedSource[],
+): TimelineSources {
+  const groups = new Map<string, NumberedSource[]>();
   const remaining: NumberedSource[] = [];
   for (const source of sources) {
     const group = parts.find(
@@ -52,7 +73,7 @@ export function timelineSources(
         part.tools.some((tool) => outputMentionsUrl(tool.output, source.source.url)),
     );
     if (group === undefined) remaining.push(source);
-    else groups.set(group.key, [...(groups.get(group.key) ?? []), source]);
+    else appendTo(groups, group.key, source);
   }
   return { groups, remaining };
 }

@@ -2,7 +2,9 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import {
+  CLAUDE_DEFAULT_SETTING_SOURCES,
   CLAUDE_PROVIDER_OPTIONS,
+  CLAUDE_SETTING_SOURCES,
   CLAUDE_SETTABLE_MODES,
   type ClaudeProviderOptions,
   type ProviderMetadata,
@@ -11,6 +13,7 @@ import { Button } from '../../../components/button';
 import { SwitchRow, SelectRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { TextField } from '../../../components/text-field';
+import { checkOptions } from './provider-check';
 import { Text } from '../../../components/text';
 import { AgentSettings } from './agent-settings';
 import { ProviderFlagOptions } from './provider-flag-options';
@@ -29,14 +32,32 @@ interface OptionsProps {
 }
 
 const TEXT_FIELDS = [
-  { key: 'cwd', label: 'Working directory', help: 'Absolute path on the supplying computer' },
-  { key: 'title', label: 'Session title', help: 'Optional native provider session title' },
+  { key: 'cwd', label: 'Working directory', help: 'Absolute path on this computer' },
+  { key: 'title', label: 'Session title', help: 'Optional session title' },
 ] as const;
 const JSON_FIELDS = [
   {
     key: 'output_format',
     label: 'Output format',
     help: 'Optional {"type":"json_schema","schema":{…}}',
+  },
+] as const;
+
+const SOURCE_ROWS = [
+  {
+    source: 'user',
+    title: 'Your Claude setup',
+    subtitle: 'Commands, skills, CLAUDE.md and hooks in ~/.claude',
+  },
+  {
+    source: 'project',
+    title: 'The chat’s folder',
+    subtitle: 'The .claude folder and CLAUDE.md of its working directory',
+  },
+  {
+    source: 'local',
+    title: 'Local overrides',
+    subtitle: 'Settings in .claude/settings.local.json of that folder',
   },
 ] as const;
 
@@ -47,20 +68,24 @@ function SourceRows({
   readonly value: ClaudeProviderOptions;
   readonly change: (value: ClaudeProviderOptions) => void;
 }): ReactNode {
+  const sources: readonly string[] = value.setting_sources ?? CLAUDE_DEFAULT_SETTING_SOURCES;
   return (
-    <List title="Settings sources" footer="Only selected local configuration sources are loaded.">
-      {(['user', 'project', 'local'] as const).map((source) => (
+    <List
+      title="Claude’s own commands and settings"
+      footer="Loads the custom commands, skills, CLAUDE.md and settings of this computer into app chats, so they show up in the command list. Hooks on this computer then also run in app chats. Chats without a working directory never load them."
+    >
+      {SOURCE_ROWS.map((row) => (
         <SwitchRow
-          key={source}
-          title={source}
-          value={value.setting_sources?.includes(source) === true}
+          key={row.source}
+          title={row.title}
+          subtitle={row.subtitle}
+          value={sources.includes(row.source)}
           onChange={(enabled) => {
-            const sources = value.setting_sources ?? [];
             change({
               ...value,
-              setting_sources: enabled
-                ? [...sources, source]
-                : sources.filter((item) => item !== source),
+              setting_sources: CLAUDE_SETTING_SOURCES.filter((source) =>
+                source === row.source ? enabled : sources.includes(source),
+              ),
             });
           }}
         />
@@ -110,7 +135,7 @@ function ThinkingRows({
       />
       <SwitchRow
         title="Fork session"
-        subtitle="Branch the provider session when starting a new turn"
+        subtitle="Branch the session when starting a new turn"
         value={value.fork_session === true}
         onChange={(fork_session) => {
           change({ ...value, fork_session });
@@ -153,14 +178,7 @@ function StructuredFields({
               text === ''
                 ? withoutOption(value, field.key)
                 : { ...value, [field.key]: parsed.value };
-            const checked = CLAUDE_PROVIDER_OPTIONS.safeParse(candidate);
-            invalid(
-              field.key,
-              checked.success
-                ? null
-                : checked.error.issues.map((issue) => issue.message).join('; '),
-            );
-            if (checked.success) change(checked.data);
+            checkOptions(candidate, field.key, change, invalid);
           }}
         />
       ))}
@@ -206,9 +224,9 @@ function PermissionRows({
   readonly change: (value: ClaudeProviderOptions) => void;
 }): ReactNode {
   return (
-    <List title="Permissions">
+    <List title="Access">
       <SelectRow
-        title="Permission mode"
+        title="Access"
         value={value.permission_mode ?? null}
         options={CLAUDE_SETTABLE_MODES.map((mode) => ({ value: mode, label: mode }))}
         onChange={(permission_mode) => {
@@ -227,7 +245,6 @@ function NativeExtensions({
 }): ReactNode {
   return (
     <>
-      {' '}
       <McpServers
         servers={value.mcp_servers ?? {}}
         change={(mcp_servers) => {

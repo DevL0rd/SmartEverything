@@ -1,6 +1,7 @@
 import { ApiError, PLACE, type PlaceMatch } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
+import type { Clock } from '../clock';
 import { ProviderError, fetchJson, readAs, type ProviderRequest } from '../outbound/provider-json';
 
 const SEARCH_URL = 'https://geocoding-api.open-meteo.com/v1/search';
@@ -49,7 +50,7 @@ type Address = z.infer<typeof REVERSE_ADDRESS>;
 
 export interface PlaceFinderOptions {
   readonly request: ProviderRequest;
-  readonly now: () => Date;
+  readonly clock: Clock;
   readonly log: Logger;
 }
 
@@ -73,7 +74,7 @@ function folded(text: string): string {
     .trim();
 }
 
-export function nameMatches(name: string, query: string): boolean {
+function nameMatches(name: string, query: string): boolean {
   const wanted = folded(query);
   const words = folded(name);
   return words.startsWith(wanted) || words.includes(` ${wanted}`) || words.includes(`-${wanted}`);
@@ -102,7 +103,8 @@ function asProblem(cause: unknown): never {
 }
 
 export class PlaceFinder {
-  private lastReverse = 0;
+  private queue: Promise<unknown> = Promise.resolve();
+  private lastStart = 0;
 
   constructor(private readonly options: PlaceFinderOptions) {}
 
@@ -154,12 +156,23 @@ export class PlaceFinder {
     });
   }
 
+  private spaced<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(async () => {
+      const wait = this.lastStart + REVERSE_GAP_MS - this.options.clock.now().getTime();
+      if (wait > 0) {
+        await this.options.clock.sleep(wait);
+      }
+      this.lastStart = this.options.clock.now().getTime();
+      return task();
+    });
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
   private async reverse(latitude: number, longitude: number): Promise<Address> {
-    const now = this.options.now().getTime();
-    if (now - this.lastReverse < REVERSE_GAP_MS) {
-      throw new ApiError('rate_limited', 'One moment, then try again.');
-    }
-    this.lastReverse = now;
     const url = `${REVERSE_URL}?${new URLSearchParams({
       lat: String(latitude),
       lon: String(longitude),
@@ -167,7 +180,9 @@ export class PlaceFinder {
       zoom: '10',
       'accept-language': 'en',
     }).toString()}`;
-    const answer = await fetchJson(this.options.request, NOMINATIM, url, REVERSE_ANSWER);
+    const answer = await this.spaced(() =>
+      fetchJson(this.options.request, NOMINATIM, url, REVERSE_ANSWER),
+    );
     return answer.address ?? {};
   }
 

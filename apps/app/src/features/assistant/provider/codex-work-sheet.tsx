@@ -1,4 +1,3 @@
-import { useRuntimeSupported } from '../../computers/data/computer-runtime';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AiChatRow } from '@smarteverything/domain';
@@ -8,8 +7,7 @@ import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { useIsOwner } from '../../../store/selectors';
-import { CodexOptions } from '../../computers';
-import { QueryState } from '../../computers/components/query-state';
+import { CodexOptions, QueryState } from '../../computers';
 import { changeChat } from '../chats/chat-actions';
 import { useProviderWorking } from '../provider/provider-working';
 import { useCodexProvider } from './codex-provider-data';
@@ -22,6 +20,7 @@ import { WORK_TABS, type WorkTab } from './work-tabs';
 import { NATIVE_OWNER_REASON } from './provider-access';
 import type { CodexChatProvider } from '../../../queries/codex-provider-events';
 import { RuntimeOverview } from './runtime-overview';
+import { background } from '@smarteverything/logging';
 
 function Overview({
   chatId,
@@ -79,9 +78,12 @@ function Options({ chat }: { readonly chat: AiChatRow }): ReactNode {
       disabled={working}
       save={(settings) => {
         setSaving(true);
-        void changeChat(chat.id, { engine: { ...engine, settings } }).finally(() => {
-          setSaving(false);
-        });
+        background(
+          changeChat(chat.id, { engine: { ...engine, settings } }).finally(() => {
+            setSaving(false);
+          }),
+          'chat.change_failed',
+        );
       }}
     />
   );
@@ -223,13 +225,10 @@ export function CodexWorkSheet({
   readonly operation?: string;
 }): ReactNode {
   const owner = useIsOwner();
-  const supported = useRuntimeSupported();
   const state = useCodexProvider(chat.id, open && owner);
   return (
     <Sheet title="Codex on your computer" open={open} onClose={onClose} detents={['full']}>
-      {!supported ? (
-        <Text tone="variant">Update the hub to inspect Codex work.</Text>
-      ) : !owner ? (
+      {!owner ? (
         <Text tone="variant">{NATIVE_OWNER_REASON}</Text>
       ) : (
         <>
@@ -237,7 +236,7 @@ export function CodexWorkSheet({
             error={state.error}
             pending={state.isPending}
             retry={() => {
-              void state.refetch();
+              background(state.refetch(), 'state.refetch_failed');
             }}
           />
           {state.data === undefined || !open ? null : (

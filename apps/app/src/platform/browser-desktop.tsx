@@ -7,16 +7,26 @@ import {
   type ReactNode,
 } from 'react';
 import {
-  BROWSER_STATUS,
+  type BrowserStatus,
   type DesktopBrowser,
   type BrowserCommand,
   type BrowserTarget,
 } from '@smarteverything/domain';
+import { Logger, background } from '@smarteverything/logging';
 import { DURATION } from '../design/motion';
 import { useValue } from '../design/external-store';
 import { browserCovered } from './browser-overlays';
 import type { BrowserSurfaceProps } from './browser-contract';
+const log = new Logger('app.desktop-browser');
 const REGION_STYLE = { flex: 1, minHeight: 0, width: '100%', height: '100%' } as const;
+const unavailableStatus = (id: string): BrowserStatus => ({
+  id,
+  url: '',
+  loading: false,
+  back: false,
+  forward: false,
+  problem: 'The desktop browser is unavailable. Update or reopen the desktop app.',
+});
 class BrowserReadiness {
   private ready = false;
   set(value: boolean): void {
@@ -35,6 +45,7 @@ export function DesktopBrowserSurface({
   target,
   ref,
   onStatus,
+  onOpenWindow,
   visible,
   bridge,
 }: BrowserSurfaceProps & { readonly bridge: DesktopBrowser }): ReactNode {
@@ -42,15 +53,9 @@ export function DesktopBrowserSurface({
   const covered = useValue(browserCovered);
   const [readiness] = useState(() => new BrowserReadiness());
   const report = (command: BrowserCommand): void => {
-    void bridge.command(command).catch(() => {
-      onStatus({
-        id: target.id,
-        url: '',
-        loading: false,
-        back: false,
-        forward: false,
-        problem: 'The desktop browser is unavailable. Update or reopen the desktop app.',
-      });
+    bridge.command(command).catch((cause: unknown) => {
+      log.error('browser.command_failed', cause);
+      onStatus(unavailableStatus(target.id));
     });
   };
   useImperativeHandle(ref, () => ({
@@ -70,7 +75,7 @@ export function DesktopBrowserSurface({
       report({ kind: 'action', id: target.id, action: 'stop' });
     },
   }));
-  useDesktopPage({ bridge, target, report }, regionRef, readiness, onStatus);
+  useDesktopPage({ bridge, target, report }, regionRef, readiness, { onStatus, onOpenWindow });
   useDesktopLayout({ bridge, target, report }, regionRef, readiness, visible && !covered);
   return <div ref={regionRef} role="region" aria-label="Browser page" style={REGION_STYLE} />;
 }
@@ -78,27 +83,41 @@ function useDesktopPage(
   page: DesktopPage,
   regionRef: { readonly current: HTMLDivElement | null },
   readiness: BrowserReadiness,
-  onStatus: BrowserSurfaceProps['onStatus'],
+  handlers: {
+    readonly onStatus: BrowserSurfaceProps['onStatus'];
+    readonly onOpenWindow: BrowserSurfaceProps['onOpenWindow'] | undefined;
+  },
 ): void {
-  const receive = useEffectEvent(onStatus);
+  const receive = useEffectEvent(handlers.onStatus);
+  const openWindow = useEffectEvent((url: string) => handlers.onOpenWindow?.(url));
   const send = useEffectEvent(page.report);
   const { bridge, target } = page;
   useEffect(() => {
-    const stop = bridge.subscribe((value) => {
-      const status = BROWSER_STATUS.parse(value);
+    const stopStatus = bridge.subscribe((status) => {
       if (status.id === target.id) receive(status);
     });
+    const stopWindows = bridge.subscribeWindowRequests((request) => {
+      if (request.id === target.id) openWindow(request.url);
+    });
+    const stop = (): void => {
+      stopStatus();
+      stopWindows();
+    };
     let alive = true;
-    void bridge.command({ kind: 'open', target }).then(
-      () => {
-        if (alive) {
-          readiness.set(true);
-          regionRef.current?.dispatchEvent(new Event('browser-ready'));
-        }
-      },
-      () => {
-        send({ kind: 'action', id: target.id, action: 'stop' });
-      },
+    background(
+      bridge.command({ kind: 'open', target }).then(
+        () => {
+          if (alive) {
+            readiness.set(true);
+            regionRef.current?.dispatchEvent(new Event('browser-ready'));
+          }
+        },
+        (cause: unknown) => {
+          log.error('browser.open_failed', cause);
+          if (alive) receive(unavailableStatus(target.id));
+        },
+      ),
+      'bridge.command_failed',
     );
     return (): void => {
       alive = false;
@@ -119,10 +138,24 @@ function useDesktopLayout(
   useEffect(() => {
     const node = regionRef.current;
     if (node === null) return undefined;
+    let sent = '';
     const update = (): void => {
-      if (readiness.get()) reportLayout(node, id, visible, send);
+      if (!readiness.get()) return;
+      const command = layoutCommand(node, id, visible);
+      const key = JSON.stringify(command);
+      if (key === sent) return;
+      sent = key;
+      send(command);
     };
-    return observeBrowserRegion(node, update);
+    const reopened = (): void => {
+      sent = '';
+    };
+    node.addEventListener('browser-ready', reopened);
+    const stop = observeBrowserRegion(node, update);
+    return (): void => {
+      node.removeEventListener('browser-ready', reopened);
+      stop();
+    };
   }, [id, visible, regionRef, readiness]);
 }
 function observeBrowserRegion(node: HTMLElement, update: () => void): () => void {
@@ -141,26 +174,19 @@ function observeBrowserRegion(node: HTMLElement, update: () => void): () => void
   observer.observe(node);
   node.addEventListener('browser-ready', settle);
   window.addEventListener('resize', settle);
-  window.addEventListener('scroll', settle, true);
   settle();
   return (): void => {
     cancelAnimationFrame(animation);
     observer.disconnect();
     node.removeEventListener('browser-ready', settle);
     window.removeEventListener('resize', settle);
-    window.removeEventListener('scroll', settle, true);
   };
 }
-function reportLayout(
-  node: HTMLElement,
-  id: string,
-  visible: boolean,
-  send: (command: BrowserCommand) => void,
-): void {
+function layoutCommand(node: HTMLElement, id: string, visible: boolean): BrowserCommand {
   const bounds = node.getBoundingClientRect();
   const width = Math.max(0, Math.min(bounds.width, window.innerWidth - bounds.x));
   const height = Math.max(0, Math.min(bounds.height, window.innerHeight - bounds.y));
-  send({
+  return {
     kind: 'layout',
     id,
     visible: visible && width > 0 && height > 0,
@@ -170,5 +196,5 @@ function reportLayout(
       width: Math.round(width),
       height: Math.round(height),
     },
-  });
+  };
 }

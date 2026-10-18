@@ -1,6 +1,7 @@
-import { createContext, use, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { createContext, use, useLayoutEffect, useState } from 'react';
+import { usePausable } from '../../../design/external-store';
 import type { SceneRow } from '@smarteverything/domain';
-import { localDayKey } from '../../../format/time';
+import { DAY_MS, localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useAvailability, useRows, useSession, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
@@ -35,8 +36,6 @@ export interface HomeData {
   readonly watch: boolean;
 }
 
-const DAY_MS = 86_400_000;
-
 function useFitnessDay(): FitnessDay | null {
   const rows = useRows('health_daily');
   const zone = useSettings().time_zone;
@@ -57,26 +56,69 @@ export function useHomeSummary(): HomeSummary {
   return homeSummary(readings, offline);
 }
 
-export function useHomeData(): HomeData {
-  const { digest, cameras } = useHomeBasics();
-  const readings = useComfortReadings(HOME_METRICS);
+export function useHomeReadings(): readonly MetricReading[] {
+  return useComfortReadings(HOME_METRICS);
+}
+
+export function useHomePower(): PowerUse | null {
+  return useStoreSelector(powerOf, samePower);
+}
+
+export function useHomeFavourites(): Favourites {
+  return useStoreSelector(favouritesOf, sameFavourites);
+}
+
+export function useHomeRooms(): readonly RoomSummary[] {
+  return useStoreSelector(roomSummaries, sameRooms);
+}
+
+export function useHomeSecurity(): readonly SecurityLine[] {
+  return useStoreSelector(securityLines, sameSecurity);
+}
+
+export function useHomeScenes(): readonly SceneRow[] {
+  return useRows('scenes');
+}
+
+export function useHomeFitness(): FitnessDay | null {
   const health = useAvailability().hasHealth;
   const fitness = useFitnessDay();
+  return health ? fitness : null;
+}
+
+export function useHomeData(): HomeData {
+  const { digest, cameras } = useHomeBasics();
   return {
     digest,
-    readings,
-    power: useStoreSelector(powerOf, samePower),
-    favourites: useStoreSelector(favouritesOf, sameFavourites),
-    rooms: useStoreSelector(roomSummaries, sameRooms),
+    readings: useHomeReadings(),
+    power: useHomePower(),
+    favourites: useHomeFavourites(),
+    rooms: useHomeRooms(),
     cameras,
     activity: useActivity(),
-    scenes: useRows('scenes'),
-    security: useStoreSelector(securityLines, sameSecurity),
-    fitness: health ? fitness : null,
+    scenes: useHomeScenes(),
+    security: useHomeSecurity(),
+    fitness: useHomeFitness(),
     scale: useHasScale(),
     watch: useMyWatch() !== null,
   };
 }
+
+export const NO_HOME_DATA: HomeView = {
+  digest: { count: 0, offline: 0, spotlightable: [], featured: [] },
+  readings: [],
+  power: null,
+  favourites: { chosen: false, title: '', devices: [] },
+  rooms: [],
+  cameras: [],
+  activity: [],
+  scenes: [],
+  security: [],
+  fitness: null,
+  scale: false,
+  watch: false,
+  spotlighted: new Set(),
+};
 
 export interface HomeView extends HomeData {
   readonly spotlighted: ReadonlySet<string>;
@@ -142,20 +184,27 @@ export function useHome<T>(select: (view: HomeView) => T): T {
   if (store === null) {
     throw new HomeDataMissingError('Home widgets must render inside the Home board.');
   }
-  return useSyncExternalStore(store.subscribe, () => select(store.get()));
+  return usePausable(store.subscribe, () => select(store.get()));
 }
 
 const FREQUENT_AT_LEAST = 3;
 
-export function unspotlighted(view: HomeView): readonly Device[] {
-  return view.favourites.devices.filter((device) => !view.spotlighted.has(device.id));
+export function unspotlighted(
+  favourites: Favourites,
+  spotlighted: ReadonlySet<string>,
+): readonly Device[] {
+  return favourites.devices.filter((device) => !spotlighted.has(device.id));
 }
 
 export function availableWidgets(data: HomeView): ReadonlySet<string> {
   const entries: readonly (readonly [string, boolean])[] = [
     ['glance', data.readings.length > 0],
     ['scenes', data.scenes.length > 0],
-    ['favourites', unspotlighted(data).length >= (data.favourites.chosen ? 1 : FREQUENT_AT_LEAST)],
+    [
+      'favourites',
+      unspotlighted(data.favourites, data.spotlighted).length >=
+        (data.favourites.chosen ? 1 : FREQUENT_AT_LEAST),
+    ],
     ['spotlight', data.digest.spotlightable.length > 0],
     ['rooms', data.rooms.length > 0],
     ['camera', data.cameras.length > 0],

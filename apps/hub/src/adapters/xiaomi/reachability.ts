@@ -1,4 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
+import { failureLine } from '@smarteverything/logging';
 
 export interface CloudLookup {
   readonly host: string | null;
@@ -63,7 +64,7 @@ export class Reachability {
       this.set(found.online);
       return found;
     } catch (error) {
-      log.warn('xiaomi_device.lookup_failed', { did, reason: String(error) });
+      log.warn('xiaomi_device.lookup_failed', { did, reason: failureLine(error) });
       return null;
     }
   }

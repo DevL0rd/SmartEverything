@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { useSegments, type Href } from 'expo-router';
+import type { Href } from 'expo-router';
+import { useTabGroup } from '../../../app-shell/tab-group';
 import { href } from '../../../app-shell/hrefs';
 import type { Crumb } from '../../../components/breadcrumbs';
 import { PageHeader } from '../../../components/page-header';
@@ -20,12 +21,8 @@ function settingsHref(deviceId: string): Href {
   return href.settings.device(deviceId);
 }
 
-export function useDeviceSettingsCrumbs(
-  deviceId: string,
-  name: string,
-  sub: boolean,
-): readonly Crumb[] {
-  const group = useSegments()[1] ?? '';
+function useDeviceSettingsCrumbs(deviceId: string, name: string, sub: boolean): readonly Crumb[] {
+  const group = useTabGroup() ?? '';
   const device = useDevice(deviceId);
   const origin = ORIGINS[group] ?? DEVICES;
   return [

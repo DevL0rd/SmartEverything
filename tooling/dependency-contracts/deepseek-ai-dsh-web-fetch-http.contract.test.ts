@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { HttpFetchProvider } from '@deepseek-ai/dsh-web-fetch-http';
+import { HUB_MANIFEST, declaredVersion } from './contract-helpers';
 import { installedVersion } from './versions';
-import { hubDeclaredVersion } from './hub-manifest';
 
 describe('@deepseek-ai/dsh-web-fetch-http', () => {
   it('matches the hub pin and exposes an anonymous HTTP provider', () => {
     expect(installedVersion('@deepseek-ai/dsh-web-fetch-http')).toBe(
-      hubDeclaredVersion('@deepseek-ai/dsh-web-fetch-http'),
+      declaredVersion(HUB_MANIFEST, '@deepseek-ai/dsh-web-fetch-http'),
     );
     const provider = new HttpFetchProvider({
       maxResponseBytes: 1000,

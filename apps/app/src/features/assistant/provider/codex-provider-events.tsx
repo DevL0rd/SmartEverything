@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { JSON_VALUE, type CodexProviderEvent } from '@smarteverything/domain';
 import { Text } from '../../../components/text';
 import { ProviderResult } from './provider-result';
+import { dateTimeText } from '../../../format/locale';
 type Kind = CodexProviderEvent['kind'];
 function isKind<K extends Kind>(
   event: CodexProviderEvent,
@@ -48,7 +49,7 @@ const EVENTS: Readonly<Record<Kind, (event: CodexProviderEvent) => ReactNode>> =
   rate_limit: render('rate_limit', (event) => (
     <Text tone={event.status === 'rejected' ? 'critical' : 'variant'}>
       {event.detail}
-      {event.resets_at === null ? '' : ` · resets ${new Date(event.resets_at).toLocaleString()}`}
+      {event.resets_at === null ? '' : ` · resets ${dateTimeText(new Date(event.resets_at))}`}
     </Text>
   )),
   tool_call: render('tool_call', (event) => (

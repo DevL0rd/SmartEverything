@@ -5,6 +5,7 @@ import type {
   NutritionPref,
 } from '@smarteverything/domain';
 import type { ColourRole } from '../../../design/tokens';
+import { count, rounded } from '../../../format/number';
 
 type MacroKey = 'energy' | 'protein' | 'carbohydrate' | 'fat';
 
@@ -81,7 +82,7 @@ export function hasAnyGoal(prefs: NutritionPref): boolean {
 
 export function amountText(value: number, unit: string): string {
   if (unit === 'kcal') {
-    return Math.round(value).toLocaleString();
+    return count(value);
   }
-  return value < 10 ? value.toFixed(1).replace(/\.0$/, '') : String(Math.round(value));
+  return value < 10 ? rounded(value, 1) : count(value);
 }

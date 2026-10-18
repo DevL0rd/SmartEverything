@@ -31,6 +31,7 @@ import {
 import { CodexRuntimeError } from './errors';
 import { nativeMcpConfig, type CodexNativeGrantResolver } from './native-grant';
 import { requireSubscriptionInference, requireThreadSubscriptionInference } from './account';
+import { messageOf } from '@smarteverything/logging';
 interface Receipt {
   readonly signature: string;
   readonly reply: Promise<CodexAiReply>;
@@ -138,8 +139,11 @@ export class CodexNative {
   }
   private async initialize(): Promise<CodexClient> {
     const epoch = this.epoch;
+    this.options.log.debug('codex.initializing', { mode: 'control', epoch });
     const client = new CodexClient({
       process: await launchCodex(this.options, 'control'),
+      log: this.options.log,
+      mode: 'control',
       received: (method, params, id): void => {
         this.receive(method, params, id);
       },
@@ -163,6 +167,11 @@ export class CodexNative {
       this.options.changed(null);
       return client;
     } catch (cause) {
+      this.options.log.warn('codex.initialize_failed', {
+        mode: 'control',
+        errorName: cause instanceof Error ? cause.name : typeof cause,
+        reason: messageOf(cause).slice(0, 300),
+      });
       client.stop();
       throw cause;
     }
@@ -211,8 +220,7 @@ export class CodexNative {
           native_operation: {
             ...operation,
             state: uncertain ? 'uncertain' : 'failed',
-            error:
-              cause instanceof Error ? cause.message.slice(0, 2000) : 'The Codex operation failed.',
+            error: messageOf(cause).slice(0, 2000),
           },
         },
       });

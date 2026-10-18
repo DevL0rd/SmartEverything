@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import type { ViewStyle } from 'react-native';
+import { StyleSheet, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import Svg, { Circle, Defs } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { loopStyle, rise, type LoopStyle } from '../../../design/loops';
 import { scaled, useSvgId } from './frame';
 import { GlowGradient } from './ink';
@@ -51,16 +51,19 @@ export function Dots({
   emitter,
   px,
   colour,
+  edge,
 }: {
   readonly emitter: Emitter;
   readonly px: number;
   readonly colour: string;
+  readonly edge?: string;
 }): ReactNode {
   return indexes(emitter.count).map((index) => {
     const slot: ViewStyle = {
       ...slotOf(emitter, index, px),
       borderRadius: scaled(emitter.size, px),
       backgroundColor: colour,
+      ...(edge === undefined ? {} : { borderColor: edge, borderWidth: StyleSheet.hairlineWidth }),
     };
     return (
       <Animated.View
@@ -76,9 +79,7 @@ function Puff({ colour }: { readonly colour: string }): ReactNode {
   const id = useSvgId('puff');
   return (
     <Svg width="100%" height="100%" viewBox="0 0 10 10">
-      <Defs>
-        <GlowGradient id={id} colour={colour} strength={0.6} />
-      </Defs>
+      <GlowGradient id={id} colour={colour} strength={0.6} />
       <Circle cx={5} cy={5} r={5} fill={`url(#${id})`} />
     </Svg>
   );

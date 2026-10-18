@@ -1,3 +1,5 @@
+import { Logger, background } from '@smarteverything/logging';
+import { errorFields } from '../../../design/log-tally';
 import { CommandBindingError } from './types';
 import { z } from 'zod';
 import { randomUUID } from 'expo-crypto';
@@ -17,6 +19,8 @@ import {
   type NativeLocalReceipt,
 } from './receipt-storage';
 import type { CommandExecution, CommandOutcome } from './types';
+const log = new Logger('app.native-commands');
+
 interface Observation {
   readonly input: CommandExecution;
   readonly request: AiNativeCommandWrite;
@@ -25,7 +29,7 @@ interface Observation {
 export async function executeNativeCommand(input: CommandExecution): Promise<CommandOutcome> {
   if (input.scope.kind !== 'native')
     throw new CommandBindingError(
-      'The native command has a different runtime binding.',
+      'Couldn’t run the command. Refresh commands and try again.',
       'native',
       input.scope.kind,
     );
@@ -43,7 +47,7 @@ export async function executeNativeCommand(input: CommandExecution): Promise<Com
     await discardNativeReceipt(local);
     return {
       status: 'rejected',
-      text: 'The server, profile or native session changed before submission. Your draft stays here.',
+      text: 'The chat changed before sending. Your draft is kept; try again.',
     };
   }
   return observeCommand({ input, request, local });
@@ -71,19 +75,19 @@ function observeCommand(binding: Observation): Promise<CommandOutcome> {
       input.signal.removeEventListener('abort', abort);
       resolve(outcome);
     };
-    const fail = (cause: unknown): void => {
+    const fail = (): void => {
       if (!observing) return;
       observing = false;
-      void uncertain(observation, cause).then(finish);
+      background(uncertain(observation).then(finish), 'native_execution.uncertain_failed');
     };
     const read = receiptReader(observation, finish, fail);
     const unsubscribe = input.client.getQueryCache().subscribe((event) => {
       if (!observing || !relevantNotice(event, observation)) return;
-      if (!currentBinding(input)) fail('The native execution binding changed before settlement.');
+      if (!currentBinding(input)) fail();
       else if (admitted) read();
     });
     const abort = (): void => {
-      fail('The execution binding changed before settlement.');
+      fail();
     };
     input.signal.addEventListener('abort', abort, { once: true });
     void submitNative(observation)
@@ -103,7 +107,7 @@ function observeCommand(binding: Observation): Promise<CommandOutcome> {
 function receiptReader(
   observation: ActiveObservation,
   finish: (outcome: CommandOutcome) => void,
-  fail: (cause: unknown) => void,
+  fail: () => void,
 ): () => void {
   let reading = false;
   let dirty = false;
@@ -112,31 +116,34 @@ function receiptReader(
     dirty = true;
     if (reading) return;
     reading = true;
-    void (async (): Promise<void> => {
-      while (dirty && observation.current()) {
-        dirty = false;
-        const receipt = await observation.input.authority.client.call(
-          E.readAiChatNativeCommandReceipt,
-          {
-            params: {
-              chatId: observation.input.chatId,
-              operationId: observation.request.operation_id,
+    background(
+      (async (): Promise<void> => {
+        while (dirty && observation.current()) {
+          dirty = false;
+          const receipt = await observation.input.authority.client.call(
+            E.readAiChatNativeCommandReceipt,
+            {
+              params: {
+                chatId: observation.input.chatId,
+                operationId: observation.request.operation_id,
+              },
             },
-          },
-        );
-        if (!observation.current()) return;
-        const outcome = await observeReceipt(observation, receipt);
-        if (!observation.current()) return;
-        if (outcome !== null) {
-          finish(outcome);
-          return;
+          );
+          if (!observation.current()) return;
+          const outcome = await observeReceipt(observation, receipt);
+          if (!observation.current()) return;
+          if (outcome !== null) {
+            finish(outcome);
+            return;
+          }
         }
-      }
-    })()
-      .catch(fail)
-      .finally(() => {
-        reading = false;
-      });
+      })()
+        .catch(fail)
+        .finally(() => {
+          reading = false;
+        }),
+      'native_execution.task_failed',
+    );
   };
 }
 async function submitNative(observation: Observation): Promise<AiNativeCommandReceipt> {
@@ -151,18 +158,15 @@ async function observeReceipt(
 ): Promise<CommandOutcome | null> {
   const { input, request, local } = observation;
   assertReceipt(request, receipt);
-  if (!currentBinding(input))
-    return uncertain(observation, 'The execution binding changed before the result arrived.');
+  if (!currentBinding(input)) return uncertain(observation);
   const outcome = nativeReceiptOutcome(receipt);
-  if (outcome?.status === 'unknown' && receipt.status !== 'unknown')
-    return uncertain(observation, outcome.text);
+  if (outcome?.status === 'unknown' && receipt.status !== 'unknown') return uncertain(observation);
   await observation.write(() => saveNativeReceipt(local, receipt));
-  if (!observation.current() || !currentBinding(input))
-    return uncertain(observation, 'The execution binding changed while saving the result.');
+  if (!observation.current() || !currentBinding(input)) return uncertain(observation);
   if (outcome === null)
     input.progress(
       receipt.status === 'pending' ? 'admitted' : 'running',
-      receipt.text ?? 'Native command was admitted. Waiting for confirmed native completion…',
+      receipt.text ?? 'Running command…',
     );
   return outcome;
 }
@@ -176,7 +180,7 @@ function assertReceipt(request: AiNativeCommandWrite, receipt: AiNativeCommandRe
     receipt.scope.catalogue_revision !== request.scope.catalogue_revision
   )
     throw new CommandBindingError(
-      'The native command returned another operation or session receipt.',
+      'The command result didn’t match. Refresh commands and try again.',
       JSON.stringify([request.operation_id, request.command_job_id, request.scope]),
       JSON.stringify([receipt.operation_id, receipt.command_job_id, receipt.scope]),
     );
@@ -193,14 +197,19 @@ function relevantNotice(event: QueryCacheNotifyEvent, observation: Observation):
     key[3] === observation.request.scope.runtime
   );
 }
-async function uncertain(observation: ActiveObservation, cause: unknown): Promise<CommandOutcome> {
-  const text = `The native result is unconfirmed; the command may have run. Your draft stays here. ${String(cause)}`;
+async function uncertain(observation: ActiveObservation): Promise<CommandOutcome> {
+  const text =
+    'Couldn’t confirm the command ran. Check before running it again. Your draft is kept.';
   try {
     await observation.write(() => retireNativeReceipt(observation.local, text));
   } catch (error) {
+    log.warn('receipt.retire_failed', {
+      chatId: observation.input.chatId,
+      ...errorFields(error),
+    });
     return {
       status: 'unknown',
-      text: `${text} The local receipt could not be saved: ${String(error)}`,
+      text: `${text} Couldn’t save the result on this device.`,
     };
   }
   return { status: 'unknown', text };
@@ -214,7 +223,7 @@ function submissionFailed(
   observation: ActiveObservation,
   cause: unknown,
   finish: (outcome: CommandOutcome) => void,
-  fail: (cause: unknown) => void,
+  fail: () => void,
 ): void {
   if (!observation.current()) return;
   if (
@@ -227,7 +236,7 @@ function submissionFailed(
         if (observation.current()) finish({ status: 'rejected', text: cause.message });
       })
       .catch(fail);
-  } else fail(cause);
+  } else fail();
 }
 function serializedReceiptWrites(): (action: () => Promise<void>) => Promise<void> {
   let pending = Promise.resolve();

@@ -1,4 +1,4 @@
-import { captureNativeServerEnrollment } from './hub-network';
+import { withNativeEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { ECHO_TEST_OUTCOMES } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -10,9 +10,6 @@ const LINK = z.strictObject({ state: z.enum(['reconnecting', 'live']) });
 const DEVICES_CHANGED = z.strictObject({ json: z.string() });
 
 export const CALL_CONTROLS = [
-  'toggle_mute',
-  'stop_screen',
-  'end',
   'screen_ended',
   'screen_failed',
   'route_failed',
@@ -93,7 +90,7 @@ interface AssistantCallEvents {
 }
 
 declare class AssistantCallNative extends NativeModule<AssistantCallEvents> {
-  openAssistantCall(serverUrl: string, token: string, enrollment?: string): Promise<void>;
+  openAssistantCall(serverUrl: string, token: string, enrollment: string): Promise<void>;
   beginAssistantCall(
     callId: string,
     source: string,
@@ -124,6 +121,8 @@ declare class AssistantCallNative extends NativeModule<AssistantCallEvents> {
   runAssistantEchoTest(): Promise<string>;
   assistantAudioDevices(): string;
   assistantCallLevel(): number;
+  assistantCallOutputLevel(): number;
+  attachAssistantCall(): string | null;
   ringIncomingCall(payload: string): Promise<void>;
   dismissIncomingCall(outreachId: string): Promise<void>;
 }
@@ -145,6 +144,8 @@ type AssistantCallName =
   | 'runAssistantEchoTest'
   | 'assistantAudioDevices'
   | 'assistantCallLevel'
+  | 'assistantCallOutputLevel'
+  | 'attachAssistantCall'
   | 'ringIncomingCall'
   | 'dismissIncomingCall'
   | 'addListener';
@@ -167,10 +168,10 @@ export function assistantCallCan(operation: AssistantCallName): boolean {
 }
 
 export async function openAssistantCall(serverUrl: string, token: string): Promise<void> {
-  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
   const source = callFor('openAssistantCall');
-  if (enrollment === null) await source.openAssistantCall(serverUrl, token);
-  else await source.openAssistantCall(serverUrl, token, enrollment);
+  await withNativeEnrollment(serverUrl, token, (enrollment) =>
+    source.openAssistantCall(serverUrl, token, enrollment),
+  );
 }
 
 export async function beginAssistantCall(
@@ -226,6 +227,24 @@ export async function dismissIncomingCall(outreachId: string): Promise<void> {
 
 export function assistantCallLevel(): number {
   return callFor('assistantCallLevel').assistantCallLevel();
+}
+
+export function assistantCallOutputLevel(): number {
+  return callFor('assistantCallOutputLevel').assistantCallOutputLevel();
+}
+
+const RUNNING_CALL = z.strictObject({
+  callId: z.uuid(),
+  startedAt: z.number(),
+  muted: z.boolean(),
+  replay: z.array(z.string()),
+});
+
+export type RunningCall = z.infer<typeof RUNNING_CALL>;
+
+export function attachAssistantCall(): RunningCall | null {
+  const json = callFor('attachAssistantCall').attachAssistantCall();
+  return json === null ? null : RUNNING_CALL.parse(JSON.parse(json));
 }
 
 export async function applyAssistantCallAudio(settings: NativeAudioSettings): Promise<void> {

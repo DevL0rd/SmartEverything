@@ -5,19 +5,12 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { SkillInvocationSource } from '@deepseek-ai/dsh-skill';
 import { isUserInvocable, renderSkillContent } from '@deepseek-ai/dsh-skill';
 import { z } from 'zod';
-import { AI_MESSAGE_REFERENCES, referencesMatchText } from '@smarteverything/domain';
+import { AI_MESSAGE_REFERENCES } from '@smarteverything/domain';
 import type { AiMessageReference } from '@smarteverything/domain';
-import { skillLookup, skillReference } from './identity';
-import type { NativeReferences } from './runtime';
+import { skillLookup } from './identity';
 import { HarnessRuntimeError } from '../host/errors';
 import { withNativeSkills } from './skills';
 
-export type ValidateCentralReferences = (
-  id: string,
-  deliveryId: string,
-  references: readonly AiMessageReference[],
-  signal?: AbortSignal,
-) => Promise<void>;
 const SOURCE = z.object({ references: AI_MESSAGE_REFERENCES.optional() });
 export function referencePromptSource(references: readonly AiMessageReference[]): {
   readonly kind: 'user';
@@ -28,16 +21,12 @@ export function referencePromptSource(references: readonly AiMessageReference[])
 export function referenceLocatorText(references: readonly AiMessageReference[]): string {
   return `Selected reference locators (metadata only; do not infer access or expand folders): ${JSON.stringify(references.map((item) => item.reference))}. Managed paths belong to central chat storage; use read_project_files with the exact chatId/path, even on a computer. Chat locators use existing chat read tools. Commands and agents require their existing explicit invocation/delegation authority.`;
 }
-export function mountReferencePrompts(
-  ctx: Context,
-  native: NativeReferences,
-  validate?: ValidateCentralReferences,
-): void {
-  const references = new NativePromptReferences(ctx, native, validate);
+export function mountReferencePrompts(ctx: Context): void {
+  const references = new NativePromptReferences(ctx);
   ctx.on('agent/pre-step', async ({ agent, messages, signal }, next) => {
     const decision = await next();
     if (decision.kind === 'reject') return decision;
-    const selected = await references.collect(agent, messages, signal);
+    const selected = references.collect(messages);
     const names = new Set(
       decision.messages.flatMap((message) =>
         message.source.kind === 'skill-invocation' ? [message.source.name] : [],
@@ -55,41 +44,11 @@ export function mountReferencePrompts(
   });
 }
 class NativePromptReferences {
-  constructor(
-    private readonly ctx: Context,
-    private readonly native: NativeReferences,
-    private readonly validate: ValidateCentralReferences | undefined,
-  ) {}
-  async collect(
-    agent: Agent,
-    messages: readonly Message[],
-    signal: AbortSignal,
-  ): Promise<readonly AiMessageReference[]> {
-    const selected: AiMessageReference[] = [];
-    for (const message of messages) {
-      if (message.source.kind !== 'user') continue;
-      const references = SOURCE.parse(message.source).references ?? [];
-      if (references.length === 0) continue;
-      const text = message.content.find((part) => part.type === 'text');
-      if (text?.type !== 'text' || !referencesMatchText(text.text, references))
-        throw new HarnessRuntimeError(
-          'operation_failed',
-          'Native reference tokens differ from the initiating user text.',
-        );
-      await this.native.resolve(
-        agent.id,
-        references.map((item) => item.reference),
-        signal,
-      );
-      if (this.validate === undefined)
-        throw new HarnessRuntimeError(
-          'capability_unsupported',
-          'Central reference revalidation is unavailable.',
-        );
-      await this.validate(agent.id, message.id, references, signal);
-      selected.push(...references);
-    }
-    return selected;
+  constructor(private readonly ctx: Context) {}
+  collect(messages: readonly Message[]): readonly AiMessageReference[] {
+    return messages.flatMap((message) =>
+      message.source.kind === 'user' ? (SOURCE.parse(message.source).references ?? []) : [],
+    );
   }
   async skill(
     agent: Agent,
@@ -98,16 +57,10 @@ class NativePromptReferences {
   ): Promise<UserMessage> {
     return withNativeSkills(this.ctx, async (skills) => {
       const skill = await skills.get(reference.name, skillLookup(this.ctx, agent, signal));
-      if (
-        skill === undefined ||
-        !isUserInvocable(skill) ||
-        JSON.stringify(
-          await skillReference(this.ctx, skill, this.native.skillGeneration(), signal),
-        ) !== JSON.stringify(reference)
-      )
+      if (skill === undefined || !isUserInvocable(skill))
         throw new HarnessRuntimeError(
           'capability_unsupported',
-          'The selected native skill winner or instruction revision changed before invocation.',
+          `The selected skill ${reference.name} is no longer available.`,
         );
       const source: SkillInvocationSource = {
         kind: 'skill-invocation',

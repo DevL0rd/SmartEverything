@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import type { BoardClass, WidgetDefinition, WidgetSize } from '../../components/widget-board';
-import { useMinute } from '../../store/clock';
+import type { WidgetDefinition, WidgetSize } from '../../components/widget-board';
+import { allSizes } from '../../components/widget-board/all-sizes';
+import { useDayKey } from '../../store/clock';
 import { useNutritionPrefs } from './data/prefs';
 import { useRecentMetric } from './data/totals';
 import { useWaterGoal } from './data/water-goal';
@@ -11,7 +12,6 @@ import {
   WaterWidget,
   type DayProps,
 } from './widgets/nutrition-widgets';
-import { dayKeyOf } from '../../format/time';
 
 export interface WidgetDay {
   readonly day: string;
@@ -22,14 +22,8 @@ export type DaySource = () => WidgetDay;
 
 const RECENT_DAYS = 30;
 
-function sizes(
-  ...allowed: readonly WidgetSize[]
-): Readonly<Record<BoardClass, readonly WidgetSize[]>> {
-  return { compact: allowed, medium: allowed, expanded: allowed };
-}
-
 export function useTodayKey(): WidgetDay {
-  const today = dayKeyOf(useMinute());
+  const today = useDayKey();
   return { day: today, today };
 }
 
@@ -54,7 +48,7 @@ export function nutritionWidgets(useDay: DaySource, group?: string): readonly Wi
       title: 'Calories',
       icon: 'flame',
       ...grouped,
-      sizes: sizes('S', 'M', 'W'),
+      sizes: allSizes('M', 'W'),
       defaultSize: 'M',
       render: ({ size }) => <Calories size={size} />,
     },
@@ -63,7 +57,7 @@ export function nutritionWidgets(useDay: DaySource, group?: string): readonly Wi
       title: 'Macros',
       icon: 'salad',
       ...grouped,
-      sizes: sizes('S', 'M'),
+      sizes: allSizes('M'),
       defaultSize: 'M',
       render: ({ size }) => <Macros size={size} />,
     },
@@ -72,8 +66,8 @@ export function nutritionWidgets(useDay: DaySource, group?: string): readonly Wi
       title: 'Water',
       icon: 'glassWater',
       ...grouped,
-      sizes: sizes('S', 'M', 'W'),
-      defaultSize: 'S',
+      sizes: allSizes('M', 'W'),
+      defaultSize: 'M',
       render: ({ size }) => <Water size={size} />,
     },
   ];

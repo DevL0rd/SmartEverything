@@ -14,7 +14,7 @@ export const EMBEDDED_BROWSER_ENDPOINTS = {
     path: '/api/ai/chats/:chatId/browser/read',
     access: 'member',
     summary:
-      'Read the initiating connected SmartEverything viewer’s tabs and supported actions; ambiguous viewers require explicit selection; no polling',
+      'Read the tabs and supported actions of the most recently focused SmartEverything viewer of the chat, or of the viewer you name; no polling',
     params: CHAT,
     query: NOTHING,
     body: EMBEDDED_BROWSER_SELECTOR,
@@ -25,7 +25,7 @@ export const EMBEDDED_BROWSER_ENDPOINTS = {
     path: '/api/ai/chats/:chatId/browser/edit',
     access: 'member',
     summary:
-      'Open, select, navigate, reload, close or reorder exact embedded viewer tabs using its current generation and unique request ID; never controls headless or OS browsers',
+      'Open, select, navigate, reload, close or reorder tabs of the most recently focused embedded viewer, or of the viewer you name, with a unique request ID; never controls headless or OS browsers',
     params: CHAT,
     query: NOTHING,
     body: EMBEDDED_BROWSER_EDIT,

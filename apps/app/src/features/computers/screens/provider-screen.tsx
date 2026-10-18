@@ -8,6 +8,7 @@ import {
   useComputerAiChange,
   useComputerProviderMetadata,
 } from '../data/computer-ai';
+import { background } from '@smarteverything/logging';
 
 export function ComputerProviderScreen({ deviceId }: { readonly deviceId: string }): ReactNode {
   const status = useComputerAi(deviceId);
@@ -23,14 +24,14 @@ export function ComputerProviderScreen({ deviceId }: { readonly deviceId: string
         error={status.error}
         pending={status.isPending}
         retry={() => {
-          void status.refetch();
+          background(status.refetch(), 'status.refetch_failed');
         }}
       />
       <QueryState
         error={metadata.error}
         pending={false}
         retry={() => {
-          void metadata.refetch();
+          background(metadata.refetch(), 'metadata.refetch_failed');
         }}
       />
       {status.data === undefined || !owner ? null : (

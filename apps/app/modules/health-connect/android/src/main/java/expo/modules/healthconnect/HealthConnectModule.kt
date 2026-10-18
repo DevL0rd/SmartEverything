@@ -1,10 +1,6 @@
 package expo.modules.healthconnect
 
 import android.content.Context
-import android.content.Intent
-import androidx.health.connect.client.PermissionController
-import expo.modules.kotlin.activityresult.AppContextActivityResultContract
-import expo.modules.kotlin.activityresult.AppContextActivityResultLauncher
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
@@ -23,26 +19,11 @@ import expo.modules.healthconnect.watch.WatchActions
 import expo.modules.healthconnect.watch.WatchRemote
 import expo.modules.kotlin.Promise
 import expo.modules.healthconnect.watch.WatchHealthWriter
-import java.io.Serializable
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-class PermissionSet(val permissions: ArrayList<String>) : Serializable
-
-class PermissionContract : AppContextActivityResultContract<PermissionSet, Set<String>> {
-  private val delegate = PermissionController.createRequestPermissionResultContract()
-
-  override fun createIntent(context: Context, input: PermissionSet): Intent =
-    delegate.createIntent(context, input.permissions.toSet())
-
-  override fun parseResult(input: PermissionSet, resultCode: Int, intent: Intent?): Set<String> =
-    delegate.parseResult(resultCode, intent)
-}
 
 class HealthConnectModule : Module() {
-  private var permissionLauncher: AppContextActivityResultLauncher<PermissionSet, Set<String>>? = null
+  private val permissionRequester by lazy { HealthPermissionRequester(appContext) }
   private var progressForwarding: Job? = null
   private var scaleForwarding: Job? = null
   private var watchForwarding: Job? = null
@@ -74,7 +55,7 @@ class HealthConnectModule : Module() {
     }
 
     RegisterActivityContracts {
-      permissionLauncher = registerForActivityResult(PermissionContract())
+      permissionRequester.launcher = registerForActivityResult(PermissionContract())
     }
 
     AsyncFunction("getStatus") Coroutine { ->
@@ -89,8 +70,7 @@ class HealthConnectModule : Module() {
         background,
         history
       )
-      val launcher = permissionLauncher ?: throw PermissionScreenUnavailable()
-      withContext(Dispatchers.Main) { launcher.launch(PermissionSet(ArrayList(wanted))) }
+      permissionRequester.request(context, wanted)
       HealthConnectAccess.grants(client).toMap()
     }
 
@@ -99,18 +79,14 @@ class HealthConnectModule : Module() {
       val wanted = HealthConnectAccess.allPermissionsFor(client)
       val granted = HealthConnectAccess.call { client.permissionController.getGrantedPermissions() }
       if (!granted.containsAll(wanted)) {
-        val launcher = permissionLauncher ?: throw PermissionScreenUnavailable()
-        withContext(Dispatchers.Main) { launcher.launch(PermissionSet(ArrayList(wanted))) }
+        permissionRequester.request(context, wanted)
       }
       HealthConnectAccess.grants(client).toMap()
     }
 
     AsyncFunction("requestWritePermissions") Coroutine { ->
       val client = HealthConnectAccess.client(context)
-      val launcher = permissionLauncher ?: throw PermissionScreenUnavailable()
-      withContext(Dispatchers.Main) {
-        launcher.launch(PermissionSet(ArrayList(BodyWriter.writePermissions)))
-      }
+      permissionRequester.request(context, BodyWriter.writePermissions)
       BodyWriter.granted(client)
     }
 
@@ -118,8 +94,8 @@ class HealthConnectModule : Module() {
       BodyWriter.granted(HealthConnectAccess.client(context))
     }
 
-    AsyncFunction("healthConnectConfigured") {
-      Credentials(context).configured()
+    AsyncFunction("healthConnectConfigured") Coroutine { ->
+      HealthConnectAccess.connected(context)
     }
 
     AsyncFunction("deliverBodyReadings") Coroutine { ->
@@ -128,10 +104,7 @@ class HealthConnectModule : Module() {
 
     AsyncFunction("requestEntryWrites") Coroutine { types: List<String> ->
       val client = HealthConnectAccess.client(context)
-      val launcher = permissionLauncher ?: throw PermissionScreenUnavailable()
-      withContext(Dispatchers.Main) {
-        launcher.launch(PermissionSet(ArrayList(EntryWriter.writePermissions(types))))
-      }
+      permissionRequester.request(context, EntryWriter.writePermissions(types))
       EntryWriter.grantedTypes(client, types)
     }
 
@@ -143,8 +116,8 @@ class HealthConnectModule : Module() {
       EntryWriter.deliver(context).toMap()
     }
 
-    AsyncFunction("configureScaleRelay") { serverUrl: String, token: String, enrollment: String ->
-      ScaleRelay(context).configure(serverUrl, token, enrollment)
+    AsyncFunction("configureServer") { serverUrl: String, token: String, enrollment: String ->
+      configureServer(context, serverUrl, token, enrollment)
     }
 
     AsyncFunction("startScaleRelay") Coroutine { ->
@@ -172,7 +145,7 @@ class HealthConnectModule : Module() {
     }
 
     AsyncFunction("runPushCommand") { command: String, payloadJson: String ->
-      PushCommands.run(context, mapOf(PushCommands.KEY to command, "payload" to payloadJson))
+      PushCommands.run(context, mapOf(DomainConstants.PUSH_COMMAND_KEY to command, DomainConstants.PUSH_PAYLOAD_KEY to payloadJson))
     }
 
     AsyncFunction("startWatches") {
@@ -197,10 +170,7 @@ class HealthConnectModule : Module() {
 
     AsyncFunction("requestWatchWrites") Coroutine { ->
       val client = HealthConnectAccess.client(context)
-      val launcher = permissionLauncher ?: throw PermissionScreenUnavailable()
-      withContext(Dispatchers.Main) {
-        launcher.launch(PermissionSet(ArrayList(WatchHealthWriter.writePermissions)))
-      }
+      permissionRequester.request(context, WatchHealthWriter.writePermissions)
       WatchHealthWriter.granted(client)
     }
 
@@ -262,10 +232,6 @@ class HealthConnectModule : Module() {
 
     AsyncFunction("grantedPermissions") Coroutine { ->
       HealthConnectAccess.grants(HealthConnectAccess.client(context)).toMap()
-    }
-
-    AsyncFunction("configure") { endpoint: String, token: String ->
-      Credentials(context).save(IngestTarget(endpoint, token))
     }
 
     AsyncFunction("syncNow") Coroutine { ->

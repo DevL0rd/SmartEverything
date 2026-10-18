@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import expo.modules.healthconnect.NativeGuard
 import java.time.Instant
+import java.time.LocalDate
 
 object PhoneUnlock {
   private var receiver: BroadcastReceiver? = null
@@ -17,6 +18,7 @@ object PhoneUnlock {
     }
     val registered = object : BroadcastReceiver() {
       override fun onReceive(context: Context, intent: Intent) = NativeGuard.run("PhoneUnlockReceiver") {
+        PhoneStore(context).countUnlock(LocalDate.now().toString())
         PhoneReporter.report(context, listOf(PhoneEvent.unlocked(Instant.now())))
       }
     }

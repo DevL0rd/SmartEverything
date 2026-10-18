@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { xiaomiStreamOf } from '../src/services';
 import { captureLogs } from './support/logs';
 import { testStore, type TestStore } from './support/store';
@@ -63,5 +63,23 @@ describe('xiaomiStreamOf', () => {
     expect(streamOf('1002')).toBeNull();
     expect(streamOf('1003')).toBeNull();
     expect(streamOf('unknown')).toBeNull();
+  });
+
+  it('finds the camera by its did without reading the whole device and camera tables', () => {
+    const id = camera('xiaomi', '2001');
+    opened.store.cameras.upsert([
+      {
+        deviceId: id,
+        streamName: id,
+        sourceUrlKind: 'xiaomi',
+        physicalPtz: false,
+        twoWayAudio: false,
+      },
+    ]);
+    const devices = vi.spyOn(opened.store.devices, 'list');
+    const cameras = vi.spyOn(opened.store.cameras, 'list');
+    expect(xiaomiStreamOf(opened.store)('2001')).toBe(id);
+    expect(devices).not.toHaveBeenCalled();
+    expect(cameras).not.toHaveBeenCalled();
   });
 });

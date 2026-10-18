@@ -1,8 +1,9 @@
 import type { Href } from 'expo-router';
 import type { QueryClient } from '@tanstack/react-query';
-import { Logger } from '@smarteverything/logging';
-import { isNative } from '../design/platform';
-import type { RouteDefinition } from './route-types';
+import { Logger, background } from '@smarteverything/logging';
+import { errorFields } from '../design/log-tally';
+import { touchQuietIn } from '../design/touch-activity';
+import type { RouteDefinition, TabKey } from './route-types';
 
 const log = new Logger('app.preloader');
 
@@ -19,7 +20,6 @@ class Preloader {
   private running: string | null = null;
   private scheduled = false;
   private paused = 0;
-  private settle: ReturnType<typeof setTimeout> | null = null;
 
   start(routes: readonly RouteDefinition[], client: QueryClient): void {
     this.client = client;
@@ -27,6 +27,12 @@ class Preloader {
       (route) =>
         route.preload !== undefined && !this.done.has(route.key) && route.key !== this.running,
     );
+    log.info('preload.started', {
+      routes: routes.length,
+      queued: this.queue.length,
+      done: this.done.size,
+      paused: this.paused,
+    });
     this.schedule();
   }
 
@@ -35,32 +41,35 @@ class Preloader {
     const index = this.queue.findIndex((route) => hrefKey(route.href) === key);
     const route = this.queue[index];
     if (route === undefined) {
+      log.trace('preload.boost_skipped', { reason: 'not queued' });
       return;
     }
+    log.debug('preload.boosted', { route: route.key, queued: this.queue.length });
     this.queue.splice(index, 1);
     this.queue.unshift(route);
     if (this.running === null && this.paused === 0) {
-      void this.next();
+      background(this.next(), 'preloader.next_failed');
     }
   }
 
-  interacted(): void {
-    if (!isNative()) {
+  boostSection(tab: TabKey): void {
+    if (!this.queue.some((route) => route.tab === tab)) {
       return;
     }
-    if (this.settle !== null) {
-      clearTimeout(this.settle);
-    }
-    this.settle = setTimeout(() => {
-      this.settle = null;
-      this.schedule();
-    }, SETTLE_MS);
+    log.debug('preload.section_boosted', { tab, queued: this.queue.length });
+    this.queue = [
+      ...this.queue.filter((route) => route.tab === tab),
+      ...this.queue.filter((route) => route.tab !== tab),
+    ];
+    this.schedule();
   }
 
   pause(): () => void {
     this.paused += 1;
+    log.debug('preload.paused', { holders: this.paused });
     return (): void => {
       this.paused -= 1;
+      log.debug('preload.resumed', { holders: this.paused });
       this.schedule();
     };
   }
@@ -71,10 +80,17 @@ class Preloader {
     }
     this.scheduled = true;
     requestIdleCallback(() => {
-      this.scheduled = false;
-      if (this.settle === null) {
-        void this.next();
+      const wait = touchQuietIn(SETTLE_MS);
+      if (wait > 0) {
+        log.trace('preload.deferred', { waitMs: wait, queued: this.queue.length });
+        setTimeout(() => {
+          this.scheduled = false;
+          this.schedule();
+        }, wait);
+        return;
       }
+      this.scheduled = false;
+      background(this.next(), 'preloader.next_failed');
     });
   }
 
@@ -86,12 +102,22 @@ class Preloader {
       return;
     }
     this.running = route.key;
+    const begun = Date.now();
+    log.debug('preload.route_started', { route: route.key, remaining: this.queue.length });
     try {
       await route.preload?.({ queryClient: client });
-      this.done.add(route.key);
+      log.debug('preload.route_finished', () => ({
+        route: route.key,
+        durationMs: Date.now() - begun,
+      }));
     } catch (error) {
-      log.warn('preload.failed', { route: route.key, reason: String(error) });
+      log.warn('preload.failed', {
+        route: route.key,
+        durationMs: Date.now() - begun,
+        ...errorFields(error),
+      });
     } finally {
+      this.done.add(route.key);
       this.running = null;
       this.schedule();
     }

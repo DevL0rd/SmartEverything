@@ -1,3 +1,5 @@
+import { appendTo } from '@smarteverything/domain';
+import { extent, max } from 'd3-array';
 import type { HealthRecord } from '@smarteverything/domain';
 import { recordsOfType } from './records';
 import { MINUTE_MS, dayKeyOf } from '../../../format/time';
@@ -61,7 +63,7 @@ export function zoneMinutesByDay(
   const byDay = new Map<string, HeartSample[]>();
   for (const sample of samples) {
     const day = dayKeyOf(sample.at);
-    byDay.set(day, [...(byDay.get(day) ?? []), sample]);
+    appendTo(byDay, day, sample);
   }
   return new Map([...byDay.entries()].map(([day, list]) => [day, zoneMinutes(list, maximum)]));
 }
@@ -78,10 +80,8 @@ export function maximumHeartRate(
   if (setting !== null) {
     return { bpm: setting, basis: 'setting' };
   }
-  if (observed.length === 0) {
-    return null;
-  }
-  return { bpm: Math.max(...observed), basis: 'observed' };
+  const highest = max(observed);
+  return highest === undefined ? null : { bpm: highest, basis: 'observed' };
 }
 
 export function latestSample(samples: readonly HeartSample[]): HeartSample | null {
@@ -103,14 +103,14 @@ export interface SampleStats {
 }
 
 export function sampleStats(samples: readonly HeartSample[]): SampleStats | null {
-  if (samples.length === 0) {
+  const [lowest, highest] = extent(samples, (sample) => sample.bpm);
+  if (lowest === undefined) {
     return null;
   }
-  const beats = samples.map((sample) => sample.bpm);
   return {
-    min: Math.min(...beats),
-    mean: beats.reduce((sum, bpm) => sum + bpm, 0) / beats.length,
-    max: Math.max(...beats),
+    min: lowest,
+    mean: samples.reduce((sum, sample) => sum + sample.bpm, 0) / samples.length,
+    max: highest,
   };
 }
 

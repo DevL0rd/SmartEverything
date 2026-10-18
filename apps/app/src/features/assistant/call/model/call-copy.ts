@@ -1,19 +1,9 @@
-import type { CallEnding, SightMode, SightSource } from '@smarteverything/domain';
+import type { SightMode, SightSource } from '@smarteverything/domain';
 import type { IconName } from '../../../../components/icon';
 import { callActive, type CallView } from '../call-state';
+import { endStateOf } from './call-end';
 
-export const ENDINGS: Readonly<Record<CallEnding, string>> = {
-  hung_up: 'Call ended',
-  finished: 'Call ended',
-  idle: 'Ended after a quiet minute',
-  failed: 'Call didn’t work',
-  replaced: 'Moved to another call',
-  disconnected: 'Connection lost',
-};
-
-export const SHARING_STOPPED = 'Screen sharing stopped';
-
-export const RECONNECT_HINT = 'Your home connection dropped. Hold on.';
+const RECONNECT_HINT = 'Your home connection dropped. Hold on.';
 
 function liveStatusOf(call: CallView, name: string): string {
   switch (call.phase) {
@@ -26,7 +16,7 @@ function liveStatusOf(call: CallView, name: string): string {
     case 'speaking':
       return name;
     case 'ended':
-      return call.ending === null ? 'Call ended' : ENDINGS[call.ending];
+      return endStateOf(call, name).title;
     case 'idle':
     case 'connecting':
       return 'Connecting…';
@@ -39,10 +29,7 @@ export function statusOf(call: CallView, name: string): string {
 
 export function sublineOf(call: CallView, name: string, elapsed: string): string {
   if (!callActive(call)) {
-    if (call.problem !== null) {
-      return call.problem;
-    }
-    return call.sharedAtEnd ? SHARING_STOPPED : name;
+    return endStateOf(call, name).footnote;
   }
   if (call.echoTest.status === 'running') {
     return `${name} can’t hear you for a moment`;
@@ -96,18 +83,22 @@ export function lookedAtText(label: string): string {
   return `AI looked at ${label}`;
 }
 
-export function consentTitle(name: string, source: SightSource, target: string | null): string {
+export function consentWish(source: SightSource, target: string | null): string {
   switch (source) {
     case 'phone_camera':
-      return `${name} wants to see your camera`;
+      return 'see your camera';
     case 'home_camera':
-      return `${name} wants to look at ${target ?? 'a home camera'}`;
+      return `look at ${target ?? 'a home camera'}`;
     case 'phone_screen':
     case 'desktop_screen':
-      return `${name} wants to see your screen`;
+      return 'see your screen';
     case 'desktop_window':
-      return `${name} wants to see ${target ?? 'a window'}`;
+      return `see ${target ?? 'a window'}`;
   }
+}
+
+export function consentTitle(name: string, source: SightSource, target: string | null): string {
+  return `${name} wants to ${consentWish(source, target)}`;
 }
 
 export function consentAccept(source: SightSource): string {

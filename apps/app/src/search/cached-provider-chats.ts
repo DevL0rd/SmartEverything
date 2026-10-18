@@ -1,45 +1,50 @@
 import { agentRunKey } from '../features/assistant/data/agent-runs';
-import { AI_AGENT_RUN_PAGE } from '@smarteverything/domain';
-import { z } from 'zod';
+import type { AI_AGENT_RUN_PAGE } from '@smarteverything/domain';
+import type { z } from 'zod';
 import { codexProviderKey } from '../queries/codex-provider-events';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, type InfiniteData } from '@tanstack/react-query';
+import { useScreenPaused } from '../design/screen-pause';
+import { sameJson } from '../store/same-json';
 import {
   API_ENDPOINTS as E,
   type AiChatRuntimeProvider,
   type AiAgentRun,
   type AiChatProvider,
+  type ProviderMetadata,
 } from '@smarteverything/domain';
 import { api } from '../api/transport';
 import { providerKey } from '../queries/keys';
 import type { SearchChat } from './sources';
+type RunPages = InfiniteData<z.output<typeof AI_AGENT_RUN_PAGE>, string | undefined>;
+type Metadata = ProviderMetadata | null | undefined;
 interface Cached {
   readonly chats: readonly SearchChat[];
-  readonly states: readonly (AiChatProvider | AiChatRuntimeProvider | undefined)[];
+  readonly metadata: readonly Metadata[];
   readonly result: readonly SearchChat[];
 }
 let cached: Cached | null = null;
+function sameMetadata(left: readonly Metadata[], right: readonly Metadata[]): boolean {
+  return left.length === right.length && left.every((item, index) => sameJson(item, right[index]));
+}
 function attach(
   chats: readonly SearchChat[],
-  states: readonly (AiChatProvider | AiChatRuntimeProvider | undefined)[],
+  metadata: readonly Metadata[],
 ): readonly SearchChat[] {
-  if (
-    cached?.chats === chats &&
-    cached.states.length === states.length &&
-    states.every((state, index) => state === cached?.states[index])
-  )
-    return cached.result;
+  if (cached?.chats === chats && sameMetadata(cached.metadata, metadata)) return cached.result;
   let nativeIndex = 0;
   const result = chats.map((chat) =>
-    chat.computer ? { ...chat, metadata: states[nativeIndex++]?.metadata ?? null } : chat,
+    chat.computer ? { ...chat, metadata: metadata[nativeIndex++] ?? null } : chat,
   );
-  cached = { chats, states, result };
+  cached = { chats, metadata, result };
   return result;
 }
 export function useCachedProviderChats(
   chats: readonly SearchChat[],
   owner: boolean,
 ): readonly SearchChat[] {
+  const subscribed = !useScreenPaused();
   const queries = useQueries({
+    subscribed,
     queries: chats
       .filter((chat) => chat.computer)
       .map((chat) => ({
@@ -51,12 +56,10 @@ export function useCachedProviderChats(
       })),
   });
   const agents = useQueries({
+    subscribed,
     queries: chats.map((chat) => ({
       queryKey: [...agentRunKey(chat.id), 'list'],
-      queryFn: async (): Promise<{
-        pages: z.output<typeof AI_AGENT_RUN_PAGE>[];
-        pageParams: undefined[];
-      }> => ({
+      queryFn: async (): Promise<RunPages> => ({
         pages: [
           await api().call(E.listAiAgentRuns, {
             params: { chatId: chat.id },
@@ -71,7 +74,7 @@ export function useCachedProviderChats(
   const records = owner
     ? attach(
         chats,
-        queries.map((query) => query.data),
+        queries.map((query) => query.data?.metadata),
       )
     : chats;
   return attachAgents(
@@ -82,22 +85,20 @@ export function useCachedProviderChats(
 const RUN_CACHE = new WeakMap<object, readonly AiAgentRun[]>();
 let agentCache: {
   readonly chats: readonly SearchChat[];
-  readonly values: readonly unknown[];
+  readonly values: readonly (RunPages | undefined)[];
   readonly result: readonly SearchChat[];
 } | null = null;
-function runsOf(value: unknown): readonly AiAgentRun[] | null {
-  if (typeof value !== 'object' || value === null) return null;
+function runsOf(value: RunPages | undefined): readonly AiAgentRun[] | null {
+  if (value === undefined) return null;
   const saved = RUN_CACHE.get(value);
   if (saved !== undefined) return saved;
-  const parsed = z.object({ pages: z.array(AI_AGENT_RUN_PAGE) }).safeParse(value);
-  if (!parsed.success) return null;
-  const runs = parsed.data.pages.flatMap((page) => page.runs);
+  const runs = value.pages.flatMap((page) => page.runs);
   RUN_CACHE.set(value, runs);
   return runs;
 }
 function attachAgents(
   chats: readonly SearchChat[],
-  values: readonly unknown[],
+  values: readonly (RunPages | undefined)[],
 ): readonly SearchChat[] {
   if (
     agentCache?.chats === chats &&

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useIdiom } from '../../design/platform';
-import { useAppliedTheme } from '../../design/theme';
+import { useThemeSetting } from '../../design/theme';
 import { Skeleton } from '../skeleton';
 import { BOARD_COLUMNS } from '@smarteverything/domain';
 import { fittedCell, pack, rowsOf } from './packer';
@@ -19,7 +19,7 @@ export function SkeletonBoard({
   readonly aspectOf?: (type: string) => number | undefined;
 }): ReactNode {
   const idiom = useIdiom();
-  const { density } = useAppliedTheme().settings;
+  const density = useThemeSetting('density');
   const [width, setWidth] = useState(0);
   const base = cellOf(width, BOARD_COLUMNS[board], idiom, density);
   const cell = aspectOf === undefined ? base : fittedCell(board, widgets, { cell: base, aspectOf });

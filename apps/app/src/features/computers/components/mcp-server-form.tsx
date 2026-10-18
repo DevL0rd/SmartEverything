@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { z } from 'zod';
@@ -12,7 +13,8 @@ import { Text } from '../../../components/text';
 import { McpToolPolicyFields, type McpToolPolicies } from './mcp-tool-policies';
 import { TextField } from '../../../components/text-field';
 
-export function pairsOf(text: string): Record<string, string> {
+const log = new Logger('app.computers');
+function pairsOf(text: string): Record<string, string> {
   return Object.fromEntries(
     text
       .split('\n')
@@ -103,7 +105,7 @@ function TransportFields({
   const entries =
     fields.type === 'stdio'
       ? ([
-          { key: 'command', title: 'Command', help: 'Executable on the supplying computer' },
+          { key: 'command', title: 'Command', help: 'Program to run on this computer' },
           { key: 'args', title: 'Arguments', help: 'One argument per line' },
           { key: 'env', title: 'Environment', help: 'One name=value per line' },
         ] as const)
@@ -137,7 +139,6 @@ function ServerOptions({
 }): ReactNode {
   return (
     <>
-      {' '}
       <SelectRow
         title="Transport"
         value={fields.type}
@@ -157,7 +158,7 @@ function ServerOptions({
       )}
       <TextField
         label="Timeout in milliseconds"
-        helper="Empty uses the SDK default; 1,000–3,600,000"
+        helper="Leave empty for the default. 1,000–3,600,000 ms"
         kind="number"
         value={fields.timeout}
         onChange={(timeout) => {
@@ -196,7 +197,12 @@ export function McpServerForm({
         Object.entries(servers).filter(([key]) => key !== original),
       );
       save(CLAUDE_MCP_SERVERS.parse({ ...previous, [name]: value }));
+      log.info('mcp_server.submitted', { renamed: name !== original, created: original === null });
     } catch (error) {
+      log.warn('mcp_server.invalid', {
+        error: error instanceof Error ? error.name : typeof error,
+        created: original === null,
+      });
       setProblem(error instanceof Error ? error.message : 'Server settings are invalid.');
     }
   };
@@ -210,7 +216,7 @@ export function McpServerForm({
       />
       <ServerOptions fields={fields} change={change} />
       {problem === null ? null : <Text tone="critical">{problem}</Text>}
-      <Button label="Save native server" onPress={submit} />
+      <Button label="Save server" onPress={submit} />
     </View>
   );
 }

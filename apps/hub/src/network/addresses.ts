@@ -1,10 +1,8 @@
 import type { AddressInfo } from 'node:net';
-import { networkInterfaces, type NetworkInterfaceInfo } from 'node:os';
+import type { NetworkInterfaceInfo } from 'node:os';
 import type { HubEndpoint } from '@smarteverything/domain';
+import { interfaceEntries, type InterfaceSnapshot } from './lan';
 
-export type InterfaceSnapshot = Readonly<
-  Record<string, readonly NetworkInterfaceInfo[] | undefined>
->;
 const ENDPOINT_LIMIT = 29;
 
 function usable(entry: NetworkInterfaceInfo, listener: AddressInfo): boolean {
@@ -21,9 +19,9 @@ function usable(entry: NetworkInterfaceInfo, listener: AddressInfo): boolean {
 
 export function lanEndpoints(
   listener: AddressInfo,
-  interfaces: InterfaceSnapshot = networkInterfaces(),
+  interfaces?: InterfaceSnapshot,
 ): readonly HubEndpoint[] {
-  const entries = Object.values(interfaces).flatMap((addresses) => addresses ?? []);
+  const entries = interfaceEntries(interfaces);
   return [
     ...new Set(entries.filter((entry) => usable(entry, listener)).map(({ address }) => address)),
   ]

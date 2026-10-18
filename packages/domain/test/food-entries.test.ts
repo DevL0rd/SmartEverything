@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  FOOD_PORTION,
-  foodEntryOf,
-  multiplierOf,
-  scaledAmount,
-  waterEntryOf,
-  weightOf,
-  type FoodCandidate,
-} from '../src';
+import { FOOD_PORTION, foodEntryOf, waterEntryOf, type FoodCandidate } from '../src';
 
 const SPAN = {
   startTime: '2026-10-10T12:00:00.000Z',
@@ -27,56 +19,34 @@ const CRISPS: FoodCandidate = {
   water_percent: 0,
 };
 
-function log(amount: number, multiplier?: number): ReturnType<typeof foodEntryOf> {
-  return foodEntryOf({ food: CRISPS, foodId: null, amount, multiplier, mealType: 4, span: SPAN });
+function log(amount: number): ReturnType<typeof foodEntryOf> {
+  return foodEntryOf({ food: CRISPS, foodId: null, amount, mealType: 4, span: SPAN });
 }
 
-describe('scaledAmount', () => {
-  it.each([
-    [200, 0.5, 100],
-    [200, 1, 200],
-    [100, 1.2, 120],
-    [150, 2, 300],
-  ])('scales %f by %f to %f', (weight, multiplier, expected) => {
-    expect(scaledAmount(weight, multiplier)).toBe(expected);
-  });
-
-  it.each([0, -1, 0.05, 21, Number.NaN, Number.POSITIVE_INFINITY])('rejects %f', (multiplier) => {
-    expect(() => scaledAmount(100, multiplier)).toThrow();
-  });
-});
-
 describe('foodEntryOf', () => {
-  it('counts the portion once, as the scaled amount', () => {
-    const half = log(200, 0.5);
-    expect(half.data['kilocalories']).toBe(500);
-    expect(half.food?.amount).toBe(100);
-    expect(half.food?.multiplier).toBe(0.5);
-    expect(half.data['kilocalories']).toBe(log(100).data['kilocalories']);
+  it('records the amount eaten once, without a multiplier', () => {
+    const entry = log(100);
+    expect(entry.data['kilocalories']).toBe(500);
+    expect(entry.food?.amount).toBe(100);
+    expect(entry.food).not.toHaveProperty('multiplier');
   });
 
-  it('leaves the multiplier out when it is 1 or not given', () => {
-    expect(log(100).food?.multiplier).toBeUndefined();
-    expect(log(100, 1).food?.multiplier).toBeUndefined();
+  it('prices a larger amount directly', () => {
+    const entry = log(250);
+    expect(entry.food?.amount).toBe(250);
+    expect(entry.data['kilocalories']).toBe(1250);
   });
 
-  it('keeps what the person typed recoverable for editing', () => {
-    const entry = log(250, 1.5);
-    const portion = FOOD_PORTION.parse(entry.food);
+  it('still reads entries stored with a multiplier', () => {
+    const portion = FOOD_PORTION.parse({ ...log(100).food, amount: 375, multiplier: 1.5 });
     expect(portion.amount).toBe(375);
-    expect(weightOf(portion)).toBe(250);
-    expect(multiplierOf(portion)).toBe(1.5);
-    expect(multiplierOf(null)).toBe(1);
-  });
-
-  it('accepts the largest amount with the largest multiplier', () => {
-    expect(() => FOOD_PORTION.parse(log(10_000, 20).food)).not.toThrow();
+    expect(portion.multiplier).toBe(1.5);
+    expect(() => FOOD_PORTION.parse({ ...portion, amount: 200_000, multiplier: 20 })).not.toThrow();
   });
 });
 
 describe('waterEntryOf', () => {
-  it('scales the millilitres once', () => {
-    expect(waterEntryOf(250, SPAN, 0.5).data['liters']).toBe(0.125);
+  it('converts the millilitres to litres', () => {
     expect(waterEntryOf(250, SPAN).data['liters']).toBe(0.25);
   });
 });

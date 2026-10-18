@@ -33,13 +33,6 @@ export function capOptions(
   return optionsOf(DAILY_CAPS_USD, settings.daily_cap_usd, money.dollars);
 }
 
-export function listeningLabel(listening: TranscriptListening): string {
-  if (listening.state === 'off') {
-    return 'Off';
-  }
-  return listening.state === 'listening' ? 'Listening' : 'Paused';
-}
-
 export function listeningDetail(listening: TranscriptListening): string | null {
   return listening.state === 'paused' ? TRANSCRIPT_PAUSE_LABELS[listening.reason] : null;
 }

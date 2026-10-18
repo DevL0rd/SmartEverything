@@ -4,6 +4,45 @@ import { SelectRow, SwitchRow } from '../../../components/rows';
 import { TextField } from '../../../components/text-field';
 import type { OperationField } from './provider-operations';
 
+export type OperationValues = Readonly<Record<string, JsonValue | undefined>>;
+
+export function initialFields(
+  fields: readonly OperationField[],
+  sessionId: string | null,
+): OperationValues {
+  return Object.fromEntries(
+    fields.map((field) => [
+      field.key,
+      field.key === 'session_id' ? (sessionId ?? '') : field.initial,
+    ]),
+  );
+}
+
+export function OperationFields({
+  fields,
+  values,
+  change,
+}: {
+  readonly fields: readonly OperationField[];
+  readonly values: OperationValues;
+  readonly change: (values: OperationValues) => void;
+}): ReactNode {
+  return (
+    <>
+      {fields.map((field) => (
+        <OperationFieldInput
+          key={field.key}
+          field={field}
+          value={values[field.key]}
+          change={(value) => {
+            change({ ...values, [field.key]: value });
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
 export function OperationFieldInput({
   field,
   value,

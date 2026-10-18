@@ -1,14 +1,19 @@
-import { z } from 'zod';
 import { join } from 'node:path';
-import { CLIENT_TOKEN } from '@smarteverything/domain';
+import { CLIENT_TOKEN, type DesktopServer } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import {
+  NODE_WINDOW,
+  NODE_WINDOW_FILE,
   RUNNING_SERVICE_READY,
   type ServiceReady,
 } from '@smarteverything/hub/service/configuration';
 import type { ServiceLocations } from './locations.js';
+import { PRIVATE_MODE } from './manager.js';
 import type { ServiceSystem } from './system.js';
 
 const STATUS_TIMEOUT_MS = 3000;
+
+const log = new Logger('desktop.service');
 
 export class ServiceFileInvalidError extends Error {
   readonly file: string;
@@ -42,7 +47,9 @@ export async function readReady(
       text.trim(),
     );
   }
-  return system.isAlive(parsed.data.pid) ? parsed.data : null;
+  const alive = system.isAlive(parsed.data.pid);
+  log.trace('service.ready_read', { pid: parsed.data.pid, alive });
+  return alive ? parsed.data : null;
 }
 
 export async function answers(system: ServiceSystem, url: string): Promise<boolean> {
@@ -50,9 +57,11 @@ export async function answers(system: ServiceSystem, url: string): Promise<boole
     const response = await system.fetch(new URL('/status', url), {
       signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
     });
+    log.trace('service.status_answered', { status: response.status });
     return response.ok;
   } catch (error: unknown) {
     if (error instanceof Error) {
+      log.debug('service.status_unanswered', { reason: error.name });
       return false;
     }
     throw error;
@@ -90,27 +99,37 @@ export function readyUrl(ready: ServiceReady): string {
   return 'role' in ready ? ready.hub_url : ready.url;
 }
 
-const NODE_WINDOW = z.strictObject({
-  hub_url: z.url({ protocol: /^https?$/ }),
-  token: CLIENT_TOKEN,
-});
+export function nodeWindowFile(locations: ServiceLocations): string {
+  return join(locations.dataDirectory, NODE_WINDOW_FILE);
+}
+
 export async function readNodeWindow(
   system: ServiceSystem,
   locations: ServiceLocations,
-  hubUrl: string,
-): Promise<{ readonly url: string; readonly token: string }> {
-  const text = await system.files.read(join(locations.dataDirectory, 'node-window.json'));
-  if (text === null) throw new NodeWindowPairingError();
-  const value: unknown = JSON.parse(text);
-  const paired = NODE_WINDOW.parse(value);
-  if (new URL(paired.hub_url).origin !== new URL(hubUrl).origin) throw new NodeWindowPairingError();
-  return { url: hubUrl, token: paired.token };
-}
-class NodeWindowPairingError extends Error {
-  override readonly name = 'NodeWindowPairingError';
-  constructor() {
-    super(
-      'Pair this desktop window separately: create an app pairing code in the hub, then run the packaged service entry with --pair-node-window --hub <hub URL> --code <app code>. The node service credential cannot sign into the window.',
-    );
+): Promise<DesktopServer | null> {
+  const file = nodeWindowFile(locations);
+  const text = await system.files.read(file);
+  if (text === null) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (error: unknown) {
+    throw new ServiceFileInvalidError(file, 'JSON', String(error));
   }
+  const paired = NODE_WINDOW.parse(json);
+  return { url: paired.hub_url, token: paired.token };
+}
+
+export async function writeNodeWindow(
+  system: ServiceSystem,
+  locations: ServiceLocations,
+  window: DesktopServer | null,
+): Promise<void> {
+  const file = nodeWindowFile(locations);
+  if (window === null) {
+    await system.files.remove(file);
+    return;
+  }
+  const paired = NODE_WINDOW.parse({ hub_url: new URL(window.url).origin, token: window.token });
+  await system.files.write(file, JSON.stringify(paired), PRIVATE_MODE);
 }

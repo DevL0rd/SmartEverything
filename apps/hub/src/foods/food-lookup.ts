@@ -3,12 +3,13 @@ import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { FoodsRepository } from '../store/repositories/foods';
 import { OFF_FIELDS, OFF_PRODUCT, candidateOf } from './open-food-facts';
+import { DAY_MS } from '../metrics/minute';
+import { userAgentOf } from '../outbound/provider-json';
+import { messageOf } from '@smarteverything/logging';
 
 const PRODUCT_URL = 'https://world.openfoodfacts.org/api/v3/product/';
 const SEARCH_URL = 'https://search.openfoodfacts.org/search';
 const TIMEOUT_MS = 8000;
-const MINUTE_MS = 60_000;
-const DAY_MS = 86_400_000;
 const SEARCH_SIZE = 25;
 
 const FRESH = { product: 30 * DAY_MS, missing: DAY_MS, search: DAY_MS } as const;
@@ -16,29 +17,6 @@ const FRESH = { product: 30 * DAY_MS, missing: DAY_MS, search: DAY_MS } as const
 const PRODUCT_ANSWER = z.object({ status: z.string(), product: OFF_PRODUCT.optional() });
 const SEARCH_ANSWER = z.object({ hits: z.array(z.unknown()) });
 const CACHED_SEARCH = z.array(FOOD_CANDIDATE);
-
-class MinuteBudget {
-  private readonly used: number[] = [];
-
-  constructor(
-    private readonly limit: number,
-    private readonly what: string,
-  ) {}
-
-  take(now: number): void {
-    while (this.used.length > 0 && now - (this.used[0] ?? now) >= MINUTE_MS) {
-      this.used.shift();
-    }
-    if (this.used.length >= this.limit) {
-      const wait = Math.ceil((MINUTE_MS - (now - (this.used[0] ?? now))) / 1000);
-      throw new ApiError(
-        'rate_limited',
-        `Open Food Facts allows ${String(this.limit)} ${this.what} a minute. Try again in ${String(wait)} s.`,
-      );
-    }
-    this.used.push(now);
-  }
-}
 
 export interface FoodLookupOptions {
   readonly foods: FoodsRepository;
@@ -49,9 +27,6 @@ export interface FoodLookupOptions {
 }
 
 export class FoodLookup {
-  private readonly products = new MinuteBudget(15, 'product lookups');
-  private readonly searches = new MinuteBudget(10, 'searches');
-
   constructor(private readonly options: FoodLookupOptions) {}
 
   async byBarcode(barcode: string): Promise<FoodCandidate> {
@@ -60,7 +35,6 @@ export class FoodLookup {
     if (cached !== undefined) {
       return this.productFrom(barcode, cached === null ? null : FOOD_CANDIDATE.parse(cached));
     }
-    this.products.take(this.options.now().getTime());
     const answer = PRODUCT_ANSWER.parse(
       await this.get(`${PRODUCT_URL}${barcode}?fields=${OFF_FIELDS}`, [200, 404]),
     );
@@ -77,7 +51,6 @@ export class FoodLookup {
     if (cached !== undefined) {
       return CACHED_SEARCH.parse(cached);
     }
-    this.searches.take(this.options.now().getTime());
     const url = `${SEARCH_URL}?q=${encodeURIComponent(text)}&page_size=${String(SEARCH_SIZE)}&fields=${OFF_FIELDS}`;
     const answer = SEARCH_ANSWER.parse(await this.get(url, [200]));
     const candidates = answer.hits.flatMap((hit) => {
@@ -110,7 +83,7 @@ export class FoodLookup {
     try {
       response = await this.options.fetch(url, {
         headers: {
-          'User-Agent': `SmartEverything/${this.options.version} (self-hosted smart home hub)`,
+          'User-Agent': userAgentOf(this.options),
           Accept: 'application/json',
         },
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -118,7 +91,7 @@ export class FoodLookup {
     } catch (cause) {
       throw new ApiError(
         'upstream_failed',
-        `Open Food Facts could not be reached: ${cause instanceof Error ? cause.message : String(cause)}`,
+        `Open Food Facts could not be reached: ${messageOf(cause)}`,
       );
     }
     if (response.status === 429) {

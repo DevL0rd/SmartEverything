@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { DEVICE_GROUP_INPUT, DEVICE_GROUP_ROW } from '../device-groups';
 import { TARGET_CHANGE } from '../device-group-commands';
+import { SKIPPED_MEMBER } from '../target-result';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, NOTHING } from './primitives';
 import { COMMAND_ROW } from './rows-home';
 
 const PARAMS = z.strictObject({ groupId: ID });
-const SKIPPED = z.strictObject({ deviceId: ID, reason: z.string() });
 export const DEVICE_GROUP_ENDPOINTS = {
   listDeviceGroups: endpoint({
     method: 'GET',
@@ -57,6 +57,6 @@ export const DEVICE_GROUP_ENDPOINTS = {
     params: NOTHING,
     query: NOTHING,
     body: TARGET_CHANGE,
-    response: z.strictObject({ commands: z.array(COMMAND_ROW), skipped: z.array(SKIPPED) }),
+    response: z.strictObject({ commands: z.array(COMMAND_ROW), skipped: z.array(SKIPPED_MEMBER) }),
   }),
 } as const;

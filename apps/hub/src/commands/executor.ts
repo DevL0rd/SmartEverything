@@ -1,6 +1,8 @@
 import type { DeviceEffects } from './effects';
+import type { TelevisionRouting } from './television-routing';
 import { CommandLanes } from './lanes';
 import {
+  capabilityOf,
   CAPABILITY_KEY,
   HUB_COMMAND,
   isHubCapability,
@@ -14,6 +16,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { CommandOutcome, CommandRow, HubDatabase } from '../database/port';
 import type { DeviceDriverRegistry } from '../local/device-driver';
 import type { Inventory } from '../state/inventory';
+import { background, failureLine } from '@smarteverything/logging';
 
 export interface AdapterDirectory {
   readonly adapterFor: (provider: Provider) => ProviderAdapter | undefined;
@@ -28,6 +31,7 @@ export interface CommandExecutorOptions {
   readonly log: Logger;
   readonly now: () => Date;
   readonly effects?: DeviceEffects;
+  readonly television?: TelevisionRouting;
 }
 
 class CommandTargetError extends Error {
@@ -46,13 +50,52 @@ export class ProviderNotRunningError extends Error {
   }
 }
 
-export function describeError(cause: unknown): string {
-  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+interface QueuedCommand {
+  readonly row: CommandRow;
+  readonly authorize: (() => void) | undefined;
+  absorbed: readonly QueuedCommand[];
+  replaced: boolean;
+  successor: Promise<void> | undefined;
+}
+
+function sameRequester(
+  previous: QueuedCommand,
+  row: CommandRow,
+  authorize: (() => void) | undefined,
+): boolean {
+  return (
+    previous.authorize === authorize &&
+    previous.row.source === row.source &&
+    previous.row.requested_by === row.requested_by
+  );
+}
+
+function absorbedOutcome(
+  authorize: (() => void) | undefined,
+  by: string,
+  replacement: CommandOutcome | undefined,
+): CommandOutcome {
+  try {
+    authorize?.();
+  } catch (cause) {
+    return { status: 'failed', error: failureLine(cause) };
+  }
+  if (replacement === undefined) {
+    return { status: 'failed', error: 'A newer command replaced this one and did not run.' };
+  }
+  return replacement.status === 'succeeded'
+    ? { status: 'succeeded', result: { superseded: true, by } }
+    : replacement;
+}
+
+function laneKey(deviceId: string | null, capability: string): string {
+  return JSON.stringify([deviceId, capability]);
 }
 
 export class CommandExecutor {
-  private readonly lanes = new CommandLanes();
-  private readonly admissions = new CommandLanes();
+  private readonly lane = new CommandLanes();
+  private readonly queued = new Map<string, QueuedCommand>();
+  private readonly held = new Map<string, Set<Promise<void>>>();
   private readonly intended = new Map<
     string,
     { readonly value: JsonValue; readonly completedAt: number; readonly expiresAt: number }
@@ -64,7 +107,7 @@ export class CommandExecutor {
   async catchUp(): Promise<number> {
     const rows = await this.options.store.pendingCommands();
     for (const row of rows) {
-      void this.run(row);
+      background(this.run(row), 'executor.run_failed');
     }
     return rows.length;
   }
@@ -78,13 +121,10 @@ export class CommandExecutor {
     if (running !== undefined) {
       return running;
     }
-    const dispatch = (): Promise<void> =>
-      this.lanes.run(JSON.stringify([row.device_id, row.capability]), () =>
-        this.authorizedExecute(row, authorize),
-      );
-    const execution = admitted
-      ? dispatch()
-      : this.admissions.run(JSON.stringify([row.device_id, row.capability]), dispatch);
+    const key = laneKey(row.device_id, row.capability);
+    const held = admitted ? this.held.get(key) : undefined;
+    const execution =
+      held === undefined ? this.enqueue(key, row, authorize) : this.runHeld(held, row, authorize);
     const work = execution.finally(() => {
       this.inFlight.delete(row.id);
     });
@@ -93,14 +133,82 @@ export class CommandExecutor {
   }
 
   admit<T>(deviceId: string | null, capability: string, work: () => Promise<T>): Promise<T> {
-    const key = JSON.stringify([deviceId, capability]);
-    return this.admissions.run(key, async () => {
-      await this.lanes.run(key, () => Promise.resolve());
-      return work();
+    const key = laneKey(deviceId, capability);
+    this.queued.delete(key);
+    return this.lane.run(key, async () => {
+      const held = new Set<Promise<void>>();
+      this.held.set(key, held);
+      try {
+        return await work();
+      } finally {
+        await Promise.allSettled(held);
+        this.held.delete(key);
+      }
     });
   }
+
+  private runHeld(
+    held: Set<Promise<void>>,
+    row: CommandRow,
+    authorize?: () => void,
+  ): Promise<void> {
+    const work = this.authorizedExecute(row, authorize).then(() => undefined);
+    held.add(work);
+    return work;
+  }
+
+  private enqueue(key: string, row: CommandRow, authorize?: () => void): Promise<void> {
+    const entry: QueuedCommand = {
+      row,
+      authorize,
+      absorbed: [],
+      replaced: false,
+      successor: undefined,
+    };
+    const previous = this.queued.get(key);
+    const coalescible = this.coalescible(row);
+    const replaced =
+      coalescible && previous !== undefined && sameRequester(previous, row, authorize)
+        ? previous
+        : undefined;
+    if (replaced !== undefined) {
+      this.options.log.debug('command.coalesced', {
+        correlationId: row.id,
+        replacedId: replaced.row.id,
+        capability: row.capability,
+        deviceId: row.device_id,
+      });
+      entry.absorbed = [...replaced.absorbed, replaced];
+      replaced.absorbed = [];
+      replaced.replaced = true;
+    }
+    if (coalescible) this.queued.set(key, entry);
+    else this.queued.delete(key);
+    const done = this.lane
+      .run(key, async () => {
+        if (this.queued.get(key) === entry) this.queued.delete(key);
+        if (entry.replaced) return;
+        const outcome = await this.authorizedExecute(row, authorize);
+        await this.finishAbsorbed(entry.absorbed, row.id, outcome);
+      })
+      .then(() => entry.successor);
+    if (replaced !== undefined) replaced.successor = done;
+    return done;
+  }
+
+  private coalescible(row: CommandRow): boolean {
+    if (row.device_id === null || row.status !== 'pending' || isHubCapability(row.capability)) {
+      return false;
+    }
+    const device = this.options.inventory.deviceById(row.device_id);
+    const capability = CAPABILITY_KEY.safeParse(row.capability);
+    if (device === undefined || !capability.success) return false;
+    const descriptor = capabilityOf(device, capability.data);
+    return descriptor?.access === 'read_write' && descriptor.value.kind !== 'action';
+  }
+
   intendedValue(deviceId: string, capability: string, observedAt?: string): JsonValue | undefined {
-    const key = JSON.stringify([deviceId, capability]);
+    const key = laneKey(deviceId, capability);
     const intended = this.intended.get(key);
     if (intended === undefined) return undefined;
     if (
@@ -116,33 +224,64 @@ export class CommandExecutor {
   private async authorizedExecute(
     row: CommandRow,
     authorize: (() => void) | undefined,
-  ): Promise<void> {
+  ): Promise<CommandOutcome | undefined> {
     try {
       authorize?.();
     } catch (cause) {
-      await this.options.store.finishCommand(row.id, {
-        status: 'failed',
-        error: describeError(cause),
-      });
-      return;
+      const outcome: CommandOutcome = { status: 'failed', error: failureLine(cause) };
+      await this.options.store.finishCommand(row.id, outcome);
+      return outcome;
     }
-    await this.execute(row, authorize);
+    return this.execute(row, authorize);
   }
 
-  private async execute(row: CommandRow, authorize?: () => void): Promise<void> {
+  private async finishAbsorbed(
+    absorbed: readonly QueuedCommand[],
+    by: string,
+    replacement: CommandOutcome | undefined,
+  ): Promise<void> {
+    for (const { row, authorize } of absorbed) {
+      const log = this.options.log.child({ correlationId: row.id });
+      try {
+        await this.options.store.finishCommand(row.id, absorbedOutcome(authorize, by, replacement));
+        log.info('command.superseded', {
+          capability: row.capability,
+          deviceId: row.device_id,
+          by,
+        });
+      } catch (cause) {
+        log.error('command.not_recorded', cause, { capability: row.capability });
+      }
+    }
+  }
+
+  private async execute(
+    row: CommandRow,
+    authorize?: () => void,
+  ): Promise<CommandOutcome | undefined> {
     const log = this.options.log.child({ correlationId: row.id });
+    const startedAt = this.options.now().getTime();
+    const fields = {
+      capability: row.capability,
+      deviceId: row.device_id,
+      source: row.source,
+      requestedBy: row.requested_by,
+      queuedMs: Math.max(0, startedAt - Date.parse(row.created_at)),
+    };
     try {
-      if (Date.parse(row.expires_at) <= this.options.now().getTime()) {
-        await this.options.store.finishCommand(row.id, { status: 'expired' });
-        log.warn('command.expired', { capability: row.capability });
-        return;
+      if (Date.parse(row.expires_at) <= startedAt) {
+        const expired: CommandOutcome = { status: 'expired' };
+        await this.options.store.finishCommand(row.id, expired);
+        log.warn('command.expired', fields);
+        return expired;
       }
       if (!(await this.options.store.claimCommand(row.id, row.status))) {
-        log.debug('command.already_claimed', { capability: row.capability });
-        return;
+        log.debug('command.already_claimed', () => ({ ...fields, status: row.status }));
+        return undefined;
       }
+      log.debug('command.started', fields);
       const outcome = await this.outcomeOf(row, authorize);
-      const key = JSON.stringify([row.device_id, row.capability]);
+      const key = laneKey(row.device_id, row.capability);
       if (outcome.status === 'succeeded')
         this.intended.set(key, {
           value: row.value,
@@ -151,14 +290,22 @@ export class CommandExecutor {
         });
       else this.intended.delete(key);
       await this.options.store.finishCommand(row.id, outcome);
-      this.options.effects?.finished(row);
-      log.info(`command.${outcome.status}`, {
-        capability: row.capability,
-        ...(outcome.status === 'failed' ? { error: outcome.error } : {}),
-      });
+      this.report(log, outcome, { ...fields, durationMs: this.since(startedAt) });
+      return outcome;
     } catch (cause) {
-      log.error('command.not_recorded', cause, { capability: row.capability });
+      log.error('command.not_recorded', cause, { ...fields, durationMs: this.since(startedAt) });
+      return undefined;
     }
+  }
+
+  private since(startedAt: number): number {
+    return this.options.now().getTime() - startedAt;
+  }
+
+  private report(log: Logger, outcome: CommandOutcome, fields: Record<string, unknown>): void {
+    if (outcome.status === 'failed')
+      log.warn('command.failed', { ...fields, error: outcome.error });
+    else log.info(`command.${outcome.status}`, fields);
   }
 
   private async outcomeOf(row: CommandRow, authorize?: () => void): Promise<CommandOutcome> {
@@ -171,7 +318,7 @@ export class CommandExecutor {
         : await this.executeOnDevice(this.options.effects?.prepare(row) ?? row);
       return { status: 'succeeded', result };
     } catch (cause) {
-      return { status: 'failed', error: describeError(cause) };
+      return { status: 'failed', error: failureLine(cause) };
     }
   }
 
@@ -194,7 +341,18 @@ export class CommandExecutor {
     if (driver !== null) {
       return driver.execute(command);
     }
+    if (this.options.television?.handles(device, command) === true) {
+      return this.options.television.execute(device, command);
+    }
     const adapter = this.options.adapters.adapterFor(device.provider);
+    this.options.log.debug('command.dispatched', {
+      correlationId: row.id,
+      provider: device.provider,
+      deviceId: device.id,
+      externalId: device.externalId,
+      capability,
+      running: adapter !== undefined,
+    });
     if (adapter === undefined) {
       throw new ProviderNotRunningError(device.provider);
     }

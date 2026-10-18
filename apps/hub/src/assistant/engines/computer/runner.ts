@@ -1,9 +1,8 @@
-import { z } from 'zod';
+import { CONNECTION_LOST, HUB_RESTARTED, STOPPED_BY_USER } from '../../interruption';
 import {
   ApiError,
-  PROVIDER_EVENT,
-  CODEX_PROVIDER_EVENT,
   type AiChatRow,
+  type AssistantReasonCode,
   type Engine as ChatEngine,
   type JsonValue,
   type ChatActivityNotice,
@@ -12,28 +11,32 @@ import {
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import { StoreNotFoundError } from '../../../store/context';
 import type { Engine, EngineStatus } from '../engine';
-import type { SideRequest } from '../../side-completion';
+import { ComputerTrace } from './runner-trace';
 import { openProviderTurn } from './turn';
-import { providerAuxiliary } from '../claude/auxiliary';
 import { providerInput } from './input';
 import { ProviderState, type ComputerControl, type ComputerEvent } from './provider-state';
-import { runtimeValue } from './request';
+import { failureLifecycle, interruptJob, publishProviderEvent } from './provider-wire';
 import { NativeCommands } from './native-commands';
 import { computerEngineStatus } from './engine-status';
 import { providerAgents } from './agents';
 import { subscriptionUsage } from './subscription-usage';
+import { noteContext } from './context-meter';
+import { settleSteered, steerTurn } from './steer';
 import { bridgeTool, receiveToolResult } from './tool-feed';
 import { streamNativeTools, streamDelta, isReplyEvent, type ReplyEvent } from './runtime-tools';
 export type { Turn, ComputerRunnerDeps } from './ports';
 import type { Turn, ComputerRunnerDeps } from './ports';
+import { messageOf } from '@smarteverything/logging';
 
 export class ComputerRunner {
   readonly state: ProviderState;
   readonly commands: NativeCommands;
   private readonly turns = new Map<string, Turn>();
+  private readonly trace: ComputerTrace;
   private readonly unsubscribe: () => void;
 
   constructor(private readonly deps: ComputerRunnerDeps) {
+    this.trace = new ComputerTrace(deps.log, deps.runtime);
     this.state = new ProviderState(deps.store, deps.directory, deps.runtime, deps.now);
     deps.store.aiProvider.interruptRestart();
     this.commands = new NativeCommands(deps, this.state, (chatId): boolean =>
@@ -63,15 +66,10 @@ export class ComputerRunner {
     return {
       kind: this.deps.runtime,
       ownerOnly: true,
-      ...(this.deps.runtime === 'claude'
-        ? {
-            auxiliary: (request: SideRequest): Promise<string> =>
-              providerAuxiliary(this.deps, request),
-          }
-        : {}),
       historyChanged: (chat): Promise<void> => this.historyChanged(chat),
       status: (chat) => this.status(chat),
       deliver: (event, chat) => this.deliver(event, chat),
+      steer: (event, chat): Promise<boolean> => this.steer(event, chat),
       compact: (chat, clientId): Promise<boolean> => {
         this.state.bound(chat);
         if (this.turns.has(chat.id))
@@ -79,23 +77,18 @@ export class ComputerRunner {
         return this.commands.compact(chat, clientId);
       },
       interrupt: async (chat): Promise<void> => {
-        const state = this.state.bound(chat);
-        await runtimeValue(
-          this.deps.directory,
-          { device_id: state.device_id, runtime: this.deps.runtime },
-          this.deps.runtime === 'claude'
-            ? {
-                runtime: 'claude',
-                request: { operation: 'provider_interrupt', job_id: state.job_id },
-              }
-            : {
-                runtime: 'codex',
-                request: { operation: 'provider_interrupt', job_id: state.job_id },
-              },
-          INTERRUPT_REPLY,
-        );
+        await interruptJob(this.deps, this.state.bound(chat));
       },
     };
+  }
+
+  private steer(event: StoredEvent, chat: AiChatRow): Promise<boolean> {
+    const turn = this.turns.get(chat.id);
+    return steerTurn(
+      this.deps,
+      { state: this.state, turn, chat, current: () => this.turns.get(chat.id) === turn },
+      event,
+    );
   }
 
   private async historyChanged(chat: AiChatRow): Promise<void> {
@@ -175,7 +168,7 @@ export class ComputerRunner {
   stop(): void {
     this.unsubscribe();
     this.commands.stop();
-    for (const turn of this.turns.values()) this.fail(turn, 'Stopped by a server restart.');
+    for (const turn of this.turns.values()) this.fail(turn, HUB_RESTARTED, 'close', 'interrupted');
   }
 
   private status(chat: AiChatRow): EngineStatus {
@@ -192,15 +185,19 @@ export class ComputerRunner {
       if (chat.engine.kind !== this.deps.runtime)
         throw new ApiError('conflict', 'This is not a Claude provider chat.');
       const reason = this.status(chat).reason;
-      if (reason !== null) throw new ApiError('claude_not_ready', reason);
+      if (reason !== null) {
+        this.trace.notReady(chat, event, reason);
+        throw new ApiError('claude_not_ready', reason);
+      }
       this.commands.guard(chat);
       turn = openProviderTurn(this.deps, event, chat);
       this.turns.set(chat.id, turn);
+      this.trace.started(turn, this.turns.size);
       await this.submit(turn);
       await turn.done;
     } catch (cause) {
-      const reason =
-        cause instanceof Error ? cause.message : 'The selected Claude computer failed.';
+      this.trace.errored(chat, event, turn, cause);
+      const reason = messageOf(cause);
       if (turn !== null) this.fail(turn, reason);
       else {
         this.deps.conversation.failedMessage(event.message_id, reason, 'unknown');
@@ -236,6 +233,7 @@ export class ComputerRunner {
         ? (await this.deps.directory.startTurn(input.turn)).session_id
         : await this.codexStart(input);
     const current = this.state.read(chat);
+    this.trace.submitted(turn, sessionId, current.job_id === turn.jobId);
     if (current.job_id === turn.jobId && sessionId !== null)
       this.state.save(chat, { ...current, session_id: sessionId });
   }
@@ -259,30 +257,8 @@ export class ComputerRunner {
       this.state.read(chat).subscription_usage,
     );
     if (usage !== undefined) this.deps.store.aiProvider.saveSubscriptionUsage(chat.id, usage);
-    if (this.deps.runtime === 'claude')
-      this.deps.providerNotice(
-        {
-          type: 'ai_chat_provider',
-          chat_id: chat.id,
-          device_id: chat.engine.device_id,
-          job_id: event.job_id,
-          event: PROVIDER_EVENT.parse(event),
-        },
-        chat.profile_id,
-      );
-    else
-      this.deps.runtimeNotice?.(
-        {
-          type: 'ai_chat_runtime_provider',
-          runtime: 'codex',
-          chat_id: chat.id,
-          device_id: chat.engine.device_id,
-          profile_id: chat.profile_id,
-          job_id: event.job_id,
-          event: CODEX_PROVIDER_EVENT.parse(event),
-        },
-        chat.profile_id,
-      );
+    noteContext(this.deps.store, chat, event);
+    publishProviderEvent(this.deps, chat, chat.engine.device_id, event);
     const turn = this.turns.get(chat.id);
     if (turn?.jobId !== event.job_id || this.turns.get(turn.chat.id) !== turn) return;
     this.feed(turn, event);
@@ -308,6 +284,7 @@ export class ComputerRunner {
         streamNativeTools(turn.stream, event);
         return;
       case 'tool_call':
+        this.trace.toolRequested(turn, event.name, event.call_id);
         bridgeTool(
           {
             deps: this.deps,
@@ -326,28 +303,38 @@ export class ComputerRunner {
         return;
       case 'prompt':
       case 'dialog':
+        this.trace.waiting(turn, event.kind);
         turn.stream.snapshot('tool', null, null);
         return;
       case 'completed':
         this.complete(turn, event.interrupted);
         return;
       case 'failed':
-        this.fail(turn, event.message, failureLifecycle(this.deps.runtime, event.code));
+        this.failed(turn, event);
         return;
     }
   }
 
+  private failed(turn: Turn, event: Extract<ComputerEvent, { kind: 'failed' }>): void {
+    const lifecycle = failureLifecycle(this.deps.runtime, event.code);
+    if (event.code === 'computer_disconnected')
+      this.fail(turn, CONNECTION_LOST, lifecycle, 'interrupted');
+    else this.fail(turn, event.message, lifecycle);
+  }
+
   private complete(turn: Turn, interrupted: boolean): void {
     if (interrupted) {
-      this.fail(turn, 'Stopped.', 'retained');
+      this.fail(turn, STOPPED_BY_USER, 'retained', 'stopped');
       return;
     }
     if (this.turns.get(turn.chat.id) !== turn) return;
     const text = turn.replies.fullText();
+    this.trace.finished(turn, text.length);
     turn.replies.finish(turn.stream.settled());
     this.deps.conversation.stateOf(turn.event.message_id, 'answered');
     turn.stream.snapshot('idle', 'stop', null);
     this.deps.finished(turn.event, text, true);
+    settleSteered(this.deps, turn, { ok: true, text });
     this.close(turn);
   }
 
@@ -355,11 +342,13 @@ export class ComputerRunner {
     turn: Turn,
     reason: string,
     lifecycle: 'close' | 'retained' | 'unavailable' | 'unknown' = 'close',
+    code: AssistantReasonCode = 'unknown',
   ): void {
     if (this.turns.get(turn.chat.id) !== turn) return;
-    turn.replies.fail(reason, turn.stream.settled());
+    this.trace.failed(turn, { lifecycle, code, reason });
+    turn.replies.fail(reason, turn.stream.settled(), code);
     if (lifecycle === 'close') this.release(turn);
-    this.deps.conversation.failedMessage(turn.event.message_id, reason, 'unknown');
+    this.deps.conversation.failedMessage(turn.event.message_id, reason, code);
     turn.stream.snapshot('failed', 'error', reason.slice(0, 400));
     const state = this.state.read(turn.chat);
     if (state.job_id === turn.jobId) {
@@ -378,6 +367,7 @@ export class ComputerRunner {
       );
     }
     this.deps.finished(turn.event, reason, false);
+    settleSteered(this.deps, turn, { ok: false, reason, code });
     this.close(turn);
   }
 
@@ -393,13 +383,9 @@ export class ComputerRunner {
   }
 
   private close(turn: Turn): void {
+    this.trace.closed(turn.chat.id);
     turn.stream.close();
     this.turns.delete(turn.chat.id);
     turn.finish();
   }
-}
-const INTERRUPT_REPLY = z.strictObject({ interrupted: z.boolean() });
-
-function failureLifecycle(runtime: string, code: string): 'unknown' | 'unavailable' {
-  return runtime === 'codex' && code === 'computer_disconnected' ? 'unknown' : 'unavailable';
 }

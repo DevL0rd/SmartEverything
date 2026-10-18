@@ -29,8 +29,8 @@ export function validateCliAction(
   if (engine !== null) {
     const selections = context.assistant.selections;
     if (selections === null)
-      throw new ApiError('conflict', 'The native Claude provider is starting.');
-    selections.validate(engine, 'owner');
+      throw new ApiError('conflict', 'Claude on this computer is starting. Try again in a moment.');
+    selections.validate(engine, { role: 'owner', profileId: scope.chat.profile_id });
   }
 }
 export async function applyCliAction(

@@ -1,6 +1,7 @@
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { SessionBus } from '../node/controls/linux/dbus-session';
+import { messageOf } from '@smarteverything/logging';
 
 const SLEEP_BODY = z.tuple([z.boolean()]);
 const NO_SYSTEM_BUS = /ENOENT|ECONNREFUSED/;
@@ -17,10 +18,6 @@ export interface LogindWatchOptions {
   readonly onResume: () => void;
 }
 
-function describe(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
 export function watchLogind(bus: ResumeBus, options: LogindWatchOptions): () => void {
   const { log } = options;
   let reported = false;
@@ -29,10 +26,10 @@ export function watchLogind(bus: ResumeBus, options: LogindWatchOptions): () => 
       return;
     }
     reported = true;
-    if (NO_SYSTEM_BUS.test(describe(cause))) {
+    if (NO_SYSTEM_BUS.test(messageOf(cause))) {
       log.warn('clock.resume_watch_unavailable', {
         reason: 'no_system_bus',
-        detail: describe(cause),
+        detail: messageOf(cause),
         consequence: 'timers will not re-arm after the host sleeps',
       });
       return;

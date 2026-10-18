@@ -1,3 +1,4 @@
+import type { PersonBudget } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import type { OwnerAlerts } from '../extensions/owner-alerts';
@@ -27,13 +28,13 @@ export function startBudget(parts: BudgetParts): Budget {
   );
   const budget = new Budget({
     ledger: store.ledger,
-    settings: {
-      read: (key): Readonly<Record<string, unknown>> | null => store.aiChats.setting(key),
-      save: (key, settings): void => {
-        store.aiChats.saveSetting(key, settings);
-      },
-    },
+    settings: store.settingsKv,
     credits,
+    people: {
+      budget: (profileId): PersonBudget | null | undefined => store.personAccess.budget(profileId),
+      budgeted: (): readonly string[] => store.personAccess.budgetedIds(),
+      name: (profileId): string => store.profiles.byId(profileId).name,
+    },
     alerts: parts.alerts,
     note: parts.note,
     now: clock.now,

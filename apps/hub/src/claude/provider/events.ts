@@ -10,6 +10,7 @@ export type ProviderPayload = ProviderEvent extends infer E
 export function resultEvents(
   message: SDKResultMessage,
   interrupted: boolean,
+  contextPercent: number | null,
 ): readonly ProviderPayload[] {
   const usage: ProviderPayload = {
     kind: 'usage',
@@ -18,6 +19,7 @@ export function resultEvents(
     cache_read_tokens: message.usage.cache_read_input_tokens,
     cache_write_tokens: message.usage.cache_creation_input_tokens,
     cost_usd: message.total_cost_usd,
+    context_percent: contextPercent,
   };
   if (interrupted)
     return [usage, { kind: 'completed', session_id: message.session_id, interrupted: true }];

@@ -1,9 +1,8 @@
-import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import {
   addSyncProgressListener,
   cancelSchedule,
-  configure,
+  configureServer,
   getStatus,
   healthConnectConfigured,
   grantedPermissions,
@@ -19,6 +18,7 @@ import {
   type SyncReport,
 } from '../../../../modules/health-connect';
 import { createHealthSource } from '../../../api/health';
+import type { RelayServer } from '../../profiles';
 
 const log = new Logger('app.health-connect');
 
@@ -38,49 +38,60 @@ class HealthConnectUnavailableError extends Error {
   }
 }
 
-class NoPublicUrlError extends Error {
-  override readonly name = 'NoPublicUrlError';
-
-  constructor() {
-    super('Set your server’s public address on the desktop app first.');
-  }
+export function grantedNothing(grants: HealthConnectGrants): boolean {
+  return grants.types.length === 0 && (grants.writeTypes ?? []).length === 0;
 }
 
-function ingestEndpoint(publicUrl: string | null): string {
-  if (publicUrl === null) {
-    throw new NoPublicUrlError();
-  }
-  return `${publicUrl.replace(/\/+$/, '')}${E.ingestHealth.path}`;
-}
-
-export async function connectPhone(
+async function connectSteps(
+  server: RelayServer,
   deviceName: string,
-  publicUrl: string | null,
   intervalMinutes: number,
   connected: boolean,
 ): Promise<HealthConnectGrants> {
-  const run = log.operation('health.connect');
   const status = await getStatus();
+  log.info('health.connect_status', { sdk: status.sdk });
   if (status.sdk !== 'available') {
     throw new HealthConnectUnavailableError(status.sdk);
   }
   const grants = await requestAllPermissions();
-  if (grants.types.length === 0 && grants.writeTypes?.length === 0) {
-    run.succeeded({ types: 0, background: false });
+  log.info('health.connect_permissions', {
+    reads: grants.types.length,
+    writes: (grants.writeTypes ?? []).length,
+    background: grants.background,
+  });
+  if (grantedNothing(grants)) {
     return grants;
   }
-  if (!connected || !(await healthConnectConfigured())) {
-    const endpoint = ingestEndpoint(publicUrl);
-    const token = await createHealthSource(deviceName);
-    await configure({ endpoint, token });
+  await configureServer(server.url, server.token);
+  if (!connected) {
+    await createHealthSource(deviceName);
+    log.info('health.connect_source_created');
   }
   await scheduleSync(intervalMinutes);
-  run.succeeded({ types: grants.types.length, background: grants.background });
   return grants;
 }
 
-export function readHealthConnectStatus(): Promise<HealthConnectStatus> {
-  return getStatus();
+export async function connectPhone(
+  server: RelayServer,
+  deviceName: string,
+  intervalMinutes: number,
+  connected: boolean,
+): Promise<HealthConnectGrants> {
+  const run = log.operation('health.connect', { connected });
+  try {
+    const grants = await connectSteps(server, deviceName, intervalMinutes, connected);
+    run.succeeded({ types: grants.types.length, background: grants.background });
+    return grants;
+  } catch (error: unknown) {
+    run.failed(error);
+    throw error;
+  }
+}
+
+export async function readHealthConnectStatus(): Promise<HealthConnectStatus> {
+  const status = await getStatus();
+  log.debug('health.status_read', { sdk: status.sdk });
+  return status;
 }
 
 export function readGrants(): Promise<HealthConnectGrants> {
@@ -91,8 +102,16 @@ export function readLastSync(): Promise<SyncReport | null> {
   return lastSync();
 }
 
-export function syncPhoneNow(): Promise<SyncReport> {
-  return syncNow();
+export async function syncPhoneNow(): Promise<SyncReport> {
+  const operation = log.operation('health.sync_now');
+  try {
+    const report = await syncNow();
+    operation.succeeded({ outcome: report.outcome, records: report.records });
+    return report;
+  } catch (error) {
+    operation.failed(error);
+    throw error;
+  }
 }
 
 export async function syncWhenOpened(): Promise<void> {
@@ -111,6 +130,7 @@ export async function syncWhenOpened(): Promise<void> {
 
 export async function applySyncSchedule(intervalMinutes: number): Promise<void> {
   if (!(await healthConnectConfigured())) {
+    log.debug('health.schedule_skipped', { reason: 'not-configured' });
     return;
   }
   await scheduleSync(intervalMinutes);

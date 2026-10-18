@@ -1,6 +1,4 @@
-import type { AiChatRow, AssistantMessageRow } from '@smarteverything/domain';
-import { plural } from '../../../format/text';
-import { CONTEXT_WARNS_AT } from './chat-subline';
+import type { AiChatRow, AiHarnessTarget, AssistantMessageRow } from '@smarteverything/domain';
 
 export interface FooterFacts {
   readonly costMicros: number;
@@ -22,14 +20,50 @@ export function footerFacts(
   return facts.costMicros <= 0 && facts.context === null ? null : facts;
 }
 
-export function contextTone(percent: number): 'primary' | 'warning' {
-  return percent >= CONTEXT_WARNS_AT ? 'warning' : 'primary';
+const COMPACT_SHOWN_AT = 60;
+
+export function compactShown(percent: number | null): boolean {
+  return percent !== null && percent >= COMPACT_SHOWN_AT;
 }
 
-export function repliesLabel(count: number): string {
-  return plural(count, 'reply', 'replies');
+export interface ExecutionFacts {
+  readonly runtime: string | null;
+  readonly host: string;
+  readonly path: string | null;
+  readonly offline: boolean;
+  readonly switchingTo: string | null;
 }
 
-export function filesLabel(count: number): string {
-  return plural(count, 'file');
+export interface ExecutionLine {
+  readonly text: string;
+  readonly warning: boolean;
+  readonly cancel: (() => void) | null;
+}
+
+export function executionFolderPath(
+  target: AiHarnessTarget,
+  sessionPath: string | null,
+): string | null {
+  return target.kind === 'server' ? null : sessionPath;
+}
+
+function folderName(path: string | null): string | null {
+  const segment = path?.split(/[\\/]/u).findLast((part) => part.length > 0);
+  return segment === undefined || segment === '~' ? null : segment;
+}
+
+export function executionLineOf(facts: ExecutionFacts): ExecutionLine {
+  if (facts.switchingTo !== null) {
+    return {
+      text: `Switching to ${facts.switchingTo} after the current step…`,
+      warning: false,
+      cancel: null,
+    };
+  }
+  if (facts.offline) {
+    return { text: `${facts.host} is offline`, warning: true, cancel: null };
+  }
+  const where = facts.runtime === null ? facts.host : `${facts.runtime} on ${facts.host}`;
+  const folder = folderName(facts.path);
+  return { text: folder === null ? where : `${where} · ${folder}`, warning: false, cancel: null };
 }

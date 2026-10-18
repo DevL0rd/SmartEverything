@@ -1,15 +1,16 @@
 import { WIDGET_TYPE } from '@smarteverything/domain';
 import type {
-  BoardClass,
   BoardDefaults,
   BoardWidget,
   WidgetDefinition,
   WidgetSize,
 } from '../../components/widget-board';
+import { DEVICE_GROUP_WIDGET, lightGroupWidgets, type LightGroupDefault } from '../device-groups';
 import { APP_PLUGINS } from '../../plugins/registry';
 import { CAMERA_WIDGETS, type CameraEntry } from '../cameras';
 import { CLIMATE_WIDGETS } from '../climate';
 import type { DeviceDigest } from './model/spotlight';
+import { HOME_WIDGET_SIZES, type HomeSizedType } from './model/widget-sizes';
 import { nutritionWidgets, useTodayKey } from '../nutrition';
 import { BODY_WIDGET } from '../fitness';
 import { PHONE_WIDGET } from '../phone';
@@ -31,10 +32,9 @@ import {
 
 export const HOME_PAGE = 'home';
 
-function sizes(
-  ...allowed: readonly WidgetSize[]
-): Readonly<Record<BoardClass, readonly WidgetSize[]>> {
-  return { compact: allowed, medium: allowed, expanded: allowed };
+function layoutOf(type: HomeSizedType): Pick<WidgetDefinition, 'sizes' | 'defaultSize'> {
+  const { sizes, defaultSize } = HOME_WIDGET_SIZES[type];
+  return { sizes: { compact: sizes, medium: sizes, expanded: sizes }, defaultSize };
 }
 
 class HomeWidgetTypeError extends Error {
@@ -47,14 +47,11 @@ class HomeWidgetTypeError extends Error {
   }
 }
 
-function scoped(definition: WidgetDefinition): WidgetDefinition {
+function checked(definition: WidgetDefinition): WidgetDefinition {
   if (!WIDGET_TYPE.safeParse(definition.type).success) {
     throw new HomeWidgetTypeError(definition.type);
   }
-  return {
-    ...definition,
-    render: (props) => <HomeScope>{definition.render(props)}</HomeScope>,
-  };
+  return definition;
 }
 
 const HOME_CATALOGUE: readonly WidgetDefinition[] = [
@@ -63,28 +60,34 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
     title: 'Indoors',
     icon: 'thermometer',
     group: 'Home',
-    sizes: sizes('W'),
-    defaultSize: 'W',
-    render: ({ size }) => <GlanceWidget size={size} />,
+    ...layoutOf('glance'),
+    render: () => (
+      <HomeScope field="readings">
+        <GlanceWidget />
+      </HomeScope>
+    ),
   },
   {
     type: 'weather',
     title: 'Weather',
     icon: 'weather',
     group: 'Home',
-    sizes: sizes('S', 'M', 'W', 'L', 'XL'),
-    defaultSize: 'W',
-    render: ({ size }) => <WeatherWidget size={size} />,
+    ...layoutOf('weather'),
+    render: () => <WeatherWidget />,
   },
   SPOTLIGHT_WIDGET,
+  DEVICE_GROUP_WIDGET,
   {
     type: 'favourites',
     title: 'Favourites',
     icon: 'star',
     group: 'Devices',
-    sizes: sizes('L', 'XL'),
-    defaultSize: 'L',
-    render: ({ size, editing }) => <FavouritesWidget size={size} editing={editing} />,
+    ...layoutOf('favourites'),
+    render: ({ editing }) => (
+      <HomeScope field="favourites">
+        <FavouritesWidget editing={editing} />
+      </HomeScope>
+    ),
   },
   ...CAMERA_WIDGETS.filter((definition) => definition.type === 'camera'),
   {
@@ -92,54 +95,72 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
     title: 'Rooms',
     icon: 'grid',
     group: 'Home',
-    sizes: sizes('M', 'L', 'W'),
-    defaultSize: 'M',
-    render: ({ size }) => <RoomsWidget size={size} />,
+    ...layoutOf('rooms'),
+    render: () => (
+      <HomeScope field="rooms">
+        <RoomsWidget />
+      </HomeScope>
+    ),
   },
   {
     type: 'activity',
     title: 'Activity',
     icon: 'activity',
     group: 'Home',
-    sizes: sizes('M', 'L', 'XL'),
-    defaultSize: 'L',
-    render: ({ size }) => <ActivityWidget size={size} />,
+    ...layoutOf('activity'),
+    render: () => (
+      <HomeScope field="activity">
+        <ActivityWidget />
+      </HomeScope>
+    ),
   },
   {
     type: 'scenes',
     title: 'Scenes',
     icon: 'sparkles',
     group: 'Home',
-    sizes: sizes('M', 'L', 'W'),
-    defaultSize: 'W',
-    render: ({ size }) => <ScenesWidget size={size} />,
+    ...layoutOf('scenes'),
+    render: () => (
+      <HomeScope field="scenes">
+        <ScenesWidget />
+      </HomeScope>
+    ),
   },
   {
     type: 'energy',
     title: 'Energy',
     icon: 'plug',
     group: 'Home',
-    sizes: sizes('S', 'M'),
-    defaultSize: 'M',
-    render: ({ size }) => <EnergyWidget size={size} />,
+    ...layoutOf('energy'),
+    render: () => (
+      <HomeScope field="power">
+        <EnergyWidget />
+      </HomeScope>
+    ),
   },
   {
     type: 'security',
     title: 'Security',
     icon: 'shield',
     group: 'Home',
-    sizes: sizes('M', 'L'),
-    defaultSize: 'M',
-    render: ({ size }) => <SecurityWidget size={size} />,
+    ...layoutOf('security'),
+    render: () => (
+      <HomeScope field="security">
+        <SecurityWidget />
+      </HomeScope>
+    ),
   },
   {
     type: 'fitness-today',
     title: 'Fitness',
     icon: 'fitness',
     group: 'Health',
-    sizes: sizes('S', 'M', 'W'),
-    defaultSize: 'M',
-    render: ({ size }) => <FitnessTodayWidget size={size} />,
+    ...layoutOf('fitness-today'),
+    render: () => (
+      <HomeScope field="fitness">
+        <FitnessTodayWidget />
+      </HomeScope>
+    ),
   },
   { ...BODY_WIDGET, group: 'Health' },
   { ...WATCH_WIDGET, group: 'Health' },
@@ -154,7 +175,7 @@ const HOME_CATALOGUE: readonly WidgetDefinition[] = [
 
 export const HOME_RETIRED: ReadonlySet<string> = new Set(['devices-all']);
 
-export const HOME_WIDGETS: readonly WidgetDefinition[] = HOME_CATALOGUE.map(scoped);
+export const HOME_WIDGETS: readonly WidgetDefinition[] = HOME_CATALOGUE.map(checked);
 
 function spotlights(digest: DeviceDigest, first: WidgetSize): readonly BoardWidget[] {
   return digest.featured.map((deviceId, index) => ({
@@ -186,37 +207,44 @@ const TAIL: readonly BoardWidget[] = [
   widget('security', 'M'),
 ];
 
-export function homeDefaults(digest: DeviceDigest, cameras: readonly CameraEntry[]): BoardDefaults {
+export function homeDefaults(
+  digest: DeviceDigest,
+  cameras: readonly CameraEntry[],
+  lightGroups: readonly LightGroupDefault[] = [],
+): BoardDefaults {
   return {
     compact: [
       widget('glance', 'W'),
       widget('weather', 'W'),
       widget('scenes', 'W'),
-      ...spotlights(digest, 'L'),
-      widget('favourites', 'L'),
-      ...cameraTiles(cameras, 'M'),
-      widget('rooms', 'M'),
-      widget('activity', 'L'),
-      ...TAIL,
-    ],
-    medium: [
-      widget('glance', 'W'),
-      widget('weather', 'W'),
-      widget('scenes', 'W'),
-      ...spotlights(digest, 'L'),
+      ...spotlights(digest, 'XL'),
+      ...lightGroupWidgets(lightGroups),
       widget('favourites', 'XL'),
       ...cameraTiles(cameras, 'M'),
       widget('rooms', 'M'),
-      widget('activity', 'L'),
+      widget('activity', 'XL'),
+      ...TAIL,
+    ],
+    medium: [
+      widget('glance', 'M'),
+      widget('weather', 'M'),
+      widget('scenes', 'M'),
+      ...spotlights(digest, 'XL'),
+      ...lightGroupWidgets(lightGroups),
+      widget('favourites', 'XL'),
+      ...cameraTiles(cameras, 'M'),
+      widget('rooms', 'M'),
+      widget('activity', 'XL'),
       ...TAIL,
     ],
     expanded: [
-      widget('glance', 'W'),
-      widget('weather', 'W'),
-      widget('scenes', 'W'),
-      ...spotlights(digest, 'L'),
-      widget('favourites', 'L'),
-      widget('activity', 'L'),
+      widget('glance', 'M'),
+      widget('weather', 'M'),
+      widget('scenes', 'M'),
+      ...spotlights(digest, 'XL'),
+      ...lightGroupWidgets(lightGroups),
+      widget('favourites', 'XL'),
+      widget('activity', 'XL'),
       ...cameraTiles(cameras, 'M'),
       widget('rooms', 'M'),
       ...TAIL,

@@ -13,10 +13,10 @@ import okhttp3.Call
 import org.json.JSONObject
 
 data class HubResourceAuthorization(val url: String, val expiresAt: String, val lease: HubLease)
-data class HubResourceIdentity(val binding: HubRouteBinding, val generation: Long, val purpose: String,
+data class HubResourceIdentity(val binding: HubRouteBinding, val purpose: String,
   val origin: String, val path: String, val size: String?)
 
-class HubResourceGrant(val id: String, val binding: HubRouteBinding, val generation: Long,
+class HubResourceGrant(val id: String, val binding: HubRouteBinding,
   url: String, expiresAt: String, val purpose: String, lease: HubLease) {
   @Volatile private var authorization = HubResourceAuthorization(url, expiresAt, lease)
   val url: String get() = authorization.url
@@ -43,7 +43,6 @@ class HubResourceGrant(val id: String, val binding: HubRouteBinding, val generat
   @Volatile var downloaded: HubResourceFile? = null
   private var active = true
   private var expiry: ScheduledFuture<*>? = null
-  private var fileExpiry: ScheduledFuture<*>? = null
   @Synchronized fun expire(task: ScheduledFuture<*>) {
     expiry?.cancel(false)
     if (active) expiry = task else task.cancel(false)
@@ -62,14 +61,10 @@ class HubResourceGrant(val id: String, val binding: HubRouteBinding, val generat
     check(); captured.lease.check()
   }
   @Synchronized fun untrack(call: Call) { calls.remove(call); admissions.remove(call) }
-  @Synchronized fun expireFile(task: ScheduledFuture<*>) {
-    fileExpiry?.cancel(false)
-    if (active) fileExpiry = task else task.cancel(false)
-  }
   fun checkFile(name: String) {
     check()
     val file = downloaded ?: throw IOException("Private resource file is retired")
-    if (file.file.name != name || file.expiresAt <= System.currentTimeMillis()) throw IOException("Private resource file expired")
+    if (file.file.name != name) throw IOException("Private resource file is retired")
   }
   @Synchronized fun retireFile(file: HubResourceFile): List<File> {
     file.withdrawPermission?.invoke()
@@ -85,7 +80,6 @@ class HubResourceGrant(val id: String, val binding: HubRouteBinding, val generat
   @Synchronized fun revoke(): List<File> {
     active = false
     expiry?.cancel(false)
-    fileExpiry?.cancel(false)
     calls.toList().forEach { it.cancel() }; calls.clear(); admissions.clear()
     channels.toList().forEach { it.close() }; channels.clear()
     withdrawals.values.forEach { it() }; withdrawals.clear()
@@ -102,13 +96,12 @@ class HubResourceGrants(private val policy: HubRoutePolicy) : AutoCloseable {
   private val timers = ScheduledThreadPoolExecutor(1).apply { removeOnCancelPolicy = true }
   private val random = SecureRandom()
   private val subscription = policy.subscribe { state ->
-    val candidates = synchronized(this) { values.values.filter { it.binding.scopeId == state["scopeId"] } }
+    val candidates = synchronized(this) { values.values.filter { it.binding.scopeId == state.scopeId } }
     candidates.forEach { if (runCatching { it.check() }.isFailure) release(it.id) }
   }
   fun open(json: String): HubResourceGrant {
     cleanupFiles()
     val input = JSONObject(json)
-    require(input.length() == 6)
     val binding = HubRouteBinding.parse(input.getJSONObject("binding"))
     require(binding.scopeId == input.getString("scopeId") && binding.credentialKind == "client")
     val url = input.getString("url")
@@ -120,15 +113,13 @@ class HubResourceGrants(private val policy: HubRoutePolicy) : AutoCloseable {
     require(expiry > Instant.now())
     val purpose = input.getString("purpose")
     require(purpose in listOf("image", "audio", "recording", "attachment"))
-    val generation = input.getLong("routeGeneration")
-    require(generation >= 0)
-    val lease = policy.lease(binding, url, generation)
+    val lease = policy.lease(binding, url)
     val leasedUri = URI(lease.url)
     require(leasedUri.rawPath == uri.rawPath && leasedUri.rawQuery == uri.rawQuery) { "Signed resource encoding changed" }
     lease.check()
     val encoded = okhttp3.Request.Builder().url(lease.url).get().build().url
     require(encoded.encodedPath == uri.rawPath && encoded.encodedQuery == uri.rawQuery) { "Signed resource encoding changed" }
-    val identity = HubResourceIdentity(binding, generation, purpose, HubTrust.origin(uri), uri.rawPath, representation(uri))
+    val identity = HubResourceIdentity(binding, purpose, HubTrust.origin(uri), uri.rawPath, representation(uri))
     val grant = synchronized(this) { issue(identity, HubResourceAuthorization(url, expiresAt, lease)) }
     try { grant.check() } catch (failure: Exception) { release(grant.id); throw failure }
     return grant
@@ -143,9 +134,8 @@ class HubResourceGrants(private val policy: HubRoutePolicy) : AutoCloseable {
       if (old.renewable()) return old
     }
     if (old != null) release(old.id)
-    require(values.size < MAX_GRANTS) { "Resource grant capacity is full" }
     val id = ByteArray(32).also(random::nextBytes).joinToString("") { "%02x".format(it.toInt() and 255) }
-    val grant = HubResourceGrant(id, identity.binding, identity.generation, input.url, input.expiresAt, identity.purpose, input.lease)
+    val grant = HubResourceGrant(id, identity.binding, input.url, input.expiresAt, identity.purpose, input.lease)
     values[id] = grant
     identities[identity] = id
     schedule(grant)
@@ -184,26 +174,14 @@ class HubResourceGrants(private val policy: HubRoutePolicy) : AutoCloseable {
     val failed = grant.retireFile(file)
     synchronized(this) { cleanup.addAll(failed) }
   }
-  fun completed(grant: HubResourceGrant, file: HubResourceFile) {
-    grant.expireFile(timers.schedule({
-      retireFile(grant, file)
-    }, maxOf(1, file.expiresAt - System.currentTimeMillis()), TimeUnit.MILLISECONDS))
-  }
   fun failed(grant: HubResourceGrant, call: Call) {
     if (call.isCanceled() || runCatching { grant.check(call) }.isFailure) return
-    policy.failed(grant.binding, grant.generation)
+    policy.failed(grant.binding)
   }
   override fun close() {
     subscription.close()
     synchronized(this) { values.keys.toList() }.forEach(::release)
     timers.shutdownNow()
     cleanupFiles()
-  }
-  companion object {
-    private const val HISTORY_ROWS = 500
-    private const val HISTORY_REPRESENTATIONS = 2
-    private const val HISTORY_WINDOWS = 2
-    private const val EXPORT_HEADROOM = 64
-    private const val MAX_GRANTS = HISTORY_ROWS * HISTORY_REPRESENTATIONS * HISTORY_WINDOWS + EXPORT_HEADROOM
   }
 }

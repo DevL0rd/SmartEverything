@@ -1,9 +1,0 @@
-{
-  "package": "dsh-plugin-codegraph-sqlite",
-  "version": "0.1.6",
-  "tarball": "https://registry.npmjs.org/dsh-plugin-codegraph-sqlite/-/dsh-plugin-codegraph-sqlite-0.1.6.tgz",
-  "integrity": "sha512-adnjmOcvb9i4C/Oagw3EJ3hVCVJQohwn83V8REpnSg48FPcxGE6W6HQcLO05cJFKZ2ZJ7yYTbDULn/c+yfasdg==",
-  "license": "MIT",
-  "source": "https://github.com/CC19990113/dsh-plugin-codegraph",
-  "adaptation": "0.1.6-smarteverything.2"
-}

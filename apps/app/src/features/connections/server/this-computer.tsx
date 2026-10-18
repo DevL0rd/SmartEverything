@@ -1,13 +1,19 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import type { DesktopServiceStatus } from '@smarteverything/domain';
 import { useServiceStatus } from '../../../api/desktop-service';
 import { confirm } from '../../../components/confirm-store';
 import { ActionRow, SwitchRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { desktopBridge, type DesktopBridge } from '../../../design/platform';
+import { START_ON_LOGIN_KEY } from '../../../queries/keys';
 
+import { connectionsLog, trackConnection } from '../connections-log';
+import { AppUpdateRows } from './app-update-rows';
+import { background } from '@smarteverything/logging';
 const HEALTH: Readonly<Record<DesktopServiceStatus['health'], string>> = {
   'not-installed': 'Not installed',
   stopped: 'Stopped',
@@ -18,48 +24,70 @@ const HEALTH: Readonly<Record<DesktopServiceStatus['health'], string>> = {
 
 type Act = (work: () => Promise<DesktopServiceStatus>, failure: string) => void;
 
-function useAct(apply: (status: DesktopServiceStatus) => void): Act {
+function actOn(apply: (status: DesktopServiceStatus) => void): Act {
   return (work, failure) => {
-    work().then(apply, (error: unknown) => {
-      notify({ message: failure, error, tone: 'critical' });
-    });
+    connectionsLog.info('service.action_started', { failure });
+    work().then(
+      (status) => {
+        connectionsLog.info('service.action_succeeded', {
+          failure,
+          health: status.health,
+          active: status.active,
+        });
+        apply(status);
+      },
+      (error: unknown) => {
+        connectionsLog.error('service.action_failed', error, { failure });
+        notifyFailure(failure)(error);
+      },
+    );
   };
 }
 
 function StartOnLogin({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const client = useQueryClient();
+  const read = useScreenQuery({
+    queryKey: START_ON_LOGIN_KEY,
+    queryFn: () => bridge.getStartOnLogin(),
+  });
   useEffect(() => {
-    bridge.getStartOnLogin().then(setEnabled, (error: unknown) => {
-      notify({ message: 'Open at login couldn’t be read', error, tone: 'critical' });
-    });
-  }, [bridge]);
+    if (read.isError) {
+      notifyFailure('Open at login couldn’t be read')(read.error);
+    }
+  }, [read.isError, read.error]);
   return (
     <SwitchRow
       icon="power"
       title="Open when I log in"
-      value={enabled === true}
-      disabled={enabled === null}
+      value={read.data === true}
+      disabled={read.data === undefined}
       onChange={(next) => {
-        bridge.setStartOnLogin(next).then(setEnabled, (error: unknown) => {
-          notify({ message: 'Open at login wasn’t changed', error, tone: 'critical' });
-        });
+        trackConnection('start_on_login.set', { enabled: next }, () =>
+          bridge.setStartOnLogin(next),
+        ).then(
+          (enabled) => client.setQueryData(START_ON_LOGIN_KEY, enabled),
+          notifyFailure('Open at login wasn’t changed'),
+        );
       }}
     />
   );
 }
 
 function uninstall(bridge: DesktopBridge, act: Act): void {
-  void confirm({
-    title: 'Uninstall the server?',
-    body: 'Your home stops working until you start it again.',
-    confirmLabel: 'Uninstall',
-    tone: 'destructive',
-    typed: 'uninstall',
-  }).then((accepted) => {
-    if (accepted) {
-      act(() => bridge.uninstallService(), 'The server wasn’t uninstalled');
-    }
-  });
+  background(
+    confirm({
+      title: 'Uninstall the server?',
+      body: 'Your home stops working until you start it again.',
+      confirmLabel: 'Uninstall',
+      tone: 'destructive',
+      typed: 'uninstall',
+    }).then((accepted) => {
+      if (accepted) {
+        act(() => bridge.uninstallService(), 'The server wasn’t uninstalled');
+      }
+    }),
+    'this_computer.confirm_failed',
+  );
 }
 
 function LaterRows({
@@ -83,14 +111,10 @@ function LaterRows({
           }}
         />
       ) : null}
-      {status.linger === 'enabled' || status.linger === 'before-login' ? (
-        <ValueRow
-          icon="moon"
-          title="Keep running when logged out"
-          value={status.linger === 'before-login' ? 'Always' : 'On'}
-        />
+      {status.linger === 'enabled' ? (
+        <ValueRow icon="moon" title="Keep running when logged out" value="On" />
       ) : null}
-      {status.installed && status.linger !== 'before-login' ? (
+      {status.installed ? (
         <ActionRow
           icon="trash"
           title="Uninstall the server"
@@ -157,6 +181,7 @@ function ServiceRows({
         }}
       />
       <StartOnLogin bridge={bridge} />
+      <AppUpdateRows bridge={bridge} />
       <LaterRows bridge={bridge} status={status} act={act} />
     </List>
   );
@@ -164,7 +189,7 @@ function ServiceRows({
 
 function Service({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
   const { reading, apply } = useServiceStatus(bridge);
-  const act = useAct(apply);
+  const act = actOn(apply);
   if (reading.kind === 'read') {
     return <ServiceRows bridge={bridge} status={reading.status} act={act} />;
   }

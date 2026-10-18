@@ -7,12 +7,17 @@ import { HSV_COLOR, JSON_VALUE, type JsonValue } from './values';
 import type { DeviceRow } from './api/rows-home';
 import type { PresentedCapability } from './presentation/types';
 import { DEVICE_TARGET } from './device-targets';
+import type { SkipReason } from './target-result';
 
 export const TARGET_CHANGE = z.strictObject({
   target: DEVICE_TARGET,
   capability: z.string().min(1).max(120),
   value: JSON_VALUE,
   scale: z.literal('percent').optional(),
+  scope: z
+    .enum(['all', 'on'])
+    .optional()
+    .describe('on changes only members that are currently on; all (default) changes every member'),
 });
 export type TargetChange = z.infer<typeof TARGET_CHANGE>;
 export interface GroupCommand {
@@ -22,7 +27,8 @@ export interface GroupCommand {
 }
 export interface SkippedGroupDevice {
   readonly deviceId: string;
-  readonly reason: string;
+  readonly reason: SkipReason;
+  readonly detail?: string | undefined;
 }
 export interface GroupCommandPlan {
   readonly commands: readonly GroupCommand[];
@@ -62,12 +68,16 @@ function targetValue(
   return value;
 }
 
+class UnsupportedControlError extends Error {
+  override readonly name = 'UnsupportedControlError';
+}
+
 function commandFor(
   device: DeviceRow,
   change: Pick<TargetChange, 'capability' | 'value' | 'scale'>,
 ): GroupCommand {
   const presented = targetCapability(device, change.capability);
-  if (presented?.writable !== true) throw new Error('This control is not supported.');
+  if (presented?.writable !== true) throw new UnsupportedControlError();
   const value = targetValue(presented, change.value, change.scale === 'percent');
   return {
     device_id: device.id,
@@ -84,7 +94,7 @@ export function planGroupCommands(
   const skipped: SkippedGroupDevice[] = [];
   for (const device of devices) {
     if (!device.online) {
-      skipped.push({ deviceId: device.id, reason: 'Offline' });
+      skipped.push({ deviceId: device.id, reason: 'offline' });
       continue;
     }
     try {
@@ -92,7 +102,10 @@ export function planGroupCommands(
     } catch (error) {
       skipped.push({
         deviceId: device.id,
-        reason: error instanceof Error ? error.message : 'This value is not supported.',
+        reason: 'unsupported',
+        ...(error instanceof Error && !(error instanceof UnsupportedControlError)
+          ? { detail: error.message }
+          : {}),
       });
     }
   }

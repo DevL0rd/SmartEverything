@@ -9,7 +9,7 @@ import {
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { CollapseBody, CollapseRoot, TurnChevron } from './disclosure';
+import { CollapseBody, CollapseRoot, TurnChevron } from '../../../components/disclosure';
 import { Markdown } from './markdown/markdown';
 import { Overline } from './overline';
 

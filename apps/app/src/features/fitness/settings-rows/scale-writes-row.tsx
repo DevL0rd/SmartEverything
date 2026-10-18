@@ -1,8 +1,7 @@
 import type { ReactNode } from 'react';
 import { href } from '../../../app-shell/hrefs';
 import { ListRow } from '../../../components/list-row';
-import { useHasScale } from '../../profiles';
-import { useWriteState } from '../../profiles';
+import { useHasScale, useWriteState } from '../../profiles';
 
 export function ScaleWritesRow(): ReactNode {
   const state = useWriteState();
@@ -14,7 +13,7 @@ export function ScaleWritesRow(): ReactNode {
     state.kind === 'ready'
       ? 'Saved after each weigh-in'
       : state.kind === 'needs_permission'
-        ? `Review Health Connect access above · ${String(state.waiting)} waiting`
+        ? `${String(state.waiting)} waiting · Allow in Health Connect`
         : state.reason;
   return (
     <ListRow

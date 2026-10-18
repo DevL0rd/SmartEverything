@@ -1,5 +1,5 @@
-import type { SQLInputValue } from 'node:sqlite';
 import { moment } from '../context';
+import { allOf, inList, type SqlFilter } from '../sql';
 
 export interface TimeWindow {
   readonly from?: string | undefined;
@@ -8,28 +8,15 @@ export interface TimeWindow {
   readonly limit: number;
 }
 
-export interface WindowFilter {
-  readonly text: string;
-  readonly parameters: Record<string, SQLInputValue>;
-}
-
-export function windowFilter(column: string, window: TimeWindow): WindowFilter {
-  const clauses: string[] = ['1 = 1'];
-  const parameters: Record<string, SQLInputValue> = { limit: window.limit };
-  if (window.from !== undefined) {
-    clauses.push(`${column} >= $from`);
-    parameters['from'] = moment(window.from);
-  }
-  if (window.to !== undefined) {
-    clauses.push(`${column} < $to`);
-    parameters['to'] = moment(window.to);
-  }
-  if (window.deviceIds !== undefined) {
-    const names = window.deviceIds.map((id, index) => {
-      parameters[`device${String(index)}`] = id;
-      return `$device${String(index)}`;
-    });
-    clauses.push(`device_id in (${names.join(', ')})`);
-  }
-  return { text: clauses.join(' and '), parameters };
+export function windowFilter(column: string, window: TimeWindow): SqlFilter {
+  return allOf([
+    { text: '1 = 1', parameters: { limit: window.limit } },
+    ...(window.from === undefined
+      ? []
+      : [{ text: `${column} >= $from`, parameters: { from: moment(window.from) } }]),
+    ...(window.to === undefined
+      ? []
+      : [{ text: `${column} < $to`, parameters: { to: moment(window.to) } }]),
+    ...(window.deviceIds === undefined ? [] : [inList('device_id', 'devices', window.deviceIds)]),
+  ]);
 }

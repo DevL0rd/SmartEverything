@@ -6,6 +6,7 @@ import { cn } from '../design/cn';
 import { useMotion } from '../design/motion';
 import { useIdiom } from '../design/platform';
 import { Interactive } from './interactive';
+import { revealedAt, settledSpans, type Span, type Spans } from './tab-spans';
 import { Text } from './text';
 
 export interface TabItem {
@@ -16,11 +17,6 @@ export interface TabItem {
 }
 
 const DENSE_FROM = 5;
-
-interface Span {
-  readonly x: number;
-  readonly width: number;
-}
 
 function Tab({
   item,
@@ -64,21 +60,9 @@ function Tab({
   );
 }
 
-function revealedAt(spans: Readonly<Record<string, Span>>, span: Span, viewport: number): number {
-  const needed = span.x + span.width - viewport;
-  if (needed <= 0) {
-    return 0;
-  }
-  const starts = Object.values(spans).map((other) => other.x);
-  return Math.min(
-    span.x,
-    starts.sort((left, right) => left - right).find((x) => x >= needed) ?? span.x,
-  );
-}
-
 function useRevealActive(
   active: string,
-  spans: Readonly<Record<string, Span>>,
+  spans: Spans,
   viewport: number,
 ): RefObject<ScrollView | null> {
   const ref = useRef<ScrollView>(null);
@@ -98,6 +82,23 @@ function useRevealActive(
   return ref;
 }
 
+function useTabSpans(items: readonly TabItem[]): {
+  readonly spans: Spans;
+  readonly measure: (key: string, span: Span) => void;
+} {
+  const [spans, setSpans] = useState<Spans>({});
+  const measured = useRef<Record<string, Span>>({});
+  const keys = items.map((item) => item.key);
+  const measure = (key: string, span: Span): void => {
+    measured.current[key] = span;
+    const settled = settledSpans(keys, measured.current, spans);
+    if (settled !== null) {
+      setSpans(settled);
+    }
+  };
+  return { spans, measure };
+}
+
 export function TabsBar({
   items,
   active,
@@ -108,8 +109,8 @@ export function TabsBar({
   readonly label: string;
 }): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const [spans, setSpans] = useState<Readonly<Record<string, Span>>>({});
   const [viewport, setViewport] = useState(0);
+  const { spans, measure } = useTabSpans(items);
   const ref = useRevealActive(active, spans, viewport);
   return (
     <View
@@ -135,7 +136,7 @@ export function TabsBar({
             pointer={pointer}
             dense={items.length > DENSE_FROM}
             onMeasure={(span) => {
-              setSpans((current) => ({ ...current, [item.key]: span }));
+              measure(item.key, span);
             }}
           />
         ))}

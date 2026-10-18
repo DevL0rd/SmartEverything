@@ -5,16 +5,25 @@ import { Banner } from '../../components/banner';
 import { ListRow } from '../../components/list-row';
 import { List } from '../../components/section';
 import { Text } from '../../components/text';
+import { href } from '../../app-shell/hrefs';
 import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
 import { useLocalPref } from '../../store/local-prefs';
 import { useHasScale, usePairedServer } from '../profiles';
+import { useMyPhone } from './this-phone-device';
 import { useWatchLink } from '../watches';
 import { CONTEXT_TEXT } from './phone-context-text';
 import { setPhoneNodeOn, usePhoneNode } from './phone-node';
-import { allowSoundControl, keepRunning } from './phone-permissions';
+import {
+  allowAccessibility,
+  allowOverlay,
+  allowSoundControl,
+  allowWriteSettings,
+  keepRunning,
+} from './phone-permissions';
 import { SensorRows } from './phone-sensor-rows';
 import { HomeWifiRow } from './home-wifi-row';
+import { background } from '@smarteverything/logging';
 
 function NodeRow({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
   const server = usePairedServer();
@@ -30,7 +39,9 @@ function NodeRow({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
       role="switch"
       checked={status.enabled}
       disabled={server === null && !status.enabled}
-      onPress={() => void setPhoneNodeOn(!status.enabled, server)}
+      onPress={() => {
+        background(setPhoneNodeOn(!status.enabled, server), 'phone_node_on.set_failed');
+      }}
     />
   );
 }
@@ -91,37 +102,114 @@ function BackgroundRows({ status }: { readonly status: PhoneNodeStatus }): React
           subtitle="Battery-optimised · background jobs may stop"
           icon="battery"
           chevron
-          onPress={() => void keepRunning()}
+          onPress={() => {
+            background(keepRunning(), 'running.keep_failed');
+          }}
         />
       )}
     </List>
   );
+}
+
+interface ControlGrant {
+  readonly title: string;
+  readonly subtitle: string;
+  readonly allowed: boolean;
+  readonly icon: 'bellOff' | 'lock' | 'appWindow' | 'sun';
+  readonly allow: () => Promise<void>;
+  readonly failure: string;
+}
+
+function grants(status: PhoneNodeStatus): readonly ControlGrant[] {
+  const { permissions } = status;
+  return [
+    {
+      title: 'Ringer and Do Not Disturb',
+      subtitle: 'Android asks for Do Not Disturb access for this',
+      allowed: permissions.dndAccess,
+      icon: 'bellOff',
+      allow: allowSoundControl,
+      failure: 'sound_control.allow_failed',
+    },
+    {
+      title: 'Brightness and screen timeout',
+      subtitle: 'Android asks for Modify system settings for this',
+      allowed: permissions.writeSettings,
+      icon: 'sun',
+      allow: allowWriteSettings,
+      failure: 'write_settings.allow_failed',
+    },
+    {
+      title: 'Lock and screenshots',
+      subtitle: 'Turn on the SmartEverything accessibility service. It does not read your screen.',
+      allowed: permissions.accessibility,
+      icon: 'lock',
+      allow: allowAccessibility,
+      failure: 'accessibility.allow_failed',
+    },
+    {
+      title: 'Open apps and links, show the unlock prompt',
+      subtitle: 'Android asks for Display over other apps for this',
+      allowed: permissions.overlay,
+      icon: 'appWindow',
+      allow: allowOverlay,
+      failure: 'overlay.allow_failed',
+    },
+  ];
 }
 
 function ControlRows({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
   return (
     <List title="Control from home">
-      {status.permissions.dndAccess ? (
-        <ListRow title="Ringer and Do Not Disturb" value="Allowed" icon="bellOff" />
-      ) : (
-        <ListRow
-          title="Allow changing the ringer and Do Not Disturb"
-          subtitle="Android asks for Do Not Disturb access for this"
-          icon="bellOff"
-          chevron
-          onPress={() => void allowSoundControl()}
-        />
+      {grants(status).map((grant) =>
+        grant.allowed ? (
+          <ListRow key={grant.title} title={grant.title} value="Allowed" icon={grant.icon} />
+        ) : (
+          <ListRow
+            key={grant.title}
+            title={grant.title}
+            subtitle={grant.subtitle}
+            icon={grant.icon}
+            chevron
+            onPress={() => {
+              background(grant.allow(), grant.failure);
+            }}
+          />
+        ),
       )}
     </List>
   );
 }
 
-function ReadyRows({ status }: { readonly status: PhoneNodeStatus }): ReactNode {
+function PageLinkRow(): ReactNode {
+  const phone = useMyPhone();
+  if (phone === null) {
+    return null;
+  }
+  return (
+    <ListRow
+      title="Open the phone page"
+      subtitle="Battery, sound, screen, network, apps and notifications"
+      icon="smartphone"
+      chevron
+      href={href.settings.device(phone.id, 'overview')}
+    />
+  );
+}
+
+function ReadyRows({
+  status,
+  pageLink,
+}: {
+  readonly status: PhoneNodeStatus;
+  readonly pageLink: boolean;
+}): ReactNode {
   return (
     <View className="gap-section-gap">
       <List>
         <NodeRow status={status} />
         {status.enabled ? <NowRow status={status} /> : null}
+        {status.enabled && pageLink ? <PageLinkRow /> : null}
       </List>
       {status.enabled ? (
         <>
@@ -137,13 +225,13 @@ function ReadyRows({ status }: { readonly status: PhoneNodeStatus }): ReactNode 
   );
 }
 
-export function ThisPhoneRows(): ReactNode {
+export function ThisPhoneRows({ pageLink = true }: { readonly pageLink?: boolean }): ReactNode {
   const node = usePhoneNode();
   switch (node.kind) {
     case 'loading':
       return null;
     case 'ready':
-      return <ReadyRows status={node.status} />;
+      return <ReadyRows status={node.status} pageLink={pageLink} />;
     case 'unsupported':
       return (
         <Text variant="callout" tone="variant">

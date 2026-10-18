@@ -12,15 +12,11 @@ export interface AgentFieldsProps {
 const TEXT = [
   ['description', 'Description', 'Describe when to use this agent'],
   ['prompt', 'Agent instructions', 'Instructions for this agent'],
-  ['model', 'Agent model', 'Exact native model ID, sonnet, opus, haiku, or inherit'],
+  ['model', 'Agent model', 'Model ID, sonnet, opus, haiku, or inherit'],
   ['initialPrompt', 'Initial prompt', 'Optional initial agent prompt'],
   ['observer', 'Observer', 'Optional observer agent name'],
   ['observerMessage', 'Observer message', 'Optional observer instructions'],
-  [
-    'criticalSystemReminder_EXPERIMENTAL',
-    'Critical system reminder',
-    'Experimental native SDK reminder',
-  ],
+  ['criticalSystemReminder_EXPERIMENTAL', 'Critical system reminder', 'Experimental reminder'],
 ] as const;
 const LISTS = [
   ['tools', 'Allowed tools'],
@@ -61,7 +57,7 @@ function AgentText({ value, change }: AgentFieldsProps): ReactNode {
         <TextField
           key={key}
           label={label}
-          helper="One exact name per line; empty uses runtime defaults"
+          helper="One exact name per line; leave empty for the defaults"
           value={Array.isArray(value[key]) ? value[key].join('\n') : ''}
           multiline
           onChange={(text) => {

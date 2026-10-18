@@ -121,3 +121,33 @@ describe('call desk builds its hooks before the call exists', () => {
     await hosted.end('finished');
   });
 });
+
+describe('call desk keeps every call through a short disconnect', () => {
+  it('resumes a call that never sent sight settings on a new endpoint', async () => {
+    const { store } = opened;
+    const client = store.clients.create({
+      name: 'Pixel',
+      platform: 'android',
+      role: 'owner',
+      tokenHash: 'b'.repeat(64),
+    });
+    const desk = deskOf();
+    await desk.start(endpointOf('app-1'), client, {
+      type: 'call_start',
+      callId: 'call-resume',
+      source: 'assistant',
+      device: 'Phone',
+    });
+    desk.detach('app-1');
+    expect(sent).not.toContain('ended');
+    const second: string[] = [];
+    desk.resume(
+      { ...endpointOf('app-2'), send: (message): void => void second.push(message.type) },
+      client,
+      'call-resume',
+    );
+    expect(second).not.toContain('ended');
+    await desk.hangUp('app-2', 'call-resume', 'hung_up');
+    expect(second).toContain('ended');
+  });
+});

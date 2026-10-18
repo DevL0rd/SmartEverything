@@ -2,15 +2,13 @@ import { z } from 'zod';
 import { ASSISTANT_ATTACHMENT } from './assistant';
 
 export const IMAGE_BYTES_MAX = 20 * 1024 * 1024;
-export const IMAGE_REQUEST_BYTES_MAX = 48 * 1024 * 1024;
 export const IMAGE_INPUT_BYTES_MAX = 24 * 1024 * 1024;
-export const IMAGE_OUTPUT_BYTES_MAX = 60 * 1024 * 1024;
-export const IMAGE_PIXELS_MAX = 32 * 1024 * 1024;
-export const IMAGE_SIDE_MAX = 8192;
+export const IMAGE_OUTPUT_BYTES_MAX = 120 * 1024 * 1024;
+export const IMAGE_PIXELS_MAX = 64 * 1024 * 1024;
 export const IMAGE_RESULTS_MAX = 4;
 export const IMAGE_REFERENCES_MAX = 10;
 export const IMAGE_COMPLETION_INSTRUCTION =
-  'UI-owned completion: SmartEverything automatically shows progress and the saved image in this chat. For a standalone image request, briefly confirm generation started and finish. Only use wait_for_images when further work the user requested needs saved images, such as editing them or explicitly sending them. Never wait merely to display images, poll status/history, start the same request again, or schedule another AI turn for completion. Continue only work the user asked for. Receipt status/history remain UI-only, including through generic operations.';
+  'UI-owned completion: SmartEverything automatically shows progress and the saved image in this chat. For a standalone image request, briefly confirm generation started and finish. Only use edit_image action wait when further work the user requested needs saved images, such as editing them or explicitly sending them. Never wait merely to display images, poll status/history, start the same request again, or schedule another AI turn for completion. Continue only work the user asked for. Receipt status/history remain UI-only, including through generic operations.';
 export const IMAGE_MIME = z.enum(['image/png', 'image/jpeg', 'image/webp']);
 export const IMAGE_SELECTOR = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('attachment'), attachment_id: z.uuid() }),
@@ -29,7 +27,6 @@ export const IMAGE_ENDPOINT = z.object({
   model: z.string().min(1).max(200),
   name: z.string().min(1).max(200),
   provider_tag: z.string().min(1).max(200),
-  revision: z.string().regex(/^[a-f0-9]{64}$/),
   parameters: z.record(z.string(), IMAGE_PARAMETER),
   supports_streaming: z.boolean(),
   pricing: z.array(
@@ -59,7 +56,6 @@ const REQUEST_FIELDS = {
   prompt: z.string().trim().min(1).max(16_000),
   model: z.string().min(1).max(200),
   provider_tag: z.string().min(1).max(200),
-  capability_revision: z.string().regex(/^[a-f0-9]{64}$/),
   options: IMAGE_OPTIONS.prefault({}),
 };
 const REFERENCES = z.array(IMAGE_SELECTOR).max(IMAGE_REFERENCES_MAX);
@@ -98,7 +94,7 @@ const SELECTOR_READ = z.discriminatedUnion('kind', [
   z.object(IMAGE_SELECTOR.options[1].shape),
 ]);
 const OPTIONS_READ = z.object(IMAGE_OPTIONS.shape);
-const REQUEST_READ = z.discriminatedUnion('mode', [
+export const IMAGE_OPERATION_REQUEST_READ = z.discriminatedUnion('mode', [
   z.object(IMAGE_OPERATION_REQUEST.options[0].shape).extend({ options: OPTIONS_READ }),
   z.object(IMAGE_OPERATION_REQUEST.options[1].shape).extend({
     options: OPTIONS_READ,
@@ -129,7 +125,7 @@ export const IMAGE_OPERATION_RECEIPT = z.object({
   id: z.uuid(),
   profile_id: z.uuid(),
   chat_id: z.uuid(),
-  request: REQUEST_READ,
+  request: IMAGE_OPERATION_REQUEST_READ,
   endpoint: IMAGE_ENDPOINT,
   origin: IMAGE_OPERATION_ORIGIN.nullable().default(null),
   inputs: z.array(z.object(IMAGE_RESOLVED_INPUT.shape)),
@@ -225,14 +221,12 @@ export const IMAGE_PROVIDER_READINESS = z.object({
       'authority_revoked',
       'catalog_unavailable',
       'service_stopping',
-      'busy',
       'budget_unavailable',
       'budget_blocked',
     ])
     .nullable(),
   detail: z.string().max(200).nullable(),
   active: z.int().nonnegative(),
-  capacity: z.int().positive(),
 });
 export type ImageProviderReadiness = z.infer<typeof IMAGE_PROVIDER_READINESS>;
 export const IMAGE_PROVIDER_CATALOG = z.object({

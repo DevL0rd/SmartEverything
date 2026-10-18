@@ -1,8 +1,8 @@
 import { presentValue, withRole } from '@smarteverything/domain';
 import { memoOnInputs } from '../../../store/memo-selector';
-import type { StoreState } from '../../../store/state';
+import type { DeviceValues } from '../../../store/state';
 import type { DeviceModel } from '../../devices';
-import { homeDeviceModels } from './devices';
+import { DeviceFold } from './device-fold';
 
 type SecurityRole = 'lock' | 'contact' | 'leak' | 'smoke' | 'gas';
 
@@ -34,12 +34,15 @@ function alerting(role: SecurityRole, value: boolean): boolean {
   return role === 'lock' ? !value : ALARMING[role] && value;
 }
 
-function lineOf(state: StoreState, model: DeviceModel): SecurityLine | null {
+function roleOf(model: DeviceModel): SecurityRole | undefined {
+  return ROLES.find((candidate) => withRole(model.presentation, candidate) !== undefined);
+}
+
+function lineOf(model: DeviceModel, values: DeviceValues): SecurityLine | null {
   const { device, presentation } = model;
-  const role = ROLES.find((candidate) => withRole(presentation, candidate) !== undefined);
+  const role = roleOf(model);
   const presented = role === undefined ? undefined : withRole(presentation, role);
-  const value =
-    presented === undefined ? undefined : state.deviceValues[device.id]?.[presented.key]?.value;
+  const value = presented === undefined ? undefined : values[presented.key]?.value;
   if (role === undefined || presented === undefined || typeof value !== 'boolean') {
     return null;
   }
@@ -51,13 +54,23 @@ function lineOf(state: StoreState, model: DeviceModel): SecurityLine | null {
   };
 }
 
+const lines = new DeviceFold<SecurityLine>({
+  includes: (model): boolean => roleOf(model) !== undefined,
+  usesValues: (): boolean => true,
+  projected: false,
+  contribution: lineOf,
+  same: (left, right): boolean =>
+    left.name === right.name && left.state === right.state && left.alert === right.alert,
+});
+
+export function alertsFirst(lines: readonly SecurityLine[]): readonly SecurityLine[] {
+  return [...lines.filter((line) => line.alert), ...lines.filter((line) => !line.alert)];
+}
+
 export const securityLines = memoOnInputs(
-  (state) => [state.tables.devices, state.deviceValues],
+  (state) => [lines.read(state)],
   (state): readonly SecurityLine[] =>
-    homeDeviceModels(state).flatMap((model) => {
-      const line = lineOf(state, model);
-      return line === null ? [] : [line];
-    }),
+    alertsFirst(lines.read(state).entries.map((entry) => entry.value)),
 );
 
 export function sameSecurity(

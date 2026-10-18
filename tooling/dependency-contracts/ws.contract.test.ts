@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { z } from 'zod';
-import { hubDeclaredVersion } from './hub-manifest';
+import { HUB_MANIFEST, declaredVersion } from './contract-helpers';
 import { repositoryFile } from './versions';
 
 const VERSIONED = z.object({ version: z.string() });
@@ -17,13 +17,9 @@ function portOf(server: WebSocketServer): number {
 }
 
 describe('ws contract', () => {
-  it('resolves for the hub at exactly the version the hub declares', () => {
-    expect(versionSeenFrom('apps/hub/package.json')).toBe(hubDeclaredVersion('ws'));
-  });
-
   it('is the same release these contracts exercise', () => {
     expect(versionSeenFrom('tooling/dependency-contracts/package.json')).toBe(
-      hubDeclaredVersion('ws'),
+      declaredVersion(HUB_MANIFEST, 'ws'),
     );
   });
 

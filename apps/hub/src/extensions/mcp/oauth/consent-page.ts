@@ -1,8 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import type { ServerResponse } from 'node:http';
 import { MCP_PATHS } from '@smarteverything/domain';
+import { escapeHtml, htmlPage } from '../../../server/page-style';
 
-const STYLE = `
+const CONSENT_STYLE = `
 :root { color-scheme: light dark; --bg: #f5f5f7; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73;
   --line: #d2d2d7; --accent: #0a84ff; --danger: #d70015; }
 @media (prefers-color-scheme: dark) { :root { --bg: #000000; --card: #1c1c1e; --text: #f5f5f7;
@@ -46,24 +47,6 @@ export interface ConsentView {
   readonly clientUri: string | null;
   readonly redirectUri: string;
   readonly problem: string | null;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function page(title: string, body: string, script = ''): string {
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="no-referrer">
-<title>${escapeHtml(title)}</title><style>${STYLE}</style></head>
-<body><main>${body}</main>${script}</body></html>`;
 }
 
 function codeForm(view: ConsentView): string {
@@ -133,21 +116,23 @@ function securityHeaders(
 
 export function sendConsent(response: ServerResponse, status: number, view: ConsentView): void {
   const nonce = randomBytes(16).toString('base64');
-  const html = page(
-    'Connect an assistant',
-    consentBody(view),
-    `<script nonce="${nonce}">${WAIT_SCRIPT}</script>`,
-  );
+  const html = htmlPage({
+    title: 'Connect an assistant',
+    body: consentBody(view),
+    style: CONSENT_STYLE,
+    script: `<script nonce="${nonce}">${WAIT_SCRIPT}</script>`,
+  });
   response.writeHead(status, securityHeaders([new URL(view.redirectUri).origin], nonce));
   response.end(html);
 }
 
 export function sendProblem(response: ServerResponse, status: number, message: string): void {
-  const html = page(
-    'Cannot connect',
-    `<h1>This connection cannot continue</h1><p>${escapeHtml(message)}</p>
+  const html = htmlPage({
+    title: 'Cannot connect',
+    body: `<h1>This connection cannot continue</h1><p>${escapeHtml(message)}</p>
 <p class="muted">Start connecting again from your assistant.</p>`,
-  );
+    style: CONSENT_STYLE,
+  });
   response.writeHead(status, securityHeaders([], null));
   response.end(html);
 }

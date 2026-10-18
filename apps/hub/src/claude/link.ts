@@ -9,6 +9,7 @@ import { ClaudeLinkError, ClaudeNotReadyError } from './errors';
 import { MARKETPLACE, PLUGIN_ID, linkFiles, pluginContents, type LinkFiles } from './link-files';
 import type { LinkLaunch } from './link-launch';
 import type { LinkCredential } from './link-token';
+import { isMissing } from '../fs-util';
 
 export type LinkState = LinkStatus['state'];
 
@@ -49,10 +50,6 @@ interface Registered {
   readonly path: string | null;
   readonly version: string | null;
   readonly installPath: string | null;
-}
-
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
 
 function lastJson(stdout: string): unknown {

@@ -1,6 +1,6 @@
-import type { SignalInput, Trigger } from '@smarteverything/domain';
-import type { SpeechOccurrence } from '../transcripts/speech';
+import type { SignalInput, TriggerV2 } from '@smarteverything/domain';
 import type { Cancel } from '../clock';
+import type { SpeechOccurrence } from '../transcripts/speech';
 
 export interface TriggerAdmission {
   readonly validate: () => void;
@@ -8,10 +8,10 @@ export interface TriggerAdmission {
 }
 
 export interface TriggerArmer {
-  readonly types: readonly Trigger['type'][];
+  readonly types: readonly TriggerV2['on'][];
   readonly arm: (
     automationId: string,
-    trigger: Trigger,
+    trigger: TriggerV2,
     fire: (signal: SignalInput | null, admission?: TriggerAdmission) => void,
   ) => Cancel;
 }

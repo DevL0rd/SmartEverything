@@ -1,18 +1,23 @@
 import { z } from 'zod';
 const RECIPE_BYTE = z.number().int().min(0).max(255);
-const RECIPE_IDENTIFIERS = {
-  recipeType: z.string(),
+const RECIPE_TYPE = { recipeType: z.string() };
+const RECIPE_ITEM = {
   categoryId: RECIPE_BYTE,
   itemId: RECIPE_BYTE,
   servingSize: RECIPE_BYTE,
-  browingLevel: RECIPE_BYTE.optional(),
-  option: RECIPE_BYTE.optional(),
 };
+const RECIPE_FINISH = { browingLevel: RECIPE_BYTE.optional(), option: RECIPE_BYTE.optional() };
 export const MICROWAVE_DEFINED_RECIPE = z.strictObject({
+  ...RECIPE_TYPE,
+  ...RECIPE_ITEM,
   cavityId: z.string().optional(),
-  ...RECIPE_IDENTIFIERS,
+  ...RECIPE_FINISH,
 });
-export const MICROWAVE_COOK_DEFINED_RECIPE = z.strictObject(RECIPE_IDENTIFIERS);
+export const MICROWAVE_COOK_DEFINED_RECIPE = z.strictObject({
+  ...RECIPE_TYPE,
+  ...RECIPE_ITEM,
+  ...RECIPE_FINISH,
+});
 export const MICROWAVE_UPDATE_SCHEDULE = z.strictObject({
   scheduledTime: z.iso.datetime({ offset: true }).optional(),
 });

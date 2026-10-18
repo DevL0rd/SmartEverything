@@ -31,7 +31,7 @@ export function subscriptionUnavailable(
     return 'Update this computer’s background runtime to use subscription sign-in.';
   if (!host.online) return 'Reconnect this computer.';
   if (host.platform !== 'linux' && host.platform !== 'macos')
-    return 'Subscription sign-in is not available on this host.';
+    return 'Plan sign-in isn’t available on this computer.';
   if (host.manifest === null) return 'Update this computer’s background runtime.';
   return null;
 }

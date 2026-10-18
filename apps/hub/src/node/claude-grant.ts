@@ -8,6 +8,7 @@ import {
   COMPUTER_MCP_GRANT_RESPONSE,
   COMPUTER_MCP_TOKEN,
 } from '@smarteverything/domain';
+import { isMissing } from '../fs-util';
 
 export class NodeClaudeGrant {
   private stopped = false;
@@ -77,7 +78,7 @@ export class NodeClaudeGrant {
     try {
       return COMPUTER_MCP_TOKEN.parse((await readFile(this.file, 'utf8')).trim());
     } catch (cause) {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return null;
+      if (isMissing(cause)) return null;
       throw cause;
     }
   }

@@ -5,24 +5,25 @@ import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
 import androidx.health.connect.client.units.Mass
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 
 object NutritionEntry {
-  fun of(type: String, t: EntryTiming, d: JSONObject, m: Metadata): Record? {
-    if (type != "Nutrition") {
+  fun of(t: HealthEnvelope, d: JsonObject, m: Metadata): Record? {
+    if (t.type != "Nutrition") {
       return null
     }
-    val grams = d.getJSONObject("grams")
-    fun g(name: String): Mass? = if (grams.has(name)) Mass.grams(grams.getDouble(name)) else null
-    fun kcal(name: String): Energy? = if (d.isNull(name)) null else Energy.kilocalories(d.getDouble(name))
+    val grams = d.obj("grams")
+    fun g(name: String): Mass? = if (name in grams) Mass.grams(grams.double(name)) else null
+    fun kcal(name: String): Energy? = if (d[name] is JsonNull) null else Energy.kilocalories(d.double(name))
     return NutritionRecord(
-      startTime = t.start,
+      startTime = t.startTime,
       startZoneOffset = t.zone,
-      endTime = t.requireEnd(type),
+      endTime = t.requireEnd(),
       endZoneOffset = t.zone,
       metadata = m,
-      name = if (d.isNull("name")) null else d.getString("name"),
-      mealType = d.getInt("mealType"),
+      name = d.textOrNull("name"),
+      mealType = d.int("mealType"),
       energy = kcal("kilocalories"),
       energyFromFat = kcal("kilocaloriesFromFat"),
       biotin = g("biotin"),

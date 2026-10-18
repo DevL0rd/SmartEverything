@@ -1,9 +1,13 @@
+@file:UseSerializers(InstantSerializer::class)
+
 package expo.modules.healthconnect.watch
 
-import expo.modules.healthconnect.jsonOf
+import expo.modules.healthconnect.HubJson
+import expo.modules.healthconnect.InstantSerializer
 import java.time.Duration
 import java.time.Instant
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.UseSerializers
 
 enum class WorkoutChange(val verb: String) { PAUSE("pause"), RESUME("resume"), FINISH("finish") }
 
@@ -40,18 +44,27 @@ data class WorkoutInfo(
 
   fun finished(at: Instant): WorkoutInfo = resumed(at).copy(state = WorkoutState.FINISHED, endedAt = at, updatedAt = at)
 
-  fun toJson(): JSONObject = jsonOf(
-    "sport" to sport,
-    "state" to state.label,
-    "startedAt" to startedAt.toString(),
-    "endedAt" to endedAt?.toString(),
-    "pausedAt" to pausedAt?.toString(),
-    "pausedSeconds" to pausedSeconds,
-    "startedFrom" to if (startedFromPhone) "phone" else "watch",
-    "heartRate" to heartRate,
-    "kcal" to kcal,
-    "steps" to steps,
-    "distanceM" to distanceM,
-    "updatedAt" to updatedAt.toString()
+  fun wire(): WorkoutWire = WorkoutWire(
+    sport, state.label, startedAt, endedAt, pausedAt, pausedSeconds,
+    if (startedFromPhone) "phone" else "watch",
+    heartRate, kcal, steps, distanceM, updatedAt
   )
+
+  fun json(): String = HubJson.encode(wire())
 }
+
+@Serializable
+class WorkoutWire(
+  val sport: String,
+  val state: String,
+  val startedAt: Instant,
+  val endedAt: Instant?,
+  val pausedAt: Instant?,
+  val pausedSeconds: Long,
+  val startedFrom: String,
+  val heartRate: Int?,
+  val kcal: Int?,
+  val steps: Int?,
+  val distanceM: Int?,
+  val updatedAt: Instant
+)

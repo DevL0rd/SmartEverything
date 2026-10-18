@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dateFormat } from './locale';
+import { zonedDateFormat } from './locale';
 import { twoDigits } from './number';
 
 export const MINUTE_MS = 60_000;
@@ -10,31 +10,82 @@ export const DAY_KEY = z.iso.date();
 
 const DAY_PARTS = z.tuple([z.coerce.number(), z.coerce.number(), z.coerce.number()]);
 
-function zoned(timeZone: string | null): Intl.DateTimeFormatOptions {
-  return timeZone === null ? {} : { timeZone };
-}
+const CLOCK = zonedDateFormat({ hour: 'numeric', minute: '2-digit' });
+const DAY_KEY_FORMAT = zonedDateFormat(
+  { year: 'numeric', month: '2-digit', day: '2-digit' },
+  'en-CA',
+);
+const DAY_NAME = zonedDateFormat({ weekday: 'short', day: 'numeric', month: 'short' });
 
 export function clock(moment: Date | string | number, timeZone: string | null = null): string {
-  return dateFormat({
-    hour: 'numeric',
-    minute: '2-digit',
-    ...zoned(timeZone),
-  }).format(new Date(moment));
+  return CLOCK(timeZone).format(new Date(moment));
+}
+
+function deviceDayKey(at: Date): string {
+  if (Number.isNaN(at.getTime())) {
+    throw new RangeError(`Cannot name the day of an invalid date: ${String(at)}`);
+  }
+  return `${String(at.getFullYear()).padStart(4, '0')}-${twoDigits(at.getMonth() + 1)}-${twoDigits(at.getDate())}`;
 }
 
 export function localDayKey(
   moment: Date | string | number,
   timeZone: string | null = null,
 ): string {
-  return dateFormat(
-    {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      ...zoned(timeZone),
-    },
-    'en-CA',
-  ).format(new Date(moment));
+  const at = new Date(moment);
+  return timeZone === null ? deviceDayKey(at) : DAY_KEY_FORMAT(timeZone).format(at);
+}
+
+interface DayKeys {
+  readonly now: number;
+  readonly timeZone: string | null;
+  readonly today: string;
+  readonly yesterday: string;
+}
+
+let dayKeys: DayKeys | null = null;
+
+function dayKeysAt(now: number, timeZone: string | null): DayKeys {
+  if (dayKeys?.now === now && dayKeys.timeZone === timeZone) {
+    return dayKeys;
+  }
+  dayKeys = {
+    now,
+    timeZone,
+    today: localDayKey(now, timeZone),
+    yesterday: localDayKey(now - DAY_MS, timeZone),
+  };
+  return dayKeys;
+}
+
+export type DayRelation = 'today' | 'yesterday' | 'earlier';
+
+export function dayRelationOf(
+  moment: Date | string | number,
+  now: number,
+  timeZone: string | null = null,
+): DayRelation {
+  const days = dayKeysAt(now, timeZone);
+  const key = localDayKey(moment, timeZone);
+  if (key === days.today) {
+    return 'today';
+  }
+  return key === days.yesterday ? 'yesterday' : 'earlier';
+}
+
+export function dayLabelOf(
+  moment: Date | string | number,
+  days: { readonly today: string; readonly yesterday: string },
+  timeZone: string | null = null,
+): string {
+  const key = localDayKey(moment, timeZone);
+  if (key === days.today) {
+    return 'Today';
+  }
+  if (key === days.yesterday) {
+    return 'Yesterday';
+  }
+  return DAY_NAME(timeZone).format(new Date(moment));
 }
 
 export function dayLabel(
@@ -42,19 +93,7 @@ export function dayLabel(
   now: number,
   timeZone: string | null = null,
 ): string {
-  const key = localDayKey(moment, timeZone);
-  if (key === localDayKey(new Date(now), timeZone)) {
-    return 'Today';
-  }
-  if (key === localDayKey(new Date(now - DAY_MS), timeZone)) {
-    return 'Yesterday';
-  }
-  return dateFormat({
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    ...zoned(timeZone),
-  }).format(new Date(moment));
+  return dayLabelOf(moment, dayKeysAt(now, timeZone), timeZone);
 }
 
 export function relative(moment: Date | string, now: number): string {
@@ -137,16 +176,23 @@ export function shiftDay(day: string, by: number): string {
   return dayKeyOf(new Date(start.getFullYear(), start.getMonth(), start.getDate() + by).getTime());
 }
 
+const SHORT_DATE = zonedDateFormat({ day: 'numeric', month: 'short' });
+const WEEKDAY_SHORT = zonedDateFormat({ weekday: 'short' });
+const MONTH_SHORT = zonedDateFormat({ month: 'short' });
+const HOUR_ONLY = zonedDateFormat({ hour: 'numeric' });
+const LONG_DATE = zonedDateFormat({ weekday: 'long', day: 'numeric', month: 'long' });
+const HOUR_OF_DAY = zonedDateFormat({ hour: '2-digit', hourCycle: 'h23' }, 'en-GB');
+
 export function shortDate(moment: Date | string | number): string {
-  return dateFormat({ day: 'numeric', month: 'short' }).format(new Date(moment));
+  return SHORT_DATE(null).format(new Date(moment));
 }
 
 export function weekdayShort(moment: number): string {
-  return dateFormat({ weekday: 'short' }).format(new Date(moment));
+  return WEEKDAY_SHORT(null).format(new Date(moment));
 }
 
 export function monthShort(moment: number): string {
-  return dateFormat({ month: 'short' }).format(new Date(moment));
+  return MONTH_SHORT(null).format(new Date(moment));
 }
 
 export function shortClock(moment: Date | string, timeZone: string | null = null): string {
@@ -154,29 +200,15 @@ export function shortClock(moment: Date | string, timeZone: string | null = null
   if (at.getMinutes() !== 0) {
     return clock(at, timeZone);
   }
-  return dateFormat({ hour: 'numeric', ...zoned(timeZone) }).format(at);
+  return HOUR_ONLY(timeZone).format(at);
 }
 
 export function longDate(moment: Date | string, timeZone: string | null = null): string {
-  return dateFormat({
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    ...zoned(timeZone),
-  }).format(new Date(moment));
+  return LONG_DATE(timeZone).format(new Date(moment));
 }
 
 export function hourOf(moment: Date | string, timeZone: string | null = null): number {
-  return Number(
-    dateFormat(
-      {
-        hour: '2-digit',
-        hourCycle: 'h23',
-        ...zoned(timeZone),
-      },
-      'en-GB',
-    ).format(new Date(moment)),
-  );
+  return Number(HOUR_OF_DAY(timeZone).format(new Date(moment)));
 }
 
 export function zoneLabel(zone: string): string {
@@ -185,6 +217,65 @@ export function zoneLabel(zone: string): string {
 
 export function endOfDayKey(day: string): number {
   return startOfDayKey(shiftDay(day, 1));
+}
+
+const WALL_FIELDS = {
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric',
+  hourCycle: 'h23',
+} as const;
+
+const WALL_FORMAT = zonedDateFormat(WALL_FIELDS, 'en-US');
+
+function wallField(
+  parts: readonly Intl.DateTimeFormatPart[],
+  type: Intl.DateTimeFormatPartTypes,
+): number {
+  const part = parts.find((entry) => entry.type === type);
+  if (part === undefined) {
+    throw new Error(`The time zone formatter returned no ${type}`);
+  }
+  return Number(part.value);
+}
+
+function zoneOffsetMs(at: number, timeZone: string): number {
+  const parts = WALL_FORMAT(timeZone).formatToParts(new Date(at));
+  const wall = Date.UTC(
+    wallField(parts, 'year'),
+    wallField(parts, 'month') - 1,
+    wallField(parts, 'day'),
+    wallField(parts, 'hour'),
+    wallField(parts, 'minute'),
+    wallField(parts, 'second'),
+  );
+  return wall - Math.floor(at / 1000) * 1000;
+}
+
+export function zonedInstant(day: string, minuteOfDay: number, timeZone: string): number {
+  const wall = Date.parse(`${DAY_KEY.parse(day)}T00:00:00Z`) + minuteOfDay * MINUTE_MS;
+  const first = wall - zoneOffsetMs(wall, timeZone);
+  return wall - zoneOffsetMs(first, timeZone);
+}
+
+export function zonedStartOfDay(day: string, timeZone: string): number {
+  return zonedInstant(day, 0, timeZone);
+}
+
+export function dayBoundsOf(
+  day: string,
+  timeZone: string | null,
+): { readonly start: number; readonly end: number } {
+  if (timeZone === null) {
+    return { start: startOfDayKey(day), end: endOfDayKey(day) };
+  }
+  return {
+    start: zonedStartOfDay(day, timeZone),
+    end: zonedStartOfDay(shiftDay(day, 1), timeZone),
+  };
 }
 
 export function zoneOffsetSecondsAt(moment: number): number {

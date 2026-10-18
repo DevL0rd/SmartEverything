@@ -69,9 +69,11 @@ function Trailing({
   return (
     <View className="shrink-0 flex-row items-center gap-1">
       {value === undefined ? null : (
-        <Text variant="callout" tone="variant" numberOfLines={1} className="max-w-48">
-          {value}
-        </Text>
+        <View className="min-w-0 max-w-48 shrink">
+          <Text variant="callout" tone="variant" numberOfLines={1}>
+            {value}
+          </Text>
+        </View>
       )}
       {trailing}
       {chevron === true ? <Icon name="chevronRight" size={20} tone="faint" /> : null}

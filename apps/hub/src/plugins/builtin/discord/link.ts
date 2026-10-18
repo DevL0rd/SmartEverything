@@ -62,10 +62,6 @@ export class DiscordRequestError extends Error {
         : `Discord refused ${route} with status ${String(status)}`,
     );
   }
-
-  get uncertain(): boolean {
-    return this.status === null || this.status >= 500;
-  }
 }
 
 export class DiscordAuthError extends Error {

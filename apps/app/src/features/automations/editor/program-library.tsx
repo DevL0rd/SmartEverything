@@ -1,15 +1,16 @@
 import { useState, type ReactNode } from 'react';
 import type {
+  AutomationRow,
   AutomationValueContent,
   AutomationValueRow,
-  AutomationSequenceRow,
 } from '@smarteverything/domain';
 import { confirm } from '../../../components/confirm-store';
 import { Sheet } from '../../../components/sheet';
 import { ValueEditor } from './value-editor';
-import { SequenceEditor } from './sequence-editor';
+import { ReusableEditor } from './reusable-editor';
 import { LibraryContext } from './program-library-context';
 import { LibraryReturnContext } from './library-return';
+import { background } from '@smarteverything/logging';
 
 interface ValueRequest {
   readonly kind: 'value';
@@ -18,12 +19,12 @@ interface ValueRequest {
   readonly select: (row: AutomationValueRow) => void;
   readonly lockKind: boolean;
 }
-interface SequenceRequest {
-  readonly kind: 'sequence';
-  readonly row: AutomationSequenceRow | null;
-  readonly select: (row: AutomationSequenceRow) => void;
+interface ReusableRequest {
+  readonly kind: 'reusable';
+  readonly row: AutomationRow | null;
+  readonly select: (row: AutomationRow) => void;
 }
-type LibraryRequest = ValueRequest | SequenceRequest;
+type LibraryRequest = ValueRequest | ReusableRequest;
 interface LibrarySheetProps {
   readonly request: LibraryRequest;
   readonly close: () => void;
@@ -33,7 +34,7 @@ function LibraryContent({ request }: { readonly request: LibraryRequest }): Reac
     <ValueEditor row={request.row} initialKind={request.initialKind} lockKind={request.lockKind} />
   ) : (
     <ProgramLibraryProvider>
-      <SequenceEditor start={request.row} />
+      <ReusableEditor row={request.row} />
     </ProgramLibraryProvider>
   );
 }
@@ -44,14 +45,17 @@ function LibrarySheet({ request, close }: LibrarySheetProps): ReactNode {
       close();
       return;
     }
-    void confirm({
-      title: 'Discard library changes?',
-      body: 'Your caller draft is kept.',
-      confirmLabel: 'Discard',
-      tone: 'destructive',
-    }).then((accepted) => {
-      if (accepted) close();
-    });
+    background(
+      confirm({
+        title: 'Discard library changes?',
+        body: 'Your caller draft is kept.',
+        confirmLabel: 'Discard',
+        tone: 'destructive',
+      }).then((accepted) => {
+        if (accepted) close();
+      }),
+      'program_library.confirm_failed',
+    );
   };
   return (
     <LibraryReturnContext
@@ -64,8 +68,8 @@ function LibrarySheet({ request, close }: LibrarySheetProps): ReactNode {
             close();
           }
         },
-        sequenceSaved: (row): void => {
-          if (request.kind === 'sequence') {
+        reusableSaved: (row): void => {
+          if (request.kind === 'reusable') {
             request.select(row);
             close();
           }
@@ -74,7 +78,7 @@ function LibrarySheet({ request, close }: LibrarySheetProps): ReactNode {
     >
       <Sheet
         open
-        title={request.kind === 'value' ? 'Value' : 'Sequence'}
+        title={request.kind === 'value' ? 'Value' : 'Reusable steps'}
         onClose={cancel}
         detents={['full']}
       >
@@ -91,8 +95,8 @@ export function ProgramLibraryProvider({ children }: { readonly children: ReactN
         value: (row, initialKind, select, lockKind = false): void => {
           setRequest({ kind: 'value', row, initialKind, select, lockKind });
         },
-        sequence: (row, select): void => {
-          setRequest({ kind: 'sequence', row, select });
+        reusable: (row, select): void => {
+          setRequest({ kind: 'reusable', row, select });
         },
       }}
     >

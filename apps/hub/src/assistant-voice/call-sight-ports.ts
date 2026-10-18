@@ -1,6 +1,8 @@
 import { toolCallerOf, type Call, type CallDeskOptions, type SightBudget } from './call-parts';
 import { recordTurn } from './call-hooks';
+import { ownScreenOf } from '../assistant/machine';
 import { CallSight } from './call-sight';
+import type { OwnScreen } from './call-look';
 import { VOICE_TOOL_NAMES } from './voice-tools';
 
 export function callSightOf(
@@ -30,6 +32,13 @@ export function callSightOf(
     },
     record: (text): void => {
       recordTurn(call(), { who: 'tool', text, ok: true, detail: null });
+    },
+    own: (): OwnScreen => {
+      const { caller, deviceId } = call();
+      return {
+        source: ownScreenOf(caller.machine),
+        computerId: caller.machine?.kind === 'computer' ? deviceId : null,
+      };
     },
     delegate: (args) => options.tools.call(VOICE_TOOL_NAMES.see, args, toolCallerOf(call())),
     cameras: options.cameras,

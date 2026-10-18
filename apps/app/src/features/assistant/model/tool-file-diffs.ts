@@ -1,3 +1,4 @@
+import type { ChatTimelineTool } from '@smarteverything/domain';
 import { diffLines } from 'diff/lib/diff/line.js';
 import { recordedFiles, type RecordedFile, type FileToolEvidence } from './tool-file-records';
 import { retainDiffHunks } from './diff-hunks';
@@ -147,8 +148,25 @@ function normalized(file: RecordedFile): ToolFileDiff {
     };
   return textDiff(base, evidence);
 }
-export function toolFileDiffs(tool: FileToolEvidence): readonly ToolFileDiff[] {
+interface CachedDiffs {
+  readonly state: FileToolEvidence['state'];
+  readonly diffs: readonly ToolFileDiff[];
+}
+const DIFFS = new WeakMap<object, CachedDiffs>();
+
+function toolFileDiffs(tool: FileToolEvidence): readonly ToolFileDiff[] {
   return recordedFiles(tool).map(normalized);
+}
+
+export function cachedToolFileDiffs(
+  tool: ChatTimelineTool,
+  state: FileToolEvidence['state'],
+): readonly ToolFileDiff[] {
+  const cached = DIFFS.get(tool);
+  if (cached?.state === state) return cached.diffs;
+  const diffs = toolFileDiffs({ ...tool, state });
+  DIFFS.set(tool, { state, diffs });
+  return diffs;
 }
 export function visibleDiffLines(
   diff: ToolFileDiff,

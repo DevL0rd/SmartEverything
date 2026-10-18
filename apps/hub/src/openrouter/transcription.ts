@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import type { OpenRouterClient } from './client';
 import { openRouterError } from './errors';
+import { REQUEST_BYTES_MAX, requestTimeoutMs, shrinkMedia } from './media-shrink';
 
-const TIMEOUT_MS = 90_000;
-const AUDIO_BYTES_MAX = 18 * 1024 * 1024;
 const RESPONSE_BYTES_MAX = 256 * 1024;
 const HINT_CHARACTERS_MAX = 2000;
 
@@ -36,37 +35,57 @@ export interface TranscriptionProvider {
 }
 
 export class OpenRouterTranscription implements TranscriptionProvider {
-  constructor(private readonly client: OpenRouterClient) {}
+  constructor(
+    private readonly client: OpenRouterClient,
+    private readonly requestBytesMax: number = REQUEST_BYTES_MAX,
+  ) {}
 
   async transcribe(input: TranscriptionInput): Promise<TranscriptionAnswer> {
-    if (input.data.byteLength > AUDIO_BYTES_MAX)
-      throw openRouterError('bad_request', 'audio exceeds the 18 MiB transcription limit');
+    const audio = await requestAudio(input, this.requestBytesMax);
     const hints = input.hints?.slice(-HINT_CHARACTERS_MAX);
-    const answer = await this.client.json(
-      {
-        path: '/audio/transcriptions',
-        method: 'POST',
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        responseBytesMax: RESPONSE_BYTES_MAX,
-        body: {
-          model: input.model,
-          input_audio: {
-            data: input.data.toString('base64'),
-            format: AUDIO_FORMAT.parse(input.format),
-          },
-          temperature: 0,
-          response_format: 'json',
-          ...(input.language === undefined ? {} : { language: LANGUAGE.parse(input.language) }),
-          ...(hints === undefined || hints === ''
-            ? {}
-            : { provider: { options: { groq: { prompt: hints } } } }),
-        },
+    const body = {
+      model: input.model,
+      input_audio: {
+        data: audio.data.toString('base64'),
+        format: audio.format,
       },
-      ANSWER,
-      'audio transcription',
+      temperature: 0,
+      response_format: 'json',
+      ...(input.language === undefined ? {} : { language: LANGUAGE.parse(input.language) }),
+      ...(hints === undefined || hints === ''
+        ? {}
+        : { provider: { options: { groq: { prompt: hints } } } }),
+    };
+    const answer = await this.client.retrying((signal) =>
+      this.client.json(
+        {
+          path: '/audio/transcriptions',
+          method: 'POST',
+          signal: AbortSignal.any([
+            signal,
+            AbortSignal.timeout(requestTimeoutMs(audio.data.byteLength)),
+          ]),
+          responseBytesMax: RESPONSE_BYTES_MAX,
+          body,
+        },
+        ANSWER,
+        'audio transcription',
+      ),
     );
     return { text: answer.text, usage: answer.usage ?? null };
   }
+}
+
+async function requestAudio(
+  input: TranscriptionInput,
+  limit: number,
+): Promise<{ readonly data: Buffer; readonly format: z.output<typeof AUDIO_FORMAT> }> {
+  const format = AUDIO_FORMAT.parse(input.format);
+  if (input.data.byteLength <= limit) return { data: input.data, format };
+  const speech = await shrinkMedia(input.data, `audio/${format}`, limit);
+  if (speech === undefined)
+    throw openRouterError('bad_request', 'audio is too long to transcribe in one request');
+  return { data: speech.data, format: 'ogg' };
 }
 
 const MIME_FORMATS: Readonly<Record<string, z.output<typeof AUDIO_FORMAT>>> = {

@@ -1,20 +1,10 @@
 import { isPrivate, privacySwitchOf, type CamerasPref } from '@smarteverything/domain';
 import { PREFS, usePref } from '../../../store/prefs';
 import { useDeviceValue } from '../../../store/selectors';
-import { rowsOf } from '../../../store/state';
-import { useStoreSelector } from '../../../store/store-context';
+import { useLastSeen } from '../../devices';
 import type { CameraEntry } from '../logic/cameras';
 import type { CameraCondition } from '../player/player-state';
 import { useCameraReach } from './use-cameras';
-
-function useLastSeen(deviceId: string): string | null {
-  return useStoreSelector(
-    (state) =>
-      rowsOf(state.tables.events).find(
-        (event) => event.device_id === deviceId && event.kind === 'device_offline',
-      )?.occurred_at ?? null,
-  );
-}
 
 export function useCameraCondition(entry: CameraEntry): CameraCondition {
   const privacy = privacySwitchOf(entry.device);
@@ -22,18 +12,10 @@ export function useCameraCondition(entry: CameraEntry): CameraCondition {
   const reach = useCameraReach(entry.device.id);
   return {
     online: entry.device.online,
-    lastSeen: useLastSeen(entry.device.id),
+    lastSeen: useLastSeen(entry.device.id)?.at ?? null,
     privacy: privacy !== null && isPrivate(privacy, value?.value),
     reach: reach?.state ?? null,
   };
-}
-
-export function useRemoteConfigured(): boolean {
-  return useStoreSelector(
-    (state) =>
-      (state.settings?.ice_servers.length ?? 0) > 0 ||
-      (state.settings?.webrtc_candidates.length ?? 0) > 0,
-  );
 }
 
 export interface CameraPrefs {

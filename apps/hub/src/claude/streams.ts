@@ -54,7 +54,8 @@ export class ModStreams {
   }
 
   sessions(): readonly string[] {
-    return [...this.recent.keys()].filter((session) => this.has(session));
+    this.forgetExpired();
+    return [...this.recent.keys()];
   }
 
   usage(): ClaudeUsage {
@@ -65,6 +66,7 @@ export class ModStreams {
     this.open.get(sessionId)?.close();
     this.open.set(sessionId, sink);
     if (single) this.single.add(sink);
+    this.forgetExpired();
     this.recent.set(sessionId, this.options.clock.now().getTime() + 35_000);
     for (const [id, queued] of this.queued) {
       if (queued.session === sessionId) {
@@ -87,6 +89,13 @@ export class ModStreams {
       },
       { once: true },
     );
+  }
+
+  private forgetExpired(): void {
+    const now = this.options.clock.now().getTime();
+    for (const [sessionId, until] of this.recent) {
+      if (until <= now && !this.open.has(sessionId)) this.recent.delete(sessionId);
+    }
   }
 
   request(sessionId: string, action: ModAction): Promise<JsonValue> {

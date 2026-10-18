@@ -1,5 +1,6 @@
 import { Behavior, type FunctionDeclaration } from '@google/genai';
 import type { ToolSpec } from './hub-tool';
+import { geminiSchemaOf } from './gemini-schema';
 import { portableSchemaOf } from './portable-schema';
 
 export interface OpenAiTool {
@@ -23,7 +24,7 @@ export function geminiDeclarationOf(spec: ToolSpec): FunctionDeclaration {
     name: spec.name,
     description: spec.description,
     behavior: Behavior.NON_BLOCKING,
-    parametersJsonSchema: parametersOf(spec),
+    parametersJsonSchema: geminiSchemaOf(parametersOf(spec)),
   };
 }
 

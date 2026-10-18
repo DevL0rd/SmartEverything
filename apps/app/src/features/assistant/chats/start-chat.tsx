@@ -1,34 +1,73 @@
-import { appPlatform } from '../../../design/platform';
 import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
-import { EmptyChat, NoKeyChat } from '../components/chat-states';
+import { router } from 'expo-router';
+import type { Engine } from '@smarteverything/domain';
+import { ReasonLine, type ReasonAction } from '../../../components/reason-line';
+import { Button } from '../../../components/button';
+import { Text } from '../../../components/text';
+import { useFileDrop } from '../../../platform/file-drop';
 import { Composer } from '../components/composer';
 import { DropOverlay } from '../components/drop-overlay';
 import { useAssistantName } from '../data/assistant-data';
 import { resetDraftEngine, useDraftEngine } from '../data/draft-engine';
+import { useDraftKeyNeeded, useDraftExecution, useDraftReadiness } from '../data/draft-execution';
+import { useDraftRun, type DraftRun } from '../data/draft-run';
 import { setDraft } from '../data/drafts';
-import { useOpenRouterStatus } from '../data/openrouter';
 import { attachFiles } from '../data/uploads';
-import { useFileDrop } from '../../../platform/file-drop';
-import { useDraftCommands } from './draft-commands';
-import { chatStarter } from './chat-actions';
-import { Text } from '../../../components/text';
-import { useEngineUnavailableReason } from '../provider/engine-availability';
+import {
+  useDraftChatStart,
+  useDraftSender,
+  type DraftChatStart,
+  type DraftSender,
+} from './draft-chat-start';
+import { draftStatusOf } from '../model/draft-chat-request';
+import { DraftIntro } from './draft-intro';
 import { ModelChip } from './model-chip';
 import { PermissionControl } from './permission-control';
-import { useDraftExecution } from '../data/draft-execution';
 
 const DRAFT_KEY = 'new-chat';
 
-function DraftAvailability(): ReactNode {
-  return (
-    <Text tone="variant">
-      {appPlatform() === 'desktop'
-        ? 'Waiting for this computer’s runtime. Start or reconnect it to continue.'
-        : 'Loading the saved default engine… Choose a model explicitly to continue.'}
-    </Text>
-  );
+interface DraftScreen {
+  readonly engine: Engine;
+  readonly setEngine: (engine: Engine) => void;
+  readonly loading: boolean;
+  readonly status: string | null;
+  readonly runtimeStopped: boolean;
+  readonly needsKey: boolean;
+  readonly run: DraftRun;
+  readonly draftChat: DraftChatStart;
+  readonly sender: DraftSender;
+}
+
+function openMachine(engine: Engine): void {
+  router.setParams({ operation: engine.kind === 'dsh' ? 'device' : 'model' });
+}
+
+function useDraftScreen(onStarted: (chatId: string) => void): DraftScreen {
+  const [engine, setEngine, ready] = useDraftEngine();
+  const execution = useDraftExecution(engine);
+  const keyNeeded = useDraftKeyNeeded(engine);
+  const readiness = useDraftReadiness({ engine, ready, execution, needsKey: keyNeeded });
+  const run = useDraftRun(execution.engine ?? engine);
+  const actions = {
+    resolve: execution.resolve,
+    opened: (chatId: string): void => {
+      resetDraftEngine();
+      onStarted(chatId);
+    },
+  };
+  return {
+    engine,
+    setEngine,
+    loading: !ready,
+    status: draftStatusOf(readiness),
+    runtimeStopped: readiness.runtimeStopped,
+    needsKey: keyNeeded && ready,
+    run,
+    draftChat: useDraftChatStart(DRAFT_KEY, execution.engine, actions),
+    sender: useDraftSender(run.host, actions),
+  };
 }
 
 export function StartChat({
@@ -36,70 +75,95 @@ export function StartChat({
 }: {
   readonly onStarted: (chatId: string) => void;
 }): ReactNode {
-  const name = useAssistantName();
-  const [engine, setEngine, ready] = useDraftEngine();
-  const execution = useDraftExecution(engine);
-  const unavailable = useEngineUnavailableReason(execution.engine ?? engine);
-  const keyed = useOpenRouterStatus().data?.key !== 'missing' || engine.kind !== 'openrouter';
-  const canStart = ready && unavailable === null && execution.engine !== null;
+  const screen = useDraftScreen(onStarted);
   const ref = useRef<View>(null);
   const [dragging, setDragging] = useState(false);
   useFileDrop(ref, { onFiles: attachFiles, onHover: setDragging });
-  const opened = (chatId: string): void => {
-    resetDraftEngine();
-    onStarted(chatId);
-  };
-  const commandProblem = useDraftCommands(
-    DRAFT_KEY,
-    execution.engine,
-    ready && unavailable === null,
-    { resolve: execution.resolve, opened },
-  );
-  const start = chatStarter(engine, opened, execution.resolve);
+  const { engine } = screen;
   return (
     <View ref={ref} className="min-h-0 flex-1 justify-between pb-safe-offset-3">
       <View className="flex-1 justify-center">
-        <DraftGreeting keyed={keyed} name={name} />
-      </View>
-      <View className="w-full max-w-reading gap-2 self-center px-gutter">
-        {ready ? null : <DraftAvailability />}
-        {execution.reason === null ? null : <Text tone="variant">{execution.reason}</Text>}
-        <CommandProblem reason={commandProblem} />
-        <Composer
-          disabled={!canStart}
-          placeholder={`Message ${name}`}
-          draftKey={DRAFT_KEY}
-          send={start}
-          focusOnMount
-          shortcuts
-          accessory={<PermissionControl engine={engine} onChange={setEngine} />}
-          rightAccessory={<ModelChip engine={engine} onChange={setEngine} />}
+        <DraftIntro
+          run={screen.run}
+          loading={screen.loading}
+          needsKey={screen.needsKey}
+          onSuggest={(text): void => {
+            setDraft(DRAFT_KEY, text);
+          }}
+          onOpenMachine={(): void => {
+            openMachine(engine);
+          }}
+          onChooseComputer={(): void => {
+            router.setParams({ operation: 'model' });
+          }}
         />
       </View>
+      <DraftFooter screen={screen} />
       {dragging ? <DropOverlay /> : null}
     </View>
   );
 }
 
-function DraftGreeting({
-  keyed,
-  name,
-}: {
-  readonly keyed: boolean;
-  readonly name: string;
-}): ReactNode {
-  return keyed ? (
-    <EmptyChat
-      name={name}
-      onSuggest={(text): void => {
-        setDraft(DRAFT_KEY, text);
-      }}
-    />
-  ) : (
-    <NoKeyChat name={name} />
+function fixesFor(screen: DraftScreen): readonly ReasonAction[] {
+  if ((screen.loading && !screen.runtimeStopped) || screen.needsKey) return [];
+  return [
+    {
+      label: 'Switch machine',
+      onPress: (): void => {
+        openMachine(screen.engine);
+      },
+    },
+  ];
+}
+
+function DraftFooter({ screen }: { readonly screen: DraftScreen }): ReactNode {
+  const name = useAssistantName();
+  const cardRef = useRef<View>(null);
+  const { engine, setEngine, sender } = screen;
+  return (
+    <View className="w-full max-w-reading gap-2 self-center px-gutter">
+      {sender.failure === null ? null : (
+        <ReasonLine text={sender.failure} icon="circleX" tone="critical" />
+      )}
+      <DraftChatPrompt draftChat={screen.draftChat} canStart={screen.status === null} />
+      <View ref={cardRef}>
+        <Composer
+          disabled={false}
+          reason={screen.status}
+          fixes={{ engine: fixesFor(screen) }}
+          placeholder={`Message ${name}`}
+          draftKey={DRAFT_KEY}
+          send={sender.send}
+          focusOnMount
+          shortcuts
+          accessory={<PermissionControl engine={engine} onChange={setEngine} />}
+          rightAccessory={<ModelChip engine={engine} onChange={setEngine} anchorRef={cardRef} />}
+        />
+      </View>
+    </View>
   );
 }
 
-function CommandProblem({ reason }: { readonly reason: string | null }): ReactNode {
-  return reason === null ? null : <Text tone="variant">{reason}</Text>;
+function DraftChatPrompt({
+  draftChat,
+  canStart,
+}: {
+  readonly draftChat: DraftChatStart;
+  readonly canStart: boolean;
+}): ReactNode {
+  if (!draftChat.requested) return null;
+  return (
+    <View className="flex-row items-center gap-2">
+      <Text tone="variant" className="min-w-0 flex-1">
+        {draftChat.problem ?? 'Commands and references work inside a started chat.'}
+      </Text>
+      <Button
+        label="Start chat"
+        variant="text"
+        loading={draftChat.pending}
+        disabled={!canStart}
+        onPress={draftChat.start}
+      />
+    </View>
+  );
 }

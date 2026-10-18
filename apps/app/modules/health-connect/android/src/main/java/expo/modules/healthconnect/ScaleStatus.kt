@@ -5,6 +5,8 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import expo.modules.healthconnect.diagnostics.NativeLog
+import expo.modules.healthconnect.diagnostics.NativeTally
 import java.time.Instant
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -29,6 +31,11 @@ class ScaleStatus(private val context: Context) {
   private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
   fun note(event: String, detail: String) {
+    when (event) {
+      "heard" -> HEARD_TALLY.add(0)
+      "failed" -> NativeLog.warn(SCOPE, "ble.failed") { mapOf("detail" to NativeLog.reasonText(detail)) }
+      else -> NativeLog.info(SCOPE, "ble.$event") { mapOf("detail" to NativeLog.reasonText(detail)) }
+    }
     val now = Instant.now().toString()
     val editor = preferences.edit()
     when (event) {
@@ -52,6 +59,8 @@ class ScaleStatus(private val context: Context) {
   )
 
   companion object {
+    private const val SCOPE = "ble-sync"
+    private val HEARD_TALLY = NativeTally(SCOPE, "adverts.summary")
     private const val PREFERENCES = "expo.modules.healthconnect.scale-status"
     private const val REGISTERED = "registeredAt"
     private const val HEARD = "lastHeardAt"

@@ -7,6 +7,7 @@ import { Text } from '../../../components/text';
 import { useSubscriptionControl, type SubscriptionControl } from '../data/subscription';
 import { SUBSCRIPTION_LABELS, subscriptionTitle } from '../model/subscription';
 import { SubscriptionInteraction } from './subscription-interaction';
+import { background } from '@smarteverything/logging';
 interface Props {
   readonly deviceId: string;
   readonly provider: AiSubscriptionProvider;
@@ -68,8 +69,7 @@ function Enrollment(props: Props): ReactNode {
         {state.error === null ? null : <Text tone="critical">{state.error}</Text>}
       </View>
       <Text variant="footnote" tone="variant">
-        Subscription billing only. No paid fallback. Use this computer as the execution host for
-        this route.
+        Uses your plan only, never pay-as-you-go. Pick this computer with Switch machine to use it.
       </Text>
     </View>
   );
@@ -115,7 +115,7 @@ function EnrollmentActions({ state }: { readonly state: SubscriptionControl }): 
           size="lg"
           disabled={state.pending}
           onPress={() => {
-            void state.control(action.command);
+            background(state.control(action.command), 'state.control_failed');
           }}
         />
       ))}

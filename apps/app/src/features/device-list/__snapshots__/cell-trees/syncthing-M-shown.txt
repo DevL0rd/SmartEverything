@@ -1,0 +1,45 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1" collapsable=false onLayout=undefined pointerEvents="box-none" ref={current:null}
+      View className="flex-1 gap-1.5" pointerEvents="box-none"
+        View className="flex-1 flex-row gap-3" pointerEvents="box-none"
+          View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
+            View accessibilityLabel="Syncthing, up to date, 1 folder · 1 of 1 device online" accessibilityRole="image" className="shrink-0" style={width:96,height:96}
+              View className="absolute" pointerEvents="none" style={left:-28.799999999999997,top:-28.799999999999997,width:153.60000000000002,height:153.60000000000002}
+                View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(96, 96, 96, 0.35) 0%, rgba(96, 96, 96, 0.11666666666666665) 60%, rgba(96, 96, 96, 0) 100%)"}]
+              View aria-hidden=true className="absolute items-center justify-center rounded-full border-hairline border-outline-variant bg-surface-1 elevation-1" style={left:6.720000000000001,top:6.720000000000001,width:82.56,height:82.56}
+                Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=40 ref=null stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75 viewBox="0 0 24 24" width=40 xmlns="http://www.w3.org/2000/svg"
+                  Svg.Path aria-hidden=true d="M9 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v.5" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                  Svg.Path aria-hidden=true d="M12 10v4h4" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                  Svg.Path aria-hidden=true d="m12 14 1.535-1.605a5 5 0 0 1 8 1.5" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                  Svg.Path aria-hidden=true d="M22 22v-4h-4" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+                  Svg.Path aria-hidden=true d="m22 18-1.535 1.605a5 5 0 0 1-8-1.5" fill="none" stroke="#4c5054" strokeLinecap="round" strokeLinejoin="round" strokeWidth=1.75
+              View aria-hidden=true className="absolute inset-0"
+                Svg.default aria-hidden=true height=96 width=96
+                  Svg.Path d="M48.00 2.00 A46 46 0 1 1 48.00 94.00 A46 46 0 1 1 48.00 2.00" fill="none" stroke="#42484e" strokeLinecap="round" strokeOpacity=1 strokeWidth=4
+                  Anim.created animatedProps={} d="M48.00 2.00 A46 46 0 1 1 48.00 94.00 A46 46 0 1 1 48.00 2.00" fill="none" stroke="#606060" strokeDasharray="289.02652413026095 289.02652413026095" strokeLinecap="round" strokeWidth=4
+              View aria-hidden=true className="absolute rounded-full border-2 border-surface-1 bg-positive" style={left:74.888,top:7.112000000000002,width:14,height:14}
+          View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
+            View accessibilityLabel="Syncthing, up to date, 1 folder · 1 of 1 device online" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
+              View className="flex-row flex-wrap items-center justify-between gap-x-2"
+                Text className="font-sans-medium text-body text-on-surface text-left max-w-full shrink" numberOfLines=1 selectable=false
+                View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-positive/12"
+                  Text className="font-sans-medium text-caption text-positive text-left" numberOfLines=1 selectable=false
+              Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+              View className="flex-row items-end gap-3 overflow-hidden pt-0.5"
+                View aria-hidden=true className="flex-row items-center gap-3 overflow-hidden"
+                  View className="min-w-0 shrink flex-row items-center gap-1.5"
+                    View accessibilityLabel="Photos" accessibilityRole="image" className="shrink-0 items-center justify-center" style={width:20,height:20}
+                      Svg.default aria-hidden=true height=20 width=20
+                        Svg.Path d="M10.00 1.50 A8.5 8.5 0 1 1 10.00 18.50 A8.5 8.5 0 1 1 10.00 1.50" fill="none" stroke="#1f2c39" strokeLinecap="round" strokeOpacity=1 strokeWidth=3
+                        Anim.created animatedProps={} d="M10.00 1.50 A8.5 8.5 0 1 1 10.00 18.50 A8.5 8.5 0 1 1 10.00 1.50" fill="none" stroke="#606060" strokeDasharray="53.407075111026494 53.407075111026494" strokeLinecap="round" strokeWidth=3
+                    Text className="font-sans-medium text-caption text-on-surface text-left shrink" numberOfLines=1 selectable=false
+            View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
+              View className="gap-1"
+                View aria-hidden=true className="w-full items-center justify-center" style={height:36}
+                  View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
+                  View className="rounded-xs bg-surface-1 px-2"
+                    Text className="font-sans-medium text-caption text-on-surface-variant text-left" numberOfLines=1 selectable=false
+        View className="flex-row items-center gap-2" pointerEvents="box-none"
+          Pressable accessibilityHint=undefined accessibilityLabel="Pause" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#2e3842",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full bg-primary-container" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn
+          Pressable accessibilityHint=undefined accessibilityLabel="Rescan" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#2e3842",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn

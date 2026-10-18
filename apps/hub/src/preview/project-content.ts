@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import type { ProjectFilesService } from '../projects/service';
 import type { ProjectAuthority } from '../projects/authority';
+import { isMissing } from '../fs-util';
 export interface ProjectAsset {
   readonly bytes: Buffer;
   readonly size: number;
@@ -26,7 +27,7 @@ export async function readProjectAsset(
   try {
     return await projects.readBytes(authority, path, range.offset, range.length);
   } catch (cause) {
-    if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT')
+    if (isMissing(cause))
       throw new ApiError('not_found', 'The published project file does not exist.');
     throw cause;
   }

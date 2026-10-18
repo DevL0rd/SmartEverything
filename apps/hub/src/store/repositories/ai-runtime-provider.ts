@@ -16,8 +16,9 @@ import {
   retainProviderEvents,
   KEPT_PROVIDER_EVENTS,
   KEPT_PROVIDER_EVENT_BYTES,
-} from '../ai-provider-retention';
+} from '../retention';
 import { AiProviderRepository } from './ai-provider';
+import { trackPending } from './ai-chat-pending';
 
 const ROW = z.strictObject({
   runtime: z.enum(['claude', 'codex']),
@@ -81,7 +82,9 @@ export class AiRuntimeProviderRepository {
   save(chatId: string, state: AiChatRuntimeProvider): void {
     const row = AI_CHAT_RUNTIME_PROVIDER.parse(state);
     this.context.write(() => {
-      this.saveBinding(chatId, row);
+      trackPending(this.context, chatId, () => {
+        this.saveBinding(chatId, row);
+      });
     });
   }
   private saveBinding(chatId: string, row: AiChatRuntimeProvider): void {

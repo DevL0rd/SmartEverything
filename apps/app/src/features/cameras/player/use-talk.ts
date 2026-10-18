@@ -67,7 +67,7 @@ function openTalk(
   };
 }
 
-export const TALK_LIMIT_MS = 2 * 60_000;
+const TALK_LIMIT_MS = 2 * 60_000;
 
 export interface TalkSession {
   readonly live: boolean;

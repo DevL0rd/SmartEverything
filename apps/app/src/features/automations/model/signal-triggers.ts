@@ -1,31 +1,26 @@
 import {
-  CAPABILITY_KEY,
   EVENT_KINDS,
   SIGNAL_SOURCES,
-  SIGNAL_TRIGGER,
-  kindSpecOf,
   compatibleSignalMatch,
+  kindSpecOf,
   type SignalKindSpec,
   type SignalSourceSpec,
-  type SignalTrigger,
-  type SignalWindow,
+  type SignalTriggerV2,
   type SignalWindowMode,
-  type Trigger,
   type ValueDescriptor,
 } from '@smarteverything/domain';
-import { z } from 'zod';
 
-export type TimedBase = Extract<Trigger, { type: 'state' | 'event' }>;
+type SignalForm = 'device' | 'event' | 'weather' | 'generic';
 
 export interface SignalTiming {
-  readonly window: SignalWindow | null;
+  readonly window: { readonly of: SignalWindowMode; readonly seconds: number } | null;
   readonly atLeast: number;
   readonly debounceSeconds: number;
   readonly holdSeconds: number;
   readonly cooldownSeconds: number;
 }
 
-export const NO_TIMING: SignalTiming = {
+const NO_TIMING: SignalTiming = {
   window: null,
   atLeast: 2,
   debounceSeconds: 0,
@@ -34,186 +29,99 @@ export const NO_TIMING: SignalTiming = {
 };
 
 const DEDICATED_SOURCES: ReadonlySet<string> = new Set(['device', 'event', 'weather']);
-
-const EVENT_KIND = z.enum(EVENT_KINDS);
+const EVENT_KIND_NAMES: ReadonlySet<string> = new Set(EVENT_KINDS);
+const WEATHER_KIND_FIELD = 'kind';
 
 export function genericSources(): readonly SignalSourceSpec[] {
   return SIGNAL_SOURCES.filter((source) => !DEDICATED_SOURCES.has(source.source));
 }
 
-export function withKind(
-  trigger: Pick<SignalTrigger, 'type'> & Partial<SignalTrigger>,
+export function formOf(trigger: SignalTriggerV2): SignalForm {
+  if (trigger.source === 'device' && trigger.kind === 'state') return 'device';
+  if (trigger.source === 'event' && EVENT_KIND_NAMES.has(trigger.kind)) return 'event';
+  return trigger.source === 'weather' && trigger.kind === 'forecast' ? 'weather' : 'generic';
+}
+
+export function isWeatherKindSignal(trigger: SignalTriggerV2): boolean {
+  return trigger.field === WEATHER_KIND_FIELD;
+}
+
+function matchFor(kind: SignalKindSpec, previous?: SignalTriggerV2): SignalTriggerV2['match'] {
+  const match = compatibleSignalMatch(
+    previous === undefined ? undefined : kindSpecOf(SIGNAL_SOURCES, previous),
+    kind,
+    previous?.match ?? {},
+  );
+  return Object.keys(match).length === 0 ? undefined : match;
+}
+
+export function signalOf(
   source: string,
   kind: SignalKindSpec,
-): SignalTrigger {
-  if (trigger.source === source && trigger.kind === kind.kind) {
-    return SIGNAL_TRIGGER.parse(trigger);
-  }
+  previous?: SignalTriggerV2,
+): SignalTriggerV2 {
   const first = kind.fields === 'capabilities' ? undefined : kind.fields[0];
-  return SIGNAL_TRIGGER.parse({
-    type: trigger.type,
+  const match = matchFor(kind, previous);
+  return {
+    on: 'signal',
+    ...(previous?.id === undefined ? {} : { id: previous.id }),
     source,
     kind: kind.kind,
-    field: kind.pulse || first === undefined ? null : first.field,
-    comparison: kind.pulse ? null : { operator: 'changed' },
-    match: compatibleSignalMatch(
-      kindSpecOf(SIGNAL_SOURCES, {
-        source: trigger.source ?? source,
-        kind: trigger.kind ?? kind.kind,
-      }),
-      kind,
-      trigger.match ?? {},
-    ),
-  });
-}
-
-export function countComparison(timing: SignalTiming): SignalTrigger['comparison'] {
-  return timing.window?.mode === 'count' ? { operator: 'gte', value: timing.atLeast } : null;
-}
-
-export function windowModesFor(base: TimedBase, value: ValueDescriptor | null): SignalWindowMode[] {
-  if (base.type === 'event') {
-    return ['count'];
-  }
-  return value?.kind === 'number' ? ['avg', 'min', 'max', 'rate'] : [];
-}
-
-export function timingOf(trigger: Trigger): SignalTiming {
-  if (trigger.type !== 'signal') {
-    return NO_TIMING;
-  }
-  const comparison = trigger.comparison;
-  return {
-    window: trigger.window,
-    atLeast:
-      trigger.window?.mode === 'count' && comparison?.operator === 'gte'
-        ? comparison.value
-        : NO_TIMING.atLeast,
-    debounceSeconds: trigger.debounceSeconds,
-    holdSeconds: trigger.holdSeconds,
-    cooldownSeconds: trigger.cooldownSeconds,
+    ...(kind.pulse || first === undefined ? {} : { field: first.field }),
+    ...(kind.pulse ? {} : { test: { is: 'changed' } }),
+    ...(match === undefined ? {} : { match }),
   };
 }
 
-function stateBase(trigger: SignalTrigger): TimedBase | null {
-  const capability = CAPABILITY_KEY.safeParse(trigger.field);
-  if (trigger.subject === null || !capability.success) {
-    return null;
-  }
+export function blankSignal(): SignalTriggerV2 | null {
+  const source = genericSources()[0];
+  const kind = source?.kinds[0];
+  return source === undefined || kind === undefined ? null : signalOf(source.source, kind);
+}
+
+export function windowModesFor(
+  form: SignalForm,
+  value: ValueDescriptor | null,
+): SignalWindowMode[] {
+  if (form === 'event') return ['count'];
+  if (form === 'device') return value?.kind === 'number' ? ['avg', 'min', 'max', 'rate'] : [];
+  return form === 'generic' ? ['avg', 'min', 'max', 'rate'] : [];
+}
+
+export function timingOf(trigger: SignalTriggerV2): SignalTiming {
+  const test = trigger.test;
   return {
-    type: 'state',
-    deviceId: trigger.subject,
-    capability: capability.data,
-    comparison: trigger.comparison ?? { operator: 'changed' },
+    window: trigger.window ?? null,
+    atLeast: trigger.window?.of === 'count' && test?.is === 'gte' ? test.to : NO_TIMING.atLeast,
+    debounceSeconds: trigger.debounceSeconds ?? 0,
+    holdSeconds: trigger.holdSeconds ?? 0,
+    cooldownSeconds: trigger.cooldownSeconds ?? 0,
   };
 }
 
-export function baseOf(trigger: Trigger): TimedBase | null {
-  if (trigger.type === 'state' || trigger.type === 'event') {
-    return trigger;
-  }
-  if (trigger.type !== 'signal') {
-    return null;
-  }
-  if (trigger.source === 'device' && trigger.kind === 'state') {
-    return stateBase(trigger);
-  }
-  const kind = EVENT_KIND.safeParse(trigger.kind);
-  return trigger.source === 'event' && kind.success
-    ? { type: 'event', deviceId: trigger.subject, kind: kind.data }
-    : null;
+function withSeconds(
+  trigger: SignalTriggerV2,
+  key: 'debounceSeconds' | 'holdSeconds' | 'cooldownSeconds',
+  seconds: number,
+): SignalTriggerV2 {
+  const { [key]: _dropped, ...rest } = trigger;
+  return seconds > 0 ? { ...rest, [key]: seconds } : rest;
 }
 
-function untimed(timing: SignalTiming): boolean {
-  return (
-    timing.window === null &&
-    timing.debounceSeconds === 0 &&
-    timing.holdSeconds === 0 &&
-    timing.cooldownSeconds === 0
-  );
-}
-
-function timingFields(
-  timing: SignalTiming,
-): Pick<SignalTrigger, 'window' | 'debounceSeconds' | 'holdSeconds' | 'cooldownSeconds'> {
+function withWindow(trigger: SignalTriggerV2, timing: SignalTiming): SignalTriggerV2 {
+  const { window: _window, ...rest } = trigger;
+  if (timing.window === null) return rest;
+  const counting = timing.window.of === 'count';
   return {
+    ...rest,
     window: timing.window,
-    debounceSeconds: timing.debounceSeconds,
-    holdSeconds: timing.holdSeconds,
-    cooldownSeconds: timing.cooldownSeconds,
+    ...(counting ? { test: { is: 'gte', to: timing.atLeast } } : {}),
   };
 }
 
-function originalSignal(base: TimedBase, original: Trigger | undefined): SignalTrigger | null {
-  if (original?.type !== 'signal') {
-    return null;
-  }
-  const source = base.type === 'event' ? 'event' : 'device';
-  return original.source === source ? original : null;
-}
-
-function compatibleMatch(base: TimedBase, original: SignalTrigger | null): SignalTrigger['match'] {
-  if (original === null) {
-    return {};
-  }
-  if (base.type === 'state' || base.kind === original.kind) {
-    return original.match;
-  }
-  return compatibleSignalMatch(
-    kindSpecOf(SIGNAL_SOURCES, original),
-    kindSpecOf(SIGNAL_SOURCES, { source: 'event', kind: base.kind }),
-    original.match,
-  );
-}
-
-function eventComparison(
-  timing: SignalTiming,
-  original: SignalTrigger | null,
-): SignalTrigger['comparison'] {
-  if (original !== null) {
-    const previous = timingOf(original);
-    if (previous.window?.mode === timing.window?.mode && previous.atLeast === timing.atLeast) {
-      return original.comparison;
-    }
-  }
-  return countComparison(timing);
-}
-
-function stateComparison(
-  base: Extract<TimedBase, { type: 'state' }>,
-  original: SignalTrigger | null,
-): SignalTrigger['comparison'] {
-  return original !== null && original.comparison === null && base.comparison.operator === 'changed'
-    ? null
-    : base.comparison;
-}
-
-export function withTiming(base: TimedBase, timing: SignalTiming, original?: Trigger): Trigger {
-  const signal = originalSignal(base, original);
-  if (untimed(timing) && signal === null) {
-    return base;
-  }
-  const match = compatibleMatch(base, signal);
-  if (base.type === 'state') {
-    return {
-      type: 'signal',
-      source: 'device',
-      kind: 'state',
-      subject: base.deviceId,
-      field: base.capability,
-      comparison: stateComparison(base, signal),
-      match,
-      ...timingFields(timing),
-    };
-  }
-  return {
-    type: 'signal',
-    source: 'event',
-    kind: base.kind,
-    subject: base.deviceId,
-    field: signal?.kind === base.kind ? signal.field : null,
-    comparison: eventComparison(timing, signal),
-    match,
-    ...timingFields(timing),
-  };
+export function withTiming(trigger: SignalTriggerV2, timing: SignalTiming): SignalTriggerV2 {
+  const windowed = withWindow(trigger, timing);
+  const held = withSeconds(windowed, 'holdSeconds', timing.holdSeconds);
+  const settled = withSeconds(held, 'debounceSeconds', timing.debounceSeconds);
+  return withSeconds(settled, 'cooldownSeconds', timing.cooldownSeconds);
 }

@@ -32,7 +32,7 @@ class IncomingCallActivity : Activity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val incoming = IncomingCall.fromIntent(intent)
-    if (incoming == null || incoming.expiresAt <= System.currentTimeMillis()) {
+    if (incoming == null || incoming.remainingMs() <= 0) {
       finish()
       return
     }
@@ -44,7 +44,7 @@ class IncomingCallActivity : Activity() {
       return
     }
     setContentView(layout(incoming))
-    handler.postDelayed({ finish() }, incoming.expiresAt - System.currentTimeMillis())
+    handler.postDelayed({ finish() }, incoming.remainingMs())
   }
 
   override fun onDestroy() {

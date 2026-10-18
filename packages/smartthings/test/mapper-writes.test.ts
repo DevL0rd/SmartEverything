@@ -40,6 +40,41 @@ describe('writing a value of the wrong type', () => {
   });
 });
 
+describe('the Samsung TV remote', () => {
+  it('presses a known key and refuses an unknown one', () => {
+    const remote = single('samsungvd.remoteControl', viewOf({}));
+    expect(writeOf(remote, 'home')).toStrictEqual([
+      {
+        capability: 'samsungvd.remoteControl',
+        command: 'send',
+        arguments: ['HOME', 'PRESS_AND_RELEASED'],
+      },
+    ]);
+    expect(() => writeOf(remote, 'skip')).toThrow('SmartThings cannot send this key');
+    expect(() => writeOf(remote, 'power')).toThrow('SmartThings cannot send this key');
+    expect(remote.read(statusOf({}))).toBeUndefined();
+  });
+});
+
+describe('the Samsung TV input source', () => {
+  it('lists the sources it reports and adds the current one only when it is a name', () => {
+    const options = (current: JsonValue): unknown =>
+      single(
+        'samsungvd.mediaInputSource',
+        viewOf({
+          'samsungvd.mediaInputSource': {
+            supportedInputSourcesMap: [{ id: 'dtv' }],
+            inputSource: current,
+          },
+        }),
+      ).value;
+    expect(options('hdmi1')).toEqual({ kind: 'enum', options: ['dtv', 'hdmi1'] });
+    expect(options('dtv')).toEqual({ kind: 'enum', options: ['dtv'] });
+    expect(options('')).toEqual({ kind: 'enum', options: ['dtv'] });
+    expect(options(4)).toEqual({ kind: 'enum', options: ['dtv'] });
+  });
+});
+
 describe('reading reported values', () => {
   it('reads the boolean sensors from the values that mean detected', () => {
     const cases: readonly (readonly [string, string, string, string])[] = [

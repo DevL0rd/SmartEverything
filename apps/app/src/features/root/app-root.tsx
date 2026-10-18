@@ -12,10 +12,14 @@ import { LinkIntentProvider } from '../../components/link-intent';
 import { notify } from '../../components/toast-store';
 import { Toasts } from '../../components/toasts';
 import { ConnectionProvider } from '../../api/transport';
+import { noteTouch } from '../../design/idle-rest';
+import { touchBegan, touchEnded } from '../../design/touch-activity';
+import { ColourPalette } from '../../design/colour-palette';
 import { startTheme } from '../../design/theme';
-import { useDeveloperFlags } from '../../developer/flags';
+import { useDeveloperFlag } from '../../developer/flags';
 import { perfTouch } from '../../perf/touch';
 import { makeQueryClient, watchDevice } from '../../queries/client';
+import { LightingScope } from '../device-visuals';
 import { startClock } from '../../store/clock';
 import { loadLocalPrefs } from '../../store/local-prefs';
 
@@ -34,9 +38,20 @@ function useStartup(): void {
   }, []);
 }
 
+function touchStarted(): void {
+  perfTouch('start');
+  touchBegan();
+  noteTouch();
+}
+
+function touchFinished(): void {
+  perfTouch('end');
+  touchEnded();
+}
+
 export function AppRoot({ children }: { readonly children: ReactNode }): ReactNode {
   const [client] = useState(makeQueryClient);
-  const flags = useDeveloperFlags();
+  const probeTouchMoves = useDeveloperFlag('perf.stalls');
   useStartup();
   return (
     <GestureHandlerRootView className="flex-1 bg-bg">
@@ -46,37 +61,37 @@ export function AppRoot({ children }: { readonly children: ReactNode }): ReactNo
             Uniwind.updateInsets(insets);
           }}
         >
-          <QueryClientProvider client={client}>
-            <ConnectionProvider>
-              <LinkIntentProvider
-                onIntent={(target) => {
-                  preloader.boost(target);
-                }}
-              >
-                <View
-                  className="flex-1 bg-bg"
-                  onTouchStart={() => {
-                    perfTouch('start');
-                    preloader.interacted();
-                  }}
-                  {...(flags['perf.stalls']
-                    ? {
-                        onTouchMove: (): void => {
-                          perfTouch('move');
-                        },
-                        onTouchEnd: (): void => {
-                          perfTouch('end');
-                        },
-                      }
-                    : {})}
-                >
-                  <HomeHost>{children}</HomeHost>
-                  <Toasts />
-                  <ConfirmHost />
-                </View>
-              </LinkIntentProvider>
-            </ConnectionProvider>
-          </QueryClientProvider>
+          <ColourPalette>
+            <LightingScope>
+              <QueryClientProvider client={client}>
+                <ConnectionProvider>
+                  <LinkIntentProvider
+                    onIntent={(target) => {
+                      preloader.boost(target);
+                    }}
+                  >
+                    <View
+                      className="flex-1 bg-bg"
+                      onTouchStart={touchStarted}
+                      onTouchEnd={touchFinished}
+                      onTouchCancel={touchFinished}
+                      {...(probeTouchMoves
+                        ? {
+                            onTouchMove: (): void => {
+                              perfTouch('move');
+                            },
+                          }
+                        : {})}
+                    >
+                      <HomeHost>{children}</HomeHost>
+                      <Toasts />
+                      <ConfirmHost />
+                    </View>
+                  </LinkIntentProvider>
+                </ConnectionProvider>
+              </QueryClientProvider>
+            </LightingScope>
+          </ColourPalette>
         </SafeAreaListener>
       </SafeAreaProvider>
     </GestureHandlerRootView>

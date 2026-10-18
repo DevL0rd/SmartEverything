@@ -1,43 +1,13 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { TextInput, View, type KeyboardTypeOptions, type TextInputProps } from 'react-native';
+import { TextInput, View } from 'react-native';
 import { cn } from '../design/cn';
 import { IconButton } from './icon-button';
 import { Text } from './text';
+import { FIELD_KINDS, type FieldKind } from './field-kinds';
 import { useFocusOnMount } from './use-focus-on-mount';
 
-export type FieldKind = 'text' | 'email' | 'password' | 'url' | 'number' | 'code';
-
-interface KindProps {
-  readonly keyboardType: KeyboardTypeOptions;
-  readonly autoCapitalize: TextInputProps['autoCapitalize'];
-  readonly autoComplete: TextInputProps['autoComplete'];
-  readonly mono: boolean;
-}
-
-const KIND: Readonly<Record<FieldKind, KindProps>> = {
-  text: { keyboardType: 'default', autoCapitalize: 'sentences', autoComplete: 'off', mono: false },
-  email: {
-    keyboardType: 'email-address',
-    autoCapitalize: 'none',
-    autoComplete: 'email',
-    mono: false,
-  },
-  password: {
-    keyboardType: 'default',
-    autoCapitalize: 'none',
-    autoComplete: 'password',
-    mono: false,
-  },
-  url: { keyboardType: 'url', autoCapitalize: 'none', autoComplete: 'url', mono: true },
-  number: { keyboardType: 'decimal-pad', autoCapitalize: 'none', autoComplete: 'off', mono: false },
-  code: {
-    keyboardType: 'default',
-    autoCapitalize: 'characters',
-    autoComplete: 'one-time-code',
-    mono: true,
-  },
-};
+export type { FieldKind };
 
 export interface TextFieldProps {
   readonly label: string;
@@ -77,7 +47,7 @@ function Help({
 
 function Input(props: TextFieldProps & { readonly revealed: boolean }): ReactNode {
   const kind = props.kind ?? 'text';
-  const look = KIND[kind];
+  const look = FIELD_KINDS[kind];
   const ref = useFocusOnMount(props.focusOnMount === true);
   return (
     <TextInput

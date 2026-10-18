@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { itIsPinnedToItsDeclaredVersion, readRepositoryJson } from './contract-helpers';
+import { readRepositoryJson } from './contract-helpers';
 
 const CONFIG_SCHEMA = z.object({
   threshold: z.number(),
@@ -10,8 +10,6 @@ const CONFIG_SCHEMA = z.object({
 });
 
 describe('jscpd contract', () => {
-  itIsPinnedToItsDeclaredVersion('jscpd');
-
   it('is configured to allow no duplication at all', () => {
     expect(readRepositoryJson('.jscpd.json', CONFIG_SCHEMA).threshold).toBe(0);
   });

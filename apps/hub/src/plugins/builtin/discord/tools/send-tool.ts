@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { HubToolResult, ToolCaller } from '../../../../ai-tools/hub-tool';
 import type { PluginTool } from '../../contract';
@@ -10,17 +9,17 @@ import { SNOWFLAKE } from '../ids';
 import {
   assertTotal,
   inlineFile,
+  machineFile,
   MAX_FILES,
   pathFile,
   SEND_FILE,
   urlFile,
   type SendFile,
 } from '../outgoing-files';
-import { uploaderOf } from '../uploads';
 import type { OutFile } from '../outgoing';
 import type { DiscordServices } from '../services';
 import { boundedResult } from './action-runner';
-import { EVENT_ID, IDEMPOTENCY_KEY, USER_REF } from './schema';
+import { EVENT_ID, USER_REF } from './schema';
 
 const SEND = z.strictObject({
   eventId: EVENT_ID,
@@ -41,7 +40,7 @@ const SEND = z.strictObject({
     .max(MAX_FILES)
     .default([])
     .describe(
-      'Up to 10 files or images from any source: { path } any absolute local file the hub can read, { url } an http(s) download, { name, text } or { name, base64 } inline content, { uploadId } from the upload tool. Discord limits apply: the plugin’s per-file size setting and 25 MiB in total per message.',
+      'Up to 10 files or images from any source: { path, machine? } an absolute file path on the home hub’s machine or, with machine (name or id from list_machines), on that computer, { url } an http(s) download, { name, text } or { name, base64 } inline content. Discord limits apply: the plugin’s per-file size setting and 25 MiB in total per message.',
     ),
   notify: USER_REF.optional().describe(
     'Ping this approved person. In a reply, only the person who asked can be pinged. Roles and everyone are never pinged.',
@@ -52,31 +51,31 @@ const SEND = z.strictObject({
     .describe(
       'A short status update for a request ("On it, checking the logs..."). Updates appear as a status section under your last reply, which is removed when you send the answer.',
     ),
-  idempotencyKey: IDEMPOTENCY_KEY,
 });
 
-function uploadedFile(uploaded: ReadonlyMap<string, OutFile>, id: string): OutFile {
-  const found = uploaded.get(id);
-  if (found === undefined) {
-    throw new DiscordInputError('Upload is unknown or expired');
-  }
-  return found;
-}
-
-function oneFile(
+async function pathOnMachine(
   services: DiscordServices,
-  file: SendFile,
-  uploaded: ReadonlyMap<string, OutFile>,
+  file: { readonly machine?: string | undefined; readonly path: string },
+  caller: ToolCaller,
 ): Promise<OutFile> {
   const max = services.settings.media_max_file_bytes;
-  if ('uploadId' in file) {
-    return Promise.resolve(uploadedFile(uploaded, file.uploadId));
-  }
+  if (file.machine === undefined) return pathFile(file.path, max);
+  const { machine, path } = { machine: file.machine, path: file.path };
+  const fetched = await machineFile(
+    { machine, path },
+    () => services.machineFile(caller, { machine, path }),
+    max,
+  );
+  return fetched ?? pathFile(path, max);
+}
+
+function oneFile(services: DiscordServices, file: SendFile, caller: ToolCaller): Promise<OutFile> {
+  const max = services.settings.media_max_file_bytes;
   if ('path' in file) {
-    return pathFile(file.path, max);
+    return pathOnMachine(services, file, caller);
   }
   if ('url' in file) {
-    return urlFile(file.url, file.name, max, services.fetchUrl);
+    return urlFile(file.url, file.name, max, services.download);
   }
   return inlineFile(file, max);
 }
@@ -90,10 +89,7 @@ async function filesOf(
     return [];
   }
   services.media.assertEnabled();
-  const ids = list.flatMap((file) => ('uploadId' in file ? [file.uploadId] : []));
-  const uploaded: ReadonlyMap<string, OutFile> =
-    ids.length === 0 ? new Map() : services.uploads.ready(ids, uploaderOf(caller));
-  const files = await Promise.all(list.map((file) => oneFile(services, file, uploaded)));
+  const files = await Promise.all(list.map((file) => oneFile(services, file, caller)));
   assertTotal(files);
   return files;
 }
@@ -120,7 +116,7 @@ async function send(
     throw new DiscordInputError('Choose one of channelId and userId');
   }
   assertProgressAlone(input, away);
-  await services.authority.access(caller, input.eventId, true);
+  await services.authority.access(caller, input.eventId);
   const userId =
     input.userId === undefined ? undefined : await services.directory.resolve(input.userId);
   const notify =
@@ -134,7 +130,6 @@ async function send(
     files: await filesOf(services, input.files, caller),
     notifyUserId: notify,
     progress: input.progress,
-    idempotencyKey: input.idempotencyKey ?? randomUUID(),
   });
   return boundedResult(result);
 }
@@ -144,7 +139,7 @@ export function sendTool(services: DiscordServices): PluginTool {
     name: 'send',
     title: 'Send a Discord message',
     description:
-      'Send text, embeds and files in Discord. Files can come from anywhere: any local path, an http(s) URL, inline text or base64, an upload, or an attachment path. With only eventId it replies in the conversation of that request. Add channelId to post in a server channel or thread, or userId to message an approved person directly. Everyone who is allowed may leave eventId out when giving channelId or userId. Your final answer to a request is posted for you, so use this for extra messages, files or other places. Pass progress: true with only eventId for a short status update while you work.',
+      'Send text, embeds and files in Discord. Files can come from anywhere: any local path, an http(s) URL, or inline text or base64. With only eventId it replies in the conversation of that request. Add channelId to post in a server channel or thread, or userId to message an approved person directly. Everyone who is allowed may leave eventId out when giving channelId or userId. Your final answer to a request is posted for you, so use this for extra messages, files or other places. Pass progress: true with only eventId for a short status update while you work.',
     input: SEND,
     annotations: WRITE_HINTS,
     humanOnly: false,

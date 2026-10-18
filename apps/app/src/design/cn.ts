@@ -1,3 +1,9 @@
 export function cn(...parts: readonly (string | false | null | undefined)[]): string {
-  return parts.filter((part): part is string => typeof part === 'string' && part !== '').join(' ');
+  let joined = '';
+  for (const part of parts) {
+    if (typeof part === 'string' && part !== '') {
+      joined = joined === '' ? part : `${joined} ${part}`;
+    }
+  }
+  return joined;
 }

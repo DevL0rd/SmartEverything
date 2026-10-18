@@ -1,3 +1,6 @@
+import { chmod, copyFile, mkdir, rm } from 'node:fs/promises';
+import path from 'node:path';
+
 export const GO2RTC_RESOURCE_DIRECTORY = 'go2rtc';
 export const GO2RTC_LICENSE_FILE = 'LICENSE.go2rtc.txt';
 
@@ -37,4 +40,19 @@ export function go2rtcBuildName(platform: string, arch: string): string {
 
 export function go2rtcShippedName(platform: string): string {
   return platform === 'win32' ? 'go2rtc.exe' : 'go2rtc';
+}
+
+export async function stageGo2rtc(
+  builds: string,
+  stage: string,
+  platform: string,
+  arch: string,
+): Promise<void> {
+  const source = path.join(builds, go2rtcBuildName(platform, arch));
+  await rm(stage, { recursive: true, force: true });
+  await mkdir(stage, { recursive: true });
+  const binary = path.join(stage, go2rtcShippedName(platform));
+  await copyFile(source, binary);
+  await chmod(binary, 0o755);
+  await copyFile(path.join(builds, GO2RTC_LICENSE_FILE), path.join(stage, GO2RTC_LICENSE_FILE));
 }

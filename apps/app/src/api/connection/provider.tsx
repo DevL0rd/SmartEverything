@@ -5,6 +5,7 @@ import { connectionState, loadConnection, type ConnectionState } from './connect
 import { useValue } from '../../design/external-store';
 import { routeFor, stopHubRoute } from './active-route';
 import { followHubNetwork } from './route-events';
+import { background } from '@smarteverything/logging';
 
 function identityOf(state: ConnectionState): string | null {
   return state.status === 'paired' ? `${state.connection.url} ${state.connection.token}` : null;
@@ -17,7 +18,7 @@ export function ConnectionProvider({ children }: { readonly children: ReactNode 
   const identity = identityOf(state);
   const connection = state.status === 'paired' ? state.connection : null;
   useEffect(() => {
-    void loadConnection();
+    background(loadConnection(), 'connection.load_failed');
   }, []);
   useEffect(() => {
     if (connection === null) {

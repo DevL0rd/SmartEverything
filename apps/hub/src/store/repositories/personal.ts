@@ -1,6 +1,8 @@
 import {
   LAYOUT_ROW,
   PUSH_TARGET_ROW,
+  type ClientPrefDefinition,
+  type ClientPrefRead,
   type JsonValue,
   type LayoutRow,
   type PushTargetRow,
@@ -40,6 +42,10 @@ export class PersonalRepository {
       `select ${LAYOUT_COLUMNS} from layouts where ${scoped.column} = $owner and page = $page`,
       { owner: scoped.id, page },
     );
+  }
+
+  pref<T>(definition: ClientPrefDefinition<T>, owner: LayoutOwner): ClientPrefRead<T> {
+    return definition.decode(this.layout(owner, definition.storageKey)?.layout);
   }
 
   layouts(owner: LayoutOwner): LayoutRow[] {

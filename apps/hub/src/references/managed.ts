@@ -1,87 +1,94 @@
-import { Context } from '@deepseek-ai/cordis';
-import { HarnessLocalFileSystem } from '@smarteverything/harness';
-import { AI_PROJECT_CHUNK_BYTES, ApiError, type AiReference } from '@smarteverything/domain';
-import { ProjectPaths } from '../projects/paths';
-import { projectStat } from '../projects/reads';
-import type { Store } from '../store/store';
-import type { ReferenceContext, ReferenceSource, ReferenceSearchProgress } from './contracts';
-import { ManagedReferenceScan } from './managed-scan';
-import { emptyReferenceSearch } from './contracts';
+import { readdir } from 'node:fs/promises';
+import { basename, join, relative } from 'node:path';
+import {
+  ApiError,
+  type AiProjectFile,
+  type AiReference,
+  type AiReferenceSearch,
+  type AiReferenceSummary,
+} from '@smarteverything/domain';
+import type { ProjectFilesService } from '../projects/service';
+import type { ReferenceContext, ReferenceMatches } from './contracts';
+import { rankMatches } from './rank';
+import { isMissing } from '../fs-util';
 
-export function managedReferenceSource(store: Store, dataDirectory: string): ReferenceSource {
-  const paths = new ProjectPaths(store, dataDirectory);
+const AREAS = ['workspace', 'temporary'] as const;
+type ManagedReference = Extract<AiReference, { kind: 'managed_path' }>;
+
+export async function searchManaged(
+  projects: ProjectFilesService,
+  context: ReferenceContext,
+  request: AiReferenceSearch,
+): Promise<ReferenceMatches> {
+  const container = request.container;
+  if (container?.kind === 'device_path') return { items: [], incomplete: false };
+  if (container !== undefined && container.chat_id !== context.chat.id)
+    throw new ApiError('forbidden', 'Directory search must remain in this chat’s project folder.');
+  const directory = container?.path ?? request.directory;
+  const root = projects.ensure(context.chat.id);
+  const found =
+    directory === undefined ? await scanAreas(root) : await scanDirectory(root, directory);
+  const ranked = rankMatches(found, request.query, (path) => ({
+    title: basename(path),
+    extra: path,
+  }));
+  const files = await Promise.all(
+    ranked.slice(0, request.limit).map((path) => projects.stat(context.chat.id, path)),
+  );
+  const items = files.flatMap((file) => (file === null ? [] : [summary(context.chat.id, file)]));
+  return { items, incomplete: ranked.length > request.limit };
+}
+
+export async function resolveManaged(
+  projects: ProjectFilesService,
+  context: ReferenceContext,
+  reference: ManagedReference,
+): Promise<void> {
+  if (reference.chat_id !== context.chat.id)
+    throw new ApiError('forbidden', 'Project references cannot leave their initiating chat.');
+  const file = await projects.stat(context.chat.id, reference.path);
+  if (file?.type !== reference.entry_kind)
+    throw new ApiError('conflict', 'The referenced project path is no longer available.');
+}
+
+function summary(chat: string, file: AiProjectFile): AiReferenceSummary {
   return {
-    kind: 'managed_path',
-    status: () => ({ kind: 'managed_path', state: 'available' }),
-    open: async (context, request): Promise<ReferenceSearchProgress> => {
-      const container = request.container;
-      if (container?.kind === 'device_path') return emptyReferenceSearch();
-      if (container !== undefined) {
-        if (container.chat_id !== context.chat.id)
-          throw new ApiError(
-            'forbidden',
-            'Directory search must remain in this chat’s managed project.',
-          );
-        await resolveManaged(paths, store, context, container);
-      }
-      const fs = await projectFilesystem(paths, context);
-      return new ManagedReferenceScan(paths, fs, context, {
-        ...request,
-        directory: container?.path ?? request.directory,
-      });
+    reference: {
+      kind: 'managed_path',
+      chat_id: chat,
+      path: file.path,
+      version: file.version,
+      entry_kind: file.type,
     },
-    resolve: (context, reference): Promise<AiReference> =>
-      resolveManaged(paths, store, context, reference),
+    label: basename(file.path).slice(0, 300),
+    subtitle: file.path,
   };
 }
-async function projectFilesystem(
-  paths: ProjectPaths,
-  context: ReferenceContext,
-): Promise<HarnessLocalFileSystem> {
-  const root = await paths.ensure(context.chat.id, context.authority.profileId, context.validate);
-  context.validate();
-  return new HarnessLocalFileSystem(new Context(), {
-    cwd: root,
-    diffBasisMaxBytes: AI_PROJECT_CHUNK_BYTES,
-  });
-}
-function requireManagedVersion(
-  file: Awaited<ReturnType<typeof projectStat>>,
-  reference: Extract<AiReference, { kind: 'managed_path' }>,
-): void {
-  if (file?.version !== reference.version || file.type !== reference.entry_kind)
-    throw new ApiError(
-      'conflict',
-      'The referenced managed path changed or is no longer available.',
-    );
+
+async function scanAreas(root: string): Promise<string[]> {
+  const paths: string[] = [];
+  for (const area of AREAS) {
+    const entries = await readdir(join(root, area), { recursive: true, withFileTypes: true });
+    for (const entry of entries)
+      if (listed(entry)) paths.push(relative(root, join(entry.parentPath, entry.name)));
+  }
+  return paths;
 }
 
-async function resolveManaged(
-  paths: ProjectPaths,
-  store: Store,
-  context: ReferenceContext,
-  reference: AiReference,
-): Promise<AiReference> {
-  context.validate();
-  if (reference.kind !== 'managed_path')
-    throw new ApiError('invalid_request', 'Expected a managed project reference.');
-  if (reference.chat_id !== context.chat.id)
-    throw new ApiError(
-      'forbidden',
-      'Managed references cannot leave their initiating chat project.',
-    );
-  if (store.aiChats.chat(reference.chat_id).profile_id !== context.authority.profileId)
-    throw new ApiError('forbidden', 'The referenced project belongs to a different profile.');
-  store.aiChats.assertWorkAllowed(reference.chat_id);
-  if (reference.path.split('/').includes('.operations'))
-    throw new ApiError('forbidden', 'Operation receipts cannot be referenced.');
-  const fs = new HarnessLocalFileSystem(new Context(), {
-    cwd: paths.root(reference.chat_id),
-    diffBasisMaxBytes: AI_PROJECT_CHUNK_BYTES,
-  });
-  const file = await projectStat(paths, fs, reference.chat_id, reference.path);
-  requireManagedVersion(file, reference);
-  store.aiChats.assertWorkAllowed(reference.chat_id);
-  context.validate();
-  return reference;
+async function scanDirectory(root: string, directory: string): Promise<string[]> {
+  const entries = await readdir(join(root, directory), { withFileTypes: true }).catch(
+    (cause: unknown) => {
+      if (isMissing(cause))
+        throw new ApiError('not_found', 'The referenced project directory is absent.');
+      throw cause;
+    },
+  );
+  return entries.filter(listed).map((entry) => `${directory}/${entry.name}`);
+}
+
+function listed(entry: {
+  readonly isDirectory: () => boolean;
+  readonly isFile: () => boolean;
+}): boolean {
+  return entry.isDirectory() || entry.isFile();
 }

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import type { ProviderEvent } from '@smarteverything/domain';
 import { Text } from '../../../components/text';
 import { ProviderResult } from './provider-result';
+import { dateTimeText } from '../../../format/locale';
 
 function UsageEvent({
   event,
@@ -25,7 +26,7 @@ function UsageEvent({
   return (
     <Text tone={event.status === 'rejected' ? 'critical' : 'variant'}>
       {event.detail}
-      {event.resets_at === null ? '' : ` · resets ${new Date(event.resets_at).toLocaleString()}`}
+      {event.resets_at === null ? '' : ` · resets ${dateTimeText(new Date(event.resets_at))}`}
     </Text>
   );
 }

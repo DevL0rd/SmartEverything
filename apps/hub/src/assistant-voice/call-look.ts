@@ -27,7 +27,7 @@ const REFUSAL_TEXT: Readonly<Record<SightRefusal, string>> = {
   declined: 'They said no.',
 };
 
-const SOURCE_TEXT: Readonly<Record<SightSource, string>> = {
+export const SOURCE_TEXT: Readonly<Record<SightSource, string>> = {
   home_camera: 'a camera of the home',
   phone_camera: 'their phone camera',
   phone_screen: 'their phone screen',
@@ -38,7 +38,7 @@ const SOURCE_TEXT: Readonly<Record<SightSource, string>> = {
 const HUB_SOURCES: ReadonlySet<SightSource> = new Set(HUB_SIGHT_SOURCES);
 
 const SEE_ARGUMENTS = z.object({
-  source: z.enum(SIGHT_SOURCES),
+  source: z.enum(SIGHT_SOURCES).optional(),
   camera: z.string().trim().min(1).optional(),
   facing: z.enum(['front', 'back']).optional(),
   screen: z.string().trim().min(1).optional(),
@@ -47,11 +47,18 @@ const SEE_ARGUMENTS = z.object({
   asked: z.boolean().default(false),
 });
 
-type SeeArguments = z.infer<typeof SEE_ARGUMENTS>;
+type AskedArguments = z.infer<typeof SEE_ARGUMENTS>;
+
+type SeeArguments = Omit<AskedArguments, 'source'> & { readonly source: SightSource };
 
 export interface LookContext {
   readonly look: ReadonlySet<SightSource>;
   readonly available: ReadonlySet<SightSource>;
+}
+
+export interface OwnScreen {
+  readonly source: SightSource | null;
+  readonly computerId: string | null;
 }
 
 export interface LookPorts {
@@ -60,6 +67,8 @@ export interface LookPorts {
   readonly note: (text: string, picture?: Picture, respond?: boolean) => void;
   readonly delegate: (args: Readonly<Record<string, unknown>>) => Promise<HubToolResult>;
   readonly context: () => LookContext;
+  readonly own: () => OwnScreen;
+  readonly shared: (source: SightSource) => boolean;
   readonly looked: (source: SightSource, label: string) => void;
   readonly now: () => Date;
   readonly log: Logger;
@@ -83,13 +92,18 @@ function failed(message: string): ToolAnswer {
   return { response: { error: message }, line: '', pictures: [] };
 }
 
-function delegatedArguments(args: SeeArguments): Readonly<Record<string, unknown>> {
+function delegatedArguments(
+  args: SeeArguments,
+  computerId: string | null,
+): Readonly<Record<string, unknown>> {
+  const computer = computerId === null ? {} : { computer: computerId };
   switch (args.source) {
     case 'home_camera':
       return { source: args.source, camera: args.camera };
     case 'desktop_window':
-      return { source: args.source, window: args.window };
+      return { source: args.source, window: args.window, ...computer };
     case 'desktop_screen':
+      return { source: args.source, ...computer };
     case 'phone_camera':
     case 'phone_screen':
       return { source: args.source };
@@ -107,23 +121,23 @@ export class Looks {
   constructor(private readonly ports: LookPorts) {}
 
   async see(args: Readonly<Record<string, unknown>>): Promise<ToolAnswer> {
-    const parsed = SEE_ARGUMENTS.safeParse(args);
-    if (!parsed.success) {
-      return failed(`see needs a source and why: ${parsed.error.message}`);
+    const look = this.resolved(args);
+    if (typeof look === 'string') {
+      return failed(look);
     }
-    const { source, why, asked } = parsed.data;
-    const target = targetOf(parsed.data);
+    const { source, why, asked } = look;
+    const target = targetOf(look);
     if (!this.reachable(source)) {
       return failed(`Their app cannot show you ${SOURCE_TEXT[source]} on this device.`);
     }
-    if (!asked && !this.ports.context().look.has(source)) {
+    if (!asked && !this.ports.context().look.has(source) && !this.ports.shared(source)) {
       const accepted = await this.consent(source, why, target);
       if (!accepted) {
         return failed(`They did not let you look at ${SOURCE_TEXT[source]} this time.`);
       }
     }
     try {
-      const seen = await this.take(parsed.data, target);
+      const seen = await this.take(look, target);
       this.shown(seen, asked ? 'asked' : 'ai');
       return {
         response: { status: 'ok', source, what: seen.label, at: this.ports.now().toISOString() },
@@ -136,6 +150,17 @@ export class Looks {
       }
       throw cause;
     }
+  }
+
+  private resolved(args: Readonly<Record<string, unknown>>): SeeArguments | string {
+    const parsed = SEE_ARGUMENTS.safeParse(args);
+    if (!parsed.success) {
+      return `see needs why and asked: ${parsed.error.message}`;
+    }
+    const source = parsed.data.source ?? this.ports.own().source;
+    return source === null
+      ? 'see needs a source: this call has no screen of its own.'
+      : { ...parsed.data, source };
   }
 
   answered(requestId: string, accepted: boolean): void {
@@ -256,7 +281,7 @@ export class Looks {
   }
 
   private async fetched(args: SeeArguments): Promise<Seen> {
-    const result = await this.ports.delegate(delegatedArguments(args));
+    const result = await this.ports.delegate(delegatedArguments(args, this.ports.own().computerId));
     const picture = result.pictures[0];
     const error = result.response['error'];
     if (picture === undefined) {

@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { usePushDeliveries } from '../../../api/diagnostics';
-import { useFfmpeg, useServiceLogTail } from '../../../api/desktop-service';
+import { useServiceLogTail } from '../../../api/desktop-service';
 import { CodeBlock } from '../../../components/code';
 import { ErrorState } from '../../../components/error-state';
-import { ActionRow, ValueRow } from '../../../components/rows';
+import { ValueRow } from '../../../components/rows';
 import { List, Section } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
 import { desktopBridge, type DesktopBridge } from '../../../design/platform';
@@ -11,7 +11,9 @@ import { count } from '../../../format/number';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useHubStatus, useIsOwner, useServiceLog } from '../../../store/selectors';
+import { joinLogLines } from '../model/log-seam';
 import { SettingsFrame } from '../../../settings/settings-frame';
+import { background } from '@smarteverything/logging';
 
 const LOG_LINES = 80;
 
@@ -34,36 +36,20 @@ function ServerRows(): ReactNode {
   );
 }
 
-function Ffmpeg({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
-  const ffmpeg = useFfmpeg(bridge);
-  const value = ffmpeg.data === undefined ? 'Checking…' : ffmpeg.data.found ? 'Found' : 'Missing';
-  return (
-    <List inset title="Video tools">
-      <ValueRow
-        icon="film"
-        title="ffmpeg"
-        value={ffmpeg.isError ? 'Unreadable' : value}
-        {...(ffmpeg.data?.found === false ? { subtitle: ffmpeg.data.instructions } : {})}
-      />
-      <ActionRow
-        icon="refresh"
-        title="Check again"
-        disabled={ffmpeg.isFetching}
-        onPress={() => {
-          void ffmpeg.refetch();
-        }}
-      />
-    </List>
-  );
-}
-
 function Pushes(): ReactNode {
   const status = usePushDeliveries();
   if (status.isPending) {
     return <Skeleton shape="block" />;
   }
   if (status.isError) {
-    return <ErrorState error={status.error} retry={() => void status.refetch()} />;
+    return (
+      <ErrorState
+        error={status.error}
+        retry={() => {
+          background(status.refetch(), 'status.refetch_failed');
+        }}
+      />
+    );
   }
   const data = status.data;
   return (
@@ -82,10 +68,17 @@ function Pushes(): ReactNode {
 function LiveLog({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
   const tail = useServiceLogTail(bridge);
   const live = useServiceLog();
-  const lines = [...(tail.data?.lines ?? []), ...live].slice(-LOG_LINES);
+  const lines = joinLogLines(tail.data?.lines ?? [], live).slice(-LOG_LINES);
   return (
     <Section title="Live log">
-      {tail.isError ? <ErrorState error={tail.error} retry={() => void tail.refetch()} /> : null}
+      {tail.isError ? (
+        <ErrorState
+          error={tail.error}
+          retry={() => {
+            background(tail.refetch(), 'tail.refetch_failed');
+          }}
+        />
+      ) : null}
       {tail.isPending ? (
         <Skeleton shape="block" />
       ) : (
@@ -101,7 +94,6 @@ export function DiagnosticsScreen(): ReactNode {
   return (
     <SettingsFrame page="server/diagnostics">
       <ServerRows />
-      {bridge === null ? null : <Ffmpeg bridge={bridge} />}
       {owner ? <Pushes /> : null}
       {bridge === null ? null : <LiveLog bridge={bridge} />}
     </SettingsFrame>

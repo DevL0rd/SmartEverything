@@ -9,9 +9,8 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import type { Clock } from '../clock';
 import type { NewCommand } from '../store/repositories/commands';
-import type { AiChatsRepository } from '../store/repositories/ai-chats';
+import type { SettingsKvRepository } from '../store/repositories/settings-kv';
 import type { StateRepository } from '../store/repositories/state';
 
 const FRAMING_KEY = 'reach.framing';
@@ -33,15 +32,20 @@ const FRAMING_ROLES: readonly CapabilityRole[] = [
   'follow_people',
   'smart_zoom',
   'zoom',
+  'ptz_preset',
 ];
+
+const ENABLED_ROLES: Readonly<Partial<Record<CapabilityRole, true>>> = {
+  detect_people: true,
+  follow_people: true,
+  smart_zoom: true,
+};
 
 const ZOOM_IN_SHARE = 0.15;
 
-export const READ_BACK_MS = 3000;
-
-export interface FramingStore {
-  readonly aiChats: Pick<AiChatsRepository, 'setting' | 'saveSetting'>;
-  readonly state: Pick<StateRepository, 'list'>;
+interface FramingStore {
+  readonly settingsKv: Pick<SettingsKvRepository, 'read' | 'save'>;
+  readonly state: Pick<StateRepository, 'ofDevice'>;
 }
 
 export type FramedCamera = Pick<DeviceRow, 'id' | 'kind' | 'model' | 'capabilities'>;
@@ -49,7 +53,6 @@ export type FramedCamera = Pick<DeviceRow, 'id' | 'kind' | 'model' | 'capabiliti
 export interface FramingOptions {
   readonly store: FramingStore;
   readonly submit: (commands: readonly NewCommand[]) => void;
-  readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
 
@@ -65,6 +68,9 @@ function command(deviceId: string, setting: Setting): NewCommand {
 
 function wanted(presented: PresentedCapability, current: JsonValue): JsonValue {
   const descriptor = presented.capability.value;
+  if (presented.role === 'ptz_preset') {
+    return current;
+  }
   if (presented.role !== 'zoom') {
     return true;
   }
@@ -74,6 +80,10 @@ function wanted(presented: PresentedCapability, current: JsonValue): JsonValue {
   const zoomed = descriptor.min + (descriptor.max - descriptor.min) * ZOOM_IN_SHARE;
   const stepped = Math.round(zoomed / descriptor.step) * descriptor.step;
   return Math.max(current, stepped);
+}
+
+function isEnabled(role: CapabilityRole | null): boolean {
+  return role !== null && ENABLED_ROLES[role] === true;
 }
 
 function differ(left: JsonValue | undefined, right: JsonValue): boolean {
@@ -97,90 +107,109 @@ export class CameraFraming {
       const value = presented === undefined ? undefined : values.get(presented.key);
       return presented?.writable === true && value !== undefined ? [{ presented, value }] : [];
     });
-    if (!found.some((entry) => entry.presented.role !== 'zoom')) {
+    if (!found.some((entry) => isEnabled(entry.presented.role))) {
       this.options.log.info('reach.camera_framing_unavailable', { deviceId: device.id });
       return;
     }
-    const before = found.map((entry) => ({ capability: entry.presented.key, value: entry.value }));
+    const earlier = this.snapshotsOf(device.id)[0];
+    const before =
+      earlier?.before ??
+      found.map((entry) => ({ capability: entry.presented.key, value: entry.value }));
+    this.save(outreachId, { deviceId: device.id, before });
+    if (earlier !== undefined) {
+      this.apply('shared', device.id, before, []);
+      return;
+    }
     const set = found
       .map((entry) => ({
         capability: entry.presented.key,
         value: wanted(entry.presented, entry.value),
       }))
       .filter((setting) => differ(values.get(setting.capability), setting.value));
-    this.save(outreachId, { deviceId: device.id, before });
     this.apply('on', device.id, before, set);
   }
 
   restore(outreachId: string): void {
-    const stored = this.stored();
-    const snapshot = stored.calls[outreachId];
+    const snapshot = this.stored().calls[outreachId];
     if (snapshot === undefined) {
       return;
     }
-    const values = this.valuesOf(snapshot.deviceId);
-    const set = snapshot.before.filter((setting) =>
-      differ(values.get(setting.capability), setting.value),
+    const others = Object.entries(this.stored().calls).filter(
+      ([id, entry]) => id !== outreachId && entry.deviceId === snapshot.deviceId,
     );
-    const { [outreachId]: _restored, ...rest } = stored.calls;
-    this.options.store.aiChats.saveSetting(FRAMING_KEY, { calls: rest });
-    this.apply('restore', snapshot.deviceId, snapshot.before, set);
+    if (others.length > 0) {
+      this.forget(outreachId);
+      this.apply('kept', snapshot.deviceId, snapshot.before, []);
+      return;
+    }
+    this.restoreDevice(snapshot.deviceId);
   }
 
   restoreAll(): void {
-    Object.keys(this.stored().calls).forEach((outreachId) => {
-      this.restore(outreachId);
+    new Set(Object.values(this.stored().calls).map((snapshot) => snapshot.deviceId)).forEach(
+      (deviceId) => {
+        this.restoreDevice(deviceId);
+      },
+    );
+  }
+
+  private restoreDevice(deviceId: string): void {
+    const snapshot = this.snapshotsOf(deviceId)[0];
+    if (snapshot === undefined) {
+      return;
+    }
+    this.apply('restore', deviceId, snapshot.before, snapshot.before);
+    const { calls } = this.stored();
+    this.options.store.settingsKv.save(FRAMING_KEY, {
+      calls: Object.fromEntries(
+        Object.entries(calls).filter(([, entry]) => entry.deviceId !== deviceId),
+      ),
     });
   }
 
+  private forget(outreachId: string): void {
+    const { calls } = this.stored();
+    this.options.store.settingsKv.save(FRAMING_KEY, {
+      calls: Object.fromEntries(Object.entries(calls).filter(([id]) => id !== outreachId)),
+    });
+  }
+
+  private snapshotsOf(deviceId: string): FramingSnapshot[] {
+    return Object.values(this.stored().calls).filter((entry) => entry.deviceId === deviceId);
+  }
+
   private apply(
-    step: 'on' | 'restore',
+    step: 'on' | 'shared' | 'kept' | 'restore',
     deviceId: string,
     read: readonly Setting[],
     set: readonly Setting[],
   ): void {
-    this.options.submit(set.map((setting) => command(deviceId, setting)));
+    if (set.length > 0) {
+      this.options.submit(set.map((setting) => command(deviceId, setting)));
+    }
     this.options.log.info('reach.camera_framing', {
       deviceId,
       step,
       read: text(read),
       set: text(set),
     });
-    const due = new Date(this.options.clock.now().getTime() + READ_BACK_MS);
-    this.options.clock.at(due, () => {
-      const after = this.valuesOf(deviceId);
-      const reported = read.map((setting) => ({
-        capability: setting.capability,
-        value: after.get(setting.capability) ?? null,
-      }));
-      const missed = set.filter((setting) => differ(after.get(setting.capability), setting.value));
-      this.options.log.info('reach.camera_framing_read_back', {
-        deviceId,
-        step,
-        after: text(reported),
-        notApplied: text(missed),
-      });
-    });
   }
 
   private save(outreachId: string, snapshot: FramingSnapshot): void {
     const stored = this.stored();
-    this.options.store.aiChats.saveSetting(FRAMING_KEY, {
+    this.options.store.settingsKv.save(FRAMING_KEY, {
       calls: { ...stored.calls, [outreachId]: snapshot },
     });
   }
 
   private stored(): Stored {
-    const raw = this.options.store.aiChats.setting(FRAMING_KEY);
+    const raw = this.options.store.settingsKv.read(FRAMING_KEY);
     return raw === null ? { calls: {} } : STORED.parse(raw);
   }
 
   private valuesOf(deviceId: string): ReadonlyMap<string, JsonValue> {
     return new Map(
-      this.options.store.state
-        .list()
-        .filter((row) => row.device_id === deviceId)
-        .map((row) => [row.capability, row.value]),
+      this.options.store.state.ofDevice(deviceId).map((row) => [row.capability, row.value]),
     );
   }
 }

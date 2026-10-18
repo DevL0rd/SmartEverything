@@ -1,0 +1,49 @@
+diff --git a/lib/index.js b/lib/index.js
+index b479f870c7d4ea1d31c2202e3e61b153217c0083..83b58a8bce21bdf9c161fede149c51b9c55b3e14 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -16,7 +16,7 @@
+ import { access } from 'node:fs/promises';
+ import z from '@deepseek-ai/schemastery';
+ import { CodegraphStoreId } from 'dsh-plugin-codegraph-service';
+-import { assertNever } from '@deepseek-ai/dsh-llm';
++import { assertNever } from '@deepseek-ai/dsh-util-values';
+ import { GraphPool, databasePath } from "./database.js";
+ import { files, impact, node, relations, search, status, trace } from "./queries.js";
+ import { walkImpact, walkTrace } from "./traverse.js";
+diff --git a/lib/invariant.d.ts b/lib/invariant.d.ts
+deleted file mode 100644
+index cda4272f8c89b4ddd1a9341eca2e048ffec23021..0000000000000000000000000000000000000000
+diff --git a/lib/invariant.js b/lib/invariant.js
+deleted file mode 100644
+index 30d9809b3ddc439ed7e0ef54733c83493d0fcad3..0000000000000000000000000000000000000000
+diff --git a/package.json b/package.json
+index 447382c56a01594ab37c25e7f02411ec242b49ed..fe55b74ebc0058a54cba5768b6e537fe7694fe58 100644
+--- a/package.json
++++ b/package.json
+@@ -31,10 +31,6 @@
+       "types": "./lib/index.d.ts",
+       "default": "./lib/index.js"
+     },
+-    "./invariant": {
+-      "types": "./lib/invariant.d.ts",
+-      "default": "./lib/invariant.js"
+-    },
+     "./package.json": "./package.json"
+   },
+   "files": [
+@@ -51,12 +47,7 @@
+   },
+   "peerDependencies": {
+     "@deepseek-ai/cordis": ">=4.0.1",
+-    "@deepseek-ai/dsh-invariants": ">=0.1.0-rc.6",
+-    "@deepseek-ai/dsh-llm": ">=0.1.0-rc.6"
+-  },
+-  "devDependencies": {
+-    "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-invariants": "0.1.0-rc.6",
+-    "@deepseek-ai/dsh-llm": "0.1.0-rc.6"
++    "@deepseek-ai/dsh-llm": ">=0.1.0-rc.6",
++    "@deepseek-ai/dsh-util-values": ">=0.2.1-alpha.2"
+   }
+ }

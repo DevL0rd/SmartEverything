@@ -1,8 +1,9 @@
-import { Logger } from '@smarteverything/logging';
+import { Logger, setBackgroundScope } from '@smarteverything/logging';
 import { isNative } from '../design/platform';
 import { rawErrorText } from '../format/errors';
 
 const log = new Logger('app.crash-guard');
+setBackgroundScope('app.background');
 
 type GlobalHandler = (error: unknown, isFatal?: boolean) => void;
 

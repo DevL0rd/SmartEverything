@@ -1,0 +1,2337 @@
+{
+  "description": "Shared vectors for overlayView and overlayLevel; the Kotlin mirror must produce identical output.",
+  "levels": [
+    {
+      "sample": 0,
+      "dtMs": 16,
+      "previous": 0,
+      "next": 0
+    },
+    {
+      "sample": 0.5,
+      "dtMs": 16,
+      "previous": 0,
+      "next": 0.21750765363960875
+    },
+    {
+      "sample": 1,
+      "dtMs": 16,
+      "previous": 0.21750765363960875,
+      "next": 0.4754796943651671
+    },
+    {
+      "sample": 1,
+      "dtMs": 40,
+      "previous": 0.4754796943651671,
+      "next": 0.8070397630799835
+    },
+    {
+      "sample": 0.00001,
+      "dtMs": 180,
+      "previous": 0.8070397630799835,
+      "next": 0.29689333704499754
+    },
+    {
+      "sample": 0,
+      "dtMs": 16,
+      "previous": 0.29689333704499754,
+      "next": 0.27164173595773156
+    },
+    {
+      "sample": 0.25,
+      "dtMs": 33,
+      "previous": 0.27164173595773156,
+      "next": 0.36356533598544716
+    },
+    {
+      "sample": 2,
+      "dtMs": 16,
+      "previous": 0.36356533598544716,
+      "next": 0.5733850867190883
+    },
+    {
+      "sample": -1,
+      "dtMs": 16,
+      "previous": 0.5733850867190883,
+      "next": 0.5246170960887583
+    },
+    {
+      "sample": 0.3,
+      "dtMs": 0,
+      "previous": 0.5246170960887583,
+      "next": 0.5246170960887583
+    }
+  ],
+  "views": [
+    {
+      "name": "wake",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": null,
+        "wake": {
+          "at": 100000,
+          "words": null,
+          "muted": false
+        },
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "wake",
+        "mode": "full",
+        "status": "Listening",
+        "detail": null,
+        "caption": "Say what you need",
+        "orb": "listening",
+        "level": "input",
+        "glow": "bloom",
+        "controls": ["mute", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": 115000
+      }
+    },
+    {
+      "name": "wake-words-muted",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": null,
+        "wake": {
+          "at": 100000,
+          "words": "hey home",
+          "muted": true
+        },
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "wake",
+        "mode": "full",
+        "status": "Muted",
+        "detail": null,
+        "caption": "hey home",
+        "orb": "listening",
+        "level": null,
+        "glow": "bloom",
+        "controls": ["mute", "end"],
+        "muted": true,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": 115000
+      }
+    },
+    {
+      "name": "wake-link-failed",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": null,
+        "wake": {
+          "at": 85000,
+          "words": null,
+          "muted": false
+        },
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "error",
+        "mode": "full",
+        "status": "Can't reach your home",
+        "detail": null,
+        "caption": "The call did not start. Try again.",
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": ["retry", "close"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": 108000
+      }
+    },
+    {
+      "name": "listening",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "turn off the lights",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Listening",
+        "detail": null,
+        "caption": "turn off the lights",
+        "orb": "listening",
+        "level": "input",
+        "glow": "listening",
+        "controls": ["mute", "camera", "share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "muted",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": true,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Muted",
+        "detail": null,
+        "caption": null,
+        "orb": "listening",
+        "level": null,
+        "glow": "listening",
+        "controls": ["mute", "camera", "share", "more", "end"],
+        "muted": true,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "thinking-tool",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "thinking",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": "Checking the kitchen",
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "thinking",
+        "mode": "full",
+        "status": "Thinking",
+        "detail": null,
+        "caption": "Checking the kitchen",
+        "orb": "thinking",
+        "level": null,
+        "glow": "shimmer",
+        "controls": ["mute", "camera", "share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "speaking",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "speaking",
+          "muted": false,
+          "heard": "",
+          "said": "Done",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "speaking",
+        "mode": "full",
+        "status": "Speaking",
+        "detail": null,
+        "caption": "Done",
+        "orb": "speaking",
+        "level": "output",
+        "glow": "speaking",
+        "controls": ["mute", "interrupt", "camera", "share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "reconnecting",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "reconnecting",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "reconnecting",
+        "mode": "full",
+        "status": "Reconnecting to your home",
+        "detail": null,
+        "caption": null,
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": ["more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "error",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": {
+            "text": "no route",
+            "at": 99000,
+            "fix": null
+          },
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "error",
+        "mode": "full",
+        "status": "Can't reach your home",
+        "detail": null,
+        "caption": "no route",
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": ["retry", "close"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": 107000
+      }
+    },
+    {
+      "name": "error-expired",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": {
+            "text": "no route",
+            "at": 92000,
+            "fix": null
+          },
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "hidden",
+        "mode": "full",
+        "status": "",
+        "detail": null,
+        "caption": null,
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": [],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "superseded",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": {
+          "by": "Living room camera",
+          "at": 99900
+        },
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "superseded",
+        "mode": "full",
+        "status": "Answered by Living room camera",
+        "detail": null,
+        "caption": null,
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": [],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": 101500
+      }
+    },
+    {
+      "name": "ended",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "ended",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": 99900,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "ended",
+        "mode": "full",
+        "status": "Call ended",
+        "detail": null,
+        "caption": "2:13",
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": [],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": 101100
+      }
+    },
+    {
+      "name": "ended-expired",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "ended",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": 98800,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "hidden",
+        "mode": "full",
+        "status": "",
+        "detail": null,
+        "caption": null,
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": [],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "call-page-focused",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "call",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "hidden",
+        "mode": "full",
+        "status": "",
+        "detail": null,
+        "caption": null,
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": [],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "other-page-compact",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "other",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "compact",
+        "status": "Listening",
+        "detail": null,
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "off",
+        "controls": ["mute", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_window",
+              "label": "Share a window",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "share-window",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "desktop",
+          "main": "away",
+          "inShare": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": {
+            "kind": "window",
+            "label": "Firefox"
+          },
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "share",
+        "status": "Listening",
+        "detail": "sharing Firefox",
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "off",
+        "controls": ["mute", "stop_share", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "show_this",
+              "label": "Show this",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "stop_share",
+              "label": "Stop sharing",
+              "pressed": null,
+              "disabled": null,
+              "critical": true
+            },
+            {
+              "id": "share_window",
+              "label": "Share another",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "phone-speaking",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "phone",
+          "foreground": false
+        },
+        "call": {
+          "phase": "speaking",
+          "muted": false,
+          "heard": "",
+          "said": "Done",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "speaking",
+        "mode": "full",
+        "status": "Speaking",
+        "detail": null,
+        "caption": "Done",
+        "orb": "speaking",
+        "level": "output",
+        "glow": "speaking",
+        "controls": ["mute", "interrupt", "more", "end"],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "phone-foreground",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "phone",
+          "foreground": true
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": null,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "hidden",
+        "mode": "full",
+        "status": "",
+        "detail": null,
+        "caption": null,
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": [],
+        "muted": false,
+        "speaker": null,
+        "camera": "off",
+        "tray": null,
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "phone-camera-paused-reconnecting",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "phone",
+          "foreground": false
+        },
+        "call": {
+          "phase": "reconnecting",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "paused",
+          "speaker": false,
+          "sharing": null,
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "reconnecting",
+        "mode": "full",
+        "status": "Reconnecting to your home",
+        "detail": "camera paused",
+        "caption": null,
+        "orb": "idle",
+        "level": null,
+        "glow": "off",
+        "controls": ["end"],
+        "muted": false,
+        "speaker": false,
+        "camera": "paused",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "share_screen",
+              "label": "Share screen",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "speaker",
+              "label": "Speaker",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    },
+    {
+      "name": "phone-sharing-speaker",
+      "input": {
+        "prefs": {
+          "enabled": true,
+          "position": "centre",
+          "glow": true,
+          "captions": true,
+          "display": "active",
+          "whileSharing": "small"
+        },
+        "surface": {
+          "platform": "phone",
+          "foreground": false
+        },
+        "call": {
+          "phase": "listening",
+          "muted": false,
+          "heard": "",
+          "said": "",
+          "tool": null,
+          "problem": null,
+          "startedAt": -34000,
+          "endedAt": null,
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "camera": "off",
+          "speaker": true,
+          "sharing": {
+            "kind": "screen",
+            "label": null
+          },
+          "request": null,
+          "reasons": {
+            "camera": null,
+            "share": null
+          }
+        },
+        "wake": null,
+        "superseded": null,
+        "audio": {
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "hold": {
+          "active": false,
+          "endedAt": null
+        },
+        "now": 100000
+      },
+      "view": {
+        "state": "listening",
+        "mode": "full",
+        "status": "Listening",
+        "detail": "sharing your screen",
+        "caption": null,
+        "orb": "listening",
+        "level": "input",
+        "glow": "off",
+        "controls": ["mute", "stop_share", "more", "end"],
+        "muted": false,
+        "speaker": true,
+        "camera": "off",
+        "tray": {
+          "assistant": "Gemini",
+          "chat": "Kitchen and evening routine",
+          "elapsedFrom": -34000,
+          "tiles": [
+            {
+              "id": "camera",
+              "label": "Camera",
+              "pressed": false,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "pause_video",
+              "label": "Pause video",
+              "pressed": false,
+              "disabled": "Turn the camera on first",
+              "critical": false
+            },
+            {
+              "id": "stop_share",
+              "label": "Stop sharing",
+              "pressed": null,
+              "disabled": null,
+              "critical": true
+            },
+            {
+              "id": "home_camera",
+              "label": "Home camera",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "speaker",
+              "label": "Speaker",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "interrupt",
+              "label": "Stop talking",
+              "pressed": null,
+              "disabled": "Only while the assistant is talking",
+              "critical": false
+            },
+            {
+              "id": "captions",
+              "label": "Captions",
+              "pressed": true,
+              "disabled": null,
+              "critical": false
+            },
+            {
+              "id": "settings",
+              "label": "Call settings",
+              "pressed": null,
+              "disabled": null,
+              "critical": false
+            }
+          ],
+          "mics": [
+            {
+              "id": "yeti",
+              "label": "Blue Yeti (USB)"
+            },
+            {
+              "id": "array",
+              "label": "Laptop microphone array"
+            }
+          ],
+          "micId": null,
+          "volume": 0.8
+        },
+        "request": null,
+        "changesAt": null
+      }
+    }
+  ]
+}

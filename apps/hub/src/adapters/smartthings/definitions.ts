@@ -1,4 +1,3 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import {
@@ -8,10 +7,8 @@ import {
   type CapabilityDefinition,
 } from '@smarteverything/smartthings';
 import type { SmartThingsApi } from './http';
-
-function isMissingFile(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
-}
+import { cachedJson } from '../../fs-util';
+import { failureLine, messageOf } from '@smarteverything/logging';
 
 export class DefinitionCache {
   private readonly memory = new Map<string, CapabilityDefinition>();
@@ -31,8 +28,7 @@ export class DefinitionCache {
     for (const reference of references) {
       const key = definitionKey(reference.id, reference.version);
       if (!this.memory.has(key)) {
-        const definition =
-          (await this.fromDisk(key)) ?? (await this.fromApi(reference.id, reference.version));
+        const definition = await this.definitionOf(reference.id, reference.version);
         if (definition !== null) {
           this.memory.set(key, definition);
         }
@@ -45,34 +41,27 @@ export class DefinitionCache {
     return join(this.directory, `${encodeURIComponent(key)}.json`);
   }
 
-  private async fromDisk(key: string): Promise<CapabilityDefinition | null> {
-    let text: string;
+  private async definitionOf(id: string, version: number): Promise<CapabilityDefinition | null> {
     try {
-      text = await readFile(this.fileOf(key), 'utf8');
-    } catch (cause) {
-      if (isMissingFile(cause)) {
-        return null;
-      }
-      throw cause;
-    }
-    return CAPABILITY_DEFINITION.parse(JSON.parse(text));
-  }
-
-  private async fromApi(id: string, version: number): Promise<CapabilityDefinition | null> {
-    let body: unknown;
-    try {
-      body = await this.api.request({ method: 'GET', path: definitionPath(id, version) });
+      return await cachedJson(
+        this.fileOf(definitionKey(id, version)),
+        CAPABILITY_DEFINITION,
+        () => this.api.request({ method: 'GET', path: definitionPath(id, version) }),
+        (cause) => {
+          this.log.warn('capability.definition_cache_unreadable', {
+            capability: id,
+            version,
+            reason: messageOf(cause),
+          });
+        },
+      );
     } catch (cause) {
       this.log.warn('capability.definition_unavailable', {
         capability: id,
         version,
-        reason: String(cause),
+        reason: failureLine(cause),
       });
       return null;
     }
-    const definition = CAPABILITY_DEFINITION.parse(body);
-    await mkdir(this.directory, { recursive: true });
-    await writeFile(this.fileOf(definitionKey(id, version)), JSON.stringify(definition), 'utf8');
-    return definition;
   }
 }

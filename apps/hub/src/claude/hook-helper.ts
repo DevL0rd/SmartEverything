@@ -5,6 +5,8 @@ import process, { argv, stderr, stdin, stdout } from 'node:process';
 import { parseArgs } from 'node:util';
 import { floorDenied } from './hook-output';
 import { LINK_PATHS } from './link-paths';
+import { messageOf } from '@smarteverything/logging';
+import { isMissing } from '../fs-util';
 
 const RECONNECT_FIRST_MS = 1000;
 
@@ -38,7 +40,7 @@ async function tokenOf(data: string): Promise<string> {
 async function endpointOf(data: string): Promise<Endpoint> {
   const ready = await readFile(join(data, 'claude', 'link-endpoint.json'), 'utf8').catch(
     (cause: unknown) => {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
+      if (isMissing(cause)) {
         return readFile(join(data, 'service-ready.json'), 'utf8');
       }
       throw cause;
@@ -147,9 +149,7 @@ async function runStream(data: string, session: string): Promise<void> {
       await streamOnce(await endpointOf(data), session);
       wait = RECONNECT_FIRST_MS;
     } catch (cause) {
-      stderr.write(
-        `smarteverything link: stream ${cause instanceof Error ? cause.message : 'failed'}\n`,
-      );
+      stderr.write(`smarteverything link: stream ${messageOf(cause)}\n`);
     }
     await new Promise((resolve) => setTimeout(resolve, wait));
     wait = Math.min(wait * 2, RECONNECT_LAST_MS);
@@ -160,9 +160,7 @@ async function runFloor(data: string): Promise<void> {
   try {
     stdout.write(await post(data, LINK_PATHS.floor));
   } catch (cause) {
-    stderr.write(
-      `smarteverything link: floor ${cause instanceof Error ? cause.message : 'failed'}\n`,
-    );
+    stderr.write(`smarteverything link: floor ${messageOf(cause)}\n`);
     stdout.write(JSON.stringify(floorDenied()));
   }
 }
@@ -213,6 +211,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((cause: unknown) => {
-  stderr.write(`smarteverything link: ${cause instanceof Error ? cause.message : 'failed'}\n`);
+  stderr.write(`smarteverything link: ${messageOf(cause)}\n`);
   process.exitCode = 1;
 });

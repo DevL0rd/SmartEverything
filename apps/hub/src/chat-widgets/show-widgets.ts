@@ -6,7 +6,7 @@ import { widgetRejection } from './widget-check';
 export function showWidgets(
   context: Pick<ToolContext, 'store' | 'clock' | 'actor'>,
   widgets: readonly ChatWidget[],
-): Readonly<Record<string, number>> {
+): Readonly<Record<string, number | readonly string[]>> {
   const { actor, store, clock } = context;
   const chatId = actor?.chatId ?? null;
   if (actor === null || chatId === null) {
@@ -21,6 +21,6 @@ export function showWidgets(
   if (rejected.length > 0) {
     throw new ToolError(`No widget was attached. ${rejected.join('. ')}.`);
   }
-  const added = attachWidgets(store, reply, widgets);
-  return { added, already_shown: widgets.length - added };
+  const { added, dropped } = attachWidgets(store, reply, widgets);
+  return { added, already_shown: widgets.length - added - dropped.length, dropped };
 }

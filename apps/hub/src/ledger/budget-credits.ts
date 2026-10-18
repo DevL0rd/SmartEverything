@@ -1,8 +1,9 @@
 import type { AiBudgetCredits } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { OpenRouterError } from '../openrouter/errors';
+import { messageOf } from '@smarteverything/logging';
 
-export const CREDITS_REFRESH_MS = 10 * 60_000;
+const CREDITS_REFRESH_MS = 10 * 60_000;
 
 export interface CreditsSource {
   readonly hasKey: () => boolean;
@@ -57,7 +58,7 @@ export class CreditsWatch {
       if (cause instanceof OpenRouterError && cause.code === 'refused') {
         return { state: 'needs_management_key' };
       }
-      const reason = cause instanceof Error ? cause.message : String(cause);
+      const reason = messageOf(cause);
       this.log.warn('budget.credits_unavailable', { reason });
       return { state: 'unavailable', reason: reason.slice(0, 400) };
     }

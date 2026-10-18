@@ -5,6 +5,7 @@ import {
   type PartialState,
   type Router,
 } from 'expo-router/react-navigation';
+import { Logger } from '@smarteverything/logging';
 import { prepareSettingsVisit, retainSettingsOrigin } from './settings-navigation';
 import {
   CLEAR_REPLACEMENT,
@@ -13,6 +14,8 @@ import {
   replacementFor,
   replacementOf,
 } from './tab-replacement';
+
+const log = new Logger('app.nav');
 
 interface Params {
   name?: unknown;
@@ -75,6 +78,10 @@ export function anchorTabRoots<State extends NavigationState, Action extends Nav
       }
       if (replacesTab(state, action)) {
         const replacement = replacementFor(state, action);
+        log.debug('tab.replace_requested', () => ({
+          tab: isParams(payload) && typeof payload.name === 'string' ? payload.name : null,
+          replacement: replacement !== null,
+        }));
         return replacement === null
           ? original.getStateForAction(state, { ...action, type: 'JUMP_TO' }, options)
           : { ...state, [REPLACEMENT_REQUEST]: replacement };
@@ -90,15 +97,48 @@ export function anchorTabRoots<State extends NavigationState, Action extends Nav
   };
 }
 
+type LevelState = AnyState & { readonly routes: readonly LevelRoute[] };
+interface LevelRoute {
+  readonly key?: string | undefined;
+  readonly name: string;
+  readonly params?: object | undefined;
+  readonly state?: AnyState | undefined;
+}
+
+function homeOf(state: LevelState): LevelRoute | undefined {
+  return state.routes.find((route) => route.state?.type === 'tab') ?? state.routes[0];
+}
+
+function backToHome(state: LevelState, home: LevelRoute, dispatch: Dispatch): void {
+  if (state.key === undefined) return;
+  if (home === state.routes[0]) {
+    dispatch({ ...StackActions.popToTop(), target: state.key });
+    return;
+  }
+  dispatch({
+    type: 'RESET',
+    payload: { index: 0, routes: [home] },
+    target: state.key,
+  });
+}
+
+type Dispatch = (action: NavigationAction) => void;
+
 export function popTabToRoot(
   tab: { readonly state?: AnyState | undefined },
-  dispatch: (action: NavigationAction) => void,
+  dispatch: Dispatch,
 ): void {
   let state = tab.state;
   while (state !== undefined) {
-    if (state.type === 'stack' && state.key !== undefined && (state.index ?? 0) > 0) {
-      dispatch({ ...StackActions.popToTop(), target: state.key });
+    const first = state.routes[0];
+    const home = state.type === 'stack' ? homeOf(state) : first;
+    if (state.key !== undefined && home !== undefined && (state.index ?? 0) > 0) {
+      if (state.type === 'stack') {
+        backToHome(state, home, dispatch);
+      } else {
+        dispatch({ type: 'JUMP_TO', payload: { name: home.name }, target: state.key });
+      }
     }
-    state = state.routes[state.index ?? 0]?.state;
+    state = home?.state;
   }
 }

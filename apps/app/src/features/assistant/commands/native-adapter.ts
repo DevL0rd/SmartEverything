@@ -14,7 +14,7 @@ import type {
 export async function discoverNativeCommands(binding: CommandBinding): Promise<DiscoveredCommands> {
   if (binding.target?.kind !== 'native' || binding.chatId === null)
     throw new CommandBindingError(
-      'Native command discovery requires an owned provider session.',
+      'Commands aren’t ready yet. Try again in a moment.',
       'native session',
       'unbound',
     );
@@ -29,7 +29,7 @@ export async function discoverNativeCommands(binding: CommandBinding): Promise<D
   } = catalogue.scope;
   if (nativeScopeKey(expected) !== nativeScopeKey(binding.target.expected))
     throw new CommandBindingError(
-      'Native command discovery returned another binding. Refresh commands.',
+      'The commands changed. Refresh commands.',
       nativeScopeKey(binding.target.expected),
       nativeScopeKey(expected),
     );
@@ -75,13 +75,12 @@ export function nativeReceiptOutcome(receipt: AiNativeCommandReceipt): CommandOu
   if (receipt.status !== 'settled')
     return {
       status: receipt.status,
-      text:
-        receipt.text ?? 'The native command result could not be confirmed. Your draft stays here.',
+      text: receipt.text ?? 'Couldn’t confirm the command finished. Your draft is kept.',
     };
   if (receipt.outcome === null)
     return {
       status: 'unknown',
-      text: receipt.text ?? 'Native completion has no confirmed effect. Your draft stays here.',
+      text: receipt.text ?? 'Couldn’t confirm the command ran. Your draft is kept.',
     };
   return {
     status: 'settled',
@@ -92,17 +91,17 @@ export function nativeReceiptOutcome(receipt: AiNativeCommandReceipt): CommandOu
 function nativeOutcomeText(outcome: AiNativeCommandReceipt['outcome']): string {
   switch (outcome) {
     case 'completed':
-      return 'Native command completed.';
+      return 'Done.';
     case 'compacted':
-      return 'Native chat context compacted.';
+      return 'Chat compacted.';
     case 'no_op':
-      return 'The native command completed without a change. Your draft stays here.';
+      return 'The command finished without changing anything. Your draft is kept.';
     case 'interrupted':
-      return 'Native command was interrupted. Your draft stays here.';
+      return 'The command was interrupted. Your draft is kept.';
     case 'error':
-      return 'Native command failed. Your draft stays here.';
+      return 'The command failed. Your draft is kept.';
     case null:
-      return 'Native completion has no confirmed effect. Your draft stays here.';
+      return 'Couldn’t confirm the command ran. Your draft is kept.';
   }
 }
 

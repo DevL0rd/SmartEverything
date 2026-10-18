@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useDeferredValue, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { SPEECH_VOICES, type VoicePreviewRequest } from '@smarteverything/domain';
+import { SPEECH_VOICES, type CallVoice } from '@smarteverything/domain';
 import { BottomSheet } from '../../../components/bottom-sheet';
 import { Popover } from '../../../components/popover';
 import { Interactive } from '../../../components/interactive';
@@ -10,16 +10,13 @@ import { Text } from '../../../components/text';
 import { SearchField } from '../../../components/search-field';
 import type { Rect } from '../../../components/anchor';
 import { useIdiom } from '../../../design/platform';
-import type { EntityStore } from '../../../store/entity-store';
 import { useVoicePreview, type VoicePreviewControl } from './use-voice-preview';
 
-export type CallVoice = VoicePreviewRequest['voice'];
 export interface VoicePickerProps {
   readonly title: string;
   readonly value: CallVoice | null;
   readonly sameAsCall: boolean;
   readonly anchor: Rect;
-  readonly store: EntityStore;
   readonly saving: boolean;
   readonly error: string | null;
   readonly onPick: (voice: CallVoice | null) => void;
@@ -209,7 +206,7 @@ function VoiceOptions({
   );
 }
 export function VoicePreviewPicker(props: VoicePickerProps): ReactNode {
-  const preview = useVoicePreview(props.store, props.onClose);
+  const preview = useVoicePreview();
   const touch = useIdiom() === 'touch';
   const close = (): void => {
     preview.stop();

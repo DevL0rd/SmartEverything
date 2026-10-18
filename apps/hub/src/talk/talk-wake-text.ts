@@ -11,7 +11,7 @@ export interface TalkWakeInput {
   readonly context: readonly string[];
 }
 
-export function talkLine(row: TalkMessageRow, timeZone: string): string {
+function talkLine(row: TalkMessageRow, timeZone: string): string {
   const at = new Intl.DateTimeFormat('en-GB', {
     timeZone,
     hour: '2-digit',

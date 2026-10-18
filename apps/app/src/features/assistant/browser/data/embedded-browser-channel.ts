@@ -1,5 +1,6 @@
 import { randomUUID } from 'expo-crypto';
-import { Logger } from '@smarteverything/logging';
+import type { z } from 'zod';
+import { Logger, background } from '@smarteverything/logging';
 import {
   BEARER_PROTOCOL_PREFIX,
   EMBEDDED_BROWSER_PROTOCOL,
@@ -18,11 +19,10 @@ import { routeFor } from '../../../../api/connection/active-route';
 import type { ServerConnection } from '../../../../api/connection/storage';
 import { DiagnosticsRecovery } from '../browser-diagnostics-recovery';
 import { embeddedBrowserSnapshot } from '../browser-embedded-snapshot';
+import { jsonText } from '../../../../format/json-text';
 import { BrowserTabError } from '../browser-tab-errors';
 import type { BrowserTabs } from '../browser-tabs';
 const log = new Logger('app.embedded-browser');
-const MAX_PENDING = 8;
-const MAX_RECEIPTS = 256;
 interface Task {
   readonly request: EmbeddedBrowserRequest;
   readonly abort: AbortController;
@@ -34,7 +34,6 @@ export class EmbeddedBrowserChannel {
   private accepted = false;
   private disposed = false;
   private readonly tasks = new Map<string, Task>();
-  private readonly pending = new Set<string>();
   private readonly recovery: DiagnosticsRecovery;
   private readonly stopRoute: () => void;
   constructor(
@@ -88,58 +87,52 @@ export class EmbeddedBrowserChannel {
   }
   private received(socket: HubSocket, data: unknown): void {
     if (socket !== this.socket) return;
-    try {
-      if (typeof data !== 'string')
-        throw new BrowserControllerError('Browser control expects JSON text.');
-      const raw: unknown = JSON.parse(data);
-      const response = EMBEDDED_BROWSER_RESPONSE.parse(raw);
-      switch (response.kind) {
-        case 'accepted':
-          this.accept(response.scope);
-          this.accepted = true;
-          return;
-        case 'perform':
-          this.perform(socket, response.request);
-          return;
-        case 'cancel':
-          this.tasks.get(response.requestId)?.abort.abort();
-          return;
-        case 'refused':
-          log.warn('browser.registration_refused', { reason: response.reason });
-          this.dispose();
-          return;
-      }
-    } catch (cause) {
-      log.warn('browser.protocol_failed', {
-        failure: cause instanceof Error ? cause.name : 'ProtocolFailure',
-      });
-      this.dispose();
+    const response = parseResponse(data);
+    if (response === null) return;
+    switch (response.kind) {
+      case 'accepted':
+        this.accepted = JSON.stringify(response.scope) === JSON.stringify(this.scope);
+        if (!this.accepted) this.drop(socket, 'browser.registration_changed_owner');
+        return;
+      case 'perform':
+        this.perform(socket, response.request);
+        return;
+      case 'cancel':
+        this.tasks.get(response.requestId)?.abort.abort();
+        return;
+      case 'refused':
+        log.warn('browser.registration_refused', { reason: response.reason });
+        this.drop(socket, 'browser.registration_refused');
+        return;
     }
   }
-  private accept(scope: EmbeddedBrowserScope): void {
-    if (JSON.stringify(scope) !== JSON.stringify(this.scope))
-      throw new BrowserControllerError('Browser registration acknowledgement changed owner.');
+  private drop(socket: HubSocket, event: string): void {
+    log.warn(event, {});
+    this.closed(socket);
+    socket.close();
   }
   private perform(socket: HubSocket, request: EmbeddedBrowserRequest): void {
-    if (!this.accepted || JSON.stringify(request.scope) !== JSON.stringify(this.scope))
-      throw new BrowserControllerError('Browser request changed registration.');
     const previous = this.tasks.get(request.requestId);
-    if (previous !== undefined) {
-      if (JSON.stringify(previous.request) !== JSON.stringify(request))
-        throw new BrowserControllerError('Browser request ID changed action.');
+    if (previous !== undefined && JSON.stringify(previous.request) === JSON.stringify(request)) {
       this.answer(socket, previous);
       return;
     }
-    if (
-      this.pending.size >= MAX_PENDING ||
-      (request.operation.kind === 'edit' && this.tasks.size >= MAX_RECEIPTS)
-    )
-      throw new BrowserControllerError('The browser request limit was reached.');
+    if (!this.accepted || JSON.stringify(request.scope) !== JSON.stringify(this.scope)) {
+      this.refuse(socket, request, 'Browser request changed registration.');
+      return;
+    }
+    if (previous !== undefined) {
+      this.refuse(socket, request, 'Browser request ID changed action.');
+      return;
+    }
     const abort = new AbortController();
     const task = { request, abort, result: this.run(request, abort.signal) };
-    this.pending.add(request.requestId);
     this.tasks.set(request.requestId, task);
     this.answer(socket, task);
+  }
+  private refuse(socket: HubSocket, request: EmbeddedBrowserRequest, reason: string): void {
+    log.warn('browser.request_refused', { reason });
+    this.send(socket, { kind: 'result', request, result: null, reason });
   }
   private async run(
     request: EmbeddedBrowserRequest,
@@ -169,28 +162,30 @@ export class EmbeddedBrowserChannel {
     return tabId;
   }
   private answer(socket: HubSocket, task: Task): void {
-    void task.result
-      .then(
-        (result) => {
-          if (this.current(socket, task))
-            this.send(socket, { kind: 'result', request: task.request, result, reason: null });
-        },
-        (cause: unknown) => {
-          if (this.current(socket, task))
-            this.send(socket, {
-              kind: 'result',
-              request: task.request,
-              result: null,
-              reason:
-                cause instanceof Error ? cause.message.slice(0, 4096) : 'Browser action failed.',
-            });
-        },
-      )
-      .finally(() => {
-        if (this.tasks.get(task.request.requestId) !== task) return;
-        this.pending.delete(task.request.requestId);
-        if (task.request.operation.kind === 'read') this.tasks.delete(task.request.requestId);
-      });
+    background(
+      task.result
+        .then(
+          (result) => {
+            if (this.current(socket, task))
+              this.send(socket, { kind: 'result', request: task.request, result, reason: null });
+          },
+          (cause: unknown) => {
+            if (this.current(socket, task))
+              this.send(socket, {
+                kind: 'result',
+                request: task.request,
+                result: null,
+                reason:
+                  cause instanceof Error ? cause.message.slice(0, 4096) : 'Browser action failed.',
+              });
+          },
+        )
+        .finally(() => {
+          if (this.tasks.get(task.request.requestId) === task)
+            this.tasks.delete(task.request.requestId);
+        }),
+      'embedded_browser_channel.background_failed',
+    );
   }
   private current(socket: HubSocket, task: Task): boolean {
     return this.socket === socket && !task.abort.signal.aborted && !this.disposed;
@@ -217,7 +212,6 @@ export class EmbeddedBrowserChannel {
   private cancel(): void {
     for (const task of this.tasks.values()) task.abort.abort();
     this.tasks.clear();
-    this.pending.clear();
   }
   dispose(): void {
     if (this.disposed) return;
@@ -229,10 +223,18 @@ export class EmbeddedBrowserChannel {
     this.socket = null;
   }
 }
-class BrowserControllerError extends Error {
-  override readonly name = 'BrowserControllerError';
+type BrowserResponse = z.infer<typeof EMBEDDED_BROWSER_RESPONSE>;
+function parseResponse(data: unknown): BrowserResponse | null {
+  if (typeof data !== 'string') {
+    log.warn('browser.protocol_ignored', { reason: 'not text' });
+    return null;
+  }
+  const json = jsonText(data);
+  const parsed = json.ok ? EMBEDDED_BROWSER_RESPONSE.safeParse(json.value) : null;
+  if (parsed?.success === true) return parsed.data;
+  log.warn('browser.protocol_ignored', { reason: 'not a browser response' });
+  return null;
 }
-
 function assertBrowserCommandActive(signal: AbortSignal): void {
   if (signal.aborted) throw new BrowserTabError('The browser command was cancelled.');
 }

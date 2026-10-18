@@ -11,6 +11,7 @@ const APP_VERSION = z.object({ version: z.string().min(1) }).parse(manifest).ver
 const BUILD_ENVIRONMENT = z.object({
   EXPO_PUBLIC_SERVER_URL: z.url({ protocol: /^https$/ }).optional(),
   APP_VARIANT: z.enum(['development']).optional(),
+  ANDROID_VERSION_CODE: z.coerce.number().int().min(3).max(2100000000).optional(),
 });
 
 const VARIANTS = {
@@ -22,8 +23,14 @@ const VARIANTS = {
   },
 };
 
-const PAIRING_CAMERA_USE =
-  'SmartEverything uses the camera only to scan the pairing code your desktop shows.';
+const CAMERA_USE =
+  'SmartEverything uses the camera to scan pairing codes and barcodes, and to show the assistant what you point it at while you are in a call with the camera on.';
+
+const MICROPHONE_USE =
+  'SmartEverything uses the microphone to listen for your wake word when you turn that on, to talk to the assistant, and to talk through a camera.';
+
+const LOCATION_USE =
+  'SmartEverything uses your location to set where your home is, to know when you are home or away, and to run automations when you arrive or leave.';
 
 const FONT_FILES = [
   'Geist-Regular',
@@ -54,11 +61,23 @@ const withMissingPrivacyPolicy: ConfigPlugin = (config) =>
     );
   });
 
+const WEBRTC_PLUGIN: NonNullable<ExpoConfig['plugins']>[number] = [
+  '@config-plugins/react-native-webrtc',
+  {
+    cameraPermission: CAMERA_USE,
+    microphonePermission: MICROPHONE_USE,
+  },
+];
+
+const CAMERA_PLUGIN: NonNullable<ExpoConfig['plugins']>[number] = [
+  'expo-camera',
+  { cameraPermission: CAMERA_USE, recordAudioAndroid: false },
+];
+
 const LOCATION_PLUGIN: NonNullable<ExpoConfig['plugins']>[number] = [
   'expo-location',
   {
-    locationWhenInUsePermission:
-      'SmartEverything uses your location once, when you set where your home is.',
+    locationWhenInUsePermission: LOCATION_USE,
     isAndroidBackgroundLocationEnabled: false,
     isAndroidForegroundServiceEnabled: false,
   },
@@ -68,6 +87,12 @@ function healthConnectPlugins(extra: Extra): NonNullable<ExpoConfig['plugins']> 
   return extra.privacyPolicyUrl === null
     ? []
     : [['./modules/health-connect/app.plugin.js', { privacyPolicyUrl: extra.privacyPolicyUrl }]];
+}
+
+const MILLISECONDS_PER_MINUTE = 60_000;
+
+function versionCodeOf(environment: z.infer<typeof BUILD_ENVIRONMENT>): number {
+  return environment.ANDROID_VERSION_CODE ?? Math.floor(Date.now() / MILLISECONDS_PER_MINUTE);
 }
 
 function readEnvironment(): z.infer<typeof BUILD_ENVIRONMENT> {
@@ -103,32 +128,22 @@ export default (): ExpoConfig => {
     experiments: { typedRoutes: true, reactCompiler: true },
     plugins: [
       'expo-router',
-      [
-        '@config-plugins/react-native-webrtc',
-        {
-          cameraPermission: PAIRING_CAMERA_USE,
-          microphonePermission:
-            'SmartEverything uses the microphone only while you hold Talk on a camera.',
-        },
-      ],
+      WEBRTC_PLUGIN,
       ['expo-build-properties', ANDROID_BUILD_PROPERTIES],
       ['expo-notifications', { color: '#F2B45E' }],
-      [
-        'expo-camera',
-        {
-          cameraPermission: PAIRING_CAMERA_USE,
-          recordAudioAndroid: false,
-        },
-      ],
+      CAMERA_PLUGIN,
       ['expo-font', { fonts: FONT_FILES }],
       'expo-secure-store',
       LOCATION_PLUGIN,
+      './plugins/accumulated-updates/app.plugin.js',
+      './plugins/release-signing/app.plugin.js',
       ...healthConnectPlugins(extra),
     ],
     icon: './assets/icon.png',
     web: { bundler: 'metro', output: 'single', favicon: './assets/favicon.png' },
     android: {
       package: `${STORE_IDENTITY}${variant.suffix}`,
+      versionCode: versionCodeOf(environment),
       googleServicesFile: './google-services.json',
     },
     runtimeVersion: { policy: 'appVersion' },

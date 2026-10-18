@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
+import { View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -7,10 +8,10 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { cn } from '../design/cn';
-import { useMotion } from '../design/motion';
+import { useAnimationGate } from '../design/animation-gate';
 import { isNative } from '../design/platform';
 
-export type SkeletonShape = 'text' | 'line' | 'block' | 'circle' | 'tile';
+type SkeletonShape = 'text' | 'line' | 'block' | 'circle' | 'tile';
 
 const SHAPE: Readonly<Record<SkeletonShape, string>> = {
   text: 'h-3 w-32 rounded-xs',
@@ -22,27 +23,33 @@ const SHAPE: Readonly<Record<SkeletonShape, string>> = {
 
 const SHIMMER_MS = 1200;
 
-export function Skeleton({
-  shape = 'line',
-  className,
-}: {
+interface SkeletonProps {
   readonly shape?: SkeletonShape;
   readonly className?: string;
-}): ReactNode {
-  const { reduced } = useMotion();
-  const animate = !reduced && !isNative();
+}
+
+function skeletonClass({ shape = 'line', className }: SkeletonProps): string {
+  return cn('bg-surface-3', SHAPE[shape], className);
+}
+
+function StillSkeleton(props: SkeletonProps): ReactNode {
+  return <View aria-hidden className={skeletonClass(props)} />;
+}
+
+function ShimmerSkeleton(props: SkeletonProps): ReactNode {
   const opacity = useSharedValue(1);
   useEffect(() => {
-    if (animate) {
-      opacity.set(withRepeat(withTiming(0.5, { duration: SHIMMER_MS / 2 }), -1, true));
-    }
-  }, [animate, opacity]);
+    opacity.set(withRepeat(withTiming(0.5, { duration: SHIMMER_MS / 2 }), -1, true));
+  }, [opacity]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.get() }));
-  return (
-    <Animated.View
-      aria-hidden
-      style={style}
-      className={cn('bg-surface-3', SHAPE[shape], className)}
-    />
-  );
+  return <Animated.View aria-hidden style={style} className={skeletonClass(props)} />;
+}
+
+function WebSkeleton(props: SkeletonProps): ReactNode {
+  const { moving } = useAnimationGate(true, true);
+  return moving ? <ShimmerSkeleton {...props} /> : <StillSkeleton {...props} />;
+}
+
+export function Skeleton(props: SkeletonProps): ReactNode {
+  return isNative() ? <StillSkeleton {...props} /> : <WebSkeleton {...props} />;
 }

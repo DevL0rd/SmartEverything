@@ -1,9 +1,10 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { Context } from '@deepseek-ai/cordis';
 import type { LlmAdapter } from '@deepseek-ai/dsh-llm';
 import type { AiModelRoute } from '@smarteverything/domain';
 import { HarnessRuntimeError } from '../host/errors';
 import type { HarnessBoot } from './boot';
-import type { HttpHarnessPersistence } from './persistence';
+import type { HubSessionLog } from './persistence';
 import { meteredTransport, subscriptionUse } from './models';
 import type { ProcessSubscriptions } from './subscriptions';
 import { SubscriptionRouteAdapter, SUBSCRIPTION_ROUTE } from '../providers/adapter';
@@ -20,7 +21,7 @@ export class ComputerModelRoutes {
   private installing: Promise<void> = Promise.resolve();
   constructor(
     private readonly boot: HarnessBoot,
-    private readonly persistence: HttpHarnessPersistence,
+    private readonly persistence: HubSessionLog,
     private readonly fetcher: typeof fetch,
     private readonly subscriptions: ProcessSubscriptions,
   ) {}
@@ -53,7 +54,7 @@ export class ComputerModelRoutes {
     return pending;
   }
   private assertIdentity(previous: AiModelRoute | undefined, route: AiModelRoute): void {
-    if (previous !== undefined && routeIdentity(previous) !== routeIdentity(route))
+    if (previous !== undefined && !isDeepStrictEqual(routeIdentity(previous), routeIdentity(route)))
       throw new HarnessRuntimeError(
         'route_unavailable',
         'This route changed subscriber, provider or supplier identity. Reconnect the computer before admitting it.',
@@ -111,7 +112,7 @@ export class ComputerModelRoutes {
       );
     const previous = this.routes.get(route.id);
     this.assertIdentity(previous, route);
-    if (JSON.stringify(previous) === JSON.stringify(route)) return;
+    if (isDeepStrictEqual(previous, route)) return;
     const adapter = this.adapter(ctx, route);
     const registered = this.adapters.get(route.id);
     if (registered === undefined) {
@@ -122,12 +123,19 @@ export class ComputerModelRoutes {
     this.routes.set(route.id, route);
   }
 }
-function routeIdentity(route: AiModelRoute): string {
-  return JSON.stringify({
+interface RouteIdentity {
+  readonly profile: string;
+  readonly subscriber: string;
+  readonly supplier: AiModelRoute['supplier'];
+  readonly auth: AiModelRoute['auth'];
+  readonly billing: AiModelRoute['billing'];
+}
+function routeIdentity(route: AiModelRoute): RouteIdentity {
+  return {
     profile: route.profile_id,
     subscriber: route.subscriber_id,
     supplier: route.supplier,
     auth: route.auth,
     billing: route.billing,
-  });
+  };
 }

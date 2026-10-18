@@ -10,7 +10,7 @@ const SCHEMA_ROOT = z.looseObject({
   definitions: z.record(z.string(), JSON_VALUE).optional(),
 });
 
-export class NativeSchemaError extends Error {
+class NativeSchemaError extends Error {
   override readonly name = 'NativeSchemaError';
 }
 

@@ -129,7 +129,7 @@ function shardOf(guildId: string, count: number): number {
 }
 
 export const connectDiscord: DiscordLinkFactory = (options): DiscordLink => {
-  const sdk = new REST({ version: API_VERSION, retries: 0, timeout: REQUEST_TIMEOUT_MS });
+  const sdk = new REST({ version: API_VERSION, timeout: REQUEST_TIMEOUT_MS });
   sdk.setToken(options.token);
   const sockets = new WebSocketManager({
     token: options.token,

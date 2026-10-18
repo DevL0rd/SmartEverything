@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
-import { Text as NativeText } from 'react-native';
+import { Text as NativeText, View } from 'react-native';
 import { cn } from '../../../design/cn';
 import { initialsOf } from '../../../format/text';
 import { paletteSlotOf } from '../model/speaker';

@@ -1,11 +1,21 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { href } from '../../app-shell/hrefs';
 import type { IconName } from '../../components/icon';
 import { Text } from '../../components/text';
-import { WidgetFrame, type WidgetSize } from '../../components/widget-board';
+import { WidgetFrame, type BoardClass, type WidgetSize } from '../../components/widget-board';
 import type { ColourRole } from '../../design/tokens';
 import type { Device } from '../../store/state';
+import { LogTally } from '../../design/log-tally';
+import { pluginLog } from './plugin-log';
 import type { PluginStream } from './use-plugin-stream';
+
+const widgetTally = new LogTally(pluginLog, 'plugin_widget.summary', 10_000);
+
+export const PLUGIN_WIDGET_SIZES: Readonly<Record<BoardClass, readonly WidgetSize[]>> = {
+  compact: ['M', 'XL'],
+  medium: ['M', 'XL'],
+  expanded: ['M', 'W', 'XL'],
+};
 
 interface PluginWidgetFrameProps<T> {
   readonly title: string;
@@ -55,9 +65,15 @@ export function PluginWidgetFrame<T>({
   action,
   children,
 }: PluginWidgetFrameProps<T>): ReactNode {
+  useEffect(() => {
+    widgetTally.bump(`${title}:${size}:mounted`);
+    return (): void => {
+      widgetTally.bump(`${title}:${size}:unmounted`);
+    };
+  }, [title, size]);
   const link = device === null ? {} : { href: href.device(device) };
   return (
-    <WidgetFrame title={title} icon={icon} accent={accent} size={size} action={action} {...link}>
+    <WidgetFrame title={title} icon={icon} accent={accent} action={action} {...link}>
       <Body stream={stream} unavailable={unavailable}>
         {children}
       </Body>

@@ -1,5 +1,6 @@
 import { DISCORD_STREAM, type PluginManifestInput } from '@smarteverything/domain';
 import type { BuiltinPlugin } from '../contract';
+import { figureWidget } from '../board-widget';
 import { defineBuiltinPlugin } from '../define';
 import { startDiscord, type DiscordEnvironment } from './runtime';
 import { DISCORD_SETTINGS } from './settings';
@@ -23,6 +24,7 @@ const DISCORD_MANIFEST: PluginManifestInput = {
         history: 0,
       },
     ],
+    widgets: [figureWidget('discord.call', 'Discord call', 'mic', DISCORD_STREAM)],
     settings: DISCORD_SETTINGS_FORM,
     peoplePicker: 'people',
   },

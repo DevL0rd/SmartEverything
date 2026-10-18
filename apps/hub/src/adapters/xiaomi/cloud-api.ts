@@ -19,6 +19,7 @@ import { XiaomiSessionRejectedError, type XiaomiSecrets } from './account';
 import { AccountHttp } from './account-http';
 import type { XiaomiDependencies } from './dependencies';
 import { signInWithPassToken } from './login-flow';
+import { failureLine } from '@smarteverything/logging';
 
 const NONCE_RANDOM_BYTES = 8;
 const SDK_VERSION = 'accountsdk-18.8.15';
@@ -42,7 +43,7 @@ export class XiaomiNetworkError extends Error {
     readonly path: string,
     cause: unknown,
   ) {
-    super(`The Xiaomi cloud could not be reached for ${path}: ${String(cause)}`, { cause });
+    super(`The Xiaomi cloud could not be reached for ${path}: ${failureLine(cause)}`, { cause });
   }
 }
 
@@ -57,23 +58,26 @@ class XiaomiCloudTimeoutError extends Error {
   }
 }
 
+function deadline(signal: AbortSignal): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    const expire = (): void => {
+      reject(new Error('The Xiaomi cloud deadline passed.'));
+    };
+    if (signal.aborted) expire();
+    signal.addEventListener('abort', expire, { once: true });
+  });
+}
+
 async function boundedRequest<T>(
   path: string,
   work: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
-  const controller = new AbortController();
-  const cause = new XiaomiCloudTimeoutError(path, CLOUD_REQUEST_TIMEOUT_MS);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expired = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      controller.abort(cause);
-      reject(new XiaomiNetworkError(path, cause));
-    }, CLOUD_REQUEST_TIMEOUT_MS);
-  });
+  const signal = AbortSignal.timeout(CLOUD_REQUEST_TIMEOUT_MS);
   try {
-    return await Promise.race([work(controller.signal), expired]);
-  } finally {
-    clearTimeout(timer);
+    return await Promise.race([work(signal), deadline(signal)]);
+  } catch (error) {
+    if (!signal.aborted) throw error;
+    throw new XiaomiNetworkError(path, new XiaomiCloudTimeoutError(path, CLOUD_REQUEST_TIMEOUT_MS));
   }
 }
 

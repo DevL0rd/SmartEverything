@@ -12,5 +12,6 @@ export const COMPUTER: CapabilityOverrides = {
   hibernate: power('Hibernate', CONFIRM),
   sign_out: power('Sign out', CONFIRM),
   lock_screen: power('Lock screen'),
+  unlock: power('Unlock', CONFIRM),
   wake: power('Wake'),
 };

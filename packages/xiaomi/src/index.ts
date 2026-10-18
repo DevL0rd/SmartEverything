@@ -17,6 +17,7 @@ export {
   isUplink,
   needsSubscription,
   parseUplink,
+  statusNoticeId,
   subscriptionParams,
   uplinkAck,
 } from './push';
@@ -28,7 +29,6 @@ export type { RpcRequest } from './rpc';
 export {
   actionParams,
   checkPropertyWrites,
-  chunk,
   getPropertiesParams,
   parseActionResult,
   parsePropertyReadings,

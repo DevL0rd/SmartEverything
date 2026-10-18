@@ -1,18 +1,20 @@
 import {
   CAPABILITY_CATALOGUE,
+  COMPUTER_ROLE_MODELS,
   type ComputerAction,
+  type ComputerRole,
   type DeviceCapability,
   type DiscoveredDevice,
+  type MachineAction,
   type NodeHello,
 } from '@smarteverything/domain';
 import { driverDeviceId } from '../local/device-driver';
+import { machineCapabilities } from '../machines/machine-capabilities';
 
 export const COMPUTER_DRIVER = 'computer';
 
-export const COMPUTER_MODEL = 'smarteverything.computer';
-
-export function computerExternalId(hello: NodeHello): string {
-  return driverDeviceId(COMPUTER_DRIVER, hello.machineId);
+export function computerExternalId(machineId: string): string {
+  return driverDeviceId(COMPUTER_DRIVER, machineId);
 }
 
 function actionCapability(action: ComputerAction): DeviceCapability {
@@ -24,22 +26,32 @@ function actionCapability(action: ComputerAction): DeviceCapability {
   };
 }
 
+export interface ComputerControlSet {
+  readonly power: readonly ComputerAction[];
+  readonly machine: readonly MachineAction[];
+}
+
 export function describeComputer(
   hello: NodeHello,
+  role: ComputerRole,
   readings: readonly DeviceCapability[],
-  actions: readonly ComputerAction[],
+  controls: ComputerControlSet,
 ): DiscoveredDevice {
   return {
     provider: 'local',
-    externalId: computerExternalId(hello),
+    externalId: computerExternalId(hello.machineId),
     parentExternalId: null,
     kind: 'computer',
     name: hello.hostname,
-    model: COMPUTER_MODEL,
+    model: COMPUTER_ROLE_MODELS[role],
     manufacturer: hello.hardware.vendor ?? hello.os.name,
     room: null,
     online: true,
-    capabilities: [...readings, ...actions.map(actionCapability)],
+    capabilities: [
+      ...readings,
+      ...controls.power.map(actionCapability),
+      ...machineCapabilities(hello.actions, controls.machine),
+    ],
     details: {
       product: hello.hardware.product,
       portable: hello.hardware.portable,

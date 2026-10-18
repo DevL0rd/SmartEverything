@@ -1,4 +1,6 @@
 const RING_WINDOW_MS = 60_000;
+import { deviceAlertsOn, type DeviceAlertsPref } from '@smarteverything/domain';
+import { compareText } from '../../../format/text';
 
 export const RING_FOR_MS = 45_000;
 
@@ -44,7 +46,7 @@ export function newRings(
       rings.push({ eventId: event.id, deviceId, kind, occurredAt: event.occurred_at });
     }
   }
-  return rings.sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+  return rings.sort((left, right) => compareText(left.occurredAt, right.occurredAt));
 }
 
 export function stillRinging(ring: Ring, now: number): boolean {
@@ -53,4 +55,13 @@ export function stillRinging(ring: Ring, now: number): boolean {
 
 export function ringTitle(kind: RingKind, camera: string): string {
   return kind === 'call' ? `${camera} is calling` : `Someone rang at ${camera}`;
+}
+
+export function ringingCameraIds(
+  deviceIds: readonly string[],
+  alerts: DeviceAlertsPref | null,
+): ReadonlySet<string> {
+  return new Set(
+    deviceIds.filter((deviceId) => alerts === null || deviceAlertsOn(alerts, deviceId)),
+  );
 }

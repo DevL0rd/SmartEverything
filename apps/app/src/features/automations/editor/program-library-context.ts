@@ -1,8 +1,8 @@
 import { createContext, useContext } from 'react';
 import type {
+  AutomationRow,
   AutomationValueContent,
   AutomationValueRow,
-  AutomationSequenceRow,
 } from '@smarteverything/domain';
 
 export interface ProgramLibrary {
@@ -12,10 +12,7 @@ export interface ProgramLibrary {
     select: (row: AutomationValueRow) => void,
     lockKind?: boolean,
   ) => void;
-  readonly sequence: (
-    row: AutomationSequenceRow | null,
-    select: (row: AutomationSequenceRow) => void,
-  ) => void;
+  readonly reusable: (row: AutomationRow | null, select: (row: AutomationRow) => void) => void;
 }
 export const LibraryContext = createContext<ProgramLibrary | null>(null);
 export function useProgramLibrary(): ProgramLibrary | null {

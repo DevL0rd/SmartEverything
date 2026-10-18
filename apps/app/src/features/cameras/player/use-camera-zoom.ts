@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { presentDevice, withRole } from '@smarteverything/domain';
 import { useControl } from '../../../store/control';
 import type { Device } from '../../../store/state';
+import { background } from '@smarteverything/logging';
 
 export interface CameraZoom {
   readonly supported: boolean;
@@ -48,14 +49,17 @@ function useSender(set: (value: number) => Promise<boolean>): (units: number) =>
       return;
     }
     busy.current = true;
-    void set(units).finally(() => {
-      busy.current = false;
-      const queued = next.current;
-      next.current = null;
-      if (queued !== null && queued !== units) {
-        send(queued);
-      }
-    });
+    background(
+      set(units).finally(() => {
+        busy.current = false;
+        const queued = next.current;
+        next.current = null;
+        if (queued !== null && queued !== units) {
+          send(queued);
+        }
+      }),
+      'use_camera_zoom.set_failed',
+    );
   };
   return send;
 }

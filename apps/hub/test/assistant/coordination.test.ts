@@ -12,6 +12,30 @@ import type { StoredEvent } from '../../src/store/repositories/assistant-events'
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
+function hubTool(name: string): HubTool {
+  return {
+    name,
+    title: name,
+    description: name,
+    inputSchema: { type: 'object' },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    origin: { kind: 'se' },
+    humanOnly: false,
+  };
+}
+
+function toolHub(names: readonly string[]): ToolHub {
+  return new ToolHub([
+    {
+      tools: (): HubTool[] => names.map(hubTool),
+      call: (called): Promise<HubToolResult> =>
+        Promise.resolve({ response: { ran: called.name }, line: '', pictures: [] }),
+      validate: (): null => null,
+      changes: (): (() => void) => (): void => undefined,
+    },
+  ]);
+}
+
 let opened: TestStore;
 let clock: number;
 let notices: ChatActivityNotice[];
@@ -49,6 +73,7 @@ beforeEach(async () => {
     },
     added: (): void => undefined,
     now,
+    tools: (): ToolHub => toolHub(['search_everything']),
   });
 });
 
@@ -228,25 +253,27 @@ describe('subagents', () => {
     });
   });
 
-  it('limits a subagent to the tools on its list', async () => {
-    const tool = (name: string): HubTool => ({
-      name,
-      title: name,
-      description: name,
-      inputSchema: { type: 'object' },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-      origin: { kind: 'se' },
-      humanOnly: false,
+  it('lets any chat of the person message an existing subagent whatever its tool list', async () => {
+    const parent = chat('Planner');
+    const child = await coordination.subagent(sender(parent.id), parent.id, {
+      task: 'Compare two kettles',
+      tools: ['search_everything'],
+      wait: false,
+      timeoutSeconds: 60,
     });
-    const hub = new ToolHub([
-      {
-        tools: (): HubTool[] => [tool('allowed'), tool('hidden')],
-        call: (called): Promise<HubToolResult> =>
-          Promise.resolve({ response: { ran: called.name }, line: '', pictures: [] }),
-        validate: (): null => null,
-        changes: (): (() => void) => (): void => undefined,
-      },
-    ]);
+    const peer = opened.store.aiChats.update(chat('Reviewer').id, { tools: [] });
+
+    const result = await coordination.ask(sender(peer.id), child.chatId, {
+      text: 'Any update?',
+      wait: false,
+      timeoutSeconds: 60,
+    });
+
+    expect(result).toMatchObject({ chatId: child.chatId, state: 'queued' });
+  });
+
+  it('limits a subagent to the tools on its list', async () => {
+    const hub = toolHub(['allowed', 'hidden']);
     const scoped = scopedHub(hub, ['allowed']);
     if (scoped === null) {
       throw new Error('no hub');

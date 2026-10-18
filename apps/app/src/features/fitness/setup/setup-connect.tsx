@@ -17,8 +17,8 @@ function healthConnectText(status: HealthConnectStatus, connected: boolean): str
       return 'Update Health Connect from the Play Store';
     case 'available':
       return connected
-        ? 'Connected · manage access in Fitness settings'
-        : 'Connect and manage access in Fitness settings';
+        ? 'Connected · tap to manage access'
+        : 'Tap to connect and choose what to share';
   }
 }
 

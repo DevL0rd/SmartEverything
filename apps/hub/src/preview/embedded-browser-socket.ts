@@ -10,7 +10,10 @@ import {
   type EmbeddedBrowserRequest,
   type EmbeddedBrowserResult,
 } from '@smarteverything/domain';
+import { Logger, messageOf } from '@smarteverything/logging';
 import type { Store } from '../store/store';
+import { socketText } from './socket-text';
+import { clientSocketsOf } from '../server/client-sockets';
 import { socketClient } from '../server/socket-auth';
 import type { EmbeddedBrowserControllers } from './embedded-browser-controllers';
 interface Pending {
@@ -23,25 +26,36 @@ interface Receipt {
   readonly input: string;
   readonly result: Promise<EmbeddedBrowserResult>;
 }
-const MAX_PENDING = 8;
-const MAX_RECEIPTS = 256;
 const TIMEOUT_MS = 30_000;
+const log = new Logger('hub.preview');
 class BrowserConnection {
   private scope: EmbeddedBrowserScope | null = null;
   private readonly pending = new Map<string, Pending>();
   private readonly receipts = new Map<string, Receipt>();
+  private readonly openedAt = performance.now();
+  private performed = 0;
+  private answered = 0;
+  private failed = 0;
   constructor(
     private readonly socket: WebSocket,
     private readonly clientId: string,
     private readonly controllers: EmbeddedBrowserControllers,
   ) {
+    log.info('browser.socket_opened', { clientId });
     socket.on('message', (data, binary) => {
       this.received(data, binary);
     });
-    socket.once('close', () => {
-      this.ended();
+    socket.once('close', (code) => {
+      this.ended(code);
     });
-    socket.on('error', this.close);
+    socket.on('error', (cause) => {
+      log.warn('browser.socket_failed', {
+        clientId: this.clientId,
+        errorName: cause.name,
+        reason: cause.message.slice(0, 200),
+      });
+      this.close();
+    });
   }
   readonly close = (): void => {
     this.socket.close(1001, 'Browser authority ended');
@@ -64,13 +78,27 @@ class BrowserConnection {
           close: this.close,
         });
         this.scope = message.scope;
+        log.info('browser.registered', {
+          clientId: this.clientId,
+          viewerId: message.scope.viewerId,
+          generation: message.scope.generation,
+          profileId: message.scope.profileId,
+          chatId: message.scope.chatId,
+        });
         this.send({ kind: 'accepted', scope: this.scope });
       } else this.answer(message.request, message.result, message.reason);
     } catch (cause) {
+      log.warn('browser.input_refused', {
+        clientId: this.clientId,
+        registered: this.scope !== null,
+        binary,
+        bytes: rawBytes(data),
+        errorName: cause instanceof Error ? cause.name : typeof cause,
+        reason: messageOf(cause).slice(0, 200),
+      });
       this.send({
         kind: 'refused',
-        reason:
-          cause instanceof Error ? cause.message.slice(0, 4096) : 'Browser control rejected input.',
+        reason: messageOf(cause).slice(0, 4096),
       });
       this.close();
     }
@@ -78,25 +106,38 @@ class BrowserConnection {
   private readonly perform = (request: EmbeddedBrowserRequest): Promise<EmbeddedBrowserResult> => {
     const input = JSON.stringify(request);
     const previous = this.receipts.get(request.requestId);
+    this.performed += 1;
+    log.debug('browser.action_requested', {
+      clientId: this.clientId,
+      requestId: request.requestId,
+      kind: request.operation.kind,
+      replay: previous !== undefined,
+      pending: this.pending.size,
+    });
     if (previous !== undefined)
       return previous.input === input
         ? previous.result
         : Promise.reject(
             new ApiError('conflict', 'The request ID was reused for another browser action.'),
           );
-    if (
-      this.pending.size >= MAX_PENDING ||
-      (request.operation.kind === 'edit' && this.receipts.size >= MAX_RECEIPTS) ||
-      this.socket.readyState !== WebSocket.OPEN
-    )
-      return Promise.reject(
-        new ApiError(
-          'conflict',
-          'The browser is busy, disconnected or its bounded request history is full.',
-        ),
-      );
+    if (this.socket.readyState !== WebSocket.OPEN) {
+      log.warn('browser.action_refused', {
+        clientId: this.clientId,
+        requestId: request.requestId,
+        reason: 'disconnected',
+        readyState: this.socket.readyState,
+      });
+      return Promise.reject(new ApiError('conflict', 'The browser is disconnected.'));
+    }
     const result = new Promise<EmbeddedBrowserResult>((resolve, reject) => {
       const timer = setTimeout(() => {
+        this.failed += 1;
+        log.warn('browser.action_timed_out', {
+          clientId: this.clientId,
+          requestId: request.requestId,
+          kind: request.operation.kind,
+          timeoutMs: TIMEOUT_MS,
+        });
         this.pending.delete(request.requestId);
         this.send({ kind: 'cancel', requestId: request.requestId });
         reject(
@@ -118,23 +159,48 @@ class BrowserConnection {
     reason: string | null,
   ): void {
     const task = this.pending.get(request.requestId);
-    if (task === undefined) return;
+    if (task === undefined) {
+      log.debug('browser.answer_unmatched', {
+        clientId: this.clientId,
+        requestId: request.requestId,
+      });
+      return;
+    }
+    this.answered += 1;
+    log.debug('browser.action_answered', {
+      clientId: this.clientId,
+      requestId: request.requestId,
+      ok: result !== null && reason === null,
+      hasReason: reason !== null,
+    });
+    this.pending.delete(request.requestId);
+    clearTimeout(task.timer);
     if (
       JSON.stringify(task.request) !== JSON.stringify(request) ||
       (result !== null && !sameBrowserOwner(result.snapshot, task.request.scope))
     )
-      throw new ApiError(
-        'forbidden',
-        'The browser result changed its initiating registration or request.',
+      task.reject(
+        new ApiError(
+          'forbidden',
+          'The browser result changed its initiating registration or request.',
+        ),
       );
-    this.pending.delete(request.requestId);
-    clearTimeout(task.timer);
-    if (reason !== null) task.reject(new ApiError('conflict', reason));
+    else if (reason !== null) task.reject(new ApiError('conflict', reason));
     else if (result === null)
       task.reject(new ApiError('invalid_request', 'Browser acknowledgement has no snapshot.'));
     else task.resolve(result);
   }
-  private ended(): void {
+  private ended(code: number): void {
+    log.info('browser.socket_closed', {
+      clientId: this.clientId,
+      closeCode: code,
+      registered: this.scope !== null,
+      openMs: Math.round(performance.now() - this.openedAt),
+      performed: this.performed,
+      answered: this.answered,
+      failed: this.failed,
+      abandoned: this.pending.size,
+    });
     this.controllers.disconnect(this.close);
     for (const task of this.pending.values()) {
       clearTimeout(task.timer);
@@ -150,10 +216,6 @@ class BrowserConnection {
   }
   private send(value: unknown): void {
     if (this.socket.readyState !== WebSocket.OPEN) return;
-    if (this.socket.bufferedAmount > 1024 * 1024) {
-      this.close();
-      return;
-    }
     this.socket.send(JSON.stringify(value));
   }
 }
@@ -176,7 +238,9 @@ export class EmbeddedBrowserSockets {
       EMBEDDED_BROWSER_PROTOCOL,
       EMBEDDED_BROWSER_PATH,
     );
+    log.debug('browser.upgrade_accepted', { clientId: client.id });
     this.server.handleUpgrade(request, socket, head, (connected) => {
+      clientSocketsOf(this.store).track(client.id, connected);
       new BrowserConnection(connected, client.id, this.controllers);
     });
   }
@@ -185,10 +249,10 @@ export class EmbeddedBrowserSockets {
     this.server.close();
   }
 }
-function socketText(data: RawData): string {
-  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
-  if (data instanceof ArrayBuffer) return Buffer.from(new Uint8Array(data)).toString('utf8');
-  return data.toString('utf8');
+
+function rawBytes(data: RawData): number {
+  if (Array.isArray(data)) return data.reduce((total, part) => total + part.length, 0);
+  return data instanceof ArrayBuffer ? data.byteLength : data.length;
 }
 
 function sameBrowserOwner(left: EmbeddedBrowserScope, right: EmbeddedBrowserScope): boolean {

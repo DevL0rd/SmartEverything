@@ -1,6 +1,8 @@
 import {
   CAMERA_DETECTION_KINDS,
   JSON_VALUE,
+  LAUNDRY_EVENT_FAMILY,
+  LAUNDRY_MIOT_EVENTS,
   miotDeviceEventKind,
   type CameraDetection,
   type DeviceEvent,
@@ -86,10 +88,43 @@ export function miotEventKind(name: string): EventKind | null {
   return detection === null ? miotDeviceEventKind(name) : CAMERA_DETECTION_KINDS[detection];
 }
 
+const LAUNDRY_EVENT_KINDS: Readonly<Record<string, EventKind>> = {
+  [LAUNDRY_MIOT_EVENTS.washEnd]: 'cycle_finished',
+  [LAUNDRY_MIOT_EVENTS.washEndLog]: 'cycle_finished',
+  [LAUNDRY_MIOT_EVENTS.cleanCompleted]: 'maintenance',
+};
+
+function deviceEventFromLaundry(name: string, observed: ObservedEvent): DeviceEvent | null {
+  const kind = Object.hasOwn(LAUNDRY_EVENT_KINDS, name) ? LAUNDRY_EVENT_KINDS[name] : undefined;
+  if (kind === undefined) {
+    return null;
+  }
+  const cleaned = kind === 'maintenance' ? { item: 'dispenser', state: 'cleaned' } : {};
+  const details = {
+    ...observed.details,
+    ...cleaned,
+    family: LAUNDRY_EVENT_FAMILY,
+    miotEvent: name,
+  };
+  return { ...observed, kind, details };
+}
+
+const MIOT_EVENT_FACTS: Readonly<Record<string, Readonly<Record<string, JsonValue>>>> = {
+  click: { action: 'single_press' },
+  'double-click': { action: 'double_press' },
+  'long-press': { action: 'long_press' },
+  'low-battery': { item: 'battery', state: 'low' },
+};
+
 export function deviceEventFromMiot(name: string, observed: ObservedEvent): DeviceEvent | null {
+  const laundry = deviceEventFromLaundry(name, observed);
+  if (laundry !== null) {
+    return laundry;
+  }
   const kind = miotEventKind(name);
   const detection = miotDetection(name);
-  const named = { ...observed.details, miotEvent: name };
+  const facts = Object.hasOwn(MIOT_EVENT_FACTS, name) ? MIOT_EVENT_FACTS[name] : undefined;
+  const named = { ...observed.details, ...facts, miotEvent: name };
   return kind === null
     ? null
     : { ...observed, kind, details: detection === null ? named : { ...named, detection } };

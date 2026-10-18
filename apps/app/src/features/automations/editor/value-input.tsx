@@ -9,6 +9,7 @@ import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import type { DeviceLike } from '../model/capability-choices';
+import { Labelled } from './labelled';
 import { SchemaArgumentsInput } from './schema-arguments-input';
 import { optionsOf, unitOf, valueLabel } from '../model/present';
 
@@ -110,23 +111,6 @@ function ArgumentsInput({ capability, value, onChange }: ValueInputProps): React
           }}
         />
       ))}
-    </View>
-  );
-}
-
-function Labelled({
-  label,
-  children,
-}: {
-  readonly label: string;
-  readonly children: ReactNode;
-}): ReactNode {
-  return (
-    <View className="items-start gap-1">
-      <Text variant="footnote" tone="variant">
-        {label}
-      </Text>
-      {children}
     </View>
   );
 }

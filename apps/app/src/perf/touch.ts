@@ -1,8 +1,8 @@
-import { developerFlags } from '../developer/flags';
+import { readDeveloperFlags } from '../developer/flags';
 import { sinkOf } from './sink';
 
 export function perfTouch(phase: 'start' | 'move' | 'end'): void {
-  if (developerFlags['perf.stalls']) {
+  if (__DEV__ && readDeveloperFlags()['perf.stalls']) {
     sinkOf()?.touch(phase);
   }
 }

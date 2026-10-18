@@ -7,6 +7,7 @@ import { LogindPower } from '../../src/node/controls/linux/logind-power';
 import { NodeFailureError } from '../../src/node/node-failure';
 import { NodeRequestHandler } from '../../src/node/request-handler';
 import { ProgramFailedError, type RunProgram } from '../../src/node/run-program';
+import { unusedControls } from '../node/controls/unused-controls';
 
 interface FakeSystem {
   readonly calls: string[];
@@ -46,11 +47,15 @@ const HELLO: NodeHello = {
   hostname: 'desk',
   os: { name: 'Linux', kernel: '6.0' },
   hardware: { vendor: null, product: null, portable: false },
-  cpu: { model: 'CPU', threads: 2, hybrid: false },
+  cpu: { model: 'CPU', threads: 2, hybrid: false, kinds: [] },
   memoryBytes: 8e9,
   interfaces: [],
   bootedAt: '2026-10-08T09:00:00.000Z',
   power: [],
+  actions: [],
+  permissions: [],
+  features: [],
+  role: 'pc',
 };
 
 describe('logind power (fake system, nothing is ever powered off)', () => {
@@ -106,8 +111,10 @@ describe('node request handler', () => {
         },
       },
       processes: {
-        list: () => Promise.resolve({ at: HELLO.bootedAt, total: 0, processes: [] }),
+        list: () => Promise.resolve({ at: HELLO.bootedAt, total: 0, next: null, processes: [] }),
         signal: () => undefined,
+        watch: () => undefined,
+        read: () => null,
         stop: () => undefined,
       },
       links: () => [],
@@ -132,8 +139,10 @@ describe('node request handler', () => {
       files: {
         list: () => Promise.reject(new Error('not used')),
         read: () => Promise.reject(new Error('not used')),
+        range: () => Promise.reject(new Error('not used')),
       },
       capture: { capture: () => Promise.reject(new Error('not used')) },
+      ...unusedControls(),
     };
   }
 

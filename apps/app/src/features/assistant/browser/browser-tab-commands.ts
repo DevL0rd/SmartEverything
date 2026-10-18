@@ -1,13 +1,13 @@
-import type { AiPreviewCatalogue } from '@smarteverything/domain';
+import type { AiPreviewCatalogue, EmbeddedBrowserAction } from '@smarteverything/domain';
 import { assertEmbeddedBrowserAction } from './browser-embedded-policy';
 import { BrowserTabError } from './browser-tab-errors';
 import { browserPublications } from './browser-publications';
 import type { BrowserTabs } from './browser-tabs';
-import type { BrowserTab, BrowserTabsAction } from './browser-tab-state';
+import type { BrowserTab } from './browser-tab-state';
 
 export async function performBrowserTabAction(
   tabs: BrowserTabs,
-  action: BrowserTabsAction,
+  action: EmbeddedBrowserAction,
   catalogue: AiPreviewCatalogue | undefined,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -22,7 +22,7 @@ export async function performBrowserTabAction(
     case 'navigate':
       return tabs.guardAdmission(
         tabs.tab(action.tabId).id,
-        () => tabs.navigate(action.tabId, action.address),
+        () => tabs.navigate(action.tabId, action.address, true),
         signal,
       );
     case 'reload':
@@ -41,13 +41,13 @@ export async function performBrowserTabAction(
 
 async function openBrowserTab(
   tabs: BrowserTabs,
-  source: Extract<BrowserTabsAction, { kind: 'open' }>['source'],
+  source: Extract<EmbeddedBrowserAction, { kind: 'open' }>['source'],
   catalogue: AiPreviewCatalogue | undefined,
   signal: AbortSignal | undefined,
 ): Promise<void> {
   if (source.kind === 'public') {
     const id = tabs.blank();
-    return tabs.guardAdmission(id, () => tabs.navigate(id, source.url), signal);
+    return tabs.guardAdmission(id, () => tabs.navigate(id, source.url, true), signal);
   }
   const publication = browserPublications(catalogue).find((row) => row.id === source.publicationId);
   if (publication === undefined)

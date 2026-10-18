@@ -9,6 +9,7 @@ import { clock } from '../../../format/time';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { usePluginLog } from '../data/plugin-queries';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
+import { background } from '@smarteverything/logging';
 
 function textOf(lines: readonly PluginLogLine[]): string {
   return lines.map((entry) => `${clock(entry.at)}  ${entry.line}`).join('\n');
@@ -17,7 +18,14 @@ function textOf(lines: readonly PluginLogLine[]): string {
 function LogBody({ row }: { readonly row: PluginRow }): ReactNode {
   const log = usePluginLog(row);
   if (log.isError) {
-    return <ErrorState error={log.error} retry={() => void log.refetch()} />;
+    return (
+      <ErrorState
+        error={log.error}
+        retry={() => {
+          background(log.refetch(), 'log.refetch_failed');
+        }}
+      />
+    );
   }
   if (log.data === undefined) {
     return <Skeleton shape="block" className="h-56" />;

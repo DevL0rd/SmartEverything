@@ -2,9 +2,6 @@ import { z } from 'zod';
 import { AI_HTML_PREVIEW_LEASE, AI_PREVIEW_HTML_MAX } from './ai-preview-documents';
 import { NATIVE_HUB_CREDENTIAL_BINDING } from './hub-native';
 
-export const AI_NATIVE_HTML_CAPABILITY = 'native-html-v1';
-export const AI_NATIVE_PROJECT_CAPABILITY = 'native-project-v1';
-export const AI_CHAT_PAGES_CAPABILITY = 'chat-pages-v2';
 export const AI_CHAT_PAGE_PATH = '/api/ai/chats/:chatId/pages/:publicationId/*path';
 export const NATIVE_PAGE_DESCRIPTOR = z.strictObject({
   version: z.literal(2),
@@ -35,8 +32,6 @@ export function chatPageAssetUrl(chatId: string, publicationId: string, path: st
 export const NATIVE_PROJECT_ASSET_PATH = '/api/ai/previews/html/native/assets/:leaseId';
 export const NATIVE_HTML_CLAIM_PATH = '/api/ai/previews/html/native/claim';
 export const NATIVE_HTML_SCHEME = 'se-preview-html';
-export const NATIVE_HTML_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox allow-scripts allow-same-origin allow-modals";
 export const NATIVE_HTML_ID = z.string().regex(/^[0-9a-f]{64}$/);
 export const NATIVE_HTML_LEASE = z.strictObject({
   purpose: z.literal('native-html'),

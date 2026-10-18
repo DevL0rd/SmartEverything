@@ -2,9 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   API_ENDPOINTS as E,
   ApiError,
-  seal,
   SMARTTHINGS_CREDENTIALS,
-  type CommandRow,
   type SmartThingsAppStatus,
   type SmartThingsSetup,
 } from '@smarteverything/domain';
@@ -16,14 +14,10 @@ import { clientOf } from '../../server/auth';
 import type { RawRoute } from '../../server/http-server';
 import { bound, type ExtensionRouteTable } from '../../server/router';
 import type { AppSetup } from './app-setup';
-import { LINKED_PATH, publicUrlState, savedPaths, verifiedPaths } from './paths';
+import { LINKED_PATH, publicUrlState, savedPaths, requiredPaths } from './paths';
 import { PAGE_OUTCOMES, sendPage, type PageOutcome } from './page';
 import type { OAuthStates } from './states';
 import type { WebhookState } from './webhook-state';
-
-const LINK_WAIT_MS = 60_000;
-
-const FINISHED: ReadonlySet<CommandRow['status']> = new Set(['succeeded', 'failed', 'expired']);
 
 const STATE = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
@@ -52,28 +46,6 @@ function redirect(response: ServerResponse, outcome: PageOutcome): void {
     'cache-control': 'no-store',
   });
   response.end();
-}
-
-function finished(context: ExtensionContext, commandId: string): Promise<CommandRow | null> {
-  return new Promise((resolve) => {
-    const settle = (row: CommandRow | null): void => {
-      clearTimeout(timer);
-      unsubscribe();
-      resolve(row);
-    };
-    const timer = setTimeout(() => {
-      settle(null);
-    }, LINK_WAIT_MS).unref();
-    const unsubscribe = context.store.feed.subscribe((change) => {
-      if (
-        change.table === 'commands' &&
-        change.record?.id === commandId &&
-        FINISHED.has(change.record.status)
-      ) {
-        settle(change.record);
-      }
-    });
-  });
 }
 
 export class LinkRoutes {
@@ -138,7 +110,7 @@ export class LinkRoutes {
     if (app === null) {
       throw new ApiError('conflict', 'Save the SmartThings app client id and secret first.');
     }
-    const { redirectUri } = verifiedPaths(context.store);
+    const { redirectUri } = requiredPaths(context.store);
     const { state, expiresAt } = states.create(redirectUri, clientId);
     log.info('authorization.started', { clientId });
     return {
@@ -179,28 +151,14 @@ export class LinkRoutes {
       code,
       redirectUri: pending.redirectUri,
     });
-    const sealed = seal(context.secrets.sealingKeys().publicKey, JSON.stringify(credentials));
-    const [command] = context.hub.submit([
-      {
-        deviceId: null,
-        capability: 'hub:link_provider',
-        value: { provider: 'smartthings', credentials: sealed },
-        source: 'app',
-        requestedBy: pending.requestedBy,
-      },
-    ]);
-    if (command === undefined) {
-      throw new ApiError('internal', 'The link command was not queued.');
+    try {
+      await context.hub.providers.link(credentials);
+    } catch (cause) {
+      log.error('authorization.link_failed', cause, { clientId: pending.requestedBy });
+      return 'failed';
     }
-    const outcome = await finished(context, command.id);
-    log.info('authorization.finished', {
-      commandId: command.id,
-      status: outcome?.status ?? 'running',
-    });
-    if (outcome === null) {
-      return 'linking';
-    }
-    return outcome.status === 'succeeded' ? 'linked' : 'failed';
+    log.info('authorization.finished', { clientId: pending.requestedBy });
+    return 'linked';
   }
 
   private linked(request: IncomingMessage, response: ServerResponse): Promise<void> {

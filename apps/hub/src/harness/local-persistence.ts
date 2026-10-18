@@ -2,13 +2,16 @@ import { Logger } from '@smarteverything/logging';
 import { ApiError } from '@smarteverything/domain';
 import type { DshWriterClaim, DshSessionMetadata } from '@smarteverything/domain';
 import type { HarnessControlPersistence } from '@smarteverything/harness/process';
-import type { NativeSessionSnapshot, NativeSessionWriter } from '@smarteverything/harness';
+import type {
+  NativeSessionRange,
+  NativeSessionSnapshot,
+  NativeSessionWriter,
+} from '@smarteverything/harness';
 import type { SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session';
 import type { HarnessService } from './service';
 
 export class LocalHarnessPersistence implements HarnessControlPersistence {
   private readonly claims = new Map<string, DshWriterClaim>();
-  private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly listeners = new Set<(id: string) => void>();
   private readonly log = new Logger('hub.harness');
   constructor(private readonly service: HarnessService) {
@@ -29,7 +32,6 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
   }
   bind(claim: DshWriterClaim): void {
     this.claims.set(claim.session_id, claim);
-    this.arm(claim.session_id);
   }
   boundClaim(id: string): DshWriterClaim | undefined {
     return this.claims.get(id);
@@ -57,20 +59,9 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
       [...this.claims.keys()].map(async (id) => snapshot(await this.metadata(id))),
     );
   }
-  read(id: SessionId): Promise<unknown> {
+  read(id: SessionId, range?: NativeSessionRange): Promise<unknown> {
     const grant = this.service.storage.grant(id);
-    const metadata = this.service.store.dshSessions.stat(id, grant.profile_id);
-    if (metadata === undefined)
-      return Promise.reject(new ApiError('not_found', 'Native session is absent.'));
-    const events: unknown[] = [];
-    for (let offset = 0; offset < metadata.next_seq; offset += 10_000)
-      events.push(
-        ...this.service.store.dshSessions.read(
-          { session_id: id, offset, limit: 10_000 },
-          grant.profile_id,
-        ).events,
-      );
-    return Promise.resolve(events);
+    return Promise.resolve(this.service.store.dshSessions.readAll(id, grant.profile_id, range));
   }
   append(
     claim: DshWriterClaim,
@@ -88,16 +79,6 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
       { claim, expected_next_seq: expectedNextSeq },
       this.principal(claim.session_id),
     );
-    return Promise.resolve();
-  }
-  release(claim: DshWriterClaim, operationId: string, expectedNextSeq: number): Promise<void> {
-    this.service.store.dshSessions.release(
-      { claim, operation_id: operationId, expected_next_seq: expectedNextSeq },
-      this.principal(claim.session_id),
-    );
-    clearTimeout(this.timers.get(claim.session_id));
-    this.timers.delete(claim.session_id);
-    this.claims.delete(claim.session_id);
     return Promise.resolve();
   }
   metadata(id: string): Promise<DshSessionMetadata> {
@@ -125,8 +106,6 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
     }
   }
   lose(id: string): void {
-    clearTimeout(this.timers.get(id));
-    this.timers.delete(id);
     this.claims.delete(id);
     for (const listener of this.listeners) listener(id);
   }
@@ -146,27 +125,6 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
     )
       throw new ApiError('forbidden', 'This hub runtime no longer owns the native conversation.');
     return this.service.hostPrincipal(grant.profile_id, host);
-  }
-  private arm(id: string): void {
-    clearTimeout(this.timers.get(id));
-    const timer = setTimeout(() => {
-      try {
-        this.bind(
-          this.service.store.dshSessions.renew(
-            { claim: this.claim(id), lease_ms: 120_000 },
-            this.principal(id),
-          ),
-        );
-      } catch (cause) {
-        this.log.warn('ownership.lost', {
-          session_id: id,
-          error_name: cause instanceof Error ? cause.name : 'unknown',
-        });
-        this.lose(id);
-      }
-    }, 40_000);
-    timer.unref();
-    this.timers.set(id, timer);
   }
 }
 function snapshot(metadata: DshSessionMetadata): NativeSessionSnapshot {

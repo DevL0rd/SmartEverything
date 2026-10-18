@@ -3,6 +3,7 @@ import type { WatchGoal } from '@smarteverything/domain';
 import { href } from '../../app-shell/hrefs';
 import type { IconName } from '../../components/icon';
 import { ListRow } from '../../components/list-row';
+import { numberFormat } from '../../format/locale';
 
 const GOALS: Readonly<
   Record<
@@ -17,7 +18,7 @@ const GOALS: Readonly<
 };
 
 function amount(goal: WatchGoal, value: number): string {
-  return `${value.toLocaleString()} ${GOALS[goal.key].unit}`;
+  return `${numberFormat().format(value)} ${GOALS[goal.key].unit}`;
 }
 
 function noteOf(goal: WatchGoal): string | null {

@@ -151,11 +151,8 @@ export type RegionDetection =
   | { readonly status: 'unsupported'; readonly code: string }
   | { readonly status: 'unknown' };
 
-const LOCALE_REGION = /^[a-z]{2,3}(?:[-_][A-Za-z]{4})?[-_]([A-Za-z]{2}|\d{3})(?:[-_@.]|$)/;
-
 export function localeRegionOf(locale: string): string | null {
-  const found = LOCALE_REGION.exec(locale)?.[1];
-  return found === undefined ? null : found.toUpperCase();
+  return new Intl.Locale(locale.replaceAll('_', '-')).region ?? null;
 }
 
 export function regionOfTimeZone(timeZone: string): RegionCode | null {

@@ -1,6 +1,7 @@
 import type { UsageBucket } from '@smarteverything/domain';
-import { DAY_MS, localDayKey } from '../../../format/time';
+import { DAY_MS } from '../../../format/time';
 import type { CostParams, CostRange } from './costs-params';
+import { dateFormat } from '../../../format/locale';
 
 export const RANGE_LABELS: Readonly<Record<CostRange, string>> = {
   today: 'Today',
@@ -22,7 +23,7 @@ export interface CostWindow {
 const OFFSET = /GMT([+-])(\d{1,2})(?::?(\d{2}))?/;
 
 function offsetMinutes(at: number, timeZone: string): number {
-  const name = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' })
+  const name = dateFormat({ timeZone, timeZoneName: 'shortOffset' }, 'en-US')
     .formatToParts(new Date(at))
     .find((part) => part.type === 'timeZoneName')?.value;
   const match = OFFSET.exec(name ?? '');
@@ -33,12 +34,12 @@ function offsetMinutes(at: number, timeZone: string): number {
   return match[1] === '-' ? -minutes : minutes;
 }
 
-export function zonedMidnight(day: string, timeZone: string): number {
+function zonedMidnight(day: string, timeZone: string): number {
   const utc = Date.parse(`${day}T00:00:00Z`);
   return utc - offsetMinutes(utc, timeZone) * 60_000;
 }
 
-function shiftDays(day: string, by: number): string {
+export function shiftDays(day: string, by: number): string {
   return new Date(Date.parse(`${day}T00:00:00Z`) + by * DAY_MS).toISOString().slice(0, 10);
 }
 
@@ -69,8 +70,7 @@ function customSpan(
   return { first, last };
 }
 
-export function windowOf(params: CostParams, now: number, timeZone: string): CostWindow {
-  const today = localDayKey(now, timeZone);
+export function windowOf(params: CostParams, today: string, timeZone: string): CostWindow {
   const { first, last } = spanOf(params, today);
   const days =
     Math.round((Date.parse(`${last}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`)) / DAY_MS) + 1;
@@ -89,11 +89,11 @@ export function rangeLabel(params: CostParams, window: CostWindow): string {
     return RANGE_LABELS[params.range];
   }
   const format = (day: string): string =>
-    new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, {
+    dateFormat({
       day: 'numeric',
       month: 'short',
       timeZone: 'UTC',
-    });
+    }).format(new Date(`${day}T12:00:00Z`));
   return window.firstDay === window.lastDay
     ? format(window.firstDay)
     : `${format(window.firstDay)} – ${format(window.lastDay)}`;

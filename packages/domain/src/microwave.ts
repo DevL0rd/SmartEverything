@@ -4,7 +4,8 @@ export * from './microwave-recipes';
 export * from './microwave-readings';
 
 export * from './microwave-core';
-import { MICROWAVE_DURATION, MICROWAVE_KEYS } from './microwave-core';
+import { MICROWAVE_DURATION, MICROWAVE_KEYS, MICROWAVE_REASONS } from './microwave-core';
+import { microwaveRemaining } from './microwave-readings';
 
 const NUMERIC_RANGE = z
   .object({
@@ -59,6 +60,34 @@ export function microwaveModes(
   return specs.single.filter((mode) => modes.includes(mode.mode));
 }
 
+export function microwaveSecondsLeft(
+  values: Readonly<Record<string, JsonValue | undefined>>,
+): number | null {
+  const state = values[MICROWAVE_KEYS.state];
+  if (state !== 'running' && state !== 'paused') {
+    return null;
+  }
+  const staged = microwaveRemaining(values);
+  if (staged !== null) {
+    return microwaveSeconds(staged);
+  }
+  const total = MICROWAVE_DURATION.safeParse(values[MICROWAVE_KEYS.duration]);
+  if (!total.success) {
+    return null;
+  }
+  const progress = values[MICROWAVE_KEYS.progress];
+  const done = typeof progress === 'number' ? Math.min(100, Math.max(0, progress)) : 0;
+  return Math.round(microwaveSeconds(total.data) * (1 - done / 100));
+}
+
+export function microwaveReadyAt(
+  values: Readonly<Record<string, JsonValue | undefined>>,
+): number | null {
+  const completion = values[MICROWAVE_KEYS.completion];
+  const moment = typeof completion === 'string' ? Date.parse(completion) : Number.NaN;
+  return Number.isNaN(moment) ? null : moment;
+}
+
 export function microwavePowerOptions(
   mode: MicrowaveMode,
   supported: JsonValue | undefined,
@@ -71,19 +100,48 @@ export function microwavePowerOptions(
   return power.supportedValues.filter((value) => available.includes(value));
 }
 
+export function microwaveRemoteReason(
+  values: Readonly<Record<string, JsonValue | undefined>>,
+): string | null {
+  return values[MICROWAVE_KEYS.remote] === 'true' ? null : MICROWAVE_REASONS.remoteOff;
+}
+
 export function microwaveReadiness(
   values: Readonly<Record<string, JsonValue | undefined>>,
 ): string | null {
-  if (values[MICROWAVE_KEYS.remote] !== 'true') {
-    return 'Enable remote control on the microwave.';
+  const remote = microwaveRemoteReason(values);
+  if (remote !== null) {
+    return remote;
   }
   if (values[MICROWAVE_KEYS.door] !== 'closed') {
-    return 'Close the microwave door.';
+    return MICROWAVE_REASONS.doorOpen;
   }
   if (values[MICROWAVE_KEYS.lock] !== 'unlocked') {
-    return 'Unlock the controls on the microwave.';
+    return MICROWAVE_REASONS.controlsLocked;
   }
   return null;
+}
+
+export function microwaveStartable(mode: Pick<MicrowaveMode, 'supportedOperations'>): boolean {
+  return mode.supportedOperations.includes('start');
+}
+
+export type MicrowaveRemoteState =
+  | { readonly actions: 'none'; readonly reason: string }
+  | { readonly actions: 'set'; readonly reason: string }
+  | { readonly actions: 'start'; readonly reason: null };
+
+export function microwaveRemoteState(
+  values: Readonly<Record<string, JsonValue | undefined>>,
+  mode: Pick<MicrowaveMode, 'supportedOperations'>,
+): MicrowaveRemoteState {
+  const blocked = microwaveReadiness(values);
+  if (blocked !== null) {
+    return { actions: 'none', reason: blocked };
+  }
+  return microwaveStartable(mode)
+    ? { actions: 'start', reason: null }
+    : { actions: 'set', reason: MICROWAVE_REASONS.startOnAppliance };
 }
 
 export interface MicrowaveProgram {

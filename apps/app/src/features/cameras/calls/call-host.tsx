@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { Modal, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Logger, background } from '@smarteverything/logging';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../design/theme-scope';
 import { acknowledgeEvent } from '../../../api/media';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
@@ -17,11 +19,13 @@ import { useSettings } from '../../../store/selectors';
 import { useLedger } from '../../../store/store-context';
 import { useCameraEntries } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
-import { ringTitle, type Ring } from '../logic/ringing';
+import { ringTitle, ringingCameraIds, type Ring } from '../logic/ringing';
 import { PlayerStage } from '../player/player-stage';
 import { useLiveSession } from '../player/use-live-session';
 import { useRingTone } from './ring-tone';
 import { useRings } from './use-rings';
+
+const log = new Logger('app.cameras');
 
 const FILL = { flex: 1 };
 
@@ -33,6 +37,7 @@ interface CallProps {
 
 function acknowledged(ring: Ring): void {
   acknowledgeEvent(ring.eventId).catch((error: unknown) => {
+    log.error('ring.acknowledge_failed', error, { eventId: ring.eventId, deviceId: ring.deviceId });
     notify({
       message: 'The call wasn’t marked as handled',
       error,
@@ -49,6 +54,7 @@ function useCallActions({ ring, entry, onDone }: CallProps): {
   const router = useRouter();
   const ledger = useLedger();
   const open = (call: boolean): void => {
+    log.info('ring.opened', { eventId: ring.eventId, deviceId: entry.device.id, call });
     acknowledged(ring);
     onDone();
     router.navigate(href.camera(entry.device.id, call ? 'call' : null));
@@ -67,8 +73,13 @@ function useCallActions({ ring, entry, onDone }: CallProps): {
       open(false);
     },
     decline: (): void => {
+      log.info('ring.declined', {
+        eventId: ring.eventId,
+        deviceId: entry.device.id,
+        hangUp: hangUp !== undefined,
+      });
       if (hangUp !== undefined) {
-        void ledger.send(entry.device, hangUp.key, null);
+        background(ledger.send(entry.device, hangUp.key, null), 'ledger.send_failed');
       }
       acknowledged(ring);
       onDone();
@@ -126,13 +137,13 @@ function CallScreen(props: CallProps): ReactNode {
   return (
     <Modal visible animationType="slide" onRequestClose={props.onDone} statusBarTranslucent>
       <GestureHandlerRootView style={FILL}>
-        <ScopedTheme theme="dark">
+        <ThemeScope theme="dark">
           <View className="flex-1 justify-between gap-8 bg-bg px-gutter pb-safe-offset-6 pt-safe-offset-12">
             <Heading ring={props.ring} entry={props.entry} />
             <Preview entry={props.entry} />
             <Actions {...props} />
           </View>
-        </ScopedTheme>
+        </ThemeScope>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -156,13 +167,28 @@ function useRingSound(ringing: boolean): void {
   useRingTone(ringing && !muted);
 }
 
+function useRingingCameras(entries: readonly CameraEntry[]): ReadonlySet<string> {
+  const pref = usePref(PREFS.deviceAlerts);
+  return ringingCameraIds(
+    entries.map((entry) => entry.device.id),
+    pref.status === 'ready' ? pref.value : null,
+  );
+}
+
 export function CallHost(): ReactNode {
   const entries = useCameraEntries();
   const touch = useSizeClass().idiom === 'touch';
-  const { ring, dismiss } = useRings(new Set(entries.map((entry) => entry.device.id)));
+  const { ring, dismiss } = useRings(useRingingCameras(entries));
   const entry =
     ring === null ? undefined : entries.find((candidate) => candidate.device.id === ring.deviceId);
   useRingSound(entry !== undefined);
+  const ringEventId = ring?.eventId ?? null;
+  const known = entry !== undefined;
+  useEffect(() => {
+    if (ringEventId !== null) {
+      log.info('ring.shown', { eventId: ringEventId, camera: known, touch });
+    }
+  }, [ringEventId, known, touch]);
   if (ring === null || entry === undefined) {
     return null;
   }

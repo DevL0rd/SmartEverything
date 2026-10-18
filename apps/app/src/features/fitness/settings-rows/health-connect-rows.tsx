@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { relative } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useMinuteOf } from '../../../store/clock';
 import { useThisPhoneSource } from '../data/this-phone';
 import { useHealthConnect, type HealthConnectControls } from '../data/use-health-connect';
 import { grantSummary } from '../model/sources';
@@ -50,9 +50,9 @@ function StatusRow({
 
 function featureAccess(availability: 'available' | 'unavailable', granted: boolean): string {
   if (availability === 'unavailable') {
-    return 'not supported';
+    return 'not available on this phone';
   }
-  return granted ? 'allowed' : 'not allowed';
+  return granted ? 'allowed' : 'not allowed yet';
 }
 
 function PermissionsRow({ controls }: { readonly controls: HealthConnectControls }): ReactNode {
@@ -66,7 +66,7 @@ function PermissionsRow({ controls }: { readonly controls: HealthConnectControls
   const reads = `Read ${String(summary.granted.length)} of ${String(total)}`;
   const writes =
     grants.writeTypes === undefined
-      ? 'Update the app to review write access'
+      ? 'Saving to Health Connect needs an app update'
       : `Write ${String(grants.writeTypes.length)} of ${String(total)}`;
   const background = featureAccess(status.features.backgroundRead, grants.background);
   const history = featureAccess(status.features.historyRead, grants.history);
@@ -75,7 +75,7 @@ function PermissionsRow({ controls }: { readonly controls: HealthConnectControls
       icon="shield"
       title="Data access"
       subtitle={`${reads} · ${writes}`}
-      caption={`Background ${background} · History ${history}`}
+      caption={`Background sync ${background} · Older data ${history}`}
     />
   );
 }
@@ -89,8 +89,9 @@ function SyncRow({
   readonly lastSync: string | null;
   readonly error: string | null;
 }): ReactNode {
-  const now = useMinute();
-  const synced = lastSync === null ? 'Not synced yet' : `Synced ${relative(lastSync, now)}`;
+  const synced = useMinuteOf((now) =>
+    lastSync === null ? 'Not synced yet' : `Synced ${relative(lastSync, now)}`,
+  );
   return (
     <ListRow
       icon="refresh"

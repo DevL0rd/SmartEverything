@@ -1,20 +1,23 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../../design/theme-scope';
 import { Glow } from '../../../../components/glow';
 import { cn } from '../../../../design/cn';
 import { stopSharing } from '../call-actions';
 import { callActive, type CallView } from '../call-state';
+import { CallAura } from '../components/call-aura';
 import { CallCaptions } from '../components/call-captions';
 import { CallFooter } from '../components/call-footer';
 import { CallHeader } from '../components/call-header';
 import { CallLayers } from '../components/call-layers';
 import { CallStage } from '../components/call-stage';
 import { CallStatus } from '../components/call-status';
+import { CallWave } from '../components/call-wave';
 import { ConsentBanner } from '../components/consent-banner';
 import { CostChips } from '../components/cost-chips';
 import { LookedChip } from '../components/looked-chip';
+import { MissedRequest } from '../components/missed-request';
 import { ShowThisButton } from '../components/show-this-button';
 import { ToolLines } from '../components/tool-lines';
 import { useRecentLook } from '../components/use-recent-look';
@@ -67,6 +70,7 @@ function Footer({
       <View className="px-gutter">
         <CallFooter
           call={call}
+          name={model.name}
           layout={model.layout}
           reasons={model.reasons}
           handlers={handlers}
@@ -102,14 +106,21 @@ interface BodyProps {
 function stageOfModel(model: CallRoomModel, captions: ReactNode): ReactNode {
   const { call, layout } = model;
   return (
-    <CallStage
-      call={call}
-      layout={layout}
-      level={model.level}
-      stoppable={model.stoppable}
-      actions={model.stage}
-      captions={captions}
-    />
+    <>
+      <CallStage
+        call={call}
+        layout={layout}
+        level={model.level}
+        stoppable={model.stoppable}
+        actions={model.stage}
+        captions={captions}
+      />
+      {stageOf(call) === 'orb' || !callActive(call) ? null : (
+        <View className="items-center pt-2">
+          <CallWave compact phase={call.phase} level={model.level} muted={call.muted} />
+        </View>
+      )}
+    </>
   );
 }
 
@@ -163,15 +174,30 @@ function Overlays({ model }: { readonly model: CallRoomModel }): ReactNode {
       {layout.settings === 'sheet' ? (
         <CallSettingsSheet open={settingsOpen} call={call} onClose={layers.close} />
       ) : null}
-      {call.request === null ? null : (
+      {call.request === null && call.missed === null ? null : (
         <View pointerEvents="box-none" className="absolute inset-x-0 top-0 pt-safe">
-          <View pointerEvents="box-none" className="mt-app-bar items-center px-gutter">
-            <ConsentBanner
-              key={call.request.requestId}
-              request={call.request}
-              name={model.name}
-              onAnswer={model.answer}
-            />
+          <View pointerEvents="box-none" className="mt-app-bar items-center gap-2 px-gutter">
+            {call.request === null ? null : (
+              <ConsentBanner
+                key={call.request.requestId}
+                request={call.request}
+                name={model.name}
+                onAnswer={model.answer}
+                onExpire={model.expire}
+              />
+            )}
+            {call.request !== null || call.missed === null ? null : (
+              <MissedRequest
+                key={call.missed.requestId}
+                missed={call.missed}
+                name={model.name}
+                onShow={() => {
+                  if (call.missed !== null) {
+                    model.showMissed(call.missed);
+                  }
+                }}
+              />
+            )}
           </View>
         </View>
       )}
@@ -190,7 +216,16 @@ export function CallRoom({ action, onAgain, onLeave }: CallRoomProps): ReactNode
     <View className="flex-1 flex-row bg-bg">
       <View className={cn('min-w-0 flex-1 pb-safe-offset-6 pt-safe')}>
         {isMediaStage(stage) ? null : (
-          <Glow colour="primary" y="40%" radius="70%" strength={0.35} breathing={active} />
+          <>
+            <Glow
+              colour="primary"
+              y="40%"
+              radius="70%"
+              strength={active ? 0.35 : 0.2}
+              breathing={active}
+            />
+            <CallAura phase={call.phase} level={model.level} muted={call.muted} />
+          </>
         )}
         <CallHeader
           call={call}
@@ -210,5 +245,5 @@ export function CallRoom({ action, onAgain, onLeave }: CallRoomProps): ReactNode
       ) : null}
     </View>
   );
-  return tight ? <ScopedTheme theme="dark">{room}</ScopedTheme> : room;
+  return tight ? <ThemeScope theme="dark">{room}</ThemeScope> : room;
 }

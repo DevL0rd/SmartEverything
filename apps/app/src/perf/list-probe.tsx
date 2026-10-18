@@ -1,33 +1,46 @@
-import type { FunctionComponent, ReactElement } from 'react';
+import type { FunctionComponent, ReactElement, ReactNode, Ref } from 'react';
 import { useEffect } from 'react';
 import {
   View,
-  type CellRendererProps,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
-import { developerFlags } from '../developer/flags';
+import { Logger } from '@smarteverything/logging';
+import { readDeveloperFlags } from '../developer/flags';
 import { sinkOf } from './sink';
+
+const log = new Logger('app.perf');
+const TALL_CELL_PX = 900;
 
 type ScrollHandler = (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 
-type Cell<T> = FunctionComponent<CellRendererProps<T>>;
+interface CellProps {
+  readonly index: number;
+  readonly ref?: Ref<View> | undefined;
+  readonly style?: StyleProp<ViewStyle> | undefined;
+  readonly children?: ReactNode;
+  readonly onLayout?: ((event: LayoutChangeEvent) => void) | undefined;
+}
 
-const cells = new Map<string, Cell<unknown>>();
+type Cell = FunctionComponent<CellProps>;
 
-function cellFor<T>(list: string): Cell<T> {
+const cells = new Map<string, Cell>();
+
+function cellFor(list: string): Cell {
   const known = cells.get(list);
   if (known !== undefined) {
     return known;
   }
-  const made: Cell<unknown> = function ProbeCell({
+  const made: Cell = function ProbeCell({
     index,
     children,
     onLayout,
     style,
-    onFocusCapture,
-  }: CellRendererProps<unknown>): ReactElement {
+    ref,
+  }: CellProps): ReactElement {
     useEffect(() => {
       sinkOf()?.listRows(list, 1, -1);
       return (): void => {
@@ -37,11 +50,14 @@ function cellFor<T>(list: string): Cell<T> {
     }, [index]);
     return (
       <View
+        ref={ref}
         style={style}
-        {...(onFocusCapture === undefined ? {} : { onFocusCapture })}
         onLayout={(event) => {
           const { y, height } = event.nativeEvent.layout;
           sinkOf()?.listCell(list, index, y, height);
+          if (height > TALL_CELL_PX) {
+            log.warn('list.tall_cell', { list, index, y, height });
+          }
           onLayout?.(event);
         }}
       >
@@ -53,27 +69,32 @@ function cellFor<T>(list: string): Cell<T> {
   return made;
 }
 
-export interface ListProbe<T> {
-  readonly cell: Cell<T> | undefined;
+export interface ListProbe {
+  readonly cell: Cell | undefined;
   readonly onLayout: ((event: LayoutChangeEvent) => void) | undefined;
+  readonly onContentSizeChange: ((width: number, height: number) => void) | undefined;
   readonly scrollWith: (other?: ScrollHandler) => ScrollHandler | undefined;
 }
 
 const OFF = {
   cell: undefined,
   onLayout: undefined,
+  onContentSizeChange: undefined,
   scrollWith: (other?: ScrollHandler): ScrollHandler | undefined => other,
 };
 
-export function useListProbe<T>(list: string, total: number): ListProbe<T> {
-  if (!__DEV__ || !developerFlags['perf.lists']) {
+export function useListProbe(list: string | undefined, total: number): ListProbe {
+  if (list === undefined || !__DEV__ || !readDeveloperFlags()['perf.lists']) {
     return OFF;
   }
   sinkOf()?.listRows(list, 0, total);
   return {
-    cell: cellFor<T>(list),
+    cell: cellFor(list),
     onLayout: (event: LayoutChangeEvent): void => {
       sinkOf()?.listViewport(list, event.nativeEvent.layout.height);
+    },
+    onContentSizeChange: (_width: number, height: number): void => {
+      sinkOf()?.listContent(list, height);
     },
     scrollWith:
       (other?: ScrollHandler): ScrollHandler =>

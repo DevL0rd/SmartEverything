@@ -5,7 +5,7 @@ import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
-import { WidgetEmpty, type WidgetSize } from '../../../components/widget-board';
+import { WidgetEmpty } from '../../../components/widget-board';
 import { useMutationState } from '../../../store/mutation';
 import { refreshWeather } from '../../../api/weather';
 import type { WeatherView } from '../data/use-weather';
@@ -17,7 +17,7 @@ interface NoticeCopy {
   readonly body: string;
 }
 
-export function copyOf(view: Exclude<WeatherView, { kind: 'ready' | 'loading' }>): NoticeCopy {
+function copyOf(view: Exclude<WeatherView, { kind: 'ready' | 'loading' }>): NoticeCopy {
   switch (view.kind) {
     case 'no_location':
       return {
@@ -96,10 +96,8 @@ export function WeatherNotice({
 
 export function WeatherWidgetNotice({
   view,
-  size,
 }: {
   readonly view: Exclude<WeatherView, { kind: 'ready' }>;
-  readonly size: WidgetSize;
 }): ReactNode {
   if (view.kind === 'loading') {
     return <Skeleton shape="block" className="flex-1" />;
@@ -112,7 +110,6 @@ export function WeatherWidgetNotice({
       colour="info"
       title={copy.title}
       body={copy.body}
-      size={size}
       {...(settable ? { action: { label: 'Set location', href: LOCATION_HREF } } : {})}
     />
   );

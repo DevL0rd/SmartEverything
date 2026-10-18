@@ -1,9 +1,13 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import type { HistoryRow, LiveChange, LiveTable } from '@smarteverything/domain';
+import { Logger, background } from '@smarteverything/logging';
+import { LogTally } from '../design/log-tally';
 import { patchCameraDays, refreshSnapshots } from './camera-day';
+import { invalidateDeviceLogs } from './device-log';
 import { entryChanges } from './health-entries';
 import {
+  ACCESS_PREFIX,
   AI_USAGE_PREFIX,
   AGENT_RUN_PREFIX,
   ARCHIVED_CHATS_KEY,
@@ -16,12 +20,22 @@ import {
   WINDOW_PREFIX,
 } from './keys';
 
-const HISTORY_KEY = z.tuple([z.literal('window'), z.literal('history'), z.string(), z.number()]);
+const log = new Logger('app.queries');
+const applied = new LogTally(log, 'windows.summarised', 5000);
+
+const HISTORY_KEY = z.tuple(
+  [z.literal('window'), z.literal('history'), z.string(), z.number()],
+  z.string(),
+);
 
 function appendHistory(client: QueryClient, row: HistoryRow): void {
   for (const query of client.getQueryCache().findAll({ queryKey: HISTORY_PREFIX })) {
     const key = HISTORY_KEY.safeParse(query.queryKey);
-    if (key.success && key.data[2].split(',').includes(row.capability)) {
+    if (
+      key.success &&
+      key.data[2].split(',').includes(row.capability) &&
+      (key.data[4] === undefined || key.data[4] === row.device_id)
+    ) {
       client.setQueryData<HistoryRow[]>(query.queryKey, (rows) =>
         rows === undefined ? rows : [...rows, row],
       );
@@ -39,33 +53,59 @@ const HEALTH_TABLES: ReadonlySet<LiveTable> = new Set([
 
 function invalidateAi(client: QueryClient, tables: ReadonlySet<LiveTable>): void {
   if (tables.has('ai_usage')) {
-    void client.invalidateQueries({ queryKey: AI_USAGE_PREFIX });
-    void client.invalidateQueries({ queryKey: OPENROUTER_ACCOUNT_KEY });
+    background(
+      client.invalidateQueries({ queryKey: AI_USAGE_PREFIX }),
+      'queries.invalidate_failed',
+    );
+    background(
+      client.invalidateQueries({ queryKey: OPENROUTER_ACCOUNT_KEY }),
+      'queries.invalidate_failed',
+    );
   }
   if (tables.has('ai_chats')) {
-    void client.invalidateQueries({
-      predicate: (query) =>
-        query.queryKey[0] === 'window' &&
-        query.queryKey[1] === 'computer-ai' &&
-        query.queryKey[3] === 'cli-sessions',
-    });
-    void client.invalidateQueries({ queryKey: AGENT_RUN_PREFIX });
-    void client.invalidateQueries({ queryKey: ARCHIVED_CHATS_KEY });
+    background(
+      client.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === 'window' &&
+          query.queryKey[1] === 'computer-ai' &&
+          query.queryKey[3] === 'cli-sessions',
+      }),
+      'queries.invalidate_failed',
+    );
+    background(
+      client.invalidateQueries({ queryKey: AGENT_RUN_PREFIX }),
+      'queries.invalidate_failed',
+    );
+    background(
+      client.invalidateQueries({ queryKey: ARCHIVED_CHATS_KEY }),
+      'queries.invalidate_failed',
+    );
   }
   if (tables.has('ai_outreach')) {
-    void client.invalidateQueries({ queryKey: REACH_PREFIX });
+    background(client.invalidateQueries({ queryKey: REACH_PREFIX }), 'queries.invalidate_failed');
+  }
+}
+
+function invalidateAccess(client: QueryClient, tables: ReadonlySet<LiveTable>): void {
+  if (tables.has('profiles') || tables.has('clients')) {
+    background(client.invalidateQueries({ queryKey: ACCESS_PREFIX }), 'queries.invalidate_failed');
   }
 }
 
 export function refreshDeviceEffects(client: QueryClient): void {
-  void client.cancelQueries({ queryKey: DEVICE_EFFECTS_KEY });
-  void client.invalidateQueries({ queryKey: DEVICE_EFFECTS_KEY });
+  background(client.cancelQueries({ queryKey: DEVICE_EFFECTS_KEY }), 'queries.cancel_failed');
+  background(
+    client.invalidateQueries({ queryKey: DEVICE_EFFECTS_KEY }),
+    'queries.invalidate_failed',
+  );
 }
 
 export function applyToWindows(client: QueryClient, changes: readonly LiveChange[]): void {
   const tables = new Set<LiveTable>();
+  applied.bump('batches');
   for (const change of changes) {
     tables.add(change.table);
+    applied.bump(`change.${change.table}`);
     if (
       change.table === 'state_history' &&
       change.record !== null &&
@@ -75,22 +115,25 @@ export function applyToWindows(client: QueryClient, changes: readonly LiveChange
     }
   }
   if ([...tables].some((table) => HEALTH_TABLES.has(table))) {
-    void client.invalidateQueries({ queryKey: HEALTH_PREFIX });
+    background(client.invalidateQueries({ queryKey: HEALTH_PREFIX }), 'queries.invalidate_failed');
   }
   invalidateAi(client, tables);
   if (tables.has('device_effect_targets')) {
     refreshDeviceEffects(client);
   }
   if (tables.has('plugins')) {
-    void client.invalidateQueries({ queryKey: PLUGIN_PREFIX });
+    background(client.invalidateQueries({ queryKey: PLUGIN_PREFIX }), 'queries.invalidate_failed');
   }
+  invalidateAccess(client, tables);
   if (tables.has('health_entries')) {
     entryChanges.update((count) => count + 1);
   }
+  invalidateDeviceLogs(client, changes);
   patchCameraDays(client, changes);
   refreshSnapshots(client, changes);
 }
 
 export function refreshAllWindows(client: QueryClient): void {
-  void client.invalidateQueries({ queryKey: WINDOW_PREFIX });
+  log.info('windows.refreshed', { queries: client.getQueryCache().getAll().length });
+  background(client.invalidateQueries({ queryKey: WINDOW_PREFIX }), 'queries.invalidate_failed');
 }

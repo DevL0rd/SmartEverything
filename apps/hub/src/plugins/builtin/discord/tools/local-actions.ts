@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { SNOWFLAKE } from '../ids';
 import { describePerson, type Person } from '../person';
-import { project } from '../project';
 import type { DiscordServices } from '../services';
 import type { Status } from '../status';
 import { plain, type LocalAction, type LocalOutput } from './action-tool';
@@ -59,7 +58,7 @@ async function guilds(
   const found = z
     .array(z.looseObject({ id: z.string() }))
     .parse(await services.rest.get('/users/@me/guilds', query));
-  return project(found.filter((guild) => services.policy.guildAllowed(guild.id)));
+  return found.filter((guild) => services.policy.guildAllowed(guild.id));
 }
 
 function summary(list: {
@@ -89,12 +88,6 @@ function statusOf(services: DiscordServices, status: Status): unknown {
 }
 
 export function localActions(services: DiscordServices, status: Status): readonly LocalAction[] {
-  const guarded = async (
-    caller: Parameters<LocalAction['run']>[1],
-    eventId: string | undefined,
-  ): Promise<void> => {
-    await services.authority.access(caller, eventId, false);
-  };
   return [
     {
       action: 'guilds_list',
@@ -102,7 +95,7 @@ export function localActions(services: DiscordServices, status: Status): readonl
         'Discover a bounded page of the servers the bot joined, limited to the approved ones.',
       shape: { limit: PAGE, before: SNOWFLAKE.optional() },
       run: async (args, caller, eventId): Promise<LocalOutput> => {
-        await guarded(caller, eventId);
+        await services.authority.access(caller, eventId);
         return plain(await guilds(services, args));
       },
     },
@@ -112,7 +105,7 @@ export function localActions(services: DiscordServices, status: Status): readonl
         'List the owner and approved people with their names and IDs, and find known server members whose name contains query (pass guildId to also search that server). Use it to turn a name into an ID.',
       shape: { query: z.string().min(1).max(100).optional(), guildId: SNOWFLAKE.optional() },
       run: async (args, caller, eventId): Promise<LocalOutput> => {
-        await guarded(caller, eventId);
+        await services.authority.access(caller, eventId);
         return plain(await people(services, args));
       },
     },
@@ -121,7 +114,7 @@ export function localActions(services: DiscordServices, status: Status): readonl
       description: 'Read the connection state and the server and channel rules.',
       shape: {},
       run: async (_args, caller, eventId): Promise<LocalOutput> => {
-        await guarded(caller, eventId);
+        await services.authority.access(caller, eventId);
         return plain(statusOf(services, status));
       },
     },

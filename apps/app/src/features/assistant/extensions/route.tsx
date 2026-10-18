@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { z } from 'zod';
 import { SettingsFrame } from '../../../settings/settings-frame';
+import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { AiExtensionsScreen } from './list-screen';
 import { BrowseAiExtensionsScreen } from './browse-screen';
@@ -9,6 +10,7 @@ import { AiExtensionScreen } from './detail-screen';
 import { BundledSkillScreen } from './bundled-skill-screen';
 import { DiscoveryScreen } from './discovery-screen';
 import { SkillUpdatesScreen } from './updates-screen';
+import { extensionBrowseHref } from './links';
 
 const PARAMS = z.object({
   inspect: z.literal('true').optional(),
@@ -27,8 +29,9 @@ export function AiExtensionsRoute(): ReactNode {
       <SettingsFrame page="assistant/extensions">
         <EmptyState
           icon="puzzle"
-          title="Extension link unavailable"
-          body="Open Extensions or Skills again from Assistant settings."
+          title="That link doesn’t open an extension"
+          body="The link isn’t valid. Browse extensions to find it."
+          action={<Button label="Browse extensions" variant="tonal" href={extensionBrowseHref()} />}
         />
       </SettingsFrame>
     );

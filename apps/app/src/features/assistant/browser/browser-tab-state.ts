@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { BrowserStatus, EmbeddedBrowserAction } from '@smarteverything/domain';
+import type { BrowserStatus } from '@smarteverything/domain';
 import type { BrowserPublication, BrowserSelection } from './browser-selection';
 
 export const BROWSER_TAB_ID = z.uuid().brand<'BrowserTabId'>();
@@ -13,7 +13,7 @@ export const EMPTY_BROWSER_STATUS: BrowserStatus = {
   forward: false,
   problem: null,
 };
-export type BrowserTabSource =
+type BrowserTabSource =
   | { readonly kind: 'blank' }
   | { readonly kind: 'public'; readonly url: string }
   | { readonly kind: 'publication'; readonly publication: BrowserPublication };
@@ -36,7 +36,6 @@ export interface BrowserTabsSnapshot {
   readonly selectedId: BrowserTabId | null;
   readonly problem: string | null;
 }
-export type BrowserTabsAction = EmbeddedBrowserAction;
 export function closedTabSelection(snapshot: BrowserTabsSnapshot, id: string): BrowserTabId | null {
   if (snapshot.selectedId !== id) return snapshot.selectedId;
   const index = snapshot.tabs.findIndex((tab) => tab.id === id);

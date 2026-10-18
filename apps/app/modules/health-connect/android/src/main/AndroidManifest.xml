@@ -31,6 +31,8 @@
   <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
   <uses-permission android:name="android.permission.VIBRATE" />
   <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+  <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
@@ -130,6 +132,10 @@
       android:exported="false"
       android:foregroundServiceType="microphone|mediaPlayback" />
     <service
+      android:name="expo.modules.healthconnect.listening.ListeningService"
+      android:exported="false"
+      android:foregroundServiceType="microphone" />
+    <service
       android:name="expo.modules.healthconnect.assistant.CallService"
       android:exported="false"
       android:foregroundServiceType="microphone|mediaPlayback|camera|mediaProjection" />
@@ -145,6 +151,25 @@
     </receiver>
     <receiver android:name="expo.modules.healthconnect.phone.PhoneActivityReceiver" android:exported="false" />
     <receiver android:name="expo.modules.healthconnect.phone.PhoneGeofenceReceiver" android:exported="false" />
+    <receiver android:name="expo.modules.healthconnect.phone.PhoneApprovalReceiver" android:exported="false" />
+    <service
+      android:name="expo.modules.healthconnect.phone.PhoneAccessibilityService"
+      android:exported="true"
+      android:label="SmartEverything"
+      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+      </intent-filter>
+      <meta-data android:name="android.accessibilityservice" android:resource="@xml/phone_accessibility_service" />
+    </service>
+    <activity
+      android:name="expo.modules.healthconnect.phone.PhoneShowUnlockActivity"
+      android:exported="false"
+      android:excludeFromRecents="true"
+      android:showWhenLocked="true"
+      android:turnScreenOn="true"
+      android:taskAffinity=""
+      android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     <receiver android:name="expo.modules.healthconnect.phone.PhoneNetworkReceiver" android:exported="false" />
     <receiver android:name="expo.modules.healthconnect.phone.PhoneBootReceiver" android:exported="false">
       <intent-filter>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { LlmAdapter, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
+import { LlmAdapter } from '@deepseek-ai/dsh-llm';
+import { TRANSIENT_RETRY_POLICY } from './transient-retry';
 import type {
   GenerateOptions,
   LlmModelInfo,
@@ -68,7 +69,7 @@ export class SubscriptionRouteAdapter extends LlmAdapter {
 
   override providerRetryPolicy(provider: string): ResolvedRetryPolicy {
     this.route(provider);
-    return resolveRetryPolicy(undefined, provider);
+    return TRANSIENT_RETRY_POLICY;
   }
 
   override async listModels(provider: string): Promise<readonly LlmModelInfo[]> {

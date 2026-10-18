@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   DESKTOP_COMPUTER_IDENTITY,
-  type AiHarnessCatalogue,
+  type AiHarnessHost,
   type DesktopComputerIdentity,
   type AiHarnessTarget,
 } from '@smarteverything/domain';
@@ -15,7 +15,7 @@ export function useDesktopHarness(): {
 } {
   const bridge = desktopBridge();
   const catalogue = useHarnessCatalogue();
-  const identity = useQuery({
+  const identity = useScreenQuery({
     queryKey: ['window', 'desktop-computer-identity'],
     enabled: bridge !== null,
     retry: false,
@@ -27,9 +27,10 @@ export function useDesktopHarness(): {
   const target = desktopTarget(identity.data, catalogue.data);
   return { desktop: bridge !== null, target, ready: bridge === null || target !== null };
 }
-function desktopTarget(
+export function desktopTarget(
   identity: DesktopComputerIdentity | undefined,
-  catalogue: AiHarnessCatalogue | undefined,
+  catalogue:
+    { readonly hosts: readonly Pick<AiHarnessHost, 'target' | 'machine_id'>[] } | undefined,
 ): AiHarnessTarget | null {
   if (identity === undefined) return null;
   if (identity.device_id !== null) return { kind: 'device', device_id: identity.device_id };

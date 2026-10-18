@@ -13,10 +13,13 @@ import { useLocalPref } from '../../../store/local-prefs';
 import { useSession } from '../../../store/selectors';
 import { useChannelActivity } from '../data/channel-activity';
 import { useOwnMembership } from '../data/talk-data';
+import { trackTalk } from '../data/talk-log';
 import { TalkButton } from './talk-button';
 
 export function joinChannel(channelId: string, clientId: string): void {
-  setTalkMember({ channelId, kind: 'client', memberId: clientId }, true).catch((error: unknown) => {
+  trackTalk('channel.join', { channelId }, () =>
+    setTalkMember({ channelId, kind: 'client', memberId: clientId }, true),
+  ).catch((error: unknown) => {
     notify({ message: 'Couldn’t join the channel', error, tone: 'critical' });
   });
 }

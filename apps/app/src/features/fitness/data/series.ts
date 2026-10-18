@@ -1,4 +1,4 @@
-import type { HealthMetric, HealthRecord } from '@smarteverything/domain';
+import type { HealthMetric, HealthRecord, HealthRecordType } from '@smarteverything/domain';
 import { useDailyFigures, useRecords } from './queries';
 import {
   bucketise,
@@ -8,13 +8,18 @@ import {
   type PeriodSummary,
   type Trend,
 } from '../model/aggregate';
-import { pointsOfDaily, pointsOfRecords, type Point } from '../model/points';
+import { pointsOfDaily } from '../model/daily';
+import { pointsOfRecords } from '../model/points';
+import type { Point } from '../model/readers';
 import { overlapping } from '../model/records';
 import type { SeriesSpec } from '../model/series-spec';
+import { DAY_MS, startOfDayKey } from '../../../format/time';
 import { previousWindow, type Window } from '../model/window';
+import { useToday } from './day';
 
 export interface SeriesView {
   readonly window: Window;
+  readonly current: boolean;
   readonly source: 'records' | 'daily';
   readonly points: readonly Point[];
   readonly buckets: readonly BucketValue[];
@@ -39,8 +44,18 @@ function usesRecords(spec: SeriesSpec, window: Window): boolean {
   return spec.daily === null || window.range === 'day';
 }
 
-function problemOf(...errors: readonly (Error | null)[]): string | null {
-  return errors.find((error): error is Error => error !== null)?.message ?? null;
+interface Fetch {
+  readonly isPending: boolean;
+  readonly error: Error | null;
+}
+
+export function statusOf(
+  fromRecords: boolean,
+  daily: Fetch,
+  records: Fetch,
+): Pick<SeriesView, 'loading' | 'problem'> {
+  const governing = fromRecords ? records : daily;
+  return { loading: governing.isPending, problem: governing.error?.message ?? null };
 }
 
 interface Sources {
@@ -51,37 +66,49 @@ interface Sources {
   readonly problem: string | null;
 }
 
-function useSources(spec: SeriesSpec, window: Window, withRecords: boolean): Sources {
-  const before = previousWindow(window);
+export interface SeriesReads {
+  readonly fromRecords: boolean;
+  readonly before: Window;
+  readonly metrics: HealthMetric[];
+  readonly types: HealthRecordType[];
+}
+
+export function seriesReads(spec: SeriesSpec, window: Window, withRecords: boolean): SeriesReads {
   const fromRecords = usesRecords(spec, window);
-  const wantRecords = fromRecords || withRecords;
-  const daily = useDailyFigures(
-    before.firstDay,
-    window.lastDay,
-    fromRecords ? [] : dailyMetrics(spec),
-  );
-  const records = useRecords(wantRecords ? [spec.type] : [], before.start, window.end);
+  return {
+    fromRecords,
+    before: previousWindow(window),
+    metrics: fromRecords ? [] : dailyMetrics(spec),
+    types: fromRecords || withRecords ? [spec.type] : [],
+  };
+}
+
+function useSources(spec: SeriesSpec, window: Window, withRecords: boolean): Sources {
+  const { fromRecords, before, metrics, types } = seriesReads(spec, window, withRecords);
+  const daily = useDailyFigures(before.firstDay, window.lastDay, metrics);
+  const records = useRecords(types, before.start, window.end);
   const loaded = records.data ?? [];
-  const recordsWaiting = wantRecords && records.isPending;
   return {
     fromRecords,
     points: fromRecords ? pointsOfRecords(spec, loaded) : pointsOfDaily(spec, daily.data ?? []),
     records: loaded,
-    loading: fromRecords ? recordsWaiting : daily.isPending || recordsWaiting,
-    problem: problemOf(daily.error, records.error),
+    ...statusOf(fromRecords, daily, records),
   };
 }
 
 export function useSeries(spec: SeriesSpec, window: Window, withRecords: boolean): SeriesView {
   const before = previousWindow(window);
   const sources = useSources(spec, window, withRecords);
-  const summary = summarise(spec, window, sources.points);
-  const previous = summarise(spec, before, sources.points);
+  const today = useToday();
+  const until = startOfDayKey(today) + DAY_MS;
+  const summary = summarise(spec, window, sources.points, until);
+  const previous = summarise(spec, before, sources.points, until);
   return {
     window,
+    current: window.end >= until,
     source: sources.fromRecords ? 'records' : 'daily',
     points: sources.points,
-    buckets: bucketise(spec, window, sources.points),
+    buckets: bucketise(spec, window, sources.points, until),
     summary,
     previous,
     trend: trendOf(summary.headline, previous.headline, spec.better),

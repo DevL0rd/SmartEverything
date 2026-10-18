@@ -1,6 +1,8 @@
 import type { ScheduleTiming, ScheduleTimingInput } from '@smarteverything/domain';
 import { localClock } from '@smarteverything/domain';
 import type { TimeOfDay } from '../../../components/time-field';
+import { twoDigits } from '../../../format/number';
+import { DAY_MS } from '../../../format/time';
 
 export const PRESET_MINUTES: readonly number[] = [5, 15, 30, 60];
 
@@ -14,10 +16,6 @@ export const MOST_MINUTES = 7 * 24 * 60;
 
 export function clampMinutes(minutes: number): number {
   return Math.min(Math.max(Math.round(minutes), 1), MOST_MINUTES);
-}
-
-function twoDigits(value: number): string {
-  return String(value).padStart(2, '0');
 }
 
 export function timingOf(when: When): ScheduleTimingInput {
@@ -36,7 +34,7 @@ export function whenOf(timing: ScheduleTiming, timeZone: string, now: number): W
         return { kind: 'at', time: { hour: Number(clock[1]), minute: Number(clock[2]) } };
       }
       const at = new Date(timing.at);
-      if (at.getTime() - now > 86_400_000) {
+      if (at.getTime() - now > DAY_MS) {
         return null;
       }
       const local = localClock(at, timeZone);

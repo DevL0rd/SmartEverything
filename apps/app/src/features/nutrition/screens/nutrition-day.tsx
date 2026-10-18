@@ -23,6 +23,7 @@ import { useAddGlass } from '../data/water';
 import { hasAnyGoal } from '../model/macros';
 import { editTarget, type PortionTarget } from '../model/target';
 import { millilitres } from '../../../format/number';
+import { background } from '@smarteverything/logging';
 
 const RECENT_DAYS = 30;
 
@@ -98,7 +99,12 @@ function useEditEntry(open: (target: PortionTarget) => void): (entry: HealthEntr
     if (target === null) {
       notify({
         message: 'Logged without an amount, so it can only be removed',
-        action: { label: 'Remove', onPress: (): void => void writes.remove(entry, 'Food') },
+        action: {
+          label: 'Remove',
+          onPress: (): void => {
+            background(writes.remove(entry, 'Food'), 'writes.remove_failed');
+          },
+        },
       });
       return;
     }
@@ -147,17 +153,25 @@ function DayLog({
 export function NutritionDay({
   day,
   today,
+  started,
 }: {
   readonly day: string;
   readonly today: string;
+  readonly started: boolean;
 }): ReactNode {
   const entries = useDayEntries(day);
   const others = useOtherApps(day);
   const rows = entries.data ?? [];
   const otherRows = others.data ?? [];
-  const started = useStarted(day, rows.length, otherRows.length);
   if (entries.error !== null) {
-    return <ErrorState error={entries.error} retry={() => void entries.refetch()} />;
+    return (
+      <ErrorState
+        error={entries.error}
+        retry={() => {
+          background(entries.refetch(), 'entries.refetch_failed');
+        }}
+      />
+    );
   }
   if (entries.data === undefined) {
     return <Skeleton shape="block" className="h-72" />;

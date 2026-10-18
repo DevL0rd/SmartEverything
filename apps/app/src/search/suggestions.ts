@@ -25,7 +25,7 @@ function numberTry(catalogue: SearchCatalogue): string | null {
   const middle = presets[Math.floor(presets.length / 2)];
   return middle === undefined
     ? null
-    : `${template.capability.label.toLowerCase()} ${String(middle)}`;
+    : `${template.presented.label.toLowerCase()} ${String(middle)}`;
 }
 
 function roomTry(catalogue: SearchCatalogue): string | null {

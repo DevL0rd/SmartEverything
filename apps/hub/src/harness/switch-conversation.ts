@@ -1,76 +1,112 @@
-import { AI_HARNESS_HANDOFF, ApiError } from '@smarteverything/domain';
-import type { AiHarnessHandoff, AiHarnessHandoffRequest } from '@smarteverything/domain';
+import { ApiError } from '@smarteverything/domain';
+import type {
+  AiChatRow,
+  AiHarnessHandoffRequest,
+  AiHarnessSwitchResult,
+  DshEngine,
+} from '@smarteverything/domain';
 import type { ChatOwner } from '../assistant/chat-directory';
+import { moveConversation, sameTarget } from './machine-move';
+import { noteMachineChange } from './pending-machine';
 import type { HarnessService } from './service';
-import { stableHumanSession } from './stable-session';
-import { HANDOFF_PROGRESS } from './handoff-context';
-import { prepareHandoff } from './handoff-admission';
-import { moveConversation } from './handoff';
+
 interface SwitchRequest {
   readonly owner: ChatOwner;
   readonly chatId: string;
   readonly input: AiHarnessHandoffRequest;
-  readonly localClientId: string | undefined;
 }
-async function currentInput(
-  service: HarnessService,
-  request: SwitchRequest,
-): Promise<AiHarnessHandoffRequest> {
-  const { owner, chatId, input, localClientId } = request;
-  if (
-    service.store.harnessCoordination.operation(input.operation_id) !== undefined ||
-    localClientId === undefined ||
-    input.mode === 'recover'
-  )
-    return input;
-  const session = await stableHumanSession(
-    service,
-    { owner, chatId, clientId: localClientId },
-    input.expected_epoch,
-  );
-  if (session.epoch === null)
-    throw new ApiError('conflict', 'The refreshed native writer has no epoch.');
-  return { ...input, expected_epoch: session.epoch };
-}
+
 export async function switchConversation(
   service: HarnessService,
-  switching: Map<string, Promise<AiHarnessHandoff>>,
+  switching: Set<string>,
   request: SwitchRequest,
-): Promise<AiHarnessHandoff> {
-  const { owner, chatId, input, localClientId } = request;
-  const effective = await currentInput(service, request);
-  const chat = service.own(owner, chatId);
-  const id = service.binding(chat).session_id;
-  if (id === null) throw new ApiError('conflict', 'This conversation has no native binding.');
-  const receipt = service.store.harnessCoordination.begin(input.operation_id, id, input);
-  if (receipt.state === 'completed' || receipt.state === 'unknown') {
-    if (receipt.result === null)
-      throw new ApiError('conflict', 'A settled handoff is missing its durable receipt.');
-    return AI_HARNESS_HANDOFF.parse(JSON.parse(receipt.result));
+): Promise<AiHarnessSwitchResult> {
+  const chat = service.own(request.owner, request.chatId);
+  if (service.binding(chat).session_id === null)
+    throw new ApiError('conflict', 'This conversation has no native binding.');
+  if (switching.has(chat.id))
+    throw new ApiError('conflict', 'A machine change for this chat is already in progress.');
+  switching.add(chat.id);
+  try {
+    return await decide(service, request, chat);
+  } finally {
+    switching.delete(chat.id);
   }
-  service.admitSwitch(chat, input.operation_id);
-  const pending = switching.get(input.operation_id);
-  if (pending !== undefined) return pending;
-  const recorded =
-    receipt.result === null ? undefined : HANDOFF_PROGRESS.parse(JSON.parse(receipt.result));
-  if (recorded?.stage === 'completed') {
-    const completed = AI_HARNESS_HANDOFF.parse(recorded);
-    service.store.harnessCoordination.finish(input.operation_id, completed);
-    return completed;
-  }
-  const move = prepareHandoff(service, {
+}
+
+async function decide(
+  service: HarnessService,
+  request: SwitchRequest,
+  chat: AiChatRow,
+): Promise<AiHarnessSwitchResult> {
+  const { input } = request;
+  const binding = service.binding(chat);
+  const here = sameTarget(binding.execution_target, input.target);
+  const reselect = here && sameSelection(binding, input) && input.directory === undefined;
+  if (reselect) return clearPending(service, chat);
+  service.admitTarget(request.owner, service.directory.get(input.target).host);
+  if (service.turnRunning(chat)) return queue(service, request, chat);
+  await moveNow(service, request, chat);
+  return result(service, chat.id, 'applied');
+}
+
+function sameSelection(binding: DshEngine, input: AiHarnessHandoffRequest): boolean {
+  return (
+    binding.model_route_id === input.route.route_id &&
+    binding.model === input.route.model &&
+    binding.effort === input.route.effort
+  );
+}
+
+function clearPending(service: HarnessService, chat: AiChatRow): AiHarnessSwitchResult {
+  if (chat.pending_execution_target === null) return result(service, chat.id, 'applied');
+  service.store.aiChats.setPendingTarget(chat.id, null);
+  return result(service, chat.id, 'cleared');
+}
+
+function queue(
+  service: HarnessService,
+  request: SwitchRequest,
+  chat: AiChatRow,
+): AiHarnessSwitchResult {
+  const { input } = request;
+  if (input.directory !== undefined || !sameSelection(service.binding(chat), input))
+    throw new ApiError('conflict', 'Wait for the reply to finish to change the model or folder.');
+  service.store.aiChats.setPendingTarget(chat.id, input.target);
+  return result(service, chat.id, 'pending');
+}
+
+async function moveNow(
+  service: HarnessService,
+  request: SwitchRequest,
+  chat: AiChatRow,
+): Promise<void> {
+  const { owner, input } = request;
+  const session = service.state(owner, chat.id);
+  const outcome = await moveConversation(service, {
     owner,
     chat,
-    input: effective,
-    recorded,
-    ...(localClientId === undefined ? {} : { localClientId }),
+    session,
+    grant: service.storage.grant(session.session_id),
+    target: input.target,
+    route: input.route,
+    directory: input.directory,
+    interrupt: false,
   });
-  service.store.harnessCoordination.handoff(move.handoff);
-  const result = Promise.resolve()
-    .then(() => moveConversation(service, move))
-    .finally(() => {
-      switching.delete(input.operation_id);
-    });
-  switching.set(input.operation_id, result);
-  return result;
+  service.store.aiChats.setPendingTarget(chat.id, null);
+  if (outcome.state !== 'moved') throw new ApiError('conflict', outcome.reason);
+  await noteMachineChange(service, chat.id, outcome.note);
+}
+
+function result(
+  service: HarnessService,
+  chatId: string,
+  state: AiHarnessSwitchResult['state'],
+): AiHarnessSwitchResult {
+  const chat = service.store.aiChats.chat(chatId);
+  return {
+    state,
+    execution_target: service.binding(chat).execution_target,
+    pending_execution_target: chat.pending_execution_target,
+  };
 }

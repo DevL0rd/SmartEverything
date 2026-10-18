@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { BrowserSurfaceProps } from '../../../platform/browser-contract';
-import { retainBrowserSurface, layoutBrowserSurface } from './browser-runtime';
+import { retainBrowserSurface, layoutBrowserSurface } from './browser-surfaces';
 export function BrowserSurfaceSlot(
   props: BrowserSurfaceProps & { readonly chatId: string },
 ): ReactNode {

@@ -2,9 +2,10 @@ import { z } from 'zod';
 import type { ChatEntry } from './chat-entry';
 import type { ChatSourceKind } from '../model/chat-source';
 
-export const CHAT_FILTER_PARAM = z.enum(['unread', 'pinned', 'archived']);
+const CHAT_FILTER_PARAM = z.enum(['unread', 'needs', 'pinned', 'archived']);
 
-export type ChatFilter = 'all' | 'unread' | 'pinned' | 'archived' | `source:${string}`;
+export type ChatFilter =
+  'all' | 'unread' | 'needs' | 'running' | 'pinned' | 'archived' | `source:${string}`;
 
 export interface SourceOption {
   readonly filter: ChatFilter;
@@ -15,6 +16,8 @@ export interface SourceOption {
 
 export interface FilterCounts {
   readonly unread: number;
+  readonly needs: number;
+  readonly running: number;
   readonly sources: readonly SourceOption[];
 }
 
@@ -38,6 +41,8 @@ export function countsOf(entries: readonly ChatEntry[]): FilterCounts {
   }
   return {
     unread: entries.filter((entry) => entry.unread > 0).length,
+    needs: entries.filter((entry) => entry.requests > 0).length,
+    running: entries.filter((entry) => entry.line.kind === 'working').length,
     sources: [...seen.values()],
   };
 }
@@ -52,6 +57,10 @@ export function applyFilter(
       return entries;
     case 'unread':
       return entries.filter((entry) => entry.unread > 0);
+    case 'needs':
+      return entries.filter((entry) => entry.requests > 0);
+    case 'running':
+      return entries.filter((entry) => entry.line.kind === 'working');
     case 'pinned':
       return entries.filter((entry) => entry.pinned);
     default:
@@ -63,6 +72,10 @@ export function emptyTitleOf(filter: ChatFilter): string {
   switch (filter) {
     case 'unread':
       return 'No unread chats';
+    case 'needs':
+      return 'Nothing needs you';
+    case 'running':
+      return 'Nothing running';
     case 'pinned':
       return 'No pinned chats';
     case 'archived':
@@ -71,4 +84,27 @@ export function emptyTitleOf(filter: ChatFilter): string {
     default:
       return 'No chats here';
   }
+}
+
+export function withoutPending(
+  entries: readonly ChatEntry[],
+  pending: ReadonlySet<string>,
+): readonly ChatEntry[] {
+  if (pending.size === 0) {
+    return entries;
+  }
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const gone = (entry: ChatEntry): boolean => {
+    for (let at = entry; ;) {
+      if (pending.has(at.id)) {
+        return true;
+      }
+      const parent = byId.get(at.parentId ?? '');
+      if (parent === undefined) {
+        return false;
+      }
+      at = parent;
+    }
+  };
+  return entries.filter((entry) => !gone(entry));
 }

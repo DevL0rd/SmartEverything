@@ -1,6 +1,9 @@
-import { TRANSCRIPT_TEXT_MAX, type WakeSensitivity } from '@smarteverything/domain';
+import type { WakeSensitivity } from '@smarteverything/domain';
 import { displayName, type Person } from '../person';
 import type { PluginVoice } from '../../../plugin-voice';
+import type { Clock } from '../../../../clock';
+import { Utterances as Joiner } from '../../../../transcripts/utterances';
+import type { OnSuperseded } from '../../../../wake-name/wake-claims';
 import { Capture, type CaptureCounts } from './capture';
 import type { VoiceLink } from './link';
 import { Utterances, type UtteranceCounts, type Utterance } from './utterances';
@@ -23,11 +26,16 @@ export interface HeardLine {
 export interface SessionHooks {
   readonly approved: (userId: string) => boolean;
   readonly captures: (userId: string) => boolean;
-  readonly mixes: (userId: string, pcm: Int16Array) => boolean;
+  readonly mixes: (userId: string, pcm: Int16Array) => void;
   readonly wakeable: (userId: string) => boolean;
   readonly wakeSensitivity: () => WakeSensitivity;
   readonly wakeNames: () => string[];
-  readonly wake: (userId: string, phrase: string, words: () => Int16Array) => void;
+  readonly wake: (
+    userId: string,
+    phrase: string,
+    words: () => Int16Array,
+    onSuperseded: OnSuperseded,
+  ) => void;
   readonly heard: (line: HeardLine) => void;
   readonly speaker: (userId: string) => Promise<Person>;
   readonly names: () => string[];
@@ -49,7 +57,7 @@ export interface SessionParts {
   readonly voice: Pick<PluginVoice, 'ear' | 'transcribe'>;
   readonly language: string;
   readonly hooks: SessionHooks;
-  readonly now: () => number;
+  readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly lines?: number;
 }
 
@@ -58,8 +66,10 @@ export class CallSession {
   private readonly utterances: Utterances;
   private readonly capture: Capture;
   private readonly ears = new Map<string, Promise<Ear>>();
+  private readonly joiners = new Map<string, Joiner>();
   private closed = false;
   private lines: number;
+  private skipped = 0;
 
   constructor(private readonly parts: SessionParts) {
     this.id = parts.transcript.id;
@@ -70,7 +80,6 @@ export class CallSession {
     });
     this.capture = new Capture({
       link: parts.link,
-      utterances: this.utterances,
       shouldCapture: parts.hooks.captures,
       heard: (userId, pcm): void => {
         this.audio(userId, pcm);
@@ -79,7 +88,6 @@ export class CallSession {
         this.flushEar(userId);
       },
       failed: parts.hooks.report,
-      now: parts.now,
     });
   }
 
@@ -121,14 +129,14 @@ export class CallSession {
     this.parts.hooks.changed();
   }
 
-  counts(): UtteranceCounts & CaptureCounts {
-    return { ...this.utterances.counts(), ...this.capture.counts() };
+  counts(): UtteranceCounts & CaptureCounts & { readonly skipped: number } {
+    return { ...this.utterances.counts(), ...this.capture.counts(), skipped: this.skipped };
   }
 
   dropEar(userId: string): void {
     const ear = this.ears.get(userId);
     this.ears.delete(userId);
-    ear?.then((open) => open.close()).catch(this.parts.hooks.report);
+    this.release(userId, ear).catch(this.parts.hooks.report);
   }
 
   async close(keepTranscript = false): Promise<void> {
@@ -145,23 +153,34 @@ export class CallSession {
       ),
     );
     this.ears.clear();
+    for (const joiner of this.joiners.values()) {
+      joiner.finish();
+    }
+    this.joiners.clear();
     if (!keepTranscript) {
       this.parts.transcript.close();
     }
   }
 
-  private audio(userId: string, pcm: Int16Array): void {
-    const { hooks } = this.parts;
-    if (!hooks.approved(userId) || hooks.mixes(userId, pcm)) {
-      return;
-    }
-    if (hooks.wakeable(userId)) {
-      this.feed(userId, pcm);
+  private async release(userId: string, ear: Promise<Ear> | undefined): Promise<void> {
+    try {
+      await ear?.then((open) => open.close());
+    } finally {
+      this.joiners.get(userId)?.finish();
+      this.joiners.delete(userId);
     }
   }
 
+  private audio(userId: string, pcm: Int16Array): void {
+    const { hooks } = this.parts;
+    if (hooks.approved(userId)) {
+      hooks.mixes(userId, pcm);
+    }
+    this.feed(userId, pcm);
+  }
+
   private flushEar(userId: string): void {
-    if (this.ears.has(userId) && this.parts.hooks.wakeable(userId)) {
+    if (this.ears.has(userId)) {
       this.feed(userId, new Int16Array(SILENCE_PAD_SAMPLES));
     }
   }
@@ -183,15 +202,40 @@ export class CallSession {
       speaker: userId,
       sensitivity: this.parts.hooks.wakeSensitivity,
       names: this.parts.hooks.wakeNames,
-      wake: (phrase, words): void => {
-        this.parts.hooks.wake(userId, phrase, words);
+      wakes: (): boolean => this.parts.hooks.approved(userId) && this.parts.hooks.wakeable(userId),
+      speech: (segment): void => {
+        this.joinerOf(userId).add(segment);
+      },
+      wake: (phrase, words, onSuperseded): void => {
+        this.parts.hooks.wake(userId, phrase, words, onSuperseded);
       },
     });
     this.ears.set(userId, opening);
+    // eslint-disable-next-line local/no-swallowed-errors -- the caller receives the same failure from the opening
     opening.catch(() => {
       this.ears.delete(userId);
     });
     return opening;
+  }
+
+  private joinerOf(userId: string): Joiner {
+    let joiner = this.joiners.get(userId);
+    if (joiner === undefined) {
+      joiner = new Joiner(this.parts.clock, {
+        heard: (utterance): void => {
+          this.utterances.enqueue({
+            userId,
+            startedAt: utterance.startedAt,
+            pcm: utterance.pcm,
+          });
+        },
+        skipped: (): void => {
+          this.skipped += 1;
+        },
+      });
+      this.joiners.set(userId, joiner);
+    }
+    return joiner;
   }
 
   private async transcribe(utterance: Utterance): Promise<void> {
@@ -211,7 +255,7 @@ export class CallSession {
       at,
       speakerId: utterance.userId,
       speaker: displayName(person),
-      text: text.slice(0, TRANSCRIPT_TEXT_MAX),
+      text,
       bot: false,
     });
     hooks.heard({ userId: utterance.userId, person, text, at });

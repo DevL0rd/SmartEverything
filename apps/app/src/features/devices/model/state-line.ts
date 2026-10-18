@@ -44,7 +44,7 @@ export function stateLine(model: DeviceModel, values: DeviceValues, withReading 
   }
   const custom = FAMILY_STATE_LINES[model.family];
   if (custom !== undefined) {
-    return custom(values);
+    return custom(values, model);
   }
   const power = powerStateOf(model, values);
   if (power === 'off') {

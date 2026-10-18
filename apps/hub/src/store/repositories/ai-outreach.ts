@@ -4,7 +4,6 @@ import {
   type OutreachState,
   type PluginOrigin,
 } from '@smarteverything/domain';
-import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { flag, jsonText } from '../sql';
@@ -14,13 +13,8 @@ const STORED_OUTREACH = storedRow(AI_OUTREACH_ROW, {
   json: ['clients', 'origin'],
 });
 
-const COUNTED = storedRow(z.strictObject({ count: z.int().min(0) }), {});
-
 const COLUMNS =
   'id, profile_id, chat_id, from_chat_id, how, target, target_label, reason, urgent, state, detail, call_id, client_id, clients, origin, created_at, answered_at, ended_at, expires_at';
-
-const KEPT_DAYS = 90;
-const DAY_MS = 86_400_000;
 
 export type NewOutreach = Pick<
   AiOutreachRow,
@@ -58,11 +52,6 @@ export class AiOutreachRepository {
   add(outreach: NewOutreach): AiOutreachRow {
     return this.context.write(() => {
       const now = this.context.now();
-      this.context.sql.run(
-        'forget old AI outreach',
-        'delete from ai_outreach where created_at < $before',
-        { before: new Date(Date.parse(now) - KEPT_DAYS * DAY_MS).toISOString() },
-      );
       const row: AiOutreachRow = {
         ...outreach,
         clients: [...(outreach.clients ?? [])],
@@ -162,15 +151,5 @@ export class AiOutreachRepository {
       `select ${COLUMNS} from ai_outreach where state in ('ringing', 'live') order by created_at`,
       {},
     );
-  }
-
-  callsSince(profileId: string, after: string): number {
-    const counted = this.context.sql.get(
-      COUNTED,
-      `select count(*) as count from ai_outreach
-       where profile_id = $profileId and created_at >= $after and how != 'message'`,
-      { profileId, after },
-    );
-    return found(counted, 'AI outreach count for', profileId).count;
   }
 }

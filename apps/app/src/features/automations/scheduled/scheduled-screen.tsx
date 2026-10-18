@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { ScheduleRow } from '@smarteverything/domain';
@@ -12,10 +12,11 @@ import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
 import { joinParts, plural } from '../../../format/text';
-import { useSecond } from '../../../store/clock';
+import { useMinute, useSecondOf } from '../../../store/clock';
 import { cancelScheduled, removeScheduled, runScheduledNow } from './actions';
 import { useHomeZone, useScheduledRows } from './use-scheduled';
 import { canEdit, finishedOf, lateLine, runsLine, titleOf, upcomingOf, whenLine } from './view';
+import { background } from '@smarteverything/logging';
 
 function useRowMenu(row: ScheduleRow): MenuItem[] {
   const router = useRouter();
@@ -26,7 +27,7 @@ function useRowMenu(row: ScheduleRow): MenuItem[] {
         icon: 'trash',
         destructive: true,
         onPress: (): void => {
-          void removeScheduled(row);
+          background(removeScheduled(row), 'scheduled.remove_failed');
         },
       },
     ];
@@ -57,21 +58,21 @@ function useRowMenu(row: ScheduleRow): MenuItem[] {
   ];
 }
 
-function UpcomingRow({
+const UpcomingRow = memo(function UpcomingRow({
   row,
   zone,
 }: {
   readonly row: ScheduleRow;
   readonly zone: string;
 }): ReactNode {
-  const now = useSecond();
+  const when = useSecondOf((now) => whenLine(row, now, zone));
   const menu = useRowMenu(row);
   return (
     <View className="flex-row items-center pr-2">
       <View className="min-w-0 flex-1">
         <ListRow
           title={titleOf(row)}
-          subtitle={joinParts([whenLine(row, now, zone), runsLine(row)])}
+          subtitle={joinParts([when, runsLine(row)])}
           subtitleTone="primary"
           icon="timer"
           iconTone="primary"
@@ -88,16 +89,16 @@ function UpcomingRow({
       />
     </View>
   );
-}
+});
 
-function FinishedRow({
+const FinishedRow = memo(function FinishedRow({
   row,
   zone,
 }: {
   readonly row: ScheduleRow;
   readonly zone: string;
 }): ReactNode {
-  const now = useSecond();
+  const now = useMinute();
   const menu = useRowMenu(row);
   return (
     <ListRow
@@ -111,7 +112,7 @@ function FinishedRow({
       contextMenu={menu}
     />
   );
-}
+});
 
 function Lists({ rows }: { readonly rows: readonly ScheduleRow[] }): ReactNode {
   const zone = useHomeZone();
@@ -149,7 +150,7 @@ export function ScheduledScreen(): ReactNode {
       maxWidth="reading"
       header={
         <PageHeader
-          title="Scheduled"
+          title="One-off timers"
           {...(upcoming === 0 ? {} : { subtitle: `${plural(upcoming, 'action')} coming up` })}
         />
       }

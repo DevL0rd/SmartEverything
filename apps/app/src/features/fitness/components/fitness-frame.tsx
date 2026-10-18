@@ -4,8 +4,9 @@ import type { PrimaryActionProps } from '../../../components/primary-action';
 import { PageHeader, type HeaderAction, type HeaderEditing } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { HEALTH_CONNECT_ON_DEVICE } from '../data/health-connect';
-import { useHealthConnect } from '../data/use-health-connect';
-import { FitnessTabs, type FitnessTab } from './fitness-tabs';
+import { useSyncControls } from '../data/use-health-connect';
+import type { FitnessTab } from '../model/section-routes';
+import { FitnessTabs } from './fitness-tabs';
 
 export interface FitnessFrameProps {
   readonly tab: FitnessTab;
@@ -28,13 +29,12 @@ function RefreshableScreen({
   readonly primaryAction: PrimaryActionProps | undefined;
   readonly children: ReactNode;
 }): ReactNode {
-  const controls = useHealthConnect();
-  const connected = controls.status.data?.sdk === 'available';
+  const controls = useSyncControls();
   return (
     <Screen
       header={header}
       maxWidth={width}
-      {...(connected ? { onRefresh: controls.syncNow } : {})}
+      {...(controls.available ? { onRefresh: controls.syncNow } : {})}
       refreshing={controls.busy === 'sync'}
       {...(primaryAction === undefined ? {} : { primaryAction })}
     >

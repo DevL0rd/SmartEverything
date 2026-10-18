@@ -81,5 +81,5 @@ function ConfirmDialog({ pending }: { readonly pending: PendingConfirm }): React
 
 export function ConfirmHost(): ReactNode {
   const pending = useValue(pendingConfirm);
-  return pending === null ? null : <ConfirmDialog key={pending.title} pending={pending} />;
+  return pending === null ? null : <ConfirmDialog key={pending.id} pending={pending} />;
 }

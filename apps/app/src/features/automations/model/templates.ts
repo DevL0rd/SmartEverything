@@ -1,18 +1,23 @@
 import {
   capabilityOf,
   isCamera,
-  type LegacyAction as Action,
   type DeviceCapability,
+  type StepV2,
+  type TriggerTestV2,
+  type TriggerV2,
 } from '@smarteverything/domain';
 import { isReadable, isWritable, type DeviceLike } from './capability-choices';
-import { EMPTY_DRAFT, type Draft } from './editor-state';
-import { EVERY_DAY } from './blanks';
+import { computerTemplates, type ComputerFeatures } from './computer-templates';
+import { deviceTemplates } from './device-templates';
+import type { Draft } from './editor-state';
+import { laundryEntries, type LaundryEntry } from './laundry-steps';
 
 export interface Template {
   readonly id: string;
   readonly deviceId: string;
   readonly title: string;
   readonly why: string;
+  readonly short?: string;
   readonly draft: Draft;
 }
 
@@ -35,13 +40,45 @@ function lightsOf(devices: readonly DeviceLike[]): DeviceLike[] {
     .slice(0, MOST_LIGHTS);
 }
 
-function powerActions(devices: readonly DeviceLike[], on: boolean): Action[] {
-  return devices.map((device) => ({
-    type: 'command',
-    deviceId: device.id,
-    capability: 'power',
-    value: on,
-  }));
+function powerSteps(devices: readonly DeviceLike[], on: boolean): StepV2[] {
+  return [
+    {
+      do: 'set',
+      target: { devices: devices.map((device) => device.id) },
+      control: 'power',
+      to: on,
+    },
+  ];
+}
+
+function draftOf(
+  name: string,
+  when: TriggerV2[],
+  steps: StepV2[],
+  onlyIf?: Draft['automation']['onlyIf'],
+): Draft {
+  return {
+    name,
+    enabled: true,
+    automation: { when, ...(onlyIf === undefined ? {} : { onlyIf }), steps },
+  };
+}
+
+function stateTrigger(
+  device: DeviceLike,
+  capability: string,
+  test: TriggerTestV2,
+  holdSeconds?: number,
+): TriggerV2 {
+  return {
+    on: 'signal',
+    source: 'device',
+    kind: 'state',
+    subject: device.id,
+    field: capability,
+    test,
+    ...(holdSeconds === undefined ? {} : { holdSeconds }),
+  };
 }
 
 function sleepOption(device: DeviceLike): string | null {
@@ -64,14 +101,18 @@ function purifierAtBedtime(devices: readonly DeviceLike[]): Template[] {
         deviceId: device.id,
         title: `${device.label} to ${option} at bedtime`,
         why: 'Quiet filtering through the night.',
-        draft: {
-          ...EMPTY_DRAFT,
-          name: `${device.label} bedtime`,
-          triggers: [{ type: 'time', at: '22:30', weekdays: [...EVERY_DAY] }],
-          actions: [
-            { type: 'command', deviceId: device.id, capability: 'purifier_mode', value: option },
+        draft: draftOf(
+          `${device.label} bedtime`,
+          [{ on: 'time', at: '22:30' }],
+          [
+            {
+              do: 'set',
+              target: { device: device.id },
+              control: 'purifier_mode',
+              to: option,
+            },
           ],
-        },
+        ),
       },
     ];
   });
@@ -89,12 +130,11 @@ function lightsAtSunset(devices: readonly DeviceLike[]): Template[] {
       deviceId: first.id,
       title: 'Lights on at sunset',
       why: `${lights.map((light) => light.label).join(', ')} as it gets dark.`,
-      draft: {
-        ...EMPTY_DRAFT,
-        name: 'Lights on at sunset',
-        triggers: [{ type: 'sun', event: 'sunset', offsetMinutes: 0 }],
-        actions: powerActions(lights, true),
-      },
+      draft: draftOf(
+        'Lights on at sunset',
+        [{ on: 'sun', event: 'sunset' }],
+        powerSteps(lights, true),
+      ),
     },
   ];
 }
@@ -109,19 +149,11 @@ function alarmTemplates(
     deviceId: sensor.id,
     title: `${words.title} from ${sensor.label}`,
     why: `A notice the moment it detects ${words.noun}.`,
-    draft: {
-      ...EMPTY_DRAFT,
-      name: `${words.title} · ${sensor.label}`,
-      triggers: [
-        {
-          type: 'state',
-          deviceId: sensor.id,
-          capability: key,
-          comparison: { operator: 'eq', value: true },
-        },
-      ],
-      actions: [{ type: 'notify', message: `${sensor.label} detected ${words.noun}.` }],
-    },
+    draft: draftOf(
+      `${words.title} · ${sensor.label}`,
+      [stateTrigger(sensor, key, { is: 'eq', to: true })],
+      [{ do: 'notify', message: `${sensor.label} detected ${words.noun}.` }],
+    ),
   }));
 }
 
@@ -141,20 +173,12 @@ function nightLight(devices: readonly DeviceLike[]): Template[] {
       deviceId: first.id,
       title: `${first.label} on when ${sensor.label} ${key === 'motion' ? 'sees motion' : 'opens'} at night`,
       why: 'Only between 22:00 and 06:00.',
-      draft: {
-        ...EMPTY_DRAFT,
-        name: `Night light · ${sensor.label}`,
-        triggers: [
-          {
-            type: 'state',
-            deviceId: sensor.id,
-            capability: key,
-            comparison: { operator: 'eq', value: true },
-          },
-        ],
-        conditions: [{ type: 'time_window', after: '22:00', before: '06:00' }],
-        actions: powerActions([first], true),
-      },
+      draft: draftOf(
+        `Night light · ${sensor.label}`,
+        [stateTrigger(sensor, key, { is: 'eq', to: true })],
+        powerSteps([first], true),
+        { time: { after: '22:00', before: '06:00' } },
+      ),
     },
   ];
 }
@@ -173,19 +197,11 @@ function airBoost(devices: readonly DeviceLike[]): Template[] {
       deviceId: purifier.id,
       title: `${purifier.label} on when PM2.5 rises above 35`,
       why: 'Starts on its own when the air gets worse.',
-      draft: {
-        ...EMPTY_DRAFT,
-        name: `Air boost · ${purifier.label}`,
-        triggers: [
-          {
-            type: 'state',
-            deviceId: sensor.id,
-            capability: 'pm25',
-            comparison: { operator: 'gt', value: 35 },
-          },
-        ],
-        actions: powerActions([purifier], true),
-      },
+      draft: draftOf(
+        `Air boost · ${purifier.label}`,
+        [stateTrigger(sensor, 'pm25', { is: 'gt', to: 35 })],
+        powerSteps([purifier], true),
+      ),
     },
   ];
 }
@@ -201,19 +217,11 @@ function humidifierWhenDry(devices: readonly DeviceLike[]): Template[] {
       deviceId: device.id,
       title: `${device.label} on when humidity drops below 40%`,
       why: 'Keeps the air from getting too dry.',
-      draft: {
-        ...EMPTY_DRAFT,
-        name: `Dry air · ${device.label}`,
-        triggers: [
-          {
-            type: 'state',
-            deviceId: device.id,
-            capability: 'humidity',
-            comparison: { operator: 'lt', value: 40 },
-          },
-        ],
-        actions: powerActions([device], true),
-      },
+      draft: draftOf(
+        `Dry air · ${device.label}`,
+        [stateTrigger(device, 'humidity', { is: 'lt', to: 40 })],
+        powerSteps([device], true),
+      ),
     }));
 }
 
@@ -223,16 +231,119 @@ function personSeen(devices: readonly DeviceLike[]): Template[] {
     deviceId: camera.id,
     title: `Notice when ${camera.label} sees a person`,
     why: 'A notice on your phone right away.',
-    draft: {
-      ...EMPTY_DRAFT,
-      name: `Person seen · ${camera.label}`,
-      triggers: [{ type: 'event', deviceId: camera.id, kind: 'person' }],
-      actions: [{ type: 'notify', message: `${camera.label} saw a person.` }],
-    },
+    draft: draftOf(
+      `Person seen · ${camera.label}`,
+      [{ on: 'signal', source: 'event', kind: 'person', subject: camera.id }],
+      [{ do: 'notify', message: `${camera.label} saw a person.` }],
+    ),
   }));
 }
 
-export function templatesFor(devices: readonly DeviceLike[]): Template[] {
+interface LevelWatch {
+  readonly role: 'detergent_level' | 'softener_level' | 'filter_clean';
+  readonly low: string | boolean;
+  readonly title: string;
+  readonly short: string;
+  readonly message: string;
+}
+
+const LEVEL_WATCHES: readonly LevelWatch[] = [
+  {
+    role: 'detergent_level',
+    low: 'Low',
+    title: 'Notice when detergent runs low',
+    short: 'Detergent low',
+    message: 'is low on detergent.',
+  },
+  {
+    role: 'softener_level',
+    low: 'Low',
+    title: 'Notice when softener runs low',
+    short: 'Softener low',
+    message: 'is low on softener.',
+  },
+  {
+    role: 'filter_clean',
+    low: true,
+    title: 'Notice when the filter needs cleaning',
+    short: 'Filter needs cleaning',
+    message: 'needs its filter cleaned.',
+  },
+];
+
+function laundryDone(device: DeviceLike): Template {
+  return {
+    id: `laundry-done:${device.id}`,
+    deviceId: device.id,
+    title: `Notice when ${device.label} finishes`,
+    why: 'A notice on your phone when the cycle ends.',
+    short: 'Finished',
+    draft: draftOf(
+      `Laundry done · ${device.label}`,
+      [
+        {
+          on: 'signal',
+          source: 'event',
+          kind: 'cycle_finished',
+          subject: device.id,
+          match: { outcome: 'completed' },
+        },
+      ],
+      [{ do: 'notify', message: `${device.label} has finished its cycle.` }],
+    ),
+  };
+}
+
+function laundryFault(device: DeviceLike): Template {
+  return {
+    id: `laundry-fault:${device.id}`,
+    deviceId: device.id,
+    title: `Notice when ${device.label} has a fault`,
+    why: 'Open the machine for the fault and what to try.',
+    short: 'Fault',
+    draft: draftOf(
+      `Fault · ${device.label}`,
+      [{ on: 'signal', source: 'event', kind: 'fault', subject: device.id }],
+      [{ do: 'notify', message: `${device.label} reported a fault. Open it to see what to try.` }],
+    ),
+  };
+}
+
+function laundryLevels({ device, keys }: LaundryEntry): Template[] {
+  return LEVEL_WATCHES.flatMap((watch) => {
+    const key = keys.get(watch.role);
+    if (key === undefined) {
+      return [];
+    }
+    return [
+      {
+        id: `laundry-${watch.role}:${device.id}`,
+        deviceId: device.id,
+        title: `${watch.title} in ${device.label}`,
+        why: 'A notice as soon as the machine reports it.',
+        short: watch.short,
+        draft: draftOf(
+          `${watch.title} · ${device.label}`,
+          [stateTrigger(device, key, { is: 'eq', to: watch.low })],
+          [{ do: 'notify', message: `${device.label} ${watch.message}` }],
+        ),
+      },
+    ];
+  });
+}
+
+function laundryTemplates(devices: readonly DeviceLike[]): Template[] {
+  return [
+    ...laundryEntries(devices, ['laundry_status']).map(({ device }) => laundryDone(device)),
+    ...laundryEntries(devices, ['fault']).map(({ device }) => laundryFault(device)),
+    ...laundryEntries(devices, []).flatMap(laundryLevels),
+  ];
+}
+
+export function templatesFor(
+  devices: readonly DeviceLike[],
+  computerFeatures: ComputerFeatures = new Map(),
+): Template[] {
   return [
     ...purifierAtBedtime(devices),
     ...airBoost(devices),
@@ -242,6 +353,9 @@ export function templatesFor(devices: readonly DeviceLike[]): Template[] {
     ...alarmTemplates(devices, 'leak', { title: 'Notify on leak', noun: 'a water leak' }),
     ...alarmTemplates(devices, 'smoke', { title: 'Notify on smoke', noun: 'smoke' }),
     ...nightLight(devices),
+    ...laundryTemplates(devices),
+    ...deviceTemplates(devices),
+    ...computerTemplates(devices, computerFeatures),
   ];
 }
 

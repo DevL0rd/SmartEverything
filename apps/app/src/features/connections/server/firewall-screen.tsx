@@ -9,7 +9,7 @@ import { ActionRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { appPlatform } from '../../../design/platform';
 import { moment } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useMinuteOf } from '../../../store/clock';
 import { useFirewall, useIsOwner, useSettings } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { BACKEND_LABELS, needsFix } from '../model/firewall';
@@ -45,8 +45,8 @@ function FixBanner({ firewall }: { readonly firewall: FirewallStatus }): ReactNo
 function StatusRows({ firewall }: { readonly firewall: FirewallStatus }): ReactNode {
   const store = useEntityStore();
   const owner = useIsOwner();
-  const now = useMinute();
   const timeZone = useSettings().time_zone;
+  const checked = useMinuteOf((now) => moment(firewall.checkedAt, now, timeZone));
   const check = useMutationState();
   return (
     <List inset footer={firewall.detail}>
@@ -54,7 +54,7 @@ function StatusRows({ firewall }: { readonly firewall: FirewallStatus }): ReactN
       {firewall.filtering === null ? null : (
         <ValueRow icon="filter" title="Filtering" value={firewall.filtering ? 'On' : 'Off'} />
       )}
-      <ValueRow icon="clock" title="Checked" value={moment(firewall.checkedAt, now, timeZone)} />
+      <ValueRow icon="clock" title="Checked" value={checked} />
       {owner ? (
         <ActionRow
           icon="refresh"

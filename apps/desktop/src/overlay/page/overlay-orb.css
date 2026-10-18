@@ -1,0 +1,308 @@
+.orb {
+  --o-core: var(--color-primary);
+  --o-deep: var(--color-primary-container);
+  --o-shine: var(--color-orb-shine);
+  --o-a: var(--color-viz-1);
+  --o-b: var(--color-viz-4);
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  transition: opacity 200ms;
+}
+.orb.dim {
+  --o-core: var(--color-on-surface-faint);
+  --o-deep: var(--color-surface-3);
+  --o-shine: var(--color-surface-2);
+  --o-a: var(--color-on-surface-faint);
+  --o-b: var(--color-on-surface-variant);
+  opacity: 0.5;
+}
+.orb-lv,
+.orb-pulse,
+.orb-swirl,
+.orb-halo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 40px;
+}
+.orb svg {
+  display: block;
+}
+.orb-halo {
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--color-primary);
+  opacity: 0;
+}
+.orb-pulse {
+  animation: o-glow 2600ms ease-in-out infinite alternate;
+}
+.orb-swirl {
+  animation: o-spin 9000ms linear infinite;
+}
+[data-orb='listening'] .orb-halo {
+  animation: o-ring 1800ms ease-out infinite;
+}
+[data-orb='listening'] .orb-pulse {
+  animation-duration: 1600ms;
+}
+[data-orb='listening'] .orb-swirl {
+  animation-duration: 6000ms;
+}
+[data-orb='thinking'] .orb-pulse {
+  animation: o-breathe 900ms ease-in-out infinite alternate;
+}
+[data-orb='thinking'] .orb-swirl {
+  animation-duration: 1400ms;
+}
+[data-orb='speaking'] .orb-halo {
+  animation: o-ring 1200ms ease-out infinite;
+}
+[data-orb='speaking'] .orb-pulse {
+  animation-duration: 700ms;
+}
+[data-orb='speaking'] .orb-swirl {
+  animation-duration: 3500ms;
+}
+.orb.dim * {
+  animation: none !important;
+}
+@keyframes o-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes o-glow {
+  from {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+@keyframes o-breathe {
+  from {
+    opacity: 0.45;
+  }
+  to {
+    opacity: 0.95;
+  }
+}
+@keyframes o-ring {
+  from {
+    opacity: 0.8;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.32);
+  }
+}
+.edge {
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+.edge::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 190%;
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 50%,
+    var(--color-viz-1) 66%,
+    var(--color-primary) 82%,
+    var(--color-viz-4) 94%,
+    transparent
+  );
+  opacity: 0;
+  transition: opacity 400ms;
+  animation: e-spin 6s linear infinite;
+  animation-play-state: paused;
+}
+[data-state='wake'] .edge::before,
+[data-state='listening'] .edge::before {
+  opacity: 0.85;
+  animation-play-state: running;
+}
+[data-state='speaking'] .edge::before {
+  opacity: 1;
+  animation-duration: 3s;
+  animation-play-state: running;
+}
+[data-state='thinking'] .edge::before {
+  opacity: 0.9;
+  animation-duration: 1.8s;
+  animation-play-state: running;
+}
+@keyframes e-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+.orb-aura {
+  position: absolute;
+  left: -12px;
+  top: -12px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--color-primary), transparent);
+  opacity: 0.28;
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms ease-out;
+  pointer-events: none;
+}
+.orb-lv {
+  transition: transform 180ms var(--spring-level);
+}
+.orb.dim .orb-aura {
+  display: none;
+}
+.orb-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset -3px -5px 9px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+.orb-spec {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  width: 15px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0));
+  rotate: -28deg;
+  pointer-events: none;
+}
+.orb-burst {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--color-primary);
+  opacity: 0;
+  pointer-events: none;
+}
+.pill.in .orb-burst {
+  animation: o-burst 760ms ease-out both;
+}
+.pill.in .orb {
+  animation: o-ignite 520ms var(--spring-pill) both;
+}
+@keyframes o-burst {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+@keyframes o-ignite {
+  from {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.ov.rm .edge::before,
+.ov.rm .st::before,
+.ov.rm .pill.in .orb,
+.ov.rm .pill.in .orb-burst {
+  animation: none;
+}
+.ov[data-theme='light'] .orb-aura {
+  background: radial-gradient(closest-side, rgba(169, 98, 10, 0.32), transparent);
+}
+.orb[role='button'] {
+  cursor: pointer;
+  border-radius: 50%;
+}
+.orb-stop {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--color-on-surface);
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 120ms,
+    transform 120ms;
+  pointer-events: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-surface-raised) 55%, transparent);
+}
+.orb[role='button']:hover .orb-stop,
+.orb[role='button']:focus-visible .orb-stop {
+  opacity: 0.92;
+  transform: none;
+}
+.orb[role='button']:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.ov.rm .orb-stop {
+  transition: none;
+}
+
+.s-shine {
+  stop-color: var(--o-shine);
+}
+
+.s-core {
+  stop-color: var(--o-core);
+  stop-opacity: 1;
+}
+
+.s-deep {
+  stop-color: var(--o-deep);
+  stop-opacity: 1;
+}
+
+.s-a {
+  stop-color: var(--o-a);
+}
+
+.s-b {
+  stop-color: var(--o-b);
+}
+
+.cut {
+  stroke: var(--color-surface-raised);
+}

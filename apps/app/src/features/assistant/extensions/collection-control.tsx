@@ -3,23 +3,18 @@ import { z } from 'zod';
 import { List } from '../../../components/section';
 import { SwitchRow } from '../../../components/rows';
 import { Banner } from '../../../components/banner';
-import type { HarnessExtensionItem } from '@smarteverything/domain';
-import { useExtensions, useExtensionConfiguration } from './queries';
-import { useExtensionWriter } from './change';
-import { ExtensionChangeReview } from './change-review';
-import type { ExtensionChange } from './selection';
+import { useExtensions } from './queries';
+import { useExtensionActions } from './change';
 
 const COLLECTIONS = {
   skill: {
     id: 'skills',
-    title: 'Claude skills',
     subtitle:
       'Turn all installed Claude skills on or off. Included, custom and workspace skills stay available.',
     setting: 'claude_skills_enabled',
   },
   extension: {
     id: 'claude-plugins',
-    title: 'Claude plugins',
     subtitle: 'Turn all installed Claude plugins on or off. Your selections stay saved.',
     setting: null,
   },
@@ -30,53 +25,35 @@ export function ClaudeCollectionControl({
 }: {
   readonly kind: 'skill' | 'extension';
 }): ReactNode {
-  const configuration = useExtensionConfiguration().data;
   const catalogue = useExtensions().data;
-  const writer = useExtensionWriter();
+  const actions = useExtensionActions();
   const collection = COLLECTIONS[kind];
-  const entry = configuration?.desired.entries.find((candidate) => candidate.id === collection.id);
   const item = catalogue?.items.find((candidate) => candidate.id === collection.id);
-  if (entry === undefined || item === undefined || configuration === undefined) return null;
+  if (item === undefined) return null;
   const enabled = z
     .boolean()
     .default(true)
-    .safeParse(collection.setting === null ? entry.enabled : entry.config[collection.setting]);
+    .safeParse(collection.setting === null ? item.enabled : item.config[collection.setting]);
   if (!enabled.success)
     return (
       <Banner
         tone="warning"
-        title={`${collection.title} setting is invalid`}
+        title={`${item.name} setting is invalid`}
         body="Expected an on or off choice in the shared configuration."
       />
     );
   return (
-    <>
-      <ExtensionChangeReview writer={writer} />
-      <List inset>
-        <SwitchRow
-          title={collection.title}
-          subtitle={collection.subtitle}
-          value={enabled.data}
-          disabled={!writer.allowed}
-          onChange={(enabled) => {
-            void writer.save(
-              collectionChange(item, collection.setting, collection.title, enabled),
-              configuration.desired,
-            );
-          }}
-        />
-      </List>
-    </>
+    <List inset>
+      <SwitchRow
+        title={item.name}
+        subtitle={collection.subtitle}
+        value={enabled.data}
+        disabled={!actions.allowed}
+        onChange={(value) => {
+          if (collection.setting === null) actions.setEnabled(item, value);
+          else actions.setSetting(item, collection.setting, value);
+        }}
+      />
+    </List>
   );
-}
-
-function collectionChange(
-  item: HarnessExtensionItem,
-  setting: string | null,
-  label: string,
-  enabled: boolean,
-): ExtensionChange {
-  return setting === null
-    ? { kind: 'switch', item, enabled }
-    : { kind: 'setting', item, key: setting, value: enabled, label, defaultValue: true };
 }

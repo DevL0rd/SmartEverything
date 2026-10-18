@@ -1,21 +1,24 @@
-import { ValueStore, useValue } from '../design/external-store';
+import { ValueStore, useSelected, useValue } from '../design/external-store';
 import { allOff, type DeveloperFlagId, type DeveloperFlags } from './toggles';
 
-const active: Record<DeveloperFlagId, boolean> = allOff();
+const flags = new ValueStore<DeveloperFlags>(allOff());
 
-export const developerFlags: DeveloperFlags = active;
-const snapshots = new ValueStore<DeveloperFlags>({ ...active });
+export function readDeveloperFlags(): DeveloperFlags {
+  return flags.get();
+}
 
 export function useDeveloperFlags(): DeveloperFlags {
-  return useValue(snapshots);
+  return useValue(flags);
+}
+
+export function useDeveloperFlag(id: DeveloperFlagId): boolean {
+  return useSelected(flags, (current) => current[id]);
 }
 
 export function activateFlags(next: DeveloperFlags): void {
-  Object.assign(active, next);
-  snapshots.set({ ...active });
+  flags.set({ ...next });
 }
 
 export function activateFlag(id: DeveloperFlagId, value: boolean): void {
-  active[id] = value;
-  snapshots.set({ ...active });
+  flags.update((current) => ({ ...current, [id]: value }));
 }

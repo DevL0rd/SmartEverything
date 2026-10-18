@@ -1,4 +1,5 @@
-import { CancelledError, useQuery } from '@tanstack/react-query';
+import { CancelledError } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   AI_HARNESS_ENDPOINTS as E,
   type AiChatRow,
@@ -12,24 +13,22 @@ import {
 import { useEntityStore } from '../../../store/store-context';
 import { useActiveProfile } from '../../../store/people';
 import { useSyncStatus } from '../../../store/selectors';
-import { useHarnessSupported } from '../data/harness';
 
 const pending = new WeakMap<ReturnType<typeof api>, Map<string, Promise<void>>>();
 export function useCommandPreparation(
   chat: AiChatRow | undefined,
   opened: boolean,
   connectionId: string,
-): ReturnType<typeof useQuery<AiHarnessSession>> {
+): ReturnType<typeof useScreenQuery<AiHarnessSession>> {
   const store = useEntityStore();
   const profile = useActiveProfile();
   const live = useSyncStatus().status === 'live';
-  const supported = useHarnessSupported();
   const own = ownChat(chat);
   const engine = chat?.engine;
   const selection = engine?.kind === 'dsh' ? { ...engine, session_id: null } : engine;
-  return useQuery({
+  return useScreenQuery({
     queryKey: ['window', 'ai-command-preparation', connectionId, profile?.id, chat?.id, selection],
-    enabled: opened && own && live && supported,
+    enabled: opened && own && live,
     retry: false,
     staleTime: Infinity,
     queryFn: async ({ signal }) => {

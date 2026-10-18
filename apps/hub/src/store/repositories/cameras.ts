@@ -9,7 +9,7 @@ import {
 import type { CameraUpsert } from '../../database/port';
 import { storedRow } from '../codec';
 import { found, moment, type StoreContext } from '../context';
-import { flag } from '../sql';
+import { flag, inList } from '../sql';
 import { windowFilter, type TimeWindow } from './window';
 
 const STORED_CAMERA = storedRow(CAMERA_ROW, {
@@ -34,6 +34,19 @@ export interface NewRecording {
   readonly bytes: number;
 }
 
+export interface RecordingWindow extends TimeWindow {
+  readonly kind?: RecordingKind | undefined;
+}
+
+function sameStream(row: CameraRow, camera: CameraUpsert): boolean {
+  return (
+    row.stream_name === camera.streamName &&
+    row.source_url_kind === camera.sourceUrlKind &&
+    row.physical_ptz === camera.physicalPtz &&
+    row.two_way_audio === camera.twoWayAudio
+  );
+}
+
 export class CamerasRepository {
   constructor(private readonly context: StoreContext) {}
 
@@ -52,6 +65,9 @@ export class CamerasRepository {
     this.context.write(() => {
       for (const camera of cameras) {
         const before = this.find(camera.deviceId);
+        if (before !== undefined && sameStream(before, camera)) {
+          continue;
+        }
         this.context.sql.run(
           'save the camera',
           `insert into cameras (device_id, stream_name, source_url_kind, physical_ptz, two_way_audio)
@@ -97,13 +113,14 @@ export class CamerasRepository {
     });
   }
 
-  recordings(window: TimeWindow): RecordingRow[] {
+  recordings(window: RecordingWindow): RecordingRow[] {
     const filter = windowFilter('started_at', window);
+    const kind = window.kind === undefined ? '' : ' and kind = $kind';
     return this.context.sql.all(
       STORED_RECORDING,
-      `select ${RECORDING_COLUMNS} from recordings where ${filter.text}
+      `select ${RECORDING_COLUMNS} from recordings where ${filter.text}${kind}
        order by started_at desc, rowid desc limit $limit`,
-      filter.parameters,
+      window.kind === undefined ? filter.parameters : { ...filter.parameters, kind: window.kind },
     );
   }
 
@@ -120,10 +137,18 @@ export class CamerasRepository {
   }
 
   recordingsOfEvent(eventId: string): RecordingRow[] {
+    return this.recordingsOfEvents([eventId]);
+  }
+
+  recordingsOfEvents(eventIds: readonly string[]): RecordingRow[] {
+    if (eventIds.length === 0) {
+      return [];
+    }
+    const filter = inList('event_id', 'events', eventIds);
     return this.context.sql.all(
       STORED_RECORDING,
-      `select ${RECORDING_COLUMNS} from recordings where event_id = $eventId`,
-      { eventId },
+      `select ${RECORDING_COLUMNS} from recordings where ${filter.text} order by rowid`,
+      filter.parameters,
     );
   }
 

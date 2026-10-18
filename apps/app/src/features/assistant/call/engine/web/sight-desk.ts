@@ -12,14 +12,10 @@ import { changeVideo, type CameraPhase } from '../../call-state';
 import { callPreviews } from '../../preview-store';
 import { SightStartError } from '../sight-failure';
 import { openCamera, stopStream, type OpenedSight } from './sight-devices';
-import { desktopStill } from './desktop-still';
 import { facingOfTarget, laneOf, nextCamera, opening, type Lane } from './sight-lanes';
 import { SightSampler, type SamplerHandlers } from './sight-sampler';
 
 const SETTLE_FRAMES = 4;
-
-const NEEDS_CHOOSING =
-  'The browser needs them to choose what to share. Ask them to press Share and pick it first.';
 
 export interface SightPorts {
   readonly callId: () => string | null;
@@ -36,12 +32,16 @@ export interface LookRequest {
   readonly source: AppSightSource;
   readonly target: string | null;
   readonly lookId: string;
-  readonly gesture: boolean;
 }
 
 interface Session {
   readonly opened: OpenedSight;
   readonly sampler: SightSampler;
+}
+
+interface Opening {
+  readonly lane: Lane | null;
+  readonly opened: Promise<OpenedSight>;
 }
 
 interface Glimpse {
@@ -55,7 +55,7 @@ export class SightDesk {
   private screen: Session | null = null;
   private sent: Lane | null = null;
   private paused = false;
-  private starting = false;
+  private pending: Opening | null = null;
 
   constructor(private readonly ports: SightPorts) {}
 
@@ -74,22 +74,25 @@ export class SightDesk {
   async start(
     source: AppSightSource,
     facing: SightFacing | null,
-    deviceId: string | null,
+    target: string | null,
   ): Promise<void> {
-    if (this.starting) {
-      throw new SightStartError(source, 'busy', 'Another picture source is still starting');
+    const lane = laneOf(source);
+    if (this.pending !== null) {
+      await this.joinOrRefuse(source, lane);
+      return;
     }
-    this.starting = true;
-    const camera = laneOf(source) === 'camera';
+    const camera = lane === 'camera';
     changeVideo(() => (camera ? { camera: 'starting' } : { screen: 'starting' }));
+    const opened = opening(source, {
+      facing: facing ?? this.ports.facing(),
+      deviceId: camera ? target : null,
+      target: camera ? null : target,
+    });
+    this.pending = { lane, opened };
     try {
-      const opened = await opening(source, {
-        facing: facing ?? this.ports.facing(),
-        deviceId: camera ? deviceId : null,
-      });
-      this.take(opened);
+      this.take(await opened);
     } finally {
-      this.starting = false;
+      this.pending = null;
       this.publish();
     }
   }
@@ -189,25 +192,37 @@ export class SightDesk {
   private async glimpse(request: LookRequest): Promise<Glimpse> {
     const { source } = request;
     const lane = laneOf(source);
+    if (lane === 'screen') {
+      await this.shareScreen(request);
+    }
     const shown = this.session(lane);
     if (shown !== null) {
       const jpeg = await shown.sampler.still(0);
       return { source: shown.opened.source, label: shown.opened.label, jpeg };
     }
-    if (source === 'desktop_screen' || source === 'desktop_window') {
-      const still = await desktopStill(source, request.target);
-      if (still !== null) {
-        return still;
-      }
-    }
-    if (lane === 'screen' && !request.gesture) {
-      throw new SightStartError(source, 'denied', NEEDS_CHOOSING);
-    }
     const opened = await opening(source, {
       facing: facingOfTarget(request.target, this.ports.facing()),
       deviceId: null,
+      target: null,
     });
     return this.fleeting(opened);
+  }
+
+  private async joinOrRefuse(source: AppSightSource, lane: Lane | null): Promise<void> {
+    const pending = this.pending;
+    if (pending?.lane !== lane) {
+      throw new SightStartError(source, 'busy', 'Another picture source is still starting');
+    }
+    await pending.opened;
+  }
+
+  private async shareScreen(request: LookRequest): Promise<void> {
+    if (this.pending !== null) {
+      await this.pending.opened;
+    }
+    if (this.screen === null) {
+      await this.start(request.source, null, request.target);
+    }
   }
 
   private async fleeting(opened: OpenedSight): Promise<Glimpse> {
@@ -329,13 +344,13 @@ export class SightDesk {
       camera: this.cameraPhase(video.camera),
       facing: camera?.opened.facing ?? video.facing,
       light: camera === null ? false : video.light,
-      screen: this.screen === null ? (this.starting ? video.screen : 'off') : 'on',
+      screen: this.screen === null ? (this.pending === null ? 'off' : video.screen) : 'on',
     }));
   }
 
   private cameraPhase(current: CameraPhase): CameraPhase {
     if (this.camera === null) {
-      return this.starting && current === 'starting' ? 'starting' : 'off';
+      return this.pending !== null && current === 'starting' ? 'starting' : 'off';
     }
     return this.paused ? 'paused' : 'on';
   }

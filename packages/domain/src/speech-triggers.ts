@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { LISTENING_SOURCE } from './listening';
 
-export const AUTOMATION_SPEECH_CAPABILITY = 'automation_speech_v1';
-export const AUTOMATION_SPEECH_ACCEPT = 'application/vnd.smarteverything.automation-speech+json';
 export const SPEECH_SOURCE = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('camera'), deviceId: z.uuid() }),
+  z.strictObject({ kind: z.literal('phone'), deviceId: z.uuid() }),
+  z.strictObject({ kind: z.literal('computer'), deviceId: z.uuid() }),
   z.strictObject({
     kind: z.literal('plugin'),
     pluginId: z.string().min(1).max(200),
@@ -27,6 +28,12 @@ export const SPEECH_TRIGGER = z.object({
 export type SpeechTrigger = z.infer<typeof SPEECH_TRIGGER>;
 
 export const SPEECH_SOURCES = z.strictObject({
-  sources: z.array(z.strictObject({ source: SPEECH_SOURCE, label: z.string() })),
+  sources: z.array(
+    z.strictObject({
+      source: SPEECH_SOURCE,
+      label: z.string(),
+      listening: LISTENING_SOURCE.pick({ wake: true, transcribe: true, state: true }).nullable(),
+    }),
+  ),
   unavailable: z.array(z.strictObject({ kind: z.enum(['video', 'image']), reason: z.string() })),
 });

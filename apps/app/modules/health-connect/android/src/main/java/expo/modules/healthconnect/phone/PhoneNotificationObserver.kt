@@ -1,5 +1,6 @@
 package expo.modules.healthconnect.phone
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
@@ -7,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
+import android.os.PowerManager
+import android.telephony.TelephonyManager
 import android.service.notification.StatusBarNotification
 import expo.modules.healthconnect.media.NotificationObserver
 import expo.modules.healthconnect.media.NowPlaying
@@ -20,7 +23,7 @@ object PhoneNotificationObserver : NotificationObserver {
   override fun connected(context: Context) {
     val changes = object : BroadcastReceiver() {
       override fun onReceive(context: Context, intent: Intent) =
-        PhoneReporter.report(context, screenTime = intent.action == Intent.ACTION_SCREEN_OFF)
+        PhoneReporter.report(context, slow = intent.action == Intent.ACTION_SCREEN_OFF)
     }
     val filter = IntentFilter().apply {
       addAction(Intent.ACTION_BATTERY_CHANGED)
@@ -30,14 +33,20 @@ object PhoneNotificationObserver : NotificationObserver {
       addAction(Intent.ACTION_POWER_DISCONNECTED)
       addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
       addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
+      addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+      addAction(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
+      addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+      addAction(TelephonyManager.ACTION_PHONE_STATE_CHANGED)
     }
     context.registerReceiver(changes, filter, Context.RECEIVER_NOT_EXPORTED)
     receiver = changes
+    PhonePower.watch(context)
   }
 
   override fun disconnected(context: Context) {
     receiver?.let { context.unregisterReceiver(it) }
     receiver = null
+    PhonePower.unwatch(context)
   }
 
   override fun posted(context: Context, sbn: StatusBarNotification) {

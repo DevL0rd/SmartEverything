@@ -1,7 +1,7 @@
 import {
   ApiError,
   IMAGE_OPERATION_RECEIPT,
-  IMAGE_OPERATION_REQUEST,
+  IMAGE_OPERATION_REQUEST_READ,
   IMAGE_COMPLETION_INSTRUCTION,
   type ImageOperationReceipt,
   type ImageOperationRequest,
@@ -14,7 +14,7 @@ import { FILE_COLUMNS, STORED_FILE, type StoredAttachment } from './assistant-fi
 
 const ROW = z.strictObject({
   actor_key: z.string(),
-  request: SQL_JSON.pipe(IMAGE_OPERATION_REQUEST),
+  request: SQL_JSON.pipe(IMAGE_OPERATION_REQUEST_READ),
   receipt: SQL_JSON.pipe(IMAGE_OPERATION_RECEIPT),
 });
 export class ImageOperationsRepository {

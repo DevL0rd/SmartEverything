@@ -1,165 +1,112 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
-import type { AiReferenceSummary } from '@smarteverything/domain';
-import { Interactive } from '../../../components/interactive';
-import { Text } from '../../../components/text';
+import { router } from 'expo-router';
 import { Button } from '../../../components/button';
-import { Icon } from '../../../components/icon';
+import { KeyboardListbox } from '../../../components/keyboard-list';
 import { SuggestionPanel } from '../components/suggestion-panel';
+import { SuggestionGroup, SuggestionReason, SuggestionRow } from '../components/suggestion-rows';
 import { referenceIcon, referenceKey, REFERENCE_SECTIONS } from './presentation';
-import type { useReferenceSearch } from './search';
+import type { ReferenceSearch } from './search';
+
 const PAGE_EDGE = 80;
+
 export interface ReferencePanelProps {
-  readonly search: ReturnType<typeof useReferenceSearch>;
-  readonly selected: string | null;
+  readonly search: ReferenceSearch;
   readonly choose: (key: string) => void;
   readonly inline?: boolean;
 }
-export function ReferencePanel(props: ReferencePanelProps): ReactNode {
-  const scroll = useRef<ScrollView>(null);
-  const positions = useRef(new Map<string, number>());
-  useEffect(() => {
-    const visible = new Set(props.search.items.map((item) => referenceKey(item.reference)));
-    for (const key of positions.current.keys())
-      if (!visible.has(key)) positions.current.delete(key);
-    const y = props.selected === null ? undefined : positions.current.get(props.selected);
-    if (y !== undefined) scroll.current?.scrollTo({ y, animated: false });
-  }, [props.selected, props.search.items]);
+
+export function ReferencePanel({ search, choose, inline = false }: ReferencePanelProps): ReactNode {
   return (
-    <SuggestionPanel inline={props.inline === true}>
+    <SuggestionPanel inline={inline}>
       <ScrollView
-        ref={scroll}
         keyboardShouldPersistTaps="always"
         scrollEventThrottle={100}
         onScroll={(event): void => {
           const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
           if (contentOffset.y + layoutMeasurement.height >= contentSize.height - PAGE_EDGE)
-            props.search.next();
+            search.next();
         }}
       >
-        <ReferenceRows
-          {...props}
-          record={(key, y): void => {
-            positions.current.set(key, y);
-          }}
-        />
-        <ReferenceStatus search={props.search} />
-        {props.search.more && !props.search.loadingMore ? (
-          <Button label="Load more references" variant="text" onPress={props.search.next} />
+        {search.items.length === 0 ? null : (
+          <KeyboardListbox>
+            <ReferenceRows search={search} choose={choose} />
+          </KeyboardListbox>
+        )}
+        <ReferenceStatus search={search} />
+        {search.more && !search.loadingMore ? (
+          <Button label="Load more references" variant="text" onPress={search.next} />
         ) : null}
       </ScrollView>
     </SuggestionPanel>
   );
 }
+
 function ReferenceRows({
   search,
-  selected,
   choose,
-  record,
-}: ReferencePanelProps & {
-  readonly record: (key: string, y: number) => void;
-}): ReactNode {
+}: Pick<ReferencePanelProps, 'search' | 'choose'>): ReactNode {
   const sections = [
     ...new Set(search.items.map((item) => REFERENCE_SECTIONS[item.reference.kind])),
   ];
-  return sections.flatMap((section) => [
-    <Text key={section} variant="caption" tone="variant" className="px-4 pb-1 pt-2">
-      {section}
-    </Text>,
-    ...search.items
-      .filter((item) => REFERENCE_SECTIONS[item.reference.kind] === section)
-      .map((item) => (
-        <ReferenceRow
-          key={referenceKey(item.reference)}
-          item={item}
-          selected={selected}
-          choose={choose}
-          record={record}
-        />
-      )),
-  ]);
+  return sections.map((section) => (
+    <SuggestionGroup key={section} label={section}>
+      {search.items
+        .filter((item) => REFERENCE_SECTIONS[item.reference.kind] === section)
+        .map((item) => (
+          <SuggestionRow
+            key={referenceKey(item.reference)}
+            id={referenceKey(item.reference)}
+            icon={referenceIcon(item.reference)}
+            title={item.label}
+            subtitle={item.subtitle}
+            detail={item.description}
+            onChoose={choose}
+          />
+        ))}
+    </SuggestionGroup>
+  ));
 }
-function ReferenceRow({
-  item,
-  selected,
-  choose,
-  record,
-}: {
-  readonly item: AiReferenceSummary;
-  readonly selected: string | null;
-  readonly choose: (key: string) => void;
-  readonly record: (key: string, y: number) => void;
-}): ReactNode {
-  const key = referenceKey(item.reference);
-  const active = key === selected;
-  return (
-    <View
-      onLayout={(event): void => {
-        record(key, event.nativeEvent.layout.y);
-      }}
-    >
-      <Interactive
-        label={`${item.label}. ${item.subtitle}`}
-        selected={active}
-        onPress={(): void => {
-          choose(key);
-        }}
-        className={
-          active
-            ? 'min-h-touch-min flex-row items-center gap-3 bg-primary/10 px-4 py-2'
-            : 'min-h-touch-min flex-row items-center gap-3 px-4 py-2'
-        }
-      >
-        <Icon name={referenceIcon(item.reference)} />
-        <View className="min-w-0 flex-1 gap-0.5">
-          <Text variant="body-strong" numberOfLines={1}>
-            {item.label}
-          </Text>
-          <Text variant="caption" tone="variant" numberOfLines={1}>
-            {item.subtitle}
-          </Text>
-          {active && item.description !== undefined ? (
-            <Text variant="footnote" tone="variant" numberOfLines={2}>
-              {item.description}
-            </Text>
-          ) : null}
-        </View>
-      </Interactive>
-    </View>
-  );
-}
-function ReferenceStatus({
-  search,
-}: {
-  readonly search: ReturnType<typeof useReferenceSearch>;
-}): ReactNode {
+
+function ReferenceStatus({ search }: { readonly search: ReferenceSearch }): ReactNode {
   const unavailable = search.sources.filter((source) => source.state === 'unavailable');
+  const { reason } = search;
   return (
-    <View className="gap-1 px-4 py-2">
-      {search.reason === null ? null : (
-        <Text variant="footnote" tone="variant" accessibilityLiveRegion="polite">
-          {search.reason}
-        </Text>
+    <View accessibilityLiveRegion="polite">
+      {reason === null ? null : (
+        <SuggestionReason
+          icon={reason.kind === 'offline' ? 'wifiOff' : 'info'}
+          text={reason.text}
+          action={
+            reason.kind === 'unsupported'
+              ? {
+                  label: 'Choose another model',
+                  onPress: (): void => {
+                    router.setParams({ operation: 'model' });
+                  },
+                }
+              : null
+          }
+        />
       )}
       {search.pending || search.loadingMore ? (
-        <Text variant="footnote" tone="variant" accessibilityLiveRegion="polite">
-          Finding references…
-        </Text>
+        <SuggestionReason icon="loader" text="Finding references…" />
       ) : null}
-      {!search.pending && search.reason === null && search.items.length === 0 ? (
-        <Text variant="footnote" tone="variant">
-          No references match.
-        </Text>
+      {!search.pending && reason === null && search.items.length === 0 ? (
+        <SuggestionReason icon="search" text="No references match." />
       ) : null}
       {unavailable.map((source) => (
-        <Text key={source.kind} variant="caption" tone="variant">
-          {REFERENCE_SECTIONS[source.kind]} · {source.reason}
-        </Text>
+        <SuggestionReason
+          key={source.kind}
+          icon="info"
+          text={`${REFERENCE_SECTIONS[source.kind]} · ${source.reason ?? 'unavailable right now'}`}
+        />
       ))}
       {search.incomplete ? (
-        <Text variant="caption" tone="variant">
-          More results may be available. Refine the name to narrow the search.
-        </Text>
+        <SuggestionReason
+          icon="info"
+          text="More results may be available. Refine the name to narrow the search."
+        />
       ) : null}
     </View>
   );

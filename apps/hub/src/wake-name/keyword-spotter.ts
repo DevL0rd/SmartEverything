@@ -6,19 +6,37 @@ import { pieceVocabulary, wordPieces, type PieceVocabulary } from './word-pieces
 
 const SAMPLE_RATE = 16_000;
 const PCM_FULL_SCALE = 32_768;
-const TRAILING_SILENCE = new Float32Array(SAMPLE_RATE / 2);
+const STAGGER_SAMPLES = 1280;
+const STREAMS = { single: 1, staggered: 2 } as const;
 
-export const KEYWORD_TUNING = {
-  nearThreshold: 0.08,
+const KEYWORD_TUNING = {
   boost: 2,
   activePaths: 8,
 } as const;
 
-export const WAKE_SENSITIVITY_SCORES: Readonly<Record<WakeSensitivity, number>> = {
-  standard: 0.2,
-  high: 0.15,
-  highest: 0.1,
+const WAKE_SENSITIVITY_SCORES: Readonly<Record<WakeSensitivity, number>> = {
+  standard: 0.15,
+  high: 0.1,
+  highest: 0.08,
 };
+
+const NEAR_SHARE = 0.4;
+const SCORE_LADDER = [0.4, 0.3, 0.25, 0.2, 0.15, 0.12, 0.1, 0.08, 0.06, 0.04, 0.02] as const;
+const FRAME_SAMPLES = 320;
+const FRAMES_PER_YIELD = 50;
+
+export function thresholdOf(sensitivity: WakeSensitivity): number {
+  return WAKE_SENSITIVITY_SCORES[sensitivity];
+}
+
+export function nearThresholdOf(sensitivity: WakeSensitivity): number {
+  return Math.round(thresholdOf(sensitivity) * NEAR_SHARE * 1000) / 1000;
+}
+
+const breathe = (): Promise<void> =>
+  new Promise((resolve) => {
+    setImmediate(resolve);
+  });
 
 export function modelDirectory(): string {
   return fileURLToPath(new URL('wake-name-model/', import.meta.url));
@@ -26,16 +44,15 @@ export function modelDirectory(): string {
 
 export function wakePhrases(names: readonly string[]): string[] {
   const seen = new Set<string>();
-  return names
-    .map((name) => name.trim())
-    .filter((name) => {
-      const key = name.toLocaleLowerCase();
-      if (name === '' || seen.has(key)) {
-        return false;
-      }
+  const phrases: string[] = [];
+  for (const name of names.map((candidate) => candidate.trim())) {
+    const key = name.toLocaleLowerCase();
+    if (name !== '' && !seen.has(key)) {
       seen.add(key);
-      return true;
-    });
+      phrases.push(name, `hey ${name}`);
+    }
+  }
+  return phrases;
 }
 
 function keywordLines(vocabulary: PieceVocabulary, phrases: readonly string[]): string {
@@ -48,26 +65,23 @@ function keywordLines(vocabulary: PieceVocabulary, phrases: readonly string[]): 
     .join('\n');
 }
 
-class Keyset {
-  readonly sures = new Map<WakeSensitivity, Kws>();
-  users = 0;
-
-  constructor(
-    readonly keywords: string,
-    readonly near: Kws,
-  ) {}
-
-  free(): void {
-    this.sures.forEach((sure) => {
-      sure.free();
-    });
-    this.near.free();
-  }
+export interface EarKeywords {
+  readonly keywords: readonly string[];
+  readonly threshold: number;
+  readonly nearMissThreshold: number;
 }
 
-export interface SegmentResult {
-  readonly heard: string | null;
-  readonly nearMiss: string | null;
+class Keyset {
+  readonly spotters = new Map<number, Kws>();
+  users = 0;
+
+  constructor(readonly keywords: string) {}
+
+  free(): void {
+    this.spotters.forEach((kws) => {
+      kws.free();
+    });
+  }
 }
 
 export class KeywordSpotter {
@@ -79,18 +93,120 @@ export class KeywordSpotter {
     this.vocabulary = pieceVocabulary(readFileSync(`${directory}bpe.vocab`, 'utf8'));
   }
 
+  keyOf(names: readonly string[], sensitivity: WakeSensitivity): string {
+    return `${sensitivity}\n${keywordLines(this.vocabulary, wakePhrases(names))}`;
+  }
+
+  earConfig(names: readonly string[], sensitivity: WakeSensitivity): EarKeywords {
+    return {
+      keywords: keywordLines(this.vocabulary, wakePhrases(names))
+        .split('\n')
+        .filter((line) => line !== ''),
+      threshold: thresholdOf(sensitivity),
+      nearMissThreshold: nearThresholdOf(sensitivity),
+    };
+  }
+
   listen(names: readonly string[], sensitivity: WakeSensitivity): KeywordListening | null {
-    const keywords = keywordLines(this.vocabulary, wakePhrases(names));
+    return this.listenAt(names, thresholdOf(sensitivity), sensitivity, STREAMS.staggered);
+  }
+
+  near(names: readonly string[], sensitivity: WakeSensitivity): KeywordListening | null {
+    return this.listenAt(names, nearThresholdOf(sensitivity), sensitivity, STREAMS.single);
+  }
+
+  async scoreOf(names: readonly string[], pcm: Int16Array): Promise<number | null> {
+    let low = 0;
+    let high = SCORE_LADDER.length - 1;
+    let best: number | null = null;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const threshold = SCORE_LADDER[middle] ?? 0;
+      if (await this.hears(names, threshold, pcm)) {
+        best = threshold;
+        high = middle - 1;
+      } else {
+        low = middle + 1;
+      }
+    }
+    return best;
+  }
+
+  nearHears(
+    names: readonly string[],
+    sensitivity: WakeSensitivity,
+    pcm: Int16Array,
+  ): Promise<boolean> {
+    return this.hears(names, nearThresholdOf(sensitivity), pcm);
+  }
+
+  private async hears(
+    names: readonly string[],
+    threshold: number,
+    pcm: Int16Array,
+  ): Promise<boolean> {
+    const listening = this.listenAt(names, threshold, String(threshold), STREAMS.staggered);
+    if (listening === null) {
+      return false;
+    }
+    try {
+      for (let offset = 0; offset < pcm.length; offset += FRAME_SAMPLES) {
+        if (listening.hear(pcm.subarray(offset, offset + FRAME_SAMPLES)) !== null) {
+          return true;
+        }
+        if ((offset / FRAME_SAMPLES) % FRAMES_PER_YIELD === 0) {
+          await breathe();
+        }
+      }
+      return false;
+    } finally {
+      listening.free();
+    }
+  }
+
+  listenKeywords(keywords: string, threshold: number, label: string): KeywordListening | null {
+    return this.listenWith(keywords, threshold, label, STREAMS.staggered);
+  }
+
+  nearKeywords(keywords: string, threshold: number, label: string): KeywordListening | null {
+    return this.listenWith(keywords, threshold, label, STREAMS.single);
+  }
+
+  private listenAt(
+    names: readonly string[],
+    threshold: number,
+    label: string,
+    streams: number,
+  ): KeywordListening | null {
+    return this.listenWith(
+      keywordLines(this.vocabulary, wakePhrases(names)),
+      threshold,
+      label,
+      streams,
+    );
+  }
+
+  private listenWith(
+    keywords: string,
+    threshold: number,
+    label: string,
+    streams: number,
+  ): KeywordListening | null {
     if (keywords === '') {
       return null;
     }
     const keyset = this.keysetFor(keywords);
-    const sure = this.sureFor(keyset, sensitivity);
+    const kws = this.spotterFor(keyset, threshold);
     keyset.users += 1;
-    return new KeywordListening(sure, keyset.near, () => {
-      keyset.users -= 1;
-      this.sweep();
-    });
+    return new KeywordListening(
+      kws,
+      `${label}\n${keywords}`,
+      () => {
+        keyset.users -= 1;
+        this.sweep();
+      },
+      streams,
+    );
   }
 
   free(): void {
@@ -106,18 +222,18 @@ export class KeywordSpotter {
       return this.current;
     }
     this.free();
-    this.current = new Keyset(keywords, this.create(keywords, KEYWORD_TUNING.nearThreshold));
+    this.current = new Keyset(keywords);
     return this.current;
   }
 
-  private sureFor(keyset: Keyset, sensitivity: WakeSensitivity): Kws {
-    const known = keyset.sures.get(sensitivity);
+  private spotterFor(keyset: Keyset, threshold: number): Kws {
+    const known = keyset.spotters.get(threshold);
     if (known !== undefined) {
       return known;
     }
-    const sure = this.create(keyset.keywords, WAKE_SENSITIVITY_SCORES[sensitivity]);
-    keyset.sures.set(sensitivity, sure);
-    return sure;
+    const kws = this.create(keyset.keywords, threshold);
+    keyset.spotters.set(threshold, kws);
+    return kws;
   }
 
   private sweep(): void {
@@ -152,69 +268,57 @@ export class KeywordSpotter {
   }
 }
 
-class SpottingStream {
-  private readonly stream: KeywordStream;
-  private found: string | null = null;
-
-  constructor(private readonly kws: Kws) {
-    this.stream = kws.createStream();
-  }
-
-  feed(samples: Float32Array): string | null {
-    this.stream.acceptWaveform(SAMPLE_RATE, samples);
-    while (this.kws.isReady(this.stream)) {
-      this.kws.decode(this.stream);
-      const { keyword } = KEYWORD_RESULT.parse(this.kws.getResult(this.stream));
-      if (keyword !== '') {
-        this.kws.reset(this.stream);
-        this.found ??= keyword.replace(/_/g, ' ');
-        return this.found;
-      }
-    }
-    return null;
-  }
-
-  finish(): string | null {
-    this.feed(TRAILING_SILENCE);
-    this.stream.inputFinished();
-    this.feed(new Float32Array(0));
-    this.stream.free();
-    return this.found;
-  }
-}
-
 export class KeywordListening {
-  private readonly sure: SpottingStream;
-  private readonly near: SpottingStream;
-  private reported = false;
+  private readonly streams: readonly KeywordStream[];
+  private lagging = STAGGER_SAMPLES;
+  private freed = false;
 
   constructor(
-    sure: Kws,
-    near: Kws,
+    private readonly kws: Kws,
+    readonly key: string,
     private readonly done: () => void,
+    streams: number = STREAMS.staggered,
   ) {
-    this.sure = new SpottingStream(sure);
-    this.near = new SpottingStream(near);
+    this.streams = Array.from({ length: streams }, () => kws.createStream());
   }
 
   hear(pcm: Int16Array): string | null {
     const samples = Float32Array.from(pcm, (sample) => sample / PCM_FULL_SCALE);
-    this.near.feed(samples);
-    return this.report(this.sure.feed(samples));
-  }
-
-  finish(): SegmentResult {
-    const nearMiss = this.near.finish();
-    const heard = this.report(this.sure.finish());
-    this.done();
-    return { heard, nearMiss: this.reported ? null : nearMiss };
-  }
-
-  private report(heard: string | null): string | null {
-    if (heard === null || this.reported) {
+    const skipped = Math.min(this.lagging, samples.length);
+    this.lagging -= skipped;
+    const [early, late] = this.streams;
+    early?.acceptWaveform(SAMPLE_RATE, samples);
+    late?.acceptWaveform(SAMPLE_RATE, samples.subarray(skipped));
+    const heard = this.streams.map((stream) => this.decode(stream)).find((one) => one !== null);
+    if (heard === undefined) {
       return null;
     }
-    this.reported = true;
+    this.streams.forEach((stream) => {
+      this.kws.reset(stream);
+    });
+    return heard;
+  }
+
+  free(): void {
+    if (!this.freed) {
+      this.freed = true;
+      this.streams.forEach((stream) => {
+        stream.free();
+      });
+      this.done();
+    }
+  }
+
+  private decode(stream: KeywordStream): string | null {
+    let heard: string | null = null;
+    while (this.kws.isReady(stream)) {
+      this.kws.decode(stream);
+      const { keyword } = KEYWORD_RESULT.parse(this.kws.getResult(stream));
+      if (keyword !== '') {
+        this.kws.reset(stream);
+        heard ??= keyword.replace(/_/g, ' ');
+      }
+    }
     return heard;
   }
 }

@@ -1,3 +1,7 @@
+import { z } from 'zod';
+import { CAPTION_SPEAKERS } from './assistant-voice';
+import { CALL_PHASE } from './voice-overlay';
+
 export const ECHO_MODES = ['headphones', 'normal', 'strong', 'no_interrupt'] as const;
 
 export type EchoMode = (typeof ECHO_MODES)[number];
@@ -13,6 +17,14 @@ export const PAUSE_CHOICES_MS = [200, 320, 640, 1000, 2500] as const;
 export type PauseChoiceMs = (typeof PAUSE_CHOICES_MS)[number];
 
 export const DEFAULT_PAUSE_MS: PauseChoiceMs = 200;
+
+export const PAUSE_MS = z.union([
+  z.literal(PAUSE_CHOICES_MS[0]),
+  z.literal(PAUSE_CHOICES_MS[1]),
+  z.literal(PAUSE_CHOICES_MS[2]),
+  z.literal(PAUSE_CHOICES_MS[3]),
+  z.literal(PAUSE_CHOICES_MS[4]),
+]);
 
 export interface VoiceDetectionPreset {
   readonly positiveSpeechThreshold: number;
@@ -46,9 +58,9 @@ export const SPEECH_DETECTION: SpeechDetection = speechDetectionOf(
   DEFAULT_PAUSE_MS,
 );
 
-export const BARGE_IN = { probability: 0.8, sustainMs: 256, echoTailMs: 300 } as const;
+export const BARGE_IN = { probability: 0.8, sustainMs: 192, echoTailMs: 300 } as const;
 
-export const BARGE_IN_LEVEL = { echoCancelled: 0.04, raw: 0.125 } as const;
+export const BARGE_IN_LEVEL = { echoCancelled: 0.03, raw: 0.125 } as const;
 
 export interface EchoPolicy {
   readonly echoTailMs: number;
@@ -111,8 +123,7 @@ export interface HeardFrame {
 
 export class TalkGate {
   private opened = false;
-  private confirmed = false;
-  private overEcho = false;
+  private confirmed: { readonly overEcho: boolean } | null = null;
   private bargeMs = 0;
   private audibleAt = Number.NEGATIVE_INFINITY;
   private lastAt = 0;
@@ -145,14 +156,12 @@ export class TalkGate {
   }
 
   speechConfirmed(): void {
-    this.confirmed = true;
-    this.overEcho = !this.quiet();
+    this.confirmed = { overEcho: !this.quiet() };
     this.consider();
   }
 
   speechEnded(): void {
-    this.confirmed = false;
-    this.overEcho = false;
+    this.confirmed = null;
     this.bargeMs = 0;
     if (this.opened) {
       this.opened = false;
@@ -161,10 +170,10 @@ export class TalkGate {
   }
 
   private consider(): void {
-    if (this.opened || !this.confirmed) {
+    if (this.opened || this.confirmed === null) {
       return;
     }
-    const clear = !this.overEcho && this.quiet();
+    const clear = !this.confirmed.overEcho && this.quiet();
     if (clear || (this.policy.interruptible && this.bargeMs >= this.policy.sustainMs)) {
       this.opened = true;
       this.events.open();
@@ -195,6 +204,10 @@ export class Preroll<T> {
     }
   }
 
+  peek(): T[] {
+    return this.items.map((entry) => entry.item);
+  }
+
   take(): T[] {
     const taken = this.items.map((entry) => entry.item);
     this.items = [];
@@ -212,4 +225,57 @@ export function levelOf(samples: Int16Array | Float32Array, fullScale: number): 
     sum += (sample / fullScale) ** 2;
   }
   return Math.sqrt(sum / samples.length);
+}
+
+export const VOICE_ACTIVITY_DEVICE_KINDS = ['computer', 'phone'] as const;
+
+export const VOICE_ACTIVITY_NOTICE = z.strictObject({
+  type: z.literal('voice_activity'),
+  device: z.strictObject({ kind: z.enum(VOICE_ACTIVITY_DEVICE_KINDS), id: z.string().min(1) }),
+  call_id: z.string().min(1),
+  phase: CALL_PHASE,
+  muted: z.boolean(),
+  superseded_by: z.string().min(1).nullable(),
+  at: z.number(),
+});
+export type VoiceActivityNotice = z.infer<typeof VOICE_ACTIVITY_NOTICE>;
+
+export const VOICE_CALLS_NOTICE = z.strictObject({
+  type: z.literal('voice_calls'),
+  calls: z.array(VOICE_ACTIVITY_NOTICE),
+});
+export type VoiceCallsNotice = z.infer<typeof VOICE_CALLS_NOTICE>;
+
+export const VOICE_LEVEL_MAX = 255;
+const LEVEL_BYTE = z.number().int().min(0).max(VOICE_LEVEL_MAX);
+
+export const VOICE_LEVELS_NOTICE = z.strictObject({
+  type: z.literal('voice_levels'),
+  call_id: z.string().min(1),
+  in: LEVEL_BYTE,
+  out: LEVEL_BYTE,
+});
+export type VoiceLevelsNotice = z.infer<typeof VOICE_LEVELS_NOTICE>;
+
+export const VOICE_CAPTION_NOTICE = z.strictObject({
+  type: z.literal('voice_caption'),
+  call_id: z.string().min(1),
+  who: z.enum(CAPTION_SPEAKERS),
+  text: z.string(),
+});
+export type VoiceCaptionNotice = z.infer<typeof VOICE_CAPTION_NOTICE>;
+
+export const VOICE_LEVELS_WATCH = z.strictObject({
+  type: z.literal('voice_levels_watch'),
+  call_id: z.string().min(1).nullable(),
+});
+export type VoiceLevelsWatch = z.infer<typeof VOICE_LEVELS_WATCH>;
+
+export function voiceLevelByte(level: number): number {
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(level) ? level : 0));
+  return Math.round(clamped * VOICE_LEVEL_MAX);
+}
+
+export function voiceLevelOf(byte: number): number {
+  return Math.min(1, Math.max(0, byte / VOICE_LEVEL_MAX));
 }

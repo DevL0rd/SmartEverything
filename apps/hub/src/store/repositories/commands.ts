@@ -1,5 +1,5 @@
 import { HarnessEffectsRepository } from './harness-effects';
-import { currentExecutionAuthorities } from '../../assistant/execution-authority';
+import { currentExecutionAuthority } from '../../assistant/turn-authority';
 import {
   COMMAND_ROW,
   type CommandRow,
@@ -9,8 +9,8 @@ import {
 } from '@smarteverything/domain';
 import type { CommandOutcome } from '../../database/port';
 import { storedRow } from '../codec';
-import { found, type StoreContext } from '../context';
-import { jsonText } from '../sql';
+import { found, moment, type StoreContext } from '../context';
+import { inList, jsonText } from '../sql';
 
 const STORED_COMMAND = storedRow(COMMAND_ROW, { json: ['value', 'result'] });
 
@@ -49,6 +49,34 @@ export class CommandsRepository {
       STORED_COMMAND,
       `select ${COLUMNS} from commands order by created_at desc, rowid desc limit $limit`,
       { limit },
+    );
+  }
+
+  ofDevice(
+    deviceId: string,
+    window: {
+      readonly from?: string | undefined;
+      readonly to?: string | undefined;
+      readonly capabilities?: readonly string[] | undefined;
+      readonly limit?: number | undefined;
+    },
+  ): CommandRow[] {
+    const named = inList('capability', 'capabilities', window.capabilities ?? []);
+    return this.context.sql.all(
+      STORED_COMMAND,
+      `select ${COLUMNS} from commands
+       where device_id = $deviceId and ($from is null or created_at >= $from)
+         and ($to is null or created_at < $to)
+         and ($filtered = 0 or ${named.text})
+       order by created_at desc, rowid desc limit $limit`,
+      {
+        ...named.parameters,
+        deviceId,
+        from: window.from === undefined ? null : moment(window.from),
+        to: window.to === undefined ? null : moment(window.to),
+        filtered: window.capabilities === undefined ? 0 : 1,
+        limit: window.limit ?? -1,
+      },
     );
   }
 
@@ -131,7 +159,7 @@ export class CommandsRepository {
         expiresAt: new Date(Date.parse(now) + COMMAND_LIFETIME_MS).toISOString(),
       },
     );
-    new HarnessEffectsRepository(this.context).keep('command', id, currentExecutionAuthorities());
+    new HarnessEffectsRepository(this.context).keep('command', id, currentExecutionAuthority());
     const row = this.byId(id);
     this.context.changed('commands', 'INSERT', row, null);
     return row;

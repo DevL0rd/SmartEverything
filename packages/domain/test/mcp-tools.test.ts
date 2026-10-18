@@ -6,6 +6,18 @@ import { MCP_PART_TEXTS, MCP_PATHS, MCP_SCOPE } from '../src/mcp-tools';
 
 const PART_ACCESS = new Map(MCP_PART_TEXTS.map((text) => [text.name, text.access]));
 
+const READING_POSTS: ReadonlySet<string> = new Set([
+  'search_chat_references',
+  'read_project_files',
+  'read_embedded_browser',
+  'read_preview_logs',
+  'search_preview_logs',
+  'capture_preview_viewport',
+  'resolve_image_input',
+  'wait_for_images',
+  'read_files',
+]);
+
 describe('the published MCP tool catalogue', () => {
   const names = MCP_TOOLS.map((tool) => tool.name);
 
@@ -19,17 +31,21 @@ describe('the published MCP tool catalogue', () => {
     }
   });
 
-  it('uses every part, so no tool is left unreachable', () => {
+  it('uses every core part, so only operations without a tool of their own are left to call_operation', () => {
     const used = new Set([...MCP_ROUTES.values()].flatMap(partsOf));
-    expect(MCP_PART_NAMES.filter((part) => !used.has(part))).toEqual([]);
+    const operationParts = new Set<string>(MCP_OPERATION_TOOLS.map(([name]) => name));
+    expect(MCP_PART_NAMES.filter((part) => !used.has(part) && !operationParts.has(part))).toEqual(
+      [],
+    );
   });
 
-  it('marks a tool as a read exactly when every one of its parts reads', () => {
+  it('marks a tool as a read exactly when every one of its parts reads, except reads that post their query', () => {
     for (const tool of MCP_TOOLS) {
       const route = MCP_ROUTES.get(tool.name);
       const parts = route === undefined ? [] : partsOf(route);
       if (parts.length > 0) {
-        const reads = parts.every((part) => PART_ACCESS.get(part) === 'read');
+        const reads =
+          READING_POSTS.has(tool.name) || parts.every((part) => PART_ACCESS.get(part) === 'read');
         expect(tool.access, tool.name).toBe(reads ? 'read' : 'control');
       }
     }

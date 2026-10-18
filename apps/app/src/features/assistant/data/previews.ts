@@ -3,10 +3,10 @@ import { ownGatewayLease, closeGatewayLease, previewOwnerConnection } from './pr
 import { Logger } from '@smarteverything/logging';
 import {
   htmlPreviewBridge,
-  nativeChatPageAvailable,
+  nativeHtmlPreviewAvailable,
   projectHtmlTarget,
 } from '../../../platform/browser-html-projection';
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   AI_PREVIEW_ENDPOINTS as E,
   type AiPreviewPublication,
@@ -20,24 +20,17 @@ import {
   BrowserPolicyError,
 } from '@smarteverything/domain';
 import { api, useConnection } from '../../../api/transport';
-import {
-  useServerAiPreviews,
-  serverSupportsPreviewLifetime,
-} from '../../../api/connection/server-capabilities';
 import { PREVIEW_KEY } from '../../../queries/preview-notices';
 import { useActiveProfile } from '../../../store/people';
 const log = new Logger('app.html-preview');
 export function usePreviews(
   chatId: string,
-): ReturnType<typeof useQuery<Awaited<ReturnType<typeof read>>>> {
+): ReturnType<typeof useScreenQuery<Awaited<ReturnType<typeof read>>>> {
   const connection = useConnection();
   const profile = useActiveProfile();
-  const supported = useServerAiPreviews(
-    connection.status === 'paired' ? connection.connection.url : null,
-  );
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...PREVIEW_KEY, profile?.id ?? 'none', chatId],
-    enabled: supported && profile !== null,
+    enabled: connection.status === 'paired' && profile !== null,
     queryFn: () => read(chatId),
   });
 }
@@ -62,7 +55,7 @@ export async function openChatPage(
   const native = htmlPreviewBridge();
   const id = `${publication.id}:page:${publication.profile_id}:${Crypto.randomUUID()}`;
   if (native !== null) {
-    if (!nativeChatPageAvailable())
+    if (!nativeHtmlPreviewAvailable())
       throw new BrowserPolicyError('Update the app and server to open saved chat pages.');
     const entry = publication.project_source?.entry;
     const page = NATIVE_PAGE_DESCRIPTOR.parse({
@@ -115,9 +108,6 @@ export async function releasePreviewLease(
   }
 }
 
-function previewLifetime(presenter = true): { readonly lifetime?: 'persistent' } {
-  const connection = previewOwnerConnection();
-  return presenter && serverSupportsPreviewLifetime(connection.url)
-    ? { lifetime: 'persistent' }
-    : {};
+function previewLifetime(): { readonly lifetime: 'persistent' } {
+  return { lifetime: 'persistent' };
 }

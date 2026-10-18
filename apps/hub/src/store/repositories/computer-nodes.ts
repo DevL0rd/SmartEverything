@@ -10,7 +10,7 @@ import type { StoreContext } from '../context';
 const PAIRING = z.strictObject({ hub_url: z.string(), expires_at: z.string() });
 const STORED = COMPUTER_NODE_ROW.extend({
   token_hash: z.string().min(1),
-  mcp_token_hash: z.string().nullable(),
+  window_client_id: z.string().nullable(),
 });
 
 export class ComputerNodesRepository {
@@ -62,15 +62,22 @@ export class ComputerNodesRepository {
     });
   }
 
-  bind(deviceId: string, machineId: string, tokenHash: string, hubUrl: string): void {
-    this.clearRuntimeGrants(deviceId);
+  bind(binding: {
+    readonly deviceId: string;
+    readonly machineId: string;
+    readonly tokenHash: string;
+    readonly hubUrl: string;
+    readonly windowClientId: string;
+  }): void {
+    this.clearRuntimeGrants(binding.deviceId);
     this.context.sql.run(
       'bind computer service identity',
-      `insert into computer_nodes(device_id, machine_id, token_hash, hub_url, paired_at, revoked_at)
-       values($deviceId, $machineId, $tokenHash, $hubUrl, $now, null)
+      `insert into computer_nodes(device_id, machine_id, token_hash, hub_url, paired_at, revoked_at, window_client_id)
+       values($deviceId, $machineId, $tokenHash, $hubUrl, $now, null, $windowClientId)
        on conflict(device_id) do update set machine_id = excluded.machine_id, token_hash = excluded.token_hash,
-       hub_url = excluded.hub_url, paired_at = excluded.paired_at, revoked_at = null, mcp_token_hash = null`,
-      { deviceId, machineId, tokenHash, hubUrl, now: this.context.now() },
+       hub_url = excluded.hub_url, paired_at = excluded.paired_at, revoked_at = null,
+       window_client_id = excluded.window_client_id`,
+      { ...binding, now: this.context.now() },
     );
   }
 
@@ -100,25 +107,52 @@ export class ComputerNodesRepository {
           'insert into computer_runtime_grants(device_id,runtime,token_hash) select device_id,$runtime,$tokenHash from computer_nodes where device_id=$deviceId and revoked_at is null',
           { deviceId, runtime, tokenHash },
         );
-      if (runtime === 'claude')
-        this.context.sql.run(
-          'preserve legacy MCP grant identity',
-          'update computer_nodes set mcp_token_hash=$tokenHash where device_id=$deviceId and revoked_at is null',
-          { deviceId, tokenHash },
-        );
     });
   }
   setMcpToken(deviceId: string, tokenHash: string | null): void {
     this.setRuntimeMcpToken(deviceId, 'claude', tokenHash);
   }
 
-  revoke(deviceId: string): void {
-    this.clearRuntimeGrants(deviceId);
-    this.context.sql.run(
-      'revoke computer service identity',
-      'update computer_nodes set revoked_at = $now, mcp_token_hash = null where device_id = $deviceId',
-      { deviceId, now: this.context.now() },
+  roomOfWindow(clientId: string): string | null {
+    return (
+      this.context.sql.get(
+        z.strictObject({ name: z.string() }),
+        `select r.name from computer_nodes n
+         join devices d on d.id = n.device_id
+         join rooms r on r.id = d.room_id
+         where n.window_client_id = $clientId and n.revoked_at is null`,
+        { clientId },
+      )?.name ?? null
     );
+  }
+
+  personOf(deviceId: string): string | null {
+    return (
+      this.context.sql.get(
+        z.strictObject({ profile_id: z.string().nullable() }),
+        `select c.profile_id from computer_nodes n join clients c on c.id = n.window_client_id
+         where n.device_id = $deviceId and n.revoked_at is null`,
+        { deviceId },
+      )?.profile_id ?? null
+    );
+  }
+
+  revoke(deviceId: string): string | null {
+    return this.context.write(() => {
+      const windowClientId =
+        this.context.sql.get(
+          z.strictObject({ window_client_id: z.string().nullable() }),
+          'select window_client_id from computer_nodes where device_id = $deviceId',
+          { deviceId },
+        )?.window_client_id ?? null;
+      this.clearRuntimeGrants(deviceId);
+      this.context.sql.run(
+        'revoke computer service identity',
+        'update computer_nodes set revoked_at = $now, window_client_id = null where device_id = $deviceId',
+        { deviceId, now: this.context.now() },
+      );
+      return windowClientId;
+    });
   }
   private clearRuntimeGrants(deviceId: string): void {
     this.context.sql.run(

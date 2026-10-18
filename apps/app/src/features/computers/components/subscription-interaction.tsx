@@ -1,3 +1,4 @@
+import { Logger, background } from '@smarteverything/logging';
 import { useState, type ReactNode } from 'react';
 import { Linking, View } from 'react-native';
 import type { AiSubscriptionInteraction } from '@smarteverything/domain';
@@ -5,6 +6,8 @@ import { Button } from '../../../components/button';
 import { DecisionOptions } from '../../../components/decision-options';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
+
+const log = new Logger('app.computers');
 function SignInWebsite({
   url,
   pending,
@@ -26,7 +29,10 @@ function SignInWebsite({
         size="lg"
         disabled={pending}
         onPress={() => {
-          void Linking.openURL(url).catch(() => {
+          void Linking.openURL(url).catch((error: unknown) => {
+            log.warn('subscription.sign_in_open_failed', {
+              error: error instanceof Error ? error.name : typeof error,
+            });
             setFailed(true);
           });
         }}
@@ -59,7 +65,7 @@ export function SubscriptionInteraction({
     if (frozen) return;
     const submitted = value;
     setValue('');
-    void answer(submitted);
+    background(answer(submitted), 'subscription_interaction.answer_failed');
   };
   return (
     <View className="gap-3">

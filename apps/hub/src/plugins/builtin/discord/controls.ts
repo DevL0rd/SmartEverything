@@ -12,6 +12,7 @@ import type { DiscordServices } from './services';
 import { ASK_COMMANDS } from './operations/guilds';
 import type { VoiceService } from './voice/service';
 import type { Typing } from './typing';
+import { messageOf } from '@smarteverything/logging';
 
 const DENIED = 'You are not approved to use this bot here.';
 const CONTROL_DENIED =
@@ -140,7 +141,7 @@ export class Controls {
       .catch((error: unknown): CommandReply => ({
         title: 'Could not do that',
         tone: 'warn',
-        lines: [error instanceof Error ? error.message : 'Something went wrong'],
+        lines: [messageOf(error)],
       }));
     await interactions.editOriginal(live, { embeds: [replyEmbed(reply)] });
   }

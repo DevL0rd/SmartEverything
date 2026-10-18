@@ -1,10 +1,8 @@
 import { z } from 'zod';
-import { JSON_VALUE } from './values';
 import { AI_HTML_PREVIEW_PUBLICATION } from './ai-preview-documents';
 import { AI_FILE_PREVIEW_NATIVE_REQUEST } from './ai-preview-files';
 import { DSH_WRITER_CLAIM_WRITE } from './dsh-sessions';
 export const AI_PREVIEW_CAPABILITY = 'preview-v1';
-export const AI_PREVIEW_LIFETIME_CAPABILITY = 'preview-lifetime-v1';
 export const AI_PREVIEW_LIFETIME = z.literal('persistent').optional();
 export const NODE_PREVIEW_PATH = '/api/node/preview';
 export const NODE_PREVIEW_PROTOCOL = 'smarteverything-node-preview.v1';
@@ -69,9 +67,6 @@ export const AI_PREVIEW_NATIVE_REQUEST = z.discriminatedUnion('operation', [
   ...AI_FILE_PREVIEW_NATIVE_REQUEST.options,
   z.strictObject({
     operation: z.literal('preview_publish'),
-    call_id: z.string().min(1).max(200),
-    call_seq: z.int().nonnegative(),
-    arguments: z.record(z.string(), JSON_VALUE),
     claim: DSH_WRITER_CLAIM_WRITE,
     service: AI_PREVIEW_SERVICE_WRITE,
     workspace: z.string().min(1).max(4096),
@@ -79,9 +74,6 @@ export const AI_PREVIEW_NATIVE_REQUEST = z.discriminatedUnion('operation', [
   }),
   z.strictObject({
     operation: z.literal('preview_revoke'),
-    call_id: z.string().min(1).max(200),
-    call_seq: z.int().nonnegative(),
-    arguments: z.record(z.string(), JSON_VALUE),
     claim: DSH_WRITER_CLAIM_WRITE,
     publication_id: z.uuid(),
   }),

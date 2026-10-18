@@ -22,7 +22,7 @@ const ACTIONS = [
   { value: 'fork', label: 'Fork session' },
   { value: 'archive', label: 'Archive session' },
   { value: 'unarchive', label: 'Unarchive session' },
-  { value: 'delete', label: 'Delete native session' },
+  { value: 'delete', label: 'Delete session' },
 ] as const;
 type Action = (typeof ACTIONS)[number]['value'];
 function request(action: Action, sessionId: string, text: string, turn: string): CodexAiExecute {
@@ -122,7 +122,7 @@ function ActionInputs({
           label="Exact active turn ID"
           value={turn}
           onChange={setTurn}
-          helper="Use the turn ID shown in native published activity. A changed turn is rejected."
+          helper="Use the turn ID shown in the session activity."
         />
       ) : null}
       {action === 'delete' ? (
@@ -130,7 +130,7 @@ function ActionInputs({
           label="Type DELETE to confirm"
           value={confirm}
           onChange={setConfirm}
-          helper="Deletes this exact native session permanently."
+          helper="Deletes this session on this computer. This can’t be undone."
         />
       ) : null}
     </>
@@ -146,7 +146,7 @@ function ActionSelect({
 }): ReactNode {
   return (
     <SelectRow
-      title="Native action"
+      title="Action"
       value={action}
       options={ACTIONS}
       onChange={(value) => {

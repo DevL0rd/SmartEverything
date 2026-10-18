@@ -33,7 +33,7 @@ function byPriority(rank: (channelId: string) => number) {
     left.startedAt.getTime() - right.startedAt.getTime();
 }
 
-export type LiveRefusal = 'channel_missing' | 'channel_busy';
+type LiveRefusal = 'channel_missing' | 'channel_busy';
 
 export type LiveOpening =
   | { readonly ok: true; readonly live: LiveChannel }
@@ -44,6 +44,7 @@ export class TalkRelay {
   private readonly floors = new Map<string, Transmission>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly sizes = new Map<string, number>();
+  private readonly starts = new Map<string, number>();
   private readonly live: LiveSessions;
 
   constructor(private readonly options: RelayOptions) {
@@ -80,6 +81,12 @@ export class TalkRelay {
   connect(endpoint: TalkEndpoint): void {
     const channels = this.options.membership.channelsOf(endpoint.clientId);
     this.listeners.set(endpoint.id, { endpoint, hearing: null, channels: channels.join() });
+    this.options.log.info('talk.endpoint_connected', {
+      endpointId: endpoint.id,
+      clientId: endpoint.clientId,
+      channels: channels.length,
+      endpoints: this.listeners.size,
+    });
     endpoint.send({ type: 'ready', clientId: endpoint.clientId, channels });
     this.live.greet(endpoint);
     this.route();
@@ -87,6 +94,11 @@ export class TalkRelay {
   }
 
   disconnect(endpointId: string): void {
+    this.options.log.info('talk.endpoint_disconnected', {
+      endpointId,
+      known: this.listeners.has(endpointId),
+      endpoints: this.listeners.size,
+    });
     this.endOwnedBy(endpointId, 'disconnected');
     this.listeners.delete(endpointId);
     this.live.forget(endpointId);
@@ -96,6 +108,12 @@ export class TalkRelay {
   press(endpoint: TalkEndpoint, channelId: string): void {
     const denial = this.denialFor(endpoint, channelId);
     if (denial !== null) {
+      this.options.log.info('talk.press_denied', {
+        endpointId: endpoint.id,
+        clientId: endpoint.clientId,
+        channelId,
+        reason: denial,
+      });
       endpoint.send({ type: 'denied', channelId, reason: denial });
       return;
     }
@@ -109,6 +127,13 @@ export class TalkRelay {
         ? null
         : 'camera_unavailable');
     if (denial !== null) {
+      this.options.log.info('talk.listen_denied', {
+        endpointId: endpoint.id,
+        clientId: endpoint.clientId,
+        channelId,
+        cameraId,
+        reason: denial,
+      });
       endpoint.send({ type: 'denied', channelId, reason: denial });
       return;
     }
@@ -200,6 +225,7 @@ export class TalkRelay {
     this.floors.set(transmission.channelId, transmission);
     const limitSeconds = this.options.transmissions.limitOf(transmission.kind);
     this.sizes.set(transmission.messageId, 0);
+    this.starts.set(transmission.messageId, performance.now());
     this.timers.set(
       transmission.messageId,
       setTimeout(() => {
@@ -258,8 +284,18 @@ export class TalkRelay {
     this.timers.delete(transmission.messageId);
     const bytes = this.sizes.get(transmission.messageId) ?? 0;
     this.sizes.delete(transmission.messageId);
+    const startedAt = this.starts.get(transmission.messageId);
+    this.starts.delete(transmission.messageId);
     transmission.owner.send({ type: 'ended', messageId: transmission.messageId, reason, detail });
-    this.options.log.info('talk.ended', { messageId: transmission.messageId, reason });
+    this.options.log.info('talk.ended', {
+      messageId: transmission.messageId,
+      channelId: transmission.channelId,
+      kind: transmission.kind,
+      reason,
+      detail: detail === null ? undefined : detail.slice(0, 200),
+      bytes,
+      durationMs: startedAt === undefined ? undefined : Math.round(performance.now() - startedAt),
+    });
     this.options.transmissions.finish(transmission, bytes).catch((cause: unknown) => {
       this.options.log.error('talk.finish_failed', cause, { messageId: transmission.messageId });
     });
@@ -300,6 +336,13 @@ export class TalkRelay {
       if (listener.hearing !== null) {
         listener.endpoint.send({ type: 'rx_end', messageId: listener.hearing });
       }
+      this.options.log.debug('talk.route_changed', {
+        endpointId: listener.endpoint.id,
+        clientId: listener.endpoint.clientId,
+        from: listener.hearing,
+        to: next,
+        channelId: wanted?.channelId,
+      });
       listener.hearing = next;
       if (wanted !== null) {
         listener.endpoint.send({

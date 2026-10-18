@@ -3,7 +3,7 @@ import { limitsOf } from '../ai-tools/plugin-turn';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { ActionOrigin } from './actions';
 
-export class ToolActionError extends Error {
+class ToolActionError extends Error {
   override readonly name = 'ToolActionError';
 }
 

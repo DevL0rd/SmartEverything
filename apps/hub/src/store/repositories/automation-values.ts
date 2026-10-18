@@ -1,7 +1,6 @@
-import { AutomationSequencesRepository } from './automation-sequences';
 import {
   AUTOMATION_VALUE_ROW,
-  JSON_VALUE,
+  AUTOMATION_V2,
   ApiError,
   applyAutomationValueOperation,
   validateAutomationValue,
@@ -54,11 +53,11 @@ export class AutomationValuesRepository {
   update(
     id: string,
     content: AutomationValueContent,
-    expectedRevision: number,
+    expectedRevision?: number,
   ): AutomationValueRow {
     return this.context.write(() => {
       const before = this.byId(id);
-      if (before.revision !== expectedRevision)
+      if (expectedRevision !== undefined && before.revision !== expectedRevision)
         throw new ApiError(
           'conflict',
           'The Value changed; reload its current revision before editing.',
@@ -95,10 +94,10 @@ export class AutomationValuesRepository {
   }
 
   private requireUnreferenced(id: string): void {
-    const automation = [
-      ...new AutomationsRepository(this.context).list(),
-      ...new AutomationSequencesRepository(this.context).list(),
-    ].find((row) => automationReferences(JSON_VALUE.parse(row.definition), id));
+    const automation = new AutomationsRepository(this.context).list().find((row) => {
+      const parsed = AUTOMATION_V2.safeParse(row.definition);
+      return parsed.success && automationReferences(parsed.data, id);
+    });
     if (automation !== undefined)
       throw new ApiError(
         'conflict',

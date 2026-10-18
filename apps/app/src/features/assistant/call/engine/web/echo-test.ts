@@ -31,11 +31,11 @@ export interface EchoPorts {
   readonly probe: (samples: Float32Array<ArrayBuffer>, sampleRate: number) => Promise<void>;
 }
 
-export class EchoTestUnavailableError extends Error {
+class EchoTestUnavailableError extends Error {
   override readonly name = 'EchoTestUnavailableError';
 }
 
-export function probeSignal(sampleRate: number): Float32Array<ArrayBuffer> {
+function probeSignal(sampleRate: number): Float32Array<ArrayBuffer> {
   const samples = new Float32Array(Math.round(PROBE_SECONDS * sampleRate));
   let phase = 0;
   for (let index = 0; index < samples.length; index += 1) {

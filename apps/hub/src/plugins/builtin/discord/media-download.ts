@@ -1,153 +1,68 @@
-import { lookup } from 'node:dns/promises';
-import type { IncomingMessage } from 'node:http';
-import { request, type RequestOptions } from 'node:https';
-import { BlockList, isIP } from 'node:net';
+import { fileTypeFromBuffer } from 'file-type';
+import { z } from 'zod';
 import { DiscordInputError } from './errors';
 
-export type Downloader = (url: URL, expected: number) => Promise<Buffer>;
+const TIMEOUT_MS = 30_000;
 
-interface Address {
-  readonly address: string;
-  readonly family: number;
+interface Download {
+  readonly data: Buffer;
+  readonly type: string | null;
 }
 
-export type Resolver = (host: string) => Promise<readonly Address[]>;
+export type Downloader = (url: string, maxBytes: number) => Promise<Download>;
 
-const CDN_HOST = 'cdn.discordapp.com';
-const TIMEOUT_MS = 10_000;
-const MAX_ADDRESSES = 16;
-
-const NOT_PUBLIC = new BlockList();
-for (const [network, prefix] of [
-  ['0.0.0.0', 8],
-  ['10.0.0.0', 8],
-  ['100.64.0.0', 10],
-  ['127.0.0.0', 8],
-  ['169.254.0.0', 16],
-  ['172.16.0.0', 12],
-  ['192.0.0.0', 24],
-  ['192.0.2.0', 24],
-  ['192.168.0.0', 16],
-  ['198.18.0.0', 15],
-  ['198.51.100.0', 24],
-  ['203.0.113.0', 24],
-  ['224.0.0.0', 3],
-] as const) {
-  NOT_PUBLIC.addSubnet(network, prefix, 'ipv4');
+function tooLarge(maxBytes: number): DiscordInputError {
+  return new DiscordInputError(
+    `the file is larger than the ${String(Math.round(maxBytes / 1024))} KiB limit in the plugin settings`,
+  );
 }
-const GLOBAL_V6 = new BlockList();
-GLOBAL_V6.addSubnet('2000::', 3, 'ipv6');
 
-function publicAddress(address: string): boolean {
-  const family = isIP(address);
-  if (family === 4) {
-    return !NOT_PUBLIC.check(address, 'ipv4');
+async function bounded(response: Response, maxBytes: number): Promise<Buffer> {
+  if (Number(response.headers.get('content-length') ?? 0) > maxBytes) {
+    throw tooLarge(maxBytes);
   }
-  return family === 6 && GLOBAL_V6.check(address, 'ipv6');
-}
-
-function assertCdn(url: URL): void {
-  const plain = url.port === '' && url.username === '' && url.password === '' && url.hash === '';
-  if (url.protocol !== 'https:' || url.hostname !== CDN_HOST || !plain) {
-    throw new DiscordInputError('Attachment CDN is not approved');
-  }
-}
-
-export function attachmentUrl(value: string, channelId: string, attachmentId: string): URL {
-  const url = new URL(value);
-  assertCdn(url);
-  const prefix = `/attachments/${channelId}/${attachmentId}/`;
-  if (!url.pathname.startsWith(prefix) || url.pathname.slice(prefix.length).includes('/')) {
-    throw new DiscordInputError('Attachment path does not match its source');
-  }
-  const filename = decodeURIComponent(url.pathname.slice(prefix.length));
-  if (filename === '' || /[/\\]/.test(filename) || filename === '..') {
-    throw new DiscordInputError('Invalid CDN filename');
-  }
-  return url;
-}
-
-function pinned(url: URL, address: Address, signal: AbortSignal): RequestOptions {
-  const host = url.hostname.replace(/^\[|\]$/g, '');
-  return {
-    method: 'GET',
-    agent: false,
-    signal,
-    headers: { 'Accept-Encoding': 'identity' },
-    servername: isIP(host) === 0 ? host : undefined,
-    lookup: (_host, options, callback): void => {
-      if (options.all === true) {
-        callback(null, [address]);
-      } else {
-        callback(null, address.address, address.family);
-      }
-    },
-  };
-}
-
-async function resolved(url: URL, resolver: Resolver): Promise<Address> {
-  const host = url.hostname.replace(/^\[|\]$/g, '');
-  const addresses =
-    isIP(host) === 0 ? await resolver(host) : [{ address: host, family: isIP(host) }];
-  const [first] = addresses;
-  if (
-    first === undefined ||
-    addresses.length > MAX_ADDRESSES ||
-    addresses.some((item) => !publicAddress(item.address))
-  ) {
-    throw new DiscordInputError('The attachment host did not resolve to a public address');
-  }
-  return first;
-}
-
-function collect(
-  incoming: IncomingMessage,
-  expected: number,
-  resolve: (data: Buffer) => void,
-  reject: (error: Error) => void,
-): void {
-  if (incoming.statusCode !== 200 || incoming.headers['content-encoding'] !== undefined) {
-    incoming.destroy();
-    reject(new DiscordInputError('Attachment response rejected; redirects are forbidden'));
-    return;
-  }
-  const chunks: Buffer[] = [];
+  const chunks: Uint8Array[] = [];
   let size = 0;
-  incoming.on('data', (chunk: Buffer) => {
-    size += chunk.length;
-    if (size > expected) {
-      incoming.destroy();
-      reject(new DiscordInputError('Attachment exceeds declared size'));
-      return;
+  const reader = response.body?.getReader();
+  for (
+    let part = await reader?.read();
+    part !== undefined && !part.done;
+    part = await reader?.read()
+  ) {
+    const value = z.instanceof(Uint8Array).parse(part.value);
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader?.cancel();
+      throw tooLarge(maxBytes);
     }
-    chunks.push(chunk);
-  });
-  incoming.on('error', (cause) => {
-    reject(new DiscordInputError(`Attachment stream failed: ${cause.message}`));
-  });
-  incoming.on('end', () => {
-    if (size === expected) {
-      resolve(Buffer.concat(chunks));
-    } else {
-      reject(new DiscordInputError('Attachment size changed'));
-    }
-  });
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
 
-export function downloader(
-  resolver: Resolver = (host) => lookup(host, { all: true, verbatim: true }),
-): Downloader {
-  return async (url, expected) => {
-    const signal = AbortSignal.timeout(TIMEOUT_MS);
-    const address = await resolved(url, resolver);
-    return new Promise<Buffer>((resolve, reject) => {
-      const outgoing = request(url, pinned(url, address, signal), (incoming) => {
-        collect(incoming, expected, resolve, reject);
-      });
-      outgoing.on('error', (cause) => {
-        reject(new DiscordInputError(`Attachment download failed: ${cause.message}`));
-      });
-      outgoing.end();
-    });
+export function downloader(fetcher: typeof fetch = fetch): Downloader {
+  return async (url, maxBytes) => {
+    const response = await fetcher(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!response.ok) {
+      throw new DiscordInputError(
+        `the download of ${new URL(url).host} answered HTTP ${String(response.status)}`,
+      );
+    }
+    return { data: await bounded(response, maxBytes), type: response.headers.get('content-type') };
   };
+}
+
+export async function mimeOf(data: Buffer, provided: string | null | undefined): Promise<string> {
+  const detected = await fileTypeFromBuffer(data);
+  return (
+    detected?.mime ?? provided?.split(';')[0]?.trim().toLowerCase() ?? 'application/octet-stream'
+  );
+}
+
+export function safeFileName(name: string): string {
+  const cleaned = name
+    .replace(/[^\p{L}\p{N}_. -]/gu, '-')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[^\p{L}\p{N}_]+/u, '');
+  return cleaned.slice(-100) || 'file';
 }

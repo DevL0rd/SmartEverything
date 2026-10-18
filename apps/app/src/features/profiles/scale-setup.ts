@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { BIND_KEY, BLUETOOTH_ADDRESS, isScale } from '@smarteverything/domain';
+import { useMutation } from '@tanstack/react-query';
+import { BIND_KEY, BLUETOOTH_ADDRESS, isScale, type DeviceRow } from '@smarteverything/domain';
 import { addManualScale, addXiaomiScale } from '../../api/people';
 import { errorText } from '../../format/errors';
 import { useDevices, useProviderLink } from '../../store/selectors';
@@ -39,6 +40,24 @@ function problemOf(form: ManualForm): string | null {
     : 'The key is 32 letters and numbers (0–9, a–f)';
 }
 
+type ScaleRequest = { readonly deviceId: string } | { readonly form: ManualForm };
+
+function addScale(request: ScaleRequest): Promise<DeviceRow> {
+  if ('deviceId' in request) {
+    return addXiaomiScale(request.deviceId);
+  }
+  const { form } = request;
+  return addManualScale({
+    name: form.name.trim(),
+    address: form.address.trim().toUpperCase(),
+    bindKey: form.bindKey.trim().toLowerCase(),
+  });
+}
+
+function failureText(failure: ReturnType<typeof errorText>): string {
+  return failure.detail === '' ? failure.title : failure.detail;
+}
+
 export function useAddScale(): {
   readonly busy: boolean;
   readonly problem: string | null;
@@ -46,44 +65,23 @@ export function useAddScale(): {
   readonly fromXiaomi: (deviceId: string) => void;
   readonly manual: (form: ManualForm) => void;
 } {
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [added, setAdded] = useState<string | null>(null);
-  const run = (work: () => Promise<{ readonly name: string }>): void => {
-    setBusy(true);
-    setProblem(null);
-    work().then(
-      (device) => {
-        setBusy(false);
-        setAdded(device.name);
-      },
-      (error: unknown) => {
-        setBusy(false);
-        const text = errorText(error);
-        setProblem(text.detail === '' ? text.title : text.detail);
-      },
-    );
-  };
+  const [invalid, setInvalid] = useState<string | null>(null);
+  const mutation = useMutation({ mutationFn: addScale });
+  const failure = mutation.error === null ? null : errorText(mutation.error);
   return {
-    busy,
-    problem,
-    added,
+    busy: mutation.isPending,
+    problem: invalid ?? (failure === null ? null : failureText(failure)),
+    added: mutation.data?.name ?? null,
     fromXiaomi: (deviceId): void => {
-      run(() => addXiaomiScale(deviceId));
+      setInvalid(null);
+      mutation.mutate({ deviceId });
     },
     manual: (form): void => {
-      const invalid = problemOf(form);
-      if (invalid !== null) {
-        setProblem(invalid);
-        return;
+      const problem = problemOf(form);
+      setInvalid(problem);
+      if (problem === null) {
+        mutation.mutate({ form });
       }
-      run(() =>
-        addManualScale({
-          name: form.name.trim(),
-          address: form.address.trim().toUpperCase(),
-          bindKey: form.bindKey.trim().toLowerCase(),
-        }),
-      );
     },
   };
 }

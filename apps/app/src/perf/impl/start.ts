@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import { Keyboard } from 'react-native';
 import { WINDOW_MS } from './config';
 import { watchCommits } from './fibers';
@@ -6,7 +7,9 @@ import { startFrames } from './frames';
 import { patchGlobals } from './globals';
 import { Probe } from './probe';
 import type { DeveloperFlags } from '../../developer/toggles';
-import type { ProbeSession } from '../runtime';
+import type { ProbeSession } from '../sink';
+
+const log = new Logger('app.perf');
 
 const KEYBOARD_EVENTS = [
   'keyboardWillShow',
@@ -16,8 +19,8 @@ const KEYBOARD_EVENTS = [
 ] as const;
 
 function trackRenders(probe: Probe, stops: (() => void)[]): boolean {
-  const stop = watchCommits((report, collectionMs) => {
-    probe.fiberCommit(report, collectionMs);
+  const stop = watchCommits((root) => {
+    probe.fiberCommit(root);
   });
   if (stop !== null) {
     stops.push(stop);
@@ -83,8 +86,11 @@ export function startProbe(flags: DeveloperFlags): ProbeSession {
       return;
     }
     active = false;
+    log.info('collector.stopping', { cleanups: stops.length });
     disposeAll(stops);
   };
+  probe.fanout = flags['perf.fanout'];
+  probe.navigation = flags['perf.nav'];
   try {
     if (flags['perf.renders']) {
       probe.fibers = trackRenders(probe, stops) ? 1 : 0;
@@ -104,6 +110,7 @@ export function startProbe(flags: DeveloperFlags): ProbeSession {
     stops.push(() => {
       clearInterval(timer);
     });
+    log.info('collector.started', { windowMs: WINDOW_MS, upload: flags['perf.upload'] });
     return { sink: probe, stop };
   } catch (error: unknown) {
     stop();

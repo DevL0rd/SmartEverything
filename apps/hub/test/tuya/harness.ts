@@ -180,6 +180,10 @@ export function harness(localPort: number, overrides: Partial<TuyaDependencies> 
       irLearnTimeoutMs: 2000,
       cloudLearnQueryMs: 20,
       messagePingMs: 50,
+      qrScanQueryMs: 20,
+      qrScanTimeoutMs: 2000,
+      messagingRenewMarginMs: 1000,
+      inventorySettleMs: 20,
       reconnectDelay: () => 30,
     },
     udpSocket: () => {
@@ -194,9 +198,10 @@ export function harness(localPort: number, overrides: Partial<TuyaDependencies> 
     log: new Logger('tool.tuya-test'),
     dataDirectory: '/nonexistent',
     ask: () => Promise.reject(new Error('the Tuya provider never asks')),
+    show: () => Promise.reject(new Error('the Tuya provider never shows a prompt')),
     saveAccount: () => Promise.resolve(),
     needsAttention: (reason) => {
-      attention.push(reason);
+      attention.push(reason.message);
       return Promise.resolve();
     },
   };

@@ -14,7 +14,7 @@ export interface UnavailableEntry {
   readonly cause: unknown;
 }
 
-export interface ReadyEntry {
+interface ReadyEntry {
   readonly status: 'ready';
   readonly widget: ResolvedWidget;
 }

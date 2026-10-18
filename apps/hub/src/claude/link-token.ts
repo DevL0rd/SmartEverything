@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MCP_TOKEN, createMcpToken, hashMcpToken } from '@smarteverything/domain';
 import type { Store } from '../store/store';
+import { isMissing } from '../fs-util';
 
 const LINK_TOKEN_NAME = 'SmartEverything link';
 
@@ -15,10 +16,6 @@ export interface LinkCredential {
   readonly ensure: () => Promise<string>;
   readonly revoke: () => Promise<void>;
   readonly retireBridge: () => number;
-}
-
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
 
 export class LinkToken {
@@ -35,7 +32,9 @@ export class LinkToken {
     if (bearer === null || !MCP_TOKEN.safeParse(bearer).success) {
       return false;
     }
-    return this.store.assistant.activeTokenByHash(hashMcpToken(bearer))?.name === LINK_TOKEN_NAME;
+    return (
+      this.store.oauth.activePersonalTokenByHash(hashMcpToken(bearer))?.name === LINK_TOKEN_NAME
+    );
   }
 
   async read(): Promise<string | null> {
@@ -57,7 +56,7 @@ export class LinkToken {
     }
     this.revokeRows();
     const token = createMcpToken();
-    this.store.assistant.createToken(LINK_TOKEN_NAME, hashMcpToken(token), true);
+    this.store.oauth.createPersonalToken(LINK_TOKEN_NAME, hashMcpToken(token), true);
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     await writeFile(`${this.file}.tmp`, `${token}\n`, { mode: 0o600 });
     await rename(`${this.file}.tmp`, this.file);
@@ -70,19 +69,19 @@ export class LinkToken {
   }
 
   retireBridge(): number {
-    const rows = this.store.assistant
-      .tokens()
+    const rows = this.store.oauth
+      .personalTokens()
       .filter((row) => row.name === BRIDGE_TOKEN_NAME && row.revoked_at === null);
     for (const row of rows) {
-      this.store.assistant.revokeToken(row.id);
+      this.store.oauth.revokePersonalToken(row.id);
     }
     return rows.length;
   }
 
   private revokeRows(): void {
-    for (const row of this.store.assistant.tokens()) {
+    for (const row of this.store.oauth.personalTokens()) {
       if (row.name === LINK_TOKEN_NAME && row.revoked_at === null) {
-        this.store.assistant.revokeToken(row.id);
+        this.store.oauth.revokePersonalToken(row.id);
       }
     }
   }

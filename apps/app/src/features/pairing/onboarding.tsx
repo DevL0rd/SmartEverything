@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import type { EnrollmentState } from '../../api/connection/pairing-enrollment';
+import type { PairingState } from '../../api/connection/pairing-session';
 import { chooseThisComputer, type StoredKind } from '../../api/transport';
 import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
@@ -12,12 +12,14 @@ import { useValue } from '../../design/external-store';
 import { appPlatform } from '../../design/platform';
 import { CodeForm } from './code-form';
 import { DiscoveryList } from './discovery-list';
-import { IdentityCheck } from './identity-check';
+import { Logger, background } from '@smarteverything/logging';
 import { InvitationForm } from './invitation-form';
 import { PairingFrame } from './pairing-frame';
 import type { PairingPresentation } from './pairing-actions';
 import { usePairing } from './pairing';
 import { QrScanner } from './qr-scanner';
+
+const log = new Logger('app.pairing');
 
 function ThisComputerButton({ pairing }: { readonly pairing: PairingPresentation }): ReactNode {
   const [busy, setBusy] = useState(false);
@@ -30,18 +32,26 @@ function ThisComputerButton({ pairing }: { readonly pairing: PairingPresentation
       onPress={() => {
         if (busy) return;
         setBusy(true);
-        void pairing
-          .stop()
-          .then(chooseThisComputer)
-          .then(
-            () => {
-              setBusy(false);
-            },
-            (error: unknown) => {
-              setBusy(false);
-              pairing.cleanupFailed(error);
-            },
-          );
+        log.info('onboarding.this_computer_chosen');
+        background(
+          pairing
+            .stop()
+            .then(chooseThisComputer)
+            .then(
+              () => {
+                log.info('onboarding.this_computer_ready');
+                setBusy(false);
+              },
+              (error: unknown) => {
+                log.warn('onboarding.this_computer_failed', {
+                  error: error instanceof Error ? error.name : typeof error,
+                });
+                setBusy(false);
+                pairing.cleanupFailed(error);
+              },
+            ),
+          'pairing.stop_failed',
+        );
       }}
     />
   );
@@ -56,14 +66,14 @@ function Choices({ pairing }: { readonly pairing: PairingPresentation }): ReactN
         icon="qr"
         size="lg"
         onPress={() => {
-          void pairing.change('scan');
+          background(pairing.change('scan'), 'pairing.change_failed');
         }}
       />
       <Button
         label="Use invitation"
         variant="text"
         onPress={() => {
-          void pairing.change('invitation');
+          background(pairing.change('invitation'), 'pairing.change_failed');
         }}
       />
       {pairing.fixedUrl === null ? null : (
@@ -71,7 +81,7 @@ function Choices({ pairing }: { readonly pairing: PairingPresentation }): ReactN
           label="Enter pairing code"
           variant="text"
           onPress={() => {
-            void pairing.change('code');
+            background(pairing.change('code'), 'pairing.change_failed');
           }}
         />
       )}
@@ -94,40 +104,29 @@ function Waiting({
         label="Cancel"
         variant="text"
         onPress={() => {
-          void pairing.change('welcome');
+          background(pairing.change('welcome'), 'pairing.change_failed');
         }}
       />
     </PairingFrame>
   );
 }
 
-function Enrollment({
+function Ready({
   pairing,
   state,
 }: {
   readonly pairing: PairingPresentation;
-  readonly state: EnrollmentState;
+  readonly state: Extract<PairingState, { readonly status: 'ready' }>;
 }): ReactNode {
-  if (state.status === 'ready')
-    return (
-      <PairingFrame
-        title="Enter pairing code"
-        body="Find it on your desktop in Settings › Paired devices."
-      >
-        <CodeForm pairing={pairing} home={state.identity.name} checked />
-      </PairingFrame>
-    );
-  if (state.status === 'verifying')
-    return (
-      <Waiting
-        pairing={pairing}
-        title="Checking your home…"
-        body="Making sure this is the home you chose."
-      />
-    );
-  if (state.status === 'claiming' || state.status === 'complete')
-    return <Waiting pairing={pairing} title="Pairing…" body="Connecting to your home." />;
-  return <EnrollmentProblem pairing={pairing} state={state} />;
+  return (
+    <PairingFrame
+      title="Enter pairing code"
+      body="Find it on your desktop in Settings › Paired devices."
+    >
+      {state.problem === null ? null : <Banner tone="critical" title={state.problem} />}
+      <CodeForm pairing={pairing} home={state.home} checked />
+    </PairingFrame>
+  );
 }
 
 function EnrollmentProblem({
@@ -135,24 +134,18 @@ function EnrollmentProblem({
   state,
 }: {
   readonly pairing: PairingPresentation;
-  readonly state: Exclude<
-    EnrollmentState,
-    { readonly status: 'ready' | 'verifying' | 'claiming' | 'complete' }
-  >;
+  readonly state: Extract<PairingState, { readonly status: 'failed' | 'unknown' | 'recoverable' }>;
 }): ReactNode {
-  const home = useValue(pairing.home);
   return (
     <PairingFrame
       title={state.status === 'recoverable' ? 'Save your connection' : 'Check your pairing'}
       body="Your home stays selected until you choose again."
     >
       <View className="gap-4">
-        {home === null ? null : (
-          <List inset>
-            <ListRow title={home} icon="home" subtitle="Identity checked" />
-          </List>
-        )}
-        {state.status === 'cancelled' ? null : <Banner tone="critical" title={state.problem} />}
+        <List inset>
+          <ListRow title={state.home} icon="home" />
+        </List>
+        <Banner tone="critical" title={state.problem} />
         {state.status === 'failed' ? (
           <Text variant="callout" tone="variant">
             Ask the owner to show a new code.
@@ -171,7 +164,7 @@ function EnrollmentProblem({
           label={state.status === 'recoverable' ? 'Cancel' : 'Choose again'}
           variant="text"
           onPress={() => {
-            void pairing.change('welcome');
+            background(pairing.change('welcome'), 'pairing.change_failed');
           }}
         />
       </View>
@@ -196,10 +189,10 @@ function Choosing({ pairing }: { readonly pairing: PairingPresentation }): React
     return (
       <QrScanner
         onTarget={(target) => {
-          void pairing.target(target, true);
+          background(pairing.target(target, true), 'pairing.target_failed');
         }}
         onClose={() => {
-          void pairing.change('welcome');
+          background(pairing.change('welcome'), 'pairing.change_failed');
         }}
       />
     );
@@ -239,14 +232,14 @@ function WelcomeChoices({ pairing }: { readonly pairing: PairingPresentation }):
             label="Connect to another home"
             variant="text"
             onPress={() => {
-              void pairing.change('nearby');
+              background(pairing.change('nearby'), 'pairing.change_failed');
             }}
           />
           <Button
             label="Use invitation"
             variant="text"
             onPress={() => {
-              void pairing.change('invitation');
+              background(pairing.change('invitation'), 'pairing.change_failed');
             }}
           />
         </View>
@@ -263,30 +256,28 @@ function OnboardingBody({ pairing }: { readonly pairing: PairingPresentation }):
     case 'choosing':
       return <Choosing pairing={pairing} />;
     case 'inspecting':
+    case 'verifying':
       return (
         <Waiting
           pairing={pairing}
           title="Checking your home…"
-          body="Keep your desktop nearby so you can compare its identity."
+          body="Making sure this is the home you chose."
         />
       );
-    case 'observed':
-      return (
-        <PairingFrame
-          title="Check your home"
-          body="On your desktop, open Settings › Paired devices › Pair a phone. Check that this home identity matches."
-        >
-          <IdentityCheck pairing={pairing} observation={state.observation} />
-        </PairingFrame>
-      );
-    case 'enrolling':
-      return <Enrollment pairing={pairing} state={state.enrollment} />;
+    case 'ready':
+      return <Ready pairing={pairing} state={state} />;
+    case 'claiming':
+      return <Waiting pairing={pairing} title="Pairing…" body="Connecting to your home." />;
     case 'complete':
       return (
         <PairingFrame title="You are in" body="Opening your home…">
           {null}
         </PairingFrame>
       );
+    case 'failed':
+    case 'unknown':
+    case 'recoverable':
+      return <EnrollmentProblem pairing={pairing} state={state} />;
   }
 }
 

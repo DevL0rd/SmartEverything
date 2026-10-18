@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_ENGINE, NO_PRICES } from '@smarteverything/domain';
+import { DEFAULT_ENGINE, DEFAULT_RESPONSE_STYLE, NO_PRICES } from '@smarteverything/domain';
 import { FORMAT_MANNER, TOOL_MANNER } from '../../src/ai-tools/tool-guide';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
-import { stablePrompt, type PromptFacts } from '../../src/assistant/engines/openrouter/context';
+import { stablePrompt, type PromptFacts } from '../../src/assistant/conversation/prompt';
+import { PLAY } from '../../src/assistant/personality';
 import type { ToolAnswer } from '../../src/assistant-voice/tool-answer';
 import { Conversation } from '../../src/assistant-voice/conversation';
+import { plainLine } from '../../src/assistant-voice/voice-line';
 import type { CallLink } from '../../src/assistant-voice/call-link';
 import { ASSISTANT_VOICE_SETTINGS, type AssistantVoiceSettings } from '@smarteverything/domain';
 import { CallDesk } from '../../src/assistant-voice/call-desk';
@@ -159,10 +161,12 @@ const FACTS: PromptFacts = {
   homeName: 'Home',
   timeZone: 'UTC',
   now: new Date('2026-10-10T10:00:00.000Z'),
+  boardTypes: [],
   instructions: '',
   toolIndex: 'get_home: Overview.',
   catalogue: '',
   chat: { id: 'c', title: 'Home', kind: 'chat' },
+  interruption: null,
 };
 
 function occurrences(text: string): number {
@@ -178,17 +182,13 @@ describe('every path that runs tools carries the one shared tool manner', () => 
   it('voice instructions with each ending', () => {
     const persona = {
       names: ['Coco'],
-      device: 'phone',
-      person: 'Sam',
-      role: 'owner' as const,
       home: 'Home',
-      timeZone: 'UTC',
-      now: new Date('2026-10-10T10:00:00.000Z'),
+      style: undefined,
+      instructions: '',
       place: null,
       unavailable: null,
       toolIndex: 'get_home: Overview.',
       catalogue: '',
-      history: [],
     };
     for (const ending of [undefined, STAYS_OPEN_ENDING, ROBOT_ENDING]) {
       const text = liveInstructions(ending === undefined ? persona : { ...persona, ending });
@@ -199,6 +199,15 @@ describe('every path that runs tools carries the one shared tool manner', () => 
 
   it('app call, hosted call (camera, ring), and turn sessions (Discord voice, robot)', async () => {
     const { store } = opened;
+    store.assistantChat.saveSettings({
+      ...store.assistantChat.settings(),
+      instructions: 'Call me captain.',
+      response_style: {
+        ...DEFAULT_RESPONSE_STYLE,
+        personality: 'custom',
+        custom_personality: 'A pirate.',
+      },
+    });
     const client = store.clients.create({
       name: 'Pixel',
       platform: 'android',
@@ -209,8 +218,15 @@ describe('every path that runs tools carries the one shared tool manner', () => 
     await desk.start(endpointOf('app-1'), client, {
       type: 'call_start',
       callId: 'call-app',
+      source: 'orb',
+      device: 'Phone',
+    });
+    await desk.start(endpointOf('app-2'), client, {
+      type: 'call_start',
+      callId: 'call-wake',
       source: 'assistant',
       device: 'Phone',
+      gated: true,
     });
     const hosted = await desk.host({
       callId: 'call-hosted',
@@ -224,12 +240,25 @@ describe('every path that runs tools carries the one shared tool manner', () => 
     const robot = await turns.open(
       turnRequest({ speaking: { hiddenTools: new Set(), ending: ROBOT_ENDING } }),
     );
-    expect(systems).toHaveLength(4);
+    expect(systems).toHaveLength(5);
     systems.forEach((system) => {
       expect(occurrences(system)).toBe(1);
       expect(system).not.toContain(FORMAT_MANNER);
+      expect(system).toContain('Your personality, which you keep in every reply: A pirate.');
+      expect(system).toContain(PLAY);
+      expect(system).toContain('Owner instructions:\nCall me captain.');
+      expect(system.indexOf(PLAY)).toBeLessThan(system.indexOf(TOOL_MANNER));
     });
+    store.assistantChat.saveSettings({
+      ...store.assistantChat.settings(),
+      response_style: { ...DEFAULT_RESPONSE_STYLE, personality: 'wry' },
+    });
+    const next = await turns.open(turnRequest());
+    expect(systems[5]).toContain('Wry: dry, deadpan humour');
+    expect(systems[5]).not.toContain('A pirate.');
+    next.end('finished');
     await desk.hangUp('app-1', 'call-app', 'hung_up');
+    await desk.hangUp('app-2', 'call-wake', 'hung_up');
     await hosted.end('finished');
     discord.end('finished');
     robot.end('finished');
@@ -349,12 +378,14 @@ describe('progress during a call tool', () => {
       caption: () => undefined,
     };
     const conversation = new Conversation(
-      provider,
+      plainLine(provider),
       link,
       {
         speech: 'gated-client',
         settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
         system: (): string => 'system',
+        note: (): string => '',
+        history: (): string[] => [],
         tools: (): [] => [],
         webSearch: (): boolean => false,
         window: (): null => null,

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MEDIA_SIZE } from './access';
+import { CAMERA_QUALITY, MEDIA_SIZE } from './access';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, MOMENT, NOTHING, TIME_WINDOW, queryLimit } from './primitives';
 import {
@@ -11,6 +11,7 @@ import {
   RECORDING_ROW,
   REMOTE_NAME,
 } from './rows-media';
+import { IR_REMOTE_CHANGE, IR_REMOTE_STATE } from '../ir-remote-state';
 import { WAKE_SENSITIVITY } from '../wake-sensitivity';
 
 export const SESSION_DESCRIPTION = z.strictObject({ sdp: z.string().min(1).max(200_000) });
@@ -26,7 +27,7 @@ export const RECORDING_LINK = MEDIA_LINK.extend({ id: ID });
 
 const CAMERA_PARAMS = z.strictObject({ deviceId: ID });
 
-export const CAMERA_CHANGE = z
+const CAMERA_CHANGE = z
   .strictObject({
     record_events: z.boolean().optional().describe('Keep a snapshot and clip of each event'),
     wake_sensitivity: WAKE_SENSITIVITY.optional(),
@@ -71,9 +72,10 @@ const CAMERA_ENDPOINTS = {
     method: 'POST',
     path: '/api/cameras/:deviceId/webrtc',
     access: 'member',
-    summary: 'Relay a WebRTC offer to go2rtc and return its answer with gathered candidates',
+    summary:
+      'Relay a WebRTC offer to go2rtc and return its answer with gathered candidates; quality tile asks for the small stream that picture tiles need',
     params: CAMERA_PARAMS,
-    query: NOTHING,
+    query: z.strictObject({ quality: CAMERA_QUALITY.default('full') }),
     body: SESSION_DESCRIPTION,
     response: SESSION_DESCRIPTION,
   }),
@@ -185,6 +187,17 @@ const IR_ENDPOINTS = {
     query: NOTHING,
     body: NO_BODY,
     response: DONE,
+  }),
+  updateIrRemote: endpoint({
+    method: 'PATCH',
+    path: '/api/ir-remotes/:remoteId/state',
+    access: 'member',
+    summary:
+      'Correct what an IR remote is assumed to be doing (on, temperature, mode, speed, mute) or choose the device that confirms its power; the remote id is a library remote device id or a learned remote id; null clears a field; nothing is sent to the appliance',
+    params: z.strictObject({ remoteId: ID }),
+    query: NOTHING,
+    body: IR_REMOTE_CHANGE,
+    response: IR_REMOTE_STATE,
   }),
   listIrCodes: endpoint({
     method: 'GET',

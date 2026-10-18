@@ -9,7 +9,7 @@ import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Icon } from '../../../components/icon';
 import { ReorderableList } from '../../../components/reorderable-list';
 import { Section } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { useValue } from '../../../design/external-store';
 import { plural } from '../../../format/text';
 import { useDevices, useRooms } from '../../../store/selectors';
@@ -17,16 +17,19 @@ import { TextEditSheet } from '../../../settings/text-edit-sheet';
 import { orderedRooms } from '../../../store/table-rules';
 import { moveRoom, openRenameRoom, reorderRooms, roomEditor } from './rooms';
 
+import { trackSetting } from '../settings-log';
 type Room = TableRow<'rooms'>;
 
-function failed(message: string): (error: unknown) => void {
-  return (error) => {
-    notify({
-      message,
-      error,
-      tone: 'critical',
-    });
-  };
+function deviceCounts(
+  devices: readonly { readonly room_id: string | null }[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const device of devices) {
+    if (device.room_id !== null) {
+      counts.set(device.room_id, (counts.get(device.room_id) ?? 0) + 1);
+    }
+  }
+  return counts;
 }
 
 async function deleteRoom(room: Room, devices: number): Promise<void> {
@@ -40,7 +43,7 @@ async function deleteRoom(room: Room, devices: number): Promise<void> {
     tone: 'destructive',
   });
   if (accepted) {
-    await removeRoom(room.id);
+    await trackSetting('room.delete', { roomId: room.id, devices }, () => removeRoom(room.id));
   }
 }
 
@@ -63,7 +66,7 @@ function itemsFor(
       icon: 'chevronUp',
       disabled: index === 0,
       onPress: (): void => {
-        moveRoom(rooms, room.id, -1).catch(failed('The room was not moved'));
+        moveRoom(rooms, room.id, -1).catch(notifyFailure('The room was not moved'));
       },
     },
     {
@@ -71,7 +74,7 @@ function itemsFor(
       icon: 'chevronDown',
       disabled: index === rooms.length - 1,
       onPress: (): void => {
-        moveRoom(rooms, room.id, 1).catch(failed('The room was not moved'));
+        moveRoom(rooms, room.id, 1).catch(notifyFailure('The room was not moved'));
       },
     },
     {
@@ -79,7 +82,7 @@ function itemsFor(
       icon: 'trash',
       destructive: true,
       onPress: (): void => {
-        deleteRoom(room, devices).catch(failed('The room was not deleted'));
+        deleteRoom(room, devices).catch(notifyFailure('The room was not deleted'));
       },
     },
   ];
@@ -117,6 +120,8 @@ function RoomRow({
 export function RoomsBlock(): ReactNode {
   const rooms = orderedRooms(useRooms());
   const devices = useDevices({ includeHidden: true });
+  const counts = deviceCounts(devices);
+  const indexes = new Map(rooms.map((room, index) => [room.id, index]));
   const request = useValue(roomEditor);
   const sheet = (
     <TextEditSheet
@@ -149,12 +154,12 @@ export function RoomsBlock(): ReactNode {
             <RoomRow
               room={room}
               rooms={rooms}
-              index={rooms.indexOf(room)}
-              devices={devices.filter((device) => device.room_id === room.id).length}
+              index={indexes.get(room.id) ?? 0}
+              devices={counts.get(room.id) ?? 0}
             />
           )}
           onReorder={(keys) => {
-            reorderRooms(rooms, keys).catch(failed('The rooms were not reordered'));
+            reorderRooms(rooms, keys).catch(notifyFailure('The rooms were not reordered'));
           }}
         />
       </Section>

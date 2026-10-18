@@ -17,6 +17,7 @@ import {
 } from '@smarteverything/xiaomi';
 import type { CameraMotor } from './camera-motor';
 import type { DeviceIo } from './device-io';
+import { failureLine } from '@smarteverything/logging';
 
 export const NO_MOTOR_ENDPOINT = "this hub was started without go2rtc's Xiaomi motor endpoint";
 
@@ -72,7 +73,7 @@ export class CameraPtz {
       this.log.warn('xiaomi_camera.positions_failed', {
         did: this.camera.did,
         transport: io.transport,
-        reason: String(error),
+        reason: failureLine(error),
       });
     }
   }

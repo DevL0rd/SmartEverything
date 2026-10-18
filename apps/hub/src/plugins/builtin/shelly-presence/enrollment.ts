@@ -1,88 +1,38 @@
-import { shellyHttp } from './http-transport';
-import { boundedText } from './http';
 import { createHash } from 'node:crypto';
+import { ApiError, JSON_VALUE } from '@smarteverything/domain';
+import type { SHELLY_ENROLL_REQUEST } from '@smarteverything/shelly';
 import {
-  ApiError,
-  SHELLY_PRESENCE_ADDRESS,
-  SHELLY_PRESENCE_ENROLL_REQUEST,
+  SHELLY_ADDRESS,
+  SHELLY_DEVICE_INFO,
   SHELLY_TRANSPORT_TLS,
   type ShellyTransportTls,
-  SHELLY_DEVICE_INFO,
-  JSON_VALUE,
-} from '@smarteverything/domain';
+} from '@smarteverything/shelly';
 import { z } from 'zod';
 import type { PluginRecords, PluginSecrets } from '../contract';
+import { openShellyRpc } from './connection';
+import { readBounded, shellyHttp } from './http';
 
-export const SHELLY_ADDRESS = SHELLY_PRESENCE_ADDRESS;
-export const SHELLY_ENROLL_INPUT = SHELLY_PRESENCE_ENROLL_REQUEST;
-export const SHELLY_ENROLLMENT = z.object({
+const IDENTITY_BYTES = 65536;
+const METHODS = z.object({ methods: z.array(z.string()) });
+
+const SHELLY_ENROLLMENT = z.object({
   info: SHELLY_DEVICE_INFO,
   address: SHELLY_ADDRESS,
   secret: z.string().nullable(),
   generations: z.record(z.string(), z.int().nonnegative()),
-  activeZones: z.array(z.int().nonnegative()).max(64),
+  activeZones: z.array(z.int().nonnegative()),
   tlsSecret: z.string().nullable().default(null),
 });
 export type ShellyEnrollment = z.output<typeof SHELLY_ENROLLMENT>;
-export async function enrollShelly(
-  input: z.output<typeof SHELLY_ENROLL_INPUT>,
-  records: PluginRecords,
-  secrets: PluginSecrets,
-): Promise<ShellyEnrollment> {
-  const sameAddress = enrolledDevices(records).find((device) => device.address === input.address);
-  const transport =
-    input.tls === undefined && sameAddress !== undefined
-      ? enrollmentTls(sameAddress, secrets)
-      : (input.tls ?? null);
-  const response = await shellyHttp(new URL('/shelly', input.address), {
-    signal: AbortSignal.timeout(10000),
-    tls: transport,
-  });
-  if (!response.ok)
-    throw new ApiError(
-      'upstream_failed',
-      `The Shelly identity endpoint returned HTTP ${String(response.status)}.`,
-    );
-  const info = SHELLY_DEVICE_INFO.parse(JSON.parse(await boundedText(response)));
-  if (info.gen !== 4 || info.model !== 'S4SN-0U61X')
-    throw new ApiError('invalid_request', 'That address is not a Shelly Presence Gen4 sensor.');
-  const previous = records.get(info.id);
-  const known = previous === null ? null : SHELLY_ENROLLMENT.parse(previous);
-  const key = `password_${createHash('sha256').update(info.id).digest('hex').slice(0, 24)}`;
-  if (input.password !== null) await secrets.set(key, input.password);
-  const enrollment = enrollmentRecord(
-    info,
-    input.address,
-    input.password === null ? null : key,
-    known,
-  );
-  const secured = await secureEnrollment(input.tls, known, enrollment, secrets);
-  saveEnrollment(records, secured);
-  return secured;
-}
+export type ShellyEnrollInput = z.output<typeof SHELLY_ENROLL_REQUEST>;
+
 export function enrolledDevices(records: PluginRecords): readonly ShellyEnrollment[] {
   return records.list().map((record) => SHELLY_ENROLLMENT.parse(record.value));
 }
+
 export function saveEnrollment(records: PluginRecords, enrollment: ShellyEnrollment): void {
   const raw: unknown = JSON.parse(JSON.stringify(enrollment));
-  const value = JSON_VALUE.parse(raw);
-  records.put(enrollment.info.id, value);
-}
-
-function enrollmentRecord(
-  info: ShellyEnrollment['info'],
-  address: string,
-  secret: string | null,
-  known: ShellyEnrollment | null,
-): ShellyEnrollment {
-  return {
-    info,
-    address,
-    secret: secret ?? known?.secret ?? null,
-    generations: known?.generations ?? {},
-    activeZones: known?.activeZones ?? [],
-    tlsSecret: known?.tlsSecret ?? null,
-  };
+  records.put(enrollment.info.id, JSON_VALUE.parse(raw));
 }
 
 export function enrollmentTls(
@@ -98,17 +48,97 @@ export function enrollmentTls(
     );
   return SHELLY_TRANSPORT_TLS.parse(JSON.parse(value));
 }
-async function secureEnrollment(
-  tls: ShellyTransportTls | null | undefined,
+
+function hashedName(prefix: string, id: string): string {
+  return `${prefix}_${createHash('sha256').update(id).digest('hex').slice(0, 24)}`;
+}
+
+async function identityOf(
+  address: string,
+  tls: ShellyTransportTls | null,
+): Promise<z.output<typeof SHELLY_DEVICE_INFO>> {
+  const response = await shellyHttp(new URL('/shelly', address), {
+    signal: AbortSignal.timeout(10000),
+    tls,
+  });
+  if (!response.ok)
+    throw new ApiError('upstream_failed', `The device answered HTTP ${String(response.status)}.`);
+  const info = SHELLY_DEVICE_INFO.parse(JSON.parse(await readBounded(response, IDENTITY_BYTES)));
+  if (info.gen < 2) throw new ApiError('invalid_request', 'That device is older than Gen2.');
+  return info;
+}
+
+async function requirePresence(
+  address: string,
+  info: z.output<typeof SHELLY_DEVICE_INFO>,
+  password: string | null,
+  tls: ShellyTransportTls | null,
+): Promise<void> {
+  const rpc = await openShellyRpc({
+    address,
+    id: info.id,
+    password,
+    tls,
+    signal: AbortSignal.timeout(20000),
+  });
+  try {
+    const { methods } = await rpc.call('Shelly.ListMethods', {}, METHODS);
+    if (!methods.some((method) => method.toLowerCase().startsWith('presence.')))
+      throw new ApiError('invalid_request', 'That device has no Presence component.');
+  } finally {
+    rpc.close();
+  }
+}
+
+function inheritedTls(
+  input: ShellyEnrollInput,
+  records: PluginRecords,
+  secrets: PluginSecrets,
+): ShellyTransportTls | null {
+  if (input.tls !== undefined) return input.tls;
+  const same = enrolledDevices(records).find((device) => device.address === input.address);
+  return same === undefined ? null : enrollmentTls(same, secrets);
+}
+
+async function saveSecrets(
+  input: ShellyEnrollInput,
+  id: string,
   known: ShellyEnrollment | null,
-  enrollment: ShellyEnrollment,
+  secrets: PluginSecrets,
+): Promise<Pick<ShellyEnrollment, 'secret' | 'tlsSecret'>> {
+  const passwordName = hashedName('password', id);
+  if (input.password !== null) await secrets.set(passwordName, input.password);
+  const secret = input.password === null ? (known?.secret ?? null) : passwordName;
+  const tlsSecret = known?.tlsSecret ?? null;
+  if (input.tls === undefined) return { secret, tlsSecret };
+  if (tlsSecret !== null) await secrets.remove(tlsSecret);
+  if (input.tls === null) return { secret, tlsSecret: null };
+  const tlsName = hashedName('tls', id);
+  await secrets.set(tlsName, JSON.stringify(input.tls));
+  return { secret, tlsSecret: tlsName };
+}
+
+function savedPassword(known: ShellyEnrollment | null, secrets: PluginSecrets): string | null {
+  return known?.secret === undefined || known.secret === null ? null : secrets.get(known.secret);
+}
+
+export async function enrollShelly(
+  input: ShellyEnrollInput,
+  records: PluginRecords,
   secrets: PluginSecrets,
 ): Promise<ShellyEnrollment> {
-  if (tls === undefined) return enrollment;
-  const tlsKey = `tls_${createHash('sha256').update(enrollment.info.id).digest('hex').slice(0, 24)}`;
-  if (tls === null) {
-    if (known?.tlsSecret !== null && known?.tlsSecret !== undefined)
-      await secrets.remove(known.tlsSecret);
-  } else await secrets.set(tlsKey, JSON.stringify(tls));
-  return { ...enrollment, tlsSecret: tls === null ? null : tlsKey };
+  const tls = inheritedTls(input, records, secrets);
+  const info = await identityOf(input.address, tls);
+  const previous = records.get(info.id);
+  const known = previous === null ? null : SHELLY_ENROLLMENT.parse(previous);
+  await requirePresence(input.address, info, input.password ?? savedPassword(known, secrets), tls);
+  const enrollment: ShellyEnrollment = {
+    info,
+    address: input.address,
+    generations: known?.generations ?? {},
+    activeZones: known?.activeZones ?? [],
+    ...(await saveSecrets(input, info.id, known, secrets)),
+  };
+  saveEnrollment(records, enrollment);
+  return enrollment;
 }

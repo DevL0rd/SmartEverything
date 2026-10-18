@@ -77,7 +77,14 @@ export class FoodsRepository {
               { profileId, barcode: food.barcode },
             );
       if (existing !== undefined) {
-        return this.update(existing.id, profileId, food);
+        if (food.origin === 'open_food_facts') {
+          return existing;
+        }
+        return this.change(existing.id, profileId, {
+          ...valuesOf(food),
+          origin: food.origin,
+          favourite: existing.favourite || food.favourite ? 1 : 0,
+        });
       }
       const id = this.context.newId();
       const now = this.context.now();

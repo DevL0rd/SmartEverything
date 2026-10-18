@@ -1,9 +1,4 @@
-import {
-  toolOutcomes,
-  type ChatActivityState,
-  type ChatStepOutcome,
-  type ChatToolItem,
-} from '@smarteverything/domain';
+import type { ChatStepOutcome } from '@smarteverything/domain';
 import { plural } from '../../../format/text';
 
 export type StepState = 'running' | ChatStepOutcome;
@@ -15,24 +10,12 @@ export interface WorkStep {
   readonly detail: string | null;
 }
 
-export type WorkTone = 'live' | 'done' | 'failed';
+type WorkTone = 'live' | 'done' | 'failed';
 
 export interface WorkSummary {
   readonly tone: WorkTone;
   readonly title: string;
   readonly note: string;
-}
-
-export function statusIsLive(state: ChatActivityState | null): boolean {
-  switch (state) {
-    case null:
-    case 'idle':
-    case 'thinking':
-    case 'tool':
-    case 'replying':
-    case 'failed':
-      return true;
-  }
 }
 
 export function stepsOfRow(
@@ -44,16 +27,6 @@ export function stepsOfRow(
     title,
     state: states[index] ?? 'done',
     detail: null,
-  }));
-}
-
-export function stepsOfTools(tools: readonly ChatToolItem[]): readonly WorkStep[] {
-  const outcomes = toolOutcomes(tools);
-  return tools.map((tool, index) => ({
-    key: tool.callId,
-    title: tool.title,
-    state: outcomes[index] ?? tool.state,
-    detail: tool.detail,
   }));
 }
 

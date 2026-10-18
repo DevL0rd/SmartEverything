@@ -1,18 +1,18 @@
+import { usePluginScreen } from '../shared/plugin-log';
 import type { RobotReport, RobotStatus } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
 import { Badge } from '../../components/badge';
 import { ListRow } from '../../components/list-row';
 import { ValueRow } from '../../components/rows';
 import { List } from '../../components/section';
-import { Skeleton } from '../../components/skeleton';
 import { joinParts } from '../../format/text';
 import { relative } from '../../format/time';
 import { useMinute } from '../../store/clock';
 import type { Device } from '../../store/state';
-import { PluginNotice, StreamProblem } from '../shared/plugin-notice';
-import { LISTENER_BADGE, robotNotice, useRobotStatus } from './aibi-data';
+import { PluginStreamSection } from '../shared/plugin-stream-section';
+import { robotNotice, useRobotStatus } from './aibi-data';
 import { conversationText, lastContactText } from './aibi-text';
+import { serverRows } from './server-rows';
 
 function placeOf(robot: RobotReport): string | null {
   const place = joinParts([robot.city, robot.country]);
@@ -81,25 +81,9 @@ function Facts({
 }
 
 function Server({ status }: { readonly status: RobotStatus }): ReactNode {
-  const server = LISTENER_BADGE[status.server.state];
-  const dns = LISTENER_BADGE[status.dns.state];
   return (
     <List title="This server" footer="AIBI finds it through its network’s DNS.">
-      <ListRow
-        icon="server"
-        title="Answers AIBI"
-        subtitle={joinParts([
-          `Ports ${String(status.ports.http)} and ${String(status.ports.https)}`,
-          status.address,
-        ])}
-        trailing={<Badge label={server.label} tone={server.tone} />}
-      />
-      <ListRow
-        icon="globe"
-        title="Name lookups"
-        subtitle={status.dns.reason ?? `DNS on port ${String(status.ports.dns)}`}
-        trailing={<Badge label={dns.label} tone={dns.tone} />}
-      />
+      {serverRows(status)}
       <ValueRow
         title="Who answers AIBI"
         value={status.mode === 'local' ? 'This server' : 'Its own cloud'}
@@ -128,20 +112,16 @@ function Requests({ status }: { readonly status: RobotStatus }): ReactNode {
 }
 
 export function RobotSection({ device }: { readonly device: Device }): ReactNode {
-  const stream = useRobotStatus();
-  if (stream.state === 'waiting') {
-    return <Skeleton shape="block" />;
-  }
-  if (stream.state === 'invalid') {
-    return <StreamProblem reason={stream.reason} />;
-  }
-  const status = stream.value;
+  usePluginScreen('aibi', 'RobotSection');
   return (
-    <View className="gap-section-gap">
-      <PluginNotice pluginId="aibi" notice={robotNotice(status)} />
-      <Facts status={status} device={device} />
-      <Server status={status} />
-      <Requests status={status} />
-    </View>
+    <PluginStreamSection stream={useRobotStatus()} pluginId="aibi" notice={robotNotice}>
+      {(status) => (
+        <>
+          <Facts status={status} device={device} />
+          <Server status={status} />
+          <Requests status={status} />
+        </>
+      )}
+    </PluginStreamSection>
   );
 }

@@ -1,7 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { z } from 'zod';
 import { CLIENT_TOKEN, HUB_CONNECTION_METADATA } from '@smarteverything/domain';
-import { desktopBridge } from '../../design/platform';
+import { desktopBridge, type DesktopBridge } from '../../design/platform';
 import { jsonText } from '../../format/json-text';
 
 const SERVER_CONNECTION = z
@@ -24,7 +24,7 @@ const DESKTOP_CONNECTION = SERVER_CONNECTION.strip();
 
 export type ServerConnection = z.infer<typeof SERVER_CONNECTION>;
 
-export type StoredKind = 'phone' | 'browser';
+export type StoredKind = 'phone' | 'browser' | 'desktop';
 
 const STORAGE_KEY = 'smarteverything.server';
 let writing: Promise<void> = Promise.resolve();
@@ -47,6 +47,14 @@ class StoredConnectionError extends Error {
     super(
       `The saved server connection in ${where} is unreadable: ${issues}. Unpair and pair again.`,
     );
+  }
+}
+
+class DesktopBridgeMissingError extends Error {
+  override readonly name = 'DesktopBridgeMissingError';
+
+  constructor() {
+    super('This pairing belongs to the desktop app window, and the desktop app is not here.');
   }
 }
 
@@ -81,6 +89,7 @@ function parsedConnection(where: string, text: string | null): ServerConnection 
 }
 
 export async function readStoredConnection(kind: StoredKind): Promise<ServerConnection | null> {
+  if (kind === 'desktop') return desktopConnection();
   if (kind === 'phone') {
     return parsedConnection('secure storage', await SecureStore.getItemAsync(STORAGE_KEY));
   }
@@ -95,7 +104,9 @@ export async function storeConnection(
   const text = JSON.stringify(SERVER_CONNECTION.parse(connection));
   await serializeWrite(async (): Promise<void> => {
     if (!isCurrent()) return;
-    if (kind === 'phone') await SecureStore.setItemAsync(STORAGE_KEY, text);
+    if (kind === 'desktop')
+      await requiredBridge().setWindow({ url: connection.url, token: connection.token });
+    else if (kind === 'phone') await SecureStore.setItemAsync(STORAGE_KEY, text);
     else window.localStorage.setItem(STORAGE_KEY, text);
   });
 }
@@ -107,16 +118,24 @@ export async function forgetStoredEnrollment(
   await serializeWrite(async (): Promise<void> => {
     const stored = await readStoredConnection(kind);
     if (stored?.token !== connection.token || stored.url !== connection.url) return;
-    if (kind === 'phone') await SecureStore.deleteItemAsync(STORAGE_KEY);
-    else window.localStorage.removeItem(STORAGE_KEY);
+    await removeStored(kind);
   });
 }
 
+async function removeStored(kind: StoredKind): Promise<void> {
+  if (kind === 'desktop') await requiredBridge().setWindow(null);
+  else if (kind === 'phone') await SecureStore.deleteItemAsync(STORAGE_KEY);
+  else window.localStorage.removeItem(STORAGE_KEY);
+}
+
+function requiredBridge(): DesktopBridge {
+  const bridge = desktopBridge();
+  if (bridge === null) throw new DesktopBridgeMissingError();
+  return bridge;
+}
+
 export async function forgetConnection(kind: StoredKind): Promise<void> {
-  await serializeWrite(async (): Promise<void> => {
-    if (kind === 'phone') await SecureStore.deleteItemAsync(STORAGE_KEY);
-    else window.localStorage.removeItem(STORAGE_KEY);
-  });
+  await serializeWrite(() => removeStored(kind));
 }
 
 export function prefersRemoteServer(): boolean {
@@ -136,7 +155,11 @@ export async function desktopConnection(): Promise<ServerConnection | null> {
   if (bridge === null) {
     return null;
   }
-  const parsed = DESKTOP_CONNECTION.safeParse(await bridge.server());
+  const server = await bridge.server();
+  if (server === null) {
+    return null;
+  }
+  const parsed = DESKTOP_CONNECTION.safeParse(server);
   if (!parsed.success) {
     throw new DesktopServerError(
       parsed.error.issues.map((issue) => `${issue.path.join('.')} ${issue.message}`).join('; '),

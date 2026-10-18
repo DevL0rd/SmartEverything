@@ -4,7 +4,8 @@ import { href } from '../../../app-shell/hrefs';
 import { DayAxis, FillChart } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
-import { WidgetFrame, type WidgetSize } from '../../../components/widget-board';
+import { WidgetFrame } from '../../../components/widget-board';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { QuickStats } from '../components/glance-parts';
 import { useTodayContext } from '../data/today';
 import { formatAmount } from '../model/catalogue';
@@ -62,22 +63,20 @@ function Stats({
 export function TrendWidget({
   spec,
   days,
-  size,
 }: {
   readonly spec: DailySpec;
   readonly days: number;
-  readonly size: WidgetSize;
 }): ReactNode {
   const { figures, day } = useTodayContext();
   const glance = glanceOf(figures, { metric: spec.daily, day, days, better: spec.better });
-  const tall = size === 'L' || size === 'XL';
+  const { cls } = useWidgetFace();
+  const tall = cls === 'l' || cls === 'xl';
   return (
     <WidgetFrame
       title={`${spec.label} · ${String(days)} days`}
       icon={spec.icon}
       accent={spec.colour}
       href={href.healthMetric(spec.key, { day, range: days <= 7 ? 'week' : 'month' })}
-      size={size}
     >
       <View className="flex-1 gap-2">
         <Headline spec={spec} glance={glance} tall={tall} />

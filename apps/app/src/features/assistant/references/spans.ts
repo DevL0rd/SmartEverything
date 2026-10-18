@@ -45,7 +45,7 @@ export function checkedReferenceText(input: ReferenceText): ReferenceText {
     throw new ReferenceSpanError(0, input.text.length);
   return { text: input.text, references };
 }
-export class ReferenceSpanError extends Error {
+class ReferenceSpanError extends Error {
   override readonly name = 'ReferenceSpanError';
   constructor(
     readonly start: number,

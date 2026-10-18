@@ -16,6 +16,7 @@ import { SmartThingsHttpError, type SmartThingsApi } from './http';
 import type { Inventory } from './inventory';
 import { TokenRefusedError, type TokenKeeper } from './tokens';
 import type { SmartThingsWebhooks } from './webhooks';
+import { background, failureLine } from '@smarteverything/logging';
 
 const FIRST_RETRY_MS = 1000;
 
@@ -138,7 +139,7 @@ export class EventSubscriptions {
       return;
     }
     this.options.context.log.warn('events.subscribe_failed', {
-      reason: String(cause),
+      reason: failureLine(cause),
       retryInMs: this.retryMs,
     });
     const delay = this.retryMs;
@@ -244,9 +245,12 @@ export class EventSubscriptions {
           externalId: event.deviceLifecycleEvent.deviceId,
           lifecycle: event.deviceLifecycleEvent.lifecycle,
         });
-        void this.options.rediscover().then(() => {
-          this.resync();
-        });
+        background(
+          this.options.rediscover().then(() => {
+            this.resync();
+          }),
+          'options.rediscover_failed',
+        );
     }
   }
 }

@@ -5,9 +5,12 @@ import {
   type HubEndpoint,
   type HubPublicIdentity,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { lanEndpoints } from './addresses';
 import type { HubTlsIdentity } from './identity';
+
+const log = new Logger('hub.network');
 
 export class HubConnections {
   private loopback: string | null = null;
@@ -22,9 +25,19 @@ export class HubConnections {
   listening(loopback: string, lan: AddressInfo | null): void {
     this.loopback = loopback;
     this.listener = lan;
+    log.info('listeners.changed', {
+      loopbackHost: new URL(loopback).host,
+      lanPort: lan?.port ?? null,
+      lanFamily: lan?.family ?? null,
+      lanBound: lan !== null,
+      lanEndpoints: lan === null ? 0 : lanEndpoints(lan).length,
+    });
   }
 
   discoveryChanged(status: HubDiscoveryStatus): void {
+    if (status.state !== this.discovery.state) {
+      log.info('discovery.changed', { from: this.discovery.state, to: status.state });
+    }
     this.discovery = status;
   }
 

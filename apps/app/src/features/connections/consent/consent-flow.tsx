@@ -7,16 +7,16 @@ import { Skeleton } from '../../../components/skeleton';
 import { useIdiom } from '../../../design/platform';
 import { useConsentRequests, useSyncStatus } from '../../../store/selectors';
 import { FlowButton } from '../flows/flow-button';
-import { closeFlow } from '../flows/use-link-flow';
+import { leaveFlow } from '../flows/leave-flow';
 import { ConsentButtons, ConsentDetails, consentTitle } from './consent-card';
 import { useDecide } from './use-decide';
 
 function Waiting({ request }: { readonly request: McpConsentRequest }): ReactNode {
-  const decision = useDecide(request, closeFlow);
+  const decision = useDecide(request, leaveFlow);
   return (
     <FlowFrame
       title={consentTitle(request)}
-      onCancel={closeFlow}
+      onCancel={leaveFlow}
       footer={<ConsentButtons decision={decision} grow={useIdiom() === 'touch'} />}
     >
       <ConsentDetails request={request} />
@@ -30,7 +30,7 @@ export function ConsentFlow(): ReactNode {
   const live = useSyncStatus().status === 'live';
   if (request === undefined && !live) {
     return (
-      <FlowFrame title="Allow access" onCancel={closeFlow}>
+      <FlowFrame title="Allow access" onCancel={leaveFlow}>
         <Skeleton shape="block" />
       </FlowFrame>
     );
@@ -39,8 +39,8 @@ export function ConsentFlow(): ReactNode {
     return (
       <FlowFrame
         title="Allow access"
-        onCancel={closeFlow}
-        footer={<FlowButton label="Close" onPress={closeFlow} />}
+        onCancel={leaveFlow}
+        footer={<FlowButton label="Close" onPress={leaveFlow} />}
       >
         <EmptyState
           icon="circleCheck"

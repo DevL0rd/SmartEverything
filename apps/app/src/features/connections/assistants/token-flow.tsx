@@ -4,16 +4,20 @@ import { View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { createMcpToken, mcpServerUrlOf } from '../../../api/access';
 import { useConnection } from '../../../api/transport';
+import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { CodeBlock } from '../../../components/code';
 import { FlowFrame } from '../../../components/flow-frame';
+import { ReasonLine } from '../../../components/reason-line';
 import { Text } from '../../../components/text';
 import { useSession, useSettings } from '../../../store/selectors';
 import { FlowButton } from '../flows/flow-button';
 import { verifiedPublicUrl } from '../flows/remote-access-gate';
-import { closeFlow } from '../flows/use-link-flow';
+import { leaveFlow } from '../flows/leave-flow';
 import { tokenNameFor, type TokenAssistant } from '../model/assistants';
+import { useHubLive } from './revoke-access';
 import { useMutationState } from '../../../store/mutation';
+import { background } from '@smarteverything/logging';
 
 interface ServerUrl {
   readonly url: string;
@@ -47,18 +51,23 @@ function Created({
           label={`Add to ${assistant.name}`}
           icon="externalLink"
           onPress={() => {
-            void Linking.openURL(install(mcpUrl, token));
+            background(Linking.openURL(install(mcpUrl, token)), 'url.open_failed');
           }}
         />
       )}
+      <Banner
+        tone="warning"
+        title="Copy it now"
+        body="This key is shown once. You can revoke it in Personal tokens."
+        wrapBody
+      />
       <CodeBlock label={assistant.snippetLabel} code={assistant.snippet(mcpUrl, token)} />
-      <Text variant="footnote" tone="variant">
-        This key is shown once. You can revoke it in Personal tokens.
-      </Text>
       {url.local ? (
-        <Text variant="footnote" tone="warning">
-          Works on your home network only. Set up remote access to use it anywhere.
-        </Text>
+        <ReasonLine
+          icon="wifi"
+          tone="warning"
+          text="Works on your home network only. Set up remote access to use it anywhere."
+        />
       ) : null}
     </View>
   );
@@ -69,6 +78,7 @@ export function TokenFlow({ assistant }: { readonly assistant: TokenAssistant })
   const clientName = useSession().client.name;
   const [token, setToken] = useState<string | null>(null);
   const mutation = useMutationState();
+  const live = useHubLive();
   const create = (): void => {
     mutation.run(() => createMcpToken(tokenNameFor(assistant, clientName)), {
       failure: 'No connection was made',
@@ -78,25 +88,30 @@ export function TokenFlow({ assistant }: { readonly assistant: TokenAssistant })
   return (
     <FlowFrame
       title={`Connect ${assistant.name}`}
-      onCancel={closeFlow}
+      onCancel={leaveFlow}
       wide
       footer={
         token === null ? (
           <FlowButton
             label="Create connection"
             loading={mutation.busy}
-            disabled={url === null}
+            disabled={url === null || !live}
             onPress={create}
           />
         ) : (
-          <FlowButton label="Done" onPress={closeFlow} />
+          <FlowButton label="Done" onPress={leaveFlow} />
         )
       }
     >
       {token === null || url === null ? (
-        <Text variant="body" tone="variant">
-          {`This makes a private key for ${assistant.name} and shows how to add it.`}
-        </Text>
+        <View className="gap-3">
+          <Text variant="body" tone="variant">
+            {`This makes a private key for ${assistant.name} and shows how to add it.`}
+          </Text>
+          {live ? null : (
+            <ReasonLine icon="wifiOff" text="Needs your home hub. Reconnect to continue." />
+          )}
+        </View>
       ) : (
         <Created assistant={assistant} url={url} token={token} />
       )}

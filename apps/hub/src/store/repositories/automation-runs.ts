@@ -4,40 +4,34 @@ import { z } from 'zod';
 import { CommandsRepository } from './commands';
 import {
   ACTIVE_AUTOMATION_RUN_STATUSES,
+  AUTOMATION_RUNS_KEPT,
   AUTOMATION_RUN_HISTORY_LIMIT,
   AUTOMATION_RUN_ROW,
-  MAX_AUTOMATION_TRACE,
-  usesStructuredActions,
-  type AutomationDefinition,
-  type AutomationSequenceDefinition,
-  type CommandAction,
+  AUTOMATION_TRACE_KEPT,
   type AutomationRunRow,
   type AutomationRunStatus,
   type AutomationRunStep,
   type CommandRow,
-  type AutomationSequenceRow,
-  type JsonValue,
 } from '@smarteverything/domain';
 import { storedRow } from '../codec';
-import { assignments, found, type StoreContext } from '../context';
-import { jsonText } from '../sql';
+import { assignments, found, moment, type StoreContext } from '../context';
+import { inList, jsonText } from '../sql';
 
-const STORED_RUN = storedRow(AUTOMATION_RUN_ROW, { json: ['trace', 'authority_ids'] });
+const STORED_RUN = storedRow(AUTOMATION_RUN_ROW, { json: ['trace'] });
+const STORED_COMMAND_RUN = storedRow(AUTOMATION_RUN_ROW.extend({ command_id: z.uuid() }), {
+  json: ['trace'],
+});
 const COLUMNS =
-  'id,target_type,automation_id,definition_revision,owner_profile_id,authority_ids,control_key,parent_run_id,status,current_node,trace,error,created_at,started_at,finished_at';
+  'id,automation_id,revision,owner_profile_id,control_key,parent_run_id,status,current_node,trace,error,created_at,started_at,finished_at';
+const ACTIVE = "'queued','running','cancelling'";
+
 export interface NewAutomationRun {
   readonly occurrence?: SpeechOccurrence;
   readonly automationId: string;
-  readonly revision: string;
-  readonly definition: AutomationDefinition | AutomationSequenceDefinition;
-  readonly ordered?: boolean;
-  readonly targetType?: 'automation' | 'sequence';
+  readonly revision: number;
   readonly parentRunId?: string;
-  readonly sequences?: ReadonlyMap<string, AutomationSequenceRow>;
-  readonly parameters?: Readonly<Record<string, JsonValue>>;
   readonly ownerProfileId: string | null;
-  readonly authorityIds: readonly string[];
-  readonly references: Readonly<Record<string, readonly CommandAction[]>>;
+  readonly controlKey?: string;
 }
 export interface AutomationRunChange {
   readonly status?: AutomationRunStatus;
@@ -51,15 +45,11 @@ export interface AutomationRunChange {
 export class AutomationRunsRepository {
   constructor(private readonly context: StoreContext) {}
 
-  list(automationId?: string, targetType?: 'automation' | 'sequence'): AutomationRunRow[] {
+  list(automationId?: string): AutomationRunRow[] {
     return this.context.sql.all(
       STORED_RUN,
-      `select ${COLUMNS} from automation_runs where ($automationId is null or automation_id=$automationId) and ($targetType is null or target_type=$targetType) order by created_at desc, rowid desc limit $limit`,
-      {
-        automationId: automationId ?? null,
-        targetType: targetType ?? null,
-        limit: AUTOMATION_RUN_HISTORY_LIMIT,
-      },
+      `select ${COLUMNS} from automation_runs where ($automationId is null or automation_id=$automationId) order by created_at desc, rowid desc limit $limit`,
+      { automationId: automationId ?? null, limit: AUTOMATION_RUN_HISTORY_LIMIT },
     );
   }
 
@@ -73,6 +63,28 @@ export class AutomationRunsRepository {
     );
   }
 
+  startedBetween(from: string, to: string): AutomationRunRow[] {
+    return this.context.sql.all(
+      STORED_RUN,
+      `select ${COLUMNS} from automation_runs where created_at >= $from and created_at < $to order by created_at, rowid`,
+      { from: moment(from), to: moment(to) },
+    );
+  }
+
+  runsOfCommands(commandIds: readonly string[]): ReadonlyMap<string, AutomationRunRow> {
+    const owned = inList('automation_run_commands.command_id', 'commands', commandIds);
+    const rows = this.context.sql.all(
+      STORED_COMMAND_RUN,
+      `select ${COLUMNS.split(',')
+        .map((column) => `automation_runs.${column}`)
+        .join(',')}, automation_run_commands.command_id
+       from automation_run_commands join automation_runs on automation_runs.id = automation_run_commands.run_id
+       where ${owned.text}`,
+      owned.parameters,
+    );
+    return new Map(rows.map(({ command_id: commandId, ...run }) => [commandId, run]));
+  }
+
   create(input: NewAutomationRun): AutomationRunRow {
     return this.context.write(() => {
       if (input.occurrence !== undefined)
@@ -80,24 +92,18 @@ export class AutomationRunsRepository {
       const id = this.context.newId();
       this.context.sql.run(
         'create automation run',
-        `insert into automation_runs(id,ordered,target_type,parent_run_id,automation_id,definition_revision,definition,reference_snapshot,sequence_snapshot,parameter_snapshot,owner_profile_id,authority_ids,control_key,status,trace,created_at) values($id,$ordered,$targetType,$parentRunId,$automationId,$revision,$definition,$references,$sequences,$parameters,$owner,$authorities,$control,'queued','[]',$now)`,
+        `insert into automation_runs(id,parent_run_id,automation_id,revision,owner_profile_id,control_key,status,trace,created_at) values($id,$parentRunId,$automationId,$revision,$owner,$control,'queued','[]',$now)`,
         {
           id,
-          ordered: orderedRun(input) ? 1 : 0,
-          targetType: input.targetType ?? 'automation',
           parentRunId: input.parentRunId ?? null,
           automationId: input.automationId,
           revision: input.revision,
-          definition: jsonText(input.definition),
-          references: jsonText(input.references),
-          sequences: jsonText(Object.fromEntries(input.sequences ?? [])),
-          parameters: jsonText(input.parameters ?? {}),
           owner: input.ownerProfileId,
-          authorities: jsonText(input.authorityIds),
-          control: input.definition.controlKey ?? null,
+          control: input.controlKey ?? null,
           now: this.context.now(),
         },
       );
+      this.trim(input.automationId);
       const row = this.byId(id);
       this.context.changed('automation_runs', 'INSERT', row, null);
       return row;
@@ -112,7 +118,7 @@ export class AutomationRunsRepository {
         trace:
           change.trace === undefined
             ? undefined
-            : jsonText(change.trace.slice(-MAX_AUTOMATION_TRACE)),
+            : jsonText(change.trace.slice(-AUTOMATION_TRACE_KEPT)),
       });
       this.context.sql.run(
         'change automation run',
@@ -125,14 +131,28 @@ export class AutomationRunsRepository {
     });
   }
 
+  forget(automationId: string): void {
+    const finished = `select id from automation_runs where automation_id=$automationId and status not in (${ACTIVE})`;
+    const parameters = { automationId };
+    this.context.sql.run(
+      'forget the commands of the runs of a removed automation',
+      `delete from automation_run_commands where run_id in (${finished})`,
+      parameters,
+    );
+    this.context.sql.run(
+      'forget the runs of a removed automation',
+      `delete from automation_runs where id in (${finished})`,
+      parameters,
+    );
+  }
+
   canDispatch(commandId: string): boolean {
     const run = this.context.sql.get(
-      z.strictObject({ status: z.string(), ordered: z.int().min(0).max(1) }),
-      'select status,ordered from automation_runs join automation_run_commands on run_id=automation_runs.id where command_id=$commandId',
+      z.strictObject({ status: z.string() }),
+      'select status from automation_runs join automation_run_commands on run_id=automation_runs.id where command_id=$commandId',
       { commandId },
     );
-    if (run === undefined || run.status === 'running') return true;
-    return run.ordered === 0 && (run.status === 'succeeded' || run.status === 'failed');
+    return run === undefined || run.status === 'running';
   }
 
   retainCommands(runId: string, rows: readonly CommandRow[]): void {
@@ -157,7 +177,7 @@ export class AutomationRunsRepository {
         });
       const rows = this.context.sql.all(
         STORED_RUN,
-        `select ${COLUMNS} from automation_runs where status in ('queued','running','cancelling')`,
+        `select ${COLUMNS} from automation_runs where status in (${ACTIVE})`,
       );
       for (const row of rows) {
         if (ACTIVE_AUTOMATION_RUN_STATUSES.has(row.status))
@@ -170,13 +190,19 @@ export class AutomationRunsRepository {
       }
     });
   }
-}
 
-function orderedRun(input: NewAutomationRun): boolean {
-  return (
-    input.ordered === true ||
-    input.targetType === 'sequence' ||
-    input.definition.runPolicy !== undefined ||
-    usesStructuredActions(input.definition.actions)
-  );
+  private trim(automationId: string): void {
+    const old = `select id from automation_runs where automation_id=$automationId and status not in (${ACTIVE}) order by created_at desc, rowid desc limit -1 offset $kept`;
+    const parameters = { automationId, kept: AUTOMATION_RUNS_KEPT };
+    this.context.sql.run(
+      'forget the commands of old runs',
+      `delete from automation_run_commands where run_id in (${old})`,
+      parameters,
+    );
+    this.context.sql.run(
+      'forget old runs',
+      `delete from automation_runs where id in (${old})`,
+      parameters,
+    );
+  }
 }

@@ -2,15 +2,17 @@ import type { ListStat } from './collector';
 import { DRAG_HOLD_MS, JANK_MS, SCROLL_SAMPLE_MS } from './config';
 
 interface Cell {
-  readonly y: number;
-  readonly height: number;
+  y: number;
+  height: number;
 }
 
 interface Live {
+  readonly list: string;
   readonly cells: Map<number, Cell>;
   mounted: number;
   total: number;
   viewport: number;
+  content: number;
   scrolledAt: number;
   sampledAt: number;
   screen: string;
@@ -22,14 +24,19 @@ export function blankOf(
   offset: number,
   viewport: number,
 ): number {
-  const indexes = [...cells.keys()];
-  if (indexes.length === 0 || viewport <= 0) {
+  if (cells.size === 0 || viewport <= 0) {
     return 0;
   }
-  const first = Math.min(...indexes);
-  const last = Math.max(...indexes);
-  const from = Math.min(...[...cells.values()].map((cell) => cell.y));
-  const to = Math.max(...[...cells.values()].map((cell) => cell.y + cell.height));
+  let first = Number.POSITIVE_INFINITY;
+  let last = Number.NEGATIVE_INFINITY;
+  let from = Number.POSITIVE_INFINITY;
+  let to = Number.NEGATIVE_INFINITY;
+  cells.forEach((cell, index) => {
+    first = Math.min(first, index);
+    last = Math.max(last, index);
+    from = Math.min(from, cell.y);
+    to = Math.max(to, cell.y + cell.height);
+  });
   const top = first === 0 ? 0 : Math.max(0, from - offset);
   const bottom = last >= total - 1 ? 0 : Math.max(0, offset + viewport - to);
   return Math.min(viewport, top + bottom);
@@ -37,6 +44,7 @@ export function blankOf(
 
 export class ListTracker {
   private readonly lists = new Map<string, Live>();
+  private readonly all: Live[] = [];
 
   constructor(
     private readonly statOf: (list: string) => ListStat,
@@ -49,15 +57,18 @@ export class ListTracker {
       return found;
     }
     const made: Live = {
+      list,
       cells: new Map(),
       mounted: 0,
       total: 0,
       viewport: 0,
+      content: 0,
       scrolledAt: 0,
       sampledAt: 0,
       screen: this.screenOf(),
     };
     this.lists.set(list, made);
+    this.all.push(made);
     return made;
   }
 
@@ -66,6 +77,15 @@ export class ListTracker {
     stat.mountedMax = Math.max(stat.mountedMax, live.mounted);
     stat.mountedMin = Math.min(stat.mountedMin, live.mounted);
     stat.total = live.total;
+    stat.viewport = live.viewport;
+    stat.content = live.content;
+    if (stat.lastIndex < 0 && live.cells.size > 0) {
+      live.cells.forEach((cell, index) => {
+        stat.firstIndex = Math.min(stat.firstIndex, index);
+        stat.lastIndex = Math.max(stat.lastIndex, index);
+        stat.cellMax = Math.max(stat.cellMax, cell.height);
+      });
+    }
     return stat;
   }
 
@@ -77,7 +97,18 @@ export class ListTracker {
   }
 
   cell(list: string, index: number, y: number, height: number): void {
-    this.live(list).cells.set(index, { y, height });
+    const live = this.live(list);
+    const known = live.cells.get(index);
+    if (known === undefined) {
+      live.cells.set(index, { y, height });
+    } else {
+      known.y = y;
+      known.height = height;
+    }
+    const stat = this.touchStat(list, live);
+    stat.firstIndex = Math.min(stat.firstIndex, index);
+    stat.lastIndex = Math.max(stat.lastIndex, index);
+    stat.cellMax = Math.max(stat.cellMax, height);
   }
 
   gone(list: string, index: number): void {
@@ -85,7 +116,15 @@ export class ListTracker {
   }
 
   viewport(list: string, height: number): void {
-    this.live(list).viewport = height;
+    const live = this.live(list);
+    live.viewport = height;
+    this.touchStat(list, live);
+  }
+
+  content(list: string, height: number): void {
+    const live = this.live(list);
+    live.content = height;
+    this.touchStat(list, live);
   }
 
   scroll(list: string, offset: number, now: number): void {
@@ -96,6 +135,7 @@ export class ListTracker {
     }
     live.sampledAt = now;
     const stat = this.touchStat(list, live);
+    stat.offsetMax = Math.max(stat.offsetMax, offset);
     const blank = blankOf(live.cells, live.total, offset, live.viewport);
     stat.blankMax = Math.max(stat.blankMax, blank);
     stat.blankSum += blank;
@@ -103,20 +143,23 @@ export class ListTracker {
   }
 
   frame(gap: number, now: number): void {
-    for (const [list, live] of this.lists) {
-      if (now - live.scrolledAt <= DRAG_HOLD_MS) {
-        const stat = this.statOf(list);
+    let index = 0;
+    while (index < this.all.length) {
+      const live = this.all[index];
+      if (live !== undefined && now - live.scrolledAt <= DRAG_HOLD_MS) {
+        const stat = this.statOf(live.list);
         stat.scrollFrames += 1;
         stat.scrollJanks += gap > JANK_MS ? 1 : 0;
       }
+      index += 1;
     }
   }
 
   seed(): void {
-    for (const [list, live] of this.lists) {
+    this.lists.forEach((live, list) => {
       if (live.screen === this.screenOf()) {
         this.touchStat(list, live);
       }
-    }
+    });
   }
 }

@@ -1,29 +1,26 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import type {
-  FlatList,
-  LayoutChangeEvent,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-} from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import type { FlashListRef } from '@shopify/flash-list';
+import { background } from '@smarteverything/logging';
 import { useScrollToTop } from 'expo-router';
 import { useScreen } from '../screen-context';
-import type { TranscriptHit } from '@smarteverything/domain';
+import type { FeedItem } from './feed-items';
+
+const JUMP_POSITION = 0.4;
 
 interface FeedScroll {
-  readonly listRef: RefObject<FlatList<TranscriptHit> | null>;
-  readonly layout: (event: LayoutChangeEvent) => void;
-  readonly jump: () => void;
-  readonly retryJump: (info: {
-    readonly index: number;
-    readonly averageItemLength: number;
+  readonly listRef: RefObject<FlashListRef<FeedItem> | null>;
+  readonly layout: (event: {
+    readonly nativeEvent: { readonly layout: { readonly y: number } };
   }) => void;
+  readonly jump: () => void;
   readonly anchorReady: () => void;
   readonly top: () => void;
   readonly scroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
 }
 
 function useFeedFocus(
-  listRef: RefObject<FlatList<TranscriptHit> | null>,
+  listRef: RefObject<FlashListRef<FeedItem> | null>,
   offsetRef: RefObject<number>,
   focus: boolean,
 ): () => boolean {
@@ -40,11 +37,11 @@ function useFeedFocus(
 }
 
 export function useFeedScroll(
-  rows: readonly TranscriptHit[],
+  items: readonly FeedItem[],
   anchor: number | null,
   focus: boolean,
 ): FeedScroll {
-  const listRef = useRef<FlatList<TranscriptHit>>(null);
+  const listRef = useRef<FlashListRef<FeedItem>>(null);
   const jumped = useRef<number | null>(null);
   const offset = useRef(0);
   const { scrollY } = useScreen();
@@ -55,22 +52,20 @@ export function useFeedScroll(
   }, [anchor]);
   const jump = (): void => {
     if (anchor === null || jumped.current === anchor) return;
-    const index = rows.findIndex((hit) => hit.line.id === anchor);
+    const index = items.findIndex((item) => item.kind === 'line' && item.hit.line.id === anchor);
     if (index < 0) return;
     jumped.current = anchor;
-    listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.4 });
+    const list = listRef.current;
+    if (list === null) return;
+    background(
+      list.scrollToIndex({ index, animated: false, viewPosition: JUMP_POSITION }),
+      'feed.jump_failed',
+    );
   };
   return {
     listRef,
     anchorReady: (): void => {
       requestAnimationFrame(jump);
-    },
-    retryJump: (info): void => {
-      jumped.current = null;
-      listRef.current?.scrollToOffset({
-        offset: offset.current + info.index * info.averageItemLength,
-        animated: false,
-      });
     },
     scroll: (event): void => {
       scrollY.set(event.nativeEvent.contentOffset.y);

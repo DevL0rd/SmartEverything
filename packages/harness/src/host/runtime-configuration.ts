@@ -1,6 +1,6 @@
 import type { HarnessDesiredConfiguration, HarnessPluginReadiness } from '@smarteverything/domain';
+import { describeFailure } from '@smarteverything/logging';
 import type { HarnessConfiguration } from '../composition/configuration';
-import { HarnessRuntimeError } from './errors';
 
 export interface HarnessRuntimeConfigurationState {
   readonly revision: string | null;
@@ -14,13 +14,14 @@ export class HarnessRuntimeConfiguration {
   private pending: HarnessDesiredConfiguration | undefined;
   private ready = true;
   private closing = false;
+  private failure: string | undefined;
 
   constructor(
     private readonly configuration: HarnessConfiguration,
     private readonly notifyPending: HarnessConfigurationPending | undefined,
   ) {}
 
-  async request(input: HarnessDesiredConfiguration, sessions: number): Promise<void> {
+  request(input: HarnessDesiredConfiguration): void {
     const desired = this.configuration.validate(input);
     if (
       this.pending === undefined &&
@@ -29,18 +30,30 @@ export class HarnessRuntimeConfiguration {
     )
       return;
     this.pending = desired;
-    if (sessions > 0) {
-      this.notifyPending?.(desired.revision);
-      return;
-    }
-    await this.applyPending();
+    this.failure = undefined;
+  }
+
+  hasPending(): boolean {
+    return this.pending !== undefined && !this.closing;
+  }
+
+  waiting(): void {
+    if (this.pending !== undefined) this.notifyPending?.(this.pending.revision);
   }
 
   async applyPending(): Promise<void> {
     if (this.pending === undefined || this.closing) return;
+    const { revision } = this.pending;
     this.ready = false;
-    await this.configuration.reconcile(this.pending);
+    try {
+      await this.configuration.reconcile(this.pending);
+    } catch (error) {
+      this.failure = describeFailure(error).message;
+      this.notifyPending?.(revision);
+      throw error;
+    }
     this.pending = undefined;
+    this.failure = undefined;
     this.ready = true;
   }
 
@@ -52,15 +65,14 @@ export class HarnessRuntimeConfiguration {
     return {
       revision: this.configuration.revision(),
       pendingRevision: this.pending?.revision ?? null,
-      readiness: this.configuration.snapshot(),
+      readiness: this.readiness(),
     };
   }
 
-  assertReady(): void {
-    if (this.pending !== undefined || !this.ready)
-      throw new HarnessRuntimeError(
-        'composition_incompatible',
-        'Shared configuration is pending; drain and reconcile before opening a session.',
-      );
+  private readiness(): readonly HarnessPluginReadiness[] {
+    const { failure } = this;
+    const snapshot = this.configuration.snapshot();
+    if (failure === undefined) return snapshot;
+    return snapshot.map((entry) => ({ ...entry, state: 'failed', reason: failure }));
   }
 }

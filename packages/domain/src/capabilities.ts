@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import type { ValueDescriptor } from './values';
+import { COMPUTER_CAPABILITY_CATALOGUE } from './computer-capabilities';
+import { PHONE_CAPABILITY_CATALOGUE } from './phone-capabilities';
 export const CAPABILITY_GROUPS = [
   'power',
   'lighting',
@@ -24,7 +26,7 @@ export const ACCESS_MODES = ['read', 'write', 'read_write'] as const;
 
 export type AccessMode = (typeof ACCESS_MODES)[number];
 
-interface CatalogueEntry {
+export interface CatalogueEntry {
   readonly label: string;
   readonly group: CapabilityGroup;
   readonly kind: ValueDescriptor['kind'];
@@ -202,6 +204,20 @@ export const CAPABILITY_CATALOGUE = {
     kind: 'number',
     keywords: ['syncthing'],
   },
+  sync_download_rate: {
+    label: 'Sync download',
+    group: 'system',
+    kind: 'number',
+    keywords: ['syncthing', 'speed'],
+    sampled: true,
+  },
+  sync_upload_rate: {
+    label: 'Sync upload',
+    group: 'system',
+    kind: 'number',
+    keywords: ['syncthing', 'speed'],
+    sampled: true,
+  },
   sync_folders_behind: {
     label: 'Folders behind',
     group: 'system',
@@ -221,108 +237,7 @@ export const CAPABILITY_CATALOGUE = {
     keywords: ['syncthing', 'pause'],
   },
   firmware: { label: 'Firmware', group: 'system', kind: 'text', keywords: ['version'] },
-  cpu_load: {
-    label: 'Processor',
-    group: 'system',
-    kind: 'number',
-    keywords: ['cpu', 'load', 'usage'],
-    sampled: true,
-  },
-  memory_used: {
-    label: 'Memory',
-    group: 'system',
-    kind: 'number',
-    keywords: ['ram', 'memory'],
-    sampled: true,
-  },
-  gpu_load: {
-    label: 'Graphics',
-    group: 'system',
-    kind: 'number',
-    keywords: ['gpu', 'graphics card'],
-    sampled: true,
-  },
-  disk_used: {
-    label: 'Disk',
-    group: 'system',
-    kind: 'number',
-    keywords: ['storage', 'drive', 'space'],
-    sampled: true,
-  },
-  cpu_temperature: {
-    label: 'Processor temperature',
-    group: 'system',
-    kind: 'number',
-    keywords: ['cpu', 'heat'],
-    sampled: true,
-  },
-  gpu_temperature: {
-    label: 'Graphics temperature',
-    group: 'system',
-    kind: 'number',
-    keywords: ['gpu', 'heat'],
-    sampled: true,
-  },
-  download_rate: {
-    label: 'Download',
-    group: 'system',
-    kind: 'number',
-    keywords: ['network', 'internet', 'speed'],
-    sampled: true,
-  },
-  upload_rate: {
-    label: 'Upload',
-    group: 'system',
-    kind: 'number',
-    keywords: ['network', 'internet', 'speed'],
-    sampled: true,
-  },
-  shut_down: {
-    label: 'Shut down',
-    group: 'power',
-    kind: 'action',
-    keywords: ['power off', 'turn off', 'computer'],
-  },
-  restart: { label: 'Restart', group: 'power', kind: 'action', keywords: ['reboot', 'computer'] },
-  sleep: { label: 'Sleep', group: 'power', kind: 'action', keywords: ['suspend', 'computer'] },
-  hibernate: { label: 'Hibernate', group: 'power', kind: 'action', keywords: ['computer'] },
-  lock_screen: {
-    label: 'Lock screen',
-    group: 'power',
-    kind: 'action',
-    keywords: ['lock', 'computer'],
-  },
-  sign_out: {
-    label: 'Sign out',
-    group: 'power',
-    kind: 'action',
-    keywords: ['log out', 'logout', 'computer'],
-  },
-  wake: {
-    label: 'Wake',
-    group: 'power',
-    kind: 'action',
-    keywords: ['wake on lan', 'turn on', 'computer'],
-  },
-  charging: {
-    label: 'Charging',
-    group: 'power',
-    kind: 'boolean',
-    keywords: ['battery', 'plugged'],
-  },
-  locked: { label: 'Locked', group: 'system', kind: 'boolean', keywords: ['screen', 'lock'] },
-  focused_app: {
-    label: 'Active app',
-    group: 'system',
-    kind: 'text',
-    keywords: ['window', 'program'],
-  },
-  signed_in_user: {
-    label: 'Signed in',
-    group: 'system',
-    kind: 'text',
-    keywords: ['user', 'login'],
-  },
+  ...COMPUTER_CAPABILITY_CATALOGUE,
   phone_context: {
     label: 'Doing',
     group: 'sensor',
@@ -362,6 +277,37 @@ export const CAPABILITY_CATALOGUE = {
     kind: 'enum',
     keywords: ['torch', 'light', 'lamp', 'phone'],
   },
+  stop_ring: {
+    label: 'Stop ringing',
+    group: 'system',
+    kind: 'action',
+    keywords: ['silence', 'quiet', 'find my phone', 'stop find'],
+  },
+  launch_app: {
+    label: 'Open app',
+    group: 'system',
+    kind: 'text',
+    keywords: ['launch', 'start', 'run', 'program', 'application'],
+  },
+  open: {
+    label: 'Open link or file',
+    group: 'system',
+    kind: 'text',
+    keywords: ['url', 'website', 'link', 'file', 'path', 'browse'],
+  },
+  unlock: {
+    label: 'Unlock',
+    group: 'security',
+    kind: 'action',
+    keywords: ['unlock screen', 'sign in', 'computer'],
+  },
+  show_unlock: {
+    label: 'Show unlock prompt',
+    group: 'security',
+    kind: 'action',
+    keywords: ['wake screen', 'unlock screen', 'pin', 'wake'],
+  },
+  ...PHONE_CAPABILITY_CATALOGUE,
 } as const satisfies Record<string, CatalogueEntry>;
 
 export type StandardCapability = keyof typeof CAPABILITY_CATALOGUE;

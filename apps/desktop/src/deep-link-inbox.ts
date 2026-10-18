@@ -1,5 +1,8 @@
 import type { DesktopEventChannel } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { parseDeepLink, type DeepLinkParse } from './deep-link.js';
+
+const log = new Logger('desktop.deep-link');
 
 export interface DeepLinkRecipient {
   send(channel: DesktopEventChannel, url: string): void;
@@ -20,14 +23,20 @@ export class DeepLinkInbox {
   receive(candidate: string): void {
     const parsed = parseDeepLink(candidate);
     if (parsed.kind === 'refused') {
+      log.warn('link.refused', { reason: parsed.reason, length: candidate.length });
       this.#onRefused(parsed);
       return;
     }
     const recipient = this.#recipient;
     if (recipient === undefined || recipient.isDestroyed()) {
       this.#pending = [...this.#pending, parsed.url];
+      log.info('link.queued', {
+        pending: this.#pending.length,
+        recipient: recipient === undefined ? 'none' : 'destroyed',
+      });
       return;
     }
+    log.info('link.delivered', { length: parsed.url.length });
     recipient.send('desktop:deep-link', parsed.url);
   }
 
@@ -35,6 +44,7 @@ export class DeepLinkInbox {
     this.#recipient = recipient;
     const pending = this.#pending;
     this.#pending = [];
+    log.info('link.taken', { count: pending.length });
     return pending;
   }
 }

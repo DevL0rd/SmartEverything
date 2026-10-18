@@ -1,15 +1,10 @@
-import {
-  airBand,
-  AIR_BAND_LABELS,
-  withRole,
-  type AirBand,
-  type PresentedCapability,
-} from '@smarteverything/domain';
+import { withRole, type PresentedCapability } from '@smarteverything/domain';
 import type { StatusTone } from '../../../components/tone';
 import { decimal } from '../../../format/number';
+import { BANDS, comparable, zoneOf, type ComfortMetric } from './bands';
 import type { ClimateSource } from './climate-devices';
 
-export type ComfortMetric = 'temperature' | 'humidity' | 'pm25' | 'co2';
+export type { ComfortMetric };
 
 export const INDOOR_METRICS: readonly ComfortMetric[] = ['temperature', 'humidity', 'co2'];
 
@@ -43,57 +38,6 @@ const DIGITS: Readonly<Record<ComfortMetric, number>> = {
   co2: 0,
 };
 
-const AIR_TONES: Readonly<Record<AirBand, StatusTone>> = {
-  good: 'positive',
-  fair: 'positive',
-  moderate: 'warning',
-  poor: 'critical',
-  bad: 'critical',
-  severe: 'critical',
-};
-
-interface Verdict {
-  readonly verdict: string;
-  readonly tone: StatusTone;
-}
-
-interface Band {
-  readonly low: number;
-  readonly high: number;
-  readonly below: string;
-  readonly fine: string;
-  readonly above: string;
-}
-
-function within(value: number, band: Band): Verdict {
-  if (value < band.low) {
-    return { verdict: band.below, tone: 'warning' };
-  }
-  if (value > band.high) {
-    return { verdict: band.above, tone: 'warning' };
-  }
-  return { verdict: band.fine, tone: 'positive' };
-}
-
-const TEMPERATURE: Band = { low: 19, high: 25, below: 'Cool', fine: 'Comfortable', above: 'Warm' };
-const HUMIDITY: Band = { low: 35, high: 65, below: 'Dry', fine: 'Comfortable', above: 'Humid' };
-const CO2: Band = { low: 0, high: 1000, below: 'Fresh', fine: 'Fresh', above: 'Stuffy' };
-
-function verdictOf(metric: ComfortMetric, value: number): Verdict {
-  switch (metric) {
-    case 'temperature':
-      return within(value, TEMPERATURE);
-    case 'humidity':
-      return within(value, HUMIDITY);
-    case 'pm25': {
-      const band = airBand(value);
-      return { verdict: AIR_BAND_LABELS[band], tone: AIR_TONES[band] };
-    }
-    case 'co2':
-      return within(value, CO2);
-  }
-}
-
 function samplesOf(sources: readonly ClimateSource[], metric: ComfortMetric): readonly Sample[] {
   return sources.flatMap((source) => {
     const presented = withRole(source.model.presentation, metric);
@@ -112,13 +56,15 @@ function readingOf(metric: ComfortMetric, samples: readonly Sample[]): MetricRea
     return null;
   }
   const mean = used.reduce((sum, sample) => sum + sample.value, 0) / used.length;
+  const zone = zoneOf(BANDS[metric], comparable(mean, first.presented.unit));
   return {
     metric,
     label: first.presented.label,
     amount: mean,
     value: decimal(mean, DIGITS[metric]),
     unit: first.presented.unit,
-    ...verdictOf(metric, mean),
+    verdict: zone.verdict,
+    tone: zone.tone,
     stale: online.length === 0,
   };
 }

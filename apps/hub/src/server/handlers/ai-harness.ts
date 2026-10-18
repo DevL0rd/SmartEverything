@@ -1,43 +1,17 @@
 import { OwnEngineSelections } from '../../harness/own-selection';
-import { staleHumanSession, stableHumanSession } from '../../harness/stable-session';
+import { readSession } from '../../harness/attach';
+import { listMachines, switchMachine } from '../../harness/machines';
 import { harnessCommandRoutes } from './ai-harness-commands';
 import { openConversation } from '../../harness/opening';
 import { API_ENDPOINTS, ApiError, AI_HARNESS_CAPABILITY } from '@smarteverything/domain';
 import { bound, DONE_REPLY } from '../router';
-import { clientOf, profileIdOf, roleOfCaller } from '../auth';
+import { chatOwnerOf, clientOf, profileIdOf, roleOfCaller } from '../auth';
+import type { ChatOwner } from '../../assistant/chat-directory';
 import type { Caller } from '../auth';
 import type { HarnessService } from '../../harness/service';
 
-type HarnessHandlers = Readonly<
-  Record<
-    keyof typeof API_ENDPOINTS &
-      (
-        | 'listAiChatHarnessCommands'
-        | 'executeAiChatHarnessCommand'
-        | 'controlAiHarnessSubscription'
-        | 'readAiHarnessConfiguration'
-        | 'readAiHarnessExtensions'
-        | 'resolveAiHarnessSkill'
-        | 'discoverAiHarnessExtensions'
-        | 'readAiHarnessSkillUpdates'
-        | 'replaceAiHarnessSkillUpdates'
-        | 'updateAiHarnessSkills'
-        | 'replaceAiHarnessConfiguration'
-        | 'readAiHarnessCatalogue'
-        | 'openAiChatHarness'
-        | 'readAiChatHarness'
-        | 'switchAiChatHarness'
-        | 'answerAiChatHarness'
-        | 'changeAiChatHarnessPermission'
-        | 'readDshSession'
-        | 'listDshSessions'
-        | 'readDshSessionEvents'
-      ),
-    ReturnType<typeof bound>
-  >
->;
-export function aiHarnessRoutes(service: HarnessService): HarnessHandlers {
-  return {
+export const aiHarnessRoutes = (service: HarnessService) =>
+  ({
     controlAiHarnessSubscription: bound(
       API_ENDPOINTS.controlAiHarnessSubscription,
       ({ body, caller }) => service.subscriptions.control(profileIdOf(service.store, caller), body),
@@ -45,68 +19,56 @@ export function aiHarnessRoutes(service: HarnessService): HarnessHandlers {
     ...harnessCommandRoutes(service),
     ...configurationRoutes(service),
     ...extensionRoutes(service),
+    ...skillUpdateRoutes(service),
     ...chatRoutes(service),
+    ...machineRoutes(service),
     ...readRoutes(service),
-  };
-}
-function extensionRoutes(
-  service: HarnessService,
-): Pick<
-  HarnessHandlers,
-  | 'readAiHarnessExtensions'
-  | 'resolveAiHarnessSkill'
-  | 'discoverAiHarnessExtensions'
-  | 'readAiHarnessSkillUpdates'
-  | 'replaceAiHarnessSkillUpdates'
-  | 'updateAiHarnessSkills'
-> {
-  return {
+  }) as const;
+const extensionRoutes = (service: HarnessService) =>
+  ({
+    readAiHarnessExtensions: bound(API_ENDPOINTS.readAiHarnessExtensions, () =>
+      service.extensions.catalogue(),
+    ),
+    resolveAiHarnessSkill: bound(API_ENDPOINTS.resolveAiHarnessSkill, ({ body }) =>
+      service.extensions.resolve(body),
+    ),
+    installAiHarnessExtensions: bound(API_ENDPOINTS.installAiHarnessExtensions, ({ body }) =>
+      service.extensions.install(body),
+    ),
+    changeAiHarnessExtension: bound(API_ENDPOINTS.changeAiHarnessExtension, ({ params, body }) =>
+      service.extensions.change(params.id, body),
+    ),
+    removeAiHarnessExtension: bound(API_ENDPOINTS.removeAiHarnessExtension, async ({ params }) => {
+      await service.extensions.remove(params.id);
+      return DONE_REPLY;
+    }),
+    writeAiHarnessSkill: bound(API_ENDPOINTS.writeAiHarnessSkill, ({ params, body }) =>
+      service.extensions.write(params.name, body),
+    ),
+  }) as const;
+const skillUpdateRoutes = (service: HarnessService) =>
+  ({
     discoverAiHarnessExtensions: bound(API_ENDPOINTS.discoverAiHarnessExtensions, ({ body }) =>
       service.discovery.browse(body),
     ),
     readAiHarnessSkillUpdates: bound(API_ENDPOINTS.readAiHarnessSkillUpdates, () =>
       service.skillUpdates.read(),
     ),
-    replaceAiHarnessSkillUpdates: bound(
-      API_ENDPOINTS.replaceAiHarnessSkillUpdates,
-      ({ body, caller }) => service.skillUpdates.replace(body, roleOfCaller(caller)),
+    replaceAiHarnessSkillUpdates: bound(API_ENDPOINTS.replaceAiHarnessSkillUpdates, ({ body }) =>
+      service.skillUpdates.replace(body),
     ),
-    updateAiHarnessSkills: bound(API_ENDPOINTS.updateAiHarnessSkills, ({ caller }) =>
-      service.skillUpdates.update(roleOfCaller(caller)),
+    updateAiHarnessSkills: bound(API_ENDPOINTS.updateAiHarnessSkills, () =>
+      service.skillUpdates.update(),
     ),
-    readAiHarnessExtensions: bound(API_ENDPOINTS.readAiHarnessExtensions, () =>
-      service.extensions.catalogue(),
-    ),
-    resolveAiHarnessSkill: bound(API_ENDPOINTS.resolveAiHarnessSkill, ({ body, caller }) =>
-      service.extensions.resolve(body, roleOfCaller(caller)),
-    ),
-  };
-}
-function configurationRoutes(
-  service: HarnessService,
-): Pick<HarnessHandlers, 'readAiHarnessConfiguration' | 'replaceAiHarnessConfiguration'> {
-  return {
+  }) as const;
+const configurationRoutes = (service: HarnessService) =>
+  ({
     readAiHarnessConfiguration: bound(API_ENDPOINTS.readAiHarnessConfiguration, ({ caller }) =>
       service.configuration.catalogue(roleOfCaller(caller), clientOf(caller).id),
     ),
-    replaceAiHarnessConfiguration: bound(
-      API_ENDPOINTS.replaceAiHarnessConfiguration,
-      ({ body, caller }) => service.configuration.replace(body, roleOfCaller(caller)),
-    ),
-  };
-}
-function chatRoutes(
-  service: HarnessService,
-): Pick<
-  HarnessHandlers,
-  | 'readAiHarnessCatalogue'
-  | 'openAiChatHarness'
-  | 'readAiChatHarness'
-  | 'switchAiChatHarness'
-  | 'answerAiChatHarness'
-  | 'changeAiChatHarnessPermission'
-> {
-  return {
+  }) as const;
+const chatRoutes = (service: HarnessService) =>
+  ({
     changeAiChatHarnessPermission: bound(
       API_ENDPOINTS.changeAiChatHarnessPermission,
       ({ params, body, caller }) => {
@@ -131,7 +93,7 @@ function chatRoutes(
       readChat(service, caller, params.chatId),
     ),
     switchAiChatHarness: bound(API_ENDPOINTS.switchAiChatHarness, ({ params, body, caller }) =>
-      switchChat(service, caller, params.chatId, body),
+      service.switch(ownerOf(service, caller), params.chatId, body),
     ),
     answerAiChatHarness: bound(
       API_ENDPOINTS.answerAiChatHarness,
@@ -140,25 +102,21 @@ function chatRoutes(
         return DONE_REPLY;
       },
     ),
-  };
-}
+  }) as const;
 function readChat(
   service: HarnessService,
   caller: Caller,
   chatId: string,
 ): ReturnType<HarnessService['state']> | Promise<ReturnType<HarnessService['state']>> {
   const owner = ownerOf(service, caller);
-  const session = service.state(owner, chatId);
   if (
     caller.kind !== 'client' ||
     caller.via !== undefined ||
     caller.pluginId !== undefined ||
-    caller.pluginRequester !== undefined ||
-    session.epoch === null
+    caller.pluginRequester !== undefined
   )
-    return session;
-  if (!staleHumanSession(service, session)) return session;
-  return stableHumanSession(service, { owner, chatId, clientId: caller.client.id }, session.epoch);
+    return service.state(owner, chatId);
+  return readSession(service, { owner, chatId, clientId: caller.client.id });
 }
 
 function openChat(
@@ -166,18 +124,25 @@ function openChat(
   caller: Caller,
   chatId: string,
 ): ReturnType<typeof openConversation> {
-  const owner = { profileId: profileIdOf(service.store, caller), role: roleOfCaller(caller) };
-  const chat = service.own(owner, chatId);
-  if (chat.engine.kind === 'openrouter')
-    new OwnEngineSelections(service).migrate(chatId, false, clientOf(caller).id);
+  const owner = chatOwnerOf(service.store, caller);
+  service.own(owner, chatId);
+  new OwnEngineSelections(service).migrate(chatId);
   const authority = { kind: 'manual', profileId: owner.profileId } as const;
   return openConversation(service, { owner, chatId, authority, clientId: clientOf(caller).id });
 }
 
-function readRoutes(
-  service: HarnessService,
-): Pick<HarnessHandlers, 'readDshSession' | 'listDshSessions' | 'readDshSessionEvents'> {
-  return {
+const machineRoutes = (service: HarnessService) =>
+  ({
+    listAiChatMachines: bound(API_ENDPOINTS.listAiChatMachines, ({ params, caller }) =>
+      listMachines(service, ownerOf(service, caller), params.chatId),
+    ),
+    switchAiChatMachine: bound(API_ENDPOINTS.switchAiChatMachine, ({ params, body, caller }) =>
+      switchMachine(service, ownerOf(service, caller), params.chatId, body.machine),
+    ),
+  }) as const;
+
+const readRoutes = (service: HarnessService) =>
+  ({
     readDshSession: bound(API_ENDPOINTS.readDshSession, ({ params, caller }) => {
       const metadata = service.store.dshSessions.stat(
         params.sessionId,
@@ -201,28 +166,7 @@ function readRoutes(
     readDshSessionEvents: bound(API_ENDPOINTS.readDshSessionEvents, ({ body, caller }) =>
       service.store.dshSessions.read(body, profileIdOf(service.store, caller)),
     ),
-  };
-}
-function ownerOf(
-  service: HarnessService,
-  caller: Caller,
-): { readonly profileId: string; readonly role: 'owner' | 'member' } {
-  return {
-    profileId: profileIdOf(service.store, caller),
-    role: roleOfCaller(caller),
-  };
-}
-
-function switchChat(
-  service: HarnessService,
-  caller: Caller,
-  chatId: string,
-  body: Parameters<HarnessService['switch']>[2],
-): ReturnType<HarnessService['switch']> {
-  return service.switch(
-    ownerOf(service, caller),
-    chatId,
-    body,
-    caller.kind === 'client' ? caller.client.id : undefined,
-  );
+  }) as const;
+function ownerOf(service: HarnessService, caller: Caller): ChatOwner {
+  return chatOwnerOf(service.store, caller);
 }

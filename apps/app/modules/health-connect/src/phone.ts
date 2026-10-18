@@ -1,4 +1,4 @@
-import { captureNativeServerEnrollment } from './hub-network';
+import { withNativeEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { PHONE_CONTEXT_STATE, PHONE_PLACE_NAME } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -6,7 +6,15 @@ import { AppUpdateNeededError, type SyncProgressSubscription } from './health-co
 
 const MOMENT = z.iso.datetime({ offset: true });
 
-const PHONE_SENSORS = ['activity', 'places', 'car', 'navigation', 'screen_time'] as const;
+const PHONE_SENSORS = [
+  'activity',
+  'places',
+  'car',
+  'navigation',
+  'screen_time',
+  'app_usage',
+  'notification_titles',
+] as const;
 
 export type PhoneSensor = (typeof PHONE_SENSORS)[number];
 
@@ -18,6 +26,9 @@ const PHONE_PERMISSIONS = z.object({
   dndAccess: z.boolean(),
   usageAccess: z.boolean(),
   batteryUnrestricted: z.boolean(),
+  writeSettings: z.boolean(),
+  overlay: z.boolean(),
+  accessibility: z.boolean(),
 });
 
 const PHONE_CAR = z.object({ name: z.string(), address: z.string().min(1) });
@@ -74,7 +85,7 @@ interface PhoneEvents {
 }
 
 declare class PhoneNative extends NativeModule<PhoneEvents> {
-  startPhoneNode(serverUrl: string, token: string, enrollment?: string): Promise<unknown>;
+  startPhoneNode(serverUrl: string, token: string, enrollment: string): Promise<unknown>;
   stopPhoneNode(): Promise<unknown>;
   phoneStatus(): Promise<unknown>;
   setPhoneSensor(sensor: PhoneSensor, on: boolean): Promise<unknown>;
@@ -84,6 +95,8 @@ declare class PhoneNative extends NativeModule<PhoneEvents> {
   setHomeWifi(useCurrent: boolean): Promise<unknown>;
   parkedSpot(): Promise<unknown>;
   openUsageAccess(): Promise<unknown>;
+  openAccessibilitySettings(): Promise<unknown>;
+  openWriteSettings(): Promise<unknown>;
   openBatteryOptimization(): Promise<unknown>;
 }
 
@@ -101,10 +114,10 @@ function phoneFor(operation: PhoneOperation): PhoneNative {
 }
 
 export async function startPhoneNode(serverUrl: string, token: string): Promise<void> {
-  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
   const source = phoneFor('startPhoneNode');
-  if (enrollment === null) await source.startPhoneNode(serverUrl, token);
-  else await source.startPhoneNode(serverUrl, token, enrollment);
+  await withNativeEnrollment(serverUrl, token, (enrollment) =>
+    source.startPhoneNode(serverUrl, token, enrollment),
+  );
 }
 
 export async function stopPhoneNode(): Promise<void> {
@@ -141,6 +154,14 @@ export async function parkedSpot(): Promise<ParkedSpot | null> {
 
 export async function openUsageAccess(): Promise<void> {
   await phoneFor('openUsageAccess').openUsageAccess();
+}
+
+export async function openAccessibilitySettings(): Promise<void> {
+  await phoneFor('openAccessibilitySettings').openAccessibilitySettings();
+}
+
+export async function openWriteSettings(): Promise<void> {
+  await phoneFor('openWriteSettings').openWriteSettings();
 }
 
 export async function openBatteryOptimization(): Promise<void> {

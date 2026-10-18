@@ -1,4 +1,3 @@
-import { viewerLeaseExpiration } from './leases';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   ApiError,
@@ -25,7 +24,7 @@ export function nativeHtmlClaimRoute(store: Store, preview: PreviewService): Raw
     method: 'POST',
     path: NATIVE_HTML_CLAIM_PATH,
     handle: async (request, response): Promise<void> => {
-      const caller = authenticate(store, request, 'member');
+      const caller = authenticate(store, request, 'member', false);
       const claim = NATIVE_HTML_CLAIM.parse(
         parseJsonBody(request, await readBody(request, CLAIM_BODY_BYTES)),
       );
@@ -57,11 +56,7 @@ function claimHtml(
       ? { id: claim.lease.id, code: claim.lease.bootstrap_code }
       : gatewayBootstrap(claim);
   const lease = native ? preview.leases.native(descriptor.id) : preview.leases.host(descriptor.id);
-  if (
-    lease.clientId !== caller.client.id ||
-    lease.publication !== publication ||
-    viewerLeaseExpiration(lease) !== claim.lease.expires_at
-  )
+  if (lease.clientId !== caller.client.id || lease.publication !== publication)
     throw new ApiError('forbidden', 'The HTML lease belongs to another paired viewer or revision.');
   preview.leases.validate(lease);
   return native
@@ -130,7 +125,7 @@ async function presentationDocument(
     publicationId: lease.publication.view.id,
     revision: lease.publication.view.revision,
     profileId: lease.profileId,
-    expiresAt: viewerLeaseExpiration(lease),
+    expiresAt: null,
   };
   if (
     lease.publication.view.project_source !== undefined &&
@@ -158,7 +153,7 @@ export function nativeProjectAssetRoutes(
     method: method === 'GET' ? ('GET' as const) : ('HEAD' as const),
     path: NATIVE_PROJECT_ASSET_PATH,
     handle: async (request, response, params): Promise<void> => {
-      const caller = authenticate(store, request, 'member');
+      const caller = authenticate(store, request, 'member', false);
       if (caller.kind !== 'client')
         throw new ApiError('forbidden', 'Project assets require their paired viewer.');
       const lease = preview.leases.asset(params['leaseId'] ?? '');

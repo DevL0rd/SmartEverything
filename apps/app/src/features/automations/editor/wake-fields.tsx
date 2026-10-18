@@ -1,11 +1,9 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { WAKE_INSTRUCTION_MAX, type ToolAction, type WakeAiAction } from '@smarteverything/domain';
+import { WAKE_INSTRUCTION_MAX, type WakeAiAction } from '@smarteverything/domain';
 import { Select } from '../../../components/select';
-import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import type { Catalog } from '../data/use-automations';
-import { toolLabel } from '../model/describe';
 
 const NEW_CHAT = 'new';
 
@@ -18,6 +16,73 @@ function chatOptions(catalog: Catalog, profileId: string): { value: string; labe
   ];
 }
 
+export interface Wake {
+  readonly profileId: string;
+  readonly chatId: string | null;
+  readonly instruction: string;
+}
+
+function WakeChoices({
+  catalog,
+  wake,
+  onChange,
+}: {
+  readonly catalog: Catalog;
+  readonly wake: Wake;
+  readonly onChange: (wake: Wake) => void;
+}): ReactNode {
+  return (
+    <View className="gap-3">
+      <Select
+        label="In which chat"
+        value={wake.chatId ?? NEW_CHAT}
+        options={chatOptions(catalog, wake.profileId)}
+        searchable
+        onChange={(chatId) => {
+          onChange({ ...wake, chatId: chatId === NEW_CHAT ? null : chatId });
+        }}
+      />
+      <TextField
+        label="What should it do?"
+        value={wake.instruction}
+        multiline
+        helper="It also gets what happened and the values, then decides how to help, like calling you."
+        error={wake.instruction.length > WAKE_INSTRUCTION_MAX ? 'This is too long.' : null}
+        onChange={(instruction) => {
+          onChange({ ...wake, instruction });
+        }}
+      />
+    </View>
+  );
+}
+
+export function WakeForm({
+  catalog,
+  wake,
+  onChange,
+}: {
+  readonly catalog: Catalog;
+  readonly wake: Wake;
+  readonly onChange: (wake: Wake) => void;
+}): ReactNode {
+  return (
+    <View className="gap-3">
+      <Select
+        label="Whose AI"
+        value={
+          catalog.people.some((person) => person.id === wake.profileId) ? wake.profileId : null
+        }
+        placeholder="Pick a person"
+        options={catalog.people.map((person) => ({ value: person.id, label: person.name }))}
+        onChange={(profileId) => {
+          onChange({ ...wake, profileId, chatId: null });
+        }}
+      />
+      <WakeChoices catalog={catalog} wake={wake} onChange={onChange} />
+    </View>
+  );
+}
+
 export function WakeFields({
   action,
   catalog,
@@ -28,56 +93,12 @@ export function WakeFields({
   readonly onChange: (action: WakeAiAction) => void;
 }): ReactNode {
   return (
-    <View className="gap-3">
-      <Select
-        label="Whose AI"
-        value={
-          catalog.people.some((person) => person.id === action.profileId) ? action.profileId : null
-        }
-        placeholder="Pick a person"
-        options={catalog.people.map((person) => ({ value: person.id, label: person.name }))}
-        onChange={(profileId) => {
-          onChange({ ...action, profileId, chatId: null });
-        }}
-      />
-      <Select
-        label="In which chat"
-        value={action.chatId ?? NEW_CHAT}
-        options={chatOptions(catalog, action.profileId)}
-        searchable
-        onChange={(chatId) => {
-          onChange({ ...action, chatId: chatId === NEW_CHAT ? null : chatId });
-        }}
-      />
-      <TextField
-        label="What should it do?"
-        value={action.instruction}
-        multiline
-        helper="It also gets what happened and the values, then decides how to help, like calling you."
-        error={action.instruction.length > WAKE_INSTRUCTION_MAX ? 'This is too long.' : null}
-        onChange={(instruction) => {
-          onChange({ ...action, instruction });
-        }}
-      />
-    </View>
-  );
-}
-
-export function ToolActionSummary({
-  action,
-  catalog,
-}: {
-  readonly action: ToolAction;
-  readonly catalog: Catalog;
-}): ReactNode {
-  const person =
-    catalog.people.find((row) => row.id === action.profileId)?.name ?? 'someone removed';
-  const details = Object.keys(action.args).length;
-  return (
-    <Text variant="callout" tone="variant">
-      {`Uses “${toolLabel(action.tool)}” for ${person}${
-        details === 0 ? '' : ` with ${String(details)} detail${details === 1 ? '' : 's'}`
-      }. The AI set this up; ask it to change it.`}
-    </Text>
+    <WakeChoices
+      catalog={catalog}
+      wake={action}
+      onChange={(wake) => {
+        onChange({ ...action, chatId: wake.chatId, instruction: wake.instruction });
+      }}
+    />
   );
 }

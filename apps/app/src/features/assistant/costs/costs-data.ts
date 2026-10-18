@@ -1,11 +1,10 @@
 import {
   keepPreviousData,
-  useInfiniteQuery,
-  useQuery,
   type UseInfiniteQueryResult,
   type InfiniteData,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import { useScreenInfiniteQuery, useScreenQuery } from '../../../queries/use-screen-query';
 import {
   AI_USAGE_ENDPOINTS as U,
   type UsageChoices,
@@ -24,7 +23,7 @@ export function useCostSummary(
   window: CostWindow,
   filters: CostFilters,
 ): UseQueryResult<UsageSummary> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: [
       ...AI_USAGE_PREFIX,
       'summary',
@@ -45,7 +44,7 @@ export function useCostTotals(
   window: CostWindow,
   filters: CostFilters,
 ): UseQueryResult<UsageTotals> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...AI_USAGE_PREFIX, 'totals', window.from, window.to, filterKey(filters)],
     queryFn: () =>
       api().call(U.readUsageTotals, {
@@ -56,7 +55,7 @@ export function useCostTotals(
 }
 
 export function useCostChoices(window: CostWindow): UseQueryResult<UsageChoices> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...AI_USAGE_PREFIX, 'choices', window.from, window.to],
     queryFn: () => api().call(U.readUsageChoices, { query: { from: window.from, to: window.to } }),
     placeholderData: keepPreviousData,
@@ -67,7 +66,7 @@ export function useCostLedger(
   window: CostWindow,
   filters: CostFilters,
 ): UseInfiniteQueryResult<InfiniteData<UsageLedgerPage, string | null>> {
-  return useInfiniteQuery<
+  return useScreenInfiniteQuery<
     UsageLedgerPage,
     Error,
     InfiniteData<UsageLedgerPage, string | null>,
@@ -94,7 +93,7 @@ export function useTrackedOpenRouterToday(enabled: boolean): UseQueryResult<Usag
   const now = new Date();
   const from = `${now.toISOString().slice(0, 10)}T00:00:00.000Z`;
   const to = new Date(Date.parse(from) + 86_400_000).toISOString();
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...AI_USAGE_PREFIX, 'openrouter-utc-day', from],
     queryFn: () => api().call(U.readUsageTotals, { query: { from, to, sources: ['openrouter'] } }),
     enabled,

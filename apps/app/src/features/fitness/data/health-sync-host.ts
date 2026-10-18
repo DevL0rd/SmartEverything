@@ -4,6 +4,7 @@ import { Logger } from '@smarteverything/logging';
 import { rawErrorText } from '../../../format/errors';
 import { PREFS, usePref } from '../../../store/prefs';
 import { HEALTH_CONNECT_ON_DEVICE, applySyncSchedule, syncWhenOpened } from './health-connect';
+import { useSyncProgressHost } from './sync-progress';
 
 const log = new Logger('app.health-connect');
 
@@ -18,6 +19,7 @@ function syncNowOpened(): void {
 }
 
 export function HealthSyncHost(): null {
+  useSyncProgressHost();
   const pref = usePref(PREFS.healthSync);
   const intervalMinutes = pref.status === 'ready' ? pref.value.intervalMinutes : null;
   useEffect(() => {

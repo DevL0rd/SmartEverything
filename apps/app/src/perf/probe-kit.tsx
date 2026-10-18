@@ -1,16 +1,16 @@
 import type { ReactNode } from 'react';
 import { Profiler } from 'react';
-import { developerFlags } from '../developer/flags';
+import { readDeveloperFlags } from '../developer/flags';
 import { sinkOf } from './sink';
 
 export function count(id: string): void {
-  if (__DEV__ && developerFlags['perf.profilers']) {
+  if (__DEV__ && readDeveloperFlags()['perf.profilers']) {
     sinkOf()?.record(id, 0, false);
   }
 }
 
 export function counted(id: string, handler: () => void): () => void {
-  if (!__DEV__ || !developerFlags['perf.profilers']) {
+  if (!__DEV__ || !readDeveloperFlags()['perf.profilers']) {
     return handler;
   }
   return (): void => {
@@ -20,7 +20,7 @@ export function counted(id: string, handler: () => void): () => void {
 }
 
 export function timed<T>(id: string, work: () => T): T {
-  if (!__DEV__ || !developerFlags['perf.profilers']) {
+  if (!__DEV__ || !readDeveloperFlags()['perf.profilers']) {
     return work();
   }
   const start = performance.now();
@@ -36,7 +36,7 @@ export function PerfProbe({
   readonly id: string;
   readonly children: ReactNode;
 }): ReactNode {
-  if (!__DEV__ || !developerFlags['perf.profilers']) {
+  if (!__DEV__ || !readDeveloperFlags()['perf.profilers']) {
     return children;
   }
   return (

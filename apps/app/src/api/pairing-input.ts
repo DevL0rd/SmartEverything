@@ -55,20 +55,14 @@ export function normalPairingCode(code: string): string {
   return letters.length === 8 ? `${letters.slice(0, 4)}-${letters.slice(4)}` : code.trim();
 }
 
-export function pairingFromTyped(url: string, code: string, allowPlainHttp: boolean): PairingInput {
-  const address = normalServerUrl(url);
-  const urlProblem = serverUrlProblem(address, allowPlainHttp);
-  if (urlProblem !== null) {
-    return { ok: false, problem: urlProblem };
-  }
+export type PairingCodeInput =
+  { readonly ok: true; readonly code: string } | { readonly ok: false; readonly problem: string };
+
+export function pairingCodeFrom(code: string): PairingCodeInput {
   const normal = normalPairingCode(code);
-  if (!PAIRING_CODE.safeParse(normal).success) {
-    return {
-      ok: false,
-      problem: 'Enter the 8-character code from your desktop',
-    };
-  }
-  return { ok: true, target: { url: address, code: normal } };
+  return PAIRING_CODE.safeParse(normal).success
+    ? { ok: true, code: normal }
+    : { ok: false, problem: 'Enter the 8-character code from your desktop' };
 }
 
 export function pairingFromScan(text: string): PairingInput {

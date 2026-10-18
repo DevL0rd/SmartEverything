@@ -1,5 +1,5 @@
 import {
-  curatedControls,
+  familyDefinition,
   inTier,
   presentValue,
   withRole,
@@ -8,7 +8,7 @@ import {
   type PresentedCapability,
 } from '@smarteverything/domain';
 import type { DeviceValues } from '../../../store/state';
-import { powerStateOf, type DeviceModel } from './device-model';
+import type { DeviceModel } from './device-model';
 import { heroReadingOf, readingsOf } from './readings';
 import { observedSummary } from './observed-summary';
 
@@ -16,26 +16,6 @@ export const DIAL_ROLES: ReadonlySet<CapabilityRole> = new Set([
   'target_humidity',
   'target_temperature',
 ]);
-
-const FAN: readonly CapabilityRole[] = ['fan_speed', 'mode', 'oscillation', 'swing_angle'];
-const MEDIA: readonly CapabilityRole[] = [
-  'volume',
-  'input_source',
-  'app_launch',
-  'mute',
-  'channel',
-];
-
-const PREFERRED: Partial<Readonly<Record<DeviceFamily, readonly CapabilityRole[]>>> = {
-  air_purifier: ['purifier_mode', 'favourite_level', 'fan_mode'],
-  humidifier: ['target_humidity', 'mode', 'mist_level'],
-  diffuser: ['spray', 'spray_interval', 'spray_duration', 'ambient_light', 'brightness'],
-  tower_fan: FAN,
-  fan: FAN,
-  light: ['brightness', 'color_temperature'],
-  television: MEDIA,
-  speaker: MEDIA,
-};
 
 export const LEVEL_ROLES: ReadonlySet<CapabilityRole> = new Set([
   'fan_speed',
@@ -66,7 +46,7 @@ export function cardControls(
   controls: readonly PresentedCapability[],
   count: number,
 ): readonly PresentedCapability[] {
-  const preferred = PREFERRED[family] ?? [];
+  const preferred = familyDefinition(family).cardRoles;
   return controls
     .filter(cardEligible)
     .map((presented, order) => ({ presented, order, rank: rankOf(presented, preferred) }))
@@ -107,25 +87,12 @@ function secondaryList(
   );
 }
 
-const LEVEL_TEXT_ROLES: readonly CapabilityRole[] = [
-  'fan_mode',
-  'favourite_level',
-  'fan_speed',
-  'mist_level',
-  'brightness',
-  'volume',
-];
-
-const LEVEL_TEXT_BY_FAMILY: Readonly<Partial<Record<DeviceFamily, readonly CapabilityRole[]>>> = {
-  diffuser: [],
-};
-
 export function levelText(model: DeviceModel, values: DeviceValues): string | null {
   const summary = observedSummary(model, values);
   if (summary !== null) {
     return summary;
   }
-  for (const role of LEVEL_TEXT_BY_FAMILY[model.family] ?? LEVEL_TEXT_ROLES) {
+  for (const role of familyDefinition(model.family).levelRoles) {
     const fact = factOf(withRole(model.presentation, role), values);
     if (fact !== null) {
       return `${fact.label} ${fact.text}`;
@@ -165,41 +132,6 @@ export function settingControls(model: DeviceModel): readonly PresentedCapabilit
   return inTier(model.presentation, 'setting').filter(
     (presented) => presented.writable && SETTING_KINDS.has(presented.capability.value.kind),
   );
-}
-
-const NO_HIDDEN: ReadonlySet<CapabilityRole> = new Set();
-const REMOTE_FAMILIES: ReadonlySet<DeviceFamily> = new Set(['ir_blaster', 'ir_remote']);
-
-export type CardWeight = 'none' | 'one' | 'many';
-
-function controlCount(model: DeviceModel): number {
-  const primary = curatedControls(model.device).filter(cardEligible);
-  return primary.length + settingControls(model).length;
-}
-
-export function cardLayoutWeight(model: DeviceModel): CardWeight {
-  const controls = controlCount(model);
-  if (controls >= 2) return 'many';
-  return controls === 1 ||
-    REMOTE_FAMILIES.has(model.family) ||
-    inTier(model.presentation, 'reading').length > 0
-    ? 'one'
-    : 'none';
-}
-
-export function cardWeight(model: DeviceModel, values: DeviceValues): CardWeight {
-  if (powerStateOf(model, values) === 'off') {
-    return 'one';
-  }
-  const controls = controlCount(model);
-  if (controls >= 2) {
-    return 'many';
-  }
-  const body =
-    controls === 1 ||
-    REMOTE_FAMILIES.has(model.family) ||
-    cardFacts(model, values, NO_HIDDEN).length > 0;
-  return body ? 'one' : 'none';
 }
 
 const TARGET_ROLES: readonly CapabilityRole[] = ['target_humidity', 'target_temperature'];

@@ -132,7 +132,8 @@ export const COMPUTER_AI_ENDPOINTS = {
     method: 'GET',
     path: '/api/computers/:deviceId/claude/sessions',
     access: 'owner',
-    summary: 'List legacy history and current attached CLI sessions on the selected computer',
+    summary:
+      'List legacy history and current attached CLI sessions on the selected computer; sessions owned by SmartEverything app chats are not listed',
     params: COMPUTER,
     query: z.strictObject({
       state: CLAUDE_SESSION_STATE.optional(),
@@ -228,7 +229,8 @@ export const COMPUTER_AI_ENDPOINTS = {
     method: 'POST',
     path: '/api/computers/:deviceId/claude/controller',
     access: 'owner',
-    summary: 'Retired Desktop controller registration; use owned CLI chats or attached CLI tools',
+    summary:
+      'Retired Desktop controller registration on a computer; use owned CLI chats or attached CLI tools',
     params: COMPUTER,
     query: NOTHING,
     body: NO_BODY,
@@ -238,7 +240,8 @@ export const COMPUTER_AI_ENDPOINTS = {
     method: 'DELETE',
     path: '/api/computers/:deviceId/claude/controller',
     access: 'owner',
-    summary: 'Retired Desktop controller management; existing historical files remain untouched',
+    summary:
+      'Retired Desktop controller management on a computer; existing historical files remain untouched',
     params: COMPUTER,
     query: NOTHING,
     body: NO_BODY,

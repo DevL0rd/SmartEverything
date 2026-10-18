@@ -6,14 +6,16 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { AssistantFiles } from '../assistant/files';
 import { ImageOperationService, type ImageActor } from '../assistant/image/service';
+import { OpenRouterClient } from '../openrouter/client';
 import { OpenRouterImageCatalog } from '../openrouter/image-catalog';
 import { OpenRouterImageProvider } from '../openrouter/image-provider';
 import type { Store } from '../store/store';
 import type { MediaNotes } from '../transcripts/media-notes';
 import type { Caller } from './auth';
-import { imageActorOf } from './image-authority';
+import { imageActorOf, type ImageSpend } from './image-authority';
 import { ImageAdmissionError } from './image-admission';
 import { imageReadiness } from './image-readiness';
+import { messageOf } from '@smarteverything/logging';
 
 export interface ImageRuntimeOptions {
   readonly store: Store;
@@ -28,7 +30,6 @@ export interface ImageRuntimeOptions {
 }
 export interface ImageRuntime {
   readonly service: ImageOperationService;
-  readonly catalog: OpenRouterImageCatalog;
   readonly configured: () => boolean;
   readonly actor: (caller: Caller) => ImageActor;
   readonly readCatalog: (
@@ -36,80 +37,71 @@ export interface ImageRuntime {
     chatId?: string,
     refresh?: boolean,
   ) => Promise<ImageProviderCatalog>;
-  readonly bindSpend: (check: (background: boolean) => void) => void;
+  readonly bindSpend: (check: (spend: ImageSpend) => void) => void;
   readonly stop: () => Promise<void>;
 }
-const CATALOG_TIMEOUT_MS = 20_000;
-export function createImageRuntime(options: ImageRuntimeOptions): ImageRuntime {
-  const catalog = new OpenRouterImageCatalog(options.fetch);
-  const service = createImageService(options, catalog);
-  const configured = (): boolean => options.key() !== null;
-  let spend: ((background: boolean) => void) | null = null;
-  const actor = (caller: Caller): ImageActor =>
-    imageActorOf(
-      {
-        store: options.store,
-        configured,
-        now: options.now,
-        spend: (background): void => {
-          if (spend === null)
-            throw new ImageAdmissionError(
-              'budget_unavailable',
-              'Image spending admission is not ready.',
-            );
-          spend(background);
-        },
-      },
-      caller,
-    );
-  const discovery = imageCatalogReader({ options, actor, service, catalog, configured });
+function spendGate(): {
+  readonly bind: (check: (spend: ImageSpend) => void) => void;
+  readonly check: (spend: ImageSpend) => void;
+} {
+  let spend: ((spend: ImageSpend) => void) | null = null;
   return {
-    service,
-    catalog,
-    configured,
-    actor,
-    readCatalog: discovery.read,
-    bindSpend: (check): void => {
+    bind: (check): void => {
       spend = check;
     },
-    stop: async (): Promise<void> => {
-      const metadata = discovery.stop();
-      await service.stop();
-      await metadata;
+    check: (request): void => {
+      if (spend === null)
+        throw new ImageAdmissionError(
+          'budget_unavailable',
+          'Image spending admission is not ready.',
+        );
+      spend(request);
     },
   };
 }
-interface ImageCatalogReader {
-  readonly options: ImageRuntimeOptions;
-  readonly actor: (caller: Caller) => ImageActor;
-  readonly service: ImageOperationService;
-  readonly catalog: OpenRouterImageCatalog;
-  readonly configured: () => boolean;
+function serviceOf(
+  options: ImageRuntimeOptions,
+  client: OpenRouterClient,
+  catalog: OpenRouterImageCatalog,
+): ImageOperationService {
+  return new ImageOperationService({
+    store: options.store,
+    repository: options.store.imageOperations,
+    files: options.files,
+    notes: options.notes,
+    catalog,
+    provider: new OpenRouterImageProvider(client),
+    now: options.now,
+    publish: options.publish,
+    preview: options.preview,
+    failed: (operationId, code): void => {
+      options.log.warn('image.failed', { operationId, code });
+    },
+  });
 }
-function imageCatalogReader(runtime: ImageCatalogReader): {
-  readonly read: ImageRuntime['readCatalog'];
-  readonly stop: () => Promise<void>;
-} {
-  let refreshing: Promise<readonly unknown[]> | null = null;
-  const controller = new AbortController();
-  const read: ImageRuntime['readCatalog'] = async (
-    caller,
-    chatId,
-    refresh,
-  ): Promise<ImageProviderCatalog> => {
-    const reader = runtime.actor(caller);
-    const readiness = imageReadiness(runtime.service, runtime.configured(), reader, chatId);
-    if (!controller.signal.aborted && (refresh === true || runtime.catalog.list().length === 0)) {
+export function createImageRuntime(options: ImageRuntimeOptions): ImageRuntime {
+  const client = new OpenRouterClient({ fetch: options.fetch, key: options.key });
+  const catalog = new OpenRouterImageCatalog({
+    client,
+    store: options.store.aiModels,
+    now: options.now,
+  });
+  const service = serviceOf(options, client, catalog);
+  const configured = (): boolean => options.key() !== null;
+  const gate = spendGate();
+  const actor = (caller: Caller): ImageActor =>
+    imageActorOf({ store: options.store, configured, spend: gate.check }, caller);
+  return {
+    service,
+    configured,
+    actor,
+    readCatalog: async (caller, chatId, refresh): Promise<ImageProviderCatalog> => {
+      const readiness = imageReadiness(service, configured(), actor(caller), chatId);
       try {
-        refreshing ??= runtime.catalog
-          .refresh(AbortSignal.any([controller.signal, AbortSignal.timeout(CATALOG_TIMEOUT_MS)]))
-          .finally(() => {
-            refreshing = null;
-          });
-        await refreshing;
+        return { endpoints: [...(await catalog.list(refresh === true))], readiness };
       } catch (cause) {
-        runtime.options.log.warn('image.catalog_unavailable', {
-          code: cause instanceof Error ? cause.name : 'metadata',
+        options.log.warn('image.catalog_unavailable', {
+          reason: messageOf(cause),
         });
         return {
           endpoints: [],
@@ -121,42 +113,12 @@ function imageCatalogReader(runtime: ImageCatalogReader): {
           },
         };
       }
-    }
-    return {
-      endpoints: [...runtime.catalog.list()],
-      readiness: imageReadiness(runtime.service, runtime.configured(), reader, chatId),
-    };
-  };
-  return {
-    read,
-    stop: () => settleImageMetadata(controller, refreshing),
-  };
-}
-function createImageService(
-  options: ImageRuntimeOptions,
-  catalog: OpenRouterImageCatalog,
-): ImageOperationService {
-  return new ImageOperationService({
-    store: options.store,
-    repository: options.store.imageOperations,
-    files: options.files,
-    notes: options.notes,
-    catalog,
-    provider: new OpenRouterImageProvider({ fetch: options.fetch, key: options.key }),
-    now: options.now,
-    publish: options.publish,
-    preview: options.preview,
-    failed: (operationId, code): void => {
-      options.log.warn('image.failed', { operationId, code });
     },
-  });
-}
-
-async function settleImageMetadata(
-  controller: AbortController,
-  pending: Promise<readonly unknown[]> | null,
-): Promise<void> {
-  controller.abort();
-  if (pending === null) return;
-  await Promise.allSettled([pending]);
+    bindSpend: gate.bind,
+    stop: async (): Promise<void> => {
+      const metadata = catalog.stop();
+      await service.stop();
+      await metadata;
+    },
+  };
 }

@@ -15,9 +15,10 @@ import { ConsentButtons, ConsentDetails } from '../consent/consent-card';
 import { useDecide } from '../consent/use-decide';
 import { FlowButton } from '../flows/flow-button';
 import { RemoteAccessGate, verifiedPublicUrl } from '../flows/remote-access-gate';
-import { closeFlow } from '../flows/use-link-flow';
+import { leaveFlow } from '../flows/leave-flow';
 import type { OAuthAssistant } from '../model/assistants';
 import { AssistantDone } from './assistant-done';
+import { background } from '@smarteverything/logging';
 
 function InlineConsent({ request }: { readonly request: McpConsentRequest }): ReactNode {
   const decision = useDecide(request, () => undefined);
@@ -83,7 +84,7 @@ function Steps({
           icon="externalLink"
           onPress={() => {
             copyText(mcpUrl, 'Server link');
-            void Linking.openURL(assistant.open(mcpUrl));
+            background(Linking.openURL(assistant.open(mcpUrl)), 'url.open_failed');
           }}
         />
       </View>
@@ -114,12 +115,12 @@ export function OAuthFlow({ assistant }: { readonly assistant: OAuthAssistant })
   return (
     <FlowFrame
       title={`Connect ${assistant.name}`}
-      onCancel={closeFlow}
+      onCancel={leaveFlow}
       footer={
         <FlowButton
           label={connected ? 'Done' : 'Close'}
           variant={connected ? 'filled' : 'outlined'}
-          onPress={closeFlow}
+          onPress={leaveFlow}
         />
       }
     >

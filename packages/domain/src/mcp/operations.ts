@@ -3,33 +3,33 @@ import type { EndpointShape } from '../api/endpoint';
 import type { McpToolArea } from './areas';
 import { MCP_OPERATION_TOOLS, type McpCoreToolName } from './names';
 
+const STANDALONE_START =
+  'Legacy standalone start is retired; use startClaudeCliSession for an owned actual CLI turn.';
+const UNOWNED_SESSION =
+  'Legacy session IDs have no managed ownership; use controlClaudeCliSession with the owned chat, computer, session and job.';
+const UNBOUND_PROMPT =
+  'Legacy prompts have no managed chat binding; use answerClaudeCliPrompt for the exact owned current CLI request.';
+const CONTROLLER_REGISTRATION =
+  'Desktop controller registration is replaced by owned CLI sessions and native provider execution.';
+const CONTROLLER_REMOVAL =
+  'Desktop controller management is retained only for legacy app compatibility.';
+
 export const MCP_UNAVAILABLE_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
-  startClaudeSession:
-    'Legacy standalone start is retired; use startClaudeCliSession for an owned actual CLI turn.',
-  startComputerClaudeSession:
-    'Legacy standalone start is retired; use startClaudeCliSession for an owned actual CLI turn.',
-  controlClaudeSession:
-    'Legacy session IDs have no managed ownership; use controlClaudeCliSession with the owned chat, computer, session and job.',
-  controlComputerClaudeSession:
-    'Legacy session IDs have no managed ownership; use controlClaudeCliSession with the owned chat, computer, session and job.',
-  answerClaudePrompt:
-    'Legacy prompts have no managed chat binding; use answerClaudeCliPrompt for the exact owned current CLI request.',
-  answerComputerClaudePrompt:
-    'Legacy prompts have no managed chat binding; use answerClaudeCliPrompt for the exact owned current CLI request.',
-  registerClaudeController:
-    'Desktop controller registration is replaced by owned CLI sessions and native provider execution.',
-  registerComputerClaudeController:
-    'Desktop controller registration is replaced by owned CLI sessions and native provider execution.',
-  removeClaudeController:
-    'Desktop controller management is retained only for legacy app compatibility.',
-  removeComputerClaudeController:
-    'Desktop controller management is retained only for legacy app compatibility.',
+  startClaudeSession: STANDALONE_START,
+  startComputerClaudeSession: STANDALONE_START,
+  controlClaudeSession: UNOWNED_SESSION,
+  controlComputerClaudeSession: UNOWNED_SESSION,
+  answerClaudePrompt: UNBOUND_PROMPT,
+  answerComputerClaudePrompt: UNBOUND_PROMPT,
+  registerClaudeController: CONTROLLER_REGISTRATION,
+  registerComputerClaudeController: CONTROLLER_REGISTRATION,
+  removeClaudeController: CONTROLLER_REMOVAL,
+  removeComputerClaudeController: CONTROLLER_REMOVAL,
 };
 
 export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
-  previewAssistantVoice:
-    'Live audio audition is an explicit person-operated Play control in voice settings.',
-  cancelAssistantVoicePreview: 'Stops the live audio audition owned by the person’s paired app.',
+  readAssistantVoiceSample:
+    'Audio audition is an explicit person-operated Play control in voice settings.',
   updateComputerNativeMcpPolicy:
     'Grants native computer/runtime tool access; only a person changes this policy in the app.',
   createAiHtmlPreviewLease:
@@ -55,10 +55,11 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Registers a trusted native controller session; the person opens and sends its one-time registration prompt.',
 
   hubIdentity:
-    'Public untrusted discovery probe for app transport bootstrap; read_server_connections provides authenticated metadata.',
+    'Public untrusted discovery probe for app transport bootstrap; hubConnection provides authenticated metadata.',
   status:
     'Public health check for clients that are not signed in; readSnapshot and session cover it.',
   claimPairing: 'A new phone exchanges its own pairing code; an assistant is never a phone.',
+  proveHub: 'A new phone checks the hub it is pairing with; an assistant is never a phone.',
   startPairing: 'Creates a code that lets a new phone in; granting access stays with the person.',
   rotateOwnerToken:
     'Would hand the desktop’s own credential to the assistant and sign the desktop out.',
@@ -68,15 +69,28 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
     'Changes the words of a message the person wrote; only the person edits what they said.',
   decideMcpConsent: 'Allows or denies an assistant; consent stays with the person.',
   createHealthSource:
-    'A phone registers itself to upload Health Connect data with a token it keeps.',
-  ingestHealth: 'Phone upload protocol (health source token); use log_health to add data.',
-  readHealthOutbox: 'Phone delivery protocol (health source token) for writing to Health Connect.',
-  ackHealthOutbox: 'Phone delivery protocol (health source token) for writing to Health Connect.',
+    'A phone registers itself to upload Health Connect data with its own pairing.',
+  ingestHealth: 'Phone upload protocol (the phone’s pairing); use log_health to add data.',
+  readHealthOutbox: 'Phone delivery protocol (the phone’s pairing) for writing to Health Connect.',
+  ackHealthOutbox: 'Phone delivery protocol (the phone’s pairing) for writing to Health Connect.',
   readBleWatch: 'The phone’s Bluetooth listener asks what to listen for.',
   reportClientFailures:
     'An app reports its own redacted errors for diagnosis; there is nothing for an assistant to do with it.',
+  watchListeningLevel:
+    'A live loudness meter for the person looking at the Listening page; assistants read read_listening.',
+  watchWakeTest:
+    'A live view for the person testing the wake word; assistants read read_listening and change the name and aliases with update_settings (action assistant).',
+  readPhoneListeningConfig:
+    'The phone’s own ear asks how to listen; assistants read and change it with read_listening and edit_listening.',
+  claimPhoneWake:
+    'The phone’s own ear claims a wake it heard; assistants have no ears to claim with.',
+  reportPhoneListening:
+    'The phone’s own ear uploads speech and its state; assistants read read_listening and read_transcripts.',
   reportPhone: 'A phone reports what it sees about itself; use read_phone to read it.',
   answerPhoneAction: 'A phone answers an action; use run_phone_action to act.',
+  answerAppView: 'An app answers a request to show something.',
+  uploadPhoneIcon: 'A phone uploads the icon pictures of its apps for the app to show.',
+  readPhoneIcon: 'App icon pictures are shown by the app; read_phone detail lists the apps.',
   relayBleAdverts: 'The phone’s Bluetooth listener forwards raw radio adverts.',
   readPhoneWatches:
     'Hands a phone the keys it needs to connect to its watches; keys stay on phones.',
@@ -112,7 +126,7 @@ export const MCP_HUMAN_ONLY_OPERATIONS: Readonly<Partial<Record<EndpointName, st
   updateComputerScopes:
     'Decides what SmartEverything and the AI may do on a computer; only the person changes it in the app.',
   captureComputer:
-    'Returns a raw screenshot for the app; take_screenshot gives the AI the picture as a chat attachment.',
+    'Returns a raw screenshot for the app; see gives the AI the picture as a chat attachment.',
   installPlugin: 'Adds code that runs on this computer; the person adds plugins in Settings.',
   removePlugin: 'Removes a plugin with its data and keys; the person does it in Settings.',
   setPluginPerson:
@@ -144,6 +158,10 @@ const MCP_ADMIN_OPERATIONS: Readonly<Partial<Record<EndpointName, string>>> = {
   selectProfile: 'Switches whose data the app shows; only a person in the app does that.',
   updateClient: 'Changes a paired app or computer; only a person in the app manages pairing.',
   removeClient: 'Unpairs an app or computer; only a person in the app manages pairing.',
+  changePersonAccess:
+    'Changes what a person may do and until when; only a person in the app manages access.',
+  revokePerson:
+    'Ends a person’s access now and unpairs every device; only a person in the app manages access.',
   revokeMcpToken: 'Cuts an assistant’s access; only a person in the app manages access.',
   revokeOAuthGrant: 'Cuts an assistant’s access; only a person in the app manages access.',
   revokeHealthSource: 'Cuts a phone’s health sync; only a person in the app manages access.',
@@ -196,9 +214,11 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/watches/days', 'health'],
   ['/api/watches', 'devices'],
   ['/api/phones', 'devices'],
+  ['/api/phone-icons', 'devices'],
   ['/api/nodes', 'devices'],
   ['/api/settings', 'settings'],
   ['/api/layouts', 'settings'],
+  ['/api/clipboard', 'settings'],
   ['/api/push-targets', 'settings'],
   ['/api/rooms', 'home'],
   ['/api/weather', 'home'],
@@ -206,6 +226,11 @@ const AREA_BY_PREFIX: readonly (readonly [string, McpToolArea])[] = [
   ['/api/places', 'home'],
   ['/api/providers', 'home'],
   ['/api/devices', 'devices'],
+  ['/api/device-groups', 'devices'],
+  ['/api/device-targets', 'devices'],
+  ['/api/device-effects', 'devices'],
+  ['/api/listening', 'assistant'],
+  ['/api/televisions', 'devices'],
   ['/api/computers', 'computers'],
   ['/api/device-state', 'devices'],
   ['/api/ir-', 'devices'],
@@ -242,7 +267,25 @@ export function isHumanOnlyOperation(name: EndpointName): boolean {
 }
 
 const MCP_CORE_OPERATIONS: Readonly<Partial<Record<McpCoreToolName, EndpointName>>> = {
+  list_device_groups: 'listDeviceGroups',
   set_ai_defaults: 'setOpenRouterDefaults',
+  get_computer: 'readComputer',
+  get_computer_audio: 'readComputerAudio',
+  get_computer_displays: 'readComputerDisplays',
+  get_computer_system: 'readComputerSystem',
+  get_computer_usb: 'readComputerSystem',
+  get_computer_windows: 'readComputerWindows',
+  get_computer_services: 'readComputerServices',
+  get_computer_startup: 'readComputerStartup',
+  list_processes: 'listComputerProcesses',
+  end_process: 'signalComputerProcess',
+  set_computer_audio: 'changeComputerAudio',
+  set_computer_display: 'changeComputerDisplay',
+  set_computer_system: 'changeComputerSystem',
+  focus_window: 'changeComputerWindow',
+  minimise_window: 'changeComputerWindow',
+  close_window: 'changeComputerWindow',
+  edit_computer_files: 'writeComputerFiles',
 };
 
 const OPERATION_OF_TOOL: ReadonlyMap<string, EndpointName> = new Map<string, EndpointName>([
@@ -260,4 +303,61 @@ export function isAdminOperation(name: EndpointName): boolean {
 
 export function pluginTurnOperationReason(name: EndpointName): string | null {
   return MCP_HUMAN_ONLY_OPERATIONS[name] ?? MCP_ADMIN_OPERATIONS[name] ?? null;
+}
+
+export interface McpAnnotationHints {
+  readonly readOnlyHint?: boolean;
+  readonly destructiveHint?: boolean;
+  readonly idempotentHint?: boolean;
+  readonly openWorldHint?: boolean;
+}
+
+export interface McpOperationTraits {
+  readonly hints?: McpAnnotationHints;
+  readonly answers?: true;
+  readonly returnsImage?: true;
+}
+
+const READS_BY_POST: McpOperationTraits = { hints: { readOnlyHint: true, idempotentHint: true } };
+const ANSWERS: McpOperationTraits = { answers: true };
+const CLAUDE_TURN: McpOperationTraits = {
+  hints: { idempotentHint: true, destructiveHint: true, openWorldHint: true },
+};
+
+const MCP_OPERATION_TRAITS: Readonly<Partial<Record<EndpointName, McpOperationTraits>>> = {
+  searchAiChatReferences: READS_BY_POST,
+  readAiProjectFiles: READS_BY_POST,
+  readEmbeddedBrowser: READS_BY_POST,
+  readPreviewLogs: READS_BY_POST,
+  searchPreviewLogs: READS_BY_POST,
+  resolveImageInput: READS_BY_POST,
+  prepareComputerDownload: READS_BY_POST,
+  waitForImages: READS_BY_POST,
+  capturePreviewViewport: { ...READS_BY_POST, returnsImage: true },
+  writeAiProjectFiles: { hints: { idempotentHint: true, destructiveHint: true } },
+  removeAiProjectFiles: { hints: { destructiveHint: true, idempotentHint: true } },
+  clearPreviewWebsiteData: {
+    hints: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
+  },
+  startClaudeCliSession: CLAUDE_TURN,
+  controlClaudeCliSession: CLAUDE_TURN,
+  answerClaudeCliPrompt: { hints: { destructiveHint: true, openWorldHint: true } },
+  startImageOperation: { hints: { openWorldHint: true } },
+  cancelImageOperation: { hints: { idempotentHint: true, openWorldHint: true } },
+  listImageEndpoints: { hints: { openWorldHint: true } },
+  askAiChat: ANSWERS,
+  runAiSubagent: ANSWERS,
+  callPluginTool: ANSWERS,
+  editEmbeddedBrowser: ANSWERS,
+  publishAiHtmlPreview: ANSWERS,
+  publishAiProjectPreview: ANSWERS,
+};
+
+export function mcpOperationTraits(name: EndpointName): McpOperationTraits {
+  return MCP_OPERATION_TRAITS[name] ?? {};
+}
+
+export function mcpToolLine(description: string): string {
+  const sentence = description.split(/(?<=\.)\s/u)[0] ?? description;
+  return sentence.replace(/\.$/u, '');
 }

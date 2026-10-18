@@ -14,7 +14,7 @@ export function bindNativeChild(
     return;
   const parent = store.aiChats.chat(chat.parent_id);
   if (parent.engine.kind !== 'dsh' || parent.engine.session_id === null) return;
-  const writer = store.dshSessions.writerState(session, event.profile_id).claim;
+  const writer = store.dshSessions.attached(session, event.profile_id);
   if (writer === null) throw new Error('Admitted child lost its native writer.');
   const prior = store.harnessChildren.find(event.id);
   const delivery = prior?.delivery_id ?? randomUUID();

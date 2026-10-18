@@ -1,5 +1,5 @@
 import type { WidgetDefinition } from '../../../components/widget-board';
-import { APP_PLUGINS } from '../../../plugins/registry';
+import { APP_PLUGINS, currentPluginWidgetType } from '../../../plugins/registry';
 import { CAMERA_WIDGETS } from '../../cameras';
 import { CLIMATE_WIDGETS } from '../../climate';
 import { FITNESS_WIDGETS } from '../../fitness';
@@ -20,7 +20,8 @@ export function definitionIn(
   catalogue: readonly WidgetDefinition[],
   type: string,
 ): WidgetDefinition {
-  const found = catalogue.find((definition) => definition.type === type);
+  const current = currentPluginWidgetType(type);
+  const found = catalogue.find((definition) => definition.type === current);
   if (found === undefined) {
     throw new MissingWidgetError(type);
   }

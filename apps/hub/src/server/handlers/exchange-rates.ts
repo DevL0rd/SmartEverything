@@ -1,13 +1,10 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { reportOf } from '../../exchange-rates/report';
 import type { ServerContext } from '../context';
-import { bound, type Bound } from '../router';
+import { bound } from '../router';
 
-type ExchangeRatesRoutes = Record<'readExchangeRates' | 'refreshExchangeRates', Bound>;
-
-export function exchangeRatesRoutes(context: ServerContext, now: () => Date): ExchangeRatesRoutes {
-  const { exchangeRates } = context;
-  return {
+export const exchangeRatesRoutes = ({ exchangeRates }: ServerContext, now: () => Date) =>
+  ({
     readExchangeRates: bound(E.readExchangeRates, async () => {
       await exchangeRates.settled();
       return reportOf(exchangeRates.current(), now());
@@ -15,5 +12,4 @@ export function exchangeRatesRoutes(context: ServerContext, now: () => Date): Ex
     refreshExchangeRates: bound(E.refreshExchangeRates, async () =>
       reportOf(await exchangeRates.refresh(), now()),
     ),
-  };
-}
+  }) as const;

@@ -3,17 +3,20 @@ import type { IncomingMessage } from 'node:http';
 import {
   ApiError,
   CLIENT_TOKEN,
-  HEALTH_SOURCE_TOKEN,
   hashClientToken,
   turnRoleOf,
-  hashHealthSourceToken,
   type Access,
   type ClientRow,
-  type HealthSourceRow,
   type PluginRequester,
+  type Role,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
+import { RepeatGate } from './repeat-gate';
+import { executionRole } from '../assistant/turn-authority';
+import type { ChatOwner } from '../assistant/chat-directory';
 import type { Store } from '../store/store';
 import { bearerOf } from './http';
+import { accessEntryOf, effectiveClient, type AccessEntry } from './person-access';
 
 export type Caller =
   | { readonly kind: 'anonymous' }
@@ -36,54 +39,65 @@ export type Caller =
       readonly chatId?: string;
       readonly pluginId?: string;
       readonly pluginRequester?: PluginRequester;
-    }
-  | { readonly kind: 'health_source'; readonly source: HealthSourceRow };
+    };
 
-function unauthorized(message: string): ApiError {
+const log = new Logger('hub.auth');
+const rejections = new RepeatGate(30_000);
+
+function unauthorized(message: string, reason: string, kind: string, length: number): ApiError {
+  const suppressed = rejections.pass(`${kind}:${reason}`);
+  if (suppressed !== null) {
+    log.warn('credential.rejected', {
+      kind,
+      reason,
+      presentedLength: length,
+      suppressedSince: suppressed,
+    });
+  }
   return new ApiError('unauthorized', message);
 }
 
-export function clientForToken(store: Store, token: string | null): ClientRow {
+export function clientForToken(store: Store, token: string | null, entry: AccessEntry): ClientRow {
   if (token === null) {
-    throw unauthorized('Send the device token as a bearer token.');
+    throw unauthorized('Send the device token as a bearer token.', 'missing', 'client', 0);
   }
   if (!CLIENT_TOKEN.safeParse(token).success) {
-    throw unauthorized('The bearer token is not a device token.');
+    throw unauthorized(
+      'The bearer token is not a device token.',
+      'malformed',
+      'client',
+      token.length,
+    );
   }
   const client = store.clients.byTokenHash(hashClientToken(token));
   if (client === undefined) {
-    throw unauthorized('No paired device has this token; it may have been removed.');
+    throw unauthorized(
+      'No paired device has this token; it may have been removed.',
+      'unknown',
+      'client',
+      token.length,
+    );
   }
+  const effective = effectiveClient(store, client, entry);
   store.clients.seen(client);
-  return client;
+  return effective;
 }
 
-function healthSourceFor(store: Store, token: string | null): HealthSourceRow {
-  if (token === null || !HEALTH_SOURCE_TOKEN.safeParse(token).success) {
-    throw unauthorized('Send the health source token as a bearer token.');
-  }
-  const source = store.healthSources.activeByTokenHash(hashHealthSourceToken(token));
-  if (source === undefined) {
-    throw unauthorized('No active health source has this token; it may be revoked.');
-  }
-  return source;
-}
-
-export function authenticate(store: Store, request: IncomingMessage, access: Access): Caller {
+export function authenticate(
+  store: Store,
+  request: IncomingMessage,
+  access: Access,
+  statusOnly: boolean,
+): Caller {
   switch (access) {
     case 'public':
       return { kind: 'anonymous' };
-    case 'health_source':
-      return { kind: 'health_source', source: healthSourceFor(store, bearerOf(request)) };
     case 'member':
-      return { kind: 'client', client: clientForToken(store, bearerOf(request)) };
-    case 'owner': {
-      const client = clientForToken(store, bearerOf(request));
-      if (client.role !== 'owner') {
-        throw new ApiError('forbidden', 'Only an owner may do this.');
-      }
-      return { kind: 'client', client };
-    }
+    case 'owner':
+      return {
+        kind: 'client',
+        client: clientForToken(store, bearerOf(request), accessEntryOf(request, statusOnly)),
+      };
   }
 }
 
@@ -102,27 +116,42 @@ export function clientOf(caller: Caller): ClientRow {
   return caller.client;
 }
 
-export function healthSourceOf(caller: Caller): HealthSourceRow {
-  if (caller.kind !== 'health_source') {
-    throw new CallerKindError('health_source', caller.kind);
-  }
-  return caller.source;
-}
-
 export function profileIdOf(store: Store, caller: Caller): string {
   if (caller.kind === 'service') return caller.profileId;
   if (caller.kind === 'client') {
     return caller.profileId ?? store.profiles.activeOf(caller.client.id).id;
   }
-  if (caller.kind === 'health_source' && caller.source.client_id !== null) {
-    return store.profiles.activeOf(caller.source.client_id).id;
-  }
   throw new ApiError('forbidden', 'This token belongs to no paired app, so it has no profile.');
 }
 
 export function roleOfCaller(caller: Caller): ClientRow['role'] {
-  if (caller.kind === 'service') return 'member';
+  if (caller.kind === 'service') return executionRole(caller.authority);
   return caller.kind === 'client' && caller.pluginRequester !== undefined
     ? turnRoleOf(caller.pluginRequester)
     : clientOf(caller).role;
+}
+
+export function isOwnerOrSelf(role: Role, self: boolean): boolean {
+  return role === 'owner' || self;
+}
+
+export function ownerOrSelf(role: Role, self: boolean): void {
+  if (!isOwnerOrSelf(role, self)) {
+    throw new ApiError('forbidden', 'Only an owner can do this for another person.');
+  }
+}
+
+export function confinedChatOf(caller: Caller): string | null | undefined {
+  if (caller.kind !== 'client' && caller.kind !== 'service') return undefined;
+  if (caller.pluginRequester !== 'unlisted') return undefined;
+  return caller.chatId ?? null;
+}
+
+export function chatOwnerOf(store: Store, caller: Caller): ChatOwner {
+  const confinedTo = confinedChatOf(caller);
+  return {
+    profileId: profileIdOf(store, caller),
+    role: roleOfCaller(caller),
+    ...(confinedTo === undefined ? {} : { confinedTo }),
+  };
 }

@@ -1,14 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Reach } from './authority';
-import { DiscordInputError, DiscordPolicyError } from './errors';
+import { DiscordPolicyError } from './errors';
 import { SNOWFLAKE } from './ids';
 import type { Policy } from './policy';
-
-const SOURCE_LIFETIME_MS = 10 * 60_000;
-const PAGE_LIFETIME_MS = 60_000;
-const MAX_SOURCES = 1000;
-const MAX_PAGES = 16;
 
 const MEDIA_ATTACHMENT = z.object({
   id: SNOWFLAKE,
@@ -51,7 +45,6 @@ export const MEDIA_SEARCH = z.strictObject({
   to: z.iso.datetime({ offset: true }).optional(),
   kind: z.enum(['all', 'image', 'file']).default('all'),
   limit: z.number().int().min(1).max(25).default(10),
-  cursor: z.uuid().optional(),
 });
 
 export type MediaSearch = z.output<typeof MEDIA_SEARCH>;
@@ -61,19 +54,6 @@ export interface MediaSettings {
   readonly capture: 'all' | 'addressed';
   readonly maxAttachments: number;
   readonly ttlMinutes: number;
-}
-
-interface Page {
-  readonly key: string;
-  readonly fingerprint: string;
-  readonly entries: readonly MediaEntry[];
-  readonly expires: number;
-}
-
-interface Source {
-  readonly key: string;
-  readonly entry: MediaEntry;
-  readonly expires: number;
 }
 
 function jumpUrl(entry: MediaEntry): string {
@@ -87,7 +67,7 @@ function isImage(entry: MediaEntry): boolean {
     : type.startsWith('image/');
 }
 
-type Filters = Omit<MediaSearch, 'cursor' | 'limit'>;
+type Filters = Omit<MediaSearch, 'limit'>;
 
 function kindMatches(entry: MediaEntry, kind: Filters['kind']): boolean {
   const image = isImage(entry);
@@ -116,19 +96,8 @@ export function matches(entry: MediaEntry, search: Filters): boolean {
   );
 }
 
-function evictOldest(map: Map<string, unknown>, capacity: number): void {
-  for (const key of map.keys()) {
-    if (map.size < capacity) {
-      return;
-    }
-    map.delete(key);
-  }
-}
-
 export class MediaIndex {
   private readonly entries = new Map<string, MediaEntry>();
-  private readonly sources = new Map<string, Source>();
-  private readonly pages = new Map<string, Page>();
 
   constructor(
     private readonly policy: Policy,
@@ -140,11 +109,6 @@ export class MediaIndex {
     for (const [key, entry] of this.entries) {
       if (entry.messageId === messageId) {
         this.entries.delete(key);
-      }
-    }
-    for (const [key, source] of this.sources) {
-      if (source.entry.messageId === messageId) {
-        this.sources.delete(key);
       }
     }
   }
@@ -185,33 +149,16 @@ export class MediaIndex {
     }
   }
 
-  source(reach: Reach, id: string): MediaEntry {
-    this.prune();
-    const source = this.sources.get(id);
-    if (source?.key !== reach.key) {
-      throw new DiscordInputError('Attachment handle expired or belongs to another request');
-    }
-    return source.entry;
-  }
-
-  expose(reach: Reach, entry: MediaEntry): Readonly<Record<string, unknown>> {
-    this.prune();
-    if (!this.allowed(reach, entry)) {
-      throw new DiscordPolicyError('Attachment source is outside current resource grants');
-    }
-    evictOldest(this.sources, MAX_SOURCES);
-    const sourceId = randomUUID();
-    this.sources.set(sourceId, { key: reach.key, entry, expires: this.now() + SOURCE_LIFETIME_MS });
-    const { url: _url, ...attachment } = entry.attachment;
+  describe(entry: MediaEntry): Readonly<Record<string, unknown>> {
+    const { id, ...attachment } = entry.attachment;
     return {
-      sourceId,
       ...attachment,
+      attachmentId: id,
       messageId: entry.messageId,
       channelId: entry.channelId,
       guildId: entry.guildId,
       userId: entry.userId,
       timestamp: entry.timestamp,
-      imageTypeVerified: false,
       jumpUrl: jumpUrl(entry),
     };
   }
@@ -221,25 +168,20 @@ export class MediaIndex {
     input: MediaSearch,
   ): {
     readonly attachments: readonly Readonly<Record<string, unknown>>[];
-    readonly nextCursor: string | null;
+    readonly truncated: boolean;
     readonly coverage: 'bounded-local-index';
     readonly incomplete: true;
     readonly retentionMinutes: number;
     readonly indexed: number;
   } {
     this.prune();
-    const { cursor, limit, ...filters } = input;
-    const fingerprint = JSON.stringify(filters);
-    const snapshot =
-      cursor === undefined
-        ? [...this.entries.values()]
-        : this.resume(cursor, reach.key, fingerprint);
-    const entries = snapshot
+    const { limit, ...filters } = input;
+    const entries = [...this.entries.values()]
       .filter(
         (entry) =>
           this.allowed(reach, entry) &&
-          (input.channelId === undefined || entry.channelId === input.channelId) &&
-          matches(entry, input),
+          (filters.channelId === undefined || entry.channelId === filters.channelId) &&
+          matches(entry, filters),
       )
       .sort(
         (left, right) =>
@@ -247,8 +189,8 @@ export class MediaIndex {
           right.attachment.id.localeCompare(left.attachment.id),
       );
     return {
-      attachments: entries.slice(0, limit).map((entry) => this.expose(reach, entry)),
-      nextCursor: this.save(reach.key, fingerprint, entries.slice(limit)),
+      attachments: entries.slice(0, limit).map((entry) => this.describe(entry)),
+      truncated: entries.length > limit,
       coverage: 'bounded-local-index',
       incomplete: true,
       retentionMinutes: this.settings.ttlMinutes,
@@ -264,13 +206,6 @@ export class MediaIndex {
     for (const [key, entry] of this.entries) {
       if (this.expired(entry)) {
         this.entries.delete(key);
-      }
-    }
-    for (const map of [this.sources, this.pages]) {
-      for (const [key, item] of map) {
-        if (item.expires <= this.now()) {
-          map.delete(key);
-        }
       }
     }
   }
@@ -299,23 +234,5 @@ export class MediaIndex {
       }
       throw cause;
     }
-  }
-
-  private resume(cursor: string, key: string, fingerprint: string): readonly MediaEntry[] {
-    const page = this.pages.get(cursor);
-    if (page?.key !== key || page.fingerprint !== fingerprint) {
-      throw new DiscordInputError('Cursor expired or filters/request changed');
-    }
-    return page.entries;
-  }
-
-  private save(key: string, fingerprint: string, entries: readonly MediaEntry[]): string | null {
-    if (entries.length === 0) {
-      return null;
-    }
-    evictOldest(this.pages, MAX_PAGES);
-    const id = randomUUID();
-    this.pages.set(id, { key, fingerprint, entries, expires: this.now() + PAGE_LIFETIME_MS });
-    return id;
   }
 }

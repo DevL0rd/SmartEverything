@@ -9,35 +9,30 @@ import type {
   SkillLookupOptions,
   SkillProvider,
 } from '@deepseek-ai/dsh-skill';
-import { z } from 'zod';
 import { PRODUCT_SKILLS } from './product-skill-catalogue';
-import { verifyNativeSkillPackages } from './builtin-metadata';
 
 const loadSkills = createLazyRequire<typeof Skills>('@deepseek-ai/dsh-skill', import.meta.url);
 const loadSkillTool = createLazyRequire<typeof SkillTool>(
   '@deepseek-ai/dsh-tool-skill',
   import.meta.url,
 );
-const PRODUCT_NAMES: ReadonlySet<string> = new Set(
-  PRODUCT_SKILLS.skills.map((skill) => skill.name),
-);
-
-export function isProductSkillRequest(input: unknown): boolean {
-  const parsed = z.strictObject({ name: z.string() }).safeParse(input);
-  return parsed.success && PRODUCT_NAMES.has(parsed.data.name);
-}
-
-export function registerProductSkills(ctx: Context): void {
+const RESOURCE_BASE = {
+  kind: 'opaque',
+  description: 'Immutable built-in SmartEverything instructions.',
+} as const;
+function registerProductSkills(ctx: Context): void {
   ctx.skills.registerProvider(() => new ProductSkills());
 }
 
-export async function mountServerProductSkills(ctx: Context): Promise<void> {
-  await verifyNativeSkillPackages();
+export async function mountSkillCatalogue(
+  ctx: Context,
+  catalogDescriptionMaxLength: number,
+): Promise<void> {
   await ctx.plugin(loadSkills().default);
   await ctx.inject(['skills'], (active: Context): void => {
     registerProductSkills(active);
   });
-  await ctx.plugin(loadSkillTool(), { catalogDescriptionMaxLength: 500 });
+  await ctx.plugin(loadSkillTool(), { catalogDescriptionMaxLength });
 }
 
 class ProductSkills implements SkillProvider {
@@ -52,10 +47,7 @@ class ProductSkills implements SkillProvider {
         source: 'bundled',
         rank: BUNDLED_SKILL_RANK,
         locator: skill.name,
-        resourceBase: {
-          kind: 'opaque',
-          description: 'Immutable built-in SmartEverything instructions.',
-        },
+        resourceBase: RESOURCE_BASE,
       })),
     );
   }
@@ -73,10 +65,7 @@ class ProductSkills implements SkillProvider {
             ...skill,
             provider: this.name,
             source: 'bundled',
-            resourceBase: {
-              kind: 'opaque',
-              description: 'Immutable built-in SmartEverything instructions.',
-            },
+            resourceBase: RESOURCE_BASE,
           },
     );
   }

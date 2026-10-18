@@ -3,7 +3,6 @@ import type { Agent } from '@deepseek-ai/dsh-agent';
 import type { CommandExecution, CommandSubmitAttachment } from '@deepseek-ai/dsh-commands';
 import { HarnessRuntimeError } from './errors';
 
-const COMMAND_TIMEOUT_MS = 110_000;
 export class HarnessHumanCommands {
   private controller: AbortController | undefined;
   private pending: Promise<CommandExecution | undefined> | undefined;
@@ -24,13 +23,14 @@ export class HarnessHumanCommands {
       throw new HarnessRuntimeError('operation_failed', 'Another human command is still running.');
     const controller = new AbortController();
     this.controller = controller;
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(COMMAND_TIMEOUT_MS)]);
-    const pending = this.ctx.commands.execute(this.agent, line, attachments, signal).finally(() => {
-      if (this.pending === pending) {
-        this.pending = undefined;
-        this.controller = undefined;
-      }
-    });
+    const pending = this.ctx.commands
+      .execute(this.agent, line, attachments, controller.signal)
+      .finally(() => {
+        if (this.pending === pending) {
+          this.pending = undefined;
+          this.controller = undefined;
+        }
+      });
     this.pending = pending;
     return pending;
   }

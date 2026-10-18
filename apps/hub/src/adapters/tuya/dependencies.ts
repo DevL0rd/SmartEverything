@@ -1,13 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { createSocket, type Socket } from 'node:dgram';
-import { reconnectDelay } from '@smarteverything/tuya';
 import TuyaDevice from 'tuyapi';
 import { WebSocket } from 'ws';
+import { backoffDelay } from '../../plugins/backoff';
+import type { FetchLike } from '../../plugins/builtin/fetch-like';
 import type { MessageSocket } from './message-socket';
 import type { LocalClient, LocalClientOptions } from './local-client';
 import { nodeMqttConnect, type MqttConnect } from './mqtt-connection';
-
-type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
 interface TuyaTiming {
   readonly irLearnTimeoutMs: number;
@@ -21,7 +20,7 @@ interface TuyaTiming {
 }
 
 export interface TuyaDependencies {
-  readonly fetch: Fetch;
+  readonly fetch: FetchLike;
   readonly now: () => number;
   readonly nonce: () => string;
   readonly requestId: () => string;
@@ -34,6 +33,8 @@ export interface TuyaDependencies {
   readonly mqtt: MqttConnect;
 }
 
+const RECONNECT = { firstMs: 1000, longestMs: 60_000 } as const;
+
 const DEFAULT_TIMING: TuyaTiming = {
   irLearnTimeoutMs: 30_000,
   cloudLearnQueryMs: 2_000,
@@ -42,7 +43,7 @@ const DEFAULT_TIMING: TuyaTiming = {
   qrScanTimeoutMs: 300_000,
   messagingRenewMarginMs: 60_000,
   inventorySettleMs: 1_000,
-  reconnectDelay,
+  reconnectDelay: (failures) => backoffDelay(failures, RECONNECT),
 };
 
 const TUYA_LOCAL_PORT = 6668;

@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { useContext, useEffect, useEffectEvent } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 import { ScrollView, View } from 'react-native';
 import type { AssistantMessageRow } from '@smarteverything/domain';
 import { useRow } from '../../../store/selectors';
@@ -11,7 +11,7 @@ import {
   type OlderLoader,
 } from '../data/history';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
-import { ScreenPausedContext } from '../../../design/screen-pause';
+import { useScreenPaused } from '../../../design/screen-pause';
 import { useValue } from '../../../design/external-store';
 import { ChatIntro } from './chat-intro';
 import { ThreadItems } from './thread-items';
@@ -19,6 +19,7 @@ import { useThreadRows } from './thread-rows';
 import { ThreadSkeleton } from './thread-skeleton';
 import { useFocusParam } from './use-focused-message';
 import { TurnFeedback } from './turn-feedback';
+import { background } from '@smarteverything/logging';
 
 const FIRST_PAGE = 20;
 
@@ -31,18 +32,17 @@ function useFillFirstPage(
   const store = useEntityStore();
   const session = useStoreSelector(historySessionKey);
   const revision = useValue(historyRevision);
-  const paused = useContext(ScreenPausedContext);
+  const paused = useScreenPaused();
   const fetchOlder = useEffectEvent(loadOlder);
   const load = useEffectEvent(() => {
-    void loadOlderMessages(historyKey, rows, loadOlder);
+    background(loadOlderMessages(historyKey, rows, loadOlder), 'older_messages.load_failed');
   });
   useEffect(() => {
     if (paused || session === null) return undefined;
-    const release = ownOlderMessages(historyKey, fetchOlder, store);
-    if (short) {
-      load();
-    }
-    return release;
+    return ownOlderMessages(historyKey, fetchOlder, store);
+  }, [historyKey, store, session, revision, paused]);
+  useEffect(() => {
+    if (short && !paused && session !== null) load();
   }, [historyKey, short, store, session, revision, paused]);
 }
 
@@ -55,6 +55,13 @@ function latestResponder(rows: readonly AssistantMessageRow[]): AssistantMessage
     }
   }
   return latest;
+}
+
+function emptyThread(model: {
+  readonly data: readonly unknown[];
+  readonly complete: boolean;
+}): boolean {
+  return model.complete && model.data.length === 0;
 }
 
 export function ThreadList({
@@ -83,7 +90,7 @@ export function ThreadList({
   );
   useFillFirstPage(historyKey, model.all, loadOlder);
   if (model.data.length === 0) {
-    return model.complete ? (
+    return emptyThread(model) ? (
       <EmptyThread empty={empty} footer={progress} />
     ) : (
       <LoadingThread footer={progress} />
@@ -93,14 +100,14 @@ export function ThreadList({
     <ThreadItems
       footer={progress}
       rows={model.data}
-      loading={model.loading}
+      historyKey={historyKey}
       readAt={model.readAt}
       intro={model.complete ? (intro ?? (chat === null ? null : <ChatIntro chat={chat} />)) : null}
       focusId={focus}
       exhausted={model.complete}
       onFocused={clearFocus}
       onOlder={() => {
-        void loadOlderMessages(historyKey, model.all, loadOlder);
+        background(loadOlderMessages(historyKey, model.all, loadOlder), 'older.load_failed');
       }}
       announced={latestResponder(model.all)}
     />

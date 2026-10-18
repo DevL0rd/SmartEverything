@@ -54,11 +54,7 @@ function DiscoveryRows({
         icon="home"
         title={candidate.name}
         chevron
-        subtitle={
-          repeated
-            ? `Check identity to connect · ${new URL(candidate.url).host}`
-            : 'Check identity to connect'
-        }
+        subtitle={repeated ? `Tap to pair · ${new URL(candidate.url).host}` : 'Tap to pair'}
         wrapSubtitle
         onPress={() => {
           pairing.select(candidate.url);
@@ -74,7 +70,7 @@ export function DiscoveryList({ pairing }: { readonly pairing: PairingPresentati
   const completion =
     discovery.candidates.length === 0
       ? `${title}. ${subtitle}`
-      : `${String(discovery.candidates.length)} nearby homes. Check identity to connect.`;
+      : `${String(discovery.candidates.length)} nearby homes. Choose one to pair.`;
   return (
     <View className="gap-2">
       <List title="Nearby homes" inset>

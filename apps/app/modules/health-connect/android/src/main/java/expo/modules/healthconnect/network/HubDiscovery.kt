@@ -7,20 +7,26 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import expo.modules.healthconnect.diagnostics.NativeLog
 import org.json.JSONObject
 
-class HubDiscovery(private val context: Context, private val emit: (Map<String, Any?>) -> Unit) {
-  private data class Published(val generation: Long, val state: String, val candidates: List<Map<String, Any?>>)
-  @Volatile private var published = Published(0, "idle", emptyList())
+data class HubCandidate(val name: String, val url: String, val hubId: String, val protocolVersion: Int) {
+  fun toMap(): Map<String, Any?> = mapOf("name" to name, "url" to url, "hubId" to hubId, "protocolVersion" to protocolVersion)
+}
+
+data class HubDiscoverySnapshot(val generation: Long, val state: String, val detail: String, val candidates: List<HubCandidate>) {
+  fun toMap(): Map<String, Any?> =
+    mapOf("generation" to generation, "state" to state, "detail" to detail, "candidates" to candidates.map(HubCandidate::toMap))
+}
+
+class HubDiscovery(private val context: Context, private val emit: (HubDiscoverySnapshot) -> Unit) {
+  @Volatile private var published = HubDiscoverySnapshot(0, "idle", "", emptyList())
   fun selected(input: JSONObject): HubPairingSelection {
     val snapshot = published
     require(snapshot.state == "searching" && snapshot.generation == input.getLong("generation")) { "Pairing discovery generation was withdrawn" }
-    val candidate = snapshot.candidates.firstOrNull { it["url"] == input.getString("url") }
+    val candidate = snapshot.candidates.firstOrNull { it.url == input.getString("url") }
       ?: error("Pairing inspection requires a selected current discovery record")
-    val url = candidate["url"]
-    val id = candidate["hubId"]
-    require(url is String && id is String)
-    return HubPairingSelection(snapshot.generation, url, id) {
+    return HubPairingSelection(snapshot.generation, candidate.url, candidate.hubId) {
       val current = published
       current.generation == snapshot.generation && current.state == "searching" && current.candidates.any { it === candidate }
     }
@@ -35,12 +41,11 @@ class HubDiscovery(private val context: Context, private val emit: (Map<String, 
   private var resolver: NsdManager.ResolveListener? = null
   private val pending = ArrayDeque<NsdServiceInfo>()
   private val visible = mutableSetOf<String>()
-  private val candidates = mutableMapOf<String, Map<String, Any?>>()
+  private val candidates = mutableMapOf<String, HubCandidate>()
   fun recover() { handler.post { if (!running) start() } }
-  fun start(): Map<String, Any?> {
+  fun start(): HubDiscoverySnapshot {
     stop()
     generation += 1
-    if (Build.VERSION.SDK_INT < 34) return snapshot("unsupported", "Bounded local discovery requires Android 14 or newer").also(emit)
     if (Build.VERSION.SDK_INT >= 37 && context.applicationInfo.targetSdkVersion >= 37 &&
       context.checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") != PackageManager.PERMISSION_GRANTED)
       return snapshot("permission-required", "Allow local network access to find your hub").also(emit)
@@ -83,10 +88,10 @@ class HubDiscovery(private val context: Context, private val emit: (Map<String, 
     val listener = object : NsdManager.DiscoveryListener {
       override fun onDiscoveryStarted(type: String) { handler.post { if (running && epoch == generation) emit(snapshot("searching", "")) } }
       override fun onDiscoveryStopped(type: String) {}
-      override fun onStartDiscoveryFailed(type: String, code: Int) { handler.post { if (epoch == generation) { browser = null; emit(snapshot("unavailable", "NSD error $code")) } } }
-      override fun onStopDiscoveryFailed(type: String, code: Int) { handler.post { if (epoch == generation) emit(snapshot("unavailable", "NSD cleanup error $code")) } }
+      override fun onStartDiscoveryFailed(type: String, code: Int) { NativeLog.warn(SCOPE, "nsd.start_failed") { mapOf("nsdCode" to code) }; handler.post { if (epoch == generation) { browser = null; emit(snapshot("unavailable", "NSD error $code")) } } }
+      override fun onStopDiscoveryFailed(type: String, code: Int) { NativeLog.warn(SCOPE, "nsd.stop_failed") { mapOf("nsdCode" to code) }; handler.post { if (epoch == generation) emit(snapshot("unavailable", "NSD cleanup error $code")) } }
       override fun onServiceFound(service: NsdServiceInfo) { handler.post {
-        if (running && epoch == generation && pending.size < 32 && candidates.size < 64) {
+        if (running && epoch == generation) {
           visible.add(service.serviceName)
           if (pending.none { it.serviceName == service.serviceName }) pending.add(service)
           resolveNext(epoch)
@@ -113,7 +118,7 @@ class HubDiscovery(private val context: Context, private val emit: (Map<String, 
     if (resolver != null || pending.isEmpty() || !running || epoch != generation) return
     val service = pending.removeFirst()
     val listener = object : NsdManager.ResolveListener {
-      override fun onResolveFailed(info: NsdServiceInfo, code: Int) { handler.post { finished(this) } }
+      override fun onResolveFailed(info: NsdServiceInfo, code: Int) { NativeLog.debug(SCOPE, "nsd.resolve_failed") { mapOf("nsdCode" to code) }; handler.post { finished(this) } }
       override fun onResolutionStopped(info: NsdServiceInfo) { handler.post { finished(this) } }
       override fun onServiceResolved(info: NsdServiceInfo) { handler.post {
         if (resolver !== this) return@post
@@ -141,15 +146,21 @@ class HubDiscovery(private val context: Context, private val emit: (Map<String, 
     val id = info.attributes["id"]?.toString(Charsets.UTF_8) ?: return
     val protocol = info.attributes["protocol"]?.toString(Charsets.UTF_8)?.toIntOrNull()
     val tls = info.attributes["tls"]?.toString(Charsets.UTF_8)
-    if (tls != "1" || protocol != 1 || !Regex("[0-9a-f]{64}").matches(id)) return
-    candidates[info.serviceName] = mapOf("name" to info.serviceName.take(63), "url" to "https://$host:${info.port}", "hubId" to id, "protocolVersion" to protocol)
+    if (tls != "1" || protocol != 1 || !Regex("[0-9a-f]{64}").matches(id)) {
+      NativeLog.debug(SCOPE, "candidate.ignored") { mapOf("tls" to tls, "protocol" to protocol, "idValid" to Regex("[0-9a-f]{64}").matches(id)) }
+      return
+    }
+    candidates[info.serviceName] = HubCandidate(info.serviceName.take(63), "https://$host:${info.port}", id, protocol)
+    NativeLog.debug(SCOPE, "candidate.resolved") { mapOf("hubId" to id.take(8), "port" to info.port, "ipv6" to address.contains(':'), "candidates" to candidates.size) }
     emit(snapshot("searching", ""))
   }
-  private fun snapshot(nextState: String, nextDetail: String): Map<String, Any?> {
+  private fun snapshot(nextState: String, nextDetail: String): HubDiscoverySnapshot {
+    val changed = state != nextState || detail != nextDetail
     state = nextState
     detail = nextDetail
-    published = Published(generation, state, candidates.values.toList())
-    return mapOf("generation" to generation, "state" to state, "detail" to detail, "candidates" to candidates.values.toList())
+    if (changed) NativeLog.info(SCOPE, "discovery.state") { mapOf("generation" to generation, "state" to nextState, "detail" to nextDetail, "candidates" to candidates.size) }
+    published = HubDiscoverySnapshot(generation, state, detail, candidates.values.toList())
+    return published
   }
-  companion object { private const val SERVICE = "_smarteverything._tcp."; private const val WINDOW_MS = 30_000L }
+  companion object { private const val SERVICE = "_smarteverything._tcp."; private const val WINDOW_MS = 30_000L; private const val SCOPE = "hub-discovery" }
 }

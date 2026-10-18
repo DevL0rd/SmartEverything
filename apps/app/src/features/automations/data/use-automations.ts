@@ -1,24 +1,33 @@
 import {
-  AUTOMATION_DEFINITION,
-  displayName,
   type AiChatRow,
-  type AutomationDefinition,
-  type AutomationValueRow,
-  type AutomationSequenceRow,
-  type SequenceParameter,
-  type DeviceGroupRow,
-  type RoomRow,
   type AutomationRow,
+  type AutomationV2,
+  type AutomationValueRow,
+  type DeviceGroupRow,
+  type InputDeclarationV2,
   type ProfileRow,
+  type RoomRow,
   type SceneRow,
 } from '@smarteverything/domain';
+import { usePendingKeys } from '../../../components/deferred-action';
+import { compareText } from '../../../format/text';
+import { deviceTimeZone } from '../../../platform/time-zone';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { useDevices, useIsOwner, useRooms, useRows, useSettings } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
-import { summarize, sentenceOf, type Names, type Summary } from '../model/describe';
-import { deviceTimeZone } from '../../../platform/time-zone';
+import { automationKey } from './actions';
+import { useComputerFeatureLists } from './use-computer-choices';
+import { sentenceOf, summarize, type Names } from '../model/describe';
+import { computersOf } from '../model/computer-steps';
+import type { ComputerFeatures } from '../model/computer-templates';
 import { placeStatus, type PlaceStatus } from '../model/place-status';
-import { sectionOf, type ListSection } from '../model/rules';
+import {
+  callablesIn,
+  isReusable,
+  storedAutomationOf,
+  type Callable,
+} from '../model/reusable-steps';
+import { sectionOf, usesPlace, type ListSection } from '../model/rules';
 import { placeOf, type PlaceReading, type Scheduled } from '../model/schedule';
 import { templatesFor, unusedTemplates, type Template } from '../model/templates';
 
@@ -29,13 +38,14 @@ export interface Catalog {
   readonly people: readonly ProfileRow[];
   readonly chats: readonly AiChatRow[];
   readonly wakeProfileId: string | null;
+  readonly speakers: readonly Device[];
   readonly names: Names;
-  readonly values?: readonly AutomationValueRow[];
-  readonly sequences?: readonly AutomationSequenceRow[];
-  readonly parameters?: readonly SequenceParameter[];
-  readonly groups?: readonly DeviceGroupRow[];
-  readonly rooms?: readonly RoomRow[];
-  readonly automations?: readonly AutomationRow[];
+  readonly values: readonly AutomationValueRow[];
+  readonly groups: readonly DeviceGroupRow[];
+  readonly rooms: readonly RoomRow[];
+  readonly automations: readonly AutomationRow[];
+  readonly callable: readonly Callable[];
+  readonly inputs: readonly InputDeclarationV2[];
 }
 
 const WAKEABLE_KINDS: ReadonlySet<AiChatRow['kind']> = new Set(['chat', 'call']);
@@ -48,8 +58,7 @@ function useWakeProfileId(): string | null {
 
 export interface RuleView {
   readonly row: AutomationRow;
-  readonly definition: AutomationDefinition | null;
-  readonly summary: Summary | null;
+  readonly automation: AutomationV2 | null;
   readonly sentence: string | null;
   readonly section: ListSection;
 }
@@ -59,7 +68,6 @@ export function useCatalog(): Catalog {
   const rooms = useRooms();
   const scenes = useRows('scenes');
   const values = useRows('automation_values');
-  const sequences = useRows('automation_sequences');
   const groups = useRows('device_groups');
   const automations = useRows('automations');
   const people = useProfiles();
@@ -67,54 +75,58 @@ export function useCatalog(): Catalog {
     (chat) => chat.archived_at === null && WAKEABLE_KINDS.has(chat.kind),
   );
   const wakeProfileId = useWakeProfileId();
-  const allDevices = devices.map((device) => ({
-    ...device,
-    label: displayName(device, devices, rooms),
-  }));
+  const cameras = useRows('cameras');
   return {
     values,
-    sequences,
     groups,
     rooms,
     automations,
-    devices: allDevices.filter((device) => !device.hidden),
-    allDevices,
+    callable: callablesIn(automations),
+    inputs: [],
+    devices: devices.filter((device) => !device.hidden),
+    allDevices: devices,
     scenes,
     people,
     chats,
     wakeProfileId,
-    names: {
-      devices: allDevices,
-      scenes,
-      people,
-      chats,
-      values,
-      sequences,
-      groups,
-      rooms,
-      automations,
-    },
+    speakers: devices.filter((device) =>
+      cameras.some((camera) => camera.device_id === device.id && camera.two_way_audio),
+    ),
+    names: { devices, scenes, people, chats, values, groups, rooms, automations },
   };
 }
 
-function ruleOf(row: AutomationRow, names: Names): RuleView {
-  const parsed = AUTOMATION_DEFINITION.safeParse(row.definition);
-  const definition = parsed.success ? parsed.data : null;
-  const summary = definition === null ? null : summarize(names, definition);
+export function inScope(
+  catalog: Catalog,
+  scope: { readonly self: string | null; readonly inputs: readonly InputDeclarationV2[] },
+): Catalog {
+  return {
+    ...catalog,
+    inputs: scope.inputs,
+    callable: catalog.callable.filter((entry) => entry.id !== scope.self),
+  };
+}
+
+export function ruleOf(row: AutomationRow, names: Names): RuleView {
+  const automation = storedAutomationOf(row);
   return {
     row,
-    definition,
-    summary,
-    sentence: summary === null ? null : sentenceOf(summary),
-    section: sectionOf({ definition, enabled: row.enabled, lastError: row.last_error }),
+    automation,
+    sentence: automation === null ? null : sentenceOf(summarize(names, automation)),
+    section: sectionOf({ automation, enabled: row.enabled, lastError: row.last_error }),
   };
 }
 
-function useRules(names: Names): readonly RuleView[] {
-  const rows = useRows('automations');
-  return [...rows]
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .map((row) => ruleOf(row, names));
+function rulesOf(catalog: Catalog, pending: ReadonlySet<string>): readonly RuleView[] {
+  return [...catalog.automations]
+    .filter((row) => {
+      const automation = storedAutomationOf(row);
+      return (
+        !pending.has(automationKey(row.id)) && (automation === null || !isReusable(automation))
+      );
+    })
+    .sort((left, right) => compareText(left.name, right.name))
+    .map((row) => ruleOf(row, catalog.names));
 }
 
 export function usePlaceReading(): PlaceReading {
@@ -123,27 +135,24 @@ export function usePlaceReading(): PlaceReading {
 }
 
 export function scheduledOf(rule: RuleView): Scheduled | null {
-  return rule.definition === null
+  return rule.automation === null
     ? null
-    : { definition: rule.definition, enabled: rule.row.enabled, lastRunAt: rule.row.last_run_at };
+    : { automation: rule.automation, enabled: rule.row.enabled, lastRunAt: rule.row.last_run_at };
 }
 
-function ideasFor(catalog: Catalog, rules: readonly RuleView[]): readonly Template[] {
+function ideasFor(
+  catalog: Catalog,
+  rules: readonly RuleView[],
+  computerFeatures: ComputerFeatures,
+): readonly Template[] {
   return unusedTemplates(
-    templatesFor(catalog.devices),
+    templatesFor(catalog.devices, computerFeatures),
     rules.map((rule) => rule.row.name),
   );
 }
 
-const PLACED_TRIGGERS: ReadonlySet<string> = new Set(['sun', 'weather', 'weather_kind']);
-const PLACED_CONDITIONS: ReadonlySet<string> = new Set(['weather', 'weather_kind', 'daylight']);
-
 function usesSun(rules: readonly RuleView[]): boolean {
-  return rules.some(
-    (rule) =>
-      rule.definition?.triggers.some((trigger) => PLACED_TRIGGERS.has(trigger.type)) === true ||
-      rule.definition?.conditions.items.some((item) => PLACED_CONDITIONS.has(item.type)) === true,
-  );
+  return rules.some((rule) => rule.automation !== null && usesPlace(rule.automation));
 }
 
 export interface AutomationsPage {
@@ -156,13 +165,14 @@ export interface AutomationsPage {
 
 export function useAutomationsPage(): AutomationsPage {
   const catalog = useCatalog();
-  const rules = useRules(catalog.names);
+  const rules = rulesOf(catalog, usePendingKeys());
   const reading = usePlaceReading();
+  const computerFeatures = useComputerFeatureLists(computersOf(catalog.devices));
   return {
     catalog,
     rules,
     reading,
-    ideas: ideasFor(catalog, rules),
+    ideas: ideasFor(catalog, rules, computerFeatures),
     status: placeStatus(reading, deviceTimeZone(), usesSun(rules)),
   };
 }

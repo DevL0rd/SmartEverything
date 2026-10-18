@@ -11,10 +11,11 @@ import { useRows } from '../../../store/selectors';
 import { switchPlugin } from '../data/plugin-actions';
 import { pluginMenu } from '../data/plugin-menu';
 import { pluginIcon, pluginSubtitle, statusLook } from '../model/plugin-look';
+import { background } from '@smarteverything/logging';
 
 const ADD = href.settings.page('plugins/add');
 
-export function PluginRowItem({ row }: { readonly row: PluginRow }): ReactNode {
+function PluginRowItem({ row }: { readonly row: PluginRow }): ReactNode {
   return (
     <ListRow
       icon={pluginIcon(row.manifest)}
@@ -28,7 +29,7 @@ export function PluginRowItem({ row }: { readonly row: PluginRow }): ReactNode {
           value={row.enabled}
           label={`${row.manifest.name} on`}
           onChange={(on) => {
-            void switchPlugin(row, on);
+            background(switchPlugin(row, on), 'plugin.switch_failed');
           }}
         />
       }

@@ -1,4 +1,3 @@
-import { webFetchSource } from '../assistant/web-fetch';
 import { webSearchSource } from '../assistant/web-search-supplier';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -61,9 +60,8 @@ export function assistantOf(
 
 export function attachAssistant(context: ServerContext, tools: ToolHub): void {
   tools.add(webSearchSource(context.harness, context.openRouter.client));
-  tools.add(webFetchSource(context.harness));
   context.assistant.attachTools(tools);
-  context.assistant.attachAuxiliaries();
+  context.assistant.attachAuxiliaries(context.openRouter);
 }
 
 export function aiTurnsOf(context: ServerContext): AiTurns {

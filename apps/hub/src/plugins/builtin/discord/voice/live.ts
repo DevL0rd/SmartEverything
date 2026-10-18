@@ -1,4 +1,5 @@
 import type { PluginVoice } from '../../../plugin-voice';
+import { CONTEST_MS, type OnSuperseded } from '../../../../wake-name/wake-claims';
 import { describePerson, type Person } from '../person';
 import type { Policy } from '../policy';
 import type { DiscordSettings } from '../settings';
@@ -14,7 +15,10 @@ const SAY_NOW = '[Say this to the call now, naturally and in your own words]';
 
 class Live {
   call: Hosted | null = null;
+  replaced = false;
   private readonly later: string[] = [];
+  constructor(readonly startedAt: number) {}
+
   readonly mixer = new Mixer((pcm) => {
     this.call?.hear(pcm);
   });
@@ -43,8 +47,8 @@ class Live {
 
 export interface LiveDeps {
   readonly voice: Pick<PluginVoice, 'host' | 'ready'>;
-  readonly settings: DiscordSettings;
-  readonly policy: Policy;
+  readonly settings: Pick<DiscordSettings, 'voice_idle_seconds' | 'voice_pause_ms'>;
+  readonly policy: Pick<Policy, 'userAllowed'>;
   readonly place: (session: CallSession) => string;
   readonly muted: (session: CallSession) => boolean;
   readonly typed: (session: CallSession, person: Person, text: string) => void;
@@ -59,6 +63,13 @@ interface Engagement {
   readonly speakerId: string;
   readonly opening: string;
   readonly words?: () => Int16Array;
+  readonly onSuperseded?: OnSuperseded;
+}
+
+export interface Waking {
+  readonly phrase: string;
+  readonly words: () => Int16Array;
+  readonly onSuperseded: OnSuperseded;
 }
 
 function wakeReason(person: Person, phrase: string): string {
@@ -81,30 +92,35 @@ export class LiveVoices {
   }
 
   wakeable(session: CallSession, userId: string): boolean {
-    return !this.active(session.guildId) && this.deps.policy.userAllowed(userId);
-  }
-
-  mixes(session: CallSession, userId: string, pcm: Int16Array): boolean {
     const live = this.lives.get(session.guildId);
-    if (live === undefined) {
-      return false;
-    }
-    live.mixer.hear(userId, pcm);
-    return true;
+    return (
+      this.deps.policy.userAllowed(userId) &&
+      (live === undefined || this.deps.now() - live.startedAt < CONTEST_MS)
+    );
   }
 
-  wake(session: CallSession, person: Person, phrase: string, words: () => Int16Array): void {
+  mixes(session: CallSession, userId: string, pcm: Int16Array): void {
+    this.lives.get(session.guildId)?.mixer.hear(userId, pcm);
+  }
+
+  wake(session: CallSession, person: Person, waking: Waking): void {
+    const { phrase, words, onSuperseded } = waking;
     if (!this.wakeable(session, person.id)) {
       return;
     }
     if (!this.speaks(session)) {
       this.wakeTyped(session, person.id);
+      onSuperseded(() => {
+        this.typedWakes.delete(person.id);
+        this.lastLines.delete(person.id);
+      });
       return;
     }
     this.engage(session, {
       speakerId: person.id,
       opening: wakeReason(person, phrase),
       words,
+      onSuperseded,
     }).catch(this.deps.report);
   }
 
@@ -160,11 +176,20 @@ export class LiveVoices {
   }
 
   private async engage(session: CallSession, engagement: Engagement): Promise<void> {
-    const live = new Live();
+    const live = new Live(this.deps.now());
     this.lives.set(session.guildId, live);
     this.deps.changed();
+    engagement.onSuperseded?.(() => {
+      live.replaced = true;
+      if (this.lives.get(session.guildId) === live) {
+        this.end(session.guildId).catch(this.deps.report);
+      }
+    });
     try {
       live.opened(await this.host(session, live, engagement));
+      if (live.replaced) {
+        await live.end();
+      }
     } catch (cause) {
       this.finished(session.guildId, live);
       throw cause;

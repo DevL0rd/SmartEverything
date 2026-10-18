@@ -1,7 +1,6 @@
 import type { AssistantMessageRow, AiChatRow } from '@smarteverything/domain';
-import { ApiError } from '@smarteverything/domain';
 import type { HarnessService } from './service';
-import { currentExecutionAuthority } from '../assistant/execution-authority';
+import { currentExecutionAuthority } from '../assistant/turn-authority';
 
 export function legacyHistory(
   service: HarnessService,
@@ -20,17 +19,6 @@ export function legacyHistory(
   return (boundary < 0 ? rows : rows.slice(0, boundary)).filter(
     (row) => row.state !== 'queued' && row.state !== 'working',
   );
-}
-
-export function admitLegacyImport(service: HarnessService, chat: AiChatRow): void {
-  if (legacyHistory(service, chat).length === 0) return;
-  const target = service.binding(chat).execution_target;
-  const host = service.directory.get(target).host;
-  if (host.manifest?.history_import !== true)
-    throw new ApiError(
-      'conflict',
-      'Update the selected SmartEverything host before continuing this existing chat. Its native runtime cannot import historical messages yet.',
-    );
 }
 
 function hasNativeHistory(service: HarnessService, chat: AiChatRow): boolean {

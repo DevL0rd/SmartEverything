@@ -6,10 +6,6 @@ import { PROVIDER_EVENT } from './node/provider-turns';
 import { PROVIDER_METADATA } from './node/provider-controls';
 import { JSON_VALUE } from './values';
 
-export const AI_ENGINE_CAPABILITY = 'computer-ai-v1';
-export const AI_ENGINE_HEADER = 'accept';
-export const AI_ENGINE_CAPABILITIES_HEADER = 'x-smarteverything-ai-capabilities';
-export const AI_ENGINE_HEADER_VALUE = 'application/json; smarteverything-ai-engines=computer-v1';
 export const AI_ENGINE_PREFERENCE = z.strictObject({
   model: z.string().min(1).max(200),
   device_id: z.uuid(),

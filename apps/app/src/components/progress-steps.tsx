@@ -12,6 +12,13 @@ export interface ProgressStep {
   readonly detail?: string;
 }
 
+export function stepsAt(labels: readonly string[], current: number): readonly ProgressStep[] {
+  return labels.map((label, index) => ({
+    label,
+    state: index < current ? 'done' : index === current ? 'active' : 'waiting',
+  }));
+}
+
 function Marker({ state }: { readonly state: StepState }): ReactNode {
   if (state === 'active') {
     return <ActivityIndicator size="small" colorClassName="accent-primary" />;

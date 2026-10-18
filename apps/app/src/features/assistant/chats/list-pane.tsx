@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { withUniwind } from 'uniwind';
 import Animated, {
   LinearTransition,
   useAnimatedStyle,
@@ -9,13 +11,17 @@ import Animated, {
 import { cn } from '../../../design/cn';
 import { DURATION, EASING, useMotion } from '../../../design/motion';
 
+const KeyboardViewport = withUniwind(KeyboardAvoidingView);
+
 export const PANEL_SLIDE = LinearTransition.duration(DURATION.medium).easing(EASING.standard);
 
 export function ListPane({
   open,
+  full,
   children,
 }: {
   readonly open: boolean;
+  readonly full: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   const { reduced } = useMotion();
@@ -31,14 +37,19 @@ export function ListPane({
     <Animated.View
       {...(reduced ? {} : { layout: PANEL_SLIDE })}
       aria-hidden={!open}
-      className={cn('overflow-hidden border-outline-variant', open ? 'w-master border-r' : 'w-0')}
+      className={cn(
+        'overflow-hidden border-outline-variant',
+        full ? 'flex-1' : open ? 'w-master border-r' : 'w-0',
+      )}
     >
       <Animated.View
         style={fade}
         pointerEvents={open ? 'auto' : 'none'}
-        className="w-master min-h-0 flex-1 pt-safe"
+        className={cn('min-h-0 flex-1', full ? 'w-full' : 'w-master pt-safe')}
       >
-        {children}
+        <KeyboardViewport behavior="padding" automaticOffset className="min-h-0 flex-1">
+          {children}
+        </KeyboardViewport>
       </Animated.View>
     </Animated.View>
   );

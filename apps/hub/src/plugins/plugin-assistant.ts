@@ -1,9 +1,11 @@
 import { join } from 'node:path';
+import { ownerProfileOf } from '../transcripts/owner';
 import {
   AI_MODEL_CHOICE,
   ENGINE_WRITE,
   ApiError,
-  pluginChatKey,
+  turnRoleOf,
+  type PluginRequester,
   type AiChatRow,
   type AiModelChoice,
 } from '@smarteverything/domain';
@@ -11,6 +13,7 @@ import type { AssistantFiles } from '../assistant/files';
 import type { AssistantService } from '../assistant/service';
 import type { Catalogue } from '../openrouter/catalogue';
 import type { Store } from '../store/store';
+import { admittedIdentityOf, identityChatKey } from './plugin-identity';
 import type {
   PluginAssistant,
   PluginConversationState,
@@ -40,9 +43,10 @@ export function pluginFiles(
   dataDirectory: string,
   pluginId: string,
   attachmentsOf: PluginFiles['attachmentsOf'],
+  fromMachine: PluginFiles['fromMachine'],
 ): PluginFiles {
   const folder = join(dataDirectory, 'plugins', pluginId);
-  return { folder, outbox: join(folder, PLUGIN_OUTBOX), attachmentsOf };
+  return { folder, outbox: join(folder, PLUGIN_OUTBOX), attachmentsOf, fromMachine };
 }
 
 export function chatAttachmentPaths(
@@ -53,18 +57,37 @@ export function chatAttachmentPaths(
   return store.assistantChat.attachmentsOfChat(chatId).map((file) => files.pathOf(file));
 }
 
+interface Asker {
+  readonly profileId: string;
+  readonly role: 'owner' | 'member';
+  readonly requester: PluginRequester | null;
+  readonly guest: string | null;
+}
+
+function refuseStranger(asker: Asker, what: string): void {
+  if (asker.requester === 'unlisted') {
+    throw new ApiError('forbidden', `Only people linked to a person of the home can ${what}.`);
+  }
+}
+
 export class PluginConversations {
   constructor(private readonly options: PluginConversationsOptions) {}
 
   forPlugin(pluginId: string): PluginAssistant {
     return {
       settings: () => this.settings(),
-      conversation: (key) => this.conversation(pluginId, key),
-      usage: () => this.usage(),
-      compact: (key) => this.compact(pluginId, key),
-      startOver: (key) => this.startOver(pluginId, key),
-      stop: (key) => this.stop(pluginId, key),
-      setModel: (key, model) => this.setModel(pluginId, key, model),
+      conversation: (key, actor) => this.conversation(this.asker(pluginId, actor), pluginId, key),
+      usage: (actor) => this.usage(this.asker(pluginId, actor)),
+      compact: (key, actor) =>
+        Promise.resolve().then(() => this.compact(this.asker(pluginId, actor), pluginId, key)),
+      startOver: (key, actor) =>
+        Promise.resolve().then(() => this.startOver(this.asker(pluginId, actor), pluginId, key)),
+      stop: (key, actor) =>
+        Promise.resolve().then(() => this.stop(this.asker(pluginId, actor), pluginId, key)),
+      setModel: (key, model, actor) =>
+        Promise.resolve().then(() =>
+          this.setModel(this.asker(pluginId, actor), pluginId, key, model),
+        ),
     };
   }
 
@@ -79,22 +102,34 @@ export class PluginConversations {
     };
   }
 
-  private profileId(): string {
-    const owner = this.options.store.clients.owner();
-    if (owner === undefined) {
-      throw new ApiError('conflict', 'This server has no owner yet.');
+  private asker(pluginId: string, actor: string | undefined): Asker {
+    if (actor === undefined) {
+      return {
+        profileId: ownerProfileOf(this.options.store),
+        role: 'owner',
+        requester: null,
+        guest: null,
+      };
     }
-    return this.options.store.profiles.activeOf(owner.id).id;
+    const { requester, profileId, guest } = admittedIdentityOf(this.options.store, pluginId, actor);
+    return { profileId, role: turnRoleOf(requester), requester, guest };
   }
 
-  private chatOf(pluginId: string, key: string): AiChatRow | null {
+  private chatOf(asker: Asker, pluginId: string, key: string): AiChatRow | null {
     return (
-      this.options.store.aiChats.bySource(this.profileId(), pluginChatKey(pluginId, key)) ?? null
+      this.options.store.aiChats.bySource(
+        asker.profileId,
+        identityChatKey(asker.guest, pluginId, key),
+      ) ?? null
     );
   }
 
-  private conversation(pluginId: string, key: string): PluginConversationState | null {
-    const chat = this.chatOf(pluginId, key);
+  private conversation(
+    asker: Asker,
+    pluginId: string,
+    key: string,
+  ): PluginConversationState | null {
+    const chat = this.chatOf(asker, pluginId, key);
     if (chat === null) {
       return null;
     }
@@ -111,58 +146,71 @@ export class PluginConversations {
     };
   }
 
-  private usage(): PluginUsageView {
+  private usage(asker: Asker): PluginUsageView {
+    refuseStranger(asker, 'see what the AI cost');
     const to = this.options.now();
     const span = (days: number): PluginUsageSpan => {
       const sum = this.options.store.ledger.totals({
         from: new Date(to.getTime() - days * DAY_MS).toISOString(),
         to: to.toISOString(),
+        ...(asker.role === 'owner' ? {} : { profileIds: [asker.profileId] }),
       }).sum;
       return { costMicros: sum.cost_micros, calls: sum.count };
     };
     return { today: span(1), week: span(WEEK_DAYS), month: span(MONTH_DAYS) };
   }
 
-  private async compact(pluginId: string, key: string): Promise<boolean> {
-    const chat = this.chatOf(pluginId, key);
+  private async compact(asker: Asker, pluginId: string, key: string): Promise<boolean> {
+    refuseStranger(asker, 'compact a conversation');
+    const chat = this.chatOf(asker, pluginId, key);
     if (chat === null) {
       throw new ApiError('not_found', 'There is no conversation to compact yet.');
     }
-    return this.options.assistant.compact({ profileId: chat.profile_id, role: 'owner' }, chat.id);
+    return this.options.assistant.compact(
+      { profileId: chat.profile_id, role: asker.role },
+      chat.id,
+    );
   }
 
-  private async startOver(pluginId: string, key: string): Promise<boolean> {
-    const chat = this.chatOf(pluginId, key);
+  private async startOver(asker: Asker, pluginId: string, key: string): Promise<boolean> {
+    refuseStranger(asker, 'start a conversation over');
+    const chat = this.chatOf(asker, pluginId, key);
     if (chat === null) {
       return false;
     }
     await this.options.assistant.updateChat(
-      { profileId: chat.profile_id, role: 'owner' },
+      { profileId: chat.profile_id, role: asker.role },
       chat.id,
       { archived: true },
     );
     return true;
   }
 
-  private async stop(pluginId: string, key: string): Promise<boolean> {
-    const chat = this.chatOf(pluginId, key);
+  private async stop(asker: Asker, pluginId: string, key: string): Promise<boolean> {
+    refuseStranger(asker, 'stop a conversation');
+    const chat = this.chatOf(asker, pluginId, key);
     if (chat === null || this.options.assistant.engineStatus(chat)?.state !== 'working') {
       return false;
     }
-    await this.options.assistant.interrupt({ profileId: chat.profile_id, role: 'owner' }, chat.id);
+    await this.options.assistant.interrupt(
+      { profileId: chat.profile_id, role: asker.role },
+      chat.id,
+    );
     return true;
   }
 
   private async setModel(
+    asker: Asker,
     pluginId: string,
     key: string,
     model: string | null,
   ): Promise<string | null> {
-    const chat = this.chatOf(pluginId, key);
+    refuseStranger(asker, 'change the model');
+    const chat = this.chatOf(asker, pluginId, key);
     if (chat === null) {
       throw new ApiError('not_found', 'Ask something first; the model is set per conversation.');
     }
-    if (chat.engine.kind !== 'openrouter') return this.setComputerModel(chat, model);
+    if (chat.engine.kind !== 'dsh') return this.setComputerModel(asker, chat, model);
     const parsed = model === null ? null : AI_MODEL_CHOICE.safeParse(model);
     if (parsed !== null && !parsed.success) {
       throw new ApiError(
@@ -173,22 +221,26 @@ export class PluginConversations {
     const choice: AiModelChoice | null = parsed === null ? null : parsed.data;
     const resolved = this.options.catalogue().resolve(choice, null);
     await this.options.assistant.updateChat(
-      { profileId: chat.profile_id, role: 'owner' },
+      { profileId: chat.profile_id, role: asker.role },
       chat.id,
-      { engine: { kind: chat.engine.kind, model: choice, effort: chat.engine.effort } },
+      { engine: { kind: 'openrouter', model: choice, effort: chat.engine.effort } },
     );
     return resolved.name;
   }
 
-  private async setComputerModel(chat: AiChatRow, model: string | null): Promise<string> {
+  private async setComputerModel(
+    asker: Asker,
+    chat: AiChatRow,
+    model: string | null,
+  ): Promise<string> {
     if (model === null)
       throw new ApiError(
         'invalid_request',
-        'Choose an explicit model supplied by this subscription computer; its binding cannot be replaced with the OpenRouter default.',
+        'A computer chat has no default model. Give the model id to use.',
       );
     const engine = ENGINE_WRITE.parse({ ...chat.engine, model });
     await this.options.assistant.updateChat(
-      { profileId: chat.profile_id, role: 'owner' },
+      { profileId: chat.profile_id, role: asker.role },
       chat.id,
       { engine },
     );

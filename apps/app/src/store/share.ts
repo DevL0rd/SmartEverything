@@ -1,3 +1,4 @@
+import { DeviceValueIndex } from './device-values';
 import { makeTable, type DeviceValues, type Table, type Tables } from './state';
 import { sameJson } from './same-json';
 
@@ -17,19 +18,16 @@ function shareTable<R>(previous: Table<R>, table: Table<R>): Table<R> {
   return reused ? previous : makeTable(byId, table.ids, table.version);
 }
 
-export function shareValues(
-  previous: Readonly<Record<string, DeviceValues>>,
-  next: Readonly<Record<string, DeviceValues>>,
-): Readonly<Record<string, DeviceValues>> {
-  let reused = Object.keys(previous).length === Object.keys(next).length;
-  const merged: Record<string, DeviceValues> = {};
-  for (const [deviceId, values] of Object.entries(next)) {
-    const before = previous[deviceId];
+export function shareValues(previous: DeviceValueIndex, next: DeviceValueIndex): DeviceValueIndex {
+  let reused = previous.size === next.size;
+  const merged: [string, DeviceValues][] = [];
+  for (const [deviceId, values] of next.entries()) {
+    const before = previous.get(deviceId);
     const keep = before !== undefined && sameJson(before, values);
-    merged[deviceId] = keep ? before : values;
+    merged.push([deviceId, keep ? before : values]);
     reused &&= keep;
   }
-  return reused ? previous : merged;
+  return reused ? previous : DeviceValueIndex.from(merged);
 }
 
 export function shareTables(previous: Tables, next: Tables): Tables {
@@ -39,6 +37,7 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     rooms: shareTable(previous.rooms, next.rooms),
     device_groups: shareTable(previous.device_groups, next.device_groups),
     devices: shareTable(previous.devices, next.devices),
+    television_settings: shareTable(previous.television_settings, next.television_settings),
     commands: shareTable(previous.commands, next.commands),
     events: shareTable(previous.events, next.events),
     cameras: shareTable(previous.cameras, next.cameras),
@@ -48,7 +47,6 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     scenes: shareTable(previous.scenes, next.scenes),
     automations: shareTable(previous.automations, next.automations),
     automation_values: shareTable(previous.automation_values, next.automation_values),
-    automation_sequences: shareTable(previous.automation_sequences, next.automation_sequences),
     automation_runs: shareTable(previous.automation_runs, next.automation_runs),
     layouts: shareTable(previous.layouts, next.layouts),
     push_targets: shareTable(previous.push_targets, next.push_targets),

@@ -17,7 +17,7 @@ function seconds(ms: number): number {
   return Math.round(ms / 1000);
 }
 
-export function meterLine(row: UsageLedgerRow): string {
+function meterLine(row: UsageLedgerRow): string {
   const audio = row.audio_in_ms + row.audio_out_ms;
   if (audio > 0) {
     return `Call ${duration(seconds(Math.max(row.audio_in_ms, row.audio_out_ms)))}`;

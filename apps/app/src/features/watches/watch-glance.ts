@@ -6,11 +6,9 @@ import {
   type WatchPhase,
 } from '@smarteverything/domain';
 import type { PhoneWatchStatus } from '../../../modules/health-connect';
-import { dayKeyOf } from '../../format/time';
-import { useMinute } from '../../store/clock';
+import { useDayKey } from '../../store/clock';
 import { useActiveProfile } from '../../store/people';
-import { useDevices } from '../../store/selectors';
-import type { Device, StoreState } from '../../store/state';
+import { rowsOf, type Device, type StoreState } from '../../store/state';
 import { useStoreSelector } from '../../store/store-context';
 import {
   useTodayFigure,
@@ -20,19 +18,23 @@ import {
   type TodaySteps,
   type WatchLive,
 } from '../device-visuals';
+import { latestDaily } from './daily-index';
 import { usePhoneWatch } from './watch-link';
 import { isLocalWatch } from './watch-status';
 
 export function useMyWatch(): Device | null {
   const profileId = useActiveProfile()?.id ?? null;
-  return (
-    useDevices({ includeHidden: true }).find(
-      (device) => isLocalWatch(device) && device.details['profileId'] === profileId,
-    ) ?? null
+  return useStoreSelector(
+    (state) =>
+      rowsOf(state.tables.devices).find(
+        (device) => isLocalWatch(device) && device.details['profileId'] === profileId,
+      ) ?? null,
+    Object.is,
+    [profileId],
   );
 }
 
-export interface DayFigure {
+interface DayFigure {
   readonly day: string;
   readonly value: number;
 }
@@ -111,19 +113,8 @@ function latestOf(
   metric: HealthMetric,
   profileId: string | null,
 ): DayFigure | null {
-  const table = state.tables.health_daily;
-  let best: DayFigure | null = null;
-  for (const id of table.ids) {
-    const row = table.byId[id];
-    if (
-      row?.metric === metric &&
-      (profileId === null || row.profile_id === profileId) &&
-      (best === null || row.day > best.day)
-    ) {
-      best = { day: row.day, value: row.value };
-    }
-  }
-  return best;
+  const row = latestDaily(state, metric, profileId);
+  return row === null ? null : { day: row.day, value: row.value };
 }
 
 function sameFigure(left: DayFigure | null, right: DayFigure | null): boolean {
@@ -154,10 +145,10 @@ function useDailyFacts(profileId: string | null): DailyFacts {
   );
 }
 
-function phoneSteps(phone: PhoneWatchStatus | null): StepsReading | null {
+export function phoneSteps(phone: PhoneWatchStatus | null): StepsReading | null {
   return phone?.steps === null || phone?.steps === undefined || phone.phase !== 'connected'
     ? null
-    : { value: phone.steps, at: new Date().toISOString() };
+    : { value: phone.steps, at: phone.updatedAt };
 }
 
 export interface LiveToday {
@@ -189,8 +180,9 @@ function liveOf(phone: PhoneWatchStatus | null, status: Status): WatchLive {
 export function useWatchGlance(watch: Device): {
   readonly glance: WatchGlance;
   readonly live: WatchLive;
+  readonly phone: PhoneWatchStatus | null;
 } {
-  const today = dayKeyOf(useMinute());
+  const today = useDayKey();
   const phone = usePhoneWatch(watch.id);
   const status = phone === null ? reportedStatus(watch) : phoneStatus(phone);
   const live = liveOf(phone, status);
@@ -204,6 +196,7 @@ export function useWatchGlance(watch: Device): {
   const goal = effectiveFitnessGoals(profile?.fitness_goals ?? UNSET_FITNESS_GOALS).steps;
   return {
     live,
+    phone,
     glance: {
       ...facts,
       distance,

@@ -1,6 +1,5 @@
 import {
   API_ENDPOINTS as E,
-  seal,
   type CommandRow,
   type Provider,
   type ProviderCredentials,
@@ -8,25 +7,16 @@ import {
 import { sendHubCommand } from './hub-commands';
 import { api } from './transport';
 
-async function sealingKey(): Promise<string> {
-  return (await api().call(E.sealingKey, {})).publicKey;
+export async function linkProvider(credentials: ProviderCredentials): Promise<void> {
+  await api().call(E.linkProvider, { body: credentials });
 }
 
-export async function linkProvider(credentials: ProviderCredentials): Promise<CommandRow> {
-  return sendHubCommand({
-    capability: 'hub:link_provider',
-    value: {
-      provider: credentials.provider,
-      credentials: seal(await sealingKey(), JSON.stringify(credentials)),
-    },
-  });
+export async function answerPrompt(provider: Provider, answer: string): Promise<void> {
+  await api().call(E.answerProviderPrompt, { body: { provider, answer } });
 }
 
-export async function answerPrompt(provider: Provider, answer: string): Promise<CommandRow> {
-  return sendHubCommand({
-    capability: 'hub:answer_prompt',
-    value: { provider, answer: seal(await sealingKey(), answer) },
-  });
+export async function cancelProviderLink(provider: Provider): Promise<void> {
+  await api().call(E.cancelProviderLink, { body: { provider } });
 }
 
 export function unlinkProvider(provider: Provider): Promise<CommandRow> {

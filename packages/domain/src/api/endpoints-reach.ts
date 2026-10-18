@@ -174,6 +174,16 @@ export const REACH_ENDPOINTS = {
     body: NO_BODY,
     response: AI_OUTREACH_ROW,
   }),
+  muteOutreach: endpoint({
+    method: 'POST',
+    path: '/api/reach/outreach/:outreachId/mute',
+    access: 'member',
+    summary: 'Mute or unmute the microphone of a live conversation the AI started on a computer',
+    params: OUTREACH_PARAMS,
+    query: NOTHING,
+    body: z.strictObject({ muted: z.boolean() }),
+    response: AI_OUTREACH_ROW,
+  }),
   declineOutreach: endpoint({
     method: 'POST',
     path: '/api/reach/outreach/:outreachId/decline',

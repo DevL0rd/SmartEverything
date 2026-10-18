@@ -1,12 +1,11 @@
 import type { HealthMetric } from '@smarteverything/domain';
-import type { ChartPoint } from '../../../components/charts';
 import { baselineOf, figureOn, latestFigure } from './daily';
 import type { EffectiveFitnessGoals } from './goals';
 import { progressOf } from './goals';
 import type { DailyFigure } from './points';
 import { readiness, sleepScore, type Score } from './scores';
 import type { SleepNight } from './sleep';
-import { HOUR_MS, shiftDay, startOfDayKey } from '../../../format/time';
+import { shiftDay } from '../../../format/time';
 
 export interface RingValue {
   readonly key: 'move' | 'exercise' | 'steps';
@@ -62,19 +61,6 @@ export function latestReading(
 ): DayReading | null {
   const found = latestFigure(figures, metric, upTo);
   return found === null ? null : { day: found.day, value: found.value };
-}
-
-export function dailyPoints(
-  figures: readonly DailyFigure[],
-  metric: HealthMetric,
-  upTo: string,
-  days: number,
-): readonly ChartPoint[] {
-  const first = shiftDay(upTo, 1 - days);
-  return figures
-    .filter((figure) => figure.metric === metric && figure.day >= first && figure.day <= upTo)
-    .map((figure) => ({ t: startOfDayKey(figure.day) + 12 * HOUR_MS, v: figure.value }))
-    .sort((left, right) => left.t - right.t);
 }
 
 export interface HeartRange {

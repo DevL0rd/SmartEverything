@@ -1,4 +1,7 @@
 import { liveProtocols } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
+
+const log = new Logger('desktop.live-link');
 
 export interface LiveSocket {
   readonly close: () => void;
@@ -27,13 +30,16 @@ export class LiveLink {
   follow(serverUrl: string, token: string): void {
     const target = `${serverUrl} ${token}`;
     if (this.#socket !== null && this.#target === target) {
+      log.trace('live.follow_unchanged');
       return;
     }
     this.drop();
+    log.info('live.opening', { host: new URL(serverUrl).host });
     const socket = this.open(liveUrlOf(serverUrl), [...liveProtocols(token)]);
     this.#socket = socket;
     this.#target = target;
     socket.addEventListener('close', () => {
+      log.info('live.closed', { current: this.#socket === socket });
       if (this.#socket === socket) {
         this.#socket = null;
         this.#target = null;
@@ -44,6 +50,7 @@ export class LiveLink {
 
   drop(): void {
     const socket = this.#socket;
+    if (socket !== null) log.debug('live.dropping');
     this.#socket = null;
     this.#target = null;
     socket?.close();

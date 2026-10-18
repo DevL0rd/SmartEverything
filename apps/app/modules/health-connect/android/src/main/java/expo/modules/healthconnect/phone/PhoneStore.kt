@@ -18,6 +18,17 @@ class PhoneStore(context: Context) {
 
   fun setSent(values: JSONObject) = preferences.edit().putString(SENT, values.toString()).apply()
 
+  fun sentParts(): JSONObject = JSONObject(preferences.getString(SENT_PARTS, null) ?: "{}")
+
+  fun setSentParts(parts: JSONObject) = preferences.edit().putString(SENT_PARTS, parts.toString()).apply()
+
+  fun forgetSent() = preferences.edit().remove(SENT).remove(SENT_PARTS).apply()
+
+  fun unlocksOn(day: String): Int = if (preferences.getString(UNLOCK_DAY, null) == day) preferences.getInt(UNLOCK_COUNT, 0) else 0
+
+  fun countUnlock(day: String) =
+    preferences.edit().putString(UNLOCK_DAY, day).putInt(UNLOCK_COUNT, unlocksOn(day) + 1).apply()
+
   fun context(): PhoneContextSnapshot =
     preferences.getString(CONTEXT, null)?.let { PhoneContextSnapshot.fromJson(JSONObject(it)) } ?: PhoneContextSnapshot.INITIAL
 
@@ -37,6 +48,9 @@ class PhoneStore(context: Context) {
     const val ENABLED = "enabled"
     const val SENSOR = "sensor."
     const val SENT = "sent"
+    const val SENT_PARTS = "sentParts"
+    const val UNLOCK_DAY = "unlockDay"
+    const val UNLOCK_COUNT = "unlockCount"
     const val CONTEXT = "context"
     const val CAR = "car"
     const val HOME_WIFI = "homeWifi"
@@ -48,7 +62,9 @@ enum class PhoneSensor(val wire: String) {
   PLACES("places"),
   CAR("car"),
   NAVIGATION("navigation"),
-  SCREEN_TIME("screen_time");
+  SCREEN_TIME("screen_time"),
+  APP_USAGE("app_usage"),
+  NOTIFICATION_TITLES("notification_titles");
 
   companion object {
     fun of(wire: String): PhoneSensor =

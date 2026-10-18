@@ -1,5 +1,8 @@
 import type { CommandDescriptor } from './types';
-import { draftRevision } from '../data/drafts';
+import { aiDrafts } from '../data/ai-drafts';
+import { draftRevision, draftText, useDraftSelected } from '../data/drafts';
+import { useDerived } from '../data/use-derived';
+import { sameJson } from '../../../store/same-json';
 import { useState, type ReactNode } from 'react';
 import type { AiChatRow } from '@smarteverything/domain';
 import type { Quote } from '../model/composer-state';
@@ -8,61 +11,94 @@ import { useCommands } from './catalogue';
 import { commandIntent, insertCommand } from './intent';
 import { commandDefinition } from './definition';
 import { useCommandSubmission } from './submission';
-import { selectionKey } from './selection';
-import { CommandHint, CommandResult, CommandSuggestions } from './panels';
+import { NO_SUGGESTIONS, type Suggestions } from '../components/suggestion-keys';
+import { CommandHint, CommandResult, CommandSuggestions, type QuoteConflict } from './panels';
 export interface CommandComposer {
   readonly opened: boolean;
   readonly dismiss: () => void;
   readonly panel: ReactNode;
   readonly hint: ReactNode;
   readonly result: ReactNode;
-  readonly handleKey: (key: string) => boolean;
+  readonly suggestions: Suggestions;
   readonly submit: (quote: Quote | null, uploads: readonly Upload[]) => Promise<boolean>;
 }
-export function useCommandComposer(
-  chat: AiChatRow | undefined,
-  draftKey: string,
-  text: string,
-  setText: (text: string) => void,
-): CommandComposer {
+export interface CommandComposerInput {
+  readonly chat: AiChatRow | undefined;
+  readonly draftKey: string;
+  readonly setText: (text: string) => void;
+  readonly quote: QuoteConflict | null;
+}
+
+interface CommandKey {
+  readonly prefix: string | null;
+  readonly spaced: boolean;
+}
+
+function commandKeyOf(text: string): CommandKey {
   const intent = commandIntent(text);
-  const prefix = intent.kind === 'text' ? null : intent.prefix;
-  const revision = draftRevision(draftKey);
+  return { prefix: intent.kind === 'text' ? null : intent.prefix, spaced: /\s/u.test(text) };
+}
+
+export function useCommandComposer(input: CommandComposerInput): CommandComposer {
+  const { chat, draftKey, setText, quote } = input;
+  const { prefix, spaced } = useDraftSelected(draftKey, commandKeyOf, sameJson);
   const [dismissed, setDismissed] = useState<{
     readonly prefix: string | null;
     readonly revision: number;
   } | null>(null);
-  const opened =
-    prefix !== null && !dismissedIntent(dismissed, prefix, revision) && !/\s/u.test(text);
+  const stale = useDerived(
+    aiDrafts.subscribe,
+    () => dismissed !== null && dismissed.revision !== draftRevision(draftKey),
+    Object.is,
+  );
+  const opened = prefix !== null && !(dismissed?.prefix === prefix && !stale) && !spaced;
   const catalogue = useCommands(chat, prefix !== null);
-  const choice = useDefinitionChoice(catalogue, prefix, text, setText);
-  const submission = useCommandSubmission(catalogue, draftKey, text, { definitionId: choice.id });
+  const choice = useDefinitionChoice(catalogue, prefix, draftKey, setText);
+  const submission = useCommandSubmission(catalogue, draftKey, () => draftText(draftKey), {
+    definitionId: choice.id,
+  });
   const filtered = matchingCommands(catalogue.commands, prefix);
   const selected = selectedCommand(filtered, choice.selection);
   const dismiss = (): void => {
-    setDismissed({ prefix, revision });
+    setDismissed({ prefix, revision: draftRevision(draftKey) });
   };
   const choose = (id: string): void => {
     const name = choice.choose(id);
     if (name !== null) setDismissed({ prefix: name, revision: draftRevision(draftKey) });
   };
   const chosen = commandDefinition(catalogue.commands, prefix ?? '', choice.id);
-  const keys = {
-    names: filtered.map((row) => row.id),
-    selected,
-    select: choice.select,
-    choose,
-    dismiss,
-  };
+  const listed = catalogue.reason === null && quote === null ? filtered : [];
   return {
     opened,
     dismiss,
-    submit: (quote, uploads): Promise<boolean> => {
+    submit: (drafted, uploads): Promise<boolean> => {
       dismiss();
-      return submission.submit(quote, uploads);
+      return submission.submit(drafted, uploads);
     },
-    handleKey: (key): boolean => opened && selectionKey(key, keys),
-    ...commandPanels({ opened, chosen, filtered, selected, choose, catalogue, submission }),
+    suggestions: opened
+      ? commandSuggestions(listed, selected, { highlight: choice.select, choose, dismiss })
+      : NO_SUGGESTIONS,
+    ...commandPanels({ opened, chosen, filtered, selected, choose, catalogue, submission, quote }),
+  };
+}
+
+function commandSuggestions(
+  listed: readonly CommandDescriptor[],
+  selected: string | null,
+  actions: {
+    readonly highlight: (id: string) => void;
+    readonly choose: (id: string) => void;
+    readonly dismiss: () => void;
+  },
+): Suggestions {
+  return {
+    label: 'Commands',
+    open: true,
+    items: listed.map((row) => ({ id: row.id })),
+    highlighted: selected,
+    highlight: actions.highlight,
+    activate: actions.choose,
+    dismiss: actions.dismiss,
   };
 }
 
@@ -80,6 +116,7 @@ interface PanelInput {
   readonly choose: (name: string) => void;
   readonly catalogue: ReturnType<typeof useCommands>;
   readonly submission: ReturnType<typeof useCommandSubmission>;
+  readonly quote: QuoteConflict | null;
 }
 function commandPanels({
   opened,
@@ -89,6 +126,7 @@ function commandPanels({
   choose,
   catalogue,
   submission,
+  quote,
 }: PanelInput): Pick<CommandComposer, 'hint' | 'panel' | 'result'> {
   return {
     hint: !opened && chosen !== undefined ? <CommandHint command={chosen} /> : null,
@@ -99,6 +137,7 @@ function commandPanels({
         choose={choose}
         reason={catalogue.reason}
         retry={catalogue.error ? catalogue.retry : null}
+        quote={quote}
       />
     ) : null,
     result:
@@ -106,14 +145,6 @@ function commandPanels({
         <CommandResult receipt={submission.receipt.value} dismiss={submission.dismissReceipt} />
       ) : null,
   };
-}
-
-function dismissedIntent(
-  dismissed: { readonly prefix: string | null; readonly revision: number } | null,
-  prefix: string,
-  revision: number,
-): boolean {
-  return dismissed?.prefix === prefix && dismissed.revision === revision;
 }
 
 function matchingCommands(
@@ -130,7 +161,7 @@ function matchingCommands(
 function useDefinitionChoice(
   catalogue: ReturnType<typeof useCommands>,
   prefix: string | null,
-  text: string,
+  draftKey: string,
   setText: (text: string) => void,
 ): {
   readonly id: string | null;
@@ -154,7 +185,7 @@ function useDefinitionChoice(
       const matches = catalogue.commands.filter((command) => command.id === id);
       const command = matches.length === 1 ? matches[0] : undefined;
       if (command === undefined) return null;
-      setText(insertCommand(text, command.name));
+      setText(insertCommand(draftText(draftKey), command.name));
       setChoice({ key: catalogue.key, id, name: command.name });
       return command.name;
     },

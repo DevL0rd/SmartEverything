@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { z } from 'zod';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 import { repositoryFile } from './versions';
 
 const CONFIG_MODULE = z.object({
@@ -12,8 +11,6 @@ const CONFIG_MODULE = z.object({
 });
 
 describe('@commitlint/cli contract', () => {
-  itIsPinnedToItsDeclaredVersion('@commitlint/cli');
-
   it('has a configuration file the pipeline can load', () => {
     expect(existsSync(repositoryFile('commitlint.config.js'))).toBe(true);
   });

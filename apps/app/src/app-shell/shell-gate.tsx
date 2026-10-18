@@ -1,15 +1,18 @@
 import { useEffect, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Redirect, SplashScreen } from 'expo-router';
-import { loadConnection, useConnection } from '../api/transport';
+import { forgetServer, loadConnection, useConnection } from '../api/transport';
 import { Button } from '../components/button';
 import { ErrorState } from '../components/error-state';
 import { Text } from '../components/text';
-import { forgetServer } from '../api/transport';
 import { notify } from '../components/toast-store';
 import { useLocalPrefsStatus } from '../store/local-prefs';
 import { useLoaded, useSyncStatus } from '../store/selectors';
+import { Logger, background } from '@smarteverything/logging';
+import { StartupPending } from '../features/root/startup-pending';
 import { ThemeSync } from './theme-sync';
+
+const log = new Logger('app.nav');
 
 function Centered({ children }: { readonly children: ReactNode }): ReactNode {
   return <View className="flex-1 items-center justify-center gap-4 p-6">{children}</View>;
@@ -18,8 +21,14 @@ function Centered({ children }: { readonly children: ReactNode }): ReactNode {
 function Opening(): ReactNode {
   const sync = useSyncStatus();
   useEffect(() => {
+    log.info('gate.opening_shown');
     SplashScreen.hide();
   }, []);
+  useEffect(() => {
+    if (sync.problem !== null) {
+      log.warn('gate.opening_problem', { status: sync.status, problemLength: sync.problem.length });
+    }
+  }, [sync.problem, sync.status]);
   if (sync.problem !== null) {
     return (
       <Centered>
@@ -39,7 +48,11 @@ function Opening(): ReactNode {
 
 export function LoadedGate({ children }: { readonly children: ReactNode }): ReactNode {
   const prefs = useLocalPrefsStatus();
-  if (!useLoaded() || prefs === 'loading') {
+  const loaded = useLoaded();
+  useEffect(() => {
+    log.info('gate.loaded_changed', { loaded, prefs });
+  }, [loaded, prefs]);
+  if (!loaded || prefs === 'loading') {
     return <Opening />;
   }
   return (
@@ -58,15 +71,24 @@ function forget(): void {
 
 export function ShellGate({ children }: { readonly children: ReactNode }): ReactNode {
   const state = useConnection();
+  useEffect(() => {
+    log.info('gate.connection_status', { status: state.status });
+  }, [state.status]);
   switch (state.status) {
     case 'loading':
-      return null;
+      return <StartupPending stage="reading this device's server connection" />;
     case 'unpaired':
       return <Redirect href="/pair" />;
     case 'unavailable':
       return (
         <Centered>
-          <ErrorState page error={new Error(state.problem)} retry={() => void loadConnection()} />
+          <ErrorState
+            page
+            error={new Error(state.problem)}
+            retry={() => {
+              background(loadConnection(), 'connection.load_failed');
+            }}
+          />
         </Centered>
       );
     case 'removed':

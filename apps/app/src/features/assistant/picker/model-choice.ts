@@ -6,13 +6,13 @@ import {
 } from '@smarteverything/domain';
 import { orderedEfforts } from './efforts';
 
-export interface ModelPrice {
+interface ModelPrice {
   readonly inputPerMillion: number | null;
   readonly outputPerMillion: number | null;
   readonly variable: boolean;
 }
 
-export type Modality = 'text' | 'image' | 'audio' | 'video' | 'file';
+type Modality = 'text' | 'image' | 'audio' | 'video' | 'file';
 
 export interface ModelChoice {
   readonly id: string;

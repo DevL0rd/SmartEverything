@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Ellipse, Path } from 'react-native-svg';
+import { Circle, Ellipse, Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { BLINK, BREATHE, loopStyle } from '../../../design/loops';
-import { Canvas, FULL, Layer, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, FULL, Layer, useSvgId } from '../parts/frame';
 import { BodyGradient, GlowGradient, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
 import { Puffs } from '../parts/particles';
 import { Water } from '../parts/water';
 import { rounded } from '../parts/shapes';
-import { ContactShadow, LIGHT, Shine } from '../parts/material';
+import { ContactShadow, LIGHT, ShineGradients, ShinePath, useShineIds } from '../parts/material';
 import type { VisualProps } from '../types';
 
 const WINDOW: Box = { x: 30, y: 52, w: 40, h: 26 };
@@ -27,21 +27,23 @@ function Tank({
   const body = useSvgId('tank');
   const warning = useColour('warning');
   const glass = useColour('humidity');
+  const shine = useShineIds();
+  const lid = { wash: useSvgId('wash'), rim: shine.rim };
   return (
     <>
-      <Defs>
-        <BodyGradient id={body} ink={ink} />
-      </Defs>
+      <BodyGradient id={body} ink={ink} />
       <ContactShadow cx={50} cy={90} rx={36} ry={5.5} />
       <Path d={TANK} fill={`url(#${body})`} stroke={ink.edge} strokeWidth={0.6} />
-      <Shine d={TANK} />
+      <ShineGradients ids={shine} />
+      <ShinePath d={TANK} ids={shine} />
       <Path
         d={rounded({ x: 24, y: 30, w: 52, h: 11, r: 5.5 })}
         fill={ink.light}
         stroke={ink.edge}
         strokeWidth={0.6}
       />
-      <Shine d={rounded({ x: 24, y: 30, w: 52, h: 11, r: 5.5 })} vertical />
+      <ShineGradients ids={lid} vertical rim={false} />
+      <ShinePath d={rounded({ x: 24, y: 30, w: 52, h: 11, r: 5.5 })} ids={lid} />
       <Ellipse cx={50} cy={30.5} rx={9} ry={2.6} fill={ink.well} fillOpacity={WELL} />
       <Circle cx={69} cy={35.5} r={1.4} fill={tint} />
       <Path
@@ -86,9 +88,7 @@ function StillPuff({
       )}
     >
       <Canvas px={px}>
-        <Defs>
-          <GlowGradient id={glow} colour={colour} />
-        </Defs>
+        <GlowGradient id={glow} colour={colour} />
         <Circle cx={50} cy={18} r={14} fill={`url(#${glow})`} />
       </Canvas>
     </Layer>
@@ -97,17 +97,9 @@ function StillPuff({
 
 function Glare({ px }: { readonly px: number }): ReactNode {
   return (
-    <Layer box={FULL} px={px}>
-      <Canvas px={px}>
-        <Path
-          d={GLARE}
-          stroke={LIGHT}
-          strokeOpacity={0.45}
-          strokeWidth={1.8}
-          strokeLinecap="round"
-        />
-      </Canvas>
-    </Layer>
+    <Canvas px={px} layer>
+      <Path d={GLARE} stroke={LIGHT} strokeOpacity={0.45} strokeWidth={1.8} strokeLinecap="round" />
+    </Canvas>
   );
 }
 

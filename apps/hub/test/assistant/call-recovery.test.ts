@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ASSISTANT_VOICE_SETTINGS, type AssistantVoiceSettings } from '@smarteverything/domain';
 import type { CallLink } from '../../src/assistant-voice/call-link';
-import { Conversation, REPLY_GRACE_MS } from '../../src/assistant-voice/conversation';
+import { Conversation } from '../../src/assistant-voice/conversation';
+import { REPLY_GRACE_MS } from '../../src/assistant-voice/idle-clock';
+import { plainLine } from '../../src/assistant-voice/voice-line';
 import type { LiveSession, VoiceProvider } from '../../src/assistant-voice/gemini';
 import { LiveConnectTimeoutError, connectWithin } from '../../src/assistant-voice/live-connect';
 import {
@@ -38,25 +40,25 @@ describe('ReplyWatchdog', () => {
     const watchdog = new ReplyWatchdog();
     watchdog.turnStarted(0);
     watchdog.turnEnded(1000);
-    expect(watchdog.check(1000 + NO_REPLY_MS - 1)).toBeNull();
-    expect(watchdog.check(1000 + NO_REPLY_MS)).toBe('nudge');
-    expect(watchdog.check(1000 + NO_REPLY_MS * 2 - 1)).toBeNull();
-    expect(watchdog.check(1000 + NO_REPLY_MS * 2)).toBe('give_up');
-    expect(watchdog.check(1000 + NO_REPLY_MS * 5)).toBeNull();
+    expect(watchdog.check(1000 + NO_REPLY_MS - 1, false)).toBeNull();
+    expect(watchdog.check(1000 + NO_REPLY_MS, false)).toBe('nudge');
+    expect(watchdog.check(1000 + NO_REPLY_MS * 2 - 1, false)).toBeNull();
+    expect(watchdog.check(1000 + NO_REPLY_MS * 2, false)).toBe('give_up');
+    expect(watchdog.check(1000 + NO_REPLY_MS * 5, false)).toBeNull();
   });
 
   it('is satisfied by any reply', () => {
     const watchdog = new ReplyWatchdog();
     watchdog.turnEnded(0);
     watchdog.replied();
-    expect(watchdog.check(NO_REPLY_MS * 3)).toBeNull();
+    expect(watchdog.check(NO_REPLY_MS * 3, false)).toBeNull();
   });
 
   it('ends a turn that never stops', () => {
     const watchdog = new ReplyWatchdog();
     watchdog.turnStarted(0);
-    expect(watchdog.check(LONGEST_TURN_MS + 1)).toBe('end_turn');
-    expect(watchdog.check(LONGEST_TURN_MS + 2)).toBeNull();
+    expect(watchdog.check(LONGEST_TURN_MS + 1, false)).toBe('end_turn');
+    expect(watchdog.check(LONGEST_TURN_MS + 2, false)).toBeNull();
   });
 });
 
@@ -143,12 +145,14 @@ describe('Conversation watchdog', () => {
         caption: () => undefined,
       };
       const conversation = new Conversation(
-        provider,
+        plainLine(provider),
         link,
         {
           speech: 'gated-client',
           settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
           system: (): string => 'system',
+          note: (): string => '',
+          history: (): string[] => [],
           tools: (): [] => [],
           webSearch: (): boolean => false,
           window: (): null => null,
@@ -213,12 +217,14 @@ describe('Conversation idle timeout', () => {
     };
     let release: (value: never) => void = () => undefined;
     const conversation = new Conversation(
-      provider,
+      plainLine(provider),
       link,
       {
         speech: 'gated-client',
         settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
         system: (): string => 'system',
+        note: (): string => '',
+        history: (): string[] => [],
         tools: (): [] => [],
         webSearch: (): boolean => false,
         window: (): null => null,

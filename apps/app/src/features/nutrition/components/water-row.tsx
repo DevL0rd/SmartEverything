@@ -5,7 +5,7 @@ import { Text } from '../../../components/text';
 import { useAddGlass } from '../data/water';
 import { useWaterGoal } from '../data/water-goal';
 import { WaterGlass } from './water-glass';
-import { litres, millilitres } from '../../../format/number';
+import { decimal, litres, millilitres, withUnit } from '../../../format/number';
 
 export function GlassButton({
   day,
@@ -46,9 +46,9 @@ export function WaterRow({
   return (
     <View className="flex-row flex-wrap items-center gap-4">
       <WaterGlass progress={drunk / goal.ml} size="m" />
-      <View className="min-w-0 flex-1 gap-0.5">
+      <View className="min-w-32 flex-1 gap-0.5">
         <Text variant="body-strong" numberOfLines={1}>
-          {`${litres(drunk)} water`}
+          {`${withUnit(decimal(litresDrunk, 2), 'L')} water`}
         </Text>
         <Text variant="footnote" tone="variant" numberOfLines={1}>
           {`of ${litres(goal.ml)}`}

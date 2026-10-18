@@ -58,10 +58,16 @@ describe('refusals a model can act on', () => {
       view: 'summary',
       from: '2026-10-10',
       to: '2026-10-10',
-      profileId: person,
+      personId: person,
     });
-    expect(text).toContain('view summary does not take profileId');
+    expect(text).toContain('view summary does not take personId');
     expect(text).toContain('from (required), to (required), metrics, records');
+  });
+
+  it('name the argument a tool that takes none was sent', async () => {
+    const text = await refusal('get_home', { rooms: true });
+    expect(text).toContain('The arguments are not valid');
+    expect(text).toContain('rooms');
   });
 
   it('say how a day must be written', async () => {
@@ -75,11 +81,11 @@ describe('refusals a model can act on', () => {
 
   it('answer list_operations for tool names and snake_case names with the real operation', async () => {
     const result = await callTool(booted.base, token, 'list_operations', {
-      operations: ['control_claude_session', 'list_claude_prompts', 'listClaudeSessions'],
+      operations: ['control_claude_cli_session', 'list_claude_prompts', 'listClaudeSessions'],
     });
     const names = OPERATIONS.parse(structured(result)).operations.map((entry) => entry.name);
     expect(names).toStrictEqual([
-      'controlClaudeSession',
+      'controlClaudeCliSession',
       'listClaudePrompts',
       'listClaudeSessions',
     ]);
@@ -89,23 +95,26 @@ describe('refusals a model can act on', () => {
     const listed = await refusal('list_operations', { operations: ['claudeSession'] });
     expect(listed).toContain('There is no operation claudeSession');
     expect(listed).toContain('did you mean');
-    expect(listed).toContain('controlClaudeSession');
+    expect(listed).toContain('readClaudeSession');
     const called = await refusal('call_operation', { operation: 'sessions' });
     expect(called).toContain('listClaudeSessions');
   });
 });
 
-describe('saving an automation whose actions would be refused when it runs', () => {
-  function definition(actions: readonly unknown[]): Record<string, unknown> {
+describe('saving an automation whose steps would be refused when it runs', () => {
+  function definition(steps: readonly unknown[]): Record<string, unknown> {
     return {
       name: 'Air alert',
-      definition: {
-        triggers: [{ type: 'event', deviceId: null, kind: 'motion' }],
-        conditions: { mode: 'all', items: [] },
-        actions,
-      },
+      definition: { when: [{ on: 'signal', source: 'event', kind: 'motion' }], steps },
     };
   }
+
+  const set = (control: string, to: unknown): unknown => ({
+    do: 'set',
+    target: { device: lamp },
+    control,
+    to,
+  });
 
   async function saved(body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
     return call(booted.base, booted.owner, { method: 'POST', path: '/api/automations', body });
@@ -122,45 +131,38 @@ describe('saving an automation whose actions would be refused when it runs', () 
   it('refuses a tool action whose arguments the tool would reject, and saves nothing', async () => {
     const reply = await saved(
       definition([
-        { type: 'command', deviceId: lamp, capability: 'power', value: true },
-        { type: 'tool', profileId: person, tool: 'speak', args: { target: camera, text: 'Hi' } },
+        set('power', true),
+        { do: 'tool', person, tool: 'speak', args: { target: camera, text: 'Hi' } },
       ]),
     );
     expect(reply.status).toBe(400);
     expect(JSON.stringify(reply.body)).toContain(
-      'Nothing was saved. Action 2: speak would be refused',
+      'Nothing was saved. Step 2 (tool): speak would be refused',
     );
     expect(await stored()).toBe(0);
   });
 
   it('refuses a command value the device does not accept', async () => {
-    const reply = await saved(
-      definition([{ type: 'command', deviceId: lamp, capability: 'brightness', value: 500 }]),
-    );
+    const reply = await saved(definition([set('brightness', 500)]));
     expect(reply.status).toBe(400);
-    expect(JSON.stringify(reply.body)).toContain('Action 1: brightness command would be refused');
+    expect(JSON.stringify(reply.body)).toContain('Step 1 (set): No target device supports');
     expect(await stored()).toBe(0);
   });
 
   it('names every bad action at once', async () => {
-    const reply = await saved(
-      definition([
-        { type: 'command', deviceId: lamp, capability: 'brightness', value: 500 },
-        { type: 'command', deviceId: lamp, capability: 'temperature', value: 20 },
-      ]),
-    );
+    const reply = await saved(definition([set('brightness', 500), set('temperature', 20)]));
     const text = JSON.stringify(reply.body);
-    expect(text).toContain('Action 1');
-    expect(text).toContain('Action 2');
+    expect(text).toContain('Step 1');
+    expect(text).toContain('Step 2');
   });
 
   it('saves a tool action with the right arguments', async () => {
     const reply = await saved(
       definition([
-        { type: 'command', deviceId: lamp, capability: 'brightness', value: 40 },
+        set('brightness', 40),
         {
-          type: 'tool',
-          profileId: person,
+          do: 'tool',
+          person,
           tool: 'speak',
           args: { target: { kind: 'device', deviceId: camera }, text: 'Hi' },
         },

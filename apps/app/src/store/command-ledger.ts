@@ -20,6 +20,15 @@ const log = new Logger('app.commands');
 
 const EXPIRY_GRACE_MS = 5000;
 
+function elapsedSince(startedAt: string | undefined): number | null {
+  const started = startedAt === undefined ? Number.NaN : Date.parse(startedAt);
+  return Number.isNaN(started) ? null : Date.now() - started;
+}
+
+function sentFields(row: CommandRow): Record<string, string> {
+  return { commandId: row.id, status: row.status, expiresAt: row.expires_at };
+}
+
 export type CommandOutcome =
   | { readonly sent: true; readonly row: CommandRow }
   | { readonly sent: false; readonly message: string };
@@ -58,7 +67,7 @@ function settled(state: StoreState, device: Device, row: CommandRow): StoreState
   ) {
     return state;
   }
-  const current = state.deviceValues[device.id] ?? {};
+  const current = state.deviceValues.get(device.id) ?? {};
   const reported = current[row.capability];
   if (authoritative(reported, row)) return state;
   const value = {
@@ -68,7 +77,7 @@ function settled(state: StoreState, device: Device, row: CommandRow): StoreState
   } as const;
   return {
     ...state,
-    deviceValues: { ...state.deviceValues, [device.id]: { ...current, [row.capability]: value } },
+    deviceValues: state.deviceValues.set(device.id, { ...current, [row.capability]: value }),
   };
 }
 
@@ -81,6 +90,11 @@ export class CommandLedger {
   constructor(private readonly store: EntityStore) {}
 
   stop(): void {
+    log.info('ledger.stopped', {
+      timers: this.timers.size,
+      early: this.early.size,
+      slots: this.requests.size,
+    });
     this.stopped = true;
     this.requests.clear();
     this.early.clear();
@@ -110,51 +124,68 @@ export class CommandLedger {
   }
 
   async send(device: Device, capability: string, value: JsonValue): Promise<CommandOutcome> {
-    if (this.stopped) return { sent: false, message: 'This home connection has closed.' };
+    const where = { deviceId: device.id, capability };
+    if (this.stopped) {
+      log.warn('command.refused', { ...where, step: 'ledger', reason: 'ledger_stopped' });
+      return { sent: false, message: 'This home connection has closed.' };
+    }
     const slot = slotOf(device.id, capability);
     const request = Symbol();
+    const superseding = this.requests.has(slot);
     this.requests.set(slot, request);
     const requestedAt = new Date().toISOString();
+    let step = 'validate';
+    log.debug('command.sending', () => ({ ...where, superseding }));
     try {
       const checked = validateCommand(device, {
         capability: CAPABILITY_KEY.parse(capability),
         value,
       });
-      this.store.update((state) =>
-        withEntry(state, slot, {
-          commandId: null,
-          value: checked,
-          expiresAt: null,
-          failure: null,
-          requestedAt,
-        }),
-      );
+      this.pend(slot, checked, requestedAt);
+      step = 'api';
       const row = await api().call(E.sendCommand, {
         body: { device_id: device.id, capability, value: checked },
       });
+      const latencyMs = elapsedSince(requestedAt);
       if (this.requests.get(slot) !== request) {
         this.early.delete(row.id);
+        log.debug('command.superseded', () => ({ ...where, commandId: row.id, latencyMs }));
         return { sent: true, row };
       }
       this.accept(slot, row, checked, requestedAt);
-      log.info('command.sent', { commandId: row.id, capability });
+      log.info('command.sent', { ...where, ...sentFields(row), latencyMs });
       this.follow(device, row);
       return { sent: true, row };
     } catch (error) {
       const message = rawErrorText(error);
-      if (this.requests.get(slot) === request)
-        this.store.update((state) =>
-          withEntry(state, slot, {
-            commandId: null,
-            value: null,
-            expiresAt: null,
-            failure: message,
-          }),
-        );
+      if (this.requests.get(slot) === request) this.reject(slot, message);
       notify({ message: `${device.label} did not take that`, error, tone: 'critical' });
-      log.warn('command.refused', { capability, reason: message });
+      log.warn('command.refused', {
+        ...where,
+        step,
+        reason: message,
+        latencyMs: elapsedSince(requestedAt),
+      });
       return { sent: false, message };
     }
+  }
+
+  private pend(slot: string, value: JsonValue, requestedAt: string): void {
+    this.store.update((state) =>
+      withEntry(state, slot, {
+        commandId: null,
+        value,
+        expiresAt: null,
+        failure: null,
+        requestedAt,
+      }),
+    );
+  }
+
+  private reject(slot: string, failure: string): void {
+    this.store.update((state) =>
+      withEntry(state, slot, { commandId: null, value: null, expiresAt: null, failure }),
+    );
   }
 
   private accept(slot: string, row: CommandRow, value: JsonValue, requestedAt: string): void {
@@ -182,6 +213,7 @@ export class CommandLedger {
       return;
     }
     const wait = Math.max(0, Date.parse(row.expires_at) - Date.now() + EXPIRY_GRACE_MS);
+    log.debug('command.following', { commandId: row.id, deviceId: device.id, waitMs: wait });
     this.timers.set(
       row.id,
       setTimeout(() => {
@@ -200,6 +232,12 @@ export class CommandLedger {
     const state = this.store.get();
     if (state.ledger[slotOf(row.device_id, row.capability)]?.commandId !== row.id) {
       this.early.set(row.id, row);
+      log.debug('command.noted_early', {
+        commandId: row.id,
+        deviceId: row.device_id,
+        capability: row.capability,
+        status: row.status,
+      });
       if (this.early.size > 100) {
         this.early.delete(this.early.keys().next().value ?? row.id);
       }
@@ -218,8 +256,25 @@ export class CommandLedger {
       clearTimeout(timer);
       this.timers.delete(row.id);
     }
-    if (this.store.get().ledger[slot]?.commandId !== row.id) return;
+    const entry = this.store.get().ledger[slot];
+    if (entry?.commandId !== row.id) {
+      log.debug('command.finish_skipped', {
+        commandId: row.id,
+        deviceId: device.id,
+        capability: row.capability,
+        status: row.status,
+        reason: entry === undefined ? 'no_entry' : 'superseded',
+      });
+      return;
+    }
+    const latencyMs = elapsedSince(entry.requestedAt);
     if (row.status === 'succeeded') {
+      log.info('command.succeeded', {
+        commandId: row.id,
+        deviceId: device.id,
+        capability: row.capability,
+        latencyMs,
+      });
       this.store.update((state) => withEntry(settled(state, device, row), slot, null));
       return;
     }
@@ -228,6 +283,13 @@ export class CommandLedger {
       withEntry(state, slot, { commandId: null, value: null, expiresAt: null, failure }),
     );
     notify({ message: `${device.label} did not change`, error: failure, tone: 'critical' });
-    log.warn('command.failed', { commandId: row.id, status: row.status });
+    log.warn(row.status === 'expired' ? 'command.timed_out' : 'command.failed', {
+      commandId: row.id,
+      deviceId: device.id,
+      capability: row.capability,
+      status: row.status,
+      reason: failure,
+      latencyMs,
+    });
   }
 }

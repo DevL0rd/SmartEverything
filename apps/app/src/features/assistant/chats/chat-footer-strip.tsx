@@ -2,59 +2,137 @@ import type { ReactNode } from 'react';
 import { memo } from 'react';
 import { View } from 'react-native';
 import type { AiChatRow } from '@smarteverything/domain';
-import { ProgressBar } from '../../../components/charts';
+import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
+import { useSizeClass } from '../../../design/size-class';
+import { joinParts } from '../../../format/text';
 import { useMoney } from '../../region';
-import { useContextUsage } from '../data/context-usage';
+import { ContextRing } from '../components/context-ring';
+import { useAssistantStatus } from '../data/assistant-data';
 import { useFooterFacts } from '../data/chat-store';
-import { contextText } from '../data/cost';
-import { contextTone, type FooterFacts } from '../model/chat-footer';
-import { useModelChoice } from '../picker/model-label';
+import { useContextUsage } from '../data/context-usage';
+import {
+  HARNESS_FAILURE_ACTION_LABEL,
+  type HarnessFailureAction,
+} from '../details/harness-failure';
+import { useFailureHandlers, useHarnessFailure } from '../details/use-harness-failure';
+import { compactShown, type ExecutionLine } from '../model/chat-footer';
+import { machineSwitchOf } from '../model/harness-handoff';
+import { isComputerEngine } from '../provider/computer-engine';
 import { CompactChatButton } from './compact-chat-button';
+import { useExecutionLine } from './use-execution-line';
 
-function ContextMeter({
-  percent,
-  window,
-  label,
-}: {
-  readonly percent: number;
-  readonly window: string | null;
-  readonly label: string;
-}): ReactNode {
-  const used = `${String(percent)} %`;
+function useCostText(chat: AiChatRow): string | null {
+  const money = useMoney();
+  const shown = useAssistantStatus()?.settings.reply_cost !== false;
+  const micros = useFooterFacts(chat.id)?.costMicros ?? chat.cost_micros;
+  if (!shown || isComputerEngine(chat.engine) || micros <= 0) return null;
+  return `${money.cost(micros)}${chat.cost_incomplete === true ? ' + unknown' : ''}`;
+}
+
+function CancelSwitch({ onCancel }: { readonly onCancel: () => void }): ReactNode {
   return (
-    <View className="min-w-0 flex-1 gap-1">
-      <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-        {window === null ? `${label} ${used}` : `${label} ${used} of ${window}`}
+    <Interactive
+      label="Cancel machine switch"
+      onPress={onCancel}
+      className="min-h-touch-min justify-center rounded-sm px-2"
+      layerClassName="rounded-sm"
+    >
+      <Text variant="footnote" tone="primary">
+        Cancel
       </Text>
-      <ProgressBar progress={percent / 100} colour={contextTone(percent)} label={`${label} used`} />
+    </Interactive>
+  );
+}
+
+function FailureAction({
+  action,
+  onPress,
+}: {
+  readonly action: HarnessFailureAction;
+  readonly onPress: () => void;
+}): ReactNode {
+  const label = HARNESS_FAILURE_ACTION_LABEL[action];
+  return (
+    <Interactive
+      label={label}
+      onPress={onPress}
+      className="min-h-touch-min justify-center rounded-sm px-2"
+      layerClassName="rounded-sm"
+    >
+      <Text variant="footnote" tone="primary" numberOfLines={1}>
+        {label}
+      </Text>
+    </Interactive>
+  );
+}
+
+function Reading({
+  where,
+  percent,
+}: {
+  readonly where: ExecutionLine;
+  readonly percent: number | null;
+}): ReactNode {
+  return (
+    <>
+      <View
+        aria-hidden
+        pointerEvents="none"
+        className="min-w-0 flex-1 flex-row items-center gap-1.5 px-1"
+      >
+        {where.warning ? <Icon name="warning" size={16} tone="warning" /> : null}
+        <Text variant="footnote" tone="variant" numberOfLines={1} className="shrink">
+          {where.text}
+        </Text>
+      </View>
+      {percent === null ? null : (
+        <View aria-hidden pointerEvents="none" className="flex-row items-center gap-1.5 px-1">
+          <ContextRing percent={percent} size={16} />
+          <Text variant="footnote" tone="variant" className="tabular">
+            {`${String(percent)}%`}
+          </Text>
+        </View>
+      )}
+    </>
+  );
+}
+
+function CostAndHandle({ cost }: { readonly cost: string | null }): ReactNode {
+  return (
+    <View aria-hidden pointerEvents="none" className="flex-row items-center gap-1.5 px-1">
+      {cost === null ? null : (
+        <Text variant="footnote" tone="variant" className="tabular">
+          {cost}
+        </Text>
+      )}
+      <Icon name="chevronUp" size={16} tone="variant" />
     </View>
   );
 }
 
-function TotalCost({
-  chat,
-  facts,
-}: {
-  readonly chat: AiChatRow;
-  readonly facts: FooterFacts;
-}): ReactNode {
-  const money = useMoney();
-  const cost =
-    facts.costMicros > 0
-      ? `${money.cost(facts.costMicros)}${chat.cost_incomplete === true ? ' + unknown' : ''}`
-      : 'Unavailable';
-  return (
-    <View className="shrink-0 items-end gap-0.5">
-      <Text variant="caption" tone="variant">
-        Total cost
-      </Text>
-      <Text variant="caption" tone="variant" className="tabular">
-        {cost}
-      </Text>
-    </View>
-  );
+interface StripAction {
+  readonly action: HarnessFailureAction;
+  readonly onPress: () => void;
+}
+
+function useStripLine(chat: AiChatRow): {
+  readonly where: ExecutionLine;
+  readonly action: StripAction | null;
+} {
+  const executing = useExecutionLine(chat);
+  const failure = useHarnessFailure(chat);
+  const handlerOf = useFailureHandlers(chat);
+  if (failure === null || machineSwitchOf(chat.pending_execution_target).kind !== 'idle') {
+    return { where: executing, action: null };
+  }
+  const onPress = failure.action === null ? null : handlerOf(failure.action);
+  return {
+    where: { text: failure.title, warning: true, cancel: null },
+    action:
+      failure.action === null || onPress === null ? null : { action: failure.action, onPress },
+  };
 }
 
 function ChatFooterStripBase({
@@ -66,37 +144,32 @@ function ChatFooterStripBase({
   readonly blocked: boolean;
   readonly onPress: () => void;
 }): ReactNode {
-  const stored = useFooterFacts(chat.id);
-  const facts = stored ?? {
-    costMicros: chat.cost_micros,
-    context: chat.context_percent,
-    replies: 0,
-    files: 0,
-  };
+  const short = useSizeClass().height === 'compact';
+  const { where, action } = useStripLine(chat);
   const context = useContextUsage(chat);
-  const discovered = useModelChoice(chat.engine.model)?.contextLength ?? null;
-  const length = context.capacity ?? discovered;
-  const window = contextText(length)?.replace(' context', '') ?? null;
+  const cost = useCostText(chat);
+  if (short) return null;
+  const label = joinParts([
+    'Chat details',
+    where.text,
+    context.percent === null ? null : `${context.label} ${String(context.percent)} %`,
+    cost,
+  ]);
   return (
-    <View className="flex-row items-center gap-1">
-      <CompactChatButton chat={chat} blocked={blocked} />
+    <View className="min-h-touch-min flex-row items-center">
       <Interactive
-        label="Chat details, context and total cost"
+        label={label}
         onPress={onPress}
-        className="min-h-touch-min min-w-0 flex-1 justify-center rounded-md px-1"
+        className="absolute inset-0 rounded-md"
         layerClassName="rounded-md"
       >
-        <View className="flex-row items-center gap-3">
-          {context.percent === null ? (
-            <Text variant="caption" tone="variant" className="min-w-0 flex-1">
-              {window === null ? 'Context unavailable' : `Context ${window} · awaiting usage`}
-            </Text>
-          ) : (
-            <ContextMeter percent={context.percent} window={window} label={context.label} />
-          )}
-          <TotalCost chat={chat} facts={facts} />
-        </View>
+        <View />
       </Interactive>
+      <Reading where={where} percent={context.percent} />
+      {where.cancel === null ? null : <CancelSwitch onCancel={where.cancel} />}
+      {action === null ? null : <FailureAction {...action} />}
+      {compactShown(context.percent) ? <CompactChatButton chat={chat} blocked={blocked} /> : null}
+      <CostAndHandle cost={cost} />
     </View>
   );
 }

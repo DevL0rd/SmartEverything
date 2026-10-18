@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { ColorValueError, decodeColor, encodeColor, rgbOf } from '../src';
+import { z } from 'zod';
+import { ColorValueError, decodeColor, encodeColor } from '../src';
 
 describe('Tuya colours', () => {
   it('decodes the v2 local hex form', () => {
@@ -102,15 +103,20 @@ describe('Tuya colours', () => {
     );
   });
 
-  it('converts to red, green and blue in every sector of the hue circle', () => {
-    expect(rgbOf({ hue: 0, saturation: 100, value: 100 })).toStrictEqual([255, 0, 0]);
-    expect(rgbOf({ hue: 60, saturation: 100, value: 100 })).toStrictEqual([255, 255, 0]);
-    expect(rgbOf({ hue: 120, saturation: 100, value: 100 })).toStrictEqual([0, 255, 0]);
-    expect(rgbOf({ hue: 180, saturation: 100, value: 100 })).toStrictEqual([0, 255, 255]);
-    expect(rgbOf({ hue: 240, saturation: 100, value: 100 })).toStrictEqual([0, 0, 255]);
-    expect(rgbOf({ hue: 300, saturation: 100, value: 100 })).toStrictEqual([255, 0, 255]);
-    expect(rgbOf({ hue: 30, saturation: 50, value: 80 })).toStrictEqual([204, 153, 102]);
-    expect(rgbOf({ hue: 0, saturation: 0, value: 40 })).toStrictEqual([102, 102, 102]);
+  it('writes the v1 local red, green and blue prefix for every sector of the hue circle', () => {
+    const prefix = (hue: number, saturation: number, value: number): string =>
+      z
+        .string()
+        .parse(encodeColor('v1', { hue, saturation, value }, 'local'))
+        .slice(0, 6);
+    expect(prefix(0, 100, 100)).toBe('ff0000');
+    expect(prefix(60, 100, 100)).toBe('ffff00');
+    expect(prefix(120, 100, 100)).toBe('00ff00');
+    expect(prefix(180, 100, 100)).toBe('00ffff');
+    expect(prefix(240, 100, 100)).toBe('0000ff');
+    expect(prefix(300, 100, 100)).toBe('ff00ff');
+    expect(prefix(30, 50, 80)).toBe('cc9966');
+    expect(prefix(0, 0, 40)).toBe('666666');
   });
 
   it('round trips every v2 colour through the local and cloud forms', () => {

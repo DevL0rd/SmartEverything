@@ -11,8 +11,8 @@ interface Props {
   readonly invalid: (key: string, reason: string | null) => void;
 }
 const BOOLEANS = [
-  ['persist_session', 'Persist provider session', 'Save the native session for later resume'],
-  ['prompt_suggestions', 'Prompt suggestions', 'Request native next-prompt suggestions'],
+  ['persist_session', 'Keep session', 'Save the session so you can resume it'],
+  ['prompt_suggestions', 'Prompt suggestions', 'Suggest what to ask next'],
   ['agent_progress_summaries', 'Agent progress summaries', 'Request summaries while agents work'],
 ] as const;
 function ResumeFields({ value, change, invalid }: Props): ReactNode {
@@ -21,7 +21,7 @@ function ResumeFields({ value, change, invalid }: Props): ReactNode {
     <View className="gap-4">
       <TextField
         label="Main agent"
-        helper="Exact configured or discovered native agent name"
+        helper="Name of the agent to use"
         value={value.agent ?? ''}
         onChange={(agent) => {
           const rest = Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'agent'));
@@ -30,7 +30,7 @@ function ResumeFields({ value, change, invalid }: Props): ReactNode {
       />
       <TextField
         label="Resume at message UUID"
-        helper="Resume through this native session message; requires a valid UUID"
+        helper="Resume from this message; needs a valid UUID"
         value={draft}
         onChange={(text) => {
           setDraft(text);
@@ -56,8 +56,8 @@ export function ProviderSessionOptions(props: Props): ReactNode {
     <>
       <ResumeFields {...props} />
       <List
-        title="Native session behavior"
-        footer="Agent, resume and session configuration changes require closing the active provider before resume, to preserve background work."
+        title="Session behaviour"
+        footer="Close the session to apply these changes. Background work keeps running."
       >
         {BOOLEANS.map(([key, title, subtitle]) => (
           <SwitchRow
@@ -71,7 +71,7 @@ export function ProviderSessionOptions(props: Props): ReactNode {
           />
         ))}
         <SelectRow
-          title="Permission prompt host"
+          title="Ask for approval on"
           value={value.permission_prompts ?? null}
           options={['host', 'none'].map((item) => ({ value: item, label: item }))}
           onChange={(permission_prompts) => {

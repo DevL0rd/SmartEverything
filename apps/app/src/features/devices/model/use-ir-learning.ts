@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { IrCodeRow, IrRemoteRow } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { saveIrCode } from '../../../api/ir';
 import { useRow } from '../../../store/selectors';
 import { useLedger } from '../../../store/store-context';
 import type { Device } from '../../../store/state';
 import { learnOutcome, type LearnOutcome } from './ir-links';
 import { rawErrorText } from '../../../format/errors';
+
+const log = new Logger('app.devices');
 
 interface Listening {
   readonly kind: 'listening';
@@ -59,9 +62,14 @@ function useSaveLearned(asked: Asked, outcome: LearnOutcome, settle: (asked: Ask
       code: outcome.code.code,
     }).then(
       (code) => {
+        log.info('ir.code_saved', { remoteId: asked.remote.id, codeId: code.id });
         settle({ kind: 'saved', code });
       },
       (error: unknown) => {
+        log.error('ir.save_failed', error, {
+          remoteId: asked.remote.id,
+          commandId: asked.commandId,
+        });
         settle({ kind: 'failed', message: rawErrorText(error) });
       },
     );
@@ -79,6 +87,11 @@ export function useIrLearning(blaster: Device): IrLearning {
     start: (remote, button): void => {
       ledger.send(blaster, 'ir_learn', null).then(
         (sent) => {
+          log.info(sent.sent ? 'ir.learn_started' : 'ir.learn_refused', {
+            blasterId: blaster.id,
+            remoteId: remote.id,
+            ...(sent.sent ? { commandId: sent.row.id } : { reason: sent.message }),
+          });
           setAsked(
             sent.sent
               ? { kind: 'listening', commandId: sent.row.id, remote, button }
@@ -86,11 +99,13 @@ export function useIrLearning(blaster: Device): IrLearning {
           );
         },
         (error: unknown) => {
+          log.error('ir.learn_failed', error, { blasterId: blaster.id, remoteId: remote.id });
           setAsked({ kind: 'failed', message: rawErrorText(error) });
         },
       );
     },
     reset: (): void => {
+      log.debug('ir.learn_reset', { blasterId: blaster.id, was: asked.kind });
       setAsked({ kind: 'idle' });
     },
   };

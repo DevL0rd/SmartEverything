@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { HealthRecordType } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { deliverEntries, isHealthConnectLinked } from '../../../modules/health-connect';
 import { ValueStore, useValue } from '../../design/external-store';
 import { entryChanges } from '../../queries/health-entries';
@@ -44,9 +44,7 @@ export async function retryHealthConnectEntries(): Promise<void> {
 
 function useThisPhoneConnected(): boolean {
   const clientId = useSession().client.id;
-  return useRows('health_sources').some(
-    (source) => source.client_id === clientId && source.revoked_at === null,
-  );
+  return useRows('health_sources').some((source) => source.client_id === clientId);
 }
 
 export function EntryDeliveryHost(): null {
@@ -54,7 +52,7 @@ export function EntryDeliveryHost(): null {
   const connected = useThisPhoneConnected();
   useEffect(() => {
     if (isHealthConnectLinked && connected) {
-      void retryHealthConnectEntries();
+      background(retryHealthConnectEntries(), 'health_connect_entries.retry_failed');
     }
   }, [changes, connected]);
   return null;

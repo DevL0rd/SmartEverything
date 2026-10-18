@@ -1,8 +1,7 @@
 import type { Logger } from '@smarteverything/logging';
+import { backoffDelay } from '../../plugins/backoff';
 import type { XiaomiTiming } from './dependencies';
-
-const JITTER_SPAN = 0.2;
-const DOUBLING = 2;
+import { background, failureLine } from '@smarteverything/logging';
 
 export interface LanReconnectOptions {
   readonly did: string;
@@ -38,7 +37,7 @@ export class LanReconnect {
       return;
     }
     this.clearTimer();
-    void this.run();
+    background(this.run(), 'lan_reconnect.run_failed');
   }
 
   cancel(): void {
@@ -51,11 +50,26 @@ export class LanReconnect {
   private async run(): Promise<void> {
     this.busy = true;
     let done: boolean;
+    const startedAt = Date.now();
     try {
       done = await this.options.attempt();
+    } catch (cause) {
+      this.options.log.warn('xiaomi_device.lan_attempt_failed', {
+        did: this.options.did,
+        failures: this.failures,
+        reason: failureLine(cause),
+        durationMs: Date.now() - startedAt,
+      });
+      throw cause;
     } finally {
       this.busy = false;
     }
+    this.options.log.debug('xiaomi_device.lan_attempt_finished', () => ({
+      did: this.options.did,
+      done,
+      failures: this.failures,
+      durationMs: Date.now() - startedAt,
+    }));
     if (!this.active) {
       return;
     }
@@ -66,7 +80,7 @@ export class LanReconnect {
     this.failures += 1;
     if (this.again) {
       this.again = false;
-      void this.run();
+      background(this.run(), 'lan_reconnect.run_failed');
       return;
     }
     this.schedule();
@@ -75,12 +89,15 @@ export class LanReconnect {
   private schedule(): void {
     this.clearTimer();
     const { timing, jitter, log, did } = this.options;
-    const base = Math.min(timing.lanRetryFirstMs * DOUBLING ** this.failures, timing.lanRetryMaxMs);
-    const delay = Math.round(base * (1 + (jitter() - 0.5) * JITTER_SPAN));
+    const delay = backoffDelay(this.failures, {
+      firstMs: timing.lanRetryFirstMs,
+      longestMs: timing.lanRetryMaxMs,
+      jitter,
+    });
     log.debug('xiaomi_device.lan_retry_scheduled', { did, failures: this.failures, delay });
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.run();
+      background(this.run(), 'lan_reconnect.run_failed');
     }, delay);
   }
 

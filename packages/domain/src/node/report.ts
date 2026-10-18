@@ -9,7 +9,7 @@ const REPORTED_KEY = z.string().refine((key) => isStandardCapability(key) || isR
   message: 'not a catalogued capability or a raw:<name> capability',
 });
 
-export const NODE_EVENT = z.strictObject({
+export const NODE_EVENT = z.object({
   kind: z.enum(EVENT_KINDS),
   at: MOMENT,
   details: z.record(z.string(), JSON_VALUE),
@@ -17,7 +17,7 @@ export const NODE_EVENT = z.strictObject({
 
 export type NodeEvent = z.infer<typeof NODE_EVENT>;
 
-export const NODE_SAMPLE = z.strictObject({
+export const NODE_SAMPLE = z.object({
   key: REPORTED_KEY,
   value: z.number(),
   at: MOMENT,
@@ -25,7 +25,7 @@ export const NODE_SAMPLE = z.strictObject({
 
 export type NodeSample = z.infer<typeof NODE_SAMPLE>;
 
-export const NODE_REPORT = z.strictObject({
+export const NODE_REPORT = z.object({
   at: MOMENT,
   values: z.record(REPORTED_KEY, JSON_VALUE),
   events: z.array(NODE_EVENT),

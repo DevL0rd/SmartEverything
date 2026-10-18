@@ -16,12 +16,13 @@ export function registerHtmlPreviewIpc(window: BrowserWindow, startUrl: string):
     )
       throw new BrowserPolicyError('HTML pages require the app main frame.');
     const projection = desktopHtml();
-    if (projection === null) throw new BrowserPolicyError('Native HTML projection is unavailable.');
+    if (projection === null)
+      throw new BrowserPolicyError('This page can’t open here. Update the desktop app.');
     const current = epoch;
     const result = await projection.open(event.sender.id, value);
     if (current !== epoch || !valid()) {
       projection.release(event.sender.id, result.id);
-      throw new BrowserPolicyError('HTML owner changed during admission.');
+      throw new BrowserPolicyError('This page changed while opening. Try again.');
     }
     return result;
   });
@@ -46,43 +47,10 @@ export function registerHtmlPreviewIpc(window: BrowserWindow, startUrl: string):
     ipcMain.removeHandler('desktop:html-open');
     ipcMain.removeHandler('desktop:html-release');
     ipcMain.removeAllListeners('desktop:html-supported');
-    ipcMain.removeAllListeners('desktop:html-lifetime-version');
-    ipcMain.removeAllListeners('desktop:html-project-version');
-    ipcMain.removeAllListeners('desktop:html-page-version');
   });
 }
 
 function supportHtml(window: BrowserWindow, valid: () => boolean): void {
-  ipcMain.on('desktop:html-page-version', (event) => {
-    const response = event;
-    response.returnValue =
-      event.sender === window.webContents &&
-      event.senderFrame === window.webContents.mainFrame &&
-      valid() &&
-      desktopHtml() !== null
-        ? 2
-        : 0;
-  });
-  ipcMain.on('desktop:html-project-version', (event) => {
-    const response = event;
-    response.returnValue =
-      event.sender === window.webContents &&
-      event.senderFrame === window.webContents.mainFrame &&
-      valid() &&
-      desktopHtml() !== null
-        ? 1
-        : 0;
-  });
-  ipcMain.on('desktop:html-lifetime-version', (event) => {
-    const response = event;
-    response.returnValue =
-      event.sender === window.webContents &&
-      event.senderFrame === window.webContents.mainFrame &&
-      valid() &&
-      desktopHtml() !== null
-        ? 2
-        : 0;
-  });
   ipcMain.on('desktop:html-supported', (event) => {
     const response = event;
     response.returnValue =

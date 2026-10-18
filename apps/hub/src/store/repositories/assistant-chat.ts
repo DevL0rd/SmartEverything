@@ -1,4 +1,5 @@
 import { setAttachmentTranscript } from './assistant-attachment-transcripts';
+import { messageWithToolCall } from './assistant-tool-call-lookup';
 import {
   STORED_MESSAGE,
   STORED_MESSAGE_COLUMNS,
@@ -108,6 +109,16 @@ export class AssistantChatRepository {
     );
   }
 
+  latestSettledReply(chatId: string): AssistantMessageRow | undefined {
+    return this.context.sql.get(
+      STORED_MESSAGE,
+      `select ${MESSAGE_COLUMNS} from assistant_messages
+       where chat_id = $chat and role = 'responder' and kind = 'text' and state in ('answered', 'failed')
+       order by created_at desc, rowid desc limit 1`,
+      { chat: chatId },
+    );
+  }
+
   repliesTo(messageId: string): AssistantMessageRow[] {
     return this.context.sql.all(
       STORED_MESSAGE,
@@ -127,6 +138,10 @@ export class AssistantChatRepository {
        order by created_at desc, rowid desc limit 1`,
       { chat: chatId, kind },
     );
+  }
+
+  withToolCall(chatId: string, callId: string): AssistantMessageRow | undefined {
+    return messageWithToolCall(this.context, chatId, callId);
   }
 
   since(chatId: string, after: string | null): AssistantMessageRow[] {

@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { isDeepStrictEqual } from 'node:util';
-import { SessionId } from '@deepseek-ai/dsh-session';
 import { JSON_VALUE } from '@smarteverything/domain';
 import type {
   AssistantMessageRow,
@@ -12,7 +10,6 @@ import type { HarnessRuntime } from '../host/runtime';
 import { HarnessRuntimeError } from '../host/errors';
 import { nativeAttachmentParts, type HarnessAttachment } from './attachments';
 import { LegacyHistoryEvents } from './legacy-history-events';
-import { readNativeHistory } from './history';
 
 type Open = Extract<HarnessRuntimeRequest, { kind: 'open' }>;
 type Load = (sessionId: string, ids: readonly string[]) => AsyncIterable<HarnessAttachment>;
@@ -24,6 +21,7 @@ export async function importLegacyHistory(
   if (input.history_import === undefined) return;
   const { persistence, load } = ports;
   const metadata = await persistence.metadata(input.claim.session_id);
+  if (metadata.next_seq !== 0) return;
   const events = new LegacyHistoryEvents(metadata.header);
   for (const row of input.history_import) {
     if (row.chat_id !== input.chat_id || row.profile_id !== metadata.profile_id)
@@ -34,19 +32,6 @@ export async function importLegacyHistory(
     events.append(row, await legacyAttachments(runtime, input.claim.session_id, row, load));
   }
   const imported = events.history();
-  const stored = readNativeHistory(
-    metadata.header,
-    await persistence.read(SessionId(input.claim.session_id)),
-  );
-  if (stored.length !== 0) {
-    if (!isDeepStrictEqual(stored.slice(0, imported.length), imported))
-      throw new HarnessRuntimeError(
-        'operation_failed',
-        'Historical import differs from the committed native prefix; existing history was retained.',
-      );
-    return;
-  }
-  await persistence.verify(input.claim);
   await persistence.append(input.claim, randomUUID(), imported);
   await persistence.flush(input.claim, imported.length);
 }

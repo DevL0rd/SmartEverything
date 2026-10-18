@@ -1,21 +1,28 @@
 import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
-import { BARGE_IN_LEVEL, levelOf, type WakeSensitivity } from '@smarteverything/domain';
+import {
+  BARGE_IN_LEVEL,
+  Preroll,
+  type PauseChoiceMs,
+  type WakeSensitivity,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { concat } from '../assistant-voice/audio';
 import { sileroModel } from '../assistant-voice/silero-vad';
 import { SpeechGate } from '../assistant-voice/speech-gate';
 import type { Clock } from '../clock';
+import { EarWatch, type EarState, type NearMiss } from './ear-watch';
+import { MediaClock } from './media-clock';
 import { KeywordSpotter, type KeywordListening } from './keyword-spotter';
-import type { WakeClaim, WakeClaims } from './wake-claims';
-import { SegmentNotes } from './segment-notes';
+import { CLIP_MS, type WakeDiagnostics } from './wake-diagnostics';
+import type { OnSuperseded, WakeClaimant, WakeClaims } from './wake-claims';
 import { WakeHandoff } from './wake-handoff';
+import type { EndOfSpeechPause } from '../listening/end-of-speech-pause';
 
-const WAKE_COOLDOWN_MS = 20_000;
-
-const PCM_FULL_SCALE = 32_768;
 const SAMPLES_PER_MS = 16;
 const SHORTEST_SEGMENT_MS = 400;
 const LONGEST_SEGMENT_MS = 60_000;
+const RECHECK_MS = 1000;
+const SNIPPET_MS = 1000;
 
 export interface SpeechSegment {
   readonly startedAt: number;
@@ -24,26 +31,33 @@ export interface SpeechSegment {
 }
 
 export interface EarOptions {
-  readonly claim: WakeClaim;
+  readonly claim: WakeClaimant;
   readonly fields: Readonly<Record<string, string>>;
   readonly sensitivity: () => WakeSensitivity;
   readonly resting: () => boolean;
+  readonly wakes?: () => boolean;
   readonly names?: () => readonly string[];
-  readonly wake: ((phrase: string, words: () => Int16Array) => void) | null;
+  readonly wake:
+    ((phrase: string, words: () => Int16Array, onSuperseded: OnSuperseded) => void) | null;
+  readonly near?: (phrase: string) => void;
   readonly speech: ((segment: SpeechSegment) => void) | null;
 }
 
+export type EarSpotter = Pick<KeywordSpotter, 'keyOf' | 'listen' | 'near'>;
+
 export interface EarDeps {
   readonly claims: Pick<WakeClaims, 'request'>;
-  readonly spotter: KeywordSpotter;
+  readonly spotter: EarSpotter;
   readonly model: () => Promise<Model>;
   readonly names: () => readonly string[];
+  readonly pauseMs: () => PauseChoiceMs;
+  readonly diagnostics?: WakeDiagnostics | null;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
 
 interface Collecting {
-  readonly startedAt: number;
+  readonly firstSample: number;
   readonly chunks: Int16Array[];
   samples: number;
 }
@@ -51,30 +65,61 @@ interface Collecting {
 export class Ear {
   private gate: SpeechGate | null = null;
   private listening: KeywordListening | null = null;
+  private nearListening: KeywordListening | null = null;
+  private readonly watch: EarWatch;
+  private readonly clip: Preroll<Int16Array> | null;
+  private readonly detach: (() => void) | null;
   private collecting: Collecting | null = null;
-  private readonly notes: SegmentNotes;
+  private readonly clock = new MediaClock();
   private readonly handoff = new WakeHandoff();
-  private quietUntil = 0;
   private closing: Promise<void> | null = null;
+  private pause: PauseChoiceMs;
+  private sensitivity: WakeSensitivity | null = null;
+  private checkedAt = Number.NEGATIVE_INFINITY;
 
   constructor(
     private readonly deps: EarDeps,
     private readonly options: EarOptions,
   ) {
-    this.notes = new SegmentNotes(options.fields, deps.log);
+    this.pause = deps.pauseMs();
+    const diagnostics = deps.diagnostics ?? null;
+    this.clip = diagnostics === null ? null : new Preroll<Int16Array>(CLIP_MS);
+    const ear = {
+      fields: options.fields,
+      names: (): readonly string[] => options.names?.() ?? [],
+      recent: (): Int16Array => concat(this.clip?.peek() ?? []),
+    };
+    this.detach = diagnostics?.attach(ear) ?? null;
+    this.watch = new EarWatch({
+      fields: options.fields,
+      log: deps.log,
+      missed: (miss: NearMiss): void => {
+        diagnostics?.missed(ear, {
+          sensitivity: miss.sensitivity,
+          heardAt: new Date(miss.heardAt).toISOString(),
+        });
+      },
+    });
   }
 
   async open(): Promise<void> {
-    this.gate ??= new SpeechGate(
+    if ((this.options.speech === null && this.options.wake === null) || this.gate !== null) {
+      return;
+    }
+    this.gate = new SpeechGate(
       await this.deps.model(),
       {
-        start: (): void => {
-          this.startSegment();
+        start: (firstSample): void => {
+          this.handoff.sentenceBegan(firstSample);
+          if (this.options.speech !== null) {
+            this.collecting = { firstSample, chunks: [], samples: 0 };
+          }
         },
         audio: (pcm): void => {
-          this.segmentAudio(pcm);
+          this.collect(pcm);
         },
         end: (): void => {
+          this.handoff.sentenceEnded();
           this.endSegment(true);
         },
         failed: (reason): void => {
@@ -85,15 +130,51 @@ export class Ear {
         bargeInLevel: BARGE_IN_LEVEL.raw,
         assistantAudible: (): boolean => false,
         now: (): number => this.now(),
+        pauseMs: this.pause,
       },
     );
   }
 
   hear(pcm: Int16Array): void {
-    this.handoff.keep(pcm);
-    if (!this.resting()) {
-      this.gate?.hear(pcm);
+    if (this.closing !== null) {
+      return;
     }
+    this.followPause();
+    this.handoff.keep(pcm);
+    this.clip?.push(pcm, pcm.length / SAMPLES_PER_MS);
+    if (this.gate !== null) {
+      this.clock.hear(pcm.length, this.now());
+    }
+    const resting = this.options.resting();
+    this.watch.heard(pcm, this.now(), this.state(resting), this.sensitivity);
+    if (resting) {
+      this.gate?.skip(pcm.length);
+      this.rest();
+      return;
+    }
+    this.spot(pcm);
+    this.gate?.hear(pcm);
+  }
+
+  private followPause(): void {
+    const wanted = this.deps.pauseMs();
+    if (wanted === this.pause) {
+      return;
+    }
+    this.pause = wanted;
+    this.gate?.pause(wanted);
+  }
+
+  private state(resting: boolean): EarState {
+    if (resting) {
+      return 'resting';
+    }
+    if (this.options.wake === null || this.options.wakes?.() === false) {
+      return 'wake_off';
+    }
+    return this.listening === null && this.checkedAt > Number.NEGATIVE_INFINITY
+      ? 'no_phrase'
+      : 'listening';
   }
 
   close(): Promise<void> {
@@ -102,29 +183,69 @@ export class Ear {
   }
 
   private async release(): Promise<void> {
-    this.endSegment(false);
+    this.detach?.();
     await this.gate?.release();
+    this.rest();
   }
 
-  private startSegment(): void {
-    const sensitivity = this.options.sensitivity();
-    this.notes.started(this.now(), sensitivity);
-    if (this.options.speech !== null) {
-      this.collecting = { startedAt: this.now(), chunks: [], samples: 0 };
+  private rest(): void {
+    this.listening?.free();
+    this.listening = null;
+    this.nearListening?.free();
+    this.nearListening = null;
+    this.checkedAt = Number.NEGATIVE_INFINITY;
+    if (this.collecting !== null) {
+      this.endSegment(false);
+      this.gate?.reset();
     }
-    this.listening =
-      this.options.wake === null
-        ? null
-        : this.deps.spotter.listen(
-            [...this.deps.names(), ...(this.options.names?.() ?? [])],
-            sensitivity,
-          );
   }
 
-  private segmentAudio(pcm: Int16Array): void {
-    this.notes.level(levelOf(pcm, PCM_FULL_SCALE));
-    this.collect(pcm);
-    this.found(this.listening?.hear(pcm) ?? null);
+  private spot(pcm: Int16Array): void {
+    if (this.options.wake === null || this.options.wakes?.() === false) {
+      return;
+    }
+    const listening = this.current();
+    const startedAt = performance.now();
+    const phrase = listening?.hear(pcm) ?? null;
+    const spotterMs = performance.now() - startedAt;
+    const near = this.nearListening?.hear(pcm) ?? null;
+    if (phrase !== null) {
+      this.found(phrase, spotterMs, pcm.length / SAMPLES_PER_MS);
+    } else if (near !== null) {
+      this.nearly(near);
+    }
+  }
+
+  private nearly(phrase: string): void {
+    if (this.sensitivity === null) {
+      return;
+    }
+    const accepted = this.watch.near({
+      phrase,
+      heardAt: this.now(),
+      snippetDbfs: Math.round(this.handoff.level(SNIPPET_MS) * 10) / 10,
+      sensitivity: this.sensitivity,
+    });
+    if (accepted) {
+      this.options.near?.(phrase);
+    }
+  }
+
+  private current(): KeywordListening | null {
+    if (this.now() - this.checkedAt < RECHECK_MS) {
+      return this.listening;
+    }
+    this.checkedAt = this.now();
+    const names = [...this.deps.names(), ...(this.options.names?.() ?? [])];
+    const sensitivity = this.options.sensitivity();
+    if (this.listening?.key !== this.deps.spotter.keyOf(names, sensitivity)) {
+      this.listening?.free();
+      this.nearListening?.free();
+      this.listening = this.deps.spotter.listen(names, sensitivity);
+      this.nearListening = this.deps.spotter.near(names, sensitivity);
+    }
+    this.sensitivity = sensitivity;
+    return this.listening;
   }
 
   private collect(pcm: Int16Array): void {
@@ -136,7 +257,11 @@ export class Ear {
     collecting.samples += pcm.length;
     if (collecting.samples / SAMPLES_PER_MS >= LONGEST_SEGMENT_MS) {
       this.deliver(collecting);
-      this.collecting = { startedAt: this.now(), chunks: [], samples: 0 };
+      this.collecting = {
+        firstSample: collecting.firstSample + collecting.samples,
+        chunks: [],
+        samples: 0,
+      };
     }
   }
 
@@ -145,19 +270,10 @@ export class Ear {
       return;
     }
     this.options.speech?.({
-      startedAt: collecting.startedAt,
-      endedAt: this.now(),
+      startedAt: this.clock.wallAt(collecting.firstSample),
+      endedAt: this.clock.wallAt(collecting.firstSample + collecting.samples),
       pcm: concat(collecting.chunks),
     });
-  }
-
-  private resting(): boolean {
-    const resting = this.now() < this.quietUntil || this.options.resting();
-    if (resting && (this.listening !== null || this.collecting !== null)) {
-      this.endSegment(false);
-      this.gate?.reset();
-    }
-    return resting;
   }
 
   private endSegment(finished: boolean): void {
@@ -166,40 +282,28 @@ export class Ear {
     if (collecting !== null && finished) {
       this.deliver(collecting);
     }
-    const listening = this.listening;
-    this.listening = null;
-    if (listening === null) {
-      return;
-    }
-    const result = listening.finish();
-    if (finished) {
-      this.found(result.heard);
-    }
-    this.notes.ended(this.now(), result);
   }
 
-  private found(phrase: string | null): void {
-    if (phrase === null || this.options.wake === null) {
+  private found(phrase: string, spotterMs: number, chunkMs: number): void {
+    const wake = this.options.wake;
+    if (wake === null) {
       return;
     }
-    this.notes.heard(phrase);
-    if (this.now() < this.quietUntil) {
-      return;
+    const snippetDbfs = this.handoff.level(SNIPPET_MS);
+    this.watch.woke(this.now());
+    const grant = this.deps.claims.request({ ...this.options.claim, snippetDbfs });
+    this.deps.log.info('wake.spotted', {
+      ...this.options.fields,
+      phrase,
+      sensitivity: this.sensitivity,
+      granted: grant.granted,
+      snippetDbfs: Math.round(snippetDbfs * 10) / 10,
+      chunkMs,
+      spotterMs: Math.round(spotterMs * 10) / 10,
+    });
+    if (grant.granted) {
+      wake(phrase, this.handoff.begin(), grant.onSuperseded);
     }
-    this.quietUntil = this.now() + WAKE_COOLDOWN_MS;
-    this.notes.wakeStarted();
-    const words = this.handoff.begin();
-    const { wake, claim } = this.options;
-    this.deps.claims.request(claim).then(
-      (granted) => {
-        if (granted) {
-          wake(phrase, words);
-        }
-      },
-      (cause: unknown) => {
-        this.deps.log.error('wake.claim_failed', cause, { ...this.options.fields });
-      },
-    );
   }
 
   private now(): number {
@@ -210,14 +314,21 @@ export class Ear {
 export interface EarsOptions {
   readonly claims: Pick<WakeClaims, 'request'>;
   readonly names: () => readonly string[];
+  readonly pause: EndOfSpeechPause;
+  readonly diagnostics?: (spotter: () => KeywordSpotter) => WakeDiagnostics;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
 
 export class Ears {
   private shared: KeywordSpotter | null = null;
+  readonly diagnostics: WakeDiagnostics | null;
+  readonly pause: EndOfSpeechPause;
 
-  constructor(private readonly options: EarsOptions) {}
+  constructor(private readonly options: EarsOptions) {
+    this.pause = options.pause;
+    this.diagnostics = options.diagnostics?.((): KeywordSpotter => this.spotter()) ?? null;
+  }
 
   spotter(): KeywordSpotter {
     this.shared ??= new KeywordSpotter();
@@ -231,6 +342,8 @@ export class Ears {
         spotter: this.spotter(),
         model: sileroModel,
         names: this.options.names,
+        pauseMs: (): PauseChoiceMs => this.pause.ms(),
+        diagnostics: this.diagnostics,
         clock: this.options.clock,
         log: this.options.log,
       },
@@ -241,6 +354,8 @@ export class Ears {
   }
 
   free(): void {
+    this.diagnostics?.stop();
     this.shared?.free();
+    this.pause.close();
   }
 }

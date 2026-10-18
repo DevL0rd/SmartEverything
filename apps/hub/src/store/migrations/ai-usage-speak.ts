@@ -1,9 +1,6 @@
 import { COLUMN_TYPES } from './core-tables';
 
-const { JSON_OBJECT } = COLUMN_TYPES;
-
-const METER = (column: string): string =>
-  `${column} integer not null default 0 check (${column} >= 0)`;
+const { JSON_OBJECT, METER } = COLUMN_TYPES;
 
 const COLUMNS =
   'id, at, profile_id, client_id, chat_id, message_id, call_id, plugin_id, worker_id, source, work, model_id, generation_id, tokens_in, tokens_out, tokens_cached, tokens_reasoning, audio_in_ms, audio_out_ms, images, video_ms, cost_micros, cost_state, meta';

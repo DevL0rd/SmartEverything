@@ -1,4 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Logger, background } from '@smarteverything/logging';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
   type CodexAnswer,
@@ -7,25 +9,23 @@ import {
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import { api } from '../../../api/transport';
-import { useRuntimeSupported } from '../../computers/data/computer-runtime';
 import { notify } from '../../../components/toast-store';
 import { codexProviderKey, type CodexChatProvider } from '../../../queries/codex-provider-events';
-import { mergeCodexProviderSnapshot } from '../../../queries/codex-provider-notices';
+
+const log = new Logger('app.provider');
 
 export function useCodexProvider(
   chatId: string,
   enabled: boolean,
-): ReturnType<typeof useQuery<CodexChatProvider>> {
-  const client = useQueryClient();
-  const supported = useRuntimeSupported();
-  return useQuery({
+): ReturnType<typeof useScreenQuery<CodexChatProvider>> {
+  return useScreenQuery({
     queryKey: codexProviderKey(chatId),
-    enabled: enabled && supported,
+    enabled: enabled,
     queryFn: async () => {
       const state = await api().call(E.readAiChatProvider, { params: { chatId } });
       if (!('runtime' in state) || state.runtime !== 'codex')
         throw new Error('Expected Codex provider state from this hub.');
-      return mergeCodexProviderSnapshot(client, chatId, state);
+      return state;
     },
   });
 }
@@ -33,8 +33,8 @@ export function useCodexRead(
   chatId: string,
   query: z.output<typeof CODEX_PROVIDER_READ_QUERY>,
   enabled: boolean,
-): ReturnType<typeof useQuery<z.output<typeof E.readAiChatProviderState.response>>> {
-  return useQuery({
+): ReturnType<typeof useScreenQuery<z.output<typeof E.readAiChatProviderState.response>>> {
+  return useScreenQuery({
     queryKey: [...codexProviderKey(chatId), 'read', query],
     enabled,
     queryFn: () =>
@@ -55,15 +55,24 @@ export function useCodexControl(
 > {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (control: z.output<typeof CODEX_PROVIDER_CONTROL>) =>
-      api().call(E.controlAiChatProvider, {
+    mutationFn: (control: z.output<typeof CODEX_PROVIDER_CONTROL>) => {
+      log.info('codex_control.started', { chatId, control: control.action });
+      return api().call(E.controlAiChatProvider, {
         params: { chatId },
         body: { runtime: 'codex', control },
-      }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: codexProviderKey(chatId) });
+      });
     },
-    onError: (error) => notify({ message: 'Codex action failed', error, tone: 'critical' }),
+    onSuccess: (_result, control) => {
+      log.info('codex_control.succeeded', { chatId, control: control.action });
+      background(
+        client.invalidateQueries({ queryKey: codexProviderKey(chatId) }),
+        'queries.invalidate_failed',
+      );
+    },
+    onError: (error, control) => {
+      log.error('codex_control.failed', error, { chatId, control: control.action });
+      notify({ message: 'Codex action failed', error, tone: 'critical' });
+    },
   });
 }
 export function useCodexAnswer(
@@ -72,15 +81,23 @@ export function useCodexAnswer(
 ): ReturnType<typeof useMutation<unknown, Error, CodexAnswer>> {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (answer: CodexAnswer) =>
-      api().call(E.answerAiChatProvider, {
+    mutationFn: (answer: CodexAnswer) => {
+      log.info('codex_answer.started', { chatId, promptId });
+      return api().call(E.answerAiChatProvider, {
         params: { chatId, promptId },
         body: { runtime: 'codex', answer },
-      }),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: codexProviderKey(chatId) });
+      });
     },
-    onError: (error) =>
-      notify({ message: 'Codex answer wasn’t accepted', error, tone: 'critical' }),
+    onSuccess: () => {
+      log.info('codex_answer.succeeded', { chatId, promptId });
+      background(
+        client.invalidateQueries({ queryKey: codexProviderKey(chatId) }),
+        'queries.invalidate_failed',
+      );
+    },
+    onError: (error) => {
+      log.error('codex_answer.failed', error, { chatId, promptId });
+      notify({ message: 'Codex answer wasn’t accepted', error, tone: 'critical' });
+    },
   });
 }

@@ -1,8 +1,8 @@
 import type { HarnessRuntimeRequest } from '@smarteverything/domain';
 import type { HarnessSession } from '../host/session';
 import type { HarnessRuntimeOptions } from '../host/runtime';
-import type { HarnessOpenRequest } from './streams';
-import type { ProcessProjection } from './projection';
+import type { HarnessOpenRequest } from './dispatcher';
+import type { NativeForward } from './native-forward';
 import { HarnessRuntimeError } from '../host/errors';
 
 export async function updatePermission(
@@ -12,7 +12,7 @@ export async function updatePermission(
   ports: {
     readonly host: HarnessRuntimeOptions['host'];
     readonly opened: Map<string, HarnessOpenRequest>;
-    readonly projection: ProcessProjection;
+    readonly forward: NativeForward;
   },
 ): Promise<void> {
   if (request.operation_id !== operationId)
@@ -25,5 +25,5 @@ export async function updatePermission(
     throw new HarnessRuntimeError('ownership_lost', 'Permission update has no native binding.');
   await session.permission(request.permission);
   ports.opened.set(session.id, { ...binding, permission: request.permission });
-  await ports.projection.permission(session.id, operationId, request.permission);
+  ports.forward.permission(session.id, operationId, request.permission);
 }

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { IDENTITY_CONVERSION, isKnownConversion, type DataPointConversion } from './conversions';
 import type { PointSource, PointSources, RejectedDataPoint } from './data-points';
+import { JSON_TEXT } from './json-text';
 import type { DataPointRelations, SmartLifeSpecification } from './smart-life-api';
 
-const STATUS_FORMAT = z.record(z.string(), z.unknown());
+const STATUS_FORMAT = JSON_TEXT.pipe(z.record(z.string(), z.unknown()));
 
 type Relation = DataPointRelations['dpStatusRelationDTOS'][number];
 
@@ -40,16 +41,7 @@ export interface SmartLifeModel {
 }
 
 function statusCodeOf(relation: Relation): string | null {
-  let format: unknown;
-  try {
-    format = JSON.parse(relation.statusFormat);
-  } catch (cause) {
-    if (cause instanceof SyntaxError) {
-      return null;
-    }
-    throw cause;
-  }
-  const parsed = STATUS_FORMAT.safeParse(format);
+  const parsed = STATUS_FORMAT.safeParse(relation.statusFormat);
   return parsed.success ? (Object.keys(parsed.data).at(-1) ?? null) : null;
 }
 

@@ -22,14 +22,6 @@ export const CHAT_LINK_PAGES = ['chat', 'costs', 'plugin', 'person'] as const;
 
 export type ChatLinkPage = (typeof CHAT_LINK_PAGES)[number];
 
-export const PLUGIN_CHAT_BOARDS: Readonly<Record<string, readonly string[]>> = {
-  router: ['router.internet', 'router.home'],
-  adguard: ['adguard.blocking'],
-  syncthing: ['syncthing.health', 'syncthing.folders'],
-  discord: ['discord.call'],
-  aibi: ['aibi-status', 'aibi-conversation', 'aibi-moves'],
-};
-
 export const CHAT_WIDGET = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('device'), id: ID }),
   z.strictObject({ kind: z.literal('remote'), id: ID }),
@@ -101,7 +93,8 @@ export const CHAT_WIDGET_GUIDE: Readonly<Record<ChatWidgetKind, string>> = {
   camera: 'id: a live camera view (deviceId of a camera)',
   health: `metric, range (${HEALTH_WIDGET_RANGES.join(', ')}; default week), optional day (YYYY-MM-DD): a chart of one health measurement; needs recorded data in the last 30 days`,
   nutrition: `part (${NUTRITION_WIDGET_PARTS.join(', ')}), optional day (YYYY-MM-DD): the day's food or water totals`,
-  board: `type, optional options: a plugin status board; types: ${Object.values(PLUGIN_CHAT_BOARDS).flat().join(', ')}`,
+  board:
+    'type (one of the board types given with the reply context), optional options: a plugin status board; an unknown type is refused with the types that exist',
   weather: 'the current weather and forecast',
   scenes: 'the scenes of the home, to run with a tap',
   setting_link:
@@ -159,7 +152,7 @@ export function newChatWidgets(
   wanted: readonly ChatWidget[],
 ): ChatWidget[] {
   const keys = new Set(known.map(chatWidgetKey));
-  const fresh = wanted.filter((widget) => {
+  return wanted.filter((widget) => {
     const key = chatWidgetKey(widget);
     if (keys.has(key)) {
       return false;
@@ -167,10 +160,9 @@ export function newChatWidgets(
     keys.add(key);
     return true;
   });
-  return fresh.slice(0, Math.max(0, CHAT_WIDGETS_MAX - known.length));
 }
 
-export const SHOW_WIDGETS_TEXT = `Attaches widgets to the reply you are writing in this chat: live cards and charts the person sees under your message. Needs ids from reads, never guesses; one call can hold up to ${String(CHAT_WIDGETS_MAX)} widgets and it can be called again, and the same widget is not added twice. Each widget has a kind and its fields. Kinds: ${Object.entries(
+export const SHOW_WIDGETS_TEXT = `Attaches widgets to the reply you are writing in this chat: live cards and charts the person sees under your message. Needs ids from reads, never guesses; one call can hold up to ${String(CHAT_WIDGETS_MAX)} widgets, a reply shows at most ${String(CHAT_WIDGETS_MAX)} in all (the ones that do not fit come back in dropped), it can be called again, and the same widget is not added twice. Each widget has a kind and its fields. Kinds: ${Object.entries(
   CHAT_WIDGET_GUIDE,
 )
   .map(([kind, text]) => `${kind} (${text})`)

@@ -3,8 +3,6 @@ import { CAPABILITY_KEY } from './capabilities';
 import { checkValue, JSON_VALUE, type JsonValue, type ValueDescriptor } from './values';
 import type { DeviceCapability } from './devices';
 
-export const AUTOMATION_EFFECTS_CAPABILITY = 'automation_effects_v1';
-
 export const DEVICE_EFFECT_OPERATION = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('set'), value: JSON_VALUE }),
   z.strictObject({ type: z.literal('add'), value: z.number() }),
@@ -20,24 +18,12 @@ export const DEVICE_EFFECT = z.strictObject({
   expiresAt: z.iso.datetime({ offset: true }),
 });
 export type DeviceEffect = z.infer<typeof DEVICE_EFFECT>;
-export const DEVICE_EFFECT_RESOLUTION = z.strictObject({
-  command_id: z.uuid(),
-  device_id: z.uuid(),
-  capability: CAPABILITY_KEY,
-  generated: z.boolean(),
-  base: JSON_VALUE,
-  value: JSON_VALUE,
-  generation: z.int().nonnegative(),
-  effectIds: z.array(z.uuid()),
-});
 export const DEVICE_EFFECT_TARGET = z.strictObject({
   device_id: z.uuid(),
   capability: CAPABILITY_KEY,
   base: JSON_VALUE,
   resolved: JSON_VALUE,
-  generation: z.int().nonnegative(),
   effects: z.array(DEVICE_EFFECT),
-  command_id: z.uuid().nullable(),
   updated_at: z.iso.datetime({ offset: true }),
 });
 export type DeviceEffectTarget = z.infer<typeof DEVICE_EFFECT_TARGET>;
@@ -94,5 +80,3 @@ export function resolveDeviceEffects(
   }
   return checkValue(descriptor, value);
 }
-export const AUTOMATION_EFFECTS_HEADER_VALUE =
-  'application/vnd.smarteverything.automation-effects+json';

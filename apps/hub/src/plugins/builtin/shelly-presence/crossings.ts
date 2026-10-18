@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import type { DeviceEvent, ShellyPresenceDevice } from '@smarteverything/domain';
+import type { DeviceEvent } from '@smarteverything/domain';
+import type { ShellyDevice } from '@smarteverything/shelly';
 import type { ShellyEvent } from './notifications';
 import { shellyZoneValid } from './presence-validity';
 
 export class ShellyCrossings {
   async observe(
     publishEvent: (event: DeviceEvent) => Promise<string>,
-    snapshot: ShellyPresenceDevice,
+    snapshot: ShellyDevice,
     event: ShellyEvent,
   ): Promise<void> {
     if (event.event !== 'enter' && event.event !== 'leave') return;

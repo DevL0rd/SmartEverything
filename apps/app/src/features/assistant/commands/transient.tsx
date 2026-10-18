@@ -1,6 +1,3 @@
-import type { RefObject } from 'react';
-import type { View } from 'react-native';
-import { measureAnchor, type Rect } from '../../../components/anchor';
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 const TransientContext = createContext({
   commandsOpened: false,
@@ -27,13 +24,4 @@ export function useCommandTransient(close: () => void): () => void {
     if (context.commandsOpened) close();
   }, [context.commandsOpened, close]);
   return context.dismissCommands;
-}
-
-export function openCommandPicker(
-  dismiss: () => void,
-  ref: RefObject<View | null>,
-  show: (anchor: Rect) => void,
-): void {
-  dismiss();
-  measureAnchor(ref, show);
 }

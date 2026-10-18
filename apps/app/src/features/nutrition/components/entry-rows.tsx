@@ -9,6 +9,7 @@ import type { MenuItem } from '../../../components/menu';
 import { amountText } from '../model/macros';
 import { nutritionOf, waterMlOfEntry } from '../model/portion';
 import { millilitres } from '../../../format/number';
+import { background } from '@smarteverything/logging';
 
 interface FoodLine {
   readonly name: string;
@@ -64,7 +65,7 @@ export function FoodEntryRow({
     onEdit(entry);
   };
   const remove = (): void => {
-    void writes.remove(entry, line.name);
+    background(writes.remove(entry, line.name), 'writes.remove_failed');
   };
   return (
     <ListRow
@@ -88,18 +89,21 @@ export function WaterEntryRow({ entry }: { readonly entry: HealthEntryRow }): Re
   const problem = saveProblemOf(entry);
   const amount = millilitres(waterMlOfEntry(entry));
   const remove = (): void => {
-    void writes.remove(entry, 'Water');
+    background(writes.remove(entry, 'Water'), 'writes.remove_failed');
   };
   const ask = (): void => {
-    void confirm({
-      title: `Remove ${amount} of water?`,
-      confirmLabel: 'Remove',
-      tone: 'destructive',
-    }).then((sure) => {
-      if (sure) {
-        remove();
-      }
-    });
+    background(
+      confirm({
+        title: `Remove ${amount} of water?`,
+        confirmLabel: 'Remove',
+        tone: 'destructive',
+      }).then((sure) => {
+        if (sure) {
+          remove();
+        }
+      }),
+      'entry_rows.confirm_failed',
+    );
   };
   return (
     <ListRow

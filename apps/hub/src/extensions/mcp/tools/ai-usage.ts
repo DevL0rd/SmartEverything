@@ -13,6 +13,7 @@ import {
   type UsageQuery,
   type UsageSum,
 } from '@smarteverything/domain';
+import { effectiveClientById } from '../../../server/person-access';
 import { z } from 'zod';
 import { usageFilterFor, type UsageViewer } from '../../../ledger/usage-scope';
 import { READS, defineTool, type Tool, type ToolContext } from './registry';
@@ -28,7 +29,7 @@ const WINDOW = {
     .describe('Start of the window (ISO time); defaults to `days` before `to`'),
   to: z.iso.datetime({ offset: true }).optional().describe('End of the window; defaults to now'),
   days: z.int().min(1).max(400).default(30).describe('Window length when `from` is not given'),
-  profileIds: z.array(z.uuid()).min(1).optional().describe('Only these people (list_people)'),
+  personIds: z.array(z.uuid()).min(1).optional().describe('Only these people (list_people)'),
   clientIds: z.array(z.uuid()).min(1).optional().describe('Only these paired devices'),
   works: z.array(USAGE_WORK).min(1).optional().describe('Only these kinds of work'),
   sources: z.array(USAGE_SOURCE).min(1).optional().describe('Only these providers'),
@@ -58,11 +59,11 @@ function queryOf(context: ToolContext, input: WindowInput): UsageQuery {
   const to = input.to === undefined ? context.clock.now() : new Date(input.to);
   const from =
     input.from === undefined ? new Date(to.getTime() - input.days * DAY_MS) : new Date(input.from);
-  const { profileIds, clientIds, works, sources, modelIds, chatId, messageId, pluginId } = input;
+  const { personIds, clientIds, works, sources, modelIds, chatId, messageId, pluginId } = input;
   return {
     from: from.toISOString(),
     to: to.toISOString(),
-    profileIds,
+    profileIds: personIds,
     clientIds,
     works,
     sources,
@@ -78,7 +79,8 @@ function viewerOf(context: ToolContext): UsageViewer {
   if (actor === null) {
     return { role: 'owner' };
   }
-  const client = actor.clientId === null ? null : context.store.clients.byId(actor.clientId);
+  const client =
+    actor.clientId === null ? null : effectiveClientById(context.store, actor.clientId);
   return client?.role === 'owner'
     ? { role: 'owner' }
     : { role: 'member', profileId: actor.profileId };

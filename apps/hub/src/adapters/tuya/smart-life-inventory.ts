@@ -16,8 +16,11 @@ import {
   type SmartLifeDevice,
   type SmartLifeFacts,
 } from '@smarteverything/tuya';
-import type { LoadedDevice, LoadedInventory } from './cloud-inventory';
+import { mapBounded, type LoadOnce } from './bounded';
+import { CLOUD_CONCURRENCY, type LoadedDevice, type LoadedInventory } from './cloud-inventory';
 import type { SmartLifeCloud } from './smart-life-cloud';
+
+type SmartLifeCalls = Pick<SmartLifeCloud, 'call'>;
 
 export interface SmartLifeInventory {
   readonly inventory: LoadedInventory;
@@ -32,7 +35,7 @@ interface Addressed {
 }
 
 export async function homeDevices(
-  cloud: SmartLifeCloud,
+  cloud: SmartLifeCalls,
 ): Promise<{ owners: readonly string[]; devices: readonly SmartLifeDevice[] }> {
   const homes = await cloud.call(
     'listing the Smart Life homes',
@@ -53,7 +56,7 @@ export async function homeDevices(
 }
 
 export function deviceDetails(
-  cloud: SmartLifeCloud,
+  cloud: SmartLifeCalls,
   deviceIds: readonly string[],
 ): Promise<readonly SmartLifeDevice[]> {
   return cloud.call(
@@ -111,14 +114,16 @@ function addressed(
   };
 }
 
-async function described(
-  cloud: SmartLifeCloud,
-  deviceId: string,
-): Promise<
-  Omit<LoadedDevice, 'cloud' | 'room' | 'specificationPublished' | 'smartLife'> & {
-    readonly facts: Omit<SmartLifeFacts, 'gatewayFrom' | 'nodeIdFrom'>;
-  }
-> {
+export type DescribedDevice = Omit<
+  LoadedDevice,
+  'cloud' | 'room' | 'specificationPublished' | 'smartLife'
+> & {
+  readonly facts: Omit<SmartLifeFacts, 'gatewayFrom' | 'nodeIdFrom'>;
+};
+
+type Descriptions = LoadOnce<DescribedDevice>;
+
+async function described(cloud: SmartLifeCalls, deviceId: string): Promise<DescribedDevice> {
   const specification = await cloud.call(
     `reading the specification of ${deviceId}`,
     { method: 'GET', path: SMART_LIFE_PATHS.specification(deviceId) },
@@ -147,7 +152,41 @@ async function described(
   };
 }
 
-async function loaded(cloud: SmartLifeCloud, entry: Addressed, log: Logger): Promise<LoadedDevice> {
+function withoutSpecification(
+  entry: Addressed,
+  room: string | null,
+  error: TuyaCloudError,
+  log: Logger,
+): LoadedDevice {
+  const { device, gatewayFrom, nodeIdFrom } = entry;
+  log.warn('tuya.specification_unpublished', {
+    deviceId: device.id,
+    category: device.category,
+    code: error.code,
+    detail: error.detail,
+  });
+  return {
+    cloud: device,
+    points: [],
+    rejected: [],
+    specificationPublished: false,
+    room,
+    smartLife: {
+      conversions: new Map(),
+      cloudReports: 'codes',
+      cloudReportReason: 'specification_unpublished',
+      gatewayFrom,
+      nodeIdFrom,
+    },
+  };
+}
+
+async function loaded(
+  cloud: SmartLifeCalls,
+  entry: Addressed,
+  log: Logger,
+  descriptions: Descriptions,
+): Promise<LoadedDevice> {
   const { device, gatewayFrom, nodeIdFrom } = entry;
   const room = await cloud.call(
     `reading the room of ${device.id}`,
@@ -155,7 +194,9 @@ async function loaded(cloud: SmartLifeCloud, entry: Addressed, log: Logger): Pro
     SMART_LIFE_ROOM,
   );
   try {
-    const { facts, ...model } = await described(cloud, device.id);
+    const { facts, ...model } = await descriptions.get(`${device.id}/${device.product_id}`, () =>
+      described(cloud, device.id),
+    );
     log.info('tuya.cloud_reports', {
       deviceId: device.id,
       reports: facts.cloudReports,
@@ -172,35 +213,17 @@ async function loaded(cloud: SmartLifeCloud, entry: Addressed, log: Logger): Pro
     if (!(error instanceof TuyaCloudError)) {
       throw error;
     }
-    log.warn('tuya.specification_unpublished', {
-      deviceId: device.id,
-      category: device.category,
-      code: error.code,
-      detail: error.detail,
-    });
-    return {
-      cloud: device,
-      points: [],
-      rejected: [],
-      specificationPublished: false,
-      room,
-      smartLife: {
-        conversions: new Map(),
-        cloudReports: 'codes',
-        cloudReportReason: 'specification_unpublished',
-        gatewayFrom,
-        nodeIdFrom,
-      },
-    };
+    return withoutSpecification(entry, room, error, log);
   }
 }
 
 export async function loadSmartLifeInventory(
-  cloud: SmartLifeCloud,
+  cloud: SmartLifeCalls,
   log: Logger,
+  descriptions: Descriptions,
 ): Promise<SmartLifeInventory> {
   const { owners, devices } = await homeDevices(cloud);
-  const devicesLoaded: LoadedDevice[] = [];
+  const entries: Addressed[] = [];
   for (const device of devices) {
     if (device.category.startsWith(IR_REMOTE_CATEGORY_PREFIX)) {
       log.info('tuya.ir_library_remote_skipped', {
@@ -208,9 +231,12 @@ export async function loadSmartLifeInventory(
         reason: 'IR library remotes need the developer-project link',
       });
     } else {
-      devicesLoaded.push(await loaded(cloud, addressed(device, devices, log), log));
+      entries.push(addressed(device, devices, log));
     }
   }
+  const devicesLoaded = await mapBounded(entries, CLOUD_CONCURRENCY, (entry) =>
+    loaded(cloud, entry, log, descriptions),
+  );
   return {
     inventory: { devices: devicesLoaded, remotes: [] },
     owners,

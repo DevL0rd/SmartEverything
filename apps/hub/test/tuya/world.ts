@@ -7,6 +7,7 @@ import { RecordingSink, announce, announcementFrame, harness, type Harness } fro
 const KEY = 'abcdefghijklmnop';
 export const NEW_KEY = 'qrstuvwxyzabcdef';
 const SECRETS = {
+  method: 'developer_project',
   accessId: ACCESS_ID,
   accessSecret: ACCESS_SECRET,
   region: 'eu',

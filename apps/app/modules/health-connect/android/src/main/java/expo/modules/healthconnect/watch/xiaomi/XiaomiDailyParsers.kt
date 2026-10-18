@@ -122,7 +122,7 @@ object XiaomiDailyParsers {
       1, 2 -> 4
       3 -> 5
       4 -> 6
-      else -> throw UnsupportedFile(id, "daily details version ${id.version} is not known (Gadgetbridge reads 1 to 4)")
+      else -> throw UnsupportedFile(id, "daily details version ${id.version} is not known (this app reads 1 to 4)")
     }
     val buffer = FileAssembler.body(file)
     val header = ByteArray(headerSize).also { buffer.get(it) }
@@ -149,9 +149,12 @@ object XiaomiDailyParsers {
     val (headerSize, slots) = when (id.version) {
       3, 4 -> 3 to 21
       5 -> 4 to 32
-      else -> throw UnsupportedFile(id, "daily summary version ${id.version} is not known (Gadgetbridge reads 3 to 5)")
+      else -> throw UnsupportedFile(id, "daily summary version ${id.version} is not known (this app reads 3 to 5)")
     }
     val buffer = FileAssembler.body(file)
+    if (buffer.remaining() < headerSize) {
+      return DailySummary(emptyList(), emptyList())
+    }
     val header = ByteArray(headerSize).also { buffer.get(it) }
     val present = (0 until slots).takeWhile { slot -> buffer.remaining() >= SUMMARY_SLOT_BYTES[slot] }
     val values = present.map { slot -> readSlot(buffer, SUMMARY_SLOT_BYTES[slot]).takeIf { FileAssembler.valid(header, slot) } }
@@ -173,7 +176,7 @@ object XiaomiDailyParsers {
   fun manual(id: XiaomiFileId, file: ByteArray): List<SpotSample> = when (id.version) {
     1 -> manualV1(id, file)
     2 -> manualV2(id, file)
-    else -> throw UnsupportedFile(id, "spot readings version ${id.version} is not known (Gadgetbridge reads 1 and 2)")
+    else -> throw UnsupportedFile(id, "spot readings version ${id.version} is not known (this app reads 1 and 2)")
   }
 
   private fun manualV1(id: XiaomiFileId, file: ByteArray): List<SpotSample> {

@@ -1,6 +1,4 @@
-import { hmac } from '@noble/hashes/hmac.js';
-import { sha256 } from '@noble/hashes/sha2.js';
-import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+import { hmacSha256Hex, sha256Hex } from './crypto';
 
 export const HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE'] as const;
 
@@ -26,7 +24,7 @@ export interface SigningInput {
 }
 
 export function contentSha256(body: string): string {
-  return bytesToHex(sha256(utf8ToBytes(body)));
+  return sha256Hex(body);
 }
 
 export function canonicalUrl(path: string, query: Readonly<Record<string, string>>): string {
@@ -56,7 +54,7 @@ export function sign(input: SigningInput): string {
     input.nonce,
     stringToSign(input.request),
   ].join('');
-  return bytesToHex(hmac(sha256, utf8ToBytes(input.secret), utf8ToBytes(message))).toUpperCase();
+  return hmacSha256Hex(input.secret, message).toUpperCase();
 }
 
 export function signedHeaders(input: SigningInput): Readonly<Record<string, string>> {

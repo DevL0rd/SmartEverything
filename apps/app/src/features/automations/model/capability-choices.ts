@@ -2,24 +2,22 @@ import {
   numberPresets,
   pickableControls,
   presentDevice,
-  type Comparison,
   type DeviceCapability,
   type JsonValue,
+  type TriggerTestV2,
   type ValueDescriptor,
 } from '@smarteverything/domain';
 import type { Device } from '../../../store/state';
 
 export type DeviceLike = Pick<Device, 'id' | 'label' | 'kind' | 'model' | 'capabilities'>;
 
-export type Operator = Comparison['operator'];
+export type TestOperator = TriggerTestV2['is'];
 
-export type ValueOperator = Exclude<Operator, 'changed'>;
+const EQUALITY: readonly TestOperator[] = ['eq', 'ne'];
 
-const EQUALITY: readonly ValueOperator[] = ['eq', 'ne'];
+const NUMERIC: readonly TestOperator[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between'];
 
-const NUMERIC: readonly ValueOperator[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between'];
-
-export const OPERATOR_LABELS: Readonly<Record<Operator, string>> = {
+export const OPERATOR_LABELS: Readonly<Record<TestOperator, string>> = {
   eq: 'Is',
   ne: 'Is not',
   gt: 'Above',
@@ -27,6 +25,7 @@ export const OPERATOR_LABELS: Readonly<Record<Operator, string>> = {
   lt: 'Below',
   lte: 'At most',
   between: 'Between',
+  in: 'Is one of',
   changed: 'Changes',
 };
 
@@ -63,11 +62,11 @@ export function sceneCapabilities(device: DeviceLike): DeviceCapability[] {
     .map((presented) => presented.capability);
 }
 
-export function valueOperators(descriptor: ValueDescriptor): readonly ValueOperator[] {
+export function valueOperators(descriptor: ValueDescriptor): readonly TestOperator[] {
   return descriptor.kind === 'number' ? NUMERIC : EQUALITY;
 }
 
-export function triggerOperators(descriptor: ValueDescriptor): readonly Operator[] {
+export function triggerOperators(descriptor: ValueDescriptor): readonly TestOperator[] {
   return [...valueOperators(descriptor), 'changed'];
 }
 
@@ -90,52 +89,6 @@ export function defaultValue(descriptor: ValueDescriptor): JsonValue {
   }
 }
 
-function numberOr(value: JsonValue, descriptor: ValueDescriptor): number {
-  if (typeof value === 'number') {
-    return value;
-  }
-  return descriptor.kind === 'number' ? descriptor.min : 0;
-}
-
-function carriedValue(previous: Comparison | null, descriptor: ValueDescriptor): JsonValue {
-  if (previous === null || previous.operator === 'changed') {
-    return defaultValue(descriptor);
-  }
-  return previous.operator === 'between' ? previous.min : previous.value;
-}
-
-export type ValueComparison = Extract<Comparison, { operator: ValueOperator }>;
-
-export function valueComparisonFor(
-  operator: ValueOperator,
-  descriptor: ValueDescriptor,
-  previous: Comparison | null,
-): ValueComparison {
-  const carried = carriedValue(previous, descriptor);
-  switch (operator) {
-    case 'eq':
-    case 'ne':
-      return { operator, value: carried };
-    case 'gt':
-    case 'gte':
-    case 'lt':
-    case 'lte':
-      return { operator, value: numberOr(carried, descriptor) };
-    case 'between': {
-      const min = numberOr(carried, descriptor);
-      return { operator, min, max: descriptor.kind === 'number' ? descriptor.max : min };
-    }
-  }
-}
-
-export function comparisonFor(
-  operator: Operator,
-  descriptor: ValueDescriptor,
-  previous: Comparison | null,
-): Comparison {
-  return operator === 'changed' ? { operator } : valueComparisonFor(operator, descriptor, previous);
-}
-
 function actionDefault(descriptor: Extract<ValueDescriptor, { kind: 'action' }>): JsonValue {
   if (descriptor.argumentSchema !== undefined) {
     return {};
@@ -143,4 +96,53 @@ function actionDefault(descriptor: Extract<ValueDescriptor, { kind: 'action' }>)
   return descriptor.arguments === undefined
     ? null
     : Object.fromEntries(descriptor.arguments.map((name) => [name, '']));
+}
+
+export interface TestSeed {
+  readonly fallback: JsonValue;
+  readonly min?: number;
+  readonly max?: number;
+}
+
+export function seedOf(descriptor: ValueDescriptor): TestSeed {
+  return descriptor.kind === 'number'
+    ? { fallback: defaultValue(descriptor), min: descriptor.min, max: descriptor.max }
+    : { fallback: defaultValue(descriptor) };
+}
+
+function carriedValue(previous: TriggerTestV2 | undefined, seed: TestSeed): JsonValue {
+  if (previous === undefined || previous.is === 'changed') return seed.fallback;
+  if (previous.is === 'between') return previous.min;
+  return previous.is === 'in' ? (previous.to[0] ?? seed.fallback) : previous.to;
+}
+
+function numberOr(value: JsonValue, seed: TestSeed): number {
+  return typeof value === 'number' ? value : (seed.min ?? 0);
+}
+
+export function testFor(
+  operator: TestOperator,
+  seed: TestSeed,
+  previous?: TriggerTestV2,
+): TriggerTestV2 {
+  if (operator === 'changed') return { is: operator };
+  const carried = carriedValue(previous, seed);
+  if (operator === 'between') {
+    const min = numberOr(carried, seed);
+    return { is: operator, min, max: Math.max(min, seed.max ?? min) };
+  }
+  if (operator === 'in') return { is: operator, to: [carried] };
+  return operator === 'eq' || operator === 'ne'
+    ? { is: operator, to: carried }
+    : { is: operator, to: numberOr(carried, seed) };
+}
+
+export type BetweenTest = Extract<TriggerTestV2, { is: 'between' }>;
+
+export function betweenFrom(test: BetweenTest, min: number): BetweenTest {
+  return { ...test, min, max: Math.max(min, test.max) };
+}
+
+export function betweenTo(test: BetweenTest, max: number): BetweenTest {
+  return { ...test, max, min: Math.min(max, test.min) };
 }

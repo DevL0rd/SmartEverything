@@ -1,10 +1,10 @@
-import { browserSearchPages } from './browser-pages';
 import { CODEX_OPERATIONS } from '../features/assistant/provider/codex-operations';
 import { schemaOf } from '../components/schema-values';
 import type { SearchSources } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
 import { PROVIDER_OPERATIONS } from '../features/assistant/provider/provider-operations';
 import { WORK_TABS } from '../features/assistant/provider/work-tabs';
+import { chatDetailPages } from './chat-detail-pages';
 import type { SearchChat, SourceLinks } from './sources';
 
 export function chatProviderPages(
@@ -12,9 +12,9 @@ export function chatProviderPages(
   out: SourceLinks,
   owner: boolean,
 ): SearchSources['pages'] {
-  const agents = chatDetailPages(chat, out);
-  if (chat.runtime === 'dsh') return [...agents, ...harnessPages(chat, out)];
-  if (!chat.computer || !owner) return agents;
+  const details = chatDetailPages(chat, out);
+  if (chat.runtime === 'dsh') return [...details, ...harnessPages(chat, out)];
+  if (!chat.computer || !owner) return details;
   const pages = [
     ...discoveredPages(chat),
     ...WORK_TABS.map((tab) => ({
@@ -35,7 +35,7 @@ export function chatProviderPages(
       })),
   ];
   return [
-    ...agents,
+    ...details,
     ...pages.map((page) => {
       const path = `chat:${chat.id}#${page.id}`;
       out.links.set(
@@ -92,83 +92,6 @@ function discoveredPages(chat: SearchChat): {
   ];
 }
 
-function agentPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'] {
-  const rows = chat.agents ?? [];
-  return rows.map((row) => {
-    const path = `chat:${chat.id}#agent:${row.id}`;
-    out.links.set(
-      `page:${path}`,
-      href.assistantChat(row.child_chat_id ?? chat.id, { sheet: 'chat', agent: row.id }),
-    );
-    out.icons.set(`page:${path}`, 'users');
-    out.parents.set(`page:${path}`, `page:chat:${chat.id}`);
-    return {
-      path,
-      title: row.title,
-      description: chat.title,
-      keywords: [
-        'agent',
-        'helper',
-        row.source,
-        row.state,
-        row.task ?? '',
-        row.progress ?? '',
-        row.result ?? '',
-      ],
-    };
-  });
-}
-
-const INSPECTOR_PAGES = [
-  {
-    section: 'info',
-    title: 'Overview',
-    keywords: [
-      'details',
-      'model',
-      'thinking',
-      'supplier',
-      'execution',
-      'workspace',
-      'switch',
-      'permissions',
-      'questions',
-    ],
-  },
-  { section: 'branches', title: 'Branches', keywords: ['branch', 'history'] },
-  { section: 'files', title: 'Files', keywords: ['attachment', 'file'] },
-  {
-    section: 'browser',
-    title: 'Browser',
-    keywords: [
-      'browser',
-      'preview',
-      'published service',
-      'address',
-      'back',
-      'forward',
-      'reload',
-      'stop loading',
-      'choose shared service',
-      'public website',
-      'localhost',
-      'development app',
-    ],
-  },
-] as const;
-function inspectorPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'] {
-  return INSPECTOR_PAGES.map((row) => {
-    const path = `chat:${chat.id}#${row.section}`;
-    out.links.set(
-      `page:${path}`,
-      href.assistantChat(chat.id, { sheet: 'chat', section: row.section }),
-    );
-    out.icons.set(`page:${path}`, 'sparkles');
-    out.parents.set(`page:${path}`, `page:chat:${chat.id}`);
-    return { path, title: row.title, description: chat.title, keywords: [...row.keywords] };
-  });
-}
-
 const HARNESS_PAGES = [
   {
     title: 'Device',
@@ -177,54 +100,9 @@ const HARNESS_PAGES = [
     keywords: ['execution host', 'switch device', 'computer', 'phone'],
   },
   {
-    title: 'Supplier',
-    work: 'overview',
-    operation: 'model',
-    keywords: ['model supplier', 'account', 'subscription'],
-  },
-  {
-    title: 'Model and thinking',
-    work: 'overview',
-    operation: 'model',
-    keywords: [
-      'model',
-      'thinking',
-      'reasoning',
-      'search',
-      'favorites',
-      'maker',
-      'input modality',
-      'output modality',
-      'minimum context',
-      'input token price',
-      'output token price',
-      'sort',
-      'newest',
-      'name',
-      'intelligence',
-      'latency',
-      'input cost',
-      'output cost',
-      'largest context',
-      'source details',
-    ],
-  },
-  {
     title: 'Workspace',
     work: 'overview',
     keywords: ['directory', 'folder', 'workspace on target host'],
-  },
-  {
-    title: 'Permissions',
-    work: 'settings',
-    keywords: [
-      'recorded permissions',
-      'sandbox',
-      'approval',
-      'full access',
-      'read only',
-      'workspace write',
-    ],
   },
   {
     title: 'Questions',
@@ -260,8 +138,4 @@ function harnessPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'
       ],
     };
   });
-}
-
-function chatDetailPages(chat: SearchChat, out: SourceLinks): SearchSources['pages'] {
-  return [...agentPages(chat, out), ...inspectorPages(chat, out), ...browserSearchPages(chat, out)];
 }

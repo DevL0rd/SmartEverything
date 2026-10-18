@@ -12,7 +12,10 @@ export interface ConversationHooks {
   readonly listening?: HostedListening;
   readonly settings: () => AssistantVoiceSettings;
   readonly system: () => string;
+  readonly note: (known: ReadonlySet<string> | null, starting: boolean) => string;
+  readonly history: () => readonly string[];
   readonly tools: () => readonly FunctionDeclaration[];
+  readonly webSearch: () => boolean;
   readonly window: () => LiveWindow | null;
   readonly record: (turn: RecordedTurn) => void;
   readonly task: (task: string, said: string | null) => string;
@@ -21,6 +24,8 @@ export interface ConversationHooks {
   readonly usage: (usage: UsageMetadata, model: string) => void;
   readonly measured: Measure;
   readonly stalled: (step: 'nudged' | 'gave_up') => void;
+  readonly speaking?: (speaking: boolean) => void;
   readonly detached?: () => boolean;
+  readonly callId?: () => string;
   readonly staysOpenWhenQuiet: () => boolean;
 }

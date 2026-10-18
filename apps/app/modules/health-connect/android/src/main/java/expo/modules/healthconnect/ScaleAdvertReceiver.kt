@@ -15,8 +15,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import expo.modules.healthconnect.diagnostics.NativeLog
 import java.time.Instant
-import org.json.JSONObject
 
 class BleAcknowledgmentInvalid(detail: String) : SyncFailure(
   "The server did not acknowledge the complete Bluetooth batch: $detail",
@@ -49,12 +49,12 @@ object ScaleAdverts {
   }
 
   private fun advertsOf(result: ScanResult) = result.scanRecord?.serviceData.orEmpty().map { (uuid, data) ->
-    jsonOf(
-      "address" to result.device.address.uppercase(),
-      "serviceUuid" to uuid.uuid.toString(),
-      "data" to data.toHex(),
-      "rssi" to result.rssi,
-      "seenAt" to Instant.now().toString()
+    BleAdvert(
+      address = result.device.address.uppercase(),
+      serviceUuid = uuid.uuid.toString(),
+      data = data.toHex(),
+      rssi = result.rssi,
+      seenAt = Instant.now()
     )
   }
 }
@@ -86,6 +86,8 @@ class ScaleRelayWorker(context: Context, parameters: WorkerParameters) :
   CoroutineWorker(context, parameters) {
   override suspend fun doWork(): Result {
     val status = ScaleStatus(applicationContext)
+    val started = System.nanoTime()
+    NativeLog.info(SCOPE, "worker.started") { mapOf("attempt" to runAttemptCount) }
     return try {
       var batches = 0
       while (batches < MAX_BATCHES) {
@@ -95,38 +97,30 @@ class ScaleRelayWorker(context: Context, parameters: WorkerParameters) :
         batches += 1
       }
       saveToHealthConnect(status)
-      if (BleAdvertOutbox.pending(applicationContext)) Result.retry() else Result.success()
+      val more = BleAdvertOutbox.pending(applicationContext)
+      NativeLog.info(SCOPE, "worker.finished", NativeLog.elapsedMs(started)) { mapOf("batches" to batches, "morePending" to more) }
+      if (more) Result.retry() else Result.success()
     } catch (failure: SyncFailure) {
+      NativeLog.warn(SCOPE, "worker.failed", failure, NativeLog.elapsedMs(started)) { mapOf("retryable" to failure.retryable, "attempt" to runAttemptCount) }
       status.note("failed", failure.message ?: failure.javaClass.simpleName)
       if (failure.retryable) Result.retry() else Result.failure()
     }
   }
 
   private suspend fun send(batch: BleAdvertBatch, status: ScaleStatus) {
-    val answer = HubClient(relayTarget(applicationContext)).post(ScaleRelay.ADVERTS_PATH, jsonOf("adverts" to batch.adverts))
-    val accepted = acknowledgedCount(answer, "accepted", batch.ids.size)
-    val ignored = acknowledgedCount(answer, "ignored", batch.ids.size)
-    if (accepted + ignored != batch.ids.size) {
+    val sendStarted = System.nanoTime()
+    val answer = HubClient(relayTarget(applicationContext))
+      .post<BleAdvertRequest, BleRelayResult>(ScaleRelay.ADVERTS_PATH, BleAdvertRequest(batch.adverts))
+    NativeLog.debug(SCOPE, "batch.sent", NativeLog.elapsedMs(sendStarted)) { mapOf("frames" to batch.ids.size) }
+    if (answer.accepted < 0 || answer.ignored < 0 || answer.accepted + answer.ignored != batch.ids.size) {
       throw BleAcknowledgmentInvalid("accepted and ignored counts do not cover the submitted frames")
     }
     BleAdvertOutbox.acknowledge(applicationContext, batch)
-    status.note("uploaded", "${batch.ids.size} Bluetooth frame(s): $accepted accepted, $ignored ignored")
-  }
-
-  private fun acknowledgedCount(answer: JSONObject, name: String, batchSize: Int): Int {
-    val value = answer.opt(name)
-    if (value !is Number) {
-      throw BleAcknowledgmentInvalid("$name must be a numeric integer")
-    }
-    val count = value.toString().toBigDecimalOrNull()
-    if (count == null || count.signum() < 0 || count > batchSize.toBigDecimal() || count.stripTrailingZeros().scale() > 0) {
-      throw BleAcknowledgmentInvalid("$name must be an integer from zero to the submitted frame count")
-    }
-    return count.toInt()
+    status.note("uploaded", "${batch.ids.size} Bluetooth frame(s): ${answer.accepted} accepted, ${answer.ignored} ignored")
   }
 
   private suspend fun saveToHealthConnect(status: ScaleStatus) {
-    if (!Credentials(applicationContext).configured()) {
+    if (!HealthConnectAccess.connected(applicationContext)) {
       status.note("health_connect_skipped", "Health Connect is not set up on this phone; weigh-ins stay on your server")
       return
     }
@@ -135,6 +129,7 @@ class ScaleRelayWorker(context: Context, parameters: WorkerParameters) :
 
   private companion object {
     const val MAX_BATCHES = 20
+    const val SCOPE = "ble-sync"
   }
 
   override suspend fun getForegroundInfo(): ForegroundInfo = RelayNotification.forScale(applicationContext)

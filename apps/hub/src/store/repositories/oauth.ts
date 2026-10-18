@@ -7,7 +7,7 @@ import {
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
-import { jsonText } from '../sql';
+import { flag, jsonText } from '../sql';
 
 export const OAUTH_AUTH_METHODS = ['none', 'client_secret_post', 'client_secret_basic'] as const;
 
@@ -59,10 +59,17 @@ export type OAuthTokenRow = z.infer<typeof OAUTH_TOKEN_ROW>;
 
 const STORED_CLIENT = storedRow(OAUTH_CLIENT_ROW, { json: ['redirect_uris', 'scopes'] });
 
-const STORED_AUTH = storedRow(
-  z.strictObject({ auth_method: z.enum(OAUTH_AUTH_METHODS), secret_hash: z.string().nullable() }),
-  {},
+const STORED_CLIENT_AUTH = storedRow(
+  OAUTH_CLIENT_ROW.extend({
+    auth_method: z.enum(OAUTH_AUTH_METHODS),
+    secret_hash: z.string().nullable(),
+  }),
+  { json: ['redirect_uris', 'scopes'] },
 );
+
+const LOCAL_ONLY = storedRow(z.strictObject({ local_only: z.boolean() }), {
+  flags: ['local_only'],
+});
 
 const STORED_TOKEN = storedRow(OAUTH_TOKEN_ROW, { json: ['scopes'] });
 
@@ -106,24 +113,16 @@ export class OAuthRepository {
   }
 
   findClient(id: string): OAuthClientAuth | undefined {
-    const row = this.context.sql.get(
-      STORED_CLIENT,
-      `select ${CLIENT_COLUMNS} from oauth_clients where id = $id`,
+    const stored = this.context.sql.get(
+      STORED_CLIENT_AUTH,
+      `select ${CLIENT_COLUMNS}, auth_method, secret_hash from oauth_clients where id = $id`,
       { id },
     );
-    if (row === undefined) {
+    if (stored === undefined) {
       return undefined;
     }
-    const auth = found(
-      this.context.sql.get(
-        STORED_AUTH,
-        'select auth_method, secret_hash from oauth_clients where id = $id',
-        { id },
-      ),
-      'OAuth client',
-      id,
-    );
-    return { row, authMethod: auth.auth_method, secretHash: auth.secret_hash };
+    const { auth_method: authMethod, secret_hash: secretHash, ...row } = stored;
+    return { row, authMethod, secretHash };
   }
 
   grant(id: string, scopes: readonly string[]): OAuthClientRow {
@@ -247,6 +246,69 @@ export class OAuthRepository {
     );
   }
 
+  personalTokens(): McpTokenRow[] {
+    return this.context.sql.all(
+      MCP_TOKEN_ROW,
+      `select ${MCP_TOKEN_COLUMNS} from mcp_tokens order by created_at desc, rowid desc`,
+    );
+  }
+
+  personalToken(id: string): McpTokenRow {
+    return found(
+      this.context.sql.get(
+        MCP_TOKEN_ROW,
+        `select ${MCP_TOKEN_COLUMNS} from mcp_tokens where id = $id`,
+        { id },
+      ),
+      'MCP token',
+      id,
+    );
+  }
+
+  activePersonalTokenByHash(tokenHash: string): McpTokenRow | undefined {
+    return this.context.sql.get(
+      MCP_TOKEN_ROW,
+      `select ${MCP_TOKEN_COLUMNS} from mcp_tokens where token_hash = $tokenHash and revoked_at is null`,
+      { tokenHash },
+    );
+  }
+
+  createPersonalToken(name: string, tokenHash: string, localOnly = false): McpTokenRow {
+    return this.context.write(() => {
+      const id = this.context.newId();
+      this.context.sql.run(
+        'add the MCP token',
+        `insert into mcp_tokens (id, name, token_hash, created_at, local_only)
+         values ($id, $name, $tokenHash, $now, $localOnly)`,
+        { id, name, tokenHash, now: this.context.now(), localOnly: flag(localOnly) },
+      );
+      const row = this.personalToken(id);
+      this.context.changed('mcp_tokens', 'INSERT', row, null);
+      return row;
+    });
+  }
+
+  personalTokenIsLocalOnly(id: string): boolean {
+    return (
+      this.context.sql.get(LOCAL_ONLY, 'select local_only from mcp_tokens where id = $id', { id })
+        ?.local_only === true
+    );
+  }
+
+  revokePersonalToken(id: string): McpTokenRow {
+    return this.context.write(() => {
+      const before = this.personalToken(id);
+      this.context.sql.run(
+        'revoke the MCP token',
+        'update mcp_tokens set revoked_at = coalesce(revoked_at, $now) where id = $id',
+        { id, now: this.context.now() },
+      );
+      const after = this.personalToken(id);
+      this.context.changed('mcp_tokens', 'UPDATE', after, before);
+      return after;
+    });
+  }
+
   personalTokenUsed(id: string): McpTokenRow {
     return this.context.write(() => {
       const before = this.personalToken(id);
@@ -261,19 +323,27 @@ export class OAuthRepository {
     });
   }
 
-  private personalToken(id: string): McpTokenRow {
-    return found(
-      this.context.sql.get(
-        MCP_TOKEN_ROW,
-        `select ${MCP_TOKEN_COLUMNS} from mcp_tokens where id = $id`,
-        { id },
-      ),
-      'MCP token',
-      id,
+  grants(): OAuthClientRow[] {
+    return this.context.sql.all(
+      STORED_CLIENT,
+      `select ${CLIENT_COLUMNS} from oauth_clients
+       where granted_at is not null and revoked_at is null order by granted_at desc`,
     );
   }
 
-  private client(id: string): OAuthClientRow {
+  revokeGrant(id: string): void {
+    this.context.write(() => {
+      const before = this.client(id);
+      this.context.sql.run(
+        'revoke the assistant',
+        'update oauth_clients set revoked_at = coalesce(revoked_at, $now) where id = $id',
+        { id, now: this.context.now() },
+      );
+      this.context.changed('oauth_clients', 'UPDATE', this.client(id), before);
+    });
+  }
+
+  client(id: string): OAuthClientRow {
     return found(
       this.context.sql.get(
         STORED_CLIENT,

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import type { FlatList, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import type { FlashListRef } from '@shopify/flash-list';
 import { notify } from '../../../components/toast-store';
 import type {
   ConsolePage,
@@ -12,9 +12,17 @@ import {
   pinnedConsoleFull,
   type ConsoleWindow,
 } from './browser-console-window';
+import { background } from '@smarteverything/logging';
 const TAIL_DISTANCE = 24;
+export interface ScrollGeometry {
+  readonly nativeEvent: {
+    readonly contentOffset: { readonly y: number };
+    readonly contentSize: { readonly height: number };
+    readonly layoutMeasurement: { readonly height: number };
+  };
+}
 export interface ConsoleReader {
-  readonly listRef: RefObject<FlatList<ConsoleRecord> | null>;
+  readonly listRef: RefObject<FlashListRef<ConsoleRecord> | null>;
   readonly page: ConsolePage;
   readonly pending: boolean;
   readonly hasNew: boolean;
@@ -24,10 +32,10 @@ export interface ConsoleReader {
   readonly older: () => void;
   readonly resume: () => void;
   readonly resize: () => void;
-  readonly scroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  readonly scroll: (event: ScrollGeometry) => void;
 }
 export function useConsoleReader(page: ConsolePage, controller: PreviewDiagnostics): ConsoleReader {
-  const list = useRef<FlatList<ConsoleRecord>>(null);
+  const list = useRef<FlashListRef<ConsoleRecord>>(null);
   const [window, setWindow] = useState<ConsoleWindow>({ kind: 'tail' });
   const [pending, setPending] = useState(false);
   const latest = page.records.at(-1)?.id ?? null;
@@ -40,18 +48,21 @@ export function useConsoleReader(page: ConsolePage, controller: PreviewDiagnosti
     if (pinned.page.previousCursor === null || pending || pinnedConsoleFull(pinned)) return;
     setWindow(pinned);
     setPending(true);
-    void controller
-      .loadOlder(pinned.page.previousCursor)
-      .then((result) => {
-        const merged = prependConsolePage(pinned, result);
-        setWindow((current) => (current === pinned ? merged : current));
-      })
-      .catch((error: unknown) => {
-        notify({ message: 'Older console entries could not be read', error, tone: 'critical' });
-      })
-      .finally(() => {
-        setPending(false);
-      });
+    background(
+      controller
+        .loadOlder(pinned.page.previousCursor)
+        .then((result) => {
+          const merged = prependConsolePage(pinned, result);
+          setWindow((current) => (current === pinned ? merged : current));
+        })
+        .catch((error: unknown) => {
+          notify({ message: 'Older console entries could not be read', error, tone: 'critical' });
+        })
+        .finally(() => {
+          setPending(false);
+        }),
+      'older.load_failed',
+    );
   };
   return {
     listRef: list,
@@ -75,7 +86,7 @@ export function useConsoleReader(page: ConsolePage, controller: PreviewDiagnosti
 }
 
 function useConsoleTail(
-  list: RefObject<FlatList<ConsoleRecord> | null>,
+  list: RefObject<FlashListRef<ConsoleRecord> | null>,
   following: boolean,
   records: readonly ConsoleRecord[],
 ): void {
@@ -84,7 +95,7 @@ function useConsoleTail(
   }, [list, following, records]);
 }
 
-function scrolledAway(event: NativeSyntheticEvent<NativeScrollEvent>): boolean {
+function scrolledAway(event: ScrollGeometry): boolean {
   const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
   return contentSize.height - contentOffset.y - layoutMeasurement.height > TAIL_DISTANCE;
 }

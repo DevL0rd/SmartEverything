@@ -1,14 +1,16 @@
 import type { Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
 import { SideCompletion, type SideCompletionDeps } from '../side-completion';
-import { callSource, cleanTitle, exchangeSource, titleMessages } from './title-text';
+import { exchangeSource } from '../exchange-text';
+import { callSource, cleanTitle, titleMessages } from './title-text';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface ChatTitlesDeps extends SideCompletionDeps {
   readonly now: () => Date;
   readonly log: Logger;
 }
 
-export class TitleError extends Error {
+class TitleError extends Error {
   override readonly name = 'TitleError';
 }
 
@@ -30,21 +32,36 @@ export class ChatTitles {
 
   readonly afterReply = (event: StoredEvent, text: string, ok: boolean): void => {
     if (ok && TITLED_EVENTS.has(event.kind)) {
-      void this.name(event.chat_id, () => exchangeSource(this.personText(event), text));
+      background(
+        this.name(event.chat_id, () => exchangeSource(this.personText(event), text)),
+        'chat_titles.name_failed',
+      );
     }
   };
 
   afterCall(chatId: string, transcript: string): void {
     if (transcript.trim() !== '') {
-      void this.name(chatId, () => callSource(transcript));
+      background(
+        this.name(chatId, () => callSource(transcript)),
+        'chat_titles.name_failed',
+      );
     }
   }
 
   backfill(): void {
-    if (this.deps.store.aiChats.setting(BACKFILL_KEY) !== null) {
+    if (this.deps.store.settingsKv.read(BACKFILL_KEY) !== null) {
       return;
     }
-    this.startBackfill();
+    if (this.side.model() !== null) {
+      this.startBackfill();
+      return;
+    }
+    const stop = this.side.onModels(() => {
+      if (this.side.model() !== null) {
+        stop();
+        this.startBackfill();
+      }
+    });
   }
 
   private startBackfill(): void {
@@ -54,8 +71,8 @@ export class ChatTitles {
   }
 
   private async backfillChats(): Promise<void> {
-    const { aiChats } = this.deps.store;
-    aiChats.saveSetting(BACKFILL_KEY, {
+    const { aiChats, settingsKv } = this.deps.store;
+    settingsKv.save(BACKFILL_KEY, {
       started_at: this.deps.now().toISOString(),
     });
     const ids = aiChats.untitled(BACKFILL_MAX);
@@ -95,7 +112,7 @@ export class ChatTitles {
     } catch (cause) {
       this.deps.log.warn('assistant.title_failed', {
         chatId,
-        reason: cause instanceof Error ? cause.message : String(cause),
+        reason: messageOf(cause),
       });
     } finally {
       this.busy.delete(chatId);
@@ -103,9 +120,11 @@ export class ChatTitles {
   }
 
   private async generate(chatId: string, source: string): Promise<void> {
-    if (!this.side.nativeAvailable(chatId))
-      throw new TitleError('The selected engine supplies no title completion.');
-    const text = await this.side.complete({
+    const model = this.side.model();
+    if (model === null) {
+      throw new TitleError('There is no Gemini Flash-Lite in the model list yet.');
+    }
+    const text = await this.side.complete(model, {
       chatId,
       messages: titleMessages(source),
       maxTokens: TITLE_TOKENS_MAX,

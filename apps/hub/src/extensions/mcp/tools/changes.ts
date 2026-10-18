@@ -1,4 +1,5 @@
 import {
+  COLOR_INPUT_FORMS,
   JSON_VALUE,
   privacySwitchOf,
   type DeviceRow,
@@ -6,6 +7,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { reported, sendAndWait, type CommandRequest } from './commanding';
+import { deviceScopeOfActor } from './person-reach';
 import { ToolError, type ToolContext, type ToolOutput } from './registry';
 import { TARGET, findCapability, targeted, type Target } from './targets';
 import { VALUE_UNIT, valueFor, type TemperatureUnit } from './values';
@@ -24,7 +26,9 @@ export const CHANGE = z.strictObject({
     .min(1)
     .max(120)
     .describe('Capability key, role (such as power or target_temperature) or label'),
-  value: JSON_VALUE.describe('New value; for an enum its value or label; null runs an action'),
+  value: JSON_VALUE.describe(
+    `New value in the capability’s value_format from get_device: true or false; a number in its unit; an enum option or its label; a colour as ${COLOR_INPUT_FORMS}; null runs an action. Brightness is its own number capability, not the colour’s value; a white tone is the colour temperature capability: kelvin as a number, "2700K" or "370 mireds"`,
+  ),
   unit: VALUE_UNIT,
 });
 
@@ -55,8 +59,27 @@ function privacyChange(device: DeviceRow, change: Change): Change {
   };
 }
 
+const RAW_PREFIX = 'raw:';
+
+const RAW_GUIDANCE =
+  'raw controls exist only where that device’s get_device lists them; ask the person instead of guessing raw ids';
+
+function missingReason(capability: string): string {
+  return capability.startsWith(RAW_PREFIX)
+    ? `has no ${capability}; ${RAW_GUIDANCE}`
+    : `has no ${capability}`;
+}
+
+function requireResolvedRaw(change: Change): void {
+  if (change.capability.startsWith(RAW_PREFIX) && change.target.deviceIds === undefined) {
+    throw new ToolError(
+      `${change.capability} is a raw control of one device: read that device with get_device and target it by deviceIds; ${RAW_GUIDANCE}`,
+    );
+  }
+}
+
 function planned(context: ToolContext, asked: Change, into: Plan): void {
-  for (const placed of targeted(context.store, asked.target)) {
+  for (const placed of targeted(context.store, deviceScopeOfActor(context), asked.target)) {
     const device = placed.device;
     const change = privacyChange(device, asked);
     const presented = findCapability(device, change.capability);
@@ -66,7 +89,7 @@ function planned(context: ToolContext, asked: Change, into: Plan): void {
         device: placed.name,
         reason:
           presented === undefined
-            ? `has no ${change.capability}`
+            ? missingReason(change.capability)
             : `${presented.label} is read-only`,
       });
       continue;
@@ -84,6 +107,7 @@ export async function applyChanges(
   changes: readonly Change[],
 ): Promise<ToolOutput> {
   const plan: Plan = { commands: [], skipped: [] };
+  changes.forEach(requireResolvedRaw);
   for (const change of changes) {
     planned(context, change, plan);
   }

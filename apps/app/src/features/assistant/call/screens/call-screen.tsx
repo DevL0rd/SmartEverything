@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
+import { closeFlow } from '../../../../app-shell/close-flow';
 import { CALL_SOURCE, type CallSource } from '@smarteverything/domain';
 import { z } from 'zod';
 import { useConnection } from '../../../../api/transport';
 import { appPlatform } from '../../../../design/platform';
-import { callActive, callState, useCall, type CallView } from '../call-state';
+import { callActive, callState } from '../call-state';
 import { callEngine } from '../engine/engine';
 import { CallRoom } from './call-room';
 
@@ -14,8 +15,6 @@ const DEVICE_LABELS = {
   desktop: 'the computer',
   web: 'the browser',
 } as const;
-
-const CLOSE_AFTER_MS = 900;
 
 const ID = z.uuid();
 
@@ -32,11 +31,7 @@ function sourceOf(raw: string | undefined): CallSource {
 }
 
 function leave(): void {
-  if (router.canGoBack()) {
-    router.back();
-  } else {
-    router.replace('/');
-  }
+  closeFlow('/');
 }
 
 interface Paired {
@@ -81,18 +76,6 @@ function useStartOnOpen(opening: Opening): () => void {
   };
 }
 
-function useCloseWhenHungUp(call: CallView): void {
-  useEffect(() => {
-    if (call.phase !== 'ended' || (call.ending !== 'hung_up' && call.ending !== 'finished')) {
-      return undefined;
-    }
-    const timer = setTimeout(leave, CLOSE_AFTER_MS);
-    return (): void => {
-      clearTimeout(timer);
-    };
-  }, [call.phase, call.ending]);
-}
-
 function useOpening(): Opening {
   const params = useLocalSearchParams<{
     source?: string;
@@ -112,9 +95,7 @@ function useOpening(): Opening {
 }
 
 export function CallScreen(): ReactNode {
-  const call = useCall();
   const opening = useOpening();
   const again = useStartOnOpen(opening);
-  useCloseWhenHungUp(call);
   return <CallRoom action={opening.action} onAgain={again} onLeave={leave} />;
 }

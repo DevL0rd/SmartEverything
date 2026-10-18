@@ -106,7 +106,11 @@ export function AppearancePreview(): ReactNode {
           <Badge label="Accent" tone="primary" />
           <Switch label="Preview switch" value={on} onChange={setOn} />
         </View>
-        <View className="flex-row flex-wrap gap-2">
+        <View
+          className="flex-row flex-wrap gap-2"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
           <Button label="Filled" onPress={() => undefined} />
           <Button label="Tonal" variant="tonal" onPress={() => undefined} />
         </View>

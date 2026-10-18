@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import type { DiscoveredDevice, Provider } from '@smarteverything/domain';
 import type { CameraUpsert, DeviceRecord, DeviceUpsert, HubDatabase } from '../database/port';
 
@@ -7,7 +8,7 @@ export type InventoryStore = Pick<
   | 'upsertDevices'
   | 'setDevicesOnline'
   | 'removeDevices'
-  | 'ensureRooms'
+  | 'matchRooms'
   | 'upsertCameras'
 >;
 
@@ -73,6 +74,8 @@ function cameraRow(device: DeviceRecord): CameraUpsert | null {
   };
 }
 
+const log = new Logger('hub.inventory');
+
 export class Inventory {
   private readonly byId = new Map<string, DeviceRecord>();
   private readonly byKey = new Map<string, DeviceRecord>();
@@ -111,10 +114,11 @@ export class Inventory {
         throw new ProviderMismatchError(provider, device.provider, device.externalId);
       }
     }
+    const startedAt = performance.now();
     const before = new Map(
       discovered.map((device) => [device.externalId, this.deviceOf(provider, device.externalId)]),
     );
-    const rooms = await this.store.ensureRooms(this.unplacedRoomNames(provider, discovered));
+    const rooms = await this.store.matchRooms(this.unplacedRoomNames(provider, discovered));
     const rows = (): DeviceUpsert[] => discovered.map((device) => this.upsertOf(device, rooms));
     const first = rows();
     this.remember(await this.store.upsertDevices(first));
@@ -126,11 +130,25 @@ export class Inventory {
     );
     await this.store.upsertCameras(records.flatMap((device) => cameraRow(device) ?? []));
     this.announce(records, before);
+    log.debug('inventory.applied', () => ({
+      provider,
+      discovered: discovered.length,
+      added: [...before.values()].filter((entry) => entry === undefined).length,
+      matchedRooms: rooms.size,
+      cameras: records.filter((device) => cameraRow(device) !== null).length,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
     return records;
   }
 
   async remove(provider: Provider, externalIds: readonly string[]): Promise<void> {
     const devices = externalIds.flatMap((externalId) => this.deviceOf(provider, externalId) ?? []);
+    if (devices.length === 0) return;
+    log.info('inventory.removing', {
+      provider,
+      requested: externalIds.length,
+      found: devices.length,
+    });
     await this.store.removeDevices(devices.map((device) => device.id));
     for (const device of devices) {
       this.byId.delete(device.id);
@@ -144,6 +162,7 @@ export class Inventory {
     if (device === undefined || device.online === online) {
       return;
     }
+    log.info('inventory.online_changed', { provider, deviceId: device.id, externalId, online });
     const saved = await this.store.setDevicesOnline([device.id], online);
     if (this.deviceOf(provider, externalId)?.online === online) {
       return;
@@ -157,6 +176,7 @@ export class Inventory {
     if (devices.length === 0) {
       return;
     }
+    log.info('inventory.provider_offline', { provider, devices: devices.length });
     const before = new Map(devices.map((device) => [device.externalId, device]));
     const saved = await this.store.setDevicesOnline(
       devices.map((device) => device.id),

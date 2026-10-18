@@ -10,9 +10,10 @@ import {
   type AiUsageRow,
   type UsageWork,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { OwnerAlerts } from '../extensions/owner-alerts';
 import type { CreditsWatch } from './budget-credits';
+import { PersonBudgets, type PersonAlert, type PersonBudgetSource } from './person-budget';
 import {
   alertsOf,
   limitOf,
@@ -24,7 +25,7 @@ import {
 } from './budget-rules';
 import type { Ledger, Unsubscribe } from './ledger';
 
-export interface BudgetSettingsStore {
+interface BudgetSettingsStore {
   readonly read: (key: string) => Readonly<Record<string, unknown>> | null;
   readonly save: (key: string, settings: Readonly<Record<string, unknown>>) => void;
 }
@@ -33,6 +34,7 @@ export interface BudgetOptions {
   readonly ledger: Ledger;
   readonly settings: BudgetSettingsStore;
   readonly credits: CreditsWatch;
+  readonly people: PersonBudgetSource;
   readonly alerts: OwnerAlerts;
   readonly note: (chatId: string, text: string) => void;
   readonly now: () => Date;
@@ -54,17 +56,30 @@ export class Budget {
   private readonly sent = new Set<string>();
   private readonly listeners = new Set<BudgetListener>();
   private stopWatching: Unsubscribe | null = null;
+  private readonly people: PersonBudgets;
   readonly gate = {
-    check: (work: UsageWork, mode?: { readonly background: true }): void => {
-      const background = BACKGROUND_WORKS.has(work) || mode !== undefined;
+    check: (
+      work: UsageWork,
+      mode?: { readonly background?: true; readonly profileId?: string },
+    ): void => {
+      const background = BACKGROUND_WORKS.has(work) || mode?.background === true;
       const reasons = background ? stopReasons(this.spend(), this.settings()) : [];
       if (reasons.length > 0) {
         throw new BudgetStopError(reasons);
       }
+      if (mode?.profileId !== undefined) {
+        this.people.check(mode.profileId);
+      }
     },
   };
 
-  constructor(private readonly options: BudgetOptions) {}
+  constructor(private readonly options: BudgetOptions) {
+    this.people = new PersonBudgets({
+      ledger: options.ledger,
+      people: options.people,
+      now: options.now,
+    });
+  }
 
   start(): void {
     this.baseline();
@@ -153,18 +168,25 @@ export class Budget {
     for (const alert of alertsOf(this.spend(), this.settings())) {
       this.sent.add(alert.key);
     }
+    for (const { alert } of this.people.allAlerts()) {
+      this.sent.add(alert.key);
+    }
   }
 
   private observe(row: AiUsageRow): void {
     try {
       this.raise(alertsOf(this.spend(), this.settings()), row);
+      this.raisePerson(this.people.alerts(row.profile_id), row);
     } catch (cause) {
       this.options.log.error('budget.check_failed', cause, { usageId: row.id });
     }
     if (row.source === 'openrouter' && row.cost_state === 'reconciled') {
-      void this.options.credits.fresh().then(() => {
-        this.creditAlerts(row);
-      });
+      background(
+        this.options.credits.fresh().then(() => {
+          this.creditAlerts(row);
+        }),
+        'credits.refresh_failed',
+      );
     }
   }
 
@@ -182,7 +204,14 @@ export class Budget {
     }
   }
 
-  private deliver(alert: BudgetAlert, row: AiUsageRow | null): void {
+  private raisePerson(alerts: readonly PersonAlert[], row: AiUsageRow): void {
+    for (const { profileId, alert } of alerts.filter(({ alert: one }) => !this.sent.has(one.key))) {
+      this.sent.add(alert.key);
+      this.deliver(alert, row, profileId);
+    }
+  }
+
+  private deliver(alert: BudgetAlert, row: AiUsageRow | null, person?: string): void {
     const { alerts, note, log } = this.options;
     const chatId = row === null ? null : row.chat_id;
     log.info('budget.alert', { key: alert.key, chatId });
@@ -190,6 +219,7 @@ export class Budget {
       title: alert.title,
       body: alert.body,
       data: { kind: 'ai_budget', reason: alert.key, path: '/assistant/costs' },
+      ...(person === undefined ? {} : { person }),
     });
     if (chatId !== null) {
       try {

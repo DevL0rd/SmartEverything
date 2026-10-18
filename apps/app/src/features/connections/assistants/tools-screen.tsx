@@ -10,10 +10,11 @@ import { notify } from '../../../components/toast-store';
 import { useSettings } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { TOOL_GROUPS, groupState, withGroup, withTool, type ToolGroup } from '../model/tools';
-import { toolLine, toolTitle } from '../model/tool-text';
+import { toolLine } from '../model/tool-text';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { ToolSheet } from './tool-sheet';
 
+import { trackConnection } from '../connections-log';
 type Tool = McpToolSummary<McpToolName>;
 
 function useDisabledTools(): {
@@ -25,7 +26,9 @@ function useDisabledTools(): {
   const [pending, setPending] = useState<readonly string[] | null>(null);
   const change = (next: readonly string[]): void => {
     setPending(next);
-    updateMcpTools(store, next)
+    trackConnection('mcp_tools.update', { disabled: next.length }, () =>
+      updateMcpTools(store, next),
+    )
       .catch((error: unknown) => {
         notify({ message: 'Tools weren’t changed', error, tone: 'critical' });
       })
@@ -52,7 +55,7 @@ function ToolRow({
 }): ReactNode {
   return (
     <ListRow
-      title={toolTitle(tool)}
+      title={tool.title}
       subtitle={toolLine(tool)}
       value={disabled.includes(tool.name) ? 'Off' : 'On'}
       chevron

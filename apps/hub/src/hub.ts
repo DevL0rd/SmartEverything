@@ -1,5 +1,7 @@
 import type {
   AutomationRunRow,
+  AutomationV2,
+  CameraQuality,
   JsonValue,
   CommandRow,
   MediaSize,
@@ -7,11 +9,14 @@ import type {
 } from '@smarteverything/domain';
 import { ApiError, jsonEquals } from '@smarteverything/domain';
 import { XiaomiAdapter } from './adapters/xiaomi';
+import { xiaomiLocalHooks } from './adapters/xiaomi/local-hooks';
 import { onlyRunBookkeeping } from './automations/changes';
 import { areaOf, assemble, reportFailure, type Core, type HubParts } from './hub-assembly';
-import { LocalDevices, type LocalDevicesOptions } from './local/local-devices';
+import { LocalDevices } from './local/local-devices';
 import { startDrivers, type RunningDrivers } from './local/driver-runtime';
 import type { AutomationAiSlot } from './automations/automation-ai';
+import type { AutomationComputersSlot } from './automations/automation-computers';
+import type { OwnedRunAdmission } from './automations/owned-runs';
 import type { SignalBus } from './signals/bus';
 import { feedSignals } from './signals/sources/feed';
 import { feedContextOf } from './signals/sources/feed-context';
@@ -20,27 +25,42 @@ import { ScaleReadings } from './local/scale-readings';
 import type { BluetoothIdentity } from './local/setup-types';
 import { LocalWatches } from './local/watches';
 import { phoneNodesOf, type PhoneNodes } from './phones/phone-nodes';
-import type { DeviceRecord } from './database/port';
+import type { DeviceRecord, EventInsert } from './database/port';
+import type { ProviderManager } from './providers/manager';
 import type { NewCommand } from './store/repositories/commands';
+import { background } from '@smarteverything/logging';
 
 export type { HubParts };
 
+interface RunRequest {
+  readonly inputs: Readonly<Record<string, JsonValue>>;
+  readonly wait: boolean;
+}
+
+interface TestRequest extends RunRequest {
+  readonly automationId: string | undefined;
+  readonly definition: AutomationV2;
+}
+
 export interface RunningHub {
   readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
+  readonly recordEvent: (event: Omit<EventInsert, 'occurredAt'>) => Promise<string>;
   readonly endDeviceEffect: (id: string) => Promise<void>;
-  readonly answerOffer: (deviceId: string, sdp: string, clientId: string) => Promise<string>;
+  readonly answerOffer: (
+    deviceId: string,
+    sdp: string,
+    clientId: string,
+    quality: CameraQuality,
+  ) => Promise<string>;
   readonly answerTalk: (deviceId: string, sdp: string, clientId: string) => Promise<string>;
   readonly snapshot: (deviceId: string, size: MediaSize) => Promise<Uint8Array>;
   readonly streamReady: (deviceId: string) => Promise<void>;
-  readonly runAutomation: (automationId: string) => Promise<void>;
-  readonly startSequence: (
-    sequenceId: string,
-    parameters: Readonly<Record<string, JsonValue>>,
-  ) => AutomationRunRow;
-  readonly startAutomation: (automationId: string) => Promise<AutomationRunRow>;
+  readonly runAutomation: (automationId: string, request: RunRequest) => Promise<AutomationRunRow>;
+  readonly testAutomation: (request: TestRequest) => Promise<AutomationRunRow>;
   readonly stopAutomationRun: (runId: string) => AutomationRunRow;
-  readonly stopAutomationRuns: (automationId: string, controlKey?: string) => void;
+  readonly stopAutomationRuns: (automationId: string, key?: string) => void;
   readonly settled: () => Promise<void>;
+  readonly providers: Pick<ProviderManager, 'link' | 'answer' | 'cancelLink'>;
   readonly local: LocalDevices;
   readonly watches: LocalWatches;
   readonly readings: ScaleReadings;
@@ -48,6 +68,7 @@ export interface RunningHub {
   readonly phones: PhoneNodes;
   readonly signals: SignalBus;
   readonly automationAi: AutomationAiSlot;
+  readonly automationComputers: AutomationComputersSlot;
   readonly stop: () => Promise<void>;
 }
 
@@ -75,10 +96,11 @@ function needsReload(change: RowChange): boolean {
   if (change.table === 'settings') {
     return placeChanged(change);
   }
-  if (change.table === 'plugins') {
-    return pluginSignalsChanged(change);
-  }
-  return change.table === 'scenes';
+  return change.table === 'plugins' && pluginSignalsChanged(change);
+}
+
+function invalidatesRuns(change: RowChange): boolean {
+  return change.table === 'automations' && !onlyRunBookkeeping(change);
 }
 
 function reacting(parts: HubParts, core: Core): (change: RowChange) => void {
@@ -87,6 +109,7 @@ function reacting(parts: HubParts, core: Core): (change: RowChange) => void {
     if (change.table === 'cameras' && change.record !== null) {
       core.cameras.cameraChanged(change.record);
     }
+    core.irAssumed.observe(change);
     const now = parts.clock.now();
     const moment = feedContextOf(
       now,
@@ -97,7 +120,14 @@ function reacting(parts: HubParts, core: Core): (change: RowChange) => void {
       core.signals.emit(signal);
     }
     if (needsReload(change)) {
-      core.engine.reload().catch(reportFailure(log, 'automations.reload_failed'));
+      try {
+        core.engine.reload();
+      } catch (cause) {
+        reportFailure(log, 'automations.reload_failed')(cause);
+      }
+    }
+    if (invalidatesRuns(change)) {
+      core.runs.revalidate();
     }
   };
 }
@@ -117,48 +147,10 @@ function xiaomiOf(core: Core, purpose: string): XiaomiAdapter {
   return adapter;
 }
 
-function passiveHooks(
-  parts: HubParts,
-  core: Core,
-): Pick<LocalDevicesOptions, 'eligible' | 'sourceChanged'> {
-  return {
-    eligible: (entry): boolean => {
-      const adapter = core.providers.adapterFor('xiaomi');
-      const model = entry.config['model'];
-      const scope = entry.config['accountScope'];
-      const deviceId = entry.config['deviceId'];
-      const device = typeof deviceId === 'string' ? parts.store.devices.find(deviceId) : undefined;
-      return (
-        device?.provider === 'xiaomi' &&
-        device.external_id === entry.externalId &&
-        device.model === model &&
-        adapter instanceof XiaomiAdapter &&
-        typeof model === 'string' &&
-        typeof scope === 'string' &&
-        adapter.passiveEligible(entry.externalId, model, entry.address, scope)
-      );
-    },
-    sourceChanged: (externalId, source): void => {
-      const adapter = core.providers.adapterFor('xiaomi');
-      if (adapter instanceof XiaomiAdapter) {
-        const entry = parts.store.localDevices
-          .list()
-          .find((candidate) => candidate.externalId === externalId);
-        if (source !== null && entry?.config['accountScope'] !== adapter.passiveAccountScope()) {
-          return;
-        }
-        const address = entry?.address ?? null;
-        adapter.observePassive(externalId, source, address);
-      }
-    },
-  };
-}
-
 function startLocal(parts: HubParts, core: Core): LocalParts {
   const readings = new ScaleReadings({
     store: parts.store,
     log: areaOf(parts, 'scale'),
-    now: parts.clock.now,
   });
   const wearables = (): ReturnType<XiaomiAdapter['wearables']> =>
     xiaomiOf(core, 'your watch’s key').wearables();
@@ -169,7 +161,7 @@ function startLocal(parts: HubParts, core: Core): LocalParts {
     identities: (did, model): Promise<BluetoothIdentity> =>
       xiaomiOf(core, 'the device’s Bluetooth key').bluetoothIdentity(did, model),
     state: core.state,
-    ...passiveHooks(parts, core),
+    ...xiaomiLocalHooks(parts.store, () => core.providers.adapterFor('xiaomi')),
     wearables,
     apply: (devices): Promise<readonly DeviceRecord[]> => core.inventory.apply('local', devices),
     forget: (externalIds): Promise<void> => core.inventory.remove('local', externalIds),
@@ -196,30 +188,55 @@ async function flushWrites(core: Core, closing: boolean): Promise<void> {
 }
 
 function automationControls(
+  parts: HubParts,
   core: Core,
 ): Pick<
   RunningHub,
-  'runAutomation' | 'startAutomation' | 'stopAutomationRun' | 'stopAutomationRuns' | 'startSequence'
+  'runAutomation' | 'testAutomation' | 'stopAutomationRun' | 'stopAutomationRuns'
 > {
+  const finished = async (
+    admission: OwnedRunAdmission,
+    wait: boolean,
+  ): Promise<AutomationRunRow> => {
+    if (wait) await admission.finished;
+    return parts.store.automationRuns.byId(admission.row.id);
+  };
   return {
-    runAutomation: (automationId) => core.engine.runNow(automationId),
-    startSequence: (id, parameters) => core.sequences.start(id, parameters),
-    startAutomation: (automationId) => core.engine.startNow(automationId),
+    runAutomation: (automationId, request) =>
+      finished(
+        core.runner.startSaved(parts.store.automations.byId(automationId), request.inputs),
+        request.wait,
+      ),
+    testAutomation: (request) =>
+      finished(
+        core.runner.startDraft({
+          automationId: request.automationId,
+          definition: request.definition,
+          inputs: request.inputs,
+        }),
+        request.wait,
+      ),
     stopAutomationRun: (runId) => core.runs.stop(runId),
-    stopAutomationRuns: (automationId, controlKey): void => {
-      core.runs.cancelTarget(automationId, controlKey);
+    stopAutomationRuns: (automationId, key): void => {
+      core.runs.cancelAutomation(automationId, key);
     },
   };
 }
 
-function subscribeHubChanges(parts: HubParts, core: Core): () => void {
-  const stopChanges = parts.store.feed.subscribe(reacting(parts, core));
-  const stopValidation = parts.store.feed.subscribeCommitted(() => {
-    core.runs.revalidate();
-  });
-  return (): void => {
-    stopChanges();
-    stopValidation();
+function sharedParts(
+  parts: HubParts,
+  core: Core,
+): Pick<
+  RunningHub,
+  'providers' | 'signals' | 'automationAi' | 'automationComputers' | 'recordEvent'
+> {
+  return {
+    providers: core.providers,
+    signals: core.signals,
+    automationAi: core.automationAi,
+    automationComputers: core.automationComputers,
+    recordEvent: (event) =>
+      core.events.append({ ...event, occurredAt: parts.clock.now().toISOString() }),
   };
 }
 
@@ -229,8 +246,8 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   await Promise.all([core.state.load(), core.cameras.load()]);
   await core.cameras.sync(core.inventory.all());
   parts.devicesChanged(core.inventory.all());
-  await core.engine.reload();
-  const unsubscribe = subscribeHubChanges(parts, core);
+  core.engine.reload();
+  const unsubscribe = parts.store.feed.subscribe(reacting(parts, core));
   await core.providers.startLinked();
   const { local, watches, readings, phones } = startLocal(parts, core);
   await local.start();
@@ -244,23 +261,23 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     submit: (commands): CommandRow[] => {
       const rows = parts.store.commands.insert(commands);
       for (const row of rows) {
-        void core.executor.run(row);
+        background(core.executor.run(row), 'executor.run_failed');
       }
       return rows;
     },
-    answerOffer: (deviceId, sdp, clientId) => core.cameras.answer(deviceId, sdp, clientId),
+    answerOffer: (deviceId, sdp, clientId, quality) =>
+      core.cameras.answer(deviceId, sdp, clientId, quality),
     answerTalk: (deviceId, sdp, clientId) => core.cameras.talk(deviceId, sdp, clientId),
     snapshot: (deviceId, size) => core.cameras.snapshot(deviceId, size),
     streamReady: (deviceId) => core.cameras.streamReady(deviceId),
-    ...automationControls(core),
+    ...automationControls(parts, core),
     settled: (): Promise<void> => flushWrites(core, false),
     local,
     watches,
     readings,
     drivers,
     phones,
-    signals: core.signals,
-    automationAi: core.automationAi,
+    ...sharedParts(parts, core),
     stop: async (): Promise<void> => {
       unsubscribe();
       core.engine.stop();

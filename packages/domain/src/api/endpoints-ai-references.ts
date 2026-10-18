@@ -9,7 +9,7 @@ export const AI_REFERENCE_ENDPOINTS = {
     path: '/api/ai/chats/:chatId/references/search',
     access: 'member',
     summary:
-      'Search bounded reference metadata available to this owned chat without loading bodies',
+      'Search bounded reference metadata available to this owned chat without loading bodies; Claude chats search the files of their working directory',
     params: z.strictObject({ chatId: z.uuid() }),
     query: NOTHING,
     body: AI_REFERENCE_SEARCH,

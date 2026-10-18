@@ -7,9 +7,6 @@ const STORED_WAKE = storedRow(AI_WAKE_ROW, {});
 const COLUMNS =
   'id, profile_id, chat_id, automation_id, automation_name, headline, instruction, state, reason, created_at';
 
-const KEPT_DAYS = 90;
-const DAY_MS = 86_400_000;
-
 export type NewAiWake = Omit<AiWakeRow, 'id' | 'created_at'>;
 
 export class AiWakesRepository {
@@ -19,11 +16,6 @@ export class AiWakesRepository {
     return this.context.write(() => {
       const id = this.context.newId();
       const now = this.context.now();
-      this.context.sql.run(
-        'forget old AI wakes',
-        'delete from ai_wakes where created_at < $before',
-        { before: new Date(Date.parse(now) - KEPT_DAYS * DAY_MS).toISOString() },
-      );
       this.context.sql.run(
         'record the AI wake',
         `insert into ai_wakes (${COLUMNS})

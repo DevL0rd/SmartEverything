@@ -1,40 +1,46 @@
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
 import { View } from 'react-native';
-import {
-  curatedControls,
-  type CapabilityRole,
-  type PresentedCapability,
-} from '@smarteverything/domain';
-import { useDeviceValues } from '../../../store/selectors';
-import type { Device } from '../../../store/state';
+import type { CapabilityRole, PresentedCapability } from '@smarteverything/domain';
+import { useDeviceDerived } from '../../../store/selectors';
+import { shallowEqual } from '../../../store/store-context';
+import type { Device, DeviceValues } from '../../../store/state';
 import { useDisplayName } from '../model/display-name';
-import { powerStateOf, useDeviceModel } from '../model/device-model';
+import { powerStateOf, useDeviceModel, type DeviceModel } from '../model/device-model';
 import { modeContextOf, shownInMode } from '../model/mode-rules';
 import { ControlBlock } from './control-block';
 import { offlineReason, poweredOffReason } from './guard';
 import { FAMILY_CONTROLS } from './family-controls';
 import { HoldButtons } from './hold-buttons';
 
-export function usePrimaryControls(
-  device: Device,
+export function primaryControlsOf(
+  model: DeviceModel,
+  values: DeviceValues,
   exclude: ReadonlySet<CapabilityRole>,
 ): readonly PresentedCapability[] {
-  const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
-  const curated = useMemo(() => curatedControls(device), [device]);
   const context = modeContextOf(model, values);
-  return curated.filter(
+  return model.curated.filter(
     (presented) =>
       (presented.role === null || !exclude.has(presented.role)) && shownInMode(presented, context),
   );
 }
 
+export function usePrimaryControls(
+  device: Device,
+  exclude: ReadonlySet<CapabilityRole>,
+): readonly PresentedCapability[] {
+  const model = useDeviceModel(device);
+  return useDeviceDerived(
+    device.id,
+    (values) => primaryControlsOf(model, values, exclude),
+    [model, exclude],
+    shallowEqual,
+  );
+}
+
 function useReason(device: Device): string | null {
   const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
   const name = useDisplayName(device.id);
-  const power = powerStateOf(model, values);
+  const power = useDeviceDerived(device.id, (values) => powerStateOf(model, values), [model]);
   if (!device.online) {
     return offlineReason(name);
   }

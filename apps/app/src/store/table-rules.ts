@@ -7,6 +7,7 @@ import {
   talkMemberKey,
 } from '@smarteverything/domain';
 import type { ListTable, RowOf } from './state';
+import { compareText } from '../format/text';
 
 export interface TableRule<R> {
   readonly idOf: (row: R) => string;
@@ -17,18 +18,18 @@ export interface TableRule<R> {
 const ALL = Number.MAX_SAFE_INTEGER;
 
 function newest<R>(at: (row: R) => string): (left: R, right: R) => number {
-  return (left, right) => at(right).localeCompare(at(left));
+  return (left, right) => compareText(at(right), at(left));
 }
 
 function alphabetical<R>(at: (row: R) => string): (left: R, right: R) => number {
-  return (left, right) => at(left).localeCompare(at(right));
+  return (left, right) => compareText(at(left), at(right));
 }
 
 function positioned<R extends { readonly position: number; readonly name: string }>(
   left: R,
   right: R,
 ): number {
-  return left.position - right.position || left.name.localeCompare(right.name);
+  return left.position - right.position || compareText(left.name, right.name);
 }
 
 export function orderedRooms<R extends { readonly position: number; readonly name: string }>(
@@ -38,7 +39,7 @@ export function orderedRooms<R extends { readonly position: number; readonly nam
 }
 
 function devicesOrder(left: RowOf<'devices'>, right: RowOf<'devices'>): number {
-  return left.position - right.position || left.label.localeCompare(right.label);
+  return left.position - right.position || compareText(left.label, right.label);
 }
 
 function soonestScheduled(
@@ -50,7 +51,7 @@ function soonestScheduled(
   if ((left.next_at === null) !== (right.next_at === null)) {
     return left.next_at === null ? 1 : -1;
   }
-  return left.next_at === null ? rightAt.localeCompare(leftAt) : leftAt.localeCompare(rightAt);
+  return left.next_at === null ? compareText(rightAt, leftAt) : compareText(leftAt, rightAt);
 }
 
 type Rules = { readonly [T in ListTable]: TableRule<RowOf<T>> };
@@ -65,10 +66,15 @@ export const RULES: Rules = {
   rooms: { idOf: (row) => row.id, order: positioned, keep: ALL },
   device_groups: {
     idOf: (row) => row.id,
-    order: (a, b) => a.name.localeCompare(b.name),
+    order: (a, b) => compareText(a.name, b.name),
     keep: ALL,
   },
   devices: { idOf: (row) => row.id, order: devicesOrder, keep: ALL },
+  television_settings: {
+    idOf: (row) => row.device_id,
+    order: alphabetical((row) => row.device_id),
+    keep: ALL,
+  },
   commands: {
     idOf: (row) => row.id,
     order: newest((row) => row.created_at),
@@ -93,11 +99,6 @@ export const RULES: Rules = {
   ir_codes: { idOf: (row) => row.id, order: alphabetical((row) => row.button), keep: ALL },
   scenes: { idOf: (row) => row.id, order: positioned, keep: ALL },
   automations: { idOf: (row) => row.id, order: alphabetical((row) => row.name), keep: ALL },
-  automation_sequences: {
-    idOf: (row) => row.id,
-    order: alphabetical((row) => row.name),
-    keep: ALL,
-  },
   automation_values: {
     idOf: (row) => row.id,
     order: alphabetical((row) => row.content.name),
@@ -114,7 +115,11 @@ export const RULES: Rules = {
     order: alphabetical((row) => row.created_at),
     keep: ALL,
   },
-  health_sources: { idOf: (row) => row.id, order: alphabetical((row) => row.name), keep: ALL },
+  health_sources: {
+    idOf: (row) => row.client_id,
+    order: alphabetical((row) => row.name),
+    keep: ALL,
+  },
   health_daily: {
     idOf: (row) => `${row.day}/${row.metric}`,
     order: newest((row) => `${row.day}/${row.metric}`),
@@ -139,7 +144,8 @@ export const RULES: Rules = {
     idOf: (row) => row.id,
     order: (left, right) =>
       Number(right.pinned) - Number(left.pinned) ||
-      (right.last_message_at ?? right.created_at).localeCompare(
+      compareText(
+        right.last_message_at ?? right.created_at,
         left.last_message_at ?? left.created_at,
       ),
     keep: ALL,

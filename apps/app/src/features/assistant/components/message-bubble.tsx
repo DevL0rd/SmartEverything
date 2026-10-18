@@ -7,6 +7,7 @@ import { exiting, useMotion } from '../../../design/motion';
 import type { MessageItem } from '../data/thread';
 import { AiMessage } from './ai-message';
 import { CallCard } from './call-card';
+import { BoundedSet } from '../../../design/bounded-map';
 import { MyMessage } from './my-message';
 import { PersonMessage } from './person-message';
 import { SystemEvent, systemEventOf } from './system-event';
@@ -16,7 +17,7 @@ import { DayChip, TimeGap, UnreadDivider } from './thread-markers';
 
 const OPENED_AT = Date.now();
 
-const animated = new Set<string>();
+const animated = new BoundedSet<string>(2000);
 
 function isFresh(row: AssistantMessageRow): boolean {
   if (Date.parse(row.created_at) <= OPENED_AT || animated.has(row.id)) {

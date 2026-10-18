@@ -1,9 +1,12 @@
 import {
   DEFAULT_COMPUTER_SCOPES,
   DEVICE_COMMAND,
+  HUB_GUARD_MESSAGE,
+  type ComputerRole,
   type DeviceCommand,
   type ComputerScopes,
   type DeviceEvent,
+  type MachineActionSupport,
   type NodeRequest,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -24,6 +27,11 @@ interface Recorded {
 function context(
   scopes: ComputerScopes,
   origin: CommandOrigin,
+  machine: {
+    readonly role?: ComputerRole;
+    readonly visible?: boolean;
+    readonly actions?: readonly MachineActionSupport[];
+  } = {},
 ): { readonly recorded: Recorded; readonly context: ComputerCommandContext } {
   const recorded: Recorded = { events: [], requests: [], woken: [] };
   return {
@@ -31,6 +39,8 @@ function context(
     context: {
       directory: {
         byExternalId: () => ({
+          role: machine.role ?? 'pc',
+          machineActions: () => machine.actions ?? [],
           call: (request): Promise<null> => {
             recorded.requests.push(request);
             return Promise.resolve(null);
@@ -40,7 +50,9 @@ function context(
       deviceIdOf: () => 'device-1',
       scopesOf: () => scopes,
       originOf: () => origin,
+      visibleTo: () => machine.visible ?? true,
       macsOf: () => ['aa:bb:cc:dd:ee:01', 'aa:bb:cc:dd:ee:02'],
+      approve: (): Promise<void> => Promise.resolve(),
       wake: (mac): Promise<void> => {
         recorded.woken.push(mac);
         return Promise.resolve();
@@ -66,8 +78,8 @@ function command(capability: string): DeviceCommand {
   });
 }
 
-const FROM_APP: CommandOrigin = { source: 'app', client: 'Phone' };
-const FROM_AI: CommandOrigin = { source: 'assistant', client: 'Claude' };
+const FROM_APP: CommandOrigin = { source: 'app', client: 'Phone', clientId: 'phone-1' };
+const FROM_AI: CommandOrigin = { source: 'assistant', client: 'Claude', clientId: null };
 
 describe('computer commands (fake node, nothing is ever powered off)', () => {
   it('records who asked and passes the power action to the node', async () => {
@@ -107,6 +119,28 @@ describe('computer commands (fake node, nothing is ever powered off)', () => {
     const { recorded, context: ctx } = context(DEFAULT_COMPUTER_SCOPES, FROM_APP);
     await runComputerCommand(command('wake'), ctx);
     expect(recorded.woken).toEqual(['aa:bb:cc:dd:ee:01', 'aa:bb:cc:dd:ee:02']);
+    expect(recorded.requests).toEqual([]);
+  });
+
+  it('keeps automations and the AI from powering off the hub machine, but not the app', async () => {
+    const scopes = { ...DEFAULT_COMPUTER_SCOPES, ai_power: true };
+    const ai = context(scopes, FROM_AI, { role: 'hub' });
+    await expect(runComputerCommand(command('shut_down'), ai.context)).rejects.toThrow(
+      HUB_GUARD_MESSAGE,
+    );
+    expect(ai.recorded.requests).toEqual([]);
+    const app = context(scopes, FROM_APP, { role: 'hub' });
+    await runComputerCommand(command('restart'), app.context);
+    expect(app.recorded.requests).toEqual([{ verb: 'power', action: 'restart' }]);
+  });
+
+  it('refuses a member who asks for a computer that is not theirs', async () => {
+    const { recorded, context: ctx } = context(DEFAULT_COMPUTER_SCOPES, FROM_APP, {
+      visible: false,
+    });
+    await expect(runComputerCommand(command('volume'), ctx)).rejects.toThrow(
+      'That device is not a computer.',
+    );
     expect(recorded.requests).toEqual([]);
   });
 

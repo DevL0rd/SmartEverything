@@ -1,5 +1,5 @@
 import type { AppPlugin } from '../contract';
-import { WizSettings } from './settings';
+import { WIZ_DISCOVER, WIZ_LIGHTS, WizSettings } from './settings';
 
 export const wizAppPlugin: AppPlugin = {
   id: 'wiz',
@@ -8,15 +8,13 @@ export const wizAppPlugin: AppPlugin = {
   deviceSettings: [],
   settingsSearch: [
     {
-      id: 'discover',
+      id: WIZ_DISCOVER,
       title: 'Discover devices',
-      focus: 'Discover devices',
       keywords: ['WiZ', 'discover', 'find', 'scan', 'bulbs', 'lights'],
     },
     {
-      id: 'lights',
+      id: WIZ_LIGHTS,
       title: 'WiZ lights',
-      focus: 'WiZ lights',
       keywords: ['WiZ', 'connected', 'online', 'offline', 'bulbs', 'lights', 'control'],
     },
   ],

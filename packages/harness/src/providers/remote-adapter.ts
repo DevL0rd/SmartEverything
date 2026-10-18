@@ -1,4 +1,5 @@
-import { LlmAdapter, LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm';
+import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm';
+import { TRANSIENT_RETRY_POLICY } from './transient-retry';
 import type {
   GenerateOptions,
   LlmModelInfo,
@@ -45,7 +46,7 @@ export class RemoteSubscriptionAdapter extends LlmAdapter {
   }
   override providerRetryPolicy(provider: string): ResolvedRetryPolicy {
     this.assertRoute(provider);
-    return resolveRetryPolicy(undefined, provider);
+    return TRANSIENT_RETRY_POLICY;
   }
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     this.assertRoute(provider);

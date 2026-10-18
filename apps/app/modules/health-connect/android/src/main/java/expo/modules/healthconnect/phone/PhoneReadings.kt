@@ -24,10 +24,13 @@ object PhoneReadings {
   private const val TAG = "SmartEverythingPhone"
   private const val MINUTE_MS = 60_000L
 
-  fun read(context: Context, withScreenTime: Boolean): Map<String, Any?> {
-    val readings = power(context) + network(context) + sound(context) + media()
-    return if (withScreenTime) readings + screenTime(context) else readings
+  fun read(context: Context, request: PhoneReadRequest): Map<String, Any?> {
+    val readings = power(context, request.live) + network(context) + sound(context) + media()
+    return if (request.slow) readings + screenTime(context) else readings
   }
+
+  fun batteryLevel(context: Context, live: Boolean): Int? =
+    steppedBattery(context.getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY), live)
 
   fun media(nowPlaying: NowPlaying?): Map<String, Any?> = mapOf(
     "playback" to when (nowPlaying?.playing) {
@@ -40,9 +43,9 @@ object PhoneReadings {
 
   private fun media(): Map<String, Any?> = media(WatchNotificationListener.active?.nowPlaying())
 
-  private fun power(context: Context): Map<String, Any?> {
+  private fun power(context: Context, live: Boolean): Map<String, Any?> {
     val battery = context.getSystemService(BatteryManager::class.java)
-    val level = steppedBattery(battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
+    val level = batteryLevel(context, live)
     return buildMap {
       if (level != null) put("battery", level)
       put("charging", battery.isCharging)
@@ -50,25 +53,25 @@ object PhoneReadings {
     }
   }
 
-  private fun steppedBattery(percent: Int): Int? {
+  fun steppedBattery(percent: Int, live: Boolean): Int? {
     if (percent < 0 || percent > PERCENT) {
       Log.w(TAG, "The battery level could not be read (got $percent); expected 0 to $PERCENT")
       return null
     }
-    return if (percent <= BATTERY_EXACT_BELOW) percent else percent / BATTERY_STEP * BATTERY_STEP
+    return if (live || percent <= BATTERY_EXACT_BELOW) percent else percent / BATTERY_STEP * BATTERY_STEP
   }
 
   private fun network(context: Context): Map<String, Any?> {
     val connectivity = context.getSystemService(ConnectivityManager::class.java)
-    val capabilities = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
-    val kind = when {
-      capabilities == null -> "offline"
-      capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
-      capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
-      capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
-      else -> "other"
-    }
-    return mapOf("network" to kind)
+    return mapOf("network" to networkKind(connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }))
+  }
+
+  fun networkKind(capabilities: NetworkCapabilities?): String = when {
+    capabilities == null -> "offline"
+    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+    else -> "other"
   }
 
   private fun sound(context: Context): Map<String, Any?> {

@@ -1,13 +1,11 @@
-import { ApiError, type AiReference, type AiReferenceSummary } from '@smarteverything/domain';
+import { ApiError, type AiReference } from '@smarteverything/domain';
+import { reachesChat } from '../assistant/chat-directory';
+import { confinedChatOf } from '../server/auth';
 import type { Store } from '../store/store';
-import type {
-  ReferenceContext,
-  ReferenceSource,
-  ReferenceSearchProgress,
-  ReferencePage,
-} from './contracts';
+import type { ReferenceContext, ReferenceMatches } from './contracts';
+import { rankMatches } from './rank';
 
-const CHAT_WINDOW = 128;
+const CHAT_MAX = 5000;
 const CHAT_LABELS = {
   chat: 'Chat',
   plugin: 'Plugin chat',
@@ -15,50 +13,43 @@ const CHAT_LABELS = {
   call: 'Call chat',
 } as const;
 
-export function chatReferenceSource(store: Store): ReferenceSource {
+export function searchChats(
+  store: Store,
+  context: ReferenceContext,
+  options: { readonly query: string; readonly limit: number },
+): ReferenceMatches {
+  const confinedTo = confinedChatOf(context.caller);
+  const rows = store.aiChats.referenceTitles({
+    profileId: context.authority.profileId,
+    after: null,
+    limit: CHAT_MAX,
+  });
+  const ranked = rankMatches(rows, options.query, (row) => ({
+    title: row.title,
+    extra: CHAT_LABELS[row.kind],
+  })).filter(
+    (row) => confinedTo === undefined || reachesChat(store, confinedTo, store.aiChats.chat(row.id)),
+  );
   return {
-    kind: 'chat',
-    status: () => ({ kind: 'chat', state: 'available' }),
-    open: (_context, request): Promise<ReferenceSearchProgress> => {
-      let after: string | null = null;
-      return Promise.resolve({
-        close: (): Promise<void> => Promise.resolve(),
-        next: (context, limit): Promise<ReferencePage> => {
-          context.validate();
-          const rows = store.aiChats.referenceTitles({
-            profileId: context.authority.profileId,
-            after,
-            limit: CHAT_WINDOW,
-          });
-          const items: AiReferenceSummary[] = [];
-          let examined = 0;
-          for (const row of rows) {
-            examined += 1;
-            after = row.id;
-            if (row.title.toLocaleLowerCase().includes(request.query.toLocaleLowerCase()))
-              items.push({
-                reference: { kind: 'chat', chat_id: row.id },
-                label: row.title,
-                subtitle: `${row.archived ? 'Archived · ' : ''}${CHAT_LABELS[row.kind]} · ${row.id}`,
-              });
-            if (items.length >= limit) break;
-          }
-          const complete = examined === rows.length && rows.length < CHAT_WINDOW;
-          return Promise.resolve({ items, complete, incomplete: !complete });
-        },
-      });
-    },
-    resolve: (context, reference): Promise<AiReference> =>
-      Promise.resolve(resolveChat(store, context, reference)),
+    items: ranked.slice(0, options.limit).map((row) => ({
+      reference: { kind: 'chat', chat_id: row.id },
+      label: row.title,
+      subtitle: `${row.archived ? 'Archived · ' : ''}${CHAT_LABELS[row.kind]} · ${row.id}`,
+    })),
+    incomplete: ranked.length > options.limit || rows.length >= CHAT_MAX,
   };
 }
 
-function resolveChat(store: Store, context: ReferenceContext, reference: AiReference): AiReference {
-  context.validate();
-  if (reference.kind !== 'chat')
-    throw new ApiError('invalid_request', 'Expected a chat reference.');
+export function resolveChat(
+  store: Store,
+  context: ReferenceContext,
+  reference: Extract<AiReference, { kind: 'chat' }>,
+): void {
   const chat = store.aiChats.chat(reference.chat_id);
-  if (chat.profile_id !== context.authority.profileId)
+  if (
+    chat.profile_id !== context.authority.profileId ||
+    !reachesChat(store, confinedChatOf(context.caller), chat)
+  )
     throw new ApiError('forbidden', 'The referenced chat belongs to a different profile.');
   store.aiChats.assertWorkAllowed(chat.id);
   if (
@@ -73,5 +64,4 @@ function resolveChat(store: Store, context: ReferenceContext, reference: AiRefer
       'forbidden',
       'The referenced message is no longer available in this owned chat.',
     );
-  return reference;
 }

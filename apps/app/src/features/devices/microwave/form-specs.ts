@@ -9,10 +9,11 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+export const UPDATE_AVAILABLE_KEY = 'raw:samsungce.software_update.new_version_available';
 export interface MicrowaveField {
   readonly key: string;
   readonly label: string;
-  readonly kind: 'text' | 'number' | 'json' | 'enum';
+  readonly kind: 'text' | 'number' | 'json' | 'enum' | 'date' | 'time';
   readonly optional?: true;
   readonly options?: readonly string[];
   readonly helper?: string;
@@ -51,6 +52,8 @@ function parsedField(field: MicrowaveField, text: string): JsonValue {
       return JSON_VALUE.parse(JSON.parse(text));
     case 'text':
     case 'enum':
+    case 'date':
+    case 'time':
       return text;
   }
 }
@@ -174,13 +177,8 @@ export const MICROWAVE_FORM_SPECS: Readonly<Record<string, MicrowaveFormSpec>> =
   },
   [MICROWAVE_KEYS.schedule]: {
     fields: [
-      {
-        key: 'date',
-        label: 'Update date',
-        kind: 'text',
-        helper: 'YYYY-MM-DD · your local time zone',
-      },
-      { key: 'time', label: 'Update time', kind: 'text', helper: 'HH:mm · 24-hour time' },
+      { key: 'date', label: 'Update date', kind: 'date' },
+      { key: 'time', label: 'Update time', kind: 'time', helper: 'Your local time zone' },
     ],
     help: 'Choose when the microwave should install its update.',
     cooking: false,

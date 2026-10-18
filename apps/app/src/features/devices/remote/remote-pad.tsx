@@ -5,9 +5,9 @@ import { IconButton } from '../../../components/icon-button';
 import type { IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useControl } from '../../../store/control';
 import type { Device } from '../../../store/state';
-import { buttonLabel, remoteKeysOf, remoteLayout, type PadDirection } from '../model/remote-layout';
+import { buttonLabel } from '@smarteverything/domain';
+import { remoteKeysOf, remoteLayout, type PadDirection } from '../model/remote-layout';
 
 const PAD_ICON: Readonly<Record<Exclude<PadDirection, 'ok'>, IconName>> = {
   up: 'chevronUp',
@@ -55,12 +55,14 @@ function PadKey({
   );
 }
 
-export function RemotePad({ device }: { readonly device: Device }): ReactNode {
-  const control = useControl(device.id, 'remote_key');
+export function RemotePad({
+  device,
+  press,
+}: {
+  readonly device: Device;
+  readonly press: (option: string) => void;
+}): ReactNode {
   const layout = remoteLayout(remoteKeysOf(device.capabilities));
-  const press = (option: string): void => {
-    void control.set(option);
-  };
   const hasPad = Object.keys(layout.pad).length > 0;
   if (!hasPad && layout.rest.length === 0) {
     return null;

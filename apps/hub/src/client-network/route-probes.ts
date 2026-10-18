@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   HUB_IDENTITY_PATH,
   HUB_PUBLIC_IDENTITY,
+  HUB_ROUTE_DOCUMENT_BYTES,
+  HUB_ROUTE_PROBE_TIMEOUT_MS,
   type HubEndpoint,
   type NativeHubTrust,
 } from '@smarteverything/domain';
@@ -9,9 +11,8 @@ import type { Logger } from '@smarteverything/logging';
 import { streamHubFetch } from './stream-fetch';
 import { HubTransportError, type HubPolicies } from './policy';
 
-export const ROUTE_PROBE_TIMEOUT_MS = 4000;
-export const MAX_ROUTE_PROBES = 4;
-export const ROUTE_DOCUMENT_BYTES = 16_384;
+export const ROUTE_PROBE_TIMEOUT_MS = HUB_ROUTE_PROBE_TIMEOUT_MS;
+export const ROUTE_DOCUMENT_BYTES = HUB_ROUTE_DOCUMENT_BYTES;
 
 export async function probeNodeRoute(
   options: { readonly policies: HubPolicies; readonly trust: NativeHubTrust; readonly log: Logger },
@@ -27,10 +28,7 @@ export async function probeNodeRoute(
     );
     if (signal.aborted || response.status !== 200) return false;
     const answer = HUB_PUBLIC_IDENTITY.parse(JSON.parse(response.body));
-    return (
-      answer.identity.id === trust.identity.id &&
-      JSON.stringify(answer.identity.tls) === JSON.stringify(trust.identity.tls)
-    );
+    return answer.identity.tls.publicKeySha256 === trust.identity.tls.publicKeySha256;
   } catch (cause) {
     log.debug('route.probe_failed', {
       kind: endpoint.kind,

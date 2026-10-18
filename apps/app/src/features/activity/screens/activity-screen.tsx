@@ -1,5 +1,6 @@
+import { Logger } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
 import { PageHeader } from '../../../components/page-header';
@@ -13,6 +14,8 @@ import { CATEGORY_LABELS, categoriesOf, useActivity } from '../data/use-activity
 import type { ActivityCategory } from '../model/atoms';
 import type { ActivityItem } from '../model/coalesce';
 import { byDay } from '../model/days';
+
+const log = new Logger('app.activity');
 
 type Shown = ActivityCategory | 'all';
 
@@ -45,6 +48,15 @@ export function ActivityScreen(): ReactNode {
   const [shown, setShown] = useState<Shown>('all');
   const now = useMinute();
   const zone = useSettings().time_zone;
+  useEffect(() => {
+    log.info('activity_screen.mounted', {});
+    return (): void => {
+      log.info('activity_screen.unmounted', {});
+    };
+  }, []);
+  useEffect(() => {
+    log.debug('activity_screen.filtered', { shown, items: items.length });
+  }, [shown, items.length]);
   const visible = shown === 'all' ? items : items.filter((item) => item.category === shown);
   const sections = byDay(visible, now, zone).map((day) => ({
     key: day.key,

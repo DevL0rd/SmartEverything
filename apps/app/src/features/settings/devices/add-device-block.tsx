@@ -44,7 +44,7 @@ export function AddDeviceBlock(): ReactNode {
       <List title="Computers">
         <NavRow
           title="Pair a computer"
-          subtitle="Connect native Claude sessions and subscription models"
+          subtitle="Use Claude and Codex on a computer"
           icon="monitor"
           onPress={() => {
             setPair(true);

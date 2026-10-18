@@ -1,11 +1,11 @@
-import { use, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { IconButton } from '../../../components/icon-button';
 import { useIdiom } from '../../../design/platform';
-import { ScreenPausedContext } from '../../../design/screen-pause';
+import { useScreenPaused } from '../../../design/screen-pause';
 import type { CameraEntry } from '../logic/cameras';
 import { PlayerStage } from '../player/player-stage';
 import { useScreenSession, type LiveSession } from '../player/use-live-session';
@@ -98,11 +98,12 @@ function Surface({
 
 function LiveCardPicture({ entry, hovered, onMenu }: Omit<CardPictureProps, 'live'>): ReactNode {
   const { attach, onLayout, visible } = useOnScreen();
-  const paused = use(ScreenPausedContext);
+  const paused = useScreenPaused();
   const live = useScreenSession(entry, {
     enabled: true,
     answering: false,
     visible: visible && !paused,
+    quality: 'tile',
   });
   const pointer = useIdiom() === 'pointer';
   return (

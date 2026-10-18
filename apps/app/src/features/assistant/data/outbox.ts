@@ -7,41 +7,63 @@ import { Logger } from '@smarteverything/logging';
 import { sendAiChatMessage } from '../../../api/ai';
 import { notify } from '../../../components/toast-store';
 import { ValueStore, useValue } from '../../../design/external-store';
+import { friendlyError, rawErrorText } from '../../../format/errors';
+import { aiDrafts, patchAiDrafts, useAiDrafts, type PendingMessage } from './ai-drafts';
 import { clearUploads } from './uploads';
+import { compareText } from '../../../format/text';
 
 const log = new Logger('app.assistant');
 
-export interface PendingMessage {
-  readonly id: string;
-  readonly chatId: string;
-  readonly text: string;
-  readonly attachments: readonly string[];
-  readonly queuedAt: string;
-  readonly references: readonly AiMessageReference[];
-  readonly state: 'waiting' | 'failed';
-}
+export type { PendingMessage };
 
-const pending = new ValueStore<readonly PendingMessage[]>([]);
 const sending = new ValueStore<ReadonlySet<string>>(new Set());
 
 let flushing = false;
-const delivering = new Set<string>();
+const delivering = new ValueStore<ReadonlySet<string>>(new Set());
+
+function startDelivery(id: string): void {
+  delivering.update((all) => new Set([...all, id]));
+}
+
+function endDelivery(id: string): void {
+  delivering.update((all) => new Set([...all].filter((entry) => entry !== id)));
+}
+
+export function useDeliveringMessages(): ReadonlySet<string> {
+  return useValue(delivering);
+}
 
 export function useSendingMessage(chatId: string): boolean {
   return useValue(sending).has(chatId);
 }
 
 export function usePendingMessages(chatId: string): readonly PendingMessage[] {
-  const all = useValue(pending);
+  const all = useAiDrafts((state) => state.outbox);
   return useMemo(() => all.filter((message) => message.chatId === chatId), [all, chatId]);
 }
 
 export function usePendingCount(): number {
-  return useValue(pending).length;
+  return useAiDrafts((state) => state.outbox.length);
 }
 
 export function cancelPending(id: string): void {
-  pending.update((all) => all.filter((message) => message.id !== id));
+  log.debug('outbox.cancelled', { messageId: id });
+  patchAiDrafts('outbox', (all) => all.filter((message) => message.id !== id));
+}
+
+export function removePending(message: PendingMessage): void {
+  log.info('outbox.removed', { chatId: message.chatId, messageId: message.id });
+  cancelPending(message.id);
+  notify({
+    message: 'Removed from Waiting for connection',
+    undo: (): void => {
+      patchAiDrafts('outbox', (all) =>
+        all.some((row) => row.id === message.id)
+          ? all
+          : [...all, message].sort((left, right) => compareText(left.queuedAt, right.queuedAt)),
+      );
+    },
+  });
 }
 
 function queue(
@@ -58,42 +80,82 @@ function queue(
     queuedAt: new Date().toISOString(),
     references: input.references,
     state: 'waiting',
+    reason: null,
   };
-  pending.update((all) => (all.some((row) => row.id === message.id) ? all : [...all, message]));
+  patchAiDrafts('outbox', (all) =>
+    all.some((row) => row.id === message.id) ? all : [...all, message],
+  );
   log.info('outbox.queued', { chatId, attachments: attachments.length });
 }
 
 async function deliver(message: PendingMessage): Promise<void> {
-  if (delivering.has(message.id) || !pending.get().some((row) => row.id === message.id)) return;
-  delivering.add(message.id);
+  if (
+    delivering.get().has(message.id) ||
+    !aiDrafts.get().outbox.some((row) => row.id === message.id)
+  ) {
+    log.debug('outbox.delivery_skipped', { chatId: message.chatId, messageId: message.id });
+    return;
+  }
+  startDelivery(message.id);
+  const startedAt = Date.now();
+  log.debug('outbox.delivering', {
+    chatId: message.chatId,
+    messageId: message.id,
+    attachments: message.attachments.length,
+    queuedAt: message.queuedAt,
+  });
   try {
     await sendAiChatMessage(message.chatId, message.text, message.attachments, {
       clientMessageId: message.id,
       references: message.references,
     });
     cancelPending(message.id);
-    log.info('outbox.sent', { chatId: message.chatId });
+    log.info('outbox.sent', {
+      chatId: message.chatId,
+      messageId: message.id,
+      durationMs: Date.now() - startedAt,
+    });
   } catch (error) {
-    pending.update((all) =>
-      all.map((row) => (row.id === message.id ? { ...row, state: 'failed' } : row)),
+    const reason = friendlyError(error) ?? rawErrorText(error);
+    log.error('outbox.delivery_failed', error, {
+      chatId: message.chatId,
+      messageId: message.id,
+      durationMs: Date.now() - startedAt,
+    });
+    patchAiDrafts('outbox', (all) =>
+      all.map((row) => (row.id === message.id ? { ...row, state: 'failed', reason } : row)),
     );
     notify({ message: 'A waiting message wasn’t sent', error, tone: 'critical' });
   } finally {
-    delivering.delete(message.id);
+    endDelivery(message.id);
   }
+}
+
+function nextDeliverable(): PendingMessage | undefined {
+  const blocked = new Set<string>();
+  for (const message of aiDrafts.get().outbox) {
+    if (message.state === 'failed' || delivering.get().has(message.id)) blocked.add(message.chatId);
+    else if (!blocked.has(message.chatId)) return message;
+  }
+  return undefined;
 }
 
 export async function flushOutbox(): Promise<void> {
   if (flushing) {
+    log.debug('outbox.flush_skipped', { reason: 'already-flushing' });
     return;
   }
   flushing = true;
+  const pending = aiDrafts.get().outbox.length;
+  if (pending > 0) log.info('outbox.flush_started', { pending });
   try {
-    for (const message of pending.get()) {
-      if (message.state === 'waiting') await deliver(message);
+    for (let next = nextDeliverable(); next !== undefined; next = nextDeliverable()) {
+      await deliver(next);
     }
   } finally {
     flushing = false;
+    if (pending > 0)
+      log.debug('outbox.flush_finished', () => ({ remaining: aiDrafts.get().outbox.length }));
   }
 }
 
@@ -105,11 +167,20 @@ async function sendNow(
 ): Promise<boolean> {
   const { references, id } = input;
   sending.update((all) => new Set([...all, chatId]));
+  const operation = log.operation('chat_message.send', {
+    chatId,
+    clientMessageId: id,
+    length: text.length,
+    attachments: attachments.length,
+    references: references.length,
+  });
   try {
     await sendAiChatMessage(chatId, text, attachments, { clientMessageId: id, references });
     clearUploads();
+    operation.succeeded();
     return true;
   } catch (error) {
+    operation.failed(error);
     notify({ message: 'Message not sent', error, tone: 'critical' });
     return false;
   } finally {
@@ -124,6 +195,7 @@ export function outboxSender(chatId: string, online: boolean): MessageSender {
     if (online) {
       return sendNow(chatId, message.text, attachments, input);
     }
+    log.info('outbox.offline_queue', { chatId, clientMessageId: input.id });
     queue(chatId, message.text, attachments, input);
     clearUploads();
     return Promise.resolve(true);
@@ -131,6 +203,12 @@ export function outboxSender(chatId: string, online: boolean): MessageSender {
 }
 
 export async function retryPending(id: string): Promise<void> {
-  const message = pending.get().find((row) => row.id === id && row.state === 'failed');
-  if (message !== undefined) await deliver(message);
+  const message = aiDrafts.get().outbox.find((row) => row.id === id && row.state === 'failed');
+  if (message === undefined) {
+    log.debug('outbox.retry_skipped', { messageId: id, reason: 'not-failed' });
+    return;
+  }
+  log.info('outbox.retry_requested', { chatId: message.chatId, messageId: id });
+  await deliver(message);
+  await flushOutbox();
 }

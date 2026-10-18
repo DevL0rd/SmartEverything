@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { API_ENDPOINTS, seal } from '@smarteverything/domain';
+import { API_ENDPOINTS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DataDirectoryLockedError,
@@ -9,6 +9,7 @@ import {
   startServer,
   type RunningServer,
 } from '../src/main';
+import { LogLines } from '../src/service/log-lines';
 import { LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
 import { PUBLIC_URL, tunnel, xiaomiWithCameraLogin } from './support/booted';
@@ -32,6 +33,7 @@ async function boot(): Promise<RunningServer> {
     },
     modules: xiaomiWithCameraLogin(fake),
     fetch: tunnel(() => base),
+    logLines: new LogLines(),
   });
   base = server.url;
   return server;
@@ -84,30 +86,18 @@ describe('startServer', () => {
 
     const ownerLive = await openLive(base, owner);
     ownerLive.socket.send(
-      JSON.stringify({ type: 'subscribe', tables: ['provider_links', 'clients'] }),
+      JSON.stringify({ type: 'subscribe', tables: ['provider_links', 'clients'], streams: [] }),
     );
-    expect(await ownerLive.next((message) => message.type === 'subscribed')).toStrictEqual({
-      type: 'subscribed',
+    expect(await ownerLive.next((message) => message.type === 'subscribed')).toMatchObject({
       tables: ['provider_links', 'clients'],
+      streams: [],
     });
-    const key = await call(base, owner, { method: 'GET', path: API_ENDPOINTS.sealingKey.path });
-    const publicKey = API_ENDPOINTS.sealingKey.response.parse(key.body).publicKey;
-    const credentials = {
-      provider: 'xiaomi',
-      username: 'me@example.com',
-      password: 'pw',
-      region: 'de',
-    };
     const link = await call(base, owner, {
       method: 'POST',
-      path: '/api/commands',
-      body: {
-        device_id: null,
-        capability: 'hub:link_provider',
-        value: { provider: 'xiaomi', credentials: seal(publicKey, JSON.stringify(credentials)) },
-      },
+      path: '/api/providers/link',
+      body: { provider: 'xiaomi', username: 'me@example.com', password: 'pw', region: 'de' },
     });
-    expect(link.status).toBe(200);
+    expect(link).toMatchObject({ status: 200, body: { ok: true } });
     await ownerLive.next(
       (message) =>
         message.type === 'change' &&
@@ -122,7 +112,8 @@ describe('startServer', () => {
       body: { role: 'member' },
     });
     const code = API_ENDPOINTS.startPairing.response.parse(pairing.body);
-    expect(code.qr).toStrictEqual({ url: PUBLIC_URL, code: code.code });
+    expect(code.qr).toMatchObject({ url: PUBLIC_URL, code: code.code });
+    expect(code.qr.identity.tls.certificateSha256).toMatch(/^[0-9a-f]{64}$/);
     const claimed = await call(base, null, {
       method: 'POST',
       path: '/api/pair/claim',
@@ -147,11 +138,15 @@ describe('startServer', () => {
       role: 'member',
     });
     live.socket.send(
-      JSON.stringify({ type: 'subscribe', tables: ['device_state', 'commands', 'clients'] }),
+      JSON.stringify({
+        type: 'subscribe',
+        tables: ['device_state', 'commands', 'clients'],
+        streams: [],
+      }),
     );
-    expect(await live.next((message) => message.type === 'subscribed')).toStrictEqual({
-      type: 'subscribed',
+    expect(await live.next((message) => message.type === 'subscribed')).toMatchObject({
       tables: ['device_state', 'commands'],
+      streams: [],
     });
 
     const devices = API_ENDPOINTS.listDevices.response.parse(

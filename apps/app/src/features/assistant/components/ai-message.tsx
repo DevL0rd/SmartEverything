@@ -3,21 +3,19 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { WEB_SOURCES_KIND } from '@smarteverything/domain';
 import { useIdiom } from '../../../design/platform';
-import type { MessageItem } from '../data/thread';
+import { endsMessage, startsMessage, type MessageItem } from '../data/thread';
 import { stepsOfRow } from '../model/work-steps';
 import { MessageWidgets } from '../widgets/message-widgets';
 import { useMessageActions } from './message-actions';
 import { MessageFrame } from './message-frame';
 import { ReplyMeta } from './message-meta';
-import { RunHeader } from './message-parts';
-import { MessagePreview, MessageText } from './message-parts';
+import { MessagePreview, MessageText, RunHeader } from './message-parts';
 import { StreamedText } from './streamed-text';
 import { Attachments } from './attachments';
 import { SuggestionChips } from './suggestion-chips';
 import { WebSources } from './web-sources';
 import { webSourcesOf } from '../model/web-sources';
 import { TurnNotice } from './turn-notice';
-import { useSettledMount } from './use-settled-mount';
 import { RecordedActivity } from './recorded-activity';
 import { InlineReply } from './inline-reply';
 import { hasReplyTimeline } from '../model/reply-timeline';
@@ -58,9 +56,8 @@ function ReplyText({ item, actions, live, streamed, hideText }: PartProps): Reac
   );
 }
 
-function ReplySuggestions({ item, live, streamed }: PartProps): ReactNode {
-  const ready = useSettledMount(!live, streamed);
-  if (!ready || !item.latestReply) {
+function ReplySuggestions({ item, live }: PartProps): ReactNode {
+  if (live || !item.latestReply) {
     return null;
   }
   return <SuggestionChips row={item.row} />;
@@ -69,19 +66,32 @@ function ReplySuggestions({ item, live, streamed }: PartProps): ReactNode {
 function ReplyBody(props: PartProps): ReactNode {
   const { item, live, hideText } = props;
   const { row } = item;
+  const first = startsMessage(item);
+  const last = endsMessage(item);
   const steps = useMemo(() => stepsOfRow(row.steps, row.step_states), [row.steps, row.step_states]);
   return (
     <View className="w-full gap-2.5">
       {live || hasReplyTimeline(row) ? null : <RecordedActivity steps={steps} />}
-      {live || row.attachments.length === 0 ? null : <Attachments attachments={row.attachments} />}
+      {live || !first || row.attachments.length === 0 ? null : (
+        <Attachments attachments={row.attachments} />
+      )}
       <ReplyText {...props} />
       {live || (hasReplyTimeline(row) && !hideText) ? null : (
         <WebSources sources={webSourcesOf(row)} />
       )}
+      {last ? <ReplyEnd {...props} /> : null}
+    </View>
+  );
+}
+
+function ReplyEnd(props: PartProps): ReactNode {
+  const { row } = props.item;
+  return (
+    <>
       <MessageWidgets row={row} />
       {row.state === 'failed' ? <TurnNotice row={row} subject="reply" /> : null}
       <ReplySuggestions {...props} />
-    </View>
+    </>
   );
 }
 
@@ -103,7 +113,9 @@ export function AiMessage({
       actions={actions}
       preview={<MessagePreview item={item} className="bg-surface-1" />}
       align="start"
-      bar={live ? null : <ReplyMeta row={row} onPress={actions.openDetails} />}
+      bar={
+        live || !endsMessage(item) ? null : <ReplyMeta row={row} onPress={actions.openDetails} />
+      }
       swipeable={streamed || quotable}
       swipeEnabled={swipeEnabled}
       onQuote={() => {

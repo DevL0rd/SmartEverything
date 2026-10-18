@@ -15,7 +15,7 @@ const CLOSE_VELOCITY = 1200;
 const ACTIVATE = 10;
 const SIDEWAYS = 16;
 
-export function releasePhase(lift: number, velocityY: number, stops: NavSheetStops): NavSheetPhase {
+function releasePhase(lift: number, velocityY: number, stops: NavSheetStops): NavSheetPhase {
   'worklet';
   if (velocityY > CLOSE_VELOCITY) {
     return 'closed';

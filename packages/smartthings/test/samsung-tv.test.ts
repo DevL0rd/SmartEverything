@@ -149,19 +149,37 @@ describe('power and Wake-on-LAN', () => {
   it('reads the power state the TV reports', () => {
     const info = (device: Record<string, unknown>): ReturnType<typeof readDeviceInfo> =>
       readDeviceInfo({ type: 'Samsung SmartTV', device });
-    expect(info({ PowerState: 'on', modelName: 'QE65S95C' })).toEqual({
+    expect(
+      info({
+        PowerState: 'on',
+        modelName: 'QE65S95C',
+        name: 'Living room',
+        wifiMac: 'a1:b2:c3:d4:e5:f6',
+      }),
+    ).toEqual({
       on: true,
       powerStateReported: true,
       model: 'QE65S95C',
       frame: false,
+      name: 'Living room',
+      wifiMac: 'a1:b2:c3:d4:e5:f6',
     });
     expect(info({ PowerState: 'standby' })).toEqual({
       on: false,
       powerStateReported: true,
       model: null,
       frame: false,
+      name: null,
+      wifiMac: null,
     });
-    expect(info({})).toEqual({ on: true, powerStateReported: false, model: null, frame: false });
+    expect(info({})).toEqual({
+      on: true,
+      powerStateReported: false,
+      model: null,
+      frame: false,
+      name: null,
+      wifiMac: null,
+    });
     expect(() => readDeviceInfo({ device: 'x' })).toThrow(
       /^The Samsung TV sent a message that could not be read: device information/,
     );

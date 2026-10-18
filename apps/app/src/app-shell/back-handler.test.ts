@@ -10,18 +10,22 @@ const leaf = { routes: [{}] };
 
 describe('the tab root check for the back button', () => {
   it('is at the root when every stack shows its first screen', () => {
-    expect(atStackRoot({ type: 'stack', index: 0, routes: [{ state: leaf }] })).toBe(true);
+    expect(atStackRoot({ index: 0, routes: [{ state: leaf }] })).toBe(true);
   });
 
   it('is not at the root when a nested stack has a screen pushed', () => {
-    const settings = { type: 'stack', index: 1, routes: [{}, {}] };
-    expect(atStackRoot({ type: 'stack', index: 0, routes: [{ state: settings }] })).toBe(false);
+    const settings = { index: 1, routes: [{}, {}] };
+    expect(atStackRoot({ index: 0, routes: [{ state: settings }] })).toBe(false);
   });
 
-  it('ignores the tab index itself', () => {
-    expect(atStackRoot({ type: 'tab', index: 3, routes: [{}, {}, {}, { state: leaf }] })).toBe(
-      true,
-    );
+  it('is not at the root when a nested section switcher shows a later section', () => {
+    const sections = { index: 2, routes: [{}, {}, { state: leaf }] };
+    expect(atStackRoot({ index: 0, routes: [{ state: sections }] })).toBe(false);
+  });
+
+  it('is at the root on the first section of a nested section switcher', () => {
+    const sections = { index: 0, routes: [{ state: leaf }, {}] };
+    expect(atStackRoot({ index: 0, routes: [{ state: sections }] })).toBe(true);
   });
 
   it('is at the root when there is no nested state yet', () => {

@@ -1,29 +1,35 @@
 import type { ReactNode } from 'react';
 import { mainPageSettings } from '../../app-shell/main-pages';
-import { useDeferredValue, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { Logger } from '@smarteverything/logging';
 import { href } from '../../app-shell/hrefs';
 import { Banner } from '../../components/banner';
 import { Button } from '../../components/button';
 import { EmptyState } from '../../components/empty-state';
 import { PageHeader } from '../../components/page-header';
+import { useLifecycleLog } from '../../components/use-lifecycle-log';
 import { Screen } from '../../components/screen';
 import { useListedDevices, useRooms } from '../../store/selectors';
-import { DeviceGroups } from '../device-groups';
+import type { Device } from '../../store/state';
 import { ComfortStrip } from '../climate';
 import { isOffline } from '../devices';
 import { DeviceFilters } from './components/device-filters';
 import { DeviceGrid } from './components/device-grid';
+import { GroupsStrip } from './components/groups-strip';
 import {
   ANY,
   NO_ROOM,
-  OFFLINE,
   groupedDevices,
+  isFiltering,
   kindOptions,
   roomOptions,
   type DeviceQuery,
+  type DeviceSection,
 } from './model/device-filter';
+
+const log = new Logger('app.device-list');
 
 const ADD_DEVICE = href.settings.page('devices/add');
 
@@ -32,7 +38,8 @@ function useQuery(): readonly [DeviceQuery, (query: DeviceQuery) => void] {
   const [query, setQuery] = useState<DeviceQuery>({
     text: '',
     room: room ?? ANY,
-    kind: status === OFFLINE ? OFFLINE : ANY,
+    kind: ANY,
+    offline: status === 'offline',
   });
   return [query, setQuery];
 }
@@ -56,46 +63,89 @@ function NoDevices(): ReactNode {
 function ListTop({
   room,
   allOffline,
+  filtering,
   children,
 }: {
   readonly room: string | null;
   readonly allOffline: boolean;
+  readonly filtering: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   return (
     <View className="px-gutter">
       <View className="w-full max-w-dashboard gap-3 self-center pb-1">
         {children}
-        <DeviceGroups />
         {allOffline ? (
           <Banner
             tone="warning"
-            title="Every device is offline"
-            body="They come back when the server can reach them again."
+            title="All devices are offline"
+            body="Check that the hub and your Wi-Fi are on."
           />
         ) : null}
+        {filtering ? null : <GroupsStrip />}
         <ComfortStrip room={room} />
       </View>
     </View>
   );
 }
 
-function NoMatch({ onReset }: { readonly onReset: () => void }): ReactNode {
+function NoMatch({
+  text,
+  onReset,
+}: {
+  readonly text: string;
+  readonly onReset: () => void;
+}): ReactNode {
   return (
     <EmptyState
       icon="search"
       title="No devices match"
-      body="Try another name, room or kind."
-      action={<Button label="Show all devices" variant="tonal" onPress={onReset} />}
+      body={
+        text === ''
+          ? 'No device matches these filters.'
+          : `Nothing found for \u201c${text}\u201d. Clear the search or filters.`
+      }
+      action={<Button label="Clear filters" variant="tonal" onPress={onReset} />}
     />
   );
+}
+
+function useSections(
+  devices: readonly Device[],
+  rooms: ReturnType<typeof useRooms>,
+  query: DeviceQuery,
+): readonly DeviceSection[] {
+  const shownQuery = useDeferredValue(query);
+  return useMemo(() => groupedDevices(devices, rooms, shownQuery), [devices, rooms, shownQuery]);
+}
+
+function useListLog(
+  deviceCount: number,
+  sections: readonly DeviceSection[],
+  query: DeviceQuery,
+): void {
+  const shown = sections.reduce((total, section) => total + section.count, 0);
+  const { text, room, kind, offline } = query;
+  useLifecycleLog(log, 'devices_screen');
+  useEffect(() => {
+    log.debug('list.filter_changed', () => ({
+      textLength: text.trim().length,
+      room,
+      kind,
+      offline,
+    }));
+  }, [text, room, kind, offline]);
+  useEffect(() => {
+    log.debug('list.sections_changed', { devices: deviceCount, sections: sections.length, shown });
+  }, [deviceCount, sections.length, shown]);
 }
 
 function DevicesBody(): ReactNode {
   const devices = useListedDevices();
   const rooms = useRooms();
   const [query, setQuery] = useQuery();
-  const shownQuery = useDeferredValue(query);
+  const sections = useSections(devices, rooms, query);
+  useListLog(devices.length, sections, query);
   if (devices.length === 0) {
     return <NoDevices />;
   }
@@ -114,10 +164,9 @@ function DevicesBody(): ReactNode {
       }
     >
       <DeviceGrid
-        allDevices={devices}
-        groups={groupedDevices(devices, rooms, shownQuery)}
+        groups={sections}
         header={
-          <ListTop room={room} allOffline={devices.every(isOffline)}>
+          <ListTop room={room} allOffline={devices.every(isOffline)} filtering={isFiltering(query)}>
             <DeviceFilters
               query={query}
               rooms={roomOptions(devices, rooms)}
@@ -129,8 +178,9 @@ function DevicesBody(): ReactNode {
         }
         empty={
           <NoMatch
+            text={query.text.trim()}
             onReset={() => {
-              setQuery({ text: '', room: ANY, kind: ANY });
+              setQuery({ text: '', room: ANY, kind: ANY, offline: false });
             }}
           />
         }
@@ -140,10 +190,6 @@ function DevicesBody(): ReactNode {
 }
 
 export function DevicesScreen(): ReactNode {
-  const { room, status, groups } = useLocalSearchParams<{
-    room?: string;
-    status?: string;
-    groups?: string;
-  }>();
-  return <DevicesBody key={`${room ?? ANY}:${status ?? ANY}:${groups ?? 'closed'}`} />;
+  const { room, status } = useLocalSearchParams<{ room?: string; status?: string }>();
+  return <DevicesBody key={`${room ?? ANY}:${status ?? ANY}`} />;
 }

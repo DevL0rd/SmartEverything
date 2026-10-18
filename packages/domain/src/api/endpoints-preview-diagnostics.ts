@@ -7,32 +7,43 @@ import {
   PREVIEW_CAPTURE_RESULT,
   NATIVE_BROWSER_OPERATION,
   PREVIEW_ERROR_RULE,
-  PREVIEW_ERROR_POLICY_WRITE,
+  PREVIEW_ERROR_IGNORE,
+  PREVIEW_ERROR_RESTORE,
 } from '../browser-diagnostics';
 import { endpoint } from './endpoint';
 import { NOTHING, DONE } from './primitives';
 const CHAT = z.strictObject({ chatId: z.uuid() });
 export const PREVIEW_DIAGNOSTIC_ENDPOINTS = {
-  readPreviewErrorPolicy: endpoint({
+  readPreviewErrorRules: endpoint({
     method: 'GET',
-    path: '/api/ai/chats/:chatId/preview-console/error-policy',
+    path: '/api/ai/chats/:chatId/preview-console/error-rules',
     access: 'member',
     summary:
-      'List captured recurring browser errors ignored for automatic wakes in this chat; raw logs remain visible',
+      'List the recurring browser errors ignored for automatic wakes in this chat; raw console logs stay complete',
     params: CHAT,
     query: NOTHING,
     body: z.undefined(),
     response: z.array(PREVIEW_ERROR_RULE),
   }),
-  writePreviewErrorPolicy: endpoint({
+  ignorePreviewError: endpoint({
     method: 'POST',
-    path: '/api/ai/chats/:chatId/preview-console/error-policy',
+    path: '/api/ai/chats/:chatId/preview-console/error-rules',
     access: 'member',
     summary:
-      'Ignore one captured recurring error with a reason, restore its notifications or clear the chat ignore rules; warnings never wake and logs remain unchanged',
+      'Stop automatic wakes for one recurring unavoidable error, chosen by its console record id and kept with a reason; warnings never wake and no blanket rule exists',
     params: CHAT,
     query: NOTHING,
-    body: PREVIEW_ERROR_POLICY_WRITE,
+    body: PREVIEW_ERROR_IGNORE,
+    response: z.array(PREVIEW_ERROR_RULE),
+  }),
+  restorePreviewError: endpoint({
+    method: 'POST',
+    path: '/api/ai/chats/:chatId/preview-console/error-rules/restore',
+    access: 'member',
+    summary: 'Let one ignored recurring error wake the AI again',
+    params: CHAT,
+    query: NOTHING,
+    body: PREVIEW_ERROR_RESTORE,
     response: z.array(PREVIEW_ERROR_RULE),
   }),
   clearPreviewWebsiteData: endpoint({
@@ -75,7 +86,7 @@ export const PREVIEW_DIAGNOSTIC_ENDPOINTS = {
     path: '/api/ai/chats/:chatId/preview-console/capture',
     access: 'member',
     summary:
-      'Capture the actual visible preview viewport on the initiating viewing device; refuses hidden or stale views; distinct from headless and execution-computer screenshots',
+      'Capture the actual visible preview viewport on the most recently focused viewing device; refuses hidden views; distinct from headless and execution-computer screenshots',
     params: CHAT,
     query: NOTHING,
     body: PREVIEW_CAPTURE_SELECTOR,

@@ -3,6 +3,7 @@ export type { ComputerAiDirectoryEvent } from './ai-directory-types';
 import { UNAVAILABLE_CLAUDE } from './ai-unavailable';
 import { claudeHostOf } from './runtime-claude-host';
 import { startClaudeTurn, startClaudeCommand, claudeProviderEvent } from './ai-directory-provider';
+import { DistinctFeed } from './distinct-feed';
 import { ComputerRuntimePorts } from './runtime-ports';
 import { adaptClaudeHost } from './runtime-host';
 import { AI_NATIVE_COMMAND_PRIVATE_OPERATION } from '@smarteverything/domain';
@@ -35,7 +36,7 @@ import { roleOfCaller, profileIdOf, type Caller } from '../server/auth';
 export class ComputerAiDirectory extends ComputerRuntimePorts {
   private readonly hosts = new Map<string, AttachedClaude>();
   private readonly receipts = new NativeReceipts<AttachedClaude>();
-  private readonly changes = new Set<(status: ComputerAiStatus) => void>();
+  private readonly changes = new DistinctFeed<ComputerAiStatus>();
   private readonly jobs = new Map<string, ClaudeJob>();
   private readonly listeners = new Set<(event: ComputerAiDirectoryEvent) => void>();
   private localDeviceId: string | null = null;
@@ -238,7 +239,6 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
         'The computer returned models with an invalid machine binding.',
       );
     this.store.computerAi.cache(deviceId, this.status(deviceId).capabilities, reply.value);
-    this.changed(deviceId);
     return reply.value;
   }
 
@@ -259,10 +259,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
   }
 
   onChange(listener: (status: ComputerAiStatus) => void): () => void {
-    this.changes.add(listener);
-    return (): void => {
-      this.changes.delete(listener);
-    };
+    return this.changes.on(listener);
   }
 
   onEvent(listener: (event: ComputerAiDirectoryEvent) => void): () => void {
@@ -324,18 +321,16 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
 
   private received(deviceId: string, event: ComputerAiHostEvent, source?: AttachedClaude): void {
     if (source !== undefined && this.hosts.get(deviceId) !== source) return;
-    if (
-      event.kind === 'capabilities' &&
-      isDeepStrictEqual(this.store.computerAi.capabilities(deviceId), event.capabilities)
-    )
+    if (event.kind === 'capabilities') {
+      if (!isDeepStrictEqual(this.store.computerAi.capabilities(deviceId), event.capabilities))
+        this.store.computerAi.cache(
+          deviceId,
+          COMPUTER_AI_CAPABILITIES.parse(event.capabilities),
+          this.store.computerAi.models(deviceId),
+        );
+      this.changed(deviceId);
       return;
-    if (event.kind === 'capabilities')
-      this.store.computerAi.cache(
-        deviceId,
-        COMPUTER_AI_CAPABILITIES.parse(event.capabilities),
-        this.store.computerAi.models(deviceId),
-      );
-    if (event.kind === 'capabilities') this.changed(deviceId);
+    }
     if (event.kind === 'provider' && !this.providerEvent(deviceId, event.event)) return;
     this.publish(deviceId, event, source);
   }
@@ -386,7 +381,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
   changed(deviceId: string): void {
     if (this.store.devices.find(deviceId) === undefined) return;
     const status = this.status(deviceId);
-    for (const listener of this.changes) listener(status);
+    this.changes.emit(deviceId, status);
   }
 
   private computer(deviceId: string): void {

@@ -5,13 +5,14 @@ import type { Catalog } from '../data/use-automations';
 import { Select } from '../../../components/select';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
-import { commandAction } from '../model/blanks';
+import { commandAction } from '../model/action-blanks';
 import { writableCapabilities, type DeviceLike } from '../model/capability-choices';
 import { capabilityLabel } from '../model/present';
 import { MissingTarget, TargetFields, targetOf } from './target-fields';
 import { DurationField, type DurationUnits } from './time-fields';
 import { ValueInput } from './value-input';
-import { ToolActionSummary, WakeFields } from './wake-fields';
+import { ToolActionFields } from './tool-fields';
+import { WakeFields } from './wake-fields';
 
 const SECOND_UNITS: DurationUnits = [
   { value: 'seconds', label: 's', size: 1 },
@@ -140,6 +141,6 @@ export function ActionFields({
     case 'wake_ai':
       return <WakeFields action={action} catalog={catalog} onChange={onChange} />;
     case 'tool':
-      return <ToolActionSummary action={action} catalog={catalog} />;
+      return <ToolActionFields action={action} onChange={onChange} />;
   }
 }

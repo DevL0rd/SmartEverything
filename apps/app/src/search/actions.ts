@@ -8,6 +8,7 @@ import type { Device } from '../store/state';
 import type { SearchCatalogue } from './catalogue';
 import type { ResultNode } from './nodes';
 import { useRecentSearches } from './recent';
+import { background } from '@smarteverything/logging';
 
 export type InlineAction =
   | { readonly kind: 'power'; readonly device: Device }
@@ -70,11 +71,14 @@ function useCommand(catalogue: SearchCatalogue): (entry: SearchEntry) => void {
     if (target?.kind !== 'command' || named === undefined) {
       return;
     }
-    void ledger.send(named.device, target.capability, target.value).then((outcome) => {
-      if (outcome.sent) {
-        notify({ message: entry.title, tone: 'positive' });
-      }
-    });
+    background(
+      ledger.send(named.device, target.capability, target.value).then((outcome) => {
+        if (outcome.sent) {
+          notify({ message: entry.title, tone: 'positive' });
+        }
+      }),
+      'ledger.send_failed',
+    );
   };
 }
 
@@ -100,8 +104,8 @@ export function useSearchActions(
         toggleAutomation(action.automationId, !action.enabled);
         return;
       case 'power': {
-        const power = store.get().deviceValues[action.device.id]?.['power']?.value;
-        void ledger.send(action.device, 'power', power !== true);
+        const power = store.get().deviceValues.get(action.device.id)?.['power']?.value;
+        background(ledger.send(action.device, 'power', power !== true), 'ledger.send_failed');
         return;
       }
       case undefined:

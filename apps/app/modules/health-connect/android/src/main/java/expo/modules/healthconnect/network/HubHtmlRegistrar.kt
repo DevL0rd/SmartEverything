@@ -30,7 +30,7 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
   private fun ready() {
     synchronized(this) { check(!closed); if (subscription != null) return }
     val started = policy().subscribe { state ->
-      val candidates = synchronized(this) { values.entries.filter { it.value.input.binding.scopeId == state["scopeId"] }.map { it.key to it.value } }
+      val candidates = synchronized(this) { values.entries.filter { it.value.input.binding.scopeId == state.scopeId }.map { it.key to it.value } }
       candidates.forEach { if (runCatching { it.second.check() }.isFailure) release(it.first) }
     }
     val keep = synchronized(this) { if (closed || subscription != null) false else { subscription = started; true } }
@@ -56,7 +56,7 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
     val projection = Projection(input, policy(), owner)
     val id = ByteArray(32).also(random::nextBytes).joinToString("") { "%02x".format(it.toInt() and 255) }
     synchronized(this) {
-      check(!closed && values.size < 16) { "HTML page projection is full or already open" }
+      check(!closed) { "HTML page transport is closed" }
       values[id] = projection
     }
     try {
@@ -96,7 +96,7 @@ class HubHtmlRegistrar(private val context: () -> Context, private val policy: (
     val browserId = input.getString("browserId")
     require(browserId.length in 1..512)
     try {
-      view.bind(browserId, broker.url(), broker.origin(), projection.input.page.profileId, projection::check) { projection.detach(view) }
+      view.bind(browserId, broker.url(), broker.origin(), broker.gate.cookie(), projection.input.page.profileId, projection::check) { projection.detach(view) }
       projection.attach(view)
     } catch (failure: Exception) { view.retire(); projection.detach(view); throw failure }
   }

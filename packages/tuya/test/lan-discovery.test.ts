@@ -148,7 +148,7 @@ describe('LAN broadcasts', () => {
     );
     expect(() =>
       readLanAnnouncement(frame55aa(ecb(JSON.stringify({ ...ANNOUNCEMENT, ip: 'nowhere' })))),
-    ).toThrow('A Tuya LAN broadcast could not be read: ip: Invalid IPv4 address.');
+    ).toThrow('A Tuya LAN broadcast could not be read: ✖ Invalid IPv4 address\n  → at ip.');
     expect(() =>
       readLanAnnouncement(frame55aa(ecb(JSON.stringify({ ...ANNOUNCEMENT, version: '3.6' })))),
     ).toThrow(LanAnnouncementError);

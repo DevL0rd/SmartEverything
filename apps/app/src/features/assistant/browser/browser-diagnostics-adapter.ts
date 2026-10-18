@@ -10,7 +10,6 @@ import { diagnosticSnapshot } from './browser-diagnostics-snapshot';
 import { diagnosticListeners } from './browser-diagnostics-listeners';
 import { notify } from '../../../components/toast-store';
 import {
-  PREVIEW_VIEW_RESPONSE,
   PREVIEW_VIEW_MESSAGE,
   PREVIEW_DIAGNOSTICS_PATH,
   PREVIEW_DIAGNOSTICS_PROTOCOL,
@@ -24,7 +23,6 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { openHubSocket, type HubSocket } from '../../../api/connection/hub-socket';
 import { routeFor } from '../../../api/connection/active-route';
-import { serverSupportsPreviewDiagnostics } from '../../../api/connection/server-capabilities';
 import { connectionState } from '../../../api/connection/connection';
 import type {
   PreviewDiagnostics,
@@ -60,7 +58,6 @@ class DiagnosticsController implements PreviewDiagnostics {
   private disposed = false;
   private started = false;
   private shared = false;
-  private transferRefused = false;
   private errors = 0;
   private omitted = 0;
   private sequence = 0;
@@ -106,10 +103,6 @@ class DiagnosticsController implements PreviewDiagnostics {
         event: this.event.bind(this),
         change,
         resume: this.recovery.resume.bind(this.recovery),
-        capability: (): void => {
-          this.transferRefused = false;
-          change();
-        },
       }),
     );
   }
@@ -158,7 +151,6 @@ class DiagnosticsController implements PreviewDiagnostics {
     this.sequence = 0;
     this.refusedRecords = [];
     this.shared = false;
-    this.transferRefused = false;
     this.errors = 0;
     this.omitted = 0;
     this.exhaustedBefore = null;
@@ -195,15 +187,12 @@ class DiagnosticsController implements PreviewDiagnostics {
   private connect(): void {
     if (this.disposed || this.current === null || this.socket !== null) return;
     const state = connectionState.get();
-    if (state.status !== 'paired' || !serverSupportsPreviewDiagnostics(state.connection.url))
-      return;
+    if (state.status !== 'paired') return;
     this.routeStop ??= routeFor(state.connection).state.subscribe(() => {
       this.recovery.resume();
     });
-    const socket = openHubSocket(state.connection, PREVIEW_DIAGNOSTICS_PATH, [
-      PREVIEW_DIAGNOSTICS_PROTOCOL,
-      `${BEARER_PROTOCOL_PREFIX}${state.connection.token}`,
-    ]);
+    const socket = this.open(state.connection);
+    if (socket === null) return;
     this.socket = socket;
     socket.onopen = (): void => {
       if (this.socket === socket) {
@@ -221,23 +210,40 @@ class DiagnosticsController implements PreviewDiagnostics {
       }
     };
     socket.onmessage = (event): void => {
-      if (this.socket !== socket || typeof event.data !== 'string') return;
-      const raw: unknown = JSON.parse(event.data);
-      const response = PREVIEW_VIEW_RESPONSE.parse(raw);
-      if (response.kind === 'accepted') {
-        if (response.epoch === this.current?.epoch && response.delivery === 'shared') {
-          this.shared = true;
-          this.changed();
-        }
-      } else if (response.kind === 'perform') void this.answer(response.request, socket);
-      else {
-        log.warn('preview.transport_refused', { reason: response.reason });
-        this.recovery.dispose();
-        socket.close();
-        this.socket = null;
+      this.received(socket, event.data);
+    };
+  }
+  private open(connection: { readonly url: string; readonly token: string }): HubSocket | null {
+    try {
+      return openHubSocket(connection, PREVIEW_DIAGNOSTICS_PATH, [
+        PREVIEW_DIAGNOSTICS_PROTOCOL,
+        `${BEARER_PROTOCOL_PREFIX}${connection.token}`,
+      ]);
+    } catch (cause) {
+      log.warn('preview.connect_failed', {
+        failure: cause instanceof Error ? cause.name : 'TransportFailure',
+      });
+      this.recovery.closed();
+      return null;
+    }
+  }
+  private received(socket: HubSocket, data: unknown): void {
+    if (this.socket !== socket) return;
+    const response = BrowserDiagnosticsApi.parseViewResponse(data);
+    if (response === null) return;
+    if (response.kind === 'accepted') {
+      if (response.epoch === this.current?.epoch && response.delivery === 'shared') {
+        this.shared = true;
         this.changed();
       }
-    };
+    } else if (response.kind === 'perform') {
+      this.answer(response.request, socket).catch((cause: unknown) => {
+        log.error('preview.answer_failed', cause);
+      });
+    } else {
+      log.warn('preview.transport_refused', { reason: response.reason });
+      socket.close();
+    }
   }
   private send(): void {
     this.recovery.activity();
@@ -245,11 +251,7 @@ class DiagnosticsController implements PreviewDiagnostics {
     const scope = this.current;
     if (socket === null || scope === null || socket.readyState !== WebSocket.OPEN) return;
     do {
-      let records = this.pending.slice(0, 64);
-      if (this.transferRefused || !BrowserDiagnosticsApi.transferableConsoleRecords(records)) {
-        this.transferRefused = true;
-        records = [];
-      } else this.pending.splice(0, 64);
+      const records = this.pending.splice(0, 64);
       socket.send(
         JSON.stringify(
           PREVIEW_VIEW_MESSAGE.parse({
@@ -259,7 +261,7 @@ class DiagnosticsController implements PreviewDiagnostics {
               visible: this.visible(),
               records,
               ...BrowserDiagnosticsApi.browserRecordMetadata(
-                !this.transferRefused && this.pending.length === 0,
+                this.pending.length === 0,
                 this.sequence,
                 this.refusedRecords,
               ),
@@ -267,13 +269,15 @@ class DiagnosticsController implements PreviewDiagnostics {
           }),
         ),
       );
-    } while (!this.transferRefused && this.pending.length > 0);
+    } while (this.pending.length > 0);
   }
-  private fence(scope: PreviewDiagnosticScope): void {
-    if (!this.visible() || this.current !== scope || this.socket?.readyState !== WebSocket.OPEN)
-      throw new PreviewViewUnavailableError(
-        'The initiating preview is hidden, disconnected or changed.',
-      );
+  private fence(scope: PreviewDiagnosticScope, needsVisible: boolean): void {
+    if (
+      (needsVisible && !this.visible()) ||
+      this.current !== scope ||
+      this.socket?.readyState !== WebSocket.OPEN
+    )
+      throw new PreviewViewUnavailableError('The preview closed or changed. Open it again.');
   }
   private async answer(
     request: {
@@ -289,15 +293,16 @@ class DiagnosticsController implements PreviewDiagnostics {
       const current = this.current;
       if (current === null || JSON.stringify(current) !== JSON.stringify(request.scope))
         throw new PreviewViewUnavailableError('The requested preview document changed.');
-      this.fence(current);
+      const capture = request.action === 'capture';
+      this.fence(current, capture);
       pixels = await this.native.perform({
         id: this.scope.target.id,
         epoch: current.epoch,
         action: request.action,
       });
-      this.fence(current);
+      this.fence(current, capture);
       if (pixels === null && request.action === 'capture')
-        throw new PreviewViewUnavailableError('The native preview did not return an image.');
+        throw new PreviewViewUnavailableError("Couldn't capture the preview. Try again.");
     } catch (cause) {
       pixels = null;
       reason = cause instanceof Error ? cause.message : 'Preview capture failed.';
@@ -311,9 +316,9 @@ class DiagnosticsController implements PreviewDiagnostics {
   }
   async capture(expected?: PreviewDocument): Promise<PreviewCapture> {
     const current = diagnosticOperationScope(this.current, expected);
-    this.fence(current);
+    this.fence(current, true);
     const result = await BrowserDiagnosticsApi.captureBrowserViewport(this.scope, current);
-    this.fence(current);
+    this.fence(current, true);
     diagnosticOperationScope(result.scope, current);
     return { ...result, documentId: result.scope.documentId, epoch: result.scope.epoch };
   }
@@ -350,9 +355,9 @@ class DiagnosticsController implements PreviewDiagnostics {
     expected?: PreviewDocument,
   ): Promise<void> {
     const current = diagnosticOperationScope(this.current, expected);
-    this.fence(current);
+    this.fence(current, false);
     await BrowserDiagnosticsApi.clearBrowserData(this.scope, current, action);
-    this.fence(current);
+    this.fence(current, false);
   }
   dispose(): void {
     this.disposed = true;
@@ -382,7 +387,7 @@ class DiagnosticsController implements PreviewDiagnostics {
       shared: this.shared,
       exhaustedBefore: this.exhaustedBefore,
       clearCookies: this.clearCookiesAvailable,
-      clearStorage: this.clearStorageAvailable && BrowserDiagnosticsApi.browserDataSupported(),
+      clearStorage: this.clearStorageAvailable,
       waitForLayout:
         this.current !== null &&
         this.foregroundVisible() &&

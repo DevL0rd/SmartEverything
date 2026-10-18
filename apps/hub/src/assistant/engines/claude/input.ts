@@ -21,7 +21,7 @@ export async function providerInput(
     deps.store,
     chat,
     scopedHub(deps.tools(), effectiveTools(deps.store, chat)),
-    deps.now(),
+    { now: deps.now(), clientId: event.client_id },
   );
   const messages = await providerMessages(
     { store: deps.store, files: deps.files },

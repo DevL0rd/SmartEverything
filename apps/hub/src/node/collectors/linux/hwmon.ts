@@ -1,6 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 const HWMON_ROOT = '/sys/class/hwmon';
+const MILLI = 1000;
+export const PLAUSIBLE_MIN = -60;
+export const PLAUSIBLE_MAX = 200;
 const CPU_CHIPS: ReadonlySet<string> = new Set(['coretemp', 'k10temp', 'zenpower']);
 
 export type CpuSensorRole = 'core' | 'package' | 'tdie' | 'tctl';
@@ -10,6 +13,8 @@ export interface TemperatureInput {
   readonly label: string;
   readonly path: string;
   readonly cpuRole: CpuSensorRole | null;
+  readonly highCelsius: number | null;
+  readonly criticalCelsius: number | null;
 }
 
 export interface FanInput {
@@ -24,7 +29,14 @@ export interface HwmonInputs {
 }
 
 function text(path: string): string | null {
-  return existsSync(path) ? readFileSync(path, 'utf8').trim() : null;
+  const value = existsSync(path) ? readFileSync(path, 'utf8').trim() : '';
+  return value === '' ? null : value;
+}
+
+function celsiusOf(path: string): number | null {
+  const milli = Number(text(path));
+  const value = milli / MILLI;
+  return Number.isFinite(value) && value > PLAUSIBLE_MIN && value < PLAUSIBLE_MAX ? value : null;
 }
 
 function readable(path: string): boolean {
@@ -64,7 +76,14 @@ function chipInputs(directory: string): HwmonInputs {
   const chip = text(`${directory}/name`) ?? 'sensor';
   const temperatures = inputsOf(directory, 'temp').map((path) => {
     const label = text(path.replace(/_input$/, '_label')) ?? chip;
-    return { chip, label, path, cpuRole: cpuRoleOf(chip, label) };
+    return {
+      chip,
+      label,
+      path,
+      cpuRole: cpuRoleOf(chip, label),
+      highCelsius: celsiusOf(path.replace(/_input$/, '_max')),
+      criticalCelsius: celsiusOf(path.replace(/_input$/, '_crit')),
+    };
   });
   const fans = inputsOf(directory, 'fan').map((path) => {
     const max = text(path.replace(/_input$/, '_max'));

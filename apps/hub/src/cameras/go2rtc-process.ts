@@ -6,6 +6,7 @@ import type { Readable } from 'node:stream';
 import { REDACTED, type Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { IceServer } from '@smarteverything/domain';
+import { ffmpegPath } from '../media/ffmpeg-path';
 import { go2rtcConfig } from './go2rtc-config';
 
 export const GO2RTC_USERNAME = 'hub';
@@ -96,7 +97,7 @@ function relay(launch: Go2rtcLaunch, text: string): boolean {
   } else if (line.level === 'warn') {
     log.warn('go2rtc.reported', details);
   } else {
-    log.debug('go2rtc.reported', { level: line.level, ...details });
+    log.debug('go2rtc.reported', () => ({ level: line.level, ...details }));
   }
   return line.message?.startsWith('[api] listen') === true;
 }
@@ -117,22 +118,33 @@ function awaitReady(child: Go2rtcChild, launch: Go2rtcLaunch): Promise<void> {
   });
 }
 
-function watchExit(
-  child: Go2rtcChild,
-  launch: Go2rtcLaunch,
-  stopping: () => boolean,
-  stop: () => void,
-): void {
-  process.once('SIGTERM', stop);
-  process.once('SIGINT', stop);
+function watchExit(child: Go2rtcChild, launch: Go2rtcLaunch, stopping: () => boolean): void {
   child.once('exit', (code, signal) => {
+    launch.log.info('go2rtc.exited', {
+      pid: child.pid,
+      exitCode: code,
+      signal,
+      expected: stopping(),
+    });
     setTimeout(() => {
-      process.off('SIGTERM', stop);
-      process.off('SIGINT', stop);
       if (!stopping()) {
+        launch.log.error('go2rtc.died', new Go2rtcExitedError(code, signal), { pid: child.pid });
         launch.exited(new Go2rtcExitedError(code, signal));
       }
     }, SHUTDOWN_GRACE_MS);
+  });
+}
+
+function reportStarted(launch: Go2rtcLaunch, child: Go2rtcChild, startedAt: number): void {
+  launch.log.info('go2rtc.started', {
+    apiPort: launch.apiPort,
+    rtspPort: launch.rtspPort,
+    webrtcPort: launch.webrtcPort,
+    pid: child.pid,
+    candidates: launch.candidates.length,
+    iceServers: launch.iceServers.length,
+    xiaomiLogins: Object.keys(launch.xiaomi).length,
+    durationMs: Date.now() - startedAt,
   });
 }
 
@@ -140,31 +152,26 @@ export async function startGo2rtc(launch: Go2rtcLaunch): Promise<RunningGo2rtc> 
   const directory = join(launch.dataDirectory, 'go2rtc');
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const configPath = join(directory, 'go2rtc.yaml');
-  await writeFile(configPath, go2rtcConfig({ ...launch, username: GO2RTC_USERNAME }), {
-    mode: 0o600,
-  });
+  await writeFile(
+    configPath,
+    go2rtcConfig({ ...launch, username: GO2RTC_USERNAME, ffmpegBinary: ffmpegPath() }),
+    {
+      mode: 0o600,
+    },
+  );
   const child = spawn(launch.binary, ['-config', configPath], {
     cwd: directory,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stopping = false;
+  const startedAt = Date.now();
+  launch.log.debug('go2rtc.spawned', { pid: child.pid, binary: launch.binary });
   child.stderr.on('data', (chunk: Buffer) => {
-    launch.log.warn('go2rtc.stderr', { text: chunk.toString('utf8') });
+    launch.log.warn('go2rtc.stderr', { text: withoutQueries(chunk.toString('utf8')) });
   });
   await awaitReady(child, launch);
-  watchExit(
-    child,
-    launch,
-    () => stopping,
-    () => {
-      stopping = true;
-    },
-  );
-  launch.log.info('go2rtc.started', {
-    apiPort: launch.apiPort,
-    rtspPort: launch.rtspPort,
-    webrtcPort: launch.webrtcPort,
-  });
+  watchExit(child, launch, () => stopping);
+  reportStarted(launch, child, startedAt);
   return {
     baseUrl: `http://127.0.0.1:${String(launch.apiPort)}`,
     username: GO2RTC_USERNAME,
@@ -172,6 +179,7 @@ export async function startGo2rtc(launch: Go2rtcLaunch): Promise<RunningGo2rtc> 
     stop: () =>
       new Promise((resolve) => {
         stopping = true;
+        launch.log.info('go2rtc.stopping', { pid: child.pid });
         if (child.exitCode !== null || child.signalCode !== null) {
           resolve();
           return;

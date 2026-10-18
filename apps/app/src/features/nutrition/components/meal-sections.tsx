@@ -6,7 +6,8 @@ import { href } from '../../../app-shell/hrefs';
 import { amountText } from '../model/macros';
 import { MEAL_INFO, mealOfCode, type Meal } from '../model/meals';
 import { nutritionOf, waterMlOfEntry } from '../model/portion';
-import { FoodEntryRow, WaterEntryRow } from './entry-rows';
+import { FoodEntryRow } from './entry-rows';
+import { WaterGroup } from './water-group';
 
 function mealOf(entry: HealthEntryRow): Meal {
   const data = nutritionOf(entry);
@@ -72,13 +73,7 @@ export function MealSections({
           onEdit={onEdit}
         />
       ))}
-      {water.length === 0 ? null : (
-        <List title="Water" inset>
-          {water.map((entry) => (
-            <WaterEntryRow key={entry.id} entry={entry} />
-          ))}
-        </List>
-      )}
+      {water.length === 0 ? null : <WaterGroup entries={water} />}
     </>
   );
 }

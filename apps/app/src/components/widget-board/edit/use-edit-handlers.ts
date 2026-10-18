@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { BoardClass, BoardWidget } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { heavyThud, selectionTick } from '../../../platform/haptics';
 import type { WidgetDefinition } from '../types';
 import { useAutoScroll, useDragState, type DragState } from './drag-state';
@@ -8,6 +9,8 @@ import type { WidgetCommand, WidgetHandlers } from './editable-widget';
 import type { BoardEditor } from './use-board-editor';
 import type { StoredOptions } from './widget-options';
 
+const log = new Logger('app.widget-board');
+
 interface EditUi {
   readonly lifted: string | null;
   readonly resizing: string | null;
@@ -15,6 +18,7 @@ interface EditUi {
   readonly picked: string | null;
   readonly optionsFor: string | null;
   readonly galleryOpen: boolean;
+  readonly revealed: string | null;
   readonly frozen: readonly string[] | null;
 }
 
@@ -25,6 +29,7 @@ const IDLE_UI: EditUi = {
   picked: null,
   optionsFor: null,
   galleryOpen: false,
+  revealed: null,
   frozen: null,
 };
 
@@ -76,14 +81,19 @@ function handlersOf({ context, touch, patch, settle, autoScroll }: HandlerInput)
   const { editor, board } = context;
   return {
     lift: (key): void => {
+      log.debug('edit.lifted', { page: editor.page, board, key });
       autoScroll(true);
       if (touch) {
         heavyThud();
       }
       patch({ lifted: key, picked: null, frozen: context.visible.map((widget) => widget.key) });
     },
-    drop: settle,
+    drop: (): void => {
+      log.debug('edit.dropped', { page: editor.page, board });
+      settle();
+    },
     resizeStart: (key): void => {
+      log.debug('edit.resize_started', { page: editor.page, board, key });
       patch({ resizing: key });
     },
     resizeTo: (key, size): void => {
@@ -93,11 +103,19 @@ function handlersOf({ context, touch, patch, settle, autoScroll }: HandlerInput)
     resizeEnd: settle,
     command: (key, command): void => {
       const update = commandUpdate(context, key, command);
+      log.debug('edit.command_run', {
+        page: editor.page,
+        board,
+        key,
+        command,
+        applied: update !== null,
+      });
       if (update !== null) {
         editor.change(board, update, 'step');
       }
     },
     openOptions: (key): void => {
+      log.debug('edit.options_opened', { page: editor.page, board, key });
       patch({ optionsFor: key });
     },
     focus: (key): void => {
@@ -108,7 +126,7 @@ function handlersOf({ context, touch, patch, settle, autoScroll }: HandlerInput)
 
 export function useEditSession(context: EditContext, touch: boolean): EditSession {
   const { editor, board } = context;
-  const [ui, setUi] = useState<EditUi>(IDLE_UI);
+  const [ui, setUi] = useState<EditUi>({ ...IDLE_UI, optionsFor: editor.opening });
   const patch = (next: Partial<EditUi>): void => {
     setUi((previous) => ({ ...previous, ...next }));
   };

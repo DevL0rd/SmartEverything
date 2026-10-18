@@ -1,3 +1,4 @@
+import { Logger, background } from '@smarteverything/logging';
 import { useReducer, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { saveScene } from '../../../api/scenes';
@@ -14,6 +15,7 @@ import {
   type SceneProblems,
 } from '../model/scene-state';
 
+const log = new Logger('app.automations');
 export interface SceneEditor {
   readonly sceneId: string | null;
   readonly draft: SceneDraft;
@@ -53,19 +55,47 @@ function useSceneSave(
     setAttempted(true);
     const validation = validateScene(draft, devices);
     if (!validation.valid) {
+      log.info('scene.save_blocked', { sceneId, reason: 'invalid' });
       notify({ message: 'Fix the marked parts to save', tone: 'critical' });
       return;
     }
     setSaving(true);
-    void attempt('It wasn’t saved', async () => {
-      const id = await saveScene({ sceneId, ...validation.scene, position: start.position });
-      onSaved(id);
-      notify({ message: `${validation.scene.name} saved`, tone: 'positive' });
-    }).finally(() => {
-      setSaving(false);
-    });
+    background(
+      attempt(
+        'It wasn’t saved',
+        async () => {
+          const id = await saveScene({ sceneId, ...validation.scene, position: start.position });
+          log.info('scene.saved', { sceneId: id, created: sceneId === null });
+          onSaved(id);
+          notify({ message: `${validation.scene.name} saved`, tone: 'positive' });
+        },
+        { action: 'save-scene', sceneId },
+      ).finally(() => {
+        setSaving(false);
+      }),
+      'use_scene_editor.attempt_failed',
+    );
   };
   return { saving, attempted, save };
+}
+
+function confirmRemove(
+  id: string,
+  scene: NonNullable<Parameters<typeof removeScene>[1]>,
+  close: () => void,
+): void {
+  background(
+    confirm({
+      title: `Delete ${scene.name}?`,
+      confirmLabel: 'Delete',
+      tone: 'destructive',
+    }).then(async (accepted) => {
+      if (accepted && (await removeScene(id, scene))) {
+        close();
+      }
+    }),
+    'use_scene_editor.confirm_failed',
+  );
 }
 
 export function useSceneEditor(start: SceneStart, devices: readonly DeviceLike[]): SceneEditor {
@@ -87,16 +117,7 @@ export function useSceneEditor(start: SceneStart, devices: readonly DeviceLike[]
       close();
       return;
     }
-    const id = sceneId;
-    void confirm({
-      title: `Delete ${baseline.name}?`,
-      confirmLabel: 'Delete',
-      tone: 'destructive',
-    }).then(async (accepted) => {
-      if (accepted && (await removeScene(id, { ...baseline, position: start.position }))) {
-        close();
-      }
-    });
+    confirmRemove(sceneId, { ...baseline, position: start.position }, close);
   };
   return {
     sceneId,

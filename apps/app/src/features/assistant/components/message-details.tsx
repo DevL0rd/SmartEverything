@@ -13,6 +13,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import { useAiChat } from '../data/chat-store';
 import { moneyNoteOf, useMoney, type Money } from '../../region';
 import { usePluginNames } from '../data/plugin-names';
+import { NO_COST_REPORTED, noCostReported } from '../model/cost-note';
 import { modelIdName } from '../model/model-name';
 import { sourceLabelOf, viaLabelOf } from '../model/speaker';
 import { useModelRow } from '../picker/model-queries';
@@ -30,7 +31,15 @@ function ModelValue({ model }: { readonly model: string }): ReactNode {
   return <ListRow title="Model" value={row.data?.name ?? modelIdName(model)} />;
 }
 
-function costRowsOf(messageMicros: number, chatMicros: number, money: Money): readonly ReactNode[] {
+function costRowsOf(
+  row: AssistantMessageRow,
+  chatMicros: number,
+  money: Money,
+): readonly ReactNode[] {
+  const messageMicros = row.cost_micros;
+  if (noCostReported(row)) {
+    return [<ListRow key="cost" title="Cost" value={NO_COST_REPORTED} />];
+  }
   if (messageMicros === 0) {
     return [];
   }
@@ -70,20 +79,17 @@ function Rows({ row }: { readonly row: AssistantMessageRow }): ReactNode {
       />
       {source === null ? null : <ListRow title="From" value={`${source} · ${row.author}`} />}
       {row.model === null ? null : <ModelValue model={row.model} />}
-      <ChatCostRows chat={chat} row={row} money={money} />
+      {chatCostRowsOf(chat, row, money)}
       {took === null ? null : <ListRow title="Took" value={took} />}
       {row.steps.length === 0 ? null : (
         <ListRow title="Tools" value={plural(row.steps.length, 'step')} />
       )}
       {subscriptionChat(chat) ? null : (
-        <>
-          {' '}
-          <ListRow
-            title="See costs for this chat"
-            chevron
-            href={href.assistantCosts({ chat: row.chat_id })}
-          />
-        </>
+        <ListRow
+          title="See costs for this chat"
+          chevron
+          href={href.assistantCosts({ chat: row.chat_id })}
+        />
       )}
     </List>
   );
@@ -108,45 +114,35 @@ export function MessageDetails({
 function subscriptionChat(chat: AiChatRow | null): boolean {
   return chat !== null && isComputerEngine(chat.engine);
 }
-function ChatCostRows({
-  chat,
-  row,
-  money,
-}: {
-  readonly chat: AiChatRow | null;
-  readonly row: AssistantMessageRow;
-  readonly money: Money;
-}): ReactNode {
+function chatCostRowsOf(
+  chat: AiChatRow | null,
+  row: AssistantMessageRow,
+  money: Money,
+): readonly ReactNode[] {
   if (row.cost_incomplete === true || chat?.cost_incomplete === true)
-    return <IncompleteCostRows chat={chat} row={row} money={money} />;
-  return chat !== null && isComputerEngine(chat.engine) ? (
-    <ChatSubscriptionUsage chat={chat} />
-  ) : (
-    costRowsOf(row.cost_micros, chat?.cost_micros ?? 0, money)
-  );
+    return incompleteCostRowsOf(chat, row, money);
+  if (chat !== null && isComputerEngine(chat.engine))
+    return [<ChatSubscriptionUsage key="usage" chat={chat} />];
+  return costRowsOf(row, chat?.cost_micros ?? 0, money);
 }
 
-function IncompleteCostRows({
-  chat,
-  row,
-  money,
-}: {
-  readonly chat: AiChatRow | null;
-  readonly row: AssistantMessageRow;
-  readonly money: Money;
-}): ReactNode {
-  return (
-    <>
-      <ListRow
-        title="Cost"
-        value={
-          row.cost_incomplete === true ? 'Supplier cost unavailable' : money.cost(row.cost_micros)
-        }
-      />
-      <ListRow
-        title="Chat total"
-        value={`${money.cost(chat?.cost_micros ?? 0)} known${chat?.cost_incomplete === true ? ' + unavailable' : ''}`}
-      />
-    </>
-  );
+function incompleteCostRowsOf(
+  chat: AiChatRow | null,
+  row: AssistantMessageRow,
+  money: Money,
+): readonly ReactNode[] {
+  return [
+    <ListRow
+      key="cost"
+      title="Cost"
+      value={
+        row.cost_incomplete === true ? 'Supplier cost unavailable' : money.cost(row.cost_micros)
+      }
+    />,
+    <ListRow
+      key="chat"
+      title="Chat total"
+      value={`${money.cost(chat?.cost_micros ?? 0)} known${chat?.cost_incomplete === true ? ' + unavailable' : ''}`}
+    />,
+  ];
 }

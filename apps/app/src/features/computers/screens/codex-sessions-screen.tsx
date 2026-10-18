@@ -8,13 +8,13 @@ import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { useIsOwner, useDevice } from '../../../store/selectors';
-import { SubscriptionUsageBars } from '../../assistant/provider/subscription-usage';
-import { codexSubscriptionWindows } from '../../assistant/provider/subscription-usage-values';
+import { SubscriptionUsageBars, codexSubscriptionWindows } from '../../assistant';
 import { ComputerFrame } from '../components/computer-frame';
 import { QueryState } from '../components/query-state';
 import { CodexNativeStart } from '../components/codex-native-start';
 import { CodexNativeSession } from '../components/codex-native-session';
 import { useComputerRuntime, useRuntimeSupported, useCodexRead } from '../data/computer-runtime';
+import { background } from '@smarteverything/logging';
 function Sessions({
   status,
   enabled,
@@ -80,7 +80,7 @@ export function ComputerCodexSessionsScreen({
       {!owner || !supported ? (
         <Text tone="variant">
           {!owner
-            ? 'Native Codex sessions require the hub owner.'
+            ? 'Only the home owner can use Codex sessions.'
             : 'Update the hub to access Codex sessions.'}
         </Text>
       ) : (
@@ -89,13 +89,13 @@ export function ComputerCodexSessionsScreen({
             error={status.error}
             pending={status.isPending}
             retry={() => {
-              void status.refetch();
+              background(status.refetch(), 'status.refetch_failed');
             }}
           />
           {enabled ? null : (
             <Text tone="variant">
               {status.data?.capabilities.control_reason ??
-                'Enable native control on a connected computer.'}
+                'Turn on Codex sessions on a connected computer.'}
             </Text>
           )}
           {status.data === undefined ? null : <Sessions status={status.data} enabled={enabled} />}
@@ -123,7 +123,7 @@ function SessionSheets({
   return (
     <>
       <Sheet
-        title="New native Codex session"
+        title="New Codex session"
         open={creating}
         onClose={() => {
           create(false);
@@ -133,7 +133,7 @@ function SessionSheets({
         {creating && enabled ? <CodexNativeStart status={status} /> : null}
       </Sheet>
       <Sheet
-        title="Native Codex session"
+        title="Codex session"
         open={selected !== null}
         onClose={() => {
           select(null);
@@ -168,11 +168,11 @@ function SessionRows({
 }): ReactNode {
   return (
     <>
-      <List title="Actual native sessions">
+      <List title="Sessions">
         {(page?.sessions ?? []).map((session) => (
           <NavRow
             key={session.id}
-            title={session.title ?? 'Untitled native session'}
+            title={session.title ?? 'Untitled session'}
             subtitle={`${session.state} · ${session.cwd ?? 'Folder unavailable'}`}
             disabled={!enabled}
             onPress={() => {
@@ -181,9 +181,7 @@ function SessionRows({
           />
         ))}
       </List>
-      {page?.sessions.length === 0 ? (
-        <Text tone="variant">No native sessions in this view.</Text>
-      ) : null}
+      {page?.sessions.length === 0 ? <Text tone="variant">No sessions here.</Text> : null}
       {page?.next_cursor === null || page === null ? null : (
         <Button
           label="Next sessions page"
@@ -224,7 +222,7 @@ function SessionsControls({
   return (
     <>
       <SwitchRow
-        title="Archived native sessions"
+        title="Archived sessions"
         value={archived}
         onChange={(value) => {
           setArchived(value);
@@ -232,7 +230,7 @@ function SessionsControls({
         }}
       />
       <Button
-        label="New native Codex session"
+        label="New Codex session"
         disabled={!enabled || !status.capabilities.operations.includes('start')}
         onPress={() => {
           create(true);
@@ -292,7 +290,7 @@ function SessionsQuery({
       error={sessions.error}
       pending={sessions.isPending ? enabled : false}
       retry={() => {
-        void sessions.refetch();
+        background(sessions.refetch(), 'sessions.refetch_failed');
       }}
     />
   );

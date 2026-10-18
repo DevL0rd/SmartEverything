@@ -27,7 +27,7 @@ export function NutritionScreen(): ReactNode {
           : undefined
       }
     >
-      <NutritionDay day={day} today={today} />
+      <NutritionDay day={day} today={today} started={started} />
     </FitnessFrame>
   );
 }

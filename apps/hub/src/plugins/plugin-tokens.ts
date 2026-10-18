@@ -1,9 +1,9 @@
 import { createMcpToken, hashMcpToken, type PluginRow } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 
-export const CALLBACK_URL_VARIABLE = 'SMARTEVERYTHING_MCP_URL';
+const CALLBACK_URL_VARIABLE = 'SMARTEVERYTHING_MCP_URL';
 
-export const CALLBACK_TOKEN_VARIABLE = 'SMARTEVERYTHING_TOKEN';
+const CALLBACK_TOKEN_VARIABLE = 'SMARTEVERYTHING_TOKEN';
 
 export function callbackFor(
   store: Store,

@@ -1,8 +1,8 @@
 import { PREVIEW_GATEWAY_CONFIG } from '../preview/gateway';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { NODE_AI_TOKEN } from '@smarteverything/domain';
-import { LOG_LEVELS } from '@smarteverything/logging';
+import { CLIENT_TOKEN, NODE_AI_TOKEN } from '@smarteverything/domain';
+import { LOG_LEVELS, messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
 
 export { OWNER_TOKEN_FILE } from '../server/access';
@@ -11,6 +11,7 @@ export const DATABASE_FILE = 'smarteverything.db';
 export const SERVICE_CONFIG_FILE = 'service.json';
 export const SERVICE_LOG_FILE = 'service.log';
 export const SERVICE_OUTPUT_LOG_FILE = 'service-output.log';
+export const NODE_WINDOW_FILE = 'node-window.json';
 export const SERVICE_PID_FILE = 'service.pid';
 export const SERVICE_READY_FILE = 'service-ready.json';
 export const SUPERVISOR_PID_FILE = 'supervisor.pid';
@@ -46,6 +47,7 @@ const HUB_SERVICE_CONFIG = z.strictObject({
   go2rtcApiPort: PORT.default(1984),
   webrtcPort: PORT.default(8555),
   logLevel: z.enum(LOG_LEVELS).default('info'),
+  wakeDiagnostics: z.boolean().default(false),
   allowedOrigins: z.array(z.url()).min(1).optional(),
   codex_executable: ABSOLUTE_PATH.optional(),
   codex_control_socket: ABSOLUTE_PATH.optional(),
@@ -63,10 +65,13 @@ export const NODE_SERVICE_CONFIG = z.strictObject({
     codex_control_socket: ABSOLUTE_PATH.optional(),
   }),
 });
-const SERVICE_CONFIG = z.union([HUB_SERVICE_CONFIG, NODE_SERVICE_CONFIG]);
+export const NODE_WINDOW = z.strictObject({
+  hub_url: z.url({ protocol: /^https?$/ }),
+  token: CLIENT_TOKEN,
+});
 export type HubServiceConfig = z.infer<typeof HUB_SERVICE_CONFIG>;
 export type NodeServiceConfig = z.infer<typeof NODE_SERVICE_CONFIG>;
-export type ServiceConfig = z.infer<typeof SERVICE_CONFIG>;
+export type ServiceConfig = HubServiceConfig | NodeServiceConfig;
 
 export const SERVICE_READY = z.strictObject({
   pid: z.int().positive(),
@@ -76,8 +81,6 @@ export const SERVICE_READY = z.strictObject({
 
 export const NODE_SERVICE_READY = z.strictObject({
   role: z.literal('node'),
-  route_authority: z.uuid().optional(),
-  route_process_start: z.string().regex(/^\d+$/).optional(),
   pid: z.int().positive(),
   hub_url: z.url({ protocol: /^https?$/ }),
   device_id: z.uuid(),
@@ -130,12 +133,11 @@ export function parseServiceConfigText(source: string, text: string): ServiceCon
   try {
     json = JSON.parse(text);
   } catch (error) {
-    throw new ServiceConfigError(
-      source,
-      `it is not JSON (${error instanceof Error ? error.message : String(error)})`,
-    );
+    throw new ServiceConfigError(source, `it is not JSON (${messageOf(error)})`);
   }
-  const parsed = SERVICE_CONFIG.safeParse(json);
+  const isNode =
+    typeof json === 'object' && json !== null && 'role' in json && json.role === 'node';
+  const parsed = (isNode ? NODE_SERVICE_CONFIG : HUB_SERVICE_CONFIG).safeParse(json);
   if (!parsed.success) {
     throw new ServiceConfigError(source, issuesOf(parsed.error));
   }
@@ -148,7 +150,7 @@ export async function readServiceConfig(dataDirectory: string): Promise<ServiceC
   try {
     text = await readFile(path, 'utf8');
   } catch (error) {
-    throw new ServiceConfigError(path, error instanceof Error ? error.message : String(error));
+    throw new ServiceConfigError(path, messageOf(error));
   }
   return parseServiceConfigText(path, text);
 }

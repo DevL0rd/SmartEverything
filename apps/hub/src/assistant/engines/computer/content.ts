@@ -11,11 +11,9 @@ import type { AssistantFiles } from '../../files';
 import { z } from 'zod';
 import type { AssistantMessageRow } from '@smarteverything/domain';
 import { mediaKindOf } from '../../../transcripts/media-notes';
-import { attachmentNote } from '../../attachment-note';
 
 const IMAGE_MIME = z.enum(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 const TEXT_BYTES_MAX = 150_000;
-const HISTORY_MAX = 500;
 const IN_HISTORY = new Set<StoredEvent['kind']>(['chat', 'report', 'plugin']);
 
 export async function providerMessages(
@@ -45,11 +43,6 @@ export async function providerMessages(
     );
   if (!IN_HISTORY.has(event.kind) || messages.length === 0)
     messages.push({ role: 'user', content: [{ type: 'text', text: event.text }] });
-  if (messages.length > HISTORY_MAX)
-    throw new ApiError(
-      'conflict',
-      'This fresh provider session exceeds the bounded history limit; choose a branch or a new chat.',
-    );
   return messages;
 }
 
@@ -59,11 +52,7 @@ async function attachmentContent(
   file: ReturnType<Store['assistantChat']['attachment']>,
   current: boolean,
 ): Promise<ProviderContent> {
-  if (cachedMedia(file.mime, current))
-    return {
-      type: 'text',
-      text: `${attachmentNote(file, await files.ensureMediaNote(file))}\nOriginal attachment: ${file.id}; use read_assistant_attachment for explicit inspection.`,
-    };
+  if (cachedMedia(file.mime, current)) return { type: 'text', text: files.noteLine(file) };
   const bytes = await readFile(files.pathOf(file));
   const mime = IMAGE_MIME.safeParse(file.mime);
   if (mime.success) return { type: 'image', media_type: mime.data, data: bytes.toString('base64') };
@@ -94,6 +83,19 @@ function inProviderHistory(row: AssistantMessageRow): boolean {
     (row.text !== '' || row.attachments.length > 0)
   );
 }
+export async function steerContent(
+  resources: { readonly store: Store; readonly files: AssistantFiles },
+  event: StoredEvent,
+  text: string,
+): Promise<ProviderContent[]> {
+  const content: ProviderContent[] = [{ type: 'text', text }];
+  if (event.message_id === null) return content;
+  const { store, files } = resources;
+  for (const file of store.assistantChat.attachmentsOf(event.message_id))
+    content.push(await attachmentContent(files, 'claude', file, true));
+  return content;
+}
+
 async function messageContent(
   resources: { readonly store: Store; readonly files: AssistantFiles },
   row: AssistantMessageRow,

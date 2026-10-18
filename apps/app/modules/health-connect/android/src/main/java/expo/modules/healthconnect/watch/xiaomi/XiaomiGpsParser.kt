@@ -10,7 +10,7 @@ object XiaomiGpsParser {
       1 -> 12
       2 -> 18
       3 -> 26
-      else -> throw UnsupportedFile(id, "GPS track version ${id.version} is not known (Gadgetbridge reads 1 to 3)")
+      else -> throw UnsupportedFile(id, "GPS track version ${id.version} is not known (this app reads 1 to 3)")
     }
     val buffer = FileAssembler.body(file)
     buffer.get()

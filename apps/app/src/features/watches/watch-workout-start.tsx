@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import { View } from 'react-native';
 import { href } from '../../app-shell/hrefs';
 import { Button } from '../../components/button';
@@ -8,6 +7,7 @@ import type { PrimaryActionProps } from '../../components/primary-action';
 import { Sheet } from '../../components/sheet';
 import { Text } from '../../components/text';
 import type { Device } from '../../store/state';
+import { useArrival } from './use-arrival';
 import { hasWorkoutToShow, WatchWorkoutPanel } from './watch-workout-card';
 import { useMyWatch } from './watch-glance';
 import { isRunning, useWatchWorkout } from './watch-workout';
@@ -77,9 +77,9 @@ export interface StartWorkout {
   readonly sheet: ReactNode;
 }
 
-export function useStartWorkout(openOnArrival: boolean): StartWorkout {
+export function useStartWorkout(arriving: boolean, onClosed?: () => void): StartWorkout {
   const watch = useMyWatch();
-  const [open, setOpen] = useState(openOnArrival);
+  const [open, setOpen] = useArrival(arriving);
   const running = isRunning(useWatchWorkout(watch));
   return {
     action:
@@ -98,6 +98,7 @@ export function useStartWorkout(openOnArrival: boolean): StartWorkout {
         watch={watch}
         onClose={() => {
           setOpen(false);
+          onClosed?.();
         }}
       />
     ) : null,

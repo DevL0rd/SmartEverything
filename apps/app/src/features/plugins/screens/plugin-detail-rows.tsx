@@ -8,9 +8,11 @@ import { ActionRow, NavRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { plural } from '../../../format/text';
 import { notify } from '../../../components/toast-store';
+import { PluginActionRow } from '../../../plugins/shared/plugin-action';
 import { usePluginTool, type PluginToolResult } from '../../../plugins/use-plugin-tool';
-import { remove, restart, savePlugin, switchPlugin } from '../data/plugin-actions';
+import { changePlugin, remove, restart, switchPlugin } from '../data/plugin-actions';
 import { usePluginTools } from '../data/plugin-queries';
+import { background } from '@smarteverything/logging';
 
 export function PowerRows({ row }: { readonly row: PluginRow }): ReactNode {
   const powers = pluginPowers(row.manifest);
@@ -30,22 +32,28 @@ export function PowerRows({ row }: { readonly row: PluginRow }): ReactNode {
 
 function trust(row: PluginRow, on: boolean): void {
   const change = (): void => {
-    void savePlugin(row, { trusted: on }, 'The sandbox setting wasn’t saved');
+    background(
+      changePlugin(row, { trusted: on }, 'The sandbox setting wasn’t saved'),
+      'plugin.change_failed',
+    );
   };
   if (!on) {
     change();
     return;
   }
-  void confirm({
-    title: `Run ${row.manifest.name} outside the sandbox?`,
-    body: 'It can then read and change any file your account can. Only do this for plugins you trust.',
-    confirmLabel: 'Run outside',
-    tone: 'destructive',
-  }).then((accepted) => {
-    if (accepted) {
-      change();
-    }
-  });
+  background(
+    confirm({
+      title: `Run ${row.manifest.name} outside the sandbox?`,
+      body: 'It can then read and change any file your account can. Only do this for plugins you trust.',
+      confirmLabel: 'Run outside',
+      tone: 'destructive',
+    }).then((accepted) => {
+      if (accepted) {
+        change();
+      }
+    }),
+    'plugin_detail_rows.confirm_failed',
+  );
 }
 
 export function SwitchRows({ row }: { readonly row: PluginRow }): ReactNode {
@@ -55,7 +63,9 @@ export function SwitchRows({ row }: { readonly row: PluginRow }): ReactNode {
         icon="power"
         title="On"
         value={row.enabled}
-        onChange={(on) => void switchPlugin(row, on)}
+        onChange={(on) => {
+          background(switchPlugin(row, on), 'plugin.switch_failed');
+        }}
       />
       {row.source === 'local' ? (
         <SwitchRow
@@ -94,13 +104,13 @@ export function ToolRows({ row }: { readonly row: PluginRow }): ReactNode {
     <List inset>
       {[
         ...setup.map((tool) => (
-          <ActionRow
+          <PluginActionRow
             key={tool.name}
             icon="wrench"
             title={tool.title}
-            onPress={() => {
-              void runner.run(tool.name, {}).then(reportDone);
-            }}
+            onPress={() =>
+              runner.run(tool.name, {}, `${tool.title} didn’t finish`).then(reportDone)
+            }
           />
         )),
         <NavRow
@@ -145,11 +155,14 @@ export function UpkeepRows({ row }: { readonly row: PluginRow }): ReactNode {
           title={`Remove ${row.manifest.name}`}
           destructive
           onPress={() => {
-            void remove(row).then((removed) => {
-              if (removed) {
-                router.replace(href.settings.page('plugins'));
-              }
-            });
+            background(
+              remove(row).then((removed) => {
+                if (removed) {
+                  router.replace(href.settings.page('plugins'));
+                }
+              }),
+              'plugin_detail_rows.remove_failed',
+            );
           }}
         />
       )}

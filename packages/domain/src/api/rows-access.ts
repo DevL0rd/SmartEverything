@@ -88,7 +88,7 @@ export const WATCH_METRICS: ReadonlySet<HealthMetric> = new Set([
 
 export const HEALTH_METRIC = z.enum(HEALTH_METRICS);
 
-export const HEALTH_DAILY_ROW = z.strictObject({
+export const HEALTH_DAILY_ROW = z.object({
   profile_id: ID.nullable().default(null),
   day: DAY,
   metric: HEALTH_METRIC,
@@ -101,22 +101,20 @@ export type HealthDailyRow = z.infer<typeof HEALTH_DAILY_ROW>;
 
 export const HEALTH_SOURCE_NAME = boundedText(80);
 
-export const HEALTH_SOURCE_ROW = z.strictObject({
-  id: ID,
-  client_id: ID.nullable(),
+export const HEALTH_SOURCE_ROW = z.object({
+  client_id: ID,
   name: HEALTH_SOURCE_NAME,
   granted_types: z.array(HEALTH_RECORD_TYPE),
   last_sync_at: MOMENT.nullable(),
   last_error: z.string().nullable(),
   created_at: MOMENT,
-  revoked_at: MOMENT.nullable(),
 });
 
 export type HealthSourceRow = z.infer<typeof HEALTH_SOURCE_ROW>;
 
 export const TOKEN_NAME = boundedText(80);
 
-export const MCP_TOKEN_ROW = z.strictObject({
+export const MCP_TOKEN_ROW = z.object({
   id: ID,
   name: TOKEN_NAME,
   created_at: MOMENT,
@@ -126,7 +124,7 @@ export const MCP_TOKEN_ROW = z.strictObject({
 
 export type McpTokenRow = z.infer<typeof MCP_TOKEN_ROW>;
 
-export const OAUTH_CLIENT_ROW = z.strictObject({
+export const OAUTH_CLIENT_ROW = z.object({
   id: z.string().min(1).max(200),
   name: z.string().min(1).max(200),
   uri: z.url().nullable(),

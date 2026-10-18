@@ -8,12 +8,13 @@ import {
 import { z } from 'zod';
 import type { Sql } from '../store/sql';
 import { labelsOf } from './labels';
+import { messageOf } from '@smarteverything/logging';
 
 const POSITION = z.strictObject({ at: z.iso.datetime({ offset: true }), id: z.uuid() });
 
 export type LedgerPosition = z.output<typeof POSITION>;
 
-export function cursorOf(row: AiUsageRow): string {
+function cursorOf(row: AiUsageRow): string {
   return Buffer.from(JSON.stringify({ at: row.at, id: row.id })).toString('base64url');
 }
 
@@ -25,7 +26,7 @@ const CURSOR_JSON = z
     } catch (cause) {
       context.addIssue({
         code: 'custom',
-        message: `the cursor is not JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `the cursor is not JSON: ${messageOf(cause)}`,
       });
       return z.NEVER;
     }

@@ -14,7 +14,6 @@ import {
   ROOM_DEVICES,
   SPECIFICATION,
   STATUS_BATCH_SIZE,
-  batches,
   commandBody,
   deviceListQuery,
 } from '../src';
@@ -136,11 +135,8 @@ describe('cloud API shapes', () => {
     });
   });
 
-  it('splits work into batches of a fixed size', () => {
+  it('asks for twenty device statuses at a time', () => {
     expect(STATUS_BATCH_SIZE).toBe(20);
-    expect(batches([1, 2, 3, 4, 5], 2)).toStrictEqual([[1, 2], [3, 4], [5]]);
-    expect(batches([1, 2], 2)).toStrictEqual([[1, 2]]);
-    expect(batches([], 2)).toStrictEqual([]);
   });
 
   it('writes commands as code and value pairs only', () => {

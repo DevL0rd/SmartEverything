@@ -9,6 +9,7 @@ import type { IconName } from '../../../components/icon';
 import type { StatusTone } from '../../../components/tone';
 import type { ColourRole } from '../../../design/tokens';
 import { decimal, signed } from '../../../format/number';
+import { comparable } from './bands';
 import type { MetricReading } from './comfort';
 
 export interface Comparison {
@@ -39,7 +40,7 @@ function readingOf(
   metric: MetricReading['metric'],
 ): number | null {
   const found = readings.find((reading) => reading.metric === metric);
-  return found === undefined || found.stale ? null : found.amount;
+  return found === undefined || found.stale ? null : comparable(found.amount, found.unit);
 }
 
 interface Row {

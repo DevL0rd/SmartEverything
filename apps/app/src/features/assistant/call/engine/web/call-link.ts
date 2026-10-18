@@ -10,7 +10,7 @@ import { Reconnect } from './reconnect';
 
 const log = new Logger('app.assistant-call');
 
-export const CONNECTION_DROPPED = 'The connection to your home dropped.';
+const CONNECTION_DROPPED = 'The connection to your home dropped.';
 
 export interface LinkPorts {
   readonly request: () => CallRequest | null;

@@ -1,6 +1,7 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useRef } from 'react';
 import type { MediaHandle } from './peer-types';
+import { background } from '@smarteverything/logging';
 
 export interface VideoSurfaceProps {
   readonly media: MediaHandle;
@@ -92,7 +93,7 @@ function usePlaying(
       if (error instanceof DOMException && error.name === 'NotAllowedError') {
         onSoundBlocked();
         element.muted = true;
-        void element.play();
+        background(element.play(), 'element.play_failed');
       }
     });
   }, [video, media, onSoundBlocked]);

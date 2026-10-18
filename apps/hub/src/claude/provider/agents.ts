@@ -68,7 +68,7 @@ function serverSpec(server: string | ClaudeMcpServers): AgentMcpServerSpec {
     Object.entries(server).map(([name, config]) => [name, transportConfig(config)]),
   );
 }
-export function transportConfig(server: Server): McpServerConfigForProcessTransport {
+function transportConfig(server: Server): McpServerConfigForProcessTransport {
   if (server.type === 'stdio')
     return {
       type: server.type,

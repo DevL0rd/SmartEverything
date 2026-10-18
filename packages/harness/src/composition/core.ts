@@ -12,20 +12,25 @@ import PermissionPresets from '@deepseek-ai/dsh-permission-presets';
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy';
 import { ConfiguredCompaction } from './compaction-policy';
 import TokenMeter from '@deepseek-ai/dsh-token-meter';
-import { mountServerProductSkills } from './product-skills';
+import { mountSkillCatalogue } from './product-skills';
 import Commands from '@deepseek-ai/dsh-commands';
 import * as HumanCommands from './human-commands';
 import ToolResultPruner from '@deepseek-ai/dsh-compaction-tool-result-pruner';
 import * as CheckpointPolicy from '@deepseek-ai/dsh-session-checkpoint-policy';
 import * as LlmRetry from '@deepseek-ai/dsh-llm-retry';
-import { HubSessionPersistence } from '../persistence/service';
+import { MachineSessionPersistence } from '../persistence/service';
 import type { NativeSessionPersistencePort } from '../persistence/port';
+
+interface CoreOptions {
+  readonly cwd: string;
+  readonly server: boolean;
+  readonly catalogDescriptionMaxLength: number;
+}
 
 export async function mountCore(
   ctx: Context,
   port: NativeSessionPersistencePort,
-  cwd: string,
-  server: boolean,
+  { cwd, server, catalogDescriptionMaxLength }: CoreOptions,
 ): Promise<void> {
   await ctx.plugin(LlmRuntime);
   await ctx.plugin(SessionStore);
@@ -33,7 +38,7 @@ export async function mountCore(
   await ctx.plugin(SessionProjection);
   await ctx.plugin(SystemPrompt, { personaPrefix: '' });
   await ctx.plugin(ToolRuntime);
-  await ctx.plugin(HubSessionPersistence, port);
+  await ctx.plugin(MachineSessionPersistence, port);
   await ctx.plugin(Commands);
   await ctx.plugin(ApprovalService, { policy: server ? 'ask' : 'never' });
   await ctx.plugin(UserQuestions);
@@ -56,5 +61,5 @@ export async function mountCore(
   await ctx.plugin(HumanCommands);
   await ctx.plugin(CheckpointPolicy);
   await ctx.plugin(AgentLoop, { agents: [] });
-  if (server) await mountServerProductSkills(ctx);
+  if (server) await mountSkillCatalogue(ctx, catalogDescriptionMaxLength);
 }

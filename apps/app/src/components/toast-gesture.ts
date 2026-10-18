@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import type { ViewStyle } from 'react-native';
+import { useEffect, useRef, type RefObject } from 'react';
+import type { View, ViewStyle } from 'react-native';
 import { Gesture, type ComposedGesture } from 'react-native-gesture-handler';
 import {
   useAnimatedStyle,
@@ -10,6 +10,7 @@ import {
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { DURATION, EASING, SPRING, useMotion } from '../design/motion';
+import { isNative } from '../design/platform';
 import type { Idiom } from '../design/tokens';
 import { dismissToast, holdToast, releaseToast } from './toast-store';
 
@@ -100,4 +101,30 @@ export function useToastMotion(id: number, leaving: boolean, idiom: Idiom): Toas
       width.set(next);
     },
   };
+}
+
+export function useFocusHold(id: number): RefObject<View | null> {
+  const ref = useRef<View>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (isNative() || !(node instanceof HTMLElement)) {
+      return undefined;
+    }
+    const enter = (): void => {
+      holdToast(id, 'focus');
+    };
+    const leave = (event: FocusEvent): void => {
+      if (!(event.relatedTarget instanceof Node && node.contains(event.relatedTarget))) {
+        releaseToast(id, 'focus');
+      }
+    };
+    node.addEventListener('focusin', enter);
+    node.addEventListener('focusout', leave);
+    return (): void => {
+      node.removeEventListener('focusin', enter);
+      node.removeEventListener('focusout', leave);
+      releaseToast(id, 'focus');
+    };
+  }, [id]);
+  return ref;
 }

@@ -1,27 +1,11 @@
 import { removeProfileChats } from '../../assistant/remove-profile-chats';
 import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import { outboxReadingOf } from '../../local/reading-records';
-import { clientOf, healthSourceOf, profileIdOf, type Caller } from '../auth';
+import { clientOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { ackEntries } from './nutrition';
-import { DONE_REPLY, bound, type Bound } from '../router';
-
-type PeopleRoutes = Record<
-  | 'createProfile'
-  | 'updateProfile'
-  | 'deleteProfile'
-  | 'selectProfile'
-  | 'assignBodyReading'
-  | 'addLocalDevice'
-  | 'removeLocalDevice'
-  | 'removeBleObserver'
-  | 'readBleDevice'
-  | 'readBleWatch'
-  | 'relayBleAdverts'
-  | 'readHealthOutbox'
-  | 'ackHealthOutbox',
-  Bound
->;
+import { DONE_REPLY, bound } from '../router';
+import { assertMayChoosePerson, effectiveRow } from '../person-access';
 
 function mayChange(context: ServerContext, caller: Caller, profileId: string): void {
   const client = clientOf(caller);
@@ -30,53 +14,52 @@ function mayChange(context: ServerContext, caller: Caller, profileId: string): v
   }
 }
 
-function profileRoutes(
-  context: ServerContext,
-): Pick<PeopleRoutes, 'createProfile' | 'updateProfile' | 'deleteProfile' | 'selectProfile'> {
-  const { store, live } = context;
-  return {
-    createProfile: bound(E.createProfile, ({ body }) => store.profiles.create(body)),
+const profileRoutes = (context: ServerContext) =>
+  ({
+    createProfile: bound(E.createProfile, ({ body }) => context.store.profiles.create(body)),
     updateProfile: bound(E.updateProfile, ({ params, body, caller }) => {
       mayChange(context, caller, params.profileId);
-      const updated = store.profiles.update(params.profileId, body);
+      if (body.scale_user !== undefined && clientOf(caller).role !== 'owner') {
+        throw new ApiError('forbidden', 'Only an owner can link a person to a scale slot.');
+      }
+      const updated = context.store.profiles.update(params.profileId, body);
       if (body.sex !== undefined || body.birth_date !== undefined || body.height_cm !== undefined) {
         context.hub.readings.recomputeFor(params.profileId);
       }
       return updated;
     }),
     deleteProfile: bound(E.deleteProfile, async ({ params }) => {
-      store.profiles.assertRemovable(params.profileId);
-      await removeProfileChats(store, context.assistant, params.profileId);
-      const moved = store.clients.list().filter((client) => client.profile_id === params.profileId);
-      store.profiles.remove(params.profileId);
+      context.store.profiles.assertRemovable(params.profileId);
+      await removeProfileChats(context.store, context.assistant, params.profileId);
+      const onProfile = context.store.clients
+        .list()
+        .filter((client) => client.profile_id === params.profileId);
+      const members = onProfile.filter((client) => client.role === 'member');
+      const moved = onProfile.filter((client) => client.role === 'owner');
+      context.store.write(() => {
+        context.access.lifecycle.unpair(members, params.profileId, 'the person was removed');
+        context.store.profiles.remove(params.profileId);
+      });
       for (const client of moved) {
-        live.profileChanged(client.id, store.profiles.activeOf(client.id).id);
+        context.live.profileChanged(client.id, context.store.profiles.activeOf(client.id).id);
       }
       return DONE_REPLY;
     }),
     selectProfile: bound(E.selectProfile, ({ body, caller }) => {
-      const profile = store.profiles.byId(body.profileId);
-      const client = store.clients.useProfile(clientOf(caller).id, profile.id);
-      live.profileChanged(client.id, profile.id);
+      const profile = context.store.profiles.byId(body.profileId);
+      const before = clientOf(caller);
+      assertMayChoosePerson(context.store, before.id, profile.id);
+      const stored = context.store.clients.useProfile(before.id, profile.id);
+      const client = effectiveRow(context.store, stored);
+      context.live.profileChanged(client.id, profile.id);
+      context.talk.accessChanged();
+      if (client.role !== before.role) context.live.reconnectClient(client.id);
       return { client, hub: context.status() };
     }),
-  };
-}
+  }) as const;
 
-function deviceRoutes(
-  context: ServerContext,
-): Pick<
-  PeopleRoutes,
-  | 'assignBodyReading'
-  | 'addLocalDevice'
-  | 'removeLocalDevice'
-  | 'removeBleObserver'
-  | 'readBleDevice'
-  | 'readBleWatch'
-  | 'relayBleAdverts'
-> {
-  const { store, hub } = context;
-  return {
+const deviceRoutes = ({ store, hub }: ServerContext) =>
+  ({
     assignBodyReading: bound(E.assignBodyReading, ({ params, body }) =>
       hub.readings.assign(params.readingId, body.profileId),
     ),
@@ -103,17 +86,13 @@ function deviceRoutes(
     relayBleAdverts: bound(E.relayBleAdverts, ({ body, caller }) =>
       hub.local.relay(body.adverts, clientOf(caller).id),
     ),
-  };
-}
+  }) as const;
 
-function outboxRoutes(
-  context: ServerContext,
-): Pick<PeopleRoutes, 'readHealthOutbox' | 'ackHealthOutbox'> {
-  const { store } = context;
-  return {
+const outboxRoutes = ({ store }: ServerContext) =>
+  ({
     readHealthOutbox: bound(E.readHealthOutbox, ({ caller }) => {
       const profileId = profileIdOf(store, caller);
-      const sourceId = healthSourceOf(caller).id;
+      const sourceId = clientOf(caller).id;
       return {
         readings: store.bodyReadings
           .outbox(profileId, sourceId)
@@ -124,7 +103,7 @@ function outboxRoutes(
       };
     }),
     ackHealthOutbox: bound(E.ackHealthOutbox, ({ body, caller }) => {
-      const source = healthSourceOf(caller);
+      const sourceId = clientOf(caller).id;
       const profileId = profileIdOf(store, caller);
       store.write(() => {
         for (const written of body.written) {
@@ -132,15 +111,17 @@ function outboxRoutes(
           if (reading.profile_id !== profileId || written.version > reading.version) {
             throw new ApiError('conflict', `Reading ${written.id} is not this phone’s to save.`);
           }
-          store.bodyReadings.written(source.id, written.id, written.version);
+          store.bodyReadings.written(sourceId, written.id, written.version);
         }
-        ackEntries(store, { sourceId: source.id, profileId }, body);
+        ackEntries(store, { sourceId, profileId }, body);
       });
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
 
-export function peopleRoutes(context: ServerContext): PeopleRoutes {
-  return { ...profileRoutes(context), ...deviceRoutes(context), ...outboxRoutes(context) };
-}
+export const peopleRoutes = (context: ServerContext) =>
+  ({
+    ...profileRoutes(context),
+    ...deviceRoutes(context),
+    ...outboxRoutes(context),
+  }) as const;

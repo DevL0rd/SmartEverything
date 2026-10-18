@@ -5,13 +5,9 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteOpenHelper
-import java.time.Instant
-import java.time.format.DateTimeParseException
-import org.json.JSONArray
-import org.json.JSONException
-import org.json.JSONObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
-class BleAdvertBatch(val ids: List<Long>, val adverts: JSONArray)
+class BleAdvertBatch(val ids: List<Long>, val adverts: List<BleAdvert>)
 
 class BleOutboxFull : SyncFailure("The Bluetooth relay has 4096 unacknowledged frames; restore its server connection", retryable = false)
 
@@ -21,8 +17,9 @@ class BleOutboxUnavailable(cause: SQLiteException) : SyncFailure(
   retryable = true
 )
 
-class LegacyBleQueueInvalid(detail: String) : SyncFailure(
+class LegacyBleQueueInvalid(detail: String, cause: Throwable? = null) : SyncFailure(
   "The saved Bluetooth preference queue could not be imported: $detail",
+  cause,
   retryable = false
 )
 
@@ -33,7 +30,7 @@ object BleAdvertOutbox {
   private var helper: Database? = null
 
   @Synchronized
-  fun remember(context: Context, adverts: List<JSONObject>): Int = access(context) { database ->
+  fun remember(context: Context, adverts: List<BleAdvert>): Int = access(context) { database ->
     transaction(database) {
       database.delete("adverts", "acknowledged_at < ?", arrayOf((System.currentTimeMillis() - SENT_WINDOW_MS).toString()))
       var added = 0
@@ -47,11 +44,11 @@ object BleAdvertOutbox {
   @Synchronized
   fun peek(context: Context): BleAdvertBatch = access(context) { database ->
     val ids = mutableListOf<Long>()
-    val adverts = JSONArray()
+    val adverts = mutableListOf<BleAdvert>()
     database.rawQuery("select id, advert from adverts where acknowledged_at is null order by id limit $BATCH_LIMIT", null).use { rows ->
       while (rows.moveToNext()) {
         ids.add(rows.getLong(0))
-        adverts.put(JSONObject(rows.getString(1)))
+        adverts.add(HubJson.decode(rows.getString(1)))
       }
     }
     BleAdvertBatch(ids, adverts)
@@ -80,15 +77,15 @@ object BleAdvertOutbox {
     }
   }
 
-  private fun insert(database: SQLiteDatabase, advert: JSONObject, enforceCapacity: Boolean = true): Boolean {
-    val identity = "${advert.getString("address")}:${advert.getString("serviceUuid")}:${advert.getString("data")}"
+  private fun insert(database: SQLiteDatabase, advert: BleAdvert, enforceCapacity: Boolean = true): Boolean {
+    val identity = advert.identity
     database.rawQuery("select id from adverts where identity = ?", arrayOf(identity)).use { rows ->
       if (rows.moveToFirst()) return false
     }
     if (enforceCapacity && pendingCount(database) >= CAPACITY) throw BleOutboxFull()
     val values = ContentValues().apply {
       put("identity", identity)
-      put("advert", advert.toString())
+      put("advert", HubJson.encode(advert))
     }
     database.insertOrThrow("adverts", null, values)
     return true
@@ -122,29 +119,13 @@ object BleAdvertOutbox {
     }
   }
 
-  private fun legacyAdverts(text: String): List<JSONObject> {
+  private fun legacyAdverts(text: String): List<BleAdvert> {
     try {
-      val pending = JSONObject(text)
-      return pending.keys().asSequence()
-        .map { pending.getJSONObject(it) }
-        .map { advert -> advert to legacyMoment(advert) }
-        .sortedBy { it.second }
-        .map { it.first }
-        .toList()
-    } catch (failure: JSONException) {
-      throw LegacyBleQueueInvalid("expected a JSON object containing frame objects")
-    }
-  }
-
-  private fun legacyMoment(advert: JSONObject): Instant {
-    val value = advert.opt("seenAt")
-    if (value !is String) {
-      throw LegacyBleQueueInvalid("every frame must have a timestamp string")
-    }
-    try {
-      return Instant.parse(value)
-    } catch (failure: DateTimeParseException) {
-      throw LegacyBleQueueInvalid("every frame timestamp must be a valid instant")
+      return HubJson.parseObject(text).values
+        .map { HubJson.json.decodeFromJsonElement<BleAdvert>(it) }
+        .sortedBy { it.seenAt }
+    } catch (failure: IllegalArgumentException) {
+      throw LegacyBleQueueInvalid(failure.message.orEmpty(), failure)
     }
   }
 

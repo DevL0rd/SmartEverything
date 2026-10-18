@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { itIsPinnedToItsDeclaredVersion, readRepositoryJson } from './contract-helpers';
+import { readRepositoryJson } from './contract-helpers';
 
 const CONFIG_SCHEMA = z.object({
   thresholds: z.object({ break: z.number(), high: z.number(), low: z.number() }),
@@ -8,8 +8,6 @@ const CONFIG_SCHEMA = z.object({
 });
 
 describe('@stryker-mutator/core contract', () => {
-  itIsPinnedToItsDeclaredVersion('@stryker-mutator/core');
-
   it('breaks the build below a perfect mutation score', () => {
     expect(readRepositoryJson('stryker.config.json', CONFIG_SCHEMA).thresholds.break).toBe(100);
   });

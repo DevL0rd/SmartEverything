@@ -48,6 +48,7 @@ export interface HostedCallRequest {
   readonly opening: Opening;
   readonly speaking: HostedSpeaking;
   readonly place?: string;
+  readonly deviceId?: string;
   readonly pluginId?: string;
   readonly heard?: () => Int16Array;
   readonly listening?: HostedListening;

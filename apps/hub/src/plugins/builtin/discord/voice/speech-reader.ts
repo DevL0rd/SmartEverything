@@ -52,16 +52,12 @@ export function discordSpeechReader(
   transcripts: PluginTranscripts,
 ): PluginSpeechReader {
   return {
-    readTool: (session) => ({
+    readTool: () => ({
       name: pluginToolName(PLUGIN_ID.parse('discord'), 'voice'),
-      args:
-        session === undefined
-          ? { action: 'calls' }
-          : { action: 'transcript_feed', callId: session.id },
+      args: { action: 'calls' },
     }),
     admit: (caller, sourceId): void => {
       validateCaller(services, caller);
-      transcripts.scope(caller, sourceId ?? 'calls');
       if (sourceId !== undefined) admitSelected(services, transcripts, sourceId);
     },
     validate: (caller, session, sourceId): void => {
@@ -71,7 +67,6 @@ export function discordSpeechReader(
     },
     sources: (caller): ReturnType<PluginSpeechReader['sources']> => {
       validateCaller(services, caller);
-      transcripts.scope(caller, 'calls');
       const seen = new Set<string>();
       return transcripts.list(RECENT_CALLS).flatMap((session) => {
         const summary = summaryOf(session);

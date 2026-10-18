@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { EventRow, LiveChange, RecordingRow } from '@smarteverything/domain';
 import type { CameraDay } from '../api/media';
 import { cameraSnapshotKey } from './keys';
+import { background } from '@smarteverything/logging';
 
 const CAMERA_DAY_PREFIX = ['window', 'camera-day'] as const;
 
@@ -102,6 +103,9 @@ export function refreshSnapshots(client: QueryClient, changes: readonly LiveChan
     }),
   );
   for (const deviceId of devices) {
-    void client.invalidateQueries({ queryKey: cameraSnapshotKey(deviceId) });
+    background(
+      client.invalidateQueries({ queryKey: cameraSnapshotKey(deviceId) }),
+      'queries.invalidate_failed',
+    );
   }
 }

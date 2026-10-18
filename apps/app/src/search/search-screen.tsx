@@ -1,13 +1,9 @@
 import type { ReactNode, RefObject } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { View, type TextInput } from 'react-native';
-import {
-  router,
-  useLocalSearchParams,
-  useNavigation,
-  type NativeStackNavigationProp,
-} from 'expo-router';
+import { useLocalSearchParams, useNavigation, type NativeStackNavigationProp } from 'expo-router';
 import Head from 'expo-router/head';
+import { closeFlow } from '../app-shell/close-flow';
 import { ShellGate } from '../app-shell/shell-gate';
 import { IconButton } from '../components/icon-button';
 import { SearchField } from '../components/search-field';
@@ -15,11 +11,7 @@ import { ResultList } from './result-list';
 import { useSearchPanel } from './search-panel';
 
 function leave(): void {
-  if (router.canGoBack()) {
-    router.back();
-    return;
-  }
-  router.replace('/');
+  closeFlow('/');
 }
 
 function useFocusAfterTransition(input: RefObject<TextInput | null>): void {
@@ -62,10 +54,9 @@ function SearchBody({ initial }: { readonly initial: string }): ReactNode {
           />
         </View>
       </View>
-      <ResultList
-        model={panel.model}
-        contentClassName="w-full max-w-reading self-center px-gutter pt-2 pb-safe-offset-6"
-      />
+      <View className="w-full max-w-reading flex-1 self-center">
+        <ResultList model={panel.model} contentClassName="px-gutter pt-2 pb-safe-offset-6" />
+      </View>
     </View>
   );
 }

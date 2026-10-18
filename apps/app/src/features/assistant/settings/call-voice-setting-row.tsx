@@ -1,15 +1,17 @@
 import type { ReactNode } from 'react';
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
+import type { CallVoice } from '@smarteverything/domain';
 import { ListRow } from '../../../components/list-row';
 import { measureAnchor, type Rect } from '../../../components/anchor';
-import { ScreenPausedContext } from '../../../design/screen-pause';
+import { useScreenPaused } from '../../../design/screen-pause';
 import { updateAssistantSettings } from '../../../api/assistant';
 import { captureAssistantWrite } from '../../../store/assistant-response-style';
 import { useEntityStore } from '../../../store/store-context';
 import { useIsOwner } from '../../../store/selectors';
 import { useAssistantStatus } from '../data/assistant-data';
-import { VoicePreviewPicker, type CallVoice } from '../voice-preview/voice-preview-picker';
+import { VoicePreviewPicker } from '../voice-preview/voice-preview-picker';
+import { background } from '@smarteverything/logging';
 
 interface VoiceChoiceControl {
   readonly saving: boolean;
@@ -35,29 +37,29 @@ function useVoiceChoice(spoken: boolean, close: () => void): VoiceChoiceControl 
       const status = store.get().assistant;
       if (pending.current || status === null || (!spoken && voice === null)) return;
       const scope = captureAssistantWrite(store);
-      const current = status.settings.voice;
       pending.current = true;
       setSaving(true);
       setError(null);
-      const next = spoken
-        ? { ...current, speech_voice: voice }
-        : { ...current, voice: voice ?? current.voice };
-      void updateAssistantSettings({ voice: next }, scope)
-        .then((saved) => {
-          if (!mounted.current || !scope.current()) return;
-          store.update((state) => ({ ...state, assistant: saved }));
-          close();
-        })
-        .catch((cause: unknown) => {
-          if (mounted.current && scope.current())
-            setError(
-              cause instanceof Error ? cause.message : 'The voice could not be saved. Try again.',
-            );
-        })
-        .finally(() => {
-          pending.current = false;
-          if (mounted.current) setSaving(false);
-        });
+      const next = voice === null || spoken ? { speech_voice: voice } : { voice };
+      background(
+        updateAssistantSettings({ voice: next }, scope)
+          .then((saved) => {
+            if (!mounted.current || !scope.current()) return;
+            store.update((state) => ({ ...state, assistant: saved }));
+            close();
+          })
+          .catch((cause: unknown) => {
+            if (mounted.current && scope.current())
+              setError(
+                cause instanceof Error ? cause.message : 'The voice could not be saved. Try again.',
+              );
+          })
+          .finally(() => {
+            pending.current = false;
+            if (mounted.current) setSaving(false);
+          }),
+        'assistant_settings.update_failed',
+      );
     },
   };
 }
@@ -74,10 +76,9 @@ function VoiceSettingRow({ spoken }: { readonly spoken: boolean }): ReactNode {
   const close = useCallback((): void => {
     setAnchor(null);
   }, []);
-  const store = useEntityStore();
   const status = useAssistantStatus();
   const owner = useIsOwner();
-  const paused = useContext(ScreenPausedContext);
+  const paused = useScreenPaused();
   const choice = useVoiceChoice(spoken, close);
   const title = spoken ? 'Voice for spoken lines' : 'Call voice';
   const selected = selectedVoice(status, spoken);
@@ -102,7 +103,6 @@ function VoiceSettingRow({ spoken }: { readonly spoken: boolean }): ReactNode {
           value={selected}
           sameAsCall={spoken}
           anchor={anchor}
-          store={store}
           saving={choice.saving}
           error={choice.error}
           onPick={choice.pick}

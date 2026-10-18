@@ -1,5 +1,5 @@
 import type { ClientRow, Role } from '@smarteverything/domain';
-import { joinParts } from '../../../format/text';
+import { compareText, joinParts } from '../../../format/text';
 import { relative } from '../../../format/time';
 
 export interface ClientView {
@@ -41,7 +41,7 @@ export function clientViews(
       (left, right) =>
         Number(right.id === me) - Number(left.id === me) ||
         Number(right.built_in) - Number(left.built_in) ||
-        left.created_at.localeCompare(right.created_at),
+        compareText(left.created_at, right.created_at),
     )
     .map((client) => {
       const you = client.id === me;
@@ -74,4 +74,17 @@ export function platformIcon(platform: ClientRow['platform']): 'smartphone' | 'm
     case 'web':
       return 'globe';
   }
+}
+
+export interface PendingRole {
+  readonly from: Role;
+  readonly to: Role;
+}
+
+export function livePending(current: Role, pending: PendingRole | null): PendingRole | null {
+  return pending !== null && pending.from === current ? pending : null;
+}
+
+export function shownRole(current: Role, pending: PendingRole | null): Role {
+  return livePending(current, pending)?.to ?? current;
 }

@@ -1,5 +1,5 @@
-import { googleModelIdOf, type AiPricing, type AiUsageRow } from '@smarteverything/domain';
-import { MissingPriceError, type PriceBook } from './gemini-live';
+import { googleModelIdOf, type AiUsageRow } from '@smarteverything/domain';
+import { rateOf, type PriceBook } from './gemini-live';
 import type { Ledger } from './ledger';
 
 export interface SpokenLine {
@@ -11,16 +11,6 @@ export interface SpokenLine {
   readonly inputTokens: number;
   readonly audioTokens: number;
   readonly audioMs: number;
-}
-
-type SpeechRate = 'input_per_mtok' | 'audio_out_per_mtok';
-
-function rateOf(pricing: AiPricing, modelId: string, rate: SpeechRate): number {
-  const value = pricing[rate];
-  if (value === null) {
-    throw new MissingPriceError(modelId, rate);
-  }
-  return value;
 }
 
 export function recordSpeech(ledger: Ledger, prices: PriceBook, line: SpokenLine): AiUsageRow {

@@ -4,12 +4,15 @@ import type {
   DesktopTalkTray,
 } from '@smarteverything/domain';
 import { isDeepStrictEqual } from 'node:util';
+import { Logger } from '@smarteverything/logging';
 import type { BrowserWindow } from 'electron';
 import type { DesktopTray } from '../tray.js';
 import { revealWindow } from '../window.js';
 import { electronTalkKeys } from './electron-shortcuts.js';
 import { portalTalkKeys } from './portal-shortcuts.js';
 import type { TalkKeys } from './talk-keys.js';
+
+const log = new Logger('desktop.talk');
 
 const COMMAND_CHANNEL = 'desktop:talk-command';
 
@@ -26,6 +29,7 @@ export class TalkDesktop {
   #tray: DesktopTray | null = null;
   #keys: TalkKeys | null = null;
   #shown: DesktopTalkTray | null = null;
+  #takes: ((command: DesktopTalkCommand) => boolean) | null = null;
 
   attach(window: BrowserWindow, tray: DesktopTray): void {
     this.#window = window;
@@ -33,14 +37,25 @@ export class TalkDesktop {
     const sink = (command: DesktopTalkCommand): void => {
       this.send(command);
     };
+    log.info('talk.attached', { keys: process.platform === 'linux' ? 'portal' : 'electron' });
     this.#keys = process.platform === 'linux' ? portalTalkKeys(sink) : electronTalkKeys(sink);
   }
 
+  takeFirst(takes: (command: DesktopTalkCommand) => boolean): void {
+    this.#takes = takes;
+  }
+
   send(command: DesktopTalkCommand): void {
-    const window = this.#window;
-    if (window === null || window.isDestroyed()) {
+    if (this.#takes?.(command) === true) {
+      log.debug('talk.command_taken', { kind: command.kind });
       return;
     }
+    const window = this.#window;
+    if (window === null || window.isDestroyed()) {
+      log.debug('talk.command_dropped', { kind: command.kind, reason: 'no_window' });
+      return;
+    }
+    log.debug('talk.command_sent', { kind: command.kind });
     if (command.kind === 'open') {
       revealWindow(window);
     }
@@ -61,10 +76,12 @@ export class TalkDesktop {
       return;
     }
     this.#shown = state;
+    log.debug('talk.tray_changed', { activity: state.activity, channels: state.channels.length });
     this.#tray?.talk(state);
   }
 
   stop(): void {
+    log.info('talk.stopped', { hadKeys: this.#keys !== null });
     this.#keys?.stop();
   }
 

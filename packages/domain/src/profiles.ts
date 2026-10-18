@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { ACCENTS } from './client-prefs';
 import { FITNESS_GOALS, MAX_HEART_RATE } from './fitness-settings';
 
-export const PROFILE_NAME = z.string().trim().min(1).max(40);
+export const PROFILE_NAME_MAX = 40;
+
+export const PROFILE_NAME = z.string().trim().min(1).max(PROFILE_NAME_MAX);
 
 export const SEXES = ['female', 'male'] as const;
 
@@ -42,7 +44,9 @@ const PROFILE_FIELDS = {
   sex: z.enum(SEXES).nullable(),
   birth_date: DAY.nullable(),
   height_cm: HEIGHT_CM.nullable(),
-  scale_user: SCALE_USER.nullable(),
+  scale_user: SCALE_USER.nullable().describe(
+    'The number the Xiaomi scale shows this person as; weigh-ins from it are saved to them, null links none',
+  ),
 };
 
 export const NEW_PROFILE = z.strictObject(PROFILE_FIELDS).partial().required({ name: true });

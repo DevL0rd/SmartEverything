@@ -1,9 +1,7 @@
 import type { GatewayPages } from './gateway-pages';
-import { previewPath, previewRequester, upgradePreview } from './websocket';
 import { servePreviewHtml } from './html-response';
-import { isHtmlPreview } from './sources';
-import { createServer, request as httpRequest } from 'node:http';
-import type { Server, IncomingMessage, ServerResponse, ClientRequest } from 'node:http';
+import { createServer, ServerResponse } from 'node:http';
+import type { Server, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { randomBytes } from 'node:crypto';
 import WebSocket, { WebSocketServer } from 'ws';
@@ -13,7 +11,9 @@ import type { Logger } from '@smarteverything/logging';
 import type { PreviewLeases, ViewerLease } from './leases';
 import { PREVIEW_COOKIE } from './leases';
 import type { PreviewDataSockets } from './data-sockets';
-import { mappedHeaders, responseHeaders } from './headers';
+import { pageHeaders } from './headers';
+import { PreviewRelay } from './relay';
+import { socketText } from './socket-text';
 export const PREVIEW_GATEWAY_CONFIG = z.strictObject({
   base_domain: z
     .string()
@@ -37,12 +37,22 @@ export class PreviewGateway {
     this.pages = pages;
   }
   private probe: { readonly host: string; readonly nonce: string } | null = null;
+  private readonly relay: PreviewRelay;
+  private readonly upgraded = new Set<Duplex>();
   constructor(
     readonly config: PreviewGatewayConfig | undefined,
     private readonly leases: PreviewLeases,
     private readonly data: PreviewDataSockets,
     private readonly log: Logger,
-  ) {}
+  ) {
+    this.relay = new PreviewRelay(
+      data,
+      () => this.ancestors(),
+      (target, cause) => {
+        this.failed(target, cause);
+      },
+    );
+  }
   status(): {
     readonly ready: boolean;
     readonly base_domain: string | null;
@@ -67,7 +77,11 @@ export class PreviewGateway {
     });
     this.server = server;
     server.on('upgrade', (req, socket, head) => {
-      void this.upgrade(req, socket, head).catch(() => socket.destroy());
+      try {
+        this.upgrade(req, socket, head);
+      } catch (cause) {
+        this.failed(socket, cause);
+      }
     });
     server.on('error', (cause) => {
       this.ready = false;
@@ -126,15 +140,7 @@ export class PreviewGateway {
       ws.once('message', (raw) => {
         clearTimeout(timer);
         ws.close();
-        if (
-          (Buffer.isBuffer(raw)
-            ? raw
-            : Array.isArray(raw)
-              ? Buffer.concat(raw)
-              : Buffer.from(raw)
-          ).toString('utf8') === nonce
-        )
-          resolve();
+        if (socketText(raw) === nonce) resolve();
         else reject(new ApiError('conflict', 'External WSS probe differs.'));
       });
       ws.once('error', (cause) => {
@@ -144,14 +150,9 @@ export class PreviewGateway {
     });
   }
   private host(req: IncomingMessage): string {
-    const hosts = req.rawHeaders.filter(
-      (name, index) => index % 2 === 0 && name.toLowerCase() === 'host',
-    );
-    if (hosts.length !== 1)
-      throw new ApiError('invalid_request', 'Preview requests require exactly one raw Host field.');
     const host = req.headers.host;
-    if (host === undefined || !/^[a-z0-9.-]+$/.test(host))
-      throw new ApiError('forbidden', 'The preview Host is invalid.');
+    if (host === undefined)
+      throw new ApiError('invalid_request', 'Preview requests require a Host.');
     return host;
   }
   private ancestors(): readonly string[] {
@@ -176,10 +177,8 @@ export class PreviewGateway {
       throw new ApiError('not_found', 'Reserved preview gateway path.');
     const lease = this.leases.authenticate(host, req.headers.cookie);
     this.requestOrigin(req, lease);
-    if (!gatewayMethod(req.method))
-      throw new ApiError('forbidden', 'This HTTP method cannot use a preview relay.');
     if (await servePreviewHtml(req, res, { path, lease, ancestors: this.ancestors() })) return;
-    await this.relayHttp(req, res, path, lease);
+    this.relay.web(req, res, lease);
   }
   private servePage(
     req: IncomingMessage,
@@ -195,38 +194,6 @@ export class PreviewGateway {
       ancestors: this.ancestors(),
     });
   }
-  private async relayHttp(
-    req: IncomingMessage,
-    res: ServerResponse,
-    path: string,
-    lease: ViewerLease,
-  ): Promise<void> {
-    if (isHtmlPreview(lease.publication))
-      throw new ApiError('forbidden', 'HTML documents cannot relay local network requests.');
-    const signal = previewRequester(req, res, lease.abort.signal);
-    const stream = await this.data.open(lease, signal);
-    if (res.destroyed) {
-      stream.destroy();
-      return;
-    }
-    signal.throwIfAborted();
-    if (stream.destroyed)
-      throw new ApiError('upstream_failed', 'The preview relay closed during admission.');
-    const upstream = httpRequest({
-      method: req.method,
-      path,
-      createConnection: () => stream,
-      headers: mappedHeaders(
-        req.headers,
-        `https://${lease.host}`,
-        lease.publication.view.source_origin,
-      ),
-      maxHeaderSize: 32 * 1024,
-      signal,
-    });
-    this.pipeHttp(req, res, upstream, lease);
-  }
-
   private bootstrap(req: IncomingMessage, res: ServerResponse, host: string, url: URL): void {
     if (
       req.method !== 'GET' ||
@@ -239,62 +206,19 @@ export class PreviewGateway {
       );
     const lease = this.leases.bootstrap(host, url.searchParams.get('code') ?? '');
     res.writeHead(303, {
+      ...pageHeaders(this.ancestors()),
       location: lease.publication.view.initial_path,
-      'cache-control': 'no-store',
-      'referrer-policy': 'no-referrer',
       'set-cookie': `${PREVIEW_COOKIE}=${lease.credential}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned`,
-      'content-security-policy': `default-src 'none'; frame-ancestors ${this.ancestors().join(' ')}`,
     });
     res.end();
   }
   private requestOrigin(req: IncomingMessage, lease: ViewerLease): void {
-    this.leases.validate(lease);
     if (req.headers.origin !== undefined && req.headers.origin !== `https://${lease.host}`)
       throw new ApiError('forbidden', 'Preview requests require their exact isolated Origin.');
     if (req.headers['sec-fetch-site'] === 'cross-site')
       throw new ApiError('forbidden', 'Cross-site preview requests are refused.');
   }
-  private pipeHttp(
-    req: IncomingMessage,
-    res: ServerResponse,
-    upstream: ClientRequest,
-    lease: ViewerLease,
-  ): void {
-    const publication = lease.publication;
-    if (isHtmlPreview(publication))
-      throw new ApiError('forbidden', 'HTML cannot relay a network response.');
-    const close = (): void => {
-      upstream.destroy();
-    };
-    res.once('close', close);
-    req.once('aborted', close);
-    upstream.once('error', (cause) => {
-      this.failed(res, cause);
-    });
-    upstream.once('response', (source) => {
-      try {
-        this.leases.validate(lease);
-        res.writeHead(
-          source.statusCode ?? 502,
-          responseHeaders(
-            source.headers,
-            publication.view.source_origin,
-            `https://${lease.host}`,
-            this.ancestors(),
-          ),
-        );
-        source.on('error', (cause) => {
-          this.failed(res, cause);
-        });
-        source.pipe(res);
-      } catch (cause) {
-        source.destroy();
-        this.failed(res, cause);
-      }
-    });
-    req.pipe(upstream);
-  }
-  private async upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+  private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     const host = this.host(req);
     if (host === this.probe?.host && req.url === '/.se-preview/probe') {
       const server = new WebSocketServer({ noServer: true, maxPayload: 1024 });
@@ -310,27 +234,29 @@ export class PreviewGateway {
     }
     const lease = this.leases.authenticate(host, req.headers.cookie);
     this.requestOrigin(req, lease);
-    if (isHtmlPreview(lease.publication))
-      throw new ApiError('forbidden', 'HTML documents cannot open network streams.');
-    await upgradePreview({ request: req, socket, head, lease }, this.data, this.leases);
+    this.upgraded.add(socket);
+    socket.once('close', () => {
+      this.upgraded.delete(socket);
+    });
+    this.relay.ws(req, socket, head, lease);
   }
 
-  private failed(res: ServerResponse, cause: unknown): void {
-    if (res.destroyed) return;
-    if (res.headersSent) {
-      res.destroy();
+  private failed(target: ServerResponse | Duplex, cause: unknown): void {
+    if (target.destroyed) return;
+    if (!(target instanceof ServerResponse) || target.headersSent) {
+      target.destroy();
       return;
     }
     const error =
       cause instanceof ApiError
         ? cause
         : new ApiError('upstream_failed', 'The shared service is offline or its relay failed.');
-    res.writeHead(error.status, {
+    target.writeHead(error.status, {
       'content-type': 'text/plain',
       'cache-control': 'no-store',
       'referrer-policy': 'no-referrer',
     });
-    res.end(error.message);
+    target.end(error.message);
   }
   async stop(): Promise<void> {
     this.ready = false;
@@ -343,10 +269,13 @@ export class PreviewGateway {
         resolve();
       });
       server.closeAllConnections();
+      for (const socket of this.upgraded) socket.destroy();
     });
   }
 }
 
-function gatewayMethod(method: string | undefined): boolean {
-  return ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'].includes(method ?? '');
+function previewPath(value: string | undefined): string {
+  if (value === undefined || !/^\/(?![/\\])/.test(value))
+    throw new ApiError('invalid_request', 'Preview requires an origin-form path.');
+  return value;
 }

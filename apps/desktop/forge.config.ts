@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MakerDeb } from '@electron-forge/maker-deb';
@@ -11,17 +11,14 @@ import type { ForgeConfig } from '@electron-forge/shared-types';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { z } from 'zod';
 import { generateIcons, iconPaths } from './packaging/icons.js';
-import {
-  GO2RTC_LICENSE_FILE,
-  GO2RTC_RESOURCE_DIRECTORY,
-  go2rtcBuildName,
-  go2rtcShippedName,
-} from './src/service/go2rtc-binary.js';
+import { GO2RTC_RESOURCE_DIRECTORY, stageGo2rtc } from './src/service/go2rtc-binary.js';
 import { readBuildVariant } from './src/environment.js';
+import { stageFfmpeg } from './src/service/ffmpeg-binary.js';
 import { DESKTOP_VARIANTS } from './src/variant.js';
 
 const desktopDirectory = path.dirname(fileURLToPath(import.meta.url));
 const appDirectory = path.resolve(desktopDirectory, '..', 'app');
+const hubManifestFile = path.resolve(desktopDirectory, '..', 'hub', 'package.json');
 const webExport = path.join(appDirectory, 'dist');
 const variant = DESKTOP_VARIANTS[readBuildVariant()];
 const isRelease = variant.name === 'release';
@@ -37,22 +34,21 @@ const go2rtcStage = path.join(desktopDirectory, 'dist', GO2RTC_RESOURCE_DIRECTOR
 const PACKAGED_PATHS = ['/package.json', '/dist/src'];
 const BUILD_ONLY_FILE = /\.(?:d\.c?ts|map)$/u;
 
-async function stageGo2rtc(platform: string, arch: string): Promise<void> {
-  await rm(go2rtcStage, { recursive: true, force: true });
-  await mkdir(go2rtcStage, { recursive: true });
-  const binary = path.join(go2rtcStage, go2rtcShippedName(platform));
-  await copyFile(path.join(go2rtcBuilds, go2rtcBuildName(platform, arch)), binary);
-  await chmod(binary, 0o755);
-  await copyFile(
-    path.join(go2rtcBuilds, GO2RTC_LICENSE_FILE),
-    path.join(go2rtcStage, GO2RTC_LICENSE_FILE),
-  );
+const CLAUDE_SDK = '@anthropic-ai/claude-agent-sdk';
+const HUB_MANIFEST = z.object({ dependencies: z.object({ [CLAUDE_SDK]: z.string() }) });
+
+async function pinnedClaudeSdkVersion(): Promise<string> {
+  const hub = HUB_MANIFEST.parse(JSON.parse(await readFile(hubManifestFile, 'utf8')));
+  return hub.dependencies[CLAUDE_SDK];
 }
 
 async function checkClaudeRuntime(platform: string, arch: string): Promise<void> {
-  const name = `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
+  const name = `${CLAUDE_SDK}-${platform}-${arch}`;
   const directory = path.join(serviceDirectory, 'node_modules', name);
-  const manifest = z.object({ name: z.literal(name), version: z.literal('0.3.296') });
+  const manifest = z.object({
+    name: z.literal(name),
+    version: z.literal(await pinnedClaudeSdkVersion()),
+  });
   try {
     manifest.parse(JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')));
     const binary = path.join(directory, platform === 'win32' ? 'claude.exe' : 'claude');
@@ -118,7 +114,8 @@ const config: ForgeConfig = {
       if (isRelease) await checkClaudeRuntime(platform, arch);
       await generateIcons(icon, iconDirectory);
       if (isRelease) {
-        await stageGo2rtc(platform, arch);
+        await stageGo2rtc(go2rtcBuilds, go2rtcStage, platform, arch);
+        await stageFfmpeg(serviceDirectory, platform, arch);
       }
     },
     packageAfterCopy: async (_config, buildPath) => {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import Svg, { Circle, Defs, Line, Path, RadialGradient, Stop } from 'react-native-svg';
-import { GLOW, Layer, SPIN, loopStyle, sway, useSvgId, type Box } from '../../device-visuals';
+import Svg, { Circle, Line, Path, RadialGradient, Stop } from 'react-native-svg';
+import { Layer, useSvgId, type Box } from '../../device-visuals';
+import { GLOW, SPIN, loopStyle, sway } from '../../../design/loops';
 
 const LIGHT = '#FFFFFF';
 const SHADE = '#000000';
@@ -26,12 +27,10 @@ function Halo({
       motion={loopStyle({ name: GLOW, ms: 3200, alternate: true, easing: 'ease-in-out' }, moving)}
     >
       <Svg width="100%" height="100%" viewBox="0 0 100 100">
-        <Defs>
-          <RadialGradient id={halo} cx="50" cy="50" r="50" gradientUnits="userSpaceOnUse">
-            <Stop offset="0.35" stopColor={colour} stopOpacity={0.45} />
-            <Stop offset="1" stopColor={colour} stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
+        <RadialGradient id={halo} cx="50" cy="50" r="50" gradientUnits="userSpaceOnUse">
+          <Stop offset="0.35" stopColor={colour} stopOpacity={0.45} />
+          <Stop offset="1" stopColor={colour} stopOpacity={0} />
+        </RadialGradient>
         <Circle cx={50} cy={50} r={50} fill={`url(#${halo})`} />
       </Svg>
     </Layer>

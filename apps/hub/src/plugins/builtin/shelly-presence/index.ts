@@ -1,10 +1,14 @@
-import { SHELLY_PRESENCE_PLUGIN_ID, SHELLY_PRESENCE_STREAM } from '@smarteverything/domain';
+import {
+  SHELLY_PLUGIN_ID,
+  SHELLY_SNAPSHOT_STREAM,
+  SHELLY_TRACKS_STREAM,
+} from '@smarteverything/shelly';
 import { defineBuiltinPlugin } from '../define';
 import { startShelly } from './runtime';
 import { SHELLY_SETTINGS, SHELLY_SETTINGS_FORM } from './settings';
 export const shellyPresencePlugin = defineBuiltinPlugin({
   manifest: {
-    id: SHELLY_PRESENCE_PLUGIN_ID,
+    id: SHELLY_PLUGIN_ID,
     name: 'Shelly Presence',
     version: '1.0.0',
     description:
@@ -14,10 +18,17 @@ export const shellyPresencePlugin = defineBuiltinPlugin({
     contributes: {
       data: [
         {
-          stream: SHELLY_PRESENCE_STREAM,
+          stream: SHELLY_SNAPSHOT_STREAM,
           title: 'Presence sensors',
           schema: { type: 'object' },
           history: 0,
+        },
+        {
+          stream: SHELLY_TRACKS_STREAM,
+          title: 'Live tracked objects',
+          schema: { type: 'object' },
+          history: 0,
+          live: true,
         },
       ],
       settings: SHELLY_SETTINGS_FORM,

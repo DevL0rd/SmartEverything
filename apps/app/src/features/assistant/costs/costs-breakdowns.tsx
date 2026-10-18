@@ -8,6 +8,7 @@ import { DIMENSION_INFO } from './costs-dimensions';
 import type { CostDimension, CostFilters } from './costs-params';
 import { useCostTotals } from './costs-data';
 import type { CostWindow } from './costs-range';
+import { background } from '@smarteverything/logging';
 
 const MIN_CARD = 320;
 
@@ -29,7 +30,14 @@ export interface CostBreakdownsProps {
 export function CostBreakdowns({ window, filters, onFilter }: CostBreakdownsProps): ReactNode {
   const totals = useCostTotals(window, filters);
   if (totals.isError) {
-    return <ErrorState error={totals.error} retry={() => void totals.refetch()} />;
+    return (
+      <ErrorState
+        error={totals.error}
+        retry={() => {
+          background(totals.refetch(), 'totals.refetch_failed');
+        }}
+      />
+    );
   }
   if (totals.data === undefined) {
     return (

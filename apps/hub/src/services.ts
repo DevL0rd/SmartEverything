@@ -57,15 +57,8 @@ export interface CoreOptions {
 
 export function xiaomiStreamOf(store: Store): (did: string) => string | null {
   return (did) => {
-    const device = store.devices
-      .list()
-      .find((candidate) => candidate.provider === 'xiaomi' && candidate.external_id === did);
-    if (device === undefined) {
-      return null;
-    }
-    return (
-      store.cameras.list().find((camera) => camera.device_id === device.id)?.stream_name ?? null
-    );
+    const device = store.devices.byExternal('xiaomi', did);
+    return device === undefined ? null : (store.cameras.find(device.id)?.stream_name ?? null);
   };
 }
 

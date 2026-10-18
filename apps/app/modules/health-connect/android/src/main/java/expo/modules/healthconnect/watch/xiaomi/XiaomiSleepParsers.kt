@@ -18,7 +18,7 @@ object XiaomiSleepParsers {
     val headerSize = when (id.version) {
       1, 2, 3, 4 -> 1
       5 -> 2
-      else -> throw UnsupportedFile(id, "sleep version ${id.version} is not known (Gadgetbridge reads 1 to 5)")
+      else -> throw UnsupportedFile(id, "sleep version ${id.version} is not known (this app reads 1 to 5)")
     }
     val buffer = ByteBuffer.wrap(file).order(ByteOrder.LITTLE_ENDIAN).apply { position(8) }
     val header = ByteArray(headerSize).also { buffer.get(it) }
@@ -107,7 +107,7 @@ object XiaomiSleepParsers {
 
   fun stagesFile(id: XiaomiFileId, file: ByteArray): List<SleepNight> {
     if (id.version != 2) {
-      throw UnsupportedFile(id, "sleep stages version ${id.version} is not known (Gadgetbridge reads 2)")
+      throw UnsupportedFile(id, "sleep stages version ${id.version} is not known (this app reads 2)")
     }
     val buffer = FileAssembler.body(file)
     buffer.position(buffer.position() + 7)
@@ -120,7 +120,7 @@ object XiaomiSleepParsers {
     buffer.position(buffer.position() + 3 + 8 + 1)
     val changes = mutableListOf<Pair<Instant, Int>>()
     while (buffer.remaining() >= 5) {
-      changes.add(Instant.ofEpochSecond(buffer.getInt().toLong()) to gadgetbridgeStage(buffer.get().toInt() and 0xff))
+      changes.add(Instant.ofEpochSecond(buffer.getInt().toLong()) to stageFromCode(buffer.get().toInt() and 0xff))
     }
     val stages = changes.mapIndexed { index, (start, stage) ->
       SleepStage(start, changes.getOrNull(index + 1)?.first ?: wake, stage)
@@ -128,7 +128,7 @@ object XiaomiSleepParsers {
     return listOf(SleepNight(bed, wake, stages))
   }
 
-  private fun gadgetbridgeStage(code: Int): Int = when (code) {
+  private fun stageFromCode(code: Int): Int = when (code) {
     2 -> SleepStages.DEEP
     3 -> SleepStages.LIGHT
     4 -> SleepStages.REM

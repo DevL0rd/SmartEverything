@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useId, useState } from 'react';
+import { memo, useId, useMemo, useRef, useState } from 'react';
 import { ScrollView, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { CopyButton } from '../../../../components/copy-button';
@@ -97,24 +97,55 @@ function useEnd(): {
   readonly onContentSize: (width: number) => void;
   readonly onLayout: (width: number) => void;
 } {
-  const [offset, setOffset] = useState(0);
-  const [content, setContent] = useState(0);
-  const [view, setView] = useState(0);
+  const [atEnd, setAtEnd] = useState(true);
+  const metrics = useRef({ offset: 0, content: 0, view: 0 });
+  const update = (): void => {
+    const { offset, content, view } = metrics.current;
+    setAtEnd(content <= view + 1 || offset + view >= content - 1);
+  };
   return {
-    atEnd: content <= view + 1 || offset + view >= content - 1,
+    atEnd,
     onScroll: (event): void => {
-      setOffset(event.nativeEvent.contentOffset.x);
+      metrics.current.offset = event.nativeEvent.contentOffset.x;
+      update();
     },
-    onContentSize: setContent,
-    onLayout: setView,
+    onContentSize: (width): void => {
+      metrics.current.content = width;
+      update();
+    },
+    onLayout: (width): void => {
+      metrics.current.view = width;
+      update();
+    },
   };
 }
+
+const TableGrid = memo(function TableGrid({
+  table,
+  width,
+}: {
+  readonly table: TableBlock;
+  readonly width: number;
+}): ReactNode {
+  const widths = useMemo(() => widthsOf(table, width), [table, width]);
+  const numeric = useMemo(
+    () => table.header.map((_head, column) => isNumeric(table, column)),
+    [table],
+  );
+  return (
+    <View>
+      <Row cells={table.header} widths={widths} numeric={numeric} head />
+      {table.rows.map((row, index) => (
+        <Row key={index} cells={row} widths={widths} numeric={numeric} head={false} />
+      ))}
+    </View>
+  );
+});
 
 export function TableCard({ table }: { readonly table: TableBlock }): ReactNode {
   const frame = useMeasuredWidth();
   const end = useEnd();
-  const widths = widthsOf(table, frame.width);
-  const numeric = table.header.map((_head, column) => isNumeric(table, column));
+  const tsv = useMemo(() => tableTsv(table), [table]);
   return (
     <View
       onLayout={frame.onLayout}
@@ -124,7 +155,7 @@ export function TableCard({ table }: { readonly table: TableBlock }): ReactNode 
         <Text variant="caption" tone="variant" className="flex-1">
           {plural(table.rows.length, 'row')}
         </Text>
-        <CopyButton value={tableTsv(table)} label="Copy table" />
+        <CopyButton value={tsv} label="Copy table" />
       </View>
       <View>
         <ScrollView
@@ -137,12 +168,7 @@ export function TableCard({ table }: { readonly table: TableBlock }): ReactNode 
             end.onLayout(event.nativeEvent.layout.width);
           }}
         >
-          <View>
-            <Row cells={table.header} widths={widths} numeric={numeric} head />
-            {table.rows.map((row, index) => (
-              <Row key={index} cells={row} widths={widths} numeric={numeric} head={false} />
-            ))}
-          </View>
+          <TableGrid table={table} width={frame.width} />
         </ScrollView>
         {end.atEnd ? null : <EdgeFade />}
       </View>

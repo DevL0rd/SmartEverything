@@ -1,15 +1,19 @@
+import { z } from 'zod';
 import {
+  WEATHER_KINDS,
   WEATHER_KIND_LABELS,
   WEATHER_METRIC_INFO,
-  type NumericComparison,
-  type WeatherCondition,
+  type JsonValue,
+  type TestV2,
   type WeatherKind,
   type WeatherMetric,
 } from '@smarteverything/domain';
 import { decimal, withUnit } from '../../../format/number';
 import { hoursMinutes } from '../../../format/time';
 
-type Operator = Exclude<NumericComparison['operator'], 'between'>;
+export type NumericTest = Extract<TestV2, { is: 'gt' | 'gte' | 'lt' | 'lte' | 'between' }>;
+
+type Operator = Exclude<NumericTest['is'], 'between'>;
 
 const RISING: Readonly<Record<Operator, string>> = {
   gt: 'goes above',
@@ -32,17 +36,22 @@ function amount(metric: WeatherMetric, value: number): string {
   );
 }
 
-export function weatherRuleText(
-  metric: WeatherMetric,
-  comparison: NumericComparison,
-  moving: boolean,
-): string {
+export function weatherRuleText(metric: WeatherMetric, test: NumericTest, moving: boolean): string {
   const label = WEATHER_METRIC_INFO[metric].label.toLowerCase();
-  if (comparison.operator === 'between') {
-    return `${label} ${moving ? 'moves between' : 'is between'} ${amount(metric, comparison.min)} and ${amount(metric, comparison.max)}`;
+  if (test.is === 'between') {
+    return `${label} ${moving ? 'moves between' : 'is between'} ${amount(metric, test.min)} and ${amount(metric, test.max)}`;
   }
   const words = moving ? RISING : STANDING;
-  return `${label} ${words[comparison.operator]} ${amount(metric, comparison.value)}`;
+  return `${label} ${words[test.is]} ${amount(metric, test.to)}`;
+}
+
+const WEATHER_KIND = z.enum(WEATHER_KINDS);
+
+export function weatherKindsOf(values: readonly JsonValue[]): WeatherKind[] {
+  return values.flatMap((value) => {
+    const kind = WEATHER_KIND.safeParse(value);
+    return kind.success ? [kind.data] : [];
+  });
 }
 
 function kindList(kinds: readonly WeatherKind[]): string {
@@ -61,10 +70,16 @@ function offsetWords(minutes: number, event: string): string {
   return minutes < 0 ? `${span} before ${event}` : `${span} after ${event}`;
 }
 
-export function daylightText(condition: Extract<WeatherCondition, { type: 'daylight' }>): string {
-  const start = offsetWords(condition.sunriseOffsetMinutes, 'sunrise');
-  const end = offsetWords(condition.sunsetOffsetMinutes, 'sunset');
-  return condition.is === 'day'
+export interface Daylight {
+  readonly daylight: 'day' | 'night';
+  readonly sunriseOffset?: number | undefined;
+  readonly sunsetOffset?: number | undefined;
+}
+
+export function daylightText(condition: Daylight): string {
+  const start = offsetWords(condition.sunriseOffset ?? 0, 'sunrise');
+  const end = offsetWords(condition.sunsetOffset ?? 0, 'sunset');
+  return condition.daylight === 'day'
     ? `it is between ${start} and ${end}`
     : `it is between ${end} and ${start}`;
 }

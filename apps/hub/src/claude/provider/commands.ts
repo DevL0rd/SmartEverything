@@ -20,6 +20,7 @@ import { pendingCommand } from '../../codex/provider-commands';
 import { canonicalRuntimeInput } from '../../computers/runtime-receipts';
 import { requireSubscription } from './job-state';
 import { ClaudeSubscriptionBillingError } from './billing';
+import { messageOf } from '@smarteverything/logging';
 interface Operation {
   readonly input: AiNativeCommandWrite;
   compact: boolean;
@@ -110,10 +111,7 @@ export class ClaudeProviderCommands {
       owned.receipt = {
         ...owned.receipt,
         status: 'rejected',
-        text:
-          cause instanceof Error
-            ? cause.message.slice(0, 2000)
-            : 'The native command was not admitted.',
+        text: messageOf(cause).slice(0, 2000),
       };
     } finally {
       release?.();
@@ -160,10 +158,7 @@ export class ClaudeProviderCommands {
         ...owned.receipt,
         status:
           attempted && !(cause instanceof ClaudeSubscriptionBillingError) ? 'unknown' : 'rejected',
-        text:
-          cause instanceof Error
-            ? cause.message.slice(0, 2000)
-            : 'Native dispatch was not confirmed.',
+        text: messageOf(cause).slice(0, 2000),
       };
     } finally {
       release?.();

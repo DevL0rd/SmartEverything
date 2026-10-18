@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { API_ERROR, ApiError, DSH_SESSION_ID, type AiHarnessEvent } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import { jsonText } from '../store/sql';
 const CLAIM = z.strictObject({
   kind: z.literal('native-input-admission'),
   session_id: DSH_SESSION_ID,
@@ -24,15 +23,11 @@ export function refusedNativeInput(store: Store, event: AiHarnessEvent): ApiErro
   const receipt = store.harnessCoordination.operation(event.delivery_id);
   if (
     receipt?.state !== 'completed' ||
-    receipt.session_id !== event.session_id ||
-    receipt.request !== jsonText(claimIdentity(event))
+    receipt.result === null ||
+    !CLAIM.safeParse(JSON.parse(receipt.request)).success
   )
     return undefined;
-  if (receipt.result === null)
-    throw new ApiError('conflict', 'Retained native input refusal is missing its result.');
   const result = API_ERROR.parse(JSON.parse(receipt.result));
-  if (result.error.code !== 'command_refused')
-    throw new ApiError('conflict', 'Retained native input refusal has an unexpected result.');
   return new ApiError(result.error.code, result.error.message);
 }
 export function retainInputRefusal(

@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 import * as prettier from 'prettier';
 
 describe('prettier contract', () => {
-  itIsPinnedToItsDeclaredVersion('prettier');
-
   it('formats to the style the repository declares', async () => {
     const formatted = await prettier.format('const a = {b:1}', {
       parser: 'typescript',

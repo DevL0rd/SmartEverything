@@ -8,7 +8,7 @@ import {
   type CloudMessage,
   type MessageFrame,
 } from '@smarteverything/tuya';
-import type { RawData } from 'ws';
+import { frameText } from '../../server/raw-frame';
 import type { MessageSocket } from './message-socket';
 import type { TuyaProjectSecrets } from './account';
 import type { TuyaDependencies } from './dependencies';
@@ -22,13 +22,6 @@ export interface MessageConsumerOptions {
   readonly socket: (url: string, headers: Readonly<Record<string, string>>) => MessageSocket;
   readonly log: Logger;
   readonly received: (message: CloudMessage) => void;
-}
-
-function text(data: RawData): string {
-  if (Array.isArray(data)) {
-    return Buffer.concat(data).toString('utf8');
-  }
-  return (data instanceof ArrayBuffer ? Buffer.from(data) : data).toString('utf8');
 }
 
 export class MessageConsumer {
@@ -69,7 +62,7 @@ export class MessageConsumer {
     });
     socket.on('message', (data) => {
       if (current()) {
-        this.handle(socket, text(data));
+        this.handle(socket, frameText(data));
       }
     });
     socket.on('error', (error) => {

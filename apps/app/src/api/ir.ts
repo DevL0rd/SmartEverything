@@ -1,4 +1,10 @@
-import { API_ENDPOINTS as E, type IrCodeRow, type IrRemoteRow } from '@smarteverything/domain';
+import {
+  API_ENDPOINTS as E,
+  type IrCodeRow,
+  type IrRemoteChange,
+  type IrRemoteRow,
+  type IrRemoteState,
+} from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
 
@@ -27,6 +33,15 @@ export async function createIrRemote(remote: NewRemote): Promise<IrRemoteRow> {
 export async function removeIrRemote(remoteId: string): Promise<void> {
   await api().call(E.removeIrRemote, { params: { remoteId } });
   log.info('remote.removed', { remoteId });
+}
+
+export async function updateIrRemote(
+  remoteId: string,
+  change: IrRemoteChange,
+): Promise<IrRemoteState> {
+  const state = await api().call(E.updateIrRemote, { params: { remoteId }, body: change });
+  log.info('remote.state_changed', { remoteId, fields: Object.keys(change).join(',') });
+  return state;
 }
 
 export interface NewCode {

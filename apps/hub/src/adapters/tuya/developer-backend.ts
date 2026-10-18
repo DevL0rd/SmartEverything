@@ -1,8 +1,9 @@
 import { CLOUD_PATHS, COMMAND_ACCEPTED, DEVICE_STATUSES, commandBody } from '@smarteverything/tuya';
 import type { TuyaProjectSecrets } from './account';
+import { LoadOnce } from './bounded';
 import { statusesInBatches, type TuyaBackend } from './backend';
 import { TuyaCloud } from './cloud-client';
-import { listDevices, loadInventory } from './cloud-inventory';
+import { listDevices, loadInventory, type LoadedSpecification } from './cloud-inventory';
 import { messageConsumerFor } from './cloud-messages';
 import type { TuyaDependencies } from './dependencies';
 
@@ -11,10 +12,11 @@ export function developerBackend(
   dependencies: TuyaDependencies,
 ): TuyaBackend {
   const cloud = new TuyaCloud(secrets, dependencies);
+  const specifications = new LoadOnce<LoadedSpecification>();
   return {
     method: 'developer_project',
     project: cloud,
-    loadInventory: (log) => loadInventory(cloud, secrets.appUserId, log),
+    loadInventory: (log) => loadInventory(cloud, secrets.appUserId, log, specifications),
     devicesById: (deviceIds) => listDevices(cloud, secrets.appUserId, deviceIds),
     statuses: (deviceIds) =>
       statusesInBatches(deviceIds, (batch) =>

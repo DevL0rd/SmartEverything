@@ -1,7 +1,6 @@
 import type { Logger } from '@smarteverything/logging';
 import { Go2rtcError, type Go2rtcClient, type StreamConsumer } from './go2rtc-client';
 
-const VIEWERS_AT_MOST = 4;
 const CONSUMERS_WARNED_ABOVE = 6;
 
 const HTTP_NOT_FOUND = 404;
@@ -52,7 +51,7 @@ function describe(consumers: readonly StreamConsumer[]): string[] {
 }
 
 export class CameraViewers {
-  private readonly sessions = new Map<string, number>();
+  private readonly sessions = new Map<string, Map<string, number>>();
   private readonly queues = new Map<string, Promise<unknown>>();
 
   constructor(
@@ -71,35 +70,58 @@ export class CameraViewers {
   }
 
   private async openNow(request: SessionRequest): Promise<string> {
-    const key = `${request.clientId}/${request.deviceId}/${request.kind}`;
-    await this.closePrevious(request.deviceId, key);
-    const before = await this.client.consumers(request.deviceId);
-    this.admit(request.deviceId, before);
+    const { deviceId } = request;
+    const key = `${request.clientId}/${request.kind}`;
+    const before = await this.client.consumers(deviceId);
+    const sessions = this.liveSessions(deviceId, before);
+    await this.closePrevious(deviceId, sessions, key, before);
+    this.warnWhenCrowded(deviceId, before);
     const answer = await request.answer();
     const known = new Set(before.map((consumer) => consumer.id));
-    const added = (await this.client.consumers(request.deviceId)).find(
+    const added = (await this.client.consumers(deviceId)).find(
       (consumer) => isViewer(consumer) && !known.has(consumer.id),
     );
     if (added !== undefined) {
-      this.sessions.set(key, added.id);
+      sessions.set(key, added.id);
     }
+    this.log.debug('camera.session_opened', {
+      deviceId,
+      clientId: request.clientId,
+      kind: request.kind,
+      consumersBefore: before.length,
+      consumer: added?.id,
+      tracked: added !== undefined,
+    });
     return answer;
   }
 
-  private async closePrevious(deviceId: string, key: string): Promise<void> {
-    const id = this.sessions.get(key);
-    if (id === undefined) {
+  private liveSessions(
+    deviceId: string,
+    consumers: readonly StreamConsumer[],
+  ): Map<string, number> {
+    const live = new Set(consumers.map((consumer) => consumer.id));
+    const sessions = this.sessions.get(deviceId) ?? new Map<string, number>();
+    for (const [key, id] of sessions) {
+      if (!live.has(id)) {
+        sessions.delete(key);
+      }
+    }
+    this.sessions.set(deviceId, sessions);
+    return sessions;
+  }
+
+  private async closePrevious(
+    deviceId: string,
+    sessions: Map<string, number>,
+    key: string,
+    consumers: readonly StreamConsumer[],
+  ): Promise<void> {
+    const id = sessions.get(key);
+    const previous = consumers.find((consumer) => consumer.id === id);
+    if (id === undefined || previous === undefined || !connected(previous)) {
       return;
     }
-    const previous = (await this.client.consumers(deviceId)).find((consumer) => consumer.id === id);
-    if (previous === undefined) {
-      this.sessions.delete(key);
-      return;
-    }
-    if (!connected(previous)) {
-      return;
-    }
-    this.sessions.delete(key);
+    sessions.delete(key);
     try {
       await this.client.closeConsumer(deviceId, id);
       this.log.info('camera.session_replaced', { deviceId, consumer: id });
@@ -110,22 +132,13 @@ export class CameraViewers {
     }
   }
 
-  private admit(deviceId: string, consumers: readonly StreamConsumer[]): void {
+  private warnWhenCrowded(deviceId: string, consumers: readonly StreamConsumer[]): void {
     if (consumers.length > CONSUMERS_WARNED_ABOVE) {
       this.log.warn('camera.consumers_high', {
         deviceId,
         count: consumers.length,
         consumers: describe(consumers),
       });
-    }
-    const viewers = consumers.filter((consumer) => isViewer(consumer) && connected(consumer));
-    if (viewers.length >= VIEWERS_AT_MOST) {
-      this.log.warn('camera.viewers_full', {
-        deviceId,
-        viewers: viewers.length,
-        consumers: describe(consumers.filter(isViewer)),
-      });
-      throw new CameraBusyError(deviceId, viewers.length);
     }
   }
 }

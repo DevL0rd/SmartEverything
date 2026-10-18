@@ -1,6 +1,7 @@
 import type { HealthMetric } from '@smarteverything/domain';
 import { useStoreSelector } from '../../../store/store-context';
 import { rowsOf, type StoreState } from '../../../store/state';
+import { compareText } from '../../../format/text';
 
 export interface DayReading {
   readonly day: string;
@@ -12,7 +13,7 @@ function readingsIn(state: StoreState, metric: HealthMetric): readonly DayReadin
   return rowsOf(state.tables.health_daily)
     .filter((row) => row.metric === metric)
     .map((row) => ({ day: row.day, value: row.value, unit: row.unit }))
-    .sort((left, right) => left.day.localeCompare(right.day));
+    .sort((left, right) => compareText(left.day, right.day));
 }
 
 function sameReadings(left: readonly DayReading[], right: readonly DayReading[]): boolean {

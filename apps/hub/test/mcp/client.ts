@@ -22,7 +22,6 @@ export const RPC_ERROR = z.object({
 
 const TOOL_RESULT = z.object({
   content: z.array(z.record(z.string(), z.unknown())),
-  structuredContent: z.record(z.string(), z.unknown()).optional(),
   isError: z.boolean(),
 });
 
@@ -39,6 +38,15 @@ const TOKENS = z.object({
 export type Tokens = z.infer<typeof TOKENS>;
 
 const REGISTERED = z.object({ client_id: z.string(), client_secret: z.string().optional() });
+
+const CLIENT_INFO = { name: 'test-client', version: '1.0.0' } as const;
+
+export function initialize(protocolVersion = '2025-11-25'): Record<string, unknown> {
+  return {
+    method: 'initialize',
+    params: { protocolVersion, capabilities: {}, clientInfo: CLIENT_INFO },
+  };
+}
 
 let nextId = 0;
 
@@ -80,9 +88,16 @@ export async function callTool(
   return TOOL_RESULT.parse(await resultOf(response));
 }
 
+const ANSWER = z.tuple([z.looseObject({ type: z.literal('text'), text: z.string() })], z.unknown());
+
+export function answerOf(content: unknown): Record<string, unknown> {
+  const [first] = ANSWER.parse(content);
+  return z.record(z.string(), z.unknown()).parse(JSON.parse(first.text));
+}
+
 export function structured(result: ToolResult): Record<string, unknown> {
   expect(result.isError, JSON.stringify(result.content)).toBe(false);
-  return z.record(z.string(), z.unknown()).parse(result.structuredContent);
+  return answerOf(result.content);
 }
 
 export function postForm(

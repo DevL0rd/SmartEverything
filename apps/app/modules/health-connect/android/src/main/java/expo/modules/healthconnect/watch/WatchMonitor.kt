@@ -5,7 +5,9 @@ import android.util.Log
 import expo.modules.healthconnect.HubClient
 import expo.modules.healthconnect.NativeEventChannel
 import expo.modules.healthconnect.SyncFailure
-import expo.modules.healthconnect.jsonOf
+import expo.modules.healthconnect.diagnostics.NativeLevel
+import expo.modules.healthconnect.diagnostics.NativeLog
+import expo.modules.healthconnect.diagnostics.NativeTally
 import expo.modules.healthconnect.relayTarget
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -50,8 +52,8 @@ data class WatchSnapshot(
     "steps" to steps,
     "heartRate" to heartRate,
     "activeKcal" to activeKcal,
-    "configJson" to config?.toJson()?.toString(),
-    "workoutJson" to workout?.toJson()?.toString(),
+    "configJson" to config?.json(),
+    "workoutJson" to workout?.json(),
     "error" to error,
     "connectedAt" to connectedAt,
     "syncing" to syncing,
@@ -84,6 +86,7 @@ class WatchMonitor(
   private var lastReportAt = 0L
   private var lastHeartRateAt = 0L
   private var lastWorkoutReportAt = 0L
+  private val liveTally = NativeTally(SCOPE, "live.summary")
 
   override fun phase(phase: WatchPhase, detail: String) {
     val previous = WatchSnapshots.of(watch)
@@ -149,8 +152,7 @@ class WatchMonitor(
   }
 
   override fun config(snapshot: WatchConfigSnapshot) {
-    val text = snapshot.toJson().toString()
-    if (WatchSnapshots.of(watch).config?.toJson()?.toString() == text) {
+    if (WatchSnapshots.of(watch).config?.json() == snapshot.json()) {
       return
     }
     update("config", "${snapshot.settings.size} settings, ${snapshot.alarms.size} alarms, ${snapshot.faces.size} faces", report = true) {
@@ -171,10 +173,32 @@ class WatchMonitor(
 
   override fun note(event: String, detail: String) {
     Log.i(TAG, "${watch.name} $event: $detail")
+    noteStructured(event, detail)
     WatchEvents.emit(event, detail, mapOf("deviceId" to watch.deviceId))
   }
 
+  private fun noteStructured(event: String, detail: String) {
+    val level = when {
+      WARN_EVENTS.containsMatchIn(event) -> NativeLevel.WARN
+      event in INFO_EVENTS -> NativeLevel.INFO
+      else -> NativeLevel.DEBUG
+    }
+    if (!NativeLog.enabled(level)) return
+    val fields = mapOf(
+      "device" to watch.deviceId,
+      "step" to event,
+      "detail" to if (event in PRIVATE_EVENTS) null else NativeLog.reasonText(detail),
+      "detailLength" to detail.length,
+    )
+    when (level) {
+      NativeLevel.WARN -> NativeLog.warn(SCOPE, "sync.step") { fields }
+      NativeLevel.INFO -> NativeLog.info(SCOPE, "sync.step") { fields }
+      else -> NativeLog.debug(SCOPE, "sync.step") { fields }
+    }
+  }
+
   override fun failed(reason: String, retryable: Boolean) {
+    NativeLog.warn(SCOPE, "watch.failed") { mapOf("device" to watch.deviceId, "retryable" to retryable, "reason" to NativeLog.reasonText(reason), "phase" to WatchSnapshots.of(watch).phase.label) }
     update("failed", reason, report = true) {
       copy(phase = WatchPhase.FAILED, detail = reason, error = reason)
     }
@@ -189,13 +213,16 @@ class WatchMonitor(
 
   override fun synced(files: List<WatchFile>, done: (Set<String>?) -> Unit) {
     scope.launch {
+      val started = System.nanoTime()
       val keep = try {
         val outcome = WatchUpload.upload(context, watch.deviceId, files)
+        NativeLog.info(SCOPE, "upload.finished", NativeLog.elapsedMs(started)) { mapOf("device" to watch.deviceId, "files" to files.size, "kept" to outcome.keep?.size) }
         update("sync_finished", outcome.text, report = true) {
           copy(syncing = false, syncDetail = outcome.text, syncError = null, lastSyncAt = Instant.now().toString())
         }
         outcome.keep
       } catch (failure: SyncFailure) {
+        NativeLog.warn(SCOPE, "upload.failed", failure, NativeLog.elapsedMs(started)) { mapOf("device" to watch.deviceId, "files" to files.size, "retryable" to failure.retryable) }
         val reason = "Saving the watch data failed: ${failure.message}; it stays on the watch for the next sync"
         update("sync_failed", reason, report = true) { copy(syncing = false, syncDetail = null, syncError = reason) }
         null
@@ -209,8 +236,24 @@ class WatchMonitor(
   }
 
   private fun update(event: String, detail: String, report: Boolean, change: WatchSnapshot.() -> WatchSnapshot) {
-    val next = WatchSnapshots.of(watch).change().copy(updatedAt = Instant.now().toString())
+    val previous = WatchSnapshots.of(watch)
+    val next = previous.change().copy(updatedAt = Instant.now().toString())
     WatchSnapshots.put(next)
+    if (event == "live") {
+      liveTally.add(0)
+    } else {
+      NativeLog.info(SCOPE, "snapshot.changed") {
+        mapOf(
+          "device" to watch.deviceId,
+          "change" to event,
+          "phase" to next.phase.label,
+          "phaseChanged" to (previous.phase != next.phase),
+          "syncing" to next.syncing,
+          "reported" to report,
+          "detail" to if (event == "worn" || event == "battery" || event.startsWith("phase_") || event.startsWith("sync_") || event == "failed") NativeLog.reasonText(detail) else null,
+        )
+      }
+    }
     WatchEvents.emit(event, detail, next.toMap())
     if (event == "failed" || event == "sync_failed") Log.w(TAG, "${watch.name} $event: $detail") else Log.i(TAG, "${watch.name} $event: $detail")
     onChange(next)
@@ -223,36 +266,37 @@ class WatchMonitor(
     lastReportAt = System.currentTimeMillis()
     scope.launch {
       try {
-        HubClient(relayTarget(context)).post("/api/watches/${watch.deviceId}/state", stateJson(snapshot))
+        HubClient(relayTarget(context)).submit("/api/watches/${watch.deviceId}/state", stateOf(snapshot))
       } catch (failure: SyncFailure) {
         WatchEvents.emit("report_failed", failure.message.orEmpty(), mapOf("deviceId" to watch.deviceId))
       }
     }
   }
 
-  private fun stateJson(snapshot: WatchSnapshot) = jsonOf(
-    "phase" to snapshot.phase.label,
-    "battery" to snapshot.battery,
-    "charging" to snapshot.charging,
-    "worn" to snapshot.worn,
-    "firmware" to snapshot.firmware?.take(FIRMWARE_LIMIT),
-    "steps" to snapshot.steps,
-    "heartRate" to snapshot.heartRate,
-    "lastSyncAt" to snapshot.lastSyncAt,
-    "error" to (snapshot.error ?: snapshot.syncError)?.take(ERROR_LIMIT),
-    "at" to snapshot.updatedAt
-  ).also { json ->
-    snapshot.config?.let { json.put("config", it.toJson()) }
-    snapshot.workout?.let { json.put("workout", it.toJson()) }
-  }
+  private fun stateOf(snapshot: WatchSnapshot) = WatchStateReport(
+    phase = snapshot.phase.label,
+    battery = snapshot.battery,
+    charging = snapshot.charging,
+    worn = snapshot.worn,
+    firmware = snapshot.firmware,
+    steps = snapshot.steps,
+    heartRate = snapshot.heartRate,
+    lastSyncAt = snapshot.lastSyncAt,
+    error = snapshot.error ?: snapshot.syncError,
+    at = snapshot.updatedAt,
+    config = snapshot.config?.wire(),
+    workout = snapshot.workout?.wire()
+  )
 
   private companion object {
     const val TAG = "SmartEverythingWatch"
+    const val SCOPE = "watch-sync"
+    val WARN_EVENTS = Regex("unreadable|failed|timeout|implausible|unsupported|not_sent|dropped|worn_ignored|command_ignored|not_recognised")
+    val INFO_EVENTS = setOf("sync_files", "sync_skipped", "sync_waiting", "sync_sleep_empty", "link_opened", "watch_identified", "action_sent", "action_waiting", "spp_session", "spp_version")
+    val PRIVATE_EVENTS = setOf("sync_file_capture", "live", "workout_stats", "weather_sent")
     const val HEART_RATE_PROVES_WORN_MS = 120_000L
     const val PAUSED_TEXT = "Paused so Mi Fitness can use the watch"
     const val LIVE_REPORT_MS = 5 * 60_000L
     const val WORKOUT_REPORT_MS = 15_000L
-    const val FIRMWARE_LIMIT = 80
-    const val ERROR_LIMIT = 400
   }
 }

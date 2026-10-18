@@ -16,7 +16,7 @@ export interface Kws {
   readonly free: () => void;
 }
 
-export interface KwsConfig {
+interface KwsConfig {
   readonly featConfig: { readonly samplingRate: number; readonly featureDim: number };
   readonly modelConfig: {
     readonly transducer: {
@@ -39,7 +39,7 @@ interface Sherpa {
   readonly createKws: (config: KwsConfig) => Kws;
 }
 
-export class SherpaUnavailableError extends Error {
+class SherpaUnavailableError extends Error {
   override readonly name = 'SherpaUnavailableError';
 }
 

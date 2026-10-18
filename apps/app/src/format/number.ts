@@ -1,14 +1,31 @@
 import { numberFormat } from './locale';
 
+const NO_BREAK_SPACE = '\u00A0';
+
+const DECIMALS = new Map<number, Intl.NumberFormat>();
+
+function decimalFormat(digits: number): Intl.NumberFormat {
+  const known = DECIMALS.get(digits);
+  if (known !== undefined) return known;
+  const made = numberFormat({ minimumFractionDigits: digits, maximumFractionDigits: digits });
+  DECIMALS.set(digits, made);
+  return made;
+}
+
 export function decimal(value: number, digits = 0): string {
-  return numberFormat({
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(value);
+  return decimalFormat(digits).format(value);
+}
+
+export function rounded(value: number, digits: number): string {
+  return numberFormat({ maximumFractionDigits: digits }).format(value);
+}
+
+export function compact(value: number): string {
+  return numberFormat({ notation: 'compact', maximumFractionDigits: 1 }).format(value);
 }
 
 export function percent(share: number, digits = 0): string {
-  return `${decimal(share * 100, digits)} %`;
+  return `${decimal(share * 100, digits)}${NO_BREAK_SPACE}%`;
 }
 
 export function count(value: number): string {
@@ -19,7 +36,7 @@ export function withUnit(value: string, unit: string | null | undefined): string
   if (unit === null || unit === undefined || unit === '') {
     return value;
   }
-  return unit === '%' || unit === '°' ? `${value}${unit}` : `${value} ${unit}`;
+  return unit === '%' || unit === '°' ? `${value}${unit}` : `${value}${NO_BREAK_SPACE}${unit}`;
 }
 
 export function twoDigits(value: number): string {
@@ -54,6 +71,10 @@ export function kilograms(value: number, digits = 1): string {
   return withUnit(decimal(value, digits), 'kg');
 }
 
+export function milliseconds(value: number): string {
+  return withUnit(decimal(value), 'ms');
+}
+
 export function times(factor: number): string {
   return `${decimal(factor, 1)}×`;
 }
@@ -67,5 +88,5 @@ export function bytes(value: number): string {
     size /= 1024;
     unit += 1;
   }
-  return `${decimal(size, unit === 0 || size >= 10 ? 0 : 1)} ${BYTE_UNITS[unit] ?? 'GB'}`;
+  return `${decimal(size, unit === 0 || size >= 10 ? 0 : 1)}${NO_BREAK_SPACE}${BYTE_UNITS[unit] ?? 'GB'}`;
 }

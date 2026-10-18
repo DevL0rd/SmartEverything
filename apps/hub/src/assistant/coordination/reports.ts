@@ -1,4 +1,4 @@
-import { issueEventAuthority } from '../execution-authority';
+import { eventAuthority } from '../turn-authority';
 import { randomUUID } from 'node:crypto';
 import {
   AI_HOPS_MAX,
@@ -116,10 +116,9 @@ export class Reports {
       text: body,
       hops,
     });
-    issueEventAuthority(
+    eventAuthority(
       store,
       store.assistantEvents.event(eventId),
-      true,
       store.harnessRecovery.latestAuthority(from.id),
     );
     if (back.operationId !== undefined) store.harnessChildren.delivered(back.operationId);

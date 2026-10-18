@@ -14,7 +14,7 @@ import { operate, profileFor, type ActingAs } from './acting';
 import { readPref, writePref } from './prefs';
 import {
   MOMENT_ARGUMENT,
-  PROFILE,
+  PERSON,
   READS,
   WRITES,
   defineTool,
@@ -38,7 +38,7 @@ const LATEST = z.strictObject({
     .optional()
     .describe('Daily metrics; every metric when left out'),
   withinDays: z.int().min(1).max(3650).default(30).describe('How far back to look'),
-  profileId: PROFILE,
+  personId: PERSON,
 });
 
 type Latest = z.infer<typeof LATEST>;
@@ -107,7 +107,7 @@ const LOG = z.strictObject({
   data: z
     .record(z.string(), z.unknown())
     .describe('The record data, shaped as read_health view types gives for the type'),
-  profileId: PROFILE,
+  personId: PERSON,
 });
 
 type Log = z.infer<typeof LOG>;
@@ -126,7 +126,7 @@ async function logged(context: ToolContext, input: Log): Promise<unknown> {
 const GOALS = z.strictObject({
   fitness: FITNESS_SETTINGS_CHANGE.optional().describe('Daily goals and maximum heart rate'),
   nutrition: NUTRITION_PREF.partial().optional().describe('Nutrition goals and glass size'),
-  profileId: PROFILE,
+  personId: PERSON,
 });
 
 async function goalsSet(

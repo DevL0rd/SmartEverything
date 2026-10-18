@@ -7,6 +7,7 @@ import { useLedger } from '../../../store/store-context';
 import type { CameraEntry } from '../logic/cameras';
 import type { StateActions } from './player-state-view';
 import type { CameraSession } from './use-camera-session';
+import { background } from '@smarteverything/logging';
 
 function useRestart(entry: CameraEntry): (() => void) | null {
   const ledger = useLedger();
@@ -15,15 +16,18 @@ function useRestart(entry: CameraEntry): (() => void) | null {
     return null;
   }
   return (): void => {
-    void confirm({
-      title: `Restart ${entry.name}?`,
-      body: 'It goes offline for about a minute.',
-      confirmLabel: 'Restart',
-    }).then((accepted) => {
-      if (accepted) {
-        void ledger.send(entry.device, restart.key, null);
-      }
-    });
+    background(
+      confirm({
+        title: `Restart ${entry.name}?`,
+        body: 'It goes offline for about a minute.',
+        confirmLabel: 'Restart',
+      }).then((accepted) => {
+        if (accepted) {
+          background(ledger.send(entry.device, restart.key, null), 'ledger.send_failed');
+        }
+      }),
+      'use_state_actions.confirm_failed',
+    );
   };
 }
 
@@ -32,7 +36,7 @@ function usePrivacyOff(entry: CameraEntry): (() => void) | null {
   const control = useControl(entry.device.id, privacy?.key ?? 'privacy_mode');
   return privacy?.writable === true
     ? (): void => {
-        void control.set(!privacy.privateWhen);
+        background(control.set(!privacy.privateWhen), 'control.set_failed');
       }
     : null;
 }

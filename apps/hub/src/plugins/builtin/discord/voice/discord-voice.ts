@@ -21,6 +21,7 @@ import {
   type VoiceLink,
   type WorkerVoiceConnect,
 } from './link';
+import { background } from '@smarteverything/logging';
 
 const READY_MS = 20_000;
 const RECOVER_MS = 5000;
@@ -118,7 +119,7 @@ class DiscordVoiceLink implements VoiceLink {
         this.close('closed');
       }
       if (after.status === VoiceConnectionStatus.Disconnected) {
-        void this.recover();
+        background(this.recover(), 'discord_voice.recover_failed');
       }
     });
     connection.on('error', () => undefined);

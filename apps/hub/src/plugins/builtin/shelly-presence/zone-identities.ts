@@ -1,4 +1,3 @@
-import type { ShellyPresenceDevice } from '@smarteverything/domain';
 import type { PluginRecords } from '../contract';
 import { saveEnrollment, type ShellyEnrollment } from './enrollment';
 import type { ShellyInventory } from './component-inventory';
@@ -12,24 +11,18 @@ export function reconcileZoneIdentities(
     key.startsWith('presencezone:') ? [Number(key.slice('presencezone:'.length))] : [],
   );
   const removed = enrollment.activeZones.filter((id) => !activeZones.includes(id));
+  if (
+    removed.length === 0 &&
+    activeZones.length === enrollment.activeZones.length &&
+    activeZones.every((id, index) => id === enrollment.activeZones[index])
+  )
+    return enrollment;
   const generations = { ...enrollment.generations };
   for (const id of removed) generations[String(id)] = (generations[String(id)] ?? 0) + 1;
   const next = { ...enrollment, generations, activeZones };
   saveEnrollment(records, next);
   return next;
 }
-export function removedZoneIds(
-  before: ShellyPresenceDevice | null,
-  after: ShellyPresenceDevice,
-): string[] {
-  const current = new Set(after.zones.map((zone) => zone.externalId));
-  return (
-    before?.zones
-      .filter((zone) => !current.has(zone.externalId))
-      .map((zone) => zone.externalId.slice('shelly-presence:'.length)) ?? []
-  );
-}
-
 export function resetZoneIdentities(
   records: PluginRecords,
   enrollment: ShellyEnrollment,

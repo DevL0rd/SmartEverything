@@ -1,4 +1,5 @@
-import { base64Hex, chunks, lenientHex, type Converter } from './primitives';
+import { chunk } from '@smarteverything/domain';
+import { base64Hex, lenientHex, type Converter } from './primitives';
 
 interface Alarm {
   readonly code: string;
@@ -40,7 +41,7 @@ function hexConverter(name: string, read: (field: Reader, hex: string) => unknow
 
 const alarms = hexConverter('db_v1_alarm', (_field, hex) =>
   JSON.stringify(
-    chunks(hex, 8).flatMap((part) => {
+    chunk(hex, 8).flatMap((part) => {
       const field = readerOf('db_v1_alarm', part);
       const alarm = ALARMS.get(field(0, 2));
       if (alarm === undefined) {
@@ -146,17 +147,19 @@ const params: Converter = (raw) => {
 
 const WEEK = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-const IDLE_DAY = '0000000000000000';
+const DAY_HEX_LENGTH = 12;
+
+const IDLE_DAY = '0'.repeat(DAY_HEX_LENGTH);
 
 const tariff = hexConverter('db_v1_tariff', (_field, hex) => {
-  const days = chunks(hex, 12);
+  const days = chunk(hex, DAY_HEX_LENGTH);
   if (days.length !== WEEK.length) {
     return '';
   }
   const periods = days.map((day) =>
     day === IDLE_DAY
       ? []
-      : chunks(day, 4).map((period) => {
+      : chunk(day, 4).map((period) => {
           const field = readerOf('db_v1_tariff', period);
           return { start_time: String(field(0, 2)), end_time: String(field(2, 4)) };
         }),

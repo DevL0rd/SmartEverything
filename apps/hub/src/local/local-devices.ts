@@ -25,6 +25,7 @@ import type { BluetoothIdentitySource, WearableSource } from './setup-types';
 import { PassiveObservations, type PassiveObservationsOptions } from './passive-observations';
 import type { ScaleReadings } from './scale-readings';
 import { UnexpectedScaleFrameError } from './xiaomi-scale';
+import { failureLine } from '@smarteverything/logging';
 
 export interface LocalDevicesOptions {
   readonly state: PassiveObservationsOptions['state'];
@@ -245,7 +246,7 @@ export class LocalDevices {
       this.options.log.warn('local.advert_unreadable', {
         externalId: entry.externalId,
         heardBy,
-        reason: cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause),
+        reason: failureLine(cause),
       });
       return { kind: 'ignored' };
     }

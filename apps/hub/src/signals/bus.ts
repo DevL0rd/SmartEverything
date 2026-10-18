@@ -12,7 +12,7 @@ import type { Logger } from '@smarteverything/logging';
 
 export type SignalListener = (signal: SignalInput) => void;
 
-export interface SignalEmitter {
+interface SignalEmitter {
   readonly emit: (signal: SignalInput) => void;
 }
 

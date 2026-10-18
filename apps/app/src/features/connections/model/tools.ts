@@ -30,14 +30,25 @@ export function groupState(group: ToolGroup, disabled: readonly string[]): Group
   return off === group.tools.length ? 'off' : 'mixed';
 }
 
+function toggled(
+  names: readonly string[],
+  members: readonly string[],
+  present: boolean,
+): readonly string[] {
+  const rest = names.filter((name) => !members.includes(name));
+  return present ? [...rest, ...members] : rest;
+}
+
 export function withGroup(
   disabled: readonly string[],
   group: ToolGroup,
   on: boolean,
 ): readonly string[] {
-  const names: readonly string[] = group.tools.map((tool) => tool.name);
-  const rest = disabled.filter((name) => !names.includes(name));
-  return on ? rest : [...rest, ...names];
+  return toggled(
+    disabled,
+    group.tools.map((tool) => tool.name),
+    !on,
+  );
 }
 
 export function withTool(
@@ -45,8 +56,7 @@ export function withTool(
   name: string,
   on: boolean,
 ): readonly string[] {
-  const rest = disabled.filter((item) => item !== name);
-  return on ? rest : [...rest, name];
+  return toggled(disabled, [name], !on);
 }
 
 export function toolsSummary(disabled: readonly string[]): string {

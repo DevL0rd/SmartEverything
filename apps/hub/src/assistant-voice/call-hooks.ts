@@ -1,4 +1,5 @@
 import type { CallEnding } from '@smarteverything/domain';
+import type { ToolHub } from '../ai-tools/tool-hub';
 import type { ToolAnswer } from './tool-answer';
 import { meter, toolCallerOf, type Call, type CallDeskOptions } from './call-parts';
 import type { RecordedTurn } from './call-record';
@@ -7,7 +8,18 @@ import type { Outbox } from './outbox';
 import type { HostedListening } from './outreach';
 import type { SpeechSource } from './speech-input';
 import { liveWindow } from './live-window';
-import { declarationsOf, systemOf, voiceHub, type VoiceKit, type VoiceWho } from './voice-kit';
+import { historyOf } from './persona';
+import { recentSpeechOf } from './recent-speech';
+import {
+  callSearchesWeb,
+  declarationsOf,
+  systemOf,
+  voiceHub,
+  voiceNoteOf,
+  type VoiceKit,
+  type VoiceWho,
+} from './voice-kit';
+import { voiceResponseOf } from './voice-results';
 import { VOICE_TOOL_NAMES } from './voice-tools';
 
 export interface CallHooksDeps {
@@ -74,6 +86,66 @@ function diagnosticsOf(
   };
 }
 
+function roomMediaHook(
+  options: CallDeskOptions,
+  call: () => Call,
+): NonNullable<ConversationHooks['speaking']> {
+  return (speaking) => {
+    const { id, deviceId, caller } = call();
+    options.roomMedia?.speaking({ id, deviceId, clientId: caller.clientId }, speaking);
+  };
+}
+
+function whoOf(call: Call): VoiceWho {
+  return {
+    caller: call.caller,
+    chatId: call.chatId,
+    place: call.place,
+    speaking: call.speaking,
+    canSee: call.sight !== null,
+    staysOpen: staysOpenOf(call),
+  };
+}
+
+const HEARD = new WeakMap<Call, string | null>();
+
+function heardBefore(options: CallDeskOptions, call: Call): string | null {
+  if (!HEARD.has(call)) {
+    HEARD.set(
+      call,
+      call.deviceId === null
+        ? null
+        : recentSpeechOf(options, {
+            callId: call.id,
+            deviceId: call.deviceId,
+            role: call.caller.role,
+            profileId: call.caller.profileId,
+          }),
+    );
+  }
+  return HEARD.get(call) ?? null;
+}
+
+type PromptHooks = Pick<
+  ConversationHooks,
+  'system' | 'note' | 'history' | 'window' | 'tools' | 'webSearch'
+>;
+
+function promptHooks(options: CallDeskOptions, call: () => Call, hub: () => ToolHub): PromptHooks {
+  const { store } = options;
+  const kit = kitOf(options);
+  const who = (): VoiceWho => whoOf(call());
+  return {
+    system: () => systemOf(kit, hub(), who()),
+    note: (known, starting) =>
+      voiceNoteOf(kit, who(), { recentSpeech: heardBefore(options, call()), known, starting }),
+    history: () => historyOf(store, call().chatId),
+    window: () => liveWindow(store.assistantChat.settings()),
+    tools: () => declarationsOf(kit, hub(), who()),
+    webSearch: () => callSearchesWeb(hub()),
+  };
+}
+
 export function conversationHooks(
   deps: CallHooksDeps,
   call: () => Call,
@@ -83,21 +155,14 @@ export function conversationHooks(
   const { options } = deps;
   const { store } = options;
   const kit = kitOf(options);
-  const who = (): VoiceWho => ({
-    caller: call().caller,
-    chatId: call().chatId,
-    place: call().place,
-    speaking: call().speaking,
-    canSee: call().sight !== null,
-    staysOpen: staysOpenOf(call()),
-  });
+  const who = (): VoiceWho => whoOf(call());
+  let built: ToolHub | null = null;
+  const hub = (): ToolHub => (built ??= voiceHub(kit, who));
   return {
     speech,
     ...(listening === null ? {} : { listening }),
     settings: () => store.assistantChat.settings().voice,
-    system: () => systemOf(kit, who()),
-    window: () => liveWindow(store.assistantChat.settings()),
-    tools: () => declarationsOf(kit, who()),
+    ...promptHooks(options, call, hub),
     record: (turn): void => {
       recordTurn(call(), turn);
     },
@@ -108,17 +173,24 @@ export function conversationHooks(
       if (sight !== null) {
         return sight;
       }
-      const result = await voiceHub(kit, who()).call(name, args, toolCallerOf(current));
-      return { response: result.response, line: result.line, pictures: result.pictures };
+      const result = await hub().call(name, args, toolCallerOf(current));
+      return { ...result, response: voiceResponseOf(name, args, result.response) };
     },
     ended: (reason, detail): void => {
+      options.log.info('voice.conversation_ended', {
+        callId: call().id,
+        reason,
+        detail: detail === null ? undefined : detail.slice(0, 200),
+      });
       deps.ended(call(), reason, detail);
     },
     usage: (usage, model): void => {
       meter(options, call(), usage, model);
     },
     ...diagnosticsOf(options, call),
+    speaking: roomMediaHook(options, call),
     detached: (): boolean => call().endpoint.detached,
+    callId: (): string => call().id,
     staysOpenWhenQuiet: (): boolean => staysOpenOf(call()),
   };
 }

@@ -1,7 +1,7 @@
 import { messageSpeaker, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 
-export type ChatActionId = 'pin' | 'read' | 'branch' | 'archive' | 'delete';
+type ChatActionId = 'pin' | 'read' | 'branch' | 'archive' | 'delete';
 
 export interface ChatAction {
   readonly id: ChatActionId;

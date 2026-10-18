@@ -2,18 +2,23 @@ import { z } from 'zod';
 import { AI_CHAT_ROW, AI_CHAT_TITLE_MAX } from './ai-chats';
 import { AI_CHAT_PROVIDER } from './ai-provider';
 import { CLAUDE_PROVIDER_OPTIONS } from './computer-ai';
-import { CLAUDE_SETTABLE_MODE } from './claude';
+import { CLAUDE_SESSION_ID, CLAUDE_SETTABLE_MODE } from './claude';
 import { ASSISTANT_NEW_MESSAGE } from './api/endpoints-assistant';
 import { ID, MOMENT } from './api/primitives';
 
-export const CLAUDE_CLI_START = z.strictObject({
-  operation_id: ID,
-  model: z.string().trim().min(1).max(200),
-  effort: z.string().trim().min(1).max(32).nullable().default(null),
-  title: z.string().trim().min(1).max(AI_CHAT_TITLE_MAX).optional(),
-  settings: CLAUDE_PROVIDER_OPTIONS.extend({ cwd: z.string().trim().min(1).max(4096) }),
-  message: ASSISTANT_NEW_MESSAGE,
-});
+export const CLAUDE_CLI_START = z
+  .strictObject({
+    operation_id: ID,
+    model: z.string().trim().min(1).max(200),
+    effort: z.string().trim().min(1).max(32).nullable().default(null),
+    title: z.string().trim().min(1).max(AI_CHAT_TITLE_MAX).optional(),
+    settings: CLAUDE_PROVIDER_OPTIONS.extend({ cwd: z.string().trim().min(1).max(4096) }),
+    continue_from: z.strictObject({ session_id: CLAUDE_SESSION_ID }).optional(),
+    message: ASSISTANT_NEW_MESSAGE.optional(),
+  })
+  .refine((start) => start.message !== undefined || start.continue_from !== undefined, {
+    message: 'send a first message, or continue an earlier session',
+  });
 export const CLAUDE_CLI_EXPECTED = {
   operation_id: ID,
   session_id: z.string().min(1).max(200).nullable(),

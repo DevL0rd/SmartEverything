@@ -15,6 +15,13 @@ import java.util.concurrent.CopyOnWriteArraySet
 object VoiceCapture {
   const val SAMPLE_RATE = 48_000
   const val FRAME_SAMPLES = 960
+  const val EAR_SAMPLE_RATE = 16_000
+  const val EAR_FRAME_SAMPLES = 320
+
+  enum class Mode(val source: Int, val sampleRate: Int, val frameSamples: Int) {
+    Call(MediaRecorder.AudioSource.VOICE_COMMUNICATION, SAMPLE_RATE, FRAME_SAMPLES),
+    Ear(MediaRecorder.AudioSource.VOICE_RECOGNITION, EAR_SAMPLE_RATE, EAR_FRAME_SAMPLES)
+  }
 
   private class Effects(val echo: AudioEffect?, val noise: AudioEffect?, val gain: AudioEffect?) {
     fun all(): List<AudioEffect> = listOfNotNull(echo, noise, gain)
@@ -25,73 +32,82 @@ object VoiceCapture {
     }
   }
 
-  private val consumers = CopyOnWriteArraySet<(ShortArray) -> Unit>()
-  private var thread: Thread? = null
-  private var recorder: AudioRecord? = null
-  private var effects: Effects? = null
+  private class Session(val record: AudioRecord, val effects: Effects, val mode: Mode) {
+    @Volatile
+    var active = true
+  }
+
+  private val calls = CopyOnWriteArraySet<(ShortArray) -> Unit>()
+  private val ears = CopyOnWriteArraySet<(ShortArray) -> Unit>()
+  private var session: Session? = null
   private var noiseSuppression = true
   private var autoGain = true
   private var preferredInput: AudioDeviceInfo? = null
-
-  @Volatile
-  private var running = false
 
   @Synchronized
   fun configure(noiseSuppression: Boolean, autoGain: Boolean) {
     this.noiseSuppression = noiseSuppression
     this.autoGain = autoGain
-    effects?.tune(noiseSuppression, autoGain)
+    session?.effects?.tune(noiseSuppression, autoGain)
   }
 
   @Synchronized
   fun preferInput(device: AudioDeviceInfo?) {
     preferredInput = device
-    recorder?.preferredDevice = device
+    session?.record?.preferredDevice = device
   }
 
   @Synchronized
-  fun addConsumer(consumer: (ShortArray) -> Unit): AutoCloseable {
-    if (thread == null) {
-      start()
-    }
-    consumers.add(consumer)
+  fun addConsumer(mode: Mode = Mode.Call, consumer: (ShortArray) -> Unit): AutoCloseable {
+    align(mode == Mode.Call || calls.isNotEmpty())
+    (if (mode == Mode.Call) calls else ears).add(consumer)
     return AutoCloseable { remove(consumer) }
   }
 
   @Synchronized
   private fun remove(consumer: (ShortArray) -> Unit) {
-    consumers.remove(consumer)
-    if (consumers.isEmpty()) {
-      running = false
-      thread = null
-      recorder = null
-      effects = null
+    calls.remove(consumer)
+    ears.remove(consumer)
+    if (calls.isEmpty() && ears.isEmpty()) {
+      session?.active = false
+      session = null
+    } else {
+      align(calls.isNotEmpty())
     }
   }
 
+  private fun align(call: Boolean) {
+    val wanted = if (call) Mode.Call else Mode.Ear
+    val current = session
+    if (current?.mode == wanted) {
+      return
+    }
+    session = open(wanted)
+    current?.active = false
+  }
+
   @SuppressLint("MissingPermission")
-  private fun start() {
-    val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
+  private fun open(mode: Mode): Session {
+    val minimum = AudioRecord.getMinBufferSize(mode.sampleRate, CHANNEL, ENCODING)
     if (minimum <= 0) {
-      throw VoiceCaptureUnavailable("48 kHz mono capture is not supported ($minimum)")
+      throw VoiceCaptureUnavailable("${mode.sampleRate} Hz mono capture is not supported ($minimum)")
     }
     val record = AudioRecord(
-      MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-      SAMPLE_RATE,
+      mode.source,
+      mode.sampleRate,
       CHANNEL,
       ENCODING,
-      maxOf(minimum, FRAME_SAMPLES * 2 * 4)
+      maxOf(minimum, mode.frameSamples * 2 * BUFFERED_FRAMES)
     )
     if (record.state != AudioRecord.STATE_INITIALIZED) {
       record.release()
       throw VoiceCaptureUnavailable("Android refused the recorder; is the microphone permission granted?")
     }
     record.preferredDevice = preferredInput
-    val attached = attachEffects(record.audioSessionId)
-    recorder = record
-    effects = attached
-    running = true
-    thread = Thread({ loop(record, attached) }, "smarteverything-voice-capture").apply { start() }
+    val effects = if (mode == Mode.Call) attachEffects(record.audioSessionId) else Effects(null, null, null)
+    val opened = Session(record, effects, mode)
+    Thread({ loop(opened) }, "smarteverything-voice-capture-${mode.name.lowercase()}").start()
+    return opened
   }
 
   private fun attachEffects(session: Int): Effects = Effects(
@@ -112,36 +128,49 @@ object VoiceCapture {
     }
   }
 
-  private fun loop(record: AudioRecord, effects: Effects) {
+  private fun loop(opened: Session) {
     try {
-      record.startRecording()
-      val frame = ShortArray(FRAME_SAMPLES)
-      while (running) {
-        if (fill(record, frame)) {
-          val copy = frame.copyOf()
-          consumers.forEach { it(copy) }
+      opened.record.startRecording()
+      val frame = ShortArray(opened.mode.frameSamples)
+      val narrow = Downsample()
+      while (opened.active) {
+        if (fill(opened, frame)) {
+          deliver(opened.mode, frame.copyOf(), narrow)
         }
       }
     } finally {
-      effects.all().forEach { it.release() }
-      record.stop()
-      record.release()
+      opened.effects.all().forEach { it.release() }
+      opened.record.stop()
+      opened.record.release()
     }
   }
 
-  private fun fill(record: AudioRecord, frame: ShortArray): Boolean {
+  private fun deliver(mode: Mode, frame: ShortArray, narrow: Downsample) {
+    if (mode == Mode.Ear) {
+      ears.forEach { it(frame) }
+      return
+    }
+    calls.forEach { it(frame) }
+    if (ears.isNotEmpty()) {
+      val heard = narrow.to16k(frame)
+      ears.forEach { it(heard) }
+    }
+  }
+
+  private fun fill(opened: Session, frame: ShortArray): Boolean {
     var read = 0
-    while (read < FRAME_SAMPLES && running) {
-      val count = record.read(frame, read, FRAME_SAMPLES - read)
+    while (read < frame.size && opened.active) {
+      val count = opened.record.read(frame, read, frame.size - read)
       if (count <= 0) {
         return false
       }
       read += count
     }
-    return read == FRAME_SAMPLES
+    return read == frame.size
   }
 
   private const val TAG = "SmartEverythingVoice"
+  private const val BUFFERED_FRAMES = 4
   private const val CHANNEL = AudioFormat.CHANNEL_IN_MONO
   private const val ENCODING = AudioFormat.ENCODING_PCM_16BIT
 }

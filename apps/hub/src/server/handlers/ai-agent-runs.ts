@@ -3,7 +3,7 @@ import type { AI_AGENT_RUN_CONTROL } from '@smarteverything/domain';
 import { API_ENDPOINTS, ApiError, type AiAgentRun } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import { profileIdOf, roleOfCaller, type Caller } from '../auth';
-import { DONE_REPLY, bound, type RouteTable } from '../router';
+import { DONE_REPLY, bound } from '../router';
 
 function authorizeParent(store: Store, chatId: string, caller: Caller): void {
   if (
@@ -25,11 +25,11 @@ function authorizeRun(store: Store, chatId: string, id: string, caller: Caller):
     );
   return run;
 }
-export function aiAgentRunRoutes(
+export const aiAgentRunRoutes = (
   store: Store,
   control?: (run: AiAgentRun, body: z.infer<typeof AI_AGENT_RUN_CONTROL>) => Promise<void>,
-): Pick<RouteTable, 'listAiAgentRuns' | 'readAiAgentRun' | 'controlAiAgentRun'> {
-  return {
+) =>
+  ({
     listAiAgentRuns: bound(API_ENDPOINTS.listAiAgentRuns, ({ params, query, caller }) => {
       authorizeParent(store, params.chatId, caller);
       const page = store.aiAgentRuns.list(params.chatId, query);
@@ -52,5 +52,4 @@ export function aiAgentRunRoutes(
       await control(run, body);
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;

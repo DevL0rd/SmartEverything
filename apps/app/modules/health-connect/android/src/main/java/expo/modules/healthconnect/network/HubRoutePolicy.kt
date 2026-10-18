@@ -3,309 +3,372 @@ package expo.modules.healthconnect.network
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import expo.modules.healthconnect.NativeCredentialWithdrawn
+import expo.modules.healthconnect.diagnostics.NativeLog
+import expo.modules.healthconnect.diagnostics.NativeTally
 import java.io.IOException
 import java.net.URI
 import java.util.concurrent.Executors
 import org.json.JSONObject
 
 class HubRoutePolicy private constructor(context: Context) {
-  private class Group(val canonical: String, var trust: HubTrust) {
-    var endpoint: HubRouteEndpoint? = null
-    var generation = 0L
-    var epoch = 0L
-    var detail = "Verifying saved hub routes"
-    var pending = true
-  }
+  private data class Probe(val canonical: String, val token: Long)
+
   private val store = HubRouteStore(context)
   private val configurations = mutableMapOf<String, HubRouteConfiguration>()
-  private val groups = mutableMapOf<String, Group>()
-  private val listeners = mutableSetOf<(Map<String, Any?>) -> Unit>()
+  private val groups = mutableMapOf<String, HubRouteGroup>()
+  private val selections = store.loadSelected().toMutableMap()
+  private val listeners = mutableSetOf<(HubRouteSnapshot) -> Unit>()
   private val scheduler = Executors.newSingleThreadExecutor()
   private val main = Handler(Looper.getMainLooper())
   private var routeGeneration = 0L
-  private var configurationEpoch = 0L
+  private var probeToken = 0L
   private var networkGeneration = 0L
   private var queued = false
   private var working = false
   private var observing = false
   private val discovery = HubDiscovery(context, ::discovered)
-  private val connectivity = HubConnectivity(context, {}, ::networkChanged)
+  private val connectivity = HubConnectivity(context, ::networkChanged)
+  private val leases = NativeTally(SCOPE, "lease.summary")
+
   init {
-    HubRouteProbe.settled = { synchronized(this) { if (configurations.isNotEmpty()) refreshAll() } }
-    store.load().forEach { install(it) }
-    if (configurations.isNotEmpty()) { observe(); refreshAll() }
-  }
-  @Throws(expo.modules.healthconnect.NativeCredentialWithdrawn::class) @Synchronized fun configure(input: JSONObject, native: Boolean = false): Map<String, Any?> {
-    val raw = JSONObject(input.toString())
-    val trust = raw.getJSONObject("trust")
-    val canonical = raw.getString("canonicalOrigin")
-    val endpoints = trust.getJSONArray("endpoints")
-    if ((0 until endpoints.length()).none { HubTrust.origin(URI(endpoints.getJSONObject(it).getString("url"))) == HubTrust.origin(URI(canonical)) }) {
-      require(endpoints.length() < 32) { "Canonical endpoint requires an inventory slot" }
-      endpoints.put(JSONObject().put("url", canonical).put("kind", "remote"))
+    store.load().forEach(::install)
+    NativeLog.info(SCOPE, "authority.restored") { mapOf("scopes" to configurations.size, "groups" to groups.size, "selections" to selections.size) }
+    if (configurations.isNotEmpty()) {
+      observe()
+      refreshAll()
     }
-    val next = HubRouteConfiguration.parse(raw)
+  }
+
+  @Throws(NativeCredentialWithdrawn::class)
+  @Synchronized
+  fun configure(input: JSONObject, native: Boolean = false): HubRouteSnapshot {
+    val next = withCanonicalEndpoint(HubRouteConfiguration.parse(input))
     require(native || next.bindings.all { it.credentialKind == "client" }) { "Native credential roles are independently registered" }
     val old = configurations[next.trust.scopeId]
-    if (old != null && (old.canonical != next.canonical || next.bindings.any { binding -> old.bindings.any { previous ->
-      binding.credentialKind == previous.credentialKind && binding.principalId != previous.principalId } }))
-      throw expo.modules.healthconnect.NativeCredentialWithdrawn()
-    if (old != null && next.bindings.any { binding -> old.bindings.any { previous ->
-      binding.principalId == previous.principalId && binding.credentialKind == previous.credentialKind &&
-        binding.credentialGeneration < previous.credentialGeneration } }) throw expo.modules.healthconnect.NativeCredentialWithdrawn()
-    if (old?.raw?.toString() == next.raw.toString()) return snapshot(next.trust.scopeId)
+    if (old != null) {
+      try {
+        rejectSuperseded(old, next)
+      } catch (failure: NativeCredentialWithdrawn) {
+        NativeLog.warn(SCOPE, "configure.superseded", failure) { mapOf("scope" to NativeLog.scopeLabel(next.trust.scopeId), "native" to native) }
+        throw failure
+      }
+    }
+    val owner = groups[next.canonical]
+    require(owner == null || owner.trust.sameHub(next.trust)) { "Canonical hub identity changed; withdraw its old enrollment first" }
     val retired = retiredScopes(next, native)
     val staged = mergeInventory(configurations.values.filter { it.trust.scopeId !in retired } + next, next.canonical)
-    require(staged.size <= 64)
-    val owner = groups[next.canonical]
-    require(owner == null || sameIdentity(owner.trust, next.trust)) { "Canonical hub identity changed; withdraw its old enrollment first" }
+    if (old != null && retired.isEmpty() && staged.first { it.trust.scopeId == next.trust.scopeId } == old) {
+      NativeLog.debug(SCOPE, "configure.unchanged") { mapOf("scope" to NativeLog.scopeLabel(next.trust.scopeId), "native" to native) }
+      return snapshot(next.trust.scopeId)
+    }
+    HubRouteLog.applied(next, old, retired, native)
     store.save(staged)
     retired.forEach(::clearMemory)
     staged.filter { it.canonical == next.canonical }.forEach(::install)
     observe()
     refreshAll()
+    if (old != null && old.bindings != next.bindings) notifyGroup(next.canonical)
     return snapshot(next.trust.scopeId)
   }
-  private fun retiredScopes(next: HubRouteConfiguration, native: Boolean): Set<String> {
-    val old = configurations[next.trust.scopeId]
-    val formerClients = if (native) emptyList() else configurations.values.filter { it.canonical == next.canonical &&
-      it.trust.scopeId != next.trust.scopeId && it.bindings.all { binding -> binding.credentialKind == "client" } }
-    val principals = formerClients.flatMap { it.bindings }.filter { binding -> next.bindings.none { it.principalId == binding.principalId } }
-      .map { it.principalId }.toSet() + if (!native && old != null && old.bindings != next.bindings) old.bindings.map { it.principalId } else emptyList()
-    val servers = configurations.values.filter { it.canonical == next.canonical &&
-      it.bindings.any { binding -> binding.credentialKind == "server" && binding.principalId in principals } }
-    return (formerClients + servers).map { it.trust.scopeId }.toSet() + if (old == null) emptySet() else setOf(old.trust.scopeId)
+
+  private fun withCanonicalEndpoint(config: HubRouteConfiguration): HubRouteConfiguration {
+    if (config.trust.endpoints.containsKey(HubTrust.origin(URI(config.canonical)))) return config
+    val inventory = config.trust.inventory + HubRouteEndpoint(config.canonical, "remote")
+    return config.copy(trust = config.trust.copy(inventory = inventory))
   }
-  private fun install(next: HubRouteConfiguration) {
-    val group = groups[next.canonical]
-    require(group == null || sameIdentity(group.trust, next.trust)) { "Canonical hub identity changed; withdraw its old enrollment first" }
-    configurations[next.trust.scopeId] = next
-    groups.getOrPut(next.canonical) { Group(next.canonical, next.trust).apply { generation = ++routeGeneration } }.apply {
-      trust = next.trust; epoch = ++configurationEpoch
+
+  private fun rejectSuperseded(old: HubRouteConfiguration, next: HubRouteConfiguration) {
+    val changedOwner = old.canonical != next.canonical || next.bindings.any { binding ->
+      old.bindings.any { it.credentialKind == binding.credentialKind && it.principalId != binding.principalId }
     }
-    HubTransport.configure(next.raw.getJSONObject("trust").toString())
-  }
-  private fun mergeInventory(values: List<HubRouteConfiguration>, canonical: String): List<HubRouteConfiguration> {
-    val peers = values.filter { it.canonical == canonical }
-    val endpoints = peers.flatMap { config ->
-      val entries = config.raw.getJSONObject("trust").getJSONArray("endpoints")
-      (0 until entries.length()).map { entries.getJSONObject(it) }
-    }.distinctBy { HubTrust.origin(URI(it.getString("url"))) }.take(32)
-    val addresses = peers.flatMap { it.trust.addresses }.distinctBy { it.hostAddress }.take(32)
-    return values.map { peer ->
-      if (peer.canonical != canonical) peer else {
-        val raw = JSONObject(peer.raw.toString())
-        raw.getJSONObject("trust").put("endpoints", org.json.JSONArray(endpoints))
-          .put("lanAddresses", org.json.JSONArray(addresses.map { it.hostAddress }))
-        HubRouteConfiguration.parse(raw)
+    val older = next.bindings.any { binding ->
+      old.bindings.any {
+        it.credentialKind == binding.credentialKind && it.principalId == binding.principalId &&
+          binding.credentialGeneration < it.credentialGeneration
       }
     }
+    if (changedOwner || older) throw NativeCredentialWithdrawn()
   }
+
+  private fun retiredScopes(next: HubRouteConfiguration, native: Boolean): Set<String> {
+    val old = configurations[next.trust.scopeId]
+    val peers = configurations.values.filter { it.canonical == next.canonical && it.trust.scopeId != next.trust.scopeId }
+    val formerClients = if (native) emptyList() else peers.filter { peer -> peer.bindings.all { it.credentialKind == "client" } }
+    val replaced = formerClients.flatMap { it.bindings }.map { it.principalId }
+      .filter { principal -> next.bindings.none { it.principalId == principal } }
+    val rebound = if (!native && old != null && old.bindings != next.bindings) old.bindings.map { it.principalId } else emptyList()
+    val principals = (replaced + rebound).toSet()
+    val servers = peers.filter { peer -> peer.bindings.any { it.credentialKind == "server" && it.principalId in principals } }
+    return (formerClients + servers).map { it.trust.scopeId }.toSet()
+  }
+
+  private fun install(next: HubRouteConfiguration) {
+    val group = groups[next.canonical]
+    require(group == null || group.trust.sameHub(next.trust)) { "Canonical hub identity changed; withdraw its old enrollment first" }
+    configurations[next.trust.scopeId] = next
+    val remembered = selections[next.canonical]?.takeIf { next.trust.endpoints.containsKey(it.origin) }
+    val installed = group ?: HubRouteGroup(next.canonical, next.trust, remembered).also {
+      it.generation = ++routeGeneration
+      groups[next.canonical] = it
+    }
+    installed.trust = next.trust
+    installed.probe = ++probeToken
+    HubTransport.configure(next.trust)
+    HubRouteLog.installed(next, installed, remembered, group == null)
+  }
+
+  private fun mergeInventory(values: List<HubRouteConfiguration>, canonical: String): List<HubRouteConfiguration> {
+    val peers = values.filter { it.canonical == canonical }
+    val inventory = peers.flatMap { it.trust.inventory }.distinctBy { it.origin }
+    val addresses = peers.flatMap { it.trust.addresses }.distinctBy { it.hostAddress }
+    return values.map { config ->
+      if (config.canonical != canonical) config else config.copy(trust = config.trust.copy(inventory = inventory, addresses = addresses))
+    }
+  }
+
   @Synchronized fun clear(scopeId: String) {
-    try { store.save(configurations.values.filter { it.trust.scopeId != scopeId }) }
-    finally { clearMemory(scopeId) }
-    if (configurations.isEmpty()) main.post { synchronized(this) {
-      if (configurations.isEmpty()) { connectivity.stop(); discovery.stop(); observing = false }
-    } }
+    try {
+      store.save(configurations.values.filter { it.trust.scopeId != scopeId })
+    } finally {
+      clearMemory(scopeId)
+    }
+    if (configurations.isEmpty()) main.post { stopObserving() }
   }
+
+  @Synchronized private fun stopObserving() {
+    if (!configurations.isEmpty()) return
+    connectivity.stop()
+    discovery.stop()
+    observing = false
+  }
+
   private fun clearMemory(scopeId: String) {
     val previous = configurations[scopeId] ?: return
-    val withdrawn = snapshot(scopeId).toMutableMap().apply {
-      put("readiness", "unavailable"); put("detail", "Hub credential binding was withdrawn")
-      put("routeGeneration", groups.getValue(previous.canonical).generation + 1); remove("endpoint")
-    }
-    val removed = configurations.remove(scopeId) ?: return
+    val group = groups.getValue(previous.canonical)
+    val withdrawn = snapshot(scopeId).copy(
+      readiness = HubRouteReadiness.UNAVAILABLE,
+      detail = "Hub credential binding was withdrawn",
+      routeGeneration = group.generation + 1,
+      endpoint = null,
+    )
+    configurations.remove(scopeId)
+    NativeLog.info(SCOPE, "scope.cleared") { mapOf("scope" to NativeLog.scopeLabel(scopeId), "generation" to group.generation, "listeners" to listeners.size) }
     listeners.toList().forEach { it(withdrawn) }
     HubTransport.clear(scopeId)
-    (this as java.lang.Object).notifyAll()
-    val group = groups.getValue(removed.canonical)
-    group.epoch = ++configurationEpoch
-    if (configurations.values.none { it.canonical == removed.canonical }) groups.remove(removed.canonical)
-  }
-  @Synchronized fun inventory(canonical: String, identity: JSONObject): JSONObject? = configurations.values
-    .firstOrNull { it.canonical == canonical && it.trust.hubId == identity.getString("id") &&
-      it.trust.certificateSha256 == identity.getJSONObject("tls").getString("certificateSha256") &&
-      it.trust.serverName == identity.getJSONObject("tls").getString("serverName") &&
-      it.trust.publicKeySha256 == identity.getJSONObject("tls").getString("publicKeySha256") }
-    ?.raw?.getJSONObject("trust")?.let { JSONObject(it.toString()) }
-  @Synchronized fun awaitReady(scopeId: String): Map<String, Any?> {
-    val deadline = System.nanoTime() + READINESS_TIMEOUT_NANOS
-    while (snapshot(scopeId)["readiness"] == "pending") {
-      val remaining = (deadline - System.nanoTime()) / 1_000_000
-      if (remaining <= 0) break
-      (this as java.lang.Object).wait(remaining)
+    group.probe = ++probeToken
+    if (configurations.values.none { it.canonical == previous.canonical }) {
+      groups.remove(previous.canonical)
+      remember(previous.canonical, null)
     }
-    return snapshot(scopeId)
   }
-  @Synchronized fun snapshot(scopeId: String): Map<String, Any?> {
+
+  @Synchronized fun enrolled(canonical: String): HubRouteConfiguration? =
+    configurations.values.firstOrNull { it.canonical == canonical }
+
+  @Synchronized fun snapshot(scopeId: String): HubRouteSnapshot {
     val config = configurations[scopeId] ?: error("Hub route scope is withdrawn")
     val group = groups.getValue(config.canonical)
-    val state = if (group.pending) "pending" else if (group.endpoint == null) "unavailable" else "ready"
-    return mutableMapOf<String, Any?>("scopeId" to scopeId, "canonicalOrigin" to config.canonical,
-      "hubId" to config.trust.hubId, "routeGeneration" to group.generation,
-      "networkGeneration" to networkGeneration, "readiness" to state, "detail" to group.detail)
-      .apply { if (state == "ready") put("endpoint", group.endpoint?.snapshot()) }
+    return HubRouteSnapshot(
+      scopeId,
+      config.canonical,
+      config.trust.hubId,
+      group.generation,
+      networkGeneration,
+      group.readiness(),
+      group.detail,
+      group.endpoint,
+    )
   }
-  @Synchronized fun subscribe(listener: (Map<String, Any?>) -> Unit): AutoCloseable {
+
+  @Synchronized fun subscribe(listener: (HubRouteSnapshot) -> Unit): AutoCloseable {
     listeners.add(listener)
     return AutoCloseable { synchronized(this) { listeners.remove(listener) } }
   }
-  @Synchronized fun refresh(scopeId: String): Map<String, Any?> { require(configurations.containsKey(scopeId)); refreshAll(); return snapshot(scopeId) }
+
+  @Synchronized fun refresh(scopeId: String): HubRouteSnapshot {
+    require(configurations.containsKey(scopeId))
+    NativeLog.debug(SCOPE, "refresh.requested") { mapOf("scope" to NativeLog.scopeLabel(scopeId)) }
+    discovery.recover()
+    refreshAll()
+    return snapshot(scopeId)
+  }
+
   @Synchronized private fun refreshAll() {
     queued = true
     if (working) return
     working = true
     scheduler.execute(::drain)
   }
+
   private fun drain() {
     while (true) {
       val batch = synchronized(this) {
-        if (!queued) { working = false; return }
+        if (!queued) {
+          working = false
+          return
+        }
         queued = false
-        groups.values.map { Triple(it.canonical, it.epoch, networkGeneration) }
+        groups.values.map { Probe(it.canonical, it.probe) }
       }
-      batch.forEach { probe(it) }
+      NativeLog.debug(SCOPE, "probe.batch") { mapOf("groups" to batch.size, "network" to networkGeneration) }
+      batch.forEach(::probe)
     }
   }
-  private fun probe(batch: Triple<String, Long, Long>) {
+
+  private fun probe(batch: Probe) {
     val prepared = synchronized(this) {
-      val group = groups[batch.first] ?: return
+      val group = groups[batch.canonical] ?: return
       val config = configurations.values.firstOrNull { it.canonical == group.canonical } ?: return
       Triple(config.trust.scopeId, group.trust, candidates(config))
     }
-    var resolved = false
-    try {
-      HubRouteProbe.batch(prepared.first, prepared.second, prepared.third) { selected ->
-        resolved = true
-        acceptProbe(batch, selected)
+    val started = System.nanoTime()
+    NativeLog.debug(SCOPE, "probe.started") {
+      mapOf("scope" to NativeLog.scopeLabel(prepared.first), "probeToken" to batch.token, "candidates" to prepared.third.map { it.kind })
+    }
+    val selected = try {
+      HubRouteProbe.select(prepared.first, prepared.second, prepared.third)
+    } catch (failure: Exception) {
+      NativeLog.warn(SCOPE, "probe.failed", failure, NativeLog.elapsedMs(started)) {
+        mapOf("scope" to NativeLog.scopeLabel(prepared.first), "probeToken" to batch.token)
       }
-    } catch (failure: Exception) { if (!resolved) acceptProbe(batch, null) }
+      null
+    }
+    HubRouteLog.probeFinished(prepared.first, batch.token, prepared.third.size, selected, started)
+    accept(batch, selected)
   }
-  private fun acceptProbe(batch: Triple<String, Long, Long>, selected: HubRouteEndpoint?) {
-    synchronized(this) {
-      val group = groups[batch.first] ?: return
-      if (group.epoch != batch.second || networkGeneration != batch.third) return
-      if (group.endpoint != selected) { retireTransports(group.canonical); group.generation = ++routeGeneration }
-      group.endpoint = selected
-      group.pending = false
-      group.detail = if (selected == null) "No independently trusted hub identity answered" else ""
-      notifyGroup(group.canonical)
-      (this as java.lang.Object).notifyAll()
+
+  @Synchronized private fun accept(batch: Probe, selected: HubRouteEndpoint?) {
+    val group = groups[batch.canonical] ?: return
+    if (group.probe != batch.token) {
+      NativeLog.debug(SCOPE, "probe.discarded") { mapOf("reason" to "superseded", "probeToken" to batch.token, "current" to group.probe) }
+      return
+    }
+    val before = group.endpoint
+    group.settle(selected) { ++routeGeneration }
+    if (group.endpoint != before) remember(group.canonical, group.endpoint)
+    val announced = group.announce(networkGeneration)
+    HubRouteLog.settled(group, networkGeneration, group.endpoint != before, announced, listeners.size)
+    if (announced) notifyGroup(group.canonical)
+  }
+
+  private fun remember(canonical: String, endpoint: HubRouteEndpoint?) {
+    if (endpoint == null) selections.remove(canonical) else selections[canonical] = endpoint
+    try {
+      store.saveSelected(selections)
+    } catch (failure: IOException) {
+      NativeLog.warn(SCOPE, "selection.save_failed", failure) { mapOf("canonical" to NativeLog.hostOnly(canonical)) }
     }
   }
+
   private fun candidates(config: HubRouteConfiguration): List<HubRouteEndpoint> {
-    val values = config.raw.getJSONObject("trust").getJSONArray("endpoints")
-    val endpoints = (0 until values.length()).map { values.getJSONObject(it) }
-      .filter { it.getString("kind") != "loopback" }.map { HubRouteEndpoint(it.getString("url"), it.getString("kind")) }
-    val local = endpoints.filter { it.kind == "lan" }.asReversed().take(HubRouteProbe.MAX_PROBES - 1)
-    val remote = endpoints.firstOrNull { it.url == config.canonical && it.kind == "remote" }
-      ?: HubRouteEndpoint(config.canonical, "remote")
-    return local + remote
+    val usable = config.trust.inventory.filter { it.kind != "loopback" }
+    return usable.filter { it.kind == "lan" }.asReversed() + usable.filter { it.kind == "remote" }
   }
-  private fun retireTransports(canonical: String) {
-    configurations.values.filter { it.canonical == canonical }.forEach {
-      HubTransport.clear(it.trust.scopeId)
-      HubTransport.configure(it.raw.getJSONObject("trust").toString())
-    }
-  }
+
   private fun notifyGroup(canonical: String) {
     configurations.values.filter { it.canonical == canonical }.forEach { config ->
       val state = snapshot(config.trust.scopeId)
+      HubRouteLog.notified(state, listeners.size)
       listeners.toList().forEach { it(state) }
     }
   }
-  private fun observe() { main.post { synchronized(this) {
-    if (!observing && configurations.isNotEmpty()) { observing = true; connectivity.start(); discovery.start() }
-  } } }
+
+  private fun observe() {
+    main.post {
+      synchronized(this) {
+        if (!observing && configurations.isNotEmpty()) {
+          observing = true
+          connectivity.start()
+          discovery.start()
+        }
+      }
+    }
+  }
+
   @Synchronized private fun networkChanged() {
     networkGeneration += 1
-    groups.values.forEach { it.epoch = ++configurationEpoch; it.pending = true; it.generation = ++routeGeneration; it.endpoint = null; notifyGroup(it.canonical); retireTransports(it.canonical) }
+    NativeLog.info(SCOPE, "network.invalidated") { mapOf("network" to networkGeneration, "groups" to groups.size) }
+    groups.values.forEach { it.probe = ++probeToken }
+    HubTransport.evictIdle()
     HubRouteProbe.cancel()
     discovery.start()
     refreshAll()
   }
-  @Synchronized private fun discovered(state: Map<String, Any?>) {
-    val entries = state["candidates"] as? List<*> ?: return
-    var changed = false
-    entries.filterIsInstance<Map<*, *>>().forEach { candidate ->
-      val hub = candidate["hubId"] as? String ?: return@forEach
-      val url = candidate["url"] as? String ?: return@forEach
-      configurations.values.toList().filter { it.trust.hubId == hub }.forEach { config ->
-        if (config.trust.endpoints.containsKey(HubTrust.origin(URI(url)))) return@forEach
-        val raw = JSONObject(config.raw.toString())
-        val trust = raw.getJSONObject("trust")
-        val address = URI(url).host.removePrefix("[").removeSuffix("]")
-        HubTrust.literal(address)
-        val endpoints = trust.getJSONArray("endpoints")
-        val retained = (0 until endpoints.length()).map { endpoints.getJSONObject(it) }.toMutableList()
-        if (retained.size >= 32) {
-          val oldest = retained.indexOfFirst { it.getString("kind") == "lan" && it.getString("url") != config.canonical }
-          if (oldest < 0) return@forEach
-          retained.removeAt(oldest)
+
+  @Synchronized private fun discovered(state: HubDiscoverySnapshot) {
+    var learned = false
+    state.candidates.forEach { candidate ->
+      configurations.values.filter { it.trust.hubId == candidate.hubId }.toList().forEach { config ->
+        withLanEndpoint(config, candidate.url)?.let {
+          install(it)
+          learned = true
         }
-        retained.add(JSONObject().put("kind", "lan").put("url", url))
-        trust.put("endpoints", org.json.JSONArray(retained))
-        val addresses = (config.trust.addresses.map { it.hostAddress } + address).distinct().takeLast(32)
-        trust.put("lanAddresses", org.json.JSONArray(addresses))
-        val next = HubRouteConfiguration.parse(raw)
-        configurations[next.trust.scopeId] = next
-        groups.getValue(next.canonical).apply { this.trust = next.trust; epoch = ++configurationEpoch }
-        HubTransport.configure(trust.toString())
-        changed = true
       }
     }
-    if (changed) { store.save(configurations.values); refreshAll() }
+    NativeLog.debug(SCOPE, "discovery.applied") { mapOf("candidates" to state.candidates.size, "learned" to learned, "state" to state.state) }
+    if (!learned) return
+    store.save(configurations.values)
+    refreshAll()
   }
-  fun lease(binding: HubRouteBinding, input: String, generation: Long? = null): HubLease = synchronized(this) {
-    val config = configurations[binding.scopeId] ?: throw expo.modules.healthconnect.NativeCredentialWithdrawn()
-    if (!config.bindings.contains(binding)) throw expo.modules.healthconnect.NativeCredentialWithdrawn()
+
+  private fun withLanEndpoint(config: HubRouteConfiguration, url: String): HubRouteConfiguration? {
+    val endpoint = HubRouteEndpoint(url, "lan")
+    if (config.trust.endpoints.containsKey(endpoint.origin)) return null
+    val address = HubTrust.literal(URI(url).host.removePrefix("[").removeSuffix("]"))
+    val addresses = (config.trust.addresses + address).distinctBy { it.hostAddress }
+    return config.copy(trust = config.trust.copy(inventory = config.trust.inventory + endpoint, addresses = addresses))
+  }
+
+  @Synchronized fun lease(binding: HubRouteBinding, input: String): HubLease {
+    val config = boundConfiguration(binding)
     val group = groups.getValue(config.canonical)
-    if (generation != null && (group.pending || generation != group.generation)) throw IOException("Hub route generation changed")
-    val expires = System.nanoTime() + READINESS_TIMEOUT_NANOS
-    while (group.pending && System.nanoTime() < expires) {
-      (this as java.lang.Object).wait(maxOf(1, (expires - System.nanoTime()) / 1_000_000))
-      if (configurations[binding.scopeId]?.bindings?.contains(binding) != true) throw expo.modules.healthconnect.NativeCredentialWithdrawn()
+    val selected = group.endpoint ?: run {
+      HubRouteLog.unavailable(binding.scopeId, group)
+      throw HubRouteUnavailable(group.detail)
     }
-    val selected = group.endpoint ?: throw IOException(group.detail)
-    if (group.pending || (generation != null && generation != group.generation)) throw IOException("Hub route generation changed")
+    val leaseStarted = System.nanoTime()
     val uri = URI(input.replaceFirst("wss:", "https:"))
     require(uri.scheme == "https" && uri.userInfo == null && uri.fragment == null && uri.host != null)
-    require(HubTrust.origin(uri) == HubTrust.origin(URI(binding.canonicalOrigin)) ||
-      config.trust.endpoints.containsKey(HubTrust.origin(uri))) { "Hub request belongs to another canonical origin" }
-    val suffix = uri.rawPath.orEmpty() + (uri.rawQuery?.let { "?$it" } ?: "")
-    val selectedUrl = selected.url.trimEnd('/') + suffix
-    val route = group.generation
-    val lease = HubTransport.lease(if (input.startsWith("wss:")) selectedUrl.replaceFirst("https:", "wss:") else selectedUrl, binding.scopeId)
-    lease.copy(current = { check(binding, route) }, routeGeneration = route)
-  }
-  @Synchronized fun guestBinding(canonical: String, token: String): HubRouteBinding? {
-    val principal = HubRouteBindings.fingerprint(token)
-    val matches = configurations.values.filter { it.canonical == canonical }.flatMap { it.bindings }
-      .filter { it.credentialKind == "client" && it.principalId == principal }
-    require(matches.size <= 1) { "Guest credential has ambiguous native client ownership" }
-    return matches.singleOrNull()
-  }
-  @Synchronized fun bound(binding: HubRouteBinding): Boolean = configurations[binding.scopeId]?.bindings?.contains(binding) == true
-  @Synchronized fun check(binding: HubRouteBinding, generation: Long) {
-    val config = configurations[binding.scopeId]
-    val group = groups[binding.canonicalOrigin]
-    if (config?.bindings?.contains(binding) != true || group == null || group.pending || group.generation != generation)
-      throw IOException("Hub credential or route generation was withdrawn")
-  }
-  @Synchronized fun failed(binding: HubRouteBinding, generation: Long?) {
-    val group = groups[binding.canonicalOrigin] ?: return
-    if (configurations[binding.scopeId]?.bindings?.contains(binding) == true && (generation == null || generation == group.generation)) {
-      discovery.recover()
-      refreshAll()
+    val origin = HubTrust.origin(uri)
+    require(origin == HubTrust.origin(URI(binding.canonicalOrigin)) || config.trust.endpoints.containsKey(origin)) {
+      "Hub request belongs to another canonical origin"
     }
+    val target = selected.url.trimEnd('/') + uri.rawPath.orEmpty() + (uri.rawQuery?.let { "?$it" } ?: "")
+    val routed = if (input.startsWith("wss:")) target.replaceFirst("https:", "wss:") else target
+    val issued = HubTransport.lease(routed, binding.scopeId).copy(current = { requireBound(binding) })
+    leases.add(NativeLog.elapsedMs(leaseStarted))
+    return issued
   }
+
+  @Synchronized private fun boundConfiguration(binding: HubRouteBinding): HubRouteConfiguration {
+    val config = configurations[binding.scopeId]
+    if (config == null || !config.bindings.contains(binding)) throw NativeCredentialWithdrawn()
+    return config
+  }
+
+  @Synchronized fun bound(binding: HubRouteBinding): Boolean = configurations[binding.scopeId]?.bindings?.contains(binding) == true
+
+  @Synchronized private fun requireBound(binding: HubRouteBinding) {
+    if (!bound(binding)) throw IOException("Hub credential was withdrawn")
+  }
+
+  @Synchronized fun failed(binding: HubRouteBinding) {
+    if (!bound(binding)) {
+      NativeLog.debug(SCOPE, "failure.ignored") { mapOf("reason" to "unbound", "scope" to NativeLog.scopeLabel(binding.scopeId)) }
+      return
+    }
+    NativeLog.info(SCOPE, "failure.reported") { mapOf("scope" to NativeLog.scopeLabel(binding.scopeId), "action" to "rediscover_and_reprobe") }
+    discovery.recover()
+    refreshAll()
+  }
+
   companion object {
-    private const val READINESS_TIMEOUT_NANOS = 20_000_000_000L
+    private const val SCOPE = "hub-route"
     @Volatile private var instance: HubRoutePolicy? = null
+
     fun get(context: Context): HubRoutePolicy = instance ?: synchronized(this) {
       instance ?: HubRoutePolicy(context.applicationContext).also { instance = it }
     }
-    private fun sameIdentity(left: HubTrust, right: HubTrust): Boolean = left.hubId == right.hubId &&
-      left.certificateSha256 == right.certificateSha256 && left.serverName == right.serverName
   }
 }

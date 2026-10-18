@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect } from 'react';
-import type { AutomationSequenceRow, AutomationValueRow } from '@smarteverything/domain';
+import type { AutomationRow, AutomationValueRow } from '@smarteverything/domain';
 
 export interface LibraryReturn {
   readonly close: () => void;
   readonly setDirty: (dirty: boolean) => void;
   readonly valueSaved: (row: AutomationValueRow) => void;
-  readonly sequenceSaved: (row: AutomationSequenceRow) => void;
+  readonly reusableSaved: (row: AutomationRow) => void;
 }
 export const LibraryReturnContext = createContext<LibraryReturn | null>(null);
 export function useLibraryReturn(dirty: boolean): LibraryReturn | null {

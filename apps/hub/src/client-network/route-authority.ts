@@ -1,14 +1,14 @@
-import type { Agent } from 'node:https';
 import { isIP } from 'node:net';
 import {
+  HUB_ROUTE_LAN_PROBES,
   NATIVE_HUB_ROUTE_CONFIGURATION,
   type NativeHubRouteConfiguration,
   type HubEndpoint,
   type HubDiscoveryCandidate,
-  type NativeHubCredentialBinding,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { HubPolicies, HubTransportError } from './policy';
+import type { HubLease } from './lease';
 import { NodeRouteStore } from './route-store';
 import {
   bootstrapNodeTrust,
@@ -16,9 +16,9 @@ import {
   NodeEnrollmentRefusedError,
   type NodeRouteIdentity,
 } from './route-trust';
-import { probeNodeRoute, ROUTE_PROBE_TIMEOUT_MS, MAX_ROUTE_PROBES } from './route-probes';
-import { NodeRouteEvents } from './route-events';
-import type { DiscoveryBus } from '../network/avahi-bus';
+import { probeNodeRoute, ROUTE_PROBE_TIMEOUT_MS } from './route-probes';
+import { NodeRouteEvents, type NetworkEventBus } from './route-events';
+import type { OpenMdns } from '../network/mdns';
 
 export interface NodeRouteState {
   readonly endpoint: HubEndpoint | null;
@@ -36,7 +36,7 @@ export class NodeRouteAuthority {
   private readonly canonical: HubEndpoint;
   private readonly events: NodeRouteEvents;
   private stateValue: NodeRouteState;
-  private scope = new AbortController();
+  private trustScope = new AbortController();
   private probes = new AbortController();
   private batch: Promise<void> | null = null;
   private pending = false;
@@ -46,7 +46,8 @@ export class NodeRouteAuthority {
     private readonly options: NodeRouteIdentity & {
       readonly directory: string;
       readonly log: Logger;
-      readonly bus?: () => DiscoveryBus;
+      readonly bus?: () => NetworkEventBus;
+      readonly mdns?: OpenMdns;
     },
   ) {
     this.canonical = canonicalEndpoint(options.hubUrl);
@@ -61,6 +62,7 @@ export class NodeRouteAuthority {
     this.events = new NodeRouteEvents({
       log: options.log,
       ...(options.bus === undefined ? {} : { bus: options.bus }),
+      ...(options.mdns === undefined ? {} : { mdns: options.mdns }),
       changed: (): void => {
         this.networkChanged();
       },
@@ -124,11 +126,11 @@ export class NodeRouteAuthority {
     this.pending = false;
     this.probes.abort();
     this.policies.close();
+    this.retireTrustScope('Canonical hub revoked this node');
     this.publish(
       this.canonical,
       false,
       'Canonical hub refused node enrollment; local credentials are disabled.',
-      true,
     );
     await this.store.withdraw();
   }
@@ -143,7 +145,8 @@ export class NodeRouteAuthority {
       parsed.trust.scopeId !== `node:${this.options.deviceId}`
     )
       throw new HubTransportError('Stored node route belongs to another credential principal');
-    this.policies.configure(parsed.trust);
+    if (this.policies.configure(parsed.trust) && this.configuration !== null)
+      this.retireTrustScope('Hub identity changed');
     this.configuration = parsed;
     return parsed;
   }
@@ -201,6 +204,7 @@ export class NodeRouteAuthority {
           ? 'No enrolled hub endpoint is reachable.'
           : 'Independently enrolled route selected.',
       );
+      if (chosen?.kind !== 'lan') this.events.discover();
     } finally {
       await Promise.all(answers);
     }
@@ -213,20 +217,15 @@ export class NodeRouteAuthority {
           isIP(new URL(endpoint.url).hostname.replace(/^\[|\]$/g, '')) > 0,
       )
       .reverse()
-      .slice(0, MAX_ROUTE_PROBES - 1);
+      .slice(0, HUB_ROUTE_LAN_PROBES);
     return [...locals, this.canonical];
   }
-  private publish(
-    endpoint: HubEndpoint | null,
-    localSupported: boolean,
-    detail: string,
-    withdrawLease = false,
-  ): void {
-    const changed = withdrawLease || this.stateValue.endpoint?.url !== endpoint?.url;
-    if (changed) {
-      this.scope.abort(new HubTransportError('Hub route changed; effects may be unknown'));
-      this.scope = new AbortController();
-    }
+  private retireTrustScope(reason: string): void {
+    this.trustScope.abort(new HubTransportError(reason));
+    this.trustScope = new AbortController();
+  }
+  private publish(endpoint: HubEndpoint | null, localSupported: boolean, detail: string): void {
+    const changed = this.stateValue.endpoint?.url !== endpoint?.url;
     this.stateValue = {
       ...this.stateValue,
       endpoint,
@@ -244,13 +243,12 @@ export class NodeRouteAuthority {
       ...this.stateValue,
       networkGeneration: this.stateValue.networkGeneration + 1,
     };
-    if (this.configuration !== null)
-      this.publish(null, true, 'Network changed; checking enrolled routes.');
+    for (const listener of this.viewListeners) listener();
     if (this.batch !== null) this.pending = true;
     void this.refresh().catch((cause: unknown) => {
       this.options.log.error('route.refresh_failed', cause);
     });
-    if (this.configuration !== null) void this.events.discover();
+    if (this.configuration !== null) this.events.discover();
   }
   failed(generation: number): void {
     if (this.stopped || generation !== this.stateValue.routeGeneration) return;
@@ -267,9 +265,7 @@ export class NodeRouteAuthority {
       isIP(address) === 0 ||
       configuration.trust.endpoints.some(
         (endpoint) => new URL(endpoint.url).origin === new URL(candidate.url).origin,
-      ) ||
-      configuration.trust.endpoints.length >= 32 ||
-      configuration.trust.lanAddresses.length >= 32
+      )
     )
       return;
     const updated = NATIVE_HUB_ROUTE_CONFIGURATION.parse({
@@ -296,56 +292,37 @@ export class NodeRouteAuthority {
   ownsCredential(value: unknown): boolean {
     return value === undefined || value === null || value === `Bearer ${this.options.token}`;
   }
-  lease(
-    canonical: string,
-    binding?: NativeHubCredentialBinding,
-    generation?: number,
-  ): {
-    readonly url: URL;
-    readonly agent: Agent | undefined;
+  lease(canonical: string): HubLease & {
     readonly signal: AbortSignal;
     readonly generation: number;
   } {
-    if (this.stopped || this.stateValue.endpoint === null)
+    const endpoint = this.stateValue.endpoint;
+    if (this.stopped || endpoint === null)
       throw new HubTransportError('Hub route is not currently reachable');
-    const input = this.validateLease(canonical, binding, generation);
-    input.host = new URL(this.stateValue.endpoint.url).host;
-    input.protocol = new URL(this.stateValue.endpoint.url).protocol;
+    const input = this.canonicalUrl(canonical);
+    input.host = new URL(endpoint.url).host;
+    input.protocol = new URL(endpoint.url).protocol;
     const transport =
       this.configuration === null
-        ? { url: input, agent: undefined }
+        ? { url: input }
         : this.policies.lease(this.configuration.trust.scopeId, input.href);
-    return { ...transport, signal: this.scope.signal, generation: this.stateValue.routeGeneration };
+    return {
+      ...transport,
+      signal: this.trustScope.signal,
+      generation: this.stateValue.routeGeneration,
+    };
   }
-  private validateLease(
-    canonical: string,
-    binding: NativeHubCredentialBinding | undefined,
-    generation: number | undefined,
-  ): URL {
+  private canonicalUrl(canonical: string): URL {
     const input = new URL(canonical);
-    if (
-      input.origin !== this.canonical.url ||
-      input.username !== '' ||
-      input.password !== '' ||
-      input.hash !== ''
-    )
+    if (input.origin !== this.canonical.url)
       throw new HubTransportError('Request does not belong to canonical node hub');
-    if (
-      binding !== undefined &&
-      this.configuration?.bindings.some(
-        (entry) => JSON.stringify(entry) === JSON.stringify(binding),
-      ) !== true
-    )
-      throw new HubTransportError('Credential is not enrolled in the node route scope');
-    if (generation !== undefined && generation !== this.stateValue.routeGeneration)
-      throw new HubTransportError('Node route generation is stale');
     return input;
   }
   async stop(): Promise<void> {
     this.stopped = true;
     this.probes.abort();
-    this.scope.abort(new HubTransportError('Node route authority stopped'));
-    this.events.stop();
+    this.trustScope.abort(new HubTransportError('Node route authority stopped'));
+    await this.events.stop();
     this.policies.close();
     this.listeners.clear();
     this.viewListeners.clear();

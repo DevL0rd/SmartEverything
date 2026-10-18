@@ -1,4 +1,4 @@
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import type { SubscriptionCredential } from '../credentials/contracts';
 import type { SubscriptionModelCatalog } from '../providers/catalog';
 import type { SubscriptionBillingSnapshot } from '../providers/billing';
@@ -349,16 +349,19 @@ export class ProcessSubscriptions {
   }
   private track(task: Promise<void>): void {
     this.tasks.add(task);
-    void task.then(
-      () => {
-        this.tasks.delete(task);
-      },
-      (): void => {
-        this.tasks.delete(task);
-        this.log.warn('subscription.publication_failed', {
-          reason: 'Subscription host lifecycle failed; refresh status before using its route.',
-        });
-      },
+    background(
+      task.then(
+        () => {
+          this.tasks.delete(task);
+        },
+        (): void => {
+          this.tasks.delete(task);
+          this.log.warn('subscription.publication_failed', {
+            reason: 'Subscription host lifecycle failed; refresh status before using its route.',
+          });
+        },
+      ),
+      'subscriptions.background_failed',
     );
   }
   async stop(): Promise<void> {

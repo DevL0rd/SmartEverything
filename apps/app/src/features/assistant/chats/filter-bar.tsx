@@ -97,6 +97,37 @@ function SourceChips({
   ));
 }
 
+const COUNT_CHIPS = [
+  { filter: 'unread', label: 'Unread' },
+  { filter: 'needs', label: 'Needs you' },
+  { filter: 'running', label: 'Running' },
+] as const;
+
+function CountChips({
+  filter,
+  counts,
+  onChange,
+}: {
+  readonly filter: ChatFilter;
+  readonly counts: FilterCounts;
+  readonly onChange: (filter: ChatFilter) => void;
+}): ReactNode {
+  return COUNT_CHIPS.map((chip) => {
+    const count = counts[chip.filter];
+    return count > 0 || filter === chip.filter ? (
+      <Chip
+        key={chip.filter}
+        label={chip.label}
+        count={count}
+        active={filter === chip.filter}
+        onPress={() => {
+          onChange(chip.filter);
+        }}
+      />
+    ) : null;
+  });
+}
+
 export function FilterBar({
   filter,
   counts,
@@ -113,12 +144,7 @@ export function FilterBar({
     <HScroller label="Chat filters">
       <View className="flex-row items-center gap-2 px-gutter">
         <Chip label="All" active={filter === 'all'} onPress={choose('all')} />
-        <Chip
-          label="Unread"
-          count={counts.unread}
-          active={filter === 'unread'}
-          onPress={choose('unread')}
-        />
+        <CountChips filter={filter} counts={counts} onChange={onChange} />
         <Chip label="Pinned" active={filter === 'pinned'} onPress={choose('pinned')} />
         <SourceChips filter={filter} options={counts.sources} onChange={onChange} />
         <Chip

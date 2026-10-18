@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { ProviderProblem } from '@smarteverything/domain';
 import {
   TuyaCloudError,
@@ -34,20 +35,6 @@ class QrSignInWithdrawnError extends Error {
   constructor(override readonly cause: unknown) {
     super('The Smart Life sign-in was cancelled before the QR code was confirmed.');
   }
-}
-
-function pause(delayMs: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', aborted);
-      resolve();
-    }, delayMs);
-    const aborted = (): void => {
-      clearTimeout(timer);
-      resolve();
-    };
-    signal.addEventListener('abort', aborted, { once: true });
-  });
 }
 
 async function requestQrCode(dependencies: LoginDependencies, userCode: string): Promise<string> {
@@ -93,7 +80,12 @@ async function awaitScan(
     if (session !== null) {
       return session;
     }
-    await pause(qrScanQueryMs, signal);
+    try {
+      await sleep(qrScanQueryMs, undefined, { signal });
+    } catch (cause) {
+      signal.throwIfAborted();
+      throw cause;
+    }
   }
 }
 
@@ -107,6 +99,7 @@ export async function signInWithUserCode(
     kind: 'scan_qr',
     app: SMART_LIFE_APP,
     content: qrContent(qrToken),
+    expiresAt: new Date(dependencies.now() + dependencies.timing.qrScanTimeoutMs).toISOString(),
   });
   const withdrawn = new AbortController();
   shown.answer.then(

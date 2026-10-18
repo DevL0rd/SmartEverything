@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { Uniwind } from 'uniwind';
-import { sendTrail } from '../../api/client-failures';
+import { sendPerfLines } from '../../api/client-failures';
 import { isIdle } from './collector';
 import { encodeWindow } from './encode';
 import { readMemory } from './globals';
@@ -21,6 +21,7 @@ export function makeFlush(probe: Probe, upload: boolean): () => void {
   let before = readMemory();
   return (): void => {
     if (isIdle(probe.data)) {
+      probe.visits.take(performance.now());
       probe.reset();
       return;
     }
@@ -36,18 +37,14 @@ export function makeFlush(probe: Probe, upload: boolean): () => void {
       gcMs:
         memory.gcMs === null || before.gcMs === null ? null : Math.round(memory.gcMs - before.gcMs),
       fibers: probe.fibers,
+      screen: probe.screenName,
+      visited: probe.visits.take(performance.now()),
     });
     seq += 1;
     before = memory;
-    lines.forEach((reason) => {
-      if (upload) {
-        log.warn('perf.sample', { reason });
-      } else {
-        log.debug('perf.sample', { reason });
-      }
-    });
+    log.info('perf.sample', { reason: lines.join('\n') });
     if (upload) {
-      void sendTrail();
+      background(sendPerfLines(lines, probe.screenName), 'perf_lines.send_failed');
     }
     probe.reset();
   };

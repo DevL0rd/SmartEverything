@@ -7,6 +7,7 @@ import { FEED_TAIL_MS } from '../../src/reach/announcing';
 import { endTonePackets } from '../../src/reach/end-tone';
 import { Logger } from '@smarteverything/logging';
 import type { HostedCallRequest } from '../../src/assistant-voice/outreach';
+import { idleHostedCall } from '../support/hosted-call';
 
 function loudest(packet: Uint8Array): number {
   const codec = opusCodec();
@@ -58,13 +59,14 @@ describe('end tone', () => {
       {
         host: (hosted) => {
           requests.push(hosted);
-          return Promise.resolve({ hear: () => undefined, end: () => Promise.resolve() });
+          return Promise.resolve(idleHostedCall());
         },
         clock,
         log: new Logger('hub.test'),
       },
       {
         key: 'camera:test',
+        callId: 'o',
         caller: { profileId: 'p', role: 'owner', label: 'Test camera' },
         opening: { chatId: 'c', text: 'hello', outreachId: 'o' },
         play: (packet) => played.push(packet),

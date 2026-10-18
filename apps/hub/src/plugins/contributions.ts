@@ -8,6 +8,8 @@ import type { SignalBus } from '../signals/bus';
 import type { Store } from '../store/store';
 import type { ContributionSinks } from './runtime';
 
+const LIVE_SAVE_EVERY_MS = 60_000;
+
 export interface ContributionOptions {
   readonly store: Store;
   readonly signals: Pick<SignalBus, 'emit' | 'register'>;
@@ -55,6 +57,13 @@ export function contributionsOf(
   const { data, events } = manifest.contributes;
   const unregister =
     events.length > 0 ? options.signals.register(pluginSignalSpec(manifest)) : null;
+  const saveLive = (): void => {
+    options.store.pluginData.saveLive(id);
+  };
+  const saver = data.some((stream) => stream.live)
+    ? setInterval(saveLive, LIVE_SAVE_EVERY_MS)
+    : null;
+  saver?.unref();
   return {
     sinks: {
       message: (message): void => {
@@ -70,7 +79,8 @@ export function contributionsOf(
           log(`Ignored data for ${point.stream}: the manifest does not declare that stream`);
           return;
         }
-        options.store.pluginData.publish(id, point, stream.history);
+        if (stream.live) options.store.pluginData.publishLive(id, point);
+        else options.store.pluginData.publish(id, point, stream.history);
       },
       event: eventSink(options, manifest, log),
       search: (entries): void => {
@@ -79,6 +89,9 @@ export function contributionsOf(
     },
     stop: (): void => {
       unregister?.();
+      if (saver === null) return;
+      clearInterval(saver);
+      saveLive();
     },
   };
 }

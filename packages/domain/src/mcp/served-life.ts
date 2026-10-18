@@ -6,7 +6,7 @@ export const SERVED_LIFE = [
     'health',
     'read',
     'Read health',
-    'Health data of a person (profileId from list_people; the owner when left out): daily summary with the day’s totals (energy_in is the calories eaten), daily metrics, newest records, records in a range, what they logged, the record types, or watch stress days.',
+    'Health data of a person (personId from list_people; the owner when left out): daily summary with the day’s totals (energy_in is the calories eaten), daily metrics, newest records, records in a range, what they logged, the record types, or watch stress days.',
     {
       key: 'view',
       parts: {
@@ -43,7 +43,7 @@ export const SERVED_LIFE = [
     'edit_food',
     'nutrition',
     'control',
-    'Edit a food',
+    'Edit foods',
     'Saves, changes or forgets a food or drink.',
     {
       key: 'action',
@@ -55,8 +55,8 @@ export const SERVED_LIFE = [
     'nutrition',
     'control',
     'Log food or water',
-    'Logs a portion of food (foodId or barcode from find_food, or a new food) or a drink of water for a person (profileId from list_people).',
-    { key: 'what', parts: { food: 'log_food', water: 'log_water' } },
+    'Logs a portion of food (foodId or barcode from find_food, or a new food) or a drink of water for a person (personId from list_people).',
+    { key: 'action', parts: { food: 'log_food', water: 'log_water' } },
   ],
   [
     'list_people',
@@ -70,8 +70,8 @@ export const SERVED_LIFE = [
     'edit_person',
     'people',
     'control',
-    'Edit a person',
-    'Adds, changes or removes a person, or changes their daily goals.',
+    'Edit people',
+    'Adds, changes or removes a person, links them to their scale slot (scale_user), or changes their daily goals.',
     {
       key: 'action',
       parts: {
@@ -86,7 +86,7 @@ export const SERVED_LIFE = [
     'assign_body_reading',
     'people',
     'control',
-    'Assign a body reading',
+    'Assign a scale reading',
     'Says who stood on the scale, or discards the reading.',
     { part: 'assign_body_reading' },
   ],
@@ -94,10 +94,10 @@ export const SERVED_LIFE = [
     'get_settings',
     'settings',
     'read',
-    'Get settings',
+    'Read settings',
     'Settings of one area: app and home settings, the firewall, the assistant, AI defaults, the AI budget or the exchange rates behind the currency costs are shown in. Read the area before changing it with update_settings.',
     {
-      key: 'area',
+      key: 'view',
       parts: {
         app: 'get_settings',
         firewall: 'read_firewall',
@@ -112,10 +112,10 @@ export const SERVED_LIFE = [
     'update_settings',
     'settings',
     'control',
-    'Update settings',
+    'Change settings',
     'Changes settings of one area (get_settings shows the current values and allowed ones): an app preference, the home, its location, the assistant, AI defaults, the AI budget or the switched-off tools; also re-detects the firewall, fetches the weather or the exchange rates now or downloads the model list.',
     {
-      key: 'area',
+      key: 'action',
       parts: {
         preference: 'set_preference',
         home: 'update_home',
@@ -143,7 +143,7 @@ export const SERVED_LIFE = [
     'edit_talk_channel',
     'talk',
     'control',
-    'Edit a walkie-talkie channel',
+    'Edit walkie channels',
     'Creates, changes or deletes a channel (including whether the AI listens to it), or adds, changes or removes a member.',
     {
       key: 'action',

@@ -2,7 +2,7 @@ type DomainRuleKind = 'block' | 'allow';
 
 export type DomainRuleChange = DomainRuleKind | 'remove';
 
-export function blockRule(domain: string): string {
+function blockRule(domain: string): string {
   return `||${domain}^`;
 }
 

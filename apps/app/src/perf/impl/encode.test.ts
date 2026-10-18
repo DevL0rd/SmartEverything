@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { addCommit, addComponent, addFrame, emptyWindow, listStat } from './collector';
+import {
+  ComponentStat,
+  commitStat,
+  componentStat,
+  addFrame,
+  emptyWindow,
+  listStat,
+} from './collector';
 import { LINES_MAX, LINE_MAX, STORM_RENDERS } from './config';
 import { chosenComponents, encodeWindow, packLines, safe, type WindowMeta } from './encode';
 
@@ -12,6 +19,8 @@ const META: WindowMeta = {
   gcCount: 2,
   gcMs: 12,
   fibers: 2,
+  screen: 'assistant/chat',
+  visited: 'home:2.5,assistant/chat:7.5',
 };
 
 function parse(line: string): Record<string, unknown> {
@@ -55,18 +64,11 @@ describe('safe', () => {
 describe('chosenComponents', () => {
   it('keeps storming components and the heaviest ones', () => {
     const stats = new Map(
-      Array.from({ length: 12 }, (_, index) => [
-        `C${String(index)}`,
-        {
-          n: index === 11 ? STORM_RENDERS + 5 : 2,
-          worst: index === 11 ? STORM_RENDERS + 5 : 2,
-          self: index,
-          max: 1,
-          props: new Map(),
-          hooks: new Map(),
-          parent: 0,
-        },
-      ]),
+      Array.from({ length: 12 }, (_, index) => {
+        const stat = new ComponentStat();
+        stat.add(index === 11 ? STORM_RENDERS + 5 : 2, index, null);
+        return [`C${String(index)}`, stat] as const;
+      }),
     );
     const names = chosenComponents(stats).map(([name]) => name);
     expect(names).toContain('C11');
@@ -79,13 +81,10 @@ describe('encodeWindow', () => {
   it('writes a header first and every line as parseable JSON under the limit', () => {
     const data = emptyWindow();
     for (let index = 0; index < 40; index += 1) {
-      addCommit(data, 'devices/index', `id${String(index)}`, { ms: index, mounted: index === 0 });
+      commitStat(data, 'devices/index', `id${String(index)}`).add(index, index === 0);
     }
     addFrame(data, 120, false);
-    addComponent(data, 'devices/index', {
-      name: 'DeviceCard',
-      instance: 3,
-      self: 4.2,
+    componentStat(data, 'devices/index', 'DeviceCard')?.add(3, 4.2, {
       props: ['onPress'],
       hooks: ['h1'],
       parent: false,
@@ -104,6 +103,8 @@ describe('encodeWindow', () => {
     expect(header['t']).toBe('w');
     expect(header['b']).toBe('a1b2');
     expect(header['fr']).toEqual([1, 1, 120]);
+    expect(header['s']).toBe('assistant/chat');
+    expect(header['vis']).toBe('home:2.5,assistant/chat:7.5');
     lines.forEach((line) => {
       expect(line.length).toBeLessThanOrEqual(LINE_MAX);
       expect(parse(line)['b']).toBe('a1b2');
@@ -118,7 +119,7 @@ describe('encodeWindow', () => {
   it('reports how many lines it dropped when the budget is exceeded', () => {
     const data = emptyWindow();
     for (let screen = 0; screen < 30; screen += 1) {
-      addCommit(data, `screen/${String(screen)}`, 'x', { ms: 1, mounted: false });
+      commitStat(data, `screen/${String(screen)}`, 'x').add(1, false);
     }
     const lines = encodeWindow(data, META);
     expect(lines).toHaveLength(LINES_MAX);

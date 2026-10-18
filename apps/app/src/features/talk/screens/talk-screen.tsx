@@ -130,12 +130,14 @@ function SelectedChannel(): ReactNode {
   if (channel === null) {
     return (
       <Screen
-        header={
-          <PageHeader settings={mainPageSettings('talk')} title="Walkie-talkie" back={false} />
-        }
+        header={<PageHeader settings={mainPageSettings('talk')} title="Channel" back={false} />}
         maxWidth="reading"
       >
-        <EmptyState icon="radio" title="Pick a channel" body="Join a channel to talk on it here." />
+        <EmptyState
+          icon="radio"
+          title="Choose a channel"
+          body="Open one from the list to talk on it here."
+        />
       </Screen>
     );
   }

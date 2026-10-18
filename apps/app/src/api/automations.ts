@@ -1,12 +1,10 @@
 import {
   API_ENDPOINTS as E,
-  type AutomationDefinition,
   type AutomationRow,
-  type CommandInput,
-  type EventRow,
+  type AutomationRunRow,
+  type AutomationV2,
   type JsonValue,
 } from '@smarteverything/domain';
-import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Logger } from '@smarteverything/logging';
 import { api } from './transport';
 
@@ -21,11 +19,11 @@ export interface AutomationSave {
   readonly automationId: string | null;
   readonly name: string;
   readonly enabled: boolean;
-  readonly definition: AutomationDefinition;
-  readonly expectedRevision?: string;
+  readonly definition: AutomationV2;
+  readonly expectedRevision?: number;
 }
 
-async function writeAutomation(save: AutomationSave): Promise<AutomationRow> {
+export async function saveAutomation(save: AutomationSave): Promise<AutomationRow> {
   const fields = { name: save.name, enabled: save.enabled, definition: save.definition };
   const saved =
     save.automationId === null
@@ -43,60 +41,30 @@ async function writeAutomation(save: AutomationSave): Promise<AutomationRow> {
   return saved;
 }
 
-export async function saveAutomation(save: AutomationSave): Promise<string> {
-  return (await writeAutomation(save)).id;
-}
-
-export async function saveAutomationRevision(
-  save: AutomationSave,
-): Promise<{ readonly automation: AutomationRow; readonly definitionRevision: string }> {
-  const automation = await writeAutomation(save);
-  const definitionRevision = await digestStringAsync(
-    CryptoDigestAlgorithm.SHA256,
-    JSON.stringify(automation.definition),
-  );
-  return { automation, definitionRevision };
-}
-
 export async function deleteAutomation(automationId: string): Promise<void> {
   await api().call(E.removeAutomation, { params: { automationId } });
   log.info('automation.deleted', { automationId });
 }
 
-export async function runAutomation(automationId: string): Promise<void> {
-  await api().call(E.runAutomation, { params: { automationId } });
-  log.info('automation.manual_run_completed', { automationId });
+export type RunInputs = Readonly<Record<string, JsonValue>>;
+
+export async function runAutomation(
+  automationId: string,
+  inputs: RunInputs = {},
+): Promise<AutomationRunRow> {
+  const run = await api().call(E.runAutomation, { params: { automationId }, body: { inputs } });
+  log.info('automation.run_started', { automationId, runId: run.id });
+  return run;
 }
 
-export interface AutomationCommand {
-  readonly deviceId: string;
-  readonly capability: string;
-  readonly value: JsonValue;
-  readonly source: 'automation' | 'scene';
-}
-
-export async function sendAutomationCommands(
-  name: string,
-  commands: readonly AutomationCommand[],
-): Promise<void> {
-  const inputs: CommandInput[] = commands.map((command) => ({
-    device_id: command.deviceId,
-    capability: command.capability,
-    value: command.value,
-    source: command.source,
-  }));
-  await api().call(E.sendCommands, { body: { commands: inputs } });
-  log.info('automation.test_step_sent', { name, commands: commands.length });
-}
-
-export const RUN_PAGE = 100;
-
-export async function listAutomationRunEvents(before: string | null): Promise<EventRow[]> {
-  return api().call(E.listEvents, {
-    query: {
-      kinds: ['automation_run'],
-      limit: RUN_PAGE,
-      ...(before === null ? {} : { to: before }),
-    },
+export async function testAutomation(
+  automationId: string | null,
+  definition: AutomationV2,
+  inputs: RunInputs = {},
+): Promise<AutomationRunRow> {
+  const run = await api().call(E.testAutomation, {
+    body: { definition, inputs, ...(automationId === null ? {} : { automationId }) },
   });
+  log.info('automation.test_started', { runId: run.id });
+  return run;
 }

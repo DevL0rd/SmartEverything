@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { humanizeKey } from './presentation/humanize';
 
 export const ROBOT_PLUGIN_ID = 'aibi';
 
@@ -12,6 +13,8 @@ export const ROBOT_DRIVER_ID = 'aibi';
 
 export const ROBOT_ACTION_CAPABILITY = 'raw:aibi_action';
 
+export const ROBOT_ONLINE_WINDOW_MS = 5 * 60_000;
+
 export const ROBOT_MODES = ['local', 'passthrough'] as const;
 
 export type RobotMode = (typeof ROBOT_MODES)[number];
@@ -22,53 +25,51 @@ const MOMENT = z.iso.datetime({ offset: true });
 
 const COUNT = z.number().int().nonnegative();
 
-const LISTENER = z.strictObject({
+const LISTENER = z.object({
   state: z.enum(ROBOT_LISTENER_STATES),
-  reason: z.string().max(400).nullable(),
+  reason: z.string().nullable(),
 });
 
-export const ROBOT_REPORT = z.strictObject({
-  version: z.string().max(80).nullable(),
-  firmware: z.string().max(80).nullable(),
-  components: z.array(z.string().max(80)).max(3),
-  city: z.string().max(80).nullable(),
-  country: z.string().max(80).nullable(),
-  timezone: z.string().max(80).nullable(),
-  language: z.string().max(80).nullable(),
-  name: z.string().max(80).nullable(),
-  age: z.string().max(80).nullable(),
-  updateError: z.string().max(80).nullable(),
+export const ROBOT_REPORT = z.object({
+  version: z.string().nullable(),
+  firmware: z.string().nullable(),
+  components: z.array(z.string()),
+  city: z.string().nullable(),
+  country: z.string().nullable(),
+  timezone: z.string().nullable(),
+  language: z.string().nullable(),
+  name: z.string().nullable(),
+  age: z.string().nullable(),
+  updateError: z.string().nullable(),
 });
 
 export type RobotReport = z.output<typeof ROBOT_REPORT>;
 
 export const ROBOT_LINE_WHOS = ['user', 'aibi', 'note'] as const;
 
-export const ROBOT_LINE = z.strictObject({
+export const ROBOT_LINE = z.object({
   at: MOMENT,
   who: z.enum(ROBOT_LINE_WHOS),
-  text: z.string().max(400),
+  text: z.string(),
 });
 
 export type RobotLine = z.output<typeof ROBOT_LINE>;
 
-export const ROBOT_STATUS = z.strictObject({
+export const ROBOT_STATUS = z.object({
   mode: z.enum(ROBOT_MODES),
-  address: z.string().max(45).nullable(),
+  address: z.string().nullable(),
   server: LISTENER,
   dns: LISTENER,
-  ports: z.strictObject({ http: COUNT, https: COUNT, dns: COUNT }),
-  contact: z
-    .strictObject({ at: MOMENT, remote: z.string().max(60), path: z.string().max(200) })
-    .nullable(),
-  calls: z.array(z.strictObject({ path: z.string().max(200), count: COUNT, last: MOMENT })).max(12),
+  ports: z.object({ http: COUNT, https: COUNT, dns: COUNT }),
+  contact: z.object({ at: MOMENT, remote: z.string(), path: z.string() }).nullable(),
+  calls: z.array(z.object({ path: z.string(), count: COUNT, last: MOMENT })),
   robot: ROBOT_REPORT.nullable(),
   conversation: z.boolean(),
   waiting: COUNT,
   tasks: COUNT,
   configured: z.boolean(),
   capture: z.boolean(),
-  lines: z.array(ROBOT_LINE).max(8),
+  lines: z.array(ROBOT_LINE),
   updatedAt: MOMENT,
 });
 
@@ -88,37 +89,37 @@ export const ROBOT_ACTIVITY_KINDS = [
   'warning',
 ] as const;
 
-export const ROBOT_ACTIVITY_ENTRY = z.strictObject({
+export const ROBOT_ACTIVITY_ENTRY = z.object({
   id: COUNT,
   at: MOMENT,
   kind: z.enum(ROBOT_ACTIVITY_KINDS),
-  title: z.string().max(200),
-  detail: z.string().max(2000),
+  title: z.string(),
+  detail: z.string(),
 });
 
 export type RobotActivityEntry = z.output<typeof ROBOT_ACTIVITY_ENTRY>;
 
-export const ROBOT_ACTIVITY = z.strictObject({
-  entries: z.array(ROBOT_ACTIVITY_ENTRY).max(30),
+export const ROBOT_ACTIVITY = z.object({
+  entries: z.array(ROBOT_ACTIVITY_ENTRY),
 });
 
-export const ROBOT_MOVE = z.strictObject({
-  id: z.string().min(1).max(80),
-  description: z.string().max(300),
-  instructions: z.string().max(600),
+export const ROBOT_MOVE = z.object({
+  id: z.string().min(1),
+  description: z.string(),
+  instructions: z.string(),
   options: z.array(
-    z.strictObject({
-      name: z.string().min(1).max(60),
-      choices: z.array(z.string().max(60)).max(60),
-      rule: z.string().max(60),
+    z.object({
+      name: z.string().min(1),
+      choices: z.array(z.string()),
+      rule: z.string(),
     }),
   ),
 });
 
 export type RobotMove = z.output<typeof ROBOT_MOVE>;
 
-export const ROBOT_MOVES = z.strictObject({
-  actions: z.array(ROBOT_MOVE).max(200),
+export const ROBOT_MOVES = z.object({
+  actions: z.array(ROBOT_MOVE),
   animations: COUNT,
 });
 
@@ -127,6 +128,5 @@ export type RobotMoves = z.output<typeof ROBOT_MOVES>;
 const MOVE_PREFIX = /^(?:ability|interact|function|behavior)_/;
 
 export function robotMoveLabel(id: string): string {
-  const words = id.replace(MOVE_PREFIX, '').replaceAll('_', ' ').trim();
-  return words === '' ? id : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+  return humanizeKey(id.replace(MOVE_PREFIX, ''));
 }

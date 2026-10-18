@@ -1,5 +1,6 @@
 import type { ProjectFilesService } from '../projects/service';
 import {
+  DEFAULT_ENGINE,
   NEW_CHAT_TITLE,
   ApiError,
   type AiChatChange,
@@ -7,6 +8,7 @@ import {
   type AiChatNew,
   type AiChatRow,
   type AiChatSearch,
+  type AssistantPost,
   type Role,
   type Engine,
 } from '@smarteverything/domain';
@@ -14,14 +16,16 @@ import { NothingToMarkUnreadError } from '../store/repositories/ai-chats';
 import type { Store } from '../store/store';
 import { snippetOf } from './chat-snippet';
 import type { AssistantFiles } from './files';
+import type { StoredAttachment } from '../store/repositories/assistant-files';
+import { MINUTE_MS } from '../metrics/minute';
+import { meteredEngine } from '../openrouter/metered-engine';
 
 const CONVERSATION_SOURCE = 'conversation';
-
-const MINUTE_MS = 60_000;
 
 export interface ChatOwner {
   readonly profileId: string;
   readonly role: Role;
+  readonly confinedTo?: string | null;
 }
 
 export interface CallPlace {
@@ -35,15 +39,43 @@ function callTitle(device: string, at: Date): string {
   return `Voice · ${device} · ${time}`.slice(0, 80);
 }
 
+export function reachesChat(
+  store: Pick<Store, 'aiChats'>,
+  confinedTo: string | null | undefined,
+  chat: AiChatRow,
+): boolean {
+  if (confinedTo === undefined) return true;
+  for (let at: AiChatRow | undefined = chat; at !== undefined;) {
+    if (at.id === confinedTo) return true;
+    at = at.parent_id === null ? undefined : store.aiChats.chat(at.parent_id);
+  }
+  return false;
+}
+
 export function ownedChat(
   store: Pick<Store, 'aiChats'>,
   owner: ChatOwner,
   chatId: string,
 ): AiChatRow {
   const chat = store.aiChats.chat(chatId);
-  if (chat.profile_id !== owner.profileId)
+  if (chat.profile_id !== owner.profileId || !reachesChat(store, owner.confinedTo, chat))
     throw new ApiError('forbidden', 'That chat belongs to someone else.');
   return chat;
+}
+
+export function ownedAttachment(
+  store: Pick<Store, 'aiChats' | 'assistantChat'>,
+  owner: ChatOwner,
+  id: string,
+): StoredAttachment {
+  const file = store.assistantChat.attachment(id);
+  if (file.profile_id !== owner.profileId)
+    throw new ApiError('forbidden', 'That file belongs to someone else’s chat.');
+  if (file.message_id !== null)
+    ownedChat(store, owner, store.assistantChat.message(file.message_id).chat_id);
+  else if (owner.confinedTo !== undefined)
+    throw new ApiError('forbidden', 'That file belongs to someone else’s chat.');
+  return file;
 }
 
 export class ChatDirectory {
@@ -53,24 +85,74 @@ export class ChatDirectory {
     private readonly now: () => Date,
     private readonly selections?: {
       readonly projects?: ProjectFilesService;
-      readonly default: (profileId: string, background: boolean) => Engine;
-      readonly select: (profileId: string, engine: Engine) => Engine;
-      readonly validate: (engine: Engine, role: Role) => void;
+      readonly validate: (engine: Engine, user: Pick<ChatOwner, 'profileId' | 'role'>) => void;
     },
   ) {}
 
-  private defaultEngine(profileId: string, background = false): Engine {
-    if (this.selections === undefined)
-      throw new ApiError('conflict', 'SmartEverything model routes are starting.');
-    return this.selections.default(profileId, background);
+  private defaultEngine(profileId: string): Engine {
+    const engine = this.store.aiEngineDefaults.read() ?? DEFAULT_ENGINE;
+    return this.resolved(
+      profileId,
+      engine.kind === 'dsh'
+        ? { ...engine, session_id: null, execution_target: { kind: 'server' } }
+        : engine,
+    );
   }
-  select(profileId: string, engine: Engine): Engine {
-    if (this.selections === undefined)
-      throw new ApiError('conflict', 'SmartEverything model routes are starting.');
-    return this.selections.select(profileId, engine);
+
+  private resolved(profileId: string, engine: Engine): Engine {
+    if (engine.kind !== 'openrouter') return engine;
+    const { aiModels } = this.store;
+    return meteredEngine(profileId, engine, {
+      defaults: aiModels.settings(),
+      row: (id) => aiModels.row(id),
+    });
   }
+
   own(owner: ChatOwner, chatId: string): AiChatRow {
     return ownedChat(this.store, owner, chatId);
+  }
+
+  validateEngine(engine: Engine, owner: Pick<ChatOwner, 'profileId' | 'role'>): void {
+    this.selections?.validate(engine, owner);
+  }
+
+  visible(owner: ChatOwner, chats: readonly AiChatRow[]): AiChatRow[] {
+    return chats.filter((chat) => reachesChat(this.store, owner.confinedTo, chat));
+  }
+
+  attachment(owner: ChatOwner, id: string): StoredAttachment {
+    return ownedAttachment(this.store, owner, id);
+  }
+
+  postTarget(
+    actor: ChatOwner,
+    body: AssistantPost,
+    ownerProfile: () => string,
+  ): { readonly profileId: string; readonly chat: AiChatRow } {
+    if (actor.role === 'owner') {
+      const profileId = body.profileId ?? ownerProfile();
+      this.requirePerson(profileId);
+      return { profileId, chat: this.defaultChat(profileId) };
+    }
+    if (body.profileId !== undefined && body.profileId !== actor.profileId)
+      throw new ApiError('forbidden', 'You can post only to your own chat.');
+    for (const file of body.files) if ('uploadId' in file) this.attachment(actor, file.uploadId);
+    return { profileId: actor.profileId, chat: this.chatOf(actor) };
+  }
+
+  private requirePerson(profileId: string): void {
+    if (!this.store.profiles.list().some((profile) => profile.id === profileId))
+      throw new ApiError(
+        'invalid_request',
+        'There is no person with that profileId; take it from list_people, or leave it out for the owner.',
+      );
+  }
+
+  chatOf(owner: ChatOwner): AiChatRow {
+    if (owner.confinedTo === undefined) return this.defaultChat(owner.profileId);
+    if (owner.confinedTo === null)
+      throw new ApiError('forbidden', 'This request has no chat of its own to work in.');
+    return this.own(owner, owner.confinedTo);
   }
 
   defaultChat(profileId: string): AiChatRow {
@@ -126,7 +208,7 @@ export class ChatDirectory {
       icon: null,
       parentId: null,
       sourceKey,
-      engine: this.defaultEngine(profileId, true),
+      engine: this.defaultEngine(profileId),
       titleAuto: shape.titleAuto,
     });
   }
@@ -142,19 +224,21 @@ export class ChatDirectory {
       icon: null,
       parentId: null,
       sourceKey: null,
-      engine: this.defaultEngine(profileId, true),
+      engine: this.defaultEngine(profileId),
       titleAuto: title === undefined,
     });
   }
 
   create(owner: ChatOwner, input: AiChatNew): AiChatRow {
-    const engine =
-      input.engine === undefined
-        ? this.defaultEngine(owner.profileId)
-        : this.select(owner.profileId, input.engine);
-    this.selections?.validate(engine, owner.role);
+    const engine = this.resolved(
+      owner.profileId,
+      input.engine ?? this.defaultEngine(owner.profileId),
+    );
+    this.validateEngine(engine, owner);
     if (input.parent_id !== undefined) {
       this.own(owner, input.parent_id);
+    } else if (owner.confinedTo !== undefined) {
+      throw new ApiError('forbidden', 'Start helper chats under your own chat only.');
     }
     return this.store.aiChats.create({
       profileId: owner.profileId,
@@ -169,14 +253,15 @@ export class ChatDirectory {
   }
 
   update(owner: ChatOwner, chatId: string, change: AiChatChange): AiChatRow {
-    this.own(owner, chatId);
-    const selected =
-      change.engine === undefined
-        ? change
-        : { ...change, engine: this.select(owner.profileId, change.engine) };
-    if (selected.engine !== undefined) this.selections?.validate(selected.engine, owner.role);
+    const chat = this.own(owner, chatId);
+    const engine =
+      change.engine === undefined ? undefined : this.resolved(chat.profile_id, change.engine);
+    if (engine !== undefined) this.validateEngine(engine, owner);
     try {
-      return this.store.aiChats.update(chatId, selected);
+      return this.store.aiChats.update(
+        chatId,
+        engine === undefined ? change : { ...change, engine },
+      );
     } catch (cause) {
       if (cause instanceof NothingToMarkUnreadError) {
         throw new ApiError('conflict', 'This chat has no incoming message to mark unread.');
@@ -187,12 +272,13 @@ export class ChatDirectory {
 
   search(owner: ChatOwner, query: AiChatSearch): AiChatHit[] {
     const { aiChats, assistantSearch } = this.store;
-    if (query.chatId !== undefined) {
-      this.own(owner, query.chatId);
+    const chatId = query.chatId ?? this.confinedChat(owner);
+    if (chatId !== undefined) {
+      this.own(owner, chatId);
     }
     const base = { profileId: owner.profileId, text: query.q, archived: query.archived };
     const titles =
-      query.chatId === undefined
+      chatId === undefined
         ? aiChats.titleHits({ ...base, limit: query.limit }).map((hit): AiChatHit => ({
             chatId: hit.id,
             title: hit.title,
@@ -203,7 +289,7 @@ export class ChatDirectory {
           }))
         : [];
     const messages = assistantSearch
-      .hits({ ...base, chatId: query.chatId ?? null, limit: query.limit })
+      .hits({ ...base, chatId: chatId ?? null, limit: query.limit })
       .map((hit): AiChatHit => ({
         chatId: hit.chat_id,
         title: hit.title,
@@ -213,6 +299,10 @@ export class ChatDirectory {
         archived: hit.archived,
       }));
     return [...titles, ...messages].slice(0, query.limit);
+  }
+
+  private confinedChat(owner: ChatOwner): string | undefined {
+    return owner.confinedTo === undefined ? undefined : this.chatOf(owner).id;
   }
 
   holdRemoval(

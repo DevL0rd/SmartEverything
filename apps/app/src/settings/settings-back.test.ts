@@ -9,23 +9,24 @@ const { routeSettingsId } = await import('./settings-back');
 
 describe('the settings page a stack route shows', () => {
   it('reads the global catch-all', () => {
-    expect(
-      routeSettingsId({ name: '[...page]', params: { page: ['plugins', 'abc'] } }, 'settings'),
-    ).toBe('plugins/abc');
+    expect(routeSettingsId({ name: '[...page]', params: { page: ['plugins', 'abc'] } })).toBe(
+      'plugins/abc',
+    );
   });
 
   it('reads the settings index as the home page', () => {
-    expect(routeSettingsId({ name: 'index' }, 'settings')).toBe('home');
+    expect(routeSettingsId({ name: 'index' })).toBe('home');
   });
 
-  it('reads a page-owned settings route', () => {
+  it('reads a nested catch-all route', () => {
     expect(
-      routeSettingsId({ name: 'talk/settings/[...page]', params: { page: ['channels'] } }, ''),
-    ).toBe('talk/channels');
-    expect(routeSettingsId({ name: 'fitness/settings/index' }, '')).toBe('health');
+      routeSettingsId({ name: '[...page]', params: { page: ['talk', 'channels', 'abc'] } }),
+    ).toBe('talk/channels/abc');
   });
 
-  it('is nothing for other screens', () => {
-    expect(routeSettingsId({ name: 'talk/index' }, '')).toBeNull();
+  it('reads a dynamic segment route', () => {
+    expect(routeSettingsId({ name: 'profiles/[profileId]', params: { profileId: 'p1' } })).toBe(
+      'profiles/p1',
+    );
   });
 });

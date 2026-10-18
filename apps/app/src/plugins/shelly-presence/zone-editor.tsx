@@ -1,19 +1,19 @@
-import type { ShellyPresenceDevice, ShellyPresenceZone } from '@smarteverything/domain';
-import { useRef, type ReactNode } from 'react';
+import type { ShellyDevice, ShellyZone } from '@smarteverything/shelly';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../components/button';
 import { TextField } from '../../components/text-field';
 import { SwitchRow } from '../../components/rows';
-import { Text } from '../../components/text';
 import { AreaEditor } from './area-editor';
 import { sensorOrigin } from './area-context';
 import { RoomMap } from './room-map';
-import { revisionOf } from './presence-data';
 import { OperationFeedback } from './operation-feedback';
 import { useZoneDraft, type ZoneDraft } from './use-zone-draft';
 import { ZoneColor } from './zone-color';
-import { useOnScreen } from '../../features/device-visuals';
-import { useLiveView } from './use-live-view';
+import { useCanOperate } from './use-can-operate';
+import { LeaseCaption } from './lease-caption';
+import { useLivePresence } from './use-live-presence';
+import { background } from '@smarteverything/logging';
 
 function DelayFields({ draft }: { readonly draft: ZoneDraft }): ReactNode {
   return (
@@ -46,38 +46,38 @@ function ZoneActions({
   draft,
   close,
 }: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly zone: ShellyPresenceZone | null;
+  readonly sensor: ShellyDevice;
+  readonly zone: ShellyZone | null;
   readonly draft: ZoneDraft;
   readonly close: () => void;
 }): ReactNode {
+  const canOperate = useCanOperate();
   return (
     <View className="gap-3">
-      {draft.conflict ? (
-        <Text tone="warning">Configuration changed. Reopen this zone to reload before saving.</Text>
-      ) : null}
-      {draft.validation === null ? null : <Text tone="critical">{draft.validation}</Text>}
       <OperationFeedback operation={draft.operation} />
       <View className="flex-row flex-wrap gap-2">
         <Button
           label={zone === null ? 'Create zone' : 'Save zone'}
           loading={draft.operation.busy}
-          disabled={!draft.validArea || draft.conflict || sensor.connection.state !== 'online'}
+          disabled={!draft.validArea || sensor.connection.state !== 'online'}
           onPress={draft.save}
         />
         <Button label="Back to zones" variant="text" onPress={close} />
       </View>
-      {zone === null || zone.main ? null : (
+      {zone === null || zone.main || !canOperate('delete_zone') ? null : (
         <Button
           label="Delete zone"
           variant="destructive"
           disabled={draft.operation.busy || sensor.connection.state !== 'online'}
           onPress={() => {
-            void draft.operation
-              .run({ action: 'delete_zone', id: zone.config.id, ...revisionOf(sensor) })
-              .then((saved) => {
-                if (saved) close();
-              });
+            background(
+              draft.operation
+                .run({ action: 'delete_zone', params: { id: zone.config.id } })
+                .then((saved) => {
+                  if (saved) close();
+                }),
+              'operation.run_failed',
+            );
           }}
         />
       )}
@@ -86,22 +86,20 @@ function ZoneActions({
 }
 
 export function ZoneEditor({
-  sensor,
+  sensor: base,
   zone,
   close,
 }: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly zone: ShellyPresenceZone | null;
+  readonly sensor: ShellyDevice;
+  readonly zone: ShellyZone | null;
   readonly close: () => void;
 }): ReactNode {
-  const draft = useZoneDraft(sensor, zone);
-  const frame = useRef<View | null>(null);
-  const { visible, onLayout } = useOnScreen(frame);
-  const live = useLiveView(sensor, true, visible);
+  const { frame, onLayout, lease, sensor } = useLivePresence(base);
+  const draft = useZoneDraft(base, zone);
   return (
-    <View ref={frame} onLayout={onLayout} className="gap-3">
-      <RoomMap sensor={sensor} area={draft.area} live={live.active} />
-      {live.error === null ? null : <Text tone="critical">{live.error}</Text>}
+    <View ref={frame} onLayout={onLayout} collapsable={false} className="gap-3">
+      <RoomMap sensor={sensor} area={draft.area} live={lease.tracking} />
+      <LeaseCaption sensor={sensor} lease={lease} />
       <TextField
         label="Zone name"
         value={draft.name}
@@ -112,13 +110,13 @@ export function ZoneEditor({
       <ZoneColor value={draft.color} change={draft.setColor} />
       <DelayFields draft={draft} />
       <AreaEditor
-        tracks={live.active ? sensor.tracks : []}
+        tracks={lease.tracking ? sensor.tracks : []}
         value={draft.area}
         change={draft.setArea}
         validity={draft.setValidArea}
         context={sensor.zones
           .filter((entry) => entry.key !== zone?.key)
-          .flatMap((entry) => entry.config.area)}
+          .flatMap((entry) => entry.config.area ?? [])}
         {...(zone?.main === true
           ? {}
           : { allowed: sensor.zones.find((entry) => entry.main)?.config.area ?? [] })}

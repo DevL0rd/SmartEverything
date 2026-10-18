@@ -13,7 +13,7 @@ import type { OrImageModel, OrImagePrice, OrModel, OrPricing, OrVideoModel } fro
 const MILLION = 1_000_000;
 const GENERIC_EFFORTS: readonly AiEffort[] = ['low', 'medium', 'high'];
 
-export interface Named {
+interface Named {
   readonly name: string;
   readonly author: string;
   readonly authorName: string;
@@ -23,7 +23,7 @@ function title(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-export function namedOf(id: string, fullName: string): Named {
+function namedOf(id: string, fullName: string): Named {
   const author = (id.split('/')[0] ?? id).replace(/^~/, '');
   const split = /^([^:]{1,80}):\s+(.+)$/.exec(fullName);
   if (split?.[1] !== undefined && split[2] !== undefined) {
@@ -32,7 +32,7 @@ export function namedOf(id: string, fullName: string): Named {
   return { name: fullName.slice(0, 120), author, authorName: title(author) };
 }
 
-export function familyOf(id: string): string {
+function familyOf(id: string): string {
   const [author = '', slug = id] = id.replace(/^~/, '').split('/');
   const family = slug
     .replace(/:.*$/, '')
@@ -67,7 +67,7 @@ function tiersOf(pricing: OrPricing): AiPricing['tiers'] {
   );
 }
 
-export function pricingOf(pricing: OrPricing): AiPricing {
+function pricingOf(pricing: OrPricing): AiPricing {
   return {
     ...NO_PRICES,
     variable: pricing.prompt < 0 || pricing.completion < 0,
@@ -118,7 +118,7 @@ export function effortsOf(model: OrModel): Efforts {
   };
 }
 
-export function kindsOf(input: readonly string[], output: readonly string[]): AiModelKind[] {
+function kindsOf(input: readonly string[], output: readonly string[]): AiModelKind[] {
   const kinds: AiModelKind[] = [];
   if (output.includes('text') && input.includes('text')) {
     kinds.push('chat');
@@ -206,7 +206,7 @@ function mediaRow(
 
 const VIDEO_SECOND = /^cents_per_(?:video_output_)?second(?:_output)?(?:_(\d+p|\dk))?$/;
 
-export function videoPricingOf(model: OrVideoModel): AiPricing {
+function videoPricingOf(model: OrVideoModel): AiPricing {
   const perSecond: Record<string, number> = {};
   let perImage: number | null = null;
   for (const [sku, cents] of Object.entries(model.pricing_skus ?? {})) {

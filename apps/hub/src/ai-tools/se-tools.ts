@@ -1,73 +1,34 @@
-import { validateExecutionAuthority } from '../assistant/execution-authority';
 import type { Logger } from '@smarteverything/logging';
-import { z } from 'zod';
-import { answered } from '../extensions/mcp/dispatch';
+import { runTool, type ToolRun } from '../extensions/mcp/dispatch';
 import { TOOLS, toolNamed } from '../extensions/mcp/tools';
-import type { ToolActor, ToolContext } from '../extensions/mcp/tools/registry';
-import { withoutAbsentFields } from './arguments';
+import {
+  PLUGIN_ONLY_TOOLS,
+  type ToolActor,
+  type ToolContext,
+  type ToolImage,
+} from '../extensions/mcp/tools/registry';
 import {
   failure,
-  needsOwnDevice,
   type HubTool,
   type HubToolResult,
   type ToolCaller,
   type ToolPicture,
   type ToolSource,
 } from './hub-tool';
+import { switchedOffTools } from './tool-discovery';
 import { toolLine } from './tool-lines';
 
-const LISTING = z.object({
-  name: z.string().min(1),
-  title: z.string().min(1),
-  description: z.string().min(1),
-  inputSchema: z.record(z.string(), z.unknown()),
-  annotations: z.object({
-    title: z.string(),
-    idempotentHint: z.boolean(),
-    readOnlyHint: z.boolean(),
-    destructiveHint: z.boolean(),
-    openWorldHint: z.boolean(),
-  }),
-});
+export const SE_TOOLS: readonly HubTool[] = TOOLS.filter(
+  (tool) => !PLUGIN_ONLY_TOOLS.has(tool.name),
+).map(({ listing, variants }) => ({
+  ...listing,
+  ...(variants === undefined ? {} : { variants }),
+  origin: { kind: 'se' },
+  humanOnly: false,
+}));
 
-const CONTENT = z.object({
-  type: z.string(),
-  text: z.string().optional(),
-  data: z.string().optional(),
-  mimeType: z.string().optional(),
-});
-
-const REPLY = z.union([
-  z.object({
-    result: z.object({
-      content: z.array(CONTENT),
-      structuredContent: z.unknown().optional(),
-      isError: z.boolean(),
-    }),
-  }),
-  z.object({ error: z.object({ code: z.number(), message: z.string() }) }),
-]);
-
-const SE_TOOLS: readonly HubTool[] = TOOLS.map((tool) => {
-  const listing = LISTING.parse(tool.listing);
-  return {
-    name: listing.name,
-    title: listing.title,
-    description: listing.description,
-    inputSchema: listing.inputSchema,
-    ...(tool.variants === undefined ? {} : { variants: tool.variants }),
-    annotations: listing.annotations,
-    origin: { kind: 'se' },
-    humanOnly: false,
-  };
-});
-
-function picturesOf(content: readonly z.infer<typeof CONTENT>[]): ToolPicture[] {
-  return content.flatMap((part) =>
-    part.type === 'image' && part.data !== undefined && part.mimeType !== undefined
-      ? [{ data: Buffer.from(part.data, 'base64'), mimeType: part.mimeType }]
-      : [],
-  );
+function picturesOf(images: readonly ToolImage[]): ToolPicture[] {
+  return images.map(({ data, mimeType }) => ({ data: Buffer.from(data, 'base64'), mimeType }));
 }
 
 function actorOf(caller: ToolCaller): ToolActor {
@@ -75,10 +36,31 @@ function actorOf(caller: ToolCaller): ToolActor {
     clientId: caller.clientId,
     ...(caller.authority === undefined ? {} : { authority: caller.authority }),
     profileId: caller.profileId,
+    role: caller.role,
     chatId: caller.chatId,
     ...(caller.pluginRequester === undefined ? {} : { pluginRequester: caller.pluginRequester }),
     ...(caller.pluginId === undefined ? {} : { pluginId: caller.pluginId }),
   };
+}
+
+export function hubResult(
+  run: ToolRun,
+  tool: HubTool,
+  args: Readonly<Record<string, unknown>>,
+  deviceName: (id: string) => string | null,
+): HubToolResult {
+  switch (run.kind) {
+    case 'unknown':
+      return failure(`There is no tool named ${tool.name}`);
+    case 'refused':
+      return failure(run.refusal.message, { code: run.refusal.code });
+    case 'done':
+      return {
+        response: { result: run.output.structured },
+        line: toolLine({ tool, args, deviceName }),
+        pictures: picturesOf(run.output.images ?? []),
+      };
+  }
 }
 
 export interface SeToolsOptions {
@@ -88,12 +70,10 @@ export interface SeToolsOptions {
 }
 
 export class SeTools implements ToolSource {
-  private sequence = 0;
-
   constructor(private readonly options: SeToolsOptions) {}
 
   tools(): readonly HubTool[] {
-    const off = new Set(this.options.context.store.settings.read().mcp_disabled_tools);
+    const off = switchedOffTools(this.options.context.store.settings.read().mcp_disabled_tools);
     return SE_TOOLS.filter((tool) => !off.has(tool.name));
   }
 
@@ -109,7 +89,7 @@ export class SeTools implements ToolSource {
     const found = toolNamed(tool.name);
     return found === undefined
       ? `There is no tool named ${tool.name}`
-      : found.check(this.options.context, withoutAbsentFields(tool.inputSchema, args));
+      : found.check(this.options.context, args);
   }
 
   async call(
@@ -117,47 +97,12 @@ export class SeTools implements ToolSource {
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
   ): Promise<HubToolResult> {
-    if (caller.authority !== undefined)
-      validateExecutionAuthority(this.options.context.store, caller.authority);
-    if (needsOwnDevice(caller)) {
-      return failure('This needs the device of the person it runs for');
-    }
-    this.sequence += 1;
-    const reply = REPLY.parse(
-      await answered(
-        {
-          jsonrpc: '2.0',
-          id: `ai-${String(this.sequence)}`,
-          method: 'tools/call',
-          params: {
-            name: tool.name,
-            arguments: { ...withoutAbsentFields(tool.inputSchema, args) },
-          },
-        },
-        {
-          ...this.options.context,
-          actor: actorOf(caller),
-        },
-        this.options.log,
-      ),
+    const run = await runTool(
+      { ...this.options.context, actor: actorOf(caller) },
+      tool.name,
+      args,
+      this.options.log,
     );
-    if ('error' in reply) {
-      return failure(reply.error.message);
-    }
-    const { content, structuredContent, isError } = reply.result;
-    const text = content.find((part) => part.type === 'text')?.text ?? '';
-    if (isError) {
-      return {
-        response: {
-          error: text,
-          schema: tool.inputSchema,
-          ...(tool.variants === undefined ? {} : { variants: tool.variants }),
-        },
-        line: '',
-        pictures: [],
-      };
-    }
-    const line = toolLine({ tool, args, deviceName: this.options.deviceName });
-    return { response: { result: structuredContent ?? text }, line, pictures: picturesOf(content) };
+    return hubResult(run, tool, args, this.options.deviceName);
   }
 }

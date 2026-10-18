@@ -4,37 +4,37 @@ import {
   type SpeechSource,
   type SpeechTrigger,
   type TranscriptSession,
+  type TranscriptSource,
 } from '@smarteverything/domain';
 import type { PluginSpeechReader } from '../store/repositories/speech';
 import { ownedChat } from '../assistant/chat-directory';
-import { admitExecutionTool } from '../assistant/execution-authority';
+import { admitExecutionTool } from '../assistant/turn-authority';
 import type { Store } from '../store/store';
-import { cameraReaderScope } from './camera-reader';
+import { admitTranscriptCaller, admitTranscriptSource } from './reader-scope';
 import { speechCaller, speechToolCaller, type SpeechPrincipal } from './speech-principal';
 import type { CommittedSpeech } from './speech';
 
 export function admitSpeechReadTool(
   store: Store,
   principal: SpeechPrincipal,
-  tool: { readonly name: string; readonly args: Readonly<Record<string, unknown>> },
+  tool: { readonly name: string },
 ): void {
   const authorities = [
     ...principal.authorities,
     ...(principal.authority === undefined ? [] : [principal.authority]),
   ];
-  for (const authority of authorities) admitExecutionTool(store, tool.name, tool.args, authority);
+  for (const authority of authorities) admitExecutionTool(store, tool.name, authority);
 }
 
-export function cameraSpeechScope(
+export function admitDeviceSpeech(
   store: Store,
   principal: SpeechPrincipal,
-  cameraId?: string,
-): ReturnType<typeof cameraReaderScope> {
-  admitSpeechReadTool(store, principal, {
-    name: 'read_transcripts',
-    args: { view: 'feed', ...(cameraId === undefined ? {} : { cameraId }) },
-  });
-  return cameraReaderScope(store, speechCaller(store, principal), cameraId);
+  device?: { readonly kind: TranscriptSource; readonly deviceId: string },
+): void {
+  admitSpeechReadTool(store, principal, { name: 'read_transcripts' });
+  const caller = speechCaller(store, principal);
+  admitTranscriptCaller(caller);
+  if (device !== undefined) admitTranscriptSource(store, caller, device.kind, device.deviceId);
 }
 
 export function pluginReader(store: Store, pluginId: string): PluginSpeechReader {
@@ -69,7 +69,7 @@ export function admitSpeechSources(
       if (!admitted.includes(source.pluginId))
         throw new ApiError('forbidden', 'The selected plugin speech reader is not authorized.');
       pluginReader(store, source.pluginId).admit(caller, source.sourceId);
-    } else if (source?.kind === 'camera') cameraSpeechScope(store, bound, source.deviceId);
+    } else if (source !== null && 'deviceId' in source) admitDeviceSpeech(store, bound, source);
     else if (source?.kind === 'attachment') ownSpeechChat(store, bound, source.chatId);
   }
   return bound;
@@ -77,7 +77,7 @@ export function admitSpeechSources(
 
 function ownSpeechChat(store: Store, principal: SpeechPrincipal, chatId: string): void {
   ownedChat(store, { profileId: principal.profileId, role: principal.role }, chatId);
-  admitSpeechReadTool(store, principal, { name: 'read_chats', args: { view: 'messages', chatId } });
+  admitSpeechReadTool(store, principal, { name: 'read_chats' });
 }
 
 export function validateSpeechSource(
@@ -103,7 +103,7 @@ function validateSelectedSource(
   principal: SpeechPrincipal,
   source: SpeechSource | null,
 ): void {
-  if (source?.kind === 'camera') cameraSpeechScope(store, principal, source.deviceId);
+  if (source !== null && 'deviceId' in source) admitDeviceSpeech(store, principal, source);
   else if (source?.kind === 'attachment') ownSpeechChat(store, principal, source.chatId);
   else if (source?.kind === 'plugin') {
     if (!principal.plugins.includes(source.pluginId))
@@ -120,8 +120,8 @@ function validateTranscript(
   source: SpeechSource | null,
   session: TranscriptSession,
 ): void {
-  if (session.source === 'camera') {
-    validateCameraTranscript(store, principal, source, session);
+  if (session.source !== 'plugin') {
+    validateDeviceTranscript(store, principal, source, session);
     return;
   }
   const id = session.plugin_id;
@@ -147,24 +147,26 @@ function validateAttachment(
 ): void {
   if (source !== null && (source.kind !== 'attachment' || source.chatId !== speech.chatId))
     throw new ApiError('forbidden', 'The speech occurrence belongs to another source.');
-  admitSpeechReadTool(store, principal, {
-    name: 'read_chats',
-    args: { view: 'attachment', id: speech.attachmentId },
-  });
+  admitSpeechReadTool(store, principal, { name: 'read_chats' });
   const file = store.assistantChat.attachment(speech.attachmentId);
   if (file.profile_id !== principal.profileId || file.profile_id !== speech.profileId)
     throw new ApiError('forbidden', 'The speech attachment belongs to another profile.');
   if (speech.chatId !== null) ownSpeechChat(store, principal, speech.chatId);
 }
 
-function validateCameraTranscript(
+function validateDeviceTranscript(
   store: Store,
   principal: SpeechPrincipal,
   source: SpeechSource | null,
   session: TranscriptSession,
 ): void {
-  if (source !== null && (source.kind !== 'camera' || source.deviceId !== session.source_id))
-    throw new ApiError('forbidden', 'The speech occurrence belongs to another camera.');
-  cameraSpeechScope(store, principal, session.source_id);
+  if (
+    source !== null &&
+    (source.kind !== session.source ||
+      !('deviceId' in source) ||
+      source.deviceId !== session.source_id)
+  )
+    throw new ApiError('forbidden', 'The speech occurrence belongs to another device.');
+  admitDeviceSpeech(store, principal, { kind: session.source, deviceId: session.source_id });
   store.transcripts.byId(session.id);
 }

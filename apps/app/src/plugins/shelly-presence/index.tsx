@@ -1,5 +1,5 @@
 import { EnrollmentSettings } from './enrollment-settings';
-import { SHELLY_PRESENCE_PAGES, SHELLY_PRESENCE_PLUGIN_ID } from '@smarteverything/domain';
+import { SHELLY_PAGES, SHELLY_PLUGIN_ID } from '@smarteverything/shelly';
 import type { AppPlugin } from '../contract';
 import { isPresence, isPhysicalPresence } from './presence-data';
 import { PresenceCard } from './presence-card';
@@ -8,9 +8,18 @@ import { ZoneOverview } from './zone-overview';
 import { PresenceSettings } from './presence-settings';
 import { presenceSearch } from './presence-search';
 import { PresencePage } from './presence-page';
+import { PRESENCE_PAGE_ICONS } from './presence-pages';
+
+const ENROLLMENT_SEARCH = [
+  ['discover', 'Discover configured Shelly sensors'],
+  ['password', 'Local access password'],
+  ['connect', 'Connect configured sensor'],
+  ['sensors', 'Connected sensors'],
+  ['forget', 'Forget sensor'],
+] as const;
 
 export const shellyPresenceAppPlugin: AppPlugin = {
-  id: SHELLY_PRESENCE_PLUGIN_ID,
+  id: SHELLY_PLUGIN_ID,
   widgets: [],
   deviceSections: [],
   deviceCards: [
@@ -18,9 +27,8 @@ export const shellyPresenceAppPlugin: AppPlugin = {
       key: 'presence',
       groupChildren: true,
       applies: isPresence,
-      render: (device, size, showRoom) => (
-        <PresenceCard device={device} size={size} showRoom={showRoom} />
-      ),
+      render: (device, _size, showRoom) => <PresenceCard device={device} showRoom={showRoom} />,
+      cell: (device, frame) => <PresenceCard device={device} frame={frame} />,
       hero: (device) => <PresenceHero device={device} />,
     },
   ],
@@ -43,27 +51,22 @@ export const shellyPresenceAppPlugin: AppPlugin = {
       render: (device) => <PresenceSettings device={device} />,
     },
   ],
-  deviceSettingsPages: SHELLY_PRESENCE_PAGES.map((page) => ({
-    id: page.id,
-    applies: isPhysicalPresence,
-    render: (device) => <PresencePage device={device} page={page.id} />,
-  })),
-  deviceSearch: presenceSearch,
-  settingsSearch: [
-    'Discover configured Shelly sensors',
-    'Sensor address',
-    'Local access password',
-    'Connect configured sensor',
-    'Custom HTTPS certificates',
-    'Trusted CA certificate',
-    'Client certificate',
-    'Client private key',
-    'Connected sensors',
-    'Forget sensor',
-  ].map((title) => ({
-    id: title,
+  devicePages: {
+    pages: SHELLY_PAGES.map((page) => ({
+      id: page.id,
+      title: page.title,
+      subtitle: page.keywords.join(', '),
+      icon: PRESENCE_PAGE_ICONS[page.id] ?? 'settings',
+      keywords: page.keywords,
+      settings: [],
+      applies: isPhysicalPresence,
+      render: (device) => <PresencePage device={device} page={page.id} />,
+    })),
+    search: presenceSearch,
+  },
+  settingsSearch: ENROLLMENT_SEARCH.map(([id, title]) => ({
+    id,
     title,
-    focus: title,
     keywords: ['Shelly', 'Presence', 'connect', title],
   })),
   settings: () => <EnrollmentSettings />,

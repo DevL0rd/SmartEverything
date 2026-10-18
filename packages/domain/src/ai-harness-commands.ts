@@ -1,6 +1,6 @@
+import { ASSISTANT_ATTACHMENT_BYTES_MAX } from './assistant';
 import { z } from 'zod';
 import { DSH_SESSION_ID } from './dsh-sessions';
-import { ASSISTANT_ATTACHMENT_BYTES_MAX } from './assistant';
 
 export const AI_HARNESS_COMMAND_DESCRIPTOR = z.object({
   definitionId: z.string().min(1).max(200).optional(),

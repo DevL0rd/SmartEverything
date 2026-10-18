@@ -1,90 +1,161 @@
 import { requireNativeView } from 'expo';
-import { useImperativeHandle, useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
-import { browserAllows } from '@smarteverything/domain';
+import {
+  useEffect,
+  useEffectEvent,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+} from 'react';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Logger } from '@smarteverything/logging';
+import {
+  BROWSER_RETIRED_PROBLEM,
+  browserAllows,
+  type BrowserTarget,
+} from '@smarteverything/domain';
+import {
+  nativeHtmlCurrent,
+  onNativeHtmlRetired,
+} from '../../modules/health-connect/src/html-preview';
+import { nativeBrowserDiagnostic } from '../../modules/health-connect/src/browser-diagnostics-events';
 import { nativeBrowserStatus, type NativeBrowserEvent } from './browser-native-events';
-import { nativeBrowserDiagnostic } from './browser-diagnostics-events';
 import { useBrowserDisplayed } from './browser-displayed';
-import type { BrowserSurfaceProps } from './browser-contract';
-interface NativeBrowserProps {
-  readonly target: string;
-  readonly command?: string;
+import type { BrowserHandle, BrowserSurfaceProps } from './browser-contract';
+
+interface NativeBrowserCommands {
+  navigate(url: string): Promise<void>;
+  back(): Promise<void>;
+  forward(): Promise<void>;
+  reload(): Promise<void>;
+  stop(): Promise<void>;
+}
+type NativeBrowserSource = { readonly target: string } | { readonly projection: string };
+type NativeBrowserProps = NativeBrowserSource & {
+  readonly ref: Ref<NativeBrowserCommands>;
   readonly displayed: boolean;
   readonly style: StyleProp<ViewStyle>;
   readonly onStatus: (event: NativeBrowserEvent) => void;
   readonly onDiagnostic: (event: { readonly nativeEvent: unknown }) => void;
-}
+};
 const NativeBrowser = requireNativeView<NativeBrowserProps>('HubNetwork');
-const STYLES = StyleSheet.create({ page: { flex: 1 } });
+const STYLES = StyleSheet.create({ page: { flex: 1 }, hidden: { opacity: 0 } });
+const log = new Logger('app.native-browser');
+
 export function NativeBrowserSurface({
   target,
+  visible,
   ref,
   onStatus,
-  visible,
 }: BrowserSurfaceProps): ReactNode {
-  const sequence = useRef(0);
-  const initial = useRef(true);
   const displayed = useBrowserDisplayed(visible);
-  const [command, setCommand] = useState<string>();
-  const act = (action: string, url?: string): void => {
-    setCommand(
-      JSON.stringify({
-        sequence: ++sequence.current,
-        action,
-        ...(url === undefined ? {} : { url }),
-      }),
-    );
-  };
-  useImperativeHandle(ref, () => ({
-    navigate: (url): void => {
-      if (browserAllows(target, url)) act('navigate', url);
-    },
-    back: (): void => {
-      act('back');
-    },
-    forward: (): void => {
-      act('forward');
-    },
-    reload: (): void => {
-      act('reload');
-    },
-    stop: (): void => {
-      act('stop');
-    },
-  }));
+  const view = useRef<NativeBrowserCommands>(null);
+  const initial = useRef(true);
+  const retired = useProjectionRetired(target, onStatus);
+  useImperativeHandle(ref, () => browserHandle(view, target));
+  if (retired) return <View style={STYLES.page} />;
   return (
     <NativeBrowser
-      target={JSON.stringify(target)}
+      ref={view}
+      {...nativeSource(target)}
       displayed={displayed}
-      {...(command === undefined ? {} : { command })}
-      style={STYLES.page}
-      onDiagnostic={receiveNativeDiagnostic}
+      style={visible ? STYLES.page : [STYLES.page, STYLES.hidden]}
+      onDiagnostic={(event) => {
+        nativeBrowserDiagnostic(event.nativeEvent);
+      }}
       onStatus={(event) => {
-        receiveNativeStatus(event, { target, onStatus, act, initial });
+        receiveStatus(event, { target, onStatus, view, initial });
       }}
     />
   );
 }
 
-function receiveNativeStatus(
+function nativeSource(target: BrowserTarget): NativeBrowserSource {
+  if (target.kind === 'native-html')
+    return {
+      projection: JSON.stringify({ projectionId: target.projectionId, browserId: target.id }),
+    };
+  return { target: JSON.stringify(target) };
+}
+
+export function browserHandle(
+  view: RefObject<NativeBrowserCommands | null>,
+  target: BrowserTarget,
+): BrowserHandle {
+  const run = (command: (native: NativeBrowserCommands) => Promise<void>): void => {
+    const native = view.current;
+    if (native !== null)
+      command(native).catch((cause: unknown) => {
+        log.error('browser.command_failed', cause, { browserId: target.id });
+      });
+  };
+  return {
+    navigate: (url): void => {
+      if (target.kind !== 'native-html' && browserAllows(target, url))
+        run((native) => native.navigate(url));
+    },
+    back: (): void => {
+      run((native) => native.back());
+    },
+    forward: (): void => {
+      run((native) => native.forward());
+    },
+    reload: (): void => {
+      run((native) => native.reload());
+    },
+    stop: (): void => {
+      run((native) => native.stop());
+    },
+  };
+}
+
+function receiveStatus(
   event: NativeBrowserEvent,
   context: {
-    readonly target: BrowserSurfaceProps['target'];
+    readonly target: BrowserTarget;
     readonly onStatus: BrowserSurfaceProps['onStatus'];
-    readonly act: (action: string, url?: string) => void;
+    readonly view: RefObject<NativeBrowserCommands | null>;
     readonly initial: { current: boolean };
   },
 ): void {
-  const status = nativeBrowserStatus(event, context.target.id);
-  context.onStatus(status);
-  if (status.loading || !context.initial.current || status.problem !== null) return;
-  const initial = context.initial;
+  const { target, onStatus, view, initial } = context;
+  const status = nativeBrowserStatus(event, target.id);
+  onStatus(status);
+  if (status.loading || !initial.current || status.problem !== null) return;
   initial.current = false;
-  if (context.target.kind !== 'preview') return;
-  const wanted = new URL(context.target.initialPath, context.target.origin).href;
-  if (status.url !== wanted) context.act('navigate', wanted);
+  if (target.kind !== 'preview') return;
+  const wanted = new URL(target.initialPath, target.origin).href;
+  if (status.url !== wanted) browserHandle(view, target).navigate(wanted);
 }
 
-function receiveNativeDiagnostic(event: { readonly nativeEvent: unknown }): void {
-  nativeBrowserDiagnostic(event.nativeEvent);
+function useProjectionRetired(
+  target: BrowserTarget,
+  onStatus: BrowserSurfaceProps['onStatus'],
+): boolean {
+  const [retired, setRetired] = useState(
+    () => target.kind === 'native-html' && !nativeHtmlCurrent(target.projectionId),
+  );
+  const receive = useEffectEvent(onStatus);
+  useEffect(() => {
+    if (target.kind !== 'native-html') return undefined;
+    const retire = (): void => {
+      setRetired(true);
+      receive({
+        id: target.id,
+        url: '',
+        loading: false,
+        back: false,
+        forward: false,
+        problem: BROWSER_RETIRED_PROBLEM,
+      });
+    };
+    const stop = onNativeHtmlRetired((id) => {
+      if (id === target.projectionId) retire();
+    });
+    if (!nativeHtmlCurrent(target.projectionId)) retire();
+    return stop;
+  }, [target]);
+  return retired;
 }

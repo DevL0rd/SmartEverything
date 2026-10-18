@@ -7,7 +7,7 @@ export interface VoiceTask {
   readonly callMessageId: string | null;
 }
 
-export interface VoicePlace {
+interface VoicePlace {
   readonly profileId: string;
   readonly clientId: string | null;
   readonly device: string;

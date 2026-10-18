@@ -15,7 +15,7 @@ export interface BucketSpan {
   readonly end: number;
 }
 
-export class TooManyBucketsError extends ApiError {
+class TooManyBucketsError extends ApiError {
   constructor(bucket: UsageBucket) {
     super(
       'invalid_request',

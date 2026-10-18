@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 export const AI_HARNESS_CAPABILITY = 'ai-harness-v1';
-export const AI_HARNESS_HEADER_VALUE = 'application/json; smarteverything-ai-harness=v1';
 export const AI_HARNESS_PROTOCOL_VERSION = 1;
 const DEVICE_TARGET = z.object({ kind: z.literal('device'), device_id: z.uuid() });
 const SERVER_TARGET = z.object({ kind: z.literal('server') });
@@ -16,27 +15,28 @@ export function harnessTargetKey(target: AiHarnessTarget): string {
   return target.kind === 'server' ? 'server' : `device:${target.device_id}`;
 }
 
-export const AI_HARNESS_PERMISSION = z.object({
-  sandbox: z.enum(['danger-full-access', 'workspace-write', 'read-only']),
-  approval: z.enum(['never', 'on-request', 'on-failure', 'untrusted']),
+export const AI_HARNESS_PERMISSIONS = [
+  { sandbox: 'danger-full-access', approval: 'never' },
+  { sandbox: 'workspace-write', approval: 'on-request' },
+  { sandbox: 'read-only', approval: 'on-request' },
+] as const;
+const FULL_ACCESS = z.object({
+  sandbox: z.literal('danger-full-access'),
+  approval: z.literal('never'),
 });
-export const AI_HARNESS_PERMISSION_WRITE = AI_HARNESS_PERMISSION.strict();
+const WORKSPACE_WRITE = z.object({
+  sandbox: z.literal('workspace-write'),
+  approval: z.literal('on-request'),
+});
+const READ_ONLY = z.object({ sandbox: z.literal('read-only'), approval: z.literal('on-request') });
+export const AI_HARNESS_PERMISSION = z.union([FULL_ACCESS, WORKSPACE_WRITE, READ_ONLY]);
+export const AI_HARNESS_PERMISSION_WRITE = z.union([
+  FULL_ACCESS.strict(),
+  WORKSPACE_WRITE.strict(),
+  READ_ONLY.strict(),
+]);
 export type AiHarnessPermission = z.infer<typeof AI_HARNESS_PERMISSION>;
-export const DEFAULT_AI_HARNESS_PERMISSION: AiHarnessPermission = {
-  sandbox: 'danger-full-access',
-  approval: 'never',
-};
-
-export const AI_HARNESS_COMPOSITION = z.object({
-  dsh_version: z.string().min(1).max(100),
-  runtime_version: z.string().min(1).max(100),
-  session_format: z.int().nonnegative(),
-  preset: z.string().min(1).max(200),
-  fingerprint: z.string().min(1).max(200),
-  restore_revision: z.string().min(1).max(200).optional(),
-  event_vocabulary: z.array(z.string().min(1).max(200)).max(2000),
-});
-export type AiHarnessComposition = z.infer<typeof AI_HARNESS_COMPOSITION>;
+export const DEFAULT_AI_HARNESS_PERMISSION: AiHarnessPermission = AI_HARNESS_PERMISSIONS[0];
 
 export const AI_HARNESS_FEATURES = [
   'text',
@@ -69,19 +69,15 @@ export type AiHarnessStorageBinding = z.infer<typeof AI_HARNESS_STORAGE_BINDING>
 
 export const AI_HARNESS_MANIFEST = z.object({
   references: z.object({ protocol: z.literal(1) }).optional(),
-  project_files: z.object({ protocol: z.literal(1) }).optional(),
   subscription_inference: z.object({ protocol: z.literal(1) }).optional(),
   subscription_consumer: z.object({ protocol: z.literal(1) }).optional(),
   human_commands: z.boolean().optional(),
-  configuration_prepare: z.boolean().optional(),
   delivery_correlation: z.boolean().optional(),
-  history_import: z.boolean().optional(),
   protocol: z.literal(AI_HARNESS_PROTOCOL_VERSION),
   revision: z.string().min(1).max(200),
-  composition: AI_HARNESS_COMPOSITION,
   features: z.array(z.enum(AI_HARNESS_FEATURES)).max(AI_HARNESS_FEATURES.length),
   tools: z.array(z.string().min(1).max(200)).max(2000),
-  permissions: z.array(AI_HARNESS_PERMISSION).min(1).max(20),
+  permissions: z.array(AI_HARNESS_PERMISSION).min(1),
   permission_change: z.boolean().optional(),
 });
 export type AiHarnessManifest = z.infer<typeof AI_HARNESS_MANIFEST>;
@@ -127,7 +123,6 @@ const HOST_FIELDS = {
 export const AI_HARNESS_HOST = z.object({
   ...HOST_FIELDS,
   platform: z.enum(['linux', 'windows', 'macos']),
-  inbound_execution: z.boolean(),
 });
 export type AiHarnessHost = z.infer<typeof AI_HARNESS_HOST>;
 
@@ -144,7 +139,7 @@ export const AI_HARNESS_FAILURE = z.object({
     'source_outcome_unknown',
     'operation_failed',
   ]),
-  message: z.string().min(1).max(2000),
+  message: z.string().min(1),
   retry_at: z.iso.datetime({ offset: true }).nullable(),
 });
 export type AiHarnessFailure = z.infer<typeof AI_HARNESS_FAILURE>;

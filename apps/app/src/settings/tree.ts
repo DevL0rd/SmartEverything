@@ -1,24 +1,23 @@
 import type { Href } from 'expo-router';
-import { CLIENT_PREFS } from '@smarteverything/domain';
 import { href } from '../app-shell/hrefs';
 import type { Crumb } from '../components/breadcrumbs';
 import { ACCENT_LABELS } from '../design/tokens';
 import { joinParts, plural } from '../format/text';
 import { zoneLabel } from '../format/time';
 import { talkLinked } from '../../modules/health-connect';
+import { PREFS, prefOf } from '../store/prefs';
 import type { StoreState } from '../store/state';
 import { ASSISTANT_PAGES } from './tree-assistant';
 import { PLUGIN_PAGES } from './tree-plugins';
 import { DEVELOPER_PAGES } from './tree-developer';
+import { CLIPBOARD_PAGES } from './tree-clipboard';
 import { REGION_PAGES } from './tree-region';
 import type { SettingEnv, SettingsPageDefinition } from './types';
 
 const THEME_LABELS = { system: 'System theme', light: 'Light', dark: 'Dark' } as const;
 
 function appearanceSummary(state: StoreState): string | null {
-  const read = CLIENT_PREFS.appearance.decode(
-    state.tables.layouts.byId[CLIENT_PREFS.appearance.storageKey]?.layout ?? null,
-  );
+  const read = prefOf(state, PREFS.appearance);
   return read.status === 'invalid'
     ? null
     : `${THEME_LABELS[read.value.theme]} · ${ACCENT_LABELS[read.value.accent]}`;
@@ -89,6 +88,16 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     keywords: ['people', 'person', 'profile', 'wife', 'partner', 'scale', 'weight'],
   },
   {
+    id: 'access',
+    title: 'Access',
+    icon: 'key',
+    parent: null,
+    group: 'Home',
+    summary: (state) => countOf(state.tables.profiles.ids.length, 'person'),
+    keywords: ['roles', 'guest', 'child', 'owner', 'permissions', 'pause', 'audit', 'revoke'],
+    visible: ownerOnly,
+  },
+  {
     id: 'devices',
     title: 'Device settings',
     icon: 'bulb',
@@ -136,7 +145,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
   },
   {
     id: 'cameras/remote-viewing',
-    title: 'Camera connection',
+    title: 'Remote viewing',
     icon: 'globe',
     parent: 'cameras',
     group: null,
@@ -261,6 +270,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     keywords: ['theme', 'dark', 'light', 'accent', 'colour', 'density', 'motion'],
   },
   ...REGION_PAGES,
+  ...CLIPBOARD_PAGES,
   {
     id: 'notifications',
     title: 'Notifications',
@@ -311,7 +321,7 @@ export const SETTINGS_TREE: readonly SettingsPageDefinition[] = [
     icon: 'activity',
     parent: 'server',
     group: null,
-    keywords: ['logs', 'version', 'ffmpeg', 'uptime'],
+    keywords: ['logs', 'version', 'uptime'],
   },
   {
     id: 'about',

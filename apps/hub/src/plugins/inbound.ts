@@ -1,8 +1,6 @@
 import {
-  pluginChatKey,
   type AssistantOutFile,
   type InboundMessage,
-  requesterOf,
   turnRoleOf,
   type PluginRequester,
   type PluginReplyFile,
@@ -17,9 +15,13 @@ import type { Store } from '../store/store';
 import type { PluginHost } from './host';
 import { inboundFiles } from './inbound-files';
 import { StepFeed } from './inbound-progress';
-import { RateWindow } from './rate-window';
-
-const PER_MINUTE = 30;
+import {
+  identityChatKey,
+  pluginIdentityOf,
+  refusedAs,
+  type PluginIdentity,
+} from './plugin-identity';
+import { failureLine, messageOf } from '@smarteverything/logging';
 
 const PROGRESS_GAP_MS = 2000;
 
@@ -71,7 +73,6 @@ function engineTextOf(
 }
 
 export class PluginInbox {
-  private readonly windows = new Map<string, RateWindow>();
   private readonly waiting = new Map<string, Waiting>();
   private readonly unfollow: readonly (() => void)[];
 
@@ -96,54 +97,67 @@ export class PluginInbox {
   }
 
   receive(pluginId: string, message: InboundMessage): void {
-    const window = this.windows.get(pluginId) ?? new RateWindow(PER_MINUTE, 60_000);
-    this.windows.set(pluginId, window);
-    if (!window.admit(this.options.now().getTime())) {
-      this.note(pluginId, `Dropped a message from ${message.from.name}: more than 30 a minute`);
-      return;
-    }
     this.deliver(pluginId, message).catch((cause: unknown) => {
-      this.note(
-        pluginId,
-        `Could not deliver a message: ${cause instanceof Error ? cause.message : String(cause)}`,
-      );
+      this.note(pluginId, `Could not deliver a message: ${messageOf(cause)}`);
     });
   }
 
   private async deliver(pluginId: string, message: InboundMessage): Promise<void> {
     const { store } = this.options;
     const plugin = store.plugins.byId(pluginId);
-    const owner = store.clients.owner();
-    if (owner === undefined) {
-      throw new Error('This server has no owner yet');
+    const identity = pluginIdentityOf(store, pluginId, message.from.id);
+    const refused = refusedAs(store, identity);
+    if (refused !== null) {
+      this.refuse(plugin, message, identity, refused.message);
+      return;
     }
-    const profileId = store.profiles.activeOf(owner.id).id;
     const attached = await inboundFiles(message.attachments, {
       plugin,
       folder: this.options.host().dataOf(pluginId),
       fetch: this.options.fetch,
     });
     try {
-      await this.hand(plugin, message, { profileId, files: attached.files });
+      await this.hand(plugin, message, { identity, files: attached.files });
     } finally {
       await attached.discard();
     }
   }
 
+  private refuse(
+    plugin: PluginRow,
+    message: InboundMessage,
+    identity: PluginIdentity,
+    reason: string,
+  ): void {
+    const { reply } = message;
+    const caller: ToolCaller = {
+      profileId: identity.profileId,
+      role: 'member',
+      chatId: null,
+      via: 'plugin',
+      clientId: null,
+      ...limitsOf('unlisted', plugin.id),
+    };
+    this.deliverReply(
+      { pluginId: plugin.id, message, caller },
+      { [reply.eventIdArg]: message.eventId, [reply.textArg]: reason },
+    );
+  }
+
   private async hand(
     plugin: PluginRow,
     message: InboundMessage,
-    turn: { readonly profileId: string; readonly files: AssistantOutFile[] },
+    turn: { readonly identity: PluginIdentity; readonly files: AssistantOutFile[] },
   ): Promise<void> {
-    const { store, assistant } = this.options;
-    const { profileId, files } = turn;
+    const { assistant } = this.options;
+    const { identity, files } = turn;
+    const { profileId, requester } = identity;
     const pluginId = plugin.id;
     const chat = assistant.chats.chatForPlugin(
       profileId,
-      pluginChatKey(plugin.id, message.conversation.key),
+      identityChatKey(identity.guest, plugin.id, message.conversation.key),
       message.conversation.title,
     );
-    const requester = requesterOf(store.pluginPeople.find(plugin.id, message.from.id));
     const { eventId, messageId } = await assistant.inbound({
       chat,
       author: message.from.name,
@@ -216,13 +230,12 @@ export class PluginInbox {
     this.deliverReply(waiting, {
       [reply.eventIdArg]: waiting.message.eventId,
       [reply.textArg]: ok ? text : `Assistant unavailable: ${text}`,
-      ...(reply.idempotencyArg === null ? {} : { [reply.idempotencyArg]: event.id }),
       ...(reply.filesArg === null || !ok ? {} : { [reply.filesArg]: this.answerFiles(waiting) }),
     });
   }
 
   private deliverReply(
-    waiting: Omit<Waiting, 'feed'>,
+    waiting: Pick<Waiting, 'pluginId' | 'message' | 'caller'>,
     args: Readonly<Record<string, unknown>>,
   ): void {
     this.options
@@ -234,7 +247,7 @@ export class PluginInbox {
         }
       })
       .catch((cause: unknown) => {
-        this.note(waiting.pluginId, `The reply was not delivered: ${String(cause)}`);
+        this.note(waiting.pluginId, `The reply was not delivered: ${failureLine(cause)}`);
       });
   }
 

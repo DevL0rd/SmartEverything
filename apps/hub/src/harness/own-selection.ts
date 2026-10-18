@@ -1,8 +1,8 @@
-import { admitLegacyImport } from './legacy-history';
 import {
   ApiError,
   DEFAULT_AI_HARNESS_PERMISSION,
   type Engine,
+  type AiChatRow,
   type DshEngine,
 } from '@smarteverything/domain';
 import type { HarnessService } from './service';
@@ -10,8 +10,11 @@ import type { HarnessService } from './service';
 export class OwnEngineSelections {
   constructor(private readonly service: HarnessService) {}
 
-  select(profileId: string, engine: Engine, _background = false, _clientId?: string): Engine {
-    if (engine.kind !== 'openrouter') return engine;
+  select(profileId: string, engine: Engine): Engine {
+    return engine.kind === 'openrouter' ? this.resolve(profileId, engine) : engine;
+  }
+
+  private resolve(profileId: string, engine: Extract<Engine, { kind: 'openrouter' }>): DshEngine {
     const selected = this.service.routes.resolve(profileId, engine.model, engine.effort);
     return {
       kind: 'dsh',
@@ -24,17 +27,17 @@ export class OwnEngineSelections {
     };
   }
 
-  default(profileId: string, engine: DshEngine, _background: boolean): DshEngine {
+  private routed(chat: AiChatRow, engine: DshEngine): DshEngine {
     const known = this.service.routes
-      .list(profileId)
+      .list(chat.profile_id)
       .some((route) => route.id === engine.model_route_id);
-    const route = known ? engine.model_route_id : this.defaultRoute(profileId, engine);
-    return {
+    if (known) return engine;
+    const repaired = {
       ...engine,
-      model_route_id: route,
-      session_id: null,
-      execution_target: { kind: 'server' },
+      model_route_id: this.defaultRoute(chat.profile_id, engine),
     };
+    this.service.store.aiChats.update(chat.id, { engine: repaired });
+    return repaired;
   }
 
   private defaultRoute(profileId: string, engine: DshEngine): string {
@@ -45,23 +48,13 @@ export class OwnEngineSelections {
     if (route?.auth.provider !== 'openrouter')
       throw new ApiError(
         'conflict',
-        'The default model needs this profile’s explicit subscription supplier; there is no account or paid fallback.',
+        'This chat’s model route was removed and needs this profile’s explicit subscription supplier; there is no account or paid fallback.',
       );
     return this.service.routes.resolve(profileId, engine.model, engine.effort).route_id;
   }
 
-  migrate(chatId: string, background: boolean, clientId?: string): DshEngine {
-    return this.service.store.write(() => {
-      const chat = this.service.store.aiChats.chat(chatId);
-      if (chat.engine.kind === 'dsh') return chat.engine;
-      if (chat.engine.kind !== 'openrouter')
-        throw new ApiError('conflict', 'Native Claude and Codex retain their own engine boundary.');
-      const engine = this.select(chat.profile_id, chat.engine, background, clientId);
-      if (engine.kind !== 'dsh')
-        throw new ApiError('conflict', 'Own chat selection did not resolve its native route.');
-      admitLegacyImport(this.service, { ...chat, engine });
-      this.service.store.aiChats.update(chat.id, { engine });
-      return engine;
-    });
+  migrate(chatId: string): void {
+    const chat = this.service.store.aiChats.chat(chatId);
+    if (chat.engine.kind === 'dsh') this.routed(chat, chat.engine);
   }
 }

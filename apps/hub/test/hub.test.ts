@@ -1,7 +1,8 @@
+import { TEST_AUTHOR } from './support/automation-author';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { RowChange } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Go2rtcClient } from '../src/cameras/go2rtc-client';
 import { startHub, type RunningHub } from '../src/hub';
 import { SecretStore } from '../src/secrets/store';
@@ -12,6 +13,7 @@ import { FakeClock } from './support/fake-clock';
 import { CAMERA, LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger, type CapturedLogs } from './support/logs';
 import { testStore, type TestStore } from './support/store';
+import { legacyAutomation } from './support/legacy-automation';
 
 let logs: CapturedLogs;
 let opened: TestStore;
@@ -43,6 +45,9 @@ function fakeGo2rtc(calls: string[]): Go2rtcClient {
     answer: (_stream, offer) => Promise.resolve(`answer:${offer}`),
     frame: () => Promise.resolve(new Uint8Array([1])),
     clip: () => Promise.resolve(new Uint8Array([2, 3])),
+    consumers: () => Promise.resolve([]),
+    closeConsumer: () => Promise.resolve(),
+    play: () => Promise.resolve(),
     socketOf: () => ({ url: 'ws://go2rtc/api/ws', authorization: 'Basic x' }),
   };
 }
@@ -72,6 +77,7 @@ async function start(before: (store: Store) => void = () => undefined): Promise<
     registry: { xiaomi: fake.module },
     secrets,
     go2rtc: fakeGo2rtc(go2rtcCalls),
+    devicesChanged: () => undefined,
     dataDirectory: opened.directory,
     clock: new FakeClock('2026-10-08T10:00:00.000Z'),
     logFor: (area) => testLogger(area),
@@ -153,7 +159,7 @@ describe('hub core on the SQLite store', () => {
     store.automations.create({
       name: 'Bright when on',
       enabled: true,
-      definition: {
+      definition: legacyAutomation({
         triggers: [
           {
             type: 'state',
@@ -163,8 +169,11 @@ describe('hub core on the SQLite store', () => {
           },
         ],
         conditions: { mode: 'all', items: [] },
+        origin: null,
         actions: [{ type: 'command', deviceId: lamp, capability: 'brightness', value: 80 }],
-      },
+      }),
+      origin: null,
+      author: TEST_AUTHOR,
     });
     await until(() => logs.events().filter((event) => event === 'automations.loaded').length >= 2);
     fake.adapter.sink?.state({
@@ -202,7 +211,9 @@ describe('hub core on the SQLite store', () => {
   it('answers WebRTC offers and records camera events to files unless recording is off', async () => {
     const { store, fake, hub } = await start();
     const camera = deviceId(store, 'camera-1');
-    await expect(hub.answerOffer(camera, 'offer')).resolves.toBe('answer:offer');
+    await expect(hub.answerOffer(camera, 'offer', 'client-1', 'full')).resolves.toBe(
+      'answer:offer',
+    );
     await expect(hub.streamReady('missing')).rejects.toThrow(
       'There is no camera stream named missing on this hub.',
     );
@@ -232,30 +243,76 @@ describe('hub core on the SQLite store', () => {
     await hub.stop();
   });
 
-  it('reloads automations on real changes and on a new home location, not on run bookkeeping', async () => {
+  it('reloads automations on real changes and on a new home location, not on scenes or run bookkeeping', async () => {
     const { store, hub } = await start();
     const loads = (): number =>
       logs.events().filter((event) => event === 'automations.loaded').length;
     const before = loads();
     const scene = store.scenes.create({ name: 'Evening', icon: 'moon', actions: [], position: 0 });
-    await until(() => loads() === before + 1);
     store.settings.updateHome({ home_name: 'Flat' });
     store.settings.updateHome({ time_zone: 'Europe/Berlin' });
-    await until(() => loads() === before + 2);
+    await until(() => loads() === before + 1);
     const automation = store.automations.create({
       name: 'Never',
       enabled: false,
-      definition: {
+      definition: legacyAutomation({
         triggers: [{ type: 'interval', everyMinutes: 5 }],
         conditions: { mode: 'all', items: [] },
+        origin: null,
         actions: [{ type: 'scene', sceneId: scene.id }],
-      },
+      }),
+      origin: null,
+      author: TEST_AUTHOR,
     });
-    await until(() => loads() === before + 3);
+    await until(() => loads() === before + 2);
     store.automations.recordRun(automation.id, { lastError: null, runCount: 2 });
     store.rooms.create('Attic', 0);
     await hub.settled();
-    expect(loads()).toBe(before + 3);
+    expect(loads()).toBe(before + 2);
+    await hub.stop();
+  });
+
+  it('stops an active run when its automation is disabled and checks runs only on relevant changes', async () => {
+    const { store, fake, hub } = await start();
+    const lamp = deviceId(store, 'lamp-1');
+    const automation = store.automations.create({
+      name: 'Slow',
+      enabled: true,
+      definition: legacyAutomation({
+        triggers: [
+          {
+            type: 'state',
+            deviceId: lamp,
+            capability: 'power',
+            comparison: { operator: 'eq', value: true },
+          },
+        ],
+        conditions: { mode: 'all', items: [] },
+        origin: null,
+        actions: [{ type: 'delay', seconds: 600 }],
+      }),
+      origin: null,
+      author: TEST_AUTHOR,
+    });
+    await until(() => logs.events().filter((event) => event === 'automations.loaded').length >= 2);
+    fake.adapter.sink?.state({
+      externalId: 'lamp-1',
+      capability: 'power',
+      value: true,
+      observedAt: '2026-10-08T10:00:01Z',
+    });
+    await until(() => store.automationRuns.list(automation.id).length === 1);
+    const lookups = vi.spyOn(store.automations, 'byId');
+    store.rooms.create('Attic', 0);
+    store.automations.recordRun(automation.id, { lastError: null, runCount: 1 });
+    lookups.mockClear();
+    store.rooms.create('Cellar', 1);
+    expect(lookups).not.toHaveBeenCalled();
+    store.automations.update(automation.id, { enabled: false });
+    await until(() => store.automationRuns.list(automation.id)[0]?.status === 'cancelled');
+    expect(store.automationRuns.list(automation.id)[0]?.error).toBe(
+      'ApiError: The automation was disabled while its run was active.',
+    );
     await hub.stop();
   });
 

@@ -1,10 +1,5 @@
-import {
-  API_ENDPOINTS,
-  type ClientRow,
-  type DesktopServiceHealth,
-  type PublicStatus,
-} from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
+import type { DesktopServiceHealth } from '@smarteverything/domain';
+import { Logger, background } from '@smarteverything/logging';
 import { appPlatform, desktopBridge } from '../../design/platform';
 import { ApiClient } from './client';
 import { devServerUrl } from './dev-server';
@@ -18,35 +13,20 @@ import {
   type ServerConnection,
   type StoredKind,
 } from './storage';
-import { clearServerCapabilities } from './server-capabilities';
 import { rawErrorText } from '../../format/errors';
-import type { PairingTarget } from '../pairing-input';
 import { ValueStore } from '../../design/external-store';
 import { routeFor, stopHubRoute } from './active-route';
+import { trackNativeActivation } from './route-platform';
 import { StaleHubRouteError } from './route-policy';
 import {
   activateNativeServerEnrollment,
   clearNativeServerCredential,
-  supersedeNativeServerActivation,
 } from '../../../modules/health-connect/src/hub-network';
 import { forgetHubTrust } from './trust-storage';
-import {
-  PairingBusyError,
-  type EnrollmentDestination,
-  type PairingEnrollment,
-} from './pairing-enrollment';
-import {
-  preparePairingSession,
-  submitPairingSession,
-  hasPairingSession,
-  cancelPairingSession,
-} from './pairing-session';
-export { recoverPairingSession as recoverPairing } from './pairing-session';
-import { destinationsFromQr } from './pairing-qr';
+import { failureFacts, nowMs } from './request-log';
+import { cancelPairingSession, type PairingHost, type PairingRun } from './pairing-session';
 
 const log = new Logger('app.connection');
-
-type ConnectionKind = 'desktop' | StoredKind;
 
 export type ConnectionState =
   | { readonly status: 'loading' }
@@ -54,7 +34,7 @@ export type ConnectionState =
   | { readonly status: 'unpaired'; readonly kind: StoredKind; readonly fixedUrl: string | null }
   | {
       readonly status: 'paired';
-      readonly kind: ConnectionKind;
+      readonly kind: StoredKind;
       readonly connection: ServerConnection;
     }
   | { readonly status: 'removed'; readonly kind: StoredKind; readonly url: string };
@@ -105,22 +85,23 @@ export function connectionRefused(connection: ServerConnection): void {
     return;
   }
   connectionOperation += 1;
-  supersedeNativeServerActivation(connectionOperation);
   stopHubRoute();
   void clearNativeServerCredential(connection.token).catch((error: unknown) => {
-    log.warn('connection.native_credential_clear_failed', {
-      failure: error instanceof Error ? error.name : 'NativeFailure',
-    });
+    log.warn('connection.native_credential_clear_failed', failureFacts(error));
   });
   void forgetHubTrust().catch((error: unknown) => {
-    log.warn('connection.trust_cache_clear_failed', {
-      failure: error instanceof Error ? error.name : 'StorageFailure',
-    });
+    log.warn('connection.trust_cache_clear_failed', failureFacts(error));
   });
-  clearServerCapabilities(connection.url);
   log.warn('connection.token_refused', { kind: state.kind });
   if (state.kind === 'desktop') {
-    void loadConnection();
+    background(
+      forgetConnection('desktop')
+        .catch((error: unknown) => {
+          log.warn('connection.window_forget_failed', failureFacts(error));
+        })
+        .then(loadConnection),
+      'connection.forget_failed',
+    );
     return;
   }
   connectionState.set({ status: 'removed', kind: state.kind, url: connection.url });
@@ -183,17 +164,21 @@ async function localServerHealth(): Promise<DesktopServiceHealth | null> {
 async function stateNow(): Promise<ConnectionState> {
   const form = appPlatform();
   const preferRemote = form === 'desktop' && prefersRemoteServer();
-  const plan = connectionPlanOf({
+  const localServer = form === 'desktop' && !preferRemote ? await localServerHealth() : null;
+  const plan = connectionPlanOf({ form, localServer, preferRemote });
+  log.debug('connection.planned', {
     form,
-    localServer: form === 'desktop' && !preferRemote ? await localServerHealth() : null,
     preferRemote,
+    localServerChecked: form === 'desktop' && !preferRemote,
+    localServerUp: localServer !== null,
+    plan: plan.kind,
+    storage: plan.kind === 'local' ? 'desktop' : plan.storage,
   });
   if (plan.kind === 'local') {
     const connection = await desktopConnection();
-    if (connection === null) {
-      throw new LocalServerNotRunningError();
-    }
-    return { status: 'paired', kind: 'desktop', connection };
+    return connection === null
+      ? unpairedState('desktop')
+      : { status: 'paired', kind: 'desktop', connection };
   }
   const connection = await readStoredConnection(plan.storage);
   return connection === null
@@ -201,19 +186,46 @@ async function stateNow(): Promise<ConnectionState> {
     : { status: 'paired', kind: plan.storage, connection };
 }
 
+function activateEnrollment(connection: ServerConnection, run: number): void {
+  const startedAt = nowMs();
+  log.debug('connection.activation_started', { run });
+  const task = activateNativeServerEnrollment(connection.url, connection.token, {
+    isCurrent: (): boolean => run === connectionOperation,
+  });
+  trackNativeActivation(task);
+  task
+    .then(() => {
+      log.info('connection.activation_finished', {
+        run,
+        superseded: run !== connectionOperation,
+        elapsedMs: nowMs() - startedAt,
+      });
+    })
+    .catch((error: unknown) => {
+      log.error('connection.native_activation_failed', error, {
+        run,
+        elapsedMs: nowMs() - startedAt,
+      });
+    });
+}
+
 export async function loadConnection(): Promise<void> {
   const run = ++connectionOperation;
+  const startedAt = nowMs();
   try {
-    supersedeNativeServerActivation(run);
     await cancelPairingSession();
     const next = await stateNow();
-    if (run !== connectionOperation) return;
-    if (next.status === 'paired')
-      await activateNativeServerEnrollment(next.connection.url, next.connection.token, {
-        order: run,
-        isCurrent: (): boolean => run === connectionOperation,
-      });
-    if (run !== connectionOperation) return;
+    if (run !== connectionOperation) {
+      log.debug('connection.load_superseded', { run, current: connectionOperation });
+      return;
+    }
+    log.info('connection.loaded', {
+      run,
+      status: next.status,
+      kind: next.status === 'paired' ? next.kind : null,
+      elapsedMs: nowMs() - startedAt,
+    });
+    if (next.status === 'paired') activateEnrollment(next.connection, run);
     const previous = connectionState.get();
     if (
       next.status === 'paired' &&
@@ -230,84 +242,27 @@ export async function loadConnection(): Promise<void> {
   }
 }
 
-export interface PairRequest {
-  readonly target: PairingTarget;
-  readonly name: string;
-}
-
-export async function preparePairing(
-  destination: EnrollmentDestination,
-  handoff: () => Promise<void> = (): Promise<void> => Promise.resolve(),
-  owner = Symbol(),
-): Promise<PairingEnrollment> {
-  if (hasPairingSession()) throw new PairingBusyError();
+function beginPairing(): PairingRun {
   const state = connectionState.get();
   if (state.status !== 'unpaired') throw new NotPairedError(state.status);
   const generation = ++connectionOperation;
-  supersedeNativeServerActivation(generation);
-  return preparePairingSession(destination, {
+  return {
     kind: state.kind,
     generation,
-    handoff,
-    owner,
     isCurrent: (): boolean => generation === connectionOperation,
-    publish: (result): void => {
-      connectionState.set({ status: 'paired', kind: state.kind, connection: result.connection });
+    publish: (connection): void => {
+      connectionState.set({ status: 'paired', kind: state.kind, connection });
     },
-  });
+  };
 }
-export function submitPairing(
-  enrollment: PairingEnrollment,
-  code: string,
-  name: string,
-): Promise<ClientRow> {
-  return submitPairingSession(enrollment, code, name);
-}
-export async function cancelPairing(owner?: symbol): Promise<void> {
-  if (!hasPairingSession(owner)) return;
-  connectionOperation += 1;
-  supersedeNativeServerActivation(connectionOperation);
-  await cancelPairingSession(owner);
-}
-function canTryPairingEndpoint(
-  error: unknown,
-  generation: number,
-  isCurrent: () => boolean,
-): boolean {
-  return !(error instanceof PairingBusyError) && generation === connectionOperation && isCurrent();
-}
-export async function prepareQrPairing(
-  target: PairingTarget,
-  handoff: () => Promise<void> = (): Promise<void> => Promise.resolve(),
-  owner = Symbol(),
-  isCurrent: () => boolean = (): boolean => true,
-): Promise<PairingEnrollment> {
-  let failure: unknown = new PairingBusyError();
-  for (const destination of destinationsFromQr(target)) {
-    if (!isCurrent()) throw new StaleHubRouteError('GET');
-    const generation = connectionOperation + 1;
-    try {
-      const enrollment = await preparePairing(destination, handoff, owner);
-      if (!isCurrent()) {
-        await cancelPairing(owner);
-        throw new StaleHubRouteError('GET');
-      }
-      return enrollment;
-    } catch (error) {
-      if (!canTryPairingEndpoint(error, generation, isCurrent)) throw error;
-      failure = error;
-      log.warn('connection.pairing_endpoint_unavailable', {
-        kind: destination.endpoint.kind,
-        failure: error instanceof Error ? error.name : 'NativeFailure',
-      });
-    }
-  }
-  throw failure;
-}
-export async function pairWith(request: PairRequest): Promise<ClientRow> {
-  const enrollment = await prepareQrPairing(request.target);
-  return submitPairing(enrollment, request.target.code, request.name);
-}
+
+export const pairingHost: PairingHost = {
+  begin: beginPairing,
+  release: (run): void => {
+    if (!run.isCurrent()) return;
+    connectionOperation += 1;
+  },
+};
 
 export async function forgetServer(): Promise<void> {
   const state = connectionState.get();
@@ -318,17 +273,11 @@ export async function forgetServer(): Promise<void> {
     throw new OwnerCannotUnpairError();
   }
   connectionOperation += 1;
-  supersedeNativeServerActivation(connectionOperation);
-  clearServerCapabilities(state.status === 'paired' ? state.connection.url : state.url);
   if (state.status === 'paired') await clearNativeServerCredential(state.connection.token);
   await forgetConnection(state.kind);
   await forgetHubTrust();
   connectionState.set(unpairedState(state.kind));
   log.info('connection.forgotten', { kind: state.kind });
-}
-
-export function checkServer(url: string): Promise<PublicStatus> {
-  return clientFor(null, url).call(API_ENDPOINTS.status, {});
 }
 
 export async function chooseRemoteServer(): Promise<void> {

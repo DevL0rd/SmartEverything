@@ -33,6 +33,7 @@ function mixed(a: Int16Array, b: Int16Array): Int16Array {
 }
 
 interface Heard {
+  readonly first: number[];
   readonly events: string[];
   readonly sent: Int16Array;
 }
@@ -40,11 +41,13 @@ interface Heard {
 async function listen(input: Int16Array, audibleUntilMs: number, level: number): Promise<Heard> {
   let at = 0;
   const events: string[] = [];
+  const first: number[] = [];
   const sent: Int16Array[] = [];
   const gate = new SpeechGate(
     await sileroModel(),
     {
-      start: (): void => {
+      start: (firstSample): void => {
+        first.push(firstSample);
         events.push('start');
       },
       audio: (pcm): void => {
@@ -69,7 +72,7 @@ async function listen(input: Int16Array, audibleUntilMs: number, level: number):
     await new Promise((resolve) => setImmediate(resolve));
   }
   await gate.release();
-  return { events, sent: joined(...sent) };
+  return { first, events, sent: joined(...sent) };
 }
 
 const silence = (ms: number): Int16Array => new Int16Array(16 * ms);
@@ -96,6 +99,14 @@ describe('SpeechGate on recorded fixtures', () => {
     expect(containsExactly(input, heard.sent)).toBe(true);
   }, 30_000);
 
+  it('reports where in the input the sent audio begins', async () => {
+    const input = joined(silence(1000), person, silence(2000));
+    const heard = await listen(input, 0, BARGE_IN_LEVEL.echoCancelled);
+    const begin = heard.first[0] ?? Number.NaN;
+    expect(begin).toBeGreaterThan(0);
+    expect(input.subarray(begin, begin + heard.sent.length)).toEqual(heard.sent);
+  }, 30_000);
+
   it('never sends the AI echo while it plays or during its tail', async () => {
     const heard = await listen(
       scaled(assistant, -10),
@@ -120,4 +131,101 @@ describe('SpeechGate on recorded fixtures', () => {
     );
     expect(quiet.events).toEqual([]);
   }, 30_000);
+});
+
+function whiteNoise(ms: number, rms: number): Int16Array {
+  let seed = 7;
+  const raw = Array.from({ length: 16 * ms }, () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 2 ** 32 - 0.5;
+  });
+  const gain = rms / Math.sqrt(raw.reduce((sum, value) => sum + value ** 2, 0) / raw.length);
+  return Int16Array.from(raw, (value) => Math.round(value * gain * 32768));
+}
+
+function fadedEnd(pcm: Int16Array, decibels: number): Int16Array {
+  return Int16Array.from(pcm, (sample, index) => {
+    const into = Math.max(0, index / pcm.length - 0.7) / 0.3;
+    return Math.round(sample * 10 ** ((-into * decibels) / 20));
+  });
+}
+
+describe('SpeechGate default tuning on recorded fixtures', () => {
+  const person = fixture('person');
+  const assistant = fixture('ai');
+  const SENTENCE_MS = person.length / 16;
+
+  it('captures quiet speech from its first word to its last', async () => {
+    const reference = await listen(
+      joined(silence(1000), person, silence(2500)),
+      0,
+      BARGE_IN_LEVEL.echoCancelled,
+    );
+    for (const decibels of [-20, -32, -38]) {
+      const heard = await listen(
+        joined(silence(1000), scaled(person, decibels), silence(2500)),
+        0,
+        BARGE_IN_LEVEL.echoCancelled,
+      );
+      expect(heard.events, `${String(decibels)} dB`).toEqual(['start', 'end']);
+      expect(Math.abs((heard.first[0] ?? 0) - (reference.first[0] ?? 0))).toBeLessThanOrEqual(1024);
+      expect(heard.sent.length).toBeGreaterThanOrEqual(reference.sent.length * 0.95);
+    }
+  }, 60_000);
+
+  it('keeps a sentence with a short natural pause in one turn', async () => {
+    const early = person.subarray(0, 40_000);
+    const late = person.subarray(40_000);
+    const heard = await listen(
+      joined(silence(1000), early, silence(350), late, silence(2500)),
+      0,
+      BARGE_IN_LEVEL.echoCancelled,
+    );
+    expect(heard.events).toEqual(['start', 'end']);
+    expect(heard.sent.length / 16).toBeGreaterThanOrEqual(SENTENCE_MS + 350);
+  }, 30_000);
+
+  it('still ends the turn after a long silence', async () => {
+    const heard = await listen(
+      joined(silence(1000), person, silence(2500), person, silence(2500)),
+      0,
+      BARGE_IN_LEVEL.echoCancelled,
+    );
+    expect(heard.events).toEqual(['start', 'end', 'start', 'end']);
+  }, 30_000);
+
+  it('sends a sentence that fades out softly to its end', async () => {
+    const heard = await listen(
+      joined(silence(1000), fadedEnd(person, 30), silence(2500)),
+      0,
+      BARGE_IN_LEVEL.echoCancelled,
+    );
+    expect(heard.events).toEqual(['start', 'end']);
+    expect(heard.sent.length / 16).toBeGreaterThanOrEqual(SENTENCE_MS);
+  }, 30_000);
+
+  it('sends neither steady noise nor short noise bursts', async () => {
+    const bursts = joined(
+      ...Array.from({ length: 8 }, () => joined(silence(300), whiteNoise(120, 0.3))),
+    );
+    for (const input of [whiteNoise(4000, 0.02), whiteNoise(4000, 0.1), bursts]) {
+      expect((await listen(input, 0, BARGE_IN_LEVEL.echoCancelled)).events).toEqual([]);
+    }
+  }, 60_000);
+
+  it('never answers its own echo at any residual level a canceller leaves', async () => {
+    for (const decibels of [-30, -20, -10]) {
+      const heard = await listen(scaled(assistant, decibels), 60_000, BARGE_IN_LEVEL.echoCancelled);
+      expect(heard.events, `${String(decibels)} dB`).toEqual([]);
+    }
+  }, 60_000);
+
+  it('lets a person speak over the assistant at half the fixture level', async () => {
+    const heard = await listen(
+      mixed(scaled(assistant, -20), joined(silence(2500), scaled(person, -6))),
+      60_000,
+      BARGE_IN_LEVEL.echoCancelled,
+    );
+    expect(heard.events).toEqual(['start', 'end']);
+  }, 60_000);
 });

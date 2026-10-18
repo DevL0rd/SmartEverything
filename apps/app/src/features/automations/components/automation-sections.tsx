@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { List } from '../../../components/section';
+import { useProgressiveCount } from '../../../design/progressive-count';
 import { Text } from '../../../components/text';
 import type { Catalog, RuleView } from '../data/use-automations';
 import { LIST_SECTIONS, SECTION_TITLES, matchesQuery } from '../model/rules';
 import { AutomationRow } from './automation-row';
+
+const ROWS_AT_ONCE = { first: 6, batch: 6 } as const;
 
 export function AutomationSections({
   rules,
@@ -19,6 +22,12 @@ export function AutomationSections({
 }): ReactNode {
   const shown = rules.filter((rule) => matchesQuery(rule.row.name, rule.sentence, query));
   const taken = rules.map((rule) => rule.row.name);
+  const count = useProgressiveCount(shown.length, true, ROWS_AT_ONCE);
+  const mounted = new Set(
+    LIST_SECTIONS.flatMap((section) => shown.filter((rule) => rule.section === section))
+      .slice(0, count)
+      .map((rule) => rule.row.id),
+  );
   if (shown.length === 0) {
     return (
       <Text variant="body" tone="variant" align="center" className="py-6">
@@ -29,7 +38,9 @@ export function AutomationSections({
   return (
     <View className="gap-section-gap">
       {LIST_SECTIONS.map((section) => {
-        const inSection = shown.filter((rule) => rule.section === section);
+        const inSection = shown.filter(
+          (rule) => rule.section === section && mounted.has(rule.row.id),
+        );
         return inSection.length === 0 ? null : (
           <List key={section} title={SECTION_TITLES[section]} inset>
             {inSection.map((rule) => (

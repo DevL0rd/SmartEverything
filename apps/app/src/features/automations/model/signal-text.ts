@@ -4,10 +4,10 @@ import {
   cameraDetectionOf,
   eventLabel,
   kindSpecOf,
-  type Comparison,
   type JsonValue,
-  type SignalTrigger,
+  type SignalTriggerV2,
   type SignalWindowMode,
+  type TriggerTestV2,
 } from '@smarteverything/domain';
 import { withUnit } from '../../../format/number';
 import { duration } from '../../../format/time';
@@ -21,7 +21,7 @@ const WINDOW_WORDS: Readonly<Record<SignalWindowMode, string>> = {
   count: 'times',
 };
 
-export type RankedOperator = Exclude<Comparison['operator'], 'changed' | 'between'>;
+type RankedOperator = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
 
 export const COMPARISON_WORDS: Readonly<Record<RankedOperator, readonly [string, string]>> = {
   eq: ['becomes', 'is'],
@@ -36,9 +36,9 @@ export function timingText(timing: SignalTiming): string {
   const parts: string[] = [];
   if (timing.window !== null) {
     parts.push(
-      timing.window.mode === 'count'
+      timing.window.of === 'count'
         ? `${String(timing.atLeast)} times within ${duration(timing.window.seconds)}`
-        : `${WINDOW_WORDS[timing.window.mode]} over ${duration(timing.window.seconds)}`,
+        : `${WINDOW_WORDS[timing.window.of]} over ${duration(timing.window.seconds)}`,
     );
   }
   if (timing.holdSeconds > 0) {
@@ -54,10 +54,10 @@ export function timingText(timing: SignalTiming): string {
 }
 
 export function signalFieldOf(
-  trigger: Pick<SignalTrigger, 'source' | 'kind' | 'field'>,
+  trigger: Pick<SignalTriggerV2, 'source' | 'kind' | 'field'>,
 ): { readonly label: string; readonly unit: string | null } | null {
   const fields = kindSpecOf(SIGNAL_SOURCES, trigger)?.fields;
-  if (trigger.field === null || fields === undefined || fields === 'capabilities') {
+  if (trigger.field === undefined || fields === undefined || fields === 'capabilities') {
     return null;
   }
   return fields.find((entry) => entry.field === trigger.field) ?? null;
@@ -67,23 +67,13 @@ function amountText(value: JsonValue, unit: string | null): string {
   return withUnit(typeof value === 'number' ? String(value) : JSON.stringify(value), unit);
 }
 
-function comparisonPhrase(comparison: Comparison | null, unit: string | null): string {
-  if (comparison === null) {
-    return 'happens';
-  }
-  switch (comparison.operator) {
-    case 'changed':
-      return 'changes';
-    case 'between':
-      return `is between ${amountText(comparison.min, unit)} and ${amountText(comparison.max, unit)}`;
-    case 'eq':
-    case 'ne':
-    case 'gt':
-    case 'gte':
-    case 'lt':
-    case 'lte':
-      return `${COMPARISON_WORDS[comparison.operator][0]} ${amountText(comparison.value, unit)}`;
-  }
+export function testPhrase(test: TriggerTestV2 | undefined, unit: string | null): string {
+  if (test === undefined) return 'happens';
+  if (test.is === 'changed') return 'changes';
+  if (test.is === 'between')
+    return `is between ${amountText(test.min, unit)} and ${amountText(test.max, unit)}`;
+  if (test.is === 'in') return `is ${test.to.map((entry) => amountText(entry, unit)).join(' or ')}`;
+  return `${COMPARISON_WORDS[test.is][0]} ${amountText(test.to, unit)}`;
 }
 
 function pulseText(label: string, field: { readonly label: string } | null, whose: string): string {
@@ -94,21 +84,22 @@ function sourceLabel(source: string): string {
   return SIGNAL_SOURCES.find((spec) => spec.source === source)?.label ?? source;
 }
 
-function signalLabel(trigger: SignalTrigger): string {
+function signalLabel(trigger: SignalTriggerV2): string {
   const eventKind = EVENT_KINDS.find((kind) => kind === trigger.kind);
   return trigger.source === 'event' && eventKind !== undefined
-    ? eventLabel(eventKind, trigger.match)
+    ? eventLabel(eventKind, trigger.match ?? {})
     : (kindSpecOf(SIGNAL_SOURCES, trigger)?.label ?? trigger.kind);
 }
 
-function matchText(trigger: SignalTrigger): string {
+function matchText(trigger: SignalTriggerV2): string {
   const spec = kindSpecOf(SIGNAL_SOURCES, trigger);
+  const match = trigger.match ?? {};
   const eventKind = EVENT_KINDS.find((kind) => kind === trigger.kind);
   const detection =
     trigger.source === 'event' && eventKind !== undefined
-      ? cameraDetectionOf(eventKind, trigger.match)
+      ? cameraDetectionOf(eventKind, match)
       : null;
-  const parts = Object.entries(trigger.match).flatMap(([key, value]) => {
+  const parts = Object.entries(match).flatMap(([key, value]) => {
     if (key === 'detection' && detection !== null) {
       return [];
     }
@@ -120,7 +111,7 @@ function matchText(trigger: SignalTrigger): string {
   return parts.length === 0 ? '' : ` matching ${parts.join(', ')}`;
 }
 
-export function signalText(trigger: SignalTrigger, subjectName: string | null): string {
+export function signalText(trigger: SignalTriggerV2, subjectName: string | null): string {
   const kind = kindSpecOf(SIGNAL_SOURCES, trigger);
   const field = signalFieldOf(trigger);
   const label = signalLabel(trigger);
@@ -129,6 +120,6 @@ export function signalText(trigger: SignalTrigger, subjectName: string | null): 
   if (kind?.pulse === true) {
     return `${pulseText(label, field, whose)}${matching}`;
   }
-  const amount = comparisonPhrase(trigger.comparison, field?.unit ?? null);
+  const amount = testPhrase(trigger.test, field?.unit ?? null);
   return `${sourceLabel(trigger.source)}: ${field?.label ?? label}${whose} ${amount}${matching}`;
 }

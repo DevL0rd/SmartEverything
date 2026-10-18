@@ -78,8 +78,10 @@ export class StatusBoard {
   }
 
   private serial<T>(eventId: string, work: () => Promise<T>): Promise<T> {
+    // eslint-disable-next-line local/no-swallowed-errors -- the caller receives the same failure from the task result
     const next = (this.chains.get(eventId) ?? Promise.resolve()).catch(() => undefined).then(work);
     this.chains.set(eventId, next);
+    // eslint-disable-next-line local/no-swallowed-errors -- the caller receives the same failure from the task result
     next
       .finally(() => {
         if (this.chains.get(eventId) === next) {

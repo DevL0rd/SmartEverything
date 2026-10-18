@@ -6,7 +6,7 @@ import { Icon } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useSecond } from '../../../store/clock';
+import { useSecondOf } from '../../../store/clock';
 import { cancelScheduled } from './actions';
 import { powerVerbOf } from './steps';
 import { useDeviceSchedule } from './use-scheduled';
@@ -30,8 +30,7 @@ function Chip({
   readonly deviceId: string;
   readonly compact: boolean;
 }): ReactNode {
-  const now = useSecond();
-  const text = chipText(row, deviceId, now);
+  const text = useSecondOf((now) => chipText(row, deviceId, now));
   return (
     <View className="flex-row items-center self-start rounded-full bg-primary-container">
       <Interactive
@@ -61,12 +60,24 @@ function Chip({
 export function DeviceScheduleChip({
   deviceId,
   compact = false,
+  pinnedClassName,
 }: {
   readonly deviceId: string;
   readonly compact?: boolean;
+  readonly pinnedClassName?: string;
 }): ReactNode {
   const row = useDeviceSchedule(deviceId);
-  return row === null ? null : <Chip row={row} deviceId={deviceId} compact={compact} />;
+  if (row === null) {
+    return null;
+  }
+  const chip = <Chip row={row} deviceId={deviceId} compact={compact} />;
+  return pinnedClassName === undefined ? (
+    chip
+  ) : (
+    <View className={pinnedClassName} pointerEvents="box-none">
+      {chip}
+    </View>
+  );
 }
 
 export function useScheduleBelow(deviceId: string): { readonly below?: ReactNode } {

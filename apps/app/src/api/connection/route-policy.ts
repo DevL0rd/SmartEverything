@@ -4,9 +4,6 @@ import { appPlatform } from '../../design/platform';
 import { hubNetwork } from './route-platform';
 
 const IP = z.union([z.ipv4(), z.ipv6()]);
-export const PROBE_TIMEOUT_MS = 4000;
-export const REQUEST_TIMEOUT_MS = 15_000;
-export const MAX_PROBES = 4;
 
 export class HubRouteUnavailableError extends Error {
   override readonly name = 'HubRouteUnavailableError';
@@ -18,7 +15,7 @@ export class StaleHubRouteError extends Error {
     super(
       method === 'GET'
         ? 'The hub route changed before this answer arrived.'
-        : 'The hub route changed; this operation may have completed and will not be replayed.',
+        : 'The connection changed. This may already have happened; check before trying again.',
     );
   }
 }
@@ -87,7 +84,5 @@ export function usableEndpointsForMedia(
 
 export function requireTrustedBootstrap(endpoint: HubEndpoint): void {
   if (endpoint.kind === 'lan')
-    throw new HubRouteUnavailableError(
-      'A local hub requires saved independently verified identity before authentication.',
-    );
+    throw new HubRouteUnavailableError('Pair this app with your home first.');
 }

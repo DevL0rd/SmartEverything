@@ -8,6 +8,9 @@ import {
   type MessageSpeaker,
   type RunPosition,
 } from '../model/speaker';
+import { compareText } from '../../../format/text';
+import { replyParts } from '../model/reply-timeline';
+import { replySegments, type ReplySegment } from '../model/reply-segments';
 
 export interface MessageItem {
   readonly type: 'message';
@@ -23,6 +26,7 @@ export interface MessageItem {
   readonly multiParty: boolean;
   readonly waiting: boolean;
   readonly replied: boolean;
+  readonly segment: ReplySegment | null;
 }
 
 export interface ThreadOptions {
@@ -41,9 +45,9 @@ const ROLE_RANK: Readonly<Record<AssistantMessageRow['role'], number>> = {
 
 function ordered(left: AssistantMessageRow, right: AssistantMessageRow): number {
   return (
-    left.created_at.localeCompare(right.created_at) ||
+    compareText(left.created_at, right.created_at) ||
     ROLE_RANK[left.role] - ROLE_RANK[right.role] ||
-    left.id.localeCompare(right.id)
+    compareText(left.id, right.id)
   );
 }
 
@@ -66,15 +70,7 @@ function shown(row: AssistantMessageRow): boolean {
   if (row.state === 'working') {
     return true;
   }
-  return row.state === 'failed' && row.steps.length > 0;
-}
-
-function awaitingReply(request: AssistantMessageRow, repliedTo: ReadonlySet<string>): boolean {
-  return (
-    request.role === 'person' &&
-    (request.state === 'delivered' || request.state === 'working') &&
-    !repliedTo.has(request.id)
-  );
+  return row.state === 'failed';
 }
 
 function latestReplyId(rows: readonly AssistantMessageRow[]): string | null {
@@ -133,25 +129,50 @@ interface Context {
   readonly repliedTo: ReadonlySet<string>;
 }
 
+interface DayFacts {
+  readonly key: string;
+  readonly name: string;
+}
+
+interface DayCache {
+  readonly now: number;
+  readonly timeZone: string | null;
+  readonly facts: Map<string, DayFacts>;
+}
+
+let dayCache: DayCache = { now: 0, timeZone: null, facts: new Map() };
+
+function dayFactsOf(createdAt: string, options: ThreadOptions): DayFacts {
+  const { now, timeZone } = options;
+  if (dayCache.now !== now || dayCache.timeZone !== timeZone) {
+    dayCache = { now, timeZone, facts: new Map() };
+  }
+  const known = dayCache.facts.get(createdAt);
+  if (known !== undefined) return known;
+  const made = { key: localDayKey(createdAt, timeZone), name: dayLabel(createdAt, now, timeZone) };
+  dayCache.facts.set(createdAt, made);
+  return made;
+}
+
 function sameDay(
   left: AssistantMessageRow,
   right: AssistantMessageRow,
-  timeZone: string | null,
+  options: ThreadOptions,
 ): boolean {
-  return localDayKey(left.created_at, timeZone) === localDayKey(right.created_at, timeZone);
+  return dayFactsOf(left.created_at, options).key === dayFactsOf(right.created_at, options).key;
 }
 
 function messageItem(row: AssistantMessageRow, index: number, context: Context): MessageItem {
   const { visible, options, latestId, dividerId, multiParty, busySince, repliedTo } = context;
   const previous = visible[index - 1];
   const next = visible[index + 1];
-  const newDay = previous === undefined || !sameDay(previous, row, options.timeZone);
-  const dayName = dayLabel(row.created_at, options.now, options.timeZone);
+  const newDay = previous === undefined || !sameDay(previous, row, options);
+  const dayName = dayFactsOf(row.created_at, options).name;
   const before = !newDay && row.id !== dividerId && continuesRun(previous, row);
   const after =
     next !== undefined &&
     next.id !== dividerId &&
-    sameDay(row, next, options.timeZone) &&
+    sameDay(row, next, options) &&
     continuesRun(row, next);
   return {
     type: 'message',
@@ -167,7 +188,41 @@ function messageItem(row: AssistantMessageRow, index: number, context: Context):
     multiParty,
     waiting: isWaiting(row, busySince),
     replied: repliedTo.has(row.id),
+    segment: null,
   };
+}
+
+function segmented(item: MessageItem): readonly MessageItem[] {
+  const { row } = item;
+  if (row.role !== 'responder' || row.state === 'working') return [item];
+  const parts = replyParts(row);
+  const segments = parts === null ? [] : replySegments(parts);
+  if (segments.length < 2) return [item];
+  return segments.map((segment) =>
+    segment.index === 0
+      ? { ...item, segment }
+      : {
+          ...item,
+          key: continuationKey(row.id, segment.index),
+          position: 'middle',
+          day: null,
+          gap: null,
+          divider: false,
+          segment,
+        },
+  );
+}
+
+function continuationKey(id: string, index: number): string {
+  return `${id}#${String(index)}`;
+}
+
+export function startsMessage(item: MessageItem): boolean {
+  return item.segment === null || item.segment.index === 0;
+}
+
+export function endsMessage(item: MessageItem): boolean {
+  return item.segment === null || item.segment.index === item.segment.count - 1;
 }
 
 export function threadOf(
@@ -185,30 +240,14 @@ export function threadOf(
     dividerId: visible.find((row) => isUnread(row, options))?.id ?? null,
     multiParty: isMultiParty(visible),
     repliedTo,
-    busySince:
-      visible.find((row) => row.role === 'responder' && row.state === 'working')?.created_at ??
-      null,
+    busySince: visible.find(isWorkingRow)?.created_at ?? null,
   };
-  const items = visible.map((row, index) => messageItem(row, index, context));
-  return [...items].reverse();
+  const items = visible.flatMap((row, index) => segmented(messageItem(row, index, context)));
+  return items.reverse();
 }
 
 function isWorkingRow(row: AssistantMessageRow): boolean {
   return row.role === 'responder' && row.state === 'working';
-}
-
-export function statusRequestOf(rows: readonly AssistantMessageRow[]): AssistantMessageRow | null {
-  const ordered = chronological(rows);
-  const working = ordered.findLast(isWorkingRow);
-  if (working === undefined) {
-    return pendingRequestOf(ordered);
-  }
-  return ordered.find((row) => row.id === working.reply_to) ?? working;
-}
-
-export function pendingRequestOf(rows: readonly AssistantMessageRow[]): AssistantMessageRow | null {
-  const repliedTo = new Set(rows.flatMap((row) => (row.reply_to === null ? [] : [row.reply_to])));
-  return rows.find((row) => awaitingReply(row, repliedTo)) ?? null;
 }
 
 export function isFooter(item: MessageItem): boolean {

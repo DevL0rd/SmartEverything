@@ -1,4 +1,7 @@
-import type { ShellyArea, ShellySegment } from '@smarteverything/domain';
+import type { ShellyArea, ShellySegment } from '@smarteverything/shelly';
+import { paintArea, strokeSegment, type GridCell } from './area-geometry';
+
+export type PainterTool = 'paint' | 'erase' | 'select';
 
 export function clipStroke(stroke: ShellySegment, allowed: ShellyArea | undefined): ShellyArea {
   if (allowed === undefined) return [stroke];
@@ -32,6 +35,24 @@ export function areaCells(area: ShellyArea): number {
     return sum + (right - left) * yLength(spans);
   }, 0);
 }
-export function sensorOrigin(position: string | undefined): number {
+export function sensorOrigin(position: string | null | undefined): number {
   return position === 'left' ? 0 : position === 'right' ? 16 : 8;
+}
+
+export function toolStroke(
+  tool: PainterTool,
+  start: GridCell,
+  end: GridCell,
+  allowed: ShellyArea | undefined,
+): ShellyArea {
+  if (tool === 'select') return [];
+  return clipStroke(strokeSegment(start, end), tool === 'erase' ? undefined : allowed);
+}
+
+export function commitStroke(area: ShellyArea, tool: PainterTool, strokes: ShellyArea): ShellyArea {
+  return strokes.reduce((next, stroke) => paintArea(next, stroke, tool === 'erase'), area);
+}
+
+export function strokeRejected(tool: PainterTool, strokes: ShellyArea): boolean {
+  return tool !== 'select' && strokes.length === 0;
 }

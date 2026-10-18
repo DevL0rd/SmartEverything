@@ -8,9 +8,25 @@ import {
   type MediaLink,
   type MediaSize,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
+import { RepeatGate } from './repeat-gate';
 
 const LINK_LIFETIME_SECONDS = 10 * 60;
+
+const log = new Logger('hub.server');
+const rejections = new RepeatGate(30_000);
+
+function rejected(url: URL, reason: string, extra: Record<string, unknown> = {}): void {
+  const suppressed = rejections.pass(`${url.pathname.split('/').slice(0, 4).join('/')}:${reason}`);
+  if (suppressed === null) return;
+  log.warn('media_link.rejected', {
+    reason,
+    pathHead: url.pathname.split('/').slice(0, 4).join('/'),
+    suppressedSince: suppressed,
+    ...extra,
+  });
+}
 
 export class MediaLinks {
   private readonly key = randomBytes(32);
@@ -27,6 +43,14 @@ export class MediaLinks {
 
   assistantAttachment(attachmentId: string): MediaLink {
     return this.sign(buildPath(MEDIA_PATHS.assistantAttachment, { attachmentId }), null);
+  }
+
+  computerDownload(deviceId: string, ticketId: string): MediaLink {
+    return this.sign(buildPath(MEDIA_PATHS.computerDownload, { deviceId, ticketId }), null);
+  }
+
+  machineUpdate(file: string): MediaLink {
+    return this.sign(buildPath(MEDIA_PATHS.machineUpdate, { file }), null);
   }
 
   cameraStream(deviceId: string): MediaLink {
@@ -51,6 +75,7 @@ export class MediaLinks {
   private parse<S extends z.ZodType>(schema: S, url: URL): z.output<S> {
     const link = schema.safeParse(Object.fromEntries(url.searchParams));
     if (!link.success) {
+      rejected(url, 'unsigned', { queryKeys: [...url.searchParams.keys()].slice(0, 6) });
       throw new ApiError('unauthorized', 'This media path carries no valid signature.');
     }
     return link.data;
@@ -58,10 +83,13 @@ export class MediaLinks {
 
   private check(url: URL, expires: number, signature: string, size: MediaSize | null): void {
     if (expires * 1000 <= this.now().getTime()) {
+      rejected(url, 'expired', { expiredForMs: this.now().getTime() - expires * 1000 });
       throw new ApiError('link_expired', 'This media link has expired; ask for a new one.');
     }
     const expected = Buffer.from(this.signature(url.pathname, expires, size), 'hex');
-    if (!timingSafeEqual(expected, Buffer.from(signature, 'hex'))) {
+    const presented = Buffer.from(signature, 'hex');
+    if (!timingSafeEqual(expected, presented)) {
+      rejected(url, 'signature_mismatch', { signatureBytes: presented.length });
       throw new ApiError('unauthorized', 'This media link was not signed by this server.');
     }
   }

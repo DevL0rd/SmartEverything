@@ -12,7 +12,6 @@ import { localPref, useLocalPref } from '../../store/local-prefs';
 import { chooseTalkChannel, nextTalkChannel, useTalkChannelId } from './data/talk-channel';
 import { useMyChannels } from './data/talk-data';
 import { engineStatus } from './data/talk-status';
-import { loadDesktopTalk } from './desktop/use-talk-shortcuts';
 import { talkEngine } from './engine/engine';
 import { engineState, useTalkEngineValue, type TalkEngineState } from './engine/engine-state';
 import { TalkBar } from './talk-bar';
@@ -72,7 +71,7 @@ function command(
       nextTalkChannel(channels);
     } else if (incoming.kind === 'select') {
       chooseTalkChannel(incoming.channelId);
-    } else {
+    } else if (incoming.kind === 'open') {
       router.navigate(href.talk());
     }
   };
@@ -90,9 +89,6 @@ function useDesktop(channels: readonly TalkChannelRow[], talkChannel: string | n
   const status = useTalkEngineValue((state) => engineStatus(state, channel, channels.length > 0));
   const activity = useTalkEngineValue(activityOf);
   const bridge = desktopBridge();
-  useEffect(() => {
-    loadDesktopTalk();
-  }, []);
   useEffect(
     () => bridge?.onTalkCommand?.(command(channels, talkChannel)),
     [bridge, channels, talkChannel],

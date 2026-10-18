@@ -92,7 +92,7 @@ describe('inventory', () => {
         subDevice: true,
         nodeId: 'a4c1',
         specificationPublished: true,
-        smartLife: null,
+        link: 'developer_project',
         rejectedDataPoints: [{ code: 'x', reason: 'bad' }],
       },
     });

@@ -20,17 +20,7 @@ export function childTools(parent: AiChatRow, body: AiSubagent, hub: ToolHub | n
 }
 function assertChildEngine(parent: AiChatRow, body: AiSubagent): void {
   if (
-    body.engine?.kind !== undefined &&
-    parent.engine.kind === 'openrouter' &&
-    body.engine.kind !== 'openrouter'
-  )
-    throw new ApiError(
-      'forbidden',
-      'A child cannot acquire a native computer grant absent from its parent.',
-    );
-  if (
     body.engine !== undefined &&
-    parent.engine.kind !== 'openrouter' &&
     (body.engine.kind !== parent.engine.kind ||
       JSON.stringify(independent(body.engine)) !==
         JSON.stringify(
@@ -76,17 +66,7 @@ function assertToolChange(chat: AiChatRow, change: AiChatChange): void {
 
 function assertNativeChange(parent: AiChatRow, change: AiChatChange): void {
   if (
-    change.engine?.kind !== undefined &&
-    parent.engine.kind === 'openrouter' &&
-    change.engine.kind !== 'openrouter'
-  )
-    throw new ApiError(
-      'forbidden',
-      'A child cannot acquire a native computer grant absent from its parent.',
-    );
-  if (
     change.engine !== undefined &&
-    parent.engine.kind !== 'openrouter' &&
     JSON.stringify(
       independent({
         ...parent.engine,

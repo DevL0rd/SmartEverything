@@ -1,5 +1,4 @@
-import { API_ENDPOINTS as E, type CLAUDE_CLI_ENDPOINTS, ApiError } from '@smarteverything/domain';
-import { admitExecutionDevice } from '../../assistant/execution-authority';
+import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import { ManagedClaudeService } from '../../claude/managed-service';
 import {
   ownedClaudeScope,
@@ -8,24 +7,22 @@ import {
   type ManagedClaudeActor,
   type ManagedClaudeContext,
 } from '../../claude/managed-scope';
-import { clientOf, profileIdOf, roleOfCaller, type Caller } from '../auth';
-import { bound, DONE_REPLY, type Bound } from '../router';
+import { clientOf, profileIdOf, type Caller } from '../auth';
+import { bound, DONE_REPLY } from '../router';
+import { wireMessages } from '../../assistant/wire-message';
 
 function actorOf(context: ManagedClaudeContext, caller: Caller): ManagedClaudeActor {
   if (
     caller.kind !== 'client' ||
     caller.pluginId !== undefined ||
-    caller.pluginRequester !== undefined ||
-    roleOfCaller(caller) !== 'owner'
+    caller.pluginRequester !== undefined
   )
     throw new ApiError(
       'forbidden',
       'Managed Claude CLI sessions require an authenticated owner app or scoped owner AI request.',
     );
   admitAssistant(caller);
-  const client = context.store.clients.byId(clientOf(caller).id);
-  if (client.role !== 'owner')
-    throw new ApiError('forbidden', 'This paired client no longer has owner access.');
+  const client = clientOf(caller);
   const actor: ManagedClaudeActor = {
     profileId: profileIdOf(context.store, caller),
     role: 'owner',
@@ -48,15 +45,13 @@ function admitAssistant(caller: Extract<Caller, { kind: 'client' }>): void {
       'CLI ownership requires website authentication or initiating owner chat authority.',
     );
 }
-export function claudeCliRoutes(
-  context: ManagedClaudeContext,
-): Record<keyof typeof CLAUDE_CLI_ENDPOINTS, Bound> {
-  const service = new ManagedClaudeService(context);
-  return {
+export const claudeCliRoutes = (context: ManagedClaudeContext) =>
+  sessionRoutes(context, new ManagedClaudeService(context));
+
+const sessionRoutes = (context: ManagedClaudeContext, service: ManagedClaudeService) =>
+  ({
     startClaudeCliSession: bound(E.startClaudeCliSession, ({ params, body, caller }) => {
       const actor = actorOf(context, caller);
-      if (actor.authority !== undefined)
-        admitExecutionDevice(context.store, params.deviceId, actor.authority);
       return service.start(actor, params.deviceId, body);
     }),
     listClaudeCliSessions: bound(E.listClaudeCliSessions, ({ params, query, caller }) =>
@@ -67,7 +62,7 @@ export function claudeCliRoutes(
     ),
     readClaudeCliHistory: bound(E.readClaudeCliHistory, ({ params, query, caller }) => {
       ownedClaudeScope(context, actorOf(context, caller), params.deviceId, params.chatId);
-      return context.assistant.messages(params.chatId, query.before, query.limit);
+      return wireMessages(context.assistant.messages(params.chatId, query.before, query.limit));
     }),
     controlClaudeCliSession: bound(E.controlClaudeCliSession, ({ params, body, caller }) =>
       service.control(actorOf(context, caller), params.deviceId, params.chatId, body),
@@ -83,16 +78,10 @@ export function claudeCliRoutes(
       );
       return receipt;
     }),
-  };
-}
+  }) as const;
 
-function promptRoutes(
-  context: ManagedClaudeContext,
-): Pick<
-  Record<keyof typeof CLAUDE_CLI_ENDPOINTS, Bound>,
-  'readClaudeCliPrompts' | 'answerClaudeCliPrompt'
-> {
-  return {
+const promptRoutes = (context: ManagedClaudeContext) =>
+  ({
     readClaudeCliPrompts: bound(E.readClaudeCliPrompts, ({ params, caller }) => {
       const scope = ownedClaudeScope(
         context,
@@ -116,5 +105,4 @@ function promptRoutes(
       await scope.runner.state.answer(scope.chat, params.promptId, body.answer);
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;

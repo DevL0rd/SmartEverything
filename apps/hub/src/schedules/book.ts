@@ -1,7 +1,6 @@
-import { currentExecutionAuthorities } from '../assistant/execution-authority';
+import { currentExecutionAuthority } from '../assistant/turn-authority';
 import {
   ApiError,
-  SCHEDULED_AI_STEPS_REASON,
   isScheduleActive,
   type PluginOrigin,
   type ScheduleRow,
@@ -17,7 +16,9 @@ import type { ToolHub } from '../ai-tools/tool-hub';
 import { META_TOOL_NAMES } from '../ai-tools/tool-sets';
 import type { ScheduleChange } from '../store/repositories/schedules';
 import type { Store } from '../store/store';
+import { NO_AI_ENGINE } from './steps';
 import { occurrencesOf } from './timing';
+import { messageOf } from '@smarteverything/logging';
 
 const PROMPT_LINE = 120;
 
@@ -80,7 +81,7 @@ export class ScheduleBook {
         deviceIds: checked.deviceIds,
         origin: author.plugin,
       });
-      this.store.harnessRecovery.effects.keep('schedule', saved.id, currentExecutionAuthorities());
+      this.store.harnessRecovery.effects.keep('schedule', saved.id, currentExecutionAuthority());
       return saved;
     });
     return { outcome: 'scheduled', schedule };
@@ -100,7 +101,7 @@ export class ScheduleBook {
       change = { ...change, ...this.timingChange(edit.timing) };
     }
     const schedule = this.store.write(() => {
-      this.store.harnessRecovery.effects.keep('schedule', id, currentExecutionAuthorities());
+      this.store.harnessRecovery.effects.keep('schedule', id, currentExecutionAuthority());
       return this.store.schedules.update(id, change);
     });
     return { outcome: 'scheduled', schedule };
@@ -168,9 +169,7 @@ export class ScheduleBook {
         if (cause instanceof PluginTurnRefusedError) {
           throw cause;
         }
-        problems.push(
-          `Step ${String(index + 1)}: ${cause instanceof Error ? cause.message : String(cause)}`,
-        );
+        problems.push(`Step ${String(index + 1)}: ${messageOf(cause)}`);
       }
     });
     if (problems.length > 0) {
@@ -185,7 +184,7 @@ export class ScheduleBook {
         return { line: null, deviceIds: [] };
       case 'ai':
         if (!this.aiReady) {
-          throw new Error(SCHEDULED_AI_STEPS_REASON);
+          throw new Error(NO_AI_ENGINE);
         }
         return { line: step.prompt.slice(0, PROMPT_LINE), deviceIds: [] };
       case 'tool':

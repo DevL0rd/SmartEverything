@@ -16,8 +16,7 @@ object WatchBridge {
 
   suspend fun sync(context: Context, serverUrl: String, token: String, enrollment: String): List<Map<String, Any?>> {
     configureServer(context, serverUrl, token, enrollment)
-    val answer = HubClient(relayTarget(context)).get(WATCHES_PATH).getJSONArray("watches")
-    val watches = (0 until answer.length()).map { WatchConfig.of(answer.getJSONObject(it)) }
+    val watches = HubClient(relayTarget(context)).get<PhoneWatches>(WATCHES_PATH).watches
     val store = WatchStore(context)
     store.save(watches)
     WatchEvents.emit("watches_synced", "${watches.size} watch(es) for this phone's person")

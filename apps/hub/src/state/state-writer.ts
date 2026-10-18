@@ -8,7 +8,9 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { HubDatabase, StateRecord } from '../database/port';
 import type { Inventory } from './inventory';
-import { WriteQueue } from './write-queue';
+import { RepeatLog } from '../providers/repeat-log';
+import { IngestTally } from './ingest-tally';
+import { WriteQueue, logQueueNotice } from './write-queue';
 
 export interface StateWriterOptions {
   readonly store: Pick<HubDatabase, 'loadState' | 'upsertState'>;
@@ -17,42 +19,43 @@ export interface StateWriterOptions {
   readonly changed: (change: StateChange) => void;
 }
 
-interface Transition {
-  readonly record: StateRecord;
-  readonly change: StateChange | null;
-}
-
 function keyOf(deviceId: string, capability: string): string {
   return `${deviceId}|${capability}`;
 }
 
+const UNCHANGED_REWRITE_MS = 30_000;
+
 const STATE_APPEND_POLICY = {
-  pendingLimit: 4096,
   batchLimit: 256,
   attempts: 3,
   retryMs: 100,
 };
 
 export class StateWriter {
-  private generation = 0;
   private readonly values = new Map<string, JsonValue>();
   private readonly observed = new Map<string, StateRecord>();
-  private readonly queue: WriteQueue<Transition, true>;
+  private readonly queue: WriteQueue<StateRecord, true>;
+  private readonly tally: IngestTally;
+  private readonly repeat: RepeatLog;
 
   constructor(private readonly options: StateWriterOptions) {
-    this.queue = new WriteQueue<Transition, true>({
+    this.tally = new IngestTally(options.log, 'state.ingest_summary');
+    this.repeat = new RepeatLog(options.log);
+    this.queue = new WriteQueue<StateRecord, true>({
       write: async (rows): Promise<readonly true[]> => {
-        await options.store.upsertState(rows.map((row) => row.record));
-        for (const row of rows) {
-          this.values.set(keyOf(row.record.deviceId, row.record.capability), row.record.value);
-          if (row.change !== null) options.changed(row.change);
-        }
+        await options.store.upsertState(rows);
         return rows.map(() => true);
       },
-      keyOf: (): null => null,
+      keyOf: (row): string => keyOf(row.deviceId, row.capability),
       append: STATE_APPEND_POLICY,
+      observe: (notice): void => {
+        logQueueNotice(options.log, 'state', notice);
+      },
       failed: (rows, cause): void => {
-        options.log.error('state.write_failed', cause, { count: rows.length });
+        options.log.error('state.write_failed', cause, {
+          count: rows.length,
+          devices: new Set(rows.map((row) => row.deviceId)).size,
+        });
       },
     });
   }
@@ -71,43 +74,51 @@ export class StateWriter {
   push(provider: Provider, update: StateUpdate): void {
     const device = this.options.inventory.deviceOf(provider, update.externalId);
     if (device === undefined) {
-      this.options.log.warn('state.device_unknown', { provider, externalId: update.externalId });
+      this.tally.count(provider, 'unknown');
+      this.repeat.warn('state.device_unknown', `${provider}|${update.externalId}`, {
+        provider,
+        externalId: update.externalId,
+        capability: update.capability,
+      });
       return;
     }
     const key = keyOf(device.id, update.capability);
     const observedAt = new Date(update.observedAt).toISOString();
     const previous = this.observed.get(key);
-    if (previous !== undefined && observedAt < previous.observedAt) return;
+    if (previous !== undefined && observedAt < previous.observedAt) {
+      this.tally.count(provider, 'stale');
+      return;
+    }
     const unchanged = previous !== undefined && jsonEquals(previous.value, update.value);
-    if (unchanged && observedAt === previous.observedAt) return;
-    const change = unchanged
-      ? null
-      : {
-          deviceId: device.id,
-          capability: update.capability,
-          value: update.value,
-          previous: previous?.value,
-        };
+    if (
+      unchanged &&
+      Date.parse(observedAt) - Date.parse(previous.observedAt) < UNCHANGED_REWRITE_MS
+    ) {
+      this.tally.count(provider, 'unchanged');
+      return;
+    }
     const record = {
       deviceId: device.id,
       capability: update.capability,
       value: update.value,
       observedAt,
     };
-    this.queue.enqueue({
-      record,
-      change,
-    });
-    this.generation += 1;
+    this.queue.enqueue(record);
     this.observed.set(key, record);
+    this.values.set(key, update.value);
+    this.tally.count(provider, unchanged ? 'refreshed' : 'changed');
+    if (!unchanged) {
+      this.options.changed({
+        deviceId: device.id,
+        capability: update.capability,
+        value: update.value,
+        previous: previous?.value,
+      });
+    }
   }
 
   async commitObservation(row: StateRecord | null, commit: () => boolean): Promise<boolean> {
-    let generation: number;
-    do {
-      generation = this.generation;
-      await this.queue.settled();
-    } while (generation !== this.generation);
+    await this.queue.settled();
     if (row === null) {
       return commit();
     }
@@ -119,7 +130,6 @@ export class StateWriter {
     if (!commit()) {
       return false;
     }
-    this.generation += 1;
     this.values.set(key, row.value);
     this.observed.set(key, record);
     if (previous === undefined || !jsonEquals(previous, row.value)) {

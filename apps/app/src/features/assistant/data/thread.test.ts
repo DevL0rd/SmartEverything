@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AssistantMessageRow } from '@smarteverything/domain';
-import { pendingRequestOf, statusRequestOf, threadOf } from './thread';
+import { threadOf } from './thread';
 
 const OPTIONS = {
   now: Date.parse('2026-10-09T12:00:00.000Z'),
@@ -57,7 +57,7 @@ describe('threadOf', () => {
       ],
       OPTIONS,
     );
-    expect(items.map((item) => item.key)).toEqual(['b', 'c', 'a']);
+    expect(items.map((item) => item.key)).toEqual(['c', 'b', 'a']);
   });
 
   it('has no status item once the reply is done', () => {
@@ -69,6 +69,31 @@ describe('threadOf', () => {
       OPTIONS,
     );
     expect(items.map((item) => item.type)).toEqual(['message', 'message']);
+  });
+});
+
+describe('threadOf with a reply that failed before it said anything', () => {
+  it('keeps the empty failed reply so its notice is shown, for a continued or triggered turn too', () => {
+    const asked = row('a', 'person', 'answered', { at: '1' });
+    const killed: AssistantMessageRow = {
+      ...row('b', 'responder', 'failed', { at: '2' }),
+      text: '',
+      reason: 'The hub restarted.',
+      reason_code: 'interrupted',
+    };
+    const items = threadOf([asked, killed], OPTIONS);
+    expect(items.map((item) => item.key)).toEqual(['b', 'a']);
+  });
+
+  it('marks a request as replied once its failed reply is shown, so only the reply carries the notice', () => {
+    const asked = row('a', 'person', 'failed', { at: '1' });
+    const killed: AssistantMessageRow = {
+      ...row('b', 'responder', 'failed', { at: '2', replyTo: 'a' }),
+      text: '',
+      reason_code: 'interrupted',
+    };
+    const items = threadOf([asked, killed], OPTIONS);
+    expect(items.find((item) => item.key === 'a')?.replied).toBe(true);
   });
 });
 
@@ -86,47 +111,7 @@ describe('threadOf with retired failed-action rows', () => {
   });
 });
 
-describe('pendingRequestOf', () => {
-  it('finds a request with no reply', () => {
-    const request = row('a', 'person', 'delivered', { at: '1' });
-    expect(pendingRequestOf([request])).toBe(request);
-  });
-
-  it('ignores a request that already has a reply', () => {
-    expect(
-      pendingRequestOf([
-        row('a', 'person', 'delivered', { at: '1' }),
-        row('b', 'responder', 'working', { at: '2', replyTo: 'a' }),
-      ]),
-    ).toBeNull();
-  });
-
-  it('is empty for a settled chat', () => {
-    expect(pendingRequestOf([row('a', 'person', 'answered', { at: '1' })])).toBeNull();
-  });
-});
-
-describe('statusRequestOf', () => {
-  it('finds the request of the working reply', () => {
-    const request = row('a', 'person', 'delivered', { at: '1' });
-    expect(
-      statusRequestOf([request, row('b', 'responder', 'working', { at: '2', replyTo: 'a' })]),
-    ).toBe(request);
-  });
-
-  it('finds a request that has no reply yet', () => {
-    const request = row('a', 'person', 'delivered', { at: '1' });
-    expect(statusRequestOf([request])).toBe(request);
-  });
-
-  it('is empty once the reply is done', () => {
-    expect(
-      statusRequestOf([
-        row('a', 'person', 'answered', { at: '1' }),
-        row('b', 'responder', 'answered', { at: '2', replyTo: 'a' }),
-      ]),
-    ).toBeNull();
-  });
+describe('threadOf reply keys', () => {
   it('keeps the reply row key and slot when it settles from working', () => {
     const request = row('a', 'person', 'delivered', { at: '1' });
     const working = row('b', 'responder', 'working', { at: '2', replyTo: 'a' });
@@ -148,5 +133,73 @@ describe('statusRequestOf', () => {
     const during = threadOf([earlier, reply, request, working], OPTIONS);
     const after = threadOf([earlier, reply, request, settled], OPTIONS);
     expect(after.map((item) => item.key)).toEqual(during.map((item) => item.key));
+  });
+});
+
+describe('threadOf with long agent turns', () => {
+  function agentTurn(
+    id: string,
+    at: string,
+    state: AssistantMessageRow['state'],
+  ): AssistantMessageRow {
+    const parts = Array.from({ length: 60 }, (_, index) =>
+      index % 2 === 0
+        ? {
+            kind: 'text',
+            key: `t${String(index)}`,
+            text: `Step ${String(index)} ${'detail '.repeat(20)}`,
+          }
+        : {
+            kind: 'tool',
+            key: `k${String(index)}`,
+            tool: {
+              callId: `c${String(index)}`,
+              name: 'bash',
+              title: 'bash',
+              state: 'done',
+              detail: null,
+              input: null,
+              output: null,
+              redacted: false,
+              image_operation_id: null,
+            },
+          },
+    );
+    return {
+      ...row(id, 'responder', state, { at }),
+      embeds: [{ kind: 'chat_timeline', version: 1, parts }],
+    };
+  }
+
+  it('splits a settled turn into list items under the first segment key', () => {
+    const items = threadOf([agentTurn('turn', '1', 'answered')], OPTIONS);
+    expect(items.length).toBeGreaterThan(5);
+    const chronological = [...items].reverse();
+    expect(chronological[0]?.key).toBe('turn');
+    expect(chronological.slice(1).map((item) => item.key)).toEqual(
+      chronological.slice(1).map((_, index) => `turn#${String(index + 1)}`),
+    );
+    expect(chronological.map((item) => item.segment?.index)).toEqual(
+      chronological.map((_, index) => index),
+    );
+    expect(chronological[0]?.day).not.toBeNull();
+    for (const item of chronological.slice(1)) {
+      expect(item.day).toBeNull();
+      expect(item.gap).toBeNull();
+      expect(item.divider).toBe(false);
+      expect(item.position).toBe('middle');
+      expect(item.row).toBe(chronological[0]?.row);
+    }
+  });
+
+  it('keeps a working turn as one item', () => {
+    const items = threadOf([agentTurn('turn', '1', 'working')], OPTIONS);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.segment).toBeNull();
+  });
+
+  it('keeps settled rows without a timeline whole', () => {
+    const items = threadOf([row('a', 'responder', 'answered', { at: '1' })], OPTIONS);
+    expect(items[0]?.segment).toBeNull();
   });
 });

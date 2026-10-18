@@ -11,6 +11,9 @@ export interface DriverServices {
   readonly metrics: {
     readonly push: (deviceId: string, capability: string, value: number, at: Date) => void;
   };
+  readonly sources: {
+    readonly push: (deviceId: string, key: string, value: number, at: Date) => void;
+  };
   readonly deviceIdOf: (externalId: string) => string | undefined;
   readonly target: (deviceId: string) => string;
 }
@@ -68,7 +71,9 @@ export function metricsOf(
         warn(externalId);
         return;
       }
-      services.metrics.push(deviceId, key, value, new Date(at));
+      const moment = new Date(at);
+      services.metrics.push(deviceId, key, value, moment);
+      services.sources.push(deviceId, key, value, moment);
     },
   };
 }

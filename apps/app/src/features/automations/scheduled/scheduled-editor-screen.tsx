@@ -3,14 +3,12 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { z } from 'zod';
-import { SCHEDULED_AI_STEPS_REASON } from '@smarteverything/domain';
 import { useHideNavigation } from '../../../app-shell/nav-visibility';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
-import { ListRow } from '../../../components/list-row';
 import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
-import { List, Section } from '../../../components/section';
+import { Section } from '../../../components/section';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { useIdiom } from '../../../design/platform';
@@ -41,8 +39,8 @@ function StepsBlock({ editor }: { readonly editor: ScheduleEditor }): ReactNode 
     <Section title="Do">
       {actions === null ? (
         <Text variant="callout" tone="variant" className="px-4">
-          These steps were made by the assistant and can’t be changed here. You can still change the
-          name and time.
+          These steps use something this editor can’t show, such as stop on failure or a wait of
+          more than a day, so they can’t be changed here. You can still change the name and time.
         </Text>
       ) : (
         <ActionSteps
@@ -53,9 +51,6 @@ function StepsBlock({ editor }: { readonly editor: ScheduleEditor }): ReactNode 
           onChange={editor.changeActions}
         />
       )}
-      <List inset>
-        <ListRow title="Ask the AI" subtitle={SCHEDULED_AI_STEPS_REASON} icon="sparkles" disabled />
-      </List>
     </Section>
   );
 }

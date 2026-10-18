@@ -1,6 +1,7 @@
+import { appendTo } from '@smarteverything/domain';
 import { Logger, type LogRecord } from '@smarteverything/logging';
 import type { ProviderPrompt } from '@smarteverything/domain';
-import type { RunContext, StoredAccount } from '../../src/adapters/contract';
+import type { RunContext, ShownPrompt, StoredAccount } from '../../src/adapters/contract';
 
 export interface RecordedRequest {
   readonly method: string;
@@ -40,7 +41,7 @@ export class FakeCloud {
 
   on(method: string, url: string, handler: Handler): this {
     const key = `${method} ${url}`;
-    this.queued.set(key, [...(this.queued.get(key) ?? []), handler]);
+    appendTo(this.queued, key, handler);
     return this;
   }
 
@@ -106,12 +107,19 @@ export function contextFor(dataDirectory: string): ContextRecord {
       prompts.push(prompt);
       return Promise.resolve('accepted');
     },
+    show: (prompt): Promise<ShownPrompt> => {
+      prompts.push(prompt);
+      return Promise.resolve({
+        answer: Promise.resolve('accepted'),
+        dismiss: () => Promise.resolve(),
+      });
+    },
     saveAccount: (account) => {
       saved.push(account);
       return Promise.resolve();
     },
     needsAttention: (reason) => {
-      attention.push(reason);
+      attention.push(reason.message);
       return Promise.resolve();
     },
   };

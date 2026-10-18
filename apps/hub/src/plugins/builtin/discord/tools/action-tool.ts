@@ -11,14 +11,8 @@ import type { PluginTool } from '../../contract';
 import type { Operation } from '../operations/kit';
 import type { DiscordServices } from '../services';
 import { ActionRunner, boundedResult, type ParsedCall } from './action-runner';
-import {
-  EVENT_ID,
-  IDEMPOTENCY_KEY,
-  USER_REF,
-  flatSchemaOf,
-  summaryOf,
-  type Variant,
-} from './schema';
+import { EVENT_ID, USER_REF, flatSchemaOf, summaryOf, type Variant } from './schema';
+import { messageOf } from '@smarteverything/logging';
 
 export interface LocalOutput {
   readonly response: unknown;
@@ -65,7 +59,6 @@ function operationEntry(op: Operation): Entry {
     schema: z.strictObject({
       action: z.literal(op.action),
       eventId: EVENT_ID,
-      ...(op.mode === 'read' ? {} : { idempotencyKey: IDEMPOTENCY_KEY }),
       ...shape,
     }),
   };
@@ -80,11 +73,8 @@ function localEntry(local: LocalAction): Entry {
 }
 
 function parsedOf(raw: Readonly<Record<string, unknown>>): ParsedCall {
-  const { action: _action, eventId, idempotencyKey, ...args } = raw;
-  const known = z
-    .object({ eventId: z.string().optional(), idempotencyKey: z.string().optional() })
-    .parse({ eventId, idempotencyKey });
-  return { eventId: known.eventId, idempotencyKey: known.idempotencyKey, args };
+  const { action: _action, eventId, ...args } = raw;
+  return { eventId: z.string().optional().parse(eventId), args };
 }
 
 function invalid(reason: string): string {
@@ -120,7 +110,7 @@ export function actionTool(services: DiscordServices, spec: ActionToolSpec): Plu
       try {
         return await execute({ services, runner, spec }, parsed, caller);
       } catch (cause) {
-        return failure(cause instanceof Error ? cause.message : String(cause));
+        return failure(messageOf(cause));
       }
     },
   };
@@ -141,8 +131,7 @@ async function execute(
   const local = spec.local.find((item) => item.action === parsed.action);
   if (local !== undefined) {
     services.identity.assertReady();
-    const given = call.idempotencyKey === undefined ? {} : { idempotencyKey: call.idempotencyKey };
-    const out = await local.run({ ...call.args, ...given }, caller, call.eventId);
+    const out = await local.run(call.args, caller, call.eventId);
     return { response: boundedResult(out.response), line: '', pictures: out.pictures };
   }
   const op = spec.operations.find((item) => item.action === parsed.action);

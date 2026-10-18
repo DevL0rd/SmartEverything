@@ -32,6 +32,10 @@ const SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   costs: ['spend', 'spending', 'money', 'price'],
   budget: ['limit', 'spend'],
   walkie: ['intercom', 'radio'],
+  process: ['kill', 'end task'],
+  processes: ['kill', 'end task', 'task manager'],
+  files: ['folders', 'documents'],
+  scopes: ['permissions', 'screenshots'],
 };
 
 const WORD = /[^\p{L}\p{N}]+/u;

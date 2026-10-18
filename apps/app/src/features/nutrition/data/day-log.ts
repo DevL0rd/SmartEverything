@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import { type UseQueryResult } from '@tanstack/react-query';
 import {
   API_ENDPOINTS as E,
@@ -12,6 +13,7 @@ import { entriesKey } from '../../../queries/health-entries';
 import { endOfDayKey, startOfDayKey } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 
+const log = new Logger('app.nutrition');
 export const LOGGED_TYPES = ['Nutrition', 'Hydration'] as const;
 
 type OtherRecord = Extract<HealthRecord, { type: 'Nutrition' | 'Hydration' }>;
@@ -30,6 +32,7 @@ function isLogged(record: HealthRecord): record is OtherRecord {
 }
 
 async function readDayRecords(from: number, to: number): Promise<OtherRecord[]> {
+  const startedAt = Date.now();
   const records = await api().call(E.readHealthRecords, {
     query: {
       types: [...LOGGED_TYPES],
@@ -37,10 +40,16 @@ async function readDayRecords(from: number, to: number): Promise<OtherRecord[]> 
       to: new Date(to).toISOString(),
     },
   });
-  return records.filter(isLogged).filter((record) => {
+  const kept = records.filter(isLogged).filter((record) => {
     const start = Date.parse(record.startTime);
     return record.type !== 'Hydration' || (start >= from && start < to);
   });
+  log.debug('nutrition.day_read', () => ({
+    fetched: records.length,
+    kept: kept.length,
+    durationMs: Date.now() - startedAt,
+  }));
+  return kept;
 }
 
 function dayRecordsQuery(day: string): {

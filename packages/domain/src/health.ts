@@ -1,5 +1,3 @@
-import { sha256 } from '@noble/hashes/sha2.js';
-import { bytesToHex, randomBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
 
 export const HEALTH_RECORD_TYPES = [
@@ -101,26 +99,26 @@ const COUNT = z.number().int().min(0);
 const AMOUNT = z.number().min(0);
 const MEASURE = z.number();
 const TEXT = z.string().nullable();
-const RECORD_ID = z.string().min(1).max(200);
+const RECORD_ID = z.string().min(1);
 const ZONE_OFFSET = z.number().int().min(-64_800).max(64_800).nullable();
 const SPAN = { startTime: MOMENT, endTime: MOMENT };
-const NOTHING = z.strictObject({});
+const NOTHING = z.object({});
 
 const SAMPLED_AT = { time: MOMENT };
 
-const ENERGY = z.strictObject({ kilocalories: AMOUNT });
-const LENGTH = z.strictObject({ meters: AMOUNT });
-const MASS = z.strictObject({ kilograms: AMOUNT });
-const PERCENT = z.strictObject({ percent: AMOUNT.max(100) });
-const TEMPERATURE = z.strictObject({ celsius: MEASURE, measurementLocation: CODE });
-const COUNTED = z.strictObject({ count: COUNT });
+const ENERGY = z.object({ kilocalories: AMOUNT });
+const LENGTH = z.object({ meters: AMOUNT });
+const MASS = z.object({ kilograms: AMOUNT });
+const PERCENT = z.object({ percent: AMOUNT.max(100) });
+const TEMPERATURE = z.object({ celsius: MEASURE, measurementLocation: CODE });
+const COUNTED = z.object({ count: COUNT });
 const NAMED = { title: TEXT, notes: TEXT };
 
 const ROUTE = z.discriminatedUnion('status', [
-  z.strictObject({
+  z.object({
     status: z.literal('recorded'),
     locations: z.array(
-      z.strictObject({
+      z.object({
         time: MOMENT,
         latitude: z.number().min(-90).max(90),
         longitude: z.number().min(-180).max(180),
@@ -130,56 +128,56 @@ const ROUTE = z.discriminatedUnion('status', [
       }),
     ),
   }),
-  z.strictObject({ status: z.literal('consent_required') }),
-  z.strictObject({ status: z.literal('absent') }),
+  z.object({ status: z.literal('consent_required') }),
+  z.object({ status: z.literal('absent') }),
 ]);
 
 const COMPLETION_GOAL = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('distance'), meters: AMOUNT }),
-  z.strictObject({ kind: z.literal('distance_and_duration'), meters: AMOUNT, seconds: AMOUNT }),
-  z.strictObject({ kind: z.literal('duration'), seconds: AMOUNT }),
-  z.strictObject({ kind: z.literal('repetitions'), count: COUNT }),
-  z.strictObject({ kind: z.literal('steps'), count: COUNT }),
-  z.strictObject({ kind: z.literal('total_calories'), kilocalories: AMOUNT }),
-  z.strictObject({ kind: z.literal('active_calories'), kilocalories: AMOUNT }),
-  z.strictObject({ kind: z.literal('manual') }),
-  z.strictObject({ kind: z.literal('unknown') }),
+  z.object({ kind: z.literal('distance'), meters: AMOUNT }),
+  z.object({ kind: z.literal('distance_and_duration'), meters: AMOUNT, seconds: AMOUNT }),
+  z.object({ kind: z.literal('duration'), seconds: AMOUNT }),
+  z.object({ kind: z.literal('repetitions'), count: COUNT }),
+  z.object({ kind: z.literal('steps'), count: COUNT }),
+  z.object({ kind: z.literal('total_calories'), kilocalories: AMOUNT }),
+  z.object({ kind: z.literal('active_calories'), kilocalories: AMOUNT }),
+  z.object({ kind: z.literal('manual') }),
+  z.object({ kind: z.literal('unknown') }),
 ]);
 
 const PERFORMANCE_TARGET = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('power'), minWatts: AMOUNT, maxWatts: AMOUNT }),
-  z.strictObject({
+  z.object({ kind: z.literal('power'), minWatts: AMOUNT, maxWatts: AMOUNT }),
+  z.object({
     kind: z.literal('speed'),
     minMetersPerSecond: AMOUNT,
     maxMetersPerSecond: AMOUNT,
   }),
-  z.strictObject({ kind: z.literal('cadence'), minRate: AMOUNT, maxRate: AMOUNT }),
-  z.strictObject({ kind: z.literal('heart_rate'), minBpm: AMOUNT, maxBpm: AMOUNT }),
-  z.strictObject({ kind: z.literal('weight'), kilograms: AMOUNT }),
-  z.strictObject({ kind: z.literal('rate_of_perceived_exertion'), rpe: COUNT.max(10) }),
-  z.strictObject({ kind: z.literal('amrap') }),
-  z.strictObject({ kind: z.literal('unknown') }),
+  z.object({ kind: z.literal('cadence'), minRate: AMOUNT, maxRate: AMOUNT }),
+  z.object({ kind: z.literal('heart_rate'), minBpm: AMOUNT, maxBpm: AMOUNT }),
+  z.object({ kind: z.literal('weight'), kilograms: AMOUNT }),
+  z.object({ kind: z.literal('rate_of_perceived_exertion'), rpe: COUNT.max(10) }),
+  z.object({ kind: z.literal('amrap') }),
+  z.object({ kind: z.literal('unknown') }),
 ]);
 
-const EXERCISE_SESSION = z.strictObject({
+const EXERCISE_SESSION = z.object({
   exerciseType: CODE,
   ...NAMED,
   plannedExerciseSessionId: TEXT,
-  segments: z.array(z.strictObject({ ...SPAN, segmentType: CODE, repetitions: COUNT })),
-  laps: z.array(z.strictObject({ ...SPAN, meters: AMOUNT.nullable() })),
+  segments: z.array(z.object({ ...SPAN, segmentType: CODE, repetitions: COUNT })),
+  laps: z.array(z.object({ ...SPAN, meters: AMOUNT.nullable() })),
   route: ROUTE,
 });
 
-const PLANNED_EXERCISE_SESSION = z.strictObject({
+const PLANNED_EXERCISE_SESSION = z.object({
   exerciseType: CODE,
   ...NAMED,
   completedExerciseSessionId: TEXT,
   blocks: z.array(
-    z.strictObject({
+    z.object({
       repetitions: COUNT,
       description: TEXT,
       steps: z.array(
-        z.strictObject({
+        z.object({
           exerciseType: CODE,
           exercisePhase: CODE,
           description: TEXT,
@@ -191,7 +189,7 @@ const PLANNED_EXERCISE_SESSION = z.strictObject({
   ),
 });
 
-const NUTRITION = z.strictObject({
+const NUTRITION = z.object({
   name: TEXT,
   mealType: CODE,
   kilocalories: AMOUNT.nullable(),
@@ -199,11 +197,11 @@ const NUTRITION = z.strictObject({
   grams: z.partialRecord(z.enum(NUTRIENTS), AMOUNT),
 });
 
-const ENVELOPE = z.strictObject({
+const ENVELOPE = z.object({
   recordId: RECORD_ID,
   startTime: MOMENT,
   zoneOffsetSeconds: ZONE_OFFSET,
-  sourceApp: z.string().min(1).max(255),
+  sourceApp: z.string().min(1),
   lastModified: MOMENT,
 });
 
@@ -215,11 +213,11 @@ export const HEALTH_RECORD_VARIANTS = [
   INSTANT.extend({ type: z.literal('BasalBodyTemperature'), data: TEMPERATURE }),
   INSTANT.extend({
     type: z.literal('BasalMetabolicRate'),
-    data: z.strictObject({ kilocaloriesPerDay: AMOUNT }),
+    data: z.object({ kilocaloriesPerDay: AMOUNT }),
   }),
   INSTANT.extend({
     type: z.literal('BloodGlucose'),
-    data: z.strictObject({
+    data: z.object({
       millimolesPerLiter: AMOUNT,
       specimenSource: CODE,
       mealType: CODE,
@@ -228,7 +226,7 @@ export const HEALTH_RECORD_VARIANTS = [
   }),
   INSTANT.extend({
     type: z.literal('BloodPressure'),
-    data: z.strictObject({
+    data: z.object({
       systolicMmHg: AMOUNT,
       diastolicMmHg: AMOUNT,
       bodyPosition: CODE,
@@ -241,83 +239,83 @@ export const HEALTH_RECORD_VARIANTS = [
   INSTANT.extend({ type: z.literal('BoneMass'), data: MASS }),
   INSTANT.extend({
     type: z.literal('CervicalMucus'),
-    data: z.strictObject({ appearance: CODE, sensation: CODE }),
+    data: z.object({ appearance: CODE, sensation: CODE }),
   }),
   INTERVAL.extend({
     type: z.literal('CyclingPedalingCadence'),
-    data: z.strictObject({
-      samples: z.array(z.strictObject({ ...SAMPLED_AT, revolutionsPerMinute: AMOUNT })),
+    data: z.object({
+      samples: z.array(z.object({ ...SAMPLED_AT, revolutionsPerMinute: AMOUNT })),
     }),
   }),
   INTERVAL.extend({ type: z.literal('Distance'), data: LENGTH }),
   INTERVAL.extend({
     type: z.literal('ElevationGained'),
-    data: z.strictObject({ meters: MEASURE }),
+    data: z.object({ meters: MEASURE }),
   }),
   INTERVAL.extend({ type: z.literal('ExerciseSession'), data: EXERCISE_SESSION }),
-  INTERVAL.extend({ type: z.literal('FloorsClimbed'), data: z.strictObject({ floors: AMOUNT }) }),
+  INTERVAL.extend({ type: z.literal('FloorsClimbed'), data: z.object({ floors: AMOUNT }) }),
   INTERVAL.extend({
     type: z.literal('HeartRate'),
-    data: z.strictObject({ samples: z.array(z.strictObject({ ...SAMPLED_AT, bpm: COUNT })) }),
+    data: z.object({ samples: z.array(z.object({ ...SAMPLED_AT, bpm: COUNT })) }),
   }),
   INSTANT.extend({
     type: z.literal('HeartRateVariabilityRmssd'),
-    data: z.strictObject({ milliseconds: AMOUNT }),
+    data: z.object({ milliseconds: AMOUNT }),
   }),
   INSTANT.extend({ type: z.literal('Height'), data: LENGTH }),
-  INTERVAL.extend({ type: z.literal('Hydration'), data: z.strictObject({ liters: AMOUNT }) }),
+  INTERVAL.extend({ type: z.literal('Hydration'), data: z.object({ liters: AMOUNT }) }),
   INSTANT.extend({ type: z.literal('IntermenstrualBleeding'), data: NOTHING }),
   INSTANT.extend({ type: z.literal('LeanBodyMass'), data: MASS }),
-  INSTANT.extend({ type: z.literal('MenstruationFlow'), data: z.strictObject({ flow: CODE }) }),
+  INSTANT.extend({ type: z.literal('MenstruationFlow'), data: z.object({ flow: CODE }) }),
   INTERVAL.extend({ type: z.literal('MenstruationPeriod'), data: NOTHING }),
   INTERVAL.extend({
     type: z.literal('MindfulnessSession'),
-    data: z.strictObject({ mindfulnessSessionType: CODE, ...NAMED }),
+    data: z.object({ mindfulnessSessionType: CODE, ...NAMED }),
   }),
   INTERVAL.extend({ type: z.literal('Nutrition'), data: NUTRITION }),
-  INSTANT.extend({ type: z.literal('OvulationTest'), data: z.strictObject({ result: CODE }) }),
+  INSTANT.extend({ type: z.literal('OvulationTest'), data: z.object({ result: CODE }) }),
   INSTANT.extend({ type: z.literal('OxygenSaturation'), data: PERCENT }),
   INTERVAL.extend({ type: z.literal('PlannedExerciseSession'), data: PLANNED_EXERCISE_SESSION }),
   INTERVAL.extend({
     type: z.literal('Power'),
-    data: z.strictObject({ samples: z.array(z.strictObject({ ...SAMPLED_AT, watts: AMOUNT })) }),
+    data: z.object({ samples: z.array(z.object({ ...SAMPLED_AT, watts: AMOUNT })) }),
   }),
-  INSTANT.extend({ type: z.literal('RespiratoryRate'), data: z.strictObject({ rate: AMOUNT }) }),
-  INSTANT.extend({ type: z.literal('RestingHeartRate'), data: z.strictObject({ bpm: COUNT }) }),
+  INSTANT.extend({ type: z.literal('RespiratoryRate'), data: z.object({ rate: AMOUNT }) }),
+  INSTANT.extend({ type: z.literal('RestingHeartRate'), data: z.object({ bpm: COUNT }) }),
   INSTANT.extend({
     type: z.literal('SexualActivity'),
-    data: z.strictObject({ protectionUsed: CODE }),
+    data: z.object({ protectionUsed: CODE }),
   }),
   INTERVAL.extend({
     type: z.literal('SkinTemperature'),
-    data: z.strictObject({
+    data: z.object({
       baselineCelsius: MEASURE.nullable(),
       measurementLocation: CODE,
-      deltas: z.array(z.strictObject({ time: MOMENT, celsius: MEASURE })),
+      deltas: z.array(z.object({ time: MOMENT, celsius: MEASURE })),
     }),
   }),
   INTERVAL.extend({
     type: z.literal('SleepSession'),
-    data: z.strictObject({
+    data: z.object({
       ...NAMED,
-      stages: z.array(z.strictObject({ ...SPAN, stage: CODE })),
+      stages: z.array(z.object({ ...SPAN, stage: CODE })),
     }),
   }),
   INTERVAL.extend({
     type: z.literal('Speed'),
-    data: z.strictObject({
-      samples: z.array(z.strictObject({ ...SAMPLED_AT, metersPerSecond: AMOUNT })),
+    data: z.object({
+      samples: z.array(z.object({ ...SAMPLED_AT, metersPerSecond: AMOUNT })),
     }),
   }),
   INTERVAL.extend({ type: z.literal('Steps'), data: COUNTED }),
   INTERVAL.extend({
     type: z.literal('StepsCadence'),
-    data: z.strictObject({ samples: z.array(z.strictObject({ ...SAMPLED_AT, rate: AMOUNT })) }),
+    data: z.object({ samples: z.array(z.object({ ...SAMPLED_AT, rate: AMOUNT })) }),
   }),
   INTERVAL.extend({ type: z.literal('TotalCaloriesBurned'), data: ENERGY }),
   INSTANT.extend({
     type: z.literal('Vo2Max'),
-    data: z.strictObject({ mlPerKgPerMin: AMOUNT, measurementMethod: CODE }),
+    data: z.object({ mlPerKgPerMin: AMOUNT, measurementMethod: CODE }),
   }),
   INSTANT.extend({ type: z.literal('Weight'), data: MASS }),
   INTERVAL.extend({ type: z.literal('WheelchairPushes'), data: COUNTED }),
@@ -336,21 +334,20 @@ export const HEALTH_RECORD = z
 
 export type HealthRecord = z.infer<typeof HEALTH_RECORD>;
 
-export const HEALTH_BATCH_SOURCE = z.strictObject({
-  device: z.string().min(1).max(120),
-  appVersion: z.string().min(1).max(40),
+export const HEALTH_BATCH_SOURCE = z.object({
+  device: z.string().min(1),
+  appVersion: z.string().min(1),
 });
 
 const distinct = (values: readonly string[]): boolean => new Set(values).size === values.length;
 
-export const HEALTH_BATCH = z.strictObject({
+export const HEALTH_BATCH = z.object({
   records: z
     .array(HEALTH_RECORD)
-    .max(HEALTH_BATCH_LIMIT)
     .refine((records) => distinct(records.map((record) => record.recordId)), {
       message: 'each recordId may appear only once in a batch',
     }),
-  deletions: z.array(RECORD_ID).max(HEALTH_BATCH_LIMIT).refine(distinct, {
+  deletions: z.array(RECORD_ID).refine(distinct, {
     message: 'each deleted recordId may appear only once in a batch',
   }),
   grantedTypes: z.array(HEALTH_RECORD_TYPE).refine(distinct, {
@@ -363,7 +360,7 @@ export type HealthBatch = z.infer<typeof HEALTH_BATCH>;
 
 const DAY = z.iso.date();
 
-export const HEALTH_INGEST_RESULT = z.strictObject({
+export const HEALTH_INGEST_RESULT = z.object({
   stored: COUNT,
   stale: COUNT,
   deleted: COUNT,
@@ -392,17 +389,4 @@ export function affectedDays(anchors: readonly DayAnchor[]): readonly string[] {
     days.add(localDayOf(anchor));
   }
   return [...days].sort();
-}
-
-const TOKEN_PREFIX = 'hst_';
-const TOKEN_BYTES = 32;
-
-export const HEALTH_SOURCE_TOKEN = z.string().regex(/^hst_[0-9a-f]{64}$/);
-
-export function createHealthSourceToken(): string {
-  return TOKEN_PREFIX + bytesToHex(randomBytes(TOKEN_BYTES));
-}
-
-export function hashHealthSourceToken(token: string): string {
-  return bytesToHex(sha256(utf8ToBytes(HEALTH_SOURCE_TOKEN.parse(token))));
 }

@@ -1,102 +1,61 @@
+import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
 import {
-  JSON_VALUE,
-  SHELLY_PRESENCE_FIELDS,
-  SHELLY_PRESENCE_OPERATIONS,
-  type JsonValue,
-  type ShellyPresenceConfig,
-  type ShellyPresenceDevice,
-  type ShellyPresenceField,
-} from '@smarteverything/domain';
+  SHELLY_ACTIONS,
+  SHELLY_SETTING_ROWS,
+  shellyActionAvailable,
+  shellyOperation,
+  type ShellyDevice,
+  type ShellySettingRow,
+} from '@smarteverything/shelly';
 import { z } from 'zod';
 import type { ShellyInventory } from './component-inventory';
 
-const JSON_OBJECT = z.record(z.string(), JSON_VALUE);
-export function fieldValue(value: JsonValue, path: readonly string[]): JsonValue | undefined {
+type Feature = ShellyDevice['features'][number];
+
+const OBJECT = z.record(z.string(), JSON_VALUE);
+const ALIASED: Readonly<Record<string, string>> = {
+  presence_delay: 'presence_thr',
+  absence_delay: 'absence_thr',
+};
+
+function valueAt(value: JsonValue, path: readonly string[]): JsonValue | undefined {
   let current: JsonValue | undefined = value;
   for (const key of path) {
-    const parsed = JSON_OBJECT.safeParse(current);
-    if (!parsed.success) return undefined;
-    current = parsed.data[key];
+    const next = OBJECT.safeParse(current);
+    if (!next.success) return undefined;
+    current = next.data[key];
   }
   return current;
 }
-function supportedField(field: ShellyPresenceField, inventory: ShellyInventory): boolean {
-  const candidates = Object.entries(inventory.config).filter(
-    ([key]) => key === field.component || key.startsWith(`${field.component}:`),
-  );
-  if (['sys.ui_data.df', 'sys.ui_data.tf', 'sys.ui_data.dash'].includes(field.id))
-    return (
-      candidates.length > 0 &&
-      inventory.methods.some((method) => method.toLowerCase() === 'sys.setconfig')
-    );
-  if (field.path[0] === 'meta')
-    return candidates.some(([, value]) => fieldValue(value, ['meta']) !== undefined);
-  if (field.value.kind === 'text' && field.value.secret === true) return candidates.length > 0;
-  const path = field.path.map((key) =>
-    key === 'presence_delay' ? 'presence_thr' : key === 'absence_delay' ? 'absence_thr' : key,
-  );
-  return candidates.some(
-    ([, value]) =>
-      fieldValue(value, field.path) !== undefined || fieldValue(value, path) !== undefined,
+
+function configsOf(inventory: ShellyInventory, component: string): readonly JsonValue[] {
+  return Object.entries(inventory.config)
+    .filter(([key]) => key.split(':')[0] === component)
+    .map(([, value]) => value);
+}
+
+function supported(row: ShellySettingRow, inventory: ShellyInventory): boolean {
+  const configs = configsOf(inventory, row.component);
+  if (row.secret === true) return configs.length > 0;
+  if (row.path[0] === 'ui_data')
+    return configs.length > 0 && inventory.methods.includes('Sys.SetConfig');
+  const aliased = row.path.map((key) => ALIASED[key] ?? key);
+  return configs.some(
+    (config) => valueAt(config, row.path) !== undefined || valueAt(config, aliased) !== undefined,
   );
 }
-function fieldFeature(
-  field: ShellyPresenceField,
-  presence: ShellyPresenceConfig | null,
-): ShellyPresenceDevice['features'][number] {
-  const locked =
-    field.component === 'presence' &&
-    presence?.sensor?.room_preset === 'small_room' &&
-    field.path[0] === 'sensor' &&
-    field.path[1] !== 'room_preset';
-  return {
-    id: field.id,
-    page: field.page,
-    focus: field.focus,
-    available: !locked,
-    reason: locked ? 'The small-room preset controls this setting.' : null,
-  };
-}
-export function shellyFeatures(
-  inventory: ShellyInventory,
-  presence: ShellyPresenceConfig | null,
-): ShellyPresenceDevice['features'] {
-  const methods = new Set(inventory.methods.map((method) => method.toLowerCase()));
-  const fields = SHELLY_PRESENCE_FIELDS.filter((field) => supportedField(field, inventory)).map(
-    (field) => fieldFeature(field, presence),
+
+export function shellyFeatures(inventory: ShellyInventory): ShellyDevice['features'] {
+  const fields: Feature[] = SHELLY_SETTING_ROWS.filter((row) => supported(row, inventory)).map(
+    (row) => ({ id: row.id, page: row.page, available: true, reason: null }),
   );
-  const operations = SHELLY_PRESENCE_OPERATIONS.filter((operation) =>
-    operationAvailable(operation.action, operation.method, methods, inventory),
-  ).map((operation) => ({
-    id: operation.action,
-    page: operation.page,
-    focus: operation.focus,
+  const actions: Feature[] = SHELLY_ACTIONS.filter((action) =>
+    shellyActionAvailable(action, inventory.methods),
+  ).map((action) => ({
+    id: action,
+    page: shellyOperation(action).page,
     available: true,
     reason: null,
   }));
-  return [...fields, ...operations];
-}
-
-function operationAvailable(
-  action: string,
-  method: string,
-  methods: ReadonlySet<string>,
-  inventory: ShellyInventory,
-): boolean {
-  if (action === 'http_request')
-    return ['http.request', 'http.get', 'http.post'].some((method) => methods.has(method));
-  if (action === 'virtual_config')
-    return ['boolean', 'number', 'enum', 'text', 'button', 'group'].some((type) =>
-      methods.has(`${type}.setconfig`),
-    );
-  if (action === 'virtual_set')
-    return ['boolean', 'number', 'enum', 'text', 'group'].some((type) =>
-      methods.has(`${type}.set`),
-    );
-  if (action === 'bthome_set_config')
-    return (
-      methods.has(method.toLowerCase()) &&
-      fieldValue(inventory.config['bthome'] ?? null, ['enable']) !== undefined
-    );
-  return methods.has(method.toLowerCase());
+  return [...fields, ...actions];
 }

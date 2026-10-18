@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import type { ViewStyle } from 'react-native';
 import Animated, { css, type CSSKeyframesRule } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
-import { BLINK, Layer, loopStyle, rounded, scaled, sway, type Box } from '../../device-visuals';
+import { Layer, rounded, scaled, type Box } from '../../device-visuals';
+import { BLINK, loopStyle, sway } from '../../../design/loops';
 
 const SPREAD: readonly number[] = [0.08, 0.62, 0.3, 0.86, 0.46, 0.18, 0.74];
 

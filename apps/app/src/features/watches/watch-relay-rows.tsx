@@ -4,22 +4,23 @@ import { View } from 'react-native';
 import type { WatchRelayStatus } from '../../../modules/health-connect';
 import { Banner } from '../../components/banner';
 import { ListRow } from '../../components/list-row';
+import { SelectRow } from '../../components/rows';
 import { List } from '../../components/section';
 import { Text } from '../../components/text';
 import { TextField } from '../../components/text-field';
 import { href } from '../../app-shell/hrefs';
+import { rawErrorText } from '../../format/errors';
 import { plural } from '../../format/text';
 import { BridgeBanner } from './watch-bridge-banner';
 import { useMyWatch } from './watch-glance';
-import { allowCalls, changeRelay, openAccess, usePhoneApps, useRelay } from './watch-relay';
+import { openAccess, usePhoneApps, useRelay, useRelayChange } from './watch-relay';
+import { background } from '@smarteverything/logging';
 
-const CONTENT_LABELS = {
-  full: 'Title and message',
-  title: 'Title only',
-  app: 'App name only',
-} as const;
-
-const NEXT_CONTENT = { full: 'title', title: 'app', app: 'full' } as const;
+const CONTENT_OPTIONS = [
+  { value: 'full', label: 'Title and message' },
+  { value: 'title', label: 'Title only' },
+  { value: 'app', label: 'App name only' },
+] as const;
 
 function Unavailable({ reason }: { readonly reason: string | null }): ReactNode {
   return reason === null ? (
@@ -40,13 +41,15 @@ function AccessRow({ status }: { readonly status: WatchRelayStatus }): ReactNode
       subtitle="Needed for notifications, music controls and opening notifications from the watch"
       icon="bell"
       chevron
-      onPress={() => void openAccess('notifications')}
+      onPress={() => {
+        background(openAccess('notifications'), 'access.open_failed');
+      }}
     />
   );
 }
 
 function NotificationRows({ status }: { readonly status: WatchRelayStatus }): ReactNode {
-  const next = NEXT_CONTENT[status.content];
+  const { change } = useRelayChange();
   return (
     <List title="Notifications">
       <AccessRow status={status} />
@@ -55,7 +58,9 @@ function NotificationRows({ status }: { readonly status: WatchRelayStatus }): Re
         role="switch"
         checked={status.enabled}
         disabled={!status.listenerAllowed}
-        onPress={() => void changeRelay({ enabled: !status.enabled })}
+        onPress={() => {
+          change({ enabled: !status.enabled });
+        }}
       />
       <ListRow
         title="Apps"
@@ -63,22 +68,28 @@ function NotificationRows({ status }: { readonly status: WatchRelayStatus }): Re
         chevron
         href={href.settings.page('health/watch/apps')}
       />
-      <ListRow
+      <SelectRow
         title="Show on the watch"
-        value={CONTENT_LABELS[status.content]}
-        onPress={() => void changeRelay({ content: next })}
+        options={CONTENT_OPTIONS}
+        value={status.content}
+        onChange={(content) => {
+          change({ content });
+        }}
       />
       <ListRow
         title="Only while the phone is locked"
         role="switch"
         checked={status.onlyWhenLocked}
-        onPress={() => void changeRelay({ onlyWhenLocked: !status.onlyWhenLocked })}
+        onPress={() => {
+          change({ onlyWhenLocked: !status.onlyWhenLocked });
+        }}
       />
     </List>
   );
 }
 
 function PhoneRows({ status }: { readonly status: WatchRelayStatus }): ReactNode {
+  const { change, allowCalls } = useRelayChange();
   const missing = status.callPermissionsMissing.length;
   return (
     <List title="Calls, music and finding">
@@ -91,14 +102,18 @@ function PhoneRows({ status }: { readonly status: WatchRelayStatus }): ReactNode
         }
         role="switch"
         checked={status.calls}
-        onPress={() => void allowCalls(!status.calls)}
+        onPress={() => {
+          allowCalls(!status.calls);
+        }}
       />
       {status.calls && !status.dndAllowed ? (
         <ListRow
           title="Allow muting the ringer"
           subtitle="Android asks for Do Not Disturb access for this"
           chevron
-          onPress={() => void openAccess('dnd')}
+          onPress={() => {
+            background(openAccess('dnd'), 'access.open_failed');
+          }}
         />
       ) : null}
       <ListRow
@@ -107,14 +122,18 @@ function PhoneRows({ status }: { readonly status: WatchRelayStatus }): ReactNode
         role="switch"
         checked={status.music}
         disabled={!status.listenerAllowed}
-        onPress={() => void changeRelay({ music: !status.music })}
+        onPress={() => {
+          change({ music: !status.music });
+        }}
       />
       <ListRow
         title="Find my phone"
         subtitle="The watch can ring this phone, even on silent"
         role="switch"
         checked={status.findPhone}
-        onPress={() => void changeRelay({ findPhone: !status.findPhone })}
+        onPress={() => {
+          change({ findPhone: !status.findPhone });
+        }}
       />
     </List>
   );
@@ -139,20 +158,22 @@ export function WatchRelayRows(): ReactNode {
 }
 
 function AppList({ status }: { readonly status: WatchRelayStatus }): ReactNode {
-  const apps = usePhoneApps();
+  const { apps, error } = usePhoneApps();
+  const { change } = useRelayChange();
   const [filter, setFilter] = useState('');
   const chosen = new Set(status.apps);
-  const shown = (apps ?? []).filter((app) =>
-    app.label.toLowerCase().includes(filter.trim().toLowerCase()),
-  );
+  const shown = apps.filter((app) => app.label.toLowerCase().includes(filter.trim().toLowerCase()));
   const toggle = (packageName: string): void => {
     const next = chosen.has(packageName)
       ? status.apps.filter((name) => name !== packageName)
       : [...status.apps, packageName];
-    void changeRelay({ apps: next });
+    change({ apps: next });
   };
   return (
     <View className="gap-4">
+      {error === null ? null : (
+        <Banner tone="critical" title="Your apps can’t be listed" body={rawErrorText(error)} />
+      )}
       <TextField label="Search apps" value={filter} onChange={setFilter} />
       <List>
         {shown.map((app) => (

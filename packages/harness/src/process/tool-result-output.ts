@@ -1,19 +1,20 @@
-import type { ContentBlock } from '@deepseek-ai/dsh-llm';
-import type { HarnessRuntimeEvent } from '../host/events';
+interface ToolBlock {
+  readonly type: string;
+  readonly text?: string | undefined;
+}
+interface ToolResultData {
+  readonly message: { readonly content: readonly ToolBlock[] };
+  readonly meta?: unknown;
+  readonly error?: unknown;
+}
 
-type NativeToolResult = Extract<
-  Extract<HarnessRuntimeEvent, { kind: 'session' }>['event'],
-  { type: 'tool/result' }
->['data'];
-
-export function nativeToolText(content: readonly ContentBlock[]): string {
+export function nativeToolText(content: readonly ToolBlock[]): string {
   return content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
+    .flatMap((block) => (block.type === 'text' && block.text !== undefined ? [block.text] : []))
     .join('\n');
 }
 
-export function nativeToolOutput(result: NativeToolResult): string {
+export function nativeToolOutput(result: ToolResultData): string {
   return JSON.stringify({
     content: result.message.content,
     ...(result.meta === undefined ? {} : { meta: result.meta }),

@@ -17,7 +17,7 @@ import type { SecretStore } from '../../secrets/store';
 import type { Store } from '../../store/store';
 import { AppsClient } from './apps-client';
 import type { TargetConfirmations } from './confirmations';
-import { verifiedPaths } from './paths';
+import { requiredPaths } from './paths';
 
 const CONFIRMATION_WAIT_MS = 15_000;
 
@@ -91,7 +91,7 @@ export class AppSetup {
     if (this.running) {
       throw new ApiError('conflict', 'SmartThings setup is already running.');
     }
-    const { redirectUri, webhookUrl } = verifiedPaths(this.options.store);
+    const { redirectUri, webhookUrl } = requiredPaths(this.options.store);
     this.running = true;
     const close = this.options.confirmations.open();
     try {

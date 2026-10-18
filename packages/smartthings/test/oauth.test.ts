@@ -155,9 +155,10 @@ describe('the stored account', () => {
       accountFromSecrets({ accessToken: 'secret-value' });
     } catch (cause) {
       expect(String(cause)).not.toContain('secret-value');
-      expect(String(cause)).toMatch(
-        /^SmartThingsResponseError: The SmartThings stored account did not have the expected shape: .*Received \["accessToken"\]\.$/s,
+      expect(String(cause)).toBe(
+        'SmartThingsResponseError: The SmartThings stored account did not have the expected shape: refreshToken, expiresAt, refreshedAt, scope, installedAppId.',
       );
+      expect(cause).toMatchObject({ received: ['accessToken'] });
     }
   });
 });

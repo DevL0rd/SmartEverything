@@ -10,7 +10,7 @@ import type { ColourRole } from '../../../design/tokens';
 import { useClimateSources } from '../model/climate-devices';
 import { needsAttention, suppliesOf, type SupplyKind, type SupplyLine } from '../model/supplies';
 
-const SHOWN: Readonly<Record<WidgetSize, number>> = { S: 1, M: 2, W: 4, L: 5, XL: 8 };
+const SHOWN: Readonly<Record<WidgetSize, number>> = { M: 2, W: 4, XL: 8 };
 
 const ICON: Readonly<Record<SupplyKind, IconName>> = {
   filter: 'layers',
@@ -32,17 +32,11 @@ function useSupplies(room: string | null): readonly SupplyLine[] {
   );
 }
 
-function Line({
-  line,
-  compact,
-}: {
-  readonly line: SupplyLine;
-  readonly compact: boolean;
-}): ReactNode {
+function Line({ line }: { readonly line: SupplyLine }): ReactNode {
   const colour = colourOf(line);
   return (
     <View className="min-w-0 flex-1 flex-row items-center gap-3">
-      <IconWell icon={ICON[line.kind]} colour={colour} size={compact ? 's' : 'm'} />
+      <IconWell icon={ICON[line.kind]} colour={colour} size="m" />
       <View className="min-w-0 flex-1 gap-1">
         <View className="flex-row items-baseline gap-2">
           <Text variant="footnote" numberOfLines={1} className="min-w-0 flex-1">
@@ -125,19 +119,17 @@ function SupplyList({
   shown,
   more,
   columns,
-  compact,
 }: {
   readonly shown: readonly SupplyLine[];
   readonly more: number;
   readonly columns: number;
-  readonly compact: boolean;
 }): ReactNode {
   return (
     <View className="flex-1 justify-center gap-3">
       {rowsOf(shown, columns).map((row) => (
         <View key={row.map((line) => line.key).join()} className="flex-row gap-5">
           {row.map((line) => (
-            <Line key={line.key} line={line} compact={compact} />
+            <Line key={line.key} line={line} />
           ))}
           {row.length < columns ? <View className="flex-1" /> : null}
         </View>
@@ -165,7 +157,6 @@ export function SuppliesWidget({
       icon="wrench"
       accent={urgent ? 'critical' : 'positive'}
       glow={urgent ? 'critical' : null}
-      size={size}
       href={href.devicesPage('supplies')}
     >
       {isTall(size) && shown.length <= RING_LINES ? (
@@ -175,7 +166,7 @@ export function SuppliesWidget({
           ))}
         </View>
       ) : (
-        <SupplyList shown={shown} more={more} columns={columns} compact={size === 'S'} />
+        <SupplyList shown={shown} more={more} columns={columns} />
       )}
     </WidgetFrame>
   );

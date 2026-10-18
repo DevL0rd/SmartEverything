@@ -59,6 +59,10 @@ class FakeService implements ServiceManager {
     this.system.touch(LOCATIONS.readyFile, null);
   }
 
+  restoreOriginal(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
   state(): Promise<ManagerState> {
     return Promise.resolve({
       installed: this.installed,

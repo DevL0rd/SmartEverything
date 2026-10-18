@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { InvalidScopeError, RUNTIMES, areaOf, assertScope, isScope, runtimeOf } from '../src/scope';
+import { InvalidScopeError, RUNTIMES, assertScope, isScope, runtimeOf } from '../src/scope';
 import { InvalidEventNameError, assertEventName, isEventName } from '../src/event-name';
-import { LOG_LEVELS, passesThreshold, rankOf } from '../src/levels';
+import { LOG_LEVELS, passesThreshold } from '../src/levels';
 
 describe('scope', () => {
   it('accepts a runtime and an area', () => {
@@ -52,16 +52,8 @@ describe('scope', () => {
     expect(RUNTIMES).toStrictEqual(['app', 'edge', 'db', 'tool', 'hub', 'desktop']);
   });
 
-  it('names the area a scope belongs to', () => {
-    expect(areaOf('edge.deliver-notifications')).toBe('deliver-notifications');
-  });
-
   it('refuses to read a runtime out of something that is not a scope', () => {
     expect(() => runtimeOf('nonsense')).toThrow(InvalidScopeError);
-  });
-
-  it('refuses to read an area out of something that is not a scope', () => {
-    expect(() => areaOf('nonsense')).toThrow(InvalidScopeError);
   });
 
   it('returns the scope it was given when it is valid', () => {
@@ -164,7 +156,7 @@ describe('event name', () => {
 
 describe('levels', () => {
   it('orders the levels from quietest to loudest', () => {
-    expect(LOG_LEVELS.map(rankOf)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(LOG_LEVELS).toEqual(['trace', 'debug', 'info', 'warn', 'error', 'exception', 'none']);
   });
 
   it('lets a level through when it is at least as severe as the threshold', () => {
@@ -187,7 +179,9 @@ describe('levels', () => {
     for (const level of LOG_LEVELS) {
       for (const threshold of LOG_LEVELS) {
         const expected =
-          level !== 'none' && threshold !== 'none' && rankOf(level) >= rankOf(threshold);
+          level !== 'none' &&
+          threshold !== 'none' &&
+          LOG_LEVELS.indexOf(level) >= LOG_LEVELS.indexOf(threshold);
         expect(passesThreshold(level, threshold)).toBe(expected);
       }
     }

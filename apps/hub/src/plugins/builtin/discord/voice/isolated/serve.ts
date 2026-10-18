@@ -14,14 +14,11 @@ import {
   type ParsedCommand,
   type VoiceEvent,
 } from './protocol';
+import { messageOf } from '@smarteverything/logging';
 
 type LinkCommand = Extract<ParsedCommand, { name: 'play' | 'stop' | 'mute' | 'destroy' }>;
 
 type Emit = (event: VoiceEvent) => void;
-
-function describe(cause: unknown): string {
-  return cause instanceof Error ? cause.message : 'The voice link closed';
-}
 
 class RelayGateway implements VoiceGateway {
   private readonly watching = new Map<string, VoiceSignals>();
@@ -82,7 +79,7 @@ class Links {
         payload: {
           linkId,
           reason,
-          cause: cause === null ? null : describe(cause),
+          cause: cause === null ? null : messageOf(cause),
         },
       });
     });
@@ -99,7 +96,7 @@ class Links {
         return;
       case 'listen':
         this.listen(command.payload).catch((cause: unknown) => {
-          process.stderr.write(`voice worker listen failed: ${describe(cause)}\n`);
+          process.stderr.write(`voice worker listen failed: ${messageOf(cause)}\n`);
         });
         return;
       case 'play':

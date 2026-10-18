@@ -13,10 +13,21 @@ import {
   hashClientToken,
   hashPairingCode,
   liveProtocols,
+  pairingProof,
 } from '../src';
 
 const TOKEN = `set_${'ab'.repeat(32)}`;
 const HEX = 'ab'.repeat(32);
+const IDENTITY = {
+  id: HEX,
+  protocolVersion: 1,
+  name: 'Home',
+  tls: {
+    serverName: `smarteverything-${'ab'.repeat(16)}.local`,
+    certificateSha256: 'cd'.repeat(32),
+    publicKeySha256: HEX,
+  },
+};
 
 describe('client tokens', () => {
   it('createClientToken makes distinct tokens of the published shape', () => {
@@ -108,14 +119,32 @@ describe('pairing codes', () => {
     expect(() => hashPairingCode('a2b3-c4d5')).toThrow();
   });
 
-  it('PAIRING_QR accepts an https URL with a code and refuses other protocols', () => {
-    const qr = { url: 'https://home.example.com/pair', code: 'ABCD-2345' };
+  it('PAIRING_QR carries the identity and the endpoints with the url and the code', () => {
+    const qr = {
+      url: 'https://home.example.com/pair',
+      code: 'ABCD-2345',
+      identity: IDENTITY,
+      endpoints: [{ kind: 'remote', url: 'https://home.example.com' }],
+    };
     expect(PAIRING_QR.parse(qr)).toStrictEqual(qr);
     for (const url of ['http://home.example.com', 'xhttps://a.example', 'https2://a.example']) {
       expect(PAIRING_QR.safeParse({ ...qr, url }).success).toBe(false);
     }
     expect(PAIRING_QR.safeParse({ ...qr, code: 'abcd' }).success).toBe(false);
     expect(PAIRING_QR.safeParse({ ...qr, extra: 1 }).success).toBe(false);
+    expect(PAIRING_QR.safeParse({ url: qr.url, code: qr.code }).success).toBe(false);
+  });
+
+  it('pairingProof binds the code hash, the side, the certificate and the nonce', () => {
+    const hash = hashPairingCode('ABCD-2345');
+    const nonce = 'cd'.repeat(16);
+    const proof = pairingProof(hash, 'client', HEX, nonce);
+    expect(proof).toMatch(/^[0-9a-f]{64}$/);
+    expect(pairingProof(hash, 'client', HEX, nonce)).toBe(proof);
+    expect(pairingProof(hash, 'hub', HEX, nonce)).not.toBe(proof);
+    expect(pairingProof(hash, 'client', 'cd'.repeat(32), nonce)).not.toBe(proof);
+    expect(pairingProof(hash, 'client', HEX, 'ef'.repeat(16))).not.toBe(proof);
+    expect(pairingProof(hashPairingCode('ABCD-2346'), 'client', HEX, nonce)).not.toBe(proof);
   });
 });
 
@@ -193,6 +222,9 @@ describe('media paths', () => {
       cameraSnapshot: '/media/cameras/:deviceId/snapshot',
       live: '/live',
       publicUrlProbe: '/.well-known/smarteverything/:nonce',
+      assistantAttachment: '/media/assistant/:attachmentId',
+      talkMessage: '/media/talk/:messageId',
+      computerDownload: '/media/computers/:deviceId/downloads/:ticketId',
     });
   });
 });

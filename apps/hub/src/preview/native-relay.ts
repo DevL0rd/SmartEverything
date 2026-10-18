@@ -20,15 +20,11 @@ import {
 import type { AiPreviewServiceWrite, HubPreviewOpen } from '@smarteverything/domain';
 import type { NativePreviewAdapter } from '@smarteverything/harness/process';
 import type { Logger } from '@smarteverything/logging';
-import { listenerIdentity } from './native-listener';
 interface ServiceGrant {
   readonly session: string;
   readonly origin: string;
   readonly workspace: string;
-  readonly identity: string;
 }
-const NATIVE_GRANTS_MAX = 128;
-const NATIVE_STREAMS_MAX = 64;
 function effectivePort(url: URL): number {
   if (url.port !== '') return Number(url.port);
   return url.protocol === 'https:' ? 443 : 80;
@@ -58,8 +54,6 @@ export class NativePreviewRelay implements NativePreviewAdapter {
     service: AiPreviewServiceWrite,
   ): Promise<string> {
     if (this.stopped) throw new ApiError('conflict', 'The native preview runtime stopped.');
-    if (this.files.size + this.grants.size + this.pendingGrants.size >= NATIVE_GRANTS_MAX)
-      throw new ApiError('conflict', 'This native runtime reached its shared-service limit.');
     const origin = this.publicationOrigin(service);
     const handle = randomUUID();
     this.pendingGrants.set(handle, session);
@@ -67,13 +61,12 @@ export class NativePreviewRelay implements NativePreviewAdapter {
       const canonical = await realpath(workspace);
       if (canonical !== workspace)
         throw new ApiError('forbidden', 'Publication requires the admitted canonical workspace.');
-      const identity = await listenerIdentity(origin);
       if (this.pendingGrants.get(handle) !== session)
         throw new ApiError(
           'conflict',
           'The native session lost its publication authority during admission.',
         );
-      this.grants.set(handle, { session, origin, workspace: canonical, identity });
+      this.grants.set(handle, { session, origin, workspace: canonical });
       return handle;
     } finally {
       this.pendingGrants.delete(handle);
@@ -93,10 +86,7 @@ export class NativePreviewRelay implements NativePreviewAdapter {
     return origin;
   }
   registerFile(handle: string, session: string, stop: () => void): void {
-    if (
-      this.stopped ||
-      this.files.size + this.grants.size + this.pendingGrants.size >= NATIVE_GRANTS_MAX
-    )
+    if (this.stopped)
       throw new ApiError('conflict', 'The native preview runtime cannot admit another file watch.');
     if (this.files.has(handle) || this.grants.has(handle) || this.pendingGrants.has(handle))
       throw new ApiError('conflict', 'The preview handle is already admitted.');
@@ -129,22 +119,7 @@ export class NativePreviewRelay implements NativePreviewAdapter {
     const abort = this.reserveStream(frame);
     let upstream: Duplex | undefined;
     try {
-      if (
-        (await realpath(grant.workspace)) !== grant.workspace ||
-        (await listenerIdentity(grant.origin)) !== grant.identity
-      ) {
-        this.forget(frame.service_handle);
-        throw new ApiError(
-          'conflict',
-          'The service restarted or the workspace changed; explicitly share its new instance.',
-        );
-      }
-      abort.signal.throwIfAborted();
       upstream = await this.connect(grant.origin, abort.signal);
-      if ((await listenerIdentity(grant.origin)) !== grant.identity) {
-        this.forget(frame.service_handle);
-        throw new ApiError('conflict', 'The service listener was replaced during admission.');
-      }
       this.assertStream(frame, upstream, abort.signal);
       this.relay(frame, upstream);
     } catch (cause) {
@@ -167,8 +142,6 @@ export class NativePreviewRelay implements NativePreviewAdapter {
         'conflict',
         'The native preview runtime stopped or this stream is already being admitted.',
       );
-    if (this.streams.size + this.pendingStreams.size >= NATIVE_STREAMS_MAX)
-      throw new ApiError('conflict', 'This origin computer has reached its preview stream limit.');
     const abort = new AbortController();
     this.pendingStreams.set(frame.stream_id, { handle: frame.service_handle, abort });
     return abort;
@@ -209,9 +182,9 @@ export class NativePreviewRelay implements NativePreviewAdapter {
         clearTimeout(timer);
         resolve(socket);
       });
-      socket.once('error', (cause) => {
+      socket.once('error', () => {
         clearTimeout(timer);
-        reject(cause);
+        reject(new ApiError('upstream_failed', 'The shared service is offline.'));
       });
     });
   }

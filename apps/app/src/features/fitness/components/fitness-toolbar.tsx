@@ -50,7 +50,7 @@ export function FitnessToolbar({ day, today, range, ranges }: FitnessToolbarProp
         />
         {split ? segmented : null}
         <View className="flex-1" />
-        <SyncChip />
+        <SyncChip compact={!split} />
       </View>
       {split ? null : segmented}
     </View>

@@ -1,14 +1,13 @@
 import { assertEventName } from './event-name';
 import { passesThreshold, type LogLevel } from './levels';
-import type { Colour } from './palette';
 import { redact, type LogPayload } from './redaction';
 import { describeFailure, type LogContext, type LogRecord, type LogSink } from './record';
-import { renderBanner, renderJson, renderPlain, renderPretty } from './render';
+import { renderJson, renderPlain, renderPretty } from './render';
 import { assertScope, runtimeOf, type Runtime } from './scope';
 
-export type OutputStyle = 'pretty' | 'plain' | 'json';
+type OutputStyle = 'pretty' | 'plain' | 'json';
 
-export type ConsoleRouting = 'by-level' | 'log-only';
+type ConsoleRouting = 'by-level' | 'log-only';
 
 export interface LoggerSettings {
   readonly level: LogLevel;
@@ -20,8 +19,10 @@ export interface LoggerSettings {
   readonly consoleRouting: ConsoleRouting;
 }
 
+export type LazyPayload = LogPayload | (() => LogPayload);
+
 interface WriteExtras {
-  readonly payload?: LogPayload | undefined;
+  readonly payload?: LazyPayload | undefined;
   readonly durationMs?: number | undefined;
   readonly cause?: unknown;
 }
@@ -31,8 +32,6 @@ export interface Operation {
   readonly failed: (cause: unknown, payload?: LogPayload) => void;
 }
 
-/* eslint-disable no-console -- the one place the codebase reaches the console; everything else
-   goes through the logger, and `no-console` is an error everywhere else to keep it that way. */
 function writeToConsole(record: LogRecord, style: OutputStyle, routing: ConsoleRouting): void {
   const line =
     style === 'json'
@@ -55,7 +54,6 @@ function writeToConsole(record: LogRecord, style: OutputStyle, routing: ConsoleR
   }
   console.log(line);
 }
-/* eslint-enable no-console */
 
 function systemClock(): Date {
   return new Date();
@@ -115,10 +113,6 @@ export class Logger {
     return settings.level;
   }
 
-  static beginAction(correlationId: string): void {
-    settings.context = { ...settings.context, correlationId };
-  }
-
   child(context: LogContext): Logger {
     return new Logger(this.scope, { ...this.own, ...context });
   }
@@ -127,11 +121,11 @@ export class Logger {
     return new Logger(scope, this.own);
   }
 
-  trace(event: string, payload?: LogPayload): void {
+  trace(event: string, payload?: LazyPayload): void {
     this.write('trace', event, { payload });
   }
 
-  debug(event: string, payload?: LogPayload): void {
+  debug(event: string, payload?: LazyPayload): void {
     this.write('debug', event, { payload });
   }
 
@@ -151,22 +145,12 @@ export class Logger {
     this.write('exception', event, { payload, cause });
   }
 
-  highlight(text: string, colour: Colour = 'blue'): void {
-    if (!passesThreshold('info', settings.level)) {
-      return;
-    }
-    if (settings.sink !== null || settings.style !== 'pretty') {
-      this.info('logger.highlighted', { text });
-      return;
-    }
-    // eslint-disable-next-line no-console
-    console.log(renderBanner(text, colour));
-  }
-
   operation(event: string, payload: LogPayload = {}): Operation {
     assertEventName(event);
     const startedAt = settings.now().getTime();
-    this.write('debug', `${event}.started`, { payload });
+    if (passesThreshold('debug', settings.level)) {
+      this.write('debug', `${event}.started`, { payload });
+    }
 
     return {
       succeeded: (endPayload: LogPayload = {}): void => {
@@ -204,7 +188,7 @@ export class Logger {
       runtime: this.runtime,
       scope: this.scope,
       event,
-      payload: redact(payload),
+      payload: redact(typeof payload === 'function' ? payload() : payload),
       ...(durationMs === undefined ? {} : { durationMs }),
       ...(cause === undefined ? {} : { failure: describeFailure(cause) }),
     };

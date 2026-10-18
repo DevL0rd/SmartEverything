@@ -15,7 +15,7 @@ export type NativeExpectation = Omit<
   AiNativeCommandScope,
   'version' | 'connection_generation' | 'catalogue_revision'
 >;
-export type CommandTarget =
+type CommandTarget =
   | { readonly kind: 'dsh'; readonly scope: AiHarnessCommandScope }
   | { readonly kind: 'native'; readonly expected: NativeExpectation };
 export interface CommandBinding {

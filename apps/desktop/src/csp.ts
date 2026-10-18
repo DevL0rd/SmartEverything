@@ -28,3 +28,14 @@ export function buildContentSecurityPolicy(serverUrl: string, mediaOrigin?: stri
   ];
   return directives.map((directive) => directive.join(' ')).join('; ');
 }
+
+export const OVERLAY_CONTENT_SECURITY_POLICY = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "font-src 'self'",
+  "img-src 'none'",
+  "connect-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');

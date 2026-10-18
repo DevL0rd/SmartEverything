@@ -1,5 +1,3 @@
-import { storedProjectBinding } from './project-grant';
-import { eventAuthority, executionRole } from '../assistant/execution-authority';
 import { ApiError, harnessTargetKey } from '@smarteverything/domain';
 import type {
   DshWriterClaim,
@@ -7,6 +5,7 @@ import type {
   HarnessSubscriptionUse,
 } from '@smarteverything/domain';
 import type { DshSessionPrincipal } from '../store/repositories/dsh-session-claims';
+import { DshSessionStorageError } from '../store/repositories/dsh-session-errors';
 import type { Store } from '../store/store';
 import type { HarnessGrant } from '../store/repositories/harness-coordination';
 import type { HarnessDirectory } from './directory';
@@ -23,56 +22,17 @@ export class HarnessStorage {
         'forbidden',
         'This native session has no active conversation execution grant.',
       );
-    this.admitGrant(grant, id);
-    const chat = this.store.aiChats.chat(
-      this.store.dshSessions.stat(id, grant.profile_id)?.chat_id ?? '',
-    );
+    const metadata = this.store.dshSessions.stat(id, grant.profile_id);
+    if (metadata === undefined)
+      throw new ApiError('forbidden', 'This native session has no stored conversation.');
+    const chat = this.store.aiChats.chat(metadata.chat_id);
     if (
       chat.profile_id !== grant.profile_id ||
       chat.engine.kind !== 'dsh' ||
       chat.engine.session_id !== id
     )
       throw new ApiError('forbidden', 'The conversation no longer authorizes this native session.');
-    const storage_binding = storedProjectBinding(this.store, id);
-    return { ...grant, ...(storage_binding === undefined ? {} : { storage_binding }) };
-  }
-  private admitGrant(grant: HarnessGrant, id: string): void {
-    let role = grant.role;
-    if (grant.client_id !== null && this.store.clients.byId(grant.client_id).role !== 'owner')
-      role = 'member';
-    if (
-      grant.client_id !== null &&
-      this.store.profiles.activeOf(this.store.clients.byId(grant.client_id).id).id !==
-        grant.profile_id
-    ) {
-      this.store.harnessCoordination.revoke(id);
-      throw new ApiError('forbidden', 'The initiating profile execution grant was revoked.');
-    }
-    if (grant.event_id !== null) {
-      const authority = eventAuthority(
-        this.store,
-        this.store.assistantEvents.event(grant.event_id),
-      );
-      if (executionRole(this.store, authority) !== 'owner') role = 'member';
-      if (authority.profile_id !== grant.profile_id)
-        throw new ApiError('forbidden', 'Initiating event grant belongs to another profile.');
-    } else if (grant.client_id === null)
-      throw new ApiError(
-        'forbidden',
-        'Native access needs an issued client or service-event authority.',
-      );
-    this.admitComputer(grant, role);
-  }
-  private admitComputer(grant: HarnessGrant, role: HarnessGrant['role']): void {
-    if (
-      grant.target.kind === 'device' &&
-      this.store.devices.byId(grant.target.device_id).kind === 'computer' &&
-      role !== 'owner'
-    )
-      throw new ApiError(
-        'forbidden',
-        'The initiating authority no longer authorizes computer execution.',
-      );
+    return grant;
   }
   principal(
     id: string,
@@ -88,8 +48,7 @@ export class HarnessStorage {
     if (
       harnessTargetKey(grant.target) !== harnessTargetKey(host.target) ||
       grant.generation !== binding.generation ||
-      grant.runtime_instance !== binding.runtime_instance ||
-      host.manifest === null
+      grant.runtime_instance !== binding.runtime_instance
     )
       throw new ApiError(
         'forbidden',
@@ -100,9 +59,7 @@ export class HarnessStorage {
       target: grant.target,
       runtime_instance: grant.runtime_instance,
       connection_generation: grant.generation,
-      conversation_authorized: true,
       platform: host.platform,
-      composition: host.manifest.composition,
     };
   }
   execute(input: HarnessTransportRequest): unknown {
@@ -116,44 +73,23 @@ export class HarnessStorage {
     }
     if (request.operation === 'verify')
       return this.verify(request.claim, input, request.subscription);
-    if (
-      request.operation === 'append' ||
-      request.operation === 'flush' ||
-      request.operation === 'release' ||
-      request.operation === 'renew'
-    )
-      return this.write(input, request);
+    if (request.operation === 'append' || request.operation === 'flush')
+      return writtenOrFenced(() => this.write(input, request));
     throw new ApiError('invalid_request', 'This operation is not native persistence.');
   }
   private write(
     input: HarnessTransportRequest,
-    request: Extract<
-      HarnessTransportRequest['request'],
-      { operation: 'append' | 'flush' | 'release' | 'renew' }
-    >,
+    request: Extract<HarnessTransportRequest['request'], { operation: 'append' | 'flush' }>,
   ): unknown {
-    switch (request.operation) {
-      case 'append':
-        return this.store.dshSessions.append(
-          request.input,
-          this.principal(request.input.claim.session_id, input),
-        );
-      case 'flush':
-        return this.store.dshSessions.flush(
-          request.input,
-          this.principal(request.input.claim.session_id, input),
-        );
-      case 'release':
-        return this.store.dshSessions.release(
-          request.input,
-          this.principal(request.input.claim.session_id, input),
-        );
-      case 'renew':
-        return this.store.dshSessions.renew(
-          request.input,
-          this.principal(request.input.claim.session_id, input),
-        );
-    }
+    if (request.operation === 'append')
+      return this.store.dshSessions.append(
+        request.input,
+        this.principal(request.input.claim.session_id, input),
+      );
+    return this.store.dshSessions.flush(
+      request.input,
+      this.principal(request.input.claim.session_id, input),
+    );
   }
   private admitSubscription(id: string, input: HarnessSubscriptionUse): void {
     const selection = this.grant(id).route;
@@ -174,12 +110,24 @@ export class HarnessStorage {
     subscription?: HarnessSubscriptionUse,
   ): DshWriterClaim {
     if (subscription !== undefined) this.admitSubscription(claim.session_id, subscription);
+    const principal = this.principal(claim.session_id, binding);
     try {
-      const principal = this.principal(claim.session_id, binding);
       return this.store.dshSessions.verifyWriter(claim, principal);
     } catch (error) {
       if (error instanceof ApiError) throw new ApiError('ownership_lost', error.message);
       throw error;
     }
+  }
+}
+
+function writtenOrFenced<T>(write: () => T): T {
+  try {
+    return write();
+  } catch (error) {
+    if (!(error instanceof DshSessionStorageError)) throw error;
+    throw new ApiError(
+      error.code === 'ownership-lost' ? 'ownership_lost' : 'conflict',
+      error.message,
+    );
   }
 }

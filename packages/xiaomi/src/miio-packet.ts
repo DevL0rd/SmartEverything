@@ -1,10 +1,10 @@
-import { cbc } from '@noble/ciphers/aes.js';
-import { md5 } from '@noble/hashes/legacy.js';
-import { bytesToHex, bytesToUtf8, concatBytes, hexToBytes, utf8ToBytes } from './bytes';
+import { createCipheriv, createDecipheriv, type Cipheriv, type Decipheriv } from 'node:crypto';
+import { bytesToUtf8, digest, utf8ToBytes } from './bytes';
 import { MiioPacketError } from './errors';
 
 export const MIIO_PORT = 54321;
 
+const CIPHER = 'aes-128-cbc';
 const MAGIC = 0x2131;
 const HEADER_LENGTH = 32;
 const CHECKSUM_OFFSET = 16;
@@ -60,12 +60,12 @@ export function parseToken(token: string): Uint8Array {
       `${String(token.length)} characters`,
     );
   }
-  return hexToBytes(token);
+  return Uint8Array.fromHex(token);
 }
 
 function keyAndIv(token: Uint8Array): { readonly key: Uint8Array; readonly iv: Uint8Array } {
-  const key = md5(token);
-  return { key, iv: md5(concatBytes(key, token)) };
+  const key = digest('md5', token);
+  return { key, iv: digest('md5', key, token) };
 }
 
 function readHeader(packet: Uint8Array): DataView {
@@ -102,7 +102,7 @@ export function parseHandshake(packet: Uint8Array): Handshake {
   }
   const field = packet.slice(CHECKSUM_OFFSET);
   const hidden = isFilled(field, 0) || isFilled(field, HELLO_FILL);
-  return { ...headerOf(view), revealedToken: hidden ? null : bytesToHex(field) };
+  return { ...headerOf(view), revealedToken: hidden ? null : field.toHex() };
 }
 
 export function probePacket(virtualDid: bigint): Uint8Array {
@@ -136,12 +136,16 @@ export function parseProbeReply(packet: Uint8Array): ProbeReply {
 }
 
 function checksum(header: Uint8Array, token: Uint8Array, payload: Uint8Array): Uint8Array {
-  return md5(concatBytes(header.slice(0, CHECKSUM_OFFSET), token, payload));
+  return digest('md5', header.subarray(0, CHECKSUM_OFFSET), token, payload);
+}
+
+function transform(cipher: Cipheriv | Decipheriv, input: Uint8Array): Uint8Array {
+  return Uint8Array.from(Buffer.concat([cipher.update(input), cipher.final()]));
 }
 
 export function encodeMessage(token: Uint8Array, header: MiioHeader, body: string): Uint8Array {
   const { key, iv } = keyAndIv(token);
-  const payload = cbc(key, iv).encrypt(concatBytes(utf8ToBytes(body), new Uint8Array(1)));
+  const payload = transform(createCipheriv(CIPHER, key, iv), utf8ToBytes(`${body}\0`));
   const packet = new Uint8Array(HEADER_LENGTH + payload.length);
   const view = new DataView(packet.buffer);
   view.setUint16(0, MAGIC);
@@ -156,7 +160,7 @@ export function encodeMessage(token: Uint8Array, header: MiioHeader, body: strin
 function decrypt(token: Uint8Array, payload: Uint8Array): Uint8Array {
   const { key, iv } = keyAndIv(token);
   try {
-    return cbc(key, iv).decrypt(payload);
+    return transform(createDecipheriv(CIPHER, key, iv), payload);
   } catch (cause) {
     throw new MiioPacketError('a payload encrypted with this token', String(cause));
   }
@@ -165,8 +169,8 @@ function decrypt(token: Uint8Array, payload: Uint8Array): Uint8Array {
 export function decodeMessage(token: Uint8Array, packet: Uint8Array): MiioMessage {
   const view = readHeader(packet);
   const payload = packet.slice(HEADER_LENGTH);
-  const expected = bytesToHex(checksum(packet, token, payload));
-  const received = bytesToHex(packet.slice(CHECKSUM_OFFSET, HEADER_LENGTH));
+  const expected = checksum(packet, token, payload).toHex();
+  const received = packet.subarray(CHECKSUM_OFFSET, HEADER_LENGTH).toHex();
   if (expected !== received) {
     throw new MiioPacketError(`checksum ${expected}`, received);
   }

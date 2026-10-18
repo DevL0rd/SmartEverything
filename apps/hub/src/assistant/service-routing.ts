@@ -1,6 +1,4 @@
-import { ManagedOutputs } from './managed-outputs';
 import type { ProjectFilesService } from '../projects/service';
-import { ApiError, type Engine } from '@smarteverything/domain';
 import { Coordination, type CoordinationDeps } from './coordination/asks';
 import { ChatDirectory } from './chat-directory';
 import { AssistantFiles } from './files';
@@ -40,20 +38,8 @@ export function assistantChats(
 ): ChatDirectory {
   return new ChatDirectory(options.store, files, options.now, {
     projects,
-    default: (profileId, background): Engine => {
-      const available = selections();
-      if (available === null)
-        throw new ApiError('conflict', 'SmartEverything model routes are starting.');
-      return available.default(profileId, background);
-    },
-    select: (profileId, engine): Engine => {
-      const available = selections();
-      if (available === null)
-        throw new ApiError('conflict', 'SmartEverything model routes are starting.');
-      return available.select(profileId, engine);
-    },
-    validate: (engine, role): void => {
-      selections()?.validate(engine, role);
+    validate: (engine, user): void => {
+      selections()?.validate(engine, user);
     },
   });
 }
@@ -73,6 +59,6 @@ export function assistantFiles(
     dataDirectory: options.dataDirectory,
     chat: options.store.assistantChat,
     now: options.now,
-    outputs: new ManagedOutputs(options.store, projects),
+    projects,
   });
 }

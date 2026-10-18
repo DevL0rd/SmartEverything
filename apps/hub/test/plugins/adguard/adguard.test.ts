@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  AdGuardClient,
-  AdGuardRefusedError,
-} from '../../../src/plugins/builtin/adguard/adguard-client';
+import { AdGuardClient } from '../../../src/plugins/builtin/adguard/adguard-client';
 import {
   changeProtection,
   readQueryLog,
   setDomainRule,
 } from '../../../src/plugins/builtin/adguard/controls';
+import { JsonApiRefusedError } from '../../../src/plugins/builtin/json-api';
 import { queryOf, statusOf } from '../../../src/plugins/builtin/adguard/readings';
 import { withDomainRule } from '../../../src/plugins/builtin/adguard/user-rules';
 import type { FetchLike } from '../../../src/plugins/builtin/fetch-like';
@@ -114,7 +112,7 @@ describe('AdGuard controls', () => {
     const refusing: FetchLike = () => Promise.resolve(new Response('', { status: 401 }));
     const client = new AdGuardClient('http://adguard.test:3000', SIGN_IN, refusing);
     await expect(changeProtection(client, { enabled: true })).rejects.toBeInstanceOf(
-      AdGuardRefusedError,
+      JsonApiRefusedError,
     );
   });
 });

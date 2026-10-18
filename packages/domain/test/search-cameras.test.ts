@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSearchIndex,
-  searchIndex,
+  rankSearch,
   tokensOf,
   type SearchCamera,
   type SearchDevice,
@@ -21,7 +21,7 @@ const doorbell: SearchCamera = {
 const nursery: SearchCamera = {
   id: 'nursery',
   name: 'Nursery camera',
-  kind: 'pan_tilt_camera',
+  kind: 'camera',
   room: null,
   online: false,
   twoWayAudio: false,
@@ -32,6 +32,7 @@ const nurseryDevice: SearchDevice = {
   name: 'Nursery camera',
   room: 'Nursery',
   kind: 'camera',
+  model: 'Camera model',
   online: true,
   favourite: false,
   capabilities: [
@@ -70,11 +71,10 @@ function entry(id: string): SearchEntry {
 }
 
 function first(query: string): string | undefined {
-  return searchIndex(buildSearchIndex(sources), query, {
+  return rankSearch(buildSearchIndex(sources), query, {
     recent: {},
     now: 0,
     limit: 5,
-    group: null,
   })[0]?.entry.id;
 }
 
@@ -85,7 +85,7 @@ describe('camera search entries', () => {
       group: 'action',
       title: 'Show Front door',
       detail: 'Entry · Live view',
-      keywords: ['camera', 'live', 'view', 'watch', 'see', 'open', 'video', 'doorbell', 'Entry'],
+      keywords: ['camera', 'live', 'view', 'watch', 'see', 'open', 'video', 'Doorbell', 'Entry'],
       state: null,
       run: { kind: 'camera', deviceId: 'door', talk: false },
       runLabel: 'Show',
@@ -95,7 +95,7 @@ describe('camera search entries', () => {
     });
     expect(entry('camera:nursery:show')).toMatchObject({
       detail: 'Live view',
-      keywords: ['camera', 'live', 'view', 'watch', 'see', 'open', 'video', 'pan tilt camera'],
+      keywords: ['camera', 'live', 'view', 'watch', 'see', 'open', 'video', 'Camera'],
       state: 'Offline',
     });
   });
@@ -103,46 +103,11 @@ describe('camera search entries', () => {
   it('offers talk only for cameras with a speaker', () => {
     expect(entry('camera:door:talk')).toMatchObject({
       title: 'Talk to Front door',
-      keywords: ['camera', 'speak', 'intercom', 'microphone', 'answer', 'doorbell', 'Entry'],
+      keywords: ['camera', 'speak', 'intercom', 'microphone', 'answer', 'Doorbell', 'Entry'],
       run: { kind: 'camera', deviceId: 'door', talk: true },
       runLabel: 'Talk',
     });
     expect(() => entry('camera:nursery:talk')).toThrow('no entry camera:nursery:talk');
-  });
-
-  it('opens the wall, grid and focus layouts as pages', () => {
-    expect(entry('camera-view:wall')).toStrictEqual({
-      id: 'camera-view:wall',
-      group: 'page',
-      title: 'Camera wall',
-      detail: 'Cameras and widgets, arranged freely',
-      keywords: [
-        'open',
-        'cameras',
-        'page',
-        'control centre',
-        'control center',
-        'kiosk',
-        'dashboard',
-        'widgets',
-      ],
-      state: null,
-      run: { kind: 'camera-view', view: 'wall' },
-      runLabel: 'Open',
-      open: { kind: 'camera-view', view: 'wall' },
-      openLabel: 'Go',
-      suggested: false,
-    });
-    expect(entry('camera-view:grid')).toMatchObject({
-      title: 'Camera grid',
-      detail: 'One to nine cameras side by side',
-      keywords: ['open', 'cameras', 'page', 'tiles', 'all cameras', '2x2', '3x3'],
-    });
-    expect(entry('camera-view:focus')).toMatchObject({
-      title: 'Camera focus',
-      detail: 'One large camera and the others in a strip',
-      keywords: ['open', 'cameras', 'page', 'large', 'big', 'single'],
-    });
   });
 
   it('adds nothing for a home without cameras', () => {
@@ -172,10 +137,9 @@ describe('asking for a camera in plain words', () => {
     expect(tokensOf('a an')).toStrictEqual([]);
   });
 
-  it('finds the camera, talk, privacy and the wall first', () => {
+  it('finds the camera, talk and privacy first', () => {
     expect(first('Show front door camera')).toBe('camera:door:show');
     expect(first('Talk to doorbell')).toBe('camera:door:talk');
     expect(first('Turn on privacy for nursery camera')).toBe('action:nursery:privacy_mode:true');
-    expect(first('Open camera wall')).toBe('camera-view:wall');
   });
 });

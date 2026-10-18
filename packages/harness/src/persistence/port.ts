@@ -9,6 +9,11 @@ export interface NativeSessionSnapshot {
   readonly revision: string;
 }
 
+export interface NativeSessionRange {
+  readonly offset: number;
+  readonly length?: number;
+}
+
 export interface NativeSessionWriter extends NativeSessionSnapshot {
   readonly claim: DshWriterClaim;
 }
@@ -22,13 +27,12 @@ export interface NativeSessionPersistencePort {
   acquire(id: SessionId, signal?: AbortSignal): Promise<NativeSessionWriter>;
   stat(id: SessionId, signal?: AbortSignal): Promise<NativeSessionSnapshot | undefined>;
   list(signal?: AbortSignal): Promise<readonly NativeSessionSnapshot[]>;
-  read(id: SessionId, signal?: AbortSignal): Promise<unknown>;
+  read(id: SessionId, range?: NativeSessionRange, signal?: AbortSignal): Promise<unknown>;
   append(
     claim: DshWriterClaim,
     operationId: string,
     events: readonly SessionEvent[],
   ): Promise<void>;
   flush(claim: DshWriterClaim, expectedNextSeq: number): Promise<void>;
-  release(claim: DshWriterClaim, operationId: string, expectedNextSeq: number): Promise<void>;
   onOwnershipLost(listener: (id: string) => void): () => void;
 }

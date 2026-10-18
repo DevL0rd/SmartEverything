@@ -1,44 +1,52 @@
 import {
   ApiError,
-  MAX_AUTOMATION_TRACE,
+  AUTOMATION_TRACE_KEPT,
   type AutomationRunRow,
-  type AutomationRunPolicy,
   type AutomationRunStatus,
   type AutomationRunStep,
-  type AutomationSequenceRow,
+  type CommandRow,
 } from '@smarteverything/domain';
+import { Logger, background, failureLine } from '@smarteverything/logging';
 import type { Clock } from '../clock';
-import { describeError } from '../commands/executor';
 import type {
   AutomationRunsRepository,
   NewAutomationRun,
 } from '../store/repositories/automation-runs';
-import type { ActionExecutionContext } from './run-context';
+import type { RunHooks } from './run-context';
+
+export interface RunPolicy {
+  readonly mode: 'single' | 'restart' | 'queue' | 'parallel';
+  readonly max: number | undefined;
+}
 
 export interface OwnedRunTask extends NewAutomationRun {
-  readonly validate: () => void;
+  readonly policy: RunPolicy;
+  readonly admit?: () => void;
+  readonly alive?: () => void;
   readonly parentSignal?: AbortSignal;
-  readonly execute: (context: ActionExecutionContext) => Promise<string | null>;
+  readonly execute: (hooks: RunHooks) => Promise<string | null>;
 }
+
 export interface OwnedRunAdmission {
   readonly row: AutomationRunRow;
   readonly finished: Promise<string | null>;
 }
+
 interface PendingRun {
   readonly id: string;
   readonly task: OwnedRunTask;
   readonly controller: AbortController;
   readonly finish: (error: string | null) => void;
-  readonly trace: AutomationRunStep[];
-  running: boolean;
-  cancelReason: string | null;
-  currentNode: string | null;
   readonly detachParent: () => void;
+  readonly trace: AutomationRunStep[];
+  readonly commandIds: string[];
+  readonly queuedAt: number;
+  running: boolean;
 }
 
-function concurrencyOf(policy: AutomationRunPolicy | undefined): number {
-  if (policy === undefined) return Infinity;
-  return policy.mode === 'parallel' ? policy.limit : 1;
+function concurrencyOf(policy: RunPolicy): number {
+  if (policy.mode !== 'parallel') return 1;
+  return policy.max ?? Infinity;
 }
 
 function terminalStatus(cancelled: boolean, error: string | null): AutomationRunStatus {
@@ -49,23 +57,38 @@ function terminalStatus(cancelled: boolean, error: string | null): AutomationRun
 export class OwnedAutomationRuns {
   private readonly completions = new Map<string, Promise<string | null>>();
   private readonly pending = new Map<string, PendingRun>();
+  private readonly reasons = new Map<string, string>();
+  private readonly started = new Map<string, number>();
+  private readonly stepStarted = new Map<string, number>();
   private stopped = false;
   private pumpingPaused = false;
 
   constructor(
     private readonly store: AutomationRunsRepository,
     private readonly clock: Clock,
+    private readonly log: Logger = new Logger('hub.automations'),
   ) {
     store.interruptUnfinished();
+    this.log.debug('automation.runs_ready', {});
   }
 
   start(task: OwnedRunTask): OwnedRunAdmission {
     if (this.stopped)
       throw new ApiError('conflict', 'The hub is stopping; no new automation runs can start.');
-    task.validate();
+    task.admit?.();
     const row = this.store.create(task);
     const reason = this.refusal(task);
-    if (reason !== null)
+    const fields = {
+      runId: row.id,
+      automationId: task.automationId,
+      revision: task.revision,
+      parentRunId: task.parentRunId,
+      mode: task.policy.mode,
+      max: task.policy.max,
+      active: this.target(task.automationId).length,
+    };
+    if (reason !== null) {
+      this.log.info('automation.run_ignored', { ...fields, reason });
       return {
         row: this.store.update(row.id, {
           status: 'ignored',
@@ -74,26 +97,11 @@ export class OwnedAutomationRuns {
         }),
         finished: Promise.resolve(reason),
       };
-    if (task.definition.runPolicy?.mode === 'restart') this.cancelTarget(task.automationId);
+    }
+    this.log.debug('automation.run_admitted', fields);
+    if (task.policy.mode === 'restart') this.cancelAutomation(task.automationId);
     const finished = new Promise<string | null>((finish) => {
-      const controller = new AbortController();
-      const cancelParent = (): void => {
-        this.stop(row.id);
-      };
-      task.parentSignal?.addEventListener('abort', cancelParent, { once: true });
-      this.pending.set(row.id, {
-        id: row.id,
-        task,
-        controller,
-        detachParent: (): void => {
-          task.parentSignal?.removeEventListener('abort', cancelParent);
-        },
-        finish,
-        trace: [],
-        running: false,
-        cancelReason: null,
-        currentNode: null,
-      });
+      this.pending.set(row.id, this.pendingRun(row.id, task, finish));
     });
     this.completions.set(row.id, finished);
     if (task.parentSignal?.aborted === true) this.stop(row.id);
@@ -109,12 +117,12 @@ export class OwnedAutomationRuns {
     return this.store.byId(id);
   }
 
-  cancelTarget(automationId: string, controlKey?: string): void {
+  cancelAutomation(automationId: string, key?: string): void {
     this.pumpingPaused = true;
     for (const run of [...this.pending.values()]) {
       if (
         run.task.automationId === automationId &&
-        (controlKey === undefined || run.task.definition.controlKey === controlKey)
+        (key === undefined || run.task.controlKey === key)
       )
         this.stop(run.id);
     }
@@ -125,9 +133,9 @@ export class OwnedAutomationRuns {
     for (const run of [...this.pending.values()]) {
       if (run.controller.signal.aborted) continue;
       try {
-        run.task.validate();
+        run.task.alive?.();
       } catch (cause) {
-        this.cancel(run, describeError(cause));
+        this.cancel(run, failureLine(cause));
       }
     }
   }
@@ -145,19 +153,43 @@ export class OwnedAutomationRuns {
     return this.clock.now().toISOString();
   }
 
+  private pendingRun(
+    id: string,
+    task: OwnedRunTask,
+    finish: (error: string | null) => void,
+  ): PendingRun {
+    const cancelParent = (): void => {
+      this.stop(id);
+    };
+    task.parentSignal?.addEventListener('abort', cancelParent, { once: true });
+    return {
+      id,
+      task,
+      controller: new AbortController(),
+      finish,
+      detachParent: (): void => {
+        task.parentSignal?.removeEventListener('abort', cancelParent);
+      },
+      trace: [],
+      commandIds: [],
+      queuedAt: this.clock.now().getTime(),
+      running: false,
+    };
+  }
+
   private target(automationId: string): PendingRun[] {
     return [...this.pending.values()].filter((run) => run.task.automationId === automationId);
   }
 
   private refusal(task: OwnedRunTask): string | null {
-    const policy = task.definition.runPolicy;
+    const { mode, max } = task.policy;
     const runs = this.target(task.automationId);
-    if (policy?.mode === 'single' && runs.length > 0)
-      return 'Single policy ignored this occurrence because an automation run is active.';
-    if (policy?.mode === 'parallel' && runs.length >= policy.limit)
-      return 'Parallel policy ignored this occurrence because its concurrency limit is reached.';
-    if (policy?.mode === 'queue' && runs.filter((run) => !run.running).length >= policy.limit)
-      return 'Queue policy ignored this occurrence because its FIFO queue is full.';
+    if (mode === 'single' && runs.length > 0)
+      return 'Single mode ignored this occurrence because the automation is already running.';
+    if (mode === 'parallel' && max !== undefined && runs.length >= max)
+      return 'Parallel mode ignored this occurrence because its limit is reached.';
+    if (mode === 'queue' && max !== undefined && runs.filter((run) => !run.running).length >= max)
+      return 'Queue mode ignored this occurrence because its queue is full.';
     return null;
   }
 
@@ -166,80 +198,71 @@ export class OwnedAutomationRuns {
     const runs = this.target(automationId);
     let running = runs.filter((run) => run.running).length;
     for (const run of runs.filter((entry) => !entry.running)) {
-      const policy = run.task.definition.runPolicy;
-      const limit = concurrencyOf(policy);
-      if (running >= limit) break;
+      if (running >= concurrencyOf(run.task.policy)) break;
       run.running = true;
       running += 1;
-      void this.execute(run);
+      background(this.execute(run), 'owned_runs.execute_failed');
     }
   }
 
-  private context(run: PendingRun): ActionExecutionContext {
+  private hooks(run: PendingRun): RunHooks {
     return {
       runId: run.id,
-      ownerProfileId: run.task.ownerProfileId,
       signal: run.controller.signal,
-      authorize: run.task.validate,
-      sequence: (id): AutomationSequenceRow => {
-        const sequence = run.task.sequences?.get(id);
-        if (sequence === undefined)
-          throw new ApiError('conflict', 'Sequence was not included in the admitted run snapshot.');
-        return sequence;
+      begin: (nodeId): void => {
+        this.stepStarted.set(run.id, this.clock.now().getTime());
+        this.store.update(run.id, { current_node: nodeId });
       },
-      sceneActions: (id) => run.task.references[id],
-      step: (node, status, error): void => {
-        const nodeId =
-          typeof node === 'string'
-            ? node
-            : `${run.task.automationId}:${run.task.revision}:${String(node)}`;
-        const index = run.trace.findLastIndex(
-          (entry) => entry.nodeId === nodeId && entry.status === 'running',
-        );
-        const previous = run.trace[index];
-        const step = { nodeId, status, error, commandIds: previous?.commandIds ?? [] };
-        if (status === 'running' || previous === undefined)
-          run.trace.push({ ...step, commandIds: [] });
-        else run.trace.splice(index, 1, step);
-        const active = run;
-        active.currentNode = nodeId;
-        if (run.trace.length > MAX_AUTOMATION_TRACE) run.trace.shift();
-        this.store.update(run.id, { current_node: nodeId, trace: run.trace });
-      },
-      commands: (rows): void => {
-        this.store.retainCommands(run.id, rows);
-        const index = run.trace.findLastIndex(
-          (entry) => entry.nodeId === run.currentNode && entry.status === 'running',
-        );
-        const current = run.trace[index];
-        if (current === undefined)
-          throw new ApiError('conflict', 'An automation command has no owning step.');
-        run.trace.splice(index, 1, {
-          ...current,
-          commandIds: [...current.commandIds, ...rows.map((row) => row.id)].slice(
-            -MAX_AUTOMATION_TRACE,
-          ),
-        });
+      end: (step): void => {
+        if (step.status !== 'running') {
+          this.log.debug('automation.step_finished', () => ({
+            runId: run.id,
+            automationId: run.task.automationId,
+            nodeId: step.nodeId,
+            status: step.status,
+            commands: run.commandIds.length,
+            error: step.error ?? undefined,
+            durationMs: this.clock.now().getTime() - (this.stepStarted.get(run.id) ?? 0),
+          }));
+        }
+        run.trace.push({ ...step, commandIds: run.commandIds.splice(0) });
+        if (run.trace.length > AUTOMATION_TRACE_KEPT) run.trace.shift();
         this.store.update(run.id, { trace: run.trace });
+      },
+      commands: (rows: readonly CommandRow[]): void => {
+        this.store.retainCommands(run.id, rows);
+        run.commandIds.push(...rows.map((row) => row.id));
       },
     };
   }
 
   private async execute(run: PendingRun): Promise<void> {
     let error: string | null;
+    const startedAt = this.clock.now().getTime();
+    this.started.set(run.id, startedAt);
+    this.log.debug('automation.run_started', {
+      runId: run.id,
+      automationId: run.task.automationId,
+      waitedMs: startedAt - run.queuedAt,
+    });
     try {
-      run.task.validate();
+      run.task.alive?.();
       this.store.update(run.id, { status: 'running', started_at: this.now() });
-      error = await run.task.execute(this.context(run));
+      error = await run.task.execute(this.hooks(run));
     } catch (cause) {
-      error = describeError(cause);
+      error = failureLine(cause);
     }
     this.complete(run, error);
   }
 
   private cancel(run: PendingRun, reason: string): void {
-    const active = run;
-    active.cancelReason = reason;
+    this.reasons.set(run.id, reason);
+    this.log.info('automation.run_cancelling', {
+      runId: run.id,
+      automationId: run.task.automationId,
+      running: run.running,
+      reason,
+    });
     run.controller.abort();
     if (run.running) this.store.update(run.id, { status: 'cancelling', error: reason });
     else this.complete(run, reason);
@@ -250,13 +273,30 @@ export class OwnedAutomationRuns {
     this.pending.delete(run.id);
     this.completions.delete(run.id);
     const cancelled = run.controller.signal.aborted;
+    const outcome = cancelled ? (this.reasons.get(run.id) ?? null) : error;
+    this.reasons.delete(run.id);
+    this.stepStarted.delete(run.id);
+    const status = terminalStatus(cancelled, error);
+    const finishedAt = this.clock.now().getTime();
+    const summary = {
+      runId: run.id,
+      automationId: run.task.automationId,
+      status,
+      steps: run.trace.length,
+      waitedMs: (this.started.get(run.id) ?? finishedAt) - run.queuedAt,
+      durationMs: finishedAt - (this.started.get(run.id) ?? finishedAt),
+      error: outcome ?? undefined,
+    };
+    if (status === 'failed') this.log.warn('automation.run_finished', summary);
+    else this.log.info('automation.run_finished', summary);
+    this.started.delete(run.id);
     this.store.update(run.id, {
-      status: terminalStatus(cancelled, error),
+      status,
       current_node: null,
-      error: cancelled ? run.cancelReason : error,
+      error: outcome,
       finished_at: this.now(),
     });
-    run.finish(cancelled ? run.cancelReason : error);
+    run.finish(outcome);
     this.pump(run.task.automationId);
   }
 }

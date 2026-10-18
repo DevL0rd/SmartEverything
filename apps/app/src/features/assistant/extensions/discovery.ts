@@ -1,26 +1,24 @@
-import { CancelledError, keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
+  ApiError,
   API_ENDPOINTS as E,
   type HarnessDiscoveryItem,
   type HarnessDiscoveryPage,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
 import { useSyncStatus } from '../../../store/selectors';
-import { useHarnessSupported } from '../data/harness';
 import { DISCOVERY_KEY } from '../../../queries/extension-keys';
 
 export interface DiscoverySelection {
   readonly kind: 'skill' | 'extension';
   readonly query: string;
   readonly page: number;
-  readonly snapshot?: string;
+  readonly source?: string;
 }
-export interface DiscoveryResult {
+interface DiscoveryResult {
   readonly selection: DiscoverySelection;
   readonly catalogue: HarnessDiscoveryPage;
-}
-export function discoveryItemKey(id: string): readonly string[] {
-  return ['window', 'ai-harness-discovery-item', id];
 }
 export interface DiscoveryQuery {
   readonly data: DiscoveryResult | undefined;
@@ -29,36 +27,75 @@ export interface DiscoveryQuery {
   readonly isPlaceholderData: boolean;
   readonly refetch: () => Promise<unknown>;
 }
+
+function discoverPage(selection: DiscoverySelection): Promise<HarnessDiscoveryPage> {
+  const { source, ...request } = selection;
+  return api().call(E.discoverAiHarnessExtensions, {
+    body: source === undefined || source === '' ? request : { ...request, source: { url: source } },
+  });
+}
+
+function discoveryKey(selection: DiscoverySelection): readonly unknown[] {
+  return [...DISCOVERY_KEY, selection];
+}
+
 export function useDiscovery(selection: DiscoverySelection): DiscoveryQuery {
-  const client = useQueryClient();
-  const retainedKey = [...DISCOVERY_KEY, 'retained', selection.kind, selection.query];
-  const retained = useQuery<DiscoveryResult>({ queryKey: retainedKey, enabled: false });
-  const supported = useHarnessSupported();
   const sync = useSyncStatus();
-  const query = useQuery<DiscoveryResult>({
-    queryKey: [...DISCOVERY_KEY, selection],
-    enabled: supported && sync.status === 'live',
+  return useScreenQuery<DiscoveryResult>({
+    queryKey: discoveryKey(selection),
+    enabled: sync.status === 'live',
     retry: false,
     staleTime: 0,
     placeholderData: (previous) =>
-      previous?.selection.kind === selection.kind && previous.selection.query === selection.query
-        ? keepPreviousData(previous)
+      previous?.selection.kind === selection.kind &&
+      previous.selection.query === selection.query &&
+      previous.selection.source === selection.source
+        ? previous
         : undefined,
-    queryFn: async ({ signal }): Promise<DiscoveryResult> => {
-      const catalogue = await api().call(E.discoverAiHarnessExtensions, { body: selection });
-      if (signal.aborted) throw new CancelledError({ silent: true });
-      const result = { selection, catalogue };
-      client.setQueryData(retainedKey, result);
-      return result;
-    },
+    queryFn: async () => ({ selection, catalogue: await discoverPage(selection) }),
   });
-  const data = query.data ?? retained.data;
-  return {
-    ...query,
-    data,
-    isPlaceholderData: data !== undefined && data.selection.page !== selection.page,
-  };
 }
-export function useDiscoveryItem(id: string): ReturnType<typeof useQuery<HarnessDiscoveryItem>> {
-  return useQuery({ queryKey: discoveryItemKey(id), enabled: false });
+
+const ITEM_ID = /^(skill|plugin):(.+)$/u;
+const ITEM_FRESH_MS = 5 * 60 * 1000;
+
+async function searchDiscoveryItem(
+  id: string,
+  selection: DiscoverySelection,
+): Promise<HarnessDiscoveryItem> {
+  const result = await discoverPage(selection);
+  const found = result.items.find((item) => item.id === id);
+  if (found !== undefined) return found;
+  if (result.next_page === null) throw new ApiError('not_found', 'The catalogue has no such item.');
+  return searchDiscoveryItem(id, { ...selection, page: result.next_page });
+}
+
+export function findDiscoveryItem(id: string, source?: string): Promise<HarnessDiscoveryItem> {
+  const match = ITEM_ID.exec(id);
+  if (match?.[1] === undefined || match[2] === undefined)
+    return Promise.reject(new ApiError('not_found', 'That is not a catalogue item.'));
+  return searchDiscoveryItem(id, {
+    kind: match[1] === 'skill' ? 'skill' : 'extension',
+    query: match[2],
+    page: 1,
+    ...(source === undefined ? {} : { source }),
+  });
+}
+
+export function discoveryItemKey(id: string, source?: string): readonly string[] {
+  return [...DISCOVERY_KEY, 'item', id, ...(source === undefined ? [] : [source])];
+}
+
+export function useDiscoveryItem(
+  id: string,
+  source?: string,
+): UseQueryResult<HarnessDiscoveryItem> {
+  const sync = useSyncStatus();
+  return useScreenQuery({
+    queryKey: discoveryItemKey(id, source),
+    enabled: sync.status === 'live',
+    retry: false,
+    staleTime: ITEM_FRESH_MS,
+    queryFn: () => findDiscoveryItem(id, source),
+  });
 }

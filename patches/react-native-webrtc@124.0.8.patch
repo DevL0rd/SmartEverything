@@ -1,0 +1,65 @@
+diff --git a/android/src/main/java/com/oney/WebRTCModule/WebRTCModule.java b/android/src/main/java/com/oney/WebRTCModule/WebRTCModule.java
+index d5a9fb493bced8f2447bbed1e9d2725ed82cbad4..008e6185f581ffd9615ba8789e7854aff8add72d 100644
+--- a/android/src/main/java/com/oney/WebRTCModule/WebRTCModule.java
++++ b/android/src/main/java/com/oney/WebRTCModule/WebRTCModule.java
+@@ -67,7 +67,6 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
+ 
+         WebRTCModuleOptions options = WebRTCModuleOptions.getInstance();
+ 
+-        AudioDeviceModule adm = options.audioDeviceModule;
+         VideoEncoderFactory encoderFactory = options.videoEncoderFactory;
+         VideoDecoderFactory decoderFactory = options.videoDecoderFactory;
+         Loggable injectableLogger = options.injectableLogger;
+@@ -97,9 +96,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
+             }
+         }
+ 
+-        if (adm == null) {
+-            adm = JavaAudioDeviceModule.builder(reactContext).setEnableVolumeLogger(false).createAudioDeviceModule();
+-        }
++        AudioDeviceModule adm = options.audioDeviceModuleFactory == null
++                ? JavaAudioDeviceModule.builder(reactContext).setEnableVolumeLogger(false).createAudioDeviceModule()
++                : options.audioDeviceModuleFactory.create(reactContext);
+ 
+         Log.d(TAG, "Using video encoder factory: " + encoderFactory.getClass().getCanonicalName());
+         Log.d(TAG, "Using video decoder factory: " + decoderFactory.getClass().getCanonicalName());
+diff --git a/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java b/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java
+index 01d31d7b10f4906ebf51fc1d946670a75d85f840..dc69e3b7bc589472aab1d1a07842f8a62e59e9b1 100644
+--- a/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java
++++ b/android/src/main/java/com/oney/WebRTCModule/WebRTCModuleOptions.java
+@@ -1,5 +1,7 @@
+ package com.oney.WebRTCModule;
+ 
++import android.content.Context;
++
+ import org.webrtc.Loggable;
+ import org.webrtc.Logging;
+ import org.webrtc.VideoDecoderFactory;
+@@ -11,7 +13,11 @@ public class WebRTCModuleOptions {
+ 
+     public VideoEncoderFactory videoEncoderFactory;
+     public VideoDecoderFactory videoDecoderFactory;
+-    public AudioDeviceModule audioDeviceModule;
++    public interface AudioDeviceModuleFactory {
++        AudioDeviceModule create(Context context);
++    }
++
++    public AudioDeviceModuleFactory audioDeviceModuleFactory;
+     public Loggable injectableLogger;
+     public Logging.Severity loggingSeverity;
+     public String fieldTrials;
+diff --git a/src/index.ts b/src/index.ts
+index e08cfb640887eddfe3d02d45bf886bbb18141d84..66dbe8d90b985619234da92ee7971c5de234ee52 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -30,7 +30,9 @@
+ import RTCView, { type RTCVideoViewProps, type RTCIOSPIPOptions } from './RTCView';
+ import ScreenCapturePickerView from './ScreenCapturePickerView';
+ 
+-Logger.enable(`${Logger.ROOT_PREFIX}:*`);
++if (__DEV__) {
++    Logger.enable(`${Logger.ROOT_PREFIX}:*`);
++}
+ 
+ // Add listeners for the native events early, since they are added asynchronously.
+ setupNativeEvents();

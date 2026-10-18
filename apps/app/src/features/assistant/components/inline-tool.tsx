@@ -1,9 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import Animated from 'react-native-reanimated';
 import type { ChatTimelineTool } from '@smarteverything/domain';
-import { useMotion } from '../../../design/motion';
-import { Interactive } from '../../../components/interactive';
 import { Icon, type IconName } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import type { Tone } from '../../../components/tone';
@@ -11,13 +8,14 @@ import { toolActionTitle } from '../model/tool-presentation';
 import { toolGroupGoal } from '../model/tool-group-goal';
 import { toolOutcome, toolResultLine } from '../model/tool-outcome';
 import { usePluginNames } from '../data/plugin-names';
-import { WORK_COLLAPSE } from './thread-motion';
+import { Disclosure } from '../../../components/disclosure';
 import { Spinner } from './work-step-list';
 import type { InlineToolActivity } from '../model/inline-timeline';
 import type { NumberedSource } from '../model/web-sources';
 import { WebSources } from './web-sources';
 import { ToolFileDiffs } from './tool-file-diffs';
 import { ToolResultAccess } from './tool-result-access';
+import { useProgressiveCount } from '../../../design/progressive-count';
 
 interface ActionStatus {
   readonly label: string;
@@ -32,6 +30,8 @@ const STATUS: Readonly<Record<ChatTimelineTool['state'], ActionStatus>> = {
   unknown: { label: 'Couldn’t confirm', icon: 'circle', tone: 'warning' },
 };
 
+const STARTED: ActionStatus = { ...STATUS.done, label: 'Started' };
+
 function groupStatus(tools: readonly ChatTimelineTool[], live: boolean): ActionStatus {
   const states = tools.map((tool) => toolOutcome(tool, live));
   if (states.includes('running')) return STATUS.running;
@@ -39,38 +39,37 @@ function groupStatus(tools: readonly ChatTimelineTool[], live: boolean): ActionS
   if (failures > 0) return { ...STATUS.failed, label: `${String(failures)} failed` };
   if (states.includes('unknown')) return STATUS.unknown;
   if (states.includes('interrupted')) return STATUS.interrupted;
-  return tools.some((tool) => tool.image_operation_id !== null)
-    ? { ...STATUS.done, label: 'Started' }
-    : STATUS.done;
+  return tools.some((tool) => tool.image_operation_id !== null) ? STARTED : STATUS.done;
 }
 
-function StatusIcon({ status }: { readonly status: ActionStatus }): ReactNode {
-  return status.icon === 'loader' ? (
-    <Spinner />
-  ) : (
-    <Icon name={status.icon} size={16} tone={status.tone} />
-  );
-}
+const StatusIcon = memo(function StatusIcon({
+  icon,
+  tone,
+}: {
+  readonly icon: IconName;
+  readonly tone: Tone;
+}): ReactNode {
+  return icon === 'loader' ? <Spinner /> : <Icon name={icon} size={16} tone={tone} />;
+});
 
-function ToolAction({
+const ToolAction = memo(function ToolAction({
+  chatId,
   tool,
   title,
   live,
 }: {
+  readonly chatId: string;
   readonly tool: ChatTimelineTool;
   readonly title: string;
   readonly live: boolean;
 }): ReactNode {
   const outcome = toolOutcome(tool, live);
-  const status =
-    outcome === 'done' && tool.image_operation_id !== null
-      ? { ...STATUS.done, label: 'Started' }
-      : STATUS[outcome];
+  const status = outcome === 'done' && tool.image_operation_id !== null ? STARTED : STATUS[outcome];
   const result = toolResultLine(tool, live);
   return (
     <View className="gap-1 py-1.5" accessibilityLabel={`${title}. ${status.label}`}>
       <View className="flex-row items-start gap-2">
-        <StatusIcon status={status} />
+        <StatusIcon icon={status.icon} tone={status.tone} />
         <Text variant="footnote" className="min-w-0 flex-1" selectable>
           {title}
         </Text>
@@ -83,27 +82,31 @@ function ToolAction({
           {result}
         </Text>
       )}
-      <ToolFileDiffs tool={{ ...tool, state: outcome }} />
-      <ToolResultAccess output={tool.output} title={title} />
+      <ToolFileDiffs tool={tool} state={outcome} />
+      {tool.output === null ? null : <ToolResultAccess chatId={chatId} tool={tool} title={title} />}
     </View>
   );
-}
+});
 
-function GroupBody({
+const GroupBody = memo(function GroupBody({
+  chatId,
   activities,
   live,
   pluginName,
 }: {
+  readonly chatId: string;
   readonly activities: readonly InlineToolActivity[];
   readonly live: boolean;
   readonly pluginName: (id: string) => string | null;
 }): ReactNode {
+  const mounted = useProgressiveCount(activities.length, !live);
   return (
     <View className="gap-1 pl-4">
-      {activities.map((activity) =>
+      {activities.slice(0, mounted).map((activity) =>
         activity.kind === 'tool' ? (
           <ToolAction
             key={activity.key}
+            chatId={chatId}
             tool={activity.tool}
             title={toolActionTitle(activity.tool, pluginName)}
             live={live}
@@ -121,95 +124,97 @@ function GroupBody({
       )}
     </View>
   );
+});
+
+function groupLabel(title: string, count: number, status: ActionStatus, thinking: boolean): string {
+  const actions = `${String(count)} actions`;
+  return `${title}, ${actions}, ${status.label}${thinking ? ', thinking available' : ''}`;
 }
 
-function ToolSummary({
-  title,
-  count,
-  status,
-  thinking,
-  open,
-  toggle,
-}: {
-  readonly title: string;
-  readonly count: number;
-  readonly status: ActionStatus;
-  readonly thinking: boolean;
-  readonly open: boolean;
-  readonly toggle: () => void;
-}): ReactNode {
+function ThinkingMark(): ReactNode {
   return (
-    <View className="min-h-touch-min max-w-full justify-center self-start">
-      <Interactive
-        label={`${title}, ${String(count)} ${count === 1 ? 'action' : 'actions'}, ${status.label}${thinking ? ', thinking available' : ''}`}
-        checked={open}
-        hitSlop={10}
-        hint={open ? 'Hide actions' : 'Show actions and results'}
-        onPress={toggle}
-        className="min-h-6 flex-row items-center gap-1.5 self-start rounded-sm px-1"
-        layerClassName="rounded-sm"
-      >
-        <Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} tone="variant" />
-        <Text variant="caption" numberOfLines={2} className="min-w-0 shrink" tone="variant">
-          {title}
-        </Text>
-        {count > 1 ? (
-          <Text variant="caption" tone="variant">
-            · {String(count)}
-          </Text>
-        ) : null}
-        <Text variant="caption" tone={status.tone}>
-          {status.label}
-        </Text>
-        {thinking ? (
-          <Text variant="caption" tone="variant">
-            · Thinking
-          </Text>
-        ) : null}
-      </Interactive>
-    </View>
+    <Text variant="caption" tone="variant">
+      · Thinking
+    </Text>
   );
 }
 
-export function InlineTool({
+interface GroupProps {
+  readonly chatId: string;
+  readonly activities: readonly InlineToolActivity[];
+  readonly tools: readonly ChatTimelineTool[];
+  readonly live: boolean;
+  readonly active: boolean;
+  readonly pluginName: (id: string) => string | null;
+}
+
+const GroupDisclosure = memo(function GroupDisclosure({
+  chatId,
   tools,
   live,
+  active,
   activities,
+  pluginName,
+}: GroupProps): ReactNode {
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const body = (
+    <GroupBody chatId={chatId} activities={activities} live={live} pluginName={pluginName} />
+  );
+  const open = chosen ?? active;
+  const thinking = useMemo(
+    () => activities.some((activity) => activity.kind === 'reasoning'),
+    [activities],
+  );
+  const status = useMemo(() => groupStatus(tools, live), [tools, live]);
+  const title = useMemo(() => toolGroupGoal(tools, pluginName), [tools, pluginName]);
+  return (
+    <Disclosure
+      label={title}
+      accessibleLabel={groupLabel(title, tools.length, status, thinking)}
+      count={tools.length}
+      status={status}
+      trailing={thinking ? <ThinkingMark /> : undefined}
+      open={open}
+      onToggle={() => {
+        setChosen(!open);
+      }}
+      hint={open ? 'Hide actions' : 'Show actions and results'}
+    >
+      {body}
+    </Disclosure>
+  );
+});
+
+const ToolGroup = memo(function ToolGroup(props: GroupProps): ReactNode {
+  return props.tools.length === 1 ? (
+    <GroupBody
+      chatId={props.chatId}
+      activities={props.activities}
+      live={props.live}
+      pluginName={props.pluginName}
+    />
+  ) : (
+    <GroupDisclosure {...props} />
+  );
+});
+
+export function InlineTool({
   sources,
+  ...group
 }: {
+  readonly chatId: string;
   readonly activities: readonly InlineToolActivity[];
   readonly sources: readonly NumberedSource[];
   readonly tools: readonly ChatTimelineTool[];
   readonly live: boolean;
+  readonly active: boolean;
 }): ReactNode {
-  const [open, setOpen] = useState(false);
   const plugins = usePluginNames();
-  const motion = useMotion();
-  const status = groupStatus(tools, live);
-  const title = toolGroupGoal(tools, (id) => plugins.get(id) ?? null);
-  const thinking = activities.some((activity) => activity.kind === 'reasoning');
+  const pluginName = useCallback((id: string) => plugins.get(id) ?? null, [plugins]);
   return (
-    <Animated.View {...(motion.reduced ? {} : { layout: WORK_COLLAPSE })} className="min-w-0 gap-1">
-      {tools.length > 1 ? (
-        <ToolSummary
-          title={title}
-          count={tools.length}
-          status={status}
-          thinking={thinking}
-          open={open}
-          toggle={() => {
-            setOpen(!open);
-          }}
-        />
-      ) : null}
-      {tools.length === 1 || open ? (
-        <GroupBody
-          activities={activities}
-          live={live}
-          pluginName={(id) => plugins.get(id) ?? null}
-        />
-      ) : null}
+    <View className="min-w-0 gap-1">
+      <ToolGroup {...group} pluginName={pluginName} />
       <WebSources sources={sources} />
-    </Animated.View>
+    </View>
   );
 }

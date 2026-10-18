@@ -3,17 +3,25 @@ import {
   QUERY_LOG_PAGE,
   type AdGuardQuery,
   type AdGuardSnapshot,
-  type AdGuardStatus,
+  type QueryLogPage,
   type QueryLogFilter,
 } from '@smarteverything/domain';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type InfiniteData, type UseInfiniteQueryOptions } from '@tanstack/react-query';
+import { useScreenInfiniteQuery } from '../../queries/use-screen-query';
 import { z } from 'zod';
+import { joinParts } from '../../format/text';
 import { clock } from '../../format/time';
-import { useDevices } from '../../store/selectors';
-import type { Device } from '../../store/state';
+import { PLUGIN_PREFIX } from '../../queries/keys';
 import type { PluginNoticeText } from '../shared/plugin-notice';
 import { usePluginStream, type PluginStream } from '../shared/use-plugin-stream';
-import { usePluginTool, type PluginToolRunner } from '../use-plugin-tool';
+import { pluginLog } from '../shared/plugin-log';
+import {
+  parsePluginReply,
+  readPluginTool,
+  usePluginTool,
+  type PluginToolRunner,
+} from '../use-plugin-tool';
+import { background } from '@smarteverything/logging';
 
 export const ADGUARD_PLUGIN = 'adguard';
 
@@ -25,26 +33,13 @@ export function useAdGuardTools(): PluginToolRunner {
   return usePluginTool(ADGUARD_PLUGIN);
 }
 
-export function useAdGuardDevice(): Device | null {
-  return useDevices({ includeHidden: true }).find((device) => device.kind === 'dns_filter') ?? null;
-}
-
-export function protectionText(status: AdGuardStatus): string {
-  if (status.protection) {
-    return 'Ad blocking is on';
-  }
-  return status.pausedUntil === null
-    ? 'Ad blocking is off'
-    : `Ad blocking is paused until ${clock(status.pausedUntil)}`;
-}
-
 const NOTICES: Readonly<
   Record<'not_set_up' | 'sign_in_needed' | 'connecting' | 'paused', PluginNoticeText>
 > = {
   not_set_up: {
     tone: 'info',
     title: 'AdGuard Home isn’t set up',
-    body: 'Add its address, user name and password, or copy them from Router Monitor.',
+    body: 'Block ads and trackers for every device at home. Add its address, user name and password, or copy them from Router Monitor.',
     settings: true,
   },
   sign_in_needed: {
@@ -83,7 +78,7 @@ export function adguardNotice(snapshot: AdGuardSnapshot): PluginNoticeText | nul
       return {
         tone: 'critical',
         title: 'AdGuard Home can’t be reached',
-        body: connection.reason,
+        body: joinParts([connection.reason, `Offline since ${clock(connection.since)}`]),
         settings: true,
       };
     case 'not_set_up':
@@ -96,7 +91,9 @@ export function adguardNotice(snapshot: AdGuardSnapshot): PluginNoticeText | nul
 
 const PAGE_REPLY = z.strictObject({ page: QUERY_LOG_PAGE });
 
-const MAX_LOADED_QUERIES = 300;
+const PAGE_SIZE = 50;
+
+export const LOADED_PAGES = 6;
 
 export interface QueryLogView {
   readonly entries: readonly AdGuardQuery[];
@@ -107,63 +104,66 @@ export interface QueryLogView {
   readonly reload: () => void;
 }
 
-interface LogState {
-  readonly key: string;
-  readonly entries: readonly AdGuardQuery[];
-  readonly olderThan: string | null;
-  readonly loading: boolean;
-  readonly failed: boolean;
+type QueryLogOptions = UseInfiniteQueryOptions<
+  QueryLogPage,
+  Error,
+  InfiniteData<QueryLogPage, string | null>,
+  readonly string[],
+  string | null
+>;
+
+const FIRST_PAGE: string | null = null;
+
+export function queryLogOptions(search: string, filter: QueryLogFilter): QueryLogOptions {
+  return {
+    queryKey: [...PLUGIN_PREFIX, ADGUARD_PLUGIN, 'log', filter, search],
+    queryFn: async ({ pageParam }): Promise<QueryLogPage> => {
+      const page = parsePluginReply(
+        ADGUARD_PLUGIN,
+        'query_log',
+        PAGE_REPLY,
+        await readPluginTool(ADGUARD_PLUGIN, 'query_log', {
+          search,
+          filter,
+          olderThan: pageParam,
+          limit: PAGE_SIZE,
+        }),
+      ).page;
+      pluginLog.debug('plugin_query.fetched', {
+        pluginId: ADGUARD_PLUGIN,
+        query: 'query_log',
+        filter,
+        searchLength: search.length,
+        firstPage: pageParam === FIRST_PAGE,
+        entries: page.entries.length,
+        hasOlder: page.olderThan !== null,
+      });
+      return page;
+    },
+    initialPageParam: FIRST_PAGE,
+    getNextPageParam: (last) => last.olderThan,
+    staleTime: 0,
+  };
 }
 
-function startOf(key: string): LogState {
-  return { key, entries: [], olderThan: null, loading: true, failed: false };
+export function hasOlderLookups(hasNextPage: boolean, loadedPages: number): boolean {
+  return hasNextPage && loadedPages < LOADED_PAGES;
 }
 
 export function useQueryLog(search: string, filter: QueryLogFilter): QueryLogView {
-  const tools = useAdGuardTools();
-  const [generation, setGeneration] = useState(0);
-  const key = `${filter}|${String(generation)}|${search}`;
-  const [state, setState] = useState<LogState>(() => startOf(key));
-  const latest = useRef(key);
-  const fetchPage = useCallback(
-    async (olderThan: string | null, previous: readonly AdGuardQuery[]): Promise<LogState> => {
-      const result = await tools.run('query_log', { search, filter, olderThan, limit: 50 });
-      const parsed = PAGE_REPLY.safeParse(result);
-      return parsed.success
-        ? {
-            key,
-            entries: [...previous, ...parsed.data.page.entries],
-            olderThan: parsed.data.page.olderThan,
-            loading: false,
-            failed: false,
-          }
-        : { key, entries: previous, olderThan, loading: false, failed: true };
-    },
-    [tools, search, filter, key],
-  );
-  const accept = useCallback((next: LogState): void => {
-    if (next.key === latest.current) {
-      setState(next);
-    }
-  }, []);
-  useEffect(() => {
-    latest.current = key;
-    void fetchPage(null, []).then(accept);
-  }, [fetchPage, accept, key]);
-  const current = state.key === key ? state : startOf(key);
+  const log = useScreenInfiniteQuery(queryLogOptions(search, filter));
   return {
-    entries: current.entries,
-    loading: current.loading,
-    failed: current.failed,
-    more: current.olderThan !== null && current.entries.length < MAX_LOADED_QUERIES,
+    entries: log.data?.pages.flatMap((page) => page.entries) ?? [],
+    loading: log.isPending || log.isFetchingNextPage,
+    failed: log.isError,
+    more: hasOlderLookups(log.hasNextPage, log.data?.pages.length ?? 0),
     loadOlder: (): void => {
-      if (!current.loading && current.olderThan !== null) {
-        setState({ ...current, loading: true });
-        void fetchPage(current.olderThan, current.entries).then(accept);
+      if (!log.isFetchingNextPage) {
+        background(log.fetchNextPage(), 'next_page.fetch_failed');
       }
     },
     reload: (): void => {
-      setGeneration((value) => value + 1);
+      background(log.refetch(), 'log.refetch_failed');
     },
   };
 }

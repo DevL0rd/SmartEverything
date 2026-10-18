@@ -1,4 +1,9 @@
-import type { TranscriptHit } from '@smarteverything/domain';
+import type { TranscriptHit, TranscriptSession } from '@smarteverything/domain';
+
+export interface TranscriptRemoval {
+  readonly line: (hit: TranscriptHit) => void;
+  readonly session: (session: TranscriptSession) => void;
+}
 
 export interface TranscriptFeedState {
   readonly rows: readonly TranscriptHit[];
@@ -9,11 +14,9 @@ export interface TranscriptFeedState {
   readonly missingAnchor: boolean;
   readonly error: Error | null;
   readonly loading: boolean;
-  readonly fetching: boolean;
   readonly older: boolean;
   readonly newer: boolean;
   readonly loadingOlder: boolean;
-  readonly loadingNewer: boolean;
   readonly loadOlder: () => void;
   readonly loadNewer: () => void;
   readonly refresh: () => void;

@@ -99,7 +99,7 @@ describe('linking SmartThings', () => {
       record.context,
     );
     expect(account).toEqual({
-      label: 'SmartThings: Home, Cabin',
+      label: 'Home, Cabin',
       secrets: {
         accessToken: 'access-2',
         refreshToken: 'refresh-2',

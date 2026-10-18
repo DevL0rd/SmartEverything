@@ -1,11 +1,3 @@
-import {
-  ACCENTS,
-  CLIENT_PREFS,
-  CLIENT_PREF_KEYS,
-  FIRST_PROFILE_NAME,
-  PROVIDERS,
-  UNSET_FITNESS_GOALS,
-} from '@smarteverything/domain';
 import type { LogPayload } from '@smarteverything/logging';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -14,20 +6,23 @@ import { COLUMN_TYPES } from './core-tables';
 
 const { BOOLEAN, JSON_ARRAY, JSON_OBJECT, NAMED } = COLUMN_TYPES;
 
-const listed = (values: readonly string[]): string =>
-  values.map((value) => `'${value}'`).join(', ');
+const CLIENT_PAGES = "'call-audio', 'camera-prefs', 'health-sync'";
 
-const CLIENT_PAGES = listed(
-  CLIENT_PREF_KEYS.filter((key) => CLIENT_PREFS[key].scope === 'client').map(
-    (key) => CLIENT_PREFS[key].storageKey,
-  ),
-);
+const FIRST_PROFILE_NAME = 'Me';
+
+const UNSET_FITNESS_GOALS = {
+  steps: null,
+  move_kcal: null,
+  active_minutes: null,
+  sleep_minutes: null,
+  hydration_ml: null,
+};
 
 export const PROFILE_TABLES: readonly string[] = [
   `create table profiles (
     id text primary key,
     ${NAMED('name', 40)},
-    colour text not null check (colour in (${listed(ACCENTS)})),
+    colour text not null check (colour in ('amber', 'aqua', 'rose', 'violet', 'lime', 'ice')),
     sex text check (sex in ('female', 'male')),
     birth_date text check (birth_date is null or date(birth_date) = birth_date),
     height_cm integer check (height_cm between 100 and 250),
@@ -62,7 +57,7 @@ export const PROFILE_TABLES: readonly string[] = [
   ) strict, without rowid`,
   `create table devices_new (
     id text primary key,
-    provider text not null check (provider in (${listed(PROVIDERS)})),
+    provider text not null check (provider in ('xiaomi', 'tuya', 'smartthings', 'samsung_tv', 'local')),
     external_id text not null check (length(external_id) > 0),
     parent_id text references devices (id) on delete set null,
     kind text not null,

@@ -6,7 +6,7 @@ import type { HarnessDesiredConfiguration } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { HarnessRuntime } from '../host/runtime';
 import { HarnessRuntimeError } from '../host/errors';
-import type { HarnessHttp } from './http';
+import type { HarnessHub } from './http';
 
 export class ProcessHarnessConfiguration {
   private runtime: HarnessRuntime | undefined;
@@ -15,7 +15,7 @@ export class ProcessHarnessConfiguration {
   private failure: Error | undefined;
   private readonly log = new Logger('tool.harness-configuration');
 
-  constructor(private readonly http: HarnessHttp) {}
+  constructor(private readonly http: HarnessHub) {}
 
   bind(runtime: HarnessRuntime): void {
     this.runtime = runtime;

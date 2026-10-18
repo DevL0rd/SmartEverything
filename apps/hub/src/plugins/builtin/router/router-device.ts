@@ -102,6 +102,7 @@ const SAMPLED: ReadonlySet<CapabilityKey> = new Set([
   'cpu_load',
   'memory_used',
   'latency',
+  'temperature',
 ]);
 
 export function routerMirror(metrics: PluginMetrics): DeviceMirrorSpec<RouterSnapshot> {

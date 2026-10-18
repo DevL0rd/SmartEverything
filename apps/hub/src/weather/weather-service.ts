@@ -1,18 +1,19 @@
 import type { SettingsRow, WeatherAir, WeatherRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { Cancel, Clock } from '../clock';
+import type { Clock } from '../clock';
+import { ScheduledFetch } from '../scheduled-fetch';
 import type { Store } from '../store/store';
 import { fetchAir } from './open-meteo-air';
 import { fetchForecast } from './open-meteo-forecast';
 import type { ProviderRequest } from '../outbound/provider-json';
 import type { WeatherSpot } from './open-meteo';
+import { MINUTE_MS } from '../metrics/minute';
+import { background, messageOf } from '@smarteverything/logging';
 
-const MINUTE_MS = 60_000;
 const SLOT_PERIOD_MS = 15 * MINUTE_MS;
 const SLOT_OFFSET_MS = MINUTE_MS;
 const MIN_GAP_MS = 5 * MINUTE_MS;
 const RETRY_SECONDS = [15, 300, 900, 2700, 3600] as const;
-const LONGEST_RETRY_SECONDS = 3600;
 const FRESH_MS = 2 * MINUTE_MS;
 
 export interface WeatherServiceOptions {
@@ -22,7 +23,7 @@ export interface WeatherServiceOptions {
   readonly log: Logger;
 }
 
-export function nextSlot(now: Date): Date {
+function nextSlot(now: Date): Date {
   const earliest = now.getTime() + MIN_GAP_MS - SLOT_OFFSET_MS;
   const slot = (Math.floor(earliest / SLOT_PERIOD_MS) + 1) * SLOT_PERIOD_MS + SLOT_OFFSET_MS;
   return new Date(slot);
@@ -45,18 +46,18 @@ function spotKey(spot: WeatherSpot | null): string {
     : `${String(spot.latitude)},${String(spot.longitude)},${spot.timeZone}`;
 }
 
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
 export class WeatherService {
-  private timer: Cancel | null = null;
-  private running: Promise<WeatherRow> | null = null;
-  private failures = 0;
+  private readonly fetches: ScheduledFetch<WeatherRow>;
   private spot: string;
   private unsubscribe: (() => void) | null = null;
 
   constructor(private readonly options: WeatherServiceOptions) {
+    this.fetches = new ScheduledFetch({
+      clock: options.clock,
+      fetch: (): Promise<WeatherRow> => this.fetchOnce(),
+      retrySeconds: RETRY_SECONDS,
+      minGapMs: FRESH_MS,
+    });
     this.spot = spotKey(spotOf(options.store.settings.read()));
   }
 
@@ -75,28 +76,23 @@ export class WeatherService {
   stop(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
-    this.cancel();
+    this.fetches.cancel();
   }
 
   current(): WeatherRow {
     return this.options.store.weather.read();
   }
 
-  async refresh(): Promise<WeatherRow> {
+  refresh(): Promise<WeatherRow> {
     const row = this.current();
-    if (this.running !== null) {
-      return this.running;
-    }
-    const fresh =
-      row.error === null &&
-      row.air_error === null &&
-      row.fetched_at !== null &&
-      this.options.clock.now().getTime() - Date.parse(row.fetched_at) < FRESH_MS;
-    return fresh ? row : this.fetchNow();
+    return this.fetches.refresh(row, {
+      fetchedAt: row.fetched_at,
+      healthy: row.error === null && row.air_error === null,
+    });
   }
 
   settled(): Promise<WeatherRow> | null {
-    return this.running;
+    return this.fetches.settled();
   }
 
   private resume(): void {
@@ -113,10 +109,10 @@ export class WeatherService {
       Math.abs(row.forecast.longitude - spot.longitude) < 0.1;
     const due = row.next_fetch_at === null ? 0 : Date.parse(row.next_fetch_at);
     if (matches && due > this.options.clock.now().getTime()) {
-      this.schedule(new Date(due));
+      this.fetches.schedule(new Date(due));
       return;
     }
-    void this.fetchNow();
+    background(this.fetches.run(), 'fetches.run_failed');
   }
 
   private settingsChanged(settings: SettingsRow): void {
@@ -125,55 +121,40 @@ export class WeatherService {
       return;
     }
     this.spot = key;
-    this.failures = 0;
-    this.cancel();
+    this.fetches.reset();
+    this.fetches.cancel();
     this.options.store.weather.cleared();
     this.options.log.info('weather.location_changed', { located: key !== 'none' });
     this.resume();
   }
 
   private clearIfNeeded(row: WeatherRow): void {
-    this.cancel();
+    this.fetches.cancel();
     if (row.forecast !== null || row.error !== null || row.next_fetch_at !== null) {
       this.options.store.weather.cleared();
     }
   }
 
-  private schedule(at: Date): void {
-    this.cancel();
-    this.timer = this.options.clock.at(at, () => {
-      this.timer = null;
-      void this.fetchNow();
-    });
-  }
-
-  private cancel(): void {
-    this.timer?.();
-    this.timer = null;
-  }
-
-  private fetchNow(): Promise<WeatherRow> {
-    if (this.running !== null) {
-      return this.running;
-    }
-    const running = this.fetchOnce().finally(() => {
-      this.running = null;
-    });
-    this.running = running;
-    return running;
-  }
-
   private async fetchOnce(): Promise<WeatherRow> {
     const spot = spotOf(this.options.store.settings.read());
     if (spot === null) {
+      this.options.log.debug('weather.fetch_skipped', { reason: 'no_location' });
       return this.current();
     }
     const key = spotKey(spot);
+    const startedAt = this.options.clock.now().getTime();
+    this.options.log.debug('weather.fetch_started', { timeZone: spot.timeZone });
     const [forecast, air] = await Promise.allSettled([
       fetchForecast(this.options.request, spot),
       fetchAir(this.options.request, spot),
     ]);
+    this.options.log.debug('weather.fetch_settled', () => ({
+      forecast: forecast.status,
+      air: air.status,
+      durationMs: this.options.clock.now().getTime() - startedAt,
+    }));
     if (key !== this.spot) {
+      this.options.log.info('weather.fetch_discarded', { reason: 'location_changed' });
       return this.current();
     }
     if (forecast.status === 'rejected') {
@@ -186,21 +167,15 @@ export class WeatherService {
     );
   }
 
-  private retryAt(): Date {
-    const seconds = RETRY_SECONDS[this.failures] ?? LONGEST_RETRY_SECONDS;
-    this.failures += 1;
-    return new Date(this.options.clock.now().getTime() + seconds * 1000);
-  }
-
   private fetched(
     parts: Omit<NonNullable<WeatherRow['forecast']>, 'air'>,
     air: WeatherAir | null,
     airError: string | null,
   ): WeatherRow {
     if (airError === null) {
-      this.failures = 0;
+      this.fetches.reset();
     }
-    const next = airError === null ? nextSlot(this.options.clock.now()) : this.retryAt();
+    const next = airError === null ? nextSlot(this.options.clock.now()) : this.fetches.retryAt();
     const row = this.options.store.weather.fetched({
       forecast: { ...parts, air },
       airError,
@@ -213,18 +188,18 @@ export class WeatherService {
       weatherCode: parts.now.code,
       next: next.toISOString(),
     });
-    this.schedule(next);
+    this.fetches.schedule(next);
     return row;
   }
 
   private failed(reason: string): WeatherRow {
-    const next = this.retryAt();
+    const next = this.fetches.retryAt();
     this.options.log.warn('weather.fetch_failed', { reason, retryAt: next.toISOString() });
     const row = this.options.store.weather.failed({
       error: reason,
       nextFetchAt: next.toISOString(),
     });
-    this.schedule(next);
+    this.fetches.schedule(next);
     return row;
   }
 }

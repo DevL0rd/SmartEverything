@@ -9,26 +9,29 @@ import type {
   AiReferenceSearch,
 } from '@smarteverything/domain';
 import { NativeReferenceCursors, type NativeReferenceProgress } from './cursors';
-import { HarnessAdmission } from '../host/admission';
 import { HarnessRuntimeError } from '../host/errors';
 import type { HarnessPluginReadiness } from '../composition/configuration';
-import { nativeReferenceCatalogue, exactReferenceItem } from './catalogue';
+import { nativeReferenceCatalogue, findReferenceItem } from './catalogue';
 import { NativeDeviceReferenceScan, resolveDeviceReference } from './device';
 import { referenceHash } from './identity';
 
+interface Opening {
+  readonly agent: Agent;
+  readonly request: AiReferenceSearch;
+  readonly scope: string;
+  readonly signal?: AbortSignal | undefined;
+}
+
 export class NativeReferences {
-  private generation = 0;
   private readonly cursors = new NativeReferenceCursors();
-  private readonly admission = new HarnessAdmission();
   constructor(
     private readonly ctx: Context,
     private readonly binding: (id: string) => AiHarnessStorageBinding | undefined,
     private readonly readiness: () => readonly HarnessPluginReadiness[],
   ) {
-    ctx.on('skills/change', (): void => {
-      this.generation += 1;
+    ctx.effect(() => (): void => {
+      this.close();
     });
-    ctx.effect(() => (): Promise<void> => this.close());
   }
   private agent(id: string): Agent {
     const agent = this.ctx.agents.get(SessionId(id));
@@ -39,25 +42,18 @@ export class NativeReferences {
       );
     return agent;
   }
-  execute(
-    id: string,
-    input: AiNativeReferenceAction,
-    signal?: AbortSignal,
-  ): Promise<AiNativeReferenceResult> {
-    return this.admission.run(() => this.run(id, input, signal));
-  }
-  private async run(
+  async execute(
     id: string,
     input: AiNativeReferenceAction,
     signal?: AbortSignal,
   ): Promise<AiNativeReferenceResult> {
     const agent = this.agent(id);
     if (input.action === 'close') {
-      await this.cursors.release(input.cursor, id);
+      this.cursors.release(input.cursor, id);
       return emptyResult();
     }
     if (input.action === 'resolve') {
-      await this.resolveDirect(id, input.references, signal);
+      await this.resolve(id, input.references, signal);
       return emptyResult();
     }
     const scope = referenceHash({
@@ -67,127 +63,69 @@ export class NativeReferences {
     });
     const progress =
       input.search.cursor === undefined
-        ? await this.open(agent, input.search, scope)
+        ? await this.open({ agent, request: input.search, scope, signal })
         : this.cursors.take(input.search.cursor, scope);
-    try {
-      const result = await progress.next(input.search.limit, signal);
-      if (!result.incomplete) {
-        await progress.close();
-        return result;
-      }
-      return { ...result, next_cursor: this.cursors.keep(id, progress) };
-    } catch (error) {
-      await progress.close();
-      throw error;
-    }
+    const result = await progress.next(input.search.limit, signal);
+    return result.incomplete ? { ...result, next_cursor: this.cursors.keep(id, progress) } : result;
   }
-  private async open(
-    agent: Agent,
-    request: AiReferenceSearch,
-    scope: string,
-  ): Promise<NativeReferenceProgress> {
-    const kind = request.kinds?.[0];
-    if (kind === undefined || request.kinds?.length !== 1)
+  private async open(opening: Opening): Promise<NativeReferenceProgress> {
+    const { request, scope } = opening;
+    if (request.kinds === undefined)
       throw new HarnessRuntimeError(
         'operation_failed',
-        'Native reference search requires one exact source kind.',
+        'Native reference search requires its source kinds.',
       );
-    if (kind === 'device_path') return this.device(agent.id, request, scope);
-    if (request.container !== undefined || request.directory !== undefined)
-      return { scope, next: () => Promise.resolve(emptyResult()), close: () => Promise.resolve() };
-    return this.registry(agent, request, scope, kind);
+    const progresses = await Promise.all(request.kinds.map((kind) => this.source(opening, kind)));
+    const [only] = progresses;
+    return only !== undefined && progresses.length === 1 ? only : merged(scope, progresses);
+  }
+  private source(opening: Opening, kind: AiReference['kind']): Promise<NativeReferenceProgress> {
+    if (kind === 'device_path') return this.device(opening);
+    if (opening.request.container !== undefined || opening.request.directory !== undefined)
+      return Promise.resolve({ scope: opening.scope, next: () => Promise.resolve(emptyResult()) });
+    return this.registry(opening, kind);
   }
   private async registry(
-    agent: Agent,
-    request: AiReferenceSearch,
-    scope: string,
+    opening: Opening,
     kind: AiReference['kind'],
   ): Promise<NativeReferenceProgress> {
+    const { agent, request, scope, signal } = opening;
     const catalogue = await nativeReferenceCatalogue(this.ctx, agent, kind, {
-      generation: this.generation,
       readiness: this.readiness(),
+      signal,
     });
-    if (!catalogue.complete)
-      throw new HarnessRuntimeError(
-        'capability_unsupported',
-        'Native skill discovery is incomplete; authoritative selection is unavailable.',
-      );
-    let index = 0;
+    const query = request.query.toLocaleLowerCase();
+    const matches = catalogue.items.filter((item) =>
+      `${item.label} ${item.subtitle}`.toLocaleLowerCase().includes(query),
+    );
+    let position = 0;
     return {
       scope,
-      close: () => Promise.resolve(),
-      next: async (limit, signal): Promise<AiNativeReferenceResult> => {
-        const current = await nativeReferenceCatalogue(this.ctx, agent, kind, {
-          generation: this.generation,
-          readiness: this.readiness(),
-          signal,
+      next: (limit): Promise<AiNativeReferenceResult> => {
+        const items = matches.slice(position, position + limit);
+        position += items.length;
+        return Promise.resolve({
+          items,
+          revision: catalogue.revision,
+          next_cursor: null,
+          incomplete: position < matches.length,
         });
-        if (current.revision !== catalogue.revision)
-          throw new HarnessRuntimeError(
-            'capability_unsupported',
-            'Native reference registry changed; select again.',
-          );
-        const page = this.registryPage(catalogue, request, limit, index);
-        index = page.position;
-        return page.result;
       },
     };
   }
-  private registryPage(
-    catalogue: Awaited<ReturnType<typeof nativeReferenceCatalogue>>,
-    request: AiReferenceSearch,
-    limit: number,
-    position: number,
-  ): { readonly result: AiNativeReferenceResult; readonly position: number } {
-    let index = position;
-    const items: AiNativeReferenceResult['items'] = [];
-    for (
-      let examined = 0;
-      examined < 128 && index < catalogue.items.length && items.length < limit;
-      examined += 1
-    ) {
-      const item = catalogue.items[index];
-      index += 1;
-      if (
-        item !== undefined &&
-        `${item.label} ${item.subtitle}`
-          .toLocaleLowerCase()
-          .includes(request.query.toLocaleLowerCase())
-      )
-        items.push(item);
-    }
-    return {
-      position: index,
-      result: {
-        items,
-        revision: catalogue.revision,
-        next_cursor: null,
-        incomplete: index < catalogue.items.length,
-      },
-    };
-  }
-  private async device(
-    id: string,
-    request: AiReferenceSearch,
-    scope: string,
-  ): Promise<NativeReferenceProgress> {
-    const binding = this.binding(id);
+  private async device(opening: Opening): Promise<NativeReferenceProgress> {
+    const { agent, request, scope, signal } = opening;
+    const binding = this.binding(agent.id);
     if (binding?.kind !== 'device')
       throw new HarnessRuntimeError(
         'directory_unavailable',
         'Device references require the selected machine primary folder.',
       );
-    const scan = await NativeDeviceReferenceScan.open(this.ctx, binding, request);
+    const scan = await NativeDeviceReferenceScan.open(this.ctx, binding, request, signal);
     return {
       scope,
-      close: () => scan.close(),
-      next: async (limit, signal): Promise<AiNativeReferenceResult> => {
-        if (JSON.stringify(this.binding(id)) !== JSON.stringify(binding))
-          throw new HarnessRuntimeError(
-            'directory_unavailable',
-            'Device binding changed during reference search.',
-          );
-        const page = await scan.next(limit, signal);
+      next: async (limit, nextSignal): Promise<AiNativeReferenceResult> => {
+        const page = await scan.next(limit, nextSignal);
         return {
           items: [...page.items],
           revision: scan.revision(),
@@ -197,10 +135,7 @@ export class NativeReferences {
       },
     };
   }
-  resolve(id: string, references: readonly AiReference[], signal?: AbortSignal): Promise<void> {
-    return this.admission.run(() => this.resolveDirect(id, references, signal));
-  }
-  private async resolveDirect(
+  async resolve(
     id: string,
     references: readonly AiReference[],
     signal?: AbortSignal,
@@ -220,26 +155,49 @@ export class NativeReferences {
         continue;
       }
       const catalogue = await nativeReferenceCatalogue(this.ctx, agent, reference.kind, {
-        generation: this.generation,
         readiness: this.readiness(),
         signal,
       });
-      if (!catalogue.complete || exactReferenceItem(catalogue.items, reference) === undefined)
+      if (findReferenceItem(catalogue.items, reference) === undefined)
         throw new HarnessRuntimeError(
           'capability_unsupported',
-          'Selected reference is no longer the exact effective native registry item.',
+          'The selected reference is no longer available.',
         );
     }
   }
-  closeSession(id: string): Promise<void> {
-    return this.admission.cleanup(() => this.cursors.releaseOwner(id));
+  closeSession(id: string): void {
+    this.cursors.releaseOwner(id);
   }
-  skillGeneration(): number {
-    return this.generation;
+  close(): void {
+    this.cursors.clear();
   }
-  close(): Promise<void> {
-    return this.admission.shutdown(() => this.cursors.close());
-  }
+}
+function merged(
+  scope: string,
+  progresses: readonly NativeReferenceProgress[],
+): NativeReferenceProgress {
+  return {
+    scope,
+    next: async (limit, signal): Promise<AiNativeReferenceResult> => {
+      const quota = Math.max(1, Math.floor(limit / progresses.length));
+      const first = await Promise.all(progresses.map((progress) => progress.next(quota, signal)));
+      const pages = [...first];
+      let room = limit - first.reduce((sum, page) => sum + page.items.length, 0);
+      for (const [index, progress] of progresses.entries()) {
+        const page = pages[index];
+        if (room <= 0 || page?.incomplete !== true) continue;
+        const more = await progress.next(room, signal);
+        pages[index] = { ...more, items: [...page.items, ...more.items] };
+        room -= more.items.length;
+      }
+      return {
+        items: pages.flatMap((page) => page.items),
+        revision: referenceHash(pages.map((page) => page.revision)),
+        next_cursor: null,
+        incomplete: pages.some((page) => page.incomplete),
+      };
+    },
+  };
 }
 function emptyResult(): AiNativeReferenceResult {
   return { items: [], revision: 'no-native-metadata', next_cursor: null, incomplete: false };

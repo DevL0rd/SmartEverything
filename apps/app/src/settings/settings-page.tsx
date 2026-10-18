@@ -114,8 +114,8 @@ export function SettingsPageBody({ page }: { readonly page: string }): ReactNode
       settings.filter((setting) => setting.when?.(state) ?? true).map((setting) => setting.id),
     shallowEqual,
   );
-  const visible = settings.filter((setting) => shown.includes(setting.id));
-  const listed = visible.find((setting) => setting.id === focus);
+  const allVisible = settings.filter((setting) => shown.includes(setting.id));
+  const listed = allVisible.find((setting) => setting.id === focus);
   const focusId = listed?.control === 'listed' ? listed.in : focus;
   const render = (list: readonly SettingDefinition[]): ReactNode =>
     blocksOf(list.filter((setting) => setting.control !== 'listed')).map((block) => (
@@ -126,9 +126,9 @@ export function SettingsPageBody({ page }: { readonly page: string }): ReactNode
   const first = definition?.subPagesFirst === true;
   return (
     <>
-      {render(visible.filter((setting) => setting.beforeSubPages === true))}
+      {render(allVisible.filter((setting) => setting.beforeSubPages === true))}
       {first ? subPages : null}
-      {render(visible.filter((setting) => setting.beforeSubPages !== true))}
+      {render(allVisible.filter((setting) => setting.beforeSubPages !== true))}
       {first ? null : subPages}
     </>
   );

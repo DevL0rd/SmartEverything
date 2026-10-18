@@ -1,3 +1,4 @@
+import { Logger, background } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -6,6 +7,7 @@ import { NumberStepper } from '../components/number-stepper';
 import { ListRow } from '../components/list-row';
 import { ActionRow, NavRow, SelectRow, SwitchRow } from '../components/rows';
 import { notify } from '../components/toast-store';
+import { errorFields } from '../design/log-tally';
 import { useEntityStore, useStoreSelector } from '../store/store-context';
 import type { IconName } from '../components/icon';
 import { Segmented } from '../components/segmented';
@@ -19,16 +21,30 @@ import type {
   SwitchSetting,
 } from './types';
 
+const log = new Logger('app.settings');
+
 function useWrite(): (title: string, write: (context: SettingContext) => Promise<void>) => void {
   const store = useEntityStore();
   return (title, write) => {
-    write({ state: store.get(), store }).catch((error: unknown) => {
-      notify({
-        message: `${title} was not changed`,
-        error,
-        tone: 'critical',
-      });
-    });
+    const startedAt = Date.now();
+    log.debug('setting_write.started', { title });
+    write({ state: store.get(), store }).then(
+      () => {
+        log.info('setting_write.finished', { title, durationMs: Date.now() - startedAt });
+      },
+      (error: unknown) => {
+        log.warn('setting_write.failed', {
+          title,
+          durationMs: Date.now() - startedAt,
+          ...errorFields(error),
+        });
+        notify({
+          message: `${title} was not changed`,
+          error,
+          tone: 'critical',
+        });
+      },
+    );
   };
 }
 
@@ -179,11 +195,14 @@ function ActionSettingRow({
       onPress={() => {
         const ask =
           setting.confirm === undefined ? Promise.resolve(true) : confirm(setting.confirm);
-        void ask.then((accepted) => {
-          if (accepted) {
-            write(setting.title, setting.run);
-          }
-        });
+        background(
+          ask.then((accepted) => {
+            if (accepted) {
+              write(setting.title, setting.run);
+            }
+          }),
+          'settings_row.background_failed',
+        );
       }}
     />
   );

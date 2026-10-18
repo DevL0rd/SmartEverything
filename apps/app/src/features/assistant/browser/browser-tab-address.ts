@@ -2,7 +2,12 @@ import type { BrowserSelection, BrowserPublication } from './browser-selection';
 import { isHtmlPublication } from './browser-selection';
 import type { AiPreviewPublication } from '@smarteverything/domain';
 import type { BrowserTab } from './browser-tab-state';
-import { browserAddress, type BrowserAddress, displayPreviewAddress } from './browser-address';
+import {
+  browserAddress,
+  displayPreviewAddress,
+  type AddressReach,
+  type BrowserAddress,
+} from './browser-address';
 export function publicationAddress(publication: BrowserPublication): string {
   return isHtmlPublication(publication)
     ? publication.title
@@ -18,6 +23,7 @@ export function browserTabAddress(
   tab: BrowserTab,
   address: string,
   publications: readonly AiPreviewPublication[],
+  reach: AddressReach,
 ): BrowserAddress | { readonly kind: 'document' } {
   if (
     tab.source.kind === 'publication' &&
@@ -29,6 +35,7 @@ export function browserTabAddress(
     address,
     tab.selection?.kind === 'preview' ? tab.selection.publication : null,
     publications,
+    reach,
   );
 }
 

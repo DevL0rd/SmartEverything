@@ -3,7 +3,7 @@ import { useId } from 'react';
 import type { ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import Svg from 'react-native-svg';
-import type { LoopStyle } from '../../../design/loops';
+import { opacityOnly, type LoopStyle } from '../../../design/loops';
 
 export interface Box {
   readonly x: number;
@@ -35,16 +35,19 @@ export function useSvgId(prefix: string): string {
 export function Canvas({
   px,
   box = FULL,
+  layer = false,
   children,
 }: {
   readonly px: number;
   readonly box?: Box;
+  readonly layer?: boolean;
   readonly children: ReactNode;
 }): ReactNode {
   return (
     <Svg
       width={scaled(box.w, px)}
       height={scaled(box.h, px)}
+      {...(layer ? { style: boxStyle(box, px), pointerEvents: 'none' as const } : {})}
       viewBox={`${String(box.x)} ${String(box.y)} ${String(box.w)} ${String(box.h)}`}
     >
       {children}
@@ -65,7 +68,11 @@ export function Layer({
 }): ReactNode {
   const frame = boxStyle(box, px);
   return (
-    <Animated.View pointerEvents="none" style={[frame, motion]}>
+    <Animated.View
+      pointerEvents="none"
+      renderToHardwareTextureAndroid={opacityOnly(motion)}
+      style={[frame, motion]}
+    >
       {children}
     </Animated.View>
   );

@@ -15,6 +15,7 @@ import type { XiaomiCloud } from './cloud-api';
 import type { CameraFollowUps } from './dependencies';
 import { startLoop, type Loop } from './loop';
 import { seconds } from './device-link';
+import { background, failureLine } from '@smarteverything/logging';
 
 const PAGE_LIMIT = 20;
 const SAME_DETECTION_WITHIN_MS = 120_000;
@@ -111,7 +112,7 @@ export class CameraEventPoller {
       this.inFlight = null;
       if (this.again) {
         this.again = false;
-        void this.fetch(sink);
+        background(this.fetch(sink), 'camera_events.fetch_failed');
       }
     });
     return this.inFlight;
@@ -139,7 +140,7 @@ export class CameraEventPoller {
           this.readsDue.delete(at);
         }
         if (due.length > 0) {
-          void this.fetch(sink);
+          background(this.fetch(sink), 'camera_events.fetch_failed');
         }
         this.arm(sink);
       },
@@ -180,7 +181,10 @@ export class CameraEventPoller {
       }
       this.seenUntil = Math.max(this.seenUntil, ...fresh.map((event) => event.createTime));
     } catch (error) {
-      this.log.warn('xiaomi_camera.events_failed', { did: this.camera.did, reason: String(error) });
+      this.log.warn('xiaomi_camera.events_failed', {
+        did: this.camera.did,
+        reason: failureLine(error),
+      });
       sink.failure({
         provider: 'xiaomi',
         externalId: this.camera.did,

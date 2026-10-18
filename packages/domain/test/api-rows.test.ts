@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
+import { DEFAULT_HISTORY_SETTINGS } from '../src/history-settings';
 import {
   AUTOMATION_ROW,
   CAMERA_ROW,
@@ -28,6 +29,7 @@ import {
   SCENE_ROW,
   SETTINGS_ROW,
   STATE_ROW,
+  TELEVISION_SETTINGS_ROW,
   HUB_STATUS,
   LIVE_CLIENT_MESSAGE,
   LIVE_SERVER_MESSAGE,
@@ -37,6 +39,7 @@ import {
   ROW_CHANGE,
   ROW_OPERATIONS,
   TABLE_ROWS,
+  splitLiveTables,
 } from '../src';
 import { HEALTH_SOURCE_NAME, TOKEN_NAME } from '../src/api/rows-access';
 import {
@@ -72,7 +75,7 @@ function accepts(schema: z.ZodType, value: unknown): boolean {
 
 function expectRoundTrip(schema: z.ZodType, row: Readonly<Record<string, unknown>>): void {
   expect(schema.parse(row)).toStrictEqual(row);
-  expect(accepts(schema, { ...row, unexpected: 1 })).toBe(false);
+  expect(schema.parse({ ...row, unexpected: 1 })).toStrictEqual(row);
 }
 
 function expectRefused(
@@ -90,6 +93,7 @@ const settings = {
   time_zone: 'Europe/London',
   latitude: 51.5,
   longitude: -0.12,
+  location_name: 'Home',
   public_url: 'https://home.example.com',
   public_url_checked_at: AT,
   public_url_verified_at: LATER,
@@ -97,6 +101,20 @@ const settings = {
   ice_servers: [{ urls: ['stun:stun.example.com:3478'] }],
   webrtc_candidates: ['192.168.1.2:8555'],
   push_project_id: 'home-push',
+  mcp_disabled_tools: ['find_devices'],
+  fitness_goals: {
+    steps: 8000,
+    move_kcal: null,
+    active_minutes: 30,
+    sleep_minutes: null,
+    hydration_ml: 2000,
+  },
+  max_heart_rate: 190,
+  device_refills: {},
+  ir_remotes: {},
+  history_settings: DEFAULT_HISTORY_SETTINGS,
+  end_of_speech_pause_ms: 200,
+  ear_host_device_id: null,
   updated_at: AT,
 };
 
@@ -106,6 +124,7 @@ const client = {
   platform: 'android',
   role: 'member',
   built_in: false,
+  profile_id: SECOND,
   created_at: AT,
   last_seen_at: LATER,
 };
@@ -115,6 +134,8 @@ const providerLink = {
   account_label: 'me@example.com',
   status: 'needs_attention',
   prompt: { kind: 'verification_code', destination: '+44 7700 900000' },
+  phase: 'awaiting_answer',
+  problem: 'session_expired',
   last_error: 'code expired',
   device_count: 3,
   updated_at: AT,
@@ -184,6 +205,7 @@ const camera = {
   two_way_audio: false,
   record_events: true,
   wake_sensitivity: 'standard',
+  transcribe: false,
 };
 
 const recording = {
@@ -225,11 +247,20 @@ const scene = {
   created_at: AT,
 };
 
+const television = {
+  device_id: FIRST,
+  direct_link: true,
+  input_names: { HDMI1: 'Console' },
+};
+
 const automation = {
   id: FIRST,
   name: 'Porch light',
   enabled: true,
+  revision: 3,
   definition: { triggers: [] },
+  origin: null,
+  author: { via: 'person', profile_id: SECOND },
   last_run_at: AT,
   last_error: 'device offline',
   run_count: 5,
@@ -237,11 +268,18 @@ const automation = {
   updated_at: LATER,
 };
 
-const layout = { client_id: FIRST, page: 'home', layout: { tiles: ['a', 'b'] }, updated_at: AT };
+const layout = {
+  client_id: FIRST,
+  profile_id: SECOND,
+  page: 'home',
+  layout: { tiles: ['a', 'b'] },
+  updated_at: AT,
+};
 
 const pushTarget = { token: 'fcm-token', client_id: FIRST, platform: 'android', created_at: AT };
 
 const healthDaily = {
+  profile_id: SECOND,
   day: '2026-10-08',
   metric: 'steps',
   value: 1234,
@@ -250,14 +288,12 @@ const healthDaily = {
 };
 
 const healthSource = {
-  id: FIRST,
   client_id: SECOND,
   name: 'Pixel 9',
   granted_types: ['Steps', 'HeartRate'],
   last_sync_at: AT,
   last_error: 'quota',
   created_at: AT,
-  revoked_at: LATER,
 };
 
 const mcpToken = {
@@ -294,6 +330,16 @@ describe('home rows', () => {
       ice_servers: [],
       webrtc_candidates: [],
       push_project_id: null,
+      location_name: null,
+      mcp_disabled_tools: [],
+      fitness_goals: {
+        steps: null,
+        move_kcal: null,
+        active_minutes: null,
+        sleep_minutes: null,
+        hydration_ml: null,
+      },
+      max_heart_rate: null,
     });
   });
 
@@ -365,13 +411,27 @@ describe('home rows', () => {
     });
     expectRefused(DEVICE_ROW, device, [
       { external_id: '' },
-      { kind: 'robot' },
+      { kind: 'hovercraft' },
       { model: '' },
       { manufacturer: '' },
       { display_name: '' },
       {
         capabilities: [{ key: 'nonsense', label: 'X', access: 'read', value: { kind: 'boolean' } }],
       },
+    ]);
+  });
+
+  it('TELEVISION_SETTINGS_ROW keeps the direct link and the input names and refuses an empty name', () => {
+    expectRoundTrip(TELEVISION_SETTINGS_ROW, television);
+    expectRoundTrip(TELEVISION_SETTINGS_ROW, {
+      ...television,
+      direct_link: false,
+      input_names: {},
+    });
+    expectRefused(TELEVISION_SETTINGS_ROW, television, [
+      { device_id: 'x' },
+      { input_names: { HDMI1: 'x'.repeat(41) } },
+      { input_names: { '': 'Console' } },
     ]);
   });
 
@@ -462,7 +522,15 @@ describe('media rows', () => {
     expectRefused(SCENE_ROW, scene, [{ icon: '' }, { actions: {} }]);
     expectRoundTrip(AUTOMATION_ROW, automation);
     expectRoundTrip(AUTOMATION_ROW, { ...automation, last_run_at: null, last_error: null });
-    expectRefused(AUTOMATION_ROW, automation, [{ definition: [] }, { run_count: -1 }]);
+    expectRoundTrip(AUTOMATION_ROW, {
+      ...automation,
+      origin: { plugin_id: 'shelly-presence', requester: 'owner' },
+    });
+    expectRefused(AUTOMATION_ROW, automation, [
+      { definition: [] },
+      { run_count: -1 },
+      { revision: 0 },
+    ]);
   });
 
   it('LAYOUT_ROW keeps a layout of a page', () => {
@@ -510,6 +578,18 @@ describe('health and assistant rows', () => {
       ['respiratory_rate', 'rpm'],
       ['weight', 'kg'],
       ['vo2_max', 'ml/kg/min'],
+      ['energy_in', 'kcal'],
+      ['protein', 'g'],
+      ['carbohydrate', 'g'],
+      ['fat', 'g'],
+      ['fiber', 'g'],
+      ['sugar', 'g'],
+      ['saturated_fat', 'g'],
+      ['sodium', 'g'],
+      ['caffeine', 'g'],
+      ['stress_average', 'score'],
+      ['stress_maximum', 'score'],
+      ['vitality', 'score'],
     ]);
     expect(HEALTH_METRICS).toStrictEqual(Object.keys(HEALTH_METRIC_UNITS));
   });
@@ -530,17 +610,19 @@ describe('health and assistant rows', () => {
     ]);
   });
 
-  it('HEALTH_SOURCE_ROW keeps a source and allows one never synced or revoked', () => {
+  it('HEALTH_SOURCE_ROW keeps a phone’s sync status and allows one never synced', () => {
     expectRoundTrip(HEALTH_SOURCE_ROW, healthSource);
     expectRoundTrip(HEALTH_SOURCE_ROW, {
       ...healthSource,
-      client_id: null,
       granted_types: [],
       last_sync_at: null,
       last_error: null,
-      revoked_at: null,
     });
-    expectRefused(HEALTH_SOURCE_ROW, healthSource, [{ granted_types: ['Mood'] }, { name: '' }]);
+    expectRefused(HEALTH_SOURCE_ROW, healthSource, [
+      { granted_types: ['Mood'] },
+      { name: '' },
+      { client_id: null },
+    ]);
   });
 
   it('MCP_TOKEN_ROW keeps a token row and allows one never used or revoked', () => {
@@ -603,6 +685,7 @@ const ROW_SAMPLES = {
   provider_links: providerLink,
   rooms: room,
   devices: device,
+  television_settings: television,
   device_state: state,
   state_history: history,
   commands: command,
@@ -621,6 +704,10 @@ const ROW_SAMPLES = {
   oauth_clients: oauthClient,
 } as const;
 
+const SAMPLED_TABLES = LIVE_TABLES.filter(
+  (table): table is keyof typeof ROW_SAMPLES => table in ROW_SAMPLES,
+);
+
 const HUB = { version: '1.4.0', startedAt: AT, cameras: 'running' };
 
 describe('live tables', () => {
@@ -630,7 +717,10 @@ describe('live tables', () => {
       'clients',
       'provider_links',
       'rooms',
+      'device_groups',
+      'device_effect_targets',
       'devices',
+      'television_settings',
       'device_state',
       'state_history',
       'commands',
@@ -641,23 +731,43 @@ describe('live tables', () => {
       'ir_codes',
       'scenes',
       'automations',
+      'automation_values',
+      'automation_runs',
       'layouts',
       'push_targets',
       'health_sources',
       'health_daily',
       'mcp_tokens',
       'oauth_clients',
+      'profiles',
+      'body_readings',
+      'health_entries',
+      'foods',
+      'watch_days',
+      'weather',
+      'exchange_rates',
+      'talk_channels',
+      'talk_members',
+      'talk_messages',
+      'assistant_messages',
+      'ai_chats',
+      'scheduled_actions',
+      'ai_usage',
+      'plugins',
+      'plugin_streams',
+      'ai_outreach',
     ]);
     expect(Object.keys(TABLE_ROWS)).toStrictEqual(LIVE_TABLES);
   });
 
   it('TABLE_ROWS validates every table with its own row schema', () => {
-    expect(Object.entries(TABLE_ROWS)).toStrictEqual([
+    const schemas = new Map<string, z.ZodType>([
       ['settings', SETTINGS_ROW],
       ['clients', CLIENT_ROW],
       ['provider_links', PROVIDER_LINK_ROW],
       ['rooms', ROOM_ROW],
       ['devices', DEVICE_ROW],
+      ['television_settings', TELEVISION_SETTINGS_ROW],
       ['device_state', STATE_ROW],
       ['state_history', HISTORY_ROW],
       ['commands', COMMAND_ROW],
@@ -675,6 +785,12 @@ describe('live tables', () => {
       ['mcp_tokens', MCP_TOKEN_ROW],
       ['oauth_clients', OAUTH_CLIENT_ROW],
     ]);
+    for (const table of LIVE_TABLES) {
+      const expected = schemas.get(table);
+      if (expected !== undefined) {
+        expect(TABLE_ROWS[table]).toBe(expected);
+      }
+    }
   });
 
   it('OWNER_TABLES holds exactly the tables only an owner may stream', () => {
@@ -688,7 +804,12 @@ describe('live tables', () => {
   });
 
   it('OWN_ROW_TABLES holds exactly the tables streamed only for the calling client', () => {
-    expect([...OWN_ROW_TABLES]).toStrictEqual(['layouts']);
+    expect([...OWN_ROW_TABLES]).toStrictEqual([
+      'layouts',
+      'assistant_messages',
+      'ai_chats',
+      'ai_outreach',
+    ]);
   });
 
   it('ROW_OPERATIONS lists exactly insert, update and delete', () => {
@@ -697,7 +818,7 @@ describe('live tables', () => {
 });
 
 describe('row changes', () => {
-  it.each(LIVE_TABLES)('ROW_CHANGE accepts a change of %s carrying its own rows', (table) => {
+  it.each(SAMPLED_TABLES)('ROW_CHANGE accepts a change of %s carrying its own rows', (table) => {
     const row = ROW_SAMPLES[table];
     for (const change of [
       { type: 'change', table, operation: 'INSERT', record: row, oldRecord: null },
@@ -746,8 +867,8 @@ describe('live messages', () => {
   it('LIVE_SERVER_MESSAGE accepts every message the server sends', () => {
     for (const message of [
       { type: 'change', table: 'rooms', operation: 'UPDATE', record: room, oldRecord: room },
-      { type: 'ready', clientId: FIRST, role: 'owner', hub: HUB },
-      { type: 'subscribed', tables: ['rooms', 'devices'] },
+      { type: 'ready', clientId: FIRST, role: 'owner', hub: HUB, seq: 3 },
+      { type: 'subscribed', tables: ['rooms', 'devices'], streams: ['talk'], seq: 3 },
       { type: 'presence', hub: HUB },
       { type: 'refused', error: { code: 'forbidden', message: 'Owners only.' } },
     ]) {
@@ -757,9 +878,11 @@ describe('live messages', () => {
 
   it('LIVE_SERVER_MESSAGE refuses malformed messages', () => {
     for (const message of [
-      { type: 'ready', clientId: 'me', role: 'owner', hub: HUB },
-      { type: 'ready', clientId: FIRST, role: 'guest', hub: HUB },
-      { type: 'subscribed', tables: ['users'] },
+      { type: 'ready', clientId: 'me', role: 'owner', hub: HUB, seq: 3 },
+      { type: 'ready', clientId: FIRST, role: 'guest', hub: HUB, seq: 3 },
+      { type: 'ready', clientId: FIRST, role: 'owner', hub: HUB },
+      { type: 'subscribed', tables: ['users'], streams: [], seq: 3 },
+      { type: 'subscribed', tables: ['rooms'] },
       { type: 'presence', hub: HUB, extra: 1 },
       { type: 'refused', error: { code: 'teapot', message: 'No.' } },
       { type: 'refused', error: { code: 'forbidden', message: '' } },
@@ -769,10 +892,20 @@ describe('live messages', () => {
     }
   });
 
-  it('LIVE_CLIENT_MESSAGE accepts a subscription to known tables only', () => {
-    const message = { type: 'subscribe', tables: ['rooms', 'layouts'] };
+  it('LIVE_CLIENT_MESSAGE accepts a subscription that names tables this hub does not know', () => {
+    const message = { type: 'subscribe', tables: ['rooms', 'layouts'], streams: ['service_log'] };
     expect(LIVE_CLIENT_MESSAGE.parse(message)).toStrictEqual(message);
-    expect(accepts(LIVE_CLIENT_MESSAGE, { type: 'subscribe', tables: ['users'] })).toBe(false);
+    expect(
+      accepts(LIVE_CLIENT_MESSAGE, { type: 'subscribe', tables: ['users'], streams: [] }),
+    ).toBe(true);
+    expect(splitLiveTables(['rooms', 'users', 'layouts'])).toStrictEqual({
+      known: ['rooms', 'layouts'],
+      unknown: ['users'],
+    });
+    expect(splitLiveTables(LIVE_TABLES).unknown).toStrictEqual([]);
+    expect(
+      accepts(LIVE_CLIENT_MESSAGE, { type: 'subscribe', tables: ['rooms'], streams: ['mail'] }),
+    ).toBe(false);
     expect(accepts(LIVE_CLIENT_MESSAGE, { type: 'unsubscribe', tables: [] })).toBe(false);
     expect(accepts(LIVE_CLIENT_MESSAGE, { ...message, extra: 1 })).toBe(false);
   });

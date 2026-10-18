@@ -9,11 +9,10 @@ export async function updateFitnessSettings(change: FitnessSettingsChange): Prom
   await api().call(E.updateFitnessSettings, { body: change });
 }
 
-export async function revokeHealthSource(sourceId: string): Promise<HealthSourceRow> {
-  return api().call(E.revokeHealthSource, { params: { sourceId } });
+export async function revokeHealthSource(clientId: string): Promise<void> {
+  await api().call(E.revokeHealthSource, { params: { clientId } });
 }
 
-export async function createHealthSource(name: string): Promise<string> {
-  const issued = await api().call(E.createHealthSource, { body: { name } });
-  return issued.token;
+export async function createHealthSource(name: string): Promise<HealthSourceRow> {
+  return api().call(E.createHealthSource, { body: { name } });
 }

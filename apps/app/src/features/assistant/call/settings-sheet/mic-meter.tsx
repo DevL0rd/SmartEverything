@@ -1,36 +1,11 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-  type SharedValue,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { VOICE_DETECTION, type VoiceDetection } from '@smarteverything/domain';
 import { cn } from '../../../../design/cn';
 import { DURATION, EASING, useMotion } from '../../../../design/motion';
-import { callEngine } from '../engine/engine';
-
-function useInputLevel(live: boolean): SharedValue<number> {
-  const level = useSharedValue(0);
-  useEffect(() => {
-    if (!live) {
-      level.set(0);
-      return undefined;
-    }
-    let frame = 0;
-    const read = (): void => {
-      level.set(callEngine.inputLevel());
-      frame = requestAnimationFrame(read);
-    };
-    frame = requestAnimationFrame(read);
-    return (): void => {
-      cancelAnimationFrame(frame);
-    };
-  }, [live, level]);
-  return level;
-}
+import { useEngineLevel } from '../components/use-call-level';
 
 export interface MicMeterProps {
   readonly detection: VoiceDetection;
@@ -40,7 +15,7 @@ export interface MicMeterProps {
 
 export function MicMeter({ detection, live, muted }: MicMeterProps): ReactNode {
   const motion = useMotion();
-  const level = useInputLevel(live);
+  const level = useEngineLevel(live ? 'input' : null);
   const tick = useSharedValue(VOICE_DETECTION[detection].positiveSpeechThreshold);
   const width = useSharedValue(0);
   useEffect(() => {

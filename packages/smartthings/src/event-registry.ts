@@ -1,13 +1,24 @@
 import type { EventKind, JsonValue } from '@smarteverything/domain';
 
-export interface SmartThingsEventMapping {
+interface PlainEventMapping {
   readonly kind: EventKind;
   readonly kinds?: Readonly<Record<string, EventKind>>;
   readonly values?: readonly JsonValue[];
-  readonly summaries?: Readonly<Record<string, string>>;
-  readonly topic?: string;
   readonly changesOnly?: true;
 }
+
+interface PlainSummaries {
+  readonly summaries?: undefined;
+  readonly topic?: undefined;
+}
+
+interface SummarisedSummaries {
+  readonly summaries: Readonly<Record<string, string>>;
+  readonly topic: string;
+}
+
+export type SmartThingsEventMapping = PlainEventMapping & (PlainSummaries | SummarisedSummaries);
+
 export const SMARTTHINGS_EVENT_MAPPINGS: Readonly<Record<string, SmartThingsEventMapping>> = {
   'button.button': { kind: 'button' },
   'motionSensor.motion': { kind: 'motion', values: ['active'] },

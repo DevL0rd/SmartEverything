@@ -10,6 +10,7 @@ import { useLedger } from '../../../store/store-context';
 import { RecentEvents } from '../components/recent-events';
 import { presetsOf, type CameraEntry } from '../logic/cameras';
 import type { Viewer } from './use-viewer';
+import { background } from '@smarteverything/logging';
 
 export function PresetsRow({ viewer }: { readonly viewer: Viewer }): ReactNode {
   const ledger = useLedger();
@@ -37,7 +38,10 @@ export function PresetsRow({ viewer }: { readonly viewer: Viewer }): ReactNode {
               label={preset}
               variant="tonal"
               onPress={() => {
-                void ledger.send(viewer.entry.device, 'ptz_preset', preset);
+                background(
+                  ledger.send(viewer.entry.device, 'ptz_preset', preset),
+                  'ledger.send_failed',
+                );
               }}
             />
           ))}
@@ -74,7 +78,7 @@ export function InCallBar({ entry }: { readonly entry: CameraEntry }): ReactNode
         variant="destructive"
         onPress={() => {
           if (hangUp !== null) {
-            void ledger.send(entry.device, hangUp.key, null);
+            background(ledger.send(entry.device, hangUp.key, null), 'ledger.send_failed');
           }
           router.setParams({ call: undefined });
         }}

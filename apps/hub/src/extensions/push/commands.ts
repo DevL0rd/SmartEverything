@@ -3,13 +3,10 @@ import {
   PUSH_COMMANDS_OVER_LIVE,
   PUSH_COMMAND_TTL_SECONDS,
   PUSH_PAYLOAD_KEY,
-  WATCH_ACTION_PUSH,
   type JsonValue,
   type PushCommand,
   type PushCommandNotice,
-  type WatchActionNotice,
 } from '@smarteverything/domain';
-import type { LiveReceiver } from '../../server/live-reach';
 
 export interface PushCommandRequest {
   readonly clientId: string;
@@ -36,43 +33,7 @@ export type PushCommandSender = (
   delivery: PushDelivery,
 ) => Promise<PushCommandOutcome>;
 
-export type LiveCommandSender = (
-  clientId: string,
-  notice: PushCommandNotice | WatchActionNotice,
-  receiver: LiveReceiver,
-) => Promise<number>;
-
-interface LiveRoute {
-  readonly notice: PushCommandNotice | WatchActionNotice;
-  readonly receiver: LiveReceiver;
-}
-
-function legacyWatchRoute(payload: JsonValue): readonly LiveRoute[] {
-  const parsed = WATCH_ACTION_PUSH.safeParse(payload);
-  if (!parsed.success) {
-    return [];
-  }
-  const { requestId, deviceId, action } = parsed.data;
-  return [
-    {
-      notice: { type: 'watch_action', requestId, deviceId, action },
-      receiver: 'legacy_watch_action',
-    },
-  ];
-}
-
-function liveRoutes(request: PushCommandRequest): readonly LiveRoute[] {
-  if (!PUSH_COMMANDS_OVER_LIVE.includes(request.command)) {
-    return [];
-  }
-  const current: LiveRoute = {
-    notice: { type: 'push_command', command: request.command, payload: request.payload },
-    receiver: 'push_command',
-  };
-  return request.command === 'watch_action'
-    ? [current, ...legacyWatchRoute(request.payload)]
-    : [current];
-}
+export type LiveCommandSender = (clientId: string, notice: PushCommandNotice) => Promise<number>;
 
 export class PushCommandChannel {
   private sender: PushCommandSender | null = null;
@@ -114,12 +75,14 @@ export class PushCommandChannel {
 
   private async viaLive(request: PushCommandRequest): Promise<boolean> {
     const { live } = this;
-    if (live === null) {
+    if (live === null || !PUSH_COMMANDS_OVER_LIVE.includes(request.command)) {
       return false;
     }
-    const reached = await Promise.all(
-      liveRoutes(request).map((route) => live(request.clientId, route.notice, route.receiver)),
-    );
-    return reached.some((count) => count > 0);
+    const reached = await live(request.clientId, {
+      type: 'push_command',
+      command: request.command,
+      payload: request.payload,
+    });
+    return reached > 0;
   }
 }

@@ -1,8 +1,7 @@
-import { describeIssues } from './issues';
-import { ecb, gcm } from '@noble/ciphers/aes.js';
-import { md5 } from '@noble/hashes/legacy.js';
-import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import { STATUS_ITEM } from './cloud-api';
+import { ecbDecrypt, gcmDecrypt, md5, utf8Bytes, utf8Text } from './crypto';
+import { fit, readJson } from './json';
 import { TUYA_ENDPOINTS, type TuyaRegion } from './regions';
 
 export const MESSAGE_TOPIC = 'event';
@@ -19,8 +18,6 @@ const SOURCE = z.union([
   z.object({ encryptPayload: z.string().min(1) }).transform((source) => source.encryptPayload),
   z.object({ data: z.string().min(1) }).transform((source) => source.data),
 ]);
-
-const STATUS_ITEM = z.object({ code: z.string().min(1), value: z.unknown() });
 
 const BODY = z.object({
   devId: z.string().min(1).optional(),
@@ -75,7 +72,7 @@ export class CloudMessageError extends Error {
 }
 
 function md5Hex(text: string): string {
-  return bytesToHex(md5(utf8ToBytes(text)));
+  return md5(text).toHex();
 }
 
 export function messagePassword(accessId: string, accessSecret: string): string {
@@ -91,44 +88,20 @@ export function acknowledgement(messageId: string): string {
   return JSON.stringify({ messageId });
 }
 
-function jsonOf(text: string, what: string, messageId: string | null): unknown {
-  try {
-    return JSON.parse(text);
-  } catch (cause) {
-    throw new CloudMessageError(`the ${what} is not JSON (${String(cause)})`, messageId);
-  }
-}
-
-function fitted<S extends z.ZodType>(
-  schema: S,
-  candidate: unknown,
-  what: string,
-  messageId: string | null,
-): z.output<S> {
-  const parsed = schema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new CloudMessageError(
-      `the ${what} does not fit: ${describeIssues(parsed.error)}`,
-      messageId,
-    );
-  }
-  return parsed.data;
-}
-
 interface Sealed {
   readonly data: string;
   readonly mode: string | undefined;
 }
 
 function decrypted(sealed: Sealed, accessSecret: string, messageId: string): string {
-  const key = utf8ToBytes(accessSecret.slice(8, 24));
+  const key = utf8Bytes(accessSecret.slice(8, 24));
   try {
     const bytes = Uint8Array.fromBase64(sealed.data);
     const plain =
       sealed.mode === 'aes_gcm'
-        ? gcm(key, bytes.subarray(0, 12)).decrypt(bytes.subarray(12))
-        : ecb(key).decrypt(bytes);
-    return new TextDecoder('utf-8', { fatal: true }).decode(plain);
+        ? gcmDecrypt(key, bytes.subarray(0, 12), bytes.subarray(12))
+        : ecbDecrypt(key, bytes);
+    return utf8Text(plain);
   } catch (cause) {
     throw new CloudMessageError(`its data could not be decrypted (${String(cause)})`, messageId);
   }
@@ -144,27 +117,27 @@ function messageOf(body: z.output<typeof BODY>): CloudMessage {
 
 function payloadText(payload: string, messageId: string): string {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.fromBase64(payload));
+    return utf8Text(Uint8Array.fromBase64(payload));
   } catch (cause) {
     throw new CloudMessageError(`its payload is not base64 text (${String(cause)})`, messageId);
   }
 }
 
+function rejectFrame(messageId: string | null): (reason: string) => CloudMessageError {
+  return (reason) => new CloudMessageError(reason, messageId);
+}
+
 const FRAME_ID = z.object({ messageId: z.string().min(1) });
 
 export function readMessageFrame(frame: string, accessSecret: string): MessageFrame {
-  const candidate = jsonOf(frame, 'frame', null);
+  const candidate = readJson(frame, 'frame', rejectFrame(null));
   const identified = FRAME_ID.safeParse(candidate);
-  const messageId = identified.success ? identified.data.messageId : null;
-  const outer = fitted(FRAME, candidate, 'frame', messageId);
-  const source = jsonOf(payloadText(outer.payload, outer.messageId), 'payload', outer.messageId);
-  const data = fitted(SOURCE, source, 'payload', outer.messageId);
+  const reject = rejectFrame(identified.success ? identified.data.messageId : null);
+  const outer = fit(FRAME, candidate, 'frame', reject);
+  const rejectOuter = rejectFrame(outer.messageId);
+  const source = readJson(payloadText(outer.payload, outer.messageId), 'payload', rejectOuter);
+  const data = fit(SOURCE, source, 'payload', rejectOuter);
   const plain = decrypted({ data, mode: outer.properties['em'] }, accessSecret, outer.messageId);
-  const body = fitted(
-    BODY,
-    jsonOf(plain, 'message body', outer.messageId),
-    'message body',
-    outer.messageId,
-  );
+  const body = fit(BODY, readJson(plain, 'message body', rejectOuter), 'message body', rejectOuter);
   return { messageId: outer.messageId, message: messageOf(body) };
 }

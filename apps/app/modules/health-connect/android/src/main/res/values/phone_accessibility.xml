@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="smarteverything_accessibility_description">Lets SmartEverything lock this phone and take a screenshot when you or your assistant ask. It does not read what is on the screen.</string>
+</resources>

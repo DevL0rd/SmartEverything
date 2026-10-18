@@ -1,4 +1,4 @@
-import type { ShellyArea } from '@smarteverything/domain';
+import type { ShellyArea } from '@smarteverything/shelly';
 import type { GridCell } from './area-geometry';
 
 export interface PainterViewport {

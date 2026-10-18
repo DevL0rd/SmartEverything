@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
-import { OPENROUTER_MEDIA_NOTES_MODEL } from '@smarteverything/domain';
+import { mediaPlan, OPENROUTER_MEDIA_NOTES_MODEL } from '@smarteverything/domain';
 import { recordAudioTranscription } from '../ledger/transcription';
 import { transcriptionFormat, type TranscriptionProvider } from '../openrouter/transcription';
 import { recordMediaNote } from '../ledger/media-notes';
@@ -16,7 +16,6 @@ import { transcribeModel } from './transcriber';
 export type MediaKind = 'audio' | 'video' | 'image';
 
 const INLINE_BYTES_MAX = 18 * 1024 * 1024;
-const NOTE_CHARACTERS_MAX = 8000;
 const NO_SPEECH = 'NO_SPEECH';
 const SILENT_NOTE = '(no speech)';
 
@@ -53,7 +52,7 @@ export class MediaTooLargeError extends Error {
   }
 }
 
-export class MissingMediaNoteError extends Error {
+class MissingMediaNoteError extends Error {
   override readonly name = 'MissingMediaNoteError';
 
   constructor(kind: MediaKind) {
@@ -72,7 +71,7 @@ function noteOf(kind: MediaKind, answer: string): string {
     if (kind !== 'audio') throw new MissingMediaNoteError(kind);
     return SILENT_NOTE;
   }
-  return text.slice(0, NOTE_CHARACTERS_MAX);
+  return text;
 }
 
 export interface MediaNotesOptions {
@@ -81,6 +80,8 @@ export interface MediaNotesOptions {
   readonly chat: AssistantChatRepository;
   readonly ledger: Ledger;
   readonly filesRoot: string;
+  readonly describeImages: () => boolean;
+  readonly inputModalities: (file: StoredAttachment) => readonly string[] | null;
   readonly log: Logger;
 }
 
@@ -109,7 +110,13 @@ export class MediaNotes {
     return started;
   }
 
+  wants(file: StoredAttachment): boolean {
+    return mediaPlan(file.mime, this.options.inputModalities(file), this.options.describeImages())
+      .describe;
+  }
+
   later(file: StoredAttachment): void {
+    if (!this.wants(file)) return;
     void Promise.resolve()
       .then(() => this.ensure(file))
       .catch((cause: unknown) => {

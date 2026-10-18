@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import {
   captureAssistantWrite,
   assertAssistantWriteCurrent,
@@ -17,6 +18,8 @@ import type { SettingContext, SettingDefinition } from '../../../settings/types'
 import type { StoreState } from '../../../store/state';
 import { updateAssistantSettings } from '../../../api/assistant';
 import { ResponseStyleAvailability } from './response-style-availability';
+
+const log = new Logger('app.settings');
 const owner = (env: { readonly owner: boolean }): boolean => env.owner;
 const known = (state: StoreState): boolean =>
   state.assistant?.settings.response_style !== undefined;
@@ -24,16 +27,26 @@ async function write(
   style: AssistantSettingsChange['response_style'],
   context: SettingContext,
 ): Promise<void> {
-  if (!known(context.store.get()))
+  if (!known(context.store.get())) {
+    log.warn('response_style.unavailable');
     throw new Error('Response style is unavailable. Update or reconnect the hub.');
-  const scope = captureAssistantWrite(context.store);
-  const status = await updateAssistantSettings({ response_style: style }, scope);
-  assertAssistantWriteCurrent(scope);
-  context.store.update((state) => ({ ...state, assistant: status }));
+  }
+  const operation = log.operation('response_style.write', {
+    fields: Object.keys(style ?? {}).join(','),
+  });
+  try {
+    const scope = captureAssistantWrite(context.store);
+    const status = await updateAssistantSettings({ response_style: style }, scope);
+    assertAssistantWriteCurrent(scope);
+    context.store.update((state) => ({ ...state, assistant: status }));
+    operation.succeeded();
+  } catch (error) {
+    operation.failed(error);
+    throw error;
+  }
 }
 const base = {
-  page: 'assistant',
-  section: 'Response style',
+  page: 'assistant/response-style',
   scope: 'server',
   visible: owner,
   when: known,

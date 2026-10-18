@@ -1,7 +1,6 @@
-import { sha1 } from '@noble/hashes/legacy.js';
-import type { JsonValue } from '@smarteverything/domain';
+import { BLUETOOTH_MAC, type JsonValue } from '@smarteverything/domain';
 import { z } from 'zod';
-import { bytesToBase64, utf8ToBytes } from './bytes';
+import { digest, utf8ToBytes } from './bytes';
 
 export const HEALTH_SID = 'miothealth';
 export const HEALTH_HOST = 'hlth.io.mi.com';
@@ -22,14 +21,8 @@ export function rawNonceOf(loginText: string): string | null {
 }
 
 export function clientSign(nonce: string, ssecurity: string): string {
-  return bytesToBase64(sha1(utf8ToBytes(`nonce=${nonce}&${ssecurity}`)));
+  return digest('sha1', utf8ToBytes(`nonce=${nonce}&${ssecurity}`)).toBase64();
 }
-
-const MAC = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/);
 
 const AUTH_KEY = z
   .string()
@@ -39,12 +32,12 @@ const AUTH_KEY = z
   .pipe(z.string().regex(/^[0-9a-f]{32}$/));
 
 const DETAIL = z.union([
-  z.object({ mac: MAC, auth_key: AUTH_KEY }).transform((detail) => ({
+  z.object({ mac: BLUETOOTH_MAC, auth_key: AUTH_KEY }).transform((detail) => ({
     mac: detail.mac,
     authKey: detail.auth_key,
     keyField: 'auth_key',
   })),
-  z.object({ mac: MAC, encrypt_key: AUTH_KEY }).transform((detail) => ({
+  z.object({ mac: BLUETOOTH_MAC, encrypt_key: AUTH_KEY }).transform((detail) => ({
     mac: detail.mac,
     authKey: detail.encrypt_key,
     keyField: 'encrypt_key',
@@ -104,20 +97,14 @@ function fieldsOf(value: unknown): string {
   return parsed.success ? Object.keys(parsed.data).sort().join(', ') : typeof value;
 }
 
-function issuesOf(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => `${issue.path.map(String).join('.')}: ${issue.message}`)
-    .join('; ');
-}
-
 function wearableOf(source: unknown): Wearable | SkippedSource {
   const parsed = SOURCE.safeParse(source);
   if (!parsed.success) {
-    return { fields: fieldsOf(source), reason: issuesOf(parsed.error) };
+    return { fields: fieldsOf(source), reason: z.prettifyError(parsed.error) };
   }
   const detail = DETAIL.safeParse(parsed.data.detail);
   if (!detail.success) {
-    return { fields: fieldsOf(parsed.data.detail), reason: issuesOf(detail.error) };
+    return { fields: fieldsOf(parsed.data.detail), reason: z.prettifyError(detail.error) };
   }
   const { name, model, sid } = parsed.data;
   return {
@@ -131,7 +118,7 @@ function wearableOf(source: unknown): Wearable | SkippedSource {
 export function parseSourceList(result: unknown): SourceList {
   const parsed = SOURCE_LIST.safeParse(result);
   if (!parsed.success) {
-    throw new HealthSourceListError(issuesOf(parsed.error));
+    throw new HealthSourceListError(z.prettifyError(parsed.error));
   }
   const read = (parsed.data.list ?? []).map(wearableOf);
   return {

@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { scaleLinear } from 'd3-scale';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -7,7 +7,9 @@ import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
 import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
-import { extentOf, linePath, scaleLinear, segmentsOf, type ChartPoint } from './scale';
+import { useMeasuredWidth } from '../use-measured-width';
+import { reduced } from './reduce';
+import { areaPath, extentOf, linePath, segmentsOf, type ChartPoint } from './scale';
 
 export interface SparklineProps {
   readonly points: readonly ChartPoint[];
@@ -15,6 +17,7 @@ export interface SparklineProps {
   readonly height?: number;
   readonly area?: boolean;
   readonly maxGap?: number;
+  readonly domain?: readonly [number, number];
 }
 
 const INSET = 2;
@@ -25,47 +28,47 @@ interface Shape {
   readonly area: string;
 }
 
-function shapesOf(props: SparklineProps, width: number, height: number): Shape[] {
-  const sorted = [...props.points]
-    .filter((point) => Number.isFinite(point.v))
-    .sort((a, b) => a.t - b.t);
+function shapesOf(
+  points: readonly ChartPoint[],
+  { width, height }: { readonly width: number; readonly height: number },
+  maxGap: number | undefined,
+  domain: readonly [number, number] | undefined,
+): Shape[] {
+  const sorted = [...points].filter((point) => Number.isFinite(point.v)).sort((a, b) => a.t - b.t);
   const times = extentOf(sorted.map((point) => point.t));
-  const values = extentOf(sorted.map((point) => point.v));
+  const values =
+    domain === undefined
+      ? extentOf(sorted.map((point) => point.v))
+      : { min: domain[0], max: domain[1] };
   if (times === null || values === null) {
     return [];
   }
-  const x = scaleLinear(times, { min: INSET, max: width - INSET });
-  const y = scaleLinear(values, { min: height - INSET, max: INSET });
-  const gap = props.maxGap ?? Number.POSITIVE_INFINITY;
-  return segmentsOf(sorted, gap).map((segment) => {
+  const x = scaleLinear([times.min, times.max], [INSET, width - INSET]);
+  const y = scaleLinear([values.min, values.max], [height - INSET, INSET]);
+  const gap = maxGap ?? Number.POSITIVE_INFINITY;
+  return segmentsOf(sorted, gap).map((full) => {
+    const segment = reduced(full, width);
     const placed = segment.map((point) => ({ x: x(point.t), y: y(point.v) }));
-    const line = linePath(placed);
-    const first = placed[0]?.x ?? 0;
-    const last = placed[placed.length - 1]?.x ?? 0;
-    return {
-      line,
-      area: `${line} L${last.toFixed(1)} ${String(height)} L${first.toFixed(1)} ${String(height)} Z`,
-    };
+    return { line: linePath(placed), area: areaPath(placed, height) };
   });
 }
 
-export function Sparkline(props: SparklineProps): ReactNode {
-  const { colour, height = 32, area = false } = props;
-  const [width, setWidth] = useState(0);
+export const Sparkline = memo(function Sparkline({
+  points,
+  colour,
+  height = 32,
+  area = false,
+  maxGap,
+  domain,
+}: SparklineProps): ReactNode {
+  const { width, onLayout } = useMeasuredWidth();
   const stroke = useColour(colour);
   const reveal = useDraw(1, !useMotion().reduced);
   const box = { height };
   const clip = useAnimatedStyle(() => ({ width: width * reveal.get(), height }), [width, height]);
-  const shapes = width > 0 ? shapesOf(props, width, height) : [];
+  const shapes = width > 0 ? shapesOf(points, { width, height }, maxGap, domain) : [];
   return (
-    <View
-      style={box}
-      className="w-full"
-      aria-hidden
-      onLayout={(event) => {
-        setWidth(event.nativeEvent.layout.width);
-      }}
-    >
+    <View style={box} className="w-full" aria-hidden onLayout={onLayout}>
       {width > 0 ? (
         <Animated.View style={clip} className="overflow-hidden">
           <Svg width={width} height={height}>
@@ -95,4 +98,4 @@ export function Sparkline(props: SparklineProps): ReactNode {
       ) : null}
     </View>
   );
-}
+});

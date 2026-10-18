@@ -1,4 +1,5 @@
 import type { PageSettingsLink } from '../components/page-settings-button';
+import { settingsPage } from '../settings/tree';
 import { href } from './hrefs';
 import type { TabKey } from './route-types';
 
@@ -16,13 +17,22 @@ export type MainPageKey = (typeof MAIN_PAGES)[number]['tab'];
 
 export const PAGE_ORDER: readonly TabKey[] = MAIN_PAGES.map((page) => page.tab);
 
-export function mainPageSettings(tab: MainPageKey): PageSettingsLink {
+function pageOf(tab: MainPageKey): (typeof MAIN_PAGES)[number] {
   const page = MAIN_PAGES.find((entry) => entry.tab === tab);
   if (page === undefined) {
     throw new Error(`The main page ${tab} has no definition.`);
   }
-  return {
-    href: 'settingsIndex' in page ? href.settings.index() : href.settings.page(page.settings),
-    label: 'settingsIndex' in page ? 'Settings' : `${page.title} settings`,
-  };
+  return page;
+}
+
+export function mainPageSettings(tab: MainPageKey): PageSettingsLink {
+  const page = pageOf(tab);
+  if ('settingsIndex' in page) {
+    return { href: href.settings.index(), label: 'Settings' };
+  }
+  const settings = settingsPage(page.settings);
+  if (settings === undefined) {
+    throw new Error(`The settings page ${page.settings} is not in the settings tree.`);
+  }
+  return { href: href.settings.page(settings.id), label: settings.title };
 }

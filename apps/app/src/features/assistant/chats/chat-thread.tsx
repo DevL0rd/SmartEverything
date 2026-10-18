@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import Animated, { LinearTransition } from 'react-native-reanimated';
@@ -14,6 +14,8 @@ import { DropOverlay } from '../components/drop-overlay';
 import { PerfProbe } from '../../../perf/probe-kit';
 import { ThreadBanners } from '../components/thread-banners';
 import { ThreadList } from '../components/thread-list';
+import { ChatDetails } from '../details/chat-details';
+import { useComposerCollapse } from '../details/use-composer-collapse';
 import { useAssistantName } from '../data/assistant-data';
 import { useChatWorking } from '../data/chat-store';
 import { setDraft } from '../data/drafts';
@@ -21,7 +23,6 @@ import { usePendingMessages } from '../data/outbox';
 import { attachFiles } from '../data/uploads';
 import { ChatHeader } from './chat-header';
 import { usePanelState } from './chat-panel-state';
-import { ChatSheet } from './chat-sheet';
 import { BrowserPane } from './browser-panel';
 import { useBrowserTabs } from '../browser/browser-tab-events';
 import { useEmbeddedBrowserController } from '../browser/data/use-embedded-browser-controller';
@@ -31,6 +32,7 @@ import { useThreadKeys } from './chat-thread-keys';
 import { ProviderRouteSheet } from '../provider/provider-route-sheet';
 import { EngineAccessoryProvider, useEngineControls } from './engine-accessories';
 import { useChatEngineChange } from './chat-engine-change';
+import { useChatTrace } from './use-chat-trace';
 import { ProviderPromptDock } from '../provider/provider-prompt-dock';
 
 export interface ChatThreadProps {
@@ -46,33 +48,40 @@ function Body({
   chat,
   rows,
   name,
+  behindRef,
+  children,
 }: {
   readonly active?: boolean;
   readonly chat: AiChatRow;
   readonly rows: readonly AssistantMessageRow[];
   readonly name: string;
+  readonly behindRef: RefObject<View | null>;
+  readonly children: ReactNode;
 }): ReactNode {
   const ref = useRef<View>(null);
   const [dragging, setDragging] = useState(false);
   useFileDrop(ref, { onFiles: attachFiles, onHover: setDragging });
   return (
     <View ref={ref} className="min-h-0 flex-1">
-      <PerfProbe id="list">
-        <ThreadList
-          rows={rows}
-          empty={
-            <EmptyChat
-              name={name}
-              onSuggest={(text) => {
-                setDraft(chat.id, text);
-              }}
-            />
-          }
-          historyKey={chat.id}
-          loadOlder={(before) => olderChatMessages(chat.id, before)}
-        />
-      </PerfProbe>
+      <View ref={behindRef} className="min-h-0 flex-1">
+        <PerfProbe id="list">
+          <ThreadList
+            rows={rows}
+            empty={
+              <EmptyChat
+                name={name}
+                onSuggest={(text) => {
+                  setDraft(chat.id, text);
+                }}
+              />
+            }
+            historyKey={chat.id}
+            loadOlder={(before) => olderChatMessages(chat.id, before)}
+          />
+        </PerfProbe>
+      </View>
       {dragging ? <DropOverlay /> : null}
+      {children}
     </View>
   );
 }
@@ -90,22 +99,27 @@ function Column({
 }: ChatThreadProps & { readonly working: boolean }): ReactNode {
   const name = useAssistantName();
   const info = useChatInfo();
+  const behind = useRef<View>(null);
+  const compose = useComposerCollapse(info.open, info.hide);
   return (
     <>
       <Screen scroll={false} maxWidth="full" banner={<ThreadBanners />}>
-        <Body chat={chat} rows={rows} name={name} />
+        <Body chat={chat} rows={rows} name={name} behindRef={behind}>
+          <ChatDetails
+            chat={chat}
+            rows={rows}
+            open={info.open}
+            target={info.target}
+            behindRef={behind}
+            onClose={info.hide}
+            onDeleted={onDeleted}
+          />
+        </Body>
         <ProviderPromptDock chat={chat} />
         <ProviderRouteSheet chat={chat} />
         <PerfProbe id="foot">
-          <ThreadFooter chat={chat} working={working} onInfo={info.show} />
+          <ThreadFooter chat={chat} working={working} onInfo={info.show} onCompose={compose} />
         </PerfProbe>
-        <ChatSheet
-          chat={chat}
-          rows={rows}
-          open={info.open}
-          onClose={info.hide}
-          onDeleted={onDeleted}
-        />
       </Screen>
     </>
   );
@@ -122,11 +136,13 @@ export function ChatThread(props: ChatThreadProps): ReactNode {
   const control = useEngineControls(chat.engine, useChatEngineChange(chat), chat);
   const live = useChatWorking(chat.id);
   const waiting = usePendingMessages(chat.id).length;
+  useChatTrace(chat, rows, active, live);
   return (
     <EngineAccessoryProvider value={control}>
       {active ? (
         <ChatHeader
           chat={chat}
+          rows={rows}
           working={live}
           waiting={waiting}
           back={back}

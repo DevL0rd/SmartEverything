@@ -1,4 +1,4 @@
-export type ToastHold = 'hover' | 'touch';
+export type ToastHold = 'hover' | 'touch' | 'focus';
 
 interface Run {
   readonly remaining: number;
@@ -38,6 +38,10 @@ export class ToastClock {
       const holds = new Set([...run.holds].filter((entry) => entry !== reason));
       this.tick(id, { ...run, holds });
     }
+  }
+
+  isHeld(id: number): boolean {
+    return (this.runs.get(id)?.holds.size ?? 0) > 0;
   }
 
   forget(id: number): void {

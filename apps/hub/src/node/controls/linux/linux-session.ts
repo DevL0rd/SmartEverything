@@ -1,18 +1,18 @@
 import type { ComputerSessionState, MediaStatus, SessionApp } from '@smarteverything/domain';
 import { userInfo } from 'node:os';
 import { NodeFailureError } from '../../node-failure';
-import type { RunProgram } from '../../run-program';
 import type { SessionControl } from '../session-controls';
 import { SessionBus } from './dbus-session';
 import type { DesktopEntries } from './desktop-entries';
 import { KdeBridge, type FocusedWindow } from './kde-bridge';
 import { MprisPlayers } from './mpris';
-import { PulseVolume } from './pulse-volume';
+import type { PulseAudio } from './pulse-audio';
 import { watchScreenSaver } from './screensaver';
+import { messageOf } from '@smarteverything/logging';
 
 export interface LinuxSessionOptions {
-  readonly run: RunProgram;
   readonly entries: DesktopEntries;
+  readonly audio: PulseAudio;
   readonly now: () => Date;
   readonly failed: (part: string, cause: unknown) => void;
 }
@@ -20,7 +20,6 @@ export interface LinuxSessionOptions {
 interface Parts {
   readonly bus: SessionBus;
   readonly players: MprisPlayers;
-  readonly volume: PulseVolume;
   readonly bridge: KdeBridge;
   readonly unwatch: (() => void)[];
 }
@@ -32,58 +31,44 @@ export class LinuxSession implements SessionControl {
   private readings: Readings = { locked: null, focused: null, volume: null, muted: null };
   private onChange: ((session: ComputerSessionState) => void) | null = null;
   private pending = false;
+  private generation = 0;
 
   constructor(private readonly options: LinuxSessionOptions) {}
 
   async start(onChange: (session: ComputerSessionState) => void): Promise<void> {
+    const generation = ++this.generation;
     this.onChange = onChange;
     const bus = SessionBus.connect();
-    const changed = (): void => {
-      this.changed();
-    };
-    const parts: Parts = {
-      bus,
-      players: new MprisPlayers(bus, changed, (cause) => {
-        this.options.failed('media', cause);
-      }),
-      volume: new PulseVolume({
-        run: this.options.run,
-        changed: ({ volume, muted }): void => {
-          this.update({ volume, muted });
-        },
-        failed: (cause): void => {
-          this.options.failed('volume', cause);
-        },
-      }),
-      bridge: new KdeBridge(bus, (window) => {
-        this.update({ focused: this.appOf(window) });
-      }),
-      unwatch: [],
-    };
+    if (!(await this.reach(bus, generation))) {
+      return;
+    }
+    const parts = this.assemble(bus);
     this.parts = parts;
-    parts.volume.start();
     await Promise.all([
       this.attempt('media', () => parts.players.start()),
       this.attempt('focus', () => parts.bridge.start()),
       this.attempt('lock', async () => {
-        parts.unwatch.push(
-          await watchScreenSaver(bus, (locked) => {
-            this.update({ locked });
-          }),
-        );
+        const unwatch = await watchScreenSaver(bus, (locked) => {
+          this.update({ locked });
+        });
+        if (generation === this.generation) {
+          parts.unwatch.push(unwatch);
+        } else {
+          unwatch();
+        }
       }),
     ]);
     this.changed();
   }
 
   async stop(): Promise<void> {
+    this.generation += 1;
     const parts = this.parts;
     this.parts = null;
     this.onChange = null;
     if (parts === null) {
       return;
     }
-    parts.volume.stop();
     parts.players.stop();
     parts.unwatch.forEach((unwatch) => {
       unwatch();
@@ -99,12 +84,16 @@ export class LinuxSession implements SessionControl {
     return this.require().bridge;
   }
 
-  setVolume(level: number): Promise<void> {
-    return this.require().volume.setVolume(level);
+  bus(): SessionBus {
+    return this.require().bus;
   }
 
-  setMuted(muted: boolean): Promise<void> {
-    return this.require().volume.setMuted(muted);
+  async setVolume(level: number): Promise<void> {
+    await this.options.audio.change({ action: 'volume', level, kind: 'output' });
+  }
+
+  async setMuted(muted: boolean): Promise<void> {
+    await this.options.audio.change({ action: 'mute', muted, kind: 'output' });
   }
 
   playback(status: MediaStatus): Promise<void> {
@@ -116,6 +105,52 @@ export class LinuxSession implements SessionControl {
       throw new NodeFailureError('no_session', 'Nobody is signed in on this computer.');
     }
     return this.parts;
+  }
+
+  private assemble(bus: SessionBus): Parts {
+    return {
+      bus,
+      players: new MprisPlayers(
+        bus,
+        () => {
+          this.changed();
+        },
+        (cause) => {
+          this.options.failed('media', cause);
+        },
+      ),
+      bridge: new KdeBridge(bus, (window) => {
+        this.update({ focused: this.appOf(window) });
+      }),
+      unwatch: [
+        this.options.audio.watchMaster((reading) => {
+          this.update({ volume: reading?.volume ?? null, muted: reading?.muted ?? null });
+        }),
+      ],
+    };
+  }
+
+  private async reach(bus: SessionBus, generation: number): Promise<boolean> {
+    try {
+      await bus.connected();
+    } catch (cause) {
+      bus.close();
+      if (generation !== this.generation) {
+        return false;
+      }
+      throw new NodeFailureError(
+        'no_session',
+        `The desktop session bus is not reachable: ${messageOf(cause)}`,
+      );
+    }
+    if (generation !== this.generation) {
+      bus.close();
+      return false;
+    }
+    bus.onError((cause) => {
+      this.options.failed('bus', cause);
+    });
+    return true;
   }
 
   private async attempt(part: string, work: () => Promise<void>): Promise<void> {

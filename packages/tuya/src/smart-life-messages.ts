@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { describeIssues } from './issues';
+import { fit, readJson } from './json';
 import { CloudMessageError, businessMessage, type CloudMessage } from './messages';
 import type { SmartLifeMessaging } from './smart-life-api';
 
@@ -31,6 +31,10 @@ const BUSINESS = z.object({
   }),
 });
 
+function reject(reason: string): CloudMessageError {
+  return new CloudMessageError(reason, null);
+}
+
 const ENVELOPE = z.object({ protocol: z.number().int() });
 
 function reportMessages(report: z.output<typeof REPORT>): readonly CloudMessage[] {
@@ -54,33 +58,14 @@ function reportMessages(report: z.output<typeof REPORT>): readonly CloudMessage[
   return messages;
 }
 
-function parsedJson(payload: string): unknown {
-  try {
-    return JSON.parse(payload);
-  } catch (cause) {
-    throw new CloudMessageError(`the MQTT payload is not JSON (${String(cause)})`, null);
-  }
-}
-
-function fitted<S extends z.ZodType>(schema: S, candidate: unknown): z.output<S> {
-  const parsed = schema.safeParse(candidate);
-  if (!parsed.success) {
-    throw new CloudMessageError(
-      `the MQTT payload does not fit: ${describeIssues(parsed.error)}`,
-      null,
-    );
-  }
-  return parsed.data;
-}
-
 export function readSmartLifeMessage(payload: string): readonly CloudMessage[] {
-  const candidate = parsedJson(payload);
-  const { protocol } = fitted(ENVELOPE, candidate);
+  const candidate = readJson(payload, 'MQTT payload', reject);
+  const { protocol } = fit(ENVELOPE, candidate, 'MQTT payload', reject);
   if (protocol === DEVICE_REPORT_PROTOCOL) {
-    return reportMessages(fitted(REPORT, candidate));
+    return reportMessages(fit(REPORT, candidate, 'MQTT payload', reject));
   }
   if (protocol === BUSINESS_PROTOCOL) {
-    const { data } = fitted(BUSINESS, candidate);
+    const { data } = fit(BUSINESS, candidate, 'MQTT payload', reject);
     return [businessMessage(data.bizCode, data.bizData?.devId)];
   }
   return [{ kind: 'other', bizCode: `protocol ${String(protocol)}` }];

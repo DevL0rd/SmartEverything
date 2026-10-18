@@ -11,7 +11,7 @@ import { harnessHostReason } from '../model/harness-context';
 import { usePickerSession } from '../picker/model-search-session';
 import { draftHostChoice } from '../data/draft-engine';
 
-export const COMPUTER_HOST_KEY = 'unavailable-computer';
+const COMPUTER_HOST_KEY = 'unavailable-computer';
 
 interface HostChoice {
   readonly key: string;
@@ -52,7 +52,7 @@ function draftHostKey(
   if (selected === null) return 'server';
   return selected;
 }
-export function harnessHostOptions(
+function harnessHostOptions(
   catalogue: AiHarnessCatalogue | undefined,
 ): readonly SelectOption<string>[] {
   return (

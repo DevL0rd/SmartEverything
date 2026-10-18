@@ -19,7 +19,7 @@ import {
   retainManualCommand,
   rejectUnknownCommand,
 } from './native-command-admission';
-import { currentExecutionAuthority } from '../../execution-authority';
+import { currentExecutionAuthority } from '../../turn-authority';
 import { canonicalRuntimeInput } from '../../../computers/runtime-receipts';
 import { nativeCommandAdapter, NATIVE_COMMAND_ADAPTERS } from './native-command-adapters';
 import { NativeCommandOutput } from './native-command-output';
@@ -302,16 +302,16 @@ export class NativeCommands {
     const catalogue = await nativeCommandCatalogue(this.deps, scope);
     this.admit(chat, scope);
     if (canonicalRuntimeInput(catalogue.scope) !== canonicalRuntimeInput(scope))
-      throw new ApiError('conflict', 'Compaction catalogue returned another binding.');
+      throw new ApiError('conflict', 'This chat changed. Refresh and try again.');
     return catalogue;
   }
   private admit(chat: AiChatRow, scope: AiNativeCommandScope): void {
     this.guard(chat);
     assertClaudeCommandBinding(this.deps, this.state, chat, scope);
     if (this.activeTurn(chat.id) || this.controls.has(chat.id))
-      throw new ApiError('conflict', 'Wait for native work and controls to finish.');
+      throw new ApiError('conflict', 'Wait for the reply to finish.');
     if (canonicalRuntimeInput(this.scope(chat, scope.client_id)) !== canonicalRuntimeInput(scope))
-      throw new ApiError('conflict', 'The native command binding changed.');
+      throw new ApiError('conflict', 'This chat changed. Refresh and try again.');
     const state = this.state.bound(chat);
     const status = this.deps.directory.runtimeStatus({
       device_id: scope.device_id,

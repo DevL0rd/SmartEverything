@@ -21,6 +21,7 @@ const RULE_NAMES: Readonly<Record<PortRule['purpose'], string>> = {
   plugin: `${FIREWALL_GROUP} plugin`,
   hub: `${FIREWALL_GROUP} encrypted LAN`,
   discovery: `${FIREWALL_GROUP} discovery`,
+  announcement: `${FIREWALL_GROUP} device announcements`,
 };
 
 const SAFE_WORD = /^[A-Za-z0-9_@%+=:,./-]+$/;
@@ -35,6 +36,7 @@ function ufwMatch(rule: PortRule): readonly string[] {
       return ['proto', rule.protocol, 'from', 'any', 'to', 'any', 'port', String(rule.port)];
     case 'hub':
     case 'discovery':
+    case 'announcement':
     case 'plugin':
       return ['proto', rule.protocol, 'from', rule.source, 'to', 'any', 'port', String(rule.port)];
     case 'camera':
@@ -63,6 +65,7 @@ function firewalldChange(rule: PortRule): string {
       return `--add-port=${String(rule.port)}/${rule.protocol}`;
     case 'hub':
     case 'discovery':
+    case 'announcement':
     case 'plugin':
       return `--add-rich-rule=rule family="${familyOf(rule.source)}" source address="${rule.source}" port port="${String(rule.port)}" protocol="${rule.protocol}" accept`;
     case 'camera':
@@ -89,6 +92,7 @@ function windowsMatch(rule: PortRule): readonly string[] {
       ];
     case 'hub':
     case 'discovery':
+    case 'announcement':
     case 'plugin':
       return [
         '-DisplayName',
@@ -188,16 +192,6 @@ function posixQuoted(text: string): string {
 
 export function powershellQuoted(text: string): string {
   return text.startsWith('-') ? text : `'${text.replaceAll("'", "''")}'`;
-}
-
-export const COMMAND_SEPARATOR = ';';
-
-export function firewallArgv(plan: FirewallPlan): readonly string[] {
-  return firewallCommands(plan).flatMap((command, index) => [
-    ...(index === 0 ? [] : [COMMAND_SEPARATOR]),
-    command.program,
-    ...command.args,
-  ]);
 }
 
 export function firewallScript(plan: FirewallPlan): readonly string[] {

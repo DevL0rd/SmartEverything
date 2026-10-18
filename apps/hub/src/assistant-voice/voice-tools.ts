@@ -2,6 +2,9 @@ import type { HubTool, ToolSpec } from '../ai-tools/hub-tool';
 import { chatSet } from '../ai-tools/tool-sets';
 import { SIGHT_SOURCES } from '@smarteverything/domain';
 import type { HostedSpeaking } from './outreach';
+import { VOICE_DEFERRED_TOOLS } from './voice-deferred';
+
+export const WEB_SEARCH_TOOL = 'web_search';
 
 const CHAT_ONLY_TOOLS: ReadonlySet<string> = new Set(['show_widgets']);
 
@@ -38,11 +41,15 @@ const END: ToolSpec = {
 const SEE: ToolSpec = {
   name: VOICE_TOOL_NAMES.see,
   description:
-    'Look at something with your own eyes to answer them: one still picture, taken now. Sources: phone_camera (what their phone camera shows), phone_screen, desktop_screen (their computer screen), desktop_window (one application window on their computer, by application name or title), home_camera (a camera of the home, by name or id). Use it when they ask what something is, point at something, or have a question about what is on a screen or in a window. Set asked to true when they asked you to look or asked about it; set it to false when you want to look on your own, and they may be asked first.',
+    'Look at something with your own eyes to answer them: one still picture, taken now. With no source you look at the screen of the device the call comes from. Sources: phone_camera (what their phone camera shows), phone_screen, desktop_screen (their computer screen), desktop_window (one application window on their computer, by application name or title), home_camera (a camera of the home, by name or id). Looking at phone_screen turns the screen share on for the rest of the call: you then keep seeing the current screen, also when the app is in the background, so call see for it once and never again while it is on. Use it when they ask what something is, point at something, or have a question about what is on a screen or in a window. Set asked to true when they asked you to look or asked about it; set it to false when you want to look on your own, and they may be asked first.',
   inputSchema: {
     type: 'object',
     properties: {
-      source: { type: 'string', enum: SIGHT_SOURCES, description: 'What to look at' },
+      source: {
+        type: 'string',
+        enum: SIGHT_SOURCES,
+        description: 'What to look at; the calling device screen when left out',
+      },
       camera: { type: 'string', description: 'home_camera only: the camera’s name or id' },
       facing: { type: 'string', enum: ['front', 'back'], description: 'phone_camera only' },
       screen: {
@@ -59,7 +66,7 @@ const SEE: ToolSpec = {
         description: 'True when they asked you to look or asked a question about it',
       },
     },
-    required: ['source', 'why', 'asked'],
+    required: ['why', 'asked'],
   },
 };
 
@@ -85,7 +92,9 @@ export function voiceSet(
   sight: boolean,
 ): ToolSpec[] {
   return [
-    ...chatSet(withoutChatOnly(enabled, sight)),
+    ...chatSet(withoutChatOnly(enabled, sight)).filter(
+      (tool) => !VOICE_DEFERRED_TOOLS.has(tool.name),
+    ),
     ...(responder ? [DO_TASK] : []),
     ...(sight ? [SEE, STOP_LOOKING] : []),
     END,

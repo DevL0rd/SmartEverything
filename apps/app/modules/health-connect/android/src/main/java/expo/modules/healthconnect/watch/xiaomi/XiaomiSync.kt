@@ -1,6 +1,7 @@
 package expo.modules.healthconnect.watch.xiaomi
 
 import android.os.Handler
+import expo.modules.healthconnect.diagnostics.NativeLog
 import expo.modules.healthconnect.watch.ProtoWriter
 import expo.modules.healthconnect.watch.WatchFile
 import expo.modules.healthconnect.watch.WatchSink
@@ -22,13 +23,16 @@ class XiaomiSync(
   private val timeout = Runnable { fileTimedOut() }
 
   val busy: Boolean get() = running
+  private var startedAt = 0L
 
   fun start(reason: String) {
+    NativeLog.info(SCOPE, "sync.requested") { mapOf("reason" to reason, "alreadyRunning" to running, "skippedKeys" to skipped.size) }
     if (running) {
       sink.note("sync_skipped", "a sync is already running ($reason)")
       return
     }
     running = true
+    startedAt = System.nanoTime()
     parsed.clear()
     queue.clear()
     captured.clear()
@@ -39,6 +43,7 @@ class XiaomiSync(
   }
 
   fun stop() {
+    if (running) NativeLog.info(SCOPE, "sync.aborted") { mapOf("queued" to queue.size, "parsed" to parsed.size, "awaitingPast" to awaitingPast) }
     handler.removeCallbacks(timeout)
     running = false
     assembler.reset()
@@ -51,6 +56,9 @@ class XiaomiSync(
     }
     val listed = XiaomiFileId.list(ids)
     val fresh = listed.filter { it.key !in skipped }
+    NativeLog.debug(SCOPE, "files.listed") {
+      mapOf("subtype" to subtype, "bytes" to ids.size, "listed" to listed.size, "fresh" to fresh.size, "kinds" to fresh.groupingBy { it.shortLabel }.eachCount())
+    }
     fresh.filter { it !in queue }.forEach { queue.add(it) }
     val source = if (subtype == FETCH_TODAY) "today" else "earlier days"
     sink.note("sync_files", "${fresh.size} file(s) from $source, ${listed.size - fresh.size} skipped as unsupported earlier")
@@ -70,6 +78,7 @@ class XiaomiSync(
     val file = try {
       assembler.add(bytes)
     } catch (failure: IllegalArgumentException) {
+      NativeLog.warn(SCOPE, "chunk.unreadable", failure) { mapOf("file" to id.shortLabel, "at" to id.timestamp.epochSecond, "bytes" to bytes.size) }
       sink.note("sync_file_unreadable", "${id.label}: ${failure.message}")
       next()
       return
@@ -84,22 +93,30 @@ class XiaomiSync(
 
   private fun received(id: XiaomiFileId, file: ByteArray) {
     try {
+      val parseStarted = System.nanoTime()
       val checked = FileAssembler.checked(file)
       val data = XiaomiFileParser.parse(id, checked)
       parsed.add(id to data)
+      NativeLog.debug(SCOPE, "file.parsed", NativeLog.elapsedMs(parseStarted)) {
+        mapOf("file" to id.shortLabel, "at" to id.timestamp.epochSecond, "bytes" to file.size, "version" to id.version, "sleep" to id.isSleep, "parsedFiles" to parsed.size)
+      }
       sink.note("sync_file_read", "${id.label}: ${data.summary()}")
       if (id.isSleep && data.sleeps.isEmpty()) {
         sink.note("sync_sleep_empty", "${id.label}: ${file.size} bytes hold no finished night; it is acknowledged and removed from the watch")
       }
     } catch (implausible: ImplausibleMinute) {
+      NativeLog.warn(SCOPE, "file.implausible", implausible) { mapOf("file" to id.shortLabel, "at" to id.timestamp.epochSecond, "bytes" to file.size) }
       sink.note("sync_file_implausible", "${implausible.message}; left on the watch")
     } catch (unsupported: UnsupportedFile) {
+      NativeLog.warn(SCOPE, "file.unsupported", unsupported) { mapOf("file" to id.shortLabel, "at" to id.timestamp.epochSecond, "bytes" to file.size) }
       capture(id, file)
       skipped.add(id.key)
       sink.note("sync_file_unsupported", "${unsupported.message}; left on the watch")
     } catch (failure: IllegalArgumentException) {
+      NativeLog.warn(SCOPE, "file.unreadable", failure) { mapOf("file" to id.shortLabel, "at" to id.timestamp.epochSecond, "bytes" to file.size, "step" to "parse_or_checksum") }
       sink.note("sync_file_unreadable", "${id.label}: ${failure.message}; left on the watch")
     } catch (failure: java.nio.BufferUnderflowException) {
+      NativeLog.warn(SCOPE, "file.unreadable", failure) { mapOf("file" to id.shortLabel, "at" to id.timestamp.epochSecond, "bytes" to file.size, "step" to "underflow") }
       sink.note("sync_file_unreadable", "${id.label}: the file ended early; left on the watch")
     }
   }
@@ -126,12 +143,14 @@ class XiaomiSync(
       return
     }
     assembler.reset()
+    NativeLog.debug(SCOPE, "file.requested") { mapOf("file" to id.shortLabel, "at" to id.timestamp.epochSecond, "remaining" to queue.size) }
     send(health(FETCH_FILE, ProtoWriter().bytes(2, id.bytes)))
     handler.postDelayed(timeout, FILE_TIMEOUT_MS)
   }
 
   private fun fileTimedOut() {
     val id = current
+    NativeLog.warn(SCOPE, "file.timeout") { mapOf("file" to id?.shortLabel, "awaitingPast" to awaitingPast, "queued" to queue.size, "timeoutMs" to FILE_TIMEOUT_MS) }
     if (id == null && awaitingPast) {
       awaitingPast = false
       sink.note("sync_list_timeout", "the watch did not list earlier files within ${FILE_TIMEOUT_MS / 1000} s")
@@ -146,6 +165,7 @@ class XiaomiSync(
     handler.removeCallbacks(timeout)
     val files = parsed.toList()
     parsed.clear()
+    NativeLog.info(SCOPE, "sync.parsed", NativeLog.elapsedMs(startedAt)) { mapOf("files" to files.size) }
     sink.synced(files.map { it.second }) { keep ->
       handler.post {
         if (keep != null) {
@@ -167,6 +187,7 @@ class XiaomiSync(
     const val FETCH_PAST = 2
     const val FETCH_FILE = 3
     const val ACK = 5
+    private const val SCOPE = "watch-sync"
     private const val FILE_TIMEOUT_MS = 10_000L
   }
 }
@@ -191,7 +212,7 @@ object XiaomiFileParser {
       id.subtype == XiaomiFileId.MANUAL -> WatchFile(id.key, id.label, tz, spots = XiaomiDailyParsers.manual(id, file))
       id.subtype == XiaomiFileId.SLEEP -> WatchFile(id.key, id.label, tz, sleeps = XiaomiSleepParsers.details(id, file))
       id.subtype == XiaomiFileId.SLEEP_STAGES -> WatchFile(id.key, id.label, tz, sleeps = XiaomiSleepParsers.stagesFile(id, file))
-      else -> throw UnsupportedFile(id, "Gadgetbridge has no parser for this file")
+      else -> throw UnsupportedFile(id, "this app has no reader for this file type")
     }
   }
 }

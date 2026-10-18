@@ -1,5 +1,5 @@
-import { CLIENT_PREFS, type NutritionPref } from '@smarteverything/domain';
-import { PREFS, savePref, usePref, type PrefRead } from '../../../store/prefs';
+import type { NutritionPref } from '@smarteverything/domain';
+import { PREFS, prefOf, savePref, usePref, type PrefRead } from '../../../store/prefs';
 import type { EntityStore } from '../../../store/entity-store';
 import type { StoreState } from '../../../store/state';
 
@@ -17,17 +17,11 @@ export function useNutritionPrefs(): NutritionPref | null {
 }
 
 export function nutritionReady(state: StoreState): boolean {
-  return (
-    CLIENT_PREFS.nutrition.decode(
-      state.tables.layouts.byId[CLIENT_PREFS.nutrition.storageKey]?.layout ?? null,
-    ).status !== 'invalid'
-  );
+  return prefOf(state, PREFS.nutrition).status !== 'invalid';
 }
 
 export function nutritionPrefsOf(state: StoreState): NutritionPref {
-  const read = CLIENT_PREFS.nutrition.decode(
-    state.tables.layouts.byId[CLIENT_PREFS.nutrition.storageKey]?.layout ?? null,
-  );
+  const read = prefOf(state, PREFS.nutrition);
   if (read.status === 'invalid') {
     throw new NutritionPrefInvalidError(read.reason);
   }

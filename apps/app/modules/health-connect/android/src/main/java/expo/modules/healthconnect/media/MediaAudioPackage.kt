@@ -19,9 +19,11 @@ private class MediaAudioListener : ApplicationLifecycleListener {
       .setUsage(AudioAttributes.USAGE_MEDIA)
       .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
       .build()
-    WebRTCModuleOptions.getInstance().audioDeviceModule = JavaAudioDeviceModule.builder(application)
-      .setEnableVolumeLogger(false)
-      .setAudioAttributes(playback)
-      .createAudioDeviceModule()
+    WebRTCModuleOptions.getInstance().audioDeviceModuleFactory = WebRTCModuleOptions.AudioDeviceModuleFactory { context ->
+      JavaAudioDeviceModule.builder(context)
+        .setEnableVolumeLogger(false)
+        .setAudioAttributes(playback)
+        .createAudioDeviceModule()
+    }
   }
 }

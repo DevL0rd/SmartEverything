@@ -8,7 +8,12 @@ import {
   AI_CHAT_ROW,
   MESSAGE_SOURCES,
 } from '../ai-chats';
-import { ASSISTANT_ATTACHMENTS_MAX, ASSISTANT_MESSAGE_ROW, ASSISTANT_TEXT_MAX } from '../assistant';
+import { ASSISTANT_MESSAGE_ROW } from '../assistant';
+import {
+  AI_TOOL_RESULT_FIELDS,
+  AI_TOOL_RESULT_PAGE,
+  TOOL_RESULT_PAGE_CHARS,
+} from '../ai-turn-timeline';
 import { ASSISTANT_NEW_MESSAGE } from './endpoints-assistant';
 import { NO_BODY, endpoint } from './endpoint';
 import { DONE, ID, MOMENT, NOTHING, QUERY_FLAG, queryLimit } from './primitives';
@@ -16,6 +21,14 @@ import { DONE, ID, MOMENT, NOTHING, QUERY_FLAG, queryLimit } from './primitives'
 const CHAT_PARAMS = z.strictObject({ chatId: ID });
 
 const RETRY_PARAMS = z.strictObject({ chatId: ID, messageId: ID });
+
+const TOOL_RESULT_PARAMS = z.strictObject({ chatId: ID, callId: z.string().min(1) });
+
+const TOOL_RESULT_QUERY = z.strictObject({
+  field: z.enum(AI_TOOL_RESULT_FIELDS).default('output'),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).default(TOOL_RESULT_PAGE_CHARS),
+});
 
 const AI_RETRY = z.strictObject({
   from: z
@@ -30,10 +43,9 @@ export type AiRetryFrom = z.output<typeof AI_RETRY>['from'];
 const AI_EDIT = z
   .strictObject({
     references: AI_MESSAGE_REFERENCES.optional(),
-    text: z.string().trim().min(1).max(ASSISTANT_TEXT_MAX),
+    text: z.string().trim().min(1),
     attachments: z
       .array(ID)
-      .max(ASSISTANT_ATTACHMENTS_MAX)
       .optional()
       .describe('Unsent uploads that replace the message’s files; left out, its files stay'),
   })
@@ -61,6 +73,10 @@ const CHAT_ENDPOINTS = {
     params: NOTHING,
     query: z.strictObject({
       archived: QUERY_FLAG.default(false),
+      before: ID.optional().describe(
+        'Only chats after this chat in the list; pass the last chat of the previous page',
+      ),
+      limit: z.coerce.number().int().min(1).optional().describe('Page size; left out, every chat'),
       unread: QUERY_FLAG.optional().describe('true lists only chats with unread messages'),
       pinned: QUERY_FLAG.optional().describe('true lists only pinned chats'),
       source: z.enum(MESSAGE_SOURCES).optional().describe('Only chats that began from this source'),
@@ -111,6 +127,17 @@ const CHAT_ENDPOINTS = {
     body: AI_CHAT_BRANCH,
     response: AI_CHAT_ROW,
   }),
+  clearAiChats: endpoint({
+    method: 'DELETE',
+    path: '/api/ai/chats',
+    access: 'member',
+    summary:
+      'Delete every AI chat of the caller’s profile, archived and subagent chats included, with their messages and files',
+    params: NOTHING,
+    query: z.strictObject({ scope: z.literal('profile') }),
+    body: NO_BODY,
+    response: DONE,
+  }),
   removeAiChat: endpoint({
     method: 'DELETE',
     path: '/api/ai/chats/:chatId',
@@ -147,6 +174,17 @@ const MESSAGE_ENDPOINTS = {
     query: z.strictObject({ before: MOMENT.optional(), limit: queryLimit(50, 200) }),
     body: NO_BODY,
     response: z.array(ASSISTANT_MESSAGE_ROW),
+  }),
+  readAiToolResult: endpoint({
+    method: 'GET',
+    path: '/api/ai/chats/:chatId/tool-results/:callId',
+    access: 'member',
+    summary:
+      'The full output (or input) of one tool call in a chat, a page of characters at a time; the chat timeline carries only the start of large ones and says how long they are',
+    params: TOOL_RESULT_PARAMS,
+    query: TOOL_RESULT_QUERY,
+    body: NO_BODY,
+    response: AI_TOOL_RESULT_PAGE,
   }),
   sendAiChatMessage: endpoint({
     method: 'POST',

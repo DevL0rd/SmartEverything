@@ -222,35 +222,48 @@ async function writeManifest(
   await copyFile(join(HERE, 'LICENSE'), join(OUT, 'LICENSE.go2rtc.txt'));
 }
 
-async function cleanUp(pin: Pin, root: string): Promise<void> {
-  await run('go', ['clean', '-modcache'], {
-    env: { ...goEnvironment(root, pin, null), GOTOOLCHAIN: 'local' },
-  });
-  await rm(root, { recursive: true, force: true });
-}
-
-async function main(): Promise<void> {
-  const pin = await readPin();
+export async function inTempRoot<T>(
+  work: (root: string) => Promise<T>,
+  release: (root: string) => Promise<unknown>,
+): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), 'go2rtc-build-'));
   try {
-    const work = { root, source: await unpackSource(pin, root) };
-    const patches = await applyPatches(pin, work.source);
-    const toolchain = await checkToolchain(pin, work);
-    await rm(OUT, { recursive: true, force: true });
-    await mkdir(OUT);
-    const binaries: Binary[] = [];
-    for (const target of TARGETS) {
-      binaries.push(await build(pin, work, target));
-    }
-    await writeManifest(pin, toolchain, patches, binaries);
-    await checkHostBinary(pin);
-    log.info('go2rtc.build_finished', { out: OUT, binaries: binaries.length });
+    return await work(root);
   } finally {
-    await cleanUp(pin, root);
+    await release(root).catch((cause: unknown) => {
+      log.warn('go2rtc.release_failed', { cause: String(cause) });
+    });
+    await rm(root, { recursive: true, force: true });
   }
 }
 
-main().catch((cause: unknown) => {
-  log.error('go2rtc.build_failed', cause);
-  process.exitCode = 1;
-});
+function releaseModules(pin: Pin): (root: string) => Promise<unknown> {
+  return (root) =>
+    run('go', ['clean', '-modcache'], {
+      env: { ...goEnvironment(root, pin, null), GOTOOLCHAIN: 'local' },
+    });
+}
+
+async function buildAll(pin: Pin, root: string): Promise<void> {
+  const work = { root, source: await unpackSource(pin, root) };
+  const patches = await applyPatches(pin, work.source);
+  const toolchain = await checkToolchain(pin, work);
+  await rm(OUT, { recursive: true, force: true });
+  await mkdir(OUT);
+  const binaries: Binary[] = [];
+  for (const target of TARGETS) {
+    binaries.push(await build(pin, work, target));
+  }
+  await writeManifest(pin, toolchain, patches, binaries);
+  await checkHostBinary(pin);
+  log.info('go2rtc.build_finished', { out: OUT, binaries: binaries.length });
+}
+
+if (import.meta.main) {
+  readPin()
+    .then((pin) => inTempRoot((root) => buildAll(pin, root), releaseModules(pin)))
+    .catch((cause: unknown) => {
+      log.error('go2rtc.build_failed', cause);
+      process.exitCode = 1;
+    });
+}

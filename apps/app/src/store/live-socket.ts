@@ -6,9 +6,11 @@ import {
   type LiveMessage,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { traceSocket } from './live-socket-log';
 import { readLeniently } from '../api/connection/readable';
 import { jsonText } from '../format/json-text';
 import { openHubSocket } from '../api/connection/hub-socket';
+import { markJsonParsed, timedRead } from '../dev/wire-probe';
 
 export const TOKEN_WITHDRAWN = 4001;
 
@@ -29,11 +31,20 @@ function tableOf(value: unknown): string | null {
   return change.success ? change.data.table : null;
 }
 
+function labelOf(received: Received): string {
+  if (received.kind === 'unreadable') {
+    return 'unreadable';
+  }
+  const message = received.message;
+  return message.type === 'change' ? `change.${message.table}` : message.type;
+}
+
 function readLiveMessage(data: unknown): Received {
   if (typeof data !== 'string') {
     return { kind: 'unreadable', reason: 'the server sent a binary frame', table: null };
   }
   const read = jsonText(data);
+  markJsonParsed();
   if (!read.ok) {
     return {
       kind: 'unreadable',
@@ -55,8 +66,10 @@ function readLiveMessage(data: unknown): Received {
   return { kind: 'message', message: parsed.data };
 }
 
+export type SendLive = (message: LiveClientMessageInput) => void;
+
 export interface SocketHandlers {
-  readonly onOpen: () => void;
+  readonly onOpen: (send: SendLive) => void;
   readonly onMessage: (received: Received) => void;
   readonly onClose: (code: number, reason: string) => void;
 }
@@ -64,26 +77,54 @@ export interface SocketHandlers {
 export interface SocketTarget {
   readonly url: string;
   readonly token: string;
-  readonly subscribe: LiveClientMessageInput;
+  readonly subscribe: Extract<LiveClientMessageInput, { readonly type: 'subscribe' }>;
 }
 
 export function openLiveSocket(target: SocketTarget, handlers: SocketHandlers): () => void {
-  const socket = openHubSocket(target, MEDIA_PATHS.live, liveProtocols(target.token));
+  const trace = traceSocket(MEDIA_PATHS.live);
+  trace.opening();
+  let socket: ReturnType<typeof openHubSocket>;
+  try {
+    socket = openHubSocket(target, MEDIA_PATHS.live, liveProtocols(target.token));
+  } catch (error) {
+    trace.openFailed(error);
+    throw error;
+  }
   let closedByUs = false;
   socket.onopen = (): void => {
-    socket.send(JSON.stringify(target.subscribe));
-    handlers.onOpen();
+    trace.opened(target.subscribe.tables.length);
+    try {
+      socket.send(JSON.stringify(target.subscribe));
+    } catch (error) {
+      trace.subscribeFailed(error);
+      throw error;
+    }
+    handlers.onOpen((message) => {
+      socket.send(JSON.stringify(message));
+    });
   };
   socket.onmessage = (event: { readonly data: unknown }): void => {
-    handlers.onMessage(readLiveMessage(event.data));
+    const read = timedRead(event.data, readLiveMessage, labelOf);
+    trace.frame(labelOf(read), typeof event.data === 'string' ? event.data.length : 0);
+    handlers.onMessage(read);
+  };
+  socket.onerror = (): void => {
+    trace.errored(closedByUs);
   };
   socket.onclose = (event): void => {
+    trace.closed(event.code, event.reason.length, closedByUs);
     if (!closedByUs) {
       handlers.onClose(event.code, event.reason);
     }
   };
   return (): void => {
+    trace.closing(closedByUs);
     closedByUs = true;
-    socket.close();
+    try {
+      socket.close();
+    } catch (error) {
+      trace.closeFailed(error);
+      throw error;
+    }
   };
 }

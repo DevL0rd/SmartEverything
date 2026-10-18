@@ -7,7 +7,7 @@ export const PAIRING_INVITATION_MAX_LENGTH = 4096;
 const PAYLOAD = z
   .strictObject({
     url: z.url({ protocol: /^https$/ }),
-    code: z.lazy(() => PAIRING_CODE),
+    code: PAIRING_CODE,
     identity: HUB_IDENTITY,
     endpoints: z.array(HUB_ENDPOINT).min(1).max(2),
   })
@@ -25,7 +25,6 @@ function encoded(payload: PairingInvitation): string {
     .replace(/=+$/u, '');
 }
 function decoded(text: string): unknown {
-  if (!/^[A-Za-z0-9_-]+$/u.test(text)) throw new Error('Invalid invitation encoding');
   const base64 = text.replace(/-/gu, '+').replace(/_/gu, '/');
   const binary = atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4));
   const value: unknown = JSON.parse(
@@ -91,7 +90,6 @@ function invitationRoute(qr: PairingInvitation, https: boolean): string | null {
   return origin === null ? null : `${origin}/pair`;
 }
 function minimalInvitation(qr: PairingQr): PairingInvitation | null {
-  if (qr.endpoints === undefined) return null;
   const remote = qr.endpoints.find((endpoint) => endpoint.kind === 'remote');
   const lan = qr.endpoints.find(
     (endpoint) =>

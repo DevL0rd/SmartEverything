@@ -1,6 +1,7 @@
 import { scopedToolCall } from './authority';
 import type { ConversationAuthority } from '../../../harness/authority-contract';
 import { MCP_PART_TEXTS, type McpPartName, type PluginRequester } from '@smarteverything/domain';
+import { describeFailure, redactText } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { Clock } from '../../../clock';
 import type { RunningHub } from '../../../hub';
@@ -18,6 +19,7 @@ export interface ToolActor {
   readonly authority?: ConversationAuthority;
   readonly clientId: string | null;
   readonly profileId: string;
+  readonly role?: 'owner' | 'member';
   readonly chatId: string | null;
   readonly pluginRequester?: PluginRequester;
   readonly pluginId?: string;
@@ -40,6 +42,7 @@ export interface ToolContext {
 export interface ToolOutput {
   readonly structured: Readonly<Record<string, unknown>>;
   readonly images?: readonly ToolImage[];
+  readonly action?: boolean;
 }
 
 export interface ToolAnnotations {
@@ -53,13 +56,23 @@ export interface ToolDefinition<I> {
   readonly name: McpPartName;
   readonly input: z.ZodType<I>;
   readonly annotations: ToolAnnotations;
+  readonly answer?: boolean;
   readonly run: (context: ToolContext, input: I) => Promise<ToolOutput> | ToolOutput;
+}
+
+export interface ToolListing {
+  readonly name: string;
+  readonly title: string;
+  readonly description: string;
+  readonly inputSchema: Readonly<Record<string, unknown>>;
+  readonly annotations: ToolAnnotations & { readonly title: string };
 }
 
 export interface Tool {
   readonly name: string;
-  readonly listing: Readonly<Record<string, unknown>>;
-  readonly variants?: readonly Readonly<Record<string, unknown>>[];
+  readonly listing: ToolListing;
+  readonly input?: z.ZodType;
+  readonly variants?: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
   readonly call: (
     context: ToolContext,
     raw: Readonly<Record<string, unknown>>,
@@ -76,6 +89,27 @@ export class ToolError extends Error {
   ) {
     super(message);
   }
+}
+
+export const PLUGIN_ONLY_TOOLS: ReadonlySet<string> = new Set(['ai_inbox_post']);
+
+const CALLER_NOUN: Readonly<Record<AcceptedCaller['via'], string>> = {
+  plugin: 'This plugin',
+  computer: 'This computer’s MCP grant',
+  personal: 'This personal token',
+  oauth: 'This assistant connection',
+};
+
+export function reachRefusal(caller: AcceptedCaller, what: string, area: string): ToolError {
+  return new ToolError(
+    `${CALLER_NOUN[caller.via]} does not include the ${area} area, so ${what} is not available; the owner chooses what it can reach.`,
+    'forbidden',
+  );
+}
+
+export function internalRefusal(cause: unknown): ToolError {
+  const { name, message } = describeFailure(cause);
+  return new ToolError(`${name}: ${redactText(message, INTERNAL_MESSAGE_SHOWN)}`, 'internal');
 }
 
 class UnknownToolTextError extends Error {
@@ -114,17 +148,53 @@ export const REMOVES: ToolAnnotations = {
   openWorldHint: false,
 };
 
+export function combinedAnnotations(all: readonly ToolAnnotations[]): ToolAnnotations {
+  return {
+    readOnlyHint: all.every((one) => one.readOnlyHint),
+    destructiveHint: all.every((one) => one.destructiveHint),
+    idempotentHint: all.every((one) => one.idempotentHint),
+    openWorldHint: all.some((one) => one.openWorldHint),
+  };
+}
+
+const MAXIMUM_ISSUES = 8;
+const INTERNAL_MESSAGE_SHOWN = 400;
+
+function nearestBranch(
+  branches: readonly (readonly z.core.$ZodIssue[])[],
+): readonly z.core.$ZodIssue[] {
+  const depth = (issues: readonly z.core.$ZodIssue[]): number =>
+    Math.min(...issues.map((issue) => issue.path.length));
+  return branches.reduce((best, branch) => (depth(branch) > depth(best) ? branch : best));
+}
+
+function flattened(issues: readonly z.core.$ZodIssue[]): readonly z.core.$ZodIssue[] {
+  return issues.flatMap((issue) =>
+    issue.code === 'invalid_union' && issue.errors.length > 0
+      ? flattened(
+          nearestBranch(issue.errors).map((inner) => ({
+            ...inner,
+            path: [...issue.path, ...inner.path],
+          })),
+        )
+      : [issue],
+  );
+}
+
 export function issuesOf(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => `${issue.path.join('.') || 'arguments'} ${issue.message}`)
-    .join('; ');
+  const issues = flattened(error.issues);
+  const shown = issues
+    .slice(0, MAXIMUM_ISSUES)
+    .map((issue) => `${issue.path.join('.') || 'arguments'} ${issue.message}`);
+  const hidden = issues.length - shown.length;
+  return (hidden > 0 ? [...shown, `and ${String(hidden)} more`] : shown).join('; ');
 }
 
 export function listingOf(
   name: McpPartName,
   inputSchema: Readonly<Record<string, unknown>>,
   annotations: ToolAnnotations,
-): Readonly<Record<string, unknown>> {
+): ToolListing {
   const text = MCP_PART_TEXTS.find((candidate) => candidate.name === name);
   if (text === undefined) {
     throw new UnknownToolTextError(name);
@@ -138,67 +208,95 @@ export function listingOf(
   };
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function withoutFormatPattern(context: { readonly jsonSchema: Record<string, unknown> }): void {
+  const { jsonSchema } = context;
+  if (typeof jsonSchema['format'] === 'string') {
+    delete jsonSchema['pattern'];
+  }
 }
 
-function compact(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(compact);
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-  const formatted = typeof value['format'] === 'string';
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => key !== '$schema' && !(formatted && key === 'pattern'))
-      .map(([key, entry]) => [key, compact(entry)]),
-  );
+function schemaOf(
+  schema: z.core.$ZodType,
+  io: 'input' | 'output',
+  reused: 'ref' | 'inline',
+): Record<string, unknown> {
+  const json: Record<string, unknown> = z.toJSONSchema(schema, {
+    io,
+    unrepresentable: 'any',
+    reused,
+    cycles: 'ref',
+    override: withoutFormatPattern,
+  });
+  delete json['$schema'];
+  return json;
 }
 
-export function jsonSchemaOf(schema: z.ZodType, io: 'input' | 'output'): Record<string, unknown> {
-  const compacted = compact(z.toJSONSchema(schema, { io, unrepresentable: 'any' }));
-  if (!isRecord(compacted)) {
-    throw new ToolError('A JSON schema was not an object', 'internal');
+export function inlineSchemaOf(
+  schema: z.core.$ZodType,
+  io: 'input' | 'output',
+): Record<string, unknown> {
+  return schemaOf(schema, io, 'inline');
+}
+
+export function jsonSchemaOf(
+  schema: z.core.$ZodType,
+  io: 'input' | 'output',
+): Record<string, unknown> {
+  const shared = schemaOf(schema, io, 'ref');
+  const inline = schemaOf(schema, io, 'inline');
+  return JSON.stringify(shared).length < JSON.stringify(inline).length ? shared : inline;
+}
+
+export function argumentIssues(input: z.ZodType, raw: unknown): string | null {
+  const parsed = input.safeParse(raw);
+  return parsed.success ? null : `The arguments are not valid: ${issuesOf(parsed.error)}`;
+}
+
+export function validArguments<I>(input: z.ZodType<I>, raw: unknown): I {
+  const parsed = input.safeParse(raw);
+  if (!parsed.success) {
+    throw new ToolError(`The arguments are not valid: ${issuesOf(parsed.error)}`);
   }
-  return { ...compacted };
+  return parsed.data;
 }
 
 export function defineTool<I>(definition: ToolDefinition<I>): Tool {
   return {
     name: definition.name,
+    input: definition.input,
     listing: listingOf(
       definition.name,
       jsonSchemaOf(definition.input, 'input'),
       definition.annotations,
     ),
-    check: (_context, raw): string | null => {
-      const parsed = definition.input.safeParse(raw);
-      return parsed.success ? null : `The arguments are not valid: ${issuesOf(parsed.error)}`;
-    },
+    check: (_context, raw): string | null => argumentIssues(definition.input, raw),
     call: async (context, raw): Promise<ToolOutput> => {
-      const parsed = definition.input.safeParse(raw);
-      if (!parsed.success) {
-        throw new ToolError(`The arguments are not valid: ${issuesOf(parsed.error)}`);
-      }
-      return scopedToolCall(context, definition.name, raw, (scoped) =>
-        definition.run(scoped, parsed.data),
+      const input = validArguments(definition.input, raw);
+      const output = await scopedToolCall(context, definition.name, (scoped) =>
+        definition.run(scoped, input),
       );
+      return {
+        action: !definition.annotations.readOnlyHint && definition.answer !== true,
+        ...output,
+      };
     },
   };
 }
 
 export function matches(words: string, ...fields: readonly (string | null)[]): boolean {
-  const wanted = words.toLowerCase();
-  return fields.some((field) => field?.toLowerCase().includes(wanted) === true);
+  const lowered = fields.map((field) => field?.toLowerCase().replaceAll('_', ' '));
+  return words
+    .toLowerCase()
+    .split(/\s+/u)
+    .filter((word) => word !== '')
+    .every((word) => lowered.some((field) => field?.includes(word) === true));
 }
 
 export const MOMENT_ARGUMENT = z.iso
   .datetime({ offset: true })
   .transform((text) => new Date(text).toISOString());
 
-export const PROFILE = z
+export const PERSON = z
   .uuid()
   .optional()
   .describe('Whose data: a person id from list_people; the owner’s profile when left out');

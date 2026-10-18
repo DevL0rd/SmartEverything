@@ -2,8 +2,9 @@ import { OwnEngineSelections } from '../harness/own-selection';
 import type { HarnessService } from '../harness/service';
 import {
   ApiError,
-  DEFAULT_ENGINE,
+  AUTO_LATEST_GEMINI_FLASH,
   ENGINE_WRITE,
+  OPENROUTER_DEFAULTS,
   CLAUDE_PROVIDER_OPTIONS,
   CODEX_PROVIDER_OPTIONS,
   type AiRuntimeEngineCatalogue,
@@ -12,11 +13,18 @@ import {
   type ComputerAiRuntime,
   type ComputerRuntimeStatus,
 } from '@smarteverything/domain';
+import { assertModelAllowed } from '../server/person-scope';
 import { validateComputerEngine } from './engine-validation';
+import { computerEngine } from './engine-kind';
 import type { Logger } from '@smarteverything/logging';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
 import type { Store } from '../store/store';
+import { background } from '@smarteverything/logging';
 const RUNTIMES = ['claude', 'codex'] as const;
+export interface EngineUser {
+  readonly role: Role;
+  readonly profileId: string;
+}
 export class EngineSelections {
   private own: OwnEngineSelections | null = null;
   private readonly refreshing = new Set<string>();
@@ -41,23 +49,12 @@ export class EngineSelections {
   attachHarness(service: HarnessService): void {
     this.own = new OwnEngineSelections(service);
   }
-  select(profileId: string, engine: Engine, background = false): Engine {
-    this.validate(engine, 'owner');
+  select(profileId: string, engine: Engine): Engine {
+    this.validate(engine, { role: 'owner', profileId });
     if (engine.kind !== 'openrouter') return engine;
     if (this.own === null)
-      throw new ApiError('conflict', 'SmartEverything model routes are starting.');
-    return this.own.select(profileId, engine, background);
-  }
-  default(profileId: string, background = false): Engine {
-    const engine = this.select(
-      profileId,
-      this.store.aiEngineDefaults.read() ?? DEFAULT_ENGINE,
-      background,
-    );
-    if (engine.kind !== 'dsh') return engine;
-    if (this.own === null)
-      throw new ApiError('conflict', 'SmartEverything model routes are starting.');
-    return this.own.default(profileId, engine, background);
+      throw new ApiError('conflict', 'The assistant is starting. Try again in a moment.');
+    return this.own.select(profileId, engine);
   }
   hasComputerProvider(runtime: ComputerAiRuntime = 'claude'): boolean {
     return this.store.devices
@@ -69,29 +66,12 @@ export class EngineSelections {
             .enabled,
       );
   }
-  validate(engine: Engine, role: Role): void {
+  validate(engine: Engine, user: EngineUser): void {
     ENGINE_WRITE.parse(engine);
-    if (engine.kind === 'dsh') return;
-    if (engine.kind !== 'openrouter') {
-      validateComputerEngine(this.store, this.directory, engine, role);
-      return;
-    }
-    const model = engine.model ?? this.store.aiModels.settings().default_model;
-    if (model === 'smarteverything/unavailable-computer-engine')
-      throw new ApiError(
-        'conflict',
-        'Update this app before using the unavailable computer engine.',
-      );
-    const supplier = model.startsWith('anthropic/')
-      ? 'claude'
-      : model.startsWith('openai/')
-        ? 'codex'
-        : null;
-    if (supplier !== null && this.hasComputerProvider(supplier))
-      throw new ApiError(
-        'conflict',
-        `Choose an explicit supported ${supplier} subscription supplier. There is no paid fallback.`,
-      );
+    const computer = computerEngine(engine);
+    if (computer !== null) validateComputerEngine(this.store, this.directory, computer, user.role);
+    if (user.role !== 'owner')
+      assertModelAllowed(this.store, user.profileId, modelOf(this.store, engine));
   }
   catalogue(role: Role): AiRuntimeEngineCatalogue {
     return {
@@ -147,18 +127,25 @@ export class EngineSelections {
     const key = JSON.stringify([deviceId, runtime]);
     if (this.refreshing.has(key)) return;
     this.refreshing.add(key);
-    void this.directory
-      .runtimeModels({ device_id: deviceId, runtime })
-      .catch((cause: unknown) => {
-        this.log.error('computer.models_discovery_failed', cause, { deviceId, runtime });
-      })
-      .finally(() => {
-        this.refreshing.delete(key);
-      });
+    background(
+      this.directory
+        .runtimeModels({ device_id: deviceId, runtime })
+        .catch((cause: unknown) => {
+          this.log.error('computer.models_discovery_failed', cause, { deviceId, runtime });
+        })
+        .finally(() => {
+          this.refreshing.delete(key);
+        }),
+      'models.runtime_failed',
+    );
   }
 }
+function modelOf(store: Store, engine: Engine): string {
+  const wanted = engine.model ?? store.aiModels.settings().default_model;
+  return wanted === AUTO_LATEST_GEMINI_FLASH ? OPENROUTER_DEFAULTS.default_model : wanted;
+}
 function unavailableReason(status: ComputerRuntimeStatus, role: Role): string | null {
-  if (role !== 'owner') return 'Only the owner may run native computer work.';
+  if (role !== 'owner') return 'Only the home owner can use Claude or Codex on computers.';
   if (!status.online) return 'The supplying computer is offline.';
   if (!status.settings.settings.provider.enabled)
     return 'The provider is disabled on this computer.';

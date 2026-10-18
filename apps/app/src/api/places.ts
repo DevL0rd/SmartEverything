@@ -1,12 +1,13 @@
 import { API_ENDPOINTS as E, type GeoPoint, type PlaceMatch } from '@smarteverything/domain';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../queries/use-screen-query';
 import { api } from './transport';
 
 export const MIN_PLACE_QUERY = 2;
 
 export function usePlaceSearch(query: string): UseQueryResult<readonly PlaceMatch[]> {
   const q = query.trim();
-  return useQuery({
+  return useScreenQuery({
     queryKey: ['places', q.toLowerCase()],
     queryFn: async () => (await api().call(E.searchPlaces, { query: { q } })).places,
     enabled: q.length >= MIN_PLACE_QUERY,

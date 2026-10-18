@@ -1,16 +1,14 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { TextField } from '../../../components/text-field';
-
-function numberText(value: number | undefined): string {
-  return value === undefined || !Number.isFinite(value) ? '' : String(value);
-}
+import { numberValid, parsedNumber, shownText } from '../model/number-text';
 
 interface NumberInputProps {
   readonly label: string;
   readonly value: number | undefined;
   readonly onChange: (value: number | undefined) => void;
   readonly optional?: boolean;
+  readonly unit?: string | null;
   readonly focusOnMount?: boolean;
 }
 
@@ -19,28 +17,29 @@ export function NumberInput({
   value,
   onChange,
   optional = false,
+  unit = null,
   focusOnMount = false,
 }: NumberInputProps): ReactNode {
-  const [buffer, setBuffer] = useState({ value, text: numberText(value) });
-  const text = Object.is(buffer.value, value) ? buffer.text : numberText(value);
-  const valid =
-    (optional && text.trim() === '') || (text.trim() !== '' && Number.isFinite(Number(text)));
+  const [draft, setDraft] = useState<string | null>(null);
+  const text = shownText(draft, value);
   return (
     <TextField
-      label={label}
+      label={unit === null ? label : `${label} (${unit})`}
       focusOnMount={focusOnMount}
       kind="number"
       value={text}
-      error={valid ? null : 'Enter a finite number'}
+      error={numberValid(text, optional) ? null : 'Write a number.'}
+      onBlur={() => {
+        setDraft(null);
+      }}
       onChange={(next) => {
-        const number =
-          optional && next.trim() === ''
-            ? undefined
-            : next.trim() === ''
-              ? Number.NaN
-              : Number(next);
-        setBuffer({ value: number, text: next });
-        onChange(number);
+        setDraft(next);
+        if (optional && next.trim() === '') {
+          onChange(undefined);
+          return;
+        }
+        const number = parsedNumber(next);
+        if (number !== null) onChange(number);
       }}
     />
   );

@@ -31,13 +31,12 @@ export function AutomationsLayout(): ReactNode {
       <Stack.Screen name="scenes/[sceneId]" dangerouslySingular={idOf('sceneId')} />
     </Stack>
   );
-  return master ? (
+  return (
     <MasterDetail
+      split={master}
       masterWidth="popover"
       master={<AutomationsMaster />}
       detail={<View className="flex-1">{stack}</View>}
     />
-  ) : (
-    stack
   );
 }

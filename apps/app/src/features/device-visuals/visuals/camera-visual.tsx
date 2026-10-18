@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Path } from 'react-native-svg';
+import { Circle, Path } from 'react-native-svg';
 import { Canvas, useSvgId } from '../parts/frame';
 import { BodyGradient, useInk, useTint, WELL } from '../parts/ink';
 import { circlePath, rounded } from '../parts/shapes';
@@ -12,9 +12,7 @@ export function CameraVisual({ px, tone }: VisualProps): ReactNode {
   const live = useTint('positive', tone);
   return (
     <Canvas px={px}>
-      <Defs>
-        <BodyGradient id={shell} ink={ink} vertical />
-      </Defs>
+      <BodyGradient id={shell} ink={ink} vertical />
       <ContactShadow cx={50} cy={90} rx={26} ry={4} />
       <Path
         d="M28 86 Q28 74 50 74 Q72 74 72 86 Z"

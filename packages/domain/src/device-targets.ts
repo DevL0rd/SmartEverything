@@ -5,7 +5,6 @@ import { DEVICE_FAMILIES } from './presentation/types';
 import type { DeviceRow } from './api/rows-home';
 import type { DeviceGroupRow } from './device-groups';
 
-export const DEVICE_GROUP_CAPABILITY = 'device-groups-v1';
 export const DEVICE_TARGET = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('room'),
@@ -13,7 +12,7 @@ export const DEVICE_TARGET = z.discriminatedUnion('kind', [
     families: z.array(z.enum(DEVICE_FAMILIES)).min(1).optional(),
   }),
   z.strictObject({ kind: z.literal('group'), groupId: ID }),
-  z.strictObject({ kind: z.literal('devices'), deviceIds: z.array(ID).min(1).max(100) }),
+  z.strictObject({ kind: z.literal('devices'), deviceIds: z.array(ID).min(1) }),
 ]);
 export type DeviceTarget = z.infer<typeof DEVICE_TARGET>;
 

@@ -2,7 +2,9 @@ import { createElement, type ReactNode } from 'react';
 import { router, type Href } from 'expo-router';
 import type { IconName } from '../../../components/icon';
 import type { SettingDefinition } from '../../../settings/types';
+import { PREFS } from '../../../store/prefs';
 import { callAudioOf, saveCallAudio } from '../call/settings-sheet/call-audio-pref';
+import { CallAudioPageStrip } from '../call/settings-sheet/live-strip';
 import { DetectionRow } from '../call/settings-sheet/detection-row';
 import { DEVICE_ROWS, type RowEntry } from '../call/settings-sheet/device-row-set';
 import { EchoChoiceRows } from '../call/settings-sheet/echo-rows';
@@ -18,6 +20,13 @@ export const CALL_AUDIO_SECTIONS = {
   video: 'What it sees',
   start: 'Start a call with',
 } as const;
+
+export const CALL_PANEL_SECTIONS = [
+  CALL_AUDIO_SECTIONS.listening,
+  CALL_AUDIO_SECTIONS.echo,
+  CALL_AUDIO_SECTIONS.devices,
+  CALL_AUDIO_SECTIONS.video,
+] as const;
 
 interface ToggleSpec {
   readonly id: string;
@@ -171,7 +180,32 @@ const START_ACTIONS: readonly ActionSpec[] = [
   },
 ];
 
+const LEVEL_STRIP: SettingDefinition = {
+  id: 'call.level-strip',
+  page: PAGE,
+  title: 'Microphone level',
+  keywords: ['mic level', 'meter', 'heard you', 'test microphone', 'voice detection mark'],
+  scope: 'client',
+  control: 'custom',
+  render: (): ReactNode => createElement(CallAudioPageStrip),
+};
+
+const RESET: SettingDefinition = {
+  id: 'call.reset',
+  page: PAGE,
+  icon: 'refresh',
+  title: 'Reset to defaults',
+  keywords: ['reset call audio', 'defaults', 'restore'],
+  scope: 'client',
+  control: 'action',
+  run: (context): Promise<void> => {
+    saveCallAudio(context.store, PREFS.callAudio.defaultValue, 'Reset to defaults');
+    return Promise.resolve();
+  },
+};
+
 export const CALL_AUDIO_SETTINGS: readonly SettingDefinition[] = [
+  LEVEL_STRIP,
   ...LISTENING_ROWS.map((row) => custom({ ...row, section: CALL_AUDIO_SECTIONS.listening })),
   toggle({
     id: 'call.noise',
@@ -191,4 +225,5 @@ export const CALL_AUDIO_SETTINGS: readonly SettingDefinition[] = [
   ...DEVICE_ROWS.map((row) => custom({ ...row, section: CALL_AUDIO_SECTIONS.devices })),
   ...VIDEO_ROWS.map((row) => custom({ ...row, section: CALL_AUDIO_SECTIONS.video })),
   ...START_ACTIONS.map(startAction),
+  RESET,
 ];

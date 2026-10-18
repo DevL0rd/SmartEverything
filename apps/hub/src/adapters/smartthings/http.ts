@@ -1,9 +1,12 @@
 import type { ProviderProblem } from '@smarteverything/domain';
+import { failureLine, Logger } from '@smarteverything/logging';
 import {
   describeErrorEnvelope,
   ERROR_ENVELOPE,
   SMARTTHINGS_API,
 } from '@smarteverything/smartthings';
+
+const log = new Logger('hub.smartthings');
 
 export interface SmartThingsIo {
   readonly fetch: typeof fetch;
@@ -56,7 +59,7 @@ export async function bodyOf(response: Response): Promise<unknown> {
         'READ',
         response.url,
         response.status,
-        `not JSON: ${String(cause)}`,
+        `not JSON: ${failureLine(cause)}`,
       );
     }
     return text;
@@ -81,7 +84,6 @@ export interface ApiRequest {
   readonly path: string;
   readonly accept?: string;
   readonly body?: unknown;
-  readonly buildBody?: () => unknown;
 }
 
 function urlOf(path: string): string {
@@ -89,18 +91,17 @@ function urlOf(path: string): string {
 }
 
 function send(io: SmartThingsIo, token: string, request: ApiRequest): Promise<Response> {
-  const body = request.buildBody === undefined ? request.body : request.buildBody();
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     Accept: request.accept ?? JSON_ACCEPT,
   };
-  if (body !== undefined) {
+  if (request.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
   return io.fetch(urlOf(request.path), {
     method: request.method,
     headers,
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }),
   });
 }
 
@@ -140,11 +141,42 @@ export class SmartThingsApi {
   ) {}
 
   async request(request: ApiRequest): Promise<unknown> {
-    const first = await send(this.io, await this.tokens.accessToken(), request);
-    if (first.status !== 401) {
-      return settle(request, first);
+    const startedAt = performance.now();
+    const fields = { method: request.method, path: request.path };
+    try {
+      const first = await send(this.io, await this.tokens.accessToken(), request);
+      if (first.status !== 401) {
+        const body = await settle(request, first);
+        log.debug('smartthings.request_finished', () => ({
+          ...fields,
+          status: first.status,
+          durationMs: Math.round(performance.now() - startedAt),
+        }));
+        return body;
+      }
+      log.info('smartthings.token_rejected', {
+        ...fields,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      await this.tokens.refresh();
+      const retried = await send(this.io, await this.tokens.accessToken(), request);
+      const body = await settle(request, retried);
+      log.info('smartthings.request_retried', {
+        ...fields,
+        status: retried.status,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      return body;
+    } catch (cause) {
+      const status = cause instanceof SmartThingsHttpError ? cause.status : undefined;
+      log.warn('smartthings.request_failed', {
+        ...fields,
+        status,
+        resetSeconds: cause instanceof SmartThingsRateLimitError ? cause.resetSeconds : undefined,
+        reason: cause instanceof Error ? cause.name : 'unknown',
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw cause;
     }
-    await this.tokens.refresh();
-    return settle(request, await send(this.io, await this.tokens.accessToken(), request));
   }
 }

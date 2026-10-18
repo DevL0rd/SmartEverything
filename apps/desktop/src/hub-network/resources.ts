@@ -6,10 +6,10 @@ import {
   type NativeHubResource,
   type NativeHubResourceDownloadResult,
 } from '@smarteverything/domain';
-import { HubResourceBroker } from '../../../hub/src/client-network/resource-broker';
-import { HubResourceDownloads } from '../../../hub/src/client-network/resource-download';
+import { HubResourceBroker } from '@smarteverything/hub/client-network/resource-broker';
+import { HubResourceDownloads } from '@smarteverything/hub/client-network/resource-download';
+import { HubTransportError } from '@smarteverything/hub/client-network/policy';
 import type { DesktopRouteAuthority } from './authority.js';
-import { HubTransportError } from './policy.js';
 import { originOf } from '../origin.js';
 
 export class DesktopHubResources {

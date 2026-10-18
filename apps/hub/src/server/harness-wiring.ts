@@ -1,7 +1,4 @@
-import { validateNativeReferences } from '../harness/reference-delivery';
 import { hubPluginAgents, hubImageDescription } from './harness-native-ports';
-import { NativeProjectFiles } from '@smarteverything/harness/process';
-import { bindProjectFiles, nativeProjectFile } from '../harness/project-files';
 import { resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm';
 import type { SubscriptionInferencePort } from '@smarteverything/harness';
 import {
@@ -12,13 +9,11 @@ import { HubHarnessConfiguration } from './harness-configuration';
 import {
   bindCompactionPolicy,
   installedHarnessBuiltins,
-  sharedHarnessSkillAssets,
   type HarnessHost,
   RemoteSubscriptionAdapter,
 } from '@smarteverything/harness';
-import type { Operations } from './operations';
 import { installHubPrompt } from '../harness/prompt';
-import { bindCentralHarness } from '../harness/central-transport';
+import { bindCentralHarness, bindPluginAgents } from '../harness/central-transport';
 import { ordinaryModelRequest } from '@smarteverything/harness/process';
 import { meteredAccountingFetch } from '../harness/metered-accounting';
 import { HarnessAttachments } from '../harness/attachments';
@@ -44,7 +39,6 @@ export async function startHubHarness(
   options: BuildOptions,
   context: ServerContext,
   tools: ToolHub,
-  operations: Operations,
 ): Promise<HarnessDispatcher | null> {
   if (process.platform === 'win32') {
     registerUnavailableHub(context);
@@ -52,16 +46,9 @@ export async function startHubHarness(
   }
   const service = context.harness;
   const persistence = new LocalHarnessPersistence(service);
-  const access = new HarnessHubTools(service, tools, (id) => context.computerAi.status(id).local);
-  bindCentralHarness(service, access, () => options.clock.now(), {
-    assistant: context.assistant,
-    stateDirectory: join(options.dataDirectory, 'harness'),
-  });
-  bindProjectFiles(service, context.assistant.projects);
-  operations.bindServiceAuthority(service.store);
-  operations.bindExecutionAdmission((name, args): void => {
-    access.admitOperation(name, args);
-  });
+  const access = new HarnessHubTools(service, tools);
+  bindCentralHarness(service, access, () => options.clock.now());
+  bindPluginAgents(service, { assistant: context.assistant });
   const platform = process.platform === 'darwin' ? 'macos' : 'linux';
   const runtimeInstance = randomUUID();
   const generation = randomUUID();
@@ -99,18 +86,14 @@ function composeHub(ports: {
   readonly configuration: HubHarnessConfiguration;
 }): Promise<HarnessDispatcher> {
   const { options, context, tools, persistence, access, host, configuration } = ports;
-  const projectFiles = hubProjectFiles(context, persistence);
   const pluginAgents = hubPluginAgents(ports);
   return createHarnessDispatcher({
-    projectFiles: projectFiles.execute,
-    validateReferences: (id, deliveryId, references, signal) =>
-      validateNativeReferences(context.harness, id, { deliveryId, selected: references, signal }),
     host,
     persistence,
     desiredConfiguration: context.harness.configuration.desired(),
     installedPlugins: installedHarnessBuiltins(
       host,
-      sharedHarnessSkillAssets(host.stateDirectory),
+      context.harness.extensions.assets,
       pluginAgents,
     ),
     configurationChanged: (): void => {
@@ -125,15 +108,12 @@ function composeHub(ports: {
     describeImage: hubImageDescription(context, persistence),
     authority: (id) => context.harness.storage.grant(id).authority,
     route: (id) => supplierRoute(context, id),
-    publish: (event) => {
-      context.harness.publish(event);
+    publish: (frame) => {
+      context.harness.native(frame);
       return Promise.resolve();
     },
-    installModelRoutes: (ctx) => {
-      projectFiles.install(ctx);
-      pluginAgents.install(ctx);
-      return installRoutes(ctx, { options, context, persistence, access, tools });
-    },
+    installModelRoutes: (ctx) =>
+      installRoutes(ctx, { options, context, persistence, access, tools }),
   });
 }
 function registerUnavailableHub(context: ServerContext): void {
@@ -144,7 +124,6 @@ function registerUnavailableHub(context: ServerContext): void {
       name: 'Home hub',
       platform: 'windows',
       online: false,
-      inbound_execution: false,
       runtime_instance: randomUUID(),
       connection_generation: randomUUID(),
       manifest: null,
@@ -179,7 +158,6 @@ function registerHub(
       online: true,
       configuration_sync: true,
       platform,
-      inbound_execution: true,
       runtime_instance: runtimeInstance,
       connection_generation: generation,
       manifest: dispatcher.runtime.manifest(),
@@ -354,24 +332,5 @@ function subscriptionAdapter(
           ref,
         ),
     },
-  );
-}
-
-function hubProjectFiles(
-  context: ServerContext,
-  persistence: LocalHarnessPersistence,
-): NativeProjectFiles {
-  return new NativeProjectFiles(persistence, (request, signal) =>
-    nativeProjectFile(context.harness, request, () => {
-      signal.throwIfAborted();
-      const grant = context.harness.storage.grant(request.claim.session_id);
-      context.store.dshSessions.verifyWriter(
-        request.claim,
-        context.harness.hostPrincipal(
-          grant.profile_id,
-          context.harness.directory.get(grant.target).host,
-        ),
-      );
-    }),
   );
 }

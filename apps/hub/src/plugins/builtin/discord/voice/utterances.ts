@@ -1,8 +1,5 @@
-import { loudness, SPEECH_RATE } from './pcm';
+import { background } from '@smarteverything/logging';
 
-const MIN_SECONDS = 0.4;
-const QUIET_LEVEL = 120;
-const MAX_PENDING = 16;
 const WORKERS = 2;
 
 export interface Utterance {
@@ -18,36 +15,27 @@ export interface UtterancesDeps {
 
 export interface UtteranceCounts {
   readonly pending: number;
-  readonly dropped: number;
   readonly failures: number;
 }
 
 export class Utterances {
   private pending: Utterance[] = [];
   private running = 0;
-  private dropped = 0;
   private failures = 0;
   private closed = false;
 
   constructor(private readonly deps: UtterancesDeps) {}
 
   enqueue(utterance: Utterance): void {
-    if (this.closed || utterance.pcm.length < MIN_SECONDS * SPEECH_RATE) {
+    if (this.closed) {
       return;
-    }
-    if (loudness(utterance.pcm) < QUIET_LEVEL) {
-      return;
-    }
-    if (this.pending.length >= MAX_PENDING) {
-      this.pending.shift();
-      this.dropped += 1;
     }
     this.pending.push(utterance);
     this.drain();
   }
 
   counts(): UtteranceCounts {
-    return { pending: this.pending.length, dropped: this.dropped, failures: this.failures };
+    return { pending: this.pending.length, failures: this.failures };
   }
 
   close(): void {
@@ -62,7 +50,7 @@ export class Utterances {
         return;
       }
       this.running += 1;
-      void this.work(next);
+      background(this.work(next), 'utterances.work_failed');
     }
   }
 

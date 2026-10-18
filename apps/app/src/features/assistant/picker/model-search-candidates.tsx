@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react';
-import { Text } from '../../../components/text';
 import { ModelRow } from './model-row';
-import type { ModelCandidate } from './model-candidates';
+import type { ModelCandidate } from '../data/model-candidates';
 import type { ModelChoice } from './model-choice';
-import type { ListItem } from './model-list';
 import { nativeMatches, type SearchQuery } from './model-search-filters';
 export interface SearchCandidates {
   readonly current: readonly ModelCandidate[];
@@ -49,32 +47,4 @@ export function searchCandidates(
     ).values(),
   ];
   return { current, favorites, all, nativeCount: native.length };
-}
-function section(key: string, title: string, rows: readonly ModelCandidate[]): readonly ListItem[] {
-  return [
-    { type: 'header', key: `${key}:header`, title },
-    ...rows.map((row): ListItem => ({ type: 'custom', key: row.key, render: row.render })),
-  ];
-}
-export function retainedSearchItems(rows: SearchCandidates): readonly ListItem[] {
-  return [
-    ...section('current', 'Current', rows.current),
-    ...section('favorites', 'Favorites', rows.favorites),
-    ...(rows.favorites.length > 0
-      ? []
-      : [
-          {
-            type: 'custom' as const,
-            key: 'favorites:empty',
-            render: (): ReactNode => (
-              <Text variant="caption" tone="variant" className="px-3 py-2">
-                Star models to keep them here.
-              </Text>
-            ),
-          },
-        ]),
-  ];
-}
-export function allSearchItems(rows: SearchCandidates): readonly ListItem[] {
-  return rows.all.map((row): ListItem => ({ type: 'custom', key: row.key, render: row.render }));
 }

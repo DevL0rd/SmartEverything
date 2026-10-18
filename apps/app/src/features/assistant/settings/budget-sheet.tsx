@@ -6,12 +6,13 @@ import { Button } from '../../../components/button';
 import { Sheet } from '../../../components/sheet';
 import { TextField } from '../../../components/text-field';
 import { errorText } from '../../../format/errors';
+import { background } from '@smarteverything/logging';
 
 export interface BudgetField {
   readonly key: string;
   readonly label: string;
   readonly helper: string;
-  readonly unit: 'usd' | 'minutes';
+  readonly unit: 'money' | 'minutes';
   readonly initial: number | null;
   readonly min: number;
   readonly max: number;
@@ -67,6 +68,47 @@ function useSubmit(onClose: () => void): {
   return { busy, error, run };
 }
 
+function BudgetFooter({
+  busy,
+  canTurnOff,
+  values,
+  run,
+  onTurnOff,
+  onSave,
+}: {
+  readonly busy: boolean;
+  readonly canTurnOff: boolean;
+  readonly values: ReturnType<typeof parsedOf>;
+  readonly run: (action: () => Promise<void>) => Promise<void>;
+  readonly onTurnOff: BudgetSheetProps['onTurnOff'];
+  readonly onSave: BudgetSheetProps['onSave'];
+}): ReactNode {
+  return (
+    <View className="flex-row gap-2">
+      {canTurnOff ? (
+        <Button
+          label="Turn off"
+          variant="outlined"
+          onPress={() => {
+            background(run(onTurnOff), 'budget_sheet.run_failed');
+          }}
+        />
+      ) : null}
+      <Button
+        label="Save"
+        grow
+        loading={busy}
+        disabled={values === null}
+        onPress={() => {
+          if (values === null) return;
+          const saving = run(() => onSave(values));
+          background(saving, 'budget_sheet.run_failed');
+        }}
+      />
+    </View>
+  );
+}
+
 export function BudgetSheet(props: BudgetSheetProps): ReactNode {
   const { title, fields, open, onClose, onSave, onTurnOff } = props;
   const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>(() =>
@@ -75,22 +117,14 @@ export function BudgetSheet(props: BudgetSheetProps): ReactNode {
   const { busy, error, run } = useSubmit(onClose);
   const values = parsedOf(fields, drafts);
   const footer = (
-    <View className="flex-row gap-2">
-      {fields.some((field) => field.initial !== null) ? (
-        <Button label="Turn off" variant="outlined" onPress={() => void run(onTurnOff)} />
-      ) : null}
-      <Button
-        label="Save"
-        grow
-        loading={busy}
-        disabled={values === null}
-        onPress={() => {
-          if (values !== null) {
-            void run(() => onSave(values));
-          }
-        }}
-      />
-    </View>
+    <BudgetFooter
+      busy={busy}
+      canTurnOff={fields.some((field) => field.initial !== null)}
+      values={values}
+      run={run}
+      onTurnOff={onTurnOff}
+      onSave={onSave}
+    />
   );
   return (
     <Sheet open={open} onClose={onClose} title={title} detents={['fit']} footer={footer}>
@@ -104,7 +138,7 @@ export function BudgetSheet(props: BudgetSheetProps): ReactNode {
             onChange={(text) => {
               setDrafts({ ...drafts, [field.key]: text });
             }}
-            placeholder={field.unit === 'usd' ? '5.00' : '60'}
+            placeholder={field.unit === 'money' ? '5.00' : '60'}
             helper={field.helper}
             error={index === fields.length - 1 ? error : null}
             focusOnMount={index === 0}

@@ -3,73 +3,30 @@ import { isSurfaceEvent } from '@deepseek-ai/dsh-session';
 import { forkNativeHistory, readNativeHistory } from '@smarteverything/harness/process';
 import { ApiError } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import type { AiChatRow, DshSessionMetadata } from '@smarteverything/domain';
+import type { AiChatRow } from '@smarteverything/domain';
 import { nativeHistoryPrefix } from './history-mutation';
 
-const SELECTION = z
-  .strictObject({
-    kind: z.literal('fork'),
-    profile_id: z.uuid(),
-    parent_chat: z.uuid(),
-    checkpoint: z.int().nonnegative(),
-    boundary: z.int().nonnegative(),
-    source_epoch: z.int().positive().nullable(),
-  })
-  .refine(
-    (selection) => selection.boundary <= selection.checkpoint,
-    'The native branch boundary must be inside its committed checkpoint.',
-  );
+const SELECTION = z.object({ boundary: z.int().nonnegative() });
 
 export function nativeForkIntent(
   store: Store,
   parent: AiChatRow,
   child: AiChatRow,
-  message?: string,
+  message: string,
 ): void {
   if (parent.engine.kind !== 'dsh' || parent.engine.session_id === null) return;
   const id = parent.engine.session_id;
-  const metadata = admittedParent(store, parent, child, id);
+  const metadata = store.dshSessions.stat(id, parent.profile_id);
+  if (metadata === undefined)
+    throw new ApiError('not_found', 'The conversation being branched has no native session.');
   const checkpoint = metadata.next_seq - 1;
   if (checkpoint < 0) return;
   const history = readHistory(store, id, parent.profile_id, checkpoint);
-  const selection = SELECTION.parse({
-    kind: 'fork',
-    profile_id: parent.profile_id,
-    parent_chat: parent.id,
-    checkpoint,
-    boundary:
-      message === undefined
-        ? checkpoint
-        : forkBoundary(store, { id: parent.id, session_id: id }, message, history),
-    source_epoch: store.dshSessions.writerState(id, parent.profile_id).claim?.epoch ?? null,
-  });
+  const boundary = forkBoundary(store, { id: parent.id, session_id: id }, message, history);
   const operation = `fork:${child.id}`;
-  store.harnessCoordination.begin(operation, id, selection);
+  store.harnessCoordination.begin(operation, id, { kind: 'fork', boundary });
   store.harnessRecovery.fork(child.id, id, checkpoint);
-  store.harnessCoordination.finish(operation, selection);
-}
-
-function admittedParent(
-  store: Store,
-  parent: AiChatRow,
-  child: AiChatRow,
-  id: string,
-): DshSessionMetadata {
-  const current = store.aiChats.chat(parent.id);
-  if (
-    current.profile_id !== child.profile_id ||
-    current.engine.kind !== 'dsh' ||
-    current.engine.session_id !== id ||
-    child.parent_id !== parent.id
-  )
-    throw new ApiError(
-      'forbidden',
-      'Native fork must retain its current owner and parent binding.',
-    );
-  const metadata = store.dshSessions.stat(id, parent.profile_id);
-  if (metadata?.chat_id !== parent.id)
-    throw new ApiError('forbidden', 'Native fork source belongs to another conversation.');
-  return metadata;
+  store.harnessCoordination.finish(operation, { kind: 'fork', boundary });
 }
 
 export function nativeForkSeed(
@@ -89,9 +46,7 @@ export function nativeForkSeed(
     throw new ApiError('conflict', 'Native fork lost its complete committed parent checkpoint.');
   const history = readHistory(store, fork.parent_session, chat.profile_id, fork.boundary);
   const events = forkNativeHistory(metadata.header, history, fork.boundary);
-  const selection = forkSelection(store, chat, fork, metadata);
-  if (selection === undefined)
-    return { parent: fork.parent_session, inherited: fork.boundary + 1, events };
+  const selection = forkSelection(store, chat);
   const projected = nativeHistoryPrefix(
     readNativeHistory(metadata.header, events),
     selection.boundary,
@@ -103,28 +58,11 @@ export function nativeForkSeed(
   };
 }
 
-function forkSelection(
-  store: Store,
-  chat: AiChatRow,
-  fork: NonNullable<ReturnType<Store['harnessRecovery']['forkOf']>>,
-  metadata: DshSessionMetadata,
-): z.infer<typeof SELECTION> | undefined {
+function forkSelection(store: Store, chat: AiChatRow): z.infer<typeof SELECTION> {
   const receipt = store.harnessCoordination.operation(`fork:${chat.id}`);
-  if (receipt === undefined) return undefined;
-  const selection = SELECTION.parse(JSON.parse(receipt.request));
-  if (
-    receipt.state !== 'completed' ||
-    receipt.session_id !== fork.parent_session ||
-    selection.profile_id !== chat.profile_id ||
-    selection.parent_chat !== metadata.chat_id ||
-    selection.parent_chat !== chat.parent_id ||
-    selection.checkpoint !== fork.boundary
-  )
-    throw new ApiError(
-      'forbidden',
-      'Native fork selection does not match its admitted parent snapshot.',
-    );
-  return selection;
+  if (receipt === undefined)
+    throw new ApiError('conflict', 'Native fork lost its admitted branch point.');
+  return SELECTION.parse(JSON.parse(receipt.request));
 }
 
 function readHistory(
@@ -133,18 +71,7 @@ function readHistory(
   profile: string,
   boundary: number,
 ): ReturnType<typeof readNativeHistory> {
-  const events = [];
-  for (let offset = 0; offset <= boundary; offset += 10_000) {
-    const page = store.dshSessions.read(
-      {
-        session_id: id,
-        offset,
-        limit: Math.min(10_000, boundary - offset + 1),
-      },
-      profile,
-    );
-    events.push(...page.events);
-  }
+  const events = store.dshSessions.readAll(id, profile, { length: boundary + 1 });
   return readNativeHistory(store.dshSessions.stat(id, profile)?.header, events);
 }
 

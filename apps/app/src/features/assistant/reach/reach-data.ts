@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   REACH_ENDPOINTS as R,
   type AiOutreachRow,
@@ -16,10 +17,13 @@ const SETTINGS_KEY = [...REACH_PREFIX, 'settings'] as const;
 
 const OUTREACH_KEY = [...REACH_PREFIX, 'outreach'] as const;
 
-export const OUTREACH_SHOWN = 10;
+const OUTREACH_SHOWN = 10;
 
 export function useReachSettings(): UseQueryResult<ReachSettings> {
-  return useQuery({ queryKey: SETTINGS_KEY, queryFn: () => api().call(R.readReachSettings, {}) });
+  return useScreenQuery({
+    queryKey: SETTINGS_KEY,
+    queryFn: () => api().call(R.readReachSettings, {}),
+  });
 }
 
 export function useReachUpdate(): (change: ReachSettingsChange) => Promise<ReachSettings> {
@@ -33,7 +37,7 @@ export function useReachUpdate(): (change: ReachSettingsChange) => Promise<Reach
 }
 
 export function useOutreach(): UseQueryResult<AiOutreachRow[]> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: OUTREACH_KEY,
     queryFn: () => api().call(R.listOutreach, { query: { limit: OUTREACH_SHOWN } }),
   });

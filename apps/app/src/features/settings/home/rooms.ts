@@ -4,6 +4,7 @@ import { ValueStore } from '../../../design/external-store';
 import type { TextEditRequest } from '../../../settings/text-edit-sheet';
 import { orderedRooms } from '../../../store/table-rules';
 
+import { settingsLog, trackSetting } from '../settings-log';
 type Room = TableRow<'rooms'>;
 
 const ROOM_NAME_LENGTH = 60;
@@ -18,7 +19,7 @@ export function openAddRoom(count: number): void {
     placeholder: 'Room name',
     confirmLabel: 'Add',
     maxLength: ROOM_NAME_LENGTH,
-    save: (name) => createRoom(name, count),
+    save: (name) => trackSetting('room.create', { rooms: count }, () => createRoom(name, count)),
   });
 }
 
@@ -30,17 +31,27 @@ export function openRenameRoom(room: Room): void {
     placeholder: 'Room name',
     confirmLabel: 'Save',
     maxLength: ROOM_NAME_LENGTH,
-    save: (name) => renameRoom(room.id, name),
+    save: (name) =>
+      trackSetting('room.rename', { roomId: room.id }, () => renameRoom(room.id, name)),
   });
 }
 
 export async function reorderRooms(rooms: readonly Room[], keys: readonly string[]): Promise<void> {
   const byId = new Map(rooms.map((room) => [room.id, room]));
-  await Promise.all(
-    keys.flatMap((roomId, position) =>
-      byId.get(roomId)?.position === position ? [] : [placeRoom(roomId, position)],
-    ),
-  );
+  let moved = 0;
+  const operation = settingsLog.operation('rooms.reorder', { rooms: keys.length });
+  try {
+    for (const [position, roomId] of keys.entries()) {
+      if (byId.get(roomId)?.position !== position) {
+        await placeRoom(roomId, position);
+        moved += 1;
+      }
+    }
+    operation.succeeded({ moved });
+  } catch (error) {
+    operation.failed(error, { moved });
+    throw error;
+  }
 }
 
 export function moveRoom(rooms: readonly Room[], roomId: string, offset: -1 | 1): Promise<void> {

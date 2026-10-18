@@ -10,24 +10,22 @@ import {
   type BrowserTarget,
 } from '@smarteverything/domain';
 import { BrowserDiagnostics } from './browser-diagnostics.js';
-import { NATIVE_BROWSER_OPERATION, NATIVE_BROWSER_OBSERVE } from '@smarteverything/domain';
-import { createBrowserView } from './browser-session.js';
+import { ElectronDiagnosticsHost } from './browser-diagnostics-host.js';
+import { NATIVE_BROWSER_OPERATION } from '@smarteverything/domain';
+import { confineBrowserView, createBrowserView } from './browser-session.js';
 import { isAppOrigin } from './origin.js';
 
 const log = new Logger('desktop.browser');
 const failures = new WeakMap<WebContentsView, string>();
-const MAX_BROWSER_CONTEXTS = 16;
 
 interface Page {
   readonly view: WebContentsView;
   readonly target: BrowserTarget;
   readonly diagnostics: BrowserDiagnostics;
 }
-const diagnosticVersions = new WeakMap<BrowserWindow, 2 | undefined>();
 export function registerBrowser(window: BrowserWindow, startUrl: string): void {
   registerHtmlPreviewIpc(window, startUrl);
   const pages = new Map<string, Page>();
-  diagnosticVersions.set(window, undefined);
   ipcMain.handle('desktop:browser', (event, value: unknown) => {
     if (
       event.sender !== window.webContents ||
@@ -71,16 +69,13 @@ function observeDiagnostics(
   startUrl: string,
   pages: ReadonlyMap<string, Page>,
 ): void {
-  ipcMain.on('desktop:browser-observe', (event, value: unknown) => {
+  ipcMain.on('desktop:browser-observe', (event) => {
     if (
       event.sender === window.webContents &&
       event.senderFrame === window.webContents.mainFrame &&
       isAppOrigin(event.senderFrame.url, startUrl)
-    ) {
-      const version = NATIVE_BROWSER_OBSERVE.parse(value);
-      diagnosticVersions.set(window, version);
-      for (const page of pages.values()) page.diagnostics.observe(version);
-    }
+    )
+      for (const page of pages.values()) page.diagnostics.replay();
   });
 }
 function emit(window: BrowserWindow, page: Page, problem: string | null): void {
@@ -102,11 +97,22 @@ function create(window: BrowserWindow, target: BrowserTarget): Page {
   if (!browserAllows(target, target.url))
     throw new BrowserPolicyError('Browser target has an invalid origin.');
   const view = createBrowserView(target, window.webContents.id);
-  const page = { target, view, diagnostics: new BrowserDiagnostics(window, view, target.id) };
-  page.diagnostics.observe(diagnosticVersions.get(window));
+  const page = {
+    target,
+    view,
+    diagnostics: new BrowserDiagnostics(new ElectronDiagnosticsHost(window, view), target.id),
+  };
   page.view.setVisible(false);
   window.contentView.addChildView(page.view);
   const contents = page.view.webContents;
+  confineBrowserView(contents, target, {
+    blocked: (problem) => {
+      emit(window, page, problem);
+    },
+    openTab: (url) => {
+      window.webContents.send('desktop:browser-window', { id: target.id, url });
+    },
+  });
   const changed = (): void => {
     emit(window, page, failures.get(page.view) ?? null);
   };
@@ -122,21 +128,23 @@ function create(window: BrowserWindow, target: BrowserTarget): Page {
       emit(window, page, 'The page could not be loaded. Check the service and try again.');
   });
   contents.once('destroyed', () => {
-    if (!window.isDestroyed())
-      window.webContents.send('desktop:browser-status', {
-        id: target.id,
-        url: '',
-        loading: false,
-        back: false,
-        forward: false,
-        problem: BROWSER_RETIRED_PROBLEM,
-      });
+    if (!window.isDestroyed()) announceRetired(window, target.id);
   });
   contents.on('render-process-gone', () => {
     emit(window, page, 'The browser process stopped. Open the page again.');
   });
   openPage(window, page);
   return page;
+}
+function announceRetired(window: BrowserWindow, id: string): void {
+  window.webContents.send('desktop:browser-status', {
+    id,
+    url: '',
+    loading: false,
+    back: false,
+    forward: false,
+    problem: BROWSER_RETIRED_PROBLEM,
+  });
 }
 function openPage(window: BrowserWindow, page: Page): void {
   const contents = page.view.webContents;
@@ -149,14 +157,13 @@ function openPage(window: BrowserWindow, page: Page): void {
       if (contents.getURL() !== wanted) return contents.loadURL(wanted);
       return undefined;
     })
-    .catch(() => {
+    .catch((cause: unknown) => {
+      log.error('browser.load_failed', cause);
       emit(window, page, 'The page could not be loaded.');
     });
 }
 function apply(window: BrowserWindow, pages: Map<string, Page>, command: BrowserCommand): void {
   if (command.kind === 'open') {
-    if (pages.size >= MAX_BROWSER_CONTEXTS)
-      throw new BrowserPolicyError('Close another browser before opening more pages.');
     if (pages.has(command.target.id))
       throw new BrowserPolicyError('Browser context already exists.');
     pages.set(command.target.id, create(window, command.target));
@@ -173,7 +180,8 @@ function apply(window: BrowserWindow, pages: Map<string, Page>, command: Browser
   if (command.kind === 'navigate') {
     if (!browserAllows(page.target, command.url))
       throw new BrowserPolicyError('This address is outside this browser context.');
-    void page.view.webContents.loadURL(command.url).catch(() => {
+    page.view.webContents.loadURL(command.url).catch((cause: unknown) => {
+      log.error('browser.navigate_failed', cause);
       emit(window, page, 'The page could not be loaded.');
     });
     return;

@@ -10,9 +10,6 @@ const log = new Logger('app.process');
 const SEEN_KEY = 'smarteverything.last-exit-diagnostics-seen';
 
 const NORMAL_EXITS: readonly string[] = ['exit_self', 'user_requested', 'user_stopped', 'unknown'];
-const CREDENTIAL_ASSIGNMENT =
-  /\b[A-Za-z0-9_.-]*(?:password|passwd|pwd|token|secret|credential|key|authorization|ssecurity|(?:one[_. -]?time|verification)[_. -]?code)[A-Za-z0-9_.-]*\b["']?\s*[:=]\s*(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^\s,;)}\]]+)/gi;
-const AUTHORIZATION_VALUE = /\b(?:bearer|basic)\s+(?:"[^"]*(?:"|$)|'[^']*(?:'|$)|[^\s,;)}\]]+)/gi;
 
 const EXIT = z.object({
   reason: z.string(),
@@ -84,9 +81,5 @@ export async function reportProcessExits(): Promise<void> {
 }
 
 function description(value: string): string {
-  const safe = value
-    .replace(AUTHORIZATION_VALUE, '[redacted]')
-    .replace(CREDENTIAL_ASSIGNMENT, '[redacted]')
-    .replace(/(?:\/[^\s,;)]+)+|["'][^"']*["']/g, '[redacted]');
-  return redactText(safe, 240);
+  return redactText(value, 240);
 }

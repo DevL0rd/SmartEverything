@@ -11,7 +11,7 @@ import { NO_FILTER } from '../logic/timeline';
 import { EventCard } from './event-card';
 import { EventRow } from './event-row';
 
-export type RecentLayout = 'list' | 'grid';
+type RecentLayout = 'list' | 'grid';
 
 export interface RecentEventsProps {
   readonly cameras: readonly CameraEntry[];
@@ -22,9 +22,9 @@ export interface RecentEventsProps {
 
 const CARD_MIN_WIDTH = 240;
 
-type NameOf = (deviceId: string) => string | null;
+export type NameOf = (deviceId: string) => string | null;
 
-function nameLookup(cameras: readonly CameraEntry[]): NameOf {
+export function cameraNameOf(cameras: readonly CameraEntry[]): NameOf {
   const single = cameras.length === 1;
   return (deviceId) =>
     single ? null : (cameras.find((entry) => entry.device.id === deviceId)?.name ?? null);
@@ -79,7 +79,7 @@ export function RecentEventsBody({
     NO_FILTER,
     limit,
   );
-  const nameOf = nameLookup(cameras);
+  const nameOf = cameraNameOf(cameras);
   if (feed.entries.length === 0) {
     return (
       <Text variant="callout" tone="variant" className="px-4 py-4">

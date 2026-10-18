@@ -24,7 +24,9 @@ export interface OpenRouterPlatform {
 }
 
 export function createOpenRouter(options: OpenRouterPlatformOptions): OpenRouterPlatform {
+  const shutdown = new AbortController();
   const client = new OpenRouterClient({
+    shutdown: shutdown.signal,
     fetch: options.fetch,
     key: (): string | null => options.secrets.read().openrouterKey,
   });
@@ -44,6 +46,7 @@ export function createOpenRouter(options: OpenRouterPlatformOptions): OpenRouter
       catalogue.start();
     },
     stop: (): void => {
+      shutdown.abort(new Error('The service is stopping.'));
       catalogue.stop();
     },
   };

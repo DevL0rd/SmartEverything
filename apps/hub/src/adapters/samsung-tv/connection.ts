@@ -6,6 +6,8 @@ import {
   type TvMessage,
 } from '@smarteverything/smartthings';
 import type WebSocket from 'ws';
+import { Listeners } from '../../listeners';
+import { frameText } from '../../server/raw-frame';
 
 export class TvConnectionError extends Error {
   override readonly name = 'TvConnectionError';
@@ -33,19 +35,9 @@ export class TvRefusedError extends Error {
   }
 }
 
-function textOf(data: WebSocket.RawData): string {
-  if (Array.isArray(data)) {
-    return Buffer.concat(data).toString('utf8');
-  }
-  if (data instanceof ArrayBuffer) {
-    return Buffer.from(data).toString('utf8');
-  }
-  return data.toString('utf8');
-}
-
 function parse(data: WebSocket.RawData): TvMessage | Error {
   try {
-    return readTvMessage(textOf(data));
+    return readTvMessage(frameText(data));
   } catch (cause) {
     return cause instanceof Error ? cause : new Error(String(cause));
   }
@@ -66,8 +58,8 @@ function refusal(host: string, message: TvMessage): Error | null {
 }
 
 export class TvConnection {
-  private readonly listeners = new Set<Listener>();
-  private readonly problems = new Set<(problem: Error) => void>();
+  private readonly messages = new Listeners<TvMessage>();
+  private readonly problems = new Listeners<Error>();
 
   private constructor(
     private readonly socket: WebSocket,
@@ -80,9 +72,7 @@ export class TvConnection {
         this.report(message);
         return;
       }
-      this.listeners.forEach((listener) => {
-        listener(message);
-      });
+      this.messages.emit(message);
     });
     socket.on('error', (cause) => {
       this.report(new TvConnectionError(host, cause.message));
@@ -149,13 +139,11 @@ export class TvConnection {
   }
 
   onProblem(listener: (problem: Error) => void): void {
-    this.problems.add(listener);
+    this.problems.listen(listener);
   }
 
   private report(problem: Error): void {
-    this.problems.forEach((listener) => {
-      listener(problem);
-    });
+    this.problems.emit(problem);
   }
 
   send(text: string): Promise<void> {
@@ -171,7 +159,7 @@ export class TvConnection {
   }
 
   onMessage(listener: Listener): void {
-    this.listeners.add(listener);
+    this.messages.listen(listener);
   }
 
   waitFor<T>(
@@ -180,19 +168,18 @@ export class TvConnection {
     missing: string,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const listener: Listener = (message) => {
+      const stop = this.messages.listen((message) => {
         const picked = pick(message);
         if (picked !== undefined) {
           clearTimeout(timer);
-          this.listeners.delete(listener);
+          stop();
           resolve(picked);
         }
-      };
+      });
       const timer = setTimeout(() => {
-        this.listeners.delete(listener);
+        stop();
         reject(new TvConnectionError(this.host, missing));
       }, timeoutMs);
-      this.listeners.add(listener);
     });
   }
 

@@ -2,7 +2,7 @@ import { useAiChat } from '../data/chat-store';
 import { isComputerEngine } from '../provider/computer-engine';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { AssistantMessageRow } from '@smarteverything/domain';
+import { isInterruption, type AssistantMessageRow } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
@@ -10,6 +10,7 @@ import { clock } from '../../../format/time';
 import { joinParts } from '../../../format/text';
 import { useAssistantStatus } from '../data/assistant-data';
 import { useMoney } from '../../region';
+import { DELIVERY_LABEL, type DeliveryMark } from '../model/delivery';
 import { failedBubbleLabel } from '../model/turn-notice';
 import { useTimeZone } from './message-parts';
 
@@ -71,37 +72,30 @@ function MetaText({
   );
 }
 
-export type DeliveryMark = 'sent' | 'seen' | 'waiting' | 'failed';
-
-export function deliveryOf(row: AssistantMessageRow, waiting: boolean): DeliveryMark {
-  if (row.state === 'failed') {
-    return 'failed';
-  }
-  if (waiting) {
-    return 'waiting';
-  }
-  return row.state === 'working' || row.state === 'answered' ? 'seen' : 'sent';
-}
-
-function MarkIcon({ mark }: { readonly mark: DeliveryMark }): ReactNode {
+function MarkIcon({
+  mark,
+  quiet,
+}: {
+  readonly mark: DeliveryMark;
+  readonly quiet: boolean;
+}): ReactNode {
   switch (mark) {
     case 'sent':
       return <Icon name="check" size={16} tone="variant" />;
     case 'seen':
       return <Icon name="checkCheck" size={16} tone="primary" />;
-    case 'waiting':
+    case 'queued':
       return <Icon name="clock" size={16} tone="variant" />;
+    case 'delivered':
+      return <Icon name="check" size={16} tone="variant" />;
     case 'failed':
-      return <Icon name="alert" size={16} tone="critical" />;
+      return quiet ? (
+        <Icon name="square" size={16} tone="variant" />
+      ) : (
+        <Icon name="alert" size={16} tone="critical" />
+      );
   }
 }
-
-const MARK_LABEL: Readonly<Record<DeliveryMark, string>> = {
-  sent: 'Sent',
-  seen: 'Seen by the assistant',
-  waiting: 'Sends after this reply',
-  failed: 'Not sent',
-};
 
 export function MyMeta({
   row,
@@ -113,23 +107,24 @@ export function MyMeta({
   readonly via: string | null;
 }): ReactNode {
   const timeZone = useTimeZone();
+  const quiet = mark === 'failed' && isInterruption(row.reason_code);
   const label =
     mark === 'failed'
       ? failedBubbleLabel(row.reason_code)
-      : mark === 'waiting'
-        ? MARK_LABEL.waiting
+      : mark === 'queued' || mark === 'delivered'
+        ? DELIVERY_LABEL[mark]
         : null;
   return (
     <View
-      accessibilityLabel={`${joinParts([via, clock(row.created_at, timeZone)])}. ${MARK_LABEL[mark]}`}
+      accessibilityLabel={`${joinParts([via, clock(row.created_at, timeZone)])}. ${DELIVERY_LABEL[mark]}`}
       className="mr-1.5 mt-1 flex-row items-center gap-1 self-end"
     >
       <Text variant="caption" tone="variant" className="tabular">
         {joinParts([via, clock(row.created_at, timeZone)])}
       </Text>
-      <MarkIcon mark={mark} />
+      <MarkIcon mark={mark} quiet={quiet} />
       {label === null ? null : (
-        <Text variant="caption" tone={mark === 'failed' ? 'critical' : 'variant'}>
+        <Text variant="caption" tone={mark === 'failed' && !quiet ? 'critical' : 'variant'}>
           {label}
         </Text>
       )}

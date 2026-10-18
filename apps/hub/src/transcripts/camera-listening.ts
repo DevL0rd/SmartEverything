@@ -14,20 +14,23 @@ import {
 import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import type { SpeechSegment } from '../wake-name/ear';
+import { sameWords, silenceHallucination } from './heard-text';
+import { dbfsOfPcm } from './line-levels';
 import { ListeningBudget } from './listening-budget';
 import { ownerProfileOf } from './owner';
 import type { Transcriber } from './transcriber';
 import type { Transcripts } from './transcript-service';
+import { Utterances } from './utterances';
 
-const PENDING_LIMIT = 4;
 const CONTEXT_LINES = 3;
 const CONTEXT_WINDOW_MS = 120_000;
 const SAMPLES_PER_MS = 16;
+const REPEAT_WINDOW_MS = 30_000;
 
 export interface CameraListeningOptions {
   readonly store: Pick<
     Store,
-    'cameras' | 'devices' | 'transcripts' | 'clients' | 'profiles' | 'settings'
+    'cameras' | 'devices' | 'transcripts' | 'clients' | 'profiles' | 'personAccess' | 'settings'
   >;
   readonly transcripts: Transcripts;
   readonly transcriber: Pick<Transcriber, 'transcribe'>;
@@ -35,8 +38,13 @@ export interface CameraListeningOptions {
   readonly keyPresent: () => boolean;
   readonly inConversation: (cameraId: string) => boolean;
   readonly names: () => readonly string[];
-  readonly clock: Pick<Clock, 'now'>;
+  readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
+}
+
+interface Said {
+  readonly text: string;
+  readonly at: number;
 }
 
 interface Open {
@@ -46,9 +54,10 @@ interface Open {
 
 export class CameraListening {
   private readonly open = new Map<string, Open>();
-  private readonly pending = new Map<string, number>();
   private readonly chains = new Map<string, Promise<void>>();
   private readonly paused = new Map<string, TranscriptPauseReason>();
+  private readonly utterances = new Map<string, Utterances>();
+  private readonly said = new Map<string, Said>();
   private readonly budget: ListeningBudget;
 
   constructor(private readonly options: CameraListeningOptions) {
@@ -56,19 +65,34 @@ export class CameraListening {
   }
 
   segment(cameraId: string, segment: SpeechSegment): void {
-    const waiting = this.pending.get(cameraId) ?? 0;
-    if (waiting >= PENDING_LIMIT) {
-      this.options.log.warn('transcripts.segment_dropped', { cameraId, waiting });
-      return;
+    this.utterancesOf(cameraId).add(segment);
+  }
+
+  private utterancesOf(cameraId: string): Utterances {
+    let utterances = this.utterances.get(cameraId);
+    if (utterances === undefined) {
+      utterances = new Utterances(this.options.clock, {
+        heard: (utterance): void => {
+          this.queue(cameraId, utterance);
+        },
+        skipped: (reason, ms): void => {
+          this.options.log.debug('transcripts.utterance_skipped', {
+            cameraId,
+            reason,
+            ms: Math.round(ms),
+          });
+        },
+      });
+      this.utterances.set(cameraId, utterances);
     }
-    this.pending.set(cameraId, waiting + 1);
+    return utterances;
+  }
+
+  private queue(cameraId: string, segment: SpeechSegment): void {
     const chain = (this.chains.get(cameraId) ?? Promise.resolve())
       .then(() => this.handle(cameraId, segment))
       .catch((cause: unknown) => {
         this.options.log.error('transcripts.segment_failed', cause, { cameraId });
-      })
-      .finally(() => {
-        this.pending.set(cameraId, (this.pending.get(cameraId) ?? 1) - 1);
       });
     this.chains.set(cameraId, chain);
   }
@@ -141,24 +165,40 @@ export class CameraListening {
       recent: this.recentLines(cameraId),
       meta: { listening: 'camera', camera_id: cameraId },
     });
-    if (text === null) {
+    if (text === null || this.unheard(cameraId, text, segment.startedAt)) {
       return;
     }
     const session = this.sessionOf(cameraId);
-    this.options.transcripts.add(session.id, {
-      at: new Date(segment.startedAt).toISOString(),
-      ended_at: new Date(segment.endedAt).toISOString(),
-      timing: 'wall_clock',
-      speaker_id: null,
-      speaker: this.nameOf(cameraId),
-      text,
-      bot: false,
-    });
+    this.options.transcripts.add(
+      session.id,
+      {
+        at: new Date(segment.startedAt).toISOString(),
+        ended_at: new Date(segment.endedAt).toISOString(),
+        timing: 'wall_clock',
+        speaker_id: null,
+        speaker: this.nameOf(cameraId),
+        text,
+        bot: false,
+      },
+      dbfsOfPcm(segment.pcm),
+    );
     this.options.log.info('transcripts.heard', {
       cameraId,
       ms: Math.round(segment.pcm.length / SAMPLES_PER_MS),
       characters: text.length,
     });
+  }
+
+  private unheard(cameraId: string, text: string, at: number): boolean {
+    const before = this.said.get(cameraId);
+    this.said.set(cameraId, { text, at });
+    const repeated =
+      before !== undefined && at - before.at < REPEAT_WINDOW_MS && sameWords(before.text, text);
+    const reason = silenceHallucination(text) ? 'hallucination' : repeated ? 'repeat' : null;
+    if (reason !== null) {
+      this.options.log.debug('transcripts.line_dropped', { cameraId, reason });
+    }
+    return reason !== null;
   }
 
   private noteReason(cameraId: string, reason: TranscriptPauseReason | null): void {

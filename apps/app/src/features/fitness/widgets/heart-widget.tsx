@@ -4,8 +4,9 @@ import { href } from '../../../app-shell/hrefs';
 import { FillChart } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
-import { WidgetFrame, boardClassOf, type WidgetSize } from '../../../components/widget-board';
-import { useSizeClass } from '../../../design/size-class';
+import { WidgetFrame } from '../../../components/widget-board';
+import { rowLayoutOf, type RowLayout } from '../../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { decimal } from '../../../format/number';
 import { AgeBadge } from '../components/age-badge';
 import { DeltaLine, QuickStats } from '../components/glance-parts';
@@ -15,8 +16,7 @@ import { figureOn } from '../model/daily';
 import { freshnessOf } from '../model/freshness';
 import { glanceOf, type MetricGlance } from '../model/glance';
 import { heartRangeOf, hasMetric, type HeartRange as Range } from '../model/today';
-
-const DAYS = 14;
+import { heartTrendRequest } from './heart-trend';
 
 interface HeartView {
   readonly range: Range;
@@ -124,11 +124,11 @@ function Tall({ view }: { readonly view: HeartView }): ReactNode {
 function Row({ view, wide }: { readonly view: HeartView; readonly wide: boolean }): ReactNode {
   return (
     <View className="flex-1 flex-row gap-5">
-      <View className={wide ? 'w-40 justify-center' : 'min-w-0 flex-1 justify-center'}>
+      <View className={wide ? 'w-1/4 justify-center' : 'min-w-0 shrink justify-center'}>
         <Baseline view={view} big />
       </View>
       {wide ? <Trend view={view} /> : null}
-      <View className={wide ? 'w-56 justify-center' : 'min-w-0 flex-1 justify-center'}>
+      <View className={wide ? 'w-1/3 justify-center' : 'min-w-0 flex-1 justify-center'}>
         <TodayRange view={view} />
       </View>
     </View>
@@ -137,28 +137,28 @@ function Row({ view, wide }: { readonly view: HeartView; readonly wide: boolean 
 
 function Body({
   view,
-  size,
-  compact,
+  layout,
 }: {
   readonly view: HeartView;
-  readonly size: WidgetSize;
-  readonly compact: boolean;
+  readonly layout: RowLayout;
 }): ReactNode {
-  if (size === 'S') {
-    return <Tile view={view} />;
+  switch (layout) {
+    case 'tile':
+      return <Tile view={view} />;
+    case 'tall':
+      return <Tall view={view} />;
+    case 'wide':
+      return <Row view={view} wide />;
+    case 'split':
+      return <Row view={view} wide={false} />;
   }
-  if (size === 'L' || size === 'XL') {
-    return <Tall view={view} />;
-  }
-  return <Row view={view} wide={size === 'W' && !compact} />;
 }
 
-export function HeartWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+export function HeartWidget(): ReactNode {
   const { figures, day } = useTodayContext();
-  const compact = boardClassOf(useSizeClass().width) === 'compact';
+  const { cls } = useWidgetFace();
   const range = heartRangeOf(figures, day);
   const resting = hasMetric(figures, 'resting_heart_rate');
-  const metric = resting ? 'resting_heart_rate' : 'heart_rate_average';
   return (
     <WidgetFrame
       title="Heart rate"
@@ -166,7 +166,6 @@ export function HeartWidget({ size }: { readonly size: WidgetSize }): ReactNode 
       accent="heart"
       href={href.fitnessPage('heart', { day })}
       action={range === null ? undefined : <AgeBadge day={range.day} selected={day} />}
-      size={size}
     >
       {range === null ? (
         <Text variant="callout" tone="variant">
@@ -177,12 +176,11 @@ export function HeartWidget({ size }: { readonly size: WidgetSize }): ReactNode 
           view={{
             range,
             average: figureOn(figures, range.day, 'heart_rate_average'),
-            trend: glanceOf(figures, { metric, day, days: DAYS, better: 'lower' }),
+            trend: glanceOf(figures, heartTrendRequest(resting, day)),
             resting,
             day,
           }}
-          size={size}
-          compact={compact}
+          layout={rowLayoutOf(cls)}
         />
       )}
     </WidgetFrame>

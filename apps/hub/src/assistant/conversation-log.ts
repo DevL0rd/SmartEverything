@@ -1,9 +1,7 @@
 import {
   COMPACTION_EMBED,
   ASSISTANT_STEPS_KEPT,
-  ASSISTANT_TEXT_MAX,
   WEB_SOURCES_KIND,
-  WEB_SOURCES_MAX,
   type WebSource,
   ApiError,
   assistantLabel,
@@ -18,6 +16,7 @@ import {
   type AssistantRequestState,
   type MessageOrigin,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { StoreNotFoundError } from '../store/context';
 import { summaryOf, type StoredAttachment } from '../store/repositories/assistant-chat';
 import type { NewAssistantMessage } from '../store/repositories/assistant-chat';
@@ -44,6 +43,8 @@ export interface ResponderMessage {
   readonly model?: string | null;
   readonly messageId?: string;
 }
+
+const log = new Logger('hub.assistant-conversation');
 
 function activityLine(label: string): string {
   return label.replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -143,6 +144,7 @@ export class ConversationLog {
   }
 
   startReply(chat: AiChatRow, replyTo: string | null, model: string): AssistantMessageRow {
+    log.debug('reply.started', { chatId: chat.id, profileId: chat.profile_id, replyTo, model });
     return this.add(
       {
         ...NO_EXTRAS,
@@ -166,12 +168,20 @@ export class ConversationLog {
   }
 
   flushReply(id: string, text: string): void {
-    this.messages.updateMessage(id, { text: text.slice(0, ASSISTANT_TEXT_MAX) });
+    this.messages.updateMessage(id, { text });
   }
 
   timeline(id: string, timeline: ChatTimelineEmbed): void {
+    this.messages.updateMessage(id, { embeds: this.withTimeline(id, timeline) });
+  }
+
+  progress(id: string, text: string, timeline: ChatTimelineEmbed): void {
+    this.messages.updateMessage(id, { text, embeds: this.withTimeline(id, timeline) });
+  }
+
+  private withTimeline(id: string, timeline: ChatTimelineEmbed): AssistantMessageRow['embeds'] {
     const kept = this.messages.message(id).embeds.filter((embed) => embed.kind !== 'chat_timeline');
-    this.messages.updateMessage(id, { embeds: [...kept, timeline] });
+    return [...kept, timeline];
   }
 
   finishReply(
@@ -186,12 +196,19 @@ export class ConversationLog {
     const kept = this.messages
       .message(id)
       .embeds.filter((embed) => embed.kind !== WEB_SOURCES_KIND);
+    log.debug('reply.finished', {
+      messageId: id,
+      model: done.model,
+      textChars: text.length,
+      steps: done.steps.length,
+      sources: done.sources.length,
+    });
     return this.messages.updateMessage(id, {
       embeds:
         done.sources.length === 0
           ? kept
-          : [...kept, { kind: WEB_SOURCES_KIND, sources: done.sources.slice(0, WEB_SOURCES_MAX) }],
-      text: text.slice(0, ASSISTANT_TEXT_MAX),
+          : [...kept, { kind: WEB_SOURCES_KIND, sources: done.sources }],
+      text,
       model: done.model,
       state: 'answered',
       ...keptSteps(done.steps),
@@ -203,8 +220,15 @@ export class ConversationLog {
     failure: { readonly text: string; readonly reason: string; readonly code: AssistantReasonCode },
     steps: readonly SettledStep[],
   ): void {
+    log.warn('reply.failed', {
+      messageId: id,
+      reasonCode: failure.code,
+      reason: failure.reason.slice(0, 200),
+      textChars: failure.text.length,
+      steps: steps.length,
+    });
     this.messages.updateMessage(id, {
-      text: failure.text.slice(0, ASSISTANT_TEXT_MAX),
+      text: failure.text,
       state: 'failed',
       reason: failure.reason.slice(0, 400),
       reason_code: failure.code,
@@ -251,7 +275,7 @@ export class ConversationLog {
         role: 'system',
         kind: 'update',
         author: author.slice(0, 120),
-        text: text.slice(0, ASSISTANT_TEXT_MAX),
+        text,
         attachments: [],
         state: null,
         reason: null,
@@ -275,7 +299,7 @@ export class ConversationLog {
         role: 'system',
         kind: 'update',
         author: assistantLabel(this.messages.settings()),
-        text: summary.slice(0, ASSISTANT_TEXT_MAX),
+        text: summary,
         attachments: [],
         state: null,
         reason: null,
@@ -330,14 +354,29 @@ export class ConversationLog {
   ): void {
     const message = this.message(messageId);
     if (message === null || message.state === state || message.state === 'failed') {
+      log.trace('message.state_unchanged', { messageId, state, current: message?.state });
       return;
     }
+    log.debug('message.state_changed', {
+      messageId: message.id,
+      chatId: message.chat_id,
+      from: message.state,
+      to: state,
+      hasReason: reason !== null,
+    });
     this.messages.updateMessage(message.id, { state, reason });
   }
 
   failedMessage(messageId: string | null, reason: string, code: AssistantReasonCode): void {
     const message = this.message(messageId);
     if (message !== null) {
+      log.warn('message.failed', {
+        messageId: message.id,
+        chatId: message.chat_id,
+        from: message.state,
+        reasonCode: code,
+        reason: reason.slice(0, 200),
+      });
       this.messages.updateMessage(message.id, {
         state: 'failed',
         reason: reason.slice(0, 400),
@@ -347,6 +386,7 @@ export class ConversationLog {
   }
 
   interrupted(reason: string): void {
+    log.info('turns.interrupted', { reason: reason.slice(0, 200) });
     this.store.write(() => {
       this.messages.failWorking(reason, 'interrupted');
       for (const event of this.store.assistantEvents.abandoned()) {

@@ -3,12 +3,15 @@ import {
   localDayOf,
   type HealthRecord,
   type HealthRecordType,
+  type ProfileRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { profileIdOf, roleOfCaller, type Caller } from '../../../server/auth';
 import type { Store } from '../../../store/store';
+import { callerFor } from './acting';
 import { READS, defineTool, type Tool } from './registry';
+import { DAY_MS } from '../../../metrics/minute';
 
-const DAY_MS = 86_400_000;
 const HEALTH_DAYS = 366;
 const RECORDS_PER_PERSON = 300;
 
@@ -60,7 +63,7 @@ const HEALTH_RANGE = z
     message: `the range must not exceed ${String(HEALTH_DAYS)} days`,
   });
 
-type HealthRange = z.infer<typeof HEALTH_RANGE>;
+export type HealthRange = z.infer<typeof HEALTH_RANGE>;
 
 function inRange(record: HealthRecord, range: HealthRange): boolean {
   const day = localDayOf(record);
@@ -87,9 +90,19 @@ function recordsOf(store: Store, profileId: string, range: HealthRange): Record<
     }));
 }
 
-function summary(store: Store, input: HealthRange): Record<string, unknown> {
+function readableProfiles(store: Store, caller: Caller): readonly ProfileRow[] {
+  return roleOfCaller(caller) === 'owner'
+    ? store.profiles.list()
+    : [store.profiles.byId(profileIdOf(store, caller))];
+}
+
+export function healthSummary(
+  store: Store,
+  caller: Caller,
+  input: HealthRange,
+): Record<string, unknown> {
   return {
-    people: store.profiles.list().map((profile) => ({
+    people: readableProfiles(store, caller).map((profile) => ({
       person: profile.name,
       days: store.health
         .dailyRange(profile.id, input.from, input.to, input.metrics ?? HEALTH_METRICS)
@@ -103,5 +116,7 @@ export const HEALTH_SUMMARY_TOOL: Tool = defineTool({
   name: 'get_health_summary',
   input: HEALTH_RANGE,
   annotations: READS,
-  run: ({ store }, input) => ({ structured: summary(store, input) }),
+  run: (context, input) => ({
+    structured: healthSummary(context.store, callerFor(context), input),
+  }),
 });

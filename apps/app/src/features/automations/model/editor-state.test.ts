@@ -2,71 +2,71 @@ import { describe, expect, it } from 'vitest';
 import {
   EMPTY_DRAFT,
   changeDraft,
-  definitionOf,
   moved,
   readDraft,
+  sameDraft,
   uniqueName,
   type Draft,
 } from './editor-state';
 import { LAMP } from './test-devices';
 
-const ON = { type: 'command', deviceId: LAMP, capability: 'power', value: true } as const;
-const WAIT = { type: 'delay', seconds: 5 } as const;
-const NOTE = { type: 'notify', message: 'Hi' } as const;
+const TRIGGER_ID = '00000000-0000-4000-8000-000000000101';
+const STEP_ID = '00000000-0000-4000-8000-000000000102';
+
+const ON = { do: 'set', target: { device: LAMP }, control: 'power', to: true } as const;
+const WAIT = { do: 'wait', ms: 5000 } as const;
+const NOTE = { do: 'notify', message: 'Hi' } as const;
 
 function apply(...changes: Parameters<typeof changeDraft>[1][]): Draft {
   return changes.reduce(changeDraft, EMPTY_DRAFT);
 }
 
 describe('the automation draft', () => {
-  it('renames, pauses and switches between all and any', () => {
-    const draft = apply(
-      { type: 'rename', name: 'Bedtime' },
-      { type: 'enable', enabled: false },
-      { type: 'mode', mode: 'any' },
-    );
-    expect(draft).toMatchObject({ name: 'Bedtime', enabled: false, mode: 'any' });
+  it('renames and pauses without touching the program', () => {
+    const draft = apply({ type: 'rename', name: 'Bedtime' }, { type: 'enable', enabled: false });
+    expect(draft).toMatchObject({ name: 'Bedtime', enabled: false });
+    expect(draft.automation).toEqual(EMPTY_DRAFT.automation);
   });
 
   it('adds, replaces and removes triggers', () => {
     const draft = apply(
-      { type: 'triggers', change: { kind: 'add', item: { type: 'interval', everyMinutes: 5 } } },
-      {
-        type: 'triggers',
-        change: { kind: 'add', item: { type: 'sun', event: 'sunset', offsetMinutes: 0 } },
-      },
-      {
-        type: 'triggers',
-        change: { kind: 'set', index: 0, item: { type: 'interval', everyMinutes: 10 } },
-      },
-      { type: 'triggers', change: { kind: 'remove', index: 1 } },
+      { type: 'when', change: { kind: 'add', item: { on: 'every', minutes: 5 } } },
+      { type: 'when', change: { kind: 'add', item: { on: 'sun', event: 'sunset' } } },
+      { type: 'when', change: { kind: 'set', index: 0, item: { on: 'every', minutes: 10 } } },
+      { type: 'when', change: { kind: 'remove', index: 1 } },
     );
-    expect(draft.triggers).toEqual([{ type: 'interval', everyMinutes: 10 }]);
+    expect(draft.automation.when).toEqual([{ on: 'every', minutes: 10 }]);
   });
 
-  it('adds, replaces and removes conditions', () => {
-    const draft = apply(
-      { type: 'conditions', change: { kind: 'add', item: { type: 'weekday', weekdays: [1] } } },
-      { type: 'conditions', change: { kind: 'add', item: { type: 'weekday', weekdays: [2] } } },
-      {
-        type: 'conditions',
-        change: { kind: 'set', index: 1, item: { type: 'weekday', weekdays: [3] } },
-      },
-      { type: 'conditions', change: { kind: 'remove', index: 0 } },
-    );
-    expect(draft.conditions).toEqual([{ type: 'weekday', weekdays: [3] }]);
+  it('sets and clears the one condition group', () => {
+    const condition = { all: [{ time: { days: [1] } }] };
+    const set = apply({ type: 'only-if', condition });
+    expect(set.automation.onlyIf).toEqual(condition);
+    const cleared = changeDraft(set, { type: 'only-if', condition: undefined });
+    expect('onlyIf' in cleared.automation).toBe(false);
   });
 
-  it('adds, replaces, reorders and removes actions', () => {
-    const draft = apply(
-      { type: 'actions', change: { kind: 'add', item: ON } },
-      { type: 'actions', change: { kind: 'add', item: WAIT } },
-      { type: 'actions', change: { kind: 'add', item: NOTE } },
-      { type: 'actions', change: { kind: 'move', index: 2, by: -1 } },
-      { type: 'actions', change: { kind: 'set', index: 0, item: { ...ON, value: false } } },
-      { type: 'actions', change: { kind: 'remove', index: 2 } },
-    );
-    expect(draft.actions).toEqual([{ ...ON, value: false }, NOTE]);
+  it('replaces the steps and reorders a list', () => {
+    const draft = apply({ type: 'steps', steps: [ON, WAIT, NOTE] });
+    expect(draft.automation.steps).toEqual([ON, WAIT, NOTE]);
+    expect(moved(draft.automation.steps, 2, -1)).toEqual([ON, NOTE, WAIT]);
+  });
+
+  it('stores the run behaviour only when it differs from the default', () => {
+    const queued = apply({ type: 'run', run: { mode: 'queue', max: 3, key: 'lights' } });
+    expect(queued.automation).toMatchObject({ mode: 'queue', max: 3, key: 'lights' });
+    const plain = changeDraft(queued, {
+      type: 'run',
+      run: { mode: undefined, max: undefined, key: undefined },
+    });
+    expect(
+      'mode' in plain.automation || 'max' in plain.automation || 'key' in plain.automation,
+    ).toBe(false);
+  });
+
+  it('declares inputs for reusable steps', () => {
+    const draft = apply({ type: 'inputs', inputs: [{ name: 'level', type: 'number' }] });
+    expect(draft.automation.inputs).toEqual([{ name: 'level', type: 'number' }]);
   });
 
   it('leaves the list alone when an item would move past either end', () => {
@@ -75,26 +75,29 @@ describe('the automation draft', () => {
     expect(moved(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c']);
   });
 
-  it('reads a stored definition back into a draft and writes it out again', () => {
+  it('reads a stored definition straight into a draft with nothing lost', () => {
     const definition = {
-      triggers: [{ type: 'time', at: '07:00', weekdays: [1, 2] }],
-      conditions: { mode: 'any', items: [{ type: 'weekday', weekdays: [1] }] },
-      actions: [ON],
+      when: [{ on: 'time', id: TRIGGER_ID, at: '07:00', days: [1, 2] }],
+      onlyIf: { any: [{ time: { days: [1] } }, { daylight: 'night' }] },
+      steps: [{ do: 'set', id: STEP_ID, target: { device: LAMP }, control: 'power', to: true }],
+      mode: 'single',
     };
     const read = readDraft({ name: 'Morning', enabled: true, definition });
     expect(read.readable).toBe(true);
-    if (read.readable) {
-      expect(read.draft).toMatchObject({ name: 'Morning', mode: 'any' });
-      expect(definitionOf(read.draft)).toEqual(definition);
-    }
+    if (read.readable) expect(read.draft.automation).toEqual(definition);
   });
 
   it('explains why a stored definition cannot be read', () => {
-    const read = readDraft({ name: 'Broken', enabled: true, definition: { triggers: 'x' } });
+    const read = readDraft({ name: 'Broken', enabled: true, definition: { when: 'x' } });
     expect(read.readable).toBe(false);
-    if (!read.readable) {
-      expect(read.problem).toMatch(/^The saved definition of Broken cannot be read: triggers /);
-    }
+    if (!read.readable)
+      expect(read.problem).toMatch(/^The saved definition of Broken cannot be read: when /);
+  });
+
+  it('compares drafts by what they would save', () => {
+    const draft = apply({ type: 'rename', name: 'A' });
+    expect(sameDraft(draft, { ...draft })).toBe(true);
+    expect(sameDraft(draft, apply({ type: 'rename', name: 'B' }))).toBe(false);
   });
 
   it('finds a copy name nobody uses yet', () => {

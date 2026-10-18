@@ -1,23 +1,16 @@
 import { AI_PREVIEW_ENDPOINTS as E } from '@smarteverything/domain';
 import type { PreviewService } from '../../preview/service';
-import { bound, type Bound } from '../router';
-export function previewDiagnosticRoutes(
-  preview: PreviewService,
-): Pick<
-  Record<keyof typeof E, Bound>,
-  | 'readPreviewErrorPolicy'
-  | 'writePreviewErrorPolicy'
-  | 'readPreviewLogs'
-  | 'searchPreviewLogs'
-  | 'capturePreviewViewport'
-  | 'clearPreviewWebsiteData'
-> {
-  return {
-    readPreviewErrorPolicy: bound(E.readPreviewErrorPolicy, ({ caller, params }) => [
-      ...preview.diagnostics.readErrorPolicy(caller, params.chatId),
+import { bound } from '../router';
+export const previewDiagnosticRoutes = (preview: PreviewService) =>
+  ({
+    readPreviewErrorRules: bound(E.readPreviewErrorRules, ({ caller, params }) => [
+      ...preview.diagnostics.readErrorRules(caller, params.chatId),
     ]),
-    writePreviewErrorPolicy: bound(E.writePreviewErrorPolicy, ({ caller, params, body }) => [
-      ...preview.diagnostics.writeErrorPolicy(caller, params.chatId, body),
+    ignorePreviewError: bound(E.ignorePreviewError, ({ caller, params, body }) => [
+      ...preview.diagnostics.ignoreError(caller, params.chatId, body),
+    ]),
+    restorePreviewError: bound(E.restorePreviewError, ({ caller, params, body }) => [
+      ...preview.diagnostics.restoreError(caller, params.chatId, body),
     ]),
     clearPreviewWebsiteData: bound(E.clearPreviewWebsiteData, ({ caller, params, body }) =>
       preview.diagnostics.clear(caller, params.chatId, body),
@@ -31,5 +24,4 @@ export function previewDiagnosticRoutes(
     capturePreviewViewport: bound(E.capturePreviewViewport, ({ caller, params, body }) =>
       preview.diagnostics.capture(caller, params.chatId, body),
     ),
-  };
-}
+  }) as const;

@@ -9,10 +9,10 @@ import androidx.health.connect.client.records.MindfulnessSessionRecord
 import androidx.health.connect.client.records.PlannedExerciseSessionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.SleepSessionRecord
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonObject
 
 object SessionData {
-  fun describe(record: Record): JSONObject? = when (record) {
+  fun describe(record: Record): JsonObject? = when (record) {
     is ExerciseSessionRecord -> exercise(record)
     is SleepSessionRecord -> sleep(record)
     is MindfulnessSessionRecord -> jsonOf(
@@ -24,7 +24,7 @@ object SessionData {
     else -> null
   }
 
-  private fun exercise(record: ExerciseSessionRecord): JSONObject = jsonOf(
+  private fun exercise(record: ExerciseSessionRecord): JsonObject = jsonOf(
     "exerciseType" to record.exerciseType,
     "title" to record.title,
     "notes" to record.notes,
@@ -47,7 +47,7 @@ object SessionData {
     "route" to route(record.exerciseRouteResult)
   )
 
-  private fun route(result: ExerciseRouteResult): JSONObject = when (result) {
+  private fun route(result: ExerciseRouteResult): JsonObject = when (result) {
     is ExerciseRouteResult.Data -> jsonOf(
       "status" to "recorded",
       "locations" to jsonArrayOf(result.exerciseRoute.route) {
@@ -66,7 +66,7 @@ object SessionData {
     else -> throw UnmappedValue("exercise route result", result)
   }
 
-  private fun sleep(record: SleepSessionRecord): JSONObject = jsonOf(
+  private fun sleep(record: SleepSessionRecord): JsonObject = jsonOf(
     "title" to record.title,
     "notes" to record.notes,
     "stages" to jsonArrayOf(record.stages) {

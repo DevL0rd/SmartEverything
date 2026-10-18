@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeFailure } from '../src/record';
+import { describeFailure, failureLine, messageOf } from '../src/record';
 
 describe('describing what went wrong', () => {
   it('keeps the name, message and stack of an Error', () => {
@@ -74,5 +74,38 @@ describe('describing what went wrong', () => {
 
   it('ignores a name that is not text', () => {
     expect(describeFailure({ name: 7, message: 'nope' }).name).toBe('ReportedFailure');
+  });
+});
+
+describe('reading the message of any failure', () => {
+  it('returns the message of an Error', () => {
+    expect(messageOf(new TypeError('not a number'))).toBe('not a number');
+  });
+
+  it('returns the message of an AggregateError, not its members', () => {
+    const aggregate = new AggregateError([new Error('first'), new Error('second')], 'two failed');
+    expect(messageOf(aggregate)).toBe('two failed');
+  });
+
+  it('prints a thrown string or number as text', () => {
+    expect(messageOf('refused')).toBe('refused');
+    expect(messageOf(42)).toBe('42');
+    expect(messageOf(undefined)).toBe('undefined');
+  });
+
+  it('reads the message of a reported failure that is not an Error', () => {
+    expect(messageOf({ message: 'permission denied', code: '42501' })).toBe(
+      'permission denied (code: 42501)',
+    );
+  });
+});
+
+describe('describing a failure on one line', () => {
+  it('prefixes an Error with its name', () => {
+    expect(failureLine(new RangeError('too large'))).toBe('RangeError: too large');
+  });
+
+  it('prints anything else as its message', () => {
+    expect(failureLine('refused')).toBe('refused');
   });
 });

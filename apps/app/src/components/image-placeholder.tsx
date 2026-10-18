@@ -20,7 +20,7 @@ const SWEEP_DISTANCE = 1.6;
 
 export function ImagePlaceholder({ active = true }: { readonly active?: boolean }): ReactNode {
   const ref = useRef<View>(null);
-  const { visible, onLayout } = useOnScreen(ref);
+  const { visible, onLayout } = useOnScreen(ref, undefined, active);
   const { moving: animate } = useAnimationGate(active, visible);
   const progress = useSharedValue(0);
   const width = useSharedValue(0);

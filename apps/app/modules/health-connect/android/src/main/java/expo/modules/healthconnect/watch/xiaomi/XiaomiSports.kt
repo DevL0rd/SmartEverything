@@ -6,7 +6,7 @@ object XiaomiSports {
   private val CODES: Map<String, Int> = mapOf(
     "outdoor_running" to 1,
     "walking" to 2,
-    "treadmill" to TREADMILL_FROM_GADGETBRIDGE_FILE_SUBTYPE,
+    "treadmill" to TREADMILL_SPORT_CODE,
     "outdoor_cycling" to 6,
     "indoor_cycling" to 7,
     "free_training" to 8,
@@ -20,7 +20,7 @@ object XiaomiSports {
 
   private val WATCH_S5_MODELS = setOf("miwear.watch.p62g")
   private const val WATCH_S5_NAME = "Xiaomi Watch S5"
-  private const val DECLARED_SOURCE = "declared Watch S5 sport set (Gadgetbridge sport codes; the watch did not answer 2/39)"
+  private const val DECLARED_SOURCE = "declared Watch S5 sport set (the watch did not answer 2/39)"
 
   fun code(sport: String): Int? = CODES[sport]
 
@@ -32,4 +32,4 @@ object XiaomiSports {
     if (model in WATCH_S5_MODELS || name.startsWith(WATCH_S5_NAME)) SportList(CODES.values.toList(), DECLARED_SOURCE) else null
 }
 
-private const val TREADMILL_FROM_GADGETBRIDGE_FILE_SUBTYPE = 3
+private const val TREADMILL_SPORT_CODE = 3

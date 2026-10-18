@@ -19,6 +19,10 @@ function nestedParams(value: unknown): value is NestedParams {
   return typeof value === 'object' && value !== null;
 }
 
+export function remountsOnVisit(tabName: string): boolean {
+  return tabName === SETTINGS_ROUTE;
+}
+
 function settingsDestination(action: NavigationAction): boolean {
   if (action.type !== 'NAVIGATE' && action.type !== 'JUMP_TO') return false;
   return DESTINATION.safeParse(action.payload).data?.name === SETTINGS_ROUTE;

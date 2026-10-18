@@ -1,4 +1,4 @@
-import type { CallAudioPref } from '@smarteverything/domain';
+import type { CallAudio } from '@smarteverything/domain';
 import type { Playback } from '../../../../talk';
 import { sameSight, sinkIdOf } from './audio-settings';
 import type { MicrophoneChain } from './microphone';
@@ -23,8 +23,8 @@ async function attempt(
 }
 
 export async function applyLive(
-  previous: CallAudioPref,
-  next: CallAudioPref,
+  previous: CallAudio,
+  next: CallAudio,
   targets: TuningTargets,
 ): Promise<void> {
   const { mic, playback, failed } = targets;

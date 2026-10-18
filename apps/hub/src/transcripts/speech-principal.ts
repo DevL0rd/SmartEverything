@@ -1,12 +1,9 @@
 import { z } from 'zod';
 import { ApiError, PLUGIN_REQUESTERS } from '@smarteverything/domain';
 import { CONVERSATION_AUTHORITY } from '../harness/authority-contract';
-import {
-  currentExecutionAuthorities,
-  executionRole,
-  validateExecutionAuthority,
-} from '../assistant/execution-authority';
+import { currentExecutionAuthority, executionRole } from '../assistant/turn-authority';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
+import { effectiveClientById } from '../server/person-access';
 import type { Store } from '../store/store';
 import type { ToolCaller } from '../ai-tools/hub-tool';
 
@@ -33,14 +30,13 @@ export function speechPrincipal(store: Store, caller: Caller): SpeechPrincipal {
       'A paired initiating app is required for a saved speech trigger.',
     );
   const { client, kind: _kind, local: _local, ...origin } = caller;
-  const authorities = [
-    ...currentExecutionAuthorities(),
-    ...(caller.authority === undefined ? [] : [caller.authority]),
-  ];
+  const authorities = [currentExecutionAuthority(), caller.authority].filter(
+    (authority): authority is NonNullable<typeof authority> => authority !== undefined,
+  );
   const owner =
     client.role === 'owner' &&
     roleOfCaller(caller) === 'owner' &&
-    authorities.every((authority) => executionRole(store, authority) === 'owner');
+    authorities.every((authority) => executionRole(authority) === 'owner');
   const principal = SPEECH_PRINCIPAL.parse({
     ...origin,
     clientId: client.id,
@@ -58,18 +54,16 @@ export function speechCaller(
   store: Store,
   principal: SpeechPrincipal,
 ): Extract<Caller, { kind: 'client' }> {
-  const client = store.clients.byId(principal.clientId);
+  const client = effectiveClientById(store, principal.clientId);
   store.profiles.byId(principal.profileId);
   const caller = principalCaller(client, principal);
   if (
     client.role !== principal.clientRole ||
     (principal.role === 'owner' &&
       (roleOfCaller(caller) !== 'owner' ||
-        principal.authorities.some((authority) => executionRole(store, authority) !== 'owner')))
+        principal.authorities.some((authority) => executionRole(authority) !== 'owner')))
   )
     throw new ApiError('forbidden', 'The speech trigger initiating role changed.');
-  for (const authority of principal.authorities) validateExecutionAuthority(store, authority);
-  if (caller.authority !== undefined) validateExecutionAuthority(store, caller.authority);
   if (caller.pluginId !== undefined && !store.plugins.byId(caller.pluginId).enabled)
     throw new ApiError('forbidden', 'The initiating plugin is disabled.');
   return caller;

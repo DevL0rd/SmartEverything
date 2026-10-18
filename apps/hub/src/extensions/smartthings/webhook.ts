@@ -20,6 +20,7 @@ import type { Store } from '../../store/store';
 import type { TargetConfirmations } from './confirmations';
 import { savedPaths } from './paths';
 import type { WebhookState } from './webhook-state';
+import { messageOf } from '@smarteverything/logging';
 
 const WEBHOOK_BODY_LIMIT = 1024 * 1024;
 
@@ -35,16 +36,13 @@ export interface WebhookOptions {
   readonly confirmations: TargetConfirmations;
 }
 
-function reasonOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
 export class KeyCache {
   private readonly keys = new Map<string, { key: KeyObject; fetchedAt: number }>();
 
   constructor(
     private readonly fetch: typeof globalThis.fetch,
     private readonly now: () => Date,
+    private readonly log?: Logger,
   ) {}
 
   async keyFor(keyId: string): Promise<KeyObject> {
@@ -54,6 +52,7 @@ export class KeyCache {
     if (cached !== undefined && nowMs - cached.fetchedAt < KEY_LIFETIME_MS) {
       return cached.key;
     }
+    const startedAt = performance.now();
     const response = await this.fetch(url, {
       redirect: 'error',
       signal: AbortSignal.timeout(10_000),
@@ -67,6 +66,11 @@ export class KeyCache {
     }
     const key = publicKeyOf(text);
     this.keys.set(keyId, { key, fetchedAt: nowMs });
+    this.log?.debug('webhook.key_fetched', () => ({
+      keyId,
+      refreshed: cached !== undefined,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
     return key;
   }
 }
@@ -85,7 +89,7 @@ function parseJson(raw: Buffer): unknown {
     const parsed: unknown = JSON.parse(raw.toString('utf8'));
     return parsed;
   } catch (cause) {
-    throw new ApiError('invalid_request', `The webhook body is not JSON: ${reasonOf(cause)}.`);
+    throw new ApiError('invalid_request', `The webhook body is not JSON: ${messageOf(cause)}.`);
   }
 }
 
@@ -93,26 +97,39 @@ export class WebhookHandler {
   private readonly keys: KeyCache;
 
   constructor(private readonly options: WebhookOptions) {
-    this.keys = new KeyCache(options.fetch, options.now);
+    this.keys = new KeyCache(options.fetch, options.now, options.log);
   }
 
   readonly handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    const startedAt = performance.now();
     const raw = await readBody(request, WEBHOOK_BODY_LIMIT);
     const message = this.messageOf(raw);
+    this.options.log.debug('webhook.received', {
+      kind: message.kind,
+      bytes: raw.length,
+      events: message.kind === 'event' ? message.events.length : undefined,
+    });
     if (message.kind === 'ping') {
       sendJson(response, 200, pingAnswer(message.challenge));
+      this.options.log.debug('webhook.pinged', () => ({
+        durationMs: Math.round(performance.now() - startedAt),
+      }));
       return;
     }
     await this.verify(request, raw);
     sendJson(response, 200, await this.answer(message));
+    this.options.log.debug('webhook.answered', () => ({
+      kind: message.kind,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
   };
 
   private messageOf(raw: Buffer): WebhookMessage {
     try {
       return readWebhookMessage(parseJson(raw));
     } catch (cause) {
-      this.refused(reasonOf(cause));
-      throw cause instanceof ApiError ? cause : new ApiError('invalid_request', reasonOf(cause));
+      this.refused(messageOf(cause));
+      throw cause instanceof ApiError ? cause : new ApiError('invalid_request', messageOf(cause));
     }
   }
 
@@ -136,7 +153,7 @@ export class WebhookHandler {
         this.options.now(),
       );
     } catch (cause) {
-      this.refused(reasonOf(cause));
+      this.refused(messageOf(cause));
       if (cause instanceof WebhookSignatureError) {
         throw new ApiError('unauthorized', cause.message);
       }
@@ -144,7 +161,7 @@ export class WebhookHandler {
         ? cause
         : new ApiError(
             'upstream_failed',
-            `The SmartThings key could not be fetched: ${reasonOf(cause)}.`,
+            `The SmartThings key could not be fetched: ${messageOf(cause)}.`,
           );
     }
     this.options.state.accepted();

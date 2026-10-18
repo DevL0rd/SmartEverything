@@ -11,9 +11,15 @@ export interface LastNight {
   readonly error: Error | null;
 }
 
+export function lastNightRange(day: string): { readonly from: number; readonly to: number } {
+  const start = startOfDayKey(day);
+  return { from: start - EVENING_BEFORE_MS - DAY_MS, to: start + DAY_MS };
+}
+
 export function useLastNight(day: string): LastNight {
   const start = startOfDayKey(day);
-  const records = useRecords(['SleepSession'], start - EVENING_BEFORE_MS - DAY_MS, start + DAY_MS);
+  const range = lastNightRange(day);
+  const records = useRecords(['SleepSession'], range.from, range.to);
   const nights = recordsOfType(records.data ?? [], 'SleepSession')
     .map(nightOf)
     .filter((night) => night.wake >= start - EVENING_BEFORE_MS && night.wake < start + DAY_MS)

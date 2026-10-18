@@ -1,7 +1,5 @@
 import { ValueStore } from '../../../design/external-store';
 import {
-  AI_HARNESS_CAPABILITY,
-  AI_PREVIEW_CAPABILITY,
   LIVE_CLIENT_MESSAGE,
   LIVE_SERVER_MESSAGE,
   liveProtocols,
@@ -53,7 +51,7 @@ function admitOwner(
       reject(cause);
     };
     const timer = setTimeout(() => {
-      fail(new PreviewOwnerError('The browser owner admission timed out.'));
+      fail(new PreviewOwnerError('The browser took too long to open. Try again.'));
     }, ADMISSION_MS);
     channel.onopen = (): void => {
       socket.send(
@@ -62,7 +60,6 @@ function admitOwner(
             type: 'subscribe',
             tables: [],
             streams: [],
-            capabilities: [AI_HARNESS_CAPABILITY, AI_PREVIEW_CAPABILITY],
             previewOwner: owner,
           }),
         ),
@@ -101,6 +98,10 @@ function readOwner(data: unknown, accepted: () => void, fail: (cause: Error) => 
     if (value.type === 'refused') throw new PreviewOwnerError(value.error.message);
     if (value.type === 'subscribed') accepted();
   } catch (cause) {
-    fail(cause instanceof Error ? cause : new PreviewOwnerError('Browser owner admission failed.'));
+    fail(
+      cause instanceof Error
+        ? cause
+        : new PreviewOwnerError("Couldn't open the browser. Try again."),
+    );
   }
 }

@@ -1,12 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import {
-  BackHandler,
-  KeyboardAvoidingView,
-  Pressable,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { BackHandler, Pressable, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import Animated, {
   interpolate,
   useAnimatedReaction,
@@ -118,7 +113,7 @@ function Panel({ stops }: { readonly stops: NavSheetStops }): ReactNode {
         style={[{ height: stops.full }, slide]}
         className="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-xxl bg-surface-raised elevation-3"
       >
-        <KeyboardAvoidingView behavior={isNative() ? 'padding' : undefined} className="flex-1">
+        <KeyboardAvoidingView behavior="padding" className="flex-1">
           <NavSheetBody stops={stops} />
         </KeyboardAvoidingView>
       </Animated.View>

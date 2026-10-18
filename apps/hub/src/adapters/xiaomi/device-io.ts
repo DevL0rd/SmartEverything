@@ -1,8 +1,7 @@
-import type { JsonValue } from '@smarteverything/domain';
+import { chunk, type JsonValue } from '@smarteverything/domain';
 import {
   actionParams,
   checkPropertyWrites,
-  chunk,
   cloudRpc,
   getPropertiesParams,
   parseActionResult,

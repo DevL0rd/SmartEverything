@@ -1,0 +1,26 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1 gap-2" pointerEvents="box-none"
+      View className="flex-row items-start justify-between" pointerEvents="box-none"
+        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-md" pointerEvents="none"
+          View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+            Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+              Svg.Ellipse cx=50 cy=80.5 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=44 ry=4
+              Svg.Path d="M14 79.6V82M86 79.6V82" stroke="#3d444b" strokeLinecap="round" strokeWidth=2.4
+              Svg.Path d="M10 22 H90 A6 6 0 0 1 96 28 V74 A6 6 0 0 1 90 80 H10 A6 6 0 0 1 4 74 V28 A6 6 0 0 1 10 22 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#384048" strokeOpacity=0.6 strokeWidth=0.8
+              Svg.Path d="M13 27 H67 A4 4 0 0 1 71 31 V71 A4 4 0 0 1 67 75 H13 A4 4 0 0 1 9 71 V31 A4 4 0 0 1 13 27 Z" fill="#474c51" fillOpacity=0.9 stroke="#3d444b" strokeWidth=0.5
+              Svg.Path d="M15 30 H65 A3 3 0 0 1 68 33 V69 A3 3 0 0 1 65 72 H15 A3 3 0 0 1 12 69 V33 A3 3 0 0 1 15 30 Z" fill="#1a2836" fillOpacity=0.2
+              Svg.Path d="M69.3 38 H69.3 A0.9 0.9 0 0 1 70.2 38.9 V63.1 A0.9 0.9 0 0 1 69.3 64 H69.3 A0.9 0.9 0 0 1 68.4 63.1 V38.9 A0.9 0.9 0 0 1 69.3 38 Z" fill="#384048"
+              Svg.Path d="M77.2 26.5 H90.8 A2.2 2.2 0 0 1 93 28.7 V34.3 A2.2 2.2 0 0 1 90.8 36.5 H77.2 A2.2 2.2 0 0 1 75 34.3 V28.7 A2.2 2.2 0 0 1 77.2 26.5 Z" fill="#0B0D10" stroke="#3d444b" strokeWidth=0.6
+              Svg.Path d="M79.33 56.67L77.78 58.22M77.40 52.00L75.20 52.00M79.33 47.33L77.78 45.78M84.00 45.40L84.00 43.20M88.67 47.33L90.22 45.78M90.60 52.00L92.80 52.00M88.67 56.67L90.22 58.22" stroke="#3d444b" strokeLinecap="round" strokeWidth=1.7
+              Svg.Circle cx=84 cy=52 fill="#1a2836" r=4.8 stroke="#3d444b" strokeWidth=0.8
+              Svg.Path d="M78 65.5H90M78 70H90" stroke="#384048" strokeLinecap="round" strokeWidth=1.4
+            Anim.View pointerEvents="none" style=[{position:"absolute",left:5.76,top:14.4,width:26.88,height:20.16,opacity:0},{transitionProperty:"opacity",transitionDuration:250,transitionTimingFunction:"ease-out"}]
+              Svg.default height=20.16 viewBox="12 30 56 42" width=26.88
+                Svg.Path d="M15 30 H65 A3 3 0 0 1 68 33 V69 A3 3 0 0 1 65 72 H15 A3 3 0 0 1 12 69 V33 A3 3 0 0 1 15 30 Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#ceb8a2" stopOpacity=0.45; ); Svg.Stop(offset="1" stopColor="#ceb8a2" stopOpacity=0.08; )))
+        View className="flex-row items-center"
+      View className="min-w-0 gap-0.5" pointerEvents="none"
+        Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=1 selectable=false
+        Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
+      View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+        Pressable accessibilityHint=undefined accessibilityLabel="Air fry 1 min" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#515457",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full bg-primary" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn

@@ -1,27 +1,21 @@
-import { API_ENDPOINTS as E, ApiError, type AssistantStatus } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
+import { API_ENDPOINTS as E, type AssistantStatus } from '@smarteverything/domain';
+import type { QueryClient } from '@tanstack/react-query';
+import { Logger, background } from '@smarteverything/logging';
 import { api } from '../api/transport';
 import { connectionState } from '../api/connection/connection';
 import { ValueStore, useValue } from '../design/external-store';
 import type { EntityStore } from './entity-store';
+import { noticeHandler } from './notice-registry';
 const log = new Logger('app.assistant');
 const availability = new ValueStore<string | null>(null);
-const supported = new WeakSet<ReturnType<typeof api>>();
-interface StyleRead {
-  readonly client: ReturnType<typeof api>;
-  readonly profileId: string | null | undefined;
-  readonly promise: Promise<void>;
-  dirty: boolean;
-}
-const requests = new WeakMap<EntityStore, StyleRead>();
-const revisions = new WeakMap<EntityStore, number>();
+
+const RESPONSE_STYLE_KEY = ['assistant', 'response-style'] as const;
+
 export function useResponseStyleProblem(): string | null {
   return useValue(availability);
 }
-export function responseStyleSupported(): boolean {
-  return connectionState.get().status === 'paired' && supported.has(api());
-}
-export function mergeResponseStyle(
+
+function mergeResponseStyle(
   status: AssistantStatus,
   current: AssistantStatus | null,
 ): AssistantStatus {
@@ -30,48 +24,22 @@ export function mergeResponseStyle(
     ? status
     : { ...status, settings: { ...status.settings, response_style: style } };
 }
-export function refreshResponseStyle(store: EntityStore): Promise<void> {
-  if (connectionState.get().status !== 'paired') return Promise.resolve();
-  const client = api();
+
+export async function refreshResponseStyle(client: QueryClient, store: EntityStore): Promise<void> {
+  if (connectionState.get().status !== 'paired') return;
+  const hub = api();
   const profileId = store.get().session?.client.profile_id;
-  const pending = requests.get(store);
-  if (pending?.client === client && pending.profileId === profileId) {
-    pending.dirty = true;
-    return pending.promise;
-  }
-  const revision = (revisions.get(store) ?? 0) + 1;
-  revisions.set(store, revision);
-  const request: StyleRead = {
-    client,
-    profileId,
-    dirty: false,
-    promise: readStyle(store, { client, profileId, revision }),
-  };
-  requests.set(store, request);
-  return request.promise.finally(() => {
-    if (requests.get(store) !== request) return;
-    requests.delete(store);
-    if (request.dirty) void refreshResponseStyle(store);
-  });
-}
-async function readStyle(
-  store: EntityStore,
-  scope: {
-    readonly client: ReturnType<typeof api>;
-    readonly profileId: string | null | undefined;
-    readonly revision: number;
-  },
-): Promise<void> {
-  const { client, profileId, revision } = scope;
   const current = (): boolean =>
-    revisions.get(store) === revision &&
     connectionState.get().status === 'paired' &&
-    api() === client &&
+    api() === hub &&
     store.get().session?.client.profile_id === profileId;
   try {
-    const style = await client.call(E.readAssistantResponseStyle, {});
+    const style = await client.query({
+      queryKey: [...RESPONSE_STYLE_KEY, hub.baseUrl, profileId ?? null],
+      queryFn: () => hub.call(E.readAssistantResponseStyle, {}),
+      staleTime: 0,
+    });
     if (!current()) return;
-    supported.add(client);
     availability.set(null);
     store.update((state) =>
       state.assistant === null
@@ -86,11 +54,7 @@ async function readStyle(
     );
   } catch (error) {
     if (!current()) return;
-    supported.delete(client);
-    const message =
-      error instanceof ApiError && error.code === 'not_found'
-        ? 'Update the hub to configure response style.'
-        : `Response style could not load: ${String(error)}`;
+    const message = `Response style could not load: ${String(error)}`;
     availability.set(message);
     log.warn('response_style.read_failed', { reason: message });
     store.update((state) => {
@@ -101,16 +65,25 @@ async function readStyle(
   }
 }
 
+export const ASSISTANT_STATUS_NOTICE = noticeHandler(
+  ['assistant_status'],
+  (message, { client, store }) => {
+    store.update((state) => ({
+      ...state,
+      assistant: mergeResponseStyle(message.status, state.assistant),
+    }));
+    background(refreshResponseStyle(client, store), 'response_style.refresh_failed');
+  },
+);
+
 export interface AssistantWriteScope {
   readonly client: ReturnType<typeof api>;
   readonly current: () => boolean;
 }
-export class StaleAssistantWriteError extends Error {
+class StaleAssistantWriteError extends Error {
   override readonly name = 'StaleAssistantWriteError';
   constructor() {
-    super(
-      'The selected server or profile changed. The original request was not applied to this view. Review its settings before submitting again.',
-    );
+    super('Your home or profile changed, so nothing was saved. Check the settings and save again.');
   }
 }
 export function captureAssistantWrite(store: EntityStore): AssistantWriteScope {

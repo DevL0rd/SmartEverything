@@ -76,11 +76,15 @@ export type SceneReading =
   | { readonly readable: true; readonly draft: SceneDraft }
   | { readonly readable: false; readonly problem: string };
 
-export function readScene(row: {
+interface SceneSource {
   readonly name: string;
   readonly icon: string;
   readonly actions: unknown;
-}): SceneReading {
+}
+
+const readings = new WeakMap<SceneSource, SceneReading>();
+
+function parseScene(row: SceneSource): SceneReading {
   const parsed = SCENE_ACTIONS.safeParse(row.actions);
   if (!parsed.success) {
     return {
@@ -91,6 +95,16 @@ export function readScene(row: {
     };
   }
   return { readable: true, draft: { name: row.name, icon: row.icon, actions: parsed.data } };
+}
+
+export function readScene(row: SceneSource): SceneReading {
+  const known = readings.get(row);
+  if (known !== undefined) {
+    return known;
+  }
+  const reading = parseScene(row);
+  readings.set(row, reading);
+  return reading;
 }
 
 export type SceneProblems = Readonly<Record<'name' | 'steps', readonly string[]>>;

@@ -1,3 +1,4 @@
+import { appendTo } from '@smarteverything/domain';
 import { concat } from '../../../../assistant-voice/audio';
 
 const TICK_MS = 100;
@@ -27,7 +28,7 @@ export class Mixer {
   }
 
   hear(userId: string, pcm: Int16Array): void {
-    this.queues.set(userId, [...(this.queues.get(userId) ?? []), pcm]);
+    appendTo(this.queues, userId, pcm);
   }
 
   private tick(): void {

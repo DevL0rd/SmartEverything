@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PLUGIN_REQUESTERS } from '@smarteverything/domain';
-export const CONVERSATION_AUTHORITY = z.strictObject({
+export const CONVERSATION_AUTHORITY = z.object({
   event_id: z.uuid(),
   profile_id: z.uuid(),
   client_id: z.uuid().nullable(),
@@ -9,7 +9,6 @@ export const CONVERSATION_AUTHORITY = z.strictObject({
   hub_os_ban: z.boolean(),
   tools: z.array(z.string()).nullable(),
   plugin_id: z.string().nullable(),
-  parents: z.array(z.uuid()).max(2000).optional(),
   requester: z.enum(PLUGIN_REQUESTERS).nullable(),
 });
 export type ConversationAuthority = z.infer<typeof CONVERSATION_AUTHORITY>;

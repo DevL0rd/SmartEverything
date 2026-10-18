@@ -17,7 +17,7 @@ import {
   browserPublications,
 } from '../browser/browser-publications';
 import { EMPTY_BROWSER_STATUS } from '../browser/browser-tab-state';
-import { browserTabOperation } from '../browser/browser-tab-operation';
+import { announcedBrowserTabOperation, openBrowserAddress } from '../browser/browser-tab-operation';
 import { focusBrowserTab } from '../browser/browser-tab-strip-keyboard';
 import type { BrowserTabs } from '../browser/browser-tabs';
 import type { usePreviews } from '../data/previews';
@@ -53,7 +53,7 @@ function ChatBrowser({ chat, visible, tabs, catalogue }: HarnessBrowserProps): R
           tabs.select(id);
         }}
         onClose={(id) => {
-          browserTabOperation(tabs.close(id));
+          announcedBrowserTabOperation(tabs.close(id));
           focusBrowserTab(tabs.read().selectedId);
         }}
         onNew={onNew}
@@ -106,13 +106,7 @@ function EmptyBrowser({
         onEditing={noop}
         inputRef={inputRef}
         navigate={() => {
-          try {
-            const id = tabs.blank();
-            tabs.address(id, address);
-            browserTabOperation(tabs.navigate(id, address));
-          } catch (error: unknown) {
-            notify({ message: 'A browser tab could not be opened.', error, tone: 'default' });
-          }
+          openBrowserAddress(tabs, address);
         }}
         status={EMPTY_BROWSER_STATUS}
         controls={controls}
@@ -123,7 +117,7 @@ function EmptyBrowser({
         publications={browserPublications(catalogue.data)}
         available={browserPublicationAvailability(catalogue.data)}
         onSelect={(publication) => {
-          browserTabOperation(tabs.openPublication(publication));
+          announcedBrowserTabOperation(tabs.openPublication(publication));
         }}
       />
     </>

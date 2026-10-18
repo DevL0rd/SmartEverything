@@ -19,6 +19,7 @@ import { Triggers } from './triggers';
 import { Typing } from './typing';
 import { assembleVoice } from './voice/assembly';
 import type { VoiceBackend } from './voice/link';
+import { messageOf } from '@smarteverything/logging';
 
 export interface DiscordEnvironment {
   readonly connect: DiscordLinkFactory;
@@ -105,7 +106,7 @@ function baseOf(shared: Shared, link: DiscordLink): Base {
 }
 
 function gatewayOf(shared: Shared, base: Base): Gateway {
-  const { ctx, environment, report, post } = shared;
+  const { ctx, report, post } = shared;
   const { services, interactions, mediaIndex } = base.assembled;
   const { status, typing, guilds, guildNames, voice } = base;
   const commands = [...builtInCommands(ctx.assistant, services.activity), ...voice.commands];
@@ -114,7 +115,6 @@ function gatewayOf(shared: Shared, base: Base): Gateway {
     triggers: new Triggers(services.policy),
     history: historyOf(shared, services),
     mediaIndex,
-    download: environment.download,
     typing,
     calls: voice.service,
     status,
@@ -210,7 +210,7 @@ export async function startDiscord(
   };
   const refused = (cause: unknown): void => {
     ctx.log.warn('discord.control_refused', {
-      reason: cause instanceof Error ? cause.message : String(cause),
+      reason: messageOf(cause),
     });
   };
   const wired = wire({ ctx, environment, report, post, refused }, link);

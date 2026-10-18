@@ -9,6 +9,7 @@ import {
 import type { AttachedRuntime } from './runtime-directory-types';
 import type { CommandDirectory } from './runtime-command-admission';
 import { canonicalRuntimeInput } from './runtime-receipts';
+import { messageOf } from '@smarteverything/logging';
 interface Dispatch {
   readonly ports: CommandDirectory;
   readonly input: AiNativeCommandWrite;
@@ -22,7 +23,7 @@ export async function dispatchPreparedCommand(dispatch: Dispatch): Promise<AiNat
   try {
     authorize();
   } catch (cause) {
-    reason = cause instanceof Error ? cause.message : 'The initiating authority was revoked.';
+    reason = messageOf(cause);
   }
   if (reason !== null && reason.length > 2000)
     throw new ApiError(

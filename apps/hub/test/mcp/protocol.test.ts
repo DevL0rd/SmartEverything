@@ -1,55 +1,21 @@
 import { API_ENDPOINTS, MCP_TOOLS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import {
-  INCOMING,
-  isRequest,
-  isSupportedVersion,
-  negotiatedVersion,
-} from '../../src/extensions/mcp/protocol';
 import { TOOLS } from '../../src/extensions/mcp/tools';
+import { PLUGIN_ONLY_TOOLS } from '../../src/extensions/mcp/tools/registry';
 import { bootServer, verifiedPublicUrl, type Booted } from '../support/booted';
 import { captureLogs } from '../support/logs';
 import { call, temporaryDirectory } from '../support/server';
-import { RPC_ERROR, resultOf, rpc } from './client';
-
-describe('the JSON-RPC message rules', () => {
-  it('echoes a supported protocol version and offers the latest for any other', () => {
-    expect(negotiatedVersion('2025-06-18')).toBe('2025-06-18');
-    expect(negotiatedVersion('2025-03-26')).toBe('2025-03-26');
-    expect(negotiatedVersion('2026-07-28')).toBe('2025-11-25');
-    expect(negotiatedVersion(undefined)).toBe('2025-11-25');
-  });
-
-  it('accepts a missing version header and refuses an unknown one', () => {
-    expect(isSupportedVersion(undefined)).toBe(true);
-    expect(isSupportedVersion('2025-11-25')).toBe(true);
-    expect(isSupportedVersion('2024-11-05')).toBe(false);
-  });
-
-  it('tells requests, notifications and responses apart and refuses batches', () => {
-    const request = INCOMING.parse({ jsonrpc: '2.0', id: 1, method: 'ping' });
-    const notification = INCOMING.parse({ jsonrpc: '2.0', method: 'notifications/initialized' });
-    const response = INCOMING.parse({ jsonrpc: '2.0', id: 1, result: {} });
-    expect([isRequest(request), isRequest(notification), isRequest(response)]).toStrictEqual([
-      true,
-      false,
-      false,
-    ]);
-    expect(INCOMING.safeParse([{ jsonrpc: '2.0', id: 1, method: 'ping' }]).success).toBe(false);
-    expect(INCOMING.safeParse({ jsonrpc: '1.0', id: 1, method: 'ping' }).success).toBe(false);
-  });
-});
+import { RPC_ERROR, callTool, initialize, resultOf, rpc } from './client';
 
 describe('the served tool catalogue', () => {
   it('offers exactly the tools the app describes, with the same words and read-only hints', () => {
-    const ANNOTATIONS = z.object({ readOnlyHint: z.boolean() });
     expect(
       TOOLS.map((tool) => ({
-        name: tool.listing['name'],
-        title: tool.listing['title'],
-        description: tool.listing['description'],
-        readOnly: ANNOTATIONS.parse(tool.listing['annotations']).readOnlyHint,
+        name: tool.listing.name,
+        title: tool.listing.title,
+        description: tool.listing.description,
+        readOnly: tool.listing.annotations.readOnlyHint,
       })),
     ).toStrictEqual(
       MCP_TOOLS.map((tool) => ({
@@ -61,6 +27,11 @@ describe('the served tool catalogue', () => {
     );
   });
 });
+
+const STREAMABLE = {
+  'content-type': 'application/json',
+  accept: 'application/json, text/event-stream',
+} as const;
 
 describe('the MCP endpoint', () => {
   let directory: { path: string; remove: () => Promise<void> };
@@ -90,20 +61,13 @@ describe('the MCP endpoint', () => {
   }
 
   it('initializes with a personal token and records when the token was used', async () => {
-    const result = await resultOf(
-      await rpc(booted.base, token, {
-        method: 'initialize',
-        params: { protocolVersion: '2025-11-25', capabilities: {} },
-      }),
-    );
+    const result = await resultOf(await rpc(booted.base, token, initialize()));
     expect(result).toMatchObject({
       protocolVersion: '2025-11-25',
       capabilities: { tools: { listChanged: true } },
       serverInfo: { name: 'smarteverything', title: 'SmartEverything' },
     });
-    const later = await resultOf(
-      await rpc(booted.base, token, { method: 'initialize', params: { protocolVersion: '1999' } }),
-    );
+    const later = await resultOf(await rpc(booted.base, token, initialize('1999')));
     expect(later['protocolVersion']).toBe('2025-11-25');
     const tokens = API_ENDPOINTS.listMcpTokens.response.parse(
       (await call(booted.base, booted.owner, { method: 'GET', path: '/api/mcp/tokens' })).body,
@@ -115,14 +79,14 @@ describe('the MCP endpoint', () => {
     expect(await resultOf(await rpc(booted.base, token, { method: 'ping' }))).toStrictEqual({});
     const notification = await fetch(`${booted.base}/mcp`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { ...STREAMABLE, authorization: `Bearer ${token}` },
       body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
     });
     expect(notification.status).toBe(202);
     expect(await notification.text()).toBe('');
     const reply = await fetch(`${booted.base}/mcp`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: { ...STREAMABLE, authorization: `Bearer ${token}` },
       body: JSON.stringify({ jsonrpc: '2.0', id: 4, result: {} }),
     });
     expect(reply.status).toBe(202);
@@ -134,8 +98,7 @@ describe('the MCP endpoint', () => {
       method: 'DELETE',
       headers: { authorization: `Bearer ${token}` },
     });
-    expect(deleted.status).toBe(405);
-    expect(deleted.headers.get('allow')).toBe('GET, POST');
+    expect(deleted.status).toBe(200);
   });
 
   it('refuses unsupported versions, malformed bodies, unknown methods and unknown tools', async () => {
@@ -148,33 +111,23 @@ describe('the MCP endpoint', () => {
       },
     );
     expect(version.status).toBe(400);
-    expect((await errorOf(version)).message).toContain(
-      'Unsupported MCP-Protocol-Version 2024-01-01',
-    );
-    const send = (body: string): Promise<Response> =>
-      fetch(`${booted.base}/mcp`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body,
-      });
-    const broken = await send('{');
+    expect((await errorOf(version)).message).toContain('Unsupported protocol version: 2024-01-01');
+    const broken = await fetch(`${booted.base}/mcp`, {
+      method: 'POST',
+      headers: { ...STREAMABLE, authorization: `Bearer ${token}` },
+      body: '{',
+    });
     expect(broken.status).toBe(400);
     expect((await errorOf(broken)).code).toBe(-32700);
-    const batch = await send(JSON.stringify([{ jsonrpc: '2.0', id: 1, method: 'ping' }]));
-    expect(batch.status).toBe(400);
-    expect((await errorOf(batch)).code).toBe(-32600);
     const method = await rpc(booted.base, token, { method: 'prompts/list' });
-    expect(await errorOf(method)).toStrictEqual({
-      code: -32601,
-      message: 'This server does not answer prompts/list',
-    });
+    expect((await errorOf(method)).code).toBe(-32601);
     const tool = await rpc(booted.base, token, { method: 'tools/call', params: { name: 'nope' } });
-    expect(await errorOf(tool)).toStrictEqual({ code: -32602, message: 'Unknown tool: nope' });
-    const nameless = await rpc(booted.base, token, { method: 'tools/call', params: {} });
-    expect(await errorOf(nameless)).toStrictEqual({
+    expect(await errorOf(tool)).toStrictEqual({
       code: -32602,
-      message: 'tools/call needs a tool name',
+      message: 'MCP error -32602: Unknown tool: nope',
     });
+    const nameless = await rpc(booted.base, token, { method: 'tools/call', params: {} });
+    expect((await errorOf(nameless)).message).toContain('name');
   });
 
   it('lists every tool with an object schema and honest annotations', async () => {
@@ -187,25 +140,45 @@ describe('the MCP endpoint', () => {
         }),
       )
       .parse((await resultOf(await rpc(booted.base, token, { method: 'tools/list' })))['tools']);
-    expect(tools.map((tool) => tool.name)).toStrictEqual(MCP_TOOLS.map((tool) => tool.name));
+    expect(tools.map((tool) => tool.name)).toStrictEqual(
+      MCP_TOOLS.map((tool) => tool.name).filter((name) => !PLUGIN_ONLY_TOOLS.has(name)),
+    );
     expect(
       tools.filter((tool) => tool.annotations.destructiveHint).map((tool) => tool.name),
     ).toStrictEqual([
-      'edit_room',
+      'control_device_target',
       'press_remote_button',
       'control_devices',
       'run_scene',
-      'delete_transcripts',
-      'edit_scene',
-      'edit_automation',
-      'schedule',
-      'log_health',
-      'edit_food',
-      'edit_person',
-      'edit_talk_channel',
-      'edit_chat',
-      'call_operation',
+      'edit_project_files',
+      'clear_preview_data',
+      'end_process',
+      'set_computer_system',
+      'edit_computer_files',
+      'edit_claude_session',
     ]);
+    expect(
+      tools.some((tool) => tool.annotations.destructiveHint && tool.annotations.readOnlyHint),
+    ).toBe(false);
+  });
+
+  it('lists exactly the registry listings, unchanged by the protocol layer', async () => {
+    const listed = z
+      .array(z.record(z.string(), z.unknown()))
+      .parse((await resultOf(await rpc(booted.base, token, { method: 'tools/list' })))['tools']);
+    expect(listed).toEqual(
+      TOOLS.filter((tool) => !PLUGIN_ONLY_TOOLS.has(tool.name)).map((tool) => tool.listing),
+    );
+  });
+
+  it('answers a tool call as JSON text and a refusal as an error result with its code', async () => {
+    const ok = await callTool(booted.base, token, 'get_home', {});
+    expect(ok.isError).toBe(false);
+    const refused = await callTool(booted.base, token, 'ai_inbox_post', {});
+    expect(refused.isError).toBe(true);
+    expect(JSON.stringify(refused.content)).toContain(
+      'forbidden: ai_inbox_post is only for a plugin',
+    );
   });
 
   it('refuses a revoked personal token', async () => {

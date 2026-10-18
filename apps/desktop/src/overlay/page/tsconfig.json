@@ -1,0 +1,26 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
+    "rootDir": "../../..",
+    "tsBuildInfoFile": "../../../dist/overlay-page.tsbuildinfo"
+  },
+  "include": [
+    "./*.ts",
+    "../overlay-messages.ts",
+    "../overlay-render.ts",
+    "../overlay-motion.ts",
+    "../overlay-width.ts",
+    "../overlay-keys.ts",
+    "../overlay-icons.ts"
+  ],
+  "exclude": [],
+  "references": [
+    {
+      "path": "../../../../../packages/logging"
+    },
+    {
+      "path": "../../../../../packages/domain"
+    }
+  ]
+}

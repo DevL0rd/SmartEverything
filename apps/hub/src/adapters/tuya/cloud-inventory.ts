@@ -20,7 +20,10 @@ import {
   type SmartLifeFacts,
 } from '@smarteverything/tuya';
 import type { z } from 'zod';
+import { mapBounded, type LoadOnce } from './bounded';
 import type { TuyaCloud } from './cloud-client';
+
+export const CLOUD_CONCURRENCY = 4;
 
 export interface LoadedDevice {
   readonly cloud: CloudDevice;
@@ -79,13 +82,26 @@ export async function listDevices(
   }
 }
 
-interface LoadedSpecification {
+export interface LoadedSpecification {
   readonly points: readonly DataPoint[];
   readonly rejected: readonly RejectedDataPoint[];
   readonly specificationPublished: boolean;
 }
 
-async function specificationOf(
+type Specifications = LoadOnce<LoadedSpecification>;
+
+function specificationOf(
+  cloud: TuyaCloud,
+  device: CloudDevice,
+  log: Logger,
+  specifications: Specifications,
+): Promise<LoadedSpecification> {
+  return specifications.get(`${device.id}/${device.product_id}`, () =>
+    readSpecification(cloud, device, log),
+  );
+}
+
+async function readSpecification(
   cloud: TuyaCloud,
   device: CloudDevice,
   log: Logger,
@@ -119,14 +135,17 @@ async function homeRooms(
     { method: 'GET', path: CLOUD_PATHS.rooms(homeId) },
     ROOMS,
   );
-  for (const room of listed.rooms) {
-    const members = await cloud.call(
+  const memberships = await mapBounded(listed.rooms, CLOUD_CONCURRENCY, async (room) => ({
+    name: room.name,
+    members: await cloud.call(
       `listing the devices in room ${room.room_id}`,
       { method: 'GET', path: CLOUD_PATHS.roomDevices(homeId, room.room_id) },
       ROOM_DEVICES,
-    );
+    ),
+  }));
+  for (const { name, members } of memberships) {
     for (const member of members) {
-      rooms.set(member.id, room.name);
+      rooms.set(member.id, name);
     }
   }
 }
@@ -167,16 +186,16 @@ async function remotesOf(
       { method: 'GET', path: CLOUD_PATHS.irRemotes(blaster.id) },
       IR_REMOTES,
     );
-    const loaded: LoadedRemote[] = [];
-    for (const remote of remotes) {
-      const keys = await cloud.call(
+    return await mapBounded(remotes, CLOUD_CONCURRENCY, async (remote) => ({
+      blaster,
+      remote,
+      keys: await cloud.call(
         `listing the keys of IR remote ${remote.remote_id}`,
         { method: 'GET', path: CLOUD_PATHS.irKeys(blaster.id, remote.remote_id) },
         IR_REMOTE_KEYS,
-      );
-      loaded.push({ blaster, remote, keys, room });
-    }
-    return loaded;
+      ),
+      room,
+    }));
   } catch (error) {
     if (!(error instanceof TuyaCloudError) || error.kind !== 'permission') {
       throw error;
@@ -194,24 +213,27 @@ export async function loadInventory(
   cloud: TuyaCloud,
   userId: string,
   log: Logger,
+  specifications: Specifications,
 ): Promise<LoadedInventory> {
   const cloudDevices = await listDevices(cloud, userId);
   const rooms = await roomsOf(cloud, userId, log);
-  const remotes: LoadedRemote[] = [];
-  for (const blaster of cloudDevices.filter((device) => kindOf(device.category) === 'ir_blaster')) {
-    remotes.push(...(await remotesOf(cloud, blaster, rooms.get(blaster.id) ?? null, log)));
-  }
+  const blasters = cloudDevices.filter((device) => kindOf(device.category) === 'ir_blaster');
+  const remotes = (
+    await mapBounded(blasters, CLOUD_CONCURRENCY, (blaster) =>
+      remotesOf(cloud, blaster, rooms.get(blaster.id) ?? null, log),
+    )
+  ).flat();
   const remoteIds = new Set(remotes.map((loaded) => loaded.remote.remote_id));
-  const devices: LoadedDevice[] = [];
-  for (const cloudDevice of cloudDevices.filter((device) => !remoteIds.has(device.id))) {
-    const specification = await specificationOf(cloud, cloudDevice, log);
-    devices.push({
+  const devices = await mapBounded(
+    cloudDevices.filter((device) => !remoteIds.has(device.id)),
+    CLOUD_CONCURRENCY,
+    async (cloudDevice): Promise<LoadedDevice> => ({
       cloud: cloudDevice,
-      ...specification,
+      ...(await specificationOf(cloud, cloudDevice, log, specifications)),
       room: rooms.get(cloudDevice.id) ?? null,
       smartLife: null,
-    });
-  }
+    }),
+  );
   return {
     devices,
     remotes: remotes.map((loaded) => ({

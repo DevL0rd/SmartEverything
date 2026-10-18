@@ -18,13 +18,10 @@ import {
   admitConsumerExecution,
 } from './supplier-inference';
 
-const MAX_CALLS = 4;
-const CALL_TIMEOUT_MS = 15 * 60_000;
 export function subscriptionConsumerRoute(
   context: ServerContext,
   service: HarnessService,
 ): RawRoute {
-  const counts = new Map<string, number>();
   return {
     method: 'POST',
     path: '/api/ai/harness/subscription-inference',
@@ -36,19 +33,7 @@ export function subscriptionConsumerRoute(
         admitConsumerCall(context, service, request, body);
       };
       admit();
-      const key = `${body.device_id}:${body.generation}:${body.runtime_instance}`;
-      const count = counts.get(key) ?? 0;
-      if (count >= MAX_CALLS)
-        throw new ApiError(
-          'conflict',
-          'This execution host has no available bounded model relay slot.',
-        );
-      counts.set(key, count + 1);
-      try {
-        await streamConsumerCall({ service, body, admit }, request, response);
-      } finally {
-        releaseCall(counts, key);
-      }
+      await streamConsumerCall({ service, body, admit }, request, response);
     },
   };
 }
@@ -103,12 +88,11 @@ async function streamConsumerCall(
 ): Promise<void> {
   const { service, admit } = input;
   const controller = new AbortController();
-  const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(CALL_TIMEOUT_MS)]);
   const disconnected = (): void => {
     controller.abort('Execution model relay disconnected; completion is uncertain.');
   };
   const revalidate = (): void => {
-    if (signal.aborted) return;
+    if (controller.signal.aborted) return;
     try {
       admit();
     } catch (cause) {
@@ -125,8 +109,8 @@ async function streamConsumerCall(
   ];
   try {
     if ((request.destroyed && !request.complete) || response.destroyed) disconnected();
-    signal.throwIfAborted();
-    await forwardResults(input, response, signal);
+    controller.signal.throwIfAborted();
+    await forwardResults(input, response, controller.signal);
     response.end();
   } finally {
     controller.abort('Execution model relay released.');
@@ -163,12 +147,4 @@ async function forwardResults(
     if (!response.write(frame)) await once(response, 'drain', { signal });
   }
   admit();
-}
-
-function releaseCall(counts: Map<string, number>, key: string): void {
-  const current = counts.get(key);
-  if (current === undefined)
-    throw new ApiError('internal', 'The model relay lost its owned call slot.');
-  if (current === 1) counts.delete(key);
-  else counts.set(key, current - 1);
 }

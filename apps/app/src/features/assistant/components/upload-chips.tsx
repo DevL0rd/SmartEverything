@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Image, View } from 'react-native';
+import { Image, ScrollView } from 'react-native';
 import { useEffect } from 'react';
 import Animated, {
   FadeIn,
@@ -9,36 +9,32 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Icon } from '../../../components/icon';
-import { IconButton } from '../../../components/icon-button';
-import { Text } from '../../../components/text';
-import { cn } from '../../../design/cn';
 import { entering, exiting, useMotion } from '../../../design/motion';
 import { percent } from '../../../format/number';
 import { removeUpload, retryUpload, useUploads, type Upload } from '../data/uploads';
-import { Button } from '../../../components/button';
+import { ComposerChip } from './composer-chip';
 
-function Thumb({ upload }: { readonly upload: Upload }): ReactNode {
+function Leading({ upload }: { readonly upload: Upload }): ReactNode {
   if (upload.preview !== null) {
     return (
       <Image
+        resizeMethod="resize"
         source={{ uri: upload.preview }}
         accessibilityLabel={upload.name}
-        className="size-10 rounded-md"
+        className="size-6 rounded-sm"
       />
     );
   }
-  return (
-    <View className="size-10 items-center justify-center rounded-md bg-primary/15">
-      <Icon name="fileText" size={20} tone="primary" />
-    </View>
-  );
+  return <Icon name={upload.mime.startsWith('image/') ? 'image' : 'fileText'} size={16} />;
 }
 
-const STATE_TEXT = {
-  uploading: (upload: Upload) => percent(upload.progress),
-  done: () => 'Ready',
-  failed: () => 'Failed',
-} as const;
+const UNSUPPORTED_TEXT = 'Not readable by this model';
+
+function metaOf(upload: Upload, unsupported: boolean): string {
+  if (upload.failure !== null) return upload.failure.text;
+  if (unsupported) return UNSUPPORTED_TEXT;
+  return upload.state === 'uploading' ? percent(upload.progress) : 'Ready';
+}
 
 function Progress({ value }: { readonly value: number }): ReactNode {
   const { reduced } = useMotion();
@@ -55,55 +51,59 @@ function Progress({ value }: { readonly value: number }): ReactNode {
   );
 }
 
-function Chip({ upload }: { readonly upload: Upload }): ReactNode {
+function Chip({
+  upload,
+  unsupported,
+}: {
+  readonly upload: Upload;
+  readonly unsupported: boolean;
+}): ReactNode {
   const motion = useMotion();
   return (
     <Animated.View
       {...entering(motion, FadeIn.duration(150))}
       {...exiting(motion, FadeOut.duration(120))}
-      className={cn(
-        'w-56 flex-row items-center gap-2 overflow-hidden rounded-lg border-hairline bg-surface-2 py-1 pl-1',
-        upload.state === 'failed' ? 'border-critical' : 'border-outline-variant',
-      )}
+      className="max-w-full"
     >
-      <Thumb upload={upload} />
-      <View className="min-w-0 flex-1">
-        <Text variant="caption" numberOfLines={1}>
-          {upload.name}
-        </Text>
-        <Text variant="caption" tone={upload.state === 'failed' ? 'critical' : 'variant'}>
-          {STATE_TEXT[upload.state](upload)}
-        </Text>
-      </View>
-      {upload.state === 'failed' ? (
-        <Button
-          label="Retry"
-          variant="text"
-          onPress={() => {
-            retryUpload(upload.key);
-          }}
-        />
-      ) : null}
-      <IconButton
-        icon="close"
-        label={`Remove ${upload.name}`}
-        onPress={() => {
+      <ComposerChip
+        leading={<Leading upload={upload} />}
+        label={upload.name}
+        meta={metaOf(upload, unsupported)}
+        failed={upload.failure !== null || unsupported}
+        retry={
+          upload.failure?.retryable === true
+            ? (): void => {
+                retryUpload(upload.key);
+              }
+            : null
+        }
+        removeLabel={`Remove ${upload.name}`}
+        onRemove={() => {
           removeUpload(upload.key);
         }}
-      />
-      {upload.state === 'uploading' ? <Progress value={upload.progress} /> : null}
+      >
+        {upload.state === 'uploading' ? <Progress value={upload.progress} /> : null}
+      </ComposerChip>
     </Animated.View>
   );
 }
 
-export function UploadChips(): ReactNode {
+export function UploadChips({
+  unsupported,
+}: {
+  readonly unsupported: ReadonlySet<string>;
+}): ReactNode {
   const uploads = useUploads();
   if (uploads.length === 0) return null;
   return (
-    <View className="flex-row flex-wrap gap-2">
+    <ScrollView
+      className="max-h-20 shrink-0 grow-0"
+      contentContainerClassName="flex-row flex-wrap gap-2 px-1"
+      keyboardShouldPersistTaps="handled"
+    >
       {uploads.map((upload) => (
-        <Chip key={upload.key} upload={upload} />
+        <Chip key={upload.key} upload={upload} unsupported={unsupported.has(upload.key)} />
       ))}
-    </View>
+    </ScrollView>
   );
 }

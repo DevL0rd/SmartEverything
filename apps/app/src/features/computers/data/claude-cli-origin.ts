@@ -8,7 +8,7 @@ export class ClaudeCliOriginChangedError extends Error {
   override readonly name = 'ClaudeCliOriginChangedError';
   constructor(readonly operationId: string | undefined) {
     super(
-      `The originating server, client, profile or retained operation changed. This CLI reply was retired; check the original operation ${operationId ?? 'on its originating server'} before starting it again.`,
+      `The chat changed before the reply arrived. Check the session before trying again.${operationId === undefined ? '' : ` Operation ${operationId}.`}`,
     );
   }
 }
@@ -22,7 +22,7 @@ export function useClaudeCliOrigin(): ClaudeCliOrigin {
   const session = useSession();
   const store = useEntityStore();
   if (state.status !== 'paired')
-    throw new ApiError('conflict', 'Owned CLI sessions require a paired server.');
+    throw new ApiError('conflict', 'Pair with your home to use Claude sessions.');
   const connection = state.connection;
   const origin = session.client;
   return {

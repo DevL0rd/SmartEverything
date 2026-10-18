@@ -14,7 +14,7 @@ import {
 } from '@smarteverything/tuya';
 import type { Logger } from '@smarteverything/logging';
 import type { LoadedDevice } from './cloud-inventory';
-import { describeLocalError } from './local-link';
+import { messageOf } from '@smarteverything/logging';
 
 export interface DeviceRecord {
   readonly cloud: CloudDevice;
@@ -82,7 +82,7 @@ export function stateUpdates(
     log.warn('tuya.value_unreadable', {
       deviceId: record.cloud.id,
       code: problem.code,
-      reason: describeLocalError(problem.error),
+      reason: messageOf(problem.error),
     });
   }
   return decoded.values.map((value) => ({

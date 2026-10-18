@@ -1,18 +1,16 @@
-import { executionRole, withExecutionAuthorities } from '../assistant/execution-authority';
-import { effectAuthorities, withEffectTool } from '../harness/effect-authority';
-import {
-  SCHEDULED_AI_STEPS_REASON,
-  type PluginOrigin,
-  type ScheduleRow,
-  type ScheduleStep,
-} from '@smarteverything/domain';
+import { executionRole, withExecutionAuthority } from '../assistant/turn-authority';
+import { hasOwnerDevice } from '../server/person-access';
+import { effectAuthority, withEffectTool } from '../harness/effect-authority';
+import type { PluginOrigin, ScheduleRow, ScheduleStep } from '@smarteverything/domain';
 import type { ToolCaller } from '../ai-tools/hub-tool';
 import { limitsOf } from '../ai-tools/plugin-turn';
 import type { ToolHub } from '../ai-tools/tool-hub';
-import { describeError } from '../commands/executor';
 import type { Store } from '../store/store';
+import { failureLine } from '@smarteverything/logging';
 
-export interface AiTurnInput {
+export const NO_AI_ENGINE = 'No AI chat engine is set up';
+
+interface AiTurnInput {
   readonly profileId: string;
   readonly chatId: string | null;
   readonly title: string;
@@ -32,15 +30,7 @@ export interface StepOutcome {
 
 type RunnableStep = Exclude<ScheduleStep, { kind: 'wait' }>;
 
-export const DEFAULT_SCHEDULE_TITLE = 'Scheduled';
-
-class RemovedDeviceError extends Error {
-  override readonly name = 'RemovedDeviceError';
-
-  constructor() {
-    super('It was scheduled from a device that has since been removed.');
-  }
-}
+const DEFAULT_SCHEDULE_TITLE = 'Scheduled';
 
 function failed(line: string, detail: string): StepOutcome {
   return { outcome: 'failed', line, detail };
@@ -67,33 +57,28 @@ export class StepRunner {
         ? await this.tool(step, row, line)
         : await this.aiTurn(step, row, line);
     } catch (cause) {
-      return failed(line, describeError(cause));
+      return failed(line, failureLine(cause));
     }
   }
 
   private callerOf(row: ScheduleRow): ToolCaller {
-    const authorities = effectAuthorities(this.store, 'schedule', row.id);
-    const authority = authorities[0];
+    const authority = effectAuthority(this.store, 'schedule', row.id);
     if (authority !== undefined)
       return {
         authority,
         profileId: authority.profile_id,
-        role: executionRole(this.store, authority),
+        role: executionRole(authority),
         chatId: this.store.assistantEvents.event(authority.event_id).chat_id,
         clientId: authority.client_id,
         via: 'schedule',
         ...limitsOf(authority.requester ?? undefined, authority.plugin_id ?? undefined),
       };
-    if (row.client_id === null) {
-      throw new RemovedDeviceError();
-    }
-    const client = this.store.clients.byId(row.client_id);
     return {
       profileId: row.profile_id,
-      role: client.role,
+      role: hasOwnerDevice(this.store, row.profile_id) ? 'owner' : 'member',
       chatId: null,
       via: 'schedule',
-      clientId: client.id,
+      clientId: null,
       ...limitsOf(row.origin?.requester, row.origin?.plugin_id),
     };
   }
@@ -103,11 +88,10 @@ export class StepRunner {
     row: ScheduleRow,
     line: string,
   ): Promise<StepOutcome> {
-    const authorities = effectAuthorities(this.store, 'schedule', row.id);
     const result = await withEffectTool(
       this.store,
-      authorities,
-      { name: step.tool, args: step.args },
+      effectAuthority(this.store, 'schedule', row.id),
+      step.tool,
       () => this.tools.call(step.tool, step.args, this.callerOf(row)),
     );
     const error = result.response['error'];
@@ -123,11 +107,10 @@ export class StepRunner {
     line: string,
   ): Promise<StepOutcome> {
     if (this.ai === null) {
-      return failed(line, SCHEDULED_AI_STEPS_REASON);
+      return failed(line, NO_AI_ENGINE);
     }
     const ai = this.ai;
-    const authorities = effectAuthorities(this.store, 'schedule', row.id);
-    const turn = await withExecutionAuthorities(authorities, () =>
+    const turn = await withExecutionAuthority(effectAuthority(this.store, 'schedule', row.id), () =>
       ai.run({
         profileId: row.profile_id,
         chatId: step.chatId,

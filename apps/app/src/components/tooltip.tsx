@@ -38,7 +38,7 @@ export function Tooltip({ text, placement = 'below' }: TooltipProps): ReactNode 
         PLACEMENT[placement],
       )}
     >
-      <Text variant="caption" className="text-bg" numberOfLines={1}>
+      <Text variant="caption" tone="inverse" numberOfLines={1}>
         {text}
       </Text>
     </View>

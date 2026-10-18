@@ -8,9 +8,8 @@ import type { ContentPart } from './chat-types';
 import type { OpenRouterClient } from './client';
 import { openRouterError } from './errors';
 import { OR_USAGE } from './wire';
+import { REQUEST_BYTES_MAX, requestTimeoutMs, shrinkMedia } from './media-shrink';
 
-const TIMEOUT_MS = 90_000;
-const INPUT_BYTES_MAX = 18 * 1024 * 1024;
 const RESPONSE_BYTES_MAX = 256 * 1024;
 const MAX_ANSWER_TOKENS = 2048;
 
@@ -20,40 +19,59 @@ const ANSWER = z.object({
   usage: OR_USAGE.extend({ cost: z.number().nonnegative().nullish() }).nullish(),
 });
 
-function mediaPart(input: MediaNoteInput): ContentPart {
-  const url = `data:${input.mime};base64,${input.data.toString('base64')}`;
-  if (input.mime.startsWith('image/')) return { type: 'image_url', image_url: { url } };
-  if (input.mime.startsWith('video/')) return { type: 'video_url', video_url: { url } };
-  throw openRouterError('bad_request', `unsupported caption media type ${input.mime}`);
+function mediaPart(media: { readonly mime: string; readonly data: Buffer }): ContentPart {
+  const url = `data:${media.mime};base64,${media.data.toString('base64')}`;
+  if (media.mime.startsWith('image/')) return { type: 'image_url', image_url: { url } };
+  if (media.mime.startsWith('video/')) return { type: 'video_url', video_url: { url } };
+  throw openRouterError('bad_request', `unsupported caption media type ${media.mime}`);
+}
+
+async function requestMedia(
+  input: MediaNoteInput,
+  limit: number,
+): Promise<{ readonly mime: string; readonly data: Buffer }> {
+  if (input.data.byteLength <= limit) return input;
+  const smaller = await shrinkMedia(input.data, input.mime, limit);
+  if (smaller === undefined)
+    throw openRouterError('bad_request', 'caption media is too large to describe in one request');
+  return smaller;
 }
 
 export class OpenRouterMediaNotes implements MediaNoteProvider {
-  constructor(private readonly client: OpenRouterClient) {}
+  constructor(
+    private readonly client: OpenRouterClient,
+    private readonly requestBytesMax: number = REQUEST_BYTES_MAX,
+  ) {}
 
   async describe(input: MediaNoteInput): Promise<MediaNoteAnswer> {
-    if (input.data.byteLength > INPUT_BYTES_MAX)
-      throw openRouterError('bad_request', 'caption media exceeds the 18 MiB limit');
-    const answer = await this.client.json(
-      {
-        path: '/chat/completions',
-        method: 'POST',
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        responseBytesMax: RESPONSE_BYTES_MAX,
-        body: {
-          model: input.model,
-          messages: [
-            { role: 'user', content: [{ type: 'text', text: input.prompt }, mediaPart(input)] },
-          ],
-          stream: false,
-          usage: { include: true },
-          temperature: 0,
-          max_tokens: MAX_ANSWER_TOKENS,
-          reasoning: { enabled: false },
-          provider: { allow_fallbacks: false },
+    const media = await requestMedia(input, this.requestBytesMax);
+    const body = {
+      model: input.model,
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: input.prompt }, mediaPart(media)] },
+      ],
+      stream: false,
+      usage: { include: true },
+      temperature: 0,
+      max_tokens: MAX_ANSWER_TOKENS,
+      reasoning: { enabled: false },
+      provider: { allow_fallbacks: false },
+    };
+    const answer = await this.client.retrying((signal) =>
+      this.client.json(
+        {
+          path: '/chat/completions',
+          method: 'POST',
+          signal: AbortSignal.any([
+            signal,
+            AbortSignal.timeout(requestTimeoutMs(media.data.byteLength)),
+          ]),
+          responseBytesMax: RESPONSE_BYTES_MAX,
+          body,
         },
-      },
-      ANSWER,
-      'media caption',
+        ANSWER,
+        'media caption',
+      ),
     );
     const [choice] = answer.choices;
     if (choice === undefined) throw openRouterError('unreadable', 'caption response has no choice');

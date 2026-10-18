@@ -12,6 +12,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import expo.modules.healthconnect.ServiceStartRefused
+import expo.modules.healthconnect.overlay.OverlayControl
 
 class ProjectionRefused : Exception("Android did not hand over the screen; share the screen again and allow it in the system prompt")
 
@@ -24,7 +25,7 @@ class CallService : Service() {
     getSystemService(NotificationManager::class.java)
       .createNotificationChannel(NotificationChannel(CHANNEL, "Calls", NotificationManager.IMPORTANCE_LOW))
     try {
-      show(CallNotice.state() ?: CallNoticeState(System.currentTimeMillis(), muted = false, screen = false, camera = false))
+      show(CallNotice.state() ?: CallNoticeState.fresh())
     } catch (failure: SecurityException) {
       refused(failure)
     } catch (failure: IllegalStateException) {
@@ -86,9 +87,13 @@ class CallService : Service() {
       .setUsesChronometer(true)
       .setContentIntent(openApp())
       .setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
-      .addAction(action(if (state.muted) "Unmute" else "Mute", CallActions.MUTE))
-    if (state.screen) builder.addAction(action("Stop sharing", CallActions.STOP_SCREEN))
-    return builder.addAction(action("End", CallActions.END)).build()
+      .addAction(action(if (state.muted) "Unmute" else "Mute", OverlayControl.Mute))
+    if (state.screen) {
+      builder.addAction(action("Stop sharing", OverlayControl.StopShare))
+    } else if (state.speaker != null) {
+      builder.addAction(action(if (state.speaker) "Speaker off" else "Speaker", OverlayControl.Speaker))
+    }
+    return builder.addAction(action("End", OverlayControl.End)).build()
   }
 
   private fun subtitle(state: CallNoticeState): String = when {
@@ -97,13 +102,13 @@ class CallService : Service() {
     else -> "Tap to return to the call"
   }
 
-  private fun action(label: String, name: String): Notification.Action =
-    Notification.Action.Builder(null, label, CallActions.pending(this, name)).build()
+  private fun action(label: String, control: OverlayControl): Notification.Action =
+    Notification.Action.Builder(null, label, CallActions.pending(this, control)).build()
 
   private fun openApp(): PendingIntent = PendingIntent.getActivity(
     this,
     0,
-    packageManager.getLaunchIntentForPackage(packageName),
+    AssistantLink.call(this, AssistantCalls.ASSIST),
     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
   )
 

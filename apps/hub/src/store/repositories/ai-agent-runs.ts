@@ -18,7 +18,7 @@ const TERMINAL: ReadonlySet<AiAgentState> = new Set([
   'failed',
 ]);
 const TRACE_LIMIT = 200;
-export function agentSourceIdentity(run: AiAgentRun): string {
+function agentSourceIdentity(run: AiAgentRun): string {
   return JSON.stringify([
     run.parent_chat_id,
     run.source,
@@ -205,7 +205,7 @@ export class AiAgentRunsRepository {
     return retained;
   }
 }
-export class AgentRunBindingError extends Error {
+class AgentRunBindingError extends Error {
   override readonly name = 'AgentRunBindingError';
   constructor(readonly runId: string) {
     super(`Agent run ${runId} cannot change its source or owner binding.`);

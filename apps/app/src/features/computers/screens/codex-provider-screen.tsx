@@ -9,6 +9,7 @@ import {
   useComputerRuntimeChange,
   useRuntimeSupported,
 } from '../data/computer-runtime';
+import { background } from '@smarteverything/logging';
 export function ComputerCodexProviderScreen({
   deviceId,
 }: {
@@ -30,7 +31,7 @@ export function ComputerCodexProviderScreen({
             error={status.error}
             pending={status.isPending}
             retry={() => {
-              void status.refetch();
+              background(status.refetch(), 'status.refetch_failed');
             }}
           />
           {status.data?.settings.runtime !== 'codex' ? null : (

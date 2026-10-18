@@ -2,6 +2,7 @@ import {
   API_ENDPOINTS as E,
   PUSH_SERVICE_ACCOUNT,
   type Pairing,
+  type PauseChoiceMs,
   type PushServiceAccount,
   type Role,
 } from '@smarteverything/domain';
@@ -21,6 +22,11 @@ export interface HomeChange {
 export async function updateHome(change: HomeChange): Promise<void> {
   await api().call(E.updateHome, { body: change });
   log.info('home.changed', { fields: Object.keys(change).join(',') });
+}
+
+export async function updateEndOfSpeechPause(pauseMs: PauseChoiceMs): Promise<void> {
+  await api().call(E.updateListeningSettings, { body: { end_of_speech_pause_ms: pauseMs } });
+  log.info('listening.pause_changed', { pauseMs });
 }
 
 export async function createRoom(name: string, position: number): Promise<void> {
@@ -55,11 +61,9 @@ export async function removeClient(clientId: string): Promise<void> {
   log.info('client.removed', { clientId });
 }
 
-export async function startPairing(role: Role): Promise<Pairing> {
-  const pairing = await api().call(E.startPairing, {
-    body: { role, connectionProtocolVersion: 1 },
-  });
-  log.info('pairing.started', { role });
+export async function startPairing(role: Role, profileId: string): Promise<Pairing> {
+  const pairing = await api().call(E.startPairing, { body: { role, profileId } });
+  log.info('pairing.started', { role, profileId });
   return pairing;
 }
 

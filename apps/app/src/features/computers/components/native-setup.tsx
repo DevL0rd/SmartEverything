@@ -1,3 +1,4 @@
+import { Logger, background } from '@smarteverything/logging';
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,12 +14,20 @@ import { List } from '../../../components/section';
 import { notify } from '../../../components/toast-store';
 import { computerAiKey, useNativeStatus } from '../data/computer-ai';
 
+const log = new Logger('app.computers');
 type SetupAction = 'link' | 'unlink';
 
 async function setup(deviceId: string, kind: SetupAction): Promise<void> {
   const params = { deviceId };
-  if (kind === 'link') await api().call(E.installComputerClaudeLink, { params });
-  else await api().call(E.removeComputerClaudeLink, { params });
+  const operation = log.operation('claude_link.setup', { deviceId, kind });
+  try {
+    if (kind === 'link') await api().call(E.installComputerClaudeLink, { params });
+    else await api().call(E.removeComputerClaudeLink, { params });
+    operation.succeeded();
+  } catch (error) {
+    operation.failed(error);
+    throw error;
+  }
 }
 
 function SetupRows({
@@ -35,17 +44,17 @@ function SetupRows({
       title="Attached CLI integration"
       footer={
         native?.link.problem ??
-        'Optional integration for separately attached CLI sessions. Owned CLI chats run through the native provider.'
+        'Optional. Lets Claude sessions you start in the terminal use home tools.'
       }
     >
       <ValueRow
-        title="Native link"
+        title="Home tools link"
         value={native?.link.state.replaceAll('_', ' ') ?? 'Unavailable'}
       />
       {(
         [
-          { id: 'link', title: 'Install or repair native link' },
-          { id: 'unlink', title: 'Remove native link' },
+          { id: 'link', title: 'Install or repair link' },
+          { id: 'unlink', title: 'Remove link' },
         ] as const
       ).map((item) => (
         <ActionRow
@@ -71,9 +80,13 @@ export function NativeSetup({ status }: { readonly status: ComputerAiStatus }): 
   const action = useMutation({
     mutationFn: (kind: SetupAction) => setup(status.device_id, kind),
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: computerAiKey(status.device_id) });
+      background(
+        client.invalidateQueries({ queryKey: computerAiKey(status.device_id) }),
+        'queries.invalidate_failed',
+      );
     },
-    onError: (error) => notify({ message: 'Native setup failed', error, tone: 'critical' }),
+    onError: (error) =>
+      notify({ message: 'Couldn’t set up the link. Try again', error, tone: 'critical' }),
   });
   const disabled = !status.online || action.isPending;
   return (
@@ -82,7 +95,7 @@ export function NativeSetup({ status }: { readonly status: ComputerAiStatus }): 
       <List>
         <NavRow
           title="Attached CLI tools"
-          subtitle="Discover and run verified tools of a currently attached native session"
+          subtitle="Run tools from a Claude session that’s open on this computer"
           disabled={!attachedCliToolsReady(status)}
           onPress={() => {
             showTools(true);

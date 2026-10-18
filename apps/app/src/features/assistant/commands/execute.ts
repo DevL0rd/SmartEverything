@@ -1,5 +1,4 @@
 import { Logger } from '@smarteverything/logging';
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -31,7 +30,7 @@ export async function executeCommand(
     await AsyncStorage.removeItem(key);
     return {
       status: 'rejected',
-      message: CHAT_ERROR_MESSAGE,
+      message: 'Command not run.',
     };
   }
   let outcome: AiHarnessCommandOutcome;
@@ -41,7 +40,7 @@ export async function executeCommand(
     log.error('command.failed', error, { operation_id: body.operation_id });
     outcome = {
       status: 'unknown',
-      message: CHAT_ERROR_MESSAGE,
+      message: 'Couldn’t confirm the command ran.',
     };
   }
   try {
@@ -52,7 +51,7 @@ export async function executeCommand(
     log.error('command.receipt_failed', error, { operation_id: body.operation_id });
     return {
       status: 'unknown',
-      message: CHAT_ERROR_MESSAGE,
+      message: 'Couldn’t confirm the command ran.',
     };
   }
   return outcome;

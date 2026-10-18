@@ -1,18 +1,18 @@
-import { ApiError, type Role, type AiChatRow } from '@smarteverything/domain';
-import type { ChatDirectory, ChatOwner } from './chat-directory';
+import type { AiChatRow } from '@smarteverything/domain';
+import { ownedChat, type ChatDirectory, type ChatOwner } from './chat-directory';
 import type { Store } from '../store/store';
 import type { EngineRegistry } from './engines/registry';
 import type { AssistantFiles } from './files';
 
 export async function removeConversationMessages(
   deps: { readonly store: Store; readonly files: AssistantFiles; readonly engines: EngineRegistry },
-  owner: { readonly profileId: string; readonly role: Role },
+  owner: ChatOwner,
   ids: readonly string[],
 ): Promise<void> {
   const { assistantChat } = deps.store;
   const rows = ids.map((id) => assistantChat.message(id));
-  if (rows.some((row) => row.profile_id !== owner.profileId))
-    throw new ApiError('forbidden', 'Only messages of your own chat can be deleted.');
+  for (const chatId of new Set(rows.map((row) => row.chat_id)))
+    ownedChat(deps.store, owner, chatId);
   for (const chatId of new Set(rows.map((row) => row.chat_id))) {
     const chat = deps.store.aiChats.chat(chatId);
     const engine = deps.engines.forMutation(chat, owner.role);

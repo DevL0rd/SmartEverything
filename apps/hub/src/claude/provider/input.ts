@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ProviderTurn } from '@smarteverything/domain';
+import type { ProviderContent, ProviderTurn } from '@smarteverything/domain';
 
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
@@ -51,7 +52,7 @@ export class ProviderInput implements AsyncIterable<SDKUserMessage> {
   }
 }
 
-function contentOf(content: ProviderTurn['messages'][number]['content']): ContentBlockParam[] {
+function contentOf(content: readonly ProviderContent[]): ContentBlockParam[] {
   return content.map((part) => {
     if (part.type === 'text') {
       return { type: 'text', text: part.text };
@@ -105,6 +106,16 @@ export function userMessageOf(turn: ProviderTurn): SDKUserMessage {
             ])
           : contentOf(message.content),
     },
+  };
+}
+
+export function steerMessageOf(content: readonly ProviderContent[]): SDKUserMessage {
+  return {
+    type: 'user',
+    uuid: randomUUID(),
+    parent_tool_use_id: null,
+    priority: 'next',
+    message: { role: 'user', content: contentOf(content) },
   };
 }
 

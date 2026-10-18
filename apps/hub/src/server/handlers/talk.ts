@@ -7,22 +7,10 @@ import {
 import type { Store } from '../../store/store';
 import { memberLabel } from '../../talk/labels';
 import { recentTalkMessages } from '../../talk/recent-messages';
-import { clientOf, type Caller } from '../auth';
+import { clientOf, ownerOrSelf, type Caller } from '../auth';
+import { assertChannelReach, channelHidden, scopesOfCaller } from '../person-scope';
 import type { ServerContext } from '../context';
-import { DONE_REPLY, bound, type Bound } from '../router';
-
-type TalkRoutes = Record<
-  | 'readTalk'
-  | 'createTalkChannel'
-  | 'updateTalkChannel'
-  | 'removeTalkChannel'
-  | 'setTalkMember'
-  | 'removeTalkMember'
-  | 'listTalkMessages'
-  | 'talkMessageLinks'
-  | 'removeTalkMessage',
-  Bound
->;
+import { DONE_REPLY, bound } from '../router';
 
 interface MemberParams {
   readonly channelId: string;
@@ -41,9 +29,7 @@ function addMember(store: Store, channelId: string, member: TalkNewMember): void
 function mayChange(caller: Caller, params: MemberParams): void {
   const client = clientOf(caller);
   const self = params.memberKind === 'client' && params.memberId === client.id;
-  if (client.role !== 'owner' && !self) {
-    throw new ApiError('forbidden', 'A paired device may change only its own channel membership.');
-  }
+  ownerOrSelf(client.role, self);
 }
 
 function keyOf(params: MemberParams): {
@@ -54,16 +40,14 @@ function keyOf(params: MemberParams): {
   return { channelId: params.channelId, kind: params.memberKind, memberId: params.memberId };
 }
 
-function channelRoutes(
-  context: ServerContext,
-): Pick<TalkRoutes, 'readTalk' | 'createTalkChannel' | 'updateTalkChannel' | 'removeTalkChannel'> {
-  const { store, talk } = context;
-  return {
-    readTalk: bound(E.readTalk, ({ query }) => {
-      const channels = store.talk.channels();
+const channelRoutes = ({ store, talk }: ServerContext) =>
+  ({
+    readTalk: bound(E.readTalk, ({ query, caller }) => {
+      const scope = scopesOfCaller(store, caller)?.channels ?? null;
+      const channels = store.talk.channels().filter((row) => !channelHidden(scope, row.id));
       return {
         channels,
-        members: store.talk.members(),
+        members: store.talk.members().filter((row) => !channelHidden(scope, row.channel_id)),
         messages: recentTalkMessages(store.talk, channels, query.messages),
         ...talk.presence(),
       };
@@ -85,16 +69,13 @@ function channelRoutes(
       await talk.recorder.discard(store.talk.removeChannel(params.channelId));
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
 
-function memberRoutes(
-  context: ServerContext,
-): Pick<TalkRoutes, 'setTalkMember' | 'removeTalkMember'> {
-  const { store } = context;
-  return {
+const memberRoutes = ({ store }: ServerContext) =>
+  ({
     setTalkMember: bound(E.setTalkMember, ({ params, body, caller }) => {
       mayChange(caller, params);
+      assertChannelReach(store, caller, params.channelId);
       return store.talk.setMember(
         keyOf(params),
         body.listening,
@@ -103,21 +84,22 @@ function memberRoutes(
     }),
     removeTalkMember: bound(E.removeTalkMember, ({ params, caller }) => {
       mayChange(caller, params);
+      assertChannelReach(store, caller, params.channelId);
       store.talk.removeMember(keyOf(params));
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
 
-function messageRoutes(
-  context: ServerContext,
-): Pick<TalkRoutes, 'listTalkMessages' | 'talkMessageLinks' | 'removeTalkMessage'> {
-  const { store, talk, links } = context;
-  return {
-    listTalkMessages: bound(E.listTalkMessages, ({ query }) => store.talk.messages(query)),
-    talkMessageLinks: bound(E.talkMessageLinks, ({ body }) =>
+const messageRoutes = ({ store, talk, links }: ServerContext) =>
+  ({
+    listTalkMessages: bound(E.listTalkMessages, ({ query, caller }) => {
+      const scope = scopesOfCaller(store, caller)?.channels ?? null;
+      return store.talk.messages(query).filter((row) => !channelHidden(scope, row.channel_id));
+    }),
+    talkMessageLinks: bound(E.talkMessageLinks, ({ body, caller }) =>
       body.ids.map((id) => {
         const message = store.talk.message(id);
+        assertChannelReach(store, caller, message.channel_id);
         if (message.storage_path === null) {
           throw new ApiError('not_found', `The message ${id} has no saved audio.`);
         }
@@ -128,9 +110,11 @@ function messageRoutes(
       await talk.recorder.discard([store.talk.removeMessage(params.messageId)]);
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
 
-export function talkRoutes(context: ServerContext): TalkRoutes {
-  return { ...channelRoutes(context), ...memberRoutes(context), ...messageRoutes(context) };
-}
+export const talkRoutes = (context: ServerContext) =>
+  ({
+    ...channelRoutes(context),
+    ...memberRoutes(context),
+    ...messageRoutes(context),
+  }) as const;

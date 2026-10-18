@@ -1,133 +1,41 @@
-import {
-  API_ENDPOINTS,
-  EVENT_KINDS,
-  isUrgent,
-  type DeviceEvent,
-  type PushStatus,
-} from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { API_ENDPOINTS, EVENT_KINDS, isUrgent } from '@smarteverything/domain';
+import { describe, expect, it, vi } from 'vitest';
 import { deliveryOf, FCM_SCOPE } from '../../src/extensions/push/fcm';
 import {
   MissingWordingError,
   notificationFor,
   URGENT_WORDING,
 } from '../../src/extensions/push/messages';
-import {
-  bootServer,
-  linkFakeProvider,
-  pairPhone,
-  verifiedPublicUrl,
-  type Booted,
-} from '../support/booted';
-import { captureLogs, type CapturedLogs } from '../support/logs';
-import { call, temporaryDirectory } from '../support/server';
+import { pairPhone } from '../support/booted';
+import { call } from '../support/server';
 import {
   claimsOf,
-  FakeGoogle,
   headerOf,
   SEND_URL,
   SERVICE_ACCOUNT,
   TOKEN_URI,
+  type FakeGoogle,
 } from './fake-google';
-
-let directory: { path: string; remove: () => Promise<void> };
-let booted: Booted;
-let google: FakeGoogle;
-let logs: CapturedLogs;
-
-function urlOf(input: string | URL | Request): string {
-  if (typeof input === 'string') {
-    return input;
-  }
-  return input instanceof URL ? input.href : input.url;
-}
-
-beforeEach(async () => {
-  logs = captureLogs();
-  directory = await temporaryDirectory();
-  google = new FakeGoogle();
-  booted = await bootServer(directory.path, {
-    fetch: (input, init) => {
-      const url = urlOf(input);
-      if (google.handles(url)) {
-        return Promise.resolve(google.respond(url, init));
-      }
-      const target = new URL(url);
-      return target.origin === 'https://home.example.com'
-        ? fetch(`${booted.base}${target.pathname}`, init)
-        : Promise.reject(new Error(`unexpected request to ${url}`));
-    },
-  });
-  await linkFakeProvider(booted);
-  await verifiedPublicUrl(booted);
-});
-
-afterEach(async () => {
-  await booted.server.stop();
-  await directory.remove();
-});
-
-async function saveAccount(): Promise<void> {
-  const saved = await call(booted.base, booted.owner, {
-    method: 'PUT',
-    path: '/api/settings/push',
-    body: { serviceAccount: SERVICE_ACCOUNT },
-  });
-  expect(saved.status).toBe(200);
-}
-
-async function registerPhone(token: string): Promise<string> {
-  const phone = await pairPhone(booted);
-  const saved = await call(booted.base, phone.token, {
-    method: 'PUT',
-    path: '/api/push-targets',
-    body: { token, platform: 'android' },
-  });
-  expect(saved.status).toBe(200);
-  return phone.clientId;
-}
-
-function happen(event: Partial<DeviceEvent>): void {
-  booted.fake.adapter.sink?.event({
-    externalId: 'camera-1',
-    kind: 'doorbell',
-    occurredAt: new Date().toISOString(),
-    details: {},
-    ...event,
-  });
-}
-
-async function status(): Promise<PushStatus> {
-  const reply = await call(booted.base, booted.owner, {
-    method: 'GET',
-    path: API_ENDPOINTS.readPushStatus.path,
-  });
-  expect(reply.status).toBe(200);
-  return API_ENDPOINTS.readPushStatus.response.parse(reply.body);
-}
-
-async function targets(): Promise<readonly string[]> {
-  const reply = await call(booted.base, booted.owner, { method: 'GET', path: '/api/push-targets' });
-  const rows = Array.isArray(reply.body) ? reply.body : [];
-  return rows.map((row) => /"token":"([^"]+)"/.exec(JSON.stringify(row))?.[1] ?? '');
-}
+import { usePushBench } from './push-bench';
 
 describe('push notifications', () => {
+  const bench = usePushBench();
+
   it('sends an urgent event to every phone through FCM with one cached access token', async () => {
-    await saveAccount();
-    await registerPhone('fcm-a');
-    await registerPhone('fcm-b');
-    happen({});
+    await bench.saveAccount();
+    await bench.registerPhone('fcm-a');
+    await bench.registerPhone('fcm-b');
+    bench.happen({});
     await vi.waitFor(() => {
-      expect(google.sent).toHaveLength(2);
+      expect(bench.google.sent).toHaveLength(2);
     });
-    happen({ kind: 'smoke' });
+    bench.happen({ kind: 'smoke' });
     await vi.waitFor(() => {
-      expect(google.sent).toHaveLength(4);
+      expect(bench.google.sent).toHaveLength(4);
     });
-    expect(google.assertions).toHaveLength(1);
-    const assertion = google.assertions[0] ?? '';
-    expect(headerOf(assertion)).toEqual({ alg: 'RS256', typ: 'JWT' });
+    expect(bench.google.assertions).toHaveLength(1);
+    const assertion = bench.google.assertions[0] ?? '';
+    expect(headerOf(assertion)).toEqual({ alg: 'RS256' });
     const claims = claimsOf(assertion);
     expect(claims).toMatchObject({
       iss: SERVICE_ACCOUNT.client_email,
@@ -135,13 +43,13 @@ describe('push notifications', () => {
       aud: TOKEN_URI,
     });
     expect(FCM_SCOPE).toBe('https://www.googleapis.com/auth/firebase.messaging');
-    expect(google.sent.map((sent) => sent.authorization)).toEqual([
+    expect(bench.google.sent.map((sent) => sent.authorization)).toEqual([
       'Bearer ya29.1',
       'Bearer ya29.1',
       'Bearer ya29.1',
       'Bearer ya29.1',
     ]);
-    const first = JSON.stringify(google.sent[0]?.body);
+    const first = JSON.stringify(bench.google.sent[0]?.body);
     expect(JSON.parse(first.replace(/"(eventId|deviceId)":"[0-9a-f-]{36}"/g, '"$1":"ID"'))).toEqual(
       {
         message: {
@@ -152,20 +60,27 @@ describe('push notifications', () => {
         },
       },
     );
-    expect(JSON.stringify(google.sent[2]?.body)).toContain('Front door in Home detected smoke');
+    expect(JSON.stringify(bench.google.sent[2]?.body)).toContain(
+      'Front door in Home detected smoke',
+    );
     await vi.waitFor(async () => {
-      expect(await status()).toMatchObject({ sent: 4, failed: 0, removed: 0, lastError: null });
+      expect(await bench.status()).toMatchObject({
+        sent: 4,
+        failed: 0,
+        removed: 0,
+        lastError: null,
+      });
     });
     expect(SEND_URL).toContain('/projects/home-push/');
   });
 
   it('forgets the tokens FCM no longer knows and keeps the failure reasons in the status', async () => {
-    await saveAccount();
-    await registerPhone('fcm-gone');
-    await registerPhone('fcm-invalid');
-    await registerPhone('fcm-busy');
-    await registerPhone('fcm-good');
-    google.answer = (token): ReturnType<FakeGoogle['answer']> => {
+    await bench.saveAccount();
+    await bench.registerPhone('fcm-gone');
+    await bench.registerPhone('fcm-invalid');
+    await bench.registerPhone('fcm-busy');
+    await bench.registerPhone('fcm-good');
+    bench.google.answer = (token): ReturnType<FakeGoogle['answer']> => {
       switch (token) {
         case 'fcm-gone':
           return {
@@ -177,7 +92,7 @@ describe('push notifications', () => {
                 status: 'NOT_FOUND',
                 details: [
                   {
-                    '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError',
+                    '@type': 'type.googleapis.com/bench.google.firebase.fcm.v1.FcmError',
                     errorCode: 'UNREGISTERED',
                   },
                 ],
@@ -204,24 +119,24 @@ describe('push notifications', () => {
           return { status: 200, body: { name: 'm' } };
       }
     };
-    happen({});
+    bench.happen({});
     await vi.waitFor(async () => {
-      expect(await status()).toMatchObject({ sent: 1, failed: 1, removed: 2 });
+      expect(await bench.status()).toMatchObject({ sent: 1, failed: 1, removed: 2 });
     });
-    expect(await targets()).toEqual(['fcm-busy', 'fcm-good']);
-    expect((await status()).lastError).toBe(
+    expect(await bench.targets()).toEqual(['fcm-busy', 'fcm-good']);
+    expect((await bench.status()).lastError).toBe(
       'HTTP 404 UNREGISTERED: Requested entity was not found.; HTTP 400 INVALID_ARGUMENT: The registration token is not a valid FCM registration token; HTTP 503 UNAVAILABLE: Busy',
     );
-    expect(logs.events()).toEqual(
+    expect(bench.logs.events()).toEqual(
       expect.arrayContaining(['push.target_removed', 'push.not_delivered']),
     );
   });
 
   it('fetches a new access token once when FCM refuses the cached one', async () => {
-    await saveAccount();
-    await registerPhone('fcm-a');
+    await bench.saveAccount();
+    await bench.registerPhone('fcm-a');
     let refusals = 1;
-    google.answer = (): ReturnType<FakeGoogle['answer']> => {
+    bench.google.answer = (): ReturnType<FakeGoogle['answer']> => {
       if (refusals > 0) {
         refusals -= 1;
         return {
@@ -231,64 +146,64 @@ describe('push notifications', () => {
       }
       return { status: 200, body: { name: 'm' } };
     };
-    happen({});
+    bench.happen({});
     await vi.waitFor(async () => {
-      expect((await status()).sent).toBe(1);
+      expect((await bench.status()).sent).toBe(1);
     });
-    expect(google.assertions).toHaveLength(2);
-    expect(google.sent.map((sent) => sent.authorization)).toEqual([
+    expect(bench.google.assertions).toHaveLength(2);
+    expect(bench.google.sent.map((sent) => sent.authorization)).toEqual([
       'Bearer ya29.1',
       'Bearer ya29.2',
     ]);
   });
 
   it('records why nothing was sent when Google refuses the service account', async () => {
-    await saveAccount();
-    await registerPhone('fcm-a');
-    google.tokenStatus = 401;
-    happen({});
+    await bench.saveAccount();
+    await bench.registerPhone('fcm-a');
+    bench.google.tokenStatus = 401;
+    bench.happen({});
     await vi.waitFor(async () => {
-      expect((await status()).failed).toBe(1);
+      expect((await bench.status()).failed).toBe(1);
     });
-    expect((await status()).lastError).toMatch(
-      /^PushAuthorizationError: Google refused the Firebase service account: HTTP 401/,
+    expect((await bench.status()).lastError).toMatch(
+      /^PushAuthorizationError: Google refused the Firebase service account: invalid_grant: Invalid JWT Signature\./,
     );
-    expect(google.sent).toEqual([]);
+    expect(bench.google.sent).toEqual([]);
   });
 
   it('says that push is not configured when no service account is saved', async () => {
-    await registerPhone('fcm-a');
-    happen({});
+    await bench.registerPhone('fcm-a');
+    bench.happen({});
     await vi.waitFor(async () => {
-      expect((await status()).lastError).toBe('no Firebase service account is saved');
+      expect((await bench.status()).lastError).toBe('no Firebase service account is saved');
     });
-    expect(google.assertions).toEqual([]);
-    expect(logs.events()).toContain('push.not_configured');
+    expect(bench.google.assertions).toEqual([]);
+    expect(bench.logs.events()).toContain('push.not_configured');
   });
 
   it('pushes nothing for events that are not urgent, or when no phone is registered', async () => {
-    await saveAccount();
-    happen({});
+    await bench.saveAccount();
+    bench.happen({});
     await vi.waitFor(() => {
-      expect(logs.events()).toContain('push.no_targets');
+      expect(bench.logs.events()).toContain('push.no_targets');
     });
-    await registerPhone('fcm-a');
-    happen({ kind: 'motion' });
-    happen({ kind: 'leak' });
+    await bench.registerPhone('fcm-a');
+    bench.happen({ kind: 'motion' });
+    bench.happen({ kind: 'leak' });
     await vi.waitFor(() => {
-      expect(google.sent).toHaveLength(1);
+      expect(bench.google.sent).toHaveLength(1);
     });
-    expect(JSON.stringify(google.sent[0]?.body)).toContain('"kind":"leak"');
+    expect(JSON.stringify(bench.google.sent[0]?.body)).toContain('"kind":"leak"');
   });
 
   it('shows the push status to owners only', async () => {
-    const phone = await pairPhone(booted, 'member');
-    const refused = await call(booted.base, phone.token, {
+    const phone = await pairPhone(bench.booted, 'member');
+    const refused = await call(bench.booted.base, phone.token, {
       method: 'GET',
       path: API_ENDPOINTS.readPushStatus.path,
     });
     expect(refused.status).toBe(403);
-    expect(await status()).toEqual({
+    expect(await bench.status()).toEqual({
       lastAttemptAt: null,
       lastSentAt: null,
       lastError: null,

@@ -20,9 +20,10 @@ export function useFavouriteModels(): FavouriteModels {
     favourites: new Set(list),
     toggle: (modelId: string): void => {
       pref.set({
+        ...pref.value,
         favourites: list.includes(modelId)
           ? list.filter((id) => id !== modelId)
-          : [...list, modelId].slice(-100),
+          : [...list, modelId],
       });
     },
   };

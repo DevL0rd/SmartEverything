@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   AI_BUDGET_ENDPOINTS as B,
   type AiBudgetChange,
@@ -13,7 +14,10 @@ const log = new Logger('app.ai-budget');
 const BUDGET_KEY = [...AI_USAGE_PREFIX, 'budget'] as const;
 
 export function useBudgetStatus(): UseQueryResult<AiBudgetStatus> {
-  return useQuery({ queryKey: BUDGET_KEY, queryFn: () => api().call(B.readAiBudget, {}) });
+  return useScreenQuery({
+    queryKey: BUDGET_KEY,
+    queryFn: () => api().call(B.readAiBudget, {}),
+  });
 }
 
 export function useBudgetUpdate(): (change: AiBudgetChange) => Promise<AiBudgetStatus> {

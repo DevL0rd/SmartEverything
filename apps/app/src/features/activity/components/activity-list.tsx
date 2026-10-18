@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { EmptyState } from '../../../components/empty-state';
 import { List } from '../../../components/section';
+import { PAGE_SIZE, ShowMore } from '../../../components/show-more';
 import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { useActivity } from '../data/use-activity';
@@ -13,10 +14,12 @@ export interface ActivityListProps {
 }
 
 export function ActivityList({ deviceId }: ActivityListProps): ReactNode {
-  const items = useActivity(deviceId === undefined ? {} : { deviceId });
+  const all = useActivity(deviceId === undefined ? {} : { deviceId });
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const items = all.slice(0, limit);
   const now = useMinute();
   const zone = useSettings().time_zone;
-  if (items.length === 0) {
+  if (all.length === 0) {
     return (
       <EmptyState
         icon="activity"
@@ -34,6 +37,12 @@ export function ActivityList({ deviceId }: ActivityListProps): ReactNode {
           ))}
         </List>
       ))}
+      <ShowMore
+        remaining={all.length - items.length}
+        onPress={() => {
+          setLimit(limit + PAGE_SIZE);
+        }}
+      />
     </View>
   );
 }

@@ -14,7 +14,7 @@ import { Text } from '../../../components/text';
 import { useIdiom } from '../../../design/platform';
 import { joinParts } from '../../../format/text';
 import { moment } from '../../../format/time';
-import { useSecond } from '../../../store/clock';
+import { useSecondOf } from '../../../store/clock';
 import { NotFound } from '../screens/not-found';
 import { cancelScheduled, removeScheduled, runScheduledNow } from './actions';
 import { StepRows } from './step-rows';
@@ -29,6 +29,7 @@ import {
   titleOf,
   whenLine,
 } from './view';
+import { background } from '@smarteverything/logging';
 
 const PARAMS = z.object({ scheduleId: z.string() });
 
@@ -52,19 +53,26 @@ function useCommands(row: ScheduleRow): Commands {
       cancelScheduled(row);
     },
     remove: (): void => {
-      void removeScheduled(row).then((removed) => {
-        if (removed) {
-          router.back();
-        }
-      });
+      background(
+        removeScheduled(row).then((removed) => {
+          if (removed) {
+            router.back();
+          }
+        }),
+        'scheduled.remove_failed',
+      );
     },
   };
 }
 
 function Summary({ row, zone }: { readonly row: ScheduleRow; readonly zone: string }): ReactNode {
-  const now = useSecond();
   const look = STATE_LOOK[row.state];
-  const left = canEdit(row) ? secondsLeft(row, now) : null;
+  const left = useSecondOf((now) => {
+    const seconds = canEdit(row) ? secondsLeft(row, now) : null;
+    return seconds === null ? null : countdown(seconds);
+  });
+  const when = useSecondOf((now) => whenLine(row, now, zone));
+  const created = useSecondOf((now) => moment(row.created_at, now, zone));
   return (
     <Card>
       <View className="gap-2">
@@ -73,15 +81,15 @@ function Summary({ row, zone }: { readonly row: ScheduleRow; readonly zone: stri
         </View>
         {left === null ? null : (
           <Text variant="large-title" tone="primary">
-            {countdown(left)}
+            {left}
           </Text>
         )}
-        <Text variant="body">{whenLine(row, now, zone)}</Text>
+        <Text variant="body">{when}</Text>
         <Text variant="footnote" tone="variant">
           {joinParts([
             runsLine(row),
             lateLine(row),
-            `Scheduled ${row.via === 'assistant' ? 'by the assistant' : 'in the app'} ${moment(row.created_at, now, zone)}`,
+            `Scheduled ${row.via === 'assistant' ? 'by the assistant' : 'in the app'} ${created}`,
             row.confirmed_at === null ? null : 'Confirmed when scheduled',
           ])}
         </Text>

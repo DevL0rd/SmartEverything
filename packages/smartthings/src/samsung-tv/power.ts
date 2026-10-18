@@ -1,3 +1,4 @@
+import { MAC_ADDRESS, macBytes as addressBytes } from '@smarteverything/domain';
 import { z } from 'zod';
 import { InvalidMacAddressError, SamsungTvMessageError } from '../errors';
 
@@ -21,7 +22,8 @@ const DEVICE_INFO = z.object({
     PowerState: z.string().optional(),
     FrameTVSupport: z.enum(['true', 'false']).optional(),
     modelName: z.string().min(1).optional(),
-    name: z.string().optional(),
+    name: z.string().min(1).optional(),
+    wifiMac: z.string().min(1).optional(),
   }),
 });
 
@@ -30,6 +32,8 @@ export interface TvInfo {
   readonly powerStateReported: boolean;
   readonly model: string | null;
   readonly frame: boolean;
+  readonly name: string | null;
+  readonly wifiMac: string | null;
 }
 
 export function readDeviceInfo(received: unknown): TvInfo {
@@ -37,20 +41,28 @@ export function readDeviceInfo(received: unknown): TvInfo {
   if (!parsed.success) {
     throw new SamsungTvMessageError(received, `device information: ${parsed.error.message}`);
   }
-  const { PowerState: powerState, modelName, FrameTVSupport: frameSupport } = parsed.data.device;
+  const {
+    PowerState: powerState,
+    modelName,
+    FrameTVSupport: frameSupport,
+    name,
+    wifiMac,
+  } = parsed.data.device;
   return {
     on: powerState === undefined || powerState === 'on',
     powerStateReported: powerState !== undefined,
     model: modelName ?? null,
     frame: frameSupport === 'true',
+    name: name ?? null,
+    wifiMac: wifiMac ?? null,
   };
 }
 
 export function macBytes(mac: string): Uint8Array {
-  if (!/^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i.test(mac)) {
+  if (!MAC_ADDRESS.safeParse(mac).success) {
     throw new InvalidMacAddressError(mac);
   }
-  return Uint8Array.from(mac.split(/[:-]/), (pair) => Number.parseInt(pair, 16));
+  return addressBytes(mac);
 }
 
 export function magicPacket(mac: string): Uint8Array {

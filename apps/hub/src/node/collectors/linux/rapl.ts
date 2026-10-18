@@ -1,4 +1,5 @@
 import { accessSync, constants, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { PerTick, type Tick } from '../tick';
 import type { KernelFiles } from './kernel-file';
 
 const POWERCAP_ROOT = '/sys/class/powercap';
@@ -48,10 +49,19 @@ export class RaplCollector {
   private readonly domain = existsSync(POWERCAP_ROOT) ? packageDomain() : null;
   private readonly limitWatts = this.domain === null ? null : limitOf(this.domain);
   private before: Energy | null = null;
+  private readonly power = new PerTick<PackagePower>();
 
   constructor(private readonly files: KernelFiles) {}
 
-  read(at: number): PackagePower {
+  get available(): boolean {
+    return this.domain !== null;
+  }
+
+  read(tick: Tick): PackagePower {
+    return this.power.get(tick, () => this.measure(tick.at));
+  }
+
+  private measure(at: number): PackagePower {
     const domain = this.domain;
     if (domain === null) {
       return { watts: null, limitWatts: null };

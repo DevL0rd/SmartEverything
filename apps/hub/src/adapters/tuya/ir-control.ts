@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { CommandRefusedError, type JsonValue } from '@smarteverything/domain';
 import {
   CLOUD_PATHS,
@@ -15,9 +16,9 @@ import { projectOf } from './backend';
 import type { TuyaCloud } from './cloud-client';
 import { writeTo } from './writes';
 import { IrLearnTimeoutError } from './learners';
-import { describeLocalError } from './local-link';
 import type { DeviceRecord } from './records';
 import type { TuyaRuntime } from './runtime';
+import { messageOf } from '@smarteverything/logging';
 
 class IrSchemeUnknownError extends Error {
   override readonly name = 'IrSchemeUnknownError';
@@ -31,12 +32,6 @@ class IrSchemeUnknownError extends Error {
 
 function result(code: IrCode): JsonValue {
   return { format: code.format, code: code.code };
-}
-
-function pause(delayMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, delayMs);
-  });
 }
 
 async function setCloudLearning(
@@ -64,7 +59,7 @@ async function learnThroughCloud(runtime: TuyaRuntime, deviceId: string): Promis
   });
   try {
     while (now() - startedAt < timing.irLearnTimeoutMs) {
-      await pause(timing.cloudLearnQueryMs);
+      await sleep(timing.cloudLearnQueryMs);
       const learned = await project.call(
         `reading the code learned by ${deviceId}`,
         {
@@ -83,7 +78,7 @@ async function learnThroughCloud(runtime: TuyaRuntime, deviceId: string): Promis
     await setCloudLearning(project, deviceId, false).catch((cause: unknown) => {
       runtime.log.warn('tuya.ir_learning_not_ended', {
         deviceId,
-        reason: describeLocalError(cause),
+        reason: messageOf(cause),
       });
     });
   }
@@ -109,7 +104,7 @@ export async function learnIr(runtime: TuyaRuntime, record: DeviceRecord): Promi
       (cause: unknown) => {
         runtime.log.warn('tuya.ir_learning_not_ended', {
           deviceId,
-          reason: describeLocalError(cause),
+          reason: messageOf(cause),
         });
       },
     );

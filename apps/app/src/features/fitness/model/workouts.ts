@@ -1,10 +1,13 @@
 import type { HealthRecord } from '@smarteverything/domain';
+import { max } from 'd3-array';
 import { exerciseKindOf, isDistanceBased, prefersSpeed } from '../../health-log';
 import { endOf, recordsOfType, startOf, type RecordOf } from './records';
 import { MINUTE_MS } from '../../../format/time';
-import { decimal, withUnit } from '../../../format/number';
+import { decimal, twoDigits, withUnit } from '../../../format/number';
 
 type Session = RecordOf<'ExerciseSession'>;
+
+const PACE_MINIMUM_METERS = 1000;
 
 export interface HeartSample {
   readonly at: number;
@@ -94,12 +97,17 @@ function routeOf(session: Session): WorkoutRoute {
   };
 }
 
+function containedIn(record: HealthRecord, session: Session): boolean {
+  return startOf(record) >= startOf(session) && endOf(record) <= endOf(session);
+}
+
 function distanceOf(records: readonly HealthRecord[], session: Session): number | null {
-  return (
-    attributed(recordsOfType(records, 'Distance'), session, (record) =>
-      record.type === 'Distance' ? record.data.meters : null,
-    ) ?? lapMeters(session)
+  const inside = recordsOfType(records, 'Distance').filter((record) =>
+    containedIn(record, session),
   );
+  return inside.length === 0
+    ? lapMeters(session)
+    : inside.reduce((sum, record) => sum + record.data.meters, 0);
 }
 
 function energyOf(records: readonly HealthRecord[], session: Session): number | null {
@@ -129,8 +137,9 @@ export function workoutOf(session: Session, related: readonly HealthRecord[]): W
     heart,
     averageBpm:
       heart.length === 0 ? null : heart.reduce((sum, sample) => sum + sample.bpm, 0) / heart.length,
-    maxBpm: heart.length === 0 ? null : Math.max(...heart.map((sample) => sample.bpm)),
-    secondsPerKm: meters === null || meters < 100 ? null : (minutes * 60) / (meters / 1000),
+    maxBpm: max(heart, (sample) => sample.bpm) ?? null,
+    secondsPerKm:
+      meters === null || meters < PACE_MINIMUM_METERS ? null : (minutes * 60) / (meters / 1000),
     route: routeOf(session),
     laps: session.data.laps.length,
     source: session.sourceApp,
@@ -166,8 +175,6 @@ function best(
   return found;
 }
 
-const PACE_MINIMUM_METERS = 1000;
-
 export function personalRecords(workouts: readonly Workout[]): PersonalRecord[] {
   const activities = [...new Set(workouts.map((workout) => workout.name))].sort();
   return activities.flatMap((activity) => {
@@ -190,11 +197,7 @@ export function personalRecords(workouts: readonly Workout[]): PersonalRecord[] 
       {
         label: mine.some((w) => prefersSpeed(w.code)) ? 'Fastest speed' : 'Fastest pace',
         kind: 'pace',
-        hit: best(
-          mine,
-          (w) => (w.meters !== null && w.meters >= PACE_MINIMUM_METERS ? w.secondsPerKm : null),
-          true,
-        ),
+        hit: best(mine, (w) => w.secondsPerKm, true),
       },
       {
         label: 'Most energy',
@@ -215,6 +218,30 @@ export interface RouteDrawing {
   readonly start: { readonly x: number; readonly y: number };
 }
 
+interface Flat {
+  readonly x: number;
+  readonly y: number;
+}
+
+interface Box {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+}
+
+function boxOf(flat: readonly Flat[], seed: Flat): Box {
+  return flat.reduce<Box>(
+    (box, point) => ({
+      left: Math.min(box.left, point.x),
+      right: Math.max(box.right, point.x),
+      top: Math.min(box.top, point.y),
+      bottom: Math.max(box.bottom, point.y),
+    }),
+    { left: seed.x, right: seed.x, top: seed.y, bottom: seed.y },
+  );
+}
+
 export function routeDrawing(points: readonly RoutePoint[], size: number): RouteDrawing | null {
   const [head, ...tail] = points;
   if (head === undefined || tail.length === 0) {
@@ -223,12 +250,12 @@ export function routeDrawing(points: readonly RoutePoint[], size: number): Route
   const middle = points.reduce((sum, point) => sum + point.latitude, 0) / points.length;
   const squeeze = Math.cos((middle * Math.PI) / 180);
   const flat = points.map((point) => ({ x: point.longitude * squeeze, y: -point.latitude }));
-  const xs = flat.map((point) => point.x);
-  const ys = flat.map((point) => point.y);
-  const left = Math.min(...xs);
-  const top = Math.min(...ys);
-  const wide = Math.max(...xs) - left;
-  const tall = Math.max(...ys) - top;
+  const { left, right, top, bottom } = boxOf(flat, {
+    x: head.longitude * squeeze,
+    y: -head.latitude,
+  });
+  const wide = right - left;
+  const tall = bottom - top;
   const scale = size / Math.max(wide, tall, 1e-9);
   const placed = flat.map((point) => ({ x: (point.x - left) * scale, y: (point.y - top) * scale }));
   const path = placed
@@ -244,7 +271,7 @@ export function routeDrawing(points: readonly RoutePoint[], size: number): Route
 
 export function paceText(secondsPerKm: number): string {
   const whole = Math.round(secondsPerKm);
-  return `${String(Math.floor(whole / 60))}:${String(whole % 60).padStart(2, '0')} /km`;
+  return withUnit(`${String(Math.floor(whole / 60))}:${twoDigits(whole % 60)}`, '/km');
 }
 
 export function tempoText(code: number, secondsPerKm: number): string {

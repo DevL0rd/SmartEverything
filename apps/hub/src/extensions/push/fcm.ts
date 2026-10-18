@@ -1,20 +1,14 @@
-import { sign } from 'node:crypto';
 import type { PushServiceAccount } from '@smarteverything/domain';
+import { failureLine, Logger, messageOf } from '@smarteverything/logging';
+import { JWT } from 'google-auth-library';
 import { z } from 'zod';
 import type { PushDelivery } from './commands';
 
 export const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 
-const ASSERTION_LIFETIME_S = 3600;
-
-const EXPIRY_MARGIN_MS = 60_000;
-
 const REQUEST_TIMEOUT_MS = 15_000;
 
-const TOKEN_RESPONSE = z.object({
-  access_token: z.string().min(1),
-  expires_in: z.number().int().positive(),
-});
+const log = new Logger('hub.push-fcm');
 
 const FCM_ERROR = z.object({
   error: z.object({
@@ -42,7 +36,7 @@ export interface PushNotification {
 
 type FcmMessage = Readonly<Record<string, unknown>>;
 
-function messageOf(token: string, notification: PushNotification): FcmMessage {
+function fcmMessageOf(token: string, notification: PushNotification): FcmMessage {
   if (notification.dataOnly === true) {
     return {
       token,
@@ -71,26 +65,6 @@ class PushAuthorizationError extends Error {
   }
 }
 
-function base64Url(value: string | Buffer): string {
-  return Buffer.from(value).toString('base64url');
-}
-
-function assertionFor(account: PushServiceAccount, now: Date): string {
-  const issuedAt = Math.floor(now.getTime() / 1000);
-  const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-  const claims = base64Url(
-    JSON.stringify({
-      iss: account.client_email,
-      scope: FCM_SCOPE,
-      aud: account.token_uri,
-      iat: issuedAt,
-      exp: issuedAt + ASSERTION_LIFETIME_S,
-    }),
-  );
-  const signature = sign('RSA-SHA256', Buffer.from(`${header}.${claims}`), account.private_key);
-  return `${header}.${claims}.${base64Url(signature)}`;
-}
-
 async function textOf(response: Response): Promise<string> {
   return (await response.text()).slice(0, 2000);
 }
@@ -100,7 +74,7 @@ function jsonOf(text: string): unknown {
     const parsed: unknown = JSON.parse(text);
     return parsed;
   } catch (cause) {
-    return { notJson: text, cause: String(cause) };
+    return { notJson: text, cause: failureLine(cause) };
   }
 }
 
@@ -124,27 +98,22 @@ export function deliveryOf(status: number, text: string): Delivery {
   return stale ? { outcome: 'stale', reason } : { outcome: 'failed', reason };
 }
 
-interface CachedToken {
+interface CachedClient {
   readonly identity: string;
-  readonly token: string;
-  readonly expiresAt: number;
+  readonly jwt: JWT;
 }
 
 export class FcmClient {
-  private cached: CachedToken | null = null;
-  private issuing: Promise<string> | null = null;
+  private cached: CachedClient | null = null;
 
-  constructor(
-    private readonly fetch: typeof globalThis.fetch,
-    private readonly now: () => Date,
-  ) {}
+  constructor(private readonly fetch: typeof globalThis.fetch) {}
 
   send(
     account: PushServiceAccount,
     token: string,
     notification: PushNotification,
   ): Promise<Delivery> {
-    return this.deliver(account, messageOf(token, notification));
+    return this.deliver(account, fcmMessageOf(token, notification));
   }
 
   sendData(
@@ -165,13 +134,38 @@ export class FcmClient {
   }
 
   private async deliver(account: PushServiceAccount, message: FcmMessage): Promise<Delivery> {
+    const startedAt = performance.now();
     const first = await this.attempt(account, message);
     if (first.status !== 401) {
-      return first.status < 300 ? { outcome: 'sent' } : deliveryOf(first.status, first.text);
+      const delivery =
+        first.status < 300 ? { outcome: 'sent' as const } : deliveryOf(first.status, first.text);
+      this.logDelivery(account, delivery, { status: first.status, startedAt, retried: false });
+      return delivery;
     }
+    log.info('fcm.token_refused_retrying', { project: account.project_id });
     this.cached = null;
     const second = await this.attempt(account, message);
-    return second.status < 300 ? { outcome: 'sent' } : deliveryOf(second.status, second.text);
+    const delivery =
+      second.status < 300 ? { outcome: 'sent' as const } : deliveryOf(second.status, second.text);
+    this.logDelivery(account, delivery, { status: second.status, startedAt, retried: true });
+    return delivery;
+  }
+
+  private logDelivery(
+    account: PushServiceAccount,
+    delivery: Delivery,
+    attempt: { readonly status: number; readonly startedAt: number; readonly retried: boolean },
+  ): void {
+    const fields = {
+      project: account.project_id,
+      status: attempt.status,
+      outcome: delivery.outcome,
+      reason: delivery.outcome === 'sent' ? undefined : delivery.reason.slice(0, 300),
+      retried: attempt.retried,
+      durationMs: Math.round(performance.now() - attempt.startedAt),
+    };
+    if (delivery.outcome === 'failed') log.warn('fcm.send_failed', fields);
+    else log.debug('fcm.send_settled', fields);
   }
 
   private async attempt(
@@ -193,38 +187,48 @@ export class FcmClient {
     return { status: response.status, text: await textOf(response) };
   }
 
-  private accessToken(account: PushServiceAccount): Promise<string> {
-    const identity = JSON.stringify([account.client_email, account.token_uri, account.private_key]);
-    if (this.cached?.identity === identity && this.cached.expiresAt > this.now().getTime()) {
-      return Promise.resolve(this.cached.token);
+  private async accessToken(account: PushServiceAccount): Promise<string> {
+    const startedAt = performance.now();
+    const { token } = await this.clientFor(account)
+      .getAccessToken()
+      .catch((cause: unknown) => {
+        this.cached = null;
+        log.error('fcm.access_token_failed', cause, {
+          project: account.project_id,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+        throw new PushAuthorizationError(messageOf(cause));
+      });
+    if (typeof token !== 'string') {
+      log.error('fcm.access_token_missing', undefined, { project: account.project_id });
+      throw new PushAuthorizationError('Google sent no access token');
     }
-    this.issuing ??= this.issue(account, identity).finally(() => {
-      this.issuing = null;
-    });
-    return this.issuing;
+    const elapsed = Math.round(performance.now() - startedAt);
+    if (elapsed > 50)
+      log.debug('fcm.access_token_fetched', { project: account.project_id, durationMs: elapsed });
+    return token;
   }
 
-  private async issue(account: PushServiceAccount, identity: string): Promise<string> {
-    const nowMs = this.now().getTime();
-    const response = await this.fetch(account.token_uri, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-        assertion: assertionFor(account, this.now()),
-      }).toString(),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    const text = await textOf(response);
-    const parsed = TOKEN_RESPONSE.safeParse(jsonOf(text));
-    if (!response.ok || !parsed.success) {
-      throw new PushAuthorizationError(`HTTP ${String(response.status)} ${text}`);
+  private clientFor(account: PushServiceAccount): JWT {
+    const identity = JSON.stringify([account.client_email, account.private_key]);
+    if (this.cached?.identity !== identity) {
+      log.debug('fcm.client_created', {
+        project: account.project_id,
+        replaced: this.cached !== null,
+      });
+      this.cached = {
+        identity,
+        jwt: new JWT({
+          email: account.client_email,
+          key: account.private_key,
+          scopes: FCM_SCOPE,
+          transporterOptions: {
+            fetchImplementation: this.fetch,
+            timeout: REQUEST_TIMEOUT_MS,
+          },
+        }),
+      };
     }
-    this.cached = {
-      identity,
-      token: parsed.data.access_token,
-      expiresAt: nowMs + parsed.data.expires_in * 1000 - EXPIRY_MARGIN_MS,
-    };
-    return parsed.data.access_token;
+    return this.cached.jwt;
   }
 }

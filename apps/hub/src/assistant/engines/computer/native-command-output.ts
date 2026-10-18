@@ -1,6 +1,5 @@
 import {
   ApiError,
-  ASSISTANT_TEXT_MAX,
   type AiChatRow,
   type AiNativeCommandWrite,
   type AiNativeCommandReceipt,
@@ -19,6 +18,7 @@ import type { ComputerEvent } from './provider-state';
 import { CodexMessageText } from './codex-message-text';
 import { streamCodexTools } from './codex-tools';
 import { streamNativeTools, streamDelta } from './runtime-tools';
+import { messageOf } from '@smarteverything/logging';
 
 export class NativeCommandOutput {
   private readonly replies: ProviderReplies;
@@ -49,7 +49,6 @@ export class NativeCommandOutput {
     this.stream = new TurnStream(
       { chatId: chat.id, turnId: input.operation_id, messageId, profileId: chat.profile_id },
       deps.emit,
-      ASSISTANT_TEXT_MAX,
     );
     this.stream.bindTimeline((timeline): void => {
       this.replies.timeline(timeline);
@@ -74,8 +73,7 @@ export class NativeCommandOutput {
     streamCodexTools(this.stream, event);
     const delta = this.nativeText.completed(event);
     this.replies.text(delta);
-    for (let offset = 0; offset < delta.length; offset += ASSISTANT_TEXT_MAX)
-      this.stream.text(delta.slice(offset, offset + ASSISTANT_TEXT_MAX));
+    this.stream.text(delta);
   }
   private toolResult(event: Extract<ComputerEvent, { kind: 'tool_result' }>): void {
     const item = this.stream.current().tools.find((tool) => tool.callId === event.call_id);
@@ -122,17 +120,12 @@ export class NativeCommandOutput {
       })
       .catch((cause: unknown) => {
         if (this.closed) return;
-        this.failed(
-          cause instanceof Error ? cause.message : 'The scoped native command tool bridge failed.',
-        );
+        this.failed(messageOf(cause));
         this.deps.log.error('native_command.tool_bridge_failed', cause, { chatId: this.chat.id });
         this.stream.tool(
           { ...item, state: 'failed' },
           {
-            output:
-              cause instanceof Error
-                ? cause.message
-                : 'The scoped native command tool bridge failed.',
+            output: messageOf(cause),
           },
         );
       });

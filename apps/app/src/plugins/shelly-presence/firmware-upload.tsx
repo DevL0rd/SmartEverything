@@ -1,117 +1,87 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { ShellyPresenceDevice } from '@smarteverything/domain';
+import type { ShellyDevice } from '@smarteverything/shelly';
 import { Button } from '../../components/button';
 import { Text } from '../../components/text';
 import { pickFiles, type PickedFile } from '../../platform/pick-files';
-import { operatePresence } from './presence-data';
-import { presenceActionAvailable } from './availability';
+import { actionAvailable, operatePresence } from './presence-operation';
+import { failure } from './use-presence-operation';
 
 function base64(bytes: Uint8Array): string {
   let value = '';
   for (const byte of bytes) value += String.fromCharCode(byte);
   return btoa(value);
 }
-async function sendFile(
-  sensor: ShellyPresenceDevice,
-  bytes: Uint8Array,
-  cancelled: () => boolean,
-  progress: (offset: number) => void,
-): Promise<void> {
+
+async function send(sensor: ShellyDevice, file: PickedFile): Promise<void> {
+  const bytes = new Uint8Array(await file.data());
   const started = await operatePresence(sensor, {
     action: 'firmware_upload_start',
-    size: bytes.length,
+    params: { size: bytes.length },
   });
   if (started.state !== 'accepted') throw new Error(started.message);
-  let offset = 0;
-  while (offset < bytes.length && !cancelled()) {
-    const chunk = bytes.slice(offset, offset + 2048);
-    const result = await operatePresence(sensor, {
+  try {
+    const written = await operatePresence(sensor, {
       action: 'firmware_upload_write',
-      offset,
-      data: base64(chunk),
+      params: { offset: 0, data: base64(bytes) },
     });
-    if (result.state !== 'accepted') throw new Error(result.message);
-    if (
-      result.result?.kind !== 'firmware_upload_write' ||
-      result.result.value.offset !== offset + chunk.length
-    )
-      throw new Error('Device upload offset did not match. Abort before retrying.');
-    offset = result.result.value.offset;
-    progress(offset);
+    if (written.state !== 'accepted') throw new Error(written.message);
+  } catch (error) {
+    await operatePresence(sensor, { action: 'firmware_upload_abort' });
+    throw error;
   }
-  if (cancelled())
-    throw new Error('Upload cancelled. Abort the device upload session before retrying.');
 }
 
-interface FirmwareDraft {
+interface Upload {
   readonly file: PickedFile | null;
   readonly busy: boolean;
-  readonly offset: number;
-  readonly message: string | null;
-  readonly select: () => Promise<void>;
-  readonly upload: () => Promise<void>;
-  readonly abort: () => Promise<void>;
-}
-function useFirmwareUpload(sensor: ShellyPresenceDevice): FirmwareDraft {
-  const [file, setFile] = useState<PickedFile | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [offset, setOffset] = useState(0);
-  const [message, setMessage] = useState<string | null>(null);
-  const cancel = useRef(false);
-  const select = async (): Promise<void> => {
-    try {
-      const selected = await pickFiles('files');
-      setFile(selected[0] ?? null);
-      setOffset(0);
-      setMessage(null);
-    } catch (error) {
-      setMessage(String(error));
-    }
-  };
-  const upload = async (): Promise<void> => {
-    if (file === null) return;
-    setBusy(true);
-    cancel.current = false;
-    setMessage(null);
-    try {
-      const bytes = new Uint8Array(await file.data());
-      if (bytes.length < 1 || bytes.length > 16777216)
-        throw new Error('Choose a firmware file between 1 byte and 16 MiB.');
-      await sendFile(sensor, bytes, () => cancel.current, setOffset);
-      setMessage('File accepted by the device. Check firmware status after the device reconnects.');
-    } catch (error) {
-      setMessage(String(error));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const abort = async (): Promise<void> => {
-    cancel.current = true;
-    if (busy) return;
-    try {
-      const result = await operatePresence(sensor, { action: 'firmware_upload_abort' });
-      setMessage(result.state === 'accepted' ? 'Upload session aborted.' : result.message);
-    } catch (error) {
-      setMessage(String(error));
-    }
-  };
-  return { file, busy, offset, message, select, upload, abort };
+  readonly status: string | null;
+  readonly choose: () => void;
+  readonly upload: () => void;
 }
 
-export function FirmwareUpload({ sensor }: { readonly sensor: ShellyPresenceDevice }): ReactNode {
-  const { file, busy, offset, message, select, upload, abort } = useFirmwareUpload(sensor);
+function useUpload(sensor: ShellyDevice): Upload {
+  const [file, setFile] = useState<PickedFile | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  return {
+    file,
+    busy,
+    status,
+    choose: (): void => {
+      pickFiles('files')
+        .then((selected) => {
+          setFile(selected[0] ?? null);
+          setStatus(null);
+        })
+        .catch((error: unknown) => {
+          setStatus(failure(error));
+        });
+    },
+    upload: (): void => {
+      if (file === null) return;
+      setBusy(true);
+      setStatus(null);
+      send(sensor, file)
+        .then(() => {
+          setStatus('File accepted by the device. Check firmware status after it reconnects.');
+        })
+        .catch((error: unknown) => {
+          setStatus(failure(error));
+        })
+        .finally(() => {
+          setBusy(false);
+        });
+    },
+  };
+}
+
+export function FirmwareUpload({ sensor }: { readonly sensor: ShellyDevice }): ReactNode {
+  const { file, busy, status, choose, upload } = useUpload(sensor);
   return (
     <View className="gap-3">
       <Text variant="title-3">Upload firmware file</Text>
-      <Button
-        label="Choose firmware file"
-        variant="tonal"
-        disabled={busy}
-        onPress={() => {
-          void select();
-        }}
-      />
+      <Button label="Choose firmware file" variant="tonal" disabled={busy} onPress={choose} />
       <Text>
         {file === null ? 'No file selected' : `${file.name} · ${String(file.bytes)} bytes`}
       </Text>
@@ -119,25 +89,12 @@ export function FirmwareUpload({ sensor }: { readonly sensor: ShellyPresenceDevi
         label="Upload selected firmware"
         variant="destructive"
         loading={busy}
-        disabled={file === null || !presenceActionAvailable(sensor, 'firmware_upload_start')}
-        onPress={() => {
-          void upload();
-        }}
+        disabled={file === null || !actionAvailable(sensor, 'firmware_upload_start')}
+        onPress={upload}
       />
-      <Button
-        label={busy ? 'Cancel after current chunk' : 'Abort upload session'}
-        variant="text"
-        disabled={!presenceActionAvailable(sensor, 'firmware_upload_abort')}
-        onPress={() => {
-          void abort();
-        }}
-      />
-      <Text variant="footnote" tone="variant">
-        Accepted bytes: {String(offset)}
-      </Text>
-      {message === null ? null : (
+      {status === null ? null : (
         <Text selectable accessibilityLiveRegion="polite">
-          {message}
+          {status}
         </Text>
       )}
     </View>

@@ -1,3 +1,4 @@
+import { colord } from 'colord';
 import {
   HSV_COLOR,
   readPresentedColor,
@@ -5,23 +6,20 @@ import {
   type PresentedCapability,
 } from '@smarteverything/domain';
 
-function channel(value: number): string {
-  return Math.round(Math.min(255, Math.max(0, value)))
-    .toString(16)
-    .padStart(2, '0');
-}
+const MIN_LIGHTNESS = 55;
+const MIN_KELVIN = 1000;
+const MAX_KELVIN = 12_000;
+const HECTO = 100;
+const RGB_MAX = 255;
+const PACKED_HEX_DIGITS = 6;
 
 export function hsvCss(value: JsonValue): string | null {
   const parsed = HSV_COLOR.safeParse(value);
   if (!parsed.success) {
     return null;
   }
-  const { hue, saturation } = parsed.data;
-  const share = saturation / 100;
-  const lightness = 1 - share / 2;
-  const hslSaturation =
-    lightness === 0 || lightness === 1 ? 0 : share / 2 / Math.min(lightness, 1 - lightness);
-  return `hsl(${String(Math.round(hue))}, ${String(Math.round(hslSaturation * 100))}%, ${String(Math.round(Math.max(lightness, 0.55) * 100))}%)`;
+  const { h, s, l } = colord({ h: parsed.data.hue, s: parsed.data.saturation, v: HECTO }).toHsl();
+  return `hsl(${String(h)}, ${String(s)}%, ${String(Math.max(l, MIN_LIGHTNESS))}%)`;
 }
 
 export function presentedColourCss(
@@ -33,13 +31,9 @@ export function presentedColourCss(
     return null;
   }
   if (presented.colorEncoding === 'packed_rgb' && typeof value === 'number') {
-    return `#${value.toString(16).padStart(6, '0')}`;
+    return `#${value.toString(16).padStart(PACKED_HEX_DIGITS, '0')}`;
   }
   return hsvCss(colour);
-}
-
-function warmRed(): number {
-  return 255;
 }
 
 function warmGreen(temperature: number): number {
@@ -50,7 +44,7 @@ function warmGreen(temperature: number): number {
 
 function warmBlue(temperature: number): number {
   if (temperature >= 66) {
-    return 255;
+    return RGB_MAX;
   }
   return temperature <= 19 ? 0 : 138.52 * Math.log(temperature - 10) - 305.04;
 }
@@ -60,10 +54,13 @@ function coolRed(temperature: number): number {
 }
 
 export function kelvinCss(kelvin: number): string | null {
-  if (!Number.isFinite(kelvin) || kelvin < 1000) {
+  if (!Number.isFinite(kelvin) || kelvin < MIN_KELVIN) {
     return null;
   }
-  const temperature = Math.min(kelvin, 12_000) / 100;
-  const red = temperature <= 66 ? warmRed() : coolRed(temperature);
-  return `#${channel(red)}${channel(warmGreen(temperature))}${channel(warmBlue(temperature))}`;
+  const temperature = Math.min(kelvin, MAX_KELVIN) / HECTO;
+  return colord({
+    r: temperature <= 66 ? RGB_MAX : coolRed(temperature),
+    g: warmGreen(temperature),
+    b: warmBlue(temperature),
+  }).toHex();
 }

@@ -1,6 +1,5 @@
 import { deviceEffectRoutes } from './handlers/device-effects';
 import { deviceGroupRoutes } from './handlers/device-groups';
-import { automationSequenceRoutes } from './handlers/automation-sequences';
 import { automationRuntimeRoutes } from './handlers/automation-runtime';
 import { aiReferenceRoutes } from './handlers/ai-references';
 import { aiProjectRoutes } from './handlers/ai-projects';
@@ -33,6 +32,7 @@ import { assistantChatRoutes } from './handlers/assistant';
 import { assistantVoiceRoutes } from './handlers/assistant-voice';
 import { automationRoutes, sceneRoutes } from './handlers/automation';
 import { callRoutes } from './handlers/calls';
+import { deviceLogRoutes } from './handlers/device-log';
 import { deviceRoutes } from './handlers/devices';
 import { firewallRoutes } from './handlers/firewall';
 import { assistantRoutes, healthRoutes } from './handlers/health';
@@ -43,6 +43,7 @@ import { placeRoutes } from './handlers/places';
 import { pluginRoutes } from './handlers/plugins';
 import { scheduleRoutes } from './handlers/schedules';
 import { settingsRoutes } from './handlers/settings';
+import { televisionRoutes } from './handlers/television';
 import { transcriptRoutes } from './handlers/transcripts';
 import { signalRoutes } from './handlers/signals';
 import { snapshotRoutes } from './handlers/snapshot';
@@ -53,6 +54,7 @@ import { exchangeRatesRoutes } from './handlers/exchange-rates';
 import type { Operations } from './operations';
 import type { Plugins } from './plugin-wiring';
 import type { Transcribing } from './transcribing';
+import type { ListeningRoutes } from './handlers/listening';
 import type { ReachRoutes } from './handlers/reach';
 import type { ExtensionRouteTable, RouteTable } from './router';
 
@@ -61,7 +63,7 @@ export interface RouteServices {
   readonly budget: Budget;
   readonly schedules: Schedules;
   readonly plugins: Plugins;
-  readonly reach: ReachRoutes;
+  readonly reach: ReachRoutes & ListeningRoutes;
   readonly claude: ClaudeService;
   readonly transcribing: Transcribing;
   readonly tools: ToolHub;
@@ -81,7 +83,7 @@ export function routeTable(
     ...claudeSessionRoutes(context, services.claude),
     ...computerAiRoutes(context.computerAi),
     ...computerRuntimeRoutes(context.computerAi, context.store),
-    ...computerNodeRoutes(context.computerNodes, context.nodeSockets, context.harnessSockets),
+    ...computerNodeRoutes(context),
     ...transcriptRoutes(
       context.store,
       services.transcribing.transcripts,
@@ -90,7 +92,7 @@ export function routeTable(
     ...pluginRoutes(context.store, services.plugins.admin),
     ...snapshotRoutes(context, now),
     ...accessRoutes(context),
-    ...settingsRoutes(context),
+    ...settingsRoutes(context, now),
     ...allDeviceRoutes(context),
     ...mediaRoutes(context),
     ...firewallRoutes(context),
@@ -123,11 +125,15 @@ function allDeviceRoutes(
 ): Pick<
   RouteTable,
   | keyof ReturnType<typeof deviceRoutes>
+  | keyof ReturnType<typeof deviceLogRoutes>
   | keyof ReturnType<typeof deviceGroupRoutes>
   | keyof ReturnType<typeof deviceEffectRoutes>
+  | keyof ReturnType<typeof televisionRoutes>
 > {
   return {
     ...deviceRoutes(context),
+    ...televisionRoutes(context),
+    ...deviceLogRoutes(context),
     ...deviceGroupRoutes(context),
     ...deviceEffectRoutes(context),
   };
@@ -138,14 +144,11 @@ function allAutomationRoutes(
   tools: ToolHub,
 ): Pick<
   RouteTable,
-  | keyof ReturnType<typeof automationRoutes>
-  | keyof ReturnType<typeof automationRuntimeRoutes>
-  | keyof ReturnType<typeof automationSequenceRoutes>
+  keyof ReturnType<typeof automationRoutes> | keyof ReturnType<typeof automationRuntimeRoutes>
 > {
   return {
     ...automationRoutes(context, tools),
     ...automationRuntimeRoutes(context),
-    ...automationSequenceRoutes(context, tools),
   };
 }
 
@@ -202,12 +205,16 @@ export function startExtensions(
       extension({
         store: options.store,
         computerAi: context.computerAi,
+        computerEars: context.computerEars,
+        nodeSockets: context.nodeSockets,
         hub: options.core.hub,
         secrets: options.secrets,
         live: context.live,
         pushCommands: context.pushCommands,
+        machineApprovals: context.machineApprovals,
         openCalls: context.openCalls,
         mediaNotes: context.mediaNotes,
+        links: context.links,
         operations,
         dataDirectory: options.dataDirectory,
         log: options.log.forArea('hub.extension'),

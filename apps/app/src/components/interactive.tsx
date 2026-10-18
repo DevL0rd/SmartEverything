@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { useState } from 'react';
 import {
   Pressable,
@@ -13,7 +13,6 @@ import { cn } from '../design/cn';
 import { useColour } from '../design/colour';
 import { isNative, useIdiom } from '../design/platform';
 import { useLinkIntent } from './link-intent';
-import { longPressHandler } from './long-press';
 
 const CHECKED_ROLES: ReadonlySet<AccessibilityRole> = new Set(['checkbox', 'radio', 'switch']);
 
@@ -43,6 +42,8 @@ export interface InteractiveProps {
   readonly layerClassName?: string | undefined;
   readonly onTone?: 'surface' | 'primary' | undefined;
   readonly focusInset?: boolean | undefined;
+  readonly focusable?: boolean | undefined;
+  readonly ref?: Ref<View> | undefined;
   readonly accessibilityActions?: readonly AccessibilityActionInfo[] | undefined;
   readonly onAccessibilityAction?: ((event: AccessibilityActionEvent) => void) | undefined;
 }
@@ -248,7 +249,6 @@ function Pressed(props: PressedProps): ReactNode {
   const {
     children,
     onPressIn,
-    onLongPress,
     onContextMenu,
     href,
     intentHref,
@@ -273,7 +273,6 @@ function Pressed(props: PressedProps): ReactNode {
       {...forwarded}
       {...webLinkProps(href, disabled)}
       {...contextMenuProps(onContextMenu)}
-      onLongPress={longPressHandler(onLongPress)}
       disabled={disabled}
       {...feedback.attributes}
       {...accessibilityOf(semantics)}

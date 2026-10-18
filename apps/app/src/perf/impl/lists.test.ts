@@ -70,6 +70,7 @@ describe('ListTracker', () => {
     tracker.rows('l', -1, 10);
     tracker.viewport('l', 500);
     tracker.cell('l', 3, 300, 100);
+    tracker.content('l', 3000);
     tracker.scroll('l', 300, 1000);
     tracker.frame(80, 1050);
     tracker.frame(10, 2000);
@@ -81,5 +82,11 @@ describe('ListTracker', () => {
     expect(stat.blankMax).toBe(400);
     expect(stat.scrollFrames).toBe(1);
     expect(stat.scrollJanks).toBe(1);
+    expect(stat.content).toBe(3000);
+    expect(stat.viewport).toBe(500);
+    expect(stat.offsetMax).toBe(300);
+    expect(stat.firstIndex).toBe(3);
+    expect(stat.lastIndex).toBe(3);
+    expect(stat.cellMax).toBe(100);
   });
 });

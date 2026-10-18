@@ -20,9 +20,9 @@ const SIGHT_STILL_FLAG = 0x01;
 export const TALK_HEARTBEAT_MS = 60_000;
 
 export const TALK_CLIENT_MESSAGE = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('press'), channelId: ID }),
-  z.strictObject({ type: z.literal('listen'), channelId: ID, cameraId: ID }),
-  z.strictObject({ type: z.literal('release') }),
+  z.object({ type: z.literal('press'), channelId: ID }),
+  z.object({ type: z.literal('listen'), channelId: ID, cameraId: ID }),
+  z.object({ type: z.literal('release') }),
 ]);
 
 export type TalkClientMessage = z.infer<typeof TALK_CLIENT_MESSAGE>;
@@ -49,38 +49,38 @@ export const TALK_ENDINGS = [
 export type TalkEnding = (typeof TALK_ENDINGS)[number];
 
 export const TALK_SERVER_MESSAGE = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('ready'), clientId: ID, channels: z.array(ID) }),
-  z.strictObject({ type: z.literal('channels'), channels: z.array(ID) }),
-  z.strictObject({
+  z.object({ type: z.literal('ready'), clientId: ID, channels: z.array(ID) }),
+  z.object({ type: z.literal('channels'), channels: z.array(ID) }),
+  z.object({
     type: z.literal('granted'),
     channelId: ID,
     messageId: ID,
     limitSeconds: z.int().positive(),
   }),
-  z.strictObject({ type: z.literal('denied'), channelId: ID, reason: z.enum(TALK_DENIALS) }),
-  z.strictObject({
+  z.object({ type: z.literal('denied'), channelId: ID, reason: z.enum(TALK_DENIALS) }),
+  z.object({
     type: z.literal('ended'),
     messageId: ID,
     reason: z.enum(TALK_ENDINGS),
-    detail: z.string().max(200).nullable(),
+    detail: z.string().nullable(),
   }),
-  z.strictObject({
+  z.object({
     type: z.literal('rx_start'),
     channelId: ID,
     messageId: ID,
     speaker: TALK_SPEAKER,
   }),
-  z.strictObject({ type: z.literal('rx_end'), messageId: ID }),
-  z.strictObject({
+  z.object({ type: z.literal('rx_end'), messageId: ID }),
+  z.object({
     type: z.literal('live_start'),
     channelId: ID,
-    conversationId: z.string().min(1).max(120),
-    label: z.string().min(1).max(80),
+    conversationId: z.string().min(1),
+    label: z.string().min(1),
   }),
-  z.strictObject({
+  z.object({
     type: z.literal('live_end'),
     channelId: ID,
-    conversationId: z.string().min(1).max(120),
+    conversationId: z.string().min(1),
   }),
 ]);
 
@@ -155,19 +155,23 @@ export function sightOfFrame(frame: Uint8Array): SightFrame {
   if (frame[0] !== ASSISTANT_SIGHT_FRAME) {
     throw new TalkFrameError(`A picture frame starts with ${String(ASSISTANT_SIGHT_FRAME)}.`);
   }
-  const source = SIGHT_SOURCES[frame[1] ?? SIGHT_SOURCES.length];
   const size = frame.byteLength - SIGHT_FRAME_HEADER_BYTES;
-  if (source === undefined) {
-    throw new TalkFrameError(`A picture frame names source ${String(frame[1])}, which is unknown.`);
-  }
   if (size < 1 || size > SIGHT_FRAME_LIMITS.maxBytes) {
     throw new TalkFrameError(
       `A picture frame of ${String(frame.byteLength)} bytes is not allowed.`,
     );
   }
+  const header = new DataView(frame.buffer, frame.byteOffset, SIGHT_FRAME_HEADER_BYTES);
+  const sourceCode = header.getUint8(1);
+  const source = SIGHT_SOURCES[sourceCode];
+  if (source === undefined) {
+    throw new TalkFrameError(
+      `A picture frame names source ${String(sourceCode)}, which is unknown.`,
+    );
+  }
   return {
     source,
-    still: ((frame[2] ?? 0) & SIGHT_STILL_FLAG) !== 0,
+    still: (header.getUint8(2) & SIGHT_STILL_FLAG) !== 0,
     jpeg: frame.subarray(SIGHT_FRAME_HEADER_BYTES),
   };
 }

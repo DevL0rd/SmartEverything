@@ -5,10 +5,12 @@ import { Button } from '../../../components/button';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { href } from '../../../app-shell/hrefs';
+import { deviceCardOf } from '../../../plugins/device-contributions';
 import { useDevice, useDeviceValues } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { closeQuickControls, useQuickControlsTarget } from '../../../store/ui-state';
 import { DeviceVisual } from '../../device-visuals';
+import { FAMILY_CONTROLS } from '../controls/family-controls';
 import { PowerToggle } from '../controls/power-toggle';
 import { PrimaryControls } from '../controls/primary-controls';
 import { OfflineBanner } from '../detail/offline-banner';
@@ -27,9 +29,11 @@ function Header({ device }: { readonly device: Device }): ReactNode {
         <Text variant="title-3" numberOfLines={2}>
           {name}
         </Text>
-        <Text variant="callout" tone="variant" numberOfLines={1}>
-          {stateLine(model, values)}
-        </Text>
+        {deviceCardOf(device)?.subtitle?.(device) ?? (
+          <Text variant="callout" tone="variant" numberOfLines={1}>
+            {stateLine(model, values)}
+          </Text>
+        )}
       </View>
       <PowerToggle device={device} />
     </View>
@@ -39,11 +43,13 @@ function Header({ device }: { readonly device: Device }): ReactNode {
 function Body({ device }: { readonly device: Device }): ReactNode {
   const router = useRouter();
   const model = useDeviceModel(device);
+  const Quick = FAMILY_CONTROLS[model.family]?.quick;
   return (
     <View className="gap-5 p-1">
       <Header device={device} />
       {model.sleepy ? null : <OfflineBanner device={device} />}
-      <PrimaryControls device={device} />
+      {deviceCardOf(device)?.quick?.(device)}
+      {Quick === undefined ? <PrimaryControls device={device} /> : <Quick device={device} />}
       <Button
         label="Open device"
         icon="chevronRight"

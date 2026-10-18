@@ -87,6 +87,18 @@ export const SHELLY_PRESENCE_SNAPSHOT = z.object({
     reason: z.string().max(500).nullable(),
   }),
 });
+export const SHELLY_PRESENCE_TRACKS = z.object({
+  devices: z
+    .array(
+      z.object({
+        id: SHELLY_ID,
+        tracks: z.array(SHELLY_TRACK).max(32),
+        tracksAt: z.iso.datetime({ offset: true }).nullable(),
+      }),
+    )
+    .max(64),
+});
+export type ShellyPresenceTracks = z.output<typeof SHELLY_PRESENCE_TRACKS>;
 export type ShellyPresenceDevice = z.output<typeof SHELLY_PRESENCE_DEVICE>;
 export type ShellyPresenceSnapshot = z.output<typeof SHELLY_PRESENCE_SNAPSHOT>;
 export type ShellyPresenceZone = z.output<typeof SHELLY_PRESENCE_ZONE>;

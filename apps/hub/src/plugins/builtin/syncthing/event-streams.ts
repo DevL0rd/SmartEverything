@@ -1,5 +1,7 @@
+import { backoffDelay } from '../../backoff';
 import { SYNCTHING_EVENTS, type SyncthingEvent } from './rest-schemas';
 import type { SyncthingRest } from './rest-client';
+import { background } from '@smarteverything/logging';
 
 const LONG_POLL_SECONDS = 55;
 const WATCHDOG_MS = 65_000;
@@ -37,7 +39,7 @@ export function newestEventId(
 
 export class SyncthingEventStreams {
   #generation: AbortController | null = null;
-  #retryMs = RETRY_FIRST_MS;
+  #failures = 0;
   #retry: NodeJS.Timeout | null = null;
   #up = false;
   #stopped = false;
@@ -53,8 +55,8 @@ export class SyncthingEventStreams {
     }
     const generation = new AbortController();
     this.#generation = generation;
-    void this.#follow('main', generation);
-    void this.#follow('disk', generation);
+    background(this.#follow('main', generation), 'event_streams.follow_failed');
+    background(this.#follow('disk', generation), 'event_streams.follow_failed');
   }
 
   stop(): void {
@@ -108,7 +110,7 @@ export class SyncthingEventStreams {
   }
 
   #markUp(): void {
-    this.#retryMs = RETRY_FIRST_MS;
+    this.#failures = 0;
     if (!this.#up) {
       this.#up = true;
       this.handlers.onUp();
@@ -119,8 +121,8 @@ export class SyncthingEventStreams {
     generation.abort();
     this.#up = false;
     this.handlers.onDown(error);
-    const wait = this.#retryMs;
-    this.#retryMs = Math.min(RETRY_MAX_MS, this.#retryMs * 2);
+    const wait = backoffDelay(this.#failures, { firstMs: RETRY_FIRST_MS, longestMs: RETRY_MAX_MS });
+    this.#failures += 1;
     this.#retry = setTimeout(() => {
       this.#retry = null;
       this.start();

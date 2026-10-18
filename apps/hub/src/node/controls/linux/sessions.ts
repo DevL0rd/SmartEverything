@@ -10,7 +10,7 @@ const SESSIONS = z.array(
   }),
 );
 
-export class UnknownUserError extends Error {
+class UnknownUserError extends Error {
   override readonly name = 'UnknownUserError';
 
   constructor() {

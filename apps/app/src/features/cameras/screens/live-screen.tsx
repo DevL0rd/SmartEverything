@@ -1,10 +1,13 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
+import { Logger } from '@smarteverything/logging';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { WidgetBoard, useBoardEditor } from '../../../components/widget-board';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
+import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { Screen } from '../../../components/screen';
 import { CameraTranscriptFeed } from '../transcripts/camera-transcript-feed';
 import { atLeast, useSizeClass } from '../../../design/size-class';
@@ -19,6 +22,8 @@ import {
   cameraInstanceAvailable,
 } from '../live/widgets';
 
+const log = new Logger('app.cameras');
+
 const AVAILABLE: ReadonlySet<string> = new Set(['camera', 'camera-events']);
 
 function useActions(): readonly HeaderAction[] {
@@ -32,6 +37,7 @@ function useActions(): readonly HeaderAction[] {
       label: muted ? 'Muted' : 'Sound on',
       selected: !muted,
       onPress: (): void => {
+        log.info('cameras.mute_toggled', { muted: !muted });
         prefs.set({ muted: !muted });
       },
     },
@@ -62,6 +68,11 @@ export function LiveScreen(): ReactNode {
   const entries = useCameraEntries();
   const actions = useActions();
   const banner = useCameraBanners();
+  const cameraCount = entries.length;
+  useLifecycleLog(log, 'cameras_screen');
+  useEffect(() => {
+    log.debug('cameras.list_changed', { cameras: cameraCount });
+  }, [cameraCount]);
   const editor = useBoardEditor({
     page: CAMERAS_PAGE,
     layout: usePageLayout(CAMERAS_PAGE),

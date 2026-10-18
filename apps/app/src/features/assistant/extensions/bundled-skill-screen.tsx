@@ -1,15 +1,55 @@
 import type { ReactNode } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { z } from 'zod';
+import type { AiHarnessExtensions } from '@smarteverything/domain';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { EmptyState } from '../../../components/empty-state';
 import { List } from '../../../components/section';
 import { ListRow } from '../../../components/list-row';
 import { CopyButton } from '../../../components/copy-button';
-import { Text } from '../../../components/text';
+import { Banner } from '../../../components/banner';
 import { Markdown } from '../components/markdown/markdown';
 import { useExtensions } from './queries';
+import { ItemHeader } from './item-header';
 import { ExtensionReadStatus } from './query-status';
+import { background } from '@smarteverything/logging';
+
+type BundledSkill = NonNullable<AiHarnessExtensions['bundled_skills']>[number];
+
+function SkillBody({ skill }: { readonly skill: BundledSkill }): ReactNode {
+  return (
+    <>
+      <ItemHeader
+        icon="fileText"
+        kind="skill"
+        included
+        description={skill.description}
+        byline={skill.publisher}
+      />
+      <Banner
+        tone="info"
+        title="Included skills are read-only"
+        body="These instructions load when needed and do not grant permissions. Updates arrive with the app."
+        wrapBody
+      />
+      <List inset title="Source">
+        <ListRow
+          title="Skill name"
+          subtitle={skill.id}
+          wrapSubtitle
+          trailing={<CopyButton value={skill.id} label="Copy skill name" />}
+        />
+        <ListRow
+          title="Bundled revision"
+          subtitle={skill.revision}
+          wrapSubtitle
+          trailing={<CopyButton value={skill.revision} label="Copy revision" />}
+        />
+      </List>
+      <Markdown text={skill.content} selectable />
+    </>
+  );
+}
 
 export function BundledSkillScreen(): ReactNode {
   const params = z
@@ -24,40 +64,24 @@ export function BundledSkillScreen(): ReactNode {
         loading={catalogue.isFetching ? catalogue.data === undefined : false}
         error={catalogue.error}
         retry={() => {
-          void catalogue.refetch();
+          background(catalogue.refetch(), 'catalogue.refetch_failed');
         }}
       />
       {skill === undefined ? (
-        <EmptyState
-          icon="fileText"
-          title="Skill unavailable"
-          body="Refresh the catalogue. Older hubs may not publish included skills yet."
-        />
+        <SkillMissing loaded={catalogue.data !== undefined} />
       ) : (
-        <>
-          <Text>{skill.description}</Text>
-          <Text variant="callout" tone="variant">
-            Included in SmartEverything. These instructions load when needed and do not grant
-            permissions.
-          </Text>
-          <List inset title="Source">
-            <ListRow title="Publisher" subtitle={skill.publisher} />
-            <ListRow
-              title="Skill name"
-              subtitle={skill.id}
-              wrapSubtitle
-              trailing={<CopyButton value={skill.id} label="Copy skill name" />}
-            />
-            <ListRow
-              title="Bundled revision"
-              subtitle={skill.revision}
-              wrapSubtitle
-              trailing={<CopyButton value={skill.revision} label="Copy revision" />}
-            />
-          </List>
-          <Markdown text={skill.content} selectable />
-        </>
+        <SkillBody skill={skill} />
       )}
     </SettingsFrame>
   );
+}
+
+function SkillMissing({ loaded }: { readonly loaded: boolean }): ReactNode {
+  return loaded ? (
+    <EmptyState
+      icon="fileText"
+      title="Skill unavailable"
+      body="Update the hub to see included skills."
+    />
+  ) : null;
 }

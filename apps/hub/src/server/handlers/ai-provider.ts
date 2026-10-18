@@ -11,33 +11,13 @@ import {
 } from '@smarteverything/domain';
 import type { ServerContext } from '../context';
 import { roleOfCaller, profileIdOf, type Caller } from '../auth';
-import { bound, DONE_REPLY, type Bound } from '../router';
+import { bound, DONE_REPLY } from '../router';
 import type { ComputerRunner } from '../../assistant/engines/computer/runner';
 import { runtimeValue } from '../../assistant/engines/computer/request';
 import type { EngineSelections } from '../../assistant/engine-selections';
+import { computerEngine } from '../../assistant/engine-kind';
 
 const MODEL_PARAMS = 'modelId';
-type ProviderRoutes = Record<
-  | 'readAiEngineCatalogue'
-  | 'readAiEngineDefault'
-  | 'updateAiEngineDefault'
-  | 'updateAiEnginePreference'
-  | 'updateAiRuntimeEnginePreference'
-  | 'readAiChatProvider'
-  | 'readAiChatProviderState'
-  | 'controlAiChatProvider'
-  | 'answerAiChatProvider',
-  Bound
->;
-
-function assertOwner(caller: Caller): void {
-  if (roleOfCaller(caller) !== 'owner')
-    throw new ApiError(
-      'forbidden',
-      'Only the owner may configure computer AI defaults and supplying machines.',
-    );
-}
-
 function selections(context: ServerContext): EngineSelections {
   if (context.assistant.selections === null)
     throw new ApiError('conflict', 'Computer AI engines are starting.');
@@ -53,28 +33,16 @@ function owned(
     { profileId: profileIdOf(context.store, caller), role: roleOfCaller(caller) },
     chatId,
   );
-  if (roleOfCaller(caller) !== 'owner')
-    throw new ApiError('forbidden', 'Only the owner may read or control native computer work.');
+  const computer = computerEngine(chat.engine);
   const runner =
-    chat.engine.kind === 'openrouter' || chat.engine.kind === 'dsh'
-      ? undefined
-      : context.assistant.computerProviders.get(chat.engine.kind);
+    computer === null ? undefined : context.assistant.computerProviders.get(computer.kind);
   if (runner === undefined)
     throw new ApiError('invalid_request', 'This chat has no connected subscription provider.');
   return { chat, runner };
 }
 
-function engineRoutes(
-  context: ServerContext,
-): Pick<
-  ProviderRoutes,
-  | 'readAiEngineCatalogue'
-  | 'readAiEngineDefault'
-  | 'updateAiEngineDefault'
-  | 'updateAiEnginePreference'
-  | 'updateAiRuntimeEnginePreference'
-> {
-  return {
+const engineRoutes = (context: ServerContext) =>
+  ({
     ...runtimePreferenceRoute(context),
     readAiEngineCatalogue: bound(E.readAiEngineCatalogue, ({ caller }) =>
       selections(context).catalogue(roleOfCaller(caller)),
@@ -83,16 +51,19 @@ function engineRoutes(
       engine: roleOfCaller(caller) === 'owner' ? context.store.aiEngineDefaults.read() : null,
     })),
     updateAiEngineDefault: bound(E.updateAiEngineDefault, ({ body, caller }) => {
-      assertOwner(caller);
       const engine =
         body.engine === null
           ? null
           : selections(context).select(profileIdOf(context.store, caller), body.engine);
-      if (engine !== null) selections(context).validate(engine, roleOfCaller(caller));
+      if (engine !== null) {
+        selections(context).validate(engine, {
+          role: roleOfCaller(caller),
+          profileId: profileIdOf(context.store, caller),
+        });
+      }
       return { engine: context.store.aiEngineDefaults.update(engine) };
     }),
-    updateAiEnginePreference: bound(E.updateAiEnginePreference, ({ params, body, caller }) => {
-      assertOwner(caller);
+    updateAiEnginePreference: bound(E.updateAiEnginePreference, ({ params, body }) => {
       const model = params[MODEL_PARAMS];
       const settings = context.store.computerAi
         .models(body.device_id)
@@ -104,17 +75,13 @@ function engineRoutes(
         );
       return context.store.aiProvider.prefer(model, body.device_id);
     }),
-  };
-}
+  }) as const;
 
-function runtimePreferenceRoute(
-  context: ServerContext,
-): Pick<ProviderRoutes, 'updateAiRuntimeEnginePreference'> {
-  return {
+const runtimePreferenceRoute = (context: ServerContext) =>
+  ({
     updateAiRuntimeEnginePreference: bound(
       E.updateAiRuntimeEnginePreference,
-      ({ params, body, caller }) => {
-        assertOwner(caller);
+      ({ params, body }) => {
         const model = context.store.computerRuntimes
           .models({ device_id: body.device_id, runtime: params.runtime })
           .find((entry) => entry.id === params.modelId);
@@ -130,11 +97,10 @@ function runtimePreferenceRoute(
         );
       },
     ),
-  };
-}
+  }) as const;
 
-export function aiProviderRoutes(context: ServerContext): ProviderRoutes {
-  return {
+export const aiProviderRoutes = (context: ServerContext) =>
+  ({
     ...engineRoutes(context),
     readAiChatProvider: bound(E.readAiChatProvider, ({ params, caller }) => {
       const { chat, runner } = owned(context, caller, params.chatId);
@@ -155,13 +121,10 @@ export function aiProviderRoutes(context: ServerContext): ProviderRoutes {
       }
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
 
-function providerReadRoute(
-  context: ServerContext,
-): Pick<ProviderRoutes, 'readAiChatProviderState'> {
-  return {
+const providerReadRoute = (context: ServerContext) =>
+  ({
     readAiChatProviderState: bound(E.readAiChatProviderState, ({ params, body, caller }) => {
       const { chat, runner } = owned(context, caller, params.chatId);
       const state = runner.state.bound(chat);
@@ -189,13 +152,10 @@ function providerReadRoute(
         JSON_VALUE,
       );
     }),
-  };
-}
+  }) as const;
 
-function providerControlRoute(
-  context: ServerContext,
-): Pick<ProviderRoutes, 'controlAiChatProvider'> {
-  return {
+const providerControlRoute = (context: ServerContext) =>
+  ({
     controlAiChatProvider: bound(E.controlAiChatProvider, async ({ params, body, caller }) => {
       const { chat, runner } = owned(context, caller, params.chatId);
       if ('runtime' in body) {
@@ -223,14 +183,15 @@ function providerControlRoute(
       persistControl(context, chat, body);
       return result;
     }),
-  };
-}
+  }) as const;
 
 function validateControl(context: ServerContext, chat: AiChatRow, control: ProviderControl): void {
   if (chat.engine.kind !== 'claude')
     throw new ApiError('conflict', 'This chat has a different engine.');
   const engine = changedEngine(context, chat, control);
-  if (engine !== null) selections(context).validate(engine, 'owner');
+  if (engine !== null) {
+    selections(context).validate(engine, { role: 'owner', profileId: chat.profile_id });
+  }
 }
 
 function persistControl(context: ServerContext, chat: AiChatRow, control: ProviderControl): void {

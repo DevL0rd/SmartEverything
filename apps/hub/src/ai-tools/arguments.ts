@@ -12,17 +12,3 @@ export function recordArgument(
     ? Object.fromEntries(Object.entries(value))
     : {};
 }
-
-function allowsNull(schema: unknown): boolean {
-  return JSON.stringify(schema).includes('"type":"null"');
-}
-
-export function withoutAbsentFields(
-  inputSchema: Readonly<Record<string, unknown>>,
-  args: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> {
-  const properties = recordArgument(inputSchema, 'properties');
-  return Object.fromEntries(
-    Object.entries(args).filter(([key, value]) => value !== null || allowsNull(properties[key])),
-  );
-}

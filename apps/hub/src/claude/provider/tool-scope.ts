@@ -1,4 +1,4 @@
-import type { McpServerProvenance } from '@anthropic-ai/claude-agent-sdk';
+import type { HookJSONOutput, McpServerProvenance } from '@anthropic-ai/claude-agent-sdk';
 import type { ProviderTurn, ClaudeMcpServers } from '@smarteverything/domain';
 import { agentServerNames } from './agent-scope';
 import { permitsManagedTool } from './managed-project';
@@ -32,3 +32,11 @@ export function permitsProviderTool(
 function permitsBuiltin(scope: ToolScope, name: string): boolean {
   return scope.turn.options.builtin_tools.length === 0 && scope.builtin.has(name);
 }
+
+export const OUTSIDE_SCOPE: HookJSONOutput = {
+  hookSpecificOutput: {
+    hookEventName: 'PreToolUse',
+    permissionDecision: 'deny',
+    permissionDecisionReason: 'This tool is outside the immutable chat access scope.',
+  },
+};

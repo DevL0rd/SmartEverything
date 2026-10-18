@@ -1,20 +1,14 @@
 ---
 name: smarteverything-images
-description: Generate or edit SmartEverything chat images with discovered endpoint capabilities, owned references and immediate background delivery.
+description: Generate, edit, restyle or combine images in a SmartEverything chat from a description or from earlier or attached images.
 ---
 
 # Image generation and editing
 
-## Choose a supported endpoint
+Call `list_image_endpoints` before `edit_image` action start and use the returned model and provider_tag with a capability that fits (generate, edit, references). A missing provider grant is fixed in the app, not by switching to another paid route.
 
-Use `list_image_endpoints` before `start_image_operation`. Read each endpoint's generation/edit/reference capabilities, prices and the initiating chat's separate image-provider readiness. Use the returned model, provider_tag and revision. Subscription chat authorization does not grant the metered image provider; a missing grant belongs in the app's account flow, not an automatic paid fallback.
+Resolve a named or latest owned image with `edit_image` action resolve and use its attachment ID as the source; keep several references in the user's order. Only images the chat's person owns can be inputs: ask for a correction instead of guessing a substitute.
 
-Resolve an explicit image or the authoritative latest owned image with `resolve_image_input`. Use its stable attachment ID for the edit source and keep multiple references in the order the user intended. Preserve immutable originals. A path, thumbnail or image from another person's chat is not an owned input; an unavailable required reference needs the person's correction rather than a guessed substitute.
+Write the prompt around subject, composition, style and output constraints; `tool_details` gives the schema. Use one operation ID per request and keep it after an uncertain result; never retry an unknown outcome with a new ID.
 
-## Start and return
-
-Build the prompt around the requested subject, composition, style and output constraints. Discover the operation schema through `tool_details` and select only supported options. Use one operation ID for this request; preserve that identity after an uncertain result. Never retry an unknown provider outcome automatically with a new ID.
-
-`start_image_operation` returns Started while generation continues. Briefly say it started and finish the image request; the UI receives progress, saves the image and presents completion. Do not wait by reading receipt/history, reading chats repeatedly or running a polling loop. Continue unrelated work only when the person asked for it. `cancel_image_operation` cancels the active provider request and pending result persistence; do not claim billing is resolved when delivery is unknown.
-
-The UI owns receipt status and history; `call_operation` cannot turn their human-only endpoints into an AI completion check. For further work the user requested that needs the saved images, use `wait_for_images` once: omit operation_ids to snapshot the initiating chat's active batch, or pass exact creation IDs to include already-finished outcomes. Jobs started later are excluded. Use returned attachment IDs for the requested edit or explicitly authorized send. A bounded timeout returns partial results; pending, failed, cancelled or unknown outcomes are not completion. Never loop, schedule a completion turn or wait merely to display images. Starting an operation is not proof that an image was produced.
+`start` returns Started while generation continues, so start every requested image at once, say briefly that it started and finish; the app shows progress and saves the result. `edit_image` action cancel stops an active request. Use `wait` once only when later work needs the saved images (see its description).

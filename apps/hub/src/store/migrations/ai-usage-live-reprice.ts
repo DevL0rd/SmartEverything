@@ -1,9 +1,37 @@
-import { AI_PRICING, googlePriceOf, type AiPricing } from '@smarteverything/domain';
 import type { LogPayload } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { Sql } from '../sql';
 
 const AUDIO_TOKENS_PER_SECOND = 32;
+
+const LIVE_MODEL = 'google:gemini-3.8-live';
+
+const RATE = z.number().nullable();
+
+const PRICING = z.looseObject({
+  input_per_mtok: RATE,
+  audio_in_per_mtok: RATE,
+  output_per_mtok: RATE,
+  audio_out_per_mtok: RATE,
+});
+
+const PRICED = z.object({
+  input_per_mtok: z.number(),
+  audio_in_per_mtok: z.number(),
+  output_per_mtok: z.number(),
+  audio_out_per_mtok: z.number(),
+});
+
+type Pricing = z.output<typeof PRICING>;
+
+const SHIPPED: Readonly<Record<string, Pricing>> = {
+  [LIVE_MODEL]: {
+    input_per_mtok: 0.75,
+    audio_in_per_mtok: 3,
+    output_per_mtok: 4.5,
+    audio_out_per_mtok: 12,
+  },
+};
 
 const LIVE_ROW = z.strictObject({
   id: z.string(),
@@ -32,9 +60,9 @@ const OVERRIDES = z.strictObject({
   prices: z.string().nullable(),
 });
 
-const PRICE_TABLE = z.record(z.string(), AI_PRICING);
+const PRICE_TABLE = z.record(z.string(), PRICING);
 
-type Overrides = Readonly<Record<string, AiPricing>>;
+type Overrides = Readonly<Record<string, Pricing>>;
 
 function overridesOf(sql: Sql): Overrides {
   const row = sql.get(
@@ -46,16 +74,11 @@ function overridesOf(sql: Sql): Overrides {
 }
 
 function rates(modelId: string, overrides: Overrides): readonly [number, number, number, number] {
-  const pricing = googlePriceOf(modelId, overrides);
-  const { input_per_mtok, audio_in_per_mtok, output_per_mtok, audio_out_per_mtok } = pricing;
-  if (
-    input_per_mtok === null ||
-    audio_in_per_mtok === null ||
-    output_per_mtok === null ||
-    audio_out_per_mtok === null
-  ) {
+  const priced = PRICED.safeParse(overrides[modelId] ?? SHIPPED[modelId]);
+  if (!priced.success) {
     throw new MissingLivePriceError(modelId);
   }
+  const { input_per_mtok, audio_in_per_mtok, output_per_mtok, audio_out_per_mtok } = priced.data;
   return [input_per_mtok, audio_in_per_mtok, output_per_mtok, audio_out_per_mtok];
 }
 

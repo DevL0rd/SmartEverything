@@ -1,195 +1,323 @@
-import type {
-  LegacyAction as Action,
-  CommandAction,
-  Comparison,
-  LegacyCondition as Condition,
-  DeviceCapability,
-  Trigger,
-  ValueDescriptor,
+import {
+  targetDevices,
+  type AutomationValueRow,
+  type ConditionV2,
+  type DeviceTarget,
+  type StepV2,
+  type TargetV2,
+  type TriggerV2,
 } from '@smarteverything/domain';
-import { genericSources, withKind } from './signal-triggers';
+import { randomUUID } from 'expo-crypto';
+import type { Catalog } from '../data/use-automations';
+import { groupControlChoices } from '../../device-groups';
 import {
   defaultValue,
   readableCapabilities,
-  valueComparisonFor,
+  seedOf,
+  testFor,
   writableCapabilities,
-  type DeviceLike,
-  type ValueComparison,
 } from './capability-choices';
+import { blankAudioChange, blankDisplayChange, computersOf } from './computer-steps';
+import { defaultLiteral } from './inputs';
+import type { Callable } from './reusable-steps';
+import { blankSignal } from './signal-triggers';
+import { SPEAK_TOOL, speechStep } from './speak-step';
 
-export const TRIGGER_TYPES = [
-  'state',
-  'event',
+export const TRIGGER_KINDS = [
   'time',
   'sun',
-  'interval',
+  'every',
+  'device',
+  'event',
   'weather',
-  'weather_kind',
   'signal',
+  'speech',
 ] as const;
-export const CONDITION_TYPES = [
-  'state',
-  'time_window',
-  'weekday',
-  'weather',
-  'weather_kind',
-  'daylight',
+export type TriggerKind = (typeof TRIGGER_KINDS)[number];
+
+export const CONDITION_KINDS = ['compare', 'time', 'daylight', 'any'] as const;
+export type ConditionKind = (typeof CONDITION_KINDS)[number];
+
+const LEAF_KINDS = [
+  'set',
+  'scene',
+  'wait',
+  'notify',
+  'ai',
+  'tool',
+  'speak',
+  'audio',
+  'display',
 ] as const;
-export const ACTION_TYPES = ['command', 'scene', 'delay', 'notify', 'wake_ai'] as const;
+const FLOW_KINDS = ['value', 'if', 'repeat', 'run', 'stop'] as const;
+export const STEP_KINDS = [...LEAF_KINDS, ...FLOW_KINDS] as const;
+export type StepKind = (typeof STEP_KINDS)[number];
+type FlowKind = (typeof FLOW_KINDS)[number];
+type LeafKind = (typeof LEAF_KINDS)[number];
 
-export type TriggerType = Trigger['type'];
-export type ConditionType = Condition['type'];
-export type ActionType = Action['type'];
-
-export const EVERY_DAY: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
+function isFlowKind(kind: StepKind): kind is FlowKind {
+  return FLOW_KINDS.some((flow) => flow === kind);
+}
 const WEEKDAYS_ONLY: readonly number[] = [1, 2, 3, 4, 5];
+const DEFAULT_WAIT_MS = 60_000;
+const DEFAULT_REPEAT_TIMES = 3;
+const DEFAULT_REPEAT_LIMIT_MS = 60_000;
 
-export interface Choices {
-  readonly devices: readonly DeviceLike[];
-  readonly sceneIds: readonly string[];
-  readonly wakeProfileId: string | null;
+export function newId(): string {
+  return randomUUID();
 }
 
-function triggerComparison(descriptor: ValueDescriptor): Comparison {
-  switch (descriptor.kind) {
-    case 'boolean':
-    case 'enum':
-      return valueComparisonFor('eq', descriptor, null);
-    case 'number':
-      return valueComparisonFor('gt', descriptor, null);
-    case 'color':
-    case 'text':
-    case 'action':
-      return { operator: 'changed' };
-  }
-}
-
-function conditionComparison(descriptor: ValueDescriptor): ValueComparison {
-  return valueComparisonFor(descriptor.kind === 'number' ? 'gt' : 'eq', descriptor, null);
-}
-
-interface Target {
-  readonly device: DeviceLike;
-  readonly capability: DeviceCapability;
-}
-
-function firstTarget(
-  devices: readonly DeviceLike[],
-  usable: (device: DeviceLike) => readonly DeviceCapability[],
-): Target | null {
-  for (const device of devices) {
-    const capability = usable(device)[0];
-    if (capability !== undefined) {
-      return { device, capability };
-    }
+function blankDeviceTrigger(catalog: Catalog): TriggerV2 | null {
+  for (const device of catalog.devices) {
+    const capability = readableCapabilities(device)[0];
+    if (capability === undefined) continue;
+    const descriptor = capability.value;
+    const operator =
+      descriptor.kind === 'number' ? 'gt' : descriptor.kind === 'boolean' ? 'eq' : 'changed';
+    return {
+      on: 'signal',
+      id: newId(),
+      source: 'device',
+      kind: 'state',
+      subject: device.id,
+      field: capability.key,
+      test: testFor(operator, seedOf(descriptor)),
+    };
   }
   return null;
 }
 
-export function stateTrigger(
-  device: DeviceLike,
-  capability: DeviceCapability,
-): Extract<Trigger, { type: 'state' }> {
-  return {
-    type: 'state',
-    deviceId: device.id,
-    capability: capability.key,
-    comparison: triggerComparison(capability.value),
-  };
-}
-
-export function stateCondition(device: DeviceLike, capability: DeviceCapability): Condition {
-  return {
-    type: 'state',
-    deviceId: device.id,
-    capability: capability.key,
-    comparison: conditionComparison(capability.value),
-  };
-}
-
-export function commandAction(device: DeviceLike, capability: DeviceCapability): CommandAction {
-  return {
-    type: 'command',
-    deviceId: device.id,
-    capability: capability.key,
-    value: defaultValue(capability.value),
-  };
-}
-
-function blankSignal(): Trigger | null {
-  const source = genericSources()[0];
-  const kind = source?.kinds[0];
-  if (source === undefined || kind === undefined) {
-    return null;
-  }
-  return withKind({ type: 'signal' }, source.source, kind);
-}
-
-function blankStateTrigger(choices: Choices): Trigger | null {
-  const target = firstTarget(choices.devices, readableCapabilities);
-  return target === null ? null : stateTrigger(target.device, target.capability);
-}
-
-export function blankTrigger(type: TriggerType, choices: Choices): Trigger | null {
-  if (type === 'speech') return null;
-  switch (type) {
-    case 'state':
-      return blankStateTrigger(choices);
-    case 'event':
-      return { type, deviceId: null, kind: 'motion' };
+export function blankTrigger(kind: TriggerKind, catalog: Catalog): TriggerV2 | null {
+  const id = newId();
+  switch (kind) {
     case 'time':
-      return { type, at: '07:00', weekdays: [...EVERY_DAY] };
+      return { on: 'time', id, at: '07:00' };
     case 'sun':
-      return { type, event: 'sunset', offsetMinutes: 0 };
-    case 'interval':
-      return { type, everyMinutes: 60 };
+      return { on: 'sun', id, event: 'sunset' };
+    case 'every':
+      return { on: 'every', id, minutes: 60 };
+    case 'device':
+      return blankDeviceTrigger(catalog);
+    case 'event':
+      return { on: 'signal', id, source: 'event', kind: 'motion' };
     case 'weather':
-      return { type, metric: 'temperature', comparison: { operator: 'gt', value: 30 } };
-    case 'weather_kind':
-      return { type, kinds: ['rain', 'storm'] };
-    case 'signal':
-      return blankSignal();
+      return {
+        on: 'signal',
+        id,
+        source: 'weather',
+        kind: 'forecast',
+        field: 'temperature',
+        test: { is: 'gt', to: 30 },
+      };
+    case 'signal': {
+      const signal = blankSignal();
+      return signal === null ? null : { ...signal, id };
+    }
+    case 'speech':
+      return { on: 'speech', id, phrase: '' };
   }
 }
 
-export function blankCondition(type: ConditionType, choices: Choices): Condition | null {
-  switch (type) {
-    case 'state': {
-      const target = firstTarget(choices.devices, readableCapabilities);
-      return target === null ? null : stateCondition(target.device, target.capability);
-    }
-    case 'time_window':
-      return { type, after: '22:00', before: '06:00' };
-    case 'weekday':
-      return { type, weekdays: [...WEEKDAYS_ONLY] };
-    case 'weather':
-      return { type, metric: 'rain_chance', comparison: { operator: 'lt', value: 30 } };
-    case 'weather_kind':
-      return { type, kinds: ['clear', 'partly_cloudy'] };
+function blankReading(catalog: Catalog): ConditionV2 | null {
+  for (const device of catalog.devices) {
+    const capability = readableCapabilities(device)[0];
+    if (capability === undefined) continue;
+    const descriptor = capability.value;
+    const operator = descriptor.kind === 'number' ? 'gt' : 'eq';
+    const test = testFor(operator, seedOf(descriptor));
+    if (test.is === 'changed' || test.is === 'in') continue;
+    return { compare: { device: device.id, control: capability.key }, test };
+  }
+  return null;
+}
+
+export function blankCondition(kind: ConditionKind, catalog: Catalog): ConditionV2 | null {
+  switch (kind) {
+    case 'compare':
+      return blankReading(catalog);
+    case 'time':
+      return { time: { after: '22:00', before: '06:00' } };
     case 'daylight':
-      return { type, is: 'night', sunriseOffsetMinutes: 0, sunsetOffsetMinutes: 0 };
+      return { daylight: 'night' };
+    case 'any': {
+      const first = blankReading(catalog);
+      return { any: first === null ? [{ time: { days: [...WEEKDAYS_ONLY] } }] : [first] };
+    }
   }
 }
 
-export function blankAction(type: ActionType, choices: Choices): Action | null {
-  switch (type) {
-    case 'command': {
-      const target = firstTarget(choices.devices, writableCapabilities);
-      return target === null ? null : commandAction(target.device, target.capability);
-    }
-    case 'scene': {
-      const sceneId = choices.sceneIds[0];
-      return sceneId === undefined ? null : { type, sceneId };
-    }
-    case 'delay':
-      return { type, seconds: 60 };
-    case 'notify':
-      return { type, message: '' };
-    case 'wake_ai':
-      return choices.wakeProfileId === null
-        ? null
-        : { type, profileId: choices.wakeProfileId, chatId: null, instruction: '' };
-    case 'tool':
-      return null;
+function deviceTargetOf(target: TargetV2): DeviceTarget {
+  if ('device' in target) return { kind: 'devices', deviceIds: [target.device] };
+  if ('devices' in target) return { kind: 'devices', deviceIds: target.devices };
+  if ('group' in target) return { kind: 'group', groupId: target.group };
+  return { kind: 'room', roomId: target.room };
+}
+
+export function targetControls(
+  catalog: Catalog,
+  target: TargetV2,
+): ReturnType<typeof groupControlChoices> {
+  if ('group' in target && !catalog.groups.some((group) => group.id === target.group)) return [];
+  return groupControlChoices(
+    targetDevices(catalog.allDevices, catalog.groups, deviceTargetOf(target)),
+  );
+}
+
+function blankSet(catalog: Catalog): StepV2 | null {
+  for (const device of catalog.devices) {
+    const capability = writableCapabilities(device)[0];
+    if (capability !== undefined)
+      return {
+        do: 'set',
+        id: newId(),
+        target: { device: device.id },
+        control: capability.key,
+        to: defaultValue(capability.value),
+      };
   }
+  return null;
+}
+
+export function runStepFor(callee: Callable): Extract<StepV2, { do: 'run' }> {
+  const inputs = Object.fromEntries(
+    callee.inputs.map((input) => [input.name, defaultLiteral(input.type)]),
+  );
+  return {
+    do: 'run',
+    id: newId(),
+    automation: callee.id,
+    wait: true,
+    ...(callee.inputs.length === 0 ? {} : { inputs }),
+  };
+}
+
+function blankRun(catalog: Catalog): StepV2 | null {
+  const callee = catalog.callable[0];
+  return callee === undefined ? null : runStepFor(callee);
+}
+
+export function valueStepFor(row: AutomationValueRow): Extract<StepV2, { do: 'value' }> {
+  const content = row.content;
+  const value = row.id;
+  if (content.kind === 'boolean') return { do: 'value', id: newId(), value, op: 'toggle' };
+  if (content.kind === 'choice') return { do: 'value', id: newId(), value, op: 'next' };
+  return { do: 'value', id: newId(), value, op: 'set', amount: content.value };
+}
+
+function blankValueStep(catalog: Catalog): StepV2 | null {
+  const row = catalog.values[0];
+  return row === undefined ? null : valueStepFor(row);
+}
+
+function blankFlow(kind: FlowKind, catalog: Catalog): StepV2 | null {
+  const id = newId();
+  switch (kind) {
+    case 'value':
+      return blankValueStep(catalog);
+    case 'if':
+      return { do: 'if', id, branches: [{ id: newId(), when: { all: [] }, then: [] }] };
+    case 'repeat':
+      return {
+        do: 'repeat',
+        id,
+        times: DEFAULT_REPEAT_TIMES,
+        gapMs: 1000,
+        limitMs: DEFAULT_REPEAT_LIMIT_MS,
+        steps: [{ do: 'wait', id: newId(), ms: 1000 }],
+      };
+    case 'run':
+      return blankRun(catalog);
+    case 'stop':
+      return { do: 'stop', id };
+  }
+}
+
+function blankComputerStep(kind: 'audio' | 'display', catalog: Catalog): StepV2 | null {
+  const computer = computersOf(catalog.devices)[0];
+  if (computer === undefined) return null;
+  const id = newId();
+  return kind === 'audio'
+    ? { do: kind, id, computer: computer.id, change: blankAudioChange('volume') }
+    : { do: kind, id, computer: computer.id, change: blankDisplayChange('brightness') };
+}
+
+function blankOwnerStep(
+  kind: 'ai' | 'tool' | 'speak',
+  catalog: Catalog,
+  id: string,
+): StepV2 | null {
+  const person = catalog.wakeProfileId;
+  if (person === null) return null;
+  if (kind === 'ai') return { do: 'ai', id, person, instruction: '' };
+  if (kind === 'tool') return { do: 'tool', id, person, tool: '' };
+  const speaker = catalog.speakers[0];
+  return speaker === undefined
+    ? null
+    : speechStep({ do: 'tool', id, person, tool: SPEAK_TOOL }, { deviceId: speaker.id, text: '' });
+}
+
+function blankScene(catalog: Catalog, id: string): StepV2 | null {
+  const scene = catalog.scenes[0];
+  return scene === undefined ? null : { do: 'scene', id, scene: scene.id };
+}
+
+function blankLeaf(kind: LeafKind, catalog: Catalog): StepV2 | null {
+  const id = newId();
+  switch (kind) {
+    case 'set':
+      return blankSet(catalog);
+    case 'scene':
+      return blankScene(catalog, id);
+    case 'wait':
+      return { do: 'wait', id, ms: DEFAULT_WAIT_MS };
+    case 'notify':
+      return { do: 'notify', id, message: '' };
+    case 'ai':
+    case 'tool':
+    case 'speak':
+      return blankOwnerStep(kind, catalog, id);
+    case 'audio':
+    case 'display':
+      return blankComputerStep(kind, catalog);
+  }
+}
+
+export function blankStep(kind: StepKind, catalog: Catalog): StepV2 | null {
+  return isFlowKind(kind) ? blankFlow(kind, catalog) : blankLeaf(kind, catalog);
+}
+
+const STEP_NEEDS: Readonly<Record<StepKind, (catalog: Catalog) => boolean>> = {
+  set: (catalog) => catalog.devices.some((device) => writableCapabilities(device).length > 0),
+  scene: (catalog) => catalog.scenes.length > 0,
+  ai: (catalog) => catalog.wakeProfileId !== null,
+  tool: (catalog) => catalog.wakeProfileId !== null,
+  speak: (catalog) => catalog.wakeProfileId !== null && catalog.speakers.length > 0,
+  audio: (catalog) => computersOf(catalog.devices).length > 0,
+  display: (catalog) => computersOf(catalog.devices).length > 0,
+  value: (catalog) => catalog.values.length > 0,
+  run: (catalog) => catalog.callable.length > 0,
+  wait: () => true,
+  notify: () => true,
+  if: () => true,
+  repeat: () => true,
+  stop: () => true,
+};
+
+export function stepAvailable(kind: StepKind, catalog: Catalog): boolean {
+  return STEP_NEEDS[kind](catalog);
+}
+
+const TRIGGER_NEEDS: Readonly<Record<TriggerKind, (catalog: Catalog) => boolean>> = {
+  device: (catalog) => catalog.devices.some((device) => readableCapabilities(device).length > 0),
+  signal: () => blankSignal() !== null,
+  time: () => true,
+  sun: () => true,
+  every: () => true,
+  event: () => true,
+  weather: () => true,
+  speech: () => true,
+};
+
+export function triggerAvailable(kind: TriggerKind, catalog: Catalog): boolean {
+  return TRIGGER_NEEDS[kind](catalog);
 }

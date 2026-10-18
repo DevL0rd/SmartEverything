@@ -37,7 +37,7 @@ class XiaomiCipher(val checkTag: Boolean) {
   }
 
   fun decryptV1(payload: ByteArray): ByteArray {
-    val session = keys ?: return payload
+    val session = keys ?: throw IllegalStateException("an encrypted packet arrived before the watch authenticated")
     return XiaomiCrypto.ccmDecrypt(session.decryptionKey, XiaomiCrypto.packetNonce(session.decryptionNonce, 0), payload, checkTag)
   }
 

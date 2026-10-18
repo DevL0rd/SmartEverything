@@ -82,10 +82,13 @@ function portOpen(zone: Zone, protocol: string, port: number): boolean {
 
 type SourceRule = Exclude<
   PortRule,
-  { readonly purpose: 'webrtc' | 'plugin' | 'hub' | 'discovery' }
+  { readonly purpose: 'webrtc' | 'plugin' | 'hub' | 'discovery' | 'announcement' }
 >;
 
-type PluginRule = Extract<PortRule, { readonly purpose: 'plugin' | 'hub' | 'discovery' }>;
+type PluginRule = Extract<
+  PortRule,
+  { readonly purpose: 'plugin' | 'hub' | 'discovery' | 'announcement' }
+>;
 
 function richRuleCovers(text: string, rule: SourceRule): boolean {
   const source = /source address="([^"]+)"/.exec(text)?.[1];

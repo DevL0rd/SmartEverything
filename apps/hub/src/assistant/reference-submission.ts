@@ -5,6 +5,7 @@ import {
   type AssistantMessageRow,
   type AssistantNewMessage,
 } from '@smarteverything/domain';
+import { effectiveClientById } from '../server/person-access';
 import type { Caller } from '../server/auth';
 import type { Store } from '../store/store';
 import type { ReferenceService } from '../references/service';
@@ -58,7 +59,7 @@ export class ReferenceSubmissions {
   private chat(sender: Sender, chatId: string | undefined): AiChatRow {
     const owner = {
       profileId: sender.profileId,
-      role: this.deps.store.clients.byId(sender.clientId).role,
+      role: effectiveClientById(this.deps.store, sender.clientId).role,
     };
     const chat =
       chatId === undefined

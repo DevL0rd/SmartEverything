@@ -3,14 +3,10 @@ import { z } from 'zod';
 import { CHANGE, applyChanges } from './changes';
 import { reported, waitFor } from './commanding';
 import { PHYSICAL, READS, defineTool, type Tool, type ToolContext } from './registry';
-import { nameOf } from './targets';
+import { deviceNames } from './targets';
 
-function deviceLabel(context: ToolContext, deviceId: string): string {
-  const device = context.store.devices.find(deviceId);
-  return device === undefined ? deviceId : nameOf(context.store, device);
-}
-
-function scenes(context: ToolContext): Record<string, unknown>[] {
+export function scenes(context: Pick<ToolContext, 'store'>): Record<string, unknown>[] {
+  const names = deviceNames(context.store);
   return context.store.scenes.list().map((scene) => {
     const actions = SCENE_ACTIONS.safeParse(scene.actions);
     return {
@@ -20,7 +16,7 @@ function scenes(context: ToolContext): Record<string, unknown>[] {
       actions: actions.success
         ? actions.data.map((action) => ({
             ...action,
-            device: deviceLabel(context, action.deviceId),
+            device: names.get(action.deviceId) ?? action.deviceId,
           }))
         : scene.actions,
       problem: actions.success ? null : 'Its actions are not valid commands; edit the scene',

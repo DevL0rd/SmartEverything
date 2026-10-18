@@ -1,3 +1,4 @@
+import { usePluginScreen } from '../shared/plugin-log';
 import { robotMoveLabel, type JsonValue, type RobotMove } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
@@ -82,6 +83,7 @@ export function MoveSheet({
   readonly onClose: () => void;
   readonly onSend: (value: JsonValue) => void;
 }): ReactNode {
+  usePluginScreen('aibi', 'MoveSheet');
   const [given, setGiven] = useState<Given>({});
   if (move === null) {
     return null;

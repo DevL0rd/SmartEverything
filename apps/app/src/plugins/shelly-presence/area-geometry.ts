@@ -1,4 +1,4 @@
-import type { ShellyArea, ShellySegment } from '@smarteverything/domain';
+import type { ShellyArea, ShellySegment } from '@smarteverything/shelly';
 
 export interface GridCell {
   readonly x: number;

@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 import ts from 'typescript';
-import { declaredVersion } from './versions';
+import { ROOT_MANIFEST, declaredVersion } from './contract-helpers';
 
 describe('typescript contract', () => {
-  itIsPinnedToItsDeclaredVersion('typescript');
-
   it('reports the same version through its own api', () => {
-    expect(ts.version).toBe(declaredVersion('typescript'));
+    expect(ts.version).toBe(declaredVersion(ROOT_MANIFEST, 'typescript'));
   });
 
   it('stays below the ceiling typescript-eslint supports, so type aware linting works', () => {

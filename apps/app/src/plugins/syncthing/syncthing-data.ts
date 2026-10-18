@@ -1,19 +1,25 @@
 import {
   SYNC_ACTIVITY,
   SYNCTHING_SNAPSHOT,
-  type SyncActivity,
   type SyncState,
   type SyncthingSnapshot,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { StatusTone } from '../../components/tone';
-import { useDevices } from '../../store/selectors';
-import type { Device } from '../../store/state';
 import type { PluginNoticeText } from '../shared/plugin-notice';
 import { usePluginStream, type PluginStream } from '../shared/use-plugin-stream';
 import { usePluginTool, type PluginToolRunner } from '../use-plugin-tool';
 
 export const SYNCTHING_PLUGIN = 'syncthing';
+
+export const SYNCTHING_WIDGET_ALIASES = {
+  'syncthing.health': 'syncthing-sync',
+  'syncthing.folders': 'syncthing-sync',
+  'syncthing.devices': 'syncthing-sync',
+  'syncthing-health': 'syncthing-sync',
+  'syncthing-folders': 'syncthing-sync',
+  'syncthing-devices': 'syncthing-sync',
+} as const;
 
 const ACTIVITY = z.array(SYNC_ACTIVITY);
 
@@ -27,10 +33,6 @@ export function useSyncActivity(): PluginStream<z.output<typeof ACTIVITY>> {
 
 export function useSyncthingTools(): PluginToolRunner {
   return usePluginTool(SYNCTHING_PLUGIN);
-}
-
-export function useSyncthingDevice(): Device | null {
-  return useDevices({ includeHidden: true }).find((device) => device.kind === 'file_sync') ?? null;
 }
 
 export const SYNC_STATE_TEXT: Readonly<
@@ -78,26 +80,6 @@ export function syncthingNotice(snapshot: SyncthingSnapshot): PluginNoticeText |
     case 'online':
       return null;
   }
-}
-
-const ACTIVITY_TEXT: Readonly<Record<SyncActivity['kind'], string>> = {
-  added: 'Added',
-  modified: 'Changed',
-  deleted: 'Deleted',
-  connected: 'Connected',
-  disconnected: 'Disconnected',
-  paused: 'Paused',
-  resumed: 'Resumed',
-  error: 'Errors in',
-};
-
-export function activityTitle(entry: SyncActivity, snapshot: SyncthingSnapshot | null): string {
-  const target =
-    entry.path ??
-    folderLabel(snapshot, entry.folderId) ??
-    peerName(snapshot, entry.deviceId) ??
-    'Syncthing';
-  return `${ACTIVITY_TEXT[entry.kind]} ${target}`;
 }
 
 export function folderLabel(snapshot: SyncthingSnapshot | null, id: string | null): string | null {

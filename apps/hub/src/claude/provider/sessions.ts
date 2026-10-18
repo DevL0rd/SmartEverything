@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { NATIVE_MANAGED_PROJECT, type ProviderTurn } from '@smarteverything/domain';
 import { ProviderInputError } from './input';
+import { isMissing } from '../../fs-util';
 
 const SESSION_RECORD = z.strictObject({
   session_id: z.string().min(1).max(200),
@@ -23,6 +24,7 @@ export class ProviderSessions {
 
   constructor(private readonly directory: string) {
     this.loaded = this.load();
+    // eslint-disable-next-line local/no-swallowed-errors -- the failure is rethrown to every caller that awaits the load
     void this.loaded.catch((): void => undefined);
   }
 
@@ -82,6 +84,15 @@ export class ProviderSessions {
         entry.profile_id === profileId &&
         entry.cwd === cwd,
     );
+  }
+
+  async settled(): Promise<void> {
+    await this.loaded;
+    await this.writing;
+  }
+
+  ownedIds(): ReadonlySet<string> {
+    return new Set(this.records.map((entry) => entry.session_id));
   }
 
   list(chatId: string, profileId: string): readonly SessionRecord[] {
@@ -154,7 +165,7 @@ export class ProviderSessions {
       const json: unknown = JSON.parse(await readFile(join(this.directory, file), 'utf8'));
       return RECORDS.parse(json);
     } catch (cause) {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return [];
+      if (isMissing(cause)) return [];
       throw new ProviderInputError(
         'The local provider session directory is invalid or unreadable.',
       );

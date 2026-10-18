@@ -6,6 +6,7 @@ import {
   type NativeCommandAdmission,
   type NativeCommandStart,
 } from './runtime-command-admission';
+import { DistinctFeed } from './distinct-feed';
 import { runtimeProviderProfile, nativeRuntimeProfile } from './runtime-provider-events';
 import type {
   AttachedRuntime,
@@ -46,12 +47,13 @@ import {
   runtimeAccessEnabled,
 } from './runtime-access';
 import { RuntimeReceipts } from './runtime-receipts';
+import { runtimeDetached } from './runtime-trace';
 import { attachmentGeneration, runtimeDirectoryStatus } from './runtime-directory-status';
 type RuntimeFactory = (deviceId: string) => ComputerRuntimeHost;
 export class ComputerRuntimeDirectory {
   private readonly hosts = new Map<string, AttachedRuntime>();
   private readonly factories = new Map<ComputerAiRuntime, RuntimeFactory>();
-  private readonly changes = new Set<(status: ComputerRuntimeStatus) => void>();
+  private readonly changes = new DistinctFeed<ComputerRuntimeStatus>();
   private readonly listeners = new Set<(event: ComputerRuntimeDirectoryEvent) => void>();
   private readonly jobs = new Map<string, RuntimeJob>();
   private readonly receipts = new RuntimeReceipts<AttachedRuntime>();
@@ -280,10 +282,7 @@ export class ComputerRuntimeDirectory {
     send: (target, source, request) => this.send(target, source, request, COMPUTER_RUNTIME_REPLY),
   });
   onChange(listener: (status: ComputerRuntimeStatus) => void): () => void {
-    this.changes.add(listener);
-    return (): void => {
-      this.changes.delete(listener);
-    };
+    return this.changes.on(listener);
   }
   onEvent(listener: (event: ComputerRuntimeDirectoryEvent) => void): () => void {
     this.listeners.add(listener);
@@ -296,6 +295,7 @@ export class ComputerRuntimeDirectory {
     const attached = this.hosts.get(key);
     if (attached === undefined) return;
     this.hosts.delete(key);
+    runtimeDetached(this.log, target, attached, this.hosts.size);
     attached.leave();
     if (owned) attached.host.stop();
     for (const [id, job] of this.jobs) if (job.source === attached) this.jobs.delete(id);
@@ -389,7 +389,7 @@ export class ComputerRuntimeDirectory {
   changed(target: ComputerRuntimeTarget): void {
     if (this.store.devices.find(target.device_id) === undefined) return;
     const status = this.status(target);
-    for (const listener of this.changes) listener(status);
+    this.changes.emit(`${target.device_id}:${target.runtime}`, status);
   }
   private computer(target: ComputerRuntimeTarget): void {
     if (this.store.devices.byId(target.device_id).kind !== 'computer')

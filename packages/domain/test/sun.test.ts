@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { z } from 'zod';
 import { GEO_POINT, nextSunEvent, sunEventOn } from '../src';
 
 const LONDON = { latitude: 51.5074, longitude: -0.1278 };
@@ -130,6 +132,46 @@ describe('nextSunEvent', () => {
         new Date('2024-01-01T00:00:00Z'),
       ),
     ).toBeNull();
+  });
+});
+
+const PLACES = {
+  london: LONDON,
+  sydney: SYDNEY,
+  tromso: NORTHERN_NORWAY,
+  quito: QUITO,
+  auckland: { latitude: -36.85, longitude: 174.76 },
+  honolulu: { latitude: 21.3, longitude: -157.85 },
+};
+
+const SUN_FIXTURES = z.array(
+  z.object({
+    place: z.enum(['london', 'sydney', 'tromso', 'quito', 'auckland', 'honolulu']),
+    event: z.enum(['sunrise', 'sunset']),
+    offsetMinutes: z.number(),
+    after: z.string(),
+    expected: z.string(),
+  }),
+);
+
+const FIXTURES = SUN_FIXTURES.parse(
+  JSON.parse(readFileSync(new URL('fixtures/next-sun-event.json', import.meta.url), 'utf8')),
+);
+
+describe('nextSunEvent against the results of the year-long search', () => {
+  it('finds the same instant for every recorded place, event, offset and start', () => {
+    expect(FIXTURES).toHaveLength(300);
+    for (const fixture of FIXTURES) {
+      const next = nextSunEvent(
+        {
+          event: fixture.event,
+          offsetMinutes: fixture.offsetMinutes,
+          point: PLACES[fixture.place],
+        },
+        new Date(fixture.after),
+      );
+      expect(next?.toISOString(), JSON.stringify(fixture)).toBe(fixture.expected);
+    }
   });
 });
 

@@ -2,7 +2,7 @@ import { useChatHarness } from '../data/harness';
 import type { AiChatRow, AiHarnessSession } from '@smarteverything/domain';
 import { useIsOwner } from '../../../store/selectors';
 import { useChatWorking } from '../data/chat-store';
-import { useComputerProviderSupported, useChatProvider } from './provider-data';
+import { useChatProvider } from './provider-data';
 import { useCodexProvider } from './codex-provider-data';
 const CODEX_ACTIVE: ReadonlySet<string> = new Set([
   'starting',
@@ -15,9 +15,8 @@ const CODEX_ACTIVE: ReadonlySet<string> = new Set([
 export function useProviderWorking(chat: AiChatRow): boolean {
   const owner = useIsOwner();
   const harness = useChatHarness(chat.id, harnessBound(chat));
-  const supported = useComputerProviderSupported();
   const working = useChatWorking(chat.id);
-  const claude = useChatProvider(chat.id, nativeEnabled(chat, owner && supported, 'claude'));
+  const claude = useChatProvider(chat.id, nativeEnabled(chat, owner, 'claude'));
   const codex = useCodexProvider(chat.id, nativeEnabled(chat, owner, 'codex'));
   if (chat.engine.kind === 'dsh') return working || harnessWorking(harness.data);
   if (chat.engine.kind === 'claude') return working || claude.data?.state === 'working';

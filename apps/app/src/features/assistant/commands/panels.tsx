@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import type { CommandDescriptor, CommandCompletion } from './types';
-import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { SuggestionPanel } from '../components/suggestion-panel';
+import { SuggestionGroup, SuggestionReason, SuggestionRow } from '../components/suggestion-rows';
 import { Button } from '../../../components/button';
+import { KeyboardListbox } from '../../../components/keyboard-list';
 export interface CommandReceipt {
   readonly name: string;
   readonly state: CommandCompletion | 'outcome unknown' | 'running' | 'admitted' | 'submitting';
@@ -36,13 +37,19 @@ export function CommandResult({
     </View>
   );
 }
+export interface QuoteConflict {
+  readonly remove: () => void;
+}
+
 interface SuggestionProps {
   readonly commands: readonly CommandDescriptor[];
   readonly selected: string | null;
   readonly choose: (name: string) => void;
   readonly reason: string | null;
   readonly retry: (() => void) | null;
+  readonly quote: QuoteConflict | null;
 }
+
 export function CommandSuggestions(props: SuggestionProps): ReactNode {
   const matches = props.commands.filter((command) => command.id === props.selected);
   const detail = matches.length === 1 ? matches[0] : undefined;
@@ -50,7 +57,7 @@ export function CommandSuggestions(props: SuggestionProps): ReactNode {
     <SuggestionPanel>
       <ScrollView keyboardShouldPersistTaps="always">
         <CommandRows {...props} />
-        {detail === undefined ? null : (
+        {detail === undefined || props.quote !== null || props.reason !== null ? null : (
           <View className="gap-1 border-t-hairline border-outline-variant px-4 py-2">
             <Text variant="footnote" selectable>
               {detail.description}
@@ -63,35 +70,47 @@ export function CommandSuggestions(props: SuggestionProps): ReactNode {
     </SuggestionPanel>
   );
 }
-function CommandRows({ commands, selected, choose, reason, retry }: SuggestionProps): ReactNode {
-  if (reason !== null || commands.length === 0)
+
+function CommandRows({ commands, choose, reason, retry, quote }: SuggestionProps): ReactNode {
+  if (quote !== null) {
     return (
-      <View className="gap-2 p-3">
-        <Text tone="variant">{reason ?? 'No commands match this prefix.'}</Text>
-        {retry === null ? null : <Button label="Refresh commands" variant="text" onPress={retry} />}
-      </View>
+      <SuggestionReason
+        icon="info"
+        text="Remove the quote to run a command."
+        action={{ label: 'Remove quote', onPress: quote.remove }}
+      />
     );
-  return commands.map((command, index) => (
-    <Interactive
-      key={`${command.id}:${String(index)}`}
-      label={`/${command.name}. ${command.description}`}
-      selected={command.id === selected}
-      onPress={() => {
-        choose(command.id);
-      }}
-      className={
-        command.id === selected
-          ? 'min-h-touch-min gap-1 bg-primary/10 px-4 py-3'
-          : 'min-h-touch-min gap-1 px-4 py-3'
-      }
-    >
-      <Text variant="body-strong">/{command.name}</Text>
-      <Text variant="footnote" tone="variant" numberOfLines={2}>
-        {command.description}
-      </Text>
-    </Interactive>
-  ));
+  }
+  if (reason !== null) {
+    return (
+      <SuggestionReason
+        icon="info"
+        text={reason}
+        action={retry === null ? null : { label: 'Try again', onPress: retry }}
+      />
+    );
+  }
+  if (commands.length === 0) {
+    return <SuggestionReason icon="search" text="No commands match this prefix." />;
+  }
+  return (
+    <KeyboardListbox>
+      <SuggestionGroup label="Commands">
+        {commands.map((command) => (
+          <SuggestionRow
+            key={command.id}
+            id={command.id}
+            icon="terminal"
+            title={`/${command.name}`}
+            subtitle={command.description}
+            onChoose={choose}
+          />
+        ))}
+      </SuggestionGroup>
+    </KeyboardListbox>
+  );
 }
+
 export function CommandHint({ command }: { readonly command: CommandDescriptor }): ReactNode {
   return (
     <Text variant="caption" tone="variant">

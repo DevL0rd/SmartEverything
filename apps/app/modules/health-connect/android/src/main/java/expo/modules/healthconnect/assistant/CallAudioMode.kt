@@ -51,6 +51,12 @@ object CallAudioMode {
     }
   }
 
+  fun speakerOf(devices: CallDevices, output: String): Boolean? {
+    val choosable = devices.outputOfType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) != null &&
+      devices.outputOfType(AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) != null
+    return if (choosable) output == SPEAKER else null
+  }
+
   private fun routeModern(audio: AudioManager, devices: CallDevices, microphone: AudioDeviceInfo?, output: String) {
     val target = when (output) {
       SPEAKER -> devices.outputOfType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)

@@ -5,16 +5,16 @@ import {
   DSH_SESSION_CREATE,
   DSH_SESSION_ACQUIRE,
   DSH_SESSION_APPEND,
+  DSH_SESSION_EVENTS_WRITE,
   DSH_SESSION_FLUSH,
-  DSH_SESSION_RELEASE,
-  DSH_SESSION_RENEW,
   DSH_SESSION_READ,
   DSH_SESSION_WORKSPACE,
   DSH_SESSION_WORKSPACE_CHOICE,
   DSH_WRITER_CLAIM_WRITE,
   type AiHarnessTarget,
   type DshSessionCreate,
-  type DshSessionAcquire,
+  type DshSessionAppend,
+  type DshSessionEvent,
   type DshSessionMetadata,
   type DshWriterClaim,
   type DshSessionPage,
@@ -33,7 +33,6 @@ import {
   DSH_SESSION_PRINCIPAL,
   DshSessionClaims,
   requireSessionActor,
-  requireSessionComposition,
   requireWriter,
   type DshSessionPrincipal,
 } from './dsh-session-claims';
@@ -46,6 +45,7 @@ const WORKSPACE = z
     updated_at: z.string(),
   })
   .pipe(DSH_SESSION_WORKSPACE_CHOICE);
+const PAGE_EVENTS = 10_000;
 export interface DshSessionOpened {
   readonly metadata: DshSessionMetadata;
   readonly claim: DshWriterClaim;
@@ -55,6 +55,9 @@ export class DshSessionsRepository {
   private readonly rows: DshSessionRows;
   private readonly claims: DshSessionClaims;
   private readonly events: DshSessionEvents;
+  private readonly appended = new Set<
+    (sessionId: string, events: DshSessionAppend['events']) => void
+  >();
   constructor(private readonly context: StoreContext) {
     this.rows = new DshSessionRows(context);
     this.claims = new DshSessionClaims(context);
@@ -81,66 +84,53 @@ export class DshSessionsRepository {
   append(input: unknown, authority: DshSessionPrincipal): DshSessionMetadata {
     const request = DSH_SESSION_APPEND.parse(input);
     const principal = DSH_SESSION_PRINCIPAL.parse(authority);
-    return durableSessionWrite(this.context, () => {
+    const metadata = durableSessionWrite(this.context, () => {
       const row = this.rows.get(request.claim.session_id, principal.profile_id);
-      requireWriter(row, request.claim, principal, this.context.now());
+      requireWriter(row, request.claim, principal);
       return this.events.append(row, request);
     });
+    this.announce(request.claim.session_id, request.events);
+    return metadata;
+  }
+  rewrite(
+    sessionId: string,
+    profileId: string,
+    events: readonly DshSessionEvent[],
+  ): DshSessionMetadata {
+    const id = DSH_SESSION_ID.parse(sessionId);
+    const written = DSH_SESSION_EVENTS_WRITE.parse(events);
+    const metadata = durableSessionWrite(this.context, () => {
+      const row = this.rows.get(id, profileId);
+      assertChatWork(this.context, row.chat_id);
+      this.claims.detach(row);
+      return this.events.write(row, written);
+    });
+    this.announce(id, written);
+    return metadata;
+  }
+  onAppend(listener: (sessionId: string, events: DshSessionAppend['events']) => void): void {
+    this.appended.add(listener);
   }
   flush(input: unknown, authority: DshSessionPrincipal): DshSessionMetadata {
     const request = DSH_SESSION_FLUSH.parse(input);
     const principal = DSH_SESSION_PRINCIPAL.parse(authority);
     return durableSessionWrite(this.context, () => {
       const row = this.rows.get(request.claim.session_id, principal.profile_id);
-      requireWriter(row, request.claim, principal, this.context.now());
+      requireWriter(row, request.claim, principal);
       requireDrainedPrefix(row, request);
       return sessionMetadata(row);
     });
   }
-  release(input: unknown, authority: DshSessionPrincipal): DshSessionMetadata {
-    const request = DSH_SESSION_RELEASE.parse(input);
-    const principal = DSH_SESSION_PRINCIPAL.parse(authority);
-    return durableSessionWrite(this.context, () => {
-      const row = this.rows.get(request.claim.session_id, principal.profile_id);
-      requireSessionActor(request.claim, principal);
-      const receipt = this.events.receipt(request);
-      if (receipt !== undefined) return receipt;
-      requireWriter(row, request.claim, principal, this.context.now());
-      requireDrainedPrefix(row, request);
-      this.context.sql.run(
-        'release drained native session writer',
-        "update dsh_sessions set claim_state='released' where session_id=$id",
-        { id: row.session_id },
-      );
-      const metadata = sessionMetadata(row);
-      this.events.keepReceipt(request, metadata);
-      return metadata;
-    });
-  }
-  renew(input: unknown, authority: DshSessionPrincipal): DshWriterClaim {
-    const request = DSH_SESSION_RENEW.parse(input);
-    const principal = DSH_SESSION_PRINCIPAL.parse(authority);
-    return durableSessionWrite(this.context, () => {
-      const row = this.rows.get(request.claim.session_id, principal.profile_id);
-      const now = this.context.now();
-      const current = requireWriter(row, request.claim, principal, now);
-      const renewed = {
-        ...current,
-        expires_at: new Date(Date.parse(now) + request.lease_ms).toISOString(),
-      };
-      this.context.sql.run(
-        'renew native writer lease',
-        'update dsh_sessions set claim=$claim where session_id=$id',
-        { claim: jsonText(renewed), id: row.session_id },
-      );
-      return renewed;
+  detach(sessionId: string, profileId: string): void {
+    durableSessionWrite(this.context, () => {
+      this.claims.detach(this.rows.get(DSH_SESSION_ID.parse(sessionId), profileId));
     });
   }
   verifyWriter(input: unknown, authority: DshSessionPrincipal): DshWriterClaim {
     const claim = DSH_WRITER_CLAIM_WRITE.parse(input);
     const principal = DSH_SESSION_PRINCIPAL.parse(authority);
     const row = this.rows.get(claim.session_id, principal.profile_id);
-    return requireWriter(row, claim, principal, this.context.now());
+    return requireWriter(row, claim, principal);
   }
   stat(sessionId: string, profileId: string): DshSessionMetadata | undefined {
     const row = this.rows.find(DSH_SESSION_ID.parse(sessionId));
@@ -148,12 +138,8 @@ export class DshSessionsRepository {
     this.rows.authorize(row, profileId);
     return sessionMetadata(row);
   }
-  writerState(
-    sessionId: string,
-    profileId: string,
-  ): { readonly claim: DshWriterClaim | null; readonly state: 'active' | 'released' | null } {
-    const row = this.rows.get(DSH_SESSION_ID.parse(sessionId), profileId);
-    return { claim: row.claim, state: row.claim_state };
+  attached(sessionId: string, profileId: string): DshWriterClaim | null {
+    return this.rows.get(DSH_SESSION_ID.parse(sessionId), profileId).claim;
   }
   list(profileId: string): DshSessionMetadata[] {
     return this.rows.list(profileId);
@@ -163,6 +149,26 @@ export class DshSessionsRepository {
     return this.context.sql.transaction(() =>
       this.events.read(this.rows.get(request.session_id, profileId), request),
     );
+  }
+  readAll(
+    sessionId: string,
+    profileId: string,
+    range: { readonly offset?: number; readonly length?: number } = {},
+  ): DshSessionPage['events'] {
+    const id = DSH_SESSION_ID.parse(sessionId);
+    const start = range.offset ?? 0;
+    const end = range.length === undefined ? Infinity : start + range.length;
+    const events: DshSessionPage['events'] = [];
+    for (let offset = start; offset < end;) {
+      const page = this.read(
+        { session_id: id, offset, limit: Math.min(PAGE_EVENTS, end - offset) },
+        profileId,
+      );
+      events.push(...page.events);
+      if (page.next_offset === null) break;
+      offset = page.next_offset;
+    }
+    return events;
   }
   workspaces(sessionId: string, profileId: string): DshSessionWorkspaceChoice[] {
     const id = DSH_SESSION_ID.parse(sessionId);
@@ -188,7 +194,7 @@ export class DshSessionsRepository {
     const principal = DSH_SESSION_PRINCIPAL.parse(authority);
     return durableSessionWrite(this.context, () => {
       const row = this.rows.get(request.claim.session_id, principal.profile_id);
-      requireWriter(row, request.claim, principal, this.context.now());
+      requireWriter(row, request.claim, principal);
       const choice = DSH_SESSION_WORKSPACE_CHOICE.parse({
         target: request.claim.target,
         cwd: request.cwd,
@@ -208,14 +214,21 @@ export class DshSessionsRepository {
       return choice;
     });
   }
+  private announce(sessionId: string, events: DshSessionAppend['events']): void {
+    for (const listener of this.appended) listener(sessionId, events);
+  }
   private createStored(
     request: DshSessionCreate,
     principal: DshSessionPrincipal,
   ): DshSessionOpened {
     requireNativeHeader(request.header, principal);
-    const acquisition = creationAcquisition(request);
-    requireSessionActor(acquisition, principal);
-    requireSessionComposition(request.header.id, request.composition, principal.composition);
+    const attach = DSH_SESSION_ACQUIRE.parse({
+      target: request.target,
+      runtime_instance: request.runtime_instance,
+      connection_generation: request.connection_generation,
+      session_id: request.header.id,
+    });
+    requireSessionActor(attach, principal);
     const chat = found(
       this.context.sql.get(CHAT, 'select profile_id from ai_chats where id=$id', {
         id: request.chat_id,
@@ -234,47 +247,26 @@ export class DshSessionsRepository {
     if (row === undefined) {
       this.insert(request, principal);
       row = this.rows.get(request.header.id, principal.profile_id);
-    } else {
-      this.rows.authorize(row, principal.profile_id);
-      if (row.creation_request !== jsonText(request))
-        throw new DshSessionStorageError(
-          row.session_id,
-          'already-exists',
-          'the session already exists with different creation parameters',
-        );
-    }
+    } else this.rows.authorize(row, principal.profile_id);
     return {
       metadata: sessionMetadata(row),
-      claim: this.claims.acquire(row, acquisition, principal),
+      claim: this.claims.acquire(row, attach, principal),
     };
   }
   private insert(request: DshSessionCreate, principal: DshSessionPrincipal): void {
     this.context.sql.run(
       'create canonical native session',
-      'insert into dsh_sessions(session_id,chat_id,profile_id,header,composition,inherited_event_count,creation_request,created_at) values($id,$chat,$profile,$header,$composition,$inherited,$request,$now)',
+      'insert into dsh_sessions(session_id,chat_id,profile_id,header,inherited_event_count,created_at) values($id,$chat,$profile,$header,$inherited,$now)',
       {
         id: request.header.id,
         chat: request.chat_id,
         profile: principal.profile_id,
         header: jsonText(request.header),
-        composition: jsonText(request.composition),
         inherited: request.inherited_event_count,
-        request: jsonText(request),
         now: this.context.now(),
       },
     );
   }
-}
-
-function creationAcquisition(request: DshSessionCreate): DshSessionAcquire {
-  return DSH_SESSION_ACQUIRE.parse({
-    session_id: request.header.id,
-    target: request.target,
-    runtime_instance: request.runtime_instance,
-    connection_generation: request.connection_generation,
-    operation_id: request.operation_id,
-    lease_ms: request.lease_ms,
-  });
 }
 
 function requireDrainedPrefix(row: DshStoredSession, request: DshSessionFlush): void {
@@ -282,7 +274,7 @@ function requireDrainedPrefix(row: DshStoredSession, request: DshSessionFlush): 
     throw new DshSessionStorageError(
       row.session_id,
       'sequence',
-      `flush/release expected a complete prefix at ${String(request.expected_next_seq)}; stored ${String(row.next_seq)} with inherited cut ${String(row.inherited_event_count)}`,
+      `flush expected a complete prefix at ${String(request.expected_next_seq)}; stored ${String(row.next_seq)} with inherited cut ${String(row.inherited_event_count)}`,
     );
   }
 }

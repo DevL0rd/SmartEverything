@@ -1,9 +1,10 @@
 import type { AirBand } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { LinearGradient, RadialGradient, Stop } from 'react-native-svg';
-import { useColour } from '../../../design/colour';
+import { useColour, useColourResolver } from '../../../design/colour';
+import { AIR_BAND_COLOUR } from '../../../design/data-colours';
 import type { ColourRole } from '../../../design/tokens';
-import type { VisualTone } from '../types';
+import type { LaundryGlow, VisualTone } from '../types';
 
 export interface VisualInk {
   readonly light: string;
@@ -17,15 +18,36 @@ export interface VisualInk {
 
 export const WELL = 0.6;
 
+export const FIXED_INK = {
+  lcd: '#0B0D10',
+  lamp: '#FFD27A',
+  white: '#FFFFFF',
+  foam: 'rgba(255, 255, 255, 0.85)',
+  droplet: '#E3F4FF',
+} as const;
+
+export const DISPLAY_INK: Readonly<Record<LaundryGlow, string>> = {
+  rest: '#A9A49C',
+  wash: '#5ED3CF',
+  rinse: '#5EA8D3',
+  spin: '#9085E9',
+  dry: '#F2B45E',
+  delay: '#8EAEFF',
+  paused: '#F2C14E',
+  done: '#6FD39A',
+  fault: '#FF6B57',
+};
+
 export function useInk(): VisualInk {
+  const colour = useColourResolver();
   return {
-    light: useColour('surface-3'),
-    dark: useColour('surface-2'),
-    edge: useColour('outline'),
-    well: useColour('scrim'),
-    ink: useColour('on-surface-variant'),
-    faint: useColour('on-surface-faint'),
-    sheen: useColour('on-surface'),
+    light: colour('surface-3'),
+    dark: colour('surface-2'),
+    edge: colour('outline'),
+    well: colour('scrim'),
+    ink: colour('on-surface-variant'),
+    faint: colour('on-surface-faint'),
+    sheen: colour('on-surface'),
   };
 }
 
@@ -37,17 +59,8 @@ export function useTint(role: ColourRole, tone: VisualTone): string {
   return useColour(tintRole(role, tone));
 }
 
-const BAND_ROLES: Readonly<Record<AirBand, ColourRole>> = {
-  good: 'air-good',
-  fair: 'air-fair',
-  moderate: 'air-moderate',
-  poor: 'air-poor',
-  bad: 'air-bad',
-  severe: 'air-severe',
-};
-
 export function bandRole(band: AirBand | null): ColourRole {
-  return band === null ? 'temp-cool' : BAND_ROLES[band];
+  return band === null ? 'temp-cool' : AIR_BAND_COLOUR[band];
 }
 
 export function BodyGradient({

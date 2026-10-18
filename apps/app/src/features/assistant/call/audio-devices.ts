@@ -13,7 +13,7 @@ export interface CallAudioDevices {
   readonly outputChoosable: string | null;
 }
 
-export const NO_AUDIO_DEVICES: CallAudioDevices = {
+const NO_AUDIO_DEVICES: CallAudioDevices = {
   inputs: [],
   outputs: [],
   headset: null,

@@ -13,11 +13,27 @@ export function historyKey(
   return [...HISTORY_PREFIX, capabilities.join(','), sinceHours];
 }
 
+export function deviceHistoryKey(
+  deviceId: string,
+  capability: string,
+  sinceHours: number,
+): readonly ['window', 'history', string, number, string] {
+  return [...HISTORY_PREFIX, capability, sinceHours, deviceId];
+}
+
+export function deviceHistoryBucketsKey(
+  deviceId: string,
+  capability: string,
+  sinceHours: number,
+): readonly ['window', 'history-buckets', string, string, number] {
+  return ['window', 'history-buckets', deviceId, capability, sinceHours];
+}
+
 export const SMARTTHINGS_APP_KEY = ['window', 'smartthings-app'] as const;
 
 export const SERVICE_LOG_TAIL_KEY = ['window', 'service-log-tail'] as const;
 
-export const FFMPEG_KEY = ['window', 'ffmpeg'] as const;
+export const START_ON_LOGIN_KEY = ['window', 'start-on-login'] as const;
 
 export const WATCH_CANDIDATES_KEY = ['window', 'watch-candidates'] as const;
 
@@ -27,6 +43,8 @@ export function watchDaysKey(
 ): readonly ['window', 'health', 'watch-days', string, string] {
   return [...HEALTH_PREFIX, 'watch-days', from, to];
 }
+
+export const CAMERA_LIST_KEY = ['window', 'camera-list'] as const;
 
 export function cameraSnapshotKey(
   deviceId: string,
@@ -48,9 +66,16 @@ export function recordingLinksKey(
 
 export const PUSH_STATUS_KEY = ['window', 'push-status'] as const;
 
-export const AUTOMATION_RUNS_KEY = ['window', 'automation-runs'] as const;
-
 export const DEVICE_EFFECTS_KEY = ['window', 'device-effects'] as const;
+
+export const DEVICE_LOG_PREFIX = ['window', 'device-log'] as const;
+
+export function deviceLogKey(
+  deviceId: string,
+  shape: number | 'pages',
+): readonly ['window', 'device-log', string, number | 'pages'] {
+  return [...DEVICE_LOG_PREFIX, deviceId, shape];
+}
 
 export function assistantLinksKey(
   ids: readonly string[],
@@ -61,6 +86,8 @@ export function assistantLinksKey(
 export const AI_USAGE_PREFIX = ['window', 'ai-usage'] as const;
 
 export const REACH_PREFIX = ['window', 'reach'] as const;
+
+export const ACCESS_PREFIX = ['window', 'access'] as const;
 
 export const OPENROUTER_ACCOUNT_KEY = ['window', 'openrouter', 'account'] as const;
 
@@ -110,7 +137,7 @@ export function pluginKey(
   return [...PLUGIN_PREFIX, pluginId, part];
 }
 
-export const TRANSCRIPT_PREFIX = ['window', 'transcripts'] as const;
+const TRANSCRIPT_PREFIX = ['window', 'transcripts'] as const;
 
 export const transcriptKeys = {
   settings: (): readonly string[] => [...TRANSCRIPT_PREFIX, 'settings'],
@@ -135,3 +162,10 @@ export function providerKey(chatId: string): readonly string[] {
 }
 
 export const AGENT_RUN_PREFIX = ['window', 'ai-agents'] as const;
+
+export function targetHistoryKey(
+  deviceIds: readonly string[],
+  window: string,
+): readonly ['window', 'history', 'target', string, string] {
+  return [...HISTORY_PREFIX, 'target', deviceIds.join(','), window];
+}

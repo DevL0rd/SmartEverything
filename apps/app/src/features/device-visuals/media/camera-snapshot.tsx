@@ -37,6 +37,7 @@ export function CameraSnapshot({
   return (
     <View className="absolute inset-0 bg-surface-2">
       <Image
+        resizeMethod="resize"
         source={{ uri }}
         accessibilityLabel={`Latest picture from ${label}`}
         resizeMode="cover"

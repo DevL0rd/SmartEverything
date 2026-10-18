@@ -1,6 +1,9 @@
 import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { STATUS_CODES } from 'node:http';
 import { join } from 'node:path';
-import { parseHead, type Head } from './http-reader';
+import type { Head } from './connection';
+import type { Response } from './replies';
+import { messageOf } from '@smarteverything/logging';
 
 const CAPTURE_LIMIT = 1000;
 
@@ -9,7 +12,6 @@ const FOLDER_MODE = 0o700;
 const FILE_MODE = 0o600;
 const SEQUENCE_DIGITS = 6;
 const JSON_SUFFIX = '.json';
-const HEAD_END = '\r\n\r\n';
 const SECRET_HEADERS: ReadonlySet<string> = new Set(['authorization', 'secret']);
 const REDACTED = '[redacted]';
 const PERSONAL_FIELDS: ReadonlySet<string> = new Set(['email', 'coord']);
@@ -23,7 +25,7 @@ export interface Captured {
   readonly remote: string;
   readonly started: Date;
   readonly request: CapturedMessage;
-  readonly response: Buffer | 'served';
+  readonly response: Response | 'served';
 }
 
 export interface CaptureOptions {
@@ -80,14 +82,16 @@ function scrubbed(body: string, type: string): string {
   }
 }
 
-function split(raw: Buffer): CapturedMessage {
-  const end = raw.indexOf(HEAD_END);
-  if (end === -1) {
-    return { startLine: raw.toString('latin1'), headers: {}, body: Buffer.alloc(0) };
-  }
+function captured(response: Response): CapturedMessage {
   return {
-    ...parseHead(raw.subarray(0, end).toString('latin1')),
-    body: raw.subarray(end + HEAD_END.length),
+    startLine: `HTTP/1.1 ${String(response.status)} ${STATUS_CODES[response.status] ?? ''}`,
+    headers: {
+      ...Object.fromEntries(
+        Object.entries(response.headers).map(([name, value]) => [name.toLowerCase(), value]),
+      ),
+      'content-length': String(response.body.length),
+    },
+    body: response.body,
   };
 }
 
@@ -124,7 +128,7 @@ export class TrafficCapture {
     this.writing = this.writing
       .then(() => this.write(name, entry))
       .catch((cause: unknown) => {
-        this.options.failed(cause instanceof Error ? cause.message : String(cause));
+        this.options.failed(messageOf(cause));
       });
   }
 
@@ -139,7 +143,7 @@ export class TrafficCapture {
     const response =
       entry.response === 'served'
         ? 'live speech stream'
-        : await this.part(name, 'response', split(entry.response));
+        : await this.part(name, 'response', captured(entry.response));
     const record = {
       started: entry.started.toISOString(),
       at: new Date().toISOString(),

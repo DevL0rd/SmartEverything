@@ -4,7 +4,7 @@ export const PROMPT_SCOPE = z.object({
   turnId: z.string().nullable().optional(),
   itemId: z.string().optional(),
 });
-export const APPROVAL_DECISION = z.union([
+const APPROVAL_DECISION = z.union([
   z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   z.object({
     acceptWithExecpolicyAmendment: z.object({ execpolicy_amendment: z.array(z.string()) }),
@@ -28,7 +28,7 @@ export const FILE_APPROVAL = PROMPT_SCOPE.extend({
   itemId: z.string(),
   startedAtMs: z.number(),
 });
-export const INPUT_QUESTION = z.object({
+const INPUT_QUESTION = z.object({
   id: z.string(),
   header: z.string(),
   question: z.string(),
@@ -48,7 +48,7 @@ const FILE_PATH = z.discriminatedUnion('type', [
     ]),
   }),
 ]);
-export const REQUEST_PERMISSIONS = z.object({
+const REQUEST_PERMISSIONS = z.object({
   network: z.object({ enabled: z.boolean().nullable() }).nullable(),
   fileSystem: z
     .object({

@@ -56,7 +56,7 @@ export function actionParams(
 function parseList(result: unknown, subject: string): z.infer<typeof PROPERTY_RESULT>[] {
   const parsed = z.array(PROPERTY_RESULT).safeParse(result);
   if (!parsed.success) {
-    throw new MiioPacketError(`a list of ${subject} results`, JSON.stringify(result));
+    throw new MiioPacketError(`a list of ${subject} results`, 'a reply of another shape');
   }
   return parsed.data;
 }
@@ -79,18 +79,10 @@ export function checkPropertyWrites(result: unknown): void {
 export function parseActionResult(action: ActionAddress, result: unknown): JsonValue {
   const parsed = ACTION_RESULT.safeParse(result);
   if (!parsed.success) {
-    throw new MiioPacketError('an action result', JSON.stringify(result));
+    throw new MiioPacketError('an action result', 'a reply of another shape');
   }
   if (!ACCEPTED_CODES.has(parsed.data.code)) {
     throw new MiotRefusedError('action', action.siid, action.aiid, parsed.data.code);
   }
   return parsed.data.out ?? [];
-}
-
-export function chunk<T>(items: readonly T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let start = 0; start < items.length; start += size) {
-    chunks.push(items.slice(start, start + size));
-  }
-  return chunks;
 }

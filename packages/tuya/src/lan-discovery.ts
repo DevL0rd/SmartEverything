@@ -1,12 +1,9 @@
-import { describeIssues } from './issues';
-import { ecb, gcm } from '@noble/ciphers/aes.js';
-import { md5 } from '@noble/hashes/legacy.js';
-import { utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import { ecbDecrypt, gcmDecrypt, md5, utf8Text } from './crypto';
 
 export const DISCOVERY_PORTS = [6666, 6667] as const;
 
-export const UDP_KEY = md5(utf8ToBytes('yGAdlopoPVldABfn'));
+export const UDP_KEY = md5('yGAdlopoPVldABfn');
 
 const JSON_OBJECT = /\{.*\}/s;
 
@@ -49,7 +46,7 @@ function payload55aa(frame: Uint8Array): Uint8Array {
   if (withoutReturnCode[0] === 0x7b) {
     return withoutReturnCode;
   }
-  return ecb(UDP_KEY).decrypt(withoutReturnCode);
+  return ecbDecrypt(UDP_KEY, withoutReturnCode);
 }
 
 function payload6699(frame: Uint8Array): Uint8Array {
@@ -60,11 +57,11 @@ function payload6699(frame: Uint8Array): Uint8Array {
   const header = frame.subarray(4, 18);
   const nonce = frame.subarray(18, 30);
   const sealed = frame.subarray(30, 18 + length);
-  return gcm(UDP_KEY, nonce, header).decrypt(sealed);
+  return gcmDecrypt(UDP_KEY, nonce, sealed, header);
 }
 
 function jsonText(plain: Uint8Array): string {
-  const text = new TextDecoder('utf-8', { fatal: true }).decode(plain);
+  const text = utf8Text(plain);
   const found = JSON_OBJECT.exec(text);
   if (found === null) {
     throw new LanAnnouncementError('the decrypted payload holds no JSON object');
@@ -102,7 +99,7 @@ export function readLanAnnouncement(frame: Uint8Array): LanAnnouncement {
   }
   const parsed = BROADCAST.safeParse(candidate);
   if (!parsed.success) {
-    throw new LanAnnouncementError(describeIssues(parsed.error));
+    throw new LanAnnouncementError(z.prettifyError(parsed.error));
   }
   return { deviceId: parsed.data.gwId, ip: parsed.data.ip, version: parsed.data.version };
 }

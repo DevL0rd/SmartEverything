@@ -1,14 +1,16 @@
-import type { Socket } from 'node:net';
-import { Upstream, type Cloud, type Scheme } from './cloud';
-import {
-  collector,
-  HttpReader,
-  requestLine,
-  type Head,
-  type Message,
-  type Reader,
-} from './http-reader';
-import { encode } from './replies';
+import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http';
+import { buffer } from 'node:stream/consumers';
+import type { Duplex } from 'node:stream';
+import type { Scheme, Upstream } from './cloud';
+import { encode, flatHeaders, type Payload, type Response } from './replies';
+import { messageOf } from '@smarteverything/logging';
+
+export interface Head {
+  readonly startLine: string;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+export interface Message extends Head, Payload {}
 
 export interface Incoming {
   readonly head: Head;
@@ -27,181 +29,93 @@ export interface Exchange {
   readonly query: URLSearchParams;
   readonly scheme: Scheme;
   readonly remote: string;
-  readonly forward: (replacement?: Message) => Promise<Message>;
+  readonly forward: (replacement?: Message) => Promise<Response>;
 }
 
 export interface Routes {
   readonly streams: (method: string, path: string) => boolean;
-  readonly stream: (request: Incoming) => Promise<Buffer>;
-  readonly handle: (exchange: Exchange, socket: Socket) => Promise<Buffer | 'served'>;
+  readonly stream: (request: Incoming) => Promise<Response>;
+  readonly handle: (exchange: Exchange, response: ServerResponse) => Promise<Response | 'served'>;
   readonly failed: (detail: string) => void;
 }
 
-const SERVER_PROBLEM = { errcode: 500, errmsg: 'AIBI server problem' };
-const UNREADABLE_REQUEST = { errcode: 400, errmsg: 'AIBI could not read that request' };
+const LOCAL_BASE = 'http://local';
+const SERVER_PROBLEM = encode(500, { errcode: 500, errmsg: 'AIBI server problem' });
+const BAD_REQUEST = 'HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n';
 
-class Body {
-  private readonly parts: Buffer[] = [];
-  private ended = false;
-  private wake: (() => void) | null = null;
-
-  push(chunk: Buffer): void {
-    this.parts.push(Buffer.from(chunk));
-    this.wake?.();
-  }
-
-  end(): void {
-    this.ended = true;
-    this.wake?.();
-  }
-
-  async *read(): AsyncIterable<Buffer> {
-    for (;;) {
-      const next = this.parts.shift();
-      if (next !== undefined) {
-        yield next;
-      } else if (this.ended) {
-        return;
-      } else {
-        await new Promise<void>((resolve) => {
-          this.wake = resolve;
-        });
-      }
-    }
-  }
+function send(response: ServerResponse, reply: Response): void {
+  response.writeHead(reply.status, {
+    ...reply.headers,
+    'Content-Length': String(reply.body.length),
+  });
+  response.end(reply.body);
 }
 
-type Settled =
-  | { readonly kind: 'reply'; readonly reply: Buffer | 'served' }
-  | { readonly kind: 'failed'; readonly error: unknown };
-
-function settle(work: Promise<Buffer | 'served'>): Promise<Settled> {
-  return work.then(
-    (reply): Settled => ({ kind: 'reply', reply }),
-    (error: unknown): Settled => ({ kind: 'failed', error }),
-  );
+function headOf(request: IncomingMessage): Head {
+  return {
+    startLine: `${request.method ?? 'GET'} ${request.url ?? '/'} HTTP/${request.httpVersion}`,
+    headers: flatHeaders(request.headers),
+  };
 }
 
-function describe(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+interface Bridge {
+  readonly scheme: Scheme;
+  readonly routes: Routes;
+  readonly upstream: Upstream;
 }
 
-export class Connection {
-  private work: Promise<void> = Promise.resolve();
-  private readonly upstream: Upstream;
-  private readonly remote: string;
-  private body: Body | null = null;
-  private collect: Reader | null = null;
+function produce(
+  bridge: Bridge,
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<Response | 'served'> {
+  const { scheme, routes, upstream } = bridge;
+  const method = request.method ?? 'GET';
+  const { pathname: path, searchParams: query } = new URL(request.url ?? '/', LOCAL_BASE);
+  const head = headOf(request);
+  const remote = request.socket.remoteAddress ?? '';
+  if (routes.streams(method, path)) {
+    const chunks = (): AsyncIterable<Buffer> => request.iterator({ destroyOnReturn: false });
+    return routes.stream({ head, method, path, query, scheme, remote, chunks });
+  }
+  return buffer(request).then((body) => {
+    const message: Message = { ...head, body };
+    const forward = (replacement?: Message): Promise<Response> =>
+      upstream.send(replacement ?? message);
+    return routes.handle({ message, method, path, query, scheme, remote, forward }, response);
+  });
+}
 
-  constructor(
-    private readonly socket: Socket,
-    private readonly scheme: Scheme,
-    private readonly routes: Routes,
-    target: Cloud,
-  ) {
-    this.upstream = new Upstream(scheme, target);
-    this.remote = socket.remoteAddress ?? '';
-    const reader = new HttpReader({
-      head: (head): void => {
-        this.head(head);
+export function requestListener(
+  scheme: Scheme,
+  routes: Routes,
+  upstream: Upstream,
+): RequestListener {
+  const bridge: Bridge = { scheme, routes, upstream };
+  return (request, response) => {
+    produce(bridge, request, response).then(
+      (reply) => {
+        if (reply !== 'served') {
+          send(response, reply);
+        }
       },
-      body: (chunk): void => {
-        this.chunk(chunk);
+      (error: unknown) => {
+        routes.failed(messageOf(error));
+        if (response.headersSent) {
+          response.destroy();
+        } else {
+          send(response, SERVER_PROBLEM);
+        }
       },
-      end: (): void => {
-        this.end();
-      },
-    });
-    socket.on('data', (chunk: Buffer) => {
-      this.safely(() => {
-        reader.push(chunk);
-      });
-    });
-    socket.on('error', () => {
-      socket.destroy();
-    });
-    socket.on('close', () => {
-      this.upstream.close();
-    });
-  }
+    );
+  };
+}
 
-  private safely(action: () => void): void {
-    try {
-      action();
-    } catch (error) {
-      this.routes.failed(describe(error, 'Unreadable request'));
-      this.socket.end(
-        encode('HTTP/1.1 400 Bad Request', UNREADABLE_REQUEST, { Connection: 'close' }),
-      );
-      this.socket.destroySoon();
-    }
+export function unreadable(routes: Routes, error: Error, socket: Duplex): void {
+  if (!socket.writable) {
+    socket.destroy();
+    return;
   }
-
-  private head(head: Head): void {
-    const { method, path, query } = requestLine(head.startLine);
-    if (this.routes.streams(method, path)) {
-      const body = new Body();
-      this.body = body;
-      const request: Incoming = {
-        head,
-        method,
-        path,
-        query,
-        scheme: this.scheme,
-        remote: this.remote,
-        chunks: () => body.read(),
-      };
-      this.queue(() => this.routes.stream(request));
-      return;
-    }
-    const collected = collector((message) => {
-      this.queue(() => this.routes.handle(this.exchange(message), this.socket));
-    });
-    this.collect = collected;
-    collected.head(head);
-  }
-
-  private chunk(chunk: Buffer): void {
-    if (this.body === null) {
-      this.collect?.body(chunk);
-    } else {
-      this.body.push(chunk);
-    }
-  }
-
-  private end(): void {
-    this.body?.end();
-    this.body = null;
-    this.collect?.end();
-    this.collect = null;
-  }
-
-  private exchange(message: Message): Exchange {
-    const { method, path, query } = requestLine(message.startLine);
-    return {
-      message,
-      method,
-      path,
-      query,
-      scheme: this.scheme,
-      remote: this.remote,
-      forward: (replacement) => this.upstream.send(replacement ?? message),
-    };
-  }
-
-  private queue(task: () => Promise<Buffer | 'served'>): void {
-    const pending = settle(task());
-    this.work = this.work.then(async () => {
-      const outcome = await pending;
-      if (this.socket.destroyed) {
-        return;
-      }
-      if (outcome.kind === 'failed') {
-        this.routes.failed(describe(outcome.error, 'Request failed'));
-        this.socket.write(encode('HTTP/1.1 500 Internal Server Error', SERVER_PROBLEM));
-      } else if (outcome.reply !== 'served') {
-        this.socket.write(outcome.reply);
-      }
-    });
-  }
+  routes.failed(messageOf(error));
+  socket.end(BAD_REQUEST);
 }

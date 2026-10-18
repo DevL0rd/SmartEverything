@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { fetchMetaFromValue, formatFetchOutput } from '@deepseek-ai/dsh-tool-web';
+import { HUB_MANIFEST, declaredVersion } from './contract-helpers';
 import { installedVersion } from './versions';
-import { hubDeclaredVersion } from './hub-manifest';
 
 describe('@deepseek-ai/dsh-tool-web', () => {
   it('matches the hub pin and formats HTML as bounded untrusted Markdown', () => {
     expect(installedVersion('@deepseek-ai/dsh-tool-web')).toBe(
-      hubDeclaredVersion('@deepseek-ai/dsh-tool-web'),
+      declaredVersion(HUB_MANIFEST, '@deepseek-ai/dsh-tool-web'),
     );
     const result = {
       url: 'https://example.com/',

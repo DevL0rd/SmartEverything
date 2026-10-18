@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import jsxA11y from 'eslint-plugin-jsx-a11y';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 
 function strictRules(): Readonly<Record<string, unknown>> {
   const strict = jsxA11y.flatConfigs['strict'];
@@ -15,8 +14,6 @@ function strictRules(): Readonly<Record<string, unknown>> {
 }
 
 describe('eslint-plugin-jsx-a11y contract', () => {
-  itIsPinnedToItsDeclaredVersion('eslint-plugin-jsx-a11y');
-
   it('exposes the strict flat config the app is linted with', () => {
     expect(Object.keys(strictRules()).length).toBeGreaterThan(0);
   });

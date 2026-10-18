@@ -1,5 +1,5 @@
 import { NativeReferences } from '../references/runtime';
-import { mountReferencePrompts, type ValidateCentralReferences } from '../references/prompt';
+import { mountReferencePrompts } from '../references/prompt';
 import type {
   AiNativeReferenceAction,
   AiNativeReferenceResult,
@@ -9,10 +9,8 @@ import { mountManagedPackageExecution } from '../composition/plugin-execution';
 import { projectWorkspaceContext } from '../composition/workspace-context';
 import { HarnessRuntimeError } from './errors';
 import type { AiHarnessStorageBinding } from '@smarteverything/domain';
-import type { ProjectFilePort } from '../composition/project-files';
 import { nativePendingInput, type NativeInputHistory } from './input-history';
 import type { Context } from '@deepseek-ai/cordis';
-import { createHash } from 'node:crypto';
 import type {
   AdmittedPromptContentPart,
   AttachmentAdmissionPart,
@@ -23,7 +21,7 @@ import type { AgentHandle, Agent } from '@deepseek-ai/dsh-agent';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import { harnessManifest } from './manifest';
 import type { AiHarnessManifest } from '@smarteverything/domain';
-import { Logger, describeFailure } from '@smarteverything/logging';
+import { Logger, background, describeFailure } from '@smarteverything/logging';
 import type { HarnessConfiguration } from '../composition/configuration';
 import type {
   HarnessDesiredConfiguration,
@@ -35,12 +33,11 @@ import type { HarnessInteractions, HarnessInteractionPort } from './interactions
 import { HARNESS_SESSION_OPTIONS, agentOptions } from './contracts';
 import type { HarnessHost, HarnessSessionOptions } from './contracts';
 import { HarnessSession } from './session';
-import { initializeSessionPermission } from './permission';
+import { setSessionPermission } from './permission';
 import type { HarnessServerPolicy } from './server-policy';
 import type { HarnessServerToolAccess } from './server-policy';
 import type { HarnessRuntimeEvent } from './events';
 import { HarnessAdmission } from './admission';
-import { freezeConfigurationSessions } from './configuration-sessions';
 import { HarnessRuntimeConfiguration } from './runtime-configuration';
 import type {
   HarnessConfigurationPending,
@@ -53,14 +50,9 @@ export interface HarnessRuntimeOptions {
   readonly interactions: HarnessInteractionPort;
   readonly desiredConfiguration: HarnessDesiredConfiguration;
   readonly installedPlugins: readonly InstalledHarnessPlugin[];
-  readonly configurationChanged: (
-    revision: string,
-    readiness: readonly HarnessPluginReadiness[],
-  ) => void;
+  readonly configurationChanged: () => void;
   readonly configurationPending?: HarnessConfigurationPending;
   readonly serverToolAccess?: HarnessServerToolAccess;
-  readonly projectFiles?: ProjectFilePort;
-  readonly validateReferences?: ValidateCentralReferences;
   readonly onEvent: (event: HarnessRuntimeEvent) => void;
   readonly beforeStep?: (id: string) => Promise<void>;
   readonly installModelRoutes: (ctx: Context) => Promise<void>;
@@ -86,7 +78,6 @@ export class HarnessRuntime {
       readonly generation: string;
       readonly notify: (event: HarnessRuntimeEvent) => void;
       readonly configurationPending?: HarnessConfigurationPending;
-      readonly validateReferences?: ValidateCentralReferences;
     },
   ) {
     this.references = new NativeReferences(
@@ -94,7 +85,7 @@ export class HarnessRuntime {
       (id) => this.executionWorkspace(id),
       () => this.configurationStatus(),
     );
-    mountReferencePrompts(ctx, this.references, lifecycle.validateReferences);
+    mountReferencePrompts(ctx);
     this.composition = new HarnessRuntimeConfiguration(
       configuration,
       lifecycle.configurationPending,
@@ -112,11 +103,11 @@ export class HarnessRuntime {
   }
 
   create(input: HarnessSessionOptions): Promise<HarnessSession> {
-    return this.admission.run(() => this.open(input, false));
+    return this.admission.run(() => this.open(input, false), input.sessionId);
   }
 
   resume(input: HarnessSessionOptions): Promise<HarnessSession> {
-    return this.admission.run(() => this.open(input, true));
+    return this.admission.run(() => this.open(input, true), input.sessionId);
   }
 
   storageBinding(id: string): AiHarnessStorageBinding | undefined {
@@ -132,7 +123,7 @@ export class HarnessRuntime {
     this.assertNativeAccess(id);
     const session = this.get(id);
     const directory = await session.directory(path, signal);
-    await this.references.closeSession(id);
+    this.references.closeSession(id);
     await session.flush();
     return directory;
   }
@@ -171,25 +162,26 @@ export class HarnessRuntime {
     return this.get(id).whenOwnershipLossSettled();
   }
 
-  close(id: string): Promise<void> {
-    return this.admission.cleanup(() => this.closeSession(id));
+  async close(id: string): Promise<void> {
+    await this.admission.cleanup(() => this.closeSession(id), id);
+    await this.admission.cleanup(() => this.applyIdleConfiguration());
   }
 
   dispose(): Promise<void> {
+    this.log.info('runtime.disposing', { open: this.sessions.size, opening: this.opening.size });
     this.composition.suspend();
     return this.admission.shutdown(async (): Promise<void> => {
       const closed = await Promise.allSettled(
         [...this.sessions.keys()].map((id) => this.closeSession(id)),
       );
-      const configured = await Promise.allSettled([
-        this.references.close(),
-        this.configuration.dispose(),
-      ]);
+      this.references.close();
+      const configured = await Promise.allSettled([this.configuration.dispose()]);
       const disposed = await Promise.allSettled([this.lifecycle.dispose()]);
       const failures: unknown[] = [];
       for (const result of [...closed, ...configured, ...disposed]) {
         if (result.status === 'rejected') {
           const cause: unknown = result.reason;
+          this.log.error('runtime.dispose_step_failed', cause);
           failures.push(cause);
         }
       }
@@ -204,27 +196,49 @@ export class HarnessRuntime {
   }
 
   private async closeSession(id: string): Promise<void> {
-    await this.references.closeSession(id);
+    const startedAt = performance.now();
+    this.references.closeSession(id);
     await this.get(id).close();
     this.sessions.delete(id);
     this.lifecycle.serverPolicy.unbind(id);
     this.storage.delete(id);
-    this.log.info('session.closed', { session_id: id });
-    if (this.sessions.size === 0 && this.opening.size === 0)
-      await this.composition.applyPending().catch((error: unknown) => {
-        this.log.error('configuration.apply_failed', error);
-        this.lifecycle.notify({ kind: 'error', sessionId: id, failure: describeFailure(error) });
-      });
+    this.log.info('session.closed', {
+      session_id: id,
+      open: this.sessions.size,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+  }
+
+  settleConfiguration(): void {
+    if (!this.composition.hasPending()) return;
+    background(
+      this.admission.cleanup(() => this.applyIdleConfiguration()),
+      'admission.cleanup_failed',
+    );
+  }
+
+  private async applyIdleConfiguration(): Promise<void> {
+    if (!this.composition.hasPending() || !this.quiet()) {
+      this.log.trace('configuration.apply_deferred', () => ({
+        pending: this.composition.hasPending(),
+        sessions: this.sessions.size,
+      }));
+      return;
+    }
+    this.log.debug('configuration.applying_idle', { sessions: this.sessions.size });
+    await this.composition.applyPending().catch((error: unknown) => {
+      this.log.error('configuration.apply_failed', error);
+    });
+  }
+
+  private quiet(): boolean {
+    return (
+      this.opening.size === 0 && [...this.sessions.values()].every((session) => session.quiet())
+    );
   }
 
   manifest(): AiHarnessManifest {
-    return {
-      ...harnessManifest(this.ctx, this.host, this.configuration, {
-        fingerprint: this.fingerprint(),
-        restoreRevision: this.restoreRevision(),
-      }),
-      project_files: { protocol: 1 },
-    };
+    return harnessManifest(this.ctx, this.configuration);
   }
 
   pendingInput(input: NativeInputHistory): readonly string[] {
@@ -245,10 +259,32 @@ export class HarnessRuntime {
     return this.ctx.attachments.admitEncodedFile(input);
   }
 
+  attachmentPath(ref: FileAttachmentRef): string | undefined {
+    return this.ctx.attachments.fileHostPath(ref);
+  }
+
   configure(input: HarnessDesiredConfiguration): Promise<void> {
-    return this.admission.run(() =>
-      this.composition.request(input, this.sessions.size + this.opening.size),
-    );
+    return this.admission.run(async (): Promise<void> => {
+      this.composition.request(input);
+      if (!this.composition.hasPending()) {
+        this.log.debug('configuration.unchanged', { sessions: this.sessions.size });
+        return;
+      }
+      if (!this.quiet()) {
+        this.log.info('configuration.waiting', {
+          sessions: this.sessions.size,
+          opening: this.opening.size,
+        });
+        this.composition.waiting();
+        return;
+      }
+      const startedAt = performance.now();
+      this.log.info('configuration.applying', { sessions: this.sessions.size });
+      await this.composition.applyPending();
+      this.log.info('configuration.applied', {
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    });
   }
 
   configurationStatus(): readonly HarnessPluginReadiness[] {
@@ -259,24 +295,7 @@ export class HarnessRuntime {
     return this.composition.state();
   }
 
-  configurationSessions(protectedSessions: readonly string[]): readonly HarnessSession[] {
-    if (this.composition.state().pendingRevision === null) return [];
-    return freezeConfigurationSessions([...this.sessions.values()], protectedSessions);
-  }
-
-  reconcileConfiguration(): Promise<void> {
-    return this.admission.run(async (): Promise<void> => {
-      if (this.composition.state().pendingRevision !== null && this.sessions.size > 0)
-        throw new HarnessRuntimeError(
-          'composition_incompatible',
-          'Configuration still has opened native sessions.',
-        );
-      await this.composition.applyPending();
-    });
-  }
-
   private async open(input: HarnessSessionOptions, resume: boolean): Promise<HarnessSession> {
-    this.composition.assertReady();
     const options = HARNESS_SESSION_OPTIONS.parse(input);
     if (this.sessions.has(options.sessionId) || this.opening.has(options.sessionId))
       throw new HarnessRuntimeError(
@@ -284,17 +303,40 @@ export class HarnessRuntime {
         `Session ${options.sessionId} is already open on this host.`,
       );
     this.opening.add(options.sessionId);
+    const startedAt = performance.now();
+    const fields = {
+      session_id: options.sessionId,
+      resumed: resume,
+      provider: options.provider,
+      model: options.model,
+    };
+    this.log.debug('session.opening', () => ({
+      ...fields,
+      hasStorageBinding: options.storageBinding !== undefined,
+      helper: options.pluginAgentPolicy !== undefined,
+      opening: this.opening.size,
+    }));
     try {
       if (options.storageBinding !== undefined)
         this.storage.set(options.sessionId, options.storageBinding);
       this.lifecycle.serverPolicy.bind(options.sessionId, options.authority);
       await this.ctx.llm.resolveModelInfo(options.provider, options.model);
       const handle = await this.acquire(options, resume);
-      const session = new HarnessSession(this.ctx, handle, this.lifecycle.interactions);
+      const session = new HarnessSession(this.ctx, handle, this.lifecycle.interactions, () => {
+        this.settleConfiguration();
+      });
       this.sessions.set(options.sessionId, session);
-      this.log.info('session.opened', { session_id: options.sessionId, resumed: resume });
+      this.log.info('session.opened', {
+        ...fields,
+        open: this.sessions.size,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       return session;
     } catch (error) {
+      this.log.error('session.open_failed', error, {
+        ...fields,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       this.lifecycle.serverPolicy.unbind(options.sessionId);
       this.storage.delete(options.sessionId);
       throw error;
@@ -308,18 +350,17 @@ export class HarnessRuntime {
       const allowed = this.lifecycle.serverPolicy.allowed(options.sessionId);
       if (allowed !== undefined) agentCtx.tools.restrict({ allow: allowed });
       await this.ctx.workingDirectory.set(agent, options.directory ?? this.host.homeDirectory);
-      agentCtx.systemPrompt.context({
+      agentCtx.systemPrompt.section({
         name: 'smarteverything-host',
         order: 0,
-        required: true,
         interpolate: false,
         text: () => this.hostContext(agent),
       });
-      initializeSessionPermission(this.ctx, agent, options.permission, resume);
-      await mountManagedPackageExecution(this.ctx, agentCtx, this.host, {
+      if (options.permission !== undefined)
+        setSessionPermission(this.ctx, agent, options.permission);
+      await mountManagedPackageExecution(this.ctx, agentCtx, {
         directory: this.ctx.workingDirectory.get(agent.session),
         native: this.lifecycle.serverPolicy.nativeAvailable(options.sessionId),
-        permission: options.permission,
       });
       this.setupHelper(agentCtx, options);
     };
@@ -357,34 +398,12 @@ export class HarnessRuntime {
   }
 
   private hostContext(agent: Agent): string {
+    const server = this.host.target.kind === 'server';
     const local = this.lifecycle.serverPolicy.nativeAvailable(agent.id);
     const execution = local
       ? 'Native file and shell tools use this selected machine under the chat permission. The primary folder selects working and indexing context; it does not grant access.'
-      : 'This initiating account has no native machine access. Use explicit central project tools for chat-owned files.';
-    return `Current execution host: ${this.host.name} (${JSON.stringify(this.host.target)}). ${execution} ${projectWorkspaceContext(this.storageBinding(agent.id), this.ctx.workingDirectory.get(agent.session))}`;
-  }
-
-  private restoreRevision(): string {
-    return createHash('sha256')
-      .update(
-        JSON.stringify({
-          native: this.lifecycle.generation,
-          schemas: this.configuration.restoreFingerprint(),
-        }),
-      )
-      .digest('hex');
-  }
-
-  private fingerprint(): string {
-    return createHash('sha256')
-      .update(
-        JSON.stringify({
-          base: this.lifecycle.generation,
-          plugins: this.configuration.fingerprint(),
-          tools: this.ctx.tools.schemas(),
-        }),
-      )
-      .digest('hex');
+      : 'Native read, write, edit, glob and grep work inside this chat’s folder; there is no shell on the Hub.';
+    return `Current execution host: ${this.host.name} (${JSON.stringify(this.host.target)}). ${execution} ${projectWorkspaceContext(server)}`;
   }
 }
 

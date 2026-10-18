@@ -1,17 +1,19 @@
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { accessEntryOf, effectiveClient } from '../server/person-access';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import { authenticate, clientForToken, type Caller } from '../server/auth';
-import { bearerOf } from '../server/http';
+import { authenticate, type Caller } from '../server/auth';
 import type { PreviewDocuments } from './documents';
 import { serveChatPage } from './chat-pages';
 
 const PAGE_COOKIE = '__Host-se-pages';
 const SESSION_PATH = '/.se-preview/session';
 export class GatewayPages {
+  private readonly key = randomBytes(32);
   constructor(
     private readonly store: Store,
-    private readonly documents: PreviewDocuments,
+    private readonly documents: Pick<PreviewDocuments, 'require' | 'visible'>,
   ) {}
   async handle(
     request: IncomingMessage,
@@ -30,10 +32,7 @@ export class GatewayPages {
       this.session(request, response, { ...input, chat: document.view.chat_id, publication });
       return true;
     }
-    const caller: Caller = {
-      kind: 'client',
-      client: clientForToken(this.store, pageCookie(request)),
-    };
+    const caller = this.reader(request, publication);
     await serveChatPage(
       { documents: this.documents },
       caller,
@@ -47,6 +46,26 @@ export class GatewayPages {
       },
     );
     return true;
+  }
+  private credential(clientId: string, publication: string): string {
+    const signature = createHmac('sha256', this.key).update(`${clientId}:${publication}`);
+    return `${clientId}.${signature.digest('hex')}`;
+  }
+  private reader(request: IncomingMessage, publication: string): Caller {
+    const cookie = pageCookie(request);
+    const clientId = cookie?.split('.')[0] ?? '';
+    const expected = Buffer.from(this.credential(clientId, publication));
+    const given = Buffer.from(cookie ?? '');
+    if (expected.length !== given.length || !timingSafeEqual(expected, given))
+      throw new ApiError('unauthorized', 'Open this page again from your paired app.');
+    return {
+      kind: 'client',
+      client: effectiveClient(
+        this.store,
+        this.store.clients.byId(clientId),
+        accessEntryOf(request, false),
+      ),
+    };
   }
   private publication(host: string, domain: string): string | null {
     if (!host.endsWith(`.${domain}`)) return null;
@@ -79,15 +98,12 @@ export class GatewayPages {
     }
     if (request.method !== 'POST')
       throw new ApiError('method_not_allowed', 'Page sessions use POST.');
-    this.documents.visible(
-      authenticate(this.store, request, 'member'),
-      input.chat,
-      input.publication,
-    );
-    const token = bearerOf(request);
-    if (token === null) throw new ApiError('unauthorized', 'Pair this browser with the server.');
+    const caller = authenticate(this.store, request, 'member', false);
+    this.documents.visible(caller, input.chat, input.publication);
+    if (caller.kind !== 'client')
+      throw new ApiError('unauthorized', 'Pair this browser with the server.');
     response.writeHead(204, {
-      'set-cookie': `${PAGE_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned`,
+      'set-cookie': `${PAGE_COOKIE}=${this.credential(caller.client.id, input.publication)}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned`,
       'cache-control': 'no-store',
     });
     response.end();

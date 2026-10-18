@@ -7,7 +7,7 @@ import {
 } from '../src/service/go2rtc-binary.js';
 import { liveUrlOf } from '../src/service/live-link.js';
 import { serviceLocations } from '../src/service/locations.js';
-import { executableCandidates, ffmpegCheck, servicePath } from '../src/service/search-path.js';
+import { servicePath } from '../src/service/search-path.js';
 import { trayHealthLabel } from '../src/tray-status.js';
 import { LOCATIONS } from './support/fake-system.js';
 
@@ -16,7 +16,6 @@ describe('serviceLocations', () => {
     expect(LOCATIONS).toStrictEqual({
       dataDirectory: '/home/ann/.config/SmartEverything',
       unitFile: '/home/ann/.config/systemd/user/smarteverything.service',
-      systemUnitFile: '/etc/systemd/system/smarteverything.service',
       launchAgentFile: '/home/ann/Library/LaunchAgents/app.smarteverything.server.plist',
       windowsLauncherFile: '/home/ann/.config/SmartEverything/service-launch.js',
       configFile: '/home/ann/.config/SmartEverything/service.json',
@@ -70,34 +69,13 @@ describe('prepareServiceConfig', () => {
   });
 });
 
-describe('servicePath and ffmpeg', () => {
+describe('servicePath', () => {
   it('keeps absolute directories once, drops node_modules and adds the usual places', () => {
     expect(
       servicePath('darwin', '/usr/bin:relative:/repo/node_modules/.bin:/usr/bin:/Users/ann/bin'),
     ).toBe('/usr/bin:/Users/ann/bin:/opt/homebrew/bin:/usr/local/bin:/bin');
     expect(servicePath('linux', '')).toBe('/usr/local/bin:/usr/bin:/bin');
-    expect(servicePath('win32', 'C:\\Windows;C:\\ffmpeg\\bin;.')).toBe(
-      'C:\\Windows;C:\\ffmpeg\\bin',
-    );
-  });
-
-  it('finds ffmpeg on the path or explains how to install it', () => {
-    expect(executableCandidates('ffmpeg', 'win32', 'C:\\a;;C:\\b')).toStrictEqual([
-      'C:\\a\\ffmpeg.exe',
-      'C:\\b\\ffmpeg.exe',
-    ]);
-    expect(
-      ffmpegCheck('linux', '/usr/local/bin:/usr/bin', (file) => file === '/usr/bin/ffmpeg'),
-    ).toStrictEqual({
-      found: true,
-      path: '/usr/bin/ffmpeg',
-      instructions: '',
-    });
-    const missing = ffmpegCheck('darwin', '/usr/bin', () => false);
-    expect(missing.found).toBe(false);
-    expect(missing.instructions).toContain('brew install ffmpeg');
-    expect(ffmpegCheck('win32', 'C:\\a', () => false).instructions).toContain('winget install');
-    expect(ffmpegCheck('linux', '/a', () => false).instructions).toContain('pacman -S ffmpeg');
+    expect(servicePath('win32', 'C:\\Windows;C:\\Tools\\bin;.')).toBe('C:\\Windows;C:\\Tools\\bin');
   });
 });
 

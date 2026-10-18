@@ -3,9 +3,8 @@ import type { SettingDefinition, SettingEnv } from '../../../settings/types';
 import { CameraAllowRows } from './camera-allow-rows';
 import { OutreachHistory } from './outreach-history';
 import { QuietHoursRow } from './quiet-hours-row';
-import { WakeNameRows } from './wake-name-rows';
 
-export const REACH_PAGE = 'assistant/reach';
+const REACH_PAGE = 'assistant/reach';
 
 const owner = (env: SettingEnv): boolean => env.owner;
 
@@ -35,16 +34,6 @@ const ROWS: readonly RowEntry[] = [
     keywords: ['camera speaker', 'talk through camera', 'bedroom', 'privacy'],
     visible: owner,
     render: () => createElement(CameraAllowRows),
-  },
-  {
-    id: 'wake-name',
-    section: 'Listen for the AI’s name',
-    title: 'Cameras that listen for “hey” and the AI’s name',
-    description:
-      'Say “hey” and the AI’s name near one of these cameras to start talking. The sound is checked on your home server and never kept.',
-    keywords: ['wake word', 'hey', 'listen', 'name', 'hands free', 'microphone', 'privacy'],
-    visible: owner,
-    render: () => createElement(WakeNameRows),
   },
   {
     id: 'recent',

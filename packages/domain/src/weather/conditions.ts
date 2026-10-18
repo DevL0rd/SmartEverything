@@ -96,7 +96,7 @@ export function worseWeatherCode(left: number, right: number): number {
   return rank(right) > rank(left) ? right : left;
 }
 
-const US_AQI_BANDS: readonly (readonly [number, AirBand, string])[] = [
+export const US_AQI_BANDS: readonly (readonly [number, AirBand, string])[] = [
   [50, 'good', 'Good'],
   [100, 'fair', 'Moderate'],
   [150, 'moderate', 'Unhealthy for sensitive groups'],

@@ -2,14 +2,14 @@ import { API_ENDPOINTS as E, ApiError, type PluginOrigin } from '@smarteverythin
 import { pluginOriginOf } from '../../ai-tools/plugin-turn';
 import { presenceOf, type PresenceSources } from '../../reach/presence';
 import { ReachRefusedError } from '../../reach/reach-errors';
-import { mayManage, type Asker } from '../../reach/reach-guards';
+import type { Asker } from '../../reach/reach-guards';
 import type { AppSpeech } from '../../reach/app-speech';
 import { speechTextShown } from '../../reach/speech-text';
 import type { ReachRules } from '../../reach/reach-rules';
 import type { ReachService } from '../../reach/reach-service';
-import { clientOf, profileIdOf, type Caller } from '../auth';
+import { clientOf, ownerOrSelf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
-import { bound, type Bound } from '../router';
+import { bound } from '../router';
 
 export interface Reach {
   readonly service: ReachService;
@@ -17,21 +17,6 @@ export interface Reach {
   readonly speech: AppSpeech;
   readonly presence: PresenceSources;
 }
-
-export type ReachRoutes = Record<
-  | 'readPresence'
-  | 'readAiSpeech'
-  | 'callPerson'
-  | 'speak'
-  | 'startConversation'
-  | 'notifyPerson'
-  | 'listOutreach'
-  | 'endOutreach'
-  | 'declineOutreach'
-  | 'readReachSettings'
-  | 'updateReachSettings',
-  Bound
->;
 
 function originOf(caller: Caller): PluginOrigin | null {
   return caller.kind === 'client' ? pluginOriginOf(caller) : null;
@@ -49,13 +34,9 @@ function askerOf(context: ServerContext, caller: Caller): Asker {
 }
 
 function personOf(asker: Asker, asked: string | undefined): string {
-  if (asked === undefined || asked === asker.profileId) {
-    return asker.profileId;
-  }
-  if (asker.role !== 'owner') {
-    throw new ApiError('forbidden', 'Only an owner can see or change another person’s reach.');
-  }
-  return asked;
+  const person = asked ?? asker.profileId;
+  ownerOrSelf(asker.role, person === asker.profileId);
+  return person;
 }
 
 async function refusing<T>(work: () => T | Promise<T>): Promise<T> {
@@ -69,63 +50,63 @@ async function refusing<T>(work: () => T | Promise<T>): Promise<T> {
   }
 }
 
-function reachingRoutes(
-  context: ServerContext,
-  reach: Reach,
-): Pick<ReachRoutes, 'callPerson' | 'speak' | 'startConversation' | 'notifyPerson'> {
-  const { service } = reach;
-  const ask = (caller: Caller): Asker => askerOf(context, caller);
-  return {
+const reachingRoutes = (context: ServerContext, { service }: Reach) =>
+  ({
     callPerson: bound(E.callPerson, ({ body, caller }) =>
-      refusing(() => service.call(ask(caller), body)),
+      refusing(() => service.call(askerOf(context, caller), body)),
     ),
-    speak: bound(E.speak, ({ body, caller }) => refusing(() => service.speak(ask(caller), body))),
+    speak: bound(E.speak, ({ body, caller }) =>
+      refusing(() => service.speak(askerOf(context, caller), body)),
+    ),
     startConversation: bound(E.startConversation, ({ body, caller }) =>
-      refusing(() => service.startConversation(ask(caller), body)),
+      refusing(() => service.startConversation(askerOf(context, caller), body)),
     ),
     notifyPerson: bound(E.notifyPerson, ({ body, caller }) =>
-      refusing(() => service.notify(ask(caller), body)),
+      refusing(() => service.notify(askerOf(context, caller), body)),
     ),
-  };
-}
+  }) as const;
 
-function outreachRoutes(
-  context: ServerContext,
-  reach: Reach,
-): Pick<ReachRoutes, 'listOutreach' | 'endOutreach' | 'declineOutreach' | 'readAiSpeech'> {
-  const { store } = context;
-  const { service } = reach;
-  return {
+const outreachRoutes = (context: ServerContext, { service, speech }: Reach) =>
+  ({
     listOutreach: bound(E.listOutreach, ({ query, caller }) =>
-      store.aiOutreach.recent(personOf(askerOf(context, caller), query.personId), query.limit),
+      context.store.aiOutreach.recent(
+        personOf(askerOf(context, caller), query.personId),
+        query.limit,
+      ),
     ),
     endOutreach: bound(E.endOutreach, ({ params, caller }) =>
       refusing(() => {
-        mayManage(askerOf(context, caller), store.aiOutreach.byId(params.outreachId));
+        const asker = askerOf(context, caller);
+        const row = context.store.aiOutreach.byId(params.outreachId);
+        ownerOrSelf(asker.role, asker.profileId === row.profile_id);
         return service.hangUp(params.outreachId);
+      }),
+    ),
+    muteOutreach: bound(E.muteOutreach, ({ params, body, caller }) =>
+      refusing(() => {
+        const asker = askerOf(context, caller);
+        const row = context.store.aiOutreach.byId(params.outreachId);
+        ownerOrSelf(asker.role, asker.profileId === row.profile_id);
+        return service.mute(params.outreachId, body.muted);
       }),
     ),
     readAiSpeech: bound(E.readAiSpeech, ({ params, caller }) => {
       const { id } = clientOf(caller);
-      return { ...reach.speech.fetch(id, params.speechId), showText: speechTextShown(store, id) };
+      return { ...speech.fetch(id, params.speechId), showText: speechTextShown(context.store, id) };
     }),
     declineOutreach: bound(E.declineOutreach, ({ params, caller }) =>
       refusing(() => service.ringing.decline(params.outreachId, clientOf(caller).id)),
     ),
-  };
-}
+  }) as const;
 
-function ruleRoutes(
-  context: ServerContext,
-  reach: Reach,
-): Pick<ReachRoutes, 'readPresence' | 'readReachSettings' | 'updateReachSettings'> {
-  return {
+const ruleRoutes = (context: ServerContext, { presence, rules }: Reach) =>
+  ({
     readPresence: bound(E.readPresence, ({ query, caller }) => {
       const asker = askerOf(context, caller);
-      return presenceOf(reach.presence, personOf(asker, query.personId), asker.profileId);
+      return presenceOf(presence, personOf(asker, query.personId), asker.profileId);
     }),
     readReachSettings: bound(E.readReachSettings, ({ caller }) =>
-      reach.rules.settings(askerOf(context, caller).profileId),
+      rules.settings(askerOf(context, caller).profileId),
     ),
     updateReachSettings: bound(E.updateReachSettings, ({ body, caller }) => {
       const asker = askerOf(context, caller);
@@ -135,15 +116,15 @@ function ruleRoutes(
           'Only an owner chooses which cameras the AI may talk through and listen on.',
         );
       }
-      return reach.rules.save(personOf(asker, body.personId), body);
+      return rules.save(personOf(asker, body.personId), body);
     }),
-  };
-}
+  }) as const;
 
-export function reachRoutes(context: ServerContext, reach: Reach): ReachRoutes {
-  return {
+export const reachRoutes = (context: ServerContext, reach: Reach) =>
+  ({
     ...reachingRoutes(context, reach),
     ...outreachRoutes(context, reach),
     ...ruleRoutes(context, reach),
-  };
-}
+  }) as const;
+
+export type ReachRoutes = ReturnType<typeof reachRoutes>;

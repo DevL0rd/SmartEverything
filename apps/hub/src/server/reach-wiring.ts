@@ -1,9 +1,9 @@
-import { assistantLabel } from '@smarteverything/domain';
+import { assistantLabel, type TranscriptPauseReason } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
 import type { HostedCall } from '../assistant-voice/outreach';
 import type { Clock } from '../clock';
-import type { PluginSpeakers } from '../plugins/plugin-reach';
+import type { PluginSpeakers } from '../plugins/plugin-speakers';
 import type { PresenceSources } from '../reach/presence';
 import { AppSpeech } from '../reach/app-speech';
 import { CameraFraming } from '../reach/camera-framing';
@@ -11,16 +11,26 @@ import { ReachRules } from '../reach/reach-rules';
 import { ReachService, type ReachAssistant } from '../reach/reach-service';
 import { outcomeOrigin } from '../reach/reach-text';
 import { ringTransports } from '../reach/ring-transports';
+import type { CameraListening } from '../transcripts/camera-listening';
 import type { Saying } from '../speech/one-shot-speech';
 import type { LiveOpening } from '../talk/relay';
 import type { ServerContext } from './context';
+import { listeningRoutes, type ListeningRoutes } from './handlers/listening';
 import { reachRoutes, type Reach, type ReachRoutes } from './handlers/reach';
+import { discordVoiceOf } from '../computers/discord-voice';
+import { mirrorDiscordCall } from '../listening/discord-row';
+import { ListeningRegistry } from '../listening/listening-registry';
+import { VoiceActivity } from '../listening/voice-activity';
+import { opusCodec } from '../assistant-voice/audio';
 import type { Transcribing } from './transcribing';
+import { startComputerEars } from './computer-ear-wiring';
+import { startPhoneEars } from './phone-ear-wiring';
 import { startTalkListening } from './talk-wiring';
 import { startWakeName } from './wake-wiring';
 
 export interface StartedReach {
-  readonly routes: ReachRoutes;
+  readonly routes: ReachRoutes & ListeningRoutes;
+  readonly listening: ListeningRegistry;
   readonly stop: () => void;
 }
 
@@ -44,7 +54,10 @@ function assistantOf(context: ServerContext): ReachAssistant {
     },
     message: async (personId, text): Promise<string> => {
       const chatId = assistant.chats.defaultChat(personId).id;
-      await assistant.post({ text, files: [], profileId: personId, notify: true }, false);
+      await assistant.post({ text, files: [], profileId: personId, notify: true }, false, {
+        profileId: personId,
+        role: 'owner',
+      });
       return chatId;
     },
     aiName: (): string => assistantLabel(store.assistantChat.settings()),
@@ -67,13 +80,12 @@ function presenceOf(context: ServerContext, rules: ReachRules, now: () => Date):
   };
 }
 
-function framingOf(context: ServerContext, options: ReachWiring, log: Logger): CameraFraming {
+function framingOf(context: ServerContext, log: Logger): CameraFraming {
   return new CameraFraming({
     store: context.store,
     submit: (commands): void => {
       context.hub.submit(commands);
     },
-    clock: options.clock,
     log,
   });
 }
@@ -82,7 +94,14 @@ export interface ReachLinks {
   readonly speakers: PluginSpeakers;
   readonly transcribing: Pick<
     Transcribing,
-    'ears' | 'claims' | 'listening' | 'transcriber' | 'transcripts'
+    | 'ears'
+    | 'earHosts'
+    | 'remoteEars'
+    | 'claims'
+    | 'listening'
+    | 'transcriber'
+    | 'transcripts'
+    | 'wakeTest'
   >;
 }
 
@@ -114,9 +133,10 @@ function serviceOf(
     }),
     host: (request): Promise<HostedCall> => voice.host(request),
     camera: context.talk.camera,
+    computer: { audio: context.computerEars.audio, activity: voiceActivityOf(context, options) },
     say: (request): Promise<Saying> => voice.say(request),
     app: parts.speech,
-    framing: framingOf(context, options, log),
+    framing: framingOf(context, log),
     openLive: (channelId, conversation): LiveOpening =>
       context.talk.openLive(channelId, conversation),
     clock: options.clock,
@@ -135,6 +155,122 @@ function speechOf(context: ServerContext, options: ReachWiring, log: Logger): Ap
     clock: options.clock,
     log,
   });
+}
+
+function listeningOf(
+  context: ServerContext,
+  rules: ReachRules,
+  transcribing: Pick<CameraListening, 'status'>,
+  options: ReachWiring,
+): ListeningRegistry {
+  const listening = new ListeningRegistry({
+    store: context.store,
+    rules,
+    cameraPauses: async (): Promise<ReadonlyMap<string, TranscriptPauseReason>> =>
+      new Map(
+        (await transcribing.status()).cameras.flatMap((camera) =>
+          camera.state === 'paused' ? [[camera.camera_id, camera.reason] as const] : [],
+        ),
+      ),
+    announce: (): void => {
+      context.store.feed.notice({ type: 'listening_changed' });
+    },
+    connected: (): ReadonlySet<string> => context.live.connectedClients(),
+    sendLevel: (clientId, sourceKey, dbfs): void => {
+      context.live.toClient(clientId, { type: 'listening_level', sourceKey, dbfs });
+    },
+    log: options.log.forArea('hub.listening'),
+  });
+  listening.start();
+  return listening;
+}
+
+function startCameraWake(
+  context: ServerContext,
+  parts: {
+    readonly rules: ReachRules;
+    readonly service: ReachService;
+    readonly transcribing: ReachLinks['transcribing'];
+  },
+  options: ReachWiring,
+): ReturnType<typeof startWakeName> {
+  const { rules, service, transcribing } = parts;
+  return startWakeName(context, {
+    rules,
+    service,
+    ears: transcribing.ears,
+    claims: transcribing.claims,
+    test: transcribing.wakeTest,
+    speech: (cameraId, segment): void => {
+      transcribing.wakeTest.segment({ kind: 'camera', key: cameraId }, segment);
+      if (context.store.cameras.find(cameraId)?.transcribe === true) {
+        transcribing.listening.segment(cameraId, segment);
+      }
+    },
+    clock: options.clock,
+    log: options.log,
+  });
+}
+
+function startDeviceEars(
+  context: ServerContext,
+  parts: {
+    readonly listening: ListeningRegistry;
+    readonly transcribing: ReachLinks['transcribing'];
+    readonly service: ReachService;
+  },
+  options: ReachWiring,
+): { readonly phones: ReturnType<typeof startPhoneEars>; readonly stop: () => void } {
+  const { listening, transcribing, service } = parts;
+  const discord = discordVoiceOf(context.store);
+  const unwatch = discord.start();
+  const unmirror = mirrorDiscordCall(listening, discord);
+  const phones = startPhoneEars(context, { listening, transcribing }, options);
+  const computers = startComputerEars(
+    context,
+    { listening, transcribing, service, relay: context.computerEars, discord },
+    options,
+  );
+  return {
+    phones,
+    stop: (): void => {
+      phones.stop();
+      computers.stop();
+      unmirror();
+      unwatch();
+    },
+  };
+}
+
+function voiceActivityOf(context: ServerContext, options: ReachWiring): VoiceActivity {
+  const codec = opusCodec();
+  const activity = new VoiceActivity({
+    announce: (notice, profileId): void => {
+      if (profileId === null) {
+        context.live.announce(notice, 'owners');
+      } else {
+        context.live.profileNotice(notice, profileId, 'everyone');
+      }
+    },
+    decode: codec.decode,
+    now: (): number => options.clock.now().getTime(),
+  });
+  context.live.voice.attach(activity);
+  return activity;
+}
+
+function startRemoteEars(
+  transcribing: Pick<ReachLinks['transcribing'], 'remoteEars' | 'earHosts'>,
+  listening: Pick<ListeningRegistry, 'setState'>,
+): () => void {
+  const unstate = transcribing.remoteEars.onState(({ key, state }) => {
+    listening.setState(key, state);
+  });
+  return (): void => {
+    unstate();
+    transcribing.remoteEars.stop();
+    transcribing.earHosts.close();
+  };
 }
 
 export function startReach(
@@ -156,21 +292,25 @@ export function startReach(
     presence: presenceOf(context, rules, options.clock.now),
   };
   const { transcribing } = links;
-  const wake = startWakeName(context, {
-    rules,
-    service,
-    ears: transcribing.ears,
-    claims: transcribing.claims,
-    speech: (cameraId, segment): void => {
-      transcribing.listening.segment(cameraId, segment);
-    },
-    clock: options.clock,
-    log: options.log,
+  const listening = listeningOf(context, rules, transcribing.listening, options);
+  const stopContests = transcribing.claims.onArbitrated((arbitrated) => {
+    listening.contested(arbitrated);
   });
+  const stopRemoteEars = startRemoteEars(transcribing, listening);
+  const wake = startCameraWake(context, { rules, service, transcribing }, options);
   startTalkListening(context, { transcribing, service, voice }, options);
+  const devices = startDeviceEars(context, { listening, transcribing, service }, options);
   return {
-    routes: reachRoutes(context, reach),
+    routes: {
+      ...reachRoutes(context, reach),
+      ...listeningRoutes(context, listening, devices.phones, transcribing.wakeTest),
+    },
+    listening,
     stop: (): void => {
+      devices.stop();
+      stopContests();
+      stopRemoteEars();
+      listening.stop();
       wake
         .stop()
         .then(() => {

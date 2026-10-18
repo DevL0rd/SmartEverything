@@ -16,6 +16,7 @@ import { usePluginPeopleActions } from '../data/plugin-people-actions';
 import { usePluginPeople } from '../data/plugin-queries';
 import { PersonSheet, type PersonRequest } from './plugin-person-sheet';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
+import { background } from '@smarteverything/logging';
 
 function PersonRow({
   person,
@@ -40,6 +41,21 @@ function PersonRow({
   );
 }
 
+function PeopleError({
+  people,
+}: {
+  readonly people: ReturnType<typeof usePluginPeople>;
+}): ReactNode {
+  return (
+    <ErrorState
+      error={people.error}
+      retry={() => {
+        background(people.refetch(), 'people.refetch_failed');
+      }}
+    />
+  );
+}
+
 function People({
   row,
   open,
@@ -49,7 +65,7 @@ function People({
 }): ReactNode {
   const people = usePluginPeople(row);
   if (people.isError) {
-    return <ErrorState error={people.error} retry={() => void people.refetch()} />;
+    return <PeopleError people={people} />;
   }
   if (people.data === undefined) {
     return <Skeleton shape="block" className="mx-gutter h-40" />;

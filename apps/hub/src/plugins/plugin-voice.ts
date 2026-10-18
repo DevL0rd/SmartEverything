@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_WAKE_SENSITIVITY,
-  pluginChatKey,
-  requesterOf,
   turnRoleOf,
   type AssistantVoiceServerMessage,
   type WakeSensitivity,
@@ -17,12 +15,13 @@ import type { Clock } from '../clock';
 import { REACH_TOOL_NAMES, hostLine, type HostVoice } from '../reach/hosted-call';
 import type { CallText } from '../store/repositories/assistant-chat';
 import type { Store } from '../store/store';
-import { ownerProfileOf } from '../transcripts/owner';
 import type { Transcriber } from '../transcripts/transcriber';
 import type { Transcripts } from '../transcripts/transcript-service';
 import type { Ears, SpeechSegment } from '../wake-name/ear';
+import type { OnSuperseded } from '../wake-name/wake-claims';
 import type { Unsubscribe } from './builtin/contract';
 import { FIRST_CONVERSATION, earlierBlock } from './earlier-lines';
+import { admittedIdentityOf, identityChatKey, type PluginIdentity } from './plugin-identity';
 import { SaidTurns } from './plugin-said';
 import {
   openTranscript,
@@ -32,6 +31,7 @@ import {
   type PluginTranscriptRequest,
 } from './plugin-transcribing';
 import { transcriptsOf, type PluginTranscripts } from './plugin-transcripts';
+import { background } from '@smarteverything/logging';
 
 const TURN_HIDDEN_TOOLS: ReadonlySet<string> = new Set([...REACH_TOOL_NAMES, 'end_conversation']);
 
@@ -80,6 +80,7 @@ interface PluginTurnRequest extends Spoken {
   readonly tools: readonly TurnTool[];
   readonly events: TurnEvents;
   readonly conversation?: PluginConversation;
+  readonly deviceExternalId?: string;
   readonly hidden?: readonly string[];
   readonly ending?: string;
   readonly bare?: boolean;
@@ -92,7 +93,7 @@ interface PluginTurn {
   readonly finish: () => void;
   readonly say: (text: string, respond: boolean) => void;
   readonly picture: (text: string, picture: Picture) => void;
-  readonly reopen: (options: { readonly fresh: boolean }) => Promise<void>;
+  readonly reopen: () => Promise<void>;
   readonly end: () => void;
 }
 
@@ -100,7 +101,8 @@ interface PluginEarRequest {
   readonly speaker: string;
   readonly sensitivity?: () => WakeSensitivity;
   readonly names?: () => readonly string[];
-  readonly wake: (phrase: string, words: () => Int16Array) => void;
+  readonly wakes?: () => boolean;
+  readonly wake: (phrase: string, words: () => Int16Array, onSuperseded: OnSuperseded) => void;
   readonly speech?: (segment: SpeechSegment) => void;
 }
 
@@ -121,7 +123,17 @@ export interface PluginVoice {
 }
 
 export interface PluginVoiceServices {
-  readonly store: Pick<Store, 'clients' | 'profiles' | 'pluginPeople' | 'assistantChat'>;
+  readonly store: Pick<
+    Store,
+    | 'clients'
+    | 'profiles'
+    | 'personAccess'
+    | 'pluginPeople'
+    | 'assistantChat'
+    | 'now'
+    | 'settings'
+    | 'accessAudit'
+  >;
   readonly host: HostVoice;
   readonly turn: (request: TurnRequest) => Promise<TurnSession>;
   readonly chat: (profileId: string, title: string, source: string | null) => string;
@@ -141,19 +153,15 @@ export interface Scope {
 }
 
 function callerOf(
-  services: PluginVoiceServices,
+  { requester, profileId }: PluginIdentity,
   scope: Scope,
   spoken: Spoken,
 ): HostedCallRequest['caller'] {
-  const person =
-    spoken.speaker === null
-      ? undefined
-      : services.store.pluginPeople.find(scope.pluginId, spoken.speaker);
   return {
-    profileId: ownerProfileOf(services.store),
-    role: turnRoleOf(requesterOf(person)),
+    profileId,
+    role: turnRoleOf(requester),
     label: spoken.label,
-    requester: requesterOf(person),
+    requester,
     pluginId: scope.pluginId,
   };
 }
@@ -170,7 +178,11 @@ async function hostCall(
   scope: Scope,
   request: PluginCallRequest,
 ): Promise<PluginCall> {
-  const caller = callerOf(services, scope, request);
+  const caller = callerOf(
+    admittedIdentityOf(services.store, scope.pluginId, request.speaker),
+    scope,
+    request,
+  );
   const callId = randomUUID();
   const line = await hostLine(
     { host: services.host, clock: services.clock, log: services.log },
@@ -195,7 +207,7 @@ async function hostCall(
   );
   const { call } = line;
   const stop = scope.track(() => {
-    void call.end('disconnected');
+    background(call.end('disconnected'), 'call.end_failed');
   });
   return {
     id: callId,
@@ -229,7 +241,7 @@ function handleOf(session: TurnSession, stop: Unsubscribe): PluginTurn {
     picture: (text, picture): void => {
       session.say(text, true, picture);
     },
-    reopen: (options) => session.reopen(options),
+    reopen: () => session.reopen(),
     end: (): void => {
       stop();
       session.end('hung_up');
@@ -264,11 +276,12 @@ async function openTurn(
   scope: Scope,
   request: PluginTurnRequest,
 ): Promise<PluginTurn> {
-  const caller = callerOf(services, scope, request);
+  const identity = admittedIdentityOf(services.store, scope.pluginId, request.speaker);
+  const caller = callerOf(identity, scope, request);
   const source =
     request.conversation === undefined
       ? null
-      : pluginChatKey(scope.pluginId, request.conversation.key);
+      : identityChatKey(identity.guest, scope.pluginId, request.conversation.key);
   const chatId = services.chat(caller.profileId, request.title, source);
   const session = await services.turn({
     pluginId: scope.pluginId,
@@ -285,6 +298,9 @@ async function openTurn(
     tools: request.tools,
     opening: request.opening,
     events: request.events,
+    ...(request.deviceExternalId === undefined
+      ? {}
+      : { at: { deviceId: null, clientId: null, externalId: request.deviceExternalId } }),
     ...(request.bare === undefined ? {} : { bare: request.bare }),
   });
   const stop = scope.track(() => {
@@ -303,12 +319,13 @@ async function openEar(
     fields: { pluginId: scope.pluginId, speaker: request.speaker },
     sensitivity: request.sensitivity ?? ((): WakeSensitivity => DEFAULT_WAKE_SENSITIVITY),
     resting: (): boolean => false,
+    ...(request.wakes === undefined ? {} : { wakes: request.wakes }),
     ...(request.names === undefined ? {} : { names: request.names }),
     wake: request.wake,
     speech: request.speech ?? null,
   });
   const stop = scope.track(() => {
-    void ear.close();
+    background(ear.close(), 'ear.close_failed');
   });
   return {
     hear: (pcm16k): void => {
@@ -334,7 +351,7 @@ export function voiceOf(
       }
       return work(...args);
     };
-  const own = transcriptsOf(services.transcripts, scope.pluginId, services.store);
+  const own = transcriptsOf(services.transcripts, scope.pluginId);
   return {
     host: guarded((request) => hostCall(services, scope, request)),
     turn: guarded((request) => openTurn(services, scope, request)),
@@ -345,12 +362,6 @@ export function voiceOf(
       speechReader: guarded((reader) => scope.track(own.speechReader(reader))),
       list: guarded(own.list),
       find: guarded(own.find),
-      page: guarded(own.page),
-      scope: guarded(own.scope),
-      feed: guarded(own.feed),
-      range: guarded(own.range),
-      read: guarded((id: string, after: number, limit: number) => own.read(id, after, limit)),
-      remove: guarded((id: string) => own.remove(id)),
     },
     ready: guarded(() => services.keyPresent()),
     keyChanges: guarded((listener: () => void) => scope.track(services.keys.changes(listener))),

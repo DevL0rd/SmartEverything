@@ -40,7 +40,7 @@ function answerTo(id: string): (message: TvMessage) => ArtAnswer | undefined {
 }
 
 export interface ArtModeOptions {
-  readonly host: string;
+  readonly host: () => string;
   readonly io: SamsungTvIo;
   readonly log: Logger;
   readonly token: () => string;
@@ -58,7 +58,7 @@ export class ArtModeChannel {
     const answer = await this.ask(request, artModeStatusRequest);
     if (answer.kind !== 'art_mode') {
       throw new TvArtModeError(
-        this.options.host,
+        this.options.host(),
         request,
         `the answer ${answer.event} carried no art mode`,
       );
@@ -91,7 +91,7 @@ export class ArtModeChannel {
     if (answer.kind === 'art_failed') {
       const code = answer.errorCode;
       throw new TvArtModeError(
-        this.options.host,
+        this.options.host(),
         request,
         code === null
           ? 'the TV answered with an error without a code'
@@ -102,7 +102,8 @@ export class ArtModeChannel {
   }
 
   private async open(): Promise<TvConnection> {
-    const { host, io, log } = this.options;
+    const { io, log } = this.options;
+    const host = this.options.host();
     const socket = io.openSocket(remoteUrl(host, 'art', REMOTE_APP_NAME, this.options.token()));
     const connection = await TvConnection.open(socket, host, ART_CONNECT_TIMEOUT_MS, 'ready');
     connection.onMessage((message) => {

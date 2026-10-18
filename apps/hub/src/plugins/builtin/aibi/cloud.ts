@@ -1,8 +1,11 @@
 import { Resolver } from 'node:dns/promises';
-import { connect as connectPlain, type Socket } from 'node:net';
-import { connect as connectSecure } from 'node:tls';
+import { Agent as HttpAgent, request as httpRequest, type OutgoingHttpHeaders } from 'node:http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
+import type { LookupFunction } from 'node:net';
+import { buffer } from 'node:stream/consumers';
 import { AIBI_HOST } from './host-name';
-import { collector, HttpReader, rebuild, type Message } from './http-reader';
+import type { Message } from './connection';
+import { FRAMING_HEADERS, flatHeaders, type Response } from './replies';
 
 export type Scheme = 'http' | 'https';
 
@@ -17,20 +20,13 @@ const RESOLVE_TIMEOUT_MS = 3000;
 const RESOLVE_TRIES = 2;
 const CLOUD_HTTP_PORT = 80;
 const CLOUD_HTTPS_PORT = 443;
+const IPV4 = 4;
 
 class CloudAddressMissingError extends Error {
   override readonly name = 'CloudAddressMissingError';
 
   constructor(readonly dnsServer: string) {
     super(`${dnsServer} did not return an address for ${AIBI_HOST}`);
-  }
-}
-
-class CloudClosedError extends Error {
-  override readonly name = 'CloudClosedError';
-
-  constructor() {
-    super('The AIBI cloud closed the connection');
   }
 }
 
@@ -50,91 +46,77 @@ export function cloudVia(dnsServer: string): Cloud {
   };
 }
 
-interface Waiter {
-  readonly resolve: (message: Message) => void;
-  readonly reject: (error: Error) => void;
+function lookupVia(target: Cloud): LookupFunction {
+  return (_host, _options, callback) => {
+    target.address().then(
+      (address) => {
+        callback(null, address, IPV4);
+      },
+      (error: unknown) => {
+        callback(error instanceof Error ? error : new Error(String(error)), '', IPV4);
+      },
+    );
+  };
+}
+
+function agentFor(scheme: Scheme, target: Cloud): HttpAgent {
+  const shared = { keepAlive: true, autoSelectFamily: false, lookup: lookupVia(target) };
+  return scheme === 'https'
+    ? new HttpsAgent({
+        ...shared,
+        servername: AIBI_HOST,
+        minVersion: 'TLSv1.2',
+        ...(target.ca === undefined ? {} : { ca: target.ca }),
+      })
+    : new HttpAgent(shared);
+}
+
+function headersOf(message: Message): OutgoingHttpHeaders {
+  return Object.fromEntries(
+    Object.entries(message.headers).filter(([name]) => !FRAMING_HEADERS.has(name)),
+  );
 }
 
 export class Upstream {
-  private socket: Promise<Socket> | null = null;
-  private waiting: Waiter[] = [];
+  private readonly agent: HttpAgent;
 
   constructor(
     private readonly scheme: Scheme,
     private readonly target: Cloud,
-  ) {}
+  ) {
+    this.agent = agentFor(scheme, target);
+  }
 
-  async send(message: Message): Promise<Message> {
-    const socket = await this.connected();
+  send(message: Message): Promise<Response> {
+    const [method = 'GET', path = '/'] = message.startLine.split(' ');
+    const https = this.scheme === 'https';
     return new Promise((resolve, reject) => {
-      this.waiting.push({ resolve, reject });
-      socket.write(rebuild(message));
+      const send = https ? httpsRequest : httpRequest;
+      const request = send(
+        {
+          host: AIBI_HOST,
+          port: https ? this.target.httpsPort : this.target.httpPort,
+          method,
+          path,
+          headers: headersOf(message),
+          agent: this.agent,
+        },
+        (response) => {
+          buffer(response).then((body) => {
+            resolve({
+              status: response.statusCode ?? 0,
+              headers: flatHeaders(response.headers),
+              body,
+            });
+          }, reject);
+        },
+      );
+      request.on('error', reject);
+      request.end(message.body);
     });
   }
 
   close(): void {
-    void this.socket?.then(
-      (socket) => {
-        socket.destroy();
-      },
-      (error: unknown) => {
-        this.fail(error instanceof Error ? error : new CloudClosedError());
-      },
-    );
-  }
-
-  private connected(): Promise<Socket> {
-    this.socket ??= this.open().catch((error: unknown) => {
-      this.socket = null;
-      throw error instanceof Error ? error : new CloudClosedError();
-    });
-    return this.socket;
-  }
-
-  private async open(): Promise<Socket> {
-    const host = await this.target.address();
-    const reader = new HttpReader(
-      collector((message) => {
-        this.waiting.shift()?.resolve(message);
-      }),
-      true,
-    );
-    const socket =
-      this.scheme === 'https'
-        ? connectSecure({
-            host,
-            port: this.target.httpsPort,
-            servername: AIBI_HOST,
-            minVersion: 'TLSv1.2',
-            ...(this.target.ca === undefined ? {} : { ca: this.target.ca }),
-          })
-        : connectPlain({ host, port: this.target.httpPort });
-    socket.on('data', (chunk: Buffer) => {
-      try {
-        reader.push(chunk);
-      } catch (error) {
-        this.fail(error instanceof Error ? error : new CloudClosedError());
-        socket.destroy();
-      }
-    });
-    socket.on('end', () => {
-      reader.close();
-    });
-    socket.on('error', (error: Error) => {
-      this.fail(error);
-    });
-    socket.on('close', () => {
-      this.socket = null;
-      this.fail(new CloudClosedError());
-    });
-    return socket;
-  }
-
-  private fail(error: Error): void {
-    const waiting = this.waiting;
-    this.waiting = [];
-    waiting.forEach((waiter) => {
-      waiter.reject(error);
-    });
+    this.agent.destroy();
   }
 }

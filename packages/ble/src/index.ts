@@ -1,6 +1,6 @@
 export { bytesToHex, hexToBytes } from './bytes';
-export { CcmTagMismatchError } from './ccm';
 export {
+  CcmTagMismatchError,
   MIBEACON_SERVICE_UUID,
   MiBeaconFormatError,
   decryptObjects,

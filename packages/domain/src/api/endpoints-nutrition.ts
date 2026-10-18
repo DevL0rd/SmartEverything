@@ -22,6 +22,16 @@ const ENTRY_ENDPOINTS = {
     body: NO_BODY,
     response: z.array(HEALTH_ENTRY_ROW),
   }),
+  readHealthEntry: endpoint({
+    method: 'GET',
+    path: '/api/health/entries/:entryId',
+    access: 'member',
+    summary: 'One thing this profile logged in the app, by its id',
+    params: ENTRY_PARAMS,
+    query: NOTHING,
+    body: NO_BODY,
+    response: HEALTH_ENTRY_ROW,
+  }),
   createHealthEntry: endpoint({
     method: 'POST',
     path: '/api/health/entries',

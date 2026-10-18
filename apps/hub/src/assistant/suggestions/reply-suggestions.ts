@@ -3,6 +3,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
 import { SideCompletion, type SideCompletionDeps } from '../side-completion';
 import { cleanSuggestions, suggestionMessages } from './suggestion-text';
+import { messageOf } from '@smarteverything/logging';
 
 export interface ReplySuggestionsDeps extends SideCompletionDeps {
   readonly log: Logger;
@@ -26,24 +27,21 @@ export class ReplySuggestions {
       this.suggest(event, text).catch((cause: unknown) => {
         this.deps.log.warn('assistant.suggestions_failed', {
           chatId: event.chat_id,
-          reason: cause instanceof Error ? cause.message : String(cause),
+          reason: messageOf(cause),
         });
       });
     }
   };
 
   private async suggest(event: StoredEvent, text: string): Promise<void> {
+    const model = this.side.model();
     const reply = this.latestReply(event);
     const person =
       event.message_id === null ? null : this.deps.store.assistantChat.message(event.message_id);
-    if (
-      !this.side.nativeAvailable(event.chat_id) ||
-      reply === null ||
-      person?.origin?.source !== 'app'
-    ) {
+    if (model === null || reply === null || person?.origin?.source !== 'app') {
       return;
     }
-    const raw = await this.side.complete({
+    const raw = await this.side.complete(model, {
       chatId: event.chat_id,
       messages: suggestionMessages(person.text, text),
       maxTokens: SUGGESTION_TOKENS_MAX,

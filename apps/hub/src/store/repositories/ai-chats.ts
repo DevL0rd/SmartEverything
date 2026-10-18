@@ -10,22 +10,24 @@ import {
   type AiChatChange,
   type AiChatKind,
   type AiChatRow,
+  type AiHarnessTarget,
   type Engine,
   type MessageSource,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
-import { assertEngineStorageCompatible } from './engine-compatibility';
 import { flag, jsonText } from '../sql';
 import { UNKNOWN_COST_SQL } from '../../ledger/usage-queries';
+import { AFTER_CHAT_SQL, CHAT_MOMENT_SQL, pageParams } from './ai-chat-paging';
+import { PENDING_REQUESTS_SQL } from './ai-chat-requests';
 import { removeStoredChat } from './ai-chat-removal';
 import { subagentChatIds } from './ai-chat-descendants';
-import type { NewChat } from './ai-chat-input';
+import { modelKey, type NewChat } from './ai-chat-input';
 import { assertSubagentCreation, holdChatTree, assertChatWork } from './ai-chat-removal-hold';
 
 const STORED_CHAT = storedRow(AI_CHAT_ROW, {
-  json: ['engine', 'tools', 'origin'],
+  json: ['engine', 'tools', 'origin', 'pending_execution_target'],
   flags: ['pinned', 'cost_incomplete'],
 });
 
@@ -37,24 +39,21 @@ const INCOMING_SQL = `((m.role = 'responder' and m.kind in ('text', 'update') an
       and not (json_extract(m.origin, '$.source') = 'plugin'
                and coalesce(json_extract(m.origin, '$.requester'), '') = 'owner')))`;
 
-const CHAT_COLUMNS = `${STORED_COLUMNS}, deletion_state, deletion_error,
+const CHAT_COLUMNS = `${STORED_COLUMNS}, pending_execution_target, deletion_state, deletion_error,
   exists(select 1 from ai_usage where chat_id = ai_chats.id and ${UNKNOWN_COST_SQL}) as cost_incomplete,
   (select m.origin from assistant_messages m
    where m.chat_id = ai_chats.id and m.origin is not null
    order by m.created_at, m.rowid limit 1) as origin,
   (select count(*) from assistant_messages m
    where m.chat_id = ai_chats.id and (ai_chats.read_at is null or m.created_at > ai_chats.read_at)
-     and ${INCOMING_SQL}) as unread_count`;
+     and ${INCOMING_SQL}) as unread_count,
+  ${PENDING_REQUESTS_SQL} as pending_requests`;
 
 const TITLE_AUTO = storedRow(z.strictObject({ title_auto: z.boolean() }), {
   flags: ['title_auto'],
 });
 
 const CHAT_ID = storedRow(z.strictObject({ id: z.uuid() }), {});
-
-const SETTING = storedRow(z.strictObject({ settings: z.record(z.string(), z.unknown()) }), {
-  json: ['settings'],
-});
 
 export type { NewChat } from './ai-chat-input';
 
@@ -64,6 +63,8 @@ export interface ChatQuery {
   readonly unread?: boolean | undefined;
   readonly pinned?: boolean | undefined;
   readonly source?: MessageSource | undefined;
+  readonly before?: string | undefined;
+  readonly limit?: number | undefined;
 }
 
 export interface TitleHit {
@@ -99,17 +100,22 @@ const MOMENT_ROW = storedRow(
 export class AiChatsRepository {
   constructor(private readonly context: StoreContext) {}
 
-  chat(id: string): AiChatRow {
-    return found(
-      this.context.sql.get(STORED_CHAT, `select ${CHAT_COLUMNS} from ai_chats where id = $id`, {
+  find(id: string): AiChatRow | undefined {
+    return this.context.sql.get(
+      STORED_CHAT,
+      `select ${CHAT_COLUMNS} from ai_chats where id = $id`,
+      {
         id,
-      }),
-      'AI chat',
-      id,
+      },
     );
   }
 
+  chat(id: string): AiChatRow {
+    return found(this.find(id), 'AI chat', id);
+  }
+
   chats(query: ChatQuery): AiChatRow[] {
+    const after = query.before === undefined ? undefined : this.chat(query.before);
     return this.context.sql.all(
       STORED_CHAT,
       `select ${CHAT_COLUMNS} from ai_chats
@@ -117,13 +123,16 @@ export class AiChatsRepository {
          and ($unread is null or (unread_count > 0) = $unread)
          and ($pinned is null or pinned = $pinned)
          and ($source is null or coalesce(json_extract(origin, '$.source'), 'app') = $source)
-       order by pinned desc, coalesce(last_message_at, created_at) desc, id`,
+         and ${AFTER_CHAT_SQL}
+       order by pinned desc, ${CHAT_MOMENT_SQL} desc, id
+       limit $limit`,
       {
         profile: query.profileId,
         archived: flag(query.archived),
         unread: query.unread === undefined ? null : flag(query.unread),
         pinned: query.pinned === undefined ? null : flag(query.pinned),
         source: query.source ?? null,
+        ...pageParams(after, query.limit),
       },
     );
   }
@@ -198,7 +207,6 @@ export class AiChatsRepository {
 
   create(input: NewChat): AiChatRow {
     assertSubagentCreation(this.context, input);
-    assertEngineStorageCompatible(input.engine);
     return this.context.write(() => {
       const id = this.context.newId();
       const now = this.context.now();
@@ -229,7 +237,6 @@ export class AiChatsRepository {
   }
 
   update(id: string, change: AiChatChange): AiChatRow {
-    if (change.engine !== undefined) assertEngineStorageCompatible(change.engine);
     return this.context.write(() => {
       const before = this.chat(id);
       const set = assignments({
@@ -245,6 +252,10 @@ export class AiChatsRepository {
             : change.tools === null
               ? null
               : jsonText(change.tools),
+        context_percent:
+          change.engine !== undefined && modelKey(change.engine) !== modelKey(before.engine)
+            ? null
+            : undefined,
         updated_at: this.context.now(),
       });
       this.context.sql.run('change the AI chat', `update ai_chats set ${set.text} where id = $id`, {
@@ -287,6 +298,18 @@ export class AiChatsRepository {
        where id = $id`,
       { id, latest },
     );
+  }
+
+  setPendingTarget(id: string, target: AiHarnessTarget | null): void {
+    this.context.write(() => {
+      const before = this.chat(id);
+      this.context.sql.run(
+        'record the machine the AI chat moves to',
+        'update ai_chats set pending_execution_target = $target where id = $id',
+        { id, target: target === null ? null : jsonText(target) },
+      );
+      this.context.changed('ai_chats', 'UPDATE', this.chat(id), before);
+    });
   }
 
   noteContext(id: string, percent: number | null): void {
@@ -395,24 +418,6 @@ export class AiChatsRepository {
   }
   remove(id: string): void {
     removeStoredChat(this.context, this.chat(id), (chatId) => this.chat(chatId));
-  }
-
-  setting(key: string): Readonly<Record<string, unknown>> | null {
-    return (
-      this.context.sql.get(SETTING, 'select settings from ai_settings where key = $key', { key })
-        ?.settings ?? null
-    );
-  }
-
-  saveSetting(key: string, settings: Readonly<Record<string, unknown>>): void {
-    this.context.write(() => {
-      this.context.sql.run(
-        'save the AI setting',
-        `insert into ai_settings (key, settings, updated_at) values ($key, $settings, $now)
-         on conflict (key) do update set settings = excluded.settings, updated_at = excluded.updated_at`,
-        { key, settings: jsonText(settings), now: this.context.now() },
-      );
-    });
   }
 }
 

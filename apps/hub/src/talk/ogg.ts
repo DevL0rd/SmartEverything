@@ -11,14 +11,18 @@ const VENDOR = 'SmartEverything';
 
 const CRC_POLYNOMIAL = 0x04c11db7;
 
+const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, index) => {
+  let crc = index << 24;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = crc & 0x80000000 ? (crc << 1) ^ CRC_POLYNOMIAL : crc << 1;
+  }
+  return crc >>> 0;
+});
+
 export function oggCrc(bytes: Uint8Array): number {
   let crc = 0;
   for (const byte of bytes) {
-    crc ^= byte << 24;
-    for (let bit = 0; bit < 8; bit += 1) {
-      crc = crc & 0x80000000 ? (crc << 1) ^ CRC_POLYNOMIAL : crc << 1;
-    }
-    crc >>>= 0;
+    crc = ((crc << 8) ^ (CRC_TABLE[((crc >>> 24) ^ byte) & 0xff] ?? 0)) >>> 0;
   }
   return crc;
 }

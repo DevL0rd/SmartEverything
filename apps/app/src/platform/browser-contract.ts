@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from 'react';
+import type { Ref } from 'react';
 import type { BrowserTarget, BrowserStatus } from '@smarteverything/domain';
 export interface BrowserHandle {
   navigate(url: string): void;
@@ -12,10 +12,10 @@ export interface BrowserSurfaceProps {
   readonly visible: boolean;
   readonly ref: Ref<BrowserHandle>;
   readonly onStatus: (status: BrowserStatus) => void;
+  readonly onOpenWindow?: (url: string) => void;
 }
 export interface BrowserCapability {
   readonly available: boolean;
   readonly publicBrowsing: boolean;
   readonly limitation: string | null;
 }
-export type BrowserSurfaceComponent = (props: BrowserSurfaceProps) => ReactNode;

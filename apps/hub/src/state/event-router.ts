@@ -1,8 +1,10 @@
 import type { DeviceEvent, EventKind, JsonValue, Provider } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { EventInsert, HubDatabase } from '../database/port';
+import type { DeviceRecord, EventInsert, HubDatabase } from '../database/port';
 import type { Inventory } from './inventory';
-import { WriteQueue } from './write-queue';
+import { RepeatLog } from '../providers/repeat-log';
+import { WriteQueue, logQueueNotice } from './write-queue';
+import { background } from '@smarteverything/logging';
 
 export interface RecordedEvent {
   readonly id: string;
@@ -17,6 +19,7 @@ export interface EventRouterOptions {
   readonly inventory: Pick<Inventory, 'deviceOf'>;
   readonly log: Logger;
   readonly recorded: (event: RecordedEvent) => void;
+  readonly claim?: (device: DeviceRecord, event: DeviceEvent) => boolean;
 }
 
 const OPEN_OCCURRENCES_MOST = 512;
@@ -31,8 +34,11 @@ export class EventRouter {
   private readonly queue: WriteQueue<EventInsert, string>;
   private readonly committedQueue: WriteQueue<KeyedEvent, string>;
   private readonly occurrences = new Map<string, Promise<string>>();
+  private readonly repeat: RepeatLog;
+  private received = 0;
 
   constructor(private readonly options: EventRouterOptions) {
+    this.repeat = new RepeatLog(options.log);
     this.queue = new WriteQueue<EventInsert, string>({
       write: (rows): Promise<readonly string[]> => options.store.insertEvents(rows),
       keyOf: (): null => null,
@@ -48,6 +54,9 @@ export class EventRouter {
       },
       keyOf: (): null => null,
       append: EVENT_APPEND_POLICY,
+      observe: (notice): void => {
+        logQueueNotice(options.log, 'event', notice);
+      },
       failed: (rows, cause): void => {
         options.log.error('event.commit_failed', cause, { count: rows.length });
       },
@@ -57,7 +66,14 @@ export class EventRouter {
   fromProvider(provider: Provider, event: DeviceEvent): void {
     const device = this.options.inventory.deviceOf(provider, event.externalId);
     if (device === undefined) {
-      this.options.log.warn('event.device_unknown', { provider, externalId: event.externalId });
+      this.repeat.warn('event.device_unknown', `${provider}|${event.externalId}`, {
+        provider,
+        externalId: event.externalId,
+        kind: event.kind,
+      });
+      return;
+    }
+    if (this.options.claim?.(device, event) === true) {
       return;
     }
     const insert = {
@@ -66,12 +82,23 @@ export class EventRouter {
       occurredAt: event.occurredAt,
       details: event.details,
     };
+    this.received += 1;
+    this.repeat.debug('event.received_summary', 'received', {
+      provider,
+      kind: event.kind,
+      received: this.received,
+      committed: event.occurrence !== undefined,
+    });
     if (event.occurrence === undefined) {
       this.record(insert);
       return;
     }
     this.fromProviderCommitted(provider, event).catch((cause: unknown) => {
-      this.options.log.error('event.not_committed', cause, { kind: event.kind });
+      this.options.log.error('event.not_committed', cause, {
+        provider,
+        externalId: event.externalId,
+        kind: event.kind,
+      });
     });
   }
 
@@ -96,6 +123,7 @@ export class EventRouter {
       });
     const committed = this.committedQueue.push({ event: insert, key });
     this.remember(key, committed);
+    // eslint-disable-next-line local/no-swallowed-errors -- the caller receives the same failure from the commit
     committed.catch(() => {
       if (this.occurrences.get(key) === committed) this.occurrences.delete(key);
     });
@@ -108,7 +136,11 @@ export class EventRouter {
   }
 
   record(event: EventInsert): void {
-    void this.write(event);
+    background(this.write(event), 'event_router.write_failed');
+  }
+
+  append(event: EventInsert): Promise<string> {
+    return this.write(event);
   }
 
   private write(event: EventInsert): Promise<string> {

@@ -2,15 +2,13 @@ import type { WeatherForecast } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
+import { ProgressBar } from '../../../components/charts';
 import { IconWell } from '../../../components/icon-well';
 import { Text } from '../../../components/text';
 import { WidgetFrame, isTall, type WidgetSize } from '../../../components/widget-board';
 import { cn } from '../../../design/cn';
-import { useColour } from '../../../design/colour';
-import { rounded } from '../../device-visuals';
 import { WeatherWidgetNotice, useWeather } from '../../weather';
 import { useComfortReadings } from '../data/use-readings';
 import type { ComfortMetric, MetricReading } from '../model/comfort';
@@ -18,33 +16,10 @@ import { comparisonsOf, hintOf, type Comparison } from '../model/outdoor';
 
 const METRICS: readonly ComfortMetric[] = ['temperature', 'humidity', 'pm25'];
 
-function share(value: number | null, max: number): number {
-  return value === null ? 0 : Math.min(Math.max(value / max, 0.04), 1) * 100;
-}
+const MIN_SHARE = 0.04;
 
-function Bar({
-  value,
-  max,
-  fill,
-}: {
-  readonly value: number | null;
-  readonly max: number;
-  readonly fill: Comparison['colour'];
-}): ReactNode {
-  const track = useColour('surface-2');
-  const colour = useColour(fill);
-  return (
-    <View className="h-2 min-w-0 flex-1">
-      <View pointerEvents="none" className="absolute inset-0">
-        <Svg width="100%" height="100%" viewBox="0 0 100 8" preserveAspectRatio="none">
-          <Path d={rounded({ x: 0, y: 0, w: 100, h: 8, r: 4 })} fill={track} />
-          {value === null ? null : (
-            <Path d={rounded({ x: 0, y: 0, w: share(value, max), h: 8, r: 4 })} fill={colour} />
-          )}
-        </Svg>
-      </View>
-    </View>
-  );
+function share(value: number | null, max: number): number | null {
+  return value === null ? null : Math.min(Math.max(value / max, MIN_SHARE), 1);
 }
 
 function Side({
@@ -65,7 +40,14 @@ function Side({
       <Text variant="caption" tone="variant" className="w-14" numberOfLines={1}>
         {label}
       </Text>
-      <Bar value={value} max={comparison.max} fill={tint} />
+      <View className="min-w-0 flex-1">
+        <ProgressBar
+          progress={share(value, comparison.max)}
+          colour={tint}
+          label={`${label} ${text}`}
+          thick
+        />
+      </View>
       <Text variant="callout" className="w-14 text-right tabular" numberOfLines={1}>
         {text}
       </Text>
@@ -117,7 +99,7 @@ function Compare({
   readonly roomy: boolean;
 }): ReactNode {
   const tall = isTall(size);
-  const across = roomy && size !== 'L';
+  const across = roomy;
   const rows = comparisonsOf(readings, forecast).slice(0, tall || across ? 3 : 1);
   const hint = tall ? hintOf(readings, forecast) : null;
   return (
@@ -150,13 +132,7 @@ export function OutdoorWidget({
     setWidth(event.nativeEvent.layout.width);
   };
   return (
-    <WidgetFrame
-      title="Inside & outside"
-      icon="weather"
-      accent="viz-1"
-      size={size}
-      href={href.weather()}
-    >
+    <WidgetFrame title="Inside & outside" icon="weather" accent="viz-1" href={href.weather()}>
       <View className="flex-1" onLayout={measure}>
         {view.kind === 'ready' ? (
           <Compare
@@ -166,7 +142,7 @@ export function OutdoorWidget({
             roomy={width >= ROOMY_PX}
           />
         ) : (
-          <WeatherWidgetNotice view={view} size={size} />
+          <WeatherWidgetNotice view={view} />
         )}
       </View>
     </WidgetFrame>

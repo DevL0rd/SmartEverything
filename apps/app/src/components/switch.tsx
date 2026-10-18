@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { cn } from '../design/cn';
@@ -25,7 +25,12 @@ export function SwitchTrack({
 }): ReactNode {
   const { reduced } = useMotion();
   const position = useSharedValue(value ? TRAVEL : 0);
+  const shown = useRef(value);
   useEffect(() => {
+    if (shown.current === value) {
+      return;
+    }
+    shown.current = value;
     const target = value ? TRAVEL : 0;
     position.set(
       reduced ? target : withTiming(target, { duration: DURATION.short, easing: EASING.standard }),

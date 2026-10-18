@@ -8,16 +8,19 @@ export class SmartThingsResponseError extends Error {
     readonly received: unknown,
     readonly reason: string,
   ) {
-    super(
-      `The SmartThings ${subject} did not have the expected shape: ${reason}. Received ${JSON.stringify(received)}.`,
-    );
+    super(`The SmartThings ${subject} did not have the expected shape: ${reason}.`);
   }
+}
+
+export function issuePaths(error: z.ZodError): string {
+  const paths = error.issues.map((issue) => issue.path.join('.') || 'the whole value');
+  return [...new Set(paths)].join(', ');
 }
 
 export function parsed<T>(schema: z.ZodType<T>, received: unknown, subject: string): T {
   const result = schema.safeParse(received);
   if (!result.success) {
-    throw new SmartThingsResponseError(subject, received, result.error.message);
+    throw new SmartThingsResponseError(subject, received, issuePaths(result.error));
   }
   return result.data;
 }

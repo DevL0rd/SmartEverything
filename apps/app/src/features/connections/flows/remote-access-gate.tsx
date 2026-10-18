@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
+import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
@@ -17,6 +18,16 @@ export function RemoteAccessGate({ who }: { readonly who: string }): ReactNode {
       </Text>
       <Button label="Set up remote access" variant="tonal" href={href.settings.page('server')} />
     </View>
+  );
+}
+
+export function UnverifiedAddressNotice(): ReactNode {
+  return (
+    <Banner
+      tone="warning"
+      title="We couldn’t check your public address from inside your network"
+      body="Setup can continue. If it fails later, check that the address works from outside."
+    />
   );
 }
 

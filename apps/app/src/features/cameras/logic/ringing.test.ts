@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { RING_FOR_MS, newRings, ringTitle, stillRinging, type RingSource } from './ringing';
+import {
+  RING_FOR_MS,
+  newRings,
+  ringTitle,
+  ringingCameraIds,
+  stillRinging,
+  type RingSource,
+} from './ringing';
 
 const NOW = Date.parse('2026-10-08T18:00:00.000Z');
 
@@ -68,5 +75,15 @@ describe('which events ring', () => {
   it('says who is calling', () => {
     expect(ringTitle('call', 'Nursery')).toBe('Nursery is calling');
     expect(ringTitle('doorbell', 'Front door')).toBe('Someone rang at Front door');
+  });
+});
+
+describe('which cameras may ring this person', () => {
+  it('rings for every camera unless the person turned one off', () => {
+    expect([...ringingCameraIds(['door', 'nursery'], { muted: ['nursery'] })]).toEqual(['door']);
+  });
+
+  it('still rings when the saved setting cannot be read', () => {
+    expect([...ringingCameraIds(['door', 'nursery'], null)]).toEqual(['door', 'nursery']);
   });
 });

@@ -1,14 +1,6 @@
 import type { Served } from './served-types';
 export const SERVED_DEVICE_GROUPS = [
   [
-    'get_device_groups',
-    'devices',
-    'read',
-    'Get device groups',
-    'Named device groups with their ids and member device ids.',
-    { part: 'list_device_groups' },
-  ],
-  [
     'edit_device_group',
     'devices',
     'control',
@@ -28,7 +20,7 @@ export const SERVED_DEVICE_GROUPS = [
     'control',
     'control',
     'Control a room or device group',
-    'Set a supported control on a room, named group or explicit device selection. Returns actual per-device outcomes and offline or unsupported members; use scale percent for normalized levels.',
+    "Changes one control on every device of a room, a room's lights (families light), a device group or a list of devices. Lists the members that changed, failed or were skipped (offline, not supported, removed) with reasons and a headline when some did not change; scale percent takes levels as 0 to 100 and scope on changes only the members that are on.",
     { part: 'control_device_target' },
   ],
 ] as const satisfies readonly Served[];

@@ -1,0 +1,34 @@
+.ov.rm .orb *,
+.ov.rm .blob,
+.ov.rm .glow-mode,
+.ov.rm .glow-bloom {
+  animation: none !important;
+}
+.ov.rm .blob {
+  transition: none;
+}
+.ov.rm .pill {
+  transition: none;
+}
+.ov.rm .pill.in {
+  animation: ov-fade 150ms linear both;
+}
+.ov.rm .pill.out {
+  animation: ov-fade-out 150ms linear both;
+}
+.ov.rm .txt-in.swap,
+.ov.rm .swap {
+  animation: none;
+}
+.ov.rm .txt-in.out {
+  display: none;
+}
+.ov.rm .rib i,
+.ov.rm .orb-lv,
+.ov.rm .orb-aura {
+  transition: none;
+}
+.ov[data-rest] :is(.orb-pulse, .orb-swirl, .orb-halo, .blob, .glow-mode),
+.ov[data-rest] :is(.edge, .st)::before {
+  animation-play-state: paused !important;
+}

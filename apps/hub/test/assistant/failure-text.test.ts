@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { withoutAbsentFields } from '../../src/ai-tools/arguments';
 import type { HubTool } from '../../src/ai-tools/hub-tool';
 import { toolLine } from '../../src/ai-tools/tool-lines';
 import { reasonWithActions } from '../../src/assistant/failure-reason';
@@ -49,29 +48,5 @@ describe('a failed turn that already acted', () => {
 
   it('stays the plain reason when nothing was done', () => {
     expect(reasonWithActions('Stopped.', [])).toBe('Stopped.');
-  });
-});
-
-describe('arguments a model sends for fields it leaves out', () => {
-  const schema = {
-    properties: {
-      view: { type: 'string' },
-      sessionId: { type: 'string' },
-      icon: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    },
-  };
-
-  it('drops null for a field that cannot be null', () => {
-    expect(withoutAbsentFields(schema, { view: 'sessions', sessionId: null })).toEqual({
-      view: 'sessions',
-    });
-  });
-
-  it('keeps null where the field accepts it, and every real value', () => {
-    expect(withoutAbsentFields(schema, { view: 'session', sessionId: 'abc', icon: null })).toEqual({
-      view: 'session',
-      sessionId: 'abc',
-      icon: null,
-    });
   });
 });

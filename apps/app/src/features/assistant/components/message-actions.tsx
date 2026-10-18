@@ -1,4 +1,3 @@
-import { isComputerEngine } from '../provider/computer-engine';
 import type { AiRetryFrom, AssistantMessageRow } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
@@ -10,11 +9,10 @@ import { copyText } from '../../../components/copy-button';
 import type { MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
-import { useIsOwner, useRow } from '../../../store/selectors';
 import { quoteInto, setReferenceDraft } from '../data/drafts';
 import { startEditing } from '../data/editing';
-import { deleteMessageWithUndo } from '../data/pending-deletes';
-import { useCanEdit, useRetryFrom } from '../data/retry';
+import { deleteMessageWithUndo } from '../data/message-delete';
+import { useRowActionState } from '../data/retry';
 import { branchFromMessage, retryMessage } from '../data/send';
 import type { MessageItem } from '../data/thread';
 import {
@@ -26,6 +24,7 @@ import {
 import { readableText } from './markdown/parse';
 import { MessageDetails } from './message-details';
 import { SelectTextSheet } from './select-text-sheet';
+import { background } from '@smarteverything/logging';
 
 export interface MessageActions {
   readonly quick: readonly MenuItem[];
@@ -122,11 +121,11 @@ function handlersOf(item: MessageItem, controls: Controls): Readonly<Record<Acti
       startEditing(row.id);
     },
     branch: (): void => {
-      void branch(item);
+      background(branch(item), 'message_actions.branch_failed');
     },
     select: controls.select,
     share: (): void => {
-      void share(readableText(row.text));
+      background(share(readableText(row.text)), 'message_actions.share_failed');
     },
     'copy-link': (): void => {
       const link = createURL(`/assistant/chat/${row.chat_id}`, {
@@ -164,7 +163,7 @@ function retryOf(
 ): (() => void) | null {
   if (request === null || retryFrom === null) return null;
   return (): void => {
-    void retryMessage(request, retryFrom);
+    background(retryMessage(request, retryFrom), 'message.retry_failed');
   };
 }
 
@@ -174,13 +173,7 @@ function useActionPlan(item: MessageItem): {
 } {
   const { row, speaker, latestReply } = item;
   const pointer = useIdiom() === 'pointer';
-  const replyTo = useRow('assistant_messages', row.role === 'person' ? null : row.reply_to);
-  const request = row.role === 'person' ? row : replyTo;
-  const retryFrom = useRetryFrom(request);
-  const canEdit = useCanEdit(row);
-  const chat = useRow('ai_chats', row.chat_id);
-  const owner = useIsOwner();
-  const readOnly = chat !== null && isComputerEngine(chat.engine) && !owner;
+  const { request, retryFrom, canEdit, readOnly } = useRowActionState(row);
   const plan = actionPlan({
     speaker: speaker.kind,
     hasText: row.text.trim() !== '',

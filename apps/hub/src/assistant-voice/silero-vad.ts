@@ -5,8 +5,8 @@ import type { Model } from '@ricky0123/vad-web/dist/models/common.js';
 import { Silero } from '@ricky0123/vad-web/dist/models/silero.js';
 import * as ort from 'onnxruntime-web/wasm';
 
-export const SILERO_MODEL = '@ricky0123/vad-web/dist/silero_vad_v6.onnx';
-export const ORT_WASM = 'onnxruntime-web/ort-wasm-simd-threaded.wasm';
+const SILERO_MODEL = '@ricky0123/vad-web/dist/silero_vad_v6.onnx';
+const ORT_WASM = 'onnxruntime-web/ort-wasm-simd-threaded.wasm';
 
 function modelBytes(path: string): Promise<ArrayBuffer> {
   return Promise.resolve(new Uint8Array(readFileSync(path)).buffer);

@@ -71,9 +71,7 @@ export const AI_HARNESS_WORK = z.object({
 export const AI_HARNESS_HANDOFF_REQUEST = z
   .strictObject({
     operation_id: z.uuid(),
-    expected_epoch: z.int().positive(),
     target: AI_HARNESS_TARGET_WRITE,
-    mode: z.enum(['drain', 'interrupt', 'recover']),
     directory: AI_HARNESS_PATH_WRITE.optional(),
     route: AI_MODEL_ROUTE_SELECTION_WRITE,
   })
@@ -84,30 +82,29 @@ export const AI_HARNESS_HANDOFF_REQUEST = z
     'The selected directory must belong to the target execution host.',
   );
 export type AiHarnessHandoffRequest = z.infer<typeof AI_HARNESS_HANDOFF_REQUEST>;
-export const AI_HARNESS_HANDOFF = z.object({
-  id: z.uuid(),
-  session_id: DSH_SESSION_ID,
-  source: AI_HARNESS_TARGET,
-  target: AI_HARNESS_TARGET,
-  source_epoch: z.int().positive(),
-  target_epoch: z.int().positive().nullable(),
-  mode: z.enum(['drain', 'interrupt', 'recover']),
-  stage: z.enum([
-    'preflight',
-    'draining',
-    'closing',
-    'acquiring',
-    'resuming',
-    'completed',
-    'failed',
-  ]),
-  waiting: z.array(AI_HARNESS_WORK).max(200),
-  source_outcome: z.enum(['pending', 'closed', 'unknown']),
-  durable_seq: z.int().min(-1),
-  failure: AI_HARNESS_FAILURE.nullable(),
-  updated_at: z.iso.datetime({ offset: true }),
+export const AI_HARNESS_SWITCH_RESULT = z.object({
+  state: z.enum(['applied', 'pending', 'cleared']),
+  execution_target: AI_HARNESS_TARGET,
+  pending_execution_target: AI_HARNESS_TARGET.nullable(),
 });
-export type AiHarnessHandoff = z.infer<typeof AI_HARNESS_HANDOFF>;
+export type AiHarnessSwitchResult = z.infer<typeof AI_HARNESS_SWITCH_RESULT>;
+export const AI_MACHINE = z.object({
+  id: z.string().min(1).max(100),
+  name: z.string().min(1).max(200),
+  os: z.enum(['Linux', 'Windows', 'macOS']),
+  online: z.boolean(),
+  current: z.boolean(),
+});
+export const AI_MACHINE_LIST = z.object({ machines: z.array(AI_MACHINE).max(200) });
+export type AiMachineList = z.infer<typeof AI_MACHINE_LIST>;
+export const AI_MACHINE_SWITCH = z.strictObject({
+  machine: z.string().trim().min(1).max(200).describe('Machine id or name from list_machines'),
+});
+export const AI_MACHINE_SWITCH_RESULT = z.object({
+  state: z.enum(['applied', 'pending', 'cleared']),
+  machine: z.string().min(1).max(200),
+});
+export type AiMachineSwitchResult = z.infer<typeof AI_MACHINE_SWITCH_RESULT>;
 
 export const AI_HARNESS_SESSION = z
   .object({
@@ -148,7 +145,6 @@ export const AI_HARNESS_SESSION = z
       .optional(),
     interactions: z.array(AI_HARNESS_INTERACTION).max(200),
     work: z.array(AI_HARNESS_WORK).max(200),
-    handoff: AI_HARNESS_HANDOFF.nullable(),
     failure: AI_HARNESS_FAILURE.nullable(),
   })
   .refine(
@@ -159,13 +155,9 @@ export const AI_HARNESS_SESSION = z
   );
 export type AiHarnessSession = z.infer<typeof AI_HARNESS_SESSION>;
 
-export function harnessContextPercent(
-  context: AiHarnessSession['context'],
-  includeEstimate = false,
-): number | null {
+export function harnessContextPercent(context: AiHarnessSession['context']): number | null {
   if (context === undefined) return null;
   const input =
-    includeEstimate &&
     context.state === 'stale' &&
     context.estimate_tokens !== undefined &&
     context.estimate_tokens !== null

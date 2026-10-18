@@ -1,22 +1,24 @@
+import { cpuBusyPercent, type CpuPart } from '@smarteverything/domain';
 import { existsSync, readFileSync } from 'node:fs';
+import { ghz, orNull, percent, rate } from '../rounding';
+import { PerTick, type Tick } from '../tick';
 import type { KernelFiles } from './kernel-file';
 
 const CPU_ROOT = '/sys/devices/system/cpu';
 const KHZ_PER_GHZ = 1_000_000;
+const CPU_LINE = /^cpu(\d+)? /;
 
-export interface CpuReading {
+export interface CpuLoads {
   readonly load: number;
   readonly cores: readonly number[];
   readonly performanceLoad: number | null;
   readonly efficiencyLoad: number | null;
-  readonly frequencyGhz: number | null;
-  readonly maxFrequencyGhz: number | null;
-  readonly loadAverage: readonly [number, number, number];
 }
 
-interface Ticks {
-  readonly busy: number;
-  readonly total: number;
+export interface CpuExtras {
+  readonly temperature: number | null;
+  readonly powerWatts: number | null;
+  readonly powerLimitWatts: number | null;
 }
 
 interface Topology {
@@ -39,19 +41,18 @@ export function parseCpuList(text: string): number[] {
     });
 }
 
-function ticksOf(line: string): Ticks {
-  const fields = line.trim().split(/\s+/).slice(1, 9).map(Number);
-  const total = fields.reduce((sum, value) => sum + value, 0);
-  const idle = (fields[3] ?? 0) + (fields[4] ?? 0);
-  return { busy: total - idle, total };
-}
-
-function usage(now: Ticks, before: Ticks | undefined): number {
-  if (before === undefined || now.total <= before.total) {
-    return 0;
+export function parseCpuTimes(text: string): Map<string, readonly number[]> {
+  const times = new Map<string, readonly number[]>();
+  for (const line of text.split('\n')) {
+    const match = CPU_LINE.exec(line);
+    if (match !== null) {
+      times.set(
+        match[1] === undefined ? 'cpu' : `cpu${match[1]}`,
+        line.trim().split(/\s+/).slice(1).map(Number),
+      );
+    }
   }
-  const share = (now.busy - before.busy) / (now.total - before.total);
-  return Math.min(100, Math.max(0, share * 100));
+  return times;
 }
 
 function average(values: readonly number[]): number | null {
@@ -80,34 +81,55 @@ function readMaxFrequency(threads: number): number | null {
 }
 
 export class CpuCollector {
-  private before = new Map<string, Ticks>();
+  private before = new Map<string, readonly number[]>();
   private readonly topology = readTopology();
   private readonly maxFrequencyGhz: number | null;
-  private readonly frequencyPaths: readonly string[];
+  private readonly frequencyPaths: readonly (string | null)[];
+  private readonly loadsOnce = new PerTick<CpuLoads>();
 
   constructor(
     private readonly files: KernelFiles,
     private readonly threads: number,
   ) {
     this.maxFrequencyGhz = readMaxFrequency(threads);
-    this.frequencyPaths = Array.from(
-      { length: threads },
-      (_, cpu) => `${CPU_ROOT}/cpu${String(cpu)}/cpufreq/scaling_cur_freq`,
-    ).filter((path) => existsSync(path));
+    this.frequencyPaths = Array.from({ length: threads }, (_, cpu) => {
+      const path = `${CPU_ROOT}/cpu${String(cpu)}/cpufreq/scaling_cur_freq`;
+      return existsSync(path) ? path : null;
+    });
   }
 
   get hybrid(): boolean {
     return this.topology !== null;
   }
 
-  read(): CpuReading {
-    const lines = this.files
-      .read('/proc/stat')
-      .split('\n')
-      .filter((line) => line.startsWith('cpu'));
-    const now = new Map(lines.map((line) => [line.split(/\s/, 1)[0] ?? '', ticksOf(line)]));
+  loads(tick: Tick): CpuLoads {
+    return this.loadsOnce.get(tick, () => this.readLoads());
+  }
+
+  part(tick: Tick, extras: CpuExtras): CpuPart {
+    const loads = this.loads(tick);
+    const frequencies = this.frequencies();
+    const running = frequencies.filter((value) => value > 0);
+    return {
+      load: percent(loads.load),
+      cores: loads.cores.map(percent),
+      frequenciesGhz: frequencies.map(ghz),
+      performanceLoad: orNull(loads.performanceLoad, percent),
+      efficiencyLoad: orNull(loads.efficiencyLoad, percent),
+      frequencyGhz: orNull(average(running), ghz),
+      maxFrequencyGhz: this.maxFrequencyGhz,
+      temperature: extras.temperature,
+      powerWatts: extras.powerWatts,
+      powerLimitWatts: extras.powerLimitWatts,
+      loadAverage: this.loadAverage(),
+      throttled: null,
+    };
+  }
+
+  private readLoads(): CpuLoads {
+    const now = parseCpuTimes(this.files.read('/proc/stat'));
     const loads = new Map(
-      [...now].map(([name, ticks]) => [name, usage(ticks, this.before.get(name))]),
+      [...now].map(([name, times]) => [name, cpuBusyPercent(times, this.before.get(name))]),
     );
     this.before = now;
     const cores = Array.from(
@@ -121,24 +143,21 @@ export class CpuCollector {
       cores,
       performanceLoad: this.topology === null ? null : group(this.topology.performance),
       efficiencyLoad: this.topology === null ? null : group(this.topology.efficiency),
-      frequencyGhz: this.frequency(),
-      maxFrequencyGhz: this.maxFrequencyGhz,
-      loadAverage: this.loadAverage(),
     };
   }
 
-  private frequency(): number | null {
-    const values = this.frequencyPaths.map((path) => Number(this.files.read(path)));
-    const mean = average(values.filter((value) => value > 0));
-    return mean === null ? null : mean / KHZ_PER_GHZ;
+  private frequencies(): number[] {
+    return this.frequencyPaths.map((path) =>
+      path === null ? 0 : Number(this.files.read(path)) / KHZ_PER_GHZ,
+    );
   }
 
-  private loadAverage(): readonly [number, number, number] {
+  private loadAverage(): [number, number, number] {
     const [one = 0, five = 0, fifteen = 0] = this.files
       .read('/proc/loadavg')
       .split(' ')
       .slice(0, 3)
       .map(Number);
-    return [one, five, fifteen];
+    return [rate(one), rate(five), rate(fifteen)];
   }
 }

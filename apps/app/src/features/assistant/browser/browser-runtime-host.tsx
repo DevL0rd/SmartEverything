@@ -8,15 +8,14 @@ import { useValue } from '../../../design/external-store';
 import { connectionState } from '../../../api/connection/connection';
 import { useStoreSelector } from '../../../store/store-context';
 import { useLocalPref } from '../../../store/local-prefs';
+import { browserSurfaces, type RetainedBrowserSurface } from './browser-surfaces';
 import {
-  browserSurfaces,
   browserTargetProfile,
   browserTabVisible,
   retainBrowserAuthority,
   ownBrowserRuntime,
   followBrowserRevocations,
   followGatewayRetirements,
-  type RetainedBrowserSurface,
 } from './browser-runtime';
 export function BrowserRuntimeHost(): ReactNode {
   useBrowserAuthority();
@@ -72,7 +71,6 @@ function RetainedPage({
     surface.chatId,
     profileId ?? '',
     profileId === null ? null : surface.props.target,
-    visible,
   );
   useEffect(() => {
     controller.setVisible(visible);
@@ -118,16 +116,12 @@ function surfaceVisible(
 }
 function useBrowserAuthority(): void {
   const connection = useValue(connectionState);
-  const authority = useStoreSelector(
-    (state) => ({ session: state.session, chats: state.tables.ai_chats }),
-    (left, right) => left.session === right.session && left.chats === right.chats,
-  );
+  const session = useStoreSelector((state) => state.session);
   useEffect(() => {
     retainBrowserAuthority(
       connection.status === 'paired' ? connection.connection : null,
-      authority.session?.client.profile_id ?? null,
-      authority.session?.client.id ?? '',
-      new Set(authority.chats.ids),
+      session?.client.profile_id ?? null,
+      session?.client.id ?? '',
     );
-  }, [connection, authority]);
+  }, [connection, session]);
 }

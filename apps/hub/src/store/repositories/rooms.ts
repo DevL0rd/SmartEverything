@@ -1,6 +1,10 @@
 import { ROOM_ROW, type RoomRow } from '@smarteverything/domain';
 import { assignments, found, type StoreContext } from '../context';
 
+export function roomKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 const COLUMNS = 'id, name, position';
 
 export interface RoomChange {
@@ -60,20 +64,13 @@ export class RoomsRepository {
     });
   }
 
-  ensureNames(names: readonly string[]): ReadonlyMap<string, string> {
-    return this.context.write(() => {
-      const rooms = new Map(this.list().map((room) => [room.name, room.id]));
-      for (const name of names) {
-        if (!rooms.has(name)) {
-          rooms.set(name, this.create(name, 0).id);
-        }
-      }
-      return new Map(
-        names.flatMap((name) => {
-          const id = rooms.get(name);
-          return id === undefined ? [] : [[name, id] as const];
-        }),
-      );
-    });
+  matchNames(names: readonly string[]): ReadonlyMap<string, string> {
+    const rooms = new Map(this.list().map((room) => [roomKey(room.name), room.id]));
+    return new Map(
+      names.flatMap((name) => {
+        const id = rooms.get(roomKey(name));
+        return id === undefined ? [] : [[name, id] as const];
+      }),
+    );
   }
 }

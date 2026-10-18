@@ -1,13 +1,13 @@
 import type { ToolAction, WakeAiAction } from '@smarteverything/domain';
 import type { ActionOrigin } from './actions';
 
-export interface AutomationAi {
+interface AutomationAi {
   readonly wake: (action: WakeAiAction, origin: ActionOrigin) => Promise<void>;
   readonly tool: (action: ToolAction, origin: ActionOrigin) => Promise<void>;
   readonly stop: () => void;
 }
 
-export class AiNotReadyError extends Error {
+class AiNotReadyError extends Error {
   override readonly name = 'AiNotReadyError';
 
   constructor() {

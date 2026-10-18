@@ -10,6 +10,7 @@ import { RouterCollector } from './collector';
 import { runRouterCommand } from './controls';
 import { DeviceMirror } from '../device-mirror';
 import { wirelessInterfaces } from './frame';
+import { forgetHostKey, pinHostKey, pinnedFingerprint } from './host-pin';
 import { ROUTER_DRIVER_ID, ROUTER_EXTERNAL_ID, routerMirror } from './router-device';
 import { routerSearchEntries, searchSignature } from './router-search';
 import { importRouterMonitor, SSH_KEY_SECRET } from './router-monitor-import';
@@ -18,10 +19,10 @@ import { listSpeedTests, saveSpeedTest } from './speed-tests';
 import { runSpeedTest, SpeedTestError } from './speed-test';
 import { SshRouterShell } from './ssh-shell';
 import { routerTools } from './tools';
+import { messageOf } from '@smarteverything/logging';
 
 export const SNAPSHOT_STREAM = 'router.snapshot';
 export const SPEED_TEST_STREAM = 'router.speed_test';
-const HOST_KEY_RECORD = 'host_key';
 
 type Context = PluginContext<RouterSettings>;
 
@@ -29,15 +30,23 @@ export function startRouter(ctx: Context): PluginStop {
   const registry = new ClientRegistry(ctx.records('clients'), ctx.events.emit, ctx.log);
   const sync = new DeviceMirror(routerMirror(ctx.metrics));
   let searched: string | null = null;
-  const collector = createCollector(ctx, (snapshot) => {
-    const enriched = { ...snapshot, clients: registry.observe(snapshot.clients, new Date()) };
-    ctx.data.publish(SNAPSHOT_STREAM, enriched);
-    sync.update(enriched);
-    const signature = searchSignature(enriched.clients);
-    if (signature !== searched) {
-      searched = signature;
-      ctx.search.replace(routerSearchEntries(enriched.clients));
-    }
+  const enrich = (snapshot: RouterSnapshot): RouterSnapshot => ({
+    ...snapshot,
+    clients: registry.observe(snapshot.clients, new Date()),
+  });
+  const collector = createCollector(ctx, {
+    record: (snapshot) => {
+      sync.update(snapshot);
+    },
+    publish: (snapshot) => {
+      const enriched = enrich(snapshot);
+      ctx.data.publish(SNAPSHOT_STREAM, enriched);
+      const signature = searchSignature(enriched.clients);
+      if (signature !== searched) {
+        searched = signature;
+        ctx.search.replace(routerSearchEntries(enriched.clients));
+      }
+    },
   });
   const latest = (): RouterSnapshot => collector?.latest ?? notSetUp();
   const speedTests = new SpeedTestRunner(ctx);
@@ -51,7 +60,9 @@ export function startRouter(ctx: Context): PluginStop {
       speedTests: () => listSpeedTests(ctx.records('speed_tests')),
       setPaused: (paused) => ctx.configure({ settings: { paused } }),
       importRouterMonitor: async () => {
-        await ctx.configure(await importRouterMonitor());
+        const setup = await importRouterMonitor();
+        forgetHostKey(ctx.records('host'));
+        await ctx.configure(setup);
       },
     }),
   );
@@ -97,7 +108,7 @@ function startMonitoring(
 
 function createCollector(
   ctx: Context,
-  publish: (snapshot: RouterSnapshot) => void,
+  sinks: Pick<ConstructorParameters<typeof RouterCollector>[0], 'record' | 'publish'>,
 ): RouterCollector | null {
   const host = ctx.settings.host;
   const privateKey = ctx.secrets.get(SSH_KEY_SECRET);
@@ -105,15 +116,14 @@ function createCollector(
     return null;
   }
   const hostKeys = ctx.records('host');
-  const pinned = hostKeys.get(HOST_KEY_RECORD);
   const shell = new SshRouterShell({
     host,
     user: ctx.settings.user,
     privateKey,
-    hostKeySha256: typeof pinned === 'string' ? pinned : null,
+    hostKeySha256: pinnedFingerprint(hostKeys, host),
     remoteScript: ctx.settings.remote_script,
     onFirstHostKey: (fingerprint): void => {
-      hostKeys.put(HOST_KEY_RECORD, fingerprint);
+      pinHostKey(hostKeys, host, fingerprint);
       ctx.log.info('router.host_key_saved', { fingerprint });
     },
   });
@@ -121,7 +131,7 @@ function createCollector(
     shell,
     pingTarget: ctx.settings.ping_target,
     log: ctx.log,
-    publish,
+    ...sinks,
   });
 }
 
@@ -173,7 +183,7 @@ class SpeedTestRunner {
       });
       return result;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = messageOf(error);
       publish(SPEED_TEST_STREAM, {
         phase: 'failed',
         mbps: 0,

@@ -11,7 +11,7 @@ const log = new Logger('app.ai-speech');
 function play(notice: AiSpeechNotice): void {
   const player = createAudioPlayer({ uri: `data:audio/ogg;base64,${notice.audio}` });
   const listener = player.addListener('playbackStatusUpdate', (status) => {
-    if (status.didJustFinish) {
+    if (status.didJustFinish || status.error !== null) {
       listener.remove();
       player.remove();
     }

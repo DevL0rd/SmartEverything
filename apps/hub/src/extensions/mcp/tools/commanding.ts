@@ -8,7 +8,7 @@ import { submitAndWait, type Outcome } from '../command-waiter';
 import { operate } from './acting';
 import type { OperationInput } from '../../../server/operations';
 import type { ToolContext } from './registry';
-import { nameOf } from './targets';
+import { deviceNames } from './targets';
 
 export interface CommandRequest {
   readonly device_id: string | null;
@@ -40,33 +40,29 @@ export function sendAndWait(
   return waitFor(context, 'sendCommands', { body: { commands } });
 }
 
-function deviceName(context: ToolContext, deviceId: string | null): string | null {
-  if (deviceId === null) {
+function currentValue(context: Pick<ToolContext, 'store'>, command: CommandRow): JsonValue {
+  if (command.device_id === null) {
     return null;
   }
-  const device = context.store.devices.find(deviceId);
-  return device === undefined ? null : nameOf(context.store, device);
+  return context.store.state.value(command.device_id, command.capability) ?? null;
 }
 
-function nowValues(context: ToolContext): Map<string, JsonValue> {
-  return new Map(
-    context.store.state.list().map((row) => [`${row.device_id}/${row.capability}`, row.value]),
-  );
-}
-
-export function reported(context: ToolContext, outcome: Outcome): Record<string, unknown> {
-  const now = nowValues(context);
+export function reported(
+  context: Pick<ToolContext, 'store'>,
+  outcome: Outcome,
+): Record<string, unknown> {
+  const names = deviceNames(context.store);
   return {
     commands: outcome.commands.map((command) => ({
       id: command.id,
       device_id: command.device_id,
-      device: deviceName(context, command.device_id),
+      device: command.device_id === null ? null : (names.get(command.device_id) ?? null),
       capability: command.capability,
       value: command.value,
       status: command.status,
       result: command.result,
       error: command.error,
-      now: now.get(`${command.device_id ?? ''}/${command.capability}`) ?? null,
+      now: currentValue(context, command),
     })),
     allFinished: outcome.allFinished,
   };

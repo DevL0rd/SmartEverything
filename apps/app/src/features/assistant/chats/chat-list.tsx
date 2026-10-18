@@ -1,35 +1,31 @@
 import type { ReactElement, ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-import { View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { View } from 'react-native';
 import { useIsFocused, useLocalSearchParams, router } from 'expo-router';
+import { Ambient } from '../../../components/ambient';
 import { Banner } from '../../../components/banner';
-import { Text } from '../../../components/text';
+import { KeyboardList } from '../../../components/keyboard-list';
 import { SearchField } from '../../../components/search-field';
-import { usePrimaryActionPlacement } from '../../../components/primary-action';
-import { useMotion } from '../../../design/motion';
-import { useSyncStatus } from '../../../store/selectors';
-import { APP_SOURCE } from '../model/chat-source';
+import { useAreaStatus } from '../data/area-status';
+import type { AreaStatus } from '../model/area-status';
 import type { ChatEntry } from './chat-entry';
+import { useOpenDesktop } from './open-desktop';
 import { ChatRow } from './chat-row';
-import { SubagentRows } from './subagent-rows';
 import { FilterBar } from './filter-bar';
 import { HitRow } from './hit-row';
+import { ListContent } from './list-groups';
+import { ListHeader, type ListHeaderKind } from './list-header';
 import { filterOfParam, type ChatFilter, type FilterCounts } from './list-filters';
-import type { ListItem } from './list-items';
-import { ROW_REORDER } from './list-motion';
-import { EmptyList, ListFailure, ListSkeleton } from './list-states';
-import { NewChatFab } from './new-chat-fab';
+import { needingCount, runningCount, type ListItem } from './list-items';
 import { useListModel, type ListModel } from './use-list-model';
 
-const FAB_SHRINK_AT = 24;
-
 export interface ChatListProps {
+  readonly kind: ListHeaderKind;
   readonly selected: string | null;
+  readonly focusSearch?: boolean;
   readonly onOpen: (chatId: string, messageId?: string) => void;
   readonly onDeleted: (chatId: string) => void;
   readonly onNewChat: () => void;
-  readonly top?: ReactNode;
 }
 
 function useFilterParam(apply: (filter: ChatFilter) => void): void {
@@ -44,10 +40,6 @@ function useFilterParam(apply: (filter: ChatFilter) => void): void {
 }
 
 function OfflineBanner(): ReactNode {
-  const status = useSyncStatus().status;
-  if (status !== 'interrupted' && status !== 'refused') {
-    return null;
-  }
   return (
     <View className="px-3 pb-2">
       <Banner tone="info" title="Offline · showing saved chats" />
@@ -55,152 +47,78 @@ function OfflineBanner(): ReactNode {
   );
 }
 
-function SectionTitle({ title }: { readonly title: string }): ReactNode {
-  return (
-    <View className="bg-bg px-gutter pb-1 pt-4">
-      <Text variant="footnote" tone="variant" accessibilityRole="header">
-        {title}
-      </Text>
-    </View>
-  );
-}
-
 interface RowContext {
   readonly selected: string | null;
-  readonly entries: ReadonlyMap<string, ChatEntry>;
   readonly timeZone: string | null;
   readonly query: string;
-  readonly expandedInactives: ReadonlySet<string>;
-  readonly onToggleInactive: (id: string) => void;
   readonly onOpen: (chatId: string, messageId?: string) => void;
+  readonly onToggleAgents: (chatId: string) => void;
   readonly onDeleted: (chatId: string) => void;
+  readonly onOpenDesktop: (entry: ChatEntry) => void;
+  readonly busyId: string | null;
 }
 
 function renderRow(item: ListItem, context: RowContext): ReactElement {
   switch (item.type) {
-    case 'header':
-      return <SectionTitle title={item.title} />;
     case 'chat':
+    case 'agent':
       return (
         <ChatRow
-          entry={item.item.entry}
-          nested={item.item.nested}
-          selected={context.selected === item.item.entry.id}
+          entry={item.entry}
+          agent={item.type === 'agent'}
+          agentCount={item.type === 'chat' ? item.agents.length : 0}
+          agentsRunning={item.type === 'chat' ? runningCount(item.agents) : 0}
+          agentsNeeding={item.type === 'chat' ? needingCount(item.agents) : 0}
+          agentsOpen={item.type === 'chat' && item.open}
+          selected={context.selected === item.entry.id}
           timeZone={context.timeZone}
           onOpen={context.onOpen}
+          onToggleAgents={context.onToggleAgents}
           onDeleted={context.onDeleted}
+          busy={context.busyId === item.entry.id}
+          onOpenDesktop={context.onOpenDesktop}
         />
       );
-    case 'subagents':
-      return <SubagentRows parentId={item.parentId} rows={item.rows} {...context} />;
     case 'hit':
       return (
         <HitRow
+          itemKey={item.key}
           hit={item.hit}
-          source={context.entries.get(item.hit.chatId)?.source ?? APP_SOURCE}
+          source={item.source}
           query={context.query}
           timeZone={context.timeZone}
-          onOpen={(chatId, messageId) => {
-            context.onOpen(chatId, messageId ?? undefined);
+          onOpen={() => {
+            context.onOpen(item.target.chatId, item.target.messageId ?? undefined);
           }}
         />
       );
   }
 }
 
-function ListEmpty({
-  model,
-  filter,
-  query,
-  onFilter,
-  onQuery,
-}: {
-  readonly model: ListModel;
-  readonly filter: ChatFilter;
-  readonly query: string;
-  readonly onFilter: (filter: ChatFilter) => void;
-  readonly onQuery: (query: string) => void;
-}): ReactNode {
-  if (model.loading) {
-    return <ListSkeleton />;
-  }
-  if (model.failed) {
-    return <ListFailure onRetry={model.retry} />;
-  }
-  return model.searching ? null : (
-    <EmptyList
-      filter={filter}
-      query={query}
-      onShowAll={() => {
-        onFilter('all');
-      }}
-      onClearSearch={() => {
-        onQuery('');
-      }}
-    />
-  );
-}
-
-function ListBody({
-  items,
-  sticky,
-  context,
-  empty,
-  onScrolled,
-}: {
-  readonly items: readonly ListItem[];
-  readonly sticky: readonly number[];
-  readonly context: RowContext;
-  readonly empty: ReactElement;
-  readonly onScrolled: (past: boolean) => void;
-}): ReactNode {
-  const motion = useMotion();
-  return (
-    <Animated.FlatList
-      data={items}
-      extraData={context}
-      keyExtractor={(item) => item.key}
-      stickyHeaderIndices={[...sticky]}
-      renderItem={({ item }) => renderRow(item, context)}
-      ListEmptyComponent={empty}
-      {...(motion.reduced ? {} : { itemLayoutAnimation: ROW_REORDER })}
-      skipEnteringExitingAnimations
-      keyboardShouldPersistTaps="handled"
-      contentContainerClassName="pb-28"
-      onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        onScrolled(event.nativeEvent.contentOffset.y > FAB_SHRINK_AT);
-      }}
-      initialNumToRender={14}
-      windowSize={7}
-    />
-  );
-}
-
-function ListHeader({
-  top,
+function Controls({
   query,
   filter,
   counts,
+  focusSearch,
   onQuery,
   onFilter,
 }: {
-  readonly top: ReactNode;
   readonly query: string;
   readonly filter: ChatFilter;
   readonly counts: FilterCounts;
+  readonly focusSearch: boolean;
   readonly onQuery: (query: string) => void;
   readonly onFilter: (filter: ChatFilter) => void;
 }): ReactNode {
   return (
     <View className="gap-2 pb-2">
-      {top}
-      <OfflineBanner />
       <View className="px-3">
         <SearchField
           value={query}
           onChange={onQuery}
           placeholder="Search chats and messages"
           variant="field"
+          focusOnMount={focusSearch}
         />
       </View>
       <FilterBar filter={filter} counts={counts} onChange={onFilter} />
@@ -208,95 +126,135 @@ function ListHeader({
   );
 }
 
-function useInactiveSections(): Pick<RowContext, 'expandedInactives' | 'onToggleInactive'> {
-  const [expandedInactives, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const onToggleInactive = useCallback((id: string): void => {
+function useExpandedAgents(): {
+  readonly expanded: ReadonlySet<string>;
+  readonly toggle: (chatId: string) => void;
+} {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = useCallback((chatId: string): void => {
     setExpanded((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(chatId)) next.delete(chatId);
+      else next.add(chatId);
       return next;
     });
   }, []);
-  return { expandedInactives, onToggleInactive };
+  return { expanded, toggle };
+}
+
+interface ListView {
+  readonly query: string;
+  readonly filter: ChatFilter;
+  readonly model: ListModel;
+  readonly area: AreaStatus;
+  readonly loading: boolean;
+  readonly keys: readonly { readonly id: string }[];
+  readonly render: (item: ListItem) => ReactElement;
+  readonly activate: (key: string) => void;
+  readonly toggleAgents: (chatId: string) => void;
+  readonly setQuery: (query: string) => void;
+  readonly setFilter: (filter: ChatFilter) => void;
+}
+
+function useListKeys(
+  groups: ListModel['groups'],
+  onOpen: ChatListProps['onOpen'],
+  onOpenDesktop: (entry: ChatEntry) => void,
+): { readonly keys: ListView['keys']; readonly activate: ListView['activate'] } {
+  const items = useMemo(
+    () => groups.flatMap((group) => group.sections.flatMap((section) => section.data)),
+    [groups],
+  );
+  const keys = useMemo(() => items.map((item) => ({ id: item.key })), [items]);
+  const activate = useCallback(
+    (key: string): void => {
+      const item = items.find((candidate) => candidate.key === key);
+      if (item === undefined) {
+        return;
+      }
+      if (item.type === 'hit') {
+        onOpen(item.target.chatId, item.target.messageId ?? undefined);
+      } else if (item.entry.desktop !== undefined) {
+        onOpenDesktop(item.entry);
+      } else {
+        onOpen(item.entry.id);
+      }
+    },
+    [items, onOpen, onOpenDesktop],
+  );
+  return { keys, activate };
+}
+
+function useListView(props: ChatListProps): ListView {
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<ChatFilter>('all');
+  const agents = useExpandedAgents();
+  const model = useListModel(filter, query, agents.expanded);
+  const area = useAreaStatus();
+  const { selected, onOpen, onDeleted } = props;
+  const { busyId, openDesktop } = useOpenDesktop(onOpen);
+  useFilterParam(setFilter);
+  const context = useMemo<RowContext>(
+    () => ({
+      selected,
+      timeZone: model.timeZone,
+      query,
+      onOpen,
+      onToggleAgents: agents.toggle,
+      onDeleted,
+      onOpenDesktop: openDesktop,
+      busyId,
+    }),
+    [selected, model.timeZone, query, onOpen, agents.toggle, onDeleted, openDesktop, busyId],
+  );
+  const render = useCallback((item: ListItem) => renderRow(item, context), [context]);
+  const { keys, activate } = useListKeys(model.groups, onOpen, openDesktop);
+  return {
+    query,
+    filter,
+    model,
+    area,
+    loading: model.loading || area.kind === 'loading',
+    keys,
+    render,
+    activate,
+    toggleAgents: agents.toggle,
+    setQuery,
+    setFilter,
+  };
 }
 
 export function ChatList(props: ChatListProps): ReactNode {
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<ChatFilter>('all');
-  const [past, setPast] = useState(false);
-  const inactiveSections = useInactiveSections();
-  const model = useListModel(filter, query);
-  const fab = usePrimaryActionPlacement() === 'fab';
-  const applyParam = useCallback((next: ChatFilter): void => {
-    setFilter(next);
-  }, []);
-  useFilterParam(applyParam);
-  const context: RowContext = {
-    selected: props.selected,
-    entries: model.entries,
-    timeZone: model.timeZone,
-    query,
-    ...inactiveSections,
-    onOpen: props.onOpen,
-    onDeleted: props.onDeleted,
+  const view = useListView(props);
+  const { model } = view;
+  const bare = !view.loading && model.total === 0 && view.filter === 'all' && view.query === '';
+  const clearSearch = (): void => {
+    view.setQuery('');
   };
   return (
     <View className="relative min-h-0 flex-1">
-      <ListHeader
-        top={props.top}
-        query={query}
-        filter={filter}
-        counts={model.counts}
-        onQuery={setQuery}
-        onFilter={setFilter}
-      />
-      <ModelListBody
-        model={model}
-        context={context}
-        filter={filter}
-        query={query}
-        onFilter={setFilter}
-        onQuery={setQuery}
-        onScrolled={setPast}
-      />
-      {fab ? <NewChatFab extended={!past} onPress={props.onNewChat} /> : null}
+      <Ambient />
+      <ListHeader kind={props.kind} />
+      {view.area.kind === 'offline-cached' ? <OfflineBanner /> : null}
+      <KeyboardList
+        items={view.keys}
+        onActivate={view.activate}
+        label="Chats"
+        className="min-h-0 flex-1"
+        {...(view.query === '' ? {} : { onEscape: clearSearch })}
+      >
+        {bare ? null : (
+          <Controls
+            query={view.query}
+            filter={view.filter}
+            counts={model.counts}
+            focusSearch={props.focusSearch === true}
+            onQuery={view.setQuery}
+            onFilter={view.setFilter}
+          />
+        )}
+        <ListContent view={view} list={props} />
+      </KeyboardList>
     </View>
-  );
-}
-
-function ModelListBody({
-  model,
-  context,
-  filter,
-  query,
-  onFilter,
-  onQuery,
-  onScrolled,
-}: {
-  readonly model: ListModel;
-  readonly context: RowContext;
-  readonly filter: ChatFilter;
-  readonly query: string;
-  readonly onFilter: (value: ChatFilter) => void;
-  readonly onQuery: (value: string) => void;
-  readonly onScrolled: (value: boolean) => void;
-}): ReactNode {
-  return (
-    <ListBody
-      items={model.items}
-      sticky={model.sticky}
-      context={context}
-      empty={
-        <ListEmpty
-          model={model}
-          filter={filter}
-          query={query}
-          onFilter={onFilter}
-          onQuery={onQuery}
-        />
-      }
-      onScrolled={onScrolled}
-    />
   );
 }

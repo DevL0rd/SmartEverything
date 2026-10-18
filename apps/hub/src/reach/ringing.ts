@@ -41,7 +41,7 @@ export interface RingPlan {
 
 export type RingRequest = Omit<NewOutreach, 'state' | 'expires_at' | 'clients'>;
 
-export const RING_MS = OUTREACH_RING_SECONDS * 1000;
+const RING_MS = OUTREACH_RING_SECONDS * 1000;
 
 export class Ringing {
   private readonly rings = new Map<string, Ring>();

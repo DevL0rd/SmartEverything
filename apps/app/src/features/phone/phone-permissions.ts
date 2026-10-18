@@ -3,10 +3,13 @@ import { Logger } from '@smarteverything/logging';
 import {
   choosePhoneCar,
   forgetPhoneCar,
+  openAccessibilitySettings,
   openBatteryOptimization,
   openDndAccess,
   openNotificationAccess,
+  openOverlaySettings,
   openUsageAccess,
+  openWriteSettings,
   setHomeWifi,
   setPhoneSensor,
   type PhoneSensor,
@@ -60,6 +63,24 @@ export async function allowScreenTime(): Promise<void> {
   });
 }
 
+export async function allowAppUsage(): Promise<void> {
+  await changePhoneNode(async () => {
+    await setPhoneSensor('app_usage', true);
+    await openUsageAccess();
+  });
+}
+
+export async function allowNotificationTitles(): Promise<void> {
+  await changePhoneNode(async () => {
+    await setPhoneSensor('notification_titles', true);
+    await openNotificationAccess();
+  });
+}
+
+export async function allowWriteSettings(): Promise<void> {
+  await changePhoneNode(openWriteSettings);
+}
+
 export async function allowNavigation(): Promise<void> {
   await changePhoneNode(async () => {
     await setPhoneSensor('navigation', true);
@@ -71,8 +92,20 @@ export async function allowSoundControl(): Promise<void> {
   await changePhoneNode(openDndAccess);
 }
 
+export async function allowAccessibility(): Promise<void> {
+  await changePhoneNode(openAccessibilitySettings);
+}
+
+export async function allowOverlay(): Promise<void> {
+  await changePhoneNode(openOverlaySettings);
+}
+
 export async function keepRunning(): Promise<void> {
   await changePhoneNode(openBatteryOptimization);
+}
+
+export async function allowMicrophone(): Promise<void> {
+  await changePhoneNode(() => granted(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO));
 }
 
 export async function allowWifiName(): Promise<void> {

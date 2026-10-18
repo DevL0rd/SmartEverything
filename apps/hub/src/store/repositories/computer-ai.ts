@@ -18,7 +18,16 @@ const ROW = z.strictObject({
   models: SQL_JSON.pipe(z.array(COMPUTER_AI_MODEL)),
 });
 export class ComputerAiRepository {
+  private localDevice: string | null = null;
   constructor(private readonly context: StoreContext) {}
+
+  bindLocal(deviceId: string): void {
+    this.localDevice = deviceId;
+  }
+
+  isLocal(deviceId: string): boolean {
+    return this.localDevice === deviceId;
+  }
 
   settings(deviceId: string): ComputerAiSettings {
     return this.row(deviceId)?.settings ?? DEFAULT_COMPUTER_AI_SETTINGS;
@@ -50,6 +59,7 @@ export class ComputerAiRepository {
   }
 
   initialiseLocal(deviceId: string, autoLink: boolean): ComputerAiSettings {
+    this.bindLocal(deviceId);
     if (this.row(deviceId) !== undefined) return this.settings(deviceId);
     return this.saveSettings(deviceId, {
       ...DEFAULT_COMPUTER_AI_SETTINGS,

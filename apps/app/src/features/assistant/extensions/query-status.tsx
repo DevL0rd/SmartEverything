@@ -1,9 +1,39 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { View } from 'react-native';
 import { Banner } from '../../../components/banner';
-import { useSyncStatus } from '../../../store/selectors';
+import { Skeleton } from '../../../components/skeleton';
+import { useIsOwner, useSyncStatus } from '../../../store/selectors';
 import { friendlyError } from '../../../format/errors';
-import { useHarnessSupportReason } from '../data/harness';
+
+const PLACEHOLDER_ROWS = ['first', 'second', 'third'] as const;
+
+function LoadingRows({ label }: { readonly label: string }): ReactNode {
+  return (
+    <View accessibilityLabel={label} accessibilityRole="progressbar" className="gap-4 py-2">
+      {PLACEHOLDER_ROWS.map((row) => (
+        <View key={row} className="flex-row items-center gap-3">
+          <Skeleton shape="circle" />
+          <View className="flex-1 gap-2">
+            <Skeleton shape="text" />
+            <Skeleton shape="line" />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export function useMemberBanner(change: string): ReactNode | undefined {
+  const owner = useIsOwner();
+  return owner ? undefined : (
+    <Banner
+      tone="info"
+      title="You can look, not change"
+      body={`Only the home owner can ${change}.`}
+      wrapBody
+    />
+  );
+}
 
 export function ExtensionReadStatus({
   loading,
@@ -17,37 +47,27 @@ export function ExtensionReadStatus({
   readonly kind?: 'extension' | 'skill';
 }): ReactNode {
   const sync = useSyncStatus();
-  const reason = useHarnessSupportReason();
+  const noun = kind === 'skill' ? 'skills' : 'extensions';
   if (sync.status !== 'live')
     return (
       <Banner
-        tone="warning"
+        tone="info"
         title="Offline · showing last known status"
-        body="Reconnect to the home hub before changing the shared selection."
-      />
-    );
-  if (reason !== null)
-    return (
-      <Banner
-        tone="warning"
-        title={kind === 'skill' ? 'Skills unavailable' : 'Extensions unavailable'}
-        body={reason}
+        body="Changes, updates and the catalogue need your home hub."
         wrapBody
       />
     );
   if (error !== null)
     return (
       <Banner
-        tone="warning"
-        title={kind === 'skill' ? 'Couldn’t read skills' : 'Couldn’t read extensions'}
-        body={friendlyError(error) ?? 'The catalogue is not available yet.'}
-        action={{ label: 'Retry', onPress: retry }}
+        tone="critical"
+        title={`Couldn’t load ${noun}`}
+        body={
+          friendlyError(error) ?? 'Home hub didn’t answer. Check your connection and try again.'
+        }
+        action={{ label: 'Try again', onPress: retry }}
+        wrapBody
       />
     );
-  return loading ? (
-    <ActivityIndicator
-      colorClassName="accent-primary"
-      accessibilityLabel={kind === 'skill' ? 'Loading skills' : 'Loading extensions'}
-    />
-  ) : null;
+  return loading ? <LoadingRows label={`Loading ${noun}`} /> : null;
 }

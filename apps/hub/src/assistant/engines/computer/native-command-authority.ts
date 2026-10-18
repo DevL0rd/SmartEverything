@@ -5,26 +5,27 @@ import {
   type AiNativeCommandScope,
   type AiNativeCommandWrite,
 } from '@smarteverything/domain';
+import { effectiveClientById } from '../../../server/person-access';
 import { effectiveTools } from '../../coordination/grants';
 import type { ToolCaller } from '../../../ai-tools/hub-tool';
 import { providerGrant, type ProviderGrant } from './tool-bridge';
 import type { ComputerRunnerDeps } from './ports';
 import type { ProviderState } from './provider-state';
 import { commandBinding } from '../../../claude/provider/command-input';
-import { validateAuthorityGraph } from '../../authority-inheritance';
 import type { ConversationAuthority } from '../../../harness/authority-contract';
 import {
   eventAuthority,
   executionRole,
   admitExecutionTarget,
-  withExecutionAuthorities,
-} from '../../execution-authority';
+  withExecutionAuthority,
+} from '../../turn-authority';
 export function commandAuthority(
   deps: ComputerRunnerDeps,
   chat: AiChatRow,
   scope: AiNativeCommandScope,
 ): { readonly grant: ProviderGrant; readonly caller: ToolCaller } {
-  const client = scope.client_id === null ? undefined : deps.store.clients.byId(scope.client_id);
+  const client =
+    scope.client_id === null ? undefined : effectiveClientById(deps.store, scope.client_id);
   if (
     client !== undefined &&
     (client.role !== 'owner' || deps.store.profiles.activeOf(client.id).id !== chat.profile_id)
@@ -66,10 +67,7 @@ export function manualCommandCaller(
   )
     throw new ApiError('forbidden', 'The native command has another initiating manual event.');
   const authority = eventAuthority(deps.store, event);
-  if (
-    authority.client_id !== input.scope.client_id ||
-    executionRole(deps.store, authority) !== 'owner'
-  )
+  if (authority.client_id !== input.scope.client_id || executionRole(authority) !== 'owner')
     throw new ApiError(
       'forbidden',
       'The command initiating authority no longer permits owner execution.',
@@ -106,7 +104,5 @@ export function withManualCommand<T>(
   work: (caller: ToolCaller) => T,
 ): T {
   const caller = manualCommandCaller(deps, command.chat, command.input);
-  return withExecutionAuthorities(validateAuthorityGraph(deps.store, caller.authority), () =>
-    work(caller),
-  );
+  return withExecutionAuthority(caller.authority, () => work(caller));
 }

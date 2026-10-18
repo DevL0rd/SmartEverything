@@ -1,5 +1,5 @@
 import type { DesktopLinger, DesktopServiceManager } from '@smarteverything/domain';
-import type { ServiceLaunch } from './definitions.js';
+import type { ServiceLaunch, ServiceNames } from './definitions.js';
 import type { ServiceLocations } from './locations.js';
 import type { ServiceSystem } from './system.js';
 
@@ -18,11 +18,13 @@ export interface ServiceManager {
   readonly stop: () => Promise<void>;
   readonly restart: () => Promise<void>;
   readonly uninstall: () => Promise<void>;
+  readonly restoreOriginal: () => Promise<boolean>;
   readonly linger: () => Promise<DesktopLinger>;
   readonly enableLinger: () => Promise<void>;
 }
 
 export interface ManagerContext {
+  readonly names: ServiceNames;
   readonly launch: ServiceLaunch;
   readonly locations: ServiceLocations;
   readonly system: ServiceSystem;

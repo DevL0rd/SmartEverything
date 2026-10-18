@@ -41,6 +41,7 @@ export interface HostedSpec {
   readonly caller: HostedCaller;
   readonly opening: Opening;
   readonly place?: string;
+  readonly deviceId?: string;
   readonly pluginId?: string;
   readonly play: (packet: Uint8Array) => void;
   readonly closed: () => void;
@@ -58,8 +59,13 @@ export interface HostedLine {
 export async function hostLine(deps: HostedVoiceDeps, spec: HostedSpec): Promise<HostedLine> {
   const pacer = new SpeakerPacer(deps.clock, spec.play, {
     idle: spec.continuous === true ? OPUS_SILENCE : null,
-    spoke: (frames): void => {
-      deps.log.info('reach.spoke', { key: spec.key, ms: frames * TALK_FRAME_MS });
+    spoke: (frames, stats): void => {
+      deps.log.info('reach.spoke', {
+        key: spec.key,
+        ms: frames * TALK_FRAME_MS,
+        lateMs: stats.lateMs,
+        underrunMs: stats.underrunMs,
+      });
     },
   });
   if (spec.heard !== undefined) {
@@ -74,6 +80,7 @@ export async function hostLine(deps: HostedVoiceDeps, spec: HostedSpec): Promise
       opening: spec.opening,
       speaking: CONVERSATION,
       ...(spec.place === undefined ? {} : { place: spec.place }),
+      ...(spec.deviceId === undefined ? {} : { deviceId: spec.deviceId }),
       ...(spec.pluginId === undefined ? {} : { pluginId: spec.pluginId }),
       ...(spec.heard === undefined ? {} : { heard: spec.heard }),
       ...(spec.listening === undefined ? {} : { listening: spec.listening }),

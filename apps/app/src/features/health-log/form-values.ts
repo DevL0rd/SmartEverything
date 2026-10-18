@@ -1,12 +1,10 @@
 import type { HealthEntryInput, HealthEntryRow } from '@smarteverything/domain';
 import type { LogField, LogForm } from './forms';
-import { zoneOffsetSecondsAt } from '../../format/time';
+import { MINUTE_MS, zoneOffsetSecondsAt } from '../../format/time';
 
 export type LogValue = number | string;
 
 export type LogValues = Readonly<Record<string, LogValue>>;
-
-const MINUTE_MS = 60_000;
 
 export interface LogTime {
   readonly start: number;

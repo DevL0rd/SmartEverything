@@ -1,21 +1,16 @@
-import type { HealthMetric, HealthRecordType } from '@smarteverything/domain';
+import type { HealthMetric, HealthRecord, HealthRecordType } from '@smarteverything/domain';
 import type { IconName } from '../../../components/icon';
 import type { ColourRole } from '../../../design/tokens';
+import { isTypedRecord, readPoints, type Point, type ReadKind, type SeriesRead } from './readers';
 
 export type SeriesGroup =
   'activity' | 'heart' | 'sleep' | 'vitals' | 'body' | 'nutrition' | 'cycle' | 'mindfulness';
 
-export type Combine = 'sum' | 'mean' | 'latest';
+type Combine = 'sum' | 'mean' | 'latest';
 
 export type Better = 'higher' | 'lower' | 'neither';
 
 type ChartKind = 'bars' | 'line' | 'range';
-
-type SeriesRead =
-  | { readonly kind: 'field'; readonly field: string; readonly second?: string }
-  | { readonly kind: 'samples'; readonly list: string; readonly field: string }
-  | { readonly kind: 'duration' }
-  | { readonly kind: 'occurrence' };
 
 export interface SeriesSpec {
   readonly key: string;
@@ -24,7 +19,8 @@ export interface SeriesSpec {
   readonly type: HealthRecordType;
   readonly daily: HealthMetric | null;
   readonly dailyRange: { readonly min: HealthMetric; readonly max: HealthMetric } | null;
-  readonly read: SeriesRead;
+  readonly read: ReadKind;
+  readonly pointsOf: (record: HealthRecord) => readonly Point[];
   readonly unit: string;
   readonly scale: number;
   readonly digits: number;
@@ -41,8 +37,23 @@ type SpecDefaults = Pick<SeriesSpec, 'daily' | 'dailyRange' | 'scale' | 'digits'
 
 const DEFAULTS: SpecDefaults = { daily: null, dailyRange: null, scale: 1, digits: 0, keywords: [] };
 
-export function spec(
-  given: Omit<SeriesSpec, keyof SpecDefaults> & Partial<SpecDefaults>,
-): SeriesSpec {
-  return { ...DEFAULTS, ...given };
+type SpecInput<T extends HealthRecordType> = Omit<
+  SeriesSpec,
+  keyof SpecDefaults | 'type' | 'read' | 'pointsOf'
+> &
+  Partial<SpecDefaults> & { readonly type: T; readonly read: SeriesRead<T> };
+
+export function spec<T extends HealthRecordType>(given: SpecInput<T>): SeriesSpec {
+  const { read, type, ...rest } = given;
+  return {
+    ...DEFAULTS,
+    ...rest,
+    type,
+    read: read.kind,
+    pointsOf: (record) => (isTypedRecord(record, type) ? readPoints(read, record) : []),
+  };
+}
+
+export function isOccurrence(series: SeriesSpec): boolean {
+  return series.read === 'occurrence';
 }

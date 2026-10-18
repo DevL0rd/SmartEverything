@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
 import type {
-  BoardClass,
   BoardDefaults,
   WidgetDefinition,
   WidgetRenderProps,
-  WidgetSize,
 } from '../../components/widget-board';
+import { allSizes } from '../../components/widget-board/all-sizes';
 import { Text } from '../../components/text';
 import { nutritionWidgets } from '../nutrition';
 import { STRESS_WIDGET, WATCH_WIDGET, WATCH_WORKOUT_WIDGET } from '../watches';
@@ -23,12 +22,6 @@ import { WorkoutWidget } from './widgets/workout-widget';
 
 export const FITNESS_PAGE = 'fitness';
 
-function sizes(
-  ...allowed: readonly WidgetSize[]
-): Readonly<Record<BoardClass, readonly WidgetSize[]>> {
-  return { compact: allowed, medium: allowed, expanded: allowed };
-}
-
 function InvalidOptions(): ReactNode {
   return (
     <Text variant="callout" tone="warning">
@@ -37,22 +30,21 @@ function InvalidOptions(): ReactNode {
   );
 }
 
-function renderMetric({ size, options }: WidgetRenderProps): ReactNode {
+function renderMetric({ options }: WidgetRenderProps): ReactNode {
   const parsed = METRIC_OPTIONS.safeParse(options);
   return parsed.success ? (
-    <MetricWidget spec={dailySeries(parsed.data.metric)} size={size} />
+    <MetricWidget spec={dailySeries(parsed.data.metric)} />
   ) : (
     <InvalidOptions />
   );
 }
 
-function renderTrend({ size, options }: WidgetRenderProps): ReactNode {
+function renderTrend({ options }: WidgetRenderProps): ReactNode {
   const parsed = TREND_OPTIONS.safeParse(options);
   return parsed.success ? (
     <TrendWidget
       spec={dailySeries(parsed.data.metric)}
       days={parsed.data.range === 'week' ? 7 : 30}
-      size={size}
     />
   ) : (
     <InvalidOptions />
@@ -74,48 +66,48 @@ export const FITNESS_WIDGETS: readonly WidgetDefinition[] = [
     type: 'rings',
     title: 'Activity rings',
     icon: 'activity',
-    sizes: sizes('S', 'M', 'W', 'L'),
+    sizes: allSizes('M', 'W', 'XL'),
     defaultSize: 'W',
-    render: ({ size }) => <RingsWidget size={size} />,
+    render: () => <RingsWidget />,
   },
   {
     type: 'readiness',
     title: 'Readiness',
     icon: 'gauge',
-    sizes: sizes('S', 'M'),
-    defaultSize: 'S',
-    render: ({ size }) => <ReadinessWidget size={size} />,
+    sizes: allSizes('M'),
+    defaultSize: 'M',
+    render: () => <ReadinessWidget />,
   },
   {
     type: 'sleep-last-night',
     title: 'Last night’s sleep',
     icon: 'moon',
-    sizes: sizes('S', 'M', 'W'),
+    sizes: allSizes('M', 'W'),
     defaultSize: 'M',
-    render: ({ size }) => <SleepWidget size={size} />,
+    render: () => <SleepWidget />,
   },
   {
     type: 'heart-today',
     title: 'Heart rate',
     icon: 'heartPulse',
-    sizes: sizes('S', 'M', 'W', 'L'),
+    sizes: allSizes('M', 'W', 'XL'),
     defaultSize: 'M',
-    render: ({ size }) => <HeartWidget size={size} />,
+    render: () => <HeartWidget />,
   },
   {
     type: 'latest-workout',
     title: 'Latest workout',
     icon: 'dumbbell',
-    sizes: sizes('M', 'W'),
+    sizes: allSizes('M', 'W'),
     defaultSize: 'M',
-    render: ({ size }) => <WorkoutWidget size={size} />,
+    render: () => <WorkoutWidget />,
   },
   {
     type: 'metric',
     title: 'Metric',
     icon: 'activity',
-    sizes: sizes('S', 'M', 'W', 'L'),
-    defaultSize: 'S',
+    sizes: allSizes('M', 'W', 'XL'),
+    defaultSize: 'M',
     instanceOptions: {
       schema: METRIC_OPTIONS,
       editor: ({ value, onChange }) => (
@@ -128,8 +120,8 @@ export const FITNESS_WIDGETS: readonly WidgetDefinition[] = [
     type: 'trend',
     title: 'Trend',
     icon: 'trendUp',
-    sizes: sizes('M', 'L', 'W'),
-    defaultSize: 'L',
+    sizes: allSizes('M', 'W', 'XL'),
+    defaultSize: 'XL',
     instanceOptions: {
       schema: TREND_OPTIONS,
       editor: ({ value, onChange }) => (
@@ -142,9 +134,9 @@ export const FITNESS_WIDGETS: readonly WidgetDefinition[] = [
     type: 'steps-week',
     title: 'Steps this week',
     icon: 'footprints',
-    sizes: sizes('M', 'L', 'W'),
+    sizes: allSizes('M', 'W', 'XL'),
     defaultSize: 'M',
-    render: ({ size }) => <TrendWidget spec={dailySeries('steps')} days={7} size={size} />,
+    render: () => <TrendWidget spec={dailySeries('steps')} days={7} />,
   },
 ];
 
@@ -156,17 +148,17 @@ export const FITNESS_DEFAULTS: BoardDefaults = {
   compact: [
     { key: 'rings', type: 'rings', size: 'W' },
     { key: 'calories', type: 'calories', size: 'W' },
-    { key: 'readiness', type: 'readiness', size: 'S' },
-    { key: 'hydration', type: 'hydration', size: 'S' },
+    { key: 'readiness', type: 'readiness', size: 'M' },
+    { key: 'hydration', type: 'hydration', size: 'M' },
     { key: 'sleep', type: 'sleep-last-night', size: 'M' },
     { key: 'heart', type: 'heart-today', size: 'M' },
     { key: 'workout', type: 'latest-workout', size: 'W' },
     { key: 'body', type: 'body', size: 'M' },
     { key: 'watch', type: 'watch', size: 'M' },
-    { key: 'metric:distance', type: 'metric', size: 'S', options: DISTANCE },
-    { key: 'metric:oxygen', type: 'metric', size: 'S', options: OXYGEN },
+    { key: 'metric:distance', type: 'metric', size: 'M', options: DISTANCE },
+    { key: 'metric:oxygen', type: 'metric', size: 'M', options: OXYGEN },
     { key: 'steps-week', type: 'steps-week', size: 'M' },
-    { key: 'trend:move', type: 'trend', size: 'L', options: MOVE_TREND },
+    { key: 'trend:move', type: 'trend', size: 'XL', options: MOVE_TREND },
   ],
   medium: [
     { key: 'rings', type: 'rings', size: 'W' },
@@ -174,8 +166,8 @@ export const FITNESS_DEFAULTS: BoardDefaults = {
     { key: 'macros', type: 'macros', size: 'M' },
     { key: 'sleep', type: 'sleep-last-night', size: 'M' },
     { key: 'heart', type: 'heart-today', size: 'M' },
-    { key: 'readiness', type: 'readiness', size: 'S' },
-    { key: 'hydration', type: 'hydration', size: 'S' },
+    { key: 'readiness', type: 'readiness', size: 'M' },
+    { key: 'hydration', type: 'hydration', size: 'M' },
     { key: 'metric:distance', type: 'metric', size: 'M', options: DISTANCE },
     { key: 'metric:oxygen', type: 'metric', size: 'M', options: OXYGEN },
     { key: 'workout', type: 'latest-workout', size: 'M' },
@@ -190,14 +182,14 @@ export const FITNESS_DEFAULTS: BoardDefaults = {
     { key: 'macros', type: 'macros', size: 'M' },
     { key: 'heart', type: 'heart-today', size: 'M' },
     { key: 'sleep', type: 'sleep-last-night', size: 'M' },
-    { key: 'readiness', type: 'readiness', size: 'S' },
-    { key: 'metric:distance', type: 'metric', size: 'S', options: DISTANCE },
-    { key: 'metric:oxygen', type: 'metric', size: 'S', options: OXYGEN },
-    { key: 'hydration', type: 'hydration', size: 'S' },
+    { key: 'readiness', type: 'readiness', size: 'M' },
+    { key: 'metric:distance', type: 'metric', size: 'M', options: DISTANCE },
+    { key: 'metric:oxygen', type: 'metric', size: 'M', options: OXYGEN },
+    { key: 'hydration', type: 'hydration', size: 'M' },
     { key: 'workout', type: 'latest-workout', size: 'M' },
     { key: 'body', type: 'body', size: 'M' },
     { key: 'watch', type: 'watch', size: 'W' },
-    { key: 'steps-week', type: 'steps-week', size: 'L' },
-    { key: 'trend:move', type: 'trend', size: 'L', options: MOVE_TREND },
+    { key: 'steps-week', type: 'steps-week', size: 'XL' },
+    { key: 'trend:move', type: 'trend', size: 'XL', options: MOVE_TREND },
   ],
 };

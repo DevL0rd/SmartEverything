@@ -24,6 +24,10 @@ export function readEntries(
   });
 }
 
+export function readEntry(entryId: string): Promise<HealthEntryRow> {
+  return api().call(E.readHealthEntry, { params: { entryId } });
+}
+
 export function createEntry(entry: HealthEntryInput): Promise<HealthEntryRow> {
   return api().call(E.createHealthEntry, { body: entry });
 }

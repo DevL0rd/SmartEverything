@@ -8,6 +8,7 @@ import { LanReconnect } from './lan-reconnect';
 import { startLoop, type Loop } from './loop';
 import type { MiioClient } from './miio-client';
 import { Reachability, type CloudLookup } from './reachability';
+import { background, failureLine } from '@smarteverything/logging';
 
 const MILLISECONDS_PER_SECOND = 1000;
 const CLOUD_HAS_NO_PUSH =
@@ -160,7 +161,7 @@ export class DeviceLink {
     this.retryHost = lan?.host ?? this.retryHost;
     this.switchTo(this.context.openCloud(this.did), reason);
     this.watchLan();
-    void this.reach.confirm();
+    background(this.reach.confirm(), 'reach.confirm_failed');
     if (lan !== null) {
       await lan.push.close();
       await lan.client.close();
@@ -222,8 +223,11 @@ export class DeviceLink {
       this.context.log.info('xiaomi_device.lan_retry_failed', {
         did: this.did,
         host,
-        reason: String(error),
+        reason: failureLine(error),
       });
+      if (!this.running) {
+        return true;
+      }
       await this.followDevice(host);
       return false;
     }
@@ -246,7 +250,7 @@ export class DeviceLink {
       { did: this.did, host, client, virtualDid, timing, now, jitter, log },
       {
         subscribed: (): void => {
-          void this.hooks.refresh('subscription');
+          background(this.hooks.refresh('subscription'), 'hooks.refresh_failed');
         },
         uplink: this.hooks.uplink,
         childUplink: (uplink): (() => void) | null => this.hooks.childUplink?.(uplink) ?? null,
@@ -255,7 +259,7 @@ export class DeviceLink {
           this.hooks.changed();
         },
         lost: (reason): void => {
-          void this.lanLost(reason);
+          background(this.lanLost(reason), 'lost.lan_failed');
         },
         returned: (): void => {
           this.lanReturned(host, client);
@@ -302,7 +306,7 @@ export class DeviceLink {
     } catch (error) {
       this.switchTo(
         this.context.openCloud(this.did),
-        `the device moved to ${host}, and the LAN handshake there failed: ${String(error)}`,
+        `the device moved to ${host}, and the LAN handshake there failed: ${failureLine(error)}`,
       );
       this.watchLan();
     }

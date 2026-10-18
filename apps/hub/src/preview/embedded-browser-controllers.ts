@@ -11,31 +11,34 @@ import {
 import type { z } from 'zod';
 import type { Store } from '../store/store';
 import type { Caller } from '../server/auth';
+import { onPreviewAuthorityChange } from './authority-events';
+import type { ViewerFocus } from './viewer-focus';
 import type { EmbeddedBrowserAuthority } from './embedded-browser-authority';
 export interface EmbeddedBrowserViewer {
   readonly scope: EmbeddedBrowserScope;
   readonly perform: (request: EmbeddedBrowserRequest) => Promise<EmbeddedBrowserResult>;
   readonly close: () => void;
 }
-const MAX_VIEWERS = 64;
 export class EmbeddedBrowserControllers {
   private readonly viewers = new Map<string, EmbeddedBrowserViewer>();
   private readonly stopFeed: () => void;
   constructor(
     store: Store,
     private readonly authority: EmbeddedBrowserAuthority,
+    private readonly focus: ViewerFocus,
   ) {
-    this.stopFeed = store.feed.subscribe(() => {
+    this.stopFeed = onPreviewAuthorityChange(store, () => {
       this.revalidate();
     });
   }
   register(viewer: EmbeddedBrowserViewer): void {
     this.authority.validate(viewer.scope);
-    if (this.viewers.has(viewer.scope.viewerId))
+    const previous = this.viewers.get(viewer.scope.viewerId);
+    if (previous !== undefined && previous.scope.clientId !== viewer.scope.clientId)
       throw new ApiError('conflict', 'This browser viewer is already registered.');
-    if (this.viewers.size >= MAX_VIEWERS)
-      throw new ApiError('conflict', 'The active browser viewer limit was reached.');
     this.viewers.set(viewer.scope.viewerId, viewer);
+    previous?.close();
+    this.focus.touch(viewer.scope.viewerId);
   }
   disconnect(close: () => void): void {
     for (const [key, viewer] of this.viewers) if (viewer.close === close) this.viewers.delete(key);
@@ -46,29 +49,18 @@ export class EmbeddedBrowserControllers {
     selector: z.infer<typeof EMBEDDED_BROWSER_SELECTOR>,
   ): EmbeddedBrowserViewer {
     const profile = this.authority.caller(caller, chat);
-    const initiating =
-      caller.kind === 'service'
-        ? caller.authority.client_id
-        : caller.kind === 'client'
-          ? (caller.authority?.client_id ?? caller.client.id)
-          : undefined;
-    const clientId =
-      selector.clientId ?? (selector.viewerId === undefined ? initiating : undefined);
-    const authorized = [...this.viewers.values()].filter(
-      (viewer) => viewer.scope.chatId === chat && viewer.scope.profileId === profile,
+    const viewer = this.focus.latest(
+      [...this.viewers.values()].filter(
+        (candidate) =>
+          candidate.scope.chatId === chat &&
+          candidate.scope.profileId === profile &&
+          (selector.viewerId === undefined || selector.viewerId === candidate.scope.viewerId) &&
+          (selector.clientId === undefined || selector.clientId === candidate.scope.clientId),
+      ),
+      (candidate) => candidate.scope.viewerId,
     );
-    const candidates = authorized.filter(
-      (viewer) =>
-        (selector.viewerId === undefined || selector.viewerId === viewer.scope.viewerId) &&
-        (clientId === undefined || clientId === null || viewer.scope.clientId === clientId),
-    );
-    if (candidates.length !== 1)
-      throw new ApiError(
-        'conflict',
-        `Choose one connected browser viewer explicitly. Candidates: ${JSON.stringify(authorized.map((viewer) => viewer.scope))}`,
-      );
-    const viewer = candidates[0];
-    if (viewer === undefined) throw new ApiError('internal', 'The selected browser disappeared.');
+    if (viewer === undefined)
+      throw new ApiError('conflict', 'No matching browser is open on a connected device.');
     this.fence(viewer);
     return viewer;
   }
@@ -92,11 +84,6 @@ export class EmbeddedBrowserControllers {
     input: z.infer<typeof EMBEDDED_BROWSER_EDIT>,
   ): Promise<EmbeddedBrowserResult> {
     const viewer = this.select(caller, chat, input);
-    if (input.generation !== viewer.scope.generation)
-      throw new ApiError(
-        'conflict',
-        'The browser registration changed; read current tabs before editing.',
-      );
     this.authority.action(viewer.scope, input.action);
     const result = await viewer.perform({
       requestId: input.requestId,

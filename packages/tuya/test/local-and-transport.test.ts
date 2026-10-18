@@ -78,6 +78,7 @@ describe('transport choice', () => {
       'not_on_lan',
       'gateway_not_on_lan',
       'no_node_id',
+      'no_gateway_id',
       'cloud_library',
     ]);
   });
@@ -105,8 +106,15 @@ describe('transport choice', () => {
     });
   });
 
-  it('routes a sub-device through its gateway only when the gateway is local and the node is known', () => {
-    const sub = { ...wifi, sub: true, hasLocalKey: false, seenOnLan: false, sleepingSensor: true };
+  it('routes a sub-device through its gateway only when the gateway is local and the node and gateway are known', () => {
+    const sub = {
+      ...wifi,
+      sub: true,
+      hasLocalKey: false,
+      seenOnLan: false,
+      sleepingSensor: true,
+      hasGatewayId: true,
+    };
     expect(chooseTransport({ ...sub, hasNodeId: true, gatewayLocal: true })).toStrictEqual({
       transport: 'local',
       reason: 'via_gateway',
@@ -119,6 +127,9 @@ describe('transport choice', () => {
       transport: 'cloud',
       reason: 'no_node_id',
     });
+    expect(
+      chooseTransport({ ...sub, hasNodeId: true, hasGatewayId: false, gatewayLocal: true }),
+    ).toStrictEqual({ transport: 'cloud', reason: 'no_gateway_id' });
   });
 
   it('backs off exponentially up to a minute', () => {

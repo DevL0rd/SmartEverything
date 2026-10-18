@@ -6,7 +6,6 @@ import { ProviderInputError } from './input';
 import { canonicalRuntimeInput } from '../../computers/runtime-receipts';
 
 export const CLAUDE_COMMAND_CAPABILITY_REVISION = 'claude-sdk-0.3.296-commands-r2';
-export const CLAUDE_COMPACT_NAME = 'compact';
 const COMMAND = z.object({
   name: z
     .string()

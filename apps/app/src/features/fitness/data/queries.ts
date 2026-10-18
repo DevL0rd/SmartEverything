@@ -1,4 +1,5 @@
 import { type UseQueryResult } from '@tanstack/react-query';
+
 import {
   HEALTH_METRICS,
   SNAPSHOT_WINDOWS,
@@ -22,6 +23,11 @@ import {
 } from './reads';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 
+export interface QueryOptions<T> {
+  readonly queryKey: readonly unknown[];
+  readonly queryFn: () => Promise<T>;
+}
+
 export const PRESENCE_DAYS = 90;
 
 export const healthKeys = {
@@ -39,14 +45,50 @@ export function sightingsSince(today: string): number {
   return startOfDayKey(shiftDay(today, -PRESENCE_DAYS));
 }
 
+export function dailyQuery(
+  first: string,
+  last: string,
+  metrics: readonly HealthMetric[],
+): QueryOptions<DailyFigure[]> {
+  return {
+    queryKey: healthKeys.daily(first, last, metrics),
+    queryFn: () => readDailyFigures(first, last, metrics),
+  };
+}
+
+export function recordsQuery(
+  types: readonly HealthRecordType[],
+  from: number,
+  to: number,
+): QueryOptions<HealthRecord[]> {
+  return {
+    queryKey: healthKeys.records(types, from, to),
+    queryFn: () => readRecords(types, from, to),
+  };
+}
+
+export function bestDayQuery(metric: HealthMetric, lowest: boolean): QueryOptions<BestDay | null> {
+  return {
+    queryKey: healthKeys.best(metric, lowest),
+    queryFn: () => readBestDay(metric, lowest),
+  };
+}
+
+export function sightingsQuery(today: string): QueryOptions<SourceSighting[]> {
+  const since = sightingsSince(today);
+  return {
+    queryKey: healthKeys.sightings(since),
+    queryFn: () => readSightings(since),
+  };
+}
+
 export function useDailyFigures(
   first: string,
   last: string,
   metrics: readonly HealthMetric[],
 ): UseQueryResult<DailyFigure[]> {
   return useScreenQuery({
-    queryKey: healthKeys.daily(first, last, metrics),
-    queryFn: () => readDailyFigures(first, last, metrics),
+    ...dailyQuery(first, last, metrics),
     enabled: metrics.length > 0 && first <= last,
   });
 }
@@ -76,6 +118,11 @@ function withLiveToday(
   ];
 }
 
+export function olderDailyQuery(first: string, today: string): QueryOptions<DailyFigure[]> | null {
+  const olderLast = shiftDay(liveFirstDay(today), -1);
+  return first <= olderLast ? dailyQuery(first, olderLast, HEALTH_METRICS) : null;
+}
+
 export function useDailyRows(first: string, today: string): DailyRows {
   const liveToday = useMyLiveToday();
   const live = useRows('health_daily');
@@ -96,26 +143,15 @@ export function useRecords(
   from: number,
   to: number,
 ): UseQueryResult<HealthRecord[]> {
-  return useScreenQuery({
-    queryKey: healthKeys.records(types, from, to),
-    queryFn: () => readRecords(types, from, to),
-    enabled: types.length > 0,
-  });
+  return useScreenQuery({ ...recordsQuery(types, from, to), enabled: types.length > 0 });
 }
 
 export function useBestDay(metric: HealthMetric, lowest: boolean): UseQueryResult<BestDay | null> {
-  return useScreenQuery({
-    queryKey: healthKeys.best(metric, lowest),
-    queryFn: () => readBestDay(metric, lowest),
-  });
+  return useScreenQuery(bestDayQuery(metric, lowest));
 }
 
 export function useSightings(today: string): UseQueryResult<SourceSighting[]> {
-  const since = sightingsSince(today);
-  return useScreenQuery({
-    queryKey: healthKeys.sightings(since),
-    queryFn: () => readSightings(since),
-  });
+  return useScreenQuery(sightingsQuery(today));
 }
 
 export function useRecord(recordId: string): UseQueryResult<HealthRecord | null> {

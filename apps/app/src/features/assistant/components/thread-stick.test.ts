@@ -45,3 +45,18 @@ describe('finishedStreaming', () => {
     expect(finishedStreaming(null, live)).toBe(false);
   });
 });
+
+describe('resize reflow', () => {
+  it('keeps a reader away from the bottom when a resize reflows the content', () => {
+    const reading = { offset: 900, contentHeight: 3000 };
+    const reflowed = { offset: 1100, contentHeight: 3600 };
+    const stuck = stuckAfterScroll(false, reading, reflowed);
+    expect(stuck).toBe(false);
+    expect(shouldFollowContent(stuck, 3000, 3600)).toBe(false);
+  });
+
+  it('keeps a reader pinned at the bottom when a resize reflows the content', () => {
+    const stuck = stuckAfterScroll(true, AT_END, { offset: 0, contentHeight: 1500 });
+    expect(shouldFollowContent(stuck, 1000, 1500)).toBe(true);
+  });
+});

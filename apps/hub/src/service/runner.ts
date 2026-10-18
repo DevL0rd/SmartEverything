@@ -1,14 +1,14 @@
 import { pid } from 'node:process';
-import { Logger } from '@smarteverything/logging';
-import { startServer, type RunningServer } from '../start';
-import { startNode } from '../node/bootstrap';
+import { Logger, background, setBackgroundScope } from '@smarteverything/logging';
+import type { startServer, RunningServer } from '../start';
+import type { startNode } from '../node/bootstrap';
 import { HUB_VERSION } from '../version';
 import {
   RESTART_EXIT_CODE,
   RESTART_REQUEST_FILE,
   readServiceConfig,
-  type ServiceRole,
   type HubServiceConfig,
+  type ServiceConfig,
 } from './configuration';
 import {
   clearRequest,
@@ -31,16 +31,6 @@ export interface ServiceHost {
 export interface RunningService {
   readonly server: RunningServer | Awaited<ReturnType<typeof startNode>>;
   readonly shutdown: (code: number) => Promise<void>;
-}
-
-export class RoleUnavailableError extends Error {
-  override readonly name = 'RoleUnavailableError';
-
-  constructor(role: ServiceRole) {
-    super(
-      `This SmartEverything version can only run as the home's server; service.json asks for the ${role} role.`,
-    );
-  }
 }
 
 class Lifecycle {
@@ -96,13 +86,51 @@ function serverOptions(
     },
     go2rtcApiPort: config.go2rtcApiPort,
     webrtcPort: config.webrtcPort,
+    wakeDiagnostics: config.wakeDiagnostics,
     ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins }),
     log,
     fatal: (cause): void => {
       log.exception('service.fatal', cause);
-      void lifecycle.shutdown(1);
+      background(lifecycle.shutdown(1), 'lifecycle.shutdown_failed');
     },
   };
+}
+
+setBackgroundScope('hub.background');
+
+let rejectionsGuarded = false;
+
+function serviceLogger(): Logger {
+  const log = new Logger('hub.service');
+  if (!rejectionsGuarded) {
+    rejectionsGuarded = true;
+    process.on('unhandledRejection', (cause: unknown) => {
+      log.exception('promise.unhandled', cause);
+    });
+  }
+  return log;
+}
+
+function stopOnSignals(host: ServiceHost, lifecycle: Lifecycle): void {
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    host.onSignal(signal, () => {
+      background(lifecycle.shutdown(0), 'lifecycle.shutdown_failed');
+    });
+  }
+}
+
+async function startRole(
+  host: ServiceHost,
+  config: ServiceConfig,
+  log: Logger,
+  lifecycle: Lifecycle,
+): Promise<RunningService['server']> {
+  if (config.role === 'node') {
+    const { startNode } = await import('../node/bootstrap');
+    return startNode({ dataDirectory: host.dataDirectory, config, log });
+  }
+  const { startServer } = await import('../start');
+  return startServer(serverOptions(host, config, log, lifecycle));
 }
 
 export async function runService(host: ServiceHost): Promise<RunningService> {
@@ -113,26 +141,22 @@ export async function runService(host: ServiceHost): Promise<RunningService> {
     sink: logFile.sink,
     context: { platform: 'server', release: HUB_VERSION },
   });
-  const log = new Logger('hub.service');
+  const log = serviceLogger();
   const pidFile = await writePidFile(host.dataDirectory, pid);
   const lifecycle = new Lifecycle(host, log, { logFile, pidFile });
   try {
-    const server =
-      config.role === 'node'
-        ? await startNode({ dataDirectory: host.dataDirectory, config, log })
-        : await startServer(serverOptions(host, config, log, lifecycle));
+    const server = await startRole(host, config, log, lifecycle);
     lifecycle.server = server;
     lifecycle.restart = await watchRestartRequests(host.dataDirectory, {
       requested: () => {
         log.info('service.restart_requested');
-        void lifecycle.shutdown(RESTART_EXIT_CODE);
+        background(lifecycle.shutdown(RESTART_EXIT_CODE), 'lifecycle.shutdown_failed');
       },
       failed: (cause) => {
         log.error('service.restart_watch_failed', cause);
       },
     });
-    host.onSignal('SIGTERM', () => void lifecycle.shutdown(0));
-    host.onSignal('SIGINT', () => void lifecycle.shutdown(0));
+    stopOnSignals(host, lifecycle);
     if (config.role === 'hub') {
       lifecycle.ready = await writeReadyFile(host.dataDirectory, {
         pid,

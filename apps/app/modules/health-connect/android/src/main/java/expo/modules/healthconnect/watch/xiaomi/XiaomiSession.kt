@@ -248,14 +248,14 @@ class XiaomiSession(
       return
     }
     val known = KNOWN_UNHANDLED[key]
-    val what = known ?: "unknown to this app and to Gadgetbridge"
+    val what = known ?: "unknown to this app"
     sink.note("command_ignored", "type ${command.type} subtype ${command.subtype}: $what (fields ${command.body.fieldNumbers().sorted()})")
   }
 
   private companion object {
     const val WEATHER_TYPE = 10
     val KNOWN_UNHANDLED = mapOf(
-      (17 to 7) to "a schedule (alarm/reminder) change pushed by the watch; Gadgetbridge ignores it too"
+      (17 to 7) to "a schedule (alarm/reminder) change pushed by the watch; this app does not act on it"
     )
     const val NONCE_BYTES = 16
     const val AUTH_TIMEOUT_MS = 15_000L

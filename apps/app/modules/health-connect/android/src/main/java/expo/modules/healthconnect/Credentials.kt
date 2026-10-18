@@ -1,85 +1,89 @@
 package expo.modules.healthconnect
 
 import android.content.Context
+import expo.modules.healthconnect.diagnostics.NativeLog
 import expo.modules.healthconnect.network.HubRouteBinding
 import expo.modules.healthconnect.network.HubRouteBindings
 import expo.modules.healthconnect.network.HubRoutePolicy
+import expo.modules.healthconnect.network.canonicalOrigin
 import org.json.JSONObject
 
 class NativeCredentialWithdrawn : SyncFailure("Native credential generation was withdrawn", retryable = false)
 
-class IngestTarget(val endpoint: String, val token: String, val binding: (() -> HubRouteBinding)? = null,
-  val policy: (() -> HubRoutePolicy)? = null)
+class IngestTarget(
+  val endpoint: String,
+  val token: String,
+  val binding: (() -> HubRouteBinding)? = null,
+  val policy: (() -> HubRoutePolicy)? = null,
+)
 
 enum class CredentialSlot(val preferences: String, val keyAlias: String, val kind: String) {
-  HEALTH_SOURCE("expo.modules.healthconnect.credentials", "expo.modules.healthconnect.source-token", "health-source"),
-  SERVER("expo.modules.healthconnect.server", "expo.modules.healthconnect.server-token", "server")
+  SERVER("expo.modules.healthconnect.server", "expo.modules.healthconnect.server-token", "server"),
 }
 
-class Credentials(context: Context, private val slot: CredentialSlot = CredentialSlot.HEALTH_SOURCE) {
+class Credentials(context: Context, private val slot: CredentialSlot = CredentialSlot.SERVER) {
   private val context = context.applicationContext
   private val preferences = context.getSharedPreferences(slot.preferences, Context.MODE_PRIVATE)
   private val box = KeystoreBox(slot.keyAlias)
 
-  init { if (slot == CredentialSlot.SERVER) synchronized(LOCK) {
-    preferences.getString(REVOKED, null)?.let {
-      ServerEnrollment(context).withdraw(setOf(it))
-      require(preferences.edit().remove(REVOKED).commit()) { "Legacy credential withdrawal could not be migrated" }
-    }
-  } }
-
-  @Throws(SyncFailure::class) @JvmOverloads fun save(target: IngestTarget, enrollment: String? = null) = synchronized(LOCK) {
-    if (slot == CredentialSlot.SERVER) {
-      val authority = ServerEnrollment(context)
-      val principal = HubRouteBindings.fingerprint(target.token)
-      val canonical = expo.modules.healthconnect.network.canonicalOrigin(target.endpoint)
-      val ticket = enrollment ?: authority.legacy(canonical, principal)
-      authority.use(ticket) {
-        val input = JSONObject(ticket)
-        if (input.getString("principalId") != principal || input.getString("canonicalOrigin") != canonical) throw NativeCredentialWithdrawn()
-        saveBound(target)
+  @Throws(SyncFailure::class)
+  fun save(target: IngestTarget, enrollment: String) = synchronized(LOCK) {
+    val ticket = EnrollmentTicket.parse(enrollment)
+    ServerEnrollment(context).use(enrollment) {
+      if (ticket.principalId != HubRouteBindings.fingerprint(target.token) || ticket.canonicalOrigin != canonicalOrigin(target.endpoint)) {
+        NativeLog.warn(SCOPE, "credential.save_refused") { mapOf("slot" to slot.kind, "reason" to "ticket_mismatch", "generation" to ticket.generation) }
+        throw NativeCredentialWithdrawn()
       }
-    } else saveBound(target)
+      saveBound(target)
+    }
   }
+
   private fun saveBound(target: IngestTarget) {
     val previous = stored()
-    if (previous?.getString("endpoint") == target.endpoint && previous.getString("token") == target.token) return
+    if (previous?.getString("endpoint") == target.endpoint && previous.getString("token") == target.token) {
+      NativeLog.debug(SCOPE, "credential.unchanged") { mapOf("slot" to slot.kind, "generation" to previous.getLong("generation")) }
+      return
+    }
     val next = JSONObject().put("endpoint", target.endpoint).put("token", target.token)
       .put("generation", (previous?.getLong("generation") ?: 0) + 1)
     persist(next)
-    previous?.optJSONObject("binding")?.let { HubRoutePolicy.get(context).clear(it.getString("scopeId")) }
+    NativeLog.info(SCOPE, "credential.saved") {
+      mapOf("slot" to slot.kind, "generation" to next.getLong("generation"), "replaced" to (previous != null), "host" to NativeLog.hostOnly(target.endpoint), "principal" to HubRouteBindings.fingerprint(target.token).take(8))
+    }
+    withdrawRoute(previous)
   }
 
-  @Throws(SyncFailure::class) @JvmOverloads fun clear(principal: String? = null) = synchronized(LOCK) {
+  @Throws(SyncFailure::class)
+  @JvmOverloads
+  fun clear(principal: String? = null) = synchronized(LOCK) {
     val previous = stored()
-    if (slot == CredentialSlot.SERVER) {
-      val storedPrincipal = previous?.let { HubRouteBindings.fingerprint(it.getString("token")) }
-      val principals = listOfNotNull(principal, if (principal == null) storedPrincipal else null, preferences.getString(REVOKED, null)).toSet()
-      ServerEnrollment(context).withdraw(principals, all = principal == null)
-      if (principal != null && storedPrincipal != principal) return@synchronized
+    ServerEnrollment(context).withdraw(principal)
+    val storedPrincipal = previous?.let { HubRouteBindings.fingerprint(it.getString("token")) }
+    if (principal != null && storedPrincipal != principal) {
+      NativeLog.info(SCOPE, "credential.clear_skipped") { mapOf("slot" to slot.kind, "reason" to "other_principal", "requested" to principal.take(8), "stored" to storedPrincipal?.take(8)) }
+      return@synchronized
     }
     require(preferences.edit().clear().commit()) { "Native credential could not be withdrawn" }
-    previous?.optJSONObject("binding")?.let { HubRoutePolicy.get(context).clear(it.getString("scopeId")) }
+    NativeLog.info(SCOPE, "credential.cleared") { mapOf("slot" to slot.kind, "hadCredential" to (previous != null), "hadBinding" to (previous?.optJSONObject("binding") != null)) }
+    withdrawRoute(previous)
   }
 
-  @Throws(NativeCredentialWithdrawn::class) fun activate(canonical: String, principal: String, intent: String): String =
-    ServerEnrollment(context).useActivation(intent) { activateOwned(canonical, principal) }
-
-  private fun activateOwned(canonical: String, principal: String): String {
-    val previous = stored()
-    val old = previous?.let { HubRouteBindings.fingerprint(it.getString("token")) }
+  @Throws(NativeCredentialWithdrawn::class)
+  fun activate(canonical: String, principal: String): String = synchronized(LOCK) {
+    val old = stored()?.let { HubRouteBindings.fingerprint(it.getString("token")) }
     val ticket = ServerEnrollment(context).activate(canonical, principal)
+    NativeLog.info(SCOPE, "credential.activated") { mapOf("slot" to slot.kind, "principal" to principal.take(8), "previous" to old?.take(8), "clearsPrevious" to (old != null && old != principal)) }
     if (old != null && old != principal) clear(old)
-    return ticket
+    ticket
   }
 
-  fun configured(): Boolean = preferences.contains(CREDENTIAL) ||
-    (preferences.getString(ENDPOINT, null) != null && preferences.getString(TOKEN, null) != null)
+  fun configured(): Boolean = preferences.contains(CREDENTIAL)
 
   fun load(): IngestTarget = synchronized(LOCK) {
-    val saved = stored() ?: throw if (slot == CredentialSlot.SERVER) ScaleRelayNotConfigured() else SyncNotConfigured()
+    val saved = stored() ?: throw ServerNotConfigured()
     saved.optJSONObject("binding")?.let {
       if (!HubRoutePolicy.get(context).bound(HubRouteBinding.parse(it))) {
+        NativeLog.warn(SCOPE, "credential.binding_dropped") { mapOf("slot" to slot.kind, "reason" to "route_authority_has_no_scope", "generation" to saved.getLong("generation")) }
         saved.remove("binding")
         saved.put("generation", saved.getLong("generation") + 1)
         persist(saved)
@@ -93,40 +97,46 @@ class Credentials(context: Context, private val slot: CredentialSlot = Credentia
 
   private fun binding(endpoint: String, token: String, generation: Long): HubRouteBinding = synchronized(LOCK) {
     val saved = stored() ?: throw NativeCredentialWithdrawn()
-    if (saved.getString("endpoint") != endpoint || saved.getString("token") != token || saved.getLong("generation") != generation)
+    if (saved.getString("endpoint") != endpoint || saved.getString("token") != token || saved.getLong("generation") != generation) {
+      NativeLog.warn(SCOPE, "binding.stale") { mapOf("slot" to slot.kind, "askedGeneration" to generation, "storedGeneration" to saved.getLong("generation")) }
       throw NativeCredentialWithdrawn()
+    }
     saved.optJSONObject("binding")?.let {
       val binding = HubRouteBinding.parse(it)
-      if (!HubRoutePolicy.get(context).bound(binding)) throw NativeCredentialWithdrawn()
+      if (!HubRoutePolicy.get(context).bound(binding)) {
+        NativeLog.warn(SCOPE, "binding.withdrawn") { mapOf("slot" to slot.kind, "scope" to NativeLog.scopeLabel(binding.scopeId)) }
+        throw NativeCredentialWithdrawn()
+      }
       return@synchronized binding
     }
-    val target = IngestTarget(endpoint, token)
-    val bound = HubRouteBindings.register(context, target, slot.kind, generation)
+    val started = System.nanoTime()
+    val bound = try {
+      HubRouteBindings.register(context, IngestTarget(endpoint, token), slot.kind, generation)
+    } catch (failure: Exception) {
+      NativeLog.warn(SCOPE, "binding.register_failed", failure, NativeLog.elapsedMs(started)) { mapOf("slot" to slot.kind, "generation" to generation, "host" to NativeLog.hostOnly(endpoint)) }
+      throw failure
+    }
     saved.put("binding", bound.json())
     persist(saved)
+    NativeLog.info(SCOPE, "binding.registered", NativeLog.elapsedMs(started)) { mapOf("slot" to slot.kind, "generation" to generation, "scope" to NativeLog.scopeLabel(bound.scopeId)) }
     bound
   }
 
-  private fun stored(): JSONObject? {
-    val sealed = preferences.getString(CREDENTIAL, null)
-    if (sealed != null) return JSONObject(box.open(sealed))
-    val endpoint = preferences.getString(ENDPOINT, null)
-    val token = preferences.getString(TOKEN, null)
-    if (endpoint == null || token == null) return null
-    return JSONObject().put("endpoint", endpoint).put("token", box.open(token)).put("generation", 0)
+  private fun withdrawRoute(previous: JSONObject?) {
+    previous?.optJSONObject("binding")?.let { HubRoutePolicy.get(context).clear(it.getString("scopeId")) }
   }
 
+  private fun stored(): JSONObject? = preferences.getString(CREDENTIAL, null)?.let { JSONObject(box.open(it)) }
+
   private fun persist(value: JSONObject) {
-    require(preferences.edit().putString(CREDENTIAL, box.seal(value.toString())).remove(ENDPOINT).remove(TOKEN).commit()) {
+    require(preferences.edit().putString(CREDENTIAL, box.seal(value.toString())).commit()) {
       "Native encrypted credential could not be stored"
     }
   }
 
   private companion object {
     val LOCK = ServerEnrollment.LOCK
-    const val REVOKED = "revoked-principal"
     const val CREDENTIAL = "credential-binding"
-    const val ENDPOINT = "endpoint"
-    const val TOKEN = "token"
+    const val SCOPE = "credentials"
   }
 }

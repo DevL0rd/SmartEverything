@@ -1,7 +1,15 @@
-import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
+import {
+  COLOR_INPUT_FORMS,
+  colorFromInput,
+  kelvinFromText,
+  writePresentedColor,
+  type JsonValue,
+  type PresentedCapability,
+} from '@smarteverything/domain';
 import { z } from 'zod';
+import { ToolError } from './registry';
 
-export const TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const;
+const TEMPERATURE_UNITS = ['celsius', 'fahrenheit'] as const;
 
 export type TemperatureUnit = (typeof TEMPERATURE_UNITS)[number];
 
@@ -46,11 +54,47 @@ function option(presented: PresentedCapability, value: string): string {
   return found === undefined ? value : found.value;
 }
 
+const MIRED_PER_KELVIN = 1_000_000;
+
+function colourFor(presented: PresentedCapability, value: JsonValue): JsonValue {
+  const color = colorFromInput(value);
+  if (color === null) {
+    throw new ToolError(
+      `${JSON.stringify(value)} is not a colour. ${presented.label} takes ${COLOR_INPUT_FORMS}. Brightness is a separate capability.`,
+    );
+  }
+  return writePresentedColor(presented, color);
+}
+
+function whiteToneFor(presented: PresentedCapability, value: string): JsonValue {
+  const kelvin = kelvinFromText(value);
+  if (kelvin === null) {
+    return value;
+  }
+  return presented.unit?.toLowerCase().startsWith('mired') === true
+    ? Math.round(MIRED_PER_KELVIN / kelvin)
+    : kelvin;
+}
+
+function isColour(presented: PresentedCapability): boolean {
+  return presented.capability.value.kind === 'color' || presented.colorEncoding !== undefined;
+}
+
 export function valueFor(
   presented: PresentedCapability,
   value: JsonValue,
   unit: TemperatureUnit | undefined,
 ): JsonValue {
+  if (isColour(presented) && typeof value !== 'number') {
+    return colourFor(presented, value);
+  }
+  if (
+    typeof value === 'string' &&
+    presented.role === 'color_temperature' &&
+    presented.capability.value.kind === 'number'
+  ) {
+    return whiteToneFor(presented, value);
+  }
   if (typeof value === 'number' && presented.capability.value.kind === 'number') {
     return numberIn(presented, value, unit);
   }

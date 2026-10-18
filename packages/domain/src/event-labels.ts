@@ -22,6 +22,7 @@ export const EVENT_KIND_LABELS: Readonly<Record<EventKind, string>> = {
   doorbell: CAMERA_DETECTION_PRESENTATIONS.doorbell.label,
   call: CAMERA_DETECTION_PRESENTATIONS.call.label,
   motion: CAMERA_DETECTION_PRESENTATIONS.motion.label,
+  no_motion: 'No movement',
   person: CAMERA_DETECTION_PRESENTATIONS.person.label,
   sound: 'Sound',
   alarm: 'Alarm',
@@ -37,7 +38,9 @@ export const EVENT_KIND_LABELS: Readonly<Record<EventKind, string>> = {
   maintenance: 'Needs maintenance',
   fault: 'Device fault',
   activity: 'Device activity',
+  cycle_finished: 'Cycle finished',
   computer_power: 'Computer power',
+  machine_action: 'Machine action',
   phone_context_changed: 'Started doing something else',
   place_arrived: 'Arrived',
   place_left: 'Left',
@@ -47,7 +50,12 @@ export const EVENT_KIND_LABELS: Readonly<Record<EventKind, string>> = {
   zone_leave: 'Left zone',
 };
 
+export const LAUNDRY_EVENT_FAMILY = 'laundry';
+
 export function eventLabel(kind: EventKind, details: Readonly<Record<string, unknown>>): string {
+  if (kind === 'cycle_finished' && details['family'] === LAUNDRY_EVENT_FAMILY) {
+    return details['outcome'] === 'stopped' ? 'Laundry stopped' : 'Laundry done';
+  }
   const detection = cameraDetectionOf(kind, details);
   return detection === null
     ? EVENT_KIND_LABELS[kind]

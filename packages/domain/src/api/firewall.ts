@@ -69,6 +69,7 @@ const PLUGIN_RULE = z.strictObject({
 
 const HUB_RULE = PLUGIN_RULE.extend({ purpose: z.literal('hub') });
 const DISCOVERY_RULE = PLUGIN_RULE.extend({ purpose: z.literal('discovery') });
+const ANNOUNCEMENT_RULE = PLUGIN_RULE.extend({ purpose: z.literal('announcement') });
 
 const PORT_RULE = z.discriminatedUnion('purpose', [
   CAMERA_RULE,
@@ -77,6 +78,7 @@ const PORT_RULE = z.discriminatedUnion('purpose', [
   PLUGIN_RULE,
   HUB_RULE,
   DISCOVERY_RULE,
+  ANNOUNCEMENT_RULE,
 ]);
 
 export type PortRule = z.infer<typeof PORT_RULE>;

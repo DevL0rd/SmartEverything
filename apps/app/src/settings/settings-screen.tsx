@@ -74,18 +74,8 @@ export function SettingsPageScreen({
   }
   return (
     <SettingsFrame page={page} {...(primaryAction === undefined ? {} : { primaryAction })}>
-      <SettingsPageBody page={page} />
+      <SettingsPageBody key={page} page={page} />
     </SettingsFrame>
-  );
-}
-
-export function MountedSettingsRoute({ root }: { readonly root: string }): ReactNode {
-  const { page, focus } = useLocalSearchParams<{ page?: string[]; focus?: string }>();
-  const id = [root, ...(page ?? [])].join('/');
-  return (
-    <Redirect
-      href={focus === undefined ? href.settings.page(id) : href.settings.focus(id, focus)}
-    />
   );
 }
 

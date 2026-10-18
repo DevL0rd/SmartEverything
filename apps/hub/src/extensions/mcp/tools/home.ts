@@ -1,42 +1,47 @@
 import { PROVIDERS } from '@smarteverything/domain';
 import { z } from 'zod';
+import { roleOfCaller, type Caller } from '../../../server/auth';
+import type { Store } from '../../../store/store';
+import { callerFor } from './acting';
 import { reported, sendAndWait } from './commanding';
+import { deviceScopeOfActor } from './person-reach';
 import { READS, WRITES, defineTool, type Tool } from './registry';
 import { placedDevices } from './targets';
 
 const NOTHING = z.strictObject({});
+
+export function homesOf(store: Store, caller: Caller): Record<string, unknown> {
+  const settings = store.settings.read();
+  return {
+    homes: [
+      {
+        name: settings.home_name,
+        time_zone: settings.time_zone,
+        latitude: settings.latitude,
+        longitude: settings.longitude,
+        role: roleOfCaller(caller),
+        rooms: store.rooms.list().length,
+        devices: store.devices.list().length,
+        people: store.profiles.list().length,
+      },
+    ],
+  };
+}
 
 export const HOME_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'list_homes',
     input: NOTHING,
     annotations: READS,
-    run: ({ store }) => {
-      const settings = store.settings.read();
-      return {
-        structured: {
-          homes: [
-            {
-              name: settings.home_name,
-              time_zone: settings.time_zone,
-              latitude: settings.latitude,
-              longitude: settings.longitude,
-              role: 'owner',
-              rooms: store.rooms.list().length,
-              devices: store.devices.list().length,
-              people: store.profiles.list().length,
-            },
-          ],
-        },
-      };
-    },
+    run: (context) => ({ structured: homesOf(context.store, callerFor(context)) }),
   }),
   defineTool({
     name: 'list_rooms',
     input: NOTHING,
     annotations: READS,
-    run: ({ store }) => {
-      const devices = placedDevices(store);
+    run: (context) => {
+      const { store } = context;
+      const devices = placedDevices(store, deviceScopeOfActor(context));
       return {
         structured: {
           rooms: store.rooms.list().map((room) => ({

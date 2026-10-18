@@ -1,26 +1,28 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  planGroupCommands,
   readPresentedColor,
   targetCapability,
   writePresentedColor,
+  type DeviceTarget,
+  type GroupControlChoice,
   type JsonValue,
-  type GroupCommandPlan,
   type PresentedCapability,
 } from '@smarteverything/domain';
 import type { Control } from '../../store/control';
-import { liveCommands } from '../../store/live-commands';
 import { memoOnInputs } from '../../store/memo-selector';
 import { sameJson } from '../../store/same-json';
-import { useEntityStore, useLedger, useStoreSelector } from '../../store/store-context';
+import { useStoreSelector } from '../../store/store-context';
 import { deviceValuesOf, type Device, type StoreState } from '../../store/state';
-import type { GroupControlChoice } from './model';
+import { memberNameOf } from './model/member-name';
+import { resultLines, shownOutcomes } from './model/outcomes';
+import { controlLane } from './control-lane';
+import { useOutcomes, useSubmit } from './use-master';
 
 function reading(
   state: StoreState,
   device: Device,
   presented: PresentedCapability,
-  choice: GroupControlChoice,
+  choice: GroupControlChoice<Device>,
 ): JsonValue | undefined {
   const value = deviceValuesOf(state, device.id)[presented.key]?.value;
   if (presented.colorEncoding !== undefined || presented.capability.value.kind === 'color') {
@@ -37,14 +39,14 @@ function reading(
 
 function groupValueSelector(
   devices: readonly Device[],
-  choice: GroupControlChoice,
+  choice: GroupControlChoice<Device>,
 ): (state: StoreState) => JsonValue | undefined {
   const members = devices.flatMap((device) => {
     const presented = targetCapability(device, choice.reference);
     return presented === undefined ? [] : [{ device, presented }];
   });
   return memoOnInputs(
-    (state) => [state.deviceValues, state.ledger],
+    (state) => members.map(({ device }) => deviceValuesOf(state, device.id)),
     (state) => {
       const values = members.map(({ device, presented }) =>
         reading(state, device, presented, choice),
@@ -57,61 +59,52 @@ function groupValueSelector(
   );
 }
 
-function issuesOf(
-  devices: readonly Device[],
-  plan: GroupCommandPlan,
-  outcomes: readonly boolean[],
-): readonly string[] {
-  const name = (id: string): string => devices.find((device) => device.id === id)?.label ?? id;
-  return [
-    ...plan.skipped.map((skip) => `${name(skip.deviceId)}: ${skip.reason}`),
-    ...plan.commands.flatMap((command, index) =>
-      outcomes[index] === true ? [] : [`${name(command.device_id)}: did not change`],
-    ),
-  ];
+function changeOf(
+  choice: GroupControlChoice<Device>,
+  value: JsonValue,
+): {
+  readonly capability: string;
+  readonly value: JsonValue;
+  readonly scale?: 'percent';
+} {
+  return {
+    capability: choice.reference,
+    value: readPresentedColor(choice.presented, value) ?? value,
+    ...(choice.presented.role === 'brightness' ? { scale: 'percent' as const } : {}),
+  };
 }
 
 export function useGroupControl(
-  devices: readonly Device[],
-  choice: GroupControlChoice,
+  target: DeviceTarget,
+  members: readonly Device[],
+  choice: GroupControlChoice<Device>,
 ): Control & { readonly issues: readonly string[] } {
-  const store = useEntityStore();
-  const ledger = useLedger();
-  const selectValue = useMemo(() => groupValueSelector(devices, choice), [devices, choice]);
+  const [outcomes, setOutcomes] = useOutcomes();
+  const submit = useSubmit(members, setOutcomes);
+  const selectValue = useMemo(() => groupValueSelector(members, choice), [members, choice]);
   const value = useStoreSelector(selectValue, sameJson);
   const [draft, setDraft] = useState<{ readonly value: JsonValue } | null>(null);
-  const [issues, setIssues] = useState<readonly string[]>([]);
-  const revision = useRef(0);
+  const push = useMemo(
+    () =>
+      controlLane(
+        (next) => submit(target, changeOf(choice, next), true),
+        (latest) => {
+          if (latest) setDraft(null);
+        },
+      ),
+    [submit, target, choice],
+  );
   return {
     value: draft === null ? value : draft.value,
-    observedAt: null,
     pending: false,
     failure: null,
-    offline: devices.every((device) => !device.online),
-    issues,
-    set: async (next): Promise<boolean> => {
-      const current = ++revision.current;
+    offline: members.every((device) => !device.online),
+    issues: resultLines(shownOutcomes(outcomes), (id) => memberNameOf(members, id)).map(
+      (line) => line.text,
+    ),
+    set: (next): Promise<boolean> => {
       setDraft({ value: next });
-      const colour = readPresentedColor(choice.presented, next);
-      const plan = planGroupCommands(devices, {
-        capability: choice.reference,
-        value: colour ?? next,
-        ...(choice.presented.role === 'brightness' ? { scale: 'percent' } : {}),
-      });
-      const outcomes = await Promise.all(
-        plan.commands.map(async (command) => {
-          const device = devices.find((candidate) => candidate.id === command.device_id);
-          return (
-            device !== undefined &&
-            (await liveCommands(store, ledger).set(device, command.capability, command.value))
-          );
-        }),
-      );
-      if (revision.current === current) {
-        setDraft(null);
-        setIssues(issuesOf(devices, plan, outcomes));
-      }
-      return outcomes.length > 0 && outcomes.every(Boolean) && plan.skipped.length === 0;
+      return push(next);
     },
   };
 }

@@ -1,46 +1,56 @@
-import { inheritedOrigin } from '../../../assistant/authority-inheritance';
+import { ApiError } from '@smarteverything/domain';
+import { DISCOVERY_NAMES } from '../../../ai-tools/tool-discovery';
 import {
-  principalAuthority,
   admitExecutionTool,
-  validateExecutionAuthority,
-  withExecutionAuthorities,
-  currentExecutionAuthorities,
-} from '../../../assistant/execution-authority';
-import { pluginCallAuthorities } from '../../../plugins/call-authority';
-import type { ToolContext, ToolOutput } from './registry';
+  currentExecutionAuthority,
+  executionRole,
+  hubOriginated,
+  inheritedOrigin,
+  withExecutionAuthority,
+} from '../../../assistant/turn-authority';
+import type { ConversationAuthority } from '../../../harness/authority-contract';
+import { NATIVE_BRIDGE_REFUSAL, reachesNativeBridge } from '../../../harness/native-bridge';
+import { pluginCallAuthority } from '../../../plugins/call-authority';
+import type { ToolActor, ToolContext, ToolOutput } from './registry';
 export function scopedToolCall(
   context: ToolContext,
   name: string,
-  raw: Readonly<Record<string, unknown>>,
   work: (context: ToolContext) => Promise<ToolOutput> | ToolOutput,
 ): Promise<ToolOutput> | ToolOutput {
   const callback =
-    context.caller?.via === 'plugin' ? pluginCallAuthorities(context.store, context.caller.id) : [];
-  const authorities = [
-    ...new Map(
-      [
-        ...(context.actor?.authority === undefined ? [] : [context.actor.authority]),
-        ...callback,
-        ...currentExecutionAuthorities(),
-      ].map((source) => [source.event_id, source] as const),
-    ).values(),
-  ];
-  const authority = principalAuthority(context.store, authorities);
+    context.caller?.via === 'plugin'
+      ? pluginCallAuthority(context.store, context.caller.id)
+      : undefined;
+  const authority = context.actor?.authority ?? callback ?? currentExecutionAuthority();
   if (authority === undefined) return work(context);
-  for (const source of authorities) {
-    validateExecutionAuthority(context.store, source);
-    admitExecutionTool(context.store, name, raw, source);
+  const actor =
+    context.actor?.authority === undefined ? admitted(context, name, authority) : context.actor;
+  return withExecutionAuthority(authority, () => work({ ...context, actor }));
+}
+function admitted(context: ToolContext, name: string, authority: ConversationAuthority): ToolActor {
+  if (!DISCOVERY_NAMES.has(name)) {
+    admitExecutionTool(context.store, name, authority);
+    if (hubOriginated(authority) && reachesNativeBridge(name))
+      throw new ApiError('forbidden', NATIVE_BRIDGE_REFUSAL);
   }
-  const event = context.store.assistantEvents.event(authority.event_id);
-  const origin = inheritedOrigin(authorities);
-  const actor = {
+  return actorOf(context, authority);
+}
+function actorOf(context: ToolContext, authority: ConversationAuthority): ToolActor {
+  const origin = inheritedOrigin([
+    authority,
+    {
+      plugin_id: context.actor?.pluginId ?? null,
+      requester: context.actor?.pluginRequester ?? null,
+    },
+  ]);
+  return {
     ...context.actor,
     authority,
     clientId: authority.client_id,
     profileId: authority.profile_id,
-    chatId: event.chat_id,
+    role: executionRole(authority),
+    chatId: context.store.assistantEvents.event(authority.event_id).chat_id,
     ...(origin.plugin_id === null ? {} : { pluginId: origin.plugin_id }),
     ...(origin.requester === null ? {} : { pluginRequester: origin.requester }),
   };
-  return withExecutionAuthorities(authorities, () => work({ ...context, actor }));
 }

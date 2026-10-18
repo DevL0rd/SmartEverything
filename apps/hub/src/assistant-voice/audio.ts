@@ -1,8 +1,7 @@
 import { TALK_FRAME_MS, TALK_SAMPLE_RATE } from '@smarteverything/domain';
 import { Opus } from './opus';
 
-export const SPEECH_RATE = 16_000;
-export const LIVE_RATE = 24_000;
+const SPEECH_RATE = 16_000;
 
 const FRAME_SAMPLES = (TALK_SAMPLE_RATE * TALK_FRAME_MS) / 1000;
 const DOWNSAMPLE = TALK_SAMPLE_RATE / SPEECH_RATE;
@@ -14,16 +13,10 @@ export interface OpusCodec {
 }
 
 export function opusCodec(): OpusCodec {
-  let codec = new Opus(TALK_SAMPLE_RATE, 1);
-  const live = (): Opus => {
-    if (codec.stale) {
-      codec = new Opus(TALK_SAMPLE_RATE, 1);
-    }
-    return codec;
-  };
+  const codec = new Opus(TALK_SAMPLE_RATE, 1);
   return {
-    decode: (packet) => live().decode(packet),
-    encode: (pcm) => live().encode(pcm, FRAME_SAMPLES),
+    decode: (packet) => codec.decode(packet),
+    encode: (pcm) => codec.encode(pcm, FRAME_SAMPLES),
     free: (): void => {
       codec.free();
     },
@@ -52,7 +45,7 @@ export function toSpeech(mono: Int16Array): Int16Array {
   return out;
 }
 
-export function liveToDevice(pcm: Int16Array, previous: number): Int16Array {
+function liveToDevice(pcm: Int16Array, previous: number): Int16Array {
   const out = new Int16Array(pcm.length * 2);
   let last = previous;
   pcm.forEach((sample, index) => {
@@ -98,8 +91,4 @@ export class OpusFramer {
     this.pending = new Int16Array(0);
     this.last = 0;
   }
-}
-
-export function secondsOf(frames: number): number {
-  return (frames * TALK_FRAME_MS) / 1000;
 }

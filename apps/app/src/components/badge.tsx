@@ -51,7 +51,7 @@ export function Dot({ tone }: { readonly tone: StatusTone | 'primary' }): ReactN
 
 const COUNT_CAP = 99;
 
-export function countLabel(count: number): string {
+function countLabel(count: number): string {
   return count > COUNT_CAP ? `${String(COUNT_CAP)}+` : String(count);
 }
 

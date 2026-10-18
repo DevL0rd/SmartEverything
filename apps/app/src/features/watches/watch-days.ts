@@ -1,10 +1,11 @@
 import type { WatchDayRow, WatchSampleKind } from '@smarteverything/domain';
+import { max } from 'd3-array';
 import { readWatchDays } from '../../api/watches';
 import type { ChartPoint } from '../../components/charts';
-import { dayKeyOf } from '../../format/time';
 import { watchDaysKey } from '../../queries/keys';
-import { useMinute } from '../../store/clock';
+import { useDayKey } from '../../store/clock';
 import { useScreenQuery } from '../../queries/use-screen-query';
+import { compareText } from '../../format/text';
 
 export interface WatchDay {
   readonly points: readonly ChartPoint[];
@@ -22,7 +23,7 @@ function dayOf(rows: readonly WatchDayRow[], kind: WatchSampleKind): WatchDay {
   const samples = rows
     .filter((row) => row.kind === kind)
     .flatMap((row) => row.samples)
-    .sort((left, right) => left.time.localeCompare(right.time));
+    .sort((left, right) => compareText(left.time, right.time));
   const values = samples.map((sample) => sample.value);
   return {
     points: samples.map((sample) => ({ t: Date.parse(sample.time), v: sample.value })),
@@ -30,13 +31,13 @@ function dayOf(rows: readonly WatchDayRow[], kind: WatchSampleKind): WatchDay {
       values.length === 0
         ? null
         : Math.round(values.reduce((sum, value) => sum + value, 0) / values.length),
-    maximum: values.length === 0 ? null : Math.max(...values),
+    maximum: max(values) ?? null,
     latest: values.at(-1) ?? null,
   };
 }
 
 export function useWatchToday(): WatchDayState {
-  const today = dayKeyOf(useMinute());
+  const today = useDayKey();
   const query = useScreenQuery({
     queryKey: watchDaysKey(today, today),
     queryFn: () => readWatchDays(today, today),

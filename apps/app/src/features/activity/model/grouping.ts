@@ -1,3 +1,4 @@
+import { appendTo } from '@smarteverything/domain';
 import { MINUTE_MS, localDayKey } from '../../../format/time';
 
 const RUN_WINDOW_MS = 10 * MINUTE_MS;
@@ -50,7 +51,7 @@ export function daysOf<T>(
   const days = new Map<string, T[]>();
   for (const item of items) {
     const key = localDayKey(atOf(item), timeZone);
-    days.set(key, [...(days.get(key) ?? []), item]);
+    appendTo(days, key, item);
   }
   return [...days].map(([key, grouped]) => ({ key, items: grouped }));
 }

@@ -1,0 +1,49 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1 gap-1.5" pointerEvents="box-none"
+      View className="flex-1 flex-row gap-3" pointerEvents="box-none"
+        View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
+          View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
+            Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
+              Svg.Path d="M41 0 H59 A7 7 0 0 1 66 7 V93 A7 7 0 0 1 59 100 H41 A7 7 0 0 1 34 93 V7 A7 7 0 0 1 41 0 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#111214"; ); Svg.Stop(offset="0.5" stopColor="#2A2C30"; ); Svg.Stop(offset="1" stopColor="#111214"; )))
+              Svg.Path d="M86.5 43 H87.5 A2.5 2.5 0 0 1 90 45.5 V54.5 A2.5 2.5 0 0 1 87.5 57 H86.5 A2.5 2.5 0 0 1 84 54.5 V45.5 A2.5 2.5 0 0 1 86.5 43 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#9EA2A9"; ); Svg.Stop(offset="0.45" stopColor="#6C7078"; ); Svg.Stop(offset="1" stopColor="#25272B"; )))
+              Svg.Path d="M84 31 H85 A1.5 1.5 0 0 1 86.5 32.5 V36.5 A1.5 1.5 0 0 1 85 38 H84 A1.5 1.5 0 0 1 82.5 36.5 V32.5 A1.5 1.5 0 0 1 84 31 Z" fill="#6C7078"
+              Svg.Circle cx=50 cy=50 fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#9EA2A9"; ); Svg.Stop(offset="0.45" stopColor="#6C7078"; ); Svg.Stop(offset="1" stopColor="#25272B"; ))) r=37
+              Svg.Path d="M50.00 13.00 A37 37 0 1 1 50.00 87.00 A37 37 0 1 1 50.00 13.00 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#c9b49f" stopOpacity=0.12; ); Svg.Stop(offset="0.3" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.36" stopColor="#FFFFFF" stopOpacity=1; ); Svg.Stop(offset="0.44" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+              Svg.Circle cx=50 cy=50 fill="#111214" r=34
+              Svg.Path d="M50.00 19.80 L50.00 17.00 M65.65 22.89 L66.50 21.42 M77.11 34.35 L78.58 33.50 M80.20 50.00 L83.00 50.00 M77.11 65.65 L78.58 66.50 M65.65 77.11 L66.50 78.58 M50.00 80.20 L50.00 83.00 M34.35 77.11 L33.50 78.58 M22.89 65.65 L21.42 66.50 M19.80 50.00 L17.00 50.00 M22.89 34.35 L21.42 33.50 M34.35 22.89 L33.50 21.42" stroke="#9EA2A9" strokeLinecap="round" strokeWidth=0.7
+              Svg.Circle cx=50 cy=50 fill=url(Svg.RadialGradient(cx="45%" cy="40%" r="60%"; Svg.Stop(offset="0" stopColor="#1B1D22"; ); Svg.Stop(offset="1" stopColor="#040405"; ))) r=29.5
+              Svg.Circle cx=50 cy=50 fill="none" r=24.5 stroke="#f1d4b7" strokeOpacity=0.2 strokeWidth=4
+              Anim.created animatedProps={} cx=50 cy=50 fill="none" r=24.5 stroke="#f1d4b7" strokeDasharray="153.93804002589985 153.93804002589985" strokeLinecap="round" strokeWidth=4 transform="rotate(-90 50 50)"
+              Svg.Path d="M46.7 31.5 H53.3 A1.2 1.2 0 0 1 54.5 32.7 V34.3 A1.2 1.2 0 0 1 53.3 35.5 H46.7 A1.2 1.2 0 0 1 45.5 34.3 V32.7 A1.2 1.2 0 0 1 46.7 31.5 Z" fill="none" stroke="#A7A9AE" strokeWidth=0.5
+              Svg.Path d="M46.9 32.3 H49.77 A0.6 0.6 0 0 1 50.37 32.9 V34.1 A0.6 0.6 0 0 1 49.77 34.7 H46.9 A0.6 0.6 0 0 1 46.3 34.1 V32.9 A0.6 0.6 0 0 1 46.9 32.3 Z" fill="#606060"
+              Svg.Text fill="#F4F3F0" fontFamily="Geist-SemiBold" fontSize=12 textAnchor="middle" transform="translate(50 54)"
+            Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:44.16,top:59.52,width:7.68,height:7.68},{animationName:{cssRules_:{from:{opacity:0.55,transform:[{scale:0.94}]},to:{opacity:1,transform:[{scale:1.04}]}},cssText_:"{\"from\":{\"opacity\":0.55,\"transform\":[{\"scale\":0.94}]},\"to\":{\"opacity\":1,\"transform\":[{\"scale\":1.04}]}}",length_:2,name_:"REA-CSS-2",processedKeyframes_:"from { opacity: 0.55; transform: scale(0.94) } to { opacity: 1; transform: scale(1.04) }"},animationDuration:375,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}]
+              Svg.default height=7.68 viewBox="46 62 8 8" width=7.68
+                Svg.Path d="M50 69 C44 65 46 61.5 48.4 62 C49.3 62.2 49.8 62.8 50 63.4 C50.2 62.8 50.7 62.2 51.6 62 C54 61.5 56 65 50 69 Z" fill="#f6d8ba"
+        View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
+          View accessibilityLabel="Device 0, On wrist, heart rate 80, 4,210 steps" accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
+            View className="flex-row flex-wrap items-center justify-between gap-x-2"
+              Text className="font-sans-medium text-body text-on-surface text-left max-w-full shrink" numberOfLines=1 selectable=false
+              View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-positive/12"
+                Text className="font-sans-medium text-caption text-positive text-left" numberOfLines=1 selectable=false
+            Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+            View className="flex-row items-end gap-3 overflow-hidden pt-0.5"
+              View className="min-w-0 shrink-0"
+                View className="flex-row items-baseline gap-1" onLayout=undefined ref=undefined
+                  Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-m tracking-tight text-on-surface" selectable=false
+                  Text className="font-sans text-callout text-on-surface-variant text-left" selectable=false
+                Text className="font-sans-medium text-caption text-on-surface-faint text-left" numberOfLines=1 selectable=false
+              View className="min-w-0 shrink-0"
+                View className="flex-row items-baseline gap-1" onLayout=undefined ref=undefined
+                  Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-m tracking-tight text-on-surface" selectable=false
+                  Text className="font-sans text-callout text-on-surface-variant text-left" selectable=false
+          View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
+            View collapsable=false onLayout=undefined ref={current:null}
+              View aria-hidden=true className="w-full items-center justify-center" style={height:34}
+                View className="absolute inset-x-0 bottom-3 border-t border-dashed border-outline"
+                View className="rounded-xs bg-surface-1 px-2"
+                  Text className="font-sans-medium text-caption text-on-surface-variant text-left" numberOfLines=1 selectable=false
+      View className="flex-row items-center gap-2" pointerEvents="box-none"
+        Pressable accessibilityHint=undefined accessibilityLabel="Find watch" accessibilityRole="button" accessibilityState={disabled:false} android_ripple={color:"#2e3842",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full bg-primary-container" disabled=false onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn
+        Pressable accessibilityHint="Only its phone can sync this watch" accessibilityLabel="Sync from its phone" accessibilityRole="button" accessibilityState={disabled:true} android_ripple={color:"#2e3842",foreground:true} aria-checked=undefined aria-controls=undefined className="overflow-hidden focus:outline-2 focus:outline-focus focus:outline-offset-2 opacity-40 max-w-full shrink flex-row items-center justify-center gap-2 px-4 h-control-h rounded-full bg-on-surface/10" disabled=true onFocus=fn onHoverIn=fn onHoverOut=fn onPress=fn onPressIn=fn

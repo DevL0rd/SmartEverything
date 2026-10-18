@@ -20,6 +20,17 @@ export function schemaType(schema: Schema): string {
     return 'object';
   return 'string';
 }
+export function variantName(variant: Schema, index: number): string {
+  const properties = schemaOf(variant['properties']);
+  for (const key of ['action', 'view', 'kind']) {
+    const marker = schemaOf(properties[key])['const'];
+    if (typeof marker === 'string') return marker;
+  }
+  return schemaType(variant) === 'null'
+    ? 'Reset override'
+    : `${schemaType(variant)} ${String(index + 1)}`;
+}
+
 export function initialValue(schema: Schema): JsonValue {
   const variants = branches(schema);
   if (variants[0] !== undefined) return initialValue(variants[0]);

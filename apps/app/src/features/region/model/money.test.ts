@@ -125,4 +125,19 @@ describe('formatting', () => {
     expect(rateLine(jpy.format)).toBe('1 USD = 158.25 JPY · rates of 2026-10-09');
     expect(rateLine(usd.format)).toBeNull();
   });
+
+  it('converts a local amount to USD rounded to micros and back for display', () => {
+    expect(jpy.toUsd(1_000)).toBe(6.319115);
+    expect(jpy.toLocal(6.319115)).toBe(1_000);
+    expect(usd.toUsd(5)).toBe(5);
+    expect(usd.toLocal(5.004)).toBe(5);
+  });
+
+  it('keeps the local bounds inside the allowed USD range', () => {
+    const { min, max } = jpy.bounds(0.01, 100_000);
+    expect(min).toBe(2);
+    expect(jpy.toUsd(min)).toBeGreaterThanOrEqual(0.01);
+    expect(jpy.toUsd(max)).toBeLessThanOrEqual(100_000);
+    expect(usd.bounds(0.01, 100_000)).toStrictEqual({ min: 0.01, max: 100_000 });
+  });
 });

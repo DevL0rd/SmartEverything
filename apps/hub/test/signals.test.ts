@@ -1,12 +1,15 @@
 import {
-  SIGNAL_TRIGGER,
+  TRIGGER_V2,
   windowValue,
   type SignalInput,
-  type SignalTrigger,
+  type StateChange,
+  type SignalTriggerV2,
+  type TriggerV2,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { SignalBus } from '../src/signals/bus';
 import { SignalWatch } from '../src/signals/signal-watch';
+import { isTransition, stateSignal } from '../src/signals/sources/device';
 import { FakeClock } from './support/fake-clock';
 import { captureLogs, testLogger } from './support/logs';
 
@@ -27,21 +30,27 @@ function reading(value: number, at: string): SignalInput {
   };
 }
 
+function signalTrigger(extra: Record<string, unknown>): SignalTriggerV2 {
+  const parsed: TriggerV2 = TRIGGER_V2.parse({
+    on: 'signal',
+    source: 'device',
+    kind: 'state',
+    subject: SENSOR,
+    field: 'temperature',
+    ...extra,
+  });
+  if (parsed.on !== 'signal') throw new Error('Expected a signal trigger.');
+  return parsed;
+}
+
 function watching(
-  trigger: Partial<SignalTrigger>,
+  trigger: Record<string, unknown>,
   pulse = false,
 ): { clock: FakeClock; fired: SignalInput[]; watch: SignalWatch } {
   const clock = new FakeClock(START);
   const fired: SignalInput[] = [];
   const watch = new SignalWatch({
-    trigger: SIGNAL_TRIGGER.parse({
-      type: 'signal',
-      source: 'device',
-      kind: 'state',
-      subject: SENSOR,
-      field: 'temperature',
-      ...trigger,
-    }),
+    trigger: signalTrigger(trigger),
     pulse,
     clock,
     fire: (signal): void => {
@@ -80,8 +89,8 @@ describe('window values', () => {
 describe('signal watch', () => {
   it('fires once when the average crosses and stays true for the hold time', () => {
     const setup = watching({
-      comparison: { operator: 'gt', value: 140 },
-      window: { mode: 'avg', seconds: 60 },
+      test: { is: 'gt', to: 140 },
+      window: { of: 'avg', seconds: 60 },
       holdSeconds: 30,
     });
     feed(setup, 150, '2026-10-08T10:00:01.000Z');
@@ -94,7 +103,7 @@ describe('signal watch', () => {
   });
 
   it('cancels the hold when the value drops back', () => {
-    const setup = watching({ comparison: { operator: 'gt', value: 140 }, holdSeconds: 30 });
+    const setup = watching({ test: { is: 'gt', to: 140 }, holdSeconds: 30 });
     feed(setup, 150, '2026-10-08T10:00:01.000Z');
     feed(setup, 120, '2026-10-08T10:00:10.000Z');
     setup.clock.advanceTo('2026-10-08T10:01:00.000Z');
@@ -102,7 +111,7 @@ describe('signal watch', () => {
   });
 
   it('waits for bursts to settle before deciding', () => {
-    const setup = watching({ comparison: { operator: 'gt', value: 140 }, debounceSeconds: 5 });
+    const setup = watching({ test: { is: 'gt', to: 140 }, debounceSeconds: 5 });
     feed(setup, 150, '2026-10-08T10:00:01.000Z');
     feed(setup, 120, '2026-10-08T10:00:03.000Z');
     setup.clock.advanceTo('2026-10-08T10:00:20.000Z');
@@ -122,7 +131,7 @@ describe('signal watch', () => {
 
   it('re-arms a count window when old samples expire', () => {
     const setup = watching(
-      { comparison: { operator: 'gte', value: 2 }, window: { mode: 'count', seconds: 60 } },
+      { test: { is: 'gte', to: 2 }, window: { of: 'count', seconds: 60 } },
       true,
     );
     feed(setup, 1, '2026-10-08T10:00:01.000Z');
@@ -132,6 +141,22 @@ describe('signal watch', () => {
     feed(setup, 1, '2026-10-08T10:02:01.000Z');
     feed(setup, 1, '2026-10-08T10:02:02.000Z');
     expect(setup.fired).toHaveLength(2);
+  });
+
+  it('does not fire for a value that was already true before the first signal it saw', () => {
+    const setup = watching({ test: { is: 'gt', to: 140 } });
+    setup.clock.advanceTo('2026-10-08T10:00:01.000Z');
+    setup.watch.observe({ ...reading(150, '2026-10-08T10:00:01.000Z'), previous: 145 });
+    expect(setup.fired).toHaveLength(0);
+    setup.watch.observe({ ...reading(120, '2026-10-08T10:00:02.000Z'), previous: 150 });
+    setup.watch.observe({ ...reading(150, '2026-10-08T10:00:03.000Z'), previous: 120 });
+    expect(setup.fired).toHaveLength(1);
+  });
+
+  it('fires when the first signal it sees enters the state', () => {
+    const setup = watching({ test: { is: 'gt', to: 140 } });
+    setup.watch.observe({ ...reading(150, START), previous: 120 });
+    expect(setup.fired).toHaveLength(1);
   });
 
   it('ignores other subjects', () => {
@@ -153,5 +178,25 @@ describe('signal bus', () => {
     bus.emit(reading(1, START));
     expect(heard).toHaveLength(1);
     expect(logs.events()).toContain('signals.unregistered');
+  });
+});
+
+describe('device state transitions', () => {
+  it('fires only on real changes, never when a reading returns from unknown after a reconnect', () => {
+    const setup = watching({ field: 'occupancy', test: { is: 'eq', to: true } });
+    const changes = [
+      { value: null, previous: true },
+      { value: true, previous: null },
+      { value: false, previous: undefined },
+      { value: false, previous: true },
+      { value: true, previous: false },
+    ];
+    for (const { value, previous } of changes) {
+      const change: StateChange = { deviceId: SENSOR, capability: 'occupancy', value, previous };
+      if (isTransition(change)) setup.watch.observe(stateSignal(change, START));
+    }
+    expect(setup.fired.map((signal) => [signal.previous, signal.value])).toStrictEqual([
+      [false, true],
+    ]);
   });
 });

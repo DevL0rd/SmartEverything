@@ -9,12 +9,15 @@ import {
   type AutomaticActivityDetection,
   type FunctionDeclaration,
   type LiveConnectConfig,
+  type LiveConnectParameters,
   type LiveServerMessage,
   type Session,
   type UsageMetadata,
 } from '@google/genai';
 import { DEFAULT_PAUSE_MS, type SightResolution } from '@smarteverything/domain';
 import { LIVE_WEB_SEARCH_TOOL } from '../assistant/web-search';
+import { LiveTrace } from './gemini-trace';
+import { pingOf, type Ping } from './live-ping';
 import type { VideoFrame } from './video';
 
 export interface LiveOptions {
@@ -22,6 +25,7 @@ export interface LiveOptions {
   readonly voice: string;
   readonly system: string;
   readonly tools: readonly FunctionDeclaration[];
+  readonly webSearch: boolean;
   readonly resume: string | null;
   readonly window: LiveWindow | null;
   readonly automatic: boolean;
@@ -41,14 +45,15 @@ export interface LiveEvents {
   readonly interrupted: () => void;
   readonly turnComplete: () => void;
   readonly tool: (id: string, name: string, args: Readonly<Record<string, unknown>>) => void;
-  readonly resumable: (handle: string) => void;
+  readonly resumable: (handle: string | null) => void;
+  readonly goAway?: (timeLeft: string | null) => void;
   readonly usage: (usage: UsageMetadata) => void;
-  readonly closed: (reason: string) => void;
+  readonly closed: (reason: string, code: number) => void;
 }
 
 export type ToolScheduling = 'silent' | 'idle' | 'interrupt';
 
-export interface ToolDelivery {
+interface ToolDelivery {
   readonly scheduling: ToolScheduling;
   readonly more: boolean;
 }
@@ -71,6 +76,7 @@ export interface LiveSession {
   ) => void;
   readonly video: (frame: VideoFrame) => void;
   readonly close: () => void;
+  readonly alive?: Ping;
 }
 
 export interface VoiceProvider {
@@ -164,9 +170,11 @@ function calls(message: LiveServerMessage, events: LiveEvents): void {
 
 function resumption(message: LiveServerMessage, events: LiveEvents): void {
   const update = message.sessionResumptionUpdate;
-  if (update?.resumable === true && update.newHandle !== undefined) {
-    events.resumable(update.newHandle);
+  if (update === undefined) {
+    return;
   }
+  const handle = update.newHandle ?? '';
+  events.resumable(update.resumable === true && handle !== '' ? handle : null);
 }
 
 function route(message: LiveServerMessage, events: LiveEvents): void {
@@ -179,6 +187,9 @@ function route(message: LiveServerMessage, events: LiveEvents): void {
     events.turnComplete();
   }
   resumption(message, events);
+  if (message.goAway !== undefined) {
+    events.goAway?.(message.goAway.timeLeft ?? null);
+  }
   if (message.usageMetadata !== undefined) {
     events.usage(message.usageMetadata);
   }
@@ -231,6 +242,7 @@ export function liveSessionOf(session: LiveWire): LiveSession {
     close: (): void => {
       session.close();
     },
+    alive: pingOf(session),
   };
 }
 
@@ -256,32 +268,55 @@ export function liveConfigOf(options: LiveOptions): LiveConnectConfig {
           },
         }),
     sessionResumption: options.resume === null ? {} : { handle: options.resume },
-    tools: [LIVE_WEB_SEARCH_TOOL, { functionDeclarations: [...options.tools] }],
+    tools: [
+      ...(options.webSearch ? [LIVE_WEB_SEARCH_TOOL] : []),
+      { functionDeclarations: [...options.tools] },
+    ],
   };
 }
 
+export type LiveConnect = (apiKey: string, params: LiveConnectParameters) => Promise<LiveWire>;
+
+const googleLive: LiveConnect = (apiKey, params) =>
+  new GoogleGenAI({ apiKey }).live.connect(params);
+
 export class Gemini implements VoiceProvider {
-  constructor(private readonly key: () => string | null) {}
+  constructor(
+    private readonly key: () => string | null,
+    private readonly connect: LiveConnect = googleLive,
+  ) {}
 
   async live(options: LiveOptions, events: LiveEvents): Promise<LiveSession> {
     const apiKey = this.key();
     if (apiKey === null) {
       throw new MissingGeminiKeyError();
     }
-    const ai = new GoogleGenAI({ apiKey });
-    const session = await ai.live.connect({
-      model: options.model,
-      config: liveConfigOf(options),
-      callbacks: {
-        onmessage: (message): void => {
-          route(message, events);
+    const trace = new LiveTrace(options);
+    const counted = trace.counting(events);
+    trace.connecting();
+    try {
+      const session = await this.connect(apiKey, {
+        model: options.model,
+        config: liveConfigOf(options),
+        callbacks: {
+          onmessage: (message): void => {
+            trace.message();
+            route(message, counted);
+          },
+          onerror: (event): void => {
+            trace.socketError(event.message);
+          },
+          onclose: (event): void => {
+            trace.socketClosed(event);
+            events.closed(event.reason === '' ? 'closed' : event.reason, event.code);
+          },
         },
-        onerror: (): void => undefined,
-        onclose: (event): void => {
-          events.closed(event.reason === '' ? 'closed' : event.reason);
-        },
-      },
-    });
-    return liveSessionOf(session);
+      });
+      trace.connected();
+      return liveSessionOf(session);
+    } catch (cause) {
+      trace.connectFailed(cause);
+      throw cause;
+    }
   }
 }

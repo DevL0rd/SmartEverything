@@ -2,6 +2,7 @@ import { HEALTH_DAILY_ROW, type HealthDailyRow, type HealthMetric } from '@smart
 import { z } from 'zod';
 import type { StoreContext } from '../context';
 import type { DailyFigure } from '../health-daily';
+import { inList } from '../sql';
 
 const COLUMNS = 'profile_id, day, metric, value, unit, updated_at';
 
@@ -18,18 +19,13 @@ export class HealthDaily {
 
   range(profileId: string, window: DailyWindow): HealthDailyRow[] {
     const { from, to, metrics } = window;
-    const names = metrics.map((_metric, index) => `$metric${String(index)}`);
+    const filter = inList('metric', 'metrics', metrics);
     return this.context.sql.all(
       HEALTH_DAILY_ROW,
       `select ${COLUMNS} from health_daily
-       where profile_id = $profileId and day >= $from and day <= $to and metric in (${names.join(', ')})
+       where profile_id = $profileId and day >= $from and day <= $to and ${filter.text}
        order by day, metric`,
-      {
-        profileId,
-        from,
-        to,
-        ...Object.fromEntries(metrics.map((metric, index) => [`metric${String(index)}`, metric])),
-      },
+      { profileId, from, to, ...filter.parameters },
     );
   }
 

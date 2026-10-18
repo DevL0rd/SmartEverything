@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { API_ENDPOINTS as E, type ComputerNativeMcpPolicy } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
 import { computerAiKey } from './computer-ai';
@@ -6,9 +7,9 @@ import { useClaudeCliOrigin } from './claude-cli-origin';
 
 export function useNativeMcpPolicy(
   deviceId: string,
-): ReturnType<typeof useQuery<ComputerNativeMcpPolicy>> {
+): ReturnType<typeof useScreenQuery<ComputerNativeMcpPolicy>> {
   const origin = useClaudeCliOrigin();
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...computerAiKey(deviceId), 'mcp-policy', 'claude', ...origin.key],
     queryFn: async (): Promise<ComputerNativeMcpPolicy> => {
       origin.assertCurrent();
@@ -42,7 +43,7 @@ export function useNativeMcpPolicyChange(
       client.setQueryData(key, policy);
     },
     onError: (error): void => {
-      notify({ message: 'Native home-tool access wasn’t changed', error, tone: 'critical' });
+      notify({ message: 'Home tools access wasn’t changed', error, tone: 'critical' });
     },
   });
 }

@@ -5,6 +5,8 @@ import { href } from '../../app-shell/hrefs';
 import { Button } from '../../components/button';
 import { Text } from '../../components/text';
 import { WidgetFrame, type WidgetDefinition } from '../../components/widget-board';
+import { allSizes, isTile } from '../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../components/widget-board/use-widget-face';
 import type { Device } from '../../store/state';
 import { useWatchCommand } from './watch-config';
 import { useMyWatch } from './watch-glance';
@@ -13,13 +15,13 @@ import { WorkoutClock, WorkoutControls } from './watch-workout-live';
 
 function WorkoutContent({
   watch,
-  size,
 }: {
   readonly watch: Device;
   readonly size: WidgetSize;
 }): ReactNode {
   const view = useWatchWorkout(watch);
   const command = useWatchCommand(watch);
+  const tile = isTile(useWidgetFace().cls);
   if (view.reading.kind === 'invalid') {
     return (
       <Text variant="callout" tone="critical">
@@ -50,7 +52,7 @@ function WorkoutContent({
   return (
     <View className="flex-1 justify-between gap-2">
       <WorkoutClock workout={workout} compact />
-      {size === 'S' ? null : <WorkoutControls workout={workout} command={command} />}
+      {tile ? null : <WorkoutControls workout={workout} command={command} />}
     </View>
   );
 }
@@ -63,7 +65,6 @@ function WatchWorkoutWidget({ size }: { readonly size: WidgetSize }): ReactNode 
       icon="activity"
       accent="viz-2"
       href={watch === null ? href.connect('watch') : href.device(watch)}
-      size={size}
     >
       {watch === null ? (
         <Text variant="callout" tone="variant">
@@ -76,13 +77,11 @@ function WatchWorkoutWidget({ size }: { readonly size: WidgetSize }): ReactNode 
   );
 }
 
-const SIZES = ['S', 'M', 'W'] as const;
-
 export const WATCH_WORKOUT_WIDGET: WidgetDefinition = {
   type: 'watch-workout',
   title: 'Watch workout',
   icon: 'activity',
-  sizes: { compact: SIZES, medium: SIZES, expanded: SIZES },
+  sizes: allSizes('M', 'W'),
   defaultSize: 'M',
   render: ({ size }) => <WatchWorkoutWidget size={size} />,
 };

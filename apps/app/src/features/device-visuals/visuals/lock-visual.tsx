@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import type { ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { Circle, Defs, Path } from 'react-native-svg';
+import { Circle, Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import type { ColourRole } from '../../../design/tokens';
 import { eased } from '../../../design/loops';
-import { Canvas, FULL, Layer, boxStyle, scaled, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, boxStyle, scaled, useSvgId } from '../parts/frame';
 import { BodyGradient, tintRole, useInk, WELL } from '../parts/ink';
 import { rounded } from '../parts/shapes';
 import { ContactShadow, Shine } from '../parts/material';
@@ -48,38 +48,34 @@ export function LockVisual({ state, px, tone, reduced }: VisualProps): ReactNode
   return (
     <>
       <Bolt px={px} locked={locked} reduced={reduced} />
-      <Layer box={FULL} px={px}>
-        <Canvas px={px}>
-          <Defs>
-            <BodyGradient id={body} ink={ink} />
-          </Defs>
-          <ContactShadow cx={50} cy={90} rx={22} ry={3.5} />
-          <Path
-            d={rounded({ x: 30, y: 12, w: 40, h: 76, r: 14 })}
-            fill={`url(#${body})`}
-            stroke={ink.edge}
-            strokeWidth={0.6}
-          />
-          <Shine d={rounded({ x: 30, y: 12, w: 40, h: 76, r: 14 })} />
-          <Circle
-            cx={50}
-            cy={32}
-            r={8}
-            fill={ink.well}
-            fillOpacity={WELL}
-            stroke={status}
-            strokeWidth={1.6}
-          />
-          <Path
-            d="M50 56 V72"
-            stroke={ink.well}
-            strokeOpacity={WELL}
-            strokeWidth={5}
-            strokeLinecap="round"
-          />
-          <Circle cx={50} cy={53} r={4.5} fill={ink.well} fillOpacity={WELL} />
-        </Canvas>
-      </Layer>
+      <Canvas px={px} layer>
+        <BodyGradient id={body} ink={ink} />
+        <ContactShadow cx={50} cy={90} rx={22} ry={3.5} />
+        <Path
+          d={rounded({ x: 30, y: 12, w: 40, h: 76, r: 14 })}
+          fill={`url(#${body})`}
+          stroke={ink.edge}
+          strokeWidth={0.6}
+        />
+        <Shine d={rounded({ x: 30, y: 12, w: 40, h: 76, r: 14 })} />
+        <Circle
+          cx={50}
+          cy={32}
+          r={8}
+          fill={ink.well}
+          fillOpacity={WELL}
+          stroke={status}
+          strokeWidth={1.6}
+        />
+        <Path
+          d="M50 56 V72"
+          stroke={ink.well}
+          strokeOpacity={WELL}
+          strokeWidth={5}
+          strokeLinecap="round"
+        />
+        <Circle cx={50} cy={53} r={4.5} fill={ink.well} fillOpacity={WELL} />
+      </Canvas>
     </>
   );
 }

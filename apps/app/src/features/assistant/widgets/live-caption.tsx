@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { useForeground } from '../../../design/animation-gate';
+import { useAnimationGate } from '../../../design/animation-gate';
+import { useScopeVisible } from '../../../design/visibility';
 import { RING, loopStyle } from '../../../design/loops';
-import { useMotion } from '../../../design/motion';
 import { useStoreSelector } from '../../../store/store-context';
 import type { StoreState } from '../../../store/state';
 import { Overline } from '../components/overline';
@@ -13,9 +13,7 @@ const RING_MS = 1800;
 const selectLive = (state: StoreState): boolean => state.sync.status === 'live';
 
 function LiveDot({ live }: { readonly live: boolean }): ReactNode {
-  const { reduced } = useMotion();
-  const foreground = useForeground();
-  const running = live && !reduced && foreground;
+  const { moving: running } = useAnimationGate(live, useScopeVisible());
   return (
     <View aria-hidden className="size-1.5 items-center justify-center">
       <View

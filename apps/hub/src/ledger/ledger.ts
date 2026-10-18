@@ -16,7 +16,14 @@ import {
 } from '@smarteverything/domain';
 import type { StoreContext } from '../store/context';
 import { ledgerPageOf, positionOf } from './ledger-page';
-import { choicesOf, seriesOf, spentSince, totalsOf, unknownSince } from './usage-queries';
+import {
+  choicesOf,
+  seriesOf,
+  spentByProfile,
+  spentSince,
+  totalsOf,
+  unknownSince,
+} from './usage-queries';
 import { UsageStore } from './usage-store';
 import { durableSessionWrite } from '../store/repositories/dsh-session-durability';
 
@@ -32,7 +39,7 @@ export interface LedgerRequest {
   readonly limit: number;
 }
 
-export class AlreadyFinalError extends Error {
+class AlreadyFinalError extends Error {
   override readonly name = 'AlreadyFinalError';
 
   constructor(id: string, state: string) {
@@ -113,8 +120,8 @@ export class Ledger {
     return row;
   }
 
-  pendingHarness(): AiUsageRow[] {
-    return this.rows.pendingHarness();
+  pendingGenerations(): AiUsageRow[] {
+    return this.rows.pendingGenerations();
   }
 
   reconcile(id: string, stats: UsageReconcile): AiUsageRow {
@@ -179,6 +186,10 @@ export class Ledger {
 
   spentSince(from: string): number {
     return spentSince(this.context.sql, from);
+  }
+
+  spentByProfile(from: string, profileId: string): number {
+    return spentByProfile(this.context.sql, from, profileId);
   }
 
   choices(filter: UsageFilter): UsageChoices {

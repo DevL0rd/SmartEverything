@@ -3,6 +3,8 @@ import type { ComputerRunnerDeps, Turn } from './ports';
 import type { ProviderState, ComputerEvent } from './provider-state';
 import { providerToolValidation } from './tool-validation';
 import { routeProviderTool } from './tool-bridge';
+import { duplicateTool, nativeTool, staleTool } from './tool-trace';
+import { messageOf } from '@smarteverything/logging';
 export function bridgeTool(
   route: {
     readonly deps: ComputerRunnerDeps;
@@ -17,9 +19,13 @@ export function bridgeTool(
   const item = toolItem(event);
   if ('origin' in event && event.origin !== 'hub') {
     turn.stream.tool(item, { input: event.input });
+    nativeTool(turn.chat.id, event);
     return;
   }
-  if (turn.calls.has(event.call_id)) return;
+  if (turn.calls.has(event.call_id)) {
+    duplicateTool(turn.chat.id, event);
+    return;
+  }
   turn.calls.add(event.call_id);
   turn.stream.tool(item, { input: event.input });
   const binding = state.bound(turn.chat);
@@ -37,13 +43,16 @@ export function bridgeTool(
     event,
   )
     .then(({ line, failed, output }) => {
-      if (!current()) return;
+      if (!current()) {
+        staleTool(turn.chat.id, event);
+        return;
+      }
       if (line !== '') deps.conversation.action(turn.chat, line);
       turn.stream.tool({ ...item, state: failed ? 'failed' : 'done' }, { output });
     })
     .catch((cause: unknown) => {
       deps.log.error('claude.tool_bridge_failed', cause, { chatId: turn.chat.id });
-      fail(cause instanceof Error ? cause.message : 'The scoped tool bridge failed.');
+      fail(messageOf(cause));
     });
 }
 

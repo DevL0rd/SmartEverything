@@ -72,6 +72,8 @@ describe('value descriptors', () => {
   it('turn a value-range into a number with step and readable unit', () => {
     const units = {
       percentage: '%',
+      arcdegrees: '°',
+      watt: 'W',
       celsius: '°C',
       fahrenheit: '°F',
       kelvin: 'K',
@@ -161,14 +163,16 @@ const enumCodec: ValueCodec = {
 };
 
 describe('converting values from the device', () => {
-  it('accepts booleans and 0 or 1 for booleans', () => {
+  it('accepts booleans, 0 or 1 and the words true or false for booleans', () => {
     const codec: ValueCodec = { kind: 'boolean' };
     expect(fromDevice('s', codec, true)).toBe(true);
     expect(fromDevice('s', codec, false)).toBe(false);
     expect(fromDevice('s', codec, 1)).toBe(true);
     expect(fromDevice('s', codec, 0)).toBe(false);
+    expect(fromDevice('s', codec, 'true')).toBe(true);
+    expect(fromDevice('s', codec, 'false')).toBe(false);
     expect(() => fromDevice('s', codec, 2)).toThrow(
-      new MiotValueError('s', 'true, false, 0 or 1', 2),
+      new MiotValueError('s', 'true, false, 0, 1, "true" or "false"', 2),
     );
   });
 
@@ -179,7 +183,7 @@ describe('converting values from the device', () => {
     expect(fromDevice('s', codec, 1)).toBe(false);
     expect(fromDevice('s', codec, 0)).toBe(true);
     expect(() => fromDevice('s', codec, 'open')).toThrow(
-      new MiotValueError('s', 'true, false, 0 or 1', 'open'),
+      new MiotValueError('s', 'true, false, 0, 1, "true" or "false"', 'open'),
     );
   });
 

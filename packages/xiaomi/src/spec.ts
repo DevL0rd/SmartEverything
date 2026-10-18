@@ -132,6 +132,8 @@ const KIND_BY_DEVICE_TYPE: ReadonlyMap<string, DeviceKind> = new Map<string, Dev
   ['ir-remote-control', 'ir_blaster'],
   ['gateway', 'gateway'],
   ['air-monitor', 'sensor'],
+  ['washer', 'appliance'],
+  ['dryer', 'appliance'],
 ]);
 
 export function deviceKindOf(deviceType: string): DeviceKind {

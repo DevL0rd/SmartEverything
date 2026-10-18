@@ -13,14 +13,13 @@ import { SelectRow, SwitchRow } from '../../../components/rows';
 import type { SelectOption } from '../../../components/select';
 import { Screen } from '../../../components/screen';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
-import { CapabilityRow, offlineReason } from '../../devices';
+import { notifyFailure } from '../../../components/toast-store';
+import { CapabilityRow, DeviceAlertsRow, DeviceSettingsFrame, offlineReason } from '../../devices';
 import { PrivacyRow, hasPrivacySwitch } from '../components/privacy-row';
 import { useCameraEntry } from '../data/use-cameras';
 import { TranscribeRow } from '../transcripts/transcribe-row';
 import type { CameraEntry } from '../logic/cameras';
 import { cameraSections } from './camera-groups';
-import { DeviceSettingsFrame } from '../../devices';
 
 const SENSITIVITY_OPTIONS: readonly SelectOption<WakeSensitivity>[] = WAKE_SENSITIVITIES.map(
   (sensitivity) => ({
@@ -31,9 +30,7 @@ const SENSITIVITY_OPTIONS: readonly SelectOption<WakeSensitivity>[] = WAKE_SENSI
 );
 
 function change(deviceId: string, update: CameraChange, failure: string): void {
-  changeCamera(deviceId, update).catch((error: unknown) => {
-    notify({ message: failure, error, tone: 'critical' });
-  });
+  changeCamera(deviceId, update).catch(notifyFailure(failure));
 }
 
 function CameraRows({ entry }: { readonly entry: CameraEntry }): ReactNode {
@@ -52,6 +49,7 @@ function CameraRows({ entry }: { readonly entry: CameraEntry }): ReactNode {
             change(camera.device_id, { record_events: record }, 'Save event clips wasn’t changed');
           }}
         />
+        <DeviceAlertsRow deviceId={camera.device_id} />
       </List>
       <List footer="Raise it if this camera’s microphone is quiet or far from where people talk. Higher hears fainter calls but may wake on similar words.">
         <SelectRow

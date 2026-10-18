@@ -1,8 +1,11 @@
+import { Logger, describeFailure } from '@smarteverything/logging';
 import type { Directory } from '../directory';
 import type { DiscordRest } from '../link';
 import { RAW_MEMBER, RAW_USER } from '../payloads';
 import { person, rawPerson, type Person } from '../person';
 import type { VoiceState } from './link';
+
+const log = new Logger('hub.discord-roster');
 
 const NEGATIVE_MS = 10 * 60_000;
 
@@ -41,7 +44,14 @@ export class Roster {
     }
     this.tried.set(key, this.now() + NEGATIVE_MS);
     const found = MEMBER.safeParse(
-      await this.rest.get(`/guilds/${guildId}/members/${userId}`).catch(() => null),
+      await this.rest.get(`/guilds/${guildId}/members/${userId}`).catch((cause: unknown) => {
+        log.debug('member.lookup_failed', () => ({
+          guildId,
+          userId,
+          error: describeFailure(cause).message,
+        }));
+        return null;
+      }),
     );
     if (found.success) {
       this.directory.learnVisible(rawPerson(found.data.user, found.data), guildId, true);

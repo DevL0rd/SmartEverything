@@ -3,6 +3,9 @@ import { watch } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { kill } from 'node:process';
+import { Logger } from '@smarteverything/logging';
+
+const log = new Logger('desktop.system');
 
 export interface CommandResult {
   readonly stdout: string;
@@ -62,12 +65,23 @@ const commandRunner =
   (timeout: number): RunCommand =>
   (file, args) =>
     new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const program = path.basename(file);
+      log.debug('command.started', { program, argumentCount: args.length, timeoutMs: timeout });
       execFile(
         file,
         [...args],
         { timeout, windowsHide: true, encoding: 'utf8' },
         (error, stdout, stderr) => {
+          const durationMs = Date.now() - startedAt;
           if (error !== null) {
+            log.debug('command.failed', () => ({
+              program,
+              exitCode: exitCodeOf(error),
+              killed: 'killed' in error && error.killed,
+              outputBytes: stdout.length + stderr.length,
+              durationMs,
+            }));
             const output = `${stderr}${stdout}`.trim().slice(-600);
             reject(
               new CommandFailedError(
@@ -79,6 +93,7 @@ const commandRunner =
             );
             return;
           }
+          log.debug('command.finished', { program, outputBytes: stdout.length, durationMs });
           resolve({ stdout });
         },
       );
@@ -88,6 +103,10 @@ const runCommand = commandRunner(COMMAND_TIMEOUT_MS);
 
 export const runAwaitingApproval = commandRunner(APPROVAL_TIMEOUT_MS);
 
+function errorNameOf(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
 function isMissing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
@@ -95,19 +114,27 @@ function isMissing(error: unknown): boolean {
 const nodeFiles: ServiceFiles = {
   read: async (file) => {
     try {
-      return await readFile(file, 'utf8');
+      const text = await readFile(file, 'utf8');
+      log.trace('file.read', () => ({ name: path.basename(file), bytes: text.length }));
+      return text;
     } catch (error: unknown) {
       if (isMissing(error)) {
+        log.trace('file.missing', () => ({ name: path.basename(file) }));
         return null;
       }
+      log.warn('file.read_failed', { name: path.basename(file), reason: errorNameOf(error) });
       throw error;
     }
   },
   write: async (file, text, mode) => {
     await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
     await writeFile(file, text, { mode });
+    log.debug('file.written', () => ({ name: path.basename(file), bytes: text.length, mode }));
   },
-  remove: (file) => rm(file, { force: true }),
+  remove: async (file) => {
+    await rm(file, { force: true });
+    log.debug('file.removed', () => ({ name: path.basename(file) }));
+  },
 };
 
 function isProcessAlive(processId: number): boolean {
@@ -120,13 +147,19 @@ function isProcessAlive(processId: number): boolean {
 }
 
 const watchDirectory: WatchDirectory = (directory, handlers) => {
-  const watcher = watch(directory, (_event, name) => {
+  const watcher = watch(directory, (event, name) => {
+    log.trace('directory.changed', { event, name });
     if (name !== null) {
       handlers.changed(name);
     }
   });
-  watcher.on('error', handlers.failed);
+  log.debug('directory.watching', () => ({ directory: path.basename(directory) }));
+  watcher.on('error', (cause: unknown) => {
+    log.error('directory.watch_failed', cause, { directory: path.basename(directory) });
+    handlers.failed(cause);
+  });
   return () => {
+    log.debug('directory.unwatched', () => ({ directory: path.basename(directory) }));
     watcher.close();
   };
 };

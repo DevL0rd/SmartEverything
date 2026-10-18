@@ -1,117 +1,88 @@
-import {
-  IMAGE_OUTPUT_BYTES_MAX,
-  type ImageOperationRequest,
-  type ImageEndpoint,
-  type ImageResolvedInput,
-} from '@smarteverything/domain';
+import type { ImageEndpoint, ImageOperationRequest } from '@smarteverything/domain';
+import { Logger, messageOf } from '@smarteverything/logging';
+import type { z } from 'zod';
 import { ImageOperationError } from '../assistant/image/errors';
 import { decodeImage, type ImageBytes } from '../assistant/image/media';
-import { boundedBody, boundedText, IMAGE_RESPONSE_LIMIT, parseImageJson } from './image-response';
-import { imageStream } from './image-stream';
-import {
-  IMAGE_EVENT_WIRE,
-  IMAGE_RESPONSE_WIRE,
-  IMAGE_RESPONSE_USAGE_WIRE,
-  IMAGE_COMPLETED_USAGE_WIRE,
-} from './image-wire';
-import type { ImageFetch } from './image-catalog';
+import type { OpenRouterClient } from './client';
+import { openRouterError, OpenRouterError, readJson } from './errors';
+import { IMAGE_EVENT_WIRE, IMAGE_RESPONSE_WIRE } from './image-wire';
 
+const log = new Logger('hub.assistant');
+type Usage = Readonly<Record<string, number>>;
 export interface ImageProviderResult {
   readonly images: readonly ImageBytes[];
-  readonly usage: Readonly<Record<string, number>> | null;
+  readonly usage: Usage | null;
   readonly usageSource: 'provider_response' | 'provider_event';
 }
 export interface ImageProviderInput {
   readonly request: ImageOperationRequest;
   readonly endpoint: ImageEndpoint;
-  readonly inputs: readonly { readonly identity: ImageResolvedInput; readonly image: ImageBytes }[];
+  readonly inputs: readonly { readonly image: ImageBytes }[];
   readonly signal: AbortSignal;
-  readonly authorize: () => void;
   readonly submitted: () => void;
-  readonly usage: (
-    usage: Readonly<Record<string, number>>,
-    source: 'provider_response' | 'provider_event',
-  ) => void;
-  readonly preview: (image: ImageBytes) => Promise<void>;
+  readonly usage: (usage: Usage, source: ImageProviderResult['usageSource']) => void;
+  readonly preview: (content: Buffer) => Promise<void>;
 }
 export class OpenRouterImageProvider {
-  constructor(
-    private readonly options: { readonly fetch: ImageFetch; readonly key: () => string | null },
-  ) {}
+  constructor(private readonly client: OpenRouterClient) {}
   async generate(input: ImageProviderInput): Promise<ImageProviderResult> {
-    const key = this.options.key();
-    if (key === null)
-      throw new ImageOperationError('provider', 'Configure an OpenRouter image-provider key.');
     const body = imageRequestBody(input);
-    input.signal.throwIfAborted();
-    input.authorize();
     input.submitted();
-    let response: Response;
     try {
-      response = await this.options.fetch('https://openrouter.ai/api/v1/images', {
-        method: 'POST',
-        redirect: 'error',
-        signal: input.signal,
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body,
-      });
+      return input.request.options.stream
+        ? await this.stream(body, input)
+        : await this.buffered(body, input);
     } catch (cause) {
-      if (input.signal.aborted)
+      if (cause instanceof OpenRouterError)
         throw new ImageOperationError(
-          'cancelled',
-          'Image request cancelled; billing is unverified.',
+          cause.status !== null || cause.code === 'no_key' ? 'provider' : 'unknown',
+          cause.message,
         );
-      throw new ImageOperationError(
-        'unknown',
-        cause instanceof Error
-          ? 'The image provider connection failed after submission; delivery is unknown.'
-          : 'Image submission delivery is unknown.',
-      );
+      throw cause;
     }
-    if (!response.ok) {
-      await response.body?.cancel();
-      throw new ImageOperationError('provider', `Image provider HTTP ${String(response.status)}.`);
-    }
-    return input.request.options.stream ? this.stream(response, input) : buffered(response, input);
   }
-  private async stream(
-    response: Response,
-    input: ImageProviderInput,
-  ): Promise<ImageProviderResult> {
-    if (response.body === null)
-      throw new ImageOperationError('unknown', 'Image stream has no body.');
-    const images: ImageBytes[] = [];
-    let usage: Readonly<Record<string, number>> | null = null;
-    for await (const data of imageStream(response.body, input.signal)) {
-      if (data === '[DONE]') {
-        if (images.length === 0)
-          throw new ImageOperationError('unknown', 'Image stream ended without a completed image.');
-        return { images, usage, usageSource: 'provider_event' };
+  private async buffered(body: unknown, input: ImageProviderInput): Promise<ImageProviderResult> {
+    const wire = await this.client.image(body, IMAGE_RESPONSE_WIRE, input.signal);
+    if (wire.usage !== undefined) input.usage(wire.usage, 'provider_response');
+    const decoded = await Promise.all(wire.data.map((item) => readable(item.b64_json)));
+    return resultOf(decoded, wire.usage ?? null, 'provider_response');
+  }
+  private async stream(body: unknown, input: ImageProviderInput): Promise<ImageProviderResult> {
+    const decoded: (ImageBytes | null)[] = [];
+    let usage: Usage | null = null;
+    try {
+      for await (const data of this.client.imageEvents(body, input.signal)) {
+        const event = eventOf(data);
+        if (event.type === 'error')
+          throw new ImageOperationError('provider', 'The image provider reported an error.');
+        if (event.type === 'image_generation.partial_image') {
+          await input.preview(Buffer.from(event.b64_json, 'base64'));
+          continue;
+        }
+        decoded.push(await readable(event.b64_json));
+        if (event.usage !== undefined) {
+          usage = event.usage;
+          input.usage(event.usage, 'provider_event');
+        }
       }
-      const decoded = parseImageJson(data);
-      const reported = retainImageUsage(decoded, input, 'provider_event');
-      const event = IMAGE_EVENT_WIRE.parse(decoded);
-      if (event.type === 'error')
-        throw new ImageOperationError('provider', 'The image provider reported an error.');
-      const image = await decodeImage(event.b64_json, event.media_type, input.signal);
-      if (event.type === 'image_generation.partial_image') await input.preview(image);
-      else {
-        images.push(image);
-        enforceOutput(images, input.request.options.n);
-        usage = reported ?? usage;
-      }
+    } catch (cause) {
+      if (decoded.length === 0 || input.signal.aborted) throw cause;
+      log.warn('image.stream_cut_short', {
+        completed: decoded.length,
+        reason: messageOf(cause),
+      });
     }
-    throw new ImageOperationError('unknown', 'The image stream did not finish.');
+    return resultOf(decoded, usage, 'provider_event');
   }
 }
-function imageRequestBody(input: ImageProviderInput): string {
+function imageRequestBody(input: ImageProviderInput): Record<string, unknown> {
   const request = input.request;
   const { stream, n, ...options } = request.options;
   const prompt =
     request.mode === 'edit'
       ? `The first input image is the source to edit. Remaining images are ordered references. ${request.prompt}`
       : request.prompt;
-  return boundedBody({
+  return {
     model: request.model,
     prompt,
     ...options,
@@ -126,40 +97,33 @@ function imageRequestBody(input: ImageProviderInput): string {
             image_url: { url: `data:${image.mime};base64,${image.content.toString('base64')}` },
           })),
         }),
-  });
+  };
 }
-async function buffered(
-  response: Response,
-  input: ImageProviderInput,
-): Promise<ImageProviderResult> {
-  const decoded = parseImageJson(await boundedText(response, IMAGE_RESPONSE_LIMIT, input.signal));
-  const usage = retainImageUsage(decoded, input, 'provider_response');
-  const wire = IMAGE_RESPONSE_WIRE.parse(decoded);
-  const images: ImageBytes[] = [];
-  for (const item of wire.data)
-    images.push(await decodeImage(item.b64_json, item.media_type, input.signal));
-  enforceOutput(images, input.request.options.n);
-  return { images, usage, usageSource: 'provider_response' };
+function eventOf(data: string): z.infer<typeof IMAGE_EVENT_WIRE> {
+  const json = readJson(data);
+  if (!json.ok) throw openRouterError('unreadable', `an image event wasn’t JSON: ${json.reason}`);
+  const parsed = IMAGE_EVENT_WIRE.safeParse(json.value);
+  if (!parsed.success)
+    throw openRouterError('unreadable', `an image event: ${parsed.error.issues[0]?.message ?? ''}`);
+  return parsed.data;
 }
-function retainImageUsage(
-  decoded: unknown,
-  input: ImageProviderInput,
-  source: ImageProviderResult['usageSource'],
-): Readonly<Record<string, number>> | null {
-  const schema =
-    source === 'provider_event' ? IMAGE_COMPLETED_USAGE_WIRE : IMAGE_RESPONSE_USAGE_WIRE;
-  const result = schema.safeParse(decoded);
-  if (!result.success || result.data.usage === undefined) return null;
-  input.usage(result.data.usage, source);
-  return result.data.usage;
+async function readable(encoded: string): Promise<ImageBytes | null> {
+  try {
+    return await decodeImage(encoded);
+  } catch (cause) {
+    log.warn('image.output_unreadable', {
+      reason: messageOf(cause),
+    });
+    return null;
+  }
 }
-function enforceOutput(images: readonly ImageBytes[], count: number): void {
-  if (
-    images.length > count ||
-    images.reduce((total, image) => total + image.content.length, 0) > IMAGE_OUTPUT_BYTES_MAX
-  )
-    throw new ImageOperationError(
-      'limit',
-      'The provider returned too many image bytes or results.',
-    );
+function resultOf(
+  decoded: readonly (ImageBytes | null)[],
+  usage: Usage | null,
+  usageSource: ImageProviderResult['usageSource'],
+): ImageProviderResult {
+  const images = decoded.filter((image) => image !== null);
+  if (images.length === 0)
+    throw new ImageOperationError('unknown', 'The provider returned no readable image.');
+  return { images, usage, usageSource };
 }

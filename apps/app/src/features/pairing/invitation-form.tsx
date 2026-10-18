@@ -9,6 +9,7 @@ import { List } from '../../components/section';
 import { TextField } from '../../components/text-field';
 import { useValue } from '../../design/external-store';
 import type { PairingPresentation } from './pairing-actions';
+import { background } from '@smarteverything/logging';
 
 function InvitationPreview({
   invitation,
@@ -33,7 +34,7 @@ function InvitationPreview({
         label="Continue"
         size="lg"
         onPress={() => {
-          void pairing.target(target, false);
+          background(pairing.target(target, false), 'pairing.target_failed');
         }}
       />
       <Button
@@ -80,7 +81,7 @@ export function InvitationForm({ pairing }: { readonly pairing: PairingPresentat
         label="Back"
         variant="text"
         onPress={() => {
-          void pairing.change('welcome');
+          background(pairing.change('welcome'), 'pairing.change_failed');
         }}
       />
     </View>

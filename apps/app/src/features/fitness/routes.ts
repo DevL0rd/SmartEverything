@@ -1,26 +1,16 @@
-import type { PreloadContext, RouteDefinition } from '../../app-shell/route-types';
-import { HEALTH_METRICS } from '@smarteverything/domain';
-import { healthKeys, PRESENCE_DAYS, sightingsSince } from './data/queries';
-import { readDailyFigures, readSightings } from './data/reads';
-import { dayKeyOf, shiftDay } from '../../format/time';
+import type { RouteDefinition } from '../../app-shell/route-types';
+import {
+  preloadActivity,
+  preloadBody,
+  preloadBrowse,
+  preloadHeart,
+  preloadSleep,
+  preloadVitals,
+  preloadWorkouts,
+} from './data/preload';
 
 const hasHealth = (availability: { readonly hasHealth: boolean }): boolean =>
   availability.hasHealth;
-
-async function preloadToday({ queryClient }: PreloadContext): Promise<void> {
-  const today = dayKeyOf(Date.now());
-  const since = sightingsSince(today);
-  await queryClient.query({
-    queryKey: healthKeys.sightings(since),
-    queryFn: () => readSightings(since),
-  });
-  const first = shiftDay(today, -PRESENCE_DAYS);
-  const last = shiftDay(today, -30);
-  await queryClient.query({
-    queryKey: healthKeys.daily(first, last, HEALTH_METRICS),
-    queryFn: () => readDailyFigures(first, last, HEALTH_METRICS),
-  });
-}
 
 interface PageSpec {
   readonly key: string;
@@ -28,9 +18,10 @@ interface PageSpec {
   readonly title: string;
   readonly icon: RouteDefinition['icon'];
   readonly keywords: readonly string[];
+  readonly preload: NonNullable<RouteDefinition['preload']>;
 }
 
-function page({ key, path, title, icon, keywords }: PageSpec): RouteDefinition {
+function page({ key, path, title, icon, keywords, preload }: PageSpec): RouteDefinition {
   return {
     key,
     href: `/fitness/${path}`,
@@ -40,7 +31,7 @@ function page({ key, path, title, icon, keywords }: PageSpec): RouteDefinition {
     parent: 'fitness',
     keywords,
     available: hasHealth,
-    preload: preloadToday,
+    preload,
     searchable: true,
   };
 }
@@ -53,6 +44,7 @@ const START_WORKOUT: RouteDefinition = {
   tab: 'fitness',
   parent: 'fitness-workouts',
   keywords: ['start workout', 'exercise', 'treadmill', 'run', 'walk', 'watch workout'],
+  preload: preloadWorkouts,
   available: (availability) => availability.hasHealth && availability.hasWatch,
   searchable: true,
 };
@@ -64,6 +56,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Activity',
     icon: 'footprints',
     keywords: ['steps', 'calories', 'distance', 'move'],
+    preload: preloadActivity,
   }),
   page({
     key: 'fitness-heart',
@@ -71,6 +64,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Heart',
     icon: 'heartPulse',
     keywords: ['heart rate', 'pulse', 'zones', 'bpm'],
+    preload: preloadHeart,
   }),
   page({
     key: 'fitness-sleep',
@@ -78,6 +72,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Sleep',
     icon: 'moon',
     keywords: ['sleep', 'bedtime', 'stages'],
+    preload: preloadSleep,
   }),
   page({
     key: 'fitness-body',
@@ -85,6 +80,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Body',
     icon: 'scale',
     keywords: ['weight', 'body fat', 'scale'],
+    preload: preloadBody,
   }),
   page({
     key: 'fitness-workouts',
@@ -92,6 +88,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Workouts',
     icon: 'dumbbell',
     keywords: ['exercise', 'run', 'training'],
+    preload: preloadWorkouts,
   }),
   page({
     key: 'fitness-vitals',
@@ -99,6 +96,7 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'Vitals',
     icon: 'breath',
     keywords: ['oxygen', 'spo2', 'breathing', 'temperature'],
+    preload: preloadVitals,
   }),
   START_WORKOUT,
   page({
@@ -107,5 +105,6 @@ export const ROUTES: readonly RouteDefinition[] = [
     title: 'All health data',
     icon: 'list',
     keywords: ['health data', 'metrics'],
+    preload: preloadBrowse,
   }),
 ];

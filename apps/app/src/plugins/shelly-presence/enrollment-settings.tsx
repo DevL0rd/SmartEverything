@@ -1,16 +1,15 @@
-import { EnrollmentTlsFields, type EnrollmentTls } from './enrollment-tls';
-import { useLocalSearchParams } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { Logger, background } from '@smarteverything/logging';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import {
   SHELLY_DISCOVERY_RESULT,
-  SHELLY_PRESENCE_ENROLL_REQUEST,
-  SHELLY_PRESENCE_ENROLL_RESULT,
-  SHELLY_PRESENCE_FORGET_RESULT,
-  SHELLY_PRESENCE_PLUGIN_ID,
-  SHELLY_PRESENCE_SNAPSHOT,
-  SHELLY_PRESENCE_STREAM,
-} from '@smarteverything/domain';
+  SHELLY_ENROLL_REQUEST,
+  SHELLY_ENROLL_RESULT,
+  SHELLY_FORGET_RESULT,
+  SHELLY_PLUGIN_ID,
+  SHELLY_SNAPSHOT,
+  SHELLY_SNAPSHOT_STREAM,
+} from '@smarteverything/shelly';
 import { Button } from '../../components/button';
 import { NavRow } from '../../components/rows';
 import { List } from '../../components/section';
@@ -18,66 +17,26 @@ import { TextField } from '../../components/text-field';
 import { Text } from '../../components/text';
 import { callPluginTool } from '../../api/plugins';
 import { useIsOwner } from '../../store/selectors';
+import { PluginButton } from '../shared/plugin-action';
 import { usePluginStream } from '../shared/use-plugin-stream';
+import { failure } from './use-presence-operation';
 
-function EnrollForm({
-  address,
-  changeAddress,
-}: {
-  readonly address: string;
-  readonly changeAddress: (value: string) => void;
-}): ReactNode {
-  const params = useLocalSearchParams<{ readonly focus?: string }>();
-  const { password, setPassword, tls, setTls, busy, message, enroll } = useEnroll(address);
-  return (
-    <View className="gap-3">
-      <TextField
-        label="Sensor address"
-        focusOnMount={params.focus === 'Sensor address'}
-        kind="url"
-        value={address}
-        onChange={changeAddress}
-        helper="HTTP or HTTPS origin, for example http://shelly-presence.local"
-      />
-      <TextField
-        label="Local access password"
-        focusOnMount={params.focus === 'Local access password'}
-        kind="password"
-        value={password}
-        onChange={setPassword}
-        helper="Leave blank if local authentication is disabled"
-      />
-      {address.startsWith('https://') ? <EnrollmentTlsFields value={tls} change={setTls} /> : null}
-      <Button
-        label="Connect configured sensor"
-        loading={busy}
-        disabled={address.trim() === ''}
-        onPress={() => {
-          void enroll();
-        }}
-      />
-      {message === null ? null : (
-        <Text selectable accessibilityLiveRegion="polite">
-          {message}
-        </Text>
-      )}
-    </View>
-  );
-}
+const log = new Logger('app.shelly-presence');
 function EnrolledSensors(): ReactNode {
-  const stream = usePluginStream(
-    SHELLY_PRESENCE_PLUGIN_ID,
-    SHELLY_PRESENCE_STREAM,
-    SHELLY_PRESENCE_SNAPSHOT,
-  );
+  const stream = usePluginStream(SHELLY_PLUGIN_ID, SHELLY_SNAPSHOT_STREAM, SHELLY_SNAPSHOT);
   const [message, setMessage] = useState<string | null>(null);
   const forget = async (externalId: string): Promise<void> => {
     try {
-      const reply = await callPluginTool(SHELLY_PRESENCE_PLUGIN_ID, 'forget', { externalId });
-      SHELLY_PRESENCE_FORGET_RESULT.parse(reply.result);
+      const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'forget', { externalId });
+      SHELLY_FORGET_RESULT.parse(reply.result);
+      log.info('sensor.forgotten', { externalId });
       setMessage('Sensor removed from this plugin.');
     } catch (error) {
-      setMessage(String(error));
+      log.warn('sensor.forget_failed', {
+        externalId,
+        error: error instanceof Error ? error.name : typeof error,
+      });
+      setMessage(failure(error));
     }
   };
   return (
@@ -90,12 +49,16 @@ function EnrolledSensors(): ReactNode {
               <Text variant="footnote" tone="variant">
                 {sensor.address}
               </Text>
-              <Button
+              <PluginButton
                 label={`Forget ${sensor.name}`}
                 variant="destructive"
-                onPress={() => {
-                  void forget(sensor.externalId);
+                confirmation={{
+                  title: `Forget ${sensor.name}?`,
+                  body: 'The sensor and its zones leave SmartEverything. The physical sensor is not reset.',
+                  confirmLabel: 'Forget',
+                  tone: 'destructive',
                 }}
+                onPress={() => forget(sensor.externalId)}
               />
             </View>
           ))}
@@ -105,85 +68,138 @@ function EnrolledSensors(): ReactNode {
     </View>
   );
 }
-export function EnrollmentSettings(): ReactNode {
-  const owner = useIsOwner();
-  const [address, setAddress] = useState('');
-  const { candidates, busy, message, discover } = useDiscovery();
-  if (!owner)
-    return <Text tone="variant">The home owner can connect or forget configured sensors.</Text>;
+type Candidate = ReturnType<typeof SHELLY_DISCOVERY_RESULT.parse>['candidates'][number];
+
+export function unpairedCandidates(
+  candidates: readonly Candidate[],
+  paired: readonly { readonly address: string; readonly info: { readonly id: string } }[],
+): Candidate[] {
+  const byName = new Map<string, Candidate>();
+  for (const candidate of candidates) {
+    const key = candidate.name.toLowerCase();
+    const known = byName.get(key);
+    if (known === undefined || known.address.includes('[')) byName.set(key, candidate);
+  }
+  return [...byName.values()].filter(
+    (candidate) =>
+      !paired.some(
+        (sensor) =>
+          sensor.address === candidate.address ||
+          sensor.info.id.toLowerCase() === candidate.name.toLowerCase(),
+      ),
+  );
+}
+
+function NearbySensors({ candidates }: { readonly candidates: readonly Candidate[] }): ReactNode {
+  const { password, setPassword, pairing, report, pair } = usePairing();
   return (
-    <View className="gap-section-gap">
-      <Text variant="title-3">Connect Shelly Presence</Text>
-      <Text tone="variant">
-        First connect the sensor to Wi-Fi using the Shelly app. Add its local address here.
-      </Text>
-      <Button
-        label="Discover configured Shelly sensors"
-        variant="tonal"
-        loading={busy}
-        onPress={() => {
-          void discover();
-        }}
+    <View className="gap-3">
+      <TextField
+        label="Local access password"
+        kind="password"
+        value={password}
+        onChange={setPassword}
+        helper="Leave blank if local authentication is disabled"
       />
-      {message === null ? null : <Text>{message}</Text>}
       {candidates.length === 0 ? null : (
-        <List title="Nearby configured sensors">
+        <List title="Nearby sensors">
           {candidates.map((candidate) => (
             <NavRow
               key={candidate.address}
               title={candidate.name}
               subtitle={candidate.host}
               onPress={() => {
-                setAddress(candidate.address);
+                background(pair([candidate]), 'enrollment_settings.pair_failed');
               }}
             />
           ))}
         </List>
       )}
-      <EnrollForm address={address} changeAddress={setAddress} />
+      {candidates.length < 2 ? null : (
+        <Button
+          label={`Pair all (${String(candidates.length)})`}
+          loading={pairing}
+          onPress={() => {
+            background(pair(candidates), 'enrollment_settings.pair_failed');
+          }}
+        />
+      )}
+      {report === null ? null : (
+        <Text selectable accessibilityLiveRegion="polite">
+          {report}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+export function EnrollmentSettings(): ReactNode {
+  const owner = useIsOwner();
+  const stream = usePluginStream(SHELLY_PLUGIN_ID, SHELLY_SNAPSHOT_STREAM, SHELLY_SNAPSHOT);
+  const { candidates, busy, message, discover } = useDiscovery();
+  useEffect(() => {
+    if (owner) background(discover(), 'enrollment_settings.discover_failed');
+  }, [owner, discover]);
+  if (!owner)
+    return <Text tone="variant">The home owner can connect or forget configured sensors.</Text>;
+  const paired = stream.state === 'ready' ? stream.value.devices : [];
+  return (
+    <View className="gap-section-gap">
+      <Text variant="title-3">Connect Shelly Presence</Text>
+      <Text tone="variant">
+        First connect the sensor to Wi-Fi using the Shelly app. Sensors on your network show up
+        here.
+      </Text>
+      <Button
+        label="Search again"
+        variant="tonal"
+        loading={busy}
+        onPress={() => {
+          background(discover(), 'enrollment_settings.discover_failed');
+        }}
+      />
+      {message === null ? null : <Text>{message}</Text>}
+      <NearbySensors candidates={unpairedCandidates(candidates, paired)} />
       <EnrolledSensors />
     </View>
   );
 }
 
-function useEnroll(address: string): {
-  readonly tls: EnrollmentTls;
-  readonly setTls: (value: EnrollmentTls) => void;
+function usePairing(): {
   readonly password: string;
   readonly setPassword: (value: string) => void;
-  readonly busy: boolean;
-  readonly message: string | null;
-  readonly enroll: () => Promise<void>;
+  readonly pairing: boolean;
+  readonly report: string | null;
+  readonly pair: (list: readonly Candidate[]) => Promise<void>;
 } {
   const [password, setPassword] = useState('');
-  const [tls, setTls] = useState<EnrollmentTls>({
-    caPem: null,
-    clientCertificate: null,
-    clientKey: null,
-  });
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const enroll = async (): Promise<void> => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const request = SHELLY_PRESENCE_ENROLL_REQUEST.parse({
-        address,
-        password: password === '' ? null : password,
-        ...(address.startsWith('https://') ? { tls } : {}),
-      });
-      const reply = await callPluginTool(SHELLY_PRESENCE_PLUGIN_ID, 'enroll', request);
-      const result = SHELLY_PRESENCE_ENROLL_RESULT.parse(reply.result);
-      setPassword('');
-      setTls({ caPem: null, clientCertificate: null, clientKey: null });
-      setMessage(`${result.device.name} connected.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
+  const [pairing, setPairing] = useState(false);
+  const [report, setReport] = useState<string | null>(null);
+  const pair = async (list: readonly Candidate[]): Promise<void> => {
+    setPairing(true);
+    setReport(null);
+    const lines: string[] = [];
+    for (const candidate of list) {
+      try {
+        const request = SHELLY_ENROLL_REQUEST.parse({
+          address: candidate.address,
+          password: password === '' ? null : password,
+        });
+        const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'enroll', request);
+        lines.push(`${SHELLY_ENROLL_RESULT.parse(reply.result).device.name} connected.`);
+        log.info('sensor.enrolled', { candidates: list.length });
+      } catch (error) {
+        log.warn('sensor.enroll_failed', {
+          error: error instanceof Error ? error.name : typeof error,
+          hasPassword: password !== '',
+        });
+        lines.push(`${candidate.name}: ${failure(error)}`);
+      }
     }
+    setReport(lines.join('\n'));
+    setPairing(false);
   };
-  return { password, setPassword, tls, setTls, busy, message, enroll };
+  return { password, setPassword, pairing, report, pair };
 }
 
 function useDiscovery(): {
@@ -197,21 +213,25 @@ function useDiscovery(): {
   >([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const discover = async (): Promise<void> => {
+  const discover = useCallback(async (): Promise<void> => {
     setBusy(true);
     try {
-      const reply = await callPluginTool(SHELLY_PRESENCE_PLUGIN_ID, 'discover', {});
+      const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'discover', {});
       const result = SHELLY_DISCOVERY_RESULT.parse(reply.result);
+      log.info('sensor.discovered', { candidates: result.candidates.length });
       setCandidates(result.candidates);
       setMessage(
         result.reason ??
           (result.candidates.length === 0 ? 'No configured Shelly sensors found.' : null),
       );
     } catch (error) {
-      setMessage(String(error));
+      log.warn('sensor.discover_failed', {
+        error: error instanceof Error ? error.name : typeof error,
+      });
+      setMessage(failure(error));
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
   return { candidates, busy, message, discover };
 }

@@ -3,7 +3,9 @@ import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Gauge, type GaugeBand } from '../../../components/charts';
 import { Text } from '../../../components/text';
-import { WidgetEmpty, WidgetFrame, type WidgetSize } from '../../../components/widget-board';
+import { WidgetEmpty, WidgetFrame } from '../../../components/widget-board';
+import { isTile } from '../../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { useReadiness } from '../data/readiness';
 import { useTodayContext } from '../data/today';
 import { readinessWord, type Score } from '../model/scores';
@@ -44,16 +46,16 @@ function Reasons({ score }: { readonly score: Score }): ReactNode {
   );
 }
 
-export function ReadinessWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+export function ReadinessWidget(): ReactNode {
   const data = useTodayContext();
   const score = useReadiness(data);
+  const tile = isTile(useWidgetFace().cls);
   return (
     <WidgetFrame
       title="Readiness"
       icon="gauge"
       accent="positive"
       href={href.fitnessPage('heart', { day: data.day })}
-      size={size}
     >
       {score === null ? (
         <WidgetEmpty
@@ -61,12 +63,11 @@ export function ReadinessWidget({ size }: { readonly size: WidgetSize }): ReactN
           colour="positive"
           title="Not enough data yet"
           body="Wear your watch overnight to get a score."
-          size={size}
         />
       ) : (
         <View className="flex-1 flex-row items-center gap-4">
-          <Dial score={score} size={size === 'S' ? 88 : 96} />
-          {size === 'S' ? null : <Reasons score={score} />}
+          <Dial score={score} size={tile ? 88 : 96} />
+          {tile ? null : <Reasons score={score} />}
         </View>
       )}
     </WidgetFrame>

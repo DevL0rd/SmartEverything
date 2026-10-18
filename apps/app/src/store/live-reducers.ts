@@ -1,6 +1,6 @@
+import { DeviceValueIndex } from './device-values';
 import { automationTablesOf } from './automation-tables';
 import {
-  displayName,
   type RowChange,
   type Snapshot,
   type StateRow,
@@ -8,8 +8,6 @@ import {
 } from '@smarteverything/domain';
 import {
   deviceOf,
-  makeTable,
-  rowsOf,
   type DeviceValues,
   type ListTable,
   type NextTable,
@@ -22,6 +20,7 @@ import { turnsOf } from './chat-turns';
 import { sameJson } from './same-json';
 import { shareOf, shareTables, shareValues } from './share';
 import { RULES, type TableRule } from './table-rules';
+import { remove, tableOf, upsert } from './table-ops';
 
 export class UnreadableChangeError extends Error {
   override readonly name = 'UnreadableChangeError';
@@ -32,39 +31,6 @@ export class UnreadableChangeError extends Error {
   ) {
     super(`A live change to ${table} could not be applied: ${reason}.`);
   }
-}
-
-function tableOf<R>(rows: readonly R[], rule: TableRule<R>, version: number): Table<R> {
-  const sorted = [...rows].sort(rule.order).slice(0, rule.keep);
-  const byId: Record<string, R> = {};
-  for (const row of sorted) {
-    byId[rule.idOf(row)] = row;
-  }
-  return makeTable(byId, sorted.map(rule.idOf), version);
-}
-
-function upsert<R>(table: Table<R>, row: R, rule: TableRule<R>): Table<R> {
-  const id = rule.idOf(row);
-  const known = table.byId[id];
-  if (known !== undefined && sameJson(known, row)) return table;
-  const others: R[] = [];
-  table.ids.forEach((other) => {
-    const existing = table.byId[other];
-    if (other !== id && existing !== undefined) others.push(existing);
-  });
-  return tableOf([...others, row], rule, table.version + 1);
-}
-
-function remove<R>(table: Table<R>, id: string): Table<R> {
-  if (table.byId[id] === undefined) {
-    return table;
-  }
-  const byId = Object.fromEntries(Object.entries(table.byId).filter(([key]) => key !== id));
-  return makeTable(
-    byId,
-    table.ids.filter((other) => other !== id),
-    table.version + 1,
-  );
 }
 
 interface Change<R> {
@@ -105,27 +71,20 @@ function unchangedOrOlder(known: DeviceValues[string] | undefined, row: StateRow
   );
 }
 
-function valuesWith(
-  values: Readonly<Record<string, DeviceValues>>,
-  row: StateRow,
-  removed: boolean,
-): Readonly<Record<string, DeviceValues>> {
-  const current = values[row.device_id] ?? {};
+function valuesWith(values: DeviceValueIndex, row: StateRow, removed: boolean): DeviceValueIndex {
+  const current = values.get(row.device_id) ?? {};
   const known = current[row.capability];
   if (!removed && unchangedOrOlder(known, row)) return values;
   if (removed) {
     const next = Object.fromEntries(
       Object.entries(current).filter(([capability]) => capability !== row.capability),
     );
-    return { ...values, [row.device_id]: next };
+    return values.set(row.device_id, next);
   }
-  return {
-    ...values,
-    [row.device_id]: {
-      ...current,
-      [row.capability]: { value: row.value, observedAt: row.observed_at },
-    },
-  };
+  return values.set(row.device_id, {
+    ...current,
+    [row.capability]: { value: row.value, observedAt: row.observed_at },
+  });
 }
 
 function applyState(
@@ -187,6 +146,21 @@ function applyClient(
       ? state.session
       : { ...state.session, client: own };
   return withTables(session === state.session ? state : { ...state, session }, tables);
+}
+
+function applyPluginStream(
+  state: StoreState,
+  change: Extract<RowChange, { table: 'plugin_streams' }>,
+): StoreState {
+  const known =
+    change.record === null
+      ? undefined
+      : state.tables.plugin_streams.byId[RULES.plugin_streams.idOf(change.record)];
+  const shared =
+    change.record !== null && known !== undefined && sameJson(known.value, change.record.value)
+      ? { ...change, record: { ...change.record, value: known.value } }
+      : change;
+  return applyListChange(state, 'plugin_streams', shared);
 }
 
 function applyDevice(
@@ -261,6 +235,7 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   device_effect_targets: (state) => state,
   clients: applyClient,
   devices: applyDevice,
+  television_settings: list('television_settings'),
   provider_links: list('provider_links'),
   rooms: list('rooms'),
   device_groups: list('device_groups'),
@@ -273,7 +248,6 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   scenes: list('scenes'),
   automations: list('automations'),
   automation_values: list('automation_values'),
-  automation_sequences: list('automation_sequences'),
   automation_runs: list('automation_runs'),
   layouts: list('layouts'),
   push_targets: list('push_targets'),
@@ -291,7 +265,7 @@ const APPLIERS: { readonly [T in RowChange['table']]: Applier<T> } = {
   scheduled_actions: list('scheduled_actions'),
   ai_usage: list('ai_usage'),
   plugins: list('plugins'),
-  plugin_streams: list('plugin_streams'),
+  plugin_streams: applyPluginStream,
   health_entries: (state) => state,
   foods: (state) => state,
   watch_days: (state) => state,
@@ -309,38 +283,18 @@ function applyTo<T extends RowChange['table']>(
   return apply(state, change);
 }
 
-function relabel(state: StoreState): StoreState {
-  const table = state.tables.devices;
-  const devices = rowsOf(table);
-  const rooms = rowsOf(state.tables.rooms);
-  let changed = false;
-  const byId: Record<string, RowOf<'devices'>> = {};
-  for (const device of devices) {
-    const label = displayName(device, devices, rooms);
-    changed ||= label !== device.label;
-    byId[device.id] = label === device.label ? device : { ...device, label };
-  }
-  if (!changed) {
-    return state;
-  }
-  const relabelled = tableOf(Object.values(byId), RULES.devices, table.version + 1);
-  return { ...state, tables: withTable(state.tables, 'devices', relabelled) };
-}
-
-const LABEL_TABLES: ReadonlySet<RowChange['table']> = new Set(['devices', 'rooms']);
-
 export function applyChange(state: StoreState, change: RowChange): StoreState {
-  const next = applyTo(state, change.table, change);
-  return LABEL_TABLES.has(change.table) ? relabel(next) : next;
+  return applyTo(state, change.table, change);
 }
 
-function valuesOf(rows: readonly StateRow[]): Readonly<Record<string, DeviceValues>> {
-  const values: Record<string, Record<string, DeviceValues[string]>> = {};
+function valuesOf(rows: readonly StateRow[]): DeviceValueIndex {
+  const values = new Map<string, Record<string, DeviceValues[string]>>();
   for (const row of rows) {
-    const device = (values[row.device_id] ??= {});
+    const device = values.get(row.device_id) ?? {};
+    values.set(row.device_id, device);
     device[row.capability] = { value: row.value, observedAt: row.observed_at };
   }
-  return values;
+  return DeviceValueIndex.from(values);
 }
 
 function talkTablesOf(
@@ -370,8 +324,14 @@ function pluginTablesOf(
   };
 }
 
-function groupTablesOf(snapshot: Snapshot, next: NextTable): Pick<Tables, 'device_groups'> {
-  return { device_groups: next('device_groups', snapshot.tables.device_groups ?? []) };
+function deviceTablesOf(
+  snapshot: Snapshot,
+  next: NextTable,
+): Pick<Tables, 'device_groups' | 'television_settings'> {
+  return {
+    device_groups: next('device_groups', snapshot.tables.device_groups ?? []),
+    television_settings: next('television_settings', snapshot.tables.television_settings ?? []),
+  };
 }
 
 function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
@@ -383,7 +343,7 @@ function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
     clients: next('clients', owner?.clients ?? [snapshot.session.client]),
     provider_links: next('provider_links', t.provider_links),
     rooms: next('rooms', t.rooms),
-    ...groupTablesOf(snapshot, next),
+    ...deviceTablesOf(snapshot, next),
     devices: next('devices', t.devices.map(deviceOf)),
     commands: next('commands', t.commands),
     events: next('events', t.events),
@@ -413,7 +373,7 @@ function tablesOf(snapshot: Snapshot, previous: Tables): Tables {
 }
 
 export function replaceWith(state: StoreState, snapshot: Snapshot): StoreState {
-  const next = relabel({
+  const next = {
     ...state,
     loaded: true,
     tables: tablesOf(snapshot, state.tables),
@@ -428,6 +388,6 @@ export function replaceWith(state: StoreState, snapshot: Snapshot): StoreState {
     hub: shareOf(state.hub, snapshot.session.hub),
     firewall: shareOf(state.firewall, snapshot.firewall),
     sync: { ...state.sync, seq: snapshot.seq },
-  });
+  };
   return { ...next, tables: shareTables(state.tables, next.tables) };
 }

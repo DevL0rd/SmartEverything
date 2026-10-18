@@ -1,4 +1,6 @@
 import {
+  CHAT_WIDGETS_MAX,
+  chatWidgetKey,
   chatWidgetsOf,
   newChatWidgets,
   type AssistantMessageRow,
@@ -7,6 +9,11 @@ import {
 import type { Store } from '../store/store';
 
 const RECENT_MESSAGES = 6;
+
+export interface AttachedWidgets {
+  readonly added: number;
+  readonly dropped: readonly string[];
+}
 
 export function workingReply(store: Store, chatId: string): AssistantMessageRow | null {
   return (
@@ -20,11 +27,14 @@ export function attachWidgets(
   store: Store,
   reply: AssistantMessageRow,
   widgets: readonly ChatWidget[],
-): number {
+): AttachedWidgets {
   const current = store.assistantChat.message(reply.id);
-  const fresh = newChatWidgets(chatWidgetsOf(current.embeds), widgets);
-  if (fresh.length > 0) {
-    store.assistantChat.updateMessage(reply.id, { embeds: [...current.embeds, ...fresh] });
+  const known = chatWidgetsOf(current.embeds);
+  const fresh = newChatWidgets(known, widgets);
+  const room = Math.max(0, CHAT_WIDGETS_MAX - known.length);
+  const shown = fresh.slice(0, room);
+  if (shown.length > 0) {
+    store.assistantChat.updateMessage(reply.id, { embeds: [...current.embeds, ...shown] });
   }
-  return fresh.length;
+  return { added: shown.length, dropped: fresh.slice(room).map(chatWidgetKey) };
 }

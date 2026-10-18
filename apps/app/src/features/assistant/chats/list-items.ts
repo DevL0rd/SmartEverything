@@ -1,66 +1,117 @@
 import type { AiChatHit } from '@smarteverything/domain';
-import type { ChatRowItem, ChatSection } from './chat-entry';
+import type { VirtualSection } from '../../../components/virtual-list';
+import { APP_SOURCE, type ChatSource } from '../model/chat-source';
+import { sameEntry, type ChatEntry, type ChatFamily, type ChatSection } from './chat-entry';
 
 const HITS_KEY = 'hits';
 
 export type ListItem =
-  | { readonly type: 'header'; readonly key: string; readonly title: string }
-  | { readonly type: 'chat'; readonly key: string; readonly item: ChatRowItem }
   | {
-      readonly type: 'subagents';
+      readonly type: 'chat';
       readonly key: string;
-      readonly parentId: string;
-      readonly rows: readonly ChatRowItem[];
+      readonly entry: ChatEntry;
+      readonly agents: readonly ChatEntry[];
+      readonly open: boolean;
     }
-  | { readonly type: 'hit'; readonly key: string; readonly hit: AiChatHit };
+  | {
+      readonly type: 'agent';
+      readonly key: string;
+      readonly entry: ChatEntry;
+    }
+  | {
+      readonly type: 'hit';
+      readonly key: string;
+      readonly hit: AiChatHit;
+      readonly source: ChatSource;
+      readonly target: ChatTarget;
+    };
 
-function familyItems(rows: readonly ChatRowItem[]): readonly ListItem[] {
-  const grouped = new Set(
-    rows.filter((row) => row.nested && row.entry.kind === 'subagent').map((row) => row.entry.id),
-  );
-  return rows.flatMap((item): readonly ListItem[] => {
-    if (grouped.has(item.entry.id)) return [];
-    const children = rows.filter(
-      (row) => row.entry.parentId === item.entry.id && grouped.has(row.entry.id),
-    );
-    return [
-      { type: 'chat', key: item.entry.id, item },
-      ...(children.length === 0
-        ? []
-        : [
-            {
-              type: 'subagents',
-              key: `subagents-${item.entry.id}`,
-              parentId: item.entry.id,
-              rows: children,
-            } as const,
-          ]),
-    ];
-  });
+interface ChatTarget {
+  readonly chatId: string;
+  readonly messageId: string | null;
+}
+
+function familyItems(family: ChatFamily, expanded: ReadonlySet<string>): readonly ListItem[] {
+  const open = family.agents.length > 0 && (family.matchedAgents || expanded.has(family.entry.id));
+  return [
+    { type: 'chat', key: family.entry.id, entry: family.entry, agents: family.agents, open },
+    ...(open
+      ? family.agents.map((entry): ListItem => ({ type: 'agent', key: entry.id, entry }))
+      : []),
+  ];
 }
 
 export function itemsOf(
   sections: readonly ChatSection[],
   hits: readonly AiChatHit[],
-): readonly ListItem[] {
-  const chats = sections.flatMap((section): readonly ListItem[] => [
-    { type: 'header', key: `header-${section.key}`, title: section.title },
-    ...familyItems(section.data),
-  ]);
+  expanded: ReadonlySet<string>,
+  entries: ReadonlyMap<string, ChatEntry>,
+): readonly VirtualSection<ListItem>[] {
+  const chats = sections.map((section): VirtualSection<ListItem> => ({
+    key: section.key,
+    title: section.title,
+    data: section.data.flatMap((family) => familyItems(family, expanded)),
+  }));
   if (hits.length === 0) {
     return chats;
   }
   return [
     ...chats,
-    { type: 'header', key: `header-${HITS_KEY}`, title: 'In messages' },
-    ...hits.map((hit): ListItem => ({
-      type: 'hit',
-      key: `hit-${hit.messageId ?? hit.chatId}`,
-      hit,
-    })),
+    {
+      key: HITS_KEY,
+      title: 'In messages',
+      data: hits.map((hit): ListItem => ({
+        type: 'hit',
+        key: `hit-${hit.messageId ?? hit.chatId}`,
+        hit,
+        source: entries.get(hit.chatId)?.source ?? APP_SOURCE,
+        target: hitTargetOf(hit, entries),
+      })),
+    },
   ];
 }
 
-export function stickyIndicesOf(items: readonly ListItem[]): readonly number[] {
-  return items.flatMap((item, index) => (item.type === 'header' ? [index] : []));
+function hitTargetOf(hit: AiChatHit, entries: ReadonlyMap<string, ChatEntry>): ChatTarget {
+  let current = entries.get(hit.chatId);
+  while (current?.kind === 'subagent') {
+    const parent = entries.get(current.parentId ?? '');
+    if (parent === undefined) {
+      return { chatId: hit.chatId, messageId: hit.messageId };
+    }
+    current = parent;
+  }
+  return current === undefined || current.id === hit.chatId
+    ? { chatId: hit.chatId, messageId: hit.messageId }
+    : { chatId: current.id, messageId: null };
+}
+
+function sameChatItem(
+  left: Extract<ListItem, { type: 'chat' }>,
+  right: Extract<ListItem, { type: 'chat' }>,
+): boolean {
+  return (
+    sameEntry(left.entry, right.entry) &&
+    left.open === right.open &&
+    left.agents.length === right.agents.length &&
+    runningCount(left.agents) === runningCount(right.agents) &&
+    needingCount(left.agents) === needingCount(right.agents)
+  );
+}
+
+export function sameListItem(left: ListItem, right: ListItem): boolean {
+  if (left.type === 'hit' && right.type === 'hit') {
+    return left.key === right.key && left.hit === right.hit;
+  }
+  if (left.type === 'chat' && right.type === 'chat') {
+    return sameChatItem(left, right);
+  }
+  return left.type === 'agent' && right.type === 'agent' && sameEntry(left.entry, right.entry);
+}
+
+export function runningCount(agents: readonly ChatEntry[]): number {
+  return agents.filter((entry) => entry.line.kind === 'working').length;
+}
+
+export function needingCount(agents: readonly ChatEntry[]): number {
+  return agents.filter((entry) => entry.requests > 0).length;
 }

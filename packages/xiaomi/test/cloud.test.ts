@@ -117,6 +117,19 @@ describe('a signed and encrypted cloud request', () => {
     ).toBe(expected);
   });
 
+  it('round-trips a request far larger than the argument limit of a spread call', () => {
+    const data = 'x'.repeat(500_000);
+    const fields = encryptRequest({
+      method: 'POST',
+      path: '/home/device_list',
+      data,
+      ssecurity: SSECURITY,
+      nonce: fixedNonce(),
+    });
+    const encrypted = fields.find(([name]) => name === 'data')?.[1] ?? '';
+    expect(decryptResponse(SSECURITY, fixedNonce(), encrypted)).toBe(data);
+  });
+
   it('refuses a reply that does not decrypt to UTF-8 text', () => {
     const key = signedNonce(SSECURITY, fixedNonce());
     const garbage = Buffer.from(rc4Drop1024(key, new Uint8Array([0xff, 0xfe]))).toString('base64');
@@ -159,7 +172,7 @@ describe('the cloud reply envelope', () => {
 
   it('refuses replies that are not JSON or have no code', () => {
     expect(() => parseCloudEnvelope('/p', '<html>')).toThrow(
-      /the reply was not JSON \(SyntaxError/,
+      'The Xiaomi cloud refused /p with code -1: the reply was not JSON (SyntaxError).',
     );
     try {
       parseCloudEnvelope('/p', '<html>');
@@ -167,10 +180,8 @@ describe('the cloud reply envelope', () => {
       expect(error).toMatchObject({ code: -1, path: '/p' });
     }
     expect(() => parseCloudEnvelope('/p', '{"ok":1}')).toThrow(
-      new XiaomiCloudError('/p', -1, 'the reply had no numeric code: {"ok":1}'),
+      new XiaomiCloudError('/p', -1, 'the reply had no numeric code'),
     );
-    const long = `{"ok":"${'x'.repeat(200)}"}`;
-    expect(() => parseCloudEnvelope('/p', long)).toThrow(`the reply had no numeric code: ${long}.`);
   });
 
   it('recognises an expired session by code or message', () => {

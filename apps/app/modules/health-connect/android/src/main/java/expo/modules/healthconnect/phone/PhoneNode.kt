@@ -15,10 +15,13 @@ object PhoneNode {
 
   fun stop(context: Context) {
     PhoneStore(context).setEnabled(false)
+    PhoneLive.set(context, false)
     PhoneActivity.register(context)
     PhoneGeofences.stop(context)
     PhoneNetwork.stop(context)
     PhoneUnlock.unregister(context)
+    PhoneFlashlight.stop()
+    PhoneBluetooth.stop(context)
     PhoneReporter.forget(context)
   }
 
@@ -31,6 +34,9 @@ object PhoneNode {
     PhoneGeofences.register(context)
     PhoneCar.observe(context)
     PhoneUnlock.register(context)
+    PhoneFlashlight.observe(context)
+    PhoneBluetooth.observe(context)
+    PhoneBodyFiles.pruneUnreferenced(context)
   }
 
   fun status(context: Context): Map<String, Any?> {

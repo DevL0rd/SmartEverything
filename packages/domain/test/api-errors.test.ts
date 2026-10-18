@@ -5,6 +5,7 @@ const STATUS_BY_CODE: readonly (readonly [string, number])[] = [
   ['invalid_request', 400],
   ['unauthorized', 401],
   ['forbidden', 403],
+  ['ownership_lost', 409],
   ['not_found', 404],
   ['method_not_allowed', 405],
   ['conflict', 409],
@@ -18,6 +19,11 @@ const STATUS_BY_CODE: readonly (readonly [string, number])[] = [
   ['internal', 500],
   ['upstream_failed', 502],
   ['camera_unavailable', 503],
+  ['camera_offline', 409],
+  ['camera_privacy_on', 409],
+  ['firewall_blocked', 503],
+  ['camera_busy', 429],
+  ['claude_not_ready', 503],
 ];
 
 describe('api error codes', () => {

@@ -1,7 +1,4 @@
-import { ApiError } from '@smarteverything/domain';
-import { currentExecutionAuthorities } from '../assistant/execution-authority';
-import { admitEffectCommand } from '../harness/effect-authority';
-import { describeError } from '../commands/executor';
+import { currentExecutionAuthority } from '../assistant/turn-authority';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { CAPABILITY_KEY } from '@smarteverything/domain';
@@ -26,7 +23,7 @@ type InventoryPart = Pick<
   | 'upsertDevices'
   | 'setDevicesOnline'
   | 'removeDevices'
-  | 'ensureRooms'
+  | 'matchRooms'
   | 'loadState'
   | 'upsertState'
   | 'insertEvents'
@@ -46,7 +43,7 @@ function inventoryPart(store: Store): InventoryPart {
       settle(() => {
         store.devices.remove(ids);
       }),
-    ensureRooms: (names) => settle(() => store.rooms.ensureNames(names)),
+    matchRooms: (names) => settle(() => store.rooms.matchNames(names)),
     loadState: () =>
       settle(() =>
         store.state.list().map((row) => ({
@@ -91,18 +88,12 @@ function commandPart(store: Store): CommandPart {
     claimCommand: (id, from) =>
       settle(() => {
         if (!store.commands.claim(id, from)) return false;
-        try {
-          if (!store.automationRuns.canDispatch(id))
-            throw new ApiError(
-              'command_refused',
-              'The owning automation run was cancelled before command dispatch.',
-            );
-          admitEffectCommand(store, id);
-          return true;
-        } catch (cause) {
-          store.commands.finish(id, { status: 'failed', error: describeError(cause) });
-          return false;
-        }
+        if (store.automationRuns.canDispatch(id)) return true;
+        store.commands.finish(id, {
+          status: 'failed',
+          error: 'The owning automation run was cancelled before command dispatch.',
+        });
+        return false;
       }),
     finishCommand: (id, outcome) =>
       settle(() => {
@@ -114,7 +105,7 @@ function commandPart(store: Store): CommandPart {
           const commands = store.commands.insert(
             rows.map((row) => ({
               ...row,
-              source: currentExecutionAuthorities().length === 0 ? row.source : 'assistant',
+              source: currentExecutionAuthority() === undefined ? row.source : 'assistant',
               requestedBy: null,
             })),
           );
@@ -134,32 +125,6 @@ function controlPart(
   recordingPath: (storagePath: string) => string,
 ): Omit<HubDatabase, keyof (InventoryPart & CommandPart)> {
   return {
-    loadHome: () =>
-      settle(() => {
-        const settings = store.settings.read();
-        return {
-          timeZone: settings.time_zone,
-          latitude: settings.latitude,
-          longitude: settings.longitude,
-        };
-      }),
-    loadAutomations: () =>
-      settle(() =>
-        store.automations.list().map((row) => ({
-          id: row.id,
-          name: row.name,
-          enabled: row.enabled,
-          definition: row.definition,
-          runCount: row.run_count,
-          lastError: row.last_error,
-        })),
-      ),
-    loadScenes: () =>
-      settle(() => store.scenes.list().map((row) => ({ id: row.id, actions: row.actions }))),
-    updateAutomation: (id, change) =>
-      settle(() => {
-        store.automations.recordRun(id, change);
-      }),
     storeRecording: async (file, row): Promise<void> => {
       const path = recordingPath(file.path);
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });

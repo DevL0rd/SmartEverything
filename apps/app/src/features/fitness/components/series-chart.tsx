@@ -31,7 +31,7 @@ export function SeriesChart({
   if (spec.chart === 'range' && range !== 'day') {
     return (
       <RangeBars
-        buckets={rangeBucketsOf(view.buckets)}
+        buckets={rangeBucketsOf(range, view.buckets)}
         colour={spec.colour}
         label={label}
         height={HEIGHT}

@@ -3,20 +3,27 @@ import type { Logger } from '@smarteverything/logging';
 import { AlertGate } from './alert-gate';
 import { activityOf, alertOf, planEvents, RefreshPlan, SYNC_ALERTS } from './event-plan';
 import { SyncthingEventStreams } from './event-streams';
-import { reasonOf, SyncthingKeyRejectedError, type SyncthingRest } from './rest-client';
+import { Loop } from '../../loop';
+import { Throttle } from '../../throttle';
+import { WireGate } from '../wire-gate';
+import { JsonApiRefusedError, reasonOf } from '../json-api';
+import type { SyncthingRest } from './rest-client';
 import { FOLDER_SUMMARY_EVENT, type SyncthingEvent } from './rest-schemas';
 import { buildSnapshot } from './snapshot';
 import { emptySyncData, SyncDataLoader } from './sync-data';
 import { TransferRates } from './transfer-rates';
+import { background } from '@smarteverything/logging';
 
 const BATCH_MS = 100;
-const RATE_MS = 2_000;
+const RATE_MS = 1_000;
+const WIRE_QUIET_MS = 10_000;
 const ACTIVITY_KEPT = 200;
 
 export interface MonitorOptions {
   readonly rest: SyncthingRest;
   readonly overdueHours: number;
   readonly log: Logger;
+  readonly record: (snapshot: SyncthingSnapshot) => void;
   readonly publish: (snapshot: SyncthingSnapshot) => void;
   readonly publishActivity: (activity: readonly SyncActivity[]) => void;
   readonly emit: (event: PluginEvent) => void;
@@ -30,8 +37,16 @@ export class SyncthingMonitor {
   readonly #alerts: AlertGate;
   #connection: SyncthingSnapshot['connection'] = { state: 'connecting' };
   #pending = new RefreshPlan();
-  #batch: NodeJS.Timeout | null = null;
-  #rateTimer: NodeJS.Timeout | null = null;
+  readonly #batch = new Throttle(() => {
+    background(this.#flush(), 'sync_monitor.flush_failed');
+  }, BATCH_MS);
+  readonly #rateLoop = new Loop(
+    () => this.#sampleRates(),
+    () => RATE_MS,
+  );
+  #failedRates = 0;
+  #watched = false;
+  readonly #wire = new WireGate(WIRE_QUIET_MS);
   #overdueTimer: NodeJS.Timeout | null = null;
   #overdue = new Set<string>();
   #activity: SyncActivity[] = [];
@@ -67,31 +82,26 @@ export class SyncthingMonitor {
   }
 
   start(): void {
+    this.options.record(this.#latest);
     this.options.publish(this.#latest);
     this.#streams.start();
+    this.#rateLoop.runNow();
   }
 
   stop(): void {
     this.#streams.stop();
-    this.setWatched(false);
-    [this.#batch, this.#overdueTimer].forEach((timer) => {
-      if (timer !== null) {
-        clearTimeout(timer);
-      }
-    });
+    this.#rateLoop.stop();
+    this.#batch.cancel();
+    if (this.#overdueTimer !== null) {
+      clearTimeout(this.#overdueTimer);
+    }
   }
 
   setWatched(watched: boolean): void {
-    if (this.#rateTimer !== null) {
-      clearInterval(this.#rateTimer);
-      this.#rateTimer = null;
-    }
-    this.#rates.reset();
+    this.#watched = watched;
     if (watched) {
-      void this.#sampleRates();
-      this.#rateTimer = setInterval(() => void this.#sampleRates(), RATE_MS);
+      this.#publish();
     }
-    this.#publish();
   }
 
   refreshSoon(): void {
@@ -139,13 +149,9 @@ export class SyncthingMonitor {
 
   #queue(plan: RefreshPlan): void {
     this.#pending.merge(plan);
-    if (this.#batch !== null || this.#pending.empty) {
-      return;
+    if (!this.#pending.empty) {
+      this.#batch.trigger();
     }
-    this.#batch = setTimeout(() => {
-      this.#batch = null;
-      void this.#flush();
-    }, BATCH_MS);
   }
 
   async #flush(): Promise<void> {
@@ -164,9 +170,25 @@ export class SyncthingMonitor {
     try {
       const connections = await this.#loader.connections();
       this.#rates.sample(connections, Date.now());
-      this.#publish();
+      this.#ratesRecovered();
+      this.#latest = this.#build();
+      this.options.record(this.#latest);
+      if (this.#wire.due(this.#watched)) {
+        this.options.publish(this.#latest);
+      }
     } catch (error) {
-      this.options.log.warn('syncthing.rates_failed', { reason: reasonOf(error) });
+      if (this.#failedRates === 0) {
+        this.options.log.warn('syncthing.rates_failed', { reason: reasonOf(error) });
+      }
+      this.#failedRates += 1;
+      this.#rates.reset();
+    }
+  }
+
+  #ratesRecovered(): void {
+    if (this.#failedRates > 0) {
+      this.options.log.info('syncthing.rates_recovered', { failedSamples: this.#failedRates });
+      this.#failedRates = 0;
     }
   }
 
@@ -178,7 +200,7 @@ export class SyncthingMonitor {
       this.options.log.warn('syncthing.unreachable', { reason });
     }
     this.#connection =
-      error instanceof SyncthingKeyRejectedError
+      error instanceof JsonApiRefusedError
         ? { state: 'key_rejected' }
         : { state: 'unreachable', reason, since };
     this.#publish();
@@ -188,7 +210,7 @@ export class SyncthingMonitor {
     return buildSnapshot({
       data: this.#data,
       rates: this.#rates,
-      ratesLive: this.#rateTimer !== null,
+      ratesLive: this.#rates.ready,
       connection: this.#connection,
       overdueHours: this.options.overdueHours,
       now: new Date(),
@@ -197,6 +219,7 @@ export class SyncthingMonitor {
 
   #publish(): void {
     this.#latest = this.#build();
+    this.options.record(this.#latest);
     this.options.publish(this.#latest);
     this.#watchOverdue();
   }

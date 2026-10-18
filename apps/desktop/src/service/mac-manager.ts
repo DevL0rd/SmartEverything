@@ -1,5 +1,6 @@
 import type { DesktopLinger } from '@smarteverything/domain';
-import { LAUNCH_AGENT_LABEL, launchAgent } from './definitions.js';
+import { Logger } from '@smarteverything/logging';
+import { launchAgent } from './definitions.js';
 import {
   DEFINITION_MODE,
   LingerUnsupportedError,
@@ -10,6 +11,7 @@ import {
 import { launchdDetail, launchdRunning } from './parse.js';
 import { CommandFailedError } from './system.js';
 
+const log = new Logger('desktop.service');
 const LAUNCHCTL = 'launchctl';
 const NOT_LOADED_EXIT_CODE = 113;
 
@@ -20,7 +22,7 @@ class MacManager implements ServiceManager {
 
   constructor(private readonly context: ManagerContext) {
     this.domain = `gui/${String(context.user.uid)}`;
-    this.target = `${this.domain}/${LAUNCH_AGENT_LABEL}`;
+    this.target = `${this.domain}/${context.names.launchAgentLabel}`;
   }
 
   async state(): Promise<ManagerState> {
@@ -35,11 +37,14 @@ class MacManager implements ServiceManager {
   }
 
   async install(): Promise<void> {
+    log.info('launchd.installing', { target: this.target });
     await this.context.system.files.write(this.plist, this.definition(), DEFINITION_MODE);
   }
 
   async start(): Promise<void> {
-    if ((await this.printed()) === null) {
+    const loaded = (await this.printed()) !== null;
+    log.info('launchd.starting', { loaded });
+    if (!loaded) {
       await this.launchctl('bootstrap', this.domain, this.plist);
       return;
     }
@@ -47,13 +52,17 @@ class MacManager implements ServiceManager {
   }
 
   async stop(): Promise<void> {
-    if ((await this.printed()) !== null) {
+    const loaded = (await this.printed()) !== null;
+    log.info('launchd.stopping', { loaded });
+    if (loaded) {
       await this.launchctl('bootout', this.target);
     }
   }
 
   async restart(): Promise<void> {
-    if ((await this.printed()) === null) {
+    const loaded = (await this.printed()) !== null;
+    log.info('launchd.restarting', { loaded });
+    if (!loaded) {
       await this.start();
       return;
     }
@@ -61,8 +70,13 @@ class MacManager implements ServiceManager {
   }
 
   async uninstall(): Promise<void> {
+    log.info('launchd.uninstalling');
     await this.stop();
     await this.context.system.files.remove(this.plist);
+  }
+
+  restoreOriginal(): Promise<boolean> {
+    return Promise.resolve(false);
   }
 
   linger(): Promise<DesktopLinger> {
@@ -78,7 +92,11 @@ class MacManager implements ServiceManager {
   }
 
   private definition(): string {
-    return launchAgent(this.context.launch, this.context.locations.outputLogFile);
+    return launchAgent(
+      this.context.launch,
+      this.context.locations.outputLogFile,
+      this.context.names.launchAgentLabel,
+    );
   }
 
   private async launchctl(...args: readonly string[]): Promise<void> {

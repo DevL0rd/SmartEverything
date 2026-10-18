@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { ShellyPresenceDevice } from '@smarteverything/domain';
 import { Select } from '../../components/select';
 import { TextField } from '../../components/text-field';
 import { Button } from '../../components/button';
@@ -66,16 +65,17 @@ function ComparisonInput({
     </View>
   );
 }
+export interface ConditionAttribute {
+  readonly name: string;
+  readonly type: string;
+  readonly desc?: string | undefined;
+}
 interface ConditionProps {
-  readonly sensor: ShellyPresenceDevice;
-  readonly event: string;
+  readonly attributes: readonly ConditionAttribute[];
   readonly condition: string;
   readonly change: (value: string) => void;
 }
-export function ConditionBuilder({ sensor, event, condition, change }: ConditionProps): ReactNode {
-  const attributes = (sensor.resources?.webhookTypes?.types ?? []).flatMap(
-    (entry) => entry[event]?.attrs ?? [],
-  );
+export function ConditionBuilder({ attributes, condition, change }: ConditionProps): ReactNode {
   const [draft, setDraft] = useState<ComparisonDraft>({
     attribute: null,
     operator: '==',
@@ -95,8 +95,7 @@ export function ConditionBuilder({ sensor, event, condition, change }: Condition
   return (
     <View className="gap-3 rounded-md bg-surface-2 p-3">
       <AttributeInput
-        sensor={sensor}
-        event={event}
+        attributes={attributes}
         value={draft.attribute}
         change={(attribute) => {
           setDraft({ ...draft, attribute });
@@ -141,19 +140,14 @@ function CombineInput({
 }
 
 function AttributeInput({
-  sensor,
-  event,
+  attributes,
   value,
   change,
 }: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly event: string;
+  readonly attributes: readonly ConditionAttribute[];
   readonly value: string | null;
   readonly change: (value: string) => void;
 }): ReactNode {
-  const attributes = (sensor.resources?.webhookTypes?.types ?? []).flatMap(
-    (entry) => entry[event]?.attrs ?? [],
-  );
   return (
     <Select
       label="Condition attribute"

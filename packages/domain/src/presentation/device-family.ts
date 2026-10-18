@@ -1,5 +1,5 @@
 import type { DeviceKind } from '../devices';
-import { MODEL_OVERRIDES } from './overrides/index';
+import { modelOverrideOf } from './overrides/index';
 import type { DeviceFamily, PresentableDevice } from './types';
 
 const KIND_FAMILIES: Readonly<Record<DeviceKind, DeviceFamily>> = {
@@ -37,10 +37,24 @@ const KIND_FAMILIES: Readonly<Record<DeviceKind, DeviceFamily>> = {
 const MODEL_FAMILIES: readonly (readonly [RegExp, DeviceFamily])[] = [
   [/\.scales?\./, 'scale'],
   [/^miwear\.|\.watch\.|\.band\./, 'wearable'],
+  [/\.washer\.|\.dryer\./, 'laundry'],
+  [/\.sensor_switch\.|\.remote\.|\.button\./, 'button'],
 ];
 
+const FAMILIES = new WeakMap<PresentableDevice, DeviceFamily>();
+
 export function deviceFamily(device: PresentableDevice): DeviceFamily {
-  const override = MODEL_OVERRIDES[device.model];
+  const known = FAMILIES.get(device);
+  if (known !== undefined) {
+    return known;
+  }
+  const family = familyOf(device);
+  FAMILIES.set(device, family);
+  return family;
+}
+
+function familyOf(device: PresentableDevice): DeviceFamily {
+  const override = modelOverrideOf(device);
   if (override !== undefined) {
     return override.family;
   }

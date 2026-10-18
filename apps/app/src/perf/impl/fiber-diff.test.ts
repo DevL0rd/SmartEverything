@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { changedHooks, changedProps, nameOf, reasonOf } from './fiber-diff';
-import { collect, nextEpoch } from './fibers';
+import { collect, nextEpoch, type RenderSink } from './fibers';
+import type { RenderReason } from './fiber-diff';
 
 function hook(state: unknown, next: unknown = null): Record<string, unknown> {
   return { memoizedState: state, next };
@@ -77,6 +78,23 @@ function fiber(fields: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+interface Seen {
+  readonly name: string;
+  readonly instance: number;
+  readonly self: number;
+  readonly reason: RenderReason | null;
+}
+
+function gather(root: unknown): { totals: ReturnType<typeof collect>; seen: Seen[] } {
+  const seen: Seen[] = [];
+  const sink: RenderSink = {
+    render: (name, instance, self, reason) => {
+      seen.push({ name, instance, self, reason });
+    },
+  };
+  return { totals: collect(root, sink, 0), seen };
+}
+
 describe('collect', () => {
   it('counts rendered components with self time and prunes unchanged subtrees', () => {
     function Parent(): null {
@@ -109,17 +127,26 @@ describe('collect', () => {
       alternate: parentBefore,
     });
     const root = { current: fiber({ tag: 3, actualDuration: 6, child: parent }) };
-    const report = collect(root);
-    expect(report?.rootMs).toBe(6);
-    expect(report?.timed).toBe(true);
-    const names = report?.components.map((item) => item.name);
-    expect(names).toEqual(['Parent', 'Leaf']);
-    const leafRender = report?.components.find((item) => item.name === 'Leaf');
-    expect(leafRender?.props).toEqual(['n']);
+    const { totals, seen } = gather(root);
+    expect(totals?.rootMs).toBe(6);
+    expect(totals?.timed).toBe(true);
+    expect(seen.map((item) => item.name)).toEqual(['Parent', 'Leaf']);
+    const leafRender = seen.find((item) => item.name === 'Leaf');
+    expect(leafRender?.reason?.props).toEqual(['n']);
     expect(leafRender?.self).toBe(2);
-    const parentRender = report?.components.find((item) => item.name === 'Parent');
-    expect(parentRender?.self).toBe(3);
-    expect(report?.top).toBe('Parent');
+    expect(seen.find((item) => item.name === 'Parent')?.self).toBe(3);
+    expect(totals?.top).toBe('Parent');
+  });
+
+  it('skips the reason of a render when the commit is below the explain threshold', () => {
+    function Row(): null {
+      return null;
+    }
+    const row = fiber({ type: Row, flags: 1, actualDuration: 1, alternate: fiber({ type: Row }) });
+    const root = { current: fiber({ tag: 3, actualDuration: 2, child: row }) };
+    const seen: (RenderReason | null)[] = [];
+    collect(root, { render: (_n, _i, _s, reason) => seen.push(reason) }, 8);
+    expect(seen).toEqual([null]);
   });
 
   it('counts renders per instance across commits and restarts on a new epoch', () => {
@@ -129,14 +156,14 @@ describe('collect', () => {
     const before = fiber({ type: Row });
     const row = fiber({ type: Row, flags: 1, alternate: before });
     const root = { current: fiber({ tag: 3, child: row }) };
-    expect(collect(root)?.components[0]?.instance).toBe(1);
-    expect(collect(root)?.components[0]?.instance).toBe(2);
+    expect(gather(root).seen[0]?.instance).toBe(1);
+    expect(gather(root).seen[0]?.instance).toBe(2);
     nextEpoch();
-    expect(collect(root)?.components[0]?.instance).toBe(1);
+    expect(gather(root).seen[0]?.instance).toBe(1);
   });
 
   it('returns null for something that is not a root', () => {
-    expect(collect(null)).toBeNull();
-    expect(collect({})).toBeNull();
+    expect(gather(null).totals).toBeNull();
+    expect(gather({}).totals).toBeNull();
   });
 });

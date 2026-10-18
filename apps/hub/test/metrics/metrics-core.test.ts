@@ -79,14 +79,34 @@ describe('viewers', () => {
     const viewers = new Viewers();
     const seen: boolean[] = [];
     viewers.watch('device:1', (watched) => seen.push(watched));
-    const first = viewers.lease('device:1', 'a');
-    const second = viewers.lease('device:1', 'b');
-    first();
-    first();
+    viewers.hold('a', [{ target: 'device:1', topic: 'summary' }]);
+    viewers.hold('b', [{ target: 'device:1', topic: 'cpu' }]);
+    viewers.release('a');
+    viewers.release('a');
     expect(viewers.watched('device:1')).toBe(true);
-    second();
+    viewers.release('b');
     expect(seen).toEqual([true, false]);
     expect(viewers.watched('device:1')).toBe(false);
+  });
+
+  it('counts leases per target and topic and tells followers only real changes', () => {
+    const viewers = new Viewers<string>();
+    const seen: string[][] = [];
+    viewers.follow('device:1', (demand) => seen.push([...demand.topics].sort()));
+    viewers.hold('phone', [{ target: 'device:1', topic: 'cpu' }]);
+    viewers.hold('desktop', [
+      { target: 'device:1', topic: 'cpu' },
+      { target: 'device:1', topic: 'processes', detail: 'window' },
+    ]);
+    viewers.hold('desktop', [
+      { target: 'device:1', topic: 'cpu' },
+      { target: 'device:1', topic: 'processes', detail: 'window' },
+    ]);
+    viewers.hold('phone', [{ target: 'device:2', topic: 'cpu' }]);
+    expect(viewers.demand('device:1').details.get('processes')).toEqual(['window']);
+    viewers.release('desktop');
+    expect(seen).toEqual([['cpu'], ['cpu', 'processes'], []]);
+    expect(viewers.watched('device:2')).toBe(true);
   });
 });
 

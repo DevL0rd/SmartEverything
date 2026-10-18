@@ -23,20 +23,36 @@ function frequentlyUsed(state: StoreState, devices: readonly Device[]): readonly
     .slice(0, FREQUENT_LIMIT);
 }
 
-export const favouritesOf = memoOnInputs(
-  (state) => [state.tables.devices, state.tables.commands],
-  (state): Favourites => {
-    const devices = rowsOf(state.tables.devices).filter(
+const chosenOf = memoOnInputs(
+  (state) => [state.tables.devices],
+  (state): { readonly pool: readonly Device[]; readonly chosen: readonly Device[] } => {
+    const pool = rowsOf(state.tables.devices).filter(
       (device) => !device.hidden && spotlightable(device),
     );
-    const favourites = devices
-      .filter((device) => device.favourite)
-      .sort((left, right) => left.position - right.position);
-    return favourites.length > 0
-      ? { chosen: true, title: 'Favourites', devices: favourites }
-      : { chosen: false, title: 'Frequently used', devices: frequentlyUsed(state, devices) };
+    return {
+      pool,
+      chosen: pool
+        .filter((device) => device.favourite)
+        .sort((left, right) => left.position - right.position),
+    };
   },
 );
+
+const frequentOf = memoOnInputs(
+  (state) => [state.tables.devices, state.tables.commands],
+  (state): Favourites => ({
+    chosen: false,
+    title: 'Frequently used',
+    devices: frequentlyUsed(state, chosenOf(state).pool),
+  }),
+);
+
+export function favouritesOf(state: StoreState): Favourites {
+  const { chosen } = chosenOf(state);
+  return chosen.length > 0
+    ? { chosen: true, title: 'Favourites', devices: chosen }
+    : frequentOf(state);
+}
 
 export function sameFavourites(left: Favourites, right: Favourites): boolean {
   return (

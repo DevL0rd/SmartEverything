@@ -4,16 +4,17 @@ import {
   type Engine,
   type Role,
 } from '@smarteverything/domain';
+import type { ComputerEngine } from './engine-kind';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
 import type { Store } from '../store/store';
 export function validateComputerEngine(
   store: Store,
   directory: ComputerAiDirectory,
-  engine: Exclude<Engine, { kind: 'openrouter' | 'dsh' }>,
+  engine: ComputerEngine,
   role: Role,
 ): void {
   if (role !== 'owner')
-    throw new ApiError('forbidden', 'Only the owner may run native subscription computer work.');
+    throw new ApiError('forbidden', 'Only the home owner can use Claude or Codex on computers.');
   const target = { device_id: engine.device_id, runtime: engine.kind };
   const status = directory.runtimeStatus(target);
   if (!status.settings.settings.provider.enabled)
@@ -36,10 +37,7 @@ export function validateComputerEngine(
     );
   validateModelOptions(engine, model);
 }
-function validateModelOptions(
-  engine: Exclude<Engine, { kind: 'openrouter' | 'dsh' }>,
-  model: ComputerRuntimeModel,
-): void {
+function validateModelOptions(engine: ComputerEngine, model: ComputerRuntimeModel): void {
   if (engine.effort !== null && !model.efforts.includes(engine.effort))
     throw new ApiError('invalid_request', 'The selected model does not support this effort.');
   if (engine.kind === 'codex') {

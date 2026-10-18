@@ -6,15 +6,21 @@ import {
   resolveImageAttachmentAccess,
 } from '@deepseek-ai/dsh-llm';
 import type { Session, SessionEvent, SessionSeq } from '@deepseek-ai/dsh-session';
-import { HarnessRuntimeError } from '../host/errors';
-import { cachedMediaText, type HarnessAttachment } from './attachments';
-import { originalMediaId } from './media-reference';
 import type { HarnessControlPersistence } from './contracts';
 import { readNativeHistory } from './history';
+import { HarnessRuntimeError } from '../host/errors';
+import { cachedMediaText, type HarnessAttachment } from './attachments';
 import { nativeImageNote, type NativeMediaNote } from './native-media-note';
+import { originalMediaId } from './media-reference';
 
 type Load = (sessionId: string, ids: readonly string[]) => AsyncIterable<HarnessAttachment>;
 type MediaEvent = Extract<SessionEvent, { type: 'user/message' | 'tool/result' }>;
+
+interface MediaScan {
+  next: number;
+  turnStart: { readonly turn: number; readonly seq: SessionSeq } | undefined;
+  readonly images: Map<SessionSeq, MediaEvent>;
+}
 
 export function installMediaHistory(
   ctx: Context,
@@ -24,6 +30,7 @@ export function installMediaHistory(
     readonly describe: NativeMediaNote | undefined;
   },
 ): void {
+  const scans = new WeakMap<Session, MediaScan>();
   ctx.on(
     'agent/pre-step',
     async ({ agent, turn, signal }, next) => {
@@ -34,30 +41,53 @@ export function installMediaHistory(
           .some((message) => message.content.some((block) => block.type === 'image'))
       )
         return next();
-      await ports.persistence.verify(ports.persistence.claim(session.id));
-      await ctx.sessions.flush(session);
-      const metadata = await ports.persistence.metadata(session.id);
-      const events = readNativeHistory(metadata.header, await ports.persistence.read(session.id));
-      const boundary = events.find(
-        (event) => event.type === 'turn/start' && event.data.turn === turn,
-      )?.seq;
-      if (boundary === undefined)
+      const scan = scans.get(session) ?? { next: 0, turnStart: undefined, images: new Map() };
+      scans.set(session, scan);
+      await absorbNewEvents(ctx, ports.persistence, { session, scan });
+      if (scan.turnStart?.turn !== turn)
         throw new HarnessRuntimeError(
           'operation_failed',
           'The media history turn boundary is missing.',
         );
-      await replaceOlderMedia(ctx, { session, events, boundary }, { ...ports, signal });
+      await replaceOlderMedia(
+        ctx,
+        { session, images: scan.images, boundary: scan.turnStart.seq },
+        { ...ports, signal },
+      );
       return next();
     },
     { prepend: true },
   );
 }
 
+async function absorbNewEvents(
+  ctx: Context,
+  persistence: HarnessControlPersistence,
+  input: { readonly session: Session; readonly scan: MediaScan },
+): Promise<void> {
+  const { session, scan } = input;
+  await ctx.sessions.flush(session);
+  const header = (await persistence.metadata(session.id)).header;
+  const events = readNativeHistory(
+    header,
+    await persistence.read(session.id, { offset: scan.next }),
+  );
+  for (const event of events) {
+    if (event.type === 'turn/start') scan.turnStart = { turn: event.data.turn, seq: event.seq };
+    else if (
+      (event.type === 'user/message' || event.type === 'tool/result') &&
+      session.deriveEventMessage(event)?.content.some((block) => block.type === 'image') === true
+    )
+      scan.images.set(event.seq, event);
+    scan.next = event.seq + 1;
+  }
+}
+
 async function replaceOlderMedia(
   ctx: Context,
   input: {
     readonly session: Session;
-    readonly events: readonly SessionEvent[];
+    readonly images: Map<SessionSeq, MediaEvent>;
     readonly boundary: SessionSeq;
   },
   ports: {
@@ -66,12 +96,10 @@ async function replaceOlderMedia(
     readonly describe: NativeMediaNote | undefined;
   },
 ): Promise<void> {
-  const { session, events, boundary } = input;
-  const bySeq = new Map(events.map((event) => [event.seq, event]));
+  const { session, images, boundary } = input;
   for (const seq of [...session.surface.nodes]) {
-    if (seq >= boundary) continue;
-    const event = bySeq.get(seq);
-    if (event?.type !== 'user/message' && event?.type !== 'tool/result') continue;
+    const event = images.get(seq);
+    if (event === undefined || seq >= boundary) continue;
     const original = session.deriveEventMessage(event);
     if (original?.content.some((block) => block.type === 'image') !== true) continue;
     const content = await mediaHistoryContent(
@@ -81,6 +109,7 @@ async function replaceOlderMedia(
     );
     ports.signal.throwIfAborted();
     replaceMedia(ctx, session, { seq, event, original, content });
+    images.delete(seq);
   }
 }
 

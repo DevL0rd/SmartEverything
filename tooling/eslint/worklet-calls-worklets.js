@@ -1,3 +1,5 @@
+import ts from 'typescript';
+
 const WORKLET_HOOKS = new Set([
   'useAnimatedStyle',
   'useAnimatedProps',
@@ -26,14 +28,12 @@ const SHARED_VALUE_METHODS = new Set(['get', 'set', 'modify']);
 
 const WORKLET_MODULES = /^react-native-(reanimated|worklets)$/;
 
-const ALIAS = 2097152;
-
 const FUNCTIONS = new Set(['ArrowFunctionExpression', 'FunctionExpression', 'FunctionDeclaration']);
 
 function hasWorkletDirective(fn) {
   const body = fn.body;
   if (!body || body.type !== 'BlockStatement') return false;
-  return body.statements?.[0]?.directive === 'worklet' || body.body?.[0]?.directive === 'worklet';
+  return body.body[0]?.directive === 'worklet';
 }
 
 function isFunction(node) {
@@ -79,7 +79,7 @@ function importedIsWorklet(services, identifier) {
   const node = services.esTreeNodeToTSNodeMap.get(identifier);
   let symbol = checker.getSymbolAtLocation(node);
   if (symbol === undefined) return true;
-  if ((symbol.flags & ALIAS) !== 0) symbol = checker.getAliasedSymbol(symbol);
+  if ((symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
   const fn = tsFunctionOf(symbol.valueDeclaration);
   return fn === null ? true : tsHasWorkletDirective(fn);
 }

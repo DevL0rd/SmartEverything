@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { HsvColor, JsonValue } from '@smarteverything/domain';
+import { hsvToPackedRgb, type HsvColor, type JsonValue } from '@smarteverything/domain';
 
 export type ColorVersion = 'v1' | 'v2';
 
@@ -99,17 +99,6 @@ function hex(value: number, digits: number): string {
   return value.toString(16).padStart(digits, '0');
 }
 
-function channel(color: HsvColor, offset: number): number {
-  const value = color.value / 100;
-  const saturation = color.saturation / 100;
-  const k = (offset + color.hue / 60) % 6;
-  return Math.round((value - value * saturation * Math.max(0, Math.min(k, 4 - k, 1))) * 255);
-}
-
-export function rgbOf(color: HsvColor): readonly [number, number, number] {
-  return [channel(color, 5), channel(color, 3), channel(color, 1)];
-}
-
 export function encodeColor(
   version: ColorVersion,
   color: HsvColor,
@@ -125,7 +114,5 @@ export function encodeColor(
   if (version === 'v2') {
     return `${hex(h, 4)}${hex(s, 4)}${hex(v, 4)}`;
   }
-  return `${rgbOf(color)
-    .map((channel) => hex(channel, 2))
-    .join('')}${hex(h, 4)}${hex(s, 2)}${hex(v, 2)}`;
+  return `${hex(hsvToPackedRgb(color), 6)}${hex(h, 4)}${hex(s, 2)}${hex(v, 2)}`;
 }

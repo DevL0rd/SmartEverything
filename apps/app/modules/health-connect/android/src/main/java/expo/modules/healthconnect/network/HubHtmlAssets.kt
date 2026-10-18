@@ -41,8 +41,8 @@ class HubHtmlAssets(private val input: HubHtmlInput, private val policy: HubRout
       }
     } catch (failure: Exception) {
       if (failure is java.io.IOException && call?.isCanceled() != true && !closed && runCatching(check).isSuccess)
-        policy.failed(input.binding, null)
-      if (sent) context.close() else unavailable(context)
+        policy.failed(input.binding)
+      if (sent) context.close() else unavailable(context, failure)
     } finally { call?.let { calls.remove(it); it.cancel() } }
   }
   private fun responseHeaders(response: Response): HttpResponse {
@@ -70,10 +70,8 @@ class HubHtmlAssets(private val input: HubHtmlInput, private val policy: HubRout
       }
     }
   }
-  private fun unavailable(context: ChannelHandlerContext) {
-    val response = DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_GATEWAY)
-    response.headers().set("Content-Length", 0).set("Connection", "close")
-    context.writeAndFlush(response).addListener(ChannelFutureListener.CLOSE)
+  private fun unavailable(context: ChannelHandlerContext, failure: Exception) {
+    explain(context, HttpResponseStatus.BAD_GATEWAY, "The server could not deliver this page: ${failure.message ?: failure.javaClass.simpleName}", failure)
   }
   override fun close() { closed = true; calls.toList().forEach { it.cancel() }; io.shutdownNow() }
   companion object {

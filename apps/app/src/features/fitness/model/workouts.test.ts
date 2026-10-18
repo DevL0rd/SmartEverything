@@ -77,29 +77,48 @@ describe('workouts', () => {
     heart(8, [120, 150, 160]),
   ];
 
-  it('attributes overlapping distance and energy and reads the heart rate inside', () => {
+  it('takes the distance recorded inside the session, attributes energy and reads the heart rate inside', () => {
     const [today, earlier] = workoutsOf(records);
     expect(today).toMatchObject({
       name: 'Running',
       minutes: 30,
-      meters: 5500,
+      meters: 5000,
       kilocalories: 320,
       maxBpm: 160,
       route: { status: 'recorded' },
     });
     expect(today!.averageBpm).toBeCloseTo(430 / 3);
-    expect(today!.secondsPerKm).toBeCloseTo(1800 / 5.5);
+    expect(today!.secondsPerKm).toBeCloseTo(1800 / 5);
     expect(earlier).toMatchObject({ kilocalories: null, heart: [] });
   });
 
   it('personal records pick the best session per activity', () => {
     const found = personalRecords(workoutsOf(records));
     expect(found.map((entry) => `${entry.label}:${String(Math.round(entry.value))}`)).toEqual([
-      'Longest distance:5500',
+      'Longest distance:5000',
       'Longest session:30',
       'Fastest pace:300',
       'Most energy:320',
     ]);
+  });
+
+  it('shows no distance or pace when the only distance record spans far more than the session', () => {
+    const [workout] = workoutsOf([
+      run(8, 42, { status: 'absent' }),
+      seedRecord({ type: 'Distance', start: at(8, 0), end: at(9, 0), data: { meters: 7500 } }),
+    ]);
+    expect(workout).toMatchObject({ meters: null, secondsPerKm: null });
+  });
+
+  it('shows no pace below one kilometre but still shows the distance', () => {
+    const short = [
+      run(8, 10, { status: 'absent' }),
+      seedRecord({ type: 'Distance', start: at(8, 7), end: at(8, 7, 10), data: { meters: 800 } }),
+    ];
+    expect(workoutsOf(short)[0]).toMatchObject({ meters: 800, secondsPerKm: null });
+    expect(personalRecords(workoutsOf(short)).map((entry) => entry.label)).not.toContain(
+      'Fastest pace',
+    );
   });
 
   it('draws a route scaled into a square box', () => {
@@ -117,9 +136,9 @@ describe('workouts', () => {
   });
 
   it('pace reads minutes and seconds per kilometre', () => {
-    expect(paceText(341)).toBe('5:41 /km');
-    expect(tempoText(56, 341)).toBe('5:41 /km');
-    expect(tempoText(8, 150)).toBe('24.0 km/h');
+    expect(paceText(341)).toBe('5:41\u00a0/km');
+    expect(tempoText(56, 341)).toBe('5:41\u00a0/km');
+    expect(tempoText(8, 150)).toBe('24.0\u00a0km/h');
   });
 
   it('gives strength sessions no distance even when walking was recorded at the time', () => {
@@ -198,6 +217,20 @@ describe('heart rate zones', () => {
     ]);
     expect(days.map((entry) => entry.total)).toEqual([0, 1, 1]);
     expect(zoneTotals(days)).toEqual({ warm: 0, easy: 0, aerobic: 1, hard: 0, peak: 1 });
+  });
+
+  it('reads the extremes of half a million samples without exceeding the argument limit', () => {
+    const samples = Array.from({ length: 500_000 }, (_, index) => ({
+      at: index,
+      bpm: 60 + (index % 100),
+    }));
+    expect(sampleStats(samples)).toEqual({ min: 60, mean: 109.5, max: 159 });
+    expect(
+      maximumHeartRate(
+        null,
+        samples.map((sample) => sample.bpm),
+      ),
+    ).toEqual({ bpm: 159, basis: 'observed' });
   });
 
   it('uses the maximum heart rate setting before the highest one observed', () => {

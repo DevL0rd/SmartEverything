@@ -4,14 +4,10 @@ import { href } from '../../../app-shell/hrefs';
 import { ProgressBar, StageTimeline } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
-import {
-  WidgetEmpty,
-  WidgetFrame,
-  boardClassOf,
-  type WidgetSize,
-} from '../../../components/widget-board';
+import { WidgetEmpty, WidgetFrame } from '../../../components/widget-board';
+import { rowLayoutOf, type RowLayout } from '../../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { cn } from '../../../design/cn';
-import { useSizeClass } from '../../../design/size-class';
 import { clock, hoursMinutes } from '../../../format/time';
 import { useLastNight } from '../data/nights';
 import { useTodayContext } from '../data/today';
@@ -69,28 +65,26 @@ function Stages({ night }: { readonly night: SleepNight }): ReactNode {
 function Body({
   night,
   goal,
-  size,
-  compact,
+  layout,
 }: {
   readonly night: SleepNight;
   readonly goal: number;
-  readonly size: WidgetSize;
-  readonly compact: boolean;
+  readonly layout: RowLayout;
 }): ReactNode {
-  if (size === 'S') {
+  if (layout === 'tile') {
     return <Summary night={night} goal={goal} big={false} />;
   }
-  const wide = size === 'W' && !compact;
+  const wide = layout === 'wide';
   return (
     <View className="flex-1 flex-row items-center gap-5">
-      <View className={wide ? 'w-60' : 'w-36'}>
+      <View className={wide ? 'w-1/3' : 'w-2/5'}>
         <Summary night={night} goal={goal} big={wide} />
       </View>
       <View className="min-w-0 flex-1">
         <StageTimeline segments={timelineOf(night)} label="Sleep stages" compact />
       </View>
       {wide && night.hasStages ? (
-        <View className="w-40">
+        <View className="w-1/5">
           <Stages night={night} />
         </View>
       ) : null}
@@ -98,17 +92,16 @@ function Body({
   );
 }
 
-export function SleepWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+export function SleepWidget(): ReactNode {
   const { day, goals } = useTodayContext();
   const { night } = useLastNight(day);
-  const compact = boardClassOf(useSizeClass().width) === 'compact';
+  const { cls } = useWidgetFace();
   return (
     <WidgetFrame
       title="Sleep"
       icon="moon"
       accent="sleep-core"
       href={href.fitnessPage('sleep', { day })}
-      size={size}
     >
       {night === null ? (
         <WidgetEmpty
@@ -116,10 +109,9 @@ export function SleepWidget({ size }: { readonly size: WidgetSize }): ReactNode 
           colour="sleep-core"
           title="No sleep recorded"
           body="Wear your watch to bed to see last night here."
-          size={size}
         />
       ) : (
-        <Body night={night} goal={goals.sleep_minutes} size={size} compact={compact} />
+        <Body night={night} goal={goals.sleep_minutes} layout={rowLayoutOf(cls)} />
       )}
     </WidgetFrame>
   );

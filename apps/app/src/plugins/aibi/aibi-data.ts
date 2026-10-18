@@ -11,7 +11,6 @@ import {
   type RobotMoves,
   type RobotStatus,
 } from '@smarteverything/domain';
-import { useDevices } from '../../store/selectors';
 import type { Device } from '../../store/state';
 import { useControl, type Control } from '../../store/control';
 import type { PluginNoticeText } from '../shared/plugin-notice';
@@ -34,10 +33,6 @@ export function useRobotActivity(): PluginStream<{
 
 export function useRobotMoves(): PluginStream<RobotMoves> {
   return usePluginStream(AIBI_PLUGIN, ROBOT_MOVES_STREAM, ROBOT_MOVES);
-}
-
-export function useRobotDevice(): Device | null {
-  return useDevices({ includeHidden: true }).find((device) => device.kind === 'robot') ?? null;
 }
 
 export function isRobot(device: { readonly kind: string }): boolean {

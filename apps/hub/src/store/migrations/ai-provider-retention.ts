@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { LogPayload } from '@smarteverything/logging';
 import type { Sql } from '../sql';
-import { retainProviderEvents } from '../ai-provider-retention';
+import { retainProviderEvents } from '../retention';
 
 export const AI_PROVIDER_RETENTION: readonly string[] = [
   'alter table ai_provider_chats add column event_seq integer not null default 0',

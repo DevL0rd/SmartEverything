@@ -1,4 +1,7 @@
 import type { ChatTimelinePart, ChatTimelineTool } from '@smarteverything/domain';
+import { finalView } from './stream-view';
+
+export const TEXT_CHUNK_CHARS = 1400;
 
 export type InlineToolActivity = Exclude<ChatTimelinePart, { readonly kind: 'text' }>;
 export type InlineTimelinePart =
@@ -20,6 +23,10 @@ export function inlineTimeline(parts: readonly ChatTimelinePart[]): readonly Inl
       result[result.length - 1] = { ...previous, activities: [...previous.activities, part] };
       continue;
     }
+    if (part.kind === 'text') {
+      result.push(...textChunks(part));
+      continue;
+    }
     if (part.kind !== 'tool') {
       result.push(part);
       continue;
@@ -27,6 +34,32 @@ export function inlineTimeline(parts: readonly ChatTimelinePart[]): readonly Inl
     appendTool(result, part);
   }
   return result;
+}
+
+type TextPart = Extract<ChatTimelinePart, { readonly kind: 'text' }>;
+
+function textChunks(part: TextPart): readonly TextPart[] {
+  if (part.text.length <= TEXT_CHUNK_CHARS) return [part];
+  const view = finalView(part.text);
+  const blocks = view.tail === '' ? view.settled : [...view.settled, view.tail];
+  const chunks: string[][] = [[]];
+  let size = 0;
+  for (const block of blocks) {
+    const current = chunks[chunks.length - 1] ?? [];
+    if (size > 0 && size + block.length > TEXT_CHUNK_CHARS) {
+      chunks.push([block]);
+      size = block.length;
+    } else {
+      current.push(block);
+      size += block.length;
+    }
+  }
+  if (chunks.length === 1) return [part];
+  return chunks.map((blocksOfChunk, index) => ({
+    kind: 'text',
+    key: index === 0 ? part.key : `${part.key}#${String(index)}`,
+    text: blocksOfChunk.join('\n\n'),
+  }));
 }
 
 function appendTool(
@@ -50,4 +83,8 @@ function appendTool(
       operationId: part.tool.image_operation_id,
     });
   }
+}
+
+export function streamingKey(parts: readonly InlineTimelinePart[], live: boolean): string | null {
+  return live ? (parts.at(-1)?.key ?? null) : null;
 }

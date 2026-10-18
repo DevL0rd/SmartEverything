@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BODY_COMPOSITION } from './body-composition';
 import { CLIENT_RECORD_ID, OUTBOX_ENTRY } from './health-entries';
+import { BLUETOOTH_MAC } from './mac-address';
 import { SCALE_USER } from './profiles';
 
 const ID = z.uuid();
@@ -17,7 +18,7 @@ export const ATTRIBUTIONS = [
 
 export type Attribution = (typeof ATTRIBUTIONS)[number];
 
-export const BODY_READING_ROW = z.strictObject({
+export const BODY_READING_ROW = z.object({
   id: ID,
   device_id: ID,
   profile_id: ID.nullable(),
@@ -40,20 +41,12 @@ export type BodyReadingRow = z.infer<typeof BODY_READING_ROW>;
 
 export const BODY_READINGS_SNAPSHOT = 100;
 
-export const ATTRIBUTION_RULES = {
-  closestKg: 3,
-  runnerUpRatio: 2,
-  lookbackDays: 90,
-} as const;
-
 export interface AttributionCandidate {
   readonly profileId: string;
   readonly scaleUser: number | null;
-  readonly lastWeightKg: number | null;
 }
 
 export interface AttributionInput {
-  readonly weightKg: number;
   readonly scaleUser: number | null;
 }
 
@@ -67,37 +60,13 @@ const PENDING: AttributionResult = { profileId: null, attribution: 'pending' };
 function bySlot(
   input: AttributionInput,
   candidates: readonly AttributionCandidate[],
-): AttributionResult | null {
-  if (input.scaleUser === null) {
-    return null;
-  }
-  const owners = candidates.filter((candidate) => candidate.scaleUser === input.scaleUser);
+): AttributionResult {
+  const owners = candidates.filter(
+    (candidate) => input.scaleUser !== null && candidate.scaleUser === input.scaleUser,
+  );
   const [owner] = owners;
   return owners.length === 1 && owner !== undefined
     ? { profileId: owner.profileId, attribution: 'scale' }
-    : null;
-}
-
-function byWeight(
-  input: AttributionInput,
-  candidates: readonly AttributionCandidate[],
-): AttributionResult {
-  const ranked = candidates
-    .flatMap((candidate) =>
-      candidate.lastWeightKg === null
-        ? []
-        : [{ candidate, distance: Math.abs(candidate.lastWeightKg - input.weightKg) }],
-    )
-    .sort((left, right) => left.distance - right.distance);
-  const [best, runnerUp] = ranked;
-  if (best === undefined || best.distance > ATTRIBUTION_RULES.closestKg) {
-    return PENDING;
-  }
-  const clear =
-    runnerUp === undefined || runnerUp.distance >= best.distance * ATTRIBUTION_RULES.runnerUpRatio;
-  const enoughData = ranked.length === candidates.length;
-  return clear && enoughData
-    ? { profileId: best.candidate.profileId, attribution: 'weight' }
     : PENDING;
 }
 
@@ -107,19 +76,15 @@ export function attributeReading(
 ): AttributionResult {
   const [only] = candidates;
   if (candidates.length === 1 && only !== undefined) {
-    return { profileId: only.profileId, attribution: 'only_profile' };
+    const foreign =
+      input.scaleUser !== null && only.scaleUser !== null && only.scaleUser !== input.scaleUser;
+    return foreign ? PENDING : { profileId: only.profileId, attribution: 'only_profile' };
   }
-  return bySlot(input, candidates) ?? byWeight(input, candidates);
+  return bySlot(input, candidates);
 }
 
-export const BLE_ADVERT_LIMIT = 50;
-
-export const BLE_ADVERT = z.strictObject({
-  address: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/),
+export const BLE_ADVERT = z.object({
+  address: BLUETOOTH_MAC,
   serviceUuid: z
     .string()
     .trim()
@@ -132,19 +97,19 @@ export const BLE_ADVERT = z.strictObject({
 
 export type BleAdvert = z.infer<typeof BLE_ADVERT>;
 
-export const BLE_ADVERT_BATCH = z.strictObject({
-  adverts: z.array(BLE_ADVERT).min(1).max(BLE_ADVERT_LIMIT),
+export const BLE_ADVERT_BATCH = z.object({
+  adverts: z.array(BLE_ADVERT).min(1),
 });
 
-export const BLE_RELAY_RESULT = z.strictObject({
+export const BLE_RELAY_RESULT = z.object({
   accepted: z.int().min(0),
   ignored: z.int().min(0),
   readings: z.array(ID),
 });
 
-export const BLE_WATCH = z.strictObject({
+export const BLE_WATCH = z.object({
   devices: z.array(
-    z.strictObject({
+    z.object({
       address: BLE_ADVERT.shape.address,
       serviceUuid: BLE_ADVERT.shape.serviceUuid,
       dataPrefix: z.string().regex(/^([0-9a-f]{2})*$/),
@@ -155,7 +120,7 @@ export const BLE_WATCH = z.strictObject({
 
 export type BleWatch = z.infer<typeof BLE_WATCH>;
 
-export const OUTBOX_READING = z.strictObject({
+export const OUTBOX_READING = z.object({
   id: ID,
   version: z.int().min(1),
   measuredAt: MOMENT,
@@ -171,25 +136,25 @@ export const OUTBOX_READING = z.strictObject({
 
 export type OutboxReading = z.infer<typeof OUTBOX_READING>;
 
-export const HEALTH_OUTBOX = z.strictObject({
+export const HEALTH_OUTBOX = z.object({
   readings: z.array(OUTBOX_READING),
   entries: z.array(OUTBOX_ENTRY),
 });
 
-const WRITTEN = z.array(z.strictObject({ id: ID, version: z.int().min(1) })).max(200);
+const WRITTEN = z.array(z.object({ id: ID, version: z.int().min(1) }));
 
-export const ENTRY_FAILURE = z.strictObject({
+export const ENTRY_FAILURE = z.object({
   id: ID,
   version: z.int().min(1),
-  reason: z.string().trim().min(1).max(500),
+  reason: z.string().trim().min(1),
 });
 
 export const HEALTH_OUTBOX_ACK = z
-  .strictObject({
+  .object({
     written: WRITTEN.default([]),
     entries: WRITTEN.default([]),
-    failed: z.array(ENTRY_FAILURE).max(200).default([]),
-    deletedInHealthConnect: z.array(CLIENT_RECORD_ID).max(500).default([]),
+    failed: z.array(ENTRY_FAILURE).default([]),
+    deletedInHealthConnect: z.array(CLIENT_RECORD_ID).default([]),
   })
   .refine(
     (ack) =>
@@ -203,7 +168,7 @@ export const HEALTH_OUTBOX_ACK = z
 
 export type HealthOutboxAck = z.infer<typeof HEALTH_OUTBOX_ACK>;
 
-export const BODY_READING_PUSH_DATA = z.strictObject({
+export const BODY_READING_PUSH_DATA = z.object({
   kind: z.literal('body_reading'),
   readingId: ID,
 });

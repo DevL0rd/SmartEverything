@@ -4,21 +4,25 @@ import { Line } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { withUnit } from '../../format/number';
 import { Text } from '../text';
-import { AXIS_W, LABEL_W, X_AXIS_H, type Model } from './chart-model';
+import { LABEL_W, X_AXIS_H, type Model } from './chart-model';
 import { clamp, extremaOf } from './scale';
+
+const Y_LABEL_GAP = 6;
 
 function AxisLabel({
   left,
   top,
   text,
   align,
+  width = LABEL_W,
 }: {
   readonly left: number;
   readonly top: number;
   readonly text: string;
   readonly align: 'center' | 'end';
+  readonly width?: number;
 }): ReactNode {
-  const place = { left, top, width: align === 'end' ? AXIS_W - 6 : LABEL_W };
+  const place = { left, top, width };
   return (
     <View pointerEvents="none" style={place} className="absolute">
       <Text variant="caption" tone="faint" align={align} numberOfLines={1} className="tabular">
@@ -41,6 +45,7 @@ export function Axes({ model }: { readonly model: Model }): ReactNode {
           left={0}
           top={model.y(tick) - 8}
           align="end"
+          width={model.box.left - Y_LABEL_GAP}
           text={model.format(tick)}
         />
       ))}

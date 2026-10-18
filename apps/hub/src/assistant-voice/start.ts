@@ -8,6 +8,7 @@ import type { PriceBook } from '../ledger/gemini-live';
 import { AssistantVoice } from './assistant-voice';
 import type { HomeCameras } from './home-cameras';
 import type { OpenCalls } from './open-calls';
+import type { SpeakingMedia } from '../reach/room-media';
 
 export interface StartVoiceOptions {
   readonly store: Store;
@@ -19,6 +20,8 @@ export interface StartVoiceOptions {
   readonly prices: PriceBook;
   readonly openCalls: OpenCalls;
   readonly cameras: HomeCameras;
+  readonly roomMedia: SpeakingMedia;
+  readonly dataDirectory: string;
   readonly log: Logger;
 }
 
@@ -30,6 +33,8 @@ export function startAssistantVoice(options: StartVoiceOptions): AssistantVoice 
     tools: options.tools,
     prices: options.prices,
     cameras: options.cameras,
+    roomMedia: options.roomMedia,
+    dataDirectory: options.dataDirectory,
     fetch: options.fetch,
     now: options.now,
     log: options.log,

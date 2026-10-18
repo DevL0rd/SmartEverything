@@ -1,6 +1,7 @@
+import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { BACKGROUND, FOREGROUND, paint, withoutColour } from '../src/palette';
-import { colourOfLevel, renderBanner, renderJson, renderPlain, renderPretty } from '../src/render';
+import { FOREGROUND } from '../src/palette';
+import { renderJson, renderPlain, renderPretty } from '../src/render';
 import { describeFailure, type LogRecord } from '../src/record';
 import { LOG_LEVELS } from '../src/levels';
 
@@ -31,49 +32,24 @@ describe('palette', () => {
       white: `${ESCAPE}[37m`,
       grey: `${ESCAPE}[90m`,
     });
-    expect(BACKGROUND).toEqual({
-      black: `${ESCAPE}[40m`,
-      red: `${ESCAPE}[41m`,
-      green: `${ESCAPE}[42m`,
-      yellow: `${ESCAPE}[43m`,
-      blue: `${ESCAPE}[44m`,
-      magenta: `${ESCAPE}[45m`,
-      cyan: `${ESCAPE}[46m`,
-      white: `${ESCAPE}[47m`,
-      grey: `${ESCAPE}[100m`,
-    });
-  });
-
-  it('wraps text in a colour and closes it again', () => {
-    expect(paint('hello', 'red')).toBe(`${ESCAPE}[31mhello${ESCAPE}[0m`);
-  });
-
-  it('strips every control sequence back out', () => {
-    expect(withoutColour(paint('hello', 'red'))).toBe('hello');
-  });
-
-  it('leaves text that was never coloured alone', () => {
-    expect(withoutColour('hello')).toBe('hello');
   });
 });
 
 describe('level colours', () => {
   it('gives every level a colour, and the loud levels the loud colours', () => {
-    expect(LOG_LEVELS.map(colourOfLevel)).toEqual([
-      'grey',
-      'grey',
-      'green',
-      'yellow',
-      'red',
-      'magenta',
-      'white',
-    ]);
+    const colours = ['grey', 'grey', 'green', 'yellow', 'red', 'magenta', 'white'] as const;
+    LOG_LEVELS.forEach((level, index) => {
+      const colour = colours[index] ?? 'white';
+      expect(renderPretty(recordWith({ level }))).toContain(
+        `${FOREGROUND[colour]}${level.toUpperCase()}`,
+      );
+    });
   });
 });
 
 describe('rendering', () => {
   it('writes the time, the level and the scope, in that order', () => {
-    expect(withoutColour(renderPretty(recordWith()))).toBe(
+    expect(stripVTControlCharacters(renderPretty(recordWith()))).toBe(
       '[12:34:56]-[INFO]-[db.automations]: device.switched',
     );
   });
@@ -84,7 +60,9 @@ describe('rendering', () => {
 
   it('shows how long an operation took', () => {
     expect(renderPlain(recordWith({ durationMs: 42 }))).toContain('(42ms)');
-    expect(withoutColour(renderPretty(recordWith({ durationMs: 42 })))).toContain('(42ms)');
+    expect(stripVTControlCharacters(renderPretty(recordWith({ durationMs: 42 })))).toContain(
+      '(42ms)',
+    );
   });
 
   it('shows the payload when there is one, and nothing when there is not', () => {
@@ -126,9 +104,9 @@ describe('rendering', () => {
     const failure = describeFailure(new Error('device offline'));
     expect(renderPlain(recordWith({ level: 'error', failure }))).toContain('Error: device offline');
     expect(renderPlain(recordWith({ level: 'error', failure }))).toContain('at ');
-    expect(withoutColour(renderPretty(recordWith({ level: 'error', failure })))).toContain(
-      'Error: device offline',
-    );
+    expect(
+      stripVTControlCharacters(renderPretty(recordWith({ level: 'error', failure }))),
+    ).toContain('Error: device offline');
   });
 
   it('adds nothing at all where a failure had no stack', () => {
@@ -155,20 +133,14 @@ describe('rendering', () => {
     expect(renderPlain(recordWith({ level: 'error', failure }))).toContain(
       'UnknownFailure: a string was thrown',
     );
-    expect(withoutColour(renderPretty(recordWith({ level: 'error', failure })))).toContain(
-      'UnknownFailure: a string was thrown',
-    );
+    expect(
+      stripVTControlCharacters(renderPretty(recordWith({ level: 'error', failure }))),
+    ).toContain('UnknownFailure: a string was thrown');
   });
 
   it('writes the whole record as JSON, losing nothing', () => {
     const record = recordWith({ payload: { sceneId: 'abc' }, durationMs: 7 });
     expect(JSON.parse(renderJson(record))).toEqual(record);
-  });
-
-  it('draws a banner on its own lines so it is impossible to miss', () => {
-    expect(renderBanner('Applying migrations', 'blue')).toBe(
-      `\n${ESCAPE}[44m${ESCAPE}[1m Applying migrations ${ESCAPE}[0m\n`,
-    );
   });
 });
 

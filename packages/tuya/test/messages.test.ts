@@ -85,7 +85,7 @@ describe('cloud message service', () => {
     ).toStrictEqual({ kind: 'online', deviceId: 'bf02' });
   });
 
-  it('reads offline messages and keeps other business codes for logging', () => {
+  it('reads offline messages, flags inventory changes and keeps other business codes for logging', () => {
     expect(
       readMessageFrame(
         frame({ data: ecb(JSON.stringify({ bizCode: 'offline', devId: 'bf03' })) }),
@@ -101,8 +101,25 @@ describe('cloud message service', () => {
         SECRET,
       ).message,
     ).toStrictEqual({
+      kind: 'inventory_changed',
+      deviceId: 'bf03',
+      bizCode: 'nameUpdate',
+    });
+    expect(
+      readMessageFrame(frame({ data: ecb(JSON.stringify({ bizCode: 'nameUpdate' })) }), SECRET)
+        .message,
+    ).toStrictEqual({
       kind: 'other',
       bizCode: 'nameUpdate',
+    });
+    expect(
+      readMessageFrame(
+        frame({ data: ecb(JSON.stringify({ bizCode: 'upgrade', devId: 'bf03' })) }),
+        SECRET,
+      ).message,
+    ).toStrictEqual({
+      kind: 'other',
+      bizCode: 'upgrade',
     });
     expect(
       readMessageFrame(frame({ data: ecb(JSON.stringify({ bizCode: 'online' })) }), SECRET).message,
@@ -161,7 +178,7 @@ describe('cloud message service', () => {
       /^A Tuya cloud message could not be read: the frame is not JSON/,
     );
     expect(() => readMessageFrame('{}', SECRET)).toThrow(
-      'A Tuya cloud message could not be read: the frame does not fit: messageId: Invalid input: expected string, received undefined; payload: Invalid input: expected string, received undefined.',
+      'A Tuya cloud message could not be read: the frame does not fit: ✖ Invalid input: expected string, received undefined\n  → at messageId\n✖ Invalid input: expected string, received undefined\n  → at payload.',
     );
     expect(() =>
       readMessageFrame(JSON.stringify({ messageId: 'm', payload: '***' }), SECRET),

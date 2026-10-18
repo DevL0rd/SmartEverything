@@ -4,8 +4,10 @@ import { notify } from '../../../components/toast-store';
 import { appPlatform } from '../../../design/platform';
 import { setLocalPref } from '../../../store/local-prefs';
 
+import { talkLog } from './talk-log';
 async function androidReady(): Promise<boolean> {
   const microphone = await requestRecordingPermissionsAsync();
+  talkLog.info('talk.microphone_permission', { granted: microphone.granted });
   if (!microphone.granted) {
     notify({
       message: 'Microphone not allowed',
@@ -15,6 +17,7 @@ async function androidReady(): Promise<boolean> {
     return false;
   }
   const notifications = await Notifications.requestPermissionsAsync();
+  talkLog.info('talk.notification_permission', { granted: notifications.granted });
   if (!notifications.granted) {
     notify({
       message: 'Notifications are off',
@@ -26,11 +29,14 @@ async function androidReady(): Promise<boolean> {
 
 export async function turnTalkOn(): Promise<void> {
   if (appPlatform() === 'android' && !(await androidReady())) {
+    talkLog.warn('talk.enable_blocked', { reason: 'permission' });
     return;
   }
+  talkLog.info('talk.enabled');
   setLocalPref('talkEnabled', true);
 }
 
 export function turnTalkOff(): void {
+  talkLog.info('talk.disabled');
   setLocalPref('talkEnabled', false);
 }

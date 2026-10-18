@@ -7,30 +7,16 @@ import {
   type NativeHubResource,
   type NativeHubResourceOpen,
 } from '@smarteverything/domain';
-import type { HubLeasePort } from './lease.js';
-import { HubTransportError } from './policy.js';
-import {
-  resourceRequestHeaders,
-  resourceResponseHeaders,
-  validateResource,
-} from './resource-contract.js';
-import {
-  openResourceResponse,
-  RESOURCE_HIGH_WATER_MARK,
-  RESOURCE_IDLE_TIMEOUT_MS,
-} from './resource-http.js';
+import type { HubLeasePort } from './lease';
+import { HubRefusalError, HubTransportError } from './policy';
+import { refuseLoopbackRequest } from './refusal';
+import { resourceRequestHeaders, resourceResponseHeaders } from './resource-contract';
+import { openHubResource } from './transport';
 
-const HISTORY_ROWS = 500;
-const HISTORY_REPRESENTATIONS = 2;
-const HISTORY_WINDOWS = 2;
-const EXPORT_HEADROOM = 64;
-const MAX_GRANTS = HISTORY_ROWS * HISTORY_REPRESENTATIONS * HISTORY_WINDOWS + EXPORT_HEADROOM;
-const MAX_STREAMS = 32;
 interface ResourceGrant {
   readonly owner: number;
   readonly input: NativeHubResourceOpen;
   readonly controller: AbortController;
-  readonly timer: ReturnType<typeof setTimeout>;
   readonly identity: string;
   readonly removeAbort: () => void;
 }
@@ -41,7 +27,6 @@ export interface ResourceAdmission {
 export class HubResourceBroker {
   private server: Server | null = null;
   private host = '';
-  private active = 0;
   private readonly resources = new Map<string, string>();
   private readonly grants = new Map<string, ResourceGrant>();
   constructor(
@@ -53,27 +38,11 @@ export class HubResourceBroker {
   }
   async start(): Promise<void> {
     if (this.server !== null) throw new HubTransportError('Resource listener already started');
-    const server = createServer(
-      {
-        maxHeaderSize: 8192,
-        highWaterMark: RESOURCE_HIGH_WATER_MARK,
-        headersTimeout: 10_000,
-        requestTimeout: 15_000,
-        connectionsCheckingInterval: 1000,
-      },
-      (request, response) => {
-        void this.serve(request, response).catch(() => {
-          if (response.headersSent) response.destroy();
-          else {
-            response.writeHead(403, { 'cache-control': 'no-store', connection: 'close' });
-            response.end();
-          }
-        });
-      },
-    );
-    server.maxHeadersCount = 32;
-    server.maxRequestsPerSocket = 1;
-    server.maxConnections = MAX_STREAMS;
+    const server = createServer((request, response) => {
+      void this.serve(request, response).catch((cause: unknown) => {
+        refuseLoopbackRequest(response, cause, 'resource.refused');
+      });
+    });
     server.on('connect', (_request, socket) => {
       socket.destroy();
     });
@@ -97,7 +66,6 @@ export class HubResourceBroker {
   }
   open(owner: number, value: unknown): NativeHubResource {
     const input = NATIVE_HUB_RESOURCE_OPEN.parse(value);
-    validateResource(input);
     if (this.server === null) throw new HubTransportError('Resource listener is unavailable');
     const lease = this.policies.lease(
       input.scopeId,
@@ -108,11 +76,10 @@ export class HubResourceBroker {
     if (lease.signal?.aborted === true) throw new HubTransportError('Resource scope was withdrawn');
     const identity = JSON.stringify([owner, nativeHubResourceIdentity(input)]);
     const existing = this.resources.get(identity);
-    if (existing !== undefined) {
-      const grant = this.grants.get(existing);
-      if (grant === undefined) throw new HubTransportError('Resource grant index is inconsistent');
-      if (Date.parse(grant.input.expiresAt) > Date.now()) return this.renew(existing, grant, input);
-      this.release(owner, existing);
+    const grant = existing === undefined ? undefined : this.grants.get(existing);
+    if (existing !== undefined && grant !== undefined) {
+      this.grants.set(existing, { ...grant, input });
+      return this.presentation(existing, input);
     }
     return this.create(owner, input, identity, lease.signal);
   }
@@ -122,21 +89,16 @@ export class HubResourceBroker {
     identity: string,
     signal: AbortSignal | undefined,
   ): NativeHubResource {
-    if (this.grants.size >= MAX_GRANTS)
-      throw new HubTransportError('Resource grant capacity is full');
     const id = randomBytes(32).toString('hex');
     const abort = (): void => {
       this.release(owner, id);
     };
     signal?.addEventListener('abort', abort, { once: true });
-    const timer = setTimeout(abort, Date.parse(input.expiresAt) - Date.now());
-    timer.unref();
     this.grants.set(id, {
       owner,
       input,
       identity,
       controller: new AbortController(),
-      timer,
       removeAbort: (): void => {
         signal?.removeEventListener('abort', abort);
       },
@@ -144,51 +106,27 @@ export class HubResourceBroker {
     this.resources.set(identity, id);
     return this.presentation(id, input);
   }
-  private renew(id: string, grant: ResourceGrant, input: NativeHubResourceOpen): NativeHubResource {
-    if (Date.parse(input.expiresAt) < Date.parse(grant.input.expiresAt))
-      return this.presentation(id, grant.input);
-    clearTimeout(grant.timer);
-    const timer = setTimeout(
-      () => {
-        this.release(grant.owner, id);
-      },
-      Date.parse(input.expiresAt) - Date.now(),
-    );
-    timer.unref();
-    this.grants.set(id, { ...grant, input, timer });
-    return this.presentation(id, input);
-  }
   private presentation(id: string, input: NativeHubResourceOpen): NativeHubResource {
     return { id, localUrl: `http://${this.host}/resource/${id}`, expiresAt: input.expiresAt };
   }
   admit(owner: number, id: string): ResourceAdmission {
     const grant = this.grants.get(id);
-    if (
-      grant?.owner !== owner ||
-      grant.controller.signal.aborted ||
-      Date.parse(grant.input.expiresAt) <= Date.now()
-    )
-      throw new HubTransportError(
-        'Resource grant is absent, withdrawn or belongs to another owner',
+    if (grant?.owner !== owner || grant.controller.signal.aborted)
+      throw new HubRefusalError(
+        'Resource grant is absent, released or belongs to another owner',
+        409,
       );
-    this.policies.lease(
-      grant.input.scopeId,
-      grant.input.url,
-      grant.input.binding,
-      grant.input.routeGeneration,
-    );
     return { input: grant.input, signal: grant.controller.signal };
   }
   release(owner: number, id: string): void {
     const grant = this.grants.get(id);
     if (grant === undefined) return;
     if (grant.owner !== owner)
-      throw new HubTransportError('Resource grant belongs to another owner');
+      throw new HubRefusalError('Resource grant belongs to another owner', 403);
     this.grants.delete(id);
     this.resources.delete(grant.identity);
-    clearTimeout(grant.timer);
     grant.removeAbort();
-    grant.controller.abort(new HubTransportError('Resource grant retired'));
+    grant.controller.abort(new HubTransportError('Resource grant released'));
   }
   clearScope(scopeId: string): void {
     for (const [id, grant] of this.grants)
@@ -205,12 +143,11 @@ export class HubResourceBroker {
     this.host = '';
   }
   private async serve(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const headers = resourceRequestHeaders(request, this.host, this.appOrigin);
-    const match = /^\/resource\/([0-9a-f]{64})$/.exec(request.url ?? '');
-    const id = match?.[1];
+    const headers = resourceRequestHeaders(request);
+    const id = /^\/resource\/([0-9a-f]{64})$/.exec(request.url ?? '')?.[1];
     const grant = id === undefined ? undefined : this.grants.get(id);
-    if (grant === undefined || id === undefined || this.active >= MAX_STREAMS)
-      throw new HubTransportError('Resource grant or stream capacity is unavailable');
+    if (grant === undefined || id === undefined)
+      throw new HubRefusalError('Resource grant is unknown or was released', 409);
     const admission = this.admit(grant.owner, id);
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, admission.signal]);
@@ -219,37 +156,22 @@ export class HubResourceBroker {
     };
     response.once('close', cancel);
     request.once('aborted', cancel);
-    response.setTimeout(RESOURCE_IDLE_TIMEOUT_MS, cancel);
-    this.active += 1;
     try {
-      const upstream = await openResourceResponse(this.policies, admission.input, {
-        method: 'GET',
-        headers,
-        signal,
-      });
-      const status = upstream.statusCode;
-      if (status === undefined) {
-        upstream.destroy();
-        throw new HubTransportError('Resource upstream has no status');
-      }
-      response.writeHead(status, {
-        ...resourceResponseHeaders(upstream),
+      const upstream = await openHubResource(this.policies, admission.input, { headers, signal });
+      response.writeHead(upstream.statusCode, {
+        ...resourceResponseHeaders(upstream.headers),
         'cache-control': 'no-store',
-        'referrer-policy': 'no-referrer',
-        'x-content-type-options': 'nosniff',
         'access-control-allow-origin': this.appOrigin,
         'access-control-expose-headers':
           'Content-Length, Content-Range, Accept-Ranges, ETag, Last-Modified',
-        connection: 'close',
       });
       if (request.method === 'HEAD') {
         response.end();
         cancel();
         return;
       }
-      await pipeline(upstream, response, { signal });
+      await pipeline(upstream.body, response, { signal });
     } finally {
-      this.active -= 1;
       response.removeListener('close', cancel);
       request.removeListener('aborted', cancel);
     }

@@ -15,12 +15,14 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ComputerRuntimeHost, ComputerRuntimeHostEvent } from '../computers/runtime-host';
+import { failureFields, traceHostCall } from '../node/host-trace';
 import { CodexProvider } from './provider';
 import { CodexNative } from './native';
 import { CodexRuntimeError } from './errors';
 import type { CodexProcessOptions } from './process';
 import type { CodexNativeGrantResolver } from './native-grant';
 import { CODEX_SKILLS_CAPABILITY_REVISION } from './provider-commands';
+import { messageOf } from '@smarteverything/logging';
 export interface CodexHostOptions extends CodexProcessOptions {
   readonly deviceId: string;
   readonly dataDirectory: string;
@@ -68,7 +70,10 @@ class CodexHost implements ComputerRuntimeHost {
   private providerReason: string | null = 'Managed ChatGPT Codex sign-in has not been verified.';
   private stopped = false;
   private readonly nativeMcpConfigured: boolean;
+  private readonly log: Logger;
   constructor(options: CodexHostOptions) {
+    this.log = options.log;
+    this.log.info('codex.host_created', { deviceId: options.deviceId });
     this.nativeMcpConfigured = options.nativeMcpGrant !== undefined;
     this.settings = CODEX_AI_SETTINGS.parse(options.settings ?? DEFAULT_CODEX_AI_SETTINGS);
     this.provider = new CodexProvider({
@@ -78,6 +83,7 @@ class CodexHost implements ComputerRuntimeHost {
         this.publish({ kind: 'provider', runtime: 'codex', event });
       },
       changed: (reason): void => {
+        this.noteReason('provider', reason);
         this.providerReason = reason;
         this.changed();
       },
@@ -92,6 +98,7 @@ class CodexHost implements ComputerRuntimeHost {
         });
       },
       changed: (reason): void => {
+        this.noteReason('control', reason);
         this.controlReason = reason;
         this.changed();
       },
@@ -107,7 +114,30 @@ class CodexHost implements ComputerRuntimeHost {
     this.provider.configure(this.settings.provider.enabled, this.settings.provider.options);
     this.native.configure(this.settings);
   }
-  async read(envelope: ComputerRuntimeRead): Promise<ComputerRuntimeReply> {
+  private noteReason(capability: 'control' | 'provider', reason: string | null): void {
+    this.log.info('codex.reason_changed', {
+      capability,
+      ready: reason === null,
+      reason: reason?.slice(0, 200) ?? null,
+    });
+  }
+  read(envelope: ComputerRuntimeRead): Promise<ComputerRuntimeReply> {
+    return traceHostCall(
+      { log: this.log, runtime: 'codex' },
+      'read',
+      operationOf(envelope.request),
+      () => this.readEnvelope(envelope),
+    );
+  }
+  execute(envelope: ComputerRuntimeExecute): Promise<ComputerRuntimeReply> {
+    return traceHostCall(
+      { log: this.log, runtime: 'codex' },
+      'execute',
+      operationOf(envelope.request),
+      () => this.executeEnvelope(envelope),
+    );
+  }
+  private async readEnvelope(envelope: ComputerRuntimeRead): Promise<ComputerRuntimeReply> {
     this.check(envelope.runtime);
     if (envelope.runtime !== 'codex')
       throw new CodexRuntimeError('read', 'The Codex host requires a Codex envelope.');
@@ -137,12 +167,18 @@ class CodexHost implements ComputerRuntimeHost {
       reply: CODEX_AI_REPLY.parse({ operation: request.operation, value }),
     };
   }
-  async execute(envelope: ComputerRuntimeExecute): Promise<ComputerRuntimeReply> {
+  private async executeEnvelope(envelope: ComputerRuntimeExecute): Promise<ComputerRuntimeReply> {
     this.check(envelope.runtime);
     if (envelope.runtime !== 'codex')
       throw new CodexRuntimeError('execute', 'The Codex host requires a Codex envelope.');
     const request = CODEX_AI_EXECUTE.parse(envelope.request);
     if (request.operation === 'configure') {
+      this.log.info('codex.settings_applied', {
+        providerEnabled: request.settings.provider.enabled,
+        controlEnabled: request.settings.control.enabled,
+        previousProviderEnabled: this.settings.provider.enabled,
+        previousControlEnabled: this.settings.control.enabled,
+      });
       this.settings = request.settings;
       this.provider.configure(request.settings.provider.enabled, request.settings.provider.options);
       this.native.configure(request.settings);
@@ -173,10 +209,15 @@ class CodexHost implements ComputerRuntimeHost {
   }
   onEvent(listener: (event: ComputerRuntimeHostEvent) => void): () => void {
     this.listeners.add(listener);
+    this.log.debug('codex.host_listener_added', { listeners: this.listeners.size });
     listener({ kind: 'capabilities', runtime: 'codex', capabilities: this.capabilities() });
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+      this.log.debug('codex.host_listener_removed', { listeners: this.listeners.size });
+    };
   }
   stop(): void {
+    this.log.info('codex.host_stopping', { listeners: this.listeners.size });
     this.stopped = true;
     this.provider.stop();
     this.native.stop();
@@ -191,13 +232,20 @@ class CodexHost implements ComputerRuntimeHost {
       jobs.push({ capability: 'provider', promise: this.provider.models() });
     if (this.settings.control.enabled)
       jobs.push({ capability: 'control', promise: this.native.connect() });
+    const startedAt = performance.now();
     const outcomes = await Promise.allSettled(jobs.map((job) => job.promise));
+    this.log.debug('codex.initialization_settled', () => ({
+      jobs: jobs.map((job) => job.capability),
+      failed: outcomes.filter((outcome) => outcome.status === 'rejected').length,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
     for (const [index, result] of outcomes.entries())
       if (result.status === 'rejected') {
-        const reason =
-          result.reason instanceof Error
-            ? result.reason.message.slice(0, 2000)
-            : 'Codex initialization failed.';
+        const reason = messageOf(result.reason).slice(0, 2000);
+        this.log.warn('codex.initialization_failed', {
+          capability: jobs[index]?.capability,
+          ...failureFields(result.reason),
+        });
         if (jobs[index]?.capability === 'provider') this.providerReason = reason;
         else this.controlReason = reason;
       }
@@ -258,6 +306,13 @@ class CodexHost implements ComputerRuntimeHost {
 }
 export function createCodexHost(options: CodexHostOptions): ComputerRuntimeHost {
   return new CodexHost(options);
+}
+
+const NAMED = z.looseObject({ operation: z.string() });
+
+function operationOf(request: unknown): string {
+  const named = NAMED.safeParse(request);
+  return named.success ? named.data.operation : 'unknown';
 }
 
 function readinessReason(enabled: boolean, reason: string | null, disabled: string): string | null {

@@ -1,7 +1,7 @@
 export const VAD_ASSET_PATH = '/vad/';
 const SCRIPTS = ['ort.wasm.min.js', 'bundle.min.js'] as const;
 
-export interface VadFrameProbabilities {
+interface VadFrameProbabilities {
   readonly isSpeech: number;
 }
 
@@ -41,7 +41,7 @@ interface VadLibrary {
   readonly MicVAD: { readonly new: (options: MicVadOptions) => Promise<MicVad> };
 }
 
-export class VadLibraryError extends Error {
+class VadLibraryError extends Error {
   override readonly name = 'VadLibraryError';
 }
 

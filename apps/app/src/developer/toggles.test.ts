@@ -22,9 +22,20 @@ describe('developer toggles', () => {
     });
   });
 
-  it('is all off with nothing stored', () => {
-    expect(Object.values(resolveFlags({}, true)).some(Boolean)).toBe(false);
+  it('turns on only the initial toggles with nothing stored', () => {
+    const flags = resolveFlags({}, true);
+    DEVELOPER_TOGGLES.forEach((toggle) => {
+      expect(flags[toggle.id]).toBe(toggle.initial === true && toggle.parent === null);
+    });
+    const sampling = resolveFlags({ 'perf.sampling': true }, true);
+    expect(sampling['perf.fanout']).toBe(true);
+    expect(sampling['perf.nav']).toBe(true);
+    expect(flags['perf.frames']).toBe(true);
     expect(Object.values(allOff()).some(Boolean)).toBe(false);
+  });
+
+  it('keeps an initial toggle off once it was switched off', () => {
+    expect(resolveFlags({ 'perf.frames': false }, true)['perf.frames']).toBe(false);
   });
 
   it('keeps a stored option off while its parent is off', () => {

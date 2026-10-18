@@ -45,7 +45,7 @@ export const CLAUDE_ENDPOINTS = {
     path: '/api/claude/sessions',
     access: 'owner',
     summary:
-      'List retained legacy session metadata and current CLI live files, including stable IDs, titles, folders and archive flags',
+      'List retained legacy session metadata and current CLI live files, including stable IDs, titles, folders and archive flags; sessions owned by SmartEverything app chats are not listed',
     params: NOTHING,
     query: z.strictObject({
       state: CLAUDE_SESSION_STATE.optional(),

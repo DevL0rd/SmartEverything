@@ -1,22 +1,18 @@
 import {
   APPEARANCE_PREF,
+  type ClientPrefRead,
   APPEARANCE_PREF_CHOICES,
   type AppearancePref,
 } from '@smarteverything/domain';
-import { PREFS, savePref } from '../../../store/prefs';
+import { PREFS, prefOf, prefValueOf, savePref } from '../../../store/prefs';
 import type { StoreState } from '../../../store/state';
 import type { SettingContext, SelectSetting } from '../../../settings/types';
 
-export function appearanceRead(state: StoreState): ReturnType<typeof PREFS.appearance.decode> {
-  return PREFS.appearance.decode(
-    state.tables.layouts.byId[PREFS.appearance.storageKey]?.layout ?? null,
-  );
-}
+export const appearanceOf = (state: StoreState): AppearancePref =>
+  prefValueOf(state, PREFS.appearance);
 
-export function appearanceOf(state: StoreState): AppearancePref {
-  const read = appearanceRead(state);
-  return read.status === 'invalid' ? PREFS.appearance.defaultValue : read.value;
-}
+export const appearanceRead = (state: StoreState): ClientPrefRead<AppearancePref> =>
+  prefOf(state, PREFS.appearance);
 
 function saveAppearance(
   change: Partial<Readonly<Record<keyof AppearancePref, string>>>,

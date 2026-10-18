@@ -20,9 +20,7 @@ export interface WeatherFailed {
 }
 
 export class WeatherRepository {
-  constructor(private readonly context: StoreContext) {}
-
-  ensure(): void {
+  constructor(private readonly context: StoreContext) {
     this.context.sql.run(
       'create the weather row',
       `insert or ignore into weather (id, updated_at) values ('home', $now)`,

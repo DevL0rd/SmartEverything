@@ -1,5 +1,6 @@
 import { observeModelRequestContext } from './model-request-context';
 import { observeCompactionContext } from './compaction-context';
+import { observeSessionTrace } from './session-trace';
 import { addAbortListener } from 'node:events';
 import { createHash } from 'node:crypto';
 import { HarnessRuntimeError } from './errors';
@@ -47,6 +48,7 @@ export function observeHarness(
     emit({ kind: 'session', sessionId: session.id, event });
   });
   observeCompactionContext(ctx, emit);
+  observeSessionTrace(ctx);
   ctx.on('agent/inbox/claimed', ({ agent, message, turn }) => {
     emit({ kind: 'input', sessionId: agent.id, messageId: message.id, turn });
   });

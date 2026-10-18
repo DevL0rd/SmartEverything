@@ -1,13 +1,14 @@
 import { readFileSync, readlinkSync } from 'node:fs';
 import { ClaudeProcReadError } from './errors';
+import { messageOf } from '@smarteverything/logging';
+import { fsCode } from '../fs-code';
 
 const STAT_FIRST_FIELD_AFTER_NAME = 3;
 const STAT_START_TIME_FIELD = 22;
 
 function isGone(cause: unknown): boolean {
-  return (
-    cause instanceof Error && 'code' in cause && (cause.code === 'ENOENT' || cause.code === 'ESRCH')
-  );
+  const code = fsCode(cause);
+  return code === 'ENOENT' || code === 'ESRCH';
 }
 
 function startTimeOf(stat: string, path: string): string {
@@ -28,7 +29,7 @@ export function processStart(pid: number): string | null {
     if (isGone(cause)) {
       return null;
     }
-    throw new ClaudeProcReadError(path, cause instanceof Error ? cause.message : String(cause));
+    throw new ClaudeProcReadError(path, messageOf(cause));
   }
   return startTimeOf(stat, path);
 }
@@ -38,6 +39,6 @@ export function pidNamespace(): string {
   try {
     return readlinkSync(path);
   } catch (cause) {
-    throw new ClaudeProcReadError(path, cause instanceof Error ? cause.message : String(cause));
+    throw new ClaudeProcReadError(path, messageOf(cause));
   }
 }

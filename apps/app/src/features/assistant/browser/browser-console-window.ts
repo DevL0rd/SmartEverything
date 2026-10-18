@@ -1,5 +1,5 @@
 import type { ConsolePage, ConsoleRecord } from './browser-diagnostics-contract';
-export const PINNED_CONSOLE_RECORD_LIMIT = 2000;
+const PINNED_CONSOLE_RECORD_LIMIT = 2000;
 export interface PinnedConsoleWindow {
   readonly kind: 'paused';
   readonly page: ConsolePage;

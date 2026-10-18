@@ -1,11 +1,11 @@
 import type { CameraReach, EventRow, RecordingRow } from '@smarteverything/domain';
 import { memoOnInputs } from '../../../store/memo-selector';
-import { rowsOf, type StoreState } from '../../../store/state';
+import { rowsOf } from '../../../store/state';
 import { shallowEqual, useStoreSelector } from '../../../store/store-context';
 import { cameraEntriesOf, sameEntries, type CameraEntry } from '../logic/cameras';
 import { CAMERA_EVENT_KINDS } from '../logic/timeline';
 
-const entriesOf = memoOnInputs(
+export const selectCameraEntries = memoOnInputs(
   (state) => [state.tables.devices, state.tables.cameras, state.tables.rooms],
   (state): CameraEntry[] =>
     cameraEntriesOf({
@@ -16,35 +16,39 @@ const entriesOf = memoOnInputs(
 );
 
 export function useCameraEntries(): readonly CameraEntry[] {
-  return useStoreSelector(entriesOf, sameEntries);
+  return useStoreSelector(selectCameraEntries, sameEntries);
 }
 
 export function useCameraEntry(deviceId: string): CameraEntry | null {
   return useCameraEntries().find((entry) => entry.device.id === deviceId) ?? null;
 }
 
-function cameraEventsOf(state: StoreState, deviceIds: ReadonlySet<string>): EventRow[] {
-  return rowsOf(state.tables.events).filter(
-    (event) =>
-      event.device_id !== null &&
-      deviceIds.has(event.device_id) &&
-      CAMERA_EVENT_KINDS.includes(event.kind),
-  );
-}
+const CAMERA_KIND_SET: ReadonlySet<string> = new Set(CAMERA_EVENT_KINDS);
 
 export function useCameraEvents(deviceIds: readonly string[]): readonly EventRow[] {
   const key = deviceIds.join(',');
-  return useStoreSelector((state) => cameraEventsOf(state, new Set(key.split(','))), shallowEqual);
+  return useStoreSelector(
+    (state) => {
+      const ids = new Set(key.split(','));
+      return rowsOf(state.tables.events).filter(
+        (event) =>
+          event.device_id !== null && ids.has(event.device_id) && CAMERA_KIND_SET.has(event.kind),
+      );
+    },
+    shallowEqual,
+    [key],
+  );
 }
 
 export function useCameraRecordings(deviceIds: readonly string[]): readonly RecordingRow[] {
   const key = deviceIds.join(',');
   return useStoreSelector(
-    (state) =>
-      rowsOf(state.tables.recordings).filter((recording) =>
-        key.split(',').includes(recording.device_id),
-      ),
+    (state) => {
+      const ids = new Set(key.split(','));
+      return rowsOf(state.tables.recordings).filter((recording) => ids.has(recording.device_id));
+    },
     shallowEqual,
+    [key],
   );
 }
 

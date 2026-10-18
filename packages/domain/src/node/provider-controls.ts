@@ -131,3 +131,22 @@ export const PROVIDER_READ_QUERY = z.discriminatedUnion('kind', [
 ]);
 
 export type ProviderReadQuery = z.infer<typeof PROVIDER_READ_QUERY>;
+
+export const PROVIDER_FILE_SEARCH = z.strictObject({
+  cwd: z.string().min(1).max(4096),
+  query: z.string().max(200),
+  limit: z.int().min(1).max(50),
+});
+export const PROVIDER_FILE_MATCHES = z.strictObject({
+  entries: z
+    .array(
+      z.strictObject({
+        path: z.string().min(1).max(300),
+        entry_kind: z.enum(['file', 'directory']),
+        version: z.string().min(1).max(300),
+      }),
+    )
+    .max(50),
+  incomplete: z.boolean(),
+});
+export type ProviderFileMatches = z.infer<typeof PROVIDER_FILE_MATCHES>;

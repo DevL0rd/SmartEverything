@@ -76,7 +76,7 @@ export class DisplayCapture {
 
   attach(session: Session): void {
     session.setDisplayMediaRequestHandler((request, callback) => {
-      this.#answer(request, callback);
+      this.answerRequest(request, callback);
     });
   }
 
@@ -86,11 +86,11 @@ export class DisplayCapture {
   }
 
   async choose(sourceId: string | null): Promise<void> {
-    this.#requirePicker('chooseCaptureSource');
     if (sourceId === null) {
       this.#choice = null;
       return;
     }
+    this.#requirePicker('chooseCaptureSource');
     const sources = await fetchSources({
       types: [captureKindOf(sourceId)],
       thumbnail: NO_THUMBNAIL,
@@ -144,7 +144,7 @@ export class DisplayCapture {
     return source;
   }
 
-  #answer(request: DisplayRequest, callback: Answer): void {
+  answerRequest(request: DisplayRequest, callback: Answer): void {
     const refusal = this.#refusalOf(request);
     if (refusal !== null) {
       log.warn('desktop.capture.refused', { mode: this.mode, reason: refusal });

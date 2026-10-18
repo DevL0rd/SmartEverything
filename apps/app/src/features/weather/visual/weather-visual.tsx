@@ -3,13 +3,8 @@ import type { ReactNode } from 'react';
 import { useRef } from 'react';
 import { View } from 'react-native';
 import { useColour } from '../../../design/colour';
-import {
-  SIZE_CLASS,
-  useAnimationGate,
-  useOnScreen,
-  type Box,
-  type VisualPx,
-} from '../../device-visuals';
+import { SIZE_CLASS, type Box, type VisualPx } from '../../device-visuals';
+import { useOnScreenGate } from '../../../design/visibility';
 import { Bolt, Drops, Mist, Twinkle, type Shower } from './fall';
 import { Cloud, Moon, Sun } from './sky';
 
@@ -203,8 +198,7 @@ export function WeatherVisual({
   readonly px: VisualPx;
 }): ReactNode {
   const ref = useRef<View>(null);
-  const { visible, onLayout } = useOnScreen(ref);
-  const { moving } = useAnimationGate(true, visible);
+  const { moving, onLayout } = useOnScreenGate(ref, true);
   const palette = usePalette();
   return (
     <View ref={ref} onLayout={onLayout} pointerEvents="none" className={SIZE_CLASS[px]} aria-hidden>

@@ -41,9 +41,9 @@ function submissionLabel(
   submission: NonNullable<ReturnType<typeof useNativeStart>['submission']>,
 ): string {
   if (submission.state === 'received' && submission.receipt.state === 'accepted')
-    return 'First turn queued. Open the shared chat for actual native progress.';
-  if (submission.state === 'rejected') return 'CLI start rejected.';
-  return 'Delivery is unresolved. Check this operation before starting another session.';
+    return 'Session started. Open the chat to follow it.';
+  if (submission.state === 'rejected') return 'Couldn’t start the session.';
+  return 'Couldn’t confirm it started. Check status before starting another.';
 }
 
 function ReceiptActions({

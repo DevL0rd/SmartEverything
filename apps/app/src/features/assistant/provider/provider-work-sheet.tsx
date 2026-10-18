@@ -9,8 +9,7 @@ import { Sheet } from '../../../components/sheet';
 import { useIsOwner } from '../../../store/selectors';
 import { NATIVE_OWNER_REASON } from './provider-access';
 import { Text } from '../../../components/text';
-import { ProviderOptions } from '../../computers';
-import { QueryState } from '../../computers/components/query-state';
+import { ProviderOptions, QueryState } from '../../computers';
 import { changeChat } from '../chats/chat-actions';
 import { useChatProvider, useEngineCatalogue } from './provider-data';
 import { FlagSettings } from './flag-settings';
@@ -22,6 +21,7 @@ import { ProviderEvents } from './provider-events';
 import { RuntimeOverview } from './runtime-overview';
 
 import { WORK_TABS, type WorkTab } from './work-tabs';
+import { background } from '@smarteverything/logging';
 
 function OperationSheet({
   chatId,
@@ -189,9 +189,12 @@ function ProviderSettings({
         pending={saving}
         save={(options) => {
           setSaving(true);
-          void changeChat(chat.id, { engine: { ...engine, settings: options } }).finally(() => {
-            setSaving(false);
-          });
+          background(
+            changeChat(chat.id, { engine: { ...engine, settings: options } }).finally(() => {
+              setSaving(false);
+            }),
+            'chat.change_failed',
+          );
         }}
       />
     </View>
@@ -209,7 +212,7 @@ function PromptList({
   return (
     <View className="gap-section-gap">
       {pending.length === 0 ? (
-        <Text tone="variant">No pending native prompts.</Text>
+        <Text tone="variant">No requests waiting.</Text>
       ) : (
         pending.map((prompt) => <ProviderPrompt key={prompt.id} chatId={chatId} prompt={prompt} />)
       )}
@@ -288,7 +291,7 @@ function ProviderSummary({
     <List>
       <NavRow
         title={name}
-        subtitle="Supplying computer · separate from Desktop sessions"
+        subtitle="Runs on this computer"
         href={href.settings.device(state.device_id, 'claude')}
       />
       <View className="gap-1 px-4 py-3">
@@ -354,7 +357,7 @@ export function ClaudeWorkSheet({
           error={provider.error}
           pending={provider.isPending}
           retry={() => {
-            void provider.refetch();
+            background(provider.refetch(), 'provider.refetch_failed');
           }}
         />
       ) : (

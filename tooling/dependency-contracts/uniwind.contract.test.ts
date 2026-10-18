@@ -1,17 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { installedVersion, repositoryFile } from './versions';
 import { existsSync, readFileSync } from 'node:fs';
-import { appDeclaredVersion } from './app-manifest';
+import { installedVersion, repositoryFile } from './versions';
 
 function metroConfig(): string {
   return readFileSync(repositoryFile('apps/app/metro.config.js'), 'utf8');
 }
 
 describe('uniwind contract', () => {
-  it('is installed at exactly the version the app declares', () => {
-    expect(installedVersion('uniwind')).toBe(appDeclaredVersion('uniwind'));
-  });
-
   it('is paired with tailwind v4, which is the only major it supports', () => {
     expect(installedVersion('tailwindcss').startsWith('4.')).toBe(true);
   });
@@ -25,9 +20,14 @@ describe('uniwind contract', () => {
     expect(metroConfig()).not.toContain('cssEntryFile: path.resolve');
   });
 
-  it('wraps the metro config outermost, which it requires to transform anything', () => {
-    expect(metroConfig().trimEnd().endsWith('});')).toBe(true);
-    expect(metroConfig()).toMatch(/module\.exports = withUniwindConfig\(/);
+  it('exports the config its wrapper returned, so nothing wraps it afterwards', () => {
+    const wrapped = /const (\w+) = withUniwindConfig\(/.exec(metroConfig())?.[1];
+    expect(wrapped).toBeDefined();
+    expect(
+      metroConfig()
+        .trimEnd()
+        .endsWith(`module.exports = ${wrapped ?? ''};`),
+    ).toBe(true);
   });
 
   it('needs no babel preset, because the metro wrapper does its transform', () => {

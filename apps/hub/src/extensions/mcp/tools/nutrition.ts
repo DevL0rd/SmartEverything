@@ -2,7 +2,6 @@ import {
   API_ENDPOINTS as E,
   BARCODE,
   FOOD_CANDIDATE,
-  FOOD_MULTIPLIER,
   MEALS,
   MEAL_TYPES,
   NUTRITION_PREF,
@@ -12,13 +11,14 @@ import {
   waterEntryOf,
   type FoodCandidate,
   type FoodOrigin,
+  type FoodRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { operate, type ActingAs } from './acting';
 import { readPref } from './prefs';
 import {
   MOMENT_ARGUMENT,
-  PROFILE,
+  PERSON,
   READS,
   ToolError,
   WRITES,
@@ -33,7 +33,7 @@ const LOG_FOOD = z
   .strictObject({
     foodId: z.uuid().optional().describe('A saved food from find_food'),
     barcode: BARCODE.optional().describe(
-      'A packaged product’s barcode, looked up on Open Food Facts',
+      'A packaged product’s barcode: the person’s saved food with it, else Open Food Facts',
     ),
     food: FOOD_CANDIDATE.optional().describe('Nutrition facts given inline, per basis amount'),
     save: z.boolean().default(false).describe('Also save an inline food to the person’s foods'),
@@ -42,15 +42,14 @@ const LOG_FOOD = z
       .positive()
       .max(10_000)
       .optional()
-      .describe('Grams or ml of one portion; one serving when left out'),
-    multiplier: FOOD_MULTIPLIER.optional().describe(
-      'How many portions were eaten, applied to amount: 0.5 for half the bag, 2 for two; 1 when left out',
-    ),
+      .describe(
+        'Total grams or ml eaten, for example 150 for 1.5 servings of 100 g; one serving when left out',
+      ),
     meal: z.enum(MEALS),
     at: MOMENT_ARGUMENT.optional().describe(
       'When it was eaten or drunk, an ISO time that may be in the past, for example last night; now when left out',
     ),
-    profileId: PROFILE,
+    personId: PERSON,
   })
   .refine(
     (input) =>
@@ -79,6 +78,15 @@ async function saved(
   return { food, foodId: row.id };
 }
 
+async function savedByBarcode(
+  context: ToolContext,
+  barcode: string,
+  as: ActingAs,
+): Promise<FoodRow | undefined> {
+  const foods = E.listFoods.response.parse(await operate(context, 'listFoods', {}, as));
+  return foods.find((food) => food.barcode === barcode);
+}
+
 async function chosen(context: ToolContext, input: LogFood): Promise<Chosen> {
   if (input.foodId !== undefined) {
     const foods = E.listFoods.response.parse(await operate(context, 'listFoods', {}, input));
@@ -89,6 +97,10 @@ async function chosen(context: ToolContext, input: LogFood): Promise<Chosen> {
     return { food: factsOf(row), foodId: row.id };
   }
   if (input.barcode !== undefined) {
+    const own = await savedByBarcode(context, input.barcode, input);
+    if (own !== undefined) {
+      return { food: factsOf(own), foodId: own.id };
+    }
     const product = E.lookupFood.response.parse(
       await operate(context, 'lookupFood', { query: { barcode: input.barcode } }, input),
     );
@@ -109,7 +121,6 @@ async function foodLogged(context: ToolContext, input: LogFood): Promise<unknown
     food,
     foodId,
     amount: input.amount ?? defaultAmount(food),
-    multiplier: input.multiplier,
     mealType: MEAL_TYPES[input.meal],
     span: minuteSpan(context, start),
   });
@@ -125,13 +136,10 @@ const LOG_WATER = z
       .max(20)
       .optional()
       .describe('Glasses of the person’s glass size'),
-    multiplier: FOOD_MULTIPLIER.optional().describe(
-      'How many times the amount was drunk, applied to millilitres or glasses: 0.5 for half, 2 for twice; 1 when left out',
-    ),
     at: MOMENT_ARGUMENT.optional().describe(
       'When it was drunk, an ISO time that may be in the past, for example yesterday evening; now when left out',
     ),
-    profileId: PROFILE,
+    personId: PERSON,
   })
   .refine((input) => (input.millilitres === undefined) !== (input.glasses === undefined), {
     message: 'give millilitres or glasses',
@@ -160,7 +168,7 @@ async function waterLogged(
   return operate(
     context,
     'createHealthEntry',
-    { body: waterEntryOf(millilitres, minuteSpan(context, start), input.multiplier) },
+    { body: waterEntryOf(millilitres, minuteSpan(context, start)) },
     input,
   );
 }
@@ -175,7 +183,7 @@ const FIND = z
       .optional()
       .describe('Words in the food’s name or brand'),
     barcode: BARCODE.optional(),
-    profileId: PROFILE,
+    personId: PERSON,
   })
   .refine((input) => input.query !== undefined || input.barcode !== undefined, {
     message: 'give a query or a barcode',
@@ -186,6 +194,10 @@ async function found(
   input: z.infer<typeof FIND>,
 ): Promise<Record<string, unknown>> {
   if (input.barcode !== undefined) {
+    const own = await savedByBarcode(context, input.barcode, input);
+    if (own !== undefined) {
+      return { saved: [own] };
+    }
     return {
       product: await operate(context, 'lookupFood', { query: { barcode: input.barcode } }, input),
     };

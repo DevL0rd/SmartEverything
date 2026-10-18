@@ -13,7 +13,7 @@ import {
 import type { z } from 'zod';
 import type { Store } from '../store/store';
 
-export function hashComputerMcpToken(token: string): string {
+function hashComputerMcpToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 export function computerMcpGrant(

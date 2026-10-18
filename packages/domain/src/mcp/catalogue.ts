@@ -1,5 +1,6 @@
 import type { McpToolAccess, McpToolArea, McpToolSummary } from './areas';
 import { SHOW_WIDGETS_TEXT } from '../chat-widgets';
+import { COMPUTER_ENTRIES } from './catalogue-computers';
 import type { McpCoreToolName } from './names';
 
 type Entry = readonly [
@@ -33,6 +34,13 @@ const ENTRIES: readonly Entry[] = [
     'Device providers (Xiaomi, Tuya, SmartThings, Samsung TV) with status, last error, device count and any sign-in step waiting for the person.',
   ],
   [
+    'list_device_groups',
+    'devices',
+    'read',
+    'List device groups',
+    'Named device groups and room light sets with their key, target, member ids and live state (power, how many are on, brightness range); use the target with control_device_target.',
+  ],
+  [
     'sync_provider',
     'home',
     'control',
@@ -51,14 +59,14 @@ const ENTRIES: readonly Entry[] = [
     'devices',
     'read',
     'Describe a device',
-    'One device in full: every capability with label, role, tier, access, allowed values (options with labels, range, step, unit), danger level and its current value with when it was seen.',
+    'One device in full: every capability with label, role, tier, access, allowed values (options with labels, range, step, unit), danger level and its current value with when it was seen; a television also shows whether a direct link is attached and its input names, an IR blaster or remote the assumed state of its remotes.',
   ],
   [
     'search_everything',
     'devices',
     'read',
     'Search everything',
-    'Search devices, rooms, scenes, automations, IR remotes, people, settings, health types and operations by words. Returns ids to use with the other tools.',
+    'Search devices, rooms, scenes, automations, IR remotes, people, settings and health types by words. Returns ids to use with the other tools.',
   ],
   [
     'list_remotes',
@@ -107,7 +115,7 @@ const ENTRIES: readonly Entry[] = [
     'automations',
     'read',
     'List automations',
-    'Automations with triggers, conditions, actions, whether enabled, last run, run count and last error. Run history is in list_events (kind automation_run).',
+    'Automations with revision, when, onlyIf and steps, whether enabled, last run, run count and last error. Run history is read_automation_runs.',
   ],
   [
     'get_history',
@@ -163,14 +171,14 @@ const ENTRIES: readonly Entry[] = [
     'nutrition',
     'control',
     'Log food or a drink',
-    'Log a portion of a saved food, a barcode product or nutrition facts given inline, at a meal, for one person. A multiplier scales the portion, for example 0.5 for half. The time may be in the past. Drinks also count toward water. Returns the entry.',
+    'Log a portion of a saved food, a barcode product or nutrition facts given inline, at a meal, for one person. The amount is the total grams or ml eaten. The time may be in the past. Drinks also count toward water. Returns the entry.',
   ],
   [
     'log_water',
     'nutrition',
     'control',
     'Log water',
-    'Log a drink of water in millilitres (or a number of glasses) for one person, now or at a past time. A multiplier scales the amount, for example 0.5 for half.',
+    'Log a drink of water in millilitres (or a number of glasses) for one person, now or at a past time.',
   ],
   [
     'find_food',
@@ -198,7 +206,7 @@ const ENTRIES: readonly Entry[] = [
     'cameras',
     'read',
     'Look at one thing',
-    'Takes one still picture now of a home camera (by name or id), a computer’s whole screen, or the window in front on a computer, and returns it as an image. Phone cameras and screens, and any other window, can only be looked at inside a voice call from the app. Needs the computer’s screenshots permission.',
+    'Takes one still picture now of a home camera (by name or id), a computer’s whole screen, the window in front on a computer, or a paired phone’s screen (source phone_screenshot, by name or id), and returns it as an image. A phone needs the SmartEverything accessibility service turned on and shows secure windows black; its camera, and any other window, can only be looked at inside a voice call from the app. A computer needs its screenshots permission.',
   ],
   [
     'record_camera_clip',
@@ -261,7 +269,7 @@ const ENTRIES: readonly Entry[] = [
     'assistant',
     'control',
     'Post to the assistant chat',
-    'Post a message, with optional files, to someone’s SmartEverything AI chat at any time, such as an update when work finishes; their phone gets a notification. The owner’s chat when profileId is left out.',
+    'Post a message, with optional files, to someone’s SmartEverything AI chat at any time, such as an update when work finishes; their phone gets a notification. The owner’s chat when personId is left out.',
   ],
   ['show_widgets', 'assistant', 'control', 'Show widgets', SHOW_WIDGETS_TEXT],
   [
@@ -269,7 +277,7 @@ const ENTRIES: readonly Entry[] = [
     'assistant',
     'read',
     'Read an assistant attachment',
-    'One file someone attached in the SmartEverything AI chat: images come back as images (with their stored description), text files as text, audio and video as their transcript (made once and kept), anything else as base64 (up to 4 MB). The chat history shows older attachments as transcripts, so call this to look at or hear one in full.',
+    'One file someone attached in the SmartEverything AI chat: images come back as images (with their stored description if there is one), text files as text, audio and video as their transcript (made once in the background and kept), anything else as base64 (up to 4 MB). Images are shown to you natively only in the message that carried them; later the history keeps a line with the attachment id and any stored description or transcript (marked pending while it is being made), so call this to look at an image again.',
   ],
   [
     'usage_totals',
@@ -283,14 +291,14 @@ const ENTRIES: readonly Entry[] = [
     'assistant',
     'read',
     'Read AI spending over time',
-    'AI cost per hour, day, week or month in the home time zone (default daily over 30 days), optionally split by work type, provider, model, person, device, chat or plugin. Same filters as usage_totals.',
+    'AI cost per hour, day, week or month in the home time zone (default daily over 30 days), optionally split by work type, provider, model, person, device, chat or plugin. Same filters as read_usage view totals.',
   ],
   [
     'usage_ledger',
     'assistant',
     'read',
     'List AI costs',
-    'Every AI cost one by one, newest first, with the person, device, chat, model and plugin by name, tokens, audio and the cost in USD. Same filters as usage_totals; page with next_cursor (up to 60 rows a page).',
+    'Every AI cost one by one, newest first, with the person, device, chat, model and plugin by name, tokens, audio and the cost in USD. Same filters as read_usage view totals; page with next_cursor (up to 60 rows a page).',
   ],
   [
     'list_models',
@@ -325,8 +333,9 @@ const ENTRIES: readonly Entry[] = [
     'assistant',
     'control',
     'Set AI defaults',
-    'Choose the model and thinking level new chats start with: auto:latest-gemini-flash follows each new Gemini Flash, or pick a chat model id from list_models. Owner only. Not available to a plugin’s request.',
+    'Choose the model and thinking level new chats start with: auto:latest-gemini-flash follows each new Gemini Flash, or pick a chat model id from read_models view list. Owner only. Not available to a plugin’s request.',
   ],
+  ...COMPUTER_ENTRIES,
   [
     'list_operations',
     'everything',

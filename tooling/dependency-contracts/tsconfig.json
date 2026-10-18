@@ -1,10 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "..",
     "outDir": "./dist",
     "types": ["node"],
     "typeRoots": ["../../node_modules/@types", "./types"]
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts", "../pinned-versions.ts"]
 }

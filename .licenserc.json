@@ -14,5 +14,11 @@
     "MIT-0",
     "WTFPL",
     "MPL-2.0"
-  ]
+  ],
+  "overrides": {
+    "@nornagon/put": "MIT",
+    "jsbi": "Apache-2.0",
+    "map-stream": "MIT",
+    "parse-cache-control": "BSD-3-Clause"
+  }
 }

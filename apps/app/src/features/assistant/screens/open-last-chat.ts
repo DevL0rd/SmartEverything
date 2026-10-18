@@ -3,33 +3,21 @@ import { useNavigation } from 'expo-router';
 import { Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { openInstantly } from '../../../app-shell/instant-open';
+import { useAiLayoutFor } from '../shell/use-ai-layout';
 import { useLatestChatId } from '../data/chat-store';
-import { forgetGoneChat, useLastChat, type LastChat } from '../data/last-chat';
+import { forgetGoneChat, useLastChat } from '../data/last-chat';
+import { localPref, setLocalPref } from '../../../store/local-prefs';
+import { chatWasRecent, phoneEntryOf } from './phone-entry';
 
 const log = new Logger('app.assistant');
 
 const CHAT_ROUTE = 'assistant/chat/[chatId]';
 
-type GoneChat = Extract<LastChat, { kind: 'gone' }>;
-
-type Target =
-  | { readonly kind: 'wait' }
-  | { readonly kind: 'chat'; readonly chatId: string | null; readonly forget: GoneChat | null };
-
-function targetOf(last: LastChat, newest: string | null): Target {
-  switch (last.kind) {
-    case 'pending':
-      return { kind: 'wait' };
-    case 'gone':
-      return { kind: 'chat', chatId: newest, forget: last };
-    case 'open':
-      return { kind: 'chat', chatId: last.chatId, forget: null };
-    case 'none':
-      return { kind: 'chat', chatId: newest, forget: null };
-  }
+export function noteChatSeen(): void {
+  setLocalPref('chatSeenAt', Date.now());
 }
 
-export function useOpenLastChat(split: boolean, paused: boolean): void {
+export function useOpenLastChat(wide: boolean, paused: boolean): void {
   const navigation = useNavigation();
   const last = useLastChat();
   const latest = useLatestChatId();
@@ -39,13 +27,17 @@ export function useOpenLastChat(split: boolean, paused: boolean): void {
     if (paused || !navigation.isFocused()) {
       return;
     }
-    const target = targetOf(last, split ? latest : null);
+    const target = phoneEntryOf(
+      last,
+      wide ? latest : null,
+      wide || chatWasRecent(localPref('chatSeenAt'), Date.now()),
+    );
     if (target.kind === 'wait') {
       waiting.current = true;
       return;
     }
-    if (target.forget !== null) {
-      forgetGoneChat(target.forget);
+    if (target.forget && last.kind === 'gone') {
+      forgetGoneChat(last);
     }
     if (target.chatId !== null) {
       openInstantly(href.assistantChat(target.chatId), {
@@ -56,7 +48,7 @@ export function useOpenLastChat(split: boolean, paused: boolean): void {
   });
   useEffect(() => {
     enter();
-  }, [split]);
+  }, [wide]);
   useEffect(() => {
     if (waiting.current && last.kind !== 'pending') {
       enter();
@@ -72,4 +64,18 @@ export function useOpenLastChat(split: boolean, paused: boolean): void {
       enter();
     });
   }, [navigation]);
+}
+
+export function usePrewarmChat(): () => string | null {
+  const wide = useAiLayoutFor(false).mode !== 'stack';
+  const last = useLastChat();
+  const latest = useLatestChatId();
+  return (): string | null => {
+    const target = phoneEntryOf(
+      last,
+      wide ? latest : null,
+      wide || chatWasRecent(localPref('chatSeenAt'), Date.now()),
+    );
+    return target.kind === 'chat' ? target.chatId : null;
+  };
 }

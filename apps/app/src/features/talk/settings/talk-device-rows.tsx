@@ -2,18 +2,20 @@ import type { ReactNode } from 'react';
 import { setHeadsetButton } from '../../../../modules/health-connect';
 import { ActionRow, SelectRow, SwitchRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { appPlatform } from '../../../design/platform';
 import { setLocalPref, useLocalPref } from '../../../store/local-prefs';
 import { chooseTalkChannel, useTalkChannelId } from '../data/talk-channel';
 import { useMyChannels } from '../data/talk-data';
 import { turnTalkOff, turnTalkOn } from '../data/talk-device';
 import {
-  configureDesktopTalk,
+  useConfigureDesktopTalk,
   useDesktopTalk,
   type DesktopTalkStatus,
 } from '../desktop/use-talk-shortcuts';
 
+import { trackTalk } from '../data/talk-log';
+import { background } from '@smarteverything/logging';
 const MODES = [
   { value: 'hold', label: 'Hold to talk' },
   { value: 'tap', label: 'Tap to start and stop' },
@@ -28,20 +30,18 @@ function HeadsetRow(): ReactNode {
       icon="music"
       value={on}
       onChange={(next) => {
-        setHeadsetButton(next).then(
+        trackTalk('headset_button.set', { enabled: next }, () => setHeadsetButton(next)).then(
           () => {
             setLocalPref('talkHeadset', next);
           },
-          (error: unknown) => {
-            notify({ message: 'Headset button not changed', error, tone: 'critical' });
-          },
+          notifyFailure('Headset button not changed'),
         );
       }}
     />
   );
 }
 
-function shortcutRows(desktop: DesktopTalkStatus): ReactNode[] {
+function shortcutRows(desktop: DesktopTalkStatus, configure: () => void): ReactNode[] {
   if (desktop.status === 'outdated' || desktop.status === 'failed') {
     const value = desktop.status === 'outdated' ? 'Update the desktop app' : desktop.reason;
     return [<ValueRow key="shortcuts" title="Shortcuts" icon="keyboard" value={value} />];
@@ -67,14 +67,7 @@ function shortcutRows(desktop: DesktopTalkStatus): ReactNode[] {
       ? []
       : [<ValueRow key="problem" title="Shortcuts" value={shortcuts.problem} />]),
     ...(shortcuts.backend === 'portal'
-      ? [
-          <ActionRow
-            key="change"
-            title="Change shortcuts"
-            icon="pencil"
-            onPress={configureDesktopTalk}
-          />,
-        ]
+      ? [<ActionRow key="change" title="Change shortcuts" icon="pencil" onPress={configure} />]
       : []),
   ];
 }
@@ -86,6 +79,7 @@ export function TalkDeviceRows(): ReactNode {
   const talkChannel = useTalkChannelId();
   const platform = appPlatform();
   const desktop = useDesktopTalk();
+  const configure = useConfigureDesktopTalk();
   return (
     <List title="This device" inset>
       <SwitchRow
@@ -95,7 +89,7 @@ export function TalkDeviceRows(): ReactNode {
         value={enabled}
         onChange={(next) => {
           if (next) {
-            void turnTalkOn();
+            background(turnTalkOn(), 'talk_on.turn_failed');
           } else {
             turnTalkOff();
           }
@@ -121,7 +115,7 @@ export function TalkDeviceRows(): ReactNode {
         onChange={chooseTalkChannel}
       />
       {platform === 'android' ? <HeadsetRow /> : null}
-      {platform === 'desktop' ? shortcutRows(desktop) : null}
+      {platform === 'desktop' ? shortcutRows(desktop, configure) : null}
     </List>
   );
 }

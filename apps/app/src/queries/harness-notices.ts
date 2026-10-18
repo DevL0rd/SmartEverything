@@ -1,6 +1,4 @@
-import { useSyncExternalStore } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
-import type { AiHarnessNotice } from '@smarteverything/domain';
 import {
   EXTENSIONS_KEY,
   EXTENSION_CONFIGURATION_KEY,
@@ -8,140 +6,72 @@ import {
   SKILL_UPDATES_KEY,
 } from './extension-keys';
 import { AGENT_RUN_PREFIX, AI_MODELS_PREFIX } from './keys';
+import { noticeHandler, type NoticeHandler } from '../store/notice-registry';
+import { background } from '@smarteverything/logging';
 
 const REFERENCE_QUERY_PREFIX = ['window', 'ai-references'] as const;
 
 const COMMAND_QUERY_PREFIX = ['window', 'ai-harness-commands'] as const;
 
+const PROVIDER_QUERY_PREFIX = ['window', 'ai-provider'] as const;
+
 export const HARNESS_CATALOGUE_KEY = ['window', 'ai-harness'] as const;
-export const HARNESS_SESSION_PREFIX = ['window', 'ai-harness-session'] as const;
-const live = new WeakMap<QueryClient, HarnessNotices>();
-const readers = new WeakMap<QueryClient, Set<() => void>>();
+const HARNESS_SESSION_PREFIX = ['window', 'ai-harness-session'] as const;
 
-export function useHarnessReadRevision(client: QueryClient, chatId: string): string {
-  return useSyncExternalStore(
-    (notify) => subscribeRevision(client, notify),
-    () => harnessReadRevision(client, chatId),
-    () => harnessReadRevision(client, chatId),
-  );
-}
-function subscribeRevision(client: QueryClient, notify: () => void): () => void {
-  const listeners = readers.get(client) ?? new Set<() => void>();
-  listeners.add(notify);
-  readers.set(client, listeners);
-  return (): void => {
-    listeners.delete(notify);
-    if (listeners.size === 0) readers.delete(client);
-  };
-}
-function publishRevision(client: QueryClient): void {
-  for (const notify of readers.get(client) ?? []) notify();
-}
+const CONFIGURATION_KEYS: readonly (readonly string[])[] = [
+  EXTENSION_CONFIGURATION_KEY,
+  EXTENSIONS_KEY,
+  SKILL_UPDATES_KEY,
+  DISCOVERY_KEY,
+  COMMAND_QUERY_PREFIX,
+  REFERENCE_QUERY_PREFIX,
+  HARNESS_CATALOGUE_KEY,
+  AI_MODELS_PREFIX,
+];
 
-export function harnessReadRevision(client: QueryClient, chatId: string): string {
-  return live.get(client)?.readRevision(chatId) ?? 'unwatched';
-}
+const STOPPED_KEYS: readonly (readonly string[])[] = [
+  EXTENSION_CONFIGURATION_KEY,
+  EXTENSIONS_KEY,
+  SKILL_UPDATES_KEY,
+  DISCOVERY_KEY,
+  HARNESS_CATALOGUE_KEY,
+  HARNESS_SESSION_PREFIX,
+  COMMAND_QUERY_PREFIX,
+  REFERENCE_QUERY_PREFIX,
+];
+
 export function harnessKey(chatId: string): readonly string[] {
   return [...HARNESS_SESSION_PREFIX, chatId];
 }
-export class HarnessNotices {
-  private readonly pending = new Map<string, readonly string[]>();
-  private readonly refreshing = new Set<string>();
-  private readonly noticeRevisions = new Map<string, number>();
-  private readGeneration = 0;
-  private revision = 0;
-  private active = false;
-  private queued = false;
-  constructor(private readonly client: QueryClient) {}
-  start(): void {
-    this.active = true;
-    live.set(this.client, this);
-    publishRevision(this.client);
-  }
-  readRevision(chatId: string): string {
-    return JSON.stringify([this.readGeneration, this.noticeRevisions.get(chatId) ?? 0]);
-  }
-  synchronized(): void {
-    if (!this.active) return;
-    this.configurationChanged();
-    this.enqueue(HARNESS_SESSION_PREFIX);
-    this.enqueue(['window', 'ai-provider']);
-  }
-  configurationChanged(): void {
-    if (!this.active) return;
-    this.readGeneration += 1;
-    publishRevision(this.client);
-    this.enqueue(EXTENSION_CONFIGURATION_KEY);
-    this.enqueue(EXTENSIONS_KEY);
-    this.enqueue(SKILL_UPDATES_KEY);
-    this.enqueue(DISCOVERY_KEY);
-    this.enqueue(COMMAND_QUERY_PREFIX);
-    this.enqueue(REFERENCE_QUERY_PREFIX);
-    this.enqueue(HARNESS_CATALOGUE_KEY);
-    this.enqueue(AI_MODELS_PREFIX);
-  }
-  receive(message: AiHarnessNotice): void {
-    if (!this.active) return;
-    const event = message.event;
-    if (event.kind === 'text' || event.kind === 'reasoning' || event.kind === 'tool') return;
-    this.noticeRevisions.set(event.chat_id, (this.noticeRevisions.get(event.chat_id) ?? 0) + 1);
-    publishRevision(this.client);
-    this.enqueue(harnessKey(event.chat_id));
-    this.enqueue(COMMAND_QUERY_PREFIX);
-    this.enqueue(REFERENCE_QUERY_PREFIX);
-    if (event.kind === 'usage' || event.kind === 'state' || event.kind === 'failed')
-      this.enqueue(HARNESS_CATALOGUE_KEY);
-    if (event.kind === 'agent') this.enqueue([...AGENT_RUN_PREFIX, event.chat_id]);
-  }
-  private enqueue(key: readonly string[]): void {
-    this.pending.set(JSON.stringify(key), key);
-    this.schedule();
-  }
-  private schedule(): void {
-    if (this.queued) return;
-    this.queued = true;
-    const revision = this.revision;
-    queueMicrotask(() => {
-      if (!this.active || this.revision !== revision) return;
-      this.queued = false;
-      this.flush();
-    });
-  }
-  private flush(): void {
-    for (const [id, key] of this.pending) {
-      if (this.refreshing.has(id)) continue;
-      this.pending.delete(id);
-      this.refreshing.add(id);
-      const revision = this.revision;
-      void this.client
-        .invalidateQueries({ queryKey: key }, { cancelRefetch: false })
-        .finally(() => {
-          if (!this.active || this.revision !== revision) return;
-          this.refreshing.delete(id);
-          if (this.pending.size > 0) this.schedule();
-        });
-    }
-  }
-  clear(): void {
-    this.revision += 1;
-    this.readGeneration += 1;
-    this.noticeRevisions.clear();
-    publishRevision(this.client);
-    this.queued = false;
-    this.pending.clear();
-    this.refreshing.clear();
-  }
-  stop(): void {
-    this.active = false;
-    live.delete(this.client);
-    this.clear();
-    void this.client.cancelQueries({ queryKey: EXTENSION_CONFIGURATION_KEY });
-    void this.client.cancelQueries({ queryKey: EXTENSIONS_KEY });
-    void this.client.cancelQueries({ queryKey: SKILL_UPDATES_KEY });
-    void this.client.cancelQueries({ queryKey: DISCOVERY_KEY });
-    void this.client.cancelQueries({ queryKey: HARNESS_CATALOGUE_KEY });
-    void this.client.cancelQueries({ queryKey: HARNESS_SESSION_PREFIX });
-    void this.client.cancelQueries({ queryKey: COMMAND_QUERY_PREFIX });
-    void this.client.cancelQueries({ queryKey: REFERENCE_QUERY_PREFIX });
-  }
+
+function invalidate(client: QueryClient, keys: readonly (readonly string[])[]): void {
+  for (const queryKey of keys)
+    background(client.invalidateQueries({ queryKey }), 'queries.invalidate_failed');
 }
+
+function refreshHarnessConfiguration(client: QueryClient): void {
+  invalidate(client, CONFIGURATION_KEYS);
+}
+
+export function refreshHarness(client: QueryClient): void {
+  refreshHarnessConfiguration(client);
+  invalidate(client, [HARNESS_SESSION_PREFIX, PROVIDER_QUERY_PREFIX]);
+}
+
+export function cancelHarnessQueries(client: QueryClient): void {
+  for (const queryKey of STOPPED_KEYS)
+    background(client.cancelQueries({ queryKey }), 'queries.cancel_failed');
+}
+
+export const HARNESS_NOTICES: readonly NoticeHandler[] = [
+  noticeHandler(['ai_harness_configuration'], (_message, { client }) => {
+    refreshHarnessConfiguration(client);
+  }),
+  noticeHandler(['ai_harness'], ({ event }, { client }) => {
+    if (event.kind === 'text' || event.kind === 'reasoning' || event.kind === 'tool') return;
+    invalidate(client, [harnessKey(event.chat_id), COMMAND_QUERY_PREFIX, REFERENCE_QUERY_PREFIX]);
+    if (event.kind === 'usage' || event.kind === 'state' || event.kind === 'failed')
+      invalidate(client, [HARNESS_CATALOGUE_KEY]);
+    if (event.kind === 'agent') invalidate(client, [[...AGENT_RUN_PREFIX, event.chat_id]]);
+  }),
+];

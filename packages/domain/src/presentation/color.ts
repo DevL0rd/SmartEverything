@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { hsvToPackedRgb, packedRgbToHsv } from '../color';
-import { HSV_COLOR, InvalidValueError, type HsvColor, type JsonValue } from '../values';
+import {
+  COLOR_FORMAT_REASON,
+  HSV_COLOR,
+  InvalidValueError,
+  type HsvColor,
+  type JsonValue,
+} from '../values';
 import type { CapabilityPresentation } from './types';
 
 const PACKED_RGB_MAX = 0xffffff;
@@ -24,7 +30,7 @@ export function writePresentedColor(
 ): JsonValue {
   const parsed = HSV_COLOR.safeParse(color);
   if (!parsed.success) {
-    throw new InvalidValueError({ kind: 'color' }, color, 'not a hue, saturation and value');
+    throw new InvalidValueError({ kind: 'color' }, color, COLOR_FORMAT_REASON);
   }
   return presented.colorEncoding === 'packed_rgb' ? hsvToPackedRgb(parsed.data) : parsed.data;
 }

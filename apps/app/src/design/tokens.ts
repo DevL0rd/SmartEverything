@@ -15,8 +15,10 @@ export type ColourRole =
   | 'on-primary'
   | 'primary-container'
   | 'on-primary-container'
+  | 'orb-shine'
   | 'positive'
   | 'warning'
+  | 'caution'
   | 'critical'
   | 'info'
   | 'focus'
@@ -26,6 +28,9 @@ export type ColourRole =
   | 'viz-4'
   | 'viz-5'
   | 'viz-6'
+  | 'viz-blue'
+  | 'viz-magenta'
+  | 'viz-violet'
   | 'air-good'
   | 'air-fair'
   | 'air-moderate'
@@ -35,6 +40,9 @@ export type ColourRole =
   | 'temp-warm'
   | 'temp-cool'
   | 'humidity'
+  | 'laundry-cool'
+  | 'laundry-warm'
+  | 'laundry-rinse'
   | 'move'
   | 'exercise'
   | 'stand'
@@ -42,7 +50,9 @@ export type ColourRole =
   | 'sleep-deep'
   | 'sleep-core'
   | 'sleep-rem'
-  | 'sleep-awake';
+  | 'sleep-awake'
+  | 'track'
+  | 'temp-neutral';
 
 export type ThemeName = 'dark' | 'light';
 
@@ -176,6 +186,8 @@ export const SEMANTIC_SIZES: Readonly<Record<Idiom, Readonly<Record<Density, Sem
     },
   },
 };
+
+export const CONTAINER_WIDTH = { dashboard: 1440 } as const;
 
 export type WidthClass = 'compact' | 'medium' | 'expanded' | 'large' | 'xlarge';
 

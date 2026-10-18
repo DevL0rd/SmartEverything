@@ -13,7 +13,7 @@ import {
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, moment, type StoreContext } from '../context';
-import { jsonText } from '../sql';
+import { inList, jsonText } from '../sql';
 import { EntryFailures } from './health-entry-failures';
 import type { HealthRecordsRepository } from './health-records';
 
@@ -71,19 +71,18 @@ export class HealthEntriesRepository {
 
   window(profileId: string, window: EntryWindow): HealthEntryRow[] {
     const types = window.types ?? [];
-    const names = types.map((_type, index) => `$type${String(index)}`);
-    const typed = types.length === 0 ? '' : `and record_type in (${names.join(', ')})`;
+    const typed = types.length === 0 ? undefined : inList('record_type', 'types', types);
     return this.context.sql.all(
       STORED_ENTRY,
       `select ${COLUMNS} from health_entries e
        where profile_id = $profileId and deleted_at is null and start_time < $to
-         and coalesce(end_time, start_time) >= $from ${typed}
+         and coalesce(end_time, start_time) >= $from${typed === undefined ? '' : ` and ${typed.text}`}
        order by start_time, id`,
       {
         profileId,
         from: moment(window.from),
         to: moment(window.to),
-        ...Object.fromEntries(types.map((type, index) => [`type${String(index)}`, type])),
+        ...typed?.parameters,
       },
     );
   }

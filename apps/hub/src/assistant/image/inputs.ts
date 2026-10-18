@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import {
   ApiError,
   IMAGE_INPUT_BYTES_MAX,
@@ -8,8 +9,7 @@ import {
 } from '@smarteverything/domain';
 import type { StoredAttachment } from '../../store/repositories/assistant-files';
 import type { ImageActor, ImageServiceOptions } from './contract';
-import { validateImage, type ImageBytes } from './media';
-import { originalBytes } from './original-bytes';
+import { readImage, type ImageBytes } from './media';
 
 export interface ResolvedImage {
   readonly identity: ImageResolvedInput;
@@ -75,23 +75,15 @@ export function resolveInputs(
     throw new ApiError('invalid_request', 'Selected input images exceed the request byte budget.');
   return inputs;
 }
-export async function readInputs(
+export function readInputs(
   options: ImageServiceOptions,
-  actor: ImageActor,
-  chatId: string,
-  batch: { readonly inputs: readonly ResolvedImage[]; readonly signal: AbortSignal },
+  inputs: readonly ResolvedImage[],
+  signal: AbortSignal,
 ): Promise<readonly { readonly identity: ImageResolvedInput; readonly image: ImageBytes }[]> {
-  const result: { readonly identity: ImageResolvedInput; readonly image: ImageBytes }[] = [];
-  const { inputs, signal } = batch;
-  for (const input of inputs) {
-    ownedChat(options, actor, chatId);
-    signal.throwIfAborted();
-    const path = options.files.pathOf(input.file);
-    const content = await originalBytes(path, input.file, signal);
-    result.push({
+  return Promise.all(
+    inputs.map(async (input) => ({
       identity: input.identity,
-      image: await validateImage(content, input.file.mime, signal),
-    });
-  }
-  return result;
+      image: await readImage(await readFile(options.files.pathOf(input.file), { signal })),
+    })),
+  );
 }

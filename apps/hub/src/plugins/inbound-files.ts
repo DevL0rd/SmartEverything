@@ -9,7 +9,7 @@ const DOWNLOAD_TIMEOUT_MS = 30_000;
 
 type Attachment = InboundMessage['attachments'][number];
 
-export class InboundFileError extends Error {
+class InboundFileError extends Error {
   override readonly name = 'InboundFileError';
 }
 

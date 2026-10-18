@@ -17,4 +17,11 @@ optimization/
 AGENT-BRIEF.md
 apps/app/google-services.json
 TODO.md
+IDEAS.md
 tmp/
+
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

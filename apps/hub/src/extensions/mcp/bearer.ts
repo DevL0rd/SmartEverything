@@ -51,30 +51,28 @@ function pluginCaller(store: Store, token: string): McpCaller | null {
       };
 }
 
-function checkLocalGrant(store: Store, token: string): boolean {
-  return (
-    MCP_TOKEN.safeParse(token).success &&
-    store.computerNativeMcpPolicy.localGrant(hashMcpToken(token)) !== undefined
-  );
-}
-
 function computerCaller(store: Store, token: string): McpCaller | null {
   const grant = computerMcpGrant(store, token);
-  const local = checkLocalGrant(store, token);
-  if (grant === null && !COMPUTER_MCP_TOKEN.safeParse(token).success && !local) return null;
-  return grant === null
+  if (grant !== null) {
+    return {
+      kind: 'accepted',
+      via: 'computer',
+      id: grant.deviceId,
+      localOnly: grant.localOnly,
+      areas: grant.areas,
+    };
+  }
+  const known =
+    COMPUTER_MCP_TOKEN.safeParse(token).success ||
+    (MCP_TOKEN.safeParse(token).success &&
+      store.computerNativeMcpPolicy.localGrant(hashMcpToken(token)) !== undefined);
+  return known
     ? { kind: 'refused', reason: 'This computer MCP grant was revoked, disabled or never existed' }
-    : {
-        kind: 'accepted',
-        via: 'computer',
-        id: grant.deviceId,
-        localOnly: grant.localOnly,
-        areas: grant.areas,
-      };
+    : null;
 }
 
 function personal(store: Store, token: string): McpCaller {
-  const row = store.assistant.activeTokenByHash(hashMcpToken(token));
+  const row = store.oauth.activePersonalTokenByHash(hashMcpToken(token));
   if (row === undefined) {
     return { kind: 'refused', reason: 'This personal token was revoked or never existed' };
   }
@@ -83,7 +81,7 @@ function personal(store: Store, token: string): McpCaller {
     kind: 'accepted',
     via: 'personal',
     id: row.id,
-    localOnly: store.assistant.localOnly(row.id),
+    localOnly: store.oauth.personalTokenIsLocalOnly(row.id),
   };
 }
 

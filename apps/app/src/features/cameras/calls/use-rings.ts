@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Logger } from '@smarteverything/logging';
 import { rowsOf } from '../../../store/state';
 import { useEntityStore } from '../../../store/store-context';
 import { RING_FOR_MS, newRings, type Ring } from '../logic/ringing';
+
+const log = new Logger('app.cameras');
 
 export interface Rings {
   readonly ring: Ring | null;
@@ -31,11 +34,17 @@ function useRingQueue(
         seen.add(id);
       }
       if (fresh.length > 0) {
+        log.info('ring.detected', {
+          count: fresh.length,
+          eventIds: fresh.map((ring) => ring.eventId).join(','),
+          kinds: fresh.map((ring) => ring.kind).join(','),
+        });
         setRings((current) => [...current, ...fresh]);
       }
     });
   }, [store]);
   const dismiss = useCallback((eventId: string): void => {
+    log.debug('ring.dismissed', { eventId });
     setRings((current) => current.filter((ring) => ring.eventId !== eventId));
   }, []);
   return [rings, dismiss];
@@ -51,6 +60,7 @@ export function useRings(cameraIds: ReadonlySet<string>): Rings {
     const left = Date.parse(ring.occurredAt) + RING_FOR_MS - Date.now();
     const timer = setTimeout(
       () => {
+        log.info('ring.expired', { eventId: ring.eventId, deviceId: ring.deviceId });
         dismiss(ring.eventId);
       },
       Math.max(0, left),

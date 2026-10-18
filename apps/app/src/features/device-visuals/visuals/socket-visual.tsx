@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Path } from 'react-native-svg';
-import { Canvas, FULL, Layer, useSvgId } from '../parts/frame';
+import { Circle, Path } from 'react-native-svg';
+import { Canvas, useSvgId } from '../parts/frame';
 import { BodyGradient, GlowGradient, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
 import { arcPath, rounded } from '../parts/shapes';
 import { ContactShadow, Shine } from '../parts/material';
@@ -67,37 +67,33 @@ function Socket({
   const lit = visual.tone === 'active';
   const { load } = visual.state;
   return (
-    <Layer box={FULL} px={visual.px}>
-      <Canvas px={visual.px}>
-        <Defs>
-          <BodyGradient id={face} ink={ink} vertical />
-          <GlowGradient id={glow} colour={tint} strength={0.4} />
-        </Defs>
-        {lit ? <Circle cx={50} cy={50} r={50} fill={`url(#${glow})`} /> : null}
-        <ContactShadow cx={50} cy={55} rx={40} ry={38} />
+    <Canvas px={visual.px} layer>
+      <BodyGradient id={face} ink={ink} vertical />
+      <GlowGradient id={glow} colour={tint} strength={0.4} />
+      {lit ? <Circle cx={50} cy={50} r={50} fill={`url(#${glow})`} /> : null}
+      <ContactShadow cx={50} cy={55} rx={40} ry={38} />
+      <Path
+        d={rounded({ x: 20, y: 20, w: 60, h: 60, r: 17 })}
+        fill={`url(#${face})`}
+        stroke={ink.edge}
+        strokeWidth={0.6}
+      />
+      <Shine d={rounded({ x: 20, y: 20, w: 60, h: 60, r: 17 })} />
+      {rocker ? (
+        <Rocker ink={ink} tint={tint} lit={lit} />
+      ) : (
+        <Outlet ink={ink} tint={tint} lit={lit} />
+      )}
+      {load === null || !lit ? null : (
         <Path
-          d={rounded({ x: 20, y: 20, w: 60, h: 60, r: 17 })}
-          fill={`url(#${face})`}
-          stroke={ink.edge}
-          strokeWidth={0.6}
+          d={arcPath({ cx: 50, cy: 50, r: 26 }, -135, -135 + Math.max(2, load * 270))}
+          stroke={tint}
+          strokeWidth={2}
+          strokeLinecap="round"
+          fill="none"
         />
-        <Shine d={rounded({ x: 20, y: 20, w: 60, h: 60, r: 17 })} />
-        {rocker ? (
-          <Rocker ink={ink} tint={tint} lit={lit} />
-        ) : (
-          <Outlet ink={ink} tint={tint} lit={lit} />
-        )}
-        {load === null || !lit ? null : (
-          <Path
-            d={arcPath({ cx: 50, cy: 50, r: 26 }, -135, -135 + Math.max(2, load * 270))}
-            stroke={tint}
-            strokeWidth={2}
-            strokeLinecap="round"
-            fill="none"
-          />
-        )}
-      </Canvas>
-    </Layer>
+      )}
+    </Canvas>
   );
 }
 

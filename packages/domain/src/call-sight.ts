@@ -197,14 +197,19 @@ export const SIGHT_TARGET = z
 
 export const HUB_SIGHT_SOURCES = ['home_camera', 'desktop_screen', 'desktop_window'] as const;
 
+export const SEE_PHONE_SOURCE = 'phone_screenshot';
+
 const SEE_ASKED = z.strictObject({
-  source: z.enum(HUB_SIGHT_SOURCES).describe('What to look at'),
+  source: z.enum([...HUB_SIGHT_SOURCES, SEE_PHONE_SOURCE]).describe('What to look at'),
   camera: SIGHT_TARGET.optional().describe('home_camera only: the camera, by name or id'),
   window: SIGHT_TARGET.optional().describe(
     'desktop_window only: the application window, by application name or title',
   ),
   computer: SIGHT_TARGET.optional().describe(
     'desktop_screen and desktop_window: which computer, by name or id; the only one when left out',
+  ),
+  phone: SIGHT_TARGET.optional().describe(
+    'phone_screenshot only: which phone, by name or id; the only one when left out',
   ),
 });
 
@@ -216,6 +221,7 @@ const SEE_VARIANTS = z.discriminatedUnion('source', [
     window: SIGHT_TARGET,
     computer: SIGHT_TARGET.optional(),
   }),
+  z.strictObject({ source: z.literal(SEE_PHONE_SOURCE), phone: SIGHT_TARGET.optional() }),
 ]);
 
 export const SEE_REQUEST = SEE_ASKED.pipe(SEE_VARIANTS);

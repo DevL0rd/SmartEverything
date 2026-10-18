@@ -1,4 +1,4 @@
-import type { AssistantMessageRow, LiveStream, PushTargetRow } from '@smarteverything/domain';
+import type { AssistantMessageRow, LiveStream } from '@smarteverything/domain';
 
 export interface ReplyAudienceDeps {
   readonly asker: (messageId: string) => AssistantMessageRow | undefined;
@@ -7,7 +7,7 @@ export interface ReplyAudienceDeps {
   readonly callOpen: (callMessageId: string) => boolean;
 }
 
-export type Audience = (target: PushTargetRow) => boolean;
+export type Audience = (clientId: string) => boolean;
 
 const NOBODY: Audience = () => false;
 
@@ -27,7 +27,6 @@ export function replyAudience(row: AssistantMessageRow, deps: ReplyAudienceDeps)
   if (asker !== undefined && answeredWhereAsked(asker, deps)) {
     return NOBODY;
   }
-  return (target) =>
-    deps.profileOf(target.client_id) === row.profile_id &&
-    !deps.listening(target.client_id, 'assistant');
+  return (clientId) =>
+    deps.profileOf(clientId) === row.profile_id && !deps.listening(clientId, 'assistant');
 }

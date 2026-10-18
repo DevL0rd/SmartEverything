@@ -1,5 +1,8 @@
 import type { CapabilityGroup, CapabilityKey, StandardCapability } from '../capabilities';
 import type { DeviceCapability, DeviceKind } from '../devices';
+import { LAUNDRY_ROLES } from '../laundry-roles';
+import { TV_ROLES } from '../television-roles';
+import type { JsonValue } from '../values';
 
 export const PRESENTATION_TIERS = [
   'primary',
@@ -45,6 +48,8 @@ export const EXTRA_ROLES = [
   'light_auto_off',
   'charging_state',
   'cooking_state',
+  ...LAUNDRY_ROLES,
+  ...TV_ROLES,
 ] as const;
 
 export type ExtraRole = (typeof EXTRA_ROLES)[number];
@@ -56,6 +61,7 @@ export const DEVICE_FAMILIES = [
   'humidifier',
   'diffuser',
   'microwave',
+  'laundry',
   'dehumidifier',
   'tower_fan',
   'fan',
@@ -66,6 +72,8 @@ export const DEVICE_FAMILIES = [
   'switch',
   'plug',
   'sensor',
+  'presence_phone',
+  'button',
   'camera',
   'doorbell',
   'scale',
@@ -103,7 +111,10 @@ export interface CapabilityOverride {
   readonly clock?: ClockText;
   readonly colorEncoding?: ColorEncoding;
   readonly keywords?: readonly string[];
+  readonly format?: ValueFormatter;
 }
+
+type ValueFormatter = (value: JsonValue) => string;
 
 export type ColorEncoding = 'packed_rgb';
 
@@ -113,14 +124,24 @@ export type BooleanStates = readonly [on: string, off: string];
 
 export type CapabilityOverrides = Readonly<Record<string, CapabilityOverride>>;
 
+export type UnlistedOverride = Omit<CapabilityOverride, 'label'>;
+
 export interface ModelOverride {
   readonly family: DeviceFamily;
   readonly capabilities: CapabilityOverrides;
+  readonly unlisted?: UnlistedOverride;
+}
+
+export interface CapabilityMatch {
+  readonly kind: DeviceKind;
+  readonly requires: readonly CapabilityKey[];
+  readonly override: ModelOverride;
 }
 
 export interface PresentableDevice {
   readonly kind: DeviceKind;
   readonly model: string;
+  readonly capabilities?: readonly Pick<DeviceCapability, 'key'>[];
 }
 
 export interface PresentableDeviceWithCapabilities extends PresentableDevice {
@@ -147,6 +168,7 @@ export interface CapabilityPresentation {
   readonly clock: ClockText | null;
   readonly colorEncoding?: ColorEncoding;
   readonly keywords?: readonly string[];
+  readonly format?: ValueFormatter;
 }
 
 export interface PresentedCapability extends CapabilityPresentation {

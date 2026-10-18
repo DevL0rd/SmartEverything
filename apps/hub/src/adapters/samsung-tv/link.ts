@@ -1,9 +1,10 @@
-import type { ProviderCredentials } from '@smarteverything/domain';
+import type { JsonValue, ProviderCredentials } from '@smarteverything/domain';
 import { deviceInfoUrl, readDeviceInfo, remoteUrl } from '@smarteverything/smartthings';
 import { z } from 'zod';
 import type { LinkContext, StoredAccount } from '../contract';
 import { TvConnection, TvConnectionError } from './connection';
 import type { SamsungTvIo } from './io';
+import { failureLine } from '@smarteverything/logging';
 
 export const REMOTE_APP_NAME = 'SmartEverything';
 
@@ -18,9 +19,21 @@ export const TV_ACCOUNT = z.object({
   model: z.string().min(1),
   token: z.string().min(1),
   frame: z.boolean(),
+  attachedTo: z.uuid().optional(),
 });
 
 export type TvAccount = z.infer<typeof TV_ACCOUNT>;
+
+export function accountSecrets(account: TvAccount): Record<string, JsonValue> {
+  const { attachedTo, ...rest } = account;
+  return attachedTo === undefined ? rest : { ...rest, attachedTo };
+}
+
+export function attachedDeviceOf(account: StoredAccount | null | undefined): string | null {
+  return account === undefined || account === null
+    ? null
+    : (TV_ACCOUNT.parse(account.secrets).attachedTo ?? null);
+}
 
 export class TvLinkError extends Error {
   override readonly name = 'TvLinkError';
@@ -43,7 +56,10 @@ export async function readTvInfo(
       signal: AbortSignal.timeout(REST_TIMEOUT_MS),
     });
   } catch (cause) {
-    throw new TvConnectionError(host, `the device information did not answer: ${String(cause)}`);
+    throw new TvConnectionError(
+      host,
+      `the device information did not answer: ${failureLine(cause)}`,
+    );
   }
   if (!response.ok) {
     throw new TvConnectionError(
@@ -59,11 +75,11 @@ export async function linkSamsungTv(
   io: SamsungTvIo,
   context: LinkContext,
 ): Promise<StoredAccount> {
-  const { host, macAddress, name } = credentials;
+  const { host, macAddress, name, attachTo } = credentials;
   const info = await readTvInfo(io, host);
   const socket = io.openSocket(remoteUrl(host, 'remote', REMOTE_APP_NAME, null));
   context.ask({ kind: 'accept_on_device', device: name }).catch((cause: unknown) => {
-    context.log.warn('prompt.failed', { reason: String(cause) });
+    context.log.warn('prompt.failed', { reason: failureLine(cause) });
   });
   const connection = await TvConnection.open(socket, host, ACCEPT_TIMEOUT_MS, 'connected');
   connection.close();
@@ -80,7 +96,8 @@ export async function linkSamsungTv(
     model: info.model,
     token: connection.token,
     frame: info.frame,
+    ...(attachTo === undefined ? {} : { attachedTo: attachTo }),
   };
   context.log.info('television.linked', { host, model: info.model, frame: info.frame });
-  return { label: name, secrets: { ...account } };
+  return { label: name, secrets: accountSecrets(account) };
 }

@@ -6,7 +6,7 @@ import type { AiChatRow, DshEngine } from '@smarteverything/domain';
 import { ProgressBar } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import { useIsOwner, useDevice } from '../../../store/selectors';
-import { useChatProvider, useComputerProviderSupported } from './provider-data';
+import { useChatProvider } from './provider-data';
 import { useCodexProvider } from './codex-provider-data';
 import { isComputerEngine } from './computer-engine';
 import {
@@ -14,6 +14,7 @@ import {
   projectedSubscriptionWindows,
   type SubscriptionWindow,
 } from './subscription-usage-values';
+import { dateTimeText } from '../../../format/locale';
 export function SubscriptionUsageBars({
   windows,
   computer,
@@ -37,7 +38,7 @@ export function SubscriptionUsageBars({
       </Text>
       {reportedAt === undefined ? null : (
         <Text variant="caption" tone="variant">
-          Reported {new Date(reportedAt).toLocaleString()}
+          Reported {dateTimeText(new Date(reportedAt))}
         </Text>
       )}
       {windows.length === 0 ? (
@@ -90,8 +91,7 @@ function ClaudeUsage({
   readonly compact: boolean;
 }): ReactNode {
   const owner = useIsOwner();
-  const supported = useComputerProviderSupported();
-  const provider = useChatProvider(chatId, owner && supported);
+  const provider = useChatProvider(chatId, owner);
   return (
     <SubscriptionUsageBars
       computer={computer}

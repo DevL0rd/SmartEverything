@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Socket } from 'node:net';
+import type { ServerResponse } from 'node:http';
 import { AIBI_URL_BASE } from './host-name';
 import { GEMINI_RATE, Mp3Stream, silence } from './mp3';
 
@@ -11,10 +11,13 @@ const BYTES_PER_MS = 8;
 const PAUSE_MS = 250;
 
 const MILLISECONDS = 1000;
-
-const RESPONSE_HEAD = 'HTTP/1.1 200 OK\r\nContent-Type: audio/mpeg\r\nConnection: close\r\n\r\n';
+const HTTP_OK = 200;
 
 export type SpeechKind = 'tts' | 'poweron';
+
+export function clean(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
 
 type StreamState = 'open' | 'ended' | 'failed';
 
@@ -64,42 +67,43 @@ export class SpeechStream {
     }
   }
 
-  serve(socket: Socket): void {
-    socket.write(RESPONSE_HEAD);
+  serve(response: ServerResponse): void {
+    response.removeHeader('Transfer-Encoding');
+    response.writeHead(HTTP_OK, { 'Content-Type': 'audio/mpeg', Connection: 'close' });
     const started = Date.now();
     let sent = 0;
     const timer = setInterval(() => {
-      sent = this.pump(socket, started, sent, () => {
+      sent = this.pump(response, started, sent, () => {
         clearInterval(timer);
       });
     }, TICK_MS);
-    socket.once('close', () => {
+    response.once('close', () => {
       clearInterval(timer);
     });
     if (this.state === 'open' && this.filler === null) {
       this.keepAhead(started);
     }
-    sent = this.pump(socket, started, sent, () => {
+    sent = this.pump(response, started, sent, () => {
       clearInterval(timer);
     });
   }
 
-  private pump(socket: Socket, started: number, sent: number, stop: () => void): number {
-    if (socket.destroyed || this.state === 'failed') {
+  private pump(response: ServerResponse, started: number, sent: number, stop: () => void): number {
+    if (response.destroyed || this.state === 'failed') {
       stop();
-      socket.destroy();
+      response.destroy();
       return sent;
     }
     const audio = Buffer.concat(this.chunks);
     this.chunks = [audio];
     const due = Math.min(audio.length, Math.floor((Date.now() - started + LEAD_MS) * BYTES_PER_MS));
     if (due > sent) {
-      socket.write(audio.subarray(sent, due));
+      response.write(audio.subarray(sent, due));
     }
     const now = Math.max(sent, due);
     if (this.state === 'ended' && now >= audio.length) {
       stop();
-      socket.end();
+      response.end();
     }
     return now;
   }

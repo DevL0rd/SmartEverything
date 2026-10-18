@@ -30,6 +30,10 @@ export class PendingAnswers<R> {
     });
   }
 
+  has(requestId: string): boolean {
+    return this.pending.has(requestId);
+  }
+
   answer(clientId: string, requestId: string, result: R): void {
     const pending = this.pending.get(requestId);
     if (pending === undefined) {

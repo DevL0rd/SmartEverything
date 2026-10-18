@@ -1,10 +1,5 @@
 import { COMMIT_RING } from './config';
-import { Ring, type Stamped } from './ring';
-
-export interface CommitEntry extends Stamped {
-  readonly ms: number;
-  readonly top: string;
-}
+import { StampRing } from './ring';
 
 export interface CommitSpan {
   readonly ms: number;
@@ -13,26 +8,34 @@ export interface CommitSpan {
 }
 
 export class CommitLog {
-  private readonly ring = new Ring<CommitEntry>(COMMIT_RING);
+  private readonly ring = new StampRing(COMMIT_RING);
+  private readonly durations = new Float64Array(COMMIT_RING);
+  private readonly tops: string[] = new Array<string>(COMMIT_RING).fill('');
 
   add(at: number, ms: number, top: string): void {
-    this.ring.push({ at, ms, top });
+    const slot = this.ring.claim(at);
+    this.durations[slot] = ms;
+    this.tops[slot] = top;
   }
 
   span(from: number, to: number): CommitSpan {
-    const inside = this.ring.between(from, to);
-    const heaviest = inside.reduce<CommitEntry | null>(
-      (best, entry) => (best === null || entry.ms > best.ms ? entry : best),
-      null,
-    );
-    return {
-      ms: inside.reduce((sum, entry) => sum + entry.ms, 0),
-      count: inside.length,
-      top: heaviest?.top ?? '',
-    };
-  }
-
-  lastAt(): number {
-    return this.ring.last()?.at ?? 0;
+    let ms = 0;
+    let count = 0;
+    let heaviest = -1;
+    let top = '';
+    for (let order = 0; order < this.ring.length; order += 1) {
+      const slot = this.ring.slotOf(order);
+      const at = this.ring.at[slot] ?? 0;
+      if (at >= from && at <= to) {
+        const duration = this.durations[slot] ?? 0;
+        ms += duration;
+        count += 1;
+        if (duration > heaviest) {
+          heaviest = duration;
+          top = this.tops[slot] ?? '';
+        }
+      }
+    }
+    return { ms, count, top };
   }
 }

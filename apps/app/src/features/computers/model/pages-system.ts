@@ -1,0 +1,40 @@
+import type { DevicePageContribution } from '../../../app-shell/device-pages';
+
+export const SYSTEM_PAGES: readonly DevicePageContribution[] = [
+  {
+    id: 'system',
+    title: 'Power and system',
+    subtitle: 'Power, battery, startup apps and services',
+    icon: 'power',
+    keywords: [
+      'power',
+      'battery',
+      'charging',
+      'power mode',
+      'do not disturb',
+      'keyboard',
+      'startup',
+      'autostart',
+      'services',
+      'timers',
+      'usb',
+      'hibernate',
+      'restart',
+      'shut down',
+      'sign out',
+    ],
+    settings: [
+      'Power',
+      'Battery',
+      'Power mode',
+      'Do Not Disturb',
+      'Keyboard layout',
+      'Startup apps',
+      'Your services',
+      'System services',
+      'Start at login',
+      'Scheduled',
+      'USB devices',
+    ],
+  },
+];

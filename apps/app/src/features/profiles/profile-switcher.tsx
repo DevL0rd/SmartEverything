@@ -6,8 +6,10 @@ import { Interactive } from '../../components/interactive';
 import { ProfileAvatar } from './profile-avatar';
 import { selectProfile } from '../../api/people';
 import { SelectRow } from '../../components/rows';
-import { notify } from '../../components/toast-store';
+import { notifyFailure } from '../../components/toast-store';
 import { useActiveProfile, useProfiles } from '../../store/people';
+
+const failed = notifyFailure('The profile was not changed');
 
 export function ProfileSwitcher({ compact = false }: { readonly compact?: boolean }): ReactNode {
   const profiles = useProfiles();
@@ -22,9 +24,7 @@ export function ProfileSwitcher({ compact = false }: { readonly compact?: boolea
       value={active?.id ?? null}
       placeholder="Choose a person"
       onChange={(profileId) => {
-        selectProfile(profileId).catch((error: unknown) => {
-          notify({ message: 'The profile was not changed', error, tone: 'critical' });
-        });
+        selectProfile(profileId).catch(failed);
       }}
     />
   );
@@ -59,9 +59,7 @@ function CompactProfileSwitcher(): ReactNode {
           setAnchor(null);
         }}
         onPick={(profileId) => {
-          selectProfile(profileId).catch((error: unknown) => {
-            notify({ message: 'The profile was not changed', error, tone: 'critical' });
-          });
+          selectProfile(profileId).catch(failed);
         }}
       />
     </>

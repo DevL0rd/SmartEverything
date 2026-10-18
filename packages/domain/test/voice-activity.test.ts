@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { BARGE_IN, Preroll, TalkGate, levelOf } from '../src';
+import {
+  BARGE_IN,
+  BARGE_IN_LEVEL,
+  DEFAULT_PAUSE_MS,
+  PAUSE_CHOICES_MS,
+  Preroll,
+  TalkGate,
+  levelOf,
+} from '../src';
 
 const LEVEL = 0.04;
 
@@ -71,6 +79,45 @@ describe('TalkGate', () => {
     talk.speechConfirmed();
     frames(talk, 32, 20, { assistantAudible: true, level: 0.01 });
     frames(talk, 700, 20, { assistantAudible: true, probability: 0.6 });
+    expect(log).toEqual([]);
+  });
+});
+
+describe('the default turn taking', () => {
+  function defaultGate(): { readonly talk: TalkGate; readonly log: string[] } {
+    const log: string[] = [];
+    const talk = new TalkGate(
+      {
+        open: (): void => {
+          log.push('open');
+        },
+        close: (): void => {
+          log.push('close');
+        },
+      },
+      BARGE_IN_LEVEL.echoCancelled,
+    );
+    return { talk, log };
+  }
+
+  it('keeps the shortest pause as the default so the AI decides the turn without added latency', () => {
+    expect(PAUSE_CHOICES_MS).toContain(DEFAULT_PAUSE_MS);
+    expect(DEFAULT_PAUSE_MS).toBe(PAUSE_CHOICES_MS[0]);
+  });
+
+  it('lets a soft voice barge in over the assistant after the default sustain time', () => {
+    const { talk, log } = defaultGate();
+    frames(talk, 0, 1, { assistantAudible: true, level: 0.01 });
+    talk.speechConfirmed();
+    frames(talk, 32, Math.ceil(BARGE_IN.sustainMs / 32), { assistantAudible: true, level: 0.035 });
+    expect(log).toEqual(['open']);
+  });
+
+  it('keeps the residual echo of the assistant out at the default barge in level', () => {
+    const { talk, log } = defaultGate();
+    frames(talk, 0, 1, { assistantAudible: true, level: 0.01 });
+    talk.speechConfirmed();
+    frames(talk, 32, 60, { assistantAudible: true, level: 0.025 });
     expect(log).toEqual([]);
   });
 });

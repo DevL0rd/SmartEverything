@@ -7,6 +7,7 @@ import { count, percent } from '../../format/number';
 import { shiftDay } from '../../format/time';
 import type { Device, StoreState } from '../../store/state';
 import { useStoreSelector } from '../../store/store-context';
+import { dailyOf } from './daily-index';
 import type { WatchGlance } from './watch-glance';
 
 function stepsLine(glance: WatchGlance): string {
@@ -52,15 +53,11 @@ function weekOf(
   today: string,
   profileId: string | null,
 ): readonly (number | null)[] {
-  const days = Array.from({ length: WEEK }, (_, index) => shiftDay(today, index - WEEK + 1));
-  const found = new Map<string, number>();
-  for (const id of state.tables.health_daily.ids) {
-    const row = state.tables.health_daily.byId[id];
-    if (row?.metric === 'steps' && (profileId === null || row.profile_id === profileId)) {
-      found.set(row.day, row.value);
-    }
-  }
-  return days.map((day) => found.get(day) ?? null);
+  const found = new Map(dailyOf(state, 'steps', profileId).map((row) => [row.day, row.value]));
+  return Array.from(
+    { length: WEEK },
+    (_, index) => found.get(shiftDay(today, index - WEEK + 1)) ?? null,
+  );
 }
 
 function sameWeek(left: readonly (number | null)[], right: readonly (number | null)[]): boolean {

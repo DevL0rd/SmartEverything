@@ -102,11 +102,5 @@ export class ComputerNativeMcpPolicyRepository {
       'delete from computer_runtime_grants where device_id=$device and runtime=$runtime',
       { device: target.device_id, runtime: target.runtime },
     );
-    if (target.runtime === 'claude')
-      this.context.sql.run(
-        'revoke disabled legacy Claude MCP token',
-        'update computer_nodes set mcp_token_hash=null where device_id=$device',
-        { device: target.device_id },
-      );
   }
 }

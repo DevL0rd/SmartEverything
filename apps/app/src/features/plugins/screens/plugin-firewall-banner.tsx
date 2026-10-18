@@ -21,7 +21,7 @@ export function PluginFirewallBanner({ row }: { readonly row: PluginRow }): Reac
       body={
         desktop
           ? `${row.manifest.name} needs local network access for discovery and device updates. Review the firewall openings.`
-          : `Open SmartEverything on the server computer to review ${row.manifest.name}’s firewall openings for discovery and device updates.`
+          : `Open SmartEverything on the Home Hub computer to allow ${row.manifest.name} through the firewall.`
       }
       wrapBody
       action={{ label: 'View firewall', href: href.settings.page('server/firewall') }}

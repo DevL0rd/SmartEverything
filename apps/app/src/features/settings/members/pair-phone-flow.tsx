@@ -1,26 +1,23 @@
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Logger } from '@smarteverything/logging';
-import { View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { type ClientRow, type Pairing, type Role } from '@smarteverything/domain';
 import { startPairing } from '../../../api/settings';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { FlowFrame } from '../../../components/flow-frame';
-import { Icon } from '../../../components/icon';
-import { ListRow } from '../../../components/list-row';
-import { List } from '../../../components/section';
+import { errorText, type ErrorText } from '../../../format/errors';
+import { useProfiles } from '../../../store/people';
 import { useRows } from '../../../store/selectors';
 import { href } from '../../../app-shell/hrefs';
 import { PairingCodeView } from './pairing-code-view';
-import { ClientProfile } from './client-profile';
-import { ROLE_HELP, ROLE_LABEL, newlyPaired } from './clients';
+import { deviceRoleOf, usePeopleAccess } from '../../access';
+import { ROLE_LABEL, newlyPaired } from './clients';
+import { PersonChoice } from './person-choice';
 
 const log = new Logger('app.pairing');
-
-const CHOICE_ORDER: readonly Role[] = ['member', 'owner'];
 
 interface Shown extends Pairing {
   readonly known: ReadonlySet<string>;
@@ -31,42 +28,16 @@ type Step =
   | { readonly kind: 'showing'; readonly pairing: Shown }
   | { readonly kind: 'expired' };
 
-function RoleChoice({
-  role,
-  onRole,
-}: {
-  readonly role: Role;
-  readonly onRole: (role: Role) => void;
-}): ReactNode {
-  return (
-    <List title="What can this phone do?" inset>
-      {CHOICE_ORDER.map((option) => (
-        <ListRow
-          key={option}
-          title={ROLE_LABEL[option]}
-          subtitle={ROLE_HELP[option]}
-          icon={option === 'owner' ? 'key' : 'users'}
-          selected={option === role}
-          trailing={option === role ? <Icon name="check" tone="primary" /> : null}
-          onPress={() => {
-            onRole(option);
-          }}
-        />
-      ))}
-    </List>
-  );
-}
-
 function Paired({ client }: { readonly client: ClientRow }): ReactNode {
+  const person = useProfiles().find((profile) => profile.id === client.profile_id);
   return (
-    <View className="gap-6">
-      <EmptyState
-        icon="circleCheck"
-        title={`${client.name} is paired`}
-        body={`It joined as ${ROLE_LABEL[client.role].toLowerCase()}.`}
-      />
-      <ClientProfile client={client} label="Whose phone is this?" />
-    </View>
+    <EmptyState
+      icon="circleCheck"
+      title={`${client.name} is paired`}
+      body={`It joined as ${ROLE_LABEL[client.role].toLowerCase()}${
+        person === undefined ? '' : ` for ${person.name}`
+      }.`}
+    />
   );
 }
 
@@ -86,27 +57,30 @@ function useExpiry(step: Step, onExpire: () => void): void {
 function usePairPhone(): {
   readonly step: Step;
   readonly busy: boolean;
-  readonly problem: string | null;
+  readonly problem: ErrorText | null;
   readonly paired: ClientRow | null;
-  readonly start: (role: Role) => void;
+  readonly start: (role: Role, profileId: string) => void;
 } {
   const clients = useRows('clients');
   const [step, setStep] = useState<Step>({ kind: 'choose' });
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<ErrorText | null>(null);
   useExpiry(step, () => {
     setStep({ kind: 'expired' });
   });
   const paired = step.kind === 'showing' ? newlyPaired(clients, step.pairing.known) : null;
-  const start = (role: Role): void => {
+  const start = (role: Role, profileId: string): void => {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
     setProblem(null);
     const known = new Set(clients.map((client) => client.id));
-    startPairing(role).then(
+    const startedAt = Date.now();
+    log.info('pairing.invitation_requested', { role, profileId, knownClients: known.size });
+    startPairing(role, profileId).then(
       (pairing) => {
+        log.info('pairing.invitation_created', { role, durationMs: Date.now() - startedAt });
         pending.current = false;
         setBusy(false);
         setStep({ kind: 'showing', pairing: { ...pairing, known } });
@@ -117,9 +91,7 @@ function usePairPhone(): {
           failure: error instanceof Error ? error.name : 'ServerFailure',
         });
         setBusy(false);
-        setProblem(
-          'A pairing code could not be created. Check your home connection or set up Remote access.',
-        );
+        setProblem(errorText(error));
       },
     );
   };
@@ -128,19 +100,19 @@ function usePairPhone(): {
 
 function Body({
   flow,
-  role,
-  onRole,
+  chosen,
+  onChoose,
 }: {
   readonly flow: ReturnType<typeof usePairPhone>;
-  readonly role: Role;
-  readonly onRole: (role: Role) => void;
+  readonly chosen: string | null;
+  readonly onChoose: (profileId: string) => void;
 }): ReactNode {
   if (flow.paired !== null) {
     return <Paired client={flow.paired} />;
   }
   switch (flow.step.kind) {
     case 'choose':
-      return <RoleChoice role={role} onRole={onRole} />;
+      return <PersonChoice chosen={chosen} onChoose={onChoose} />;
     case 'showing':
       return <PairingCodeView pairing={flow.step.pairing} />;
     case 'expired':
@@ -148,10 +120,19 @@ function Body({
   }
 }
 
+function useChosenRole(chosen: string | null): Role | null {
+  const people = usePeopleAccess();
+  const person = people.data?.find((entry) => entry.profile_id === chosen);
+  return person === undefined ? null : deviceRoleOf(person.role);
+}
+
 export function PairPhoneFlow(): ReactNode {
   const router = useRouter();
   const flow = usePairPhone();
-  const [role, setRole] = useState<Role>('member');
+  const preset = useLocalSearchParams<{ profileId?: string }>().profileId ?? null;
+  const [picked, setPicked] = useState<string | null>(null);
+  const chosen = picked ?? preset;
+  const role = useChosenRole(chosen);
   const close = (): void => {
     router.back();
   };
@@ -172,8 +153,11 @@ export function PairPhoneFlow(): ReactNode {
             <Button
               label={flow.step.kind === 'expired' ? 'Show a new code' : 'Show code'}
               loading={flow.busy}
+              disabled={role === null || chosen === null}
               onPress={() => {
-                flow.start(role);
+                if (role !== null && chosen !== null) {
+                  flow.start(role, chosen);
+                }
               }}
             />
           ) : null}
@@ -183,11 +167,12 @@ export function PairPhoneFlow(): ReactNode {
       {flow.problem === null ? null : (
         <Banner
           tone="critical"
-          title={flow.problem}
+          title={flow.problem.title}
+          body={flow.problem.detail}
           action={{ label: 'Connection setup', href: href.settings.page('server') }}
         />
       )}
-      <Body flow={flow} role={role} onRole={setRole} />
+      <Body flow={flow} chosen={chosen} onChoose={setPicked} />
     </FlowFrame>
   );
 }

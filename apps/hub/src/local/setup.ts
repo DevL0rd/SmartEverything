@@ -4,7 +4,6 @@ import {
   BIND_KEY,
   BLUETOOTH_ADDRESS,
   isScale,
-  unseal,
   type DeviceRow,
   type LocalDeviceSetup,
 } from '@smarteverything/domain';
@@ -45,14 +44,7 @@ async function fromXiaomi(
   };
 }
 
-function fromManual(
-  setup: Extract<LocalDeviceSetup, { source: 'manual' }>,
-  context: SetupContext,
-): ResolvedSetup {
-  const key = BIND_KEY.safeParse(unseal(context.secrets.sealingKeys(), setup.bindKey));
-  if (!key.success) {
-    throw new ApiError('invalid_request', 'The Bluetooth key must be 32 hexadecimal characters.');
-  }
+function fromManual(setup: Extract<LocalDeviceSetup, { source: 'manual' }>): ResolvedSetup {
   return {
     entry: {
       externalId: `xiaomi_scale:${setup.address}`,
@@ -61,7 +53,7 @@ function fromManual(
       name: setup.name,
       config: { model: MANUAL_SCALE_MODEL },
     },
-    key: key.data,
+    key: setup.bindKey,
     replaces: null,
   };
 }
@@ -76,5 +68,5 @@ export async function resolveSetup(
   if (setup.driver === 'xiaomi_watch') {
     return watchSetup(setup, context);
   }
-  return setup.source === 'xiaomi' ? fromXiaomi(setup, context) : fromManual(setup, context);
+  return setup.source === 'xiaomi' ? fromXiaomi(setup, context) : fromManual(setup);
 }

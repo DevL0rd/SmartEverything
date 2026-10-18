@@ -1,25 +1,24 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Svg, { Circle, G, Line, Path } from 'react-native-svg';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Svg, { Circle, G, Path } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { useIdiom } from '../../design/platform';
 import { withUnit } from '../../format/number';
-import { selectionTick } from '../../platform/haptics';
-import { Icon } from '../icon';
 import { Text } from '../text';
+import { useMeasuredWidth } from '../use-measured-width';
 import { Axes, Extremes, MarkerLabel, MarkerLine } from './chart-labels';
+import { LiveChart } from './live-chart';
+import { Crosshair, Grid, Readout, scrubGesture } from './chart-parts';
 import {
-  LONG_PRESS_MS,
-  READOUT_W,
   modelOf,
   type ChartSeries,
   type Model,
+  type StaticChartProps,
   type TimeSeriesChartProps,
 } from './chart-model';
 import {
-  clamp,
   extremaOf,
   hitsAt,
   linePath,
@@ -27,42 +26,18 @@ import {
   type ChartPoint,
   type ChartRange,
   type Drawn,
-  type Hit,
 } from './scale';
 
-export type { ChartMarker, ChartSeries, TimeSeriesChartProps } from './chart-model';
+export type { ChartSeries, TimeSeriesChartProps } from './chart-model';
 
-function Grid({ model }: { readonly model: Model }): ReactNode {
-  const stroke = useColour('outline-variant');
-  return (
-    <G>
-      {model.yTicks.map((tick) => (
-        <Line
-          key={tick}
-          x1={model.box.left}
-          x2={model.box.right}
-          y1={model.y(tick)}
-          y2={model.y(tick)}
-          stroke={stroke}
-          strokeWidth={1}
-        />
-      ))}
-    </G>
-  );
-}
-
-function SeriesLayer({
+const SeriesLines = memo(function SeriesLines({
   drawn,
   model,
-  focus,
 }: {
   readonly drawn: Drawn<ChartSeries>;
   readonly model: Model;
-  readonly focus: ChartPoint | null;
 }): ReactNode {
   const stroke = useColour(drawn.series.colour);
-  const ring = useColour('surface-1');
-  const last = focus ?? drawn.points[drawn.points.length - 1];
   return (
     <G>
       {drawn.segments.map((segment) => {
@@ -85,6 +60,25 @@ function SeriesLayer({
           />
         );
       })}
+    </G>
+  );
+});
+
+function SeriesLayer({
+  drawn,
+  model,
+  focus,
+}: {
+  readonly drawn: Drawn<ChartSeries>;
+  readonly model: Model;
+  readonly focus: ChartPoint | null;
+}): ReactNode {
+  const stroke = useColour(drawn.series.colour);
+  const ring = useColour('surface-1');
+  const last = focus ?? drawn.points[drawn.points.length - 1];
+  return (
+    <G>
+      <SeriesLines drawn={drawn} model={model} />
       {last === undefined ? null : (
         <Circle
           cx={model.x(last.t)}
@@ -99,77 +93,9 @@ function SeriesLayer({
   );
 }
 
-function Crosshair({
-  hits,
-  model,
-}: {
-  readonly hits: readonly Hit<ChartSeries>[];
-  readonly model: Model;
-}): ReactNode {
-  const stroke = useColour('on-surface-variant');
-  const at = hits[0] === undefined ? null : model.x(hits[0].point.t);
-  return (
-    <G>
-      {at === null ? null : (
-        <Line
-          x1={at}
-          x2={at}
-          y1={model.box.top}
-          y2={model.box.bottom}
-          stroke={stroke}
-          strokeWidth={1}
-        />
-      )}
-    </G>
-  );
-}
-
-function Readout({
-  hits,
-  model,
-  range,
-}: {
-  readonly hits: readonly Hit<ChartSeries>[];
-  readonly model: Model;
-  readonly range: ChartRange;
-}): ReactNode {
-  const first = hits[0];
-  if (first === undefined) {
-    return null;
-  }
-  const at = model.x(first.point.t);
-  const left = at > (model.box.left + model.box.right) / 2 ? at - 12 - READOUT_W : at + 12;
-  const place = {
-    left: clamp(left, { min: 0, max: model.box.width - READOUT_W }),
-    top: model.box.top,
-  };
-  return (
-    <View
-      pointerEvents="none"
-      style={place}
-      className="absolute w-36 gap-0.5 rounded-sm border border-outline-variant bg-surface-raised px-2 py-1.5 elevation-2"
-    >
-      <Text variant="caption" tone="variant" className="tabular">
-        {pointLabel(first.point.t, range)}
-      </Text>
-      {hits.map((hit) => (
-        <View key={hit.series.label} className="flex-row items-center gap-1.5">
-          <Icon name="circle" size={16} colour={hit.series.colour} />
-          <Text variant="caption" numberOfLines={1} className="flex-1">
-            {hit.series.label}
-          </Text>
-          <Text variant="caption" className="tabular">
-            {withUnit(model.format(hit.point.v), model.unit)}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-function summaryOf(props: TimeSeriesChartProps, model: Model | null): string {
+function summaryOf(series: readonly ChartSeries[], model: Model | null): string {
   if (model === null) {
-    return `${props.series.map((series) => series.label).join(', ')}: no readings in this range`;
+    return `${series.map((series) => series.label).join(', ')}: no readings in this range`;
   }
   return model.drawn
     .map((drawn) => {
@@ -182,37 +108,6 @@ function summaryOf(props: TimeSeriesChartProps, model: Model | null): string {
       return `${drawn.series.label}: latest ${say(last.v)}, high ${say(extrema.peak.v)}, low ${say(extrema.low.v)}`;
     })
     .join('. ');
-}
-
-function scrubGesture(
-  pointer: boolean,
-  setX: (x: number | null) => void,
-): ReturnType<typeof Gesture.Hover> | ReturnType<typeof Gesture.Pan> {
-  const clear = (): void => {
-    setX(null);
-  };
-  if (pointer) {
-    return Gesture.Hover()
-      .runOnJS(true)
-      .onBegin((event) => {
-        setX(event.x);
-      })
-      .onUpdate((event) => {
-        setX(event.x);
-      })
-      .onFinalize(clear);
-  }
-  return Gesture.Pan()
-    .runOnJS(true)
-    .activateAfterLongPress(LONG_PRESS_MS)
-    .onStart((event) => {
-      selectionTick();
-      setX(event.x);
-    })
-    .onUpdate((event) => {
-      setX(event.x);
-    })
-    .onFinalize(clear);
 }
 
 function Plot({
@@ -245,29 +140,41 @@ function Plot({
       <Axes model={model} />
       <MarkerLabel model={model} />
       {hits.length > 0 ? null : <Extremes model={model} />}
-      <Readout hits={hits} model={model} range={range} />
+      <Readout
+        hits={hits}
+        model={model}
+        heading={hits[0] === undefined ? '' : pointLabel(hits[0].point.t, range)}
+        valueOf={(hit) => withUnit(model.format(hit.point.v), model.unit)}
+      />
     </>
   );
 }
 
-export function TimeSeriesChart(props: TimeSeriesChartProps): ReactNode {
-  const { height = 200, range } = props;
-  const [width, setWidth] = useState(0);
+const StaticChart = memo(function StaticChart(props: StaticChartProps): ReactNode {
+  const { height = 200, range, series, unit, formatValue, fit, marker, yDomain, label } = props;
+  const { width, onLayout } = useMeasuredWidth();
   const [scrubX, setScrubX] = useState<number | null>(null);
   const pointer = useIdiom() === 'pointer';
-  const model = width > 0 ? modelOf(props, width, height) : null;
+  const model =
+    width > 0
+      ? modelOf({ series, range, unit, formatValue, fit, marker, yDomain }, width, height)
+      : null;
   const box = { height };
   return (
-    <GestureDetector gesture={scrubGesture(pointer, setScrubX)}>
+    <GestureDetector
+      gesture={scrubGesture(pointer, (point) => {
+        setScrubX(point === null ? null : point.x);
+      })}
+    >
       <View
         accessible
         accessibilityRole="image"
-        accessibilityLabel={summaryOf(props, model)}
+        accessibilityLabel={
+          label === undefined ? summaryOf(series, model) : `${label}. ${summaryOf(series, model)}`
+        }
         style={box}
         className="relative w-full"
-        onLayout={(event) => {
-          setWidth(event.nativeEvent.layout.width);
-        }}
+        onLayout={onLayout}
       >
         {model === null ? (
           <View className="flex-1 items-center justify-center">
@@ -283,4 +190,10 @@ export function TimeSeriesChart(props: TimeSeriesChartProps): ReactNode {
       </View>
     </GestureDetector>
   );
-}
+});
+
+export const TimeSeriesChart = memo(function TimeSeriesChart(
+  props: TimeSeriesChartProps,
+): ReactNode {
+  return props.window === undefined ? <StaticChart {...props} /> : <LiveChart {...props} />;
+});

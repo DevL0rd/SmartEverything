@@ -3,6 +3,7 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path';
 import { MCP_TOKEN, createMcpToken } from '@smarteverything/domain';
 import type { LinkCredential } from './link-token';
+import { isMissing } from '../fs-util';
 
 export class LocalLinkCredential implements LinkCredential {
   private token: string | null = null;
@@ -24,7 +25,7 @@ export class LocalLinkCredential implements LinkCredential {
       await chmod(this.file, 0o600);
       return this.token;
     } catch (cause) {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
+      if (isMissing(cause)) {
         return null;
       }
       throw cause;

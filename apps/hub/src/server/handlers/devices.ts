@@ -1,50 +1,73 @@
-import { API_ENDPOINTS as E } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, ApiError, type DeviceRow } from '@smarteverything/domain';
+import type { z } from 'zod';
+import { visibleDevices, visibleState } from '../../computers/computer-access';
+import { phoneViewerOfCaller } from '../../phones/phone-detail';
+import { visibleEvents, visibleRows } from '../../phones/phone-visibility';
 import { checkedCommands, sourcedBy, commandPrincipal } from '../commands';
 import type { ServerContext } from '../context';
-import { DONE_REPLY, bound, type Bound } from '../router';
+import { deviceScopeOf, reachableRows } from '../person-scope';
+import { DONE_REPLY, bound } from '../router';
+import type { Store } from '../../store/store';
 
-type DeviceRoutes = Record<
-  | 'listRooms'
-  | 'createRoom'
-  | 'updateRoom'
-  | 'removeRoom'
-  | 'listDevices'
-  | 'updateDevice'
-  | 'listState'
-  | 'readHistory'
-  | 'readHistoryBuckets'
-  | 'listCommands'
-  | 'readCommand'
-  | 'sendCommand'
-  | 'sendCommands'
-  | 'listEvents'
-  | 'acknowledgeEvent',
-  Bound
->;
+type DeviceChange = z.output<typeof E.updateDevice.body>;
 
-export function deviceRoutes(context: ServerContext): DeviceRoutes {
-  const { store, hub } = context;
-  return {
-    listRooms: bound(E.listRooms, () => store.rooms.list()),
-    createRoom: bound(E.createRoom, ({ body }) => store.rooms.create(body.name, body.position)),
-    updateRoom: bound(E.updateRoom, ({ params, body }) => store.rooms.update(params.roomId, body)),
-    removeRoom: bound(E.removeRoom, ({ params }) => {
-      store.rooms.remove(params.roomId, (roomId) => {
-        store.devices.unplace(roomId);
-      });
-      return DONE_REPLY;
-    }),
-    listDevices: bound(E.listDevices, () => store.devices.list()),
-    updateDevice: bound(E.updateDevice, ({ params, body }) => {
-      if (body.room_id !== undefined && body.room_id !== null) {
-        store.rooms.byId(body.room_id);
-      }
-      return store.devices.update(params.deviceId, body);
-    }),
-    listState: bound(E.listState, () => store.state.list()),
-    readHistory: bound(E.readHistory, ({ query }) => store.state.history(query)),
-    readHistoryBuckets: bound(E.readHistoryBuckets, ({ query }) => store.state.buckets(query)),
-    listCommands: bound(E.listCommands, ({ query }) => store.commands.recent(query.limit)),
+function changeDevice(store: Store, deviceId: string, change: DeviceChange): DeviceRow {
+  const { input_names: inputNames, ...patch } = change;
+  if (patch.room_id !== undefined && patch.room_id !== null) {
+    store.rooms.byId(patch.room_id);
+  }
+  if (inputNames !== undefined) {
+    if (store.devices.byId(deviceId).kind !== 'television') {
+      throw new ApiError('invalid_request', 'Only a television has inputs to name.');
+    }
+    store.televisionSettings.setInputNames(deviceId, inputNames);
+  }
+  return Object.keys(patch).length === 0
+    ? store.devices.byId(deviceId)
+    : store.devices.update(deviceId, patch);
+}
+
+const stateRoutes = (store: Store) =>
+  ({
+    listState: bound(E.listState, ({ caller }) => visibleState(store, caller)),
+    readHistory: bound(E.readHistory, ({ query, caller }) =>
+      visibleRows(
+        store,
+        phoneViewerOfCaller(store, caller),
+        reachableRows(
+          store,
+          deviceScopeOf(store, caller),
+          store.state.history(query),
+          (row) => row.device_id,
+        ),
+      ),
+    ),
+    readHistoryBuckets: bound(E.readHistoryBuckets, ({ query, caller }) =>
+      visibleRows(
+        store,
+        phoneViewerOfCaller(store, caller),
+        reachableRows(
+          store,
+          deviceScopeOf(store, caller),
+          store.state.buckets(query),
+          (row) => row.device_id,
+        ),
+      ),
+    ),
+  }) as const;
+
+const commandRoutes = ({ store, hub }: Pick<ServerContext, 'store' | 'hub'>) =>
+  ({
+    listCommands: bound(E.listCommands, ({ query, caller }) =>
+      reachableRows(
+        store,
+        deviceScopeOf(store, caller),
+        query.deviceId === undefined
+          ? store.commands.recent(query.limit)
+          : store.commands.ofDevice(query.deviceId, { limit: query.limit }),
+        (row) => row.device_id,
+      ),
+    ),
     readCommand: bound(E.readCommand, ({ params }) => store.commands.byId(params.commandId)),
     sendCommand: bound(E.sendCommand, ({ body, caller }) => {
       const [row] = hub.submit(
@@ -60,9 +83,38 @@ export function deviceRoutes(context: ServerContext): DeviceRoutes {
         checkedCommands(store, sourcedBy(caller, body.commands), commandPrincipal(store, caller)),
       ),
     ),
-    listEvents: bound(E.listEvents, ({ query }) => store.events.list(query)),
+  }) as const;
+
+export const deviceRoutes = ({ store, hub }: ServerContext) =>
+  ({
+    listRooms: bound(E.listRooms, () => store.rooms.list()),
+    createRoom: bound(E.createRoom, ({ body }) => store.rooms.create(body.name, body.position)),
+    updateRoom: bound(E.updateRoom, ({ params, body }) => store.rooms.update(params.roomId, body)),
+    removeRoom: bound(E.removeRoom, ({ params }) => {
+      store.rooms.remove(params.roomId, (roomId) => {
+        store.devices.unplace(roomId);
+      });
+      return DONE_REPLY;
+    }),
+    listDevices: bound(E.listDevices, ({ caller }) => visibleDevices(store, caller)),
+    updateDevice: bound(E.updateDevice, ({ params, body }) =>
+      changeDevice(store, params.deviceId, body),
+    ),
+    ...stateRoutes(store),
+    ...commandRoutes({ store, hub }),
+    listEvents: bound(E.listEvents, ({ query, caller }) =>
+      visibleEvents(
+        store,
+        phoneViewerOfCaller(store, caller),
+        reachableRows(
+          store,
+          deviceScopeOf(store, caller),
+          store.events.list(query),
+          (row) => row.device_id,
+        ),
+      ),
+    ),
     acknowledgeEvent: bound(E.acknowledgeEvent, ({ params }) =>
       store.events.acknowledge(params.eventId),
     ),
-  };
-}
+  }) as const;

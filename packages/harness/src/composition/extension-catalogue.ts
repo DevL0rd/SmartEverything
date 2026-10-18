@@ -2,12 +2,9 @@ import {
   HARNESS_EXTENSION_ITEM,
   HARNESS_BUNDLED_SKILL,
   type AiHarnessExtensions,
-  HARNESS_SKILL_SOURCE_URL,
   type HarnessExtensionItem,
-  type HarnessSkillAsset,
-  type HarnessSkillPresentation,
 } from '@smarteverything/domain';
-import { defaultHarnessBuiltins } from './builtins';
+import { desiredHarnessConfiguration, type HarnessBuiltinSelection } from './builtins';
 import { PRODUCT_SKILLS } from './product-skill-catalogue';
 
 const INCLUDED_PRESENTATIONS = new Map([
@@ -26,13 +23,14 @@ const INCLUDED_PRESENTATIONS = new Map([
   [
     'skills',
     {
-      name: 'Workspace skills',
-      description: 'Discover and use skills available in each workspace.',
+      name: 'Skills',
+      description:
+        'Use the skills installed on the Home Hub, in your folders and in each workspace.',
       capabilities: [
-        'Discover local workspace and user skills',
-        'Load shared immutable skill instructions and bundled resources',
+        'Discover workspace, user and installed skills',
+        'Load skill instructions and their resource files',
       ],
-      requirements: ['Runs in a local Linux workspace', 'File access stays on each device'],
+      requirements: ['Installed skills reach every machine from the Home Hub'],
     },
   ],
   [
@@ -41,75 +39,54 @@ const INCLUDED_PRESENTATIONS = new Map([
       name: 'Headless browser',
       description: 'Inspect pages, take screenshots and test websites on the execution computer.',
       capabilities: [
-        'Use official DSH Playwright MCP tools in an isolated browser for each live session',
+        'Use Playwright browser tools in an isolated browser for each live session',
         'Inspect page accessibility snapshots and take screenshots',
         'Navigate and interact with authorized websites and development pages',
       ],
       requirements: [
         'Requires an installed Chromium browser on a local Linux execution computer',
-        'Requires current Full access because this provider cannot enforce a file or network sandbox',
+        'Asks before each browser action unless the chat has Full access',
         'Browser state stays on its originating host and ends when the live session closes',
         'Unavailable on the hub, macOS and Windows runtimes',
       ],
     },
   ],
+  [
+    'claude-plugins',
+    {
+      name: 'Plugins',
+      description: 'Use the agents, commands, skills, hooks and MCP servers of installed plugins.',
+      capabilities: [
+        'Load plugin skills, commands and agents',
+        'Run the hooks and MCP servers of plugins the owner confirmed',
+      ],
+      requirements: ['Installed plugins reach every machine from the Home Hub'],
+    },
+  ],
 ]);
 
-export function includedHarnessExtensions(): readonly HarnessExtensionItem[] {
-  return defaultHarnessBuiltins().entries.map((entry) => {
-    const presentation = INCLUDED_PRESENTATIONS.get(entry.id);
-    if (presentation === undefined || entry.metadata === undefined)
-      throw new Error('Included extension has no registered presentation or pinned metadata.');
-    return HARNESS_EXTENSION_ITEM.parse({
-      id: entry.id,
-      kind: 'extension',
-      included: true,
-      ...presentation,
-      publisher: 'SmartEverything',
-      runtimes: ['smarteverything'],
-      platforms: entry.metadata.platforms,
-      selection: { kind: 'entry', entry },
-      acquisition: { state: 'available', format: 'builtin' },
-    });
-  });
-}
-
-export function harnessSkillExtension(
-  asset: HarnessSkillAsset,
-  display?: HarnessSkillPresentation,
+export function includedHarnessExtension(
+  id: string,
+  selection: HarnessBuiltinSelection,
 ): HarnessExtensionItem {
-  const sourceFormat =
-    asset.source.kind === 'artifact' && new URL(asset.source.url).pathname.endsWith('SKILL.md')
-      ? 'immutable-github-skill-v1'
-      : 'immutable-json-skill-bundle-v1';
+  const presentation = INCLUDED_PRESENTATIONS.get(id);
+  const entry = desiredHarnessConfiguration().entries.find((candidate) => candidate.id === id);
+  if (presentation === undefined || entry?.metadata === undefined)
+    throw new Error(`Built-in extension ${id} has no registered presentation.`);
   return HARNESS_EXTENSION_ITEM.parse({
-    id: `skill-asset:${asset.id}`,
-    kind: 'skill',
-    included: false,
-    name: display?.name ?? asset.id,
-    description: display?.description ?? 'Shared immutable skill included in Workspace skills.',
-    publisher: display?.publisher ?? 'Imported source',
-    capabilities: ['Load skill instructions and bundled resources through Workspace skills'],
-    requirements: [
-      'Requires Workspace skills on a local Linux device',
-      'Installing does not grant file, shell or account access',
-    ],
-    runtimes: ['smarteverything'],
-    platforms: ['linux'],
-    selection: { kind: 'skill_asset', parent_id: 'skills', asset },
-    acquisition: supportedSkillSource(asset)
-      ? { state: 'available', format: sourceFormat }
-      : {
-          state: 'unsupported',
-          reason: 'This pinned asset source has no supported public immutable acquisition adapter.',
-        },
+    id,
+    kind: 'builtin',
+    ...presentation,
+    publisher: 'SmartEverything',
+    license: null,
+    platforms: entry.metadata.platforms,
+    enabled: selection.enabled,
+    config: selection.config,
+    source: { kind: 'included' },
+    version: entry.version,
+    executes: false,
+    confirmed: false,
   });
-}
-
-function supportedSkillSource(asset: HarnessSkillAsset): boolean {
-  return (
-    asset.source.kind === 'artifact' && HARNESS_SKILL_SOURCE_URL.safeParse(asset.source.url).success
-  );
 }
 
 export function bundledHarnessSkills(): NonNullable<AiHarnessExtensions['bundled_skills']> {

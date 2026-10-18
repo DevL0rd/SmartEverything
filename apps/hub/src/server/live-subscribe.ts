@@ -1,25 +1,14 @@
-import { LIVE_CLIENT_MESSAGE, type LiveStream } from '@smarteverything/domain';
-import type { z } from 'zod';
 import {
-  CURRENT_DIALECT,
-  type Subscription,
-  type LiveDialect,
-  type LiveNotice,
-} from './live-dialect';
-import { readLegacySubscribe } from './live-legacy';
+  LIVE_CLIENT_MESSAGE,
+  type LiveClientMessage,
+  type LiveStream,
+} from '@smarteverything/domain';
+import type { z } from 'zod';
 import type { Connection } from './live-visibility';
 
 type LiveAudience = 'everyone' | 'owners' | LiveStream;
 
-export function hears(
-  connection: Connection,
-  dialect: LiveDialect | undefined,
-  notice: LiveNotice,
-  audience: LiveAudience,
-): boolean {
-  if (dialect?.hears(notice) !== true) {
-    return false;
-  }
+export function hears(connection: Connection, audience: LiveAudience): boolean {
   if (audience === 'everyone') {
     return true;
   }
@@ -29,11 +18,17 @@ export function hears(
   return connection.streams.has(audience);
 }
 
-export function readSubscribe(raw: unknown): Subscription | z.ZodError {
-  const legacy = readLegacySubscribe(raw);
-  if (legacy !== null) {
-    return legacy;
+function parseJson(text: string): unknown {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed;
+  } catch (error) {
+    if (error instanceof SyntaxError) return text;
+    throw error;
   }
-  const parsed = LIVE_CLIENT_MESSAGE.safeParse(raw);
-  return parsed.success ? { dialect: CURRENT_DIALECT, message: parsed.data } : parsed.error;
+}
+
+export function readSubscribe(text: string): LiveClientMessage | z.ZodError {
+  const parsed = LIVE_CLIENT_MESSAGE.safeParse(parseJson(text));
+  return parsed.success ? parsed.data : parsed.error;
 }

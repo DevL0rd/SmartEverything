@@ -34,6 +34,8 @@ let directory: string;
 let record: ContextRecord;
 
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
   directory = await mkdtemp(join(tmpdir(), 'smartthings-runtime-'));
   record = contextFor(directory);
 });
@@ -435,7 +437,8 @@ describe('SmartThings webhook events', () => {
   });
 
   it('retries with growing pauses when SmartThings fails for a while, until it stops', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(NOW);
     const cloud = subscribedCloud()
       .on('GET', INSTALLED, () => json({ error: { code: 'Gone', message: 'Later.' } }, 503))
       .on('GET', INSTALLED, () => json({ error: { code: 'Busy', message: 'Slow down.' } }, 429));
@@ -458,7 +461,8 @@ describe('SmartThings webhook events', () => {
   });
 
   it('stops retrying once unsubscribed', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(NOW);
     const cloud = subscribedCloud().on('GET', INSTALLED, () =>
       json({ error: { code: 'Gone', message: 'Later.' } }, 500),
     );

@@ -7,7 +7,6 @@ const DELIVERY = z.strictObject({
   session_id: z.string().min(1),
   reply_id: z.uuid().nullable(),
   state: z.enum(['admitted', 'completed', 'unknown']),
-  text: z.string(),
   start_seq: z.int().nonnegative().nullable(),
   end_seq: z.int().min(-1).nullable(),
 });
@@ -17,14 +16,14 @@ export class HarnessDeliveriesRepository {
   find(id: string): HarnessDelivery | undefined {
     return this.context.sql.get(
       DELIVERY,
-      'select delivery_id,session_id,reply_id,state,text,start_seq,end_seq from harness_deliveries where delivery_id=$id',
+      'select delivery_id,session_id,reply_id,state,start_seq,end_seq from harness_deliveries where delivery_id=$id',
       { id },
     );
   }
   unsettled(): HarnessDelivery[] {
     return this.context.sql.all(
       DELIVERY,
-      "select delivery_id,session_id,reply_id,state,text,start_seq,end_seq from harness_deliveries where state in ('admitted','unknown') order by rowid",
+      "select delivery_id,session_id,reply_id,state,start_seq,end_seq from harness_deliveries where state in ('admitted','unknown') order by rowid",
     );
   }
   restorePending(id: string, project: () => void): void {
@@ -45,14 +44,14 @@ export class HarnessDeliveriesRepository {
   pending(sessionId?: string): HarnessDelivery[] {
     return this.context.sql.all(
       DELIVERY,
-      "select delivery_id,session_id,reply_id,state,text,start_seq,end_seq from harness_deliveries where ($id is null or session_id=$id) and state='admitted' order by rowid",
+      "select delivery_id,session_id,reply_id,state,start_seq,end_seq from harness_deliveries where ($id is null or session_id=$id) and state='admitted' order by rowid",
       { id: sessionId ?? null },
     );
   }
   cutOfMessage(id: string): HarnessDelivery | undefined {
     return this.context.sql.get(
       DELIVERY,
-      'select d.delivery_id,d.session_id,d.reply_id,d.state,d.text,d.start_seq,d.end_seq from harness_deliveries d join assistant_events e on e.id=d.delivery_id where d.reply_id=$id or e.message_id=$id order by e.cursor desc limit 1',
+      'select d.delivery_id,d.session_id,d.reply_id,d.state,d.start_seq,d.end_seq from harness_deliveries d join assistant_events e on e.id=d.delivery_id where d.reply_id=$id or e.message_id=$id order by e.cursor desc limit 1',
       { id },
     );
   }
@@ -78,18 +77,17 @@ export class HarnessDeliveriesRepository {
         session_id: sessionId,
         reply_id: replyId,
         state: 'admitted',
-        text: '',
         start_seq: null,
         end_seq: null,
       });
     });
   }
-  update(id: string, state: HarnessDelivery['state'], text: string, project: () => void): void {
+  update(id: string, state: HarnessDelivery['state'], project: () => void): void {
     durableSessionWrite(this.context, () => {
       this.context.sql.run(
         'persist native conversation delivery outcome',
-        'update harness_deliveries set state=$state,text=$text where delivery_id=$id',
-        { id, state, text },
+        'update harness_deliveries set state=$state where delivery_id=$id',
+        { id, state },
       );
       project();
     });

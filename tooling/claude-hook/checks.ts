@@ -1,7 +1,7 @@
 import { extname } from 'node:path';
 import { z } from 'zod';
 import { parseJson } from './input.ts';
-import { rawFailure, timedOut, type Section } from './output.ts';
+import { rawFailure, skippedNotice, timedOut, type Section } from './output.ts';
 import { ESLINT_MS, nonEmptyLines, runTool, SMALL_TOOL_MS } from './process.ts';
 
 const LINT_EXT = new Set(['.ts', '.tsx', '.cts', '.mts', '.js', '.mjs', '.cjs']);
@@ -25,6 +25,7 @@ export async function lint(rel: string): Promise<Section | null> {
   const args = ['--max-warnings=0', '--no-warn-ignored', '--cache'];
   const output = ['--cache-location', '.cache/eslint/', '--format', 'json', rel];
   const result = await runTool('eslint', [...args, ...output], ESLINT_MS);
+  if (skippedNotice('eslint', result)) return null;
   if (result.code === 0) return null;
   if (result.timedOut) return timedOut('eslint', ESLINT_MS);
   const parsed = parseJson(result.stdout);

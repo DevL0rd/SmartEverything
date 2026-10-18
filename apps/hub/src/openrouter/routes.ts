@@ -10,13 +10,13 @@ import {
 } from '@smarteverything/domain';
 import { clientOf, profileIdOf } from '../server/auth';
 import type { ServerContext } from '../server/context';
-import { bound, type Bound } from '../server/router';
+import { bound, type Routes } from '../server/router';
 import type { ModelFilter, PageRequest } from './catalogue-query';
 import { OpenRouterError, type OpenRouterErrorCode } from './errors';
 import { suggestionsOf } from './model-suggestions';
 import type { OpenRouterPlatform } from './platform';
 
-type AiModelRoutes = Record<keyof typeof E, Bound>;
+type AiModelRoutes = Routes<keyof typeof E>;
 
 const API_CODES: Readonly<Record<OpenRouterErrorCode, ApiErrorCode>> = {
   no_key: 'invalid_request',
@@ -46,7 +46,6 @@ function statusOf(platform: OpenRouterPlatform): OpenRouterStatus {
   const { catalogue } = platform;
   return {
     key: platform.keys.current() === null ? 'missing' : 'set',
-    sources: [],
     settings: catalogue.settings(),
     ...catalogue.overview(),
   };

@@ -189,7 +189,8 @@ export function visualStateOf(device: VisualDevice, values: ObservedValues): Vis
       reading: readingOf(lookup, SENSOR_READINGS),
       source: readingOf(lookup, SOURCE_ROLES)?.text ?? null,
       presence: flagOf(lookup, 'occupancy') ?? flagOf(lookup, 'motion'),
+      open: flagOf(lookup, 'contact'),
     },
-    values,
+    lookup,
   );
 }

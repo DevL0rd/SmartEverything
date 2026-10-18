@@ -2,35 +2,29 @@ import { z } from 'zod';
 import { AI_HARNESS_TARGET, AI_HARNESS_TARGET_WRITE, type AiHarnessHost } from './ai-harness';
 import { JSON_VALUE } from './values';
 
-const IDENTITY = z.string().min(1).max(200);
-const VERSION = z.string().min(1).max(100);
+const IDENTITY = z.string().min(1);
+const VERSION = z.string().min(1);
 export const HARNESS_ARTIFACT_INTEGRITY = z
   .string()
-  .max(200)
+
   .regex(/^(sha256-[A-Za-z0-9+/]{43}=|sha384-[A-Za-z0-9+/]{64}|sha512-[A-Za-z0-9+/]{86}==)$/);
-export const HARNESS_ARTIFACT_SOURCE = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('builtin'), identity: IDENTITY }),
-  z.strictObject({ kind: z.literal('artifact'), url: z.url({ protocol: /^https$/ }).max(4096) }),
-]);
+export const HARNESS_BUILTIN_SOURCE = z.strictObject({
+  kind: z.literal('builtin'),
+  identity: IDENTITY,
+});
 export const HARNESS_SKILL_ASSET = z.strictObject({
   id: IDENTITY,
   version: VERSION,
-  source: HARNESS_ARTIFACT_SOURCE,
-  integrity: HARNESS_ARTIFACT_INTEGRITY,
-  entrypoint: z
-    .string()
-    .min(1)
-    .max(4096)
-    .refine(relativeAssetPath, 'Expected a confined relative asset path.'),
+  executes: z.boolean().default(false),
 });
 export const HARNESS_PLUGIN_METADATA = z.strictObject({
-  source: HARNESS_ARTIFACT_SOURCE,
+  source: HARNESS_BUILTIN_SOURCE,
   integrity: HARNESS_ARTIFACT_INTEGRITY,
-  provenance: z.string().min(1).max(2000),
+  provenance: z.string().min(1),
   platforms: z
     .array(z.enum(['linux', 'macos', 'windows', 'android']))
     .min(1)
-    .max(4)
+
     .refine(
       (platforms) => new Set(platforms).size === platforms.length,
       'Platforms must be unique.',
@@ -45,7 +39,7 @@ export const HARNESS_PLUGIN_METADATA = z.strictObject({
   }),
   skill_assets: z
     .array(HARNESS_SKILL_ASSET)
-    .max(1000)
+
     .refine(uniqueAssetIds, 'Skill asset identifiers must be unique.'),
 });
 export const HARNESS_DESIRED_ENTRY = z.strictObject({
@@ -69,9 +63,9 @@ export const HARNESS_PLUGIN_READINESS = z.strictObject({
   package: IDENTITY,
   requestedVersion: VERSION,
   installedVersion: VERSION.nullable(),
-  provenance: z.string().min(1).max(2000).nullable(),
+  provenance: z.string().min(1).nullable(),
   state: z.enum(['ready', 'disabled', 'missing', 'incompatible', 'failed', 'pending']),
-  reason: z.string().min(1).max(2000).nullable(),
+  reason: z.string().min(1).nullable(),
   installedMetadata: HARNESS_PLUGIN_METADATA.nullable().optional(),
 });
 export type HarnessPluginReadiness = z.infer<typeof HARNESS_PLUGIN_READINESS>;
@@ -83,7 +77,7 @@ export const AI_HARNESS_CONFIGURATION_REPORT = z.strictObject({
   pending_revision: IDENTITY.optional(),
   readiness: z
     .array(HARNESS_PLUGIN_READINESS)
-    .max(200)
+
     .refine(uniqueAssetIds, 'Reported plugin identifiers must be unique.'),
   reported_at: z.iso.datetime({ offset: true }),
 });
@@ -94,10 +88,6 @@ export const AI_HARNESS_CONFIGURATION_STORED_REPORT = AI_HARNESS_CONFIGURATION_R
 export type AiHarnessConfigurationStoredReport = z.infer<
   typeof AI_HARNESS_CONFIGURATION_STORED_REPORT
 >;
-export const AI_HARNESS_CONFIGURATION_REPLACE = z.strictObject({
-  expected_revision: IDENTITY,
-  configuration: HARNESS_DESIRED_CONFIGURATION,
-});
 export const AI_HARNESS_CONFIGURATION_HOST_STATUS = z.object({
   target: AI_HARNESS_TARGET,
   online: z.boolean(),
@@ -109,7 +99,7 @@ export const AI_HARNESS_CONFIGURATION_HOST_STATUS = z.object({
 export type AiHarnessConfigurationHostStatus = z.infer<typeof AI_HARNESS_CONFIGURATION_HOST_STATUS>;
 export const AI_HARNESS_CONFIGURATION_CATALOGUE = z.object({
   desired: HARNESS_DESIRED_CONFIGURATION,
-  hosts: z.array(AI_HARNESS_CONFIGURATION_HOST_STATUS).max(1000),
+  hosts: z.array(AI_HARNESS_CONFIGURATION_HOST_STATUS),
 });
 export type AiHarnessConfigurationCatalogue = z.infer<typeof AI_HARNESS_CONFIGURATION_CATALOGUE>;
 
@@ -139,13 +129,4 @@ export function deriveHarnessConfigurationHostStatus(
 
 function uniqueAssetIds(entries: readonly { readonly id: string }[]): boolean {
   return new Set(entries.map((entry) => entry.id)).size === entries.length;
-}
-
-function relativeAssetPath(value: string): boolean {
-  return (
-    !value.includes('\\') &&
-    !value.includes('\0') &&
-    !value.includes(':') &&
-    value.split('/').every((part) => part !== '' && part !== '.' && part !== '..')
-  );
 }

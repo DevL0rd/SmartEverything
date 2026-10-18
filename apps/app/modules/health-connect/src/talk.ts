@@ -1,4 +1,4 @@
-import { captureNativeServerEnrollment } from './hub-network';
+import { withNativeEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { TALK_DENIALS, TALK_ENDINGS, TALK_SPEAKER } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -54,7 +54,7 @@ interface TalkEvents {
 }
 
 declare class TalkNative extends NativeModule<TalkEvents> {
-  configureTalk(serverUrl: string, token: string, enrollment?: string): Promise<void>;
+  configureTalk(serverUrl: string, token: string, enrollment: string): Promise<void>;
   startTalk(): Promise<void>;
   stopTalk(): Promise<void>;
   pressTalk(channelId: string): Promise<void>;
@@ -81,10 +81,10 @@ export function talkLinked(): boolean {
 }
 
 export async function configureTalk(serverUrl: string, token: string): Promise<void> {
-  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
   const source = talkFor('configureTalk');
-  if (enrollment === null) await source.configureTalk(serverUrl, token);
-  else await source.configureTalk(serverUrl, token, enrollment);
+  await withNativeEnrollment(serverUrl, token, (enrollment) =>
+    source.configureTalk(serverUrl, token, enrollment),
+  );
 }
 
 export async function startTalk(): Promise<void> {

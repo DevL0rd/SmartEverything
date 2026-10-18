@@ -4,21 +4,16 @@ import {
   CLIENT_PREFS,
   layoutScopeOf,
   type ClientPrefDefinition,
+  type ClientPrefRead,
   type JsonValue,
   type LayoutRow,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { api } from '../api/transport';
-import { connectionState } from '../api/connection/connection';
 import { notify } from '../components/toast-store';
 import type { EntityStore } from './entity-store';
-import {
-  acknowledgeLayoutWrite,
-  beginLayoutWrite,
-  layoutWriteScope,
-  refuseLayoutWrite,
-} from './layout-writes';
-import { serverSupportsLayoutWrites } from '../api/connection/server-capabilities';
+import { applyChange } from './live-reducers';
+import type { StoreState } from './state';
 import { useEntityStore, useStoreSelector } from './store-context';
 
 const log = new Logger('app.layouts');
@@ -35,50 +30,20 @@ export const PREFS = {
   callAudio: CLIENT_PREFS.call_audio,
   callRing: CLIENT_PREFS.call_ring,
   cameras: CLIENT_PREFS.cameras,
+  deviceAlerts: CLIENT_PREFS.device_alerts,
   healthSync: CLIENT_PREFS.health_sync,
+  navigation: CLIENT_PREFS.navigation,
+  navigationDevice: CLIENT_PREFS.navigation_device,
   nutrition: CLIENT_PREFS.nutrition,
   region: CLIENT_PREFS.region,
+  sharedClipboard: CLIENT_PREFS.shared_clipboard,
 } as const;
 
-const tails = new WeakMap<EntityStore, Map<string, Promise<void>>>();
-
-function ownsLayoutScope(
-  store: EntityStore,
-  scope: string,
-  client: ReturnType<typeof api>,
-): boolean {
-  return (
-    layoutWriteScope(store.get()) === scope &&
-    connectionState.get().status === 'paired' &&
-    api() === client
-  );
-}
-
-function retainLayoutWrite(
-  store: EntityStore,
-  scope: string,
-  client: ReturnType<typeof api>,
-  pending: { readonly page: string; readonly request: symbol },
-): boolean {
-  if (ownsLayoutScope(store, scope, client)) return true;
-  store.update((state) => refuseLayoutWrite(state, pending.page, pending.request, scope));
-  return false;
-}
-
-class LayoutSequenceError extends Error {
-  override readonly name = 'LayoutSequenceError';
-  constructor(readonly page: string) {
-    super(`The server confirmed ${page} without its advertised live sequence.`);
-  }
-}
-
 function layoutRow(
-  store: EntityStore,
+  session: NonNullable<StoreState['session']>,
   page: string,
   layout: Readonly<Record<string, JsonValue>>,
-): LayoutRow | null {
-  const session = store.get().session;
-  if (session === null) return null;
+): LayoutRow {
   const clientScoped = layoutScopeOf(page) === 'client';
   return {
     client_id: clientScoped ? session.client.id : null,
@@ -89,13 +54,17 @@ function layoutRow(
   };
 }
 
-function enqueue(store: EntityStore, key: string, run: () => Promise<void>): void {
-  const lanes = tails.get(store) ?? new Map<string, Promise<void>>();
-  tails.set(store, lanes);
-  const work = (lanes.get(key) ?? Promise.resolve()).then(run);
-  lanes.set(key, work);
-  void work.finally(() => {
-    if (lanes.get(key) === work) lanes.delete(key);
+function showLayout(store: EntityStore, page: string, record: LayoutRow | null): void {
+  store.update((state) => {
+    const current = state.tables.layouts.byId[page] ?? null;
+    if (record === null && current === null) return state;
+    return applyChange(state, {
+      type: 'change',
+      table: 'layouts',
+      operation: record === null ? 'DELETE' : 'UPDATE',
+      record,
+      oldRecord: current,
+    });
   });
 }
 
@@ -105,44 +74,50 @@ export function saveStoredLayout(
   layout: Readonly<Record<string, JsonValue>>,
   failure: string,
 ): void {
-  const client = api();
-  const scope = layoutWriteScope(store.get());
-  const record = layoutRow(store, page, layout);
-  if (scope === null || record === null) return;
-  const request = Symbol(page);
-  const sequenced = serverSupportsLayoutWrites(client.baseUrl);
-  if (sequenced) store.update((state) => beginLayoutWrite(state, record, request, scope));
-  enqueue(store, JSON.stringify([client.baseUrl, scope, page]), async () => {
-    if (!retainLayoutWrite(store, scope, client, { page, request })) return;
-    try {
-      const received: { sequence: number | null } = { sequence: null };
-      const saved = await client.call(
-        E.saveLayout,
-        { params: { page }, body: { layout: { ...layout } } },
-        {
-          onSequence: (seq) => {
-            received.sequence = seq;
-          },
-        },
-      );
-      const sequence = received.sequence;
-      if (sequenced && sequence === null) throw new LayoutSequenceError(page);
-      if (!retainLayoutWrite(store, scope, client, { page, request })) return;
-      if (sequence !== null)
-        store.update((state) =>
-          acknowledgeLayoutWrite(state, page, request, { scope, record: saved, seq: sequence }),
-        );
-      log.info('layout.saved', { page });
-    } catch (error) {
-      if (!retainLayoutWrite(store, scope, client, { page, request })) return;
-      store.update((state) => refuseLayoutWrite(state, page, request, scope));
+  const session = store.get().session;
+  if (session === null) return;
+  const previous = store.get().tables.layouts.byId[page] ?? null;
+  const record = layoutRow(session, page, layout);
+  const startedAt = Date.now();
+  log.debug('layout.save_requested', () => ({ page, keys: Object.keys(layout).length }));
+  showLayout(store, page, record);
+  api()
+    .call(E.saveLayout, { params: { page }, body: { layout: { ...layout } } })
+    .then(() => {
+      log.info('layout.saved', { page, latencyMs: Date.now() - startedAt });
+    })
+    .catch((error: unknown) => {
+      const rolledBack = store.get().tables.layouts.byId[page] === record;
+      log.error('layout.save_failed', error, {
+        page,
+        rolledBack,
+        latencyMs: Date.now() - startedAt,
+      });
+      if (rolledBack) showLayout(store, page, previous);
       notify({ message: failure, error, tone: 'critical' });
-    }
-  });
+    });
 }
 
 export function savePref<T>(store: EntityStore, pref: Pref<T>, value: T): void {
   saveStoredLayout(store, pref.storageKey, pref.encode(value), 'Your change was not saved');
+}
+
+export function storedPrefOf<T>(pref: Pref<T>, stored: LayoutRow | null): ClientPrefRead<T> {
+  if (stored !== null && (stored.client_id !== null) !== (pref.scope === 'client'))
+    return {
+      status: 'invalid',
+      reason: `The saved ${pref.storageKey} preference has the wrong ${pref.scope} scope.`,
+    };
+  return pref.decode(stored?.layout ?? null);
+}
+
+export function prefOf<T>(state: StoreState, pref: Pref<T>): ClientPrefRead<T> {
+  return storedPrefOf(pref, state.tables.layouts.byId[pref.storageKey] ?? null);
+}
+
+export function prefValueOf<T>(state: StoreState, pref: Pref<T>): T {
+  const read = prefOf(state, pref);
+  return read.status === 'invalid' ? pref.defaultValue : read.value;
 }
 
 export function usePref<T>(pref: Pref<T>): PrefRead<T> {
@@ -152,14 +127,7 @@ export function usePref<T>(pref: Pref<T>): PrefRead<T> {
     Object.is,
     [pref.storageKey],
   );
-  const read = useMemo(() => {
-    if (stored !== null && (stored.client_id !== null) !== (pref.scope === 'client'))
-      return {
-        status: 'invalid' as const,
-        reason: `The saved ${pref.storageKey} preference has the wrong ${pref.scope} scope.`,
-      };
-    return pref.decode(stored?.layout ?? null);
-  }, [pref, stored]);
+  const read = useMemo(() => storedPrefOf(pref, stored), [pref, stored]);
   if (read.status === 'invalid') {
     return {
       status: 'invalid',

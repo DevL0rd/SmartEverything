@@ -25,12 +25,11 @@ import { cloudRowOf, externalIdOfWatch } from './watch-setup';
 import type { WatchActionTarget } from './watch-actions';
 import { saveWatchUpload, type UploadResult, type WatchUpload } from './watch-uploads';
 import { WatchBridges } from './watch-bridge';
-import { screenWatchRecords } from './watch-plausibility';
 
 export interface LocalWatchesOptions {
   readonly store: Store;
-  readonly secrets: SecretStore;
-  readonly local: LocalDevices;
+  readonly secrets: Pick<SecretStore, 'deviceKey'>;
+  readonly local: Pick<LocalDevices, 'observe' | 'deviceOf'>;
   readonly wearables: WearableSource;
   readonly now: () => Date;
   readonly log: Logger;
@@ -39,10 +38,6 @@ export interface LocalWatchesOptions {
 function profileOf(entry: LocalDeviceEntry): string | null {
   const profileId = entry.config['profileId'];
   return typeof profileId === 'string' ? profileId : null;
-}
-
-export interface SavedWatchUpload extends UploadResult {
-  readonly rejected: number;
 }
 
 export class LocalWatches {
@@ -132,38 +127,20 @@ export class LocalWatches {
     profileId: string,
     upload: WatchUpload,
     client: ClientRow,
-  ): Promise<SavedWatchUpload> {
+  ): Promise<UploadResult> {
     this.ownedBy(device, profileId);
     await this.bridges.require(device, client);
-    const screened = screenWatchRecords(upload.records, this.options.now());
-    for (const failure of screened.rejected) {
-      this.options.log.warn('watch.record_implausible', {
-        device: device.id,
-        by: client.id,
-        record: failure.detail.recordId,
-        type: failure.detail.recordType,
-        field: failure.detail.field,
-        value: failure.detail.value,
-        limit: failure.detail.limit,
-        dropped: screened.dropped,
-      });
-    }
-    const result = saveWatchUpload(
-      this.options.store,
-      { profileId, deviceId: device.id },
-      { ...upload, records: screened.accepted },
-    );
+    const result = saveWatchUpload(this.options.store, { profileId, deviceId: device.id }, upload);
     this.options.log.info('watch.records_saved', {
       device: device.id,
       by: client.id,
       records: result.saved,
-      types: [...new Set(screened.accepted.map((record) => record.type))].join(', '),
+      types: [...new Set(upload.records.map((record) => record.type))].join(', '),
       samples: result.samples,
       routes: upload.routes.length,
       unmatchedRoutes: result.unmatchedRoutes.length,
-      rejected: screened.dropped,
     });
-    return { ...result, rejected: screened.dropped };
+    return result;
   }
 
   bridgeClientOf(device: DeviceRow): string | null {

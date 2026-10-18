@@ -1,9 +1,7 @@
-import {
-  withExecutionAuthority,
-  currentExecutionAuthority,
-} from '../assistant/execution-authority';
+import { withExecutionAuthority, currentExecutionAuthority } from '../assistant/turn-authority';
 import type { FunctionDeclaration } from '@google/genai';
-import { pluginToolName } from '@smarteverything/domain';
+import { currentToolCall, pluginToolName } from '@smarteverything/domain';
+import { Logger, messageOf, failureLine } from '@smarteverything/logging';
 import {
   CALL_TOOL_INPUT,
   DISCOVERY_NAMES,
@@ -25,6 +23,9 @@ import type { PluginTurnRefusedError } from './plugin-turn';
 import { toolRefusal } from './plugin-turn-tools';
 import { geminiDeclarationOf, openAiToolOf, type OpenAiTool } from './tool-adapters';
 import { META_TOOL_NAMES, META_TOOLS, chatCatalogue, toolIndex } from './tool-sets';
+import type { ToolAdmission } from './tool-admission';
+
+const log = new Logger('hub.ai-tools');
 
 export type ToolCheck =
   { readonly ok: true; readonly tool: HubTool } | { readonly ok: false; readonly reason: string };
@@ -32,20 +33,11 @@ export type ToolCheck =
 export class ToolHub {
   private readonly sources: ToolSource[] = [];
   private readonly listeners = new Map<() => void, Map<ToolSource, () => void>>();
-  private admission:
-    | ((name: string, args: Readonly<Record<string, unknown>>, caller: ToolCaller) => ToolCaller)
-    | null = null;
-  setAdmission(
-    admit: (
-      name: string,
-      args: Readonly<Record<string, unknown>>,
-      caller: ToolCaller,
-    ) => ToolCaller,
-  ): void {
-    this.admission = admit;
-  }
 
-  constructor(sources: readonly ToolSource[]) {
+  constructor(
+    sources: readonly ToolSource[],
+    private readonly admission: ToolAdmission | null = null,
+  ) {
     this.sources.push(...sources);
   }
 
@@ -76,37 +68,92 @@ export class ToolHub {
   }
 
   restrict(visible: (tool: HubTool) => boolean): ToolHub {
-    return new ToolHub([
-      {
-        tools: () => this.list().filter(visible),
-        call: (tool, args, caller) => this.call(tool.name, args, caller),
-        validate: (tool, args): string | null => {
-          const checked = this.check(tool.name, args);
-          return checked.ok ? null : checked.reason;
+    return new ToolHub(
+      [
+        {
+          tools: () => this.list().filter(visible),
+          call: (tool, args, caller) => this.callAdmitted(tool.name, args, caller),
+          validate: (tool, args): string | null => {
+            const checked = this.check(tool.name, args);
+            return checked.ok ? null : checked.reason;
+          },
+          changes: (listener) => this.changes(listener),
         },
-        changes: (listener) => this.changes(listener),
-      },
-    ]);
+      ],
+      this.admission,
+    );
   }
 
-  async call(
+  call(
     name: string,
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
   ): Promise<HubToolResult> {
+    return this.settled(name, args, caller, () => {
+      const target = forwardedCall(name, args);
+      const admitted = this.admission?.(target.name, target.arguments, caller) ?? caller;
+      return this.run(target.name, target.arguments, admitted);
+    });
+  }
+
+  callAdmitted(
+    name: string,
+    args: Readonly<Record<string, unknown>>,
+    caller: ToolCaller,
+  ): Promise<HubToolResult> {
+    return this.settled(name, args, caller, () => {
+      const target = forwardedCall(name, args);
+      return this.run(target.name, target.arguments, caller);
+    });
+  }
+
+  private async settled(
+    name: string,
+    args: Readonly<Record<string, unknown>>,
+    caller: ToolCaller,
+    work: () => Promise<HubToolResult>,
+  ): Promise<HubToolResult> {
+    const startedAt = performance.now();
+    const fields = {
+      tool: name,
+      argumentKeys: Object.keys(args).length,
+      chatId: caller.chatId,
+      profileId: caller.profileId,
+      role: caller.role,
+      via: caller.via,
+      plugin: caller.pluginId,
+    };
+    log.debug('tool.called', fields);
     try {
-      const admitted = this.admission === null ? caller : this.admission(name, args, caller);
-      if (name === META_TOOL_NAMES.call) {
-        const call = forwarded(args);
-        return await this.call(call.name, call.arguments, admitted);
+      const result = await work();
+      const error = result.response['error'];
+      const finished = {
+        ...fields,
+        durationMs: Math.round(performance.now() - startedAt),
+        pictures: result.pictures.length,
+      };
+      if (typeof error === 'string') {
+        log.warn('tool.failed', {
+          ...finished,
+          failureCode: result.response['code'],
+          reason: error,
+        });
+      } else {
+        log.info('tool.finished', finished);
       }
-      return await this.called(name, args, admitted);
+      return result;
     } catch (cause) {
-      return failure(cause instanceof Error ? cause.message : 'That did not work');
+      log.warn('tool.refused', {
+        ...fields,
+        durationMs: Math.round(performance.now() - startedAt),
+        cause: failureLine(cause),
+      });
+      if (cause instanceof ToolDiscoveryError) return failure(cause.message, { code: cause.code });
+      return failure(messageOf(cause));
     }
   }
 
-  private async called(
+  private async run(
     name: string,
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
@@ -117,6 +164,7 @@ export class ToolHub {
     }
     const found = this.locate(name);
     if (found === null) {
+      log.warn('tool.unavailable', { tool: name, chatId: caller.chatId });
       return failure(`There is no tool named ${name}, or it is switched off`);
     }
     if (DISCOVERY_NAMES.has(name)) {
@@ -126,18 +174,14 @@ export class ToolHub {
           : toolDetails(this.list(), args);
       return { response, line: '', pictures: [] };
     }
-    const authority = caller.authority ?? currentExecutionAuthority();
-    return await (authority === undefined
-      ? found.source.call(found.tool, args, caller)
-      : withExecutionAuthority(authority, () => found.source.call(found.tool, args, caller)));
+    return await withExecutionAuthority(caller.authority ?? currentExecutionAuthority(), () =>
+      found.source.call(found.tool, args, caller),
+    );
   }
 
-  check(name: string, args: Readonly<Record<string, unknown>>): ToolCheck {
+  check(asked: string, askedArgs: Readonly<Record<string, unknown>>): ToolCheck {
     try {
-      if (name === META_TOOL_NAMES.call) {
-        const call = forwarded(args);
-        return this.check(call.name, call.arguments);
-      }
+      const { name, arguments: args } = forwardedCall(asked, askedArgs);
       const found = this.locate(name);
       if (found === null) {
         return { ok: false, reason: `There is no tool named ${name}, or it is switched off` };
@@ -155,7 +199,7 @@ export class ToolHub {
     } catch (cause) {
       return {
         ok: false,
-        reason: cause instanceof Error ? cause.message : 'The arguments are not valid',
+        reason: messageOf(cause),
       };
     }
   }
@@ -217,14 +261,16 @@ export class ToolHub {
   }
 }
 
-function forwarded(
+export function forwardedCall(
+  name: string,
   args: Readonly<Record<string, unknown>>,
 ): ReturnType<typeof CALL_TOOL_INPUT.parse> {
+  if (name !== META_TOOL_NAMES.call) return currentToolCall(name, args);
   const call = discoveryInput(CALL_TOOL_INPUT, args);
   if (META_TOOLS.some((tool) => tool.name === call.name)) {
     throw new ToolDiscoveryError(
-      'invalid_request: call_tool cannot forward discovery or itself; call those directly',
+      'call_tool cannot forward discovery or itself; call those directly',
     );
   }
-  return call;
+  return currentToolCall(call.name, call.arguments);
 }

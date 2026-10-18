@@ -2,41 +2,37 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Text } from 'react-native';
 import type { AssistantMessageRow } from '@smarteverything/domain';
-import { noticeOf } from '../model/turn-notice';
+import { announcementOf, type Announcement } from '../model/reply-announcement';
 
-function messageOf(row: AssistantMessageRow): string | null {
-  switch (row.state) {
-    case 'working':
-      return `${row.author} is answering`;
-    case 'answered':
-      return `${row.author} answered`;
-    case 'failed':
-      return `Failed: ${noticeOf(row.reason_code, row.reason, 'reply').title}`;
-    case 'queued':
-    case 'delivered':
-    case null:
-      return null;
-  }
-}
+const SILENT: Announcement = { text: '', urgent: false };
 
 export function StatusAnnouncer({ row }: { readonly row: AssistantMessageRow | null }): ReactNode {
-  const [message, setMessage] = useState('');
-  const previous = useRef<string | null>(row === null ? null : `${row.id}:${String(row.state)}`);
+  const [spoken, setSpoken] = useState(SILENT);
   const key = row === null ? null : `${row.id}:${String(row.state)}`;
+  const previous = useRef<string | null>(key);
   useEffect(() => {
     if (row === null || key === previous.current) {
       return;
     }
     previous.current = key;
-    setMessage(messageOf(row) ?? '');
+    setSpoken(announcementOf(row) ?? SILENT);
   }, [row, key]);
   return (
-    <Text
-      accessibilityLiveRegion="polite"
-      aria-live="polite"
-      className="absolute size-px opacity-0"
-    >
-      {message}
-    </Text>
+    <>
+      <Text
+        accessibilityLiveRegion="polite"
+        aria-live="polite"
+        className="absolute size-px opacity-0"
+      >
+        {spoken.urgent ? '' : spoken.text}
+      </Text>
+      <Text
+        accessibilityLiveRegion="assertive"
+        aria-live="assertive"
+        className="absolute size-px opacity-0"
+      >
+        {spoken.urgent ? spoken.text : ''}
+      </Text>
+    </>
   );
 }

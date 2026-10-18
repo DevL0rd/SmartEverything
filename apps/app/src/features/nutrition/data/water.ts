@@ -3,6 +3,7 @@ import { useEntryWrites } from '../../health-log';
 import { momentOn } from '../model/day';
 import { waterEntry } from '../model/portion';
 import { useNutritionPrefs } from './prefs';
+import { background } from '@smarteverything/logging';
 
 export function useAddGlass(
   day: string,
@@ -19,7 +20,7 @@ export function useAddGlass(
         return;
       }
       const at = day === today ? Date.now() : momentOn(day, now);
-      void writes.create(waterEntry(ml, at), '');
+      background(writes.create(waterEntry(ml, at), ''), 'writes.create_failed');
     },
   };
 }

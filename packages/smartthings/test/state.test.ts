@@ -217,6 +217,46 @@ describe('device events', () => {
     ).toHaveLength(1);
   });
 
+  it('summarises appliance events and skips repeats and unknown values', () => {
+    const door = { capability: 'samsungce.doorState', attribute: 'doorState' } as const;
+    expect(deviceEventsFor(eventOf({ ...door, value: 'open' }), AT)).toEqual([
+      {
+        externalId: 'light-1',
+        kind: 'opened',
+        occurredAt: AT,
+        details: {
+          component: 'main',
+          value: 'open',
+          summary: 'Door opened',
+          topic: 'Door',
+          capability: 'raw:samsungce.door_state.door_state',
+        },
+      },
+    ]);
+    expect(deviceEventsFor(eventOf({ ...door, value: 'closed' }), AT)[0]?.kind).toBe('activity');
+    expect(deviceEventsFor(eventOf({ ...door, value: 'ajar' }), AT)).toEqual([]);
+    expect(deviceEventsFor(eventOf({ ...door, value: 3 }), AT)[0]).toBeUndefined();
+    expect(deviceEventsFor(eventOf({ ...door, value: null }), AT)).toEqual([]);
+    const previous = { 'samsungce.doorState': { doorState: { value: 'open' } } };
+    expect(deviceEventsFor(eventOf({ ...door, value: 'open' }), AT, previous)).toEqual([]);
+    expect(deviceEventsFor(eventOf({ ...door, value: 'closed' }), AT, previous)).toHaveLength(1);
+  });
+
+  it('reports a button event whose value is structured', () => {
+    expect(
+      deviceEventsFor(eventOf({ capability: 'button', attribute: 'button', value: { n: 1 } }), AT),
+    ).toHaveLength(1);
+  });
+
+  it('reports a new software update as maintenance', () => {
+    const update = {
+      capability: 'samsungce.softwareUpdate',
+      attribute: 'newVersionAvailable',
+    } as const;
+    expect(deviceEventsFor(eventOf({ ...update, value: true }), AT)[0]?.kind).toBe('maintenance');
+    expect(deviceEventsFor(eventOf({ ...update, value: false }), AT)[0]?.kind).toBe('activity');
+  });
+
   it('reads a health status as online or offline', () => {
     expect(isOnlineHealth('ONLINE')).toBe(true);
     expect(isOnlineHealth('UNHEALTHY')).toBe(false);

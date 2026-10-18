@@ -7,7 +7,6 @@ import android.webkit.CookieManager
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import expo.modules.kotlin.viewevent.EventDispatcher
-import org.json.JSONObject
 
 class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   override val shouldUseAndroidLayout = true
@@ -16,14 +15,14 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
   private val page = WebView(context)
   private var policy: HubBrowserPolicy? = null
   @Volatile private var projectProfile: HubHtmlProfile? = null
-  private val diagnostics = HubBrowserDiagnostics(page, { active && displayed && allows(authorizedUrl) }, { appContext.currentActivity }, { policy?.profile() ?: projectProfile?.profile() }, { onDiagnostic(it) }, { status(false, it) })
+  private val diagnostics = HubBrowserDiagnostics(page, { active && displayed && allows(authorizedUrl) }, { appContext.currentActivity }, { policy?.profile() ?: projectProfile?.profile() }, ::admitPage, { onDiagnostic(it) }, { status(false, it) })
   private var displayed = false
   @Volatile private var active = false
   @Volatile private var authorizedUrl = ""
   @Volatile private var fence: (() -> Unit)? = null
   @Volatile private var projectOrigin: String? = null
+  @Volatile private var pageCookie = ""
   private var browserId = ""
-  private var commandSequence = 0L
   private var detach: (() -> Unit)? = null
   @Volatile private var destroyed = false
   init { addView(page, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)) }
@@ -46,23 +45,30 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     page.webChromeClient = HubHtmlViewChrome(diagnostics)
     page.setDownloadListener { _, _, _, _, _ -> status(false, "Downloads are blocked in this HTML preview.") }
   }
-  fun bind(id: String, url: String, origin: String, profileId: String, check: () -> Unit, detached: () -> Unit) {
+  fun bind(id: String, url: String, origin: String, cookie: String, profileId: String, check: () -> Unit, detached: () -> Unit) {
     check(!active) { "HTML view is already bound" }
     check.invoke()
     check(projectProfile == null) { "Project preview profile is already owned" }
-    projectProfile = HubHtmlProfile(page, profileId)
+    val owned = HubHtmlProfile(page, profileId)
+    projectProfile = owned
     try {
       configurePage()
       browserId = id
       diagnostics.bind(id)
       authorizedUrl = url
       projectOrigin = origin
+      pageCookie = cookie
       fence = check
       detach = detached
       active = true
       diagnostics.prepare(url)
-      page.loadUrl(url)
+      owned.admit(origin, cookie) { page.post { if (active) page.loadUrl(url) } }
     } catch (failure: Exception) { active = false; closeProjectProfile(); throw failure }
+  }
+  private suspend fun admitPage() {
+    val owned = projectProfile ?: return
+    val origin = projectOrigin ?: return
+    owned.admit(origin, pageCookie)
   }
   fun bindBrowser(json: String) {
     check(!active)
@@ -94,9 +100,7 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
   private fun publicAsset(url: String): Boolean {
     val parsed = java.net.URI(url)
     val host = parsed.host?.lowercase() ?: return false
-    return parsed.scheme == "https" && parsed.rawUserInfo == null && host.contains('.') &&
-      !Regex("[0-9.]+").matches(host) && !host.contains(':') &&
-      listOf("localhost", "local", "internal", "test", "invalid", "home").none { host == it || host.endsWith(".$it") }
+    return parsed.scheme == "https" && parsed.rawUserInfo == null && HubBrowserPolicy.publicHost(host)
   }
   fun allows(url: String): Boolean {
     val browser = policy
@@ -115,23 +119,24 @@ class HubHtmlView(context: Context, appContext: AppContext) : ExpoView(context, 
     parsed.scheme == "http" && parsed.host == "127.0.0.1" && parsed.rawUserInfo == null &&
       "${parsed.scheme}://${parsed.host}:${parsed.port}" == origin
   }.getOrDefault(false)
-  fun command(json: String) {
-    val input = JSONObject(json)
-    require(input.length() in 2..3)
-    val sequence = input.getLong("sequence")
-    require(sequence > 0)
-    if (sequence <= commandSequence) return
-    commandSequence = sequence
-    check(allows(authorizedUrl)) { "HTML view ownership was withdrawn" }
-    when (input.getString("action")) {
-      "navigate" -> { val value = input.getString("url"); check(allows(value)); if (value == authorizedUrl || value.substringBefore('#') != authorizedUrl.substringBefore('#')) diagnostics.prepare(value); authorizedUrl = value; page.loadUrl(value) }
-      "reload" -> { val value = page.url ?: authorizedUrl; check(allows(value)); diagnostics.prepare(value); page.reload() }
-      "stop" -> { page.stopLoading(); status(false, null) }
-      "back" -> if (page.canGoBack()) page.goBack()
-      "forward" -> if (page.canGoForward()) page.goForward()
-      else -> error("Unknown HTML view action")
-    }
+  private fun owned() { check(allows(authorizedUrl)) { "HTML view ownership was withdrawn" } }
+  fun navigate(value: String) {
+    owned()
+    check(allows(value))
+    if (value == authorizedUrl || value.substringBefore('#') != authorizedUrl.substringBefore('#')) diagnostics.prepare(value)
+    authorizedUrl = value
+    page.loadUrl(value)
   }
+  fun reload() {
+    owned()
+    val value = page.url ?: authorizedUrl
+    check(allows(value))
+    diagnostics.prepare(value)
+    page.reload()
+  }
+  fun stop() { owned(); page.stopLoading(); status(false, null) }
+  fun back() { owned(); if (page.canGoBack()) page.goBack() }
+  fun forward() { owned(); if (page.canGoForward()) page.goForward() }
   fun status(loading: Boolean, problem: String?) {
     if (browserId.isEmpty()) return
     onStatus(mapOf("id" to browserId, "url" to (if (policy == null) authorizedUrl else (page.url ?: authorizedUrl)), "loading" to loading,

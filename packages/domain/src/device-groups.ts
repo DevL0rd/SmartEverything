@@ -5,7 +5,6 @@ export const DEVICE_GROUP_NAME = boundedText(80);
 export const DEVICE_GROUP_MEMBERS = z
   .array(ID)
   .min(1)
-  .max(100)
   .refine((ids) => new Set(ids).size === ids.length, 'Each device appears only once');
 export const DEVICE_GROUP_INPUT = z.strictObject({
   name: DEVICE_GROUP_NAME,

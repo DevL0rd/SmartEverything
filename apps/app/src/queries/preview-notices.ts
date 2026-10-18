@@ -1,11 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { AiPreviewNotice } from '@smarteverything/domain';
 import { ValueStore } from '../design/external-store';
+import { background } from '@smarteverything/logging';
 const MAX_REMEMBERED_NOTICES = 512;
 const seenNotices = new Map<string, string>();
 export const PREVIEW_KEY = ['window', 'ai-previews'] as const;
 export const previewNotices = new ValueStore<AiPreviewNotice | null>(null);
-export const previewRevisions = new ValueStore<ReadonlyMap<string, number>>(new Map());
+const previewRevisions = new ValueStore<ReadonlyMap<string, number>>(new Map());
 export function receivePreviewNotice(client: QueryClient, message: AiPreviewNotice): void {
   const identity = JSON.stringify([
     message.chat_id,
@@ -28,5 +29,5 @@ export function receivePreviewNotice(client: QueryClient, message: AiPreviewNoti
     ]),
   );
   previewNotices.set(message);
-  void client.invalidateQueries({ queryKey: PREVIEW_KEY });
+  background(client.invalidateQueries({ queryKey: PREVIEW_KEY }), 'queries.invalidate_failed');
 }

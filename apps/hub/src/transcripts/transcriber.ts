@@ -2,9 +2,8 @@ import type { Logger } from '@smarteverything/logging';
 import type { Ledger } from '../ledger/ledger';
 import { recordAudioTranscription } from '../ledger/transcription';
 import type { TranscriptionAnswer, TranscriptionProvider } from '../openrouter/transcription';
+import { speechOf } from './heard-text';
 import { wavOf } from './wav';
-
-const NO_SPEECH = 'NO_SPEECH';
 
 export function transcribeModel(): string {
   return 'openai/whisper-large-v3-turbo';
@@ -30,11 +29,6 @@ function hintsOf(request: TranscribeRequest): string {
   return [...request.names, ...request.recent].join('\n');
 }
 
-function spokenOf(text: string): string | null {
-  const spoken = text.trim();
-  return spoken === '' || spoken.toUpperCase().includes(NO_SPEECH) ? null : spoken;
-}
-
 export class Transcriber {
   private readonly model = transcribeModel();
 
@@ -52,7 +46,7 @@ export class Transcriber {
         : { language: request.language }),
     });
     this.record(request, answer);
-    return spokenOf(answer.text);
+    return speechOf(answer.text);
   }
 
   private record(request: TranscribeRequest, answer: TranscriptionAnswer): void {

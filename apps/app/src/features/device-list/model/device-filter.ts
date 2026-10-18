@@ -1,25 +1,49 @@
 import { isDirectoryChild } from '../../../plugins/device-contributions';
-import { deviceFamily, roomNameOf, type TableRow } from '@smarteverything/domain';
+import {
+  deviceFamily,
+  roomLightsTarget,
+  roomNameOf,
+  type DeviceTarget,
+  type TableRow,
+} from '@smarteverything/domain';
 import type { SelectOption } from '../../../components/select-picker';
 import { roomGroupsOf, type RoomGroup } from '../../../store/room-groups';
 import { orderedRooms } from '../../../store/table-rules';
 import type { Device } from '../../../store/state';
 import { isOffline } from '../../devices';
 import { FAMILY_GROUPS } from './families';
+import { splitRoomLights } from './room-lights';
+import { compareText } from '../../../format/text';
 
 export const ANY = 'any';
 export const NO_ROOM = 'none';
-export const OFFLINE = 'offline';
-
 export interface DeviceQuery {
   readonly text: string;
   readonly room: string;
   readonly kind: string;
+  readonly offline: boolean;
+}
+
+export interface LightsCard {
+  readonly devices: readonly Device[];
+  readonly target: DeviceTarget;
+}
+
+export interface DeviceSection {
+  readonly key: string;
+  readonly title: string;
+  readonly count: number;
+  readonly lights: LightsCard | null;
+  readonly devices: readonly Device[];
+}
+
+export function isFiltering(query: DeviceQuery): boolean {
+  return query.text.trim() !== '' || query.kind !== ANY || query.offline;
 }
 
 type Rooms = readonly TableRow<'rooms'>[];
 
-export function kindOf(device: Device): string {
+function kindOf(device: Device): string {
   return FAMILY_GROUPS[deviceFamily(device)].one;
 }
 
@@ -34,10 +58,7 @@ function roomMatches(device: Device, room: string, rooms: Rooms): boolean {
 }
 
 function kindMatches(device: Device, kind: string): boolean {
-  if (kind === ANY) {
-    return true;
-  }
-  return kind === OFFLINE ? isOffline(device) : kindOf(device) === kind;
+  return kind === ANY || kindOf(device) === kind;
 }
 
 function textMatches(device: Device, needle: string, rooms: Rooms): boolean {
@@ -54,24 +75,48 @@ function ordered(devices: readonly Device[]): readonly Device[] {
     (left, right) =>
       Number(right.favourite) - Number(left.favourite) ||
       left.position - right.position ||
-      left.label.localeCompare(right.label),
+      compareText(left.label, right.label),
   );
+}
+
+function lightsTargetOf(key: string, lights: readonly Device[]): DeviceTarget {
+  return key === NO_ROOM
+    ? { kind: 'devices', deviceIds: lights.map((device) => device.id) }
+    : roomLightsTarget(key);
+}
+
+function sectionOf(group: RoomGroup<Device>, nested: boolean): DeviceSection {
+  const split = nested ? splitRoomLights(group.devices) : null;
+  return {
+    key: group.key,
+    title: group.title,
+    count: group.devices.length,
+    lights:
+      split === null
+        ? null
+        : { devices: split.lights, target: lightsTargetOf(group.key, split.lights) },
+    devices: split === null ? group.devices : split.rest,
+  };
 }
 
 export function groupedDevices(
   devices: readonly Device[],
   rooms: Rooms,
   query: DeviceQuery,
-): readonly RoomGroup<Device>[] {
+): readonly DeviceSection[] {
   const needle = query.text.trim().toLowerCase();
   const shown = devices.filter(
     (device) =>
       (needle !== '' || !isDirectoryChild(device)) &&
       roomMatches(device, query.room, rooms) &&
       kindMatches(device, query.kind) &&
+      (!query.offline || isOffline(device)) &&
       textMatches(device, needle, rooms),
   );
-  return roomGroupsOf(ordered(shown), rooms, (device) => device.room_id);
+  const nested = !isFiltering(query);
+  return roomGroupsOf(ordered(shown), rooms, (device) => device.room_id).map((group) =>
+    sectionOf(group, nested),
+  );
 }
 
 export function roomOptions(devices: readonly Device[], rooms: Rooms): SelectOption<string>[] {
@@ -93,10 +138,9 @@ export function kindOptions(devices: readonly Device[]): SelectOption<string>[] 
       return [names.one, names.many] as const;
     }),
   );
-  const sorted = [...kinds].sort(([left], [right]) => left.localeCompare(right));
+  const sorted = [...kinds].sort(([left], [right]) => compareText(left, right));
   return [
     { value: ANY, label: 'All kinds' },
-    ...(devices.some(isOffline) ? [{ value: OFFLINE, label: 'Offline' }] : []),
     ...sorted.map(([value, label]) => ({ value, label })),
   ];
 }

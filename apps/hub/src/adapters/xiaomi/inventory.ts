@@ -1,4 +1,10 @@
-import type { DeviceCapability, DiscoveredDevice, JsonValue } from '@smarteverything/domain';
+import {
+  UNLOAD_PENDING_CAPABILITY,
+  deviceFamily,
+  type DeviceCapability,
+  type DiscoveredDevice,
+  type JsonValue,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import {
   DEVICE_LIST_PATH,
@@ -25,6 +31,7 @@ import {
 import { NO_MOTOR_ENDPOINT } from './camera-ptz';
 import type { XiaomiCloud } from './cloud-api';
 import type { SpecStore } from './spec-store';
+import { failureLine } from '@smarteverything/logging';
 
 export interface InventoryEntry {
   readonly cloud: CloudDevice;
@@ -93,13 +100,13 @@ async function entryFor(
       : null;
     return { cloud: device, room, spec, model, specProblem: null, ptz };
   } catch (error) {
-    log.warn('xiaomi_device.spec_unavailable', { model: device.model, reason: String(error) });
+    log.warn('xiaomi_device.spec_unavailable', { model: device.model, reason: failureLine(error) });
     return {
       cloud: device,
       room,
       spec: null,
       model: EMPTY_MODEL,
-      specProblem: String(error),
+      specProblem: failureLine(error),
       ptz: null,
     };
   }
@@ -147,6 +154,15 @@ function cameraDetails(
   };
 }
 
+function capabilitiesOf(entry: InventoryEntry, streams: boolean): DeviceCapability[] {
+  const laundry = deviceFamily({ kind: entry.model.kind, model: entry.cloud.model }) === 'laundry';
+  return [
+    ...entry.model.capabilities,
+    ...(streams ? [CAMERA_STREAM] : []),
+    ...(laundry ? [UNLOAD_PENDING_CAPABILITY] : []),
+  ];
+}
+
 export function discoveredDevice(
   entry: InventoryEntry,
   transport: TransportState,
@@ -166,10 +182,7 @@ export function discoveredDevice(
     manufacturer: entry.cloud.model.split('.')[0] ?? entry.cloud.model,
     room: entry.room,
     online: transport.online,
-    capabilities:
-      'go2rtcSource' in camera
-        ? [...entry.model.capabilities, CAMERA_STREAM]
-        : [...entry.model.capabilities],
+    capabilities: capabilitiesOf(entry, 'go2rtcSource' in camera),
     details: {
       transport: transport.transport,
       transportReason: transport.reason,

@@ -6,30 +6,36 @@ import {
   type CommandRow,
   type JsonValue,
 } from '@smarteverything/domain';
-import { needsOwnDevice, type ToolCaller } from '../ai-tools/hub-tool';
-import {
-  currentExecutionAuthorities,
-  executionRole,
-  validateExecutionAuthority,
-} from '../assistant/execution-authority';
+import type { DeviceDriver } from '../local/device-driver';
 import type { BuiltinContextOptions, BuiltinSession } from './builtin-context';
+import type { DriverServices } from './driver-services';
 import type { PluginHostContext } from './builtin/contract';
+export type CommandPortOptions = Pick<BuiltinContextOptions, 'store' | 'submit' | 'now'> & {
+  readonly drivers: Pick<DriverServices, 'deviceIdOf'>;
+};
+export type CommandPortSession = Pick<BuiltinSession, 'signal'>;
+interface CommandPorts {
+  readonly command: PluginHostContext['devices']['command'];
+  readonly withTransientValues: (driver: DeviceDriver) => DeviceDriver;
+}
 export function commandPorts(
-  options: BuiltinContextOptions,
-  session: BuiltinSession,
+  options: CommandPortOptions,
+  session: CommandPortSession,
   owned: ReadonlySet<string>,
-): Pick<PluginHostContext['devices'], 'command' | 'callerOf' | 'valueOf'> {
-  const callers = new Map<string, ToolCaller>();
-  const inputs = new Map<string, JsonValue>();
+): CommandPorts {
+  const transient = new Map<string, JsonValue>();
+  const submitted = new Set<string>();
   return {
-    callerOf: (id) => callers.get(id) ?? null,
-    valueOf: (id) => inputs.get(id),
+    withTransientValues: (driver) => ({
+      ...driver,
+      execute: (command) =>
+        driver.execute(
+          { ...command, value: transient.get(command.commandId) ?? command.value },
+          submitted.has(command.commandId),
+        ),
+    }),
     command: async (input, caller): Promise<JsonValue> => {
       const { externalId, capability: rawCapability, value } = input;
-      if (caller.authority !== undefined)
-        validateExecutionAuthority(options.store, caller.authority);
-      if (needsOwnDevice(caller))
-        throw new ApiError('forbidden', 'This operation requires its initiating device.');
       if (![...owned].some((id) => externalId.startsWith(`${id}:`)))
         throw new ApiError('forbidden', 'A plugin can command only its registered devices.');
       const deviceId = options.drivers.deviceIdOf(externalId);
@@ -49,23 +55,20 @@ export function commandPorts(
       ]);
       if (row === undefined)
         throw new ApiError('upstream_failed', 'Submitting the operation returned no command.');
-      const member = currentExecutionAuthorities().some(
-        (authority) => executionRole(options.store, authority) === 'member',
-      );
-      callers.set(row.id, member ? { ...caller, role: 'member' } : caller);
-      inputs.set(row.id, checked);
+      submitted.add(row.id);
+      if (input.transient === true) transient.set(row.id, checked);
       try {
         return await commandResult(options, session, row);
       } finally {
-        callers.delete(row.id);
-        inputs.delete(row.id);
+        submitted.delete(row.id);
+        transient.delete(row.id);
       }
     },
   };
 }
 function commandResult(
-  options: BuiltinContextOptions,
-  session: BuiltinSession,
+  options: CommandPortOptions,
+  session: CommandPortSession,
   row: CommandRow,
 ): Promise<JsonValue> {
   return new Promise((resolve, reject) => {
@@ -85,15 +88,18 @@ function commandResult(
       cleanup();
       reject(new ApiError('conflict', 'The plugin stopped while its queued command was running.'));
     };
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(
-        new ApiError(
-          'upstream_failed',
-          'The queued command did not finish before its expiry; check command history.',
-        ),
-      );
-    }, 120000);
+    const timer = setTimeout(
+      () => {
+        cleanup();
+        reject(
+          new ApiError(
+            'upstream_failed',
+            'The queued command did not finish before its expiry; check command history.',
+          ),
+        );
+      },
+      Math.max(0, Date.parse(row.expires_at) - options.now().getTime()),
+    );
     timer.unref();
     unsubscribe = options.store.feed.subscribe((change) => {
       if (change.table === 'commands' && change.record?.id === row.id) finish(change.record);

@@ -1,7 +1,6 @@
 import { HarnessRuntimeError } from '../host/errors';
 import type { Context } from '@deepseek-ai/cordis';
 import { z } from 'zod';
-import { randomUUID } from 'node:crypto';
 import { DSH_WRITER_CLAIM } from '@smarteverything/domain';
 import { SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session';
 import type { SessionHeader } from '@deepseek-ai/dsh-session';
@@ -26,12 +25,12 @@ import type {
   NativeSessionSnapshot,
   NativeSessionWriter,
 } from './port';
-import { HubSessionHandle } from './handle';
+import { MachineSessionHandle } from './handle';
 import { boundHeader, nativeHeader } from './validation';
 
-export class HubSessionPersistence extends SessionPersistence {
-  private readonly handles = new Set<HubSessionHandle>();
-  private readonly writers = new Map<string, HubSessionHandle>();
+export class MachineSessionPersistence extends SessionPersistence {
+  private readonly handles = new Set<MachineSessionHandle>();
+  private readonly writers = new Map<string, MachineSessionHandle>();
   private readonly opening = new Set<string>();
 
   constructor(
@@ -120,20 +119,7 @@ export class HubSessionPersistence extends SessionPersistence {
     this.opening.add(id);
     try {
       const writer = await acquire();
-      try {
-        return this.track(writer, boundHeader(id, writer.header), writer);
-      } catch (error) {
-        try {
-          await this.port.release(writer.claim, randomUUID(), writer.eventCount);
-        } catch (releaseError) {
-          throw new AggregateError(
-            [error, releaseError],
-            'Invalid native session metadata could not release its writer claim.',
-            { cause: releaseError },
-          );
-        }
-        throw error;
-      }
+      return this.track(writer, boundHeader(id, writer.header), writer);
     } finally {
       this.opening.delete(id);
     }
@@ -143,7 +129,7 @@ export class HubSessionPersistence extends SessionPersistence {
     snapshot: NativeSessionSnapshot,
     header: SessionHeader,
     writer?: NativeSessionWriter,
-  ): HubSessionHandle {
+  ): MachineSessionHandle {
     z.object({
       inheritedEventCount: z.int().nonnegative(),
       eventCount: z.int().nonnegative(),
@@ -156,7 +142,7 @@ export class HubSessionPersistence extends SessionPersistence {
         'Writer claim does not belong to the requested session.',
         header.id,
       );
-    const handle = new HubSessionHandle(this.port, {
+    const handle = new MachineSessionHandle(this.port, {
       header,
       inheritedEventCount: snapshot.inheritedEventCount,
       eventCount: snapshot.eventCount,

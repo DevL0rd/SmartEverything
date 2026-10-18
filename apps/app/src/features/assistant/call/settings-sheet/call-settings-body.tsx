@@ -10,7 +10,11 @@ import { appPlatform, type AppPlatform } from '../../../../design/platform';
 import { SettingsRow } from '../../../../settings/settings-row';
 import type { SettingDefinition } from '../../../../settings/types';
 import { useAssistantName } from '../../data/assistant-data';
-import { CALL_AUDIO_SECTIONS, CALL_AUDIO_SETTINGS } from '../../settings/call-audio-settings';
+import {
+  CALL_AUDIO_SECTIONS,
+  CALL_AUDIO_SETTINGS,
+  CALL_PANEL_SECTIONS,
+} from '../../settings/call-audio-settings';
 import { useAppliedNote } from '../applied-note';
 import type { CallView } from '../call-state';
 import { useCallAudio } from './call-audio-pref';
@@ -22,13 +26,6 @@ const WHERE: Readonly<Record<AppPlatform, string>> = {
   desktop: 'On this computer',
   web: 'In this browser',
 };
-
-const SECTIONS = [
-  CALL_AUDIO_SECTIONS.listening,
-  CALL_AUDIO_SECTIONS.echo,
-  CALL_AUDIO_SECTIONS.devices,
-  CALL_AUDIO_SECTIONS.video,
-] as const;
 
 function rowsOf(section: string): readonly SettingDefinition[] {
   return CALL_AUDIO_SETTINGS.filter((setting) => setting.section === section);
@@ -61,41 +58,67 @@ export interface CallSettingsBodyProps {
   readonly onClose: () => void;
 }
 
-export function CallSettingsBody({ call, onClose }: CallSettingsBodyProps): ReactNode {
+function Masthead({ call, onClose }: CallSettingsBodyProps): ReactNode {
+  const name = useAssistantName();
+  return (
+    <View className="gap-3">
+      <SheetHeader onClose={onClose} />
+      <LiveStrip call={call} name={name} />
+    </View>
+  );
+}
+
+function Sections({ call }: { readonly call: CallView }): ReactNode {
   const name = useAssistantName();
   const { reset, pref } = useCallAudio();
   return (
-    <View className="min-h-0 flex-1 gap-3">
-      <View className="gap-3 px-4">
-        <SheetHeader onClose={onClose} />
-        <LiveStrip call={call} name={name} />
+    <View className="gap-section-gap">
+      {CALL_PANEL_SECTIONS.map((section) => (
+        <List
+          key={section}
+          title={section === CALL_AUDIO_SECTIONS.video ? `What ${name} sees` : section}
+        >
+          {rowsOf(section).map((setting) => (
+            <SettingsRow key={setting.id} setting={setting} />
+          ))}
+          {section === CALL_AUDIO_SECTIONS.video &&
+          (pref.video_mode === 'on_demand' || call.looks.length > 0) ? (
+            <StillsLog key="stills" />
+          ) : null}
+        </List>
+      ))}
+      <View className="gap-2">
+        <Button label="Reset to defaults" variant="text" onPress={reset} />
+        <Button
+          label="Voice, model and more in Settings"
+          variant="text"
+          icon="externalLink"
+          onPress={() => {
+            router.push(href.settings.page('assistant'));
+          }}
+        />
       </View>
-      <ScrollView className="min-h-0 flex-1" contentContainerClassName="gap-section-gap px-4 pb-6">
-        {SECTIONS.map((section) => (
-          <List
-            key={section}
-            title={section === CALL_AUDIO_SECTIONS.video ? `What ${name} sees` : section}
-          >
-            {rowsOf(section).map((setting) => (
-              <SettingsRow key={setting.id} setting={setting} />
-            ))}
-            {section === CALL_AUDIO_SECTIONS.video &&
-            (pref.video_mode === 'on_demand' || call.looks.length > 0) ? (
-              <StillsLog key="stills" />
-            ) : null}
-          </List>
-        ))}
-        <View className="gap-2">
-          <Button label="Reset to defaults" variant="text" onPress={reset} />
-          <Button
-            label="Voice, model and more in Settings"
-            variant="text"
-            icon="externalLink"
-            onPress={() => {
-              router.push(href.settings.page('assistant'));
-            }}
-          />
-        </View>
+    </View>
+  );
+}
+
+export function CallSettingsSheetBody({ call, onClose }: CallSettingsBodyProps): ReactNode {
+  return (
+    <View className="gap-section-gap">
+      <Masthead call={call} onClose={onClose} />
+      <Sections call={call} />
+    </View>
+  );
+}
+
+export function CallSettingsPanelBody({ call, onClose }: CallSettingsBodyProps): ReactNode {
+  return (
+    <View className="min-h-0 flex-1 gap-3">
+      <View className="px-4">
+        <Masthead call={call} onClose={onClose} />
+      </View>
+      <ScrollView className="min-h-0 flex-1" contentContainerClassName="px-4 pb-6">
+        <Sections call={call} />
       </ScrollView>
     </View>
   );

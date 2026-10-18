@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import type { ApiClient } from '../../../api/connection/client';
-import type { IceServer } from '@smarteverything/domain';
+import type { CameraQuality, IceServer } from '@smarteverything/domain';
 import { preloader } from '../../../app-shell/preloader';
 import { notify } from '../../../components/toast-store';
 import { ValueStore, useValue } from '../../../design/external-store';
 import type { MediaHandle, Transport } from './peer-types';
 import type { SessionPhase, VideoFlow } from './player-state';
 import { restartSession, type SharedState } from './session-registry';
-import { SessionLease } from './session-lease';
+import { SessionLease, startPausesOf, type PauseReason } from './session-lease';
+import { talkIntentOf } from './talk-wish';
 import { useListening, useTalkSession, type Talk } from './use-talk';
 
 export interface SessionOptions {
@@ -17,6 +19,7 @@ export interface SessionOptions {
   readonly client: ApiClient | null;
   readonly enabled: boolean;
   readonly visible: boolean;
+  readonly quality: CameraQuality;
   readonly answering: boolean;
   readonly muted: boolean;
   readonly waitForFocus: boolean;
@@ -28,8 +31,8 @@ export interface CameraSession {
   readonly media: MediaHandle | null;
   readonly transport: Transport;
   readonly retry: () => void;
-  readonly suspend: () => void;
-  readonly resume: () => void;
+  readonly suspend: (reason: PauseReason) => void;
+  readonly resume: (reason: PauseReason) => void;
   readonly frameSeen: () => void;
   readonly soundBlocked: () => void;
   readonly stats: () => Promise<unknown>;
@@ -49,15 +52,23 @@ const NOBODY = new ValueStore<SharedState>({
 });
 
 function useLease(options: SessionOptions): SessionLease {
-  const [lease] = useState(() => new SessionLease(options.waitForFocus));
-  const { deviceId, client, iceServers, enabled, visible } = options;
+  const [lease] = useState(
+    () =>
+      new SessionLease(
+        startPausesOf({
+          waitForFocus: options.waitForFocus,
+          backgrounded: AppState.currentState === 'background',
+        }),
+      ),
+  );
+  const { deviceId, client, iceServers, quality, enabled, visible } = options;
   useEffect(() => {
     if (client === null) {
       lease.letGo();
       return;
     }
-    lease.want({ deviceId, client, iceServers }, enabled && visible);
-  }, [lease, deviceId, client, iceServers, enabled, visible]);
+    lease.want({ deviceId, client, iceServers, quality }, enabled && visible);
+  }, [lease, deviceId, client, iceServers, quality, enabled, visible]);
   useEffect(
     () => (): void => {
       lease.letGo();
@@ -72,33 +83,30 @@ function usePreloaderPause(live: boolean): void {
 }
 
 function useTalkState(options: SessionOptions, lease: SessionLease, state: SharedState): Talk {
-  const [wantedFor, setWantedFor] = useState<{
-    readonly deviceId: string;
-    readonly phase: SessionPhase;
-  } | null>(null);
+  const [wantedFor, setWantedFor] = useState<string | null>(null);
   const { deviceId } = options;
-  const talk =
-    options.twoWayAudio &&
-    wantedFor?.deviceId === deviceId &&
-    wantedFor.phase === state.phase &&
-    state.transport === 'webrtc';
+  const { talk, active, over } = talkIntentOf({
+    wantedFor,
+    deviceId,
+    twoWayAudio: options.twoWayAudio,
+    transport: state.transport,
+    phase: state.phase,
+  });
+  if (over && wantedFor !== null) {
+    setWantedFor(null);
+  }
   const setWanted = useCallback(
     (wanted: boolean): void => {
-      setWantedFor(wanted ? { deviceId, phase: state.phase } : null);
+      setWantedFor(wanted ? deviceId : null);
     },
-    [deviceId, state.phase],
+    [deviceId],
   );
   const stopAtLimit = useCallback((): void => {
     setWantedFor(null);
     notify({ message: 'Talk stopped after 2 minutes' });
   }, []);
   const session = useTalkSession(
-    {
-      deviceId,
-      client: options.client,
-      iceServers: options.iceServers,
-      active: talk && state.phase.kind === 'connected',
-    },
+    { deviceId, client: options.client, iceServers: options.iceServers, active },
     stopAtLimit,
   );
   const { stop } = session;
@@ -131,7 +139,7 @@ export function useCameraSession(options: SessionOptions): CameraSession {
   return {
     ...state,
     retry: (): void => {
-      lease.resume();
+      lease.resume('focus');
       if (shared !== null) {
         restartSession(shared);
       }

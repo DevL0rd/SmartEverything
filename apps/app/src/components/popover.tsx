@@ -54,6 +54,35 @@ function PopoverPanel({ label, frame, className, children, scroll }: PanelProps)
   );
 }
 
+export interface PopoverFrameProps {
+  readonly open: boolean;
+  readonly onClose: () => void;
+  readonly label: string;
+  readonly frame: Rect;
+  readonly scrim?: boolean;
+  readonly className?: string;
+  readonly children: ReactNode;
+}
+
+export function PopoverFrame({
+  open,
+  onClose,
+  label,
+  frame,
+  scrim = false,
+  className,
+  children,
+}: PopoverFrameProps): ReactNode {
+  const style = { left: frame.x, top: frame.y, width: frame.width, height: frame.height };
+  return (
+    <Overlay open={open} onClose={onClose} label={label} scrim={scrim}>
+      <PopoverPanel label={label} frame={style} className={className} scroll={false}>
+        {children}
+      </PopoverPanel>
+    </Overlay>
+  );
+}
+
 export function Popover({
   open,
   onClose,

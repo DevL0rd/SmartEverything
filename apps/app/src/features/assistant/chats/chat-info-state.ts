@@ -1,31 +1,33 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import { OVERVIEW_TARGET, detailsTargetOf, type DetailsTarget } from '../details/details-target';
 
 export function useChatInfo(): {
   readonly open: boolean;
+  readonly target: DetailsTarget;
   readonly show: () => void;
   readonly hide: () => void;
 } {
-  const [open, setOpen] = useState(false);
-  const { sheet, section } = useLocalSearchParams<{ sheet?: string; section?: string }>();
-  const requested = sheet === 'chat' && section !== 'browser';
+  const params = useLocalSearchParams<{ sheet?: string; section?: string; agent?: string }>();
+  const [state, setState] = useState({ open: false, target: OVERVIEW_TARGET });
+  const requested = params.sheet === 'chat' && params.section !== 'browser';
   const [handled, setHandled] = useState(false);
   if (requested !== handled) {
     setHandled(requested);
-    if (requested) setOpen(true);
+    if (requested) setState({ open: true, target: detailsTargetOf(params) });
   }
   useEffect(() => {
-    if (sheet === 'chat' && section !== 'browser') {
-      router.setParams({ sheet: undefined, section: undefined });
+    if (requested) {
+      router.setParams({ sheet: undefined, section: undefined, agent: undefined });
     }
-  }, [sheet, section]);
+  }, [requested]);
   return {
-    open,
+    ...state,
     show: (): void => {
-      setOpen(true);
+      setState({ open: true, target: detailsTargetOf({}) });
     },
     hide: (): void => {
-      setOpen(false);
+      setState((current) => ({ ...current, open: false }));
     },
   };
 }

@@ -1,27 +1,24 @@
 import { authorSpeechAutomation } from '../../automations/speech-authoring';
-import { speechPrincipal } from '../../transcripts/speech-principal';
-import { readableSpeechSources } from '../../transcripts/speech-catalogue';
-import { AUTOMATION_DEFINITION } from '@smarteverything/domain';
-import { requestSequence } from '../request-signal';
-import {
-  validateAutomationProgram,
-  validateValueConditions,
-} from '../../automations/validate-program';
-import { automationProgram, programActions } from '../../automations/program';
+import { definitionOf } from '../../automations/definition';
+import { requireVisibleComputers } from '../../automations/computer-steps';
+import { requirePhoneAccess, requireReachableTargets } from '../../automations/target-reach';
+import { assertDevicesReach, deviceIdReachable, deviceScopeOf } from '../person-scope';
+import { sceneDeviceIds } from '../snapshot-reach';
+import { validateAutomation } from '../../automations/validate-automation';
 import {
   API_ENDPOINTS as E,
   ApiError,
-  CommandRefusedError,
-  InvalidValueError,
+  JSON_VALUE,
   SCENE_ACTIONS,
-  validateCommand,
-  type Action,
-  type AutomationDefinition,
+  walkSteps,
+  type AutomationAuthor,
+  type AutomationToolRow,
+  type AutomationV2,
   type PluginOrigin,
-  walkActions,
 } from '@smarteverything/domain';
+import { z } from 'zod';
+import { requestSequence } from '../request-signal';
 import { pluginOriginOf } from '../../ai-tools/plugin-turn';
-import { currentExecutionAuthorities } from '../../assistant/execution-authority';
 import type { ToolHub } from '../../ai-tools/tool-hub';
 import type { LayoutOwner } from '../../store/repositories/personal';
 import type { Store } from '../../store/store';
@@ -31,40 +28,34 @@ import { checkedCommands, commandPrincipal, sourcedBy } from '../commands';
 import type { ServerContext } from '../context';
 import { invalid } from '../errors';
 import { requireKnownSignals, requireOwnerForAiActions } from './signals';
-import { DONE_REPLY, bound, type Bound } from '../router';
-
-type SceneRoutes = Record<
-  'listScenes' | 'createScene' | 'updateScene' | 'orderScenes' | 'removeScene' | 'runScene',
-  Bound
->;
-
-type AutomationRoutes = Record<
-  | 'listSpeechSources'
-  | 'listAutomations'
-  | 'createAutomation'
-  | 'updateAutomation'
-  | 'removeAutomation'
-  | 'runAutomation'
-  | 'readLayout'
-  | 'saveLayout'
-  | 'listPushTargets'
-  | 'savePushTarget'
-  | 'removePushTarget',
-  Bound
->;
+import { DONE_REPLY, bound } from '../router';
 
 function ownerOf(store: Store, caller: Caller): LayoutOwner {
   return { clientId: clientOf(caller).id, profileId: profileIdOf(store, caller) };
 }
 
-export function sceneRoutes(context: ServerContext): SceneRoutes {
-  const { store, hub } = context;
-  return {
-    listScenes: bound(E.listScenes, () => store.scenes.list()),
-    createScene: bound(E.createScene, ({ body }) => store.scenes.create(body)),
-    updateScene: bound(E.updateScene, ({ params, body }) =>
-      store.scenes.update(params.sceneId, body),
-    ),
+export const sceneRoutes = ({ store, hub }: ServerContext) =>
+  ({
+    listScenes: bound(E.listScenes, ({ caller }) => {
+      const scope = deviceScopeOf(store, caller);
+      return store.scenes
+        .list()
+        .filter((scene) =>
+          sceneDeviceIds(scene.actions).every((id) => deviceIdReachable(store, scope, id)),
+        );
+    }),
+    createScene: bound(E.createScene, ({ body, caller }) => {
+      assertDevicesReach(store, caller, sceneDeviceIds(body.actions));
+      requirePhoneAccess(store, caller, body.actions);
+      return store.scenes.create(body);
+    }),
+    updateScene: bound(E.updateScene, ({ params, body, caller }) => {
+      if (body.actions !== undefined) {
+        assertDevicesReach(store, caller, sceneDeviceIds(body.actions));
+        requirePhoneAccess(store, caller, body.actions);
+      }
+      return store.scenes.update(params.sceneId, body);
+    }),
     orderScenes: bound(E.orderScenes, ({ body }) => store.scenes.order(body.ids)),
     removeScene: bound(E.removeScene, ({ params }) => {
       store.scenes.remove(params.sceneId);
@@ -89,161 +80,65 @@ export function sceneRoutes(context: ServerContext): SceneRoutes {
         checkedCommands(store, sourcedBy(caller, inputs), commandPrincipal(store, caller)),
       );
     }),
-  };
-}
+  }) as const;
 
-function problemWith(action: Action, store: Pick<Store, 'devices'>, tools: ToolHub): string | null {
-  if (action.type === 'tool') {
-    const check = tools.check(action.tool, action.args);
-    return check.ok ? null : `${action.tool} would be refused: ${check.reason}`;
-  }
-  if (action.type !== 'command' || 'binding' in action) {
-    return null;
-  }
-  try {
-    validateCommand(store.devices.byId(action.deviceId), action);
-    return null;
-  } catch (cause) {
-    if (cause instanceof CommandRefusedError || cause instanceof InvalidValueError) {
-      return `${action.capability} command would be refused: ${cause.message}`;
-    }
-    throw cause;
-  }
-}
-
-export function requireRunnableActions(
-  store: Pick<Store, 'devices'>,
-  tools: ToolHub,
-  definition: Pick<AutomationDefinition, 'actions'>,
-): void {
-  const problems = definition.actions.flatMap((action, index) => {
-    const problem = problemWith(action, store, tools);
-    return problem === null ? [] : [`Action ${String(index + 1)}: ${problem}`];
-  });
-  if (problems.length > 0) {
-    throw new ApiError(
-      'invalid_request',
-      `Nothing was saved. ${problems.join('; ')}. Fix these actions and save again.`,
-    );
-  }
-}
-
-export function authoredActions(
+function authoredOrigin(
   tools: ToolHub,
   caller: Caller,
-  actions: readonly Action[],
+  automation: AutomationV2,
 ): PluginOrigin | null {
   const plugin = caller.kind === 'client' ? pluginOriginOf(caller) : null;
   if (plugin !== null) {
-    for (const action of walkActions(actions)) {
+    for (const step of walkSteps(automation.steps)) {
       const refusal =
-        action.type === 'tool' ? tools.pluginTurnRefusal(action.tool, action.args) : null;
+        step.do === 'tool' ? tools.pluginTurnRefusal(step.tool, step.args ?? {}) : null;
       if (refusal !== null) throw refusal;
     }
   }
   return plugin;
 }
 
-function authored(
-  store: Store,
+function authorOf(store: Store, caller: Caller): AutomationAuthor {
+  const assistant =
+    caller.kind === 'service' || (caller.kind === 'client' && caller.via === 'assistant');
+  return { via: assistant ? 'assistant' : 'person', profile_id: profileIdOf(store, caller) };
+}
+
+function validatedDefinition(
+  context: ServerContext,
   tools: ToolHub,
   caller: Caller,
-  definition: AutomationDefinition,
-): AutomationDefinition {
-  return {
-    ...definition,
-    origin: authoredActions(
-      tools,
-      caller,
-      programActions(automationProgram(store, definition.actions)),
-    ),
-  };
+  input: { readonly definition: AutomationV2; readonly id?: string | undefined },
+): void {
+  const { store } = context;
+  validateAutomation(
+    { store, tools, computers: context.hub.automationComputers },
+    input.definition,
+    input.id,
+  );
+  requireOwnerForAiActions(store, caller, input.definition);
+  requireVisibleComputers(store, caller, input.definition);
+  requireReachableTargets(store, caller, input.definition);
 }
 
-export function reauthorizationProfile(store: Store, caller: Caller): string | undefined {
-  if (
-    caller.kind !== 'client' ||
-    caller.client.role !== 'owner' ||
-    caller.via !== undefined ||
-    caller.authority !== undefined ||
-    caller.mcpOrigin !== undefined ||
-    caller.pluginId !== undefined ||
-    caller.pluginRequester !== undefined ||
-    currentExecutionAuthorities().length > 0
-  )
-    return undefined;
-  return profileIdOf(store, caller);
-}
-
-function saveAutomation(
-  store: Store,
+function checkedDefinition(
+  context: ServerContext,
   tools: ToolHub,
-  input: {
-    readonly id: string;
-    readonly change: AutomationChange;
-    readonly caller: Caller;
-  },
-): ReturnType<Store['automations']['update']> {
-  const { id, change, caller } = input;
-  if (change.definition !== undefined) {
-    const actions = validateAutomationProgram(store, change.definition.actions);
-    validateValueConditions(store, change.definition.conditions);
-    requireOwnerForAiActions(caller, { actions: [...actions] });
-    requireKnownSignals(store, change.definition);
-    requireRunnableActions(store, tools, { actions: [...actions] });
-  }
-  return authorSpeechAutomation(store, caller, {
-    definition:
-      change.definition ?? AUTOMATION_DEFINITION.parse(store.automations.byId(id).definition),
-    save: () =>
-      store.automations.update(
-        id,
-        {
-          ...change,
-          definition:
-            change.definition === undefined
-              ? undefined
-              : authored(store, tools, caller, change.definition),
-        },
-        reauthorizationProfile(store, caller),
-      ),
-    id,
-  });
+  caller: Caller,
+  input: { readonly definition: AutomationV2; readonly id?: string },
+): void {
+  validatedDefinition(context, tools, caller, input);
+  requireKnownSignals(context.store, input.definition);
 }
 
-export function automationRoutes(context: ServerContext, tools: ToolHub): AutomationRoutes {
-  const { store, hub } = context;
-  return {
-    listSpeechSources: bound(E.listSpeechSources, ({ caller }) =>
-      readableSpeechSources(store, speechPrincipal(store, caller)),
-    ),
-    listAutomations: bound(E.listAutomations, () => store.automations.list()),
-    createAutomation: bound(E.createAutomation, ({ body, caller }) => {
-      const actions = validateAutomationProgram(store, body.definition.actions);
-      validateValueConditions(store, body.definition.conditions);
-      requireOwnerForAiActions(caller, { actions: [...actions] });
-      requireKnownSignals(store, body.definition);
-      requireRunnableActions(store, tools, { actions: [...actions] });
-      return authorSpeechAutomation(store, caller, {
-        definition: body.definition,
-        save: () =>
-          store.automations.create({
-            ...body,
-            definition: authored(store, tools, caller, body.definition),
-          }),
-      });
-    }),
-    updateAutomation: bound(E.updateAutomation, ({ params, body, caller }) =>
-      saveAutomation(store, tools, { id: params.automationId, change: body, caller }),
-    ),
-    removeAutomation: bound(E.removeAutomation, ({ params }) => {
-      store.automations.remove(params.automationId);
-      return DONE_REPLY;
-    }),
-    runAutomation: bound(E.runAutomation, async ({ params }) => {
-      await hub.runAutomation(params.automationId);
-      return DONE_REPLY;
-    }),
+function savedChange(tools: ToolHub, caller: Caller, change: AutomationChange): AutomationChange {
+  return change.definition === undefined
+    ? change
+    : { ...change, origin: authoredOrigin(tools, caller, change.definition) };
+}
+
+const clientRoutes = (store: Store) =>
+  ({
     readLayout: bound(E.readLayout, ({ params, caller }) => ({
       layout: store.personal.layout(ownerOf(store, caller), params.page)?.layout ?? null,
     })),
@@ -258,5 +153,72 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
       store.personal.removePushTarget(body.token, clientOf(caller).id);
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
+
+const runRoutes = (context: ServerContext, tools: ToolHub) =>
+  ({
+    runAutomation: bound(E.runAutomation, ({ params, body }) =>
+      context.hub.runAutomation(params.automationId, {
+        inputs: body.inputs ?? {},
+        wait: body.wait === true,
+      }),
+    ),
+    testAutomation: bound(E.testAutomation, ({ body, caller }) => {
+      validatedDefinition(context, tools, caller, {
+        definition: body.definition,
+        id: body.automationId,
+      });
+      return context.hub.testAutomation({
+        automationId: body.automationId,
+        definition: body.definition,
+        inputs: body.inputs ?? {},
+        wait: body.wait === true,
+      });
+    }),
+  }) as const;
+
+const INPUT_SCHEMA = z.record(z.string(), JSON_VALUE);
+
+const toolRows = (tools: ToolHub): AutomationToolRow[] =>
+  tools.list().map((tool) => ({
+    name: tool.name,
+    title: tool.title,
+    description: tool.description,
+    input_schema: INPUT_SCHEMA.parse(tool.inputSchema),
+    read_only: tool.annotations.readOnlyHint,
+    destructive: tool.annotations.destructiveHint,
+  }));
+
+export const automationRoutes = (context: ServerContext, tools: ToolHub) =>
+  ({
+    listAutomations: bound(E.listAutomations, () => context.store.automations.list()),
+    listAutomationTools: bound(E.listAutomationTools, () => toolRows(tools)),
+    createAutomation: bound(E.createAutomation, ({ body, caller }) => {
+      checkedDefinition(context, tools, caller, { definition: body.definition });
+      return authorSpeechAutomation(context.store, caller, {
+        definition: body.definition,
+        save: () =>
+          context.store.automations.create({
+            ...body,
+            origin: authoredOrigin(tools, caller, body.definition),
+            author: authorOf(context.store, caller),
+          }),
+      });
+    }),
+    updateAutomation: bound(E.updateAutomation, ({ params, body, caller }) => {
+      const id = params.automationId;
+      if (body.definition !== undefined)
+        checkedDefinition(context, tools, caller, { definition: body.definition, id });
+      return authorSpeechAutomation(context.store, caller, {
+        definition: body.definition ?? definitionOf(context.store.automations.byId(id)),
+        save: () => context.store.automations.update(id, savedChange(tools, caller, body)),
+        id,
+      });
+    }),
+    removeAutomation: bound(E.removeAutomation, ({ params }) => {
+      context.store.automations.remove(params.automationId);
+      return DONE_REPLY;
+    }),
+    ...runRoutes(context, tools),
+    ...clientRoutes(context.store),
+  }) as const;

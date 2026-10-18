@@ -4,7 +4,7 @@ const LEADING_VERSION = /^\d+(?:\.\d+)*\s+(?=\S)/;
 
 const LATEST_SUFFIX = /\s*\(latest\)$/i;
 
-export const MODEL_LOADING_NAME = 'Loading model…';
+const MODEL_LOADING_NAME = 'Loading model…';
 
 export function shortModelName(name: string): string {
   return name.replace(FAMILY_PREFIX, '').replace(LEADING_VERSION, '');

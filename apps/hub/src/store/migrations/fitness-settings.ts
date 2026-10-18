@@ -1,21 +1,27 @@
-import {
-  FITNESS_GOALS,
-  MAX_HEART_RATE,
-  MAX_HEART_RATE_LIMITS,
-  UNSET_FITNESS_GOALS,
-  type FitnessGoalKey,
-  type FitnessGoals,
-} from '@smarteverything/domain';
 import type { LogPayload } from '@smarteverything/logging';
 import { z } from 'zod';
 import { SQL_JSON, jsonText, type Sql } from '../sql';
 
 export const FITNESS_SETTINGS_COLUMNS: readonly string[] = [
-  `alter table settings add column fitness_goals text not null default '${jsonText(UNSET_FITNESS_GOALS)}'
+  `alter table settings add column fitness_goals text not null default '{"steps":null,"move_kcal":null,"active_minutes":null,"sleep_minutes":null,"hydration_ml":null}'
     check (json_valid(fitness_goals) and json_type(fitness_goals) = 'object')`,
   `alter table settings add column max_heart_rate integer
-    check (max_heart_rate between ${String(MAX_HEART_RATE_LIMITS.min)} and ${String(MAX_HEART_RATE_LIMITS.max)})`,
+    check (max_heart_rate between 120 and 220)`,
 ];
+
+const GOAL_LIMITS = {
+  steps: { min: 1000, max: 50_000, step: 500 },
+  move_kcal: { min: 50, max: 3000, step: 50 },
+  active_minutes: { min: 5, max: 300, step: 5 },
+  sleep_minutes: { min: 240, max: 720, step: 15 },
+  hydration_ml: { min: 500, max: 6000, step: 250 },
+} as const;
+
+type FitnessGoalKey = keyof typeof GOAL_LIMITS;
+
+type FitnessGoals = Readonly<Record<FitnessGoalKey, number | null>>;
+
+const MAX_HEART_RATE = z.int().min(120).max(220);
 
 const LEGACY_ROW = z.object({ layout: SQL_JSON });
 
@@ -36,7 +42,8 @@ const LEGACY_FITNESS_SETTINGS = z.object({
 });
 
 function legacyGoal(key: FitnessGoalKey, value: number | undefined): number | null {
-  const parsed = FITNESS_GOALS.shape[key].safeParse(value);
+  const limit = GOAL_LIMITS[key];
+  const parsed = z.number().min(limit.min).max(limit.max).multipleOf(limit.step).safeParse(value);
   return parsed.success ? parsed.data : null;
 }
 

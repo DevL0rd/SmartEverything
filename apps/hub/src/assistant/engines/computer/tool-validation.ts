@@ -1,6 +1,6 @@
 import { ApiError, type AiChatRow } from '@smarteverything/domain';
 import type { ComputerRunnerDeps, Turn } from './ports';
-import { eventAuthority, executionRole } from '../../execution-authority';
+import { eventAuthority, executionRole } from '../../turn-authority';
 import type { ProviderState } from './provider-state';
 export function providerToolValidation(
   deps: ComputerRunnerDeps,
@@ -10,7 +10,7 @@ export function providerToolValidation(
 ): (write: boolean) => void {
   return (write): void => {
     const authority = eventAuthority(deps.store, turn.event);
-    if (executionRole(deps.store, authority) !== 'owner')
+    if (executionRole(authority) !== 'owner')
       throw new ApiError(
         'forbidden',
         'Native project work requires its current initiating owner authority.',

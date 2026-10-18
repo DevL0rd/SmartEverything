@@ -1,16 +1,13 @@
-import { createHash } from 'node:crypto';
-import { ApiError } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
+import { ApiError, type TranscriptSource } from '@smarteverything/domain';
 import { z } from 'zod';
+import { messageOf } from '@smarteverything/logging';
 
-export type TranscriptScope =
-  | { readonly kind: 'camera'; readonly cameraIds: readonly string[]; readonly actor: string }
-  | {
-      readonly kind: 'plugin';
-      readonly pluginId: string;
-      readonly actor: string;
-      readonly sourceId?: string;
-    };
+export interface TranscriptScope {
+  readonly source: TranscriptSource;
+  readonly sourceIds?: readonly string[];
+  readonly sessionId?: string;
+}
 export interface TranscriptPosition {
   readonly at: string;
   readonly id: number;
@@ -18,58 +15,39 @@ export interface TranscriptPosition {
 export interface TranscriptSqlScope {
   readonly clause: string;
   readonly parameters: Record<string, SQLInputValue>;
-  readonly identity: string;
 }
-const POSITION = z.strictObject({ at: z.iso.datetime(), id: z.int().min(1), scope: z.string() });
+const POSITION = z.strictObject({ at: z.iso.datetime(), id: z.int().min(1) });
 
-export function transcriptSqlScope(scope: TranscriptScope, words?: string): TranscriptSqlScope {
-  const selector =
-    scope.kind === 'camera'
-      ? { cameraIds: [...scope.cameraIds].sort() }
-      : { pluginId: scope.pluginId, sourceId: scope.sourceId };
-  const identity = createHash('sha256')
-    .update(JSON.stringify({ ...scope, ...selector, words }))
-    .digest('hex');
-  if (scope.kind === 'camera')
-    return {
-      identity,
-      clause:
-        "s.source = 'camera' and s.plugin_id is null and s.source_id in (select value from json_each($cameraIds))",
-      parameters: { cameraIds: JSON.stringify(scope.cameraIds) },
-    };
-  return {
-    identity,
-    clause:
-      "s.source = 'plugin' and s.plugin_id = $pluginId" +
-      (scope.sourceId === undefined ? '' : ' and s.source_id = $sourceId'),
-    parameters: {
-      pluginId: scope.pluginId,
-      ...(scope.sourceId === undefined ? {} : { sourceId: scope.sourceId }),
-    },
-  };
+export function transcriptSqlScope(scope: TranscriptScope): TranscriptSqlScope {
+  const clauses = ['s.source = $source'];
+  const parameters: Record<string, SQLInputValue> = { source: scope.source };
+  if (scope.sourceIds !== undefined) {
+    clauses.push('s.source_id in (select value from json_each($sourceIds))');
+    parameters['sourceIds'] = JSON.stringify(scope.sourceIds);
+  }
+  if (scope.sessionId !== undefined) {
+    clauses.push('s.id = $sessionId');
+    parameters['sessionId'] = scope.sessionId;
+  }
+  return { clause: clauses.join(' and '), parameters };
 }
 
-export function transcriptCursor(position: TranscriptPosition, identity: string): string {
-  return Buffer.from(
-    JSON.stringify({ at: position.at, id: position.id, scope: identity }),
-  ).toString('base64url');
+export function transcriptCursor(position: TranscriptPosition): string {
+  return Buffer.from(JSON.stringify({ at: position.at, id: position.id })).toString('base64url');
 }
-export function readTranscriptCursor(cursor: string, identity: string): TranscriptPosition {
+export function readTranscriptCursor(cursor: string): TranscriptPosition {
   let raw: unknown;
   try {
     raw = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
   } catch (cause) {
     throw new ApiError(
       'invalid_request',
-      `Expected an encoded transcript cursor; decoding failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `Expected an encoded transcript cursor; decoding failed: ${messageOf(cause)}`,
     );
   }
   const parsed = POSITION.safeParse(raw);
-  if (!parsed.success || parsed.data.scope !== identity)
-    throw new ApiError(
-      'invalid_request',
-      'The transcript cursor belongs to a different reader, source or search.',
-    );
+  if (!parsed.success)
+    throw new ApiError('invalid_request', 'Expected a transcript cursor from an earlier page.');
   return parsed.data;
 }
 export function transcriptMatch(words: string): string | null {

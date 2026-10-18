@@ -1,6 +1,9 @@
 package expo.modules.healthconnect.network
 
+import android.webkit.CookieManager
 import android.webkit.WebView
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class HubHtmlProfile(view: WebView, profileId: String) : AutoCloseable {
   private val lifecycle: HubBrowserProfile
@@ -24,10 +27,18 @@ class HubHtmlProfile(view: WebView, profileId: String) : AutoCloseable {
     check(actual == lifecycle.name && actual != type.getField("DEFAULT_PROFILE_NAME").get(null)) { "Project preview does not own its isolated profile" }
   }
   fun profile(): Any { check(); return owned }
+  private fun cookies(): CookieManager =
+    requireNotNull(CookieManager::class.java.cast(type.getMethod("getCookieManager").invoke(owned))) { "Project preview has no cookie manager" }
+  fun admit(origin: String, cookie: String, done: () -> Unit) {
+    check()
+    cookies().setCookie(origin, cookie) { done() }
+  }
+  suspend fun admit(origin: String, cookie: String) {
+    suspendCancellableCoroutine<Unit> { continuation -> admit(origin, cookie) { continuation.resume(Unit) } }
+  }
   override fun close() {
     if (closed) return
-    val manager = requireNotNull(android.webkit.CookieManager::class.java.cast(type.getMethod("getCookieManager").invoke(owned)))
-    manager.flush()
+    cookies().flush()
     closed = true
     lifecycle.close()
   }

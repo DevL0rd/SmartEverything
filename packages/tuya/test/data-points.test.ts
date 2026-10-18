@@ -161,12 +161,12 @@ describe('data point specifications', () => {
         code: 'a',
         reason: `its values are not JSON (SyntaxError: Unexpected token 'o', "not json" is not valid JSON)`,
       },
-      { code: 'b', reason: 'min exceeds max' },
-      { code: 'c', reason: 'step: Too small: expected number to be >0' },
-      { code: 'd', reason: 'range: Too small: expected array to have >=1 items' },
+      { code: 'b', reason: '✖ min exceeds max' },
+      { code: 'c', reason: '✖ Too small: expected number to be >0\n  → at step' },
+      { code: 'd', reason: '✖ Too small: expected array to have >=1 items\n  → at range' },
       { code: 'e', reason: 'its type "Float" is not a Tuya data point type' },
-      { code: 'f', reason: 'maxlen: Too big: expected number to be <=32' },
-      { code: 'g', reason: 'scale: Too big: expected number to be <=9' },
+      { code: 'f', reason: '✖ Too big: expected number to be <=32\n  → at maxlen' },
+      { code: 'g', reason: '✖ Too big: expected number to be <=9\n  → at scale' },
     ]);
   });
 });

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEVICE_EFFECT_TARGET, DEVICE_EFFECT_RESOLUTION } from '../device-effects';
+import { DEVICE_EFFECT_TARGET } from '../device-effects';
 import { NO_BODY, endpoint } from './endpoint';
 import { ID, NOTHING, DONE } from './primitives';
 
@@ -8,7 +8,8 @@ export const DEVICE_EFFECT_ENDPOINTS = {
     method: 'GET',
     path: '/api/device-effects',
     access: 'member',
-    summary: 'Current desired bases, temporary contributions and resolved device controls',
+    summary:
+      'Current bases, temporary contributions and resolved values of controls under a temporary change',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
@@ -32,17 +33,6 @@ export const DEVICE_EFFECT_ENDPOINTS = {
         reason: z.string().nullable(),
       }),
     ),
-  }),
-  readDeviceEffectCommand: endpoint({
-    method: 'GET',
-    path: '/api/device-effects/commands/:commandId',
-    access: 'member',
-    summary:
-      'Actual resolved device value and temporary contributions for a command; null for ordinary commands',
-    params: z.strictObject({ commandId: ID }),
-    query: NOTHING,
-    body: NO_BODY,
-    response: DEVICE_EFFECT_RESOLUTION.nullable(),
   }),
   endDeviceEffect: endpoint({
     method: 'POST',

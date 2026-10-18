@@ -1,11 +1,11 @@
-import type { Socket } from 'node:net';
+import type { ServerResponse } from 'node:http';
 import type { RobotMode, RobotReport } from '@smarteverything/domain';
 import type { ActivityLog } from './activity';
+import { bodySummary, SUMMARY_MAX } from './body-summary';
 import { ACTIONS } from './catalogue';
 import type { TrafficCapture } from './capture';
-import type { Exchange, Incoming, Routes } from './connection';
+import type { Exchange, Incoming, Message, Routes } from './connection';
 import type { VoiceDesk } from './desk';
-import { decodedBody, rebuild, type Message } from './http-reader';
 import { identityOf, type RobotIdentity } from './identity';
 import { downloadFirmware, rememberOffer, type PatchedFirmwareCache } from './ota-files';
 import {
@@ -18,9 +18,19 @@ import {
   type Json,
 } from './ota-offer';
 import { imageTypeOf } from './photos';
-import { encode, ok, permission, summarize, tagged } from './replies';
+import {
+  decodedBody,
+  encode,
+  ok,
+  permission,
+  relay,
+  summarize,
+  tagged,
+  type Response,
+} from './replies';
 import type { Speeches } from './speech-stream';
 import { parseStatusReport, reportLine } from './status-report';
+import { messageOf } from '@smarteverything/logging';
 
 export interface RouteHost {
   readonly mode: () => RobotMode;
@@ -39,48 +49,9 @@ const KNOWN_CLOUD_PATH = /^\/(time|token\/|aibi\/ota\/(res|allres)\/|aibi\/ai\/r
 const SPEECH_PATH = /^\/(?:tts|poweron)\/dl\/([\w.-]+)$/;
 const DETECT_INTENT_PATH = '/aibi/voice/detectintent';
 const HOUR_MS = 3_600_000;
-const SUMMARY_MAX = 500;
-const TEXT_SUMMARY_MAX = 300;
 const NATIVE_IDS: ReadonlySet<string> = new Set(ACTIONS.map((action) => action.id));
-const PRINTABLE = /^[\t\n\r\x20-\x7e]*$/;
 
-function entriesOf(values: object): string {
-  return Object.entries(values)
-    .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
-    .join(' | ')
-    .slice(0, SUMMARY_MAX);
-}
-
-function jsonValues(raw: string): object | null {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed !== null ? parsed : null;
-  } catch (cause) {
-    if (cause instanceof SyntaxError) {
-      return null;
-    }
-    throw cause;
-  }
-}
-
-function bodySummary(body: Buffer, contentType = ''): string {
-  if (body.length === 0) {
-    return '';
-  }
-  const raw = body.toString('utf8');
-  const values = contentType.includes('json') ? jsonValues(raw) : null;
-  if (values !== null) {
-    return entriesOf(values);
-  }
-  if (contentType.includes('urlencoded')) {
-    return entriesOf(Object.fromEntries(new URLSearchParams(raw)));
-  }
-  return PRINTABLE.test(raw)
-    ? raw.slice(0, TEXT_SUMMARY_MAX)
-    : `${String(body.length)} bytes of binary data`;
-}
-
-function parseJson(message: Message): Json | null {
+function parseJson(message: Response): Json | null {
   try {
     const parsed: unknown = JSON.parse(decodedBody(message).toString('utf8'));
     return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
@@ -94,12 +65,8 @@ function parseJson(message: Message): Json | null {
   }
 }
 
-function unreachable(): Buffer {
-  return encode(
-    'HTTP/1.1 502 Bad Gateway',
-    { errcode: 502, errmsg: 'AIBI cloud unreachable' },
-    { Connection: 'close' },
-  );
+function unreachable(): Response {
+  return encode(502, { errcode: 502, errmsg: 'AIBI cloud unreachable' }, { Connection: 'close' });
 }
 
 async function* copied(source: AsyncIterable<Buffer>, parts: Buffer[]): AsyncIterable<Buffer> {
@@ -118,7 +85,7 @@ export class AibiRoutes implements Routes {
     return this.host.mode() === 'local' && method === 'POST' && path === DETECT_INTENT_PATH;
   }
 
-  async stream(request: Incoming): Promise<Buffer> {
+  async stream(request: Incoming): Promise<Response> {
     const started = new Date();
     this.seen(request.remote, request.path, request.head.headers);
     const parts: Buffer[] = [];
@@ -144,10 +111,10 @@ export class AibiRoutes implements Routes {
     this.host.activity.add('warning', 'AIBI connection problem', detail);
   }
 
-  async handle(exchange: Exchange, socket: Socket): Promise<Buffer | 'served'> {
+  async handle(exchange: Exchange, response: ServerResponse): Promise<Response | 'served'> {
     const started = new Date();
     this.seen(exchange.remote, exchange.path, exchange.message.headers);
-    const reply = await this.respond(exchange, socket);
+    const reply = await this.respond(exchange, response);
     this.host.capture.record({
       scheme: exchange.scheme,
       remote: exchange.remote,
@@ -166,7 +133,10 @@ export class AibiRoutes implements Routes {
     }
   }
 
-  private async respond(exchange: Exchange, socket: Socket): Promise<Buffer | 'served'> {
+  private async respond(
+    exchange: Exchange,
+    response: ServerResponse,
+  ): Promise<Response | 'served'> {
     const trapped = await this.firmware(exchange);
     if (trapped !== null) {
       return trapped;
@@ -176,29 +146,29 @@ export class AibiRoutes implements Routes {
     }
     const speech = exchange.method === 'GET' ? SPEECH_PATH.exec(exchange.path)?.[1] : undefined;
     if (speech !== undefined) {
-      return this.speech(speech, socket);
+      return this.speech(speech, response);
     }
     return (
       (await this.local(exchange)) ?? this.forward(exchange, !KNOWN_CLOUD_PATH.test(exchange.path))
     );
   }
 
-  private speech(id: string, socket: Socket): Buffer | 'served' {
+  private speech(id: string, response: ServerResponse): Response | 'served' {
     const stream = this.host.speeches.find(id);
     if (stream === null) {
-      return encode('HTTP/1.1 404 Not Found', { error: 'tts_not_found' }, { Connection: 'close' });
+      return encode(404, { error: 'tts_not_found' }, { Connection: 'close' });
     }
-    stream.serve(socket);
+    stream.serve(response);
     return 'served';
   }
 
-  private async firmware(exchange: Exchange): Promise<Buffer | null> {
+  private async firmware(exchange: Exchange): Promise<Response | null> {
     if (exchange.method !== 'GET') {
       return null;
     }
     if (exchange.path.startsWith(BLOCKED_PREFIX)) {
       return encode(
-        'HTTP/1.1 403 Forbidden',
+        403,
         { errcode: 403, errmsg: 'Firmware download blocked' },
         { Connection: 'close' },
       );
@@ -226,11 +196,11 @@ export class AibiRoutes implements Routes {
     return null;
   }
 
-  private local(exchange: Exchange): Promise<Buffer> | null {
+  private local(exchange: Exchange): Promise<Response> | null {
     const { method, path, query, message } = exchange;
     const zone = query.get('tz') ?? query.get('timezone');
     const { desk } = this.host;
-    const routes: Readonly<Record<string, () => Promise<Buffer>>> = {
+    const routes: Readonly<Record<string, () => Promise<Response>>> = {
       'GET /aibi/permission': () => Promise.resolve(ok(permission())),
       'POST /aibi/report/status': () => Promise.resolve(this.status(message)),
       'POST /aibi/messages/send': () => Promise.resolve(this.friendMessage(message)),
@@ -240,12 +210,12 @@ export class AibiRoutes implements Routes {
       'GET /aibi/speech/tts': async () => ok(await desk.readAloud(query.get('q') ?? '')),
       'GET /aibi/chat/start': async () => ok(await desk.chatStart(zone)),
       'POST /aibi/ai/imgrecog': async () =>
-        ok(await desk.look(message.body, imageTypeOf(message.body))),
+        ok(await desk.look(message.body, await imageTypeOf(message.body))),
     };
     return routes[`${method} ${path}`]?.() ?? null;
   }
 
-  private status(message: Message): Buffer {
+  private status(message: Message): Response {
     const report = parseStatusReport(message.body, message.headers['content-type'] ?? '');
     if (report === null) {
       this.host.activity.add('warning', 'AIBI sent a status report this plugin could not read');
@@ -256,7 +226,7 @@ export class AibiRoutes implements Routes {
     return ok(tagged('status'));
   }
 
-  private friendMessage(message: Message): Buffer {
+  private friendMessage(message: Message): Response {
     this.host.activity.add(
       'request',
       'AIBI sent a friend message',
@@ -265,12 +235,12 @@ export class AibiRoutes implements Routes {
     return ok(tagged('sendmessage'));
   }
 
-  private async forward(exchange: Exchange, unknown: boolean): Promise<Buffer> {
+  private async forward(exchange: Exchange, unknown: boolean): Promise<Response> {
     if (unknown) {
       this.newRequest(exchange);
     }
     try {
-      return rebuild(await exchange.forward());
+      return relay(await exchange.forward());
     } catch (error) {
       this.cloudFailed(exchange, error);
       return unreachable();
@@ -281,7 +251,7 @@ export class AibiRoutes implements Routes {
     this.host.activity.add(
       'warning',
       `Could not reach the AIBI cloud for ${exchange.path}`,
-      error instanceof Error ? error.message : '',
+      messageOf(error),
     );
   }
 
@@ -297,9 +267,9 @@ export class AibiRoutes implements Routes {
     this.host.activity.add('unknown', `New request: ${key}`, detail.join(' · '));
   }
 
-  private async observe(exchange: Exchange): Promise<Buffer> {
+  private async observe(exchange: Exchange): Promise<Response> {
     const older = olderVersionRequest(exchange.message.startLine);
-    let response: Message;
+    let response: Response;
     try {
       response = await exchange.forward(
         older === null ? undefined : { ...exchange.message, startLine: older },
@@ -315,10 +285,10 @@ export class AibiRoutes implements Routes {
       return this.trapOffer(exchange, response);
     }
     this.learn(exchange, response);
-    return rebuild(response);
+    return relay(response);
   }
 
-  private learn(exchange: Exchange, response: Message): void {
+  private learn(exchange: Exchange, response: Response): void {
     const json = parseJson(response);
     const summary = json === null ? null : summarize(json);
     if (summary === null || (summary.behavior === '' && summary.url === '')) {
@@ -349,10 +319,10 @@ export class AibiRoutes implements Routes {
     );
   }
 
-  private trapOffer(exchange: Exchange, response: Message): Buffer {
+  private trapOffer(exchange: Exchange, response: Response): Response {
     const json = parseJson(response);
     if (json === null) {
-      return rebuild(response);
+      return relay(response);
     }
     const urls = firmwareUrls(json);
     this.rememberAndDownload(exchange, json, urls);
@@ -366,16 +336,12 @@ export class AibiRoutes implements Routes {
     const headers = Object.fromEntries(
       Object.entries(response.headers).filter(([name]) => name !== 'content-encoding'),
     );
-    return rebuild({ ...response, headers, body: Buffer.from(JSON.stringify(blockOffer(json))) });
+    return relay({ ...response, headers, body: Buffer.from(JSON.stringify(blockOffer(json))) });
   }
 
   private rememberAndDownload(exchange: Exchange, json: Json, urls: readonly string[]): void {
     rememberOffer(this.host.folder, json).catch((error: unknown) => {
-      this.host.activity.add(
-        'warning',
-        'Could not save the update offer',
-        error instanceof Error ? error.message : '',
-      );
+      this.host.activity.add('warning', 'Could not save the update offer', messageOf(error));
     });
     for (const url of urls) {
       downloadFirmware(this.host.folder, url, exchange.message.headers).then(
@@ -387,11 +353,7 @@ export class AibiRoutes implements Routes {
           );
         },
         (error: unknown) => {
-          this.host.activity.add(
-            'warning',
-            'Firmware download failed',
-            error instanceof Error ? error.message : url,
-          );
+          this.host.activity.add('warning', 'Firmware download failed', messageOf(error));
         },
       );
     }

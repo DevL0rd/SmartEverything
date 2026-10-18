@@ -1,10 +1,10 @@
 package expo.modules.healthconnect
 
+import expo.modules.healthconnect.diagnostics.NativeLog
 import androidx.health.connect.client.records.Record
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
-import org.json.JSONObject
 
 object SyncEvents {
   private val flow = MutableSharedFlow<Map<String, Any>>(
@@ -63,14 +63,21 @@ class Uploader(
     val others = records.filter { it.metadata.dataOrigin.packageName != ownPackage }
     val ours = entries.claimDeleted(deletions)
     val foreign = deletions.filter { it !in ours }
+    NativeLog.debug(SCOPE, "upload.planned") {
+      mapOf("type" to type.name, "phase" to phase.label, "records" to records.size, "own" to (records.size - others.size), "deletions" to deletions.size, "ownDeletions" to ours.size)
+    }
     for (chunk in recordChunks(others.map { RecordJson.describe(type, it) })) {
+      val started = System.nanoTime()
       client.send(IngestBatch(chunk, emptyList(), grantedTypes))
+      NativeLog.debug(SCOPE, "batch.sent", NativeLog.elapsedMs(started)) { mapOf("type" to type.name, "phase" to phase.label, "records" to chunk.size) }
       sentRecords += chunk.size
       tally.add(type, chunk.size, 0)
       SyncEvents.emit(type, phase, sentRecords, sentDeletions)
     }
     for (chunk in foreign.chunked(DELETIONS_PER_BATCH)) {
+      val started = System.nanoTime()
       client.send(IngestBatch(emptyList(), chunk, grantedTypes))
+      NativeLog.debug(SCOPE, "batch.sent", NativeLog.elapsedMs(started)) { mapOf("type" to type.name, "phase" to phase.label, "deletions" to chunk.size) }
       sentDeletions += chunk.size
       tally.add(type, 0, chunk.size)
       SyncEvents.emit(type, phase, sentRecords, sentDeletions)
@@ -81,12 +88,12 @@ class Uploader(
     client.send(IngestBatch(emptyList(), emptyList(), grantedTypes))
   }
 
-  private fun recordChunks(described: List<JSONObject>): List<List<JSONObject>> {
-    val chunks = mutableListOf<List<JSONObject>>()
-    var current = mutableListOf<JSONObject>()
+  private fun recordChunks(described: List<HealthEnvelope>): List<List<HealthEnvelope>> {
+    val chunks = mutableListOf<List<HealthEnvelope>>()
+    var current = mutableListOf<HealthEnvelope>()
     var bytes = 0
     for (record in described) {
-      val size = record.toString().length
+      val size = HubJson.encode(record).length
       if (current.isNotEmpty() && (current.size == RECORDS_PER_BATCH || bytes + size > BATCH_BYTES)) {
         chunks.add(current)
         current = mutableListOf()
@@ -102,8 +109,9 @@ class Uploader(
   }
 
   private companion object {
+    const val SCOPE = "health-upload"
     const val RECORDS_PER_BATCH = 250
-    const val DELETIONS_PER_BATCH = 500
+    const val DELETIONS_PER_BATCH = DomainConstants.HEALTH_BATCH_LIMIT
     const val BATCH_BYTES = 2_000_000
   }
 }

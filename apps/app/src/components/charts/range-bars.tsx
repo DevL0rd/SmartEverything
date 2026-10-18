@@ -1,17 +1,21 @@
-import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { scaleLinear } from 'd3-scale';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import type { ColourRole } from '../../design/tokens';
 import { decimal } from '../../format/number';
+import { useMeasuredWidth } from '../use-measured-width';
 import { Text } from '../text';
-import { extentOf, niceTicks, scaleLinear, type Extent } from './scale';
+import { BarLabels, BarMarks, type BarShape } from './bar-marks';
+import { barSlots } from './bar-path';
+import { extentOf, niceTicks, type Extent } from './scale';
 
 export interface RangeBucket {
   readonly key: string;
-  readonly min: number;
-  readonly max: number;
+  readonly label?: string;
+  readonly min: number | null;
+  readonly max: number | null;
 }
 
 export interface RangeBarsProps {
@@ -26,34 +30,36 @@ const GAP_SHARE = 0.35;
 const MAX_BAR = 10;
 const AXIS = 32;
 
-interface Capsule {
-  readonly key: string;
-  readonly x: number;
-  readonly top: number;
-  readonly bottom: number;
-  readonly width: number;
-}
+const plain = (value: number): string => decimal(value);
 
 function capsulesOf(
   buckets: readonly RangeBucket[],
   domain: Extent,
   width: number,
   height: number,
-): Capsule[] {
-  const y = scaleLinear(domain, { min: height, max: 0 });
-  const slot = width / Math.max(1, buckets.length);
-  const barWidth = Math.max(2, Math.min(MAX_BAR, slot * (1 - GAP_SHARE)));
-  return buckets.map((bucket, index) => {
-    const top = y(Math.max(bucket.min, bucket.max)) + barWidth / 2;
-    const bottom = y(Math.min(bucket.min, bucket.max)) - barWidth / 2;
-    const middle = (top + bottom) / 2;
-    return {
-      key: bucket.key,
-      x: index * slot + slot / 2,
-      top: Math.min(top, middle),
-      bottom: Math.max(bottom, middle),
-      width: barWidth,
-    };
+): BarShape[] {
+  const y = scaleLinear([domain.min, domain.max], [height, 0]);
+  const slots = barSlots(buckets.length, width, { gap: GAP_SHARE, min: 2, max: MAX_BAR });
+  return buckets.flatMap((bucket, index): BarShape[] => {
+    const slot = slots[index];
+    if (slot === undefined || bucket.min === null || bucket.max === null) {
+      return [];
+    }
+    const high = y(Math.max(bucket.min, bucket.max));
+    const low = y(Math.min(bucket.min, bucket.max));
+    const length = Math.max(slot.width, low - high);
+    const middle = (high + low) / 2;
+    return [
+      {
+        key: bucket.key,
+        x: slot.x,
+        width: slot.width,
+        top: middle - length / 2,
+        bottom: middle + length / 2,
+        radii: { top: slot.width / 2, bottom: slot.width / 2 },
+        opacity: 1,
+      },
+    ];
   });
 }
 
@@ -84,7 +90,7 @@ interface GridProps {
 
 function Gridlines({ ticks, domain, width, height }: GridProps): ReactNode {
   const grid = useColour('outline-variant');
-  const y = scaleLinear(domain, { min: height - 0.5, max: 0.5 });
+  const y = scaleLinear([domain.min, domain.max], [height - 0.5, 0.5]);
   return (
     <>
       {ticks.map((tick) => (
@@ -102,16 +108,20 @@ function Gridlines({ ticks, domain, width, height }: GridProps): ReactNode {
   );
 }
 
-export function RangeBars({
+export const RangeBars = memo(function RangeBars({
   buckets,
   colour,
   label,
   height = 140,
-  formatValue = (value: number): string => decimal(value),
+  formatValue = plain,
 }: RangeBarsProps): ReactNode {
-  const [width, setWidth] = useState(0);
+  const { width, onLayout } = useMeasuredWidth();
   const fill = useColour(colour);
-  const extent = extentOf(buckets.flatMap((bucket) => [bucket.min, bucket.max]));
+  const extent = extentOf(
+    buckets.flatMap((bucket) =>
+      bucket.min === null || bucket.max === null ? [] : [bucket.min, bucket.max],
+    ),
+  );
   const ticks = extent === null ? [] : niceTicks(extent);
   const domain = { min: ticks[0] ?? 0, max: ticks[ticks.length - 1] ?? 0 };
   const box = { height };
@@ -121,30 +131,23 @@ export function RangeBars({
       accessible
       accessibilityRole="image"
       accessibilityLabel={label}
-      style={box}
-      className="flex-row"
-      onLayout={(event) => {
-        setWidth(event.nativeEvent.layout.width);
-      }}
+      className="gap-1"
+      onLayout={onLayout}
     >
-      <AxisLabels ticks={ticks} format={formatValue} />
-      {plotWidth > 0 ? (
-        <Svg width={plotWidth} height={height}>
-          <Gridlines ticks={ticks} domain={domain} width={plotWidth} height={height} />
-          {capsulesOf(buckets, domain, plotWidth, height).map((capsule) => (
-            <Line
-              key={capsule.key}
-              x1={capsule.x}
-              x2={capsule.x}
-              y1={capsule.top}
-              y2={capsule.bottom}
-              stroke={fill}
-              strokeWidth={capsule.width}
-              strokeLinecap="round"
-            />
-          ))}
-        </Svg>
+      <View style={box} className="flex-row">
+        <AxisLabels ticks={ticks} format={formatValue} />
+        {plotWidth > 0 ? (
+          <Svg width={plotWidth} height={height}>
+            <Gridlines ticks={ticks} domain={domain} width={plotWidth} height={height} />
+            <BarMarks shapes={capsulesOf(buckets, domain, plotWidth, height)} fill={fill} />
+          </Svg>
+        ) : null}
+      </View>
+      {buckets.some((bucket) => bucket.label !== undefined) ? (
+        <View className="ml-8">
+          <BarLabels bars={buckets} width={plotWidth} />
+        </View>
       ) : null}
     </View>
   );
-}
+});

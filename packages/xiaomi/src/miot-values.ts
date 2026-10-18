@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { JsonValue, ValueDescriptor } from '@smarteverything/domain';
+import { friendlyUnit, type JsonValue, type ValueDescriptor } from '@smarteverything/domain';
 import { MiotSpecError, MiotValueError } from './errors';
 import { hsvToRgb, rgbToHsv } from './color';
 import type { MiotFormat, MiotProperty } from './spec';
@@ -37,25 +37,9 @@ const INTEGER_BOUNDS: ReadonlyMap<MiotFormat, readonly [number, number]> = new M
   ['int64', [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]],
 ]);
 
-const UNITS: ReadonlyMap<string, string> = new Map([
-  ['percentage', '%'],
-  ['celsius', '°C'],
-  ['fahrenheit', '°F'],
-  ['kelvin', 'K'],
-  ['lux', 'lx'],
-  ['seconds', 's'],
-  ['minutes', 'min'],
-  ['hours', 'h'],
-  ['days', 'd'],
-  ['μg/m3', 'µg/m³'],
-  ['mg/m3', 'mg/m³'],
-]);
-
 function unitOf(unit: string | undefined): { unit?: string } {
-  if (unit === undefined || unit === 'none' || unit === '') {
-    return {};
-  }
-  return { unit: UNITS.get(unit) ?? unit };
+  const friendly = unit === 'none' ? null : friendlyUnit(unit);
+  return friendly === null ? {} : { unit: friendly };
 }
 
 function enumOptions(list: readonly { value: number; description: string }[]): EnumOption[] {

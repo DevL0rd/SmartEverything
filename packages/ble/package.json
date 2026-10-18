@@ -9,7 +9,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@noble/ciphers": "2.4.0",
     "@smarteverything/domain": "workspace:*"
   }
 }

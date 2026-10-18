@@ -24,12 +24,12 @@ import androidx.health.connect.client.records.SexualActivityRecord
 import androidx.health.connect.client.records.SkinTemperatureRecord
 import androidx.health.connect.client.records.Vo2MaxRecord
 import androidx.health.connect.client.records.WeightRecord
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonObject
 
 object BodyData {
-  fun describe(record: Record): JSONObject? = vital(record) ?: measure(record) ?: cycle(record)
+  fun describe(record: Record): JsonObject? = vital(record) ?: measure(record) ?: cycle(record)
 
-  private fun vital(record: Record): JSONObject? = when (record) {
+  private fun vital(record: Record): JsonObject? = when (record) {
     is RestingHeartRateRecord -> jsonOf("bpm" to record.beatsPerMinute)
     is HeartRateVariabilityRmssdRecord ->
       jsonOf("milliseconds" to record.heartRateVariabilityMillis)
@@ -69,7 +69,7 @@ object BodyData {
     else -> null
   }
 
-  private fun measure(record: Record): JSONObject? = when (record) {
+  private fun measure(record: Record): JsonObject? = when (record) {
     is WeightRecord -> jsonOf("kilograms" to record.weight.inKilograms)
     is LeanBodyMassRecord -> jsonOf("kilograms" to record.mass.inKilograms)
     is BoneMassRecord -> jsonOf("kilograms" to record.mass.inKilograms)
@@ -81,10 +81,10 @@ object BodyData {
     else -> NutritionData.describe(record)
   }
 
-  private fun cycle(record: Record): JSONObject? = when (record) {
+  private fun cycle(record: Record): JsonObject? = when (record) {
     is MenstruationFlowRecord -> jsonOf("flow" to record.flow)
-    is MenstruationPeriodRecord -> JSONObject()
-    is IntermenstrualBleedingRecord -> JSONObject()
+    is MenstruationPeriodRecord -> JsonObject(emptyMap())
+    is IntermenstrualBleedingRecord -> JsonObject(emptyMap())
     is OvulationTestRecord -> jsonOf("result" to record.result)
     is CervicalMucusRecord ->
       jsonOf("appearance" to record.appearance, "sensation" to record.sensation)

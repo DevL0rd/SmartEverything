@@ -22,7 +22,7 @@ export function decimalsOf(step: number): number {
   return fraction.length;
 }
 
-export function withUnit(amount: string, unit: string | null): string {
+function withUnit(amount: string, unit: string | null): string {
   if (unit === null) {
     return amount;
   }
@@ -30,32 +30,105 @@ export function withUnit(amount: string, unit: string | null): string {
 }
 
 export const BYTE_RATE_UNIT = 'B/s';
+const BYTES_UNIT = 'B';
+const MEGABIT_RATE_UNIT = 'Mb/s';
 
-const BYTE_RATE_STEPS: readonly (readonly [number, string])[] = [
-  [1e9, 'GB/s'],
-  [1e6, 'MB/s'],
-  [1e3, 'kB/s'],
-];
-
-export function formatByteRate(bytesPerSecond: number): string {
-  const step = BYTE_RATE_STEPS.find(([size]) => bytesPerSecond >= size);
-  if (step === undefined) {
-    return `${String(Math.round(bytesPerSecond))} B/s`;
-  }
-  const amount = bytesPerSecond / step[0];
-  return `${amount.toFixed(amount < 10 ? 1 : 0)} ${step[1]}`;
+interface Ladder {
+  readonly below: readonly string[];
+  readonly top: string;
+  readonly wholeFirst: boolean;
 }
 
-function formatNumber(value: number, unit: string | null, step: number): string {
-  if (unit === BYTE_RATE_UNIT) {
-    return formatByteRate(value);
+const BYTES: Ladder = { below: ['B', 'kB', 'MB', 'GB'], top: 'TB', wholeFirst: true };
+const MEGABITS: Ladder = { below: [MEGABIT_RATE_UNIT], top: 'Gb/s', wholeFirst: false };
+const SI_STEP = 1000;
+const ONE_DECIMAL_BELOW = 9.95;
+const COMPACT_COUNT_FROM = 100_000;
+
+const FORMATS = new Map<string, Intl.NumberFormat>();
+
+function numberFormat(locale: string | undefined, digits: number): Intl.NumberFormat {
+  const key = `${locale ?? ''}|${String(digits)}`;
+  const known = FORMATS.get(key);
+  if (known !== undefined) {
+    return known;
   }
-  return withUnit(value.toFixed(decimalsOf(step)), unit);
+  const made = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: false,
+  });
+  FORMATS.set(key, made);
+  return made;
 }
 
-export function formatValue(key: string, descriptor: ValueDescriptor, value: JsonValue): string {
+function digitsOf(amount: number, whole: boolean): number {
+  return whole || amount >= ONE_DECIMAL_BELOW ? 0 : 1;
+}
+
+function scaled(value: number, ladder: Ladder, locale: string | undefined): string {
+  let amount = value;
+  for (const [index, unit] of ladder.below.entries()) {
+    const digits = digitsOf(amount, ladder.wholeFirst && index === 0);
+    if (Number(amount.toFixed(digits)) < SI_STEP) {
+      return `${numberFormat(locale, digits).format(amount)} ${unit}`;
+    }
+    amount /= SI_STEP;
+  }
+  return `${numberFormat(locale, digitsOf(amount, false)).format(amount)} ${ladder.top}`;
+}
+
+export function formatBytes(bytes: number, locale?: string): string {
+  return scaled(bytes, BYTES, locale);
+}
+
+export function formatByteRate(bytesPerSecond: number, locale?: string): string {
+  return `${formatBytes(bytesPerSecond, locale)}/s`;
+}
+
+export function formatMegabits(megabitsPerSecond: number, locale?: string): string {
+  return scaled(megabitsPerSecond, MEGABITS, locale);
+}
+
+export interface CountFormat {
+  readonly compact?: boolean;
+  readonly locale?: string;
+}
+
+export function formatCount(value: number, format: CountFormat = {}): string {
+  const grouped = (amount: number): string => new Intl.NumberFormat(format.locale).format(amount);
+  return format.compact === true && value >= COMPACT_COUNT_FROM
+    ? `${grouped(Math.round(value / SI_STEP))}k`
+    : grouped(Math.round(value));
+}
+
+const UNIT_FORMATS: ReadonlyMap<string, (value: number, locale: string | undefined) => string> =
+  new Map([
+    [BYTE_RATE_UNIT, formatByteRate],
+    [BYTES_UNIT, formatBytes],
+    [MEGABIT_RATE_UNIT, formatMegabits],
+  ]);
+
+export function formatNumber(
+  value: number,
+  unit: string | null,
+  step: number,
+  locale?: string,
+): string {
+  const format = unit === null ? undefined : UNIT_FORMATS.get(unit);
+  return format === undefined
+    ? withUnit(numberFormat(locale, decimalsOf(step)).format(value), unit)
+    : format(value, locale);
+}
+
+export function formatValue(
+  key: string,
+  descriptor: ValueDescriptor,
+  value: JsonValue,
+  locale?: string,
+): string {
   if (descriptor.kind === 'number' && typeof value === 'number') {
-    return formatNumber(value, descriptor.unit ?? null, descriptor.step);
+    return formatNumber(value, descriptor.unit ?? null, descriptor.step, locale);
   }
   if (typeof value === 'boolean') {
     const words = BOOLEAN_WORDS[key] ?? ['On', 'Off'];

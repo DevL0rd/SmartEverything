@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
-import { percentOf } from '../../../components/charts/stage-timeline';
 import { cn } from '../../../design/cn';
 import { DURATION, EASING, useMotion } from '../../../design/motion';
+import { percentOf } from '../../../format/percent';
 
 export type GlassSize = 'm' | 'l';
 

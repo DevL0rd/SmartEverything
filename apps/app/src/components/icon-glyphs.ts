@@ -1,5 +1,9 @@
+import { ACCESS_GLYPHS } from './icon-glyphs-access';
 import { CALL_GLYPHS } from './icon-glyphs-call';
 import { CHAT_GLYPHS } from './icon-glyphs-chat';
+import { COMPUTER_GLYPHS } from './icon-glyphs-computer';
+import { LIGHT_GLYPHS } from './icon-glyphs-light';
+import { TV_GLYPHS } from './icon-glyphs-tv';
 import ArrowUpGlyph from 'lucide-react-native/icons/arrow-up';
 import PaperclipGlyph from 'lucide-react-native/icons/paperclip';
 import ImageGlyph from 'lucide-react-native/icons/image';
@@ -32,15 +36,14 @@ import LightbulbGlyph from 'lucide-react-native/icons/lightbulb';
 import LampFloorGlyph from 'lucide-react-native/icons/lamp-floor';
 import AirVentGlyph from 'lucide-react-native/icons/air-vent';
 import DropletGlyph from 'lucide-react-native/icons/droplet';
-import DropletOffGlyph from 'lucide-react-native/icons/droplet-off';
 import FanGlyph from 'lucide-react-native/icons/fan';
 import HeaterGlyph from 'lucide-react-native/icons/heater';
+import WashingMachineGlyph from 'lucide-react-native/icons/washing-machine';
 import TvGlyph from 'lucide-react-native/icons/tv';
 import PlugGlyph from 'lucide-react-native/icons/plug';
 import LockGlyph from 'lucide-react-native/icons/lock';
 import LockOpenGlyph from 'lucide-react-native/icons/lock-open';
 import BlindsGlyph from 'lucide-react-native/icons/blinds';
-import CookingPotGlyph from 'lucide-react-native/icons/cooking-pot';
 import DoorClosedGlyph from 'lucide-react-native/icons/door-closed';
 import DoorOpenGlyph from 'lucide-react-native/icons/door-open';
 import RadarGlyph from 'lucide-react-native/icons/radar';
@@ -95,7 +98,6 @@ import MonitorGlyph from 'lucide-react-native/icons/monitor';
 import BatteryGlyph from 'lucide-react-native/icons/battery';
 import SignalGlyph from 'lucide-react-native/icons/signal';
 import ShowerHeadGlyph from 'lucide-react-native/icons/shower-head';
-import WashingMachineGlyph from 'lucide-react-native/icons/washing-machine';
 import PawPrintGlyph from 'lucide-react-native/icons/paw-print';
 import BoxGlyph from 'lucide-react-native/icons/box';
 import FootprintsGlyph from 'lucide-react-native/icons/footprints';
@@ -128,7 +130,6 @@ import Share2Glyph from 'lucide-react-native/icons/share-2';
 import DownloadGlyph from 'lucide-react-native/icons/download';
 import ClockGlyph from 'lucide-react-native/icons/clock';
 import MoveGlyph from 'lucide-react-native/icons/move';
-import Grid2x2Glyph from 'lucide-react-native/icons/grid-2x2';
 import SquareGlyph from 'lucide-react-native/icons/square';
 import CloudSunGlyph from 'lucide-react-native/icons/cloud-sun';
 import CloudRainGlyph from 'lucide-react-native/icons/cloud-rain';
@@ -222,15 +223,14 @@ export const GLYPHS = {
   lamp: LampFloorGlyph,
   airVent: AirVentGlyph,
   droplet: DropletGlyph,
-  dropletOff: DropletOffGlyph,
   fan: FanGlyph,
   heater: HeaterGlyph,
   tv: TvGlyph,
+  washer: WashingMachineGlyph,
   plug: PlugGlyph,
   lock: LockGlyph,
   lockOpen: LockOpenGlyph,
   blinds: BlindsGlyph,
-  kettle: CookingPotGlyph,
   door: DoorClosedGlyph,
   doorOpen: DoorOpenGlyph,
   motion: RadarGlyph,
@@ -286,7 +286,6 @@ export const GLYPHS = {
   battery: BatteryGlyph,
   signal: SignalGlyph,
   leak: ShowerHeadGlyph,
-  washer: WashingMachineGlyph,
   dog: PawPrintGlyph,
   box: BoxGlyph,
   smartphone: SmartphoneGlyph,
@@ -321,7 +320,6 @@ export const GLYPHS = {
   download: DownloadGlyph,
   clock: ClockGlyph,
   move: MoveGlyph,
-  grid2: Grid2x2Glyph,
   square: SquareGlyph,
   weather: CloudSunGlyph,
   cloudRain: CloudRainGlyph,
@@ -389,8 +387,12 @@ export const GLYPHS = {
   folder: FolderGlyph,
   ban: BanGlyph,
   upload: UploadGlyph,
+  ...ACCESS_GLYPHS,
   ...CALL_GLYPHS,
   ...CHAT_GLYPHS,
+  ...COMPUTER_GLYPHS,
+  ...LIGHT_GLYPHS,
+  ...TV_GLYPHS,
 } as const;
 
 export type IconName = keyof typeof GLYPHS;

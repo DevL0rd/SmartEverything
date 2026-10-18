@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 export class CommandLanes {
   private readonly tails = new Map<string, Promise<void>>();
   run<T>(key: string, work: () => Promise<T>): Promise<T> {
@@ -8,9 +9,12 @@ export class CommandLanes {
       () => undefined,
     );
     this.tails.set(key, tail);
-    void tail.then(() => {
-      if (this.tails.get(key) === tail) this.tails.delete(key);
-    });
+    background(
+      tail.then(() => {
+        if (this.tails.get(key) === tail) this.tails.delete(key);
+      }),
+      'lanes.background_failed',
+    );
     return result;
   }
 }

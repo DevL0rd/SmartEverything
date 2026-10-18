@@ -24,32 +24,40 @@ export const ASSISTANT_VOICE_PATH = '/assistant';
 
 export const ASSISTANT_VOICE_HEARTBEAT_MS = 15_000;
 
-export const VOICE_KEY_MISSING = 'Add a Gemini key in Settings › Assistant › Voice calls.';
+export const VOICE_KEY_MISSING = 'Add a Gemini key in Settings › Assistant › Voice and calls.';
 
 export const VOICE_RESULT_TIMINGS = ['pause', 'immediately'] as const;
 
-export const LIVE_CONTEXT_MINUTES = { min: 1, max: 60, fallback: 4 } as const;
+export const LIVE_CONTEXT_MINUTES = { min: 1, max: 60, fallback: 2 } as const;
 
-export const ASSISTANT_VOICE_SETTINGS = z.strictObject({
-  model: z.string().trim().min(1).max(120).default('gemini-3.8-live'),
-  voice: SPEECH_VOICE.default('Sadachbia'),
+const VOICE_SHAPE = {
+  model: z.string().trim().min(1).max(120),
+  voice: SPEECH_VOICE,
   speech_model: z
     .enum(SPEECH_MODELS)
-    .default(CHEAPEST_SPEECH_MODEL)
     .describe(
       'Which text-to-speech model says one-off lines (announcements, speaking through a device without a conversation). The default is the cheapest',
     ),
-  speech_voice: SPEECH_VOICE.nullable()
-    .default(null)
-    .describe('The voice for one-off lines; unset uses the call voice'),
-  result_timing: z.enum(VOICE_RESULT_TIMINGS).default('pause'),
-  idle_seconds: z.int().min(5).max(600).default(5),
-  live_video: z.boolean().default(false),
+  speech_voice: SPEECH_VOICE.nullable().describe(
+    'The voice for one-off lines; unset uses the call voice',
+  ),
+  result_timing: z.enum(VOICE_RESULT_TIMINGS),
+  idle_seconds: z.int().min(5).max(600),
+  live_video: z.boolean(),
   mute_mic_while_speaking: z
     .boolean()
-    .default(false)
     .describe(
       'Camera calls: drop the camera microphone audio while the AI speaks and for a moment after. Off keeps the microphone streaming to the model the whole time, relying on the camera’s own echo cancellation',
+    ),
+  pause_media_while_speaking: z
+    .boolean()
+    .describe(
+      'Pause music and video playing in the same room as the device the AI is speaking through while it speaks, and resume only what it paused when it finishes',
+    ),
+  live_warm_enabled: z
+    .boolean()
+    .describe(
+      'Keep the Gemini connection open between calls so a call starts at once. Off connects fresh for every call',
     ),
   live_context_minutes: z
     .int()
@@ -57,11 +65,35 @@ export const ASSISTANT_VOICE_SETTINGS = z.strictObject({
     .max(LIVE_CONTEXT_MINUTES.max)
     .optional()
     .describe(
-      'How many minutes of a voice call stay in the model context; older speech and video are dropped from it (the transcript keeps the text). Unset means the default of 4',
+      'How many minutes of a voice call stay in the model context; older speech and video are dropped from it (the transcript keeps the text). Unset means the default of 2',
+    ),
+  speech_context_minutes: z
+    .int()
+    .min(0)
+    .max(60)
+    .describe(
+      'Camera calls: how many minutes of what that camera’s transcription heard before the call are given to the AI when it starts. 0 turns it off',
     ),
   context_minutes: z.int().min(0).max(120).optional(),
   memory_lines: z.int().min(0).max(200).optional(),
+};
+
+export const ASSISTANT_VOICE_SETTINGS = z.strictObject({
+  ...VOICE_SHAPE,
+  model: VOICE_SHAPE.model.default('gemini-3.8-live'),
+  voice: VOICE_SHAPE.voice.default('Sadachbia'),
+  speech_model: VOICE_SHAPE.speech_model.default(CHEAPEST_SPEECH_MODEL),
+  speech_voice: VOICE_SHAPE.speech_voice.default(null),
+  result_timing: VOICE_SHAPE.result_timing.default('pause'),
+  idle_seconds: VOICE_SHAPE.idle_seconds.default(5),
+  live_video: VOICE_SHAPE.live_video.default(false),
+  mute_mic_while_speaking: VOICE_SHAPE.mute_mic_while_speaking.default(false),
+  pause_media_while_speaking: VOICE_SHAPE.pause_media_while_speaking.default(true),
+  live_warm_enabled: VOICE_SHAPE.live_warm_enabled.default(true),
+  speech_context_minutes: VOICE_SHAPE.speech_context_minutes.default(5),
 });
+
+export const ASSISTANT_VOICE_CHANGE = z.strictObject(VOICE_SHAPE).partial();
 
 export type AssistantVoiceSettings = z.output<typeof ASSISTANT_VOICE_SETTINGS>;
 
@@ -148,7 +180,7 @@ export const CAPTION_SPEAKERS = ['person', 'assistant', 'tool'] as const;
 
 export const CALL_TURN = z.strictObject({
   who: z.enum(CAPTION_SPEAKERS),
-  text: z.string().min(1).max(2000),
+  text: z.string().min(1),
   ok: z.boolean(),
   detail: z.string().max(400).nullable(),
 });
@@ -157,7 +189,7 @@ export type CallTurn = z.infer<typeof CALL_TURN>;
 
 export const CALL_TRANSCRIPT_EMBED = z.strictObject({
   kind: z.literal('call_transcript'),
-  turns: z.array(CALL_TURN).max(400),
+  turns: z.array(CALL_TURN),
 });
 
 export type CallTranscript = z.infer<typeof CALL_TRANSCRIPT_EMBED>;

@@ -7,6 +7,8 @@ import { OggOpusWriter } from './ogg';
 const FEED_PATH = /^\/talk-feeds\/([0-9a-f]{32})\.ogg$/;
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const KEPT_AFTER_END_MS = 10_000;
+const HEADER_PAGES = 2;
+const BACKLOG_PAGES = 1_500;
 
 export interface OggFeed {
   readonly url: string;
@@ -19,6 +21,13 @@ interface FeedState {
   readonly readers: Set<ServerResponse>;
   readonly left: () => void;
   ended: boolean;
+}
+
+function keep(state: FeedState, page: Buffer): void {
+  state.pages.push(page);
+  if (state.pages.length > HEADER_PAGES + BACKLOG_PAGES) {
+    state.pages.splice(HEADER_PAGES, 1);
+  }
 }
 
 class FeedsNotStartedError extends Error {
@@ -64,7 +73,7 @@ export class TalkFeeds {
     const state: FeedState = { pages: [], readers: new Set(), left, ended: false };
     this.feeds.set(nonce, state);
     const writer = new OggOpusWriter(randomInt(1, 0x7fffffff), (page) => {
-      state.pages.push(page);
+      keep(state, page);
       state.readers.forEach((reader) => reader.write(page));
     });
     writer.start();

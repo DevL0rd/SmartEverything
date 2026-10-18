@@ -1,14 +1,16 @@
 import type { ReactNode } from 'react';
-import { Children, Fragment, isValidElement } from 'react';
+import { Fragment } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
 import type { Href } from 'expo-router';
 import { Interactive } from './interactive';
+import { rowsOf, separatorInset } from './list-rows';
 import { Text } from './text';
 
 export interface SectionProps {
   readonly title?: string;
+  readonly caption?: string;
   readonly footer?: string;
   readonly action?: ReactNode;
   readonly className?: string;
@@ -17,16 +19,25 @@ export interface SectionProps {
 
 function SectionTitle({
   title,
+  caption,
   action,
 }: {
   readonly title: string;
+  readonly caption: string | undefined;
   readonly action: ReactNode;
 }): ReactNode {
   return (
     <View className="min-h-8 flex-row items-end justify-between gap-2 px-4">
-      <Text variant="footnote" tone="variant" accessibilityRole="header" className="pb-1">
-        {title}
-      </Text>
+      <View className="flex-1 flex-row items-end gap-2">
+        <Text variant="footnote" tone="variant" accessibilityRole="header" className="pb-1">
+          {title}
+        </Text>
+        {caption === undefined ? null : (
+          <Text variant="footnote" tone="variant" className="pb-1">
+            {caption}
+          </Text>
+        )}
+      </View>
       {action}
     </View>
   );
@@ -56,10 +67,19 @@ export function SectionAction({
   );
 }
 
-export function Section({ title, footer, action, className, children }: SectionProps): ReactNode {
+export function Section({
+  title,
+  caption,
+  footer,
+  action,
+  className,
+  children,
+}: SectionProps): ReactNode {
   return (
     <View className={cn('gap-1', className)}>
-      {title === undefined ? null : <SectionTitle title={title} action={action} />}
+      {title === undefined ? null : (
+        <SectionTitle title={title} caption={caption} action={action} />
+      )}
       {children}
       {footer === undefined ? null : (
         <Text variant="footnote" tone="variant" className="px-4 pt-1">
@@ -76,7 +96,7 @@ export interface ListProps extends SectionProps {
 
 export function List({ inset = false, children, ...section }: ListProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const rows = Children.toArray(children).filter(isValidElement);
+  const rows = rowsOf(children);
   return (
     <Section {...section}>
       <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1">
@@ -84,10 +104,7 @@ export function List({ inset = false, children, ...section }: ListProps): ReactN
           <Fragment key={row.key ?? index}>
             {index === 0 ? null : (
               <View
-                className={cn(
-                  'h-hairline bg-outline-variant',
-                  inset ? (pointer ? 'ml-16' : 'ml-18') : 'ml-4',
-                )}
+                className={cn('h-hairline bg-outline-variant', separatorInset(row, inset, pointer))}
               />
             )}
             {row}

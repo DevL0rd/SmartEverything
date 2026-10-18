@@ -18,27 +18,8 @@ import androidx.health.connect.client.units.Length
 import androidx.health.connect.client.units.Mass
 import androidx.health.connect.client.units.Percentage
 import androidx.health.connect.client.units.Power
-import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
-import org.json.JSONArray
-import org.json.JSONObject
-
-class OutboxReading(json: JSONObject) {
-  val id: String = json.getString("id")
-  val version: Long = json.getLong("version")
-  val measuredAt: Instant = Instant.parse(json.getString("measuredAt"))
-  val weightKg: Double = json.getDouble("weightKg")
-  val bodyFatPercent: Double? = json.optionalDouble("bodyFatPercent")
-  val basalMetabolicRateKcal: Double? = json.optionalDouble("basalMetabolicRateKcal")
-  val leanMassKg: Double? = json.optionalDouble("leanMassKg")
-  val boneMassKg: Double? = json.optionalDouble("boneMassKg")
-  val waterMassKg: Double? = json.optionalDouble("waterMassKg")
-  val heartRate: Long? = if (json.isNull("heartRate")) null else json.getLong("heartRate")
-  val heightMeters: Double? = json.optionalDouble("heightMeters")
-}
-
-private fun JSONObject.optionalDouble(name: String): Double? = if (isNull(name)) null else getDouble(name)
 
 class WriteReport(val written: Int, val waiting: Int, val missingPermission: Boolean) {
   fun toMap(): Map<String, Any> = mapOf(
@@ -67,20 +48,18 @@ object BodyWriter {
   suspend fun deliver(context: Context): WriteReport {
     val client = HealthConnectAccess.client(context)
     val hub = HubClient(Credentials(context).load())
-    val readings = hub.get(OUTBOX_PATH).getJSONArray("readings")
+    val readings = hub.get<HealthOutbox>(OUTBOX_PATH).readings
     if (!granted(client)) {
-      return WriteReport(0, readings.length(), true)
+      return WriteReport(0, readings.size, true)
     }
-    val written = JSONArray()
-    for (index in 0 until readings.length()) {
-      val reading = OutboxReading(readings.getJSONObject(index))
+    val written = readings.map { reading ->
       HealthConnectAccess.call { client.insertRecords(recordsOf(reading)) }
-      written.put(jsonOf("id" to reading.id, "version" to reading.version))
+      Written(reading.id, reading.version)
     }
-    if (written.length() > 0) {
-      hub.post(OUTBOX_PATH, jsonOf("written" to written))
+    if (written.isNotEmpty()) {
+      hub.submit(OUTBOX_PATH, OutboxAck(written = written))
     }
-    return WriteReport(written.length(), 0, false)
+    return WriteReport(written.size, 0, false)
   }
 
   private fun metadataOf(reading: OutboxReading, type: String): Metadata = Metadata.autoRecorded(
@@ -118,5 +97,5 @@ object BodyWriter {
     )
   }
 
-  private const val OUTBOX_PATH = "outbox"
+  private const val OUTBOX_PATH = "/api/health/outbox"
 }

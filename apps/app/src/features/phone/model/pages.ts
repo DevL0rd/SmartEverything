@@ -1,0 +1,99 @@
+import type { DevicePageContribution } from '../../../app-shell/device-pages';
+import type { Device } from '../../../store/state';
+
+const PAGES: readonly DevicePageContribution[] = [
+  {
+    id: 'overview',
+    title: 'Phone',
+    subtitle: 'Status, battery, sound and what the phone is doing',
+    icon: 'smartphone',
+    keywords: ['phone', 'status', 'battery', 'charging', 'ringer', 'flashlight', 'find my phone'],
+    settings: ['Ring', 'Flashlight', 'Refresh now', 'Open a link on the phone', 'Top apps today'],
+  },
+  {
+    id: 'battery',
+    title: 'Battery',
+    subtitle: 'Level, charging, health and memory',
+    icon: 'battery',
+    keywords: ['battery', 'charging', 'charger', 'power', 'temperature', 'hot', 'battery saver'],
+    settings: ['Battery today', 'Charging', 'Temperature', 'Battery health', 'Memory'],
+  },
+  {
+    id: 'sound',
+    title: 'Sound',
+    subtitle: 'Ringer, volumes and what is playing',
+    icon: 'volume',
+    keywords: ['sound', 'volume', 'ringer', 'silent', 'vibrate', 'do not disturb', 'media', 'ring'],
+    settings: [
+      'Ringer',
+      'Do not disturb',
+      'Media volume',
+      'Ring volume',
+      'Notification volume',
+      'Alarm volume',
+      'Audio output',
+      'Now playing',
+      'Ring',
+    ],
+  },
+  {
+    id: 'screen',
+    title: 'Screen',
+    subtitle: 'Screen time, brightness and timeout',
+    icon: 'sun',
+    keywords: ['screen', 'brightness', 'screen time', 'timeout', 'unlocks', 'fold'],
+    settings: ['Screen time', 'Unlocks today', 'Brightness', 'Auto brightness', 'Screen timeout'],
+  },
+  {
+    id: 'network',
+    title: 'Network',
+    subtitle: 'Signal, data use and connected devices',
+    icon: 'wifi',
+    keywords: ['network', 'wifi', 'signal', 'mobile data', 'data use', 'bluetooth', 'vpn'],
+    settings: ['Connection', 'Signal', 'Mobile signal', 'Data use', 'Bluetooth devices'],
+  },
+  {
+    id: 'storage',
+    title: 'Storage',
+    subtitle: 'Free space and the largest apps',
+    icon: 'layers',
+    keywords: ['storage', 'space', 'free', 'full', 'photos', 'apps size'],
+    settings: ['Free space', 'Largest apps'],
+  },
+  {
+    id: 'apps',
+    title: 'Apps',
+    subtitle: 'Time in apps and opening apps on the phone',
+    icon: 'grid',
+    keywords: ['apps', 'usage', 'open app', 'launch', 'most used'],
+    settings: ['Top apps today', 'All apps', 'Open on the phone'],
+  },
+  {
+    id: 'notifications',
+    title: 'Notifications',
+    subtitle: 'Counts per app and dismissing',
+    icon: 'bell',
+    keywords: ['notifications', 'alerts', 'dismiss', 'unread'],
+    settings: ['Notifications per app', 'Dismiss all from an app'],
+  },
+  {
+    id: 'activity',
+    title: 'Activity',
+    subtitle: 'What the phone has been doing, places and parking',
+    icon: 'activity',
+    keywords: ['activity', 'walking', 'driving', 'doing', 'places', 'parked', 'where I parked'],
+    settings: ['Doing today', 'Last 7 days', 'Places today', 'Where I parked'],
+  },
+  {
+    id: 'setup',
+    title: 'Phone setup',
+    subtitle: 'Sharing, permissions and sensors',
+    icon: 'settings',
+    keywords: ['setup', 'permissions', 'share', 'sensors', 'keep running'],
+    settings: ['Share this phone', 'Permissions', 'Sensors'],
+  },
+];
+
+export function phonePages(device: Device): readonly DevicePageContribution[] {
+  return device.kind === 'phone' ? PAGES : [];
+}

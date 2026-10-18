@@ -1,6 +1,6 @@
 import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 
-export const TOKEN_URI = 'https://oauth2.google.test/token';
+export const TOKEN_URI = 'https://oauth2.googleapis.com/token';
 
 export const SEND_URL = 'https://fcm.googleapis.com/v1/projects/home-push/messages:send';
 
@@ -22,7 +22,7 @@ export const SERVICE_ACCOUNT = {
 } as const;
 
 function textOf(body: RequestInit['body']): string {
-  return typeof body === 'string' ? body : '';
+  return typeof body === 'string' || body instanceof URLSearchParams ? String(body) : '';
 }
 
 export class FakeGoogle {
@@ -59,7 +59,10 @@ export class FakeGoogle {
       Buffer.from(signature, 'base64url'),
     );
     if (!valid || this.tokenStatus !== 200) {
-      return Response.json({ error: 'invalid_grant' }, { status: valid ? this.tokenStatus : 400 });
+      return Response.json(
+        { error: 'invalid_grant', error_description: 'Invalid JWT Signature.' },
+        { status: valid ? this.tokenStatus : 400 },
+      );
     }
     this.issued += 1;
     return Response.json({ access_token: `ya29.${String(this.issued)}`, expires_in: 3599 });

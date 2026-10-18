@@ -80,12 +80,17 @@ class PhoneModule : Module() {
       mapOf("ok" to result.ok, "detail" to result.detail)
     }
 
+
     AsyncFunction("openUsageAccess") { open(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
 
-    AsyncFunction("openBatteryOptimization") {
-      open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
-    }
+    AsyncFunction("openAccessibilitySettings") { open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+
+    AsyncFunction("openWriteSettings") { openForApp(Settings.ACTION_MANAGE_WRITE_SETTINGS) }
+
+    AsyncFunction("openBatteryOptimization") { openForApp(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) }
   }
+
+  private fun openForApp(action: String) = open(Intent(action, Uri.parse("package:${context.packageName}")))
 
   private fun open(intent: Intent) {
     context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

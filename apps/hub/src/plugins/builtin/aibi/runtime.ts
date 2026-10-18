@@ -3,6 +3,7 @@ import {
   ROBOT_ACTIVITY_STREAM,
   ROBOT_DRIVER_ID,
   ROBOT_MOVES_STREAM,
+  ROBOT_ONLINE_WINDOW_MS,
   ROBOT_STATUS_STREAM,
   type RobotActivityEntry,
   type RobotMoves,
@@ -15,19 +16,21 @@ import { aibiSearchEntries } from './aibi-search';
 import { aibiTools } from './aibi-tools';
 import { TrafficCapture } from './capture';
 import type { Cloud } from './cloud';
-import { Coalesced } from './coalesce';
+import { Throttle } from '../../throttle';
 import { AibiListeners } from './listeners';
 import { VoiceDesk } from './desk';
 import { movesOf } from './moves';
 import { PatchedFirmwareCache } from './ota-files';
 import { Photos } from './photos';
 import { performAction, robotExternalId, ROBOT_MIRROR, type RobotSnapshot } from './robot-device';
-import { jsonOf, ONLINE_WINDOW_MS, RobotState } from './robot-state';
+import { jsonOf } from '../json-value';
+import { RobotState } from './robot-state';
 import { AibiRoutes } from './routes';
 import { statusLines } from './status-lines';
 import { RobotServer } from './server';
 import type { AibiSettings } from './settings';
 import { Speeches } from './speech-stream';
+import { background } from '@smarteverything/logging';
 
 type Context = PluginContext<AibiSettings>;
 
@@ -61,10 +64,10 @@ class AibiRuntime {
   private readonly desk: VoiceDesk;
   private readonly server: RobotServer;
   private readonly mirror = new DeviceMirror(ROBOT_MIRROR);
-  private readonly publishStatus = new Coalesced((): void => {
+  private readonly publishStatus = new Throttle((): void => {
     this.sendStatus();
   }, PUBLISH_DELAY_MS);
-  private readonly publishActivity = new Coalesced((): void => {
+  private readonly publishActivity = new Throttle((): void => {
     this.sendActivity();
   }, PUBLISH_DELAY_MS);
   private settings: AibiSettings;
@@ -131,6 +134,8 @@ class AibiRuntime {
       speeches: this.speeches,
       photos: new Photos(ctx.files.folder),
       report: () => this.state.report,
+      deviceExternalId: () =>
+        this.state.identity === null ? null : robotExternalId(this.state.identity),
       changed: (): void => {
         this.publishStatus.trigger();
       },
@@ -176,7 +181,7 @@ class AibiRuntime {
     );
     this.stops.push(
       this.ctx.voice.keyChanges((): void => {
-        void this.desk.end();
+        background(this.desk.end(), 'desk.end_failed');
       }),
     );
     this.identityChanged();
@@ -229,7 +234,6 @@ class AibiRuntime {
     const { ctx } = this;
     ctx.tools.register([
       ...aibiTools({
-        scopes: this.settings.scopes,
         status: () => this.statusNow(),
         moves: () => this.moves,
         activity: this.activity,
@@ -254,7 +258,7 @@ class AibiRuntime {
         },
         execute: (command) =>
           new Promise((resolve) => {
-            resolve(performAction(command, this.desk, this.settings.scopes));
+            resolve(performAction(command, this.desk));
           }),
       }),
     );
@@ -267,7 +271,7 @@ class AibiRuntime {
     this.ctx.search.replace(
       aibiSearchEntries(identity === null ? null : robotExternalId(identity), this.moves),
     );
-    if (identity !== null && this.settings.scopes.includes('aibi.speak')) {
+    if (identity !== null) {
       this.speaker = this.ctx.reach.register({
         externalId: robotExternalId(identity),
         label: 'AIBI',
@@ -312,7 +316,7 @@ class AibiRuntime {
     if (contact === null) {
       return;
     }
-    const left = Date.parse(contact.at) + ONLINE_WINDOW_MS - this.environment.now().getTime();
+    const left = Date.parse(contact.at) + ROBOT_ONLINE_WINDOW_MS - this.environment.now().getTime();
     if (left <= 0) {
       return;
     }

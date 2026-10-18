@@ -1,7 +1,7 @@
 import {
   ASSISTANT_VOICE_SERVER_MESSAGE,
   type AssistantVoiceClientMessage,
-  type CallAudioPref,
+  type CallAudio,
   type CallEnding,
   type CallState,
   type EchoTestOutcome,
@@ -16,7 +16,7 @@ import {
   answerAssistantCall,
   applyAssistantCallAudio,
   assistantCallCan,
-  assistantCallLevel,
+  attachAssistantCall,
   beginAssistantCall,
   endAssistantCall,
   muteAssistantCall,
@@ -33,17 +33,18 @@ import {
   markEnded,
   type CallFix,
 } from '../../call-state';
-import type { CallEngine, CallRequest, SightStart } from '../call-engine';
+import type { CallEngine, CallRequest, LevelFeed, SightStart } from '../call-engine';
 import { applyServerMessage } from '../call-messages';
 import { CallFeatureUnavailableError, NOT_ON_THIS_BUILD } from '../unavailable';
 import { DEFAULT_CALL_AUDIO, nativeAudioOf } from './native-audio';
 import { watchNativeDevices } from './native-devices';
 import { measureNativeEcho } from './native-echo';
+import { NATIVE_LEVELS } from './native-levels';
 import { postCallMessage } from './native-messages';
 import { Seeing } from './native-seeing';
+import { HUB_TOO_OLD } from '../hub-reasons';
 import {
   CALL_SERVICE_REFUSED_CODE,
-  HUB_TOO_OLD,
   linkedReason,
   nativeCapabilities,
   reachableSources,
@@ -62,12 +63,12 @@ const DROPPED = 'The connection to your home dropped.';
 export class NativeCallEngine implements CallEngine {
   private listeners: { readonly remove: () => void } | null = null;
   private request: CallRequest | null = null;
-  private audio: CallAudioPref = DEFAULT_CALL_AUDIO;
+  private audio: CallAudio = DEFAULT_CALL_AUDIO;
   private announced = false;
   private lostFrom: CallState | null = null;
   private applying: Promise<void> = Promise.resolve();
   private readonly seeing = new Seeing({
-    audio: (): CallAudioPref => this.audio,
+    audio: (): CallAudio => this.audio,
     send: (message): void => {
       this.send(message);
     },
@@ -88,13 +89,28 @@ export class NativeCallEngine implements CallEngine {
     this.request = next;
     this.announced = false;
     this.lostFrom = null;
+    const running = assistantCallCan('attachAssistantCall') ? attachAssistantCall() : null;
     changeCall(() => ({
       ...IDLE_CALL,
       phase: 'connecting',
-      callId: randomUUID(),
-      startedAt: Date.now(),
+      callId: running === null ? randomUUID() : running.callId,
+      startedAt: running === null ? Date.now() : running.startedAt,
       chatId: next.chatId,
+      muted: running?.muted === true,
     }));
+    this.listen();
+    if (running !== null) {
+      running.replay.forEach((json) => {
+        this.receive(json);
+      });
+      return;
+    }
+    this.open(next).catch((error: unknown) => {
+      this.fail('The assistant could not start', error);
+    });
+  };
+
+  private listen(): void {
     this.listeners = addAssistantCallListeners({
       message: (json) => {
         this.receive(json);
@@ -109,10 +125,7 @@ export class NativeCallEngine implements CallEngine {
         this.control(action);
       },
     });
-    this.open(next).catch((error: unknown) => {
-      this.fail('The assistant could not start', error);
-    });
-  };
+  }
 
   readonly end = (): void => {
     this.finish('hung_up', null, null, callState.get().callId);
@@ -136,11 +149,9 @@ export class NativeCallEngine implements CallEngine {
     return microphone.granted;
   };
 
-  readonly inputLevel = (): number => (callActive(callState.get()) ? assistantCallLevel() : 0);
+  readonly levels: LevelFeed = NATIVE_LEVELS;
 
-  readonly outputLevel = (): number => 0;
-
-  readonly applyAudio = (pref: CallAudioPref): void => {
+  readonly applyAudio = (pref: CallAudio): void => {
     const previous = this.audio;
     this.audio = pref;
     if (!assistantCallCan('applyAssistantCallAudio')) {
@@ -273,13 +284,6 @@ export class NativeCallEngine implements CallEngine {
 
   private control(action: CallControl): void {
     switch (action) {
-      case 'toggle_mute':
-        this.mute(!callState.get().muted);
-        return;
-      case 'end':
-        this.end();
-        return;
-      case 'stop_screen':
       case 'screen_ended':
         this.seeing.stopScreen();
         return;
@@ -340,7 +344,7 @@ export class NativeCallEngine implements CallEngine {
     });
   }
 
-  private async applyLive(previous: CallAudioPref, next: CallAudioPref): Promise<void> {
+  private async applyLive(previous: CallAudio, next: CallAudio): Promise<void> {
     await applyAssistantCallAudio(nativeAudioOf(next)).catch((error: unknown) => {
       this.settingFailed('call.audio_apply_failed', error);
     });

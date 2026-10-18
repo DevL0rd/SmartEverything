@@ -23,12 +23,12 @@ export function timeZoneOptions(): readonly SelectOption<string>[] | null {
   return zones;
 }
 
-export function sunText(point: GeoPoint, timeZone: string, now: Date): string {
+export function sunLines(point: GeoPoint, timeZone: string, now: Date): readonly string[] {
   const today = localClock(now, timeZone);
   const rise = sunEventOn('sunrise', today, point);
   const set = sunEventOn('sunset', today, point);
   if (rise === null || set === null) {
-    return 'No sunrise or sunset today';
+    return ['No sunrise or sunset today'];
   }
-  return `Sunrise ${clock(rise, timeZone)} · Sunset ${clock(set, timeZone)}`;
+  return [`Sunrise ${clock(rise, timeZone)}`, `Sunset ${clock(set, timeZone)}`];
 }

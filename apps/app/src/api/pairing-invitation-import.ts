@@ -1,5 +1,5 @@
 import { Linking } from 'react-native';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { parsePairingInvitation, type PairingInvitationParse } from '@smarteverything/domain';
 import { ValueStore } from '../design/external-store';
 import { appPlatform, desktopBridge } from '../design/platform';
@@ -9,7 +9,7 @@ export const pendingPairingInvitation = new ValueStore<PairingInvitationParse | 
 export function clearPairingInvitation(): void {
   pendingPairingInvitation.set(null);
 }
-export function importPairingInvitation(text: string): PairingInvitationParse {
+function importPairingInvitation(text: string): PairingInvitationParse {
   if (appPlatform() !== 'android' && window.location.hash !== '') {
     window.history.replaceState(
       window.history.state,
@@ -45,15 +45,21 @@ export function followPairingInvitations(imported: () => void): () => void {
   const bridge = desktopBridge();
   const desktop = bridge?.onDeepLink(receive);
   if (bridge !== null)
-    void bridge.takePendingDeepLinks().then((links) => {
-      links.forEach(receive);
-    }, failed);
+    background(
+      bridge.takePendingDeepLinks().then((links) => {
+        links.forEach(receive);
+      }, failed),
+      'pending_deep_links.take_failed',
+    );
   const native = Linking.addEventListener('url', ({ url }) => {
     receive(url);
   });
-  void Linking.getInitialURL().then((url) => {
-    if (url !== null) receive(url);
-  }, failed);
+  background(
+    Linking.getInitialURL().then((url) => {
+      if (url !== null) receive(url);
+    }, failed),
+    'initial_url.get_failed',
+  );
   if (
     appPlatform() !== 'android' &&
     window.location.pathname === '/pair' &&

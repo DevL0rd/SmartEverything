@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { usePushDeliveries } from '../../../api/diagnostics';
 import {
@@ -12,64 +11,40 @@ import { confirm } from '../../../components/confirm-store';
 import { ListRow } from '../../../components/list-row';
 import { ActionRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
-import { notify } from '../../../components/toast-store';
+import { notify, notifyFailure } from '../../../components/toast-store';
 import { jsonText } from '../../../format/json-text';
 import { relative } from '../../../format/time';
 import { pickTextFile } from '../../../platform/text-file';
-import { useMinute } from '../../../store/clock';
+import { useMinuteOf } from '../../../store/clock';
+import { useMutationState } from '../../../store/mutation';
 import { useSettings } from '../../../store/selectors';
 
+import { settingsLog, trackSetting } from '../settings-log';
 export const FIREBASE_PAGE = 'notifications/push-service/firebase';
 
-function failed(message: string): (error: unknown) => void {
-  return (error) => {
-    notify({
-      message,
-      error,
-      tone: 'critical',
-    });
-  };
-}
+const KEY_FAILURE = { failure: 'The key was not saved' } as const;
 
 async function saveKey(read: () => Promise<string | null>): Promise<boolean> {
   const text = await read();
   if (text === null) {
+    settingsLog.debug('push_key.pick_cancelled');
     return false;
   }
   const parsed = jsonText(text);
   if (!parsed.ok) {
+    settingsLog.warn('push_key.not_json', { length: text.length });
     throw new ServiceAccountError('it is not JSON');
   }
   const account = serviceAccountOf(parsed.value);
-  await savePushAccount(account);
+  await trackSetting('push_key.save', { projectId: account.project_id }, () =>
+    savePushAccount(account),
+  );
   notify({
     message: 'Key saved',
     detail: `${account.project_id} · ${account.client_email}`,
     tone: 'positive',
   });
   return true;
-}
-
-function useSaving(): {
-  readonly busy: boolean;
-  readonly run: (read: () => Promise<string | null>) => void;
-} {
-  const [busy, setBusy] = useState(false);
-  return {
-    busy,
-    run: (read): void => {
-      setBusy(true);
-      saveKey(read).then(
-        () => {
-          setBusy(false);
-        },
-        (error: unknown) => {
-          setBusy(false);
-          failed('The key was not saved')(error);
-        },
-      );
-    },
-  };
 }
 
 function deliverySummary(
@@ -92,7 +67,10 @@ function deliverySummary(
 export function PushStatusRow(): ReactNode {
   const project = useSettings().push_project_id;
   const deliveries = usePushDeliveries();
-  const summary = deliverySummary(deliveries, useMinute());
+  const summary = useMinuteOf(
+    (now) => deliverySummary(deliveries, now),
+    (left, right) => left.text === right.text && left.tone === right.tone,
+  );
   return (
     <ListRow
       title="Alerts when the app is closed"
@@ -113,13 +91,14 @@ export function PushStatusRow(): ReactNode {
 export function PushPurposeRow(): ReactNode {
   return (
     <Text variant="footnote" tone="variant" className="px-4">
-      Lets your hub send call alerts to your phone through Firebase.
+      Lets your hub send call alerts to your phone through Firebase while the app is closed. While
+      the app is running, alerts reach your phone without it.
     </Text>
   );
 }
 
 export function ChooseKeyRow(): ReactNode {
-  const saving = useSaving();
+  const saving = useMutationState();
   return (
     <ActionRow
       title="Import key file"
@@ -127,14 +106,17 @@ export function ChooseKeyRow(): ReactNode {
       icon="key"
       disabled={saving.busy}
       onPress={() => {
-        saving.run(() => pickTextFile('application/json,application/octet-stream'));
+        saving.run(
+          () => saveKey(() => pickTextFile('application/json,application/octet-stream')),
+          KEY_FAILURE,
+        );
       }}
     />
   );
 }
 
 export function PasteKeyRow(): ReactNode {
-  const saving = useSaving();
+  const saving = useMutationState();
   return (
     <ActionRow
       title="Paste instead"
@@ -142,7 +124,7 @@ export function PasteKeyRow(): ReactNode {
       icon="copy"
       disabled={saving.busy}
       onPress={() => {
-        saving.run(() => Clipboard.getStringAsync());
+        saving.run(() => saveKey(() => Clipboard.getStringAsync()), KEY_FAILURE);
       }}
     />
   );
@@ -161,8 +143,10 @@ export function ForgetKeyRow(): ReactNode {
           confirmLabel: 'Forget',
           tone: 'destructive',
         })
-          .then((accepted) => (accepted ? clearPushAccount() : undefined))
-          .catch(failed('The key was not forgotten'));
+          .then((accepted) =>
+            accepted ? trackSetting('push_key.forget', {}, () => clearPushAccount()) : undefined,
+          )
+          .catch(notifyFailure('The key was not forgotten'));
       }}
     />
   );

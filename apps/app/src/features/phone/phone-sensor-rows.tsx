@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
 import {
   phoneCarCandidates,
   type PhoneCar,
@@ -9,13 +8,19 @@ import { ListRow } from '../../components/list-row';
 import { SelectRow } from '../../components/rows';
 import { List } from '../../components/section';
 import { rawErrorText } from '../../format/errors';
+import { useScreenQuery } from '../../queries/use-screen-query';
 import {
+  allowAppUsage,
   allowNavigation,
+  allowNotificationTitles,
   allowScreenTime,
   chooseCar,
   forgetCar,
   switchSensor,
 } from './phone-permissions';
+import { background } from '@smarteverything/logging';
+
+const CAR_CANDIDATES_KEY = ['native', 'phone-car-candidates'] as const;
 
 interface Status {
   readonly status: PhoneNodeStatus;
@@ -38,41 +43,37 @@ function ActivityRow({ status }: Status): ReactNode {
       icon="footprints"
       role="switch"
       checked={on}
-      onPress={() => void switchSensor('activity', !on)}
+      onPress={() => {
+        background(switchSensor('activity', !on), 'sensor.switch_failed');
+      }}
     />
   );
 }
 
-type Candidates =
-  | { readonly kind: 'loading' }
-  | { readonly kind: 'ready'; readonly cars: readonly PhoneCar[] }
-  | { readonly kind: 'failed'; readonly reason: string };
-
-function useCarCandidates(): Candidates {
-  const [candidates, setCandidates] = useState<Candidates>({ kind: 'loading' });
-  useEffect(() => {
-    phoneCarCandidates().then(
-      (cars) => {
-        setCandidates({ kind: 'ready', cars });
-      },
-      (error: unknown) => {
-        setCandidates({ kind: 'failed', reason: rawErrorText(error) });
-      },
-    );
-  }, []);
-  return candidates;
+function useCarCandidates(): {
+  readonly cars: readonly PhoneCar[] | undefined;
+  readonly error: Error | null;
+} {
+  const query = useScreenQuery({
+    queryKey: CAR_CANDIDATES_KEY,
+    queryFn: phoneCarCandidates,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+  return { cars: query.data, error: query.error };
 }
 
 function CarPicker(): ReactNode {
-  const candidates = useCarCandidates();
-  if (candidates.kind !== 'ready' || candidates.cars.length === 0) {
+  const { cars, error } = useCarCandidates();
+  if (cars === undefined || cars.length === 0) {
     return (
       <ListRow
         title="Car Bluetooth"
         subtitle={
-          candidates.kind === 'failed'
-            ? candidates.reason
-            : 'Pair your car with this phone in Android’s Bluetooth settings first'
+          error === null
+            ? 'Pair your car with this phone in Android’s Bluetooth settings first'
+            : rawErrorText(error)
         }
         icon="car"
         disabled
@@ -85,12 +86,14 @@ function CarPicker(): ReactNode {
       subtitle="Knows you’re driving when the phone connects to your car"
       icon="car"
       placeholder="Choose your car"
-      options={candidates.cars.map((car) => ({
+      options={cars.map((car) => ({
         value: car.address,
         label: car.name,
       }))}
       value={null}
-      onChange={(address) => void chooseCar(address)}
+      onChange={(address) => {
+        background(chooseCar(address), 'car.choose_failed');
+      }}
     />
   );
 }
@@ -111,9 +114,18 @@ function CarRows({ status }: Status): ReactNode {
         icon="car"
         role="switch"
         checked={on}
-        onPress={() => void switchSensor('car', !on)}
+        onPress={() => {
+          background(switchSensor('car', !on), 'sensor.switch_failed');
+        }}
       />
-      <ListRow title="Forget this car" icon="trash" destructive onPress={() => void forgetCar()} />
+      <ListRow
+        title="Forget this car"
+        icon="trash"
+        destructive
+        onPress={() => {
+          background(forgetCar(), 'car.forget_failed');
+        }}
+      />
     </>
   );
 }
@@ -130,7 +142,9 @@ function NavigationRow({ status }: Status): ReactNode {
         subtitleTone={on ? 'warning' : 'variant'}
         icon="route"
         chevron
-        onPress={() => void allowNavigation()}
+        onPress={() => {
+          background(allowNavigation(), 'navigation.allow_failed');
+        }}
       />
     );
   }
@@ -141,7 +155,9 @@ function NavigationRow({ status }: Status): ReactNode {
       icon="route"
       role="switch"
       checked={on}
-      onPress={() => void switchSensor('navigation', !on)}
+      onPress={() => {
+        background(switchSensor('navigation', !on), 'sensor.switch_failed');
+      }}
     />
   );
 }
@@ -160,7 +176,9 @@ function ScreenTimeRow({ status }: Status): ReactNode {
         subtitleTone={on ? 'warning' : 'variant'}
         icon="timer"
         chevron
-        onPress={() => void allowScreenTime()}
+        onPress={() => {
+          background(allowScreenTime(), 'screen_time.allow_failed');
+        }}
       />
     );
   }
@@ -171,7 +189,77 @@ function ScreenTimeRow({ status }: Status): ReactNode {
       icon="timer"
       role="switch"
       checked={on}
-      onPress={() => void switchSensor('screen_time', !on)}
+      onPress={() => {
+        background(switchSensor('screen_time', !on), 'sensor.switch_failed');
+      }}
+    />
+  );
+}
+
+function AppUsageRow({ status }: Status): ReactNode {
+  const on = status.sensors.app_usage;
+  if (!status.permissions.usageAccess) {
+    return (
+      <ListRow
+        title="Share app usage"
+        subtitle={
+          on
+            ? 'Off · App usage access is off'
+            : 'Which apps you use. Only you see the names. Android asks you to switch on App usage access.'
+        }
+        subtitleTone={on ? 'warning' : 'variant'}
+        icon="grid"
+        chevron
+        onPress={() => {
+          background(allowAppUsage(), 'app_usage.allow_failed');
+        }}
+      />
+    );
+  }
+  return (
+    <ListRow
+      title="Share app usage"
+      subtitle="Which apps you use. Only you see the names."
+      icon="grid"
+      role="switch"
+      checked={on}
+      onPress={() => {
+        background(switchSensor('app_usage', !on), 'sensor.switch_failed');
+      }}
+    />
+  );
+}
+
+function NotificationTitlesRow({ status }: Status): ReactNode {
+  const on = status.sensors.notification_titles;
+  if (!status.permissions.notificationAccess) {
+    return (
+      <ListRow
+        title="Share notification titles"
+        subtitle={
+          on
+            ? 'Off · Needs notification access'
+            : 'Off: only counts are shared. Message text is never shared. Android asks you to switch on notification access.'
+        }
+        subtitleTone={on ? 'warning' : 'variant'}
+        icon="bell"
+        chevron
+        onPress={() => {
+          background(allowNotificationTitles(), 'notification_titles.allow_failed');
+        }}
+      />
+    );
+  }
+  return (
+    <ListRow
+      title="Share notification titles"
+      subtitle="Off: only counts are shared. Message text is never shared."
+      icon="bell"
+      role="switch"
+      checked={on}
+      onPress={() => {
+        background(switchSensor('notification_titles', !on), 'sensor.switch_failed');
+      }}
     />
   );
 }
@@ -183,6 +271,8 @@ export function SensorRows({ status }: Status): ReactNode {
       <CarRows status={status} />
       <NavigationRow status={status} />
       <ScreenTimeRow status={status} />
+      <AppUsageRow status={status} />
+      <NotificationTitlesRow status={status} />
     </List>
   );
 }

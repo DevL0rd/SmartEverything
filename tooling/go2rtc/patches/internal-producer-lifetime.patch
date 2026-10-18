@@ -1,0 +1,62 @@
+diff --git a/internal/streams/internal_producer_test.go b/internal/streams/internal_producer_test.go
+new file mode 100644
+--- /dev/null
++++ b/internal/streams/internal_producer_test.go
+@@ -0,0 +1,44 @@
++package streams
++
++import (
++	"testing"
++
++	"github.com/AlexxIT/go2rtc/pkg/core"
++	"github.com/stretchr/testify/require"
++)
++
++type playProducer struct {
++	core.Connection
++	stopped int
++}
++
++func (p *playProducer) Start() error { return nil }
++
++func (p *playProducer) Stop() error {
++	p.stopped++
++	return nil
++}
++
++func TestStopProducersKeepsInternalProducer(t *testing.T) {
++	stream := new(Stream)
++	play := &playProducer{}
++	stream.AddInternalProducer(play)
++
++	stream.stopProducers()
++
++	require.Equal(t, 0, play.stopped)
++	require.Len(t, stream.producers, 1)
++	require.Equal(t, stateInternal, stream.producers[0].state)
++	require.Same(t, play, stream.producers[0].conn)
++}
++
++func TestStopProducersStopsIdleStartedProducer(t *testing.T) {
++	stream := new(Stream)
++	conn := &playProducer{}
++	stream.producers = []*Producer{{conn: conn, state: stateTracks, url: "rtsp://camera"}}
++
++	stream.stopProducers()
++
++	require.Equal(t, 1, conn.stopped)
++	require.Equal(t, stateNone, stream.producers[0].state)
++}
+diff --git a/internal/streams/producer.go b/internal/streams/producer.go
+--- a/internal/streams/producer.go
++++ b/internal/streams/producer.go
+@@ -250,6 +250,9 @@ func (p *Producer) stop() {
+ 	case stateExternal:
+ 		log.Trace().Msgf("[streams] skip stop external producer")
+ 		return
++	case stateInternal:
++		log.Trace().Msgf("[streams] skip stop internal producer")
++		return
+ 	case stateNone:
+ 		log.Trace().Msgf("[streams] skip stop none producer")
+ 		return

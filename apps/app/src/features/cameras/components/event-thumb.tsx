@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Image, View } from 'react-native';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../design/theme-scope';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
@@ -80,16 +80,17 @@ export function EventThumb({ uri, kind, clipMs, fill = false }: EventThumbProps)
         <Icon name={look.icon} size={fill ? 32 : 20} tone={look.tone} />
       ) : (
         <Image
+          resizeMethod="resize"
           source={{ uri }}
           accessibilityIgnoresInvertColors
           resizeMode="cover"
           className="absolute inset-0 h-full w-full"
         />
       )}
-      <ScopedTheme theme="dark">
+      <ThemeScope theme="dark">
         {uri === null ? null : <KindChip kind={kind} fill={fill} />}
         {clipMs === null ? null : <DurationPill clipMs={clipMs} fill={fill} />}
-      </ScopedTheme>
+      </ThemeScope>
     </View>
   );
 }

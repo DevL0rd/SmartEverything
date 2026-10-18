@@ -14,6 +14,8 @@ import { SettingsFrame } from '../../../settings/settings-frame';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { chosenLabels, useChosenOptions } from '../data/option-queries';
 import { savePlugin } from '../data/plugin-actions';
+import { useListEdit, type ListEdit } from '../data/use-list-edit';
+import { withToggled, without } from '../model/list-edits';
 import { OptionPickerSheet } from '../picker/option-picker-sheet';
 import { OptionVisual } from '../picker/option-visual';
 import { itemsProblem, listItems, typedItems } from '../model/setting-values';
@@ -36,12 +38,7 @@ function addRequest(
     maxLength: setting.item.maxLength * 20,
     helper: 'Separate several with commas or new lines.',
     problemOf: (text) => itemsProblem(setting, items, text),
-    save: (text) =>
-      savePlugin(
-        row,
-        { settings: { [name]: [...items, ...typedItems(text)] } },
-        `${setting.title} wasn’t saved`,
-      ),
+    save: (text) => savePlugin(row, { settings: { [name]: [...items, ...typedItems(text)] } }),
   };
 }
 
@@ -90,26 +87,15 @@ function EmptyList({ setting }: { readonly setting: PluginListSetting }): ReactN
   );
 }
 
-function removeItem(row: PluginRow, name: string, setting: PluginListSetting, item: string): void {
-  const items = listItems(row, name, setting).filter((other) => other !== item);
-  void savePlugin(row, { settings: { [name]: items } }, `${setting.title} wasn’t saved`);
-}
-
-function toggleItem(row: PluginRow, name: string, setting: PluginListSetting, id: string): void {
-  const items = listItems(row, name, setting);
-  const next = items.includes(id) ? items.filter((other) => other !== id) : [...items, id];
-  void savePlugin(row, { settings: { [name]: next } }, `${setting.title} wasn’t saved`);
-}
-
 function PickToAdd({
   row,
-  name,
   setting,
+  list,
   onClose,
 }: {
   readonly row: PluginRow;
-  readonly name: string;
   readonly setting: PluginListSetting;
+  readonly list: ListEdit;
   readonly onClose: () => void;
 }): ReactNode {
   if (setting.picker === null) {
@@ -121,10 +107,10 @@ function PickToAdd({
       source={setting.picker}
       title={`Add to ${setting.title}`}
       noun={setting.title.toLowerCase()}
-      chosen={listItems(row, name, setting)}
+      chosen={list.items}
       multiple
       onPick={(option) => {
-        toggleItem(row, name, setting, option.id);
+        list.edit((items) => withToggled(items, option.id));
       }}
       onClose={onClose}
     />
@@ -170,14 +156,14 @@ function shownItems(
 
 function Items({
   row,
-  name,
   setting,
+  list,
 }: {
   readonly row: PluginRow;
-  readonly name: string;
   readonly setting: PluginListSetting;
+  readonly list: ListEdit;
 }): ReactNode {
-  const items = listItems(row, name, setting);
+  const { items } = list;
   const known = chosenLabels(useChosenOptions(row, setting.picker ?? '', items));
   const [query, setQuery] = useState('');
   const deferred = useDeferredValue(query).trim().toLowerCase();
@@ -194,7 +180,7 @@ function Items({
           item={item}
           known={setting.picker === null ? null : known}
           onRemove={() => {
-            removeItem(row, name, setting, item);
+            list.edit((current) => without(current, item));
           }}
         />
       )}
@@ -215,45 +201,28 @@ function Items({
   );
 }
 
-function List({
-  row,
-  name,
-  setting,
-}: {
-  readonly row: PluginRow;
-  readonly name: string;
-  readonly setting: PluginListSetting;
-}): ReactNode {
+function useAdder(
+  row: PluginRow,
+  name: string,
+  setting: PluginListSetting,
+  list: ListEdit,
+): { readonly add: () => void; readonly sheets: ReactNode } {
   const [request, setRequest] = useState<TextEditRequest | null>(null);
   const [picking, setPicking] = useState(false);
-  const items = listItems(row, name, setting);
-  return (
-    <SettingsFrame
-      page="plugins"
-      title={setting.title}
-      detail
-      scroll={false}
-      trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
-      primaryAction={{
-        label: 'Add',
-        icon: 'plus',
-        onPress: () => {
-          if (setting.picker === null) {
-            setRequest(addRequest(row, name, setting, items));
-          } else {
-            setPicking(true);
-          }
-        },
-      }}
-    >
-      <View className="w-full max-w-reading flex-1 self-center">
-        <Items row={row} name={name} setting={setting} />
-      </View>
+  const add = (): void => {
+    if (setting.picker === null) {
+      setRequest(addRequest(row, name, setting, list.items));
+    } else {
+      setPicking(true);
+    }
+  };
+  const sheets = (
+    <>
       {picking ? (
         <PickToAdd
           row={row}
-          name={name}
           setting={setting}
+          list={list}
           onClose={() => {
             setPicking(false);
           }}
@@ -265,6 +234,39 @@ function List({
           setRequest(null);
         }}
       />
+    </>
+  );
+  return { add, sheets };
+}
+
+function PluginListPage({
+  row,
+  name,
+  setting,
+}: {
+  readonly row: PluginRow;
+  readonly name: string;
+  readonly setting: PluginListSetting;
+}): ReactNode {
+  const list = useListEdit(
+    listItems(row, name, setting),
+    (next) => savePlugin(row, { settings: { [name]: next } }),
+    `${setting.title} wasn’t saved`,
+  );
+  const { add, sheets } = useAdder(row, name, setting, list);
+  return (
+    <SettingsFrame
+      page="plugins"
+      title={setting.title}
+      detail
+      scroll={false}
+      trail={[{ label: row.manifest.name, href: href.pluginSettings(row.id) }]}
+      primaryAction={{ label: 'Add', icon: 'plus', onPress: add }}
+    >
+      <View className="w-full max-w-reading flex-1 self-center">
+        <Items row={row} setting={setting} list={list} />
+      </View>
+      {sheets}
     </SettingsFrame>
   );
 }
@@ -282,5 +284,5 @@ export function PluginListScreen({
   if (row === null || setting === undefined || declared?.type !== 'list') {
     return <MissingPlugin />;
   }
-  return <List row={row} name={setting} setting={declared} />;
+  return <PluginListPage row={row} name={setting} setting={declared} />;
 }

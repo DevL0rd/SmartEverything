@@ -1,11 +1,12 @@
 import type { Turns } from './chat-turns';
+import { DeviceValueIndex } from './device-values';
+import { deviceValuesRecord, ledgerOfDevice, rawState } from './subscriptions';
 import type {
   AssistantStatus,
   DeviceRow,
   FirewallStatus,
   HubStatus,
   JsonValue,
-  LayoutRow,
   LiveTable,
   McpConsentRequest,
   SettingsRow,
@@ -83,6 +84,7 @@ export interface SyncState {
   readonly seq: number | null;
   readonly problem: string | null;
   readonly outdated: readonly string[];
+  readonly offlineSince: number | null;
 }
 
 export type Session = Snapshot['session'];
@@ -95,15 +97,6 @@ export interface LedgerEntry {
   readonly failure: string | null;
 }
 
-export interface LayoutWrite {
-  readonly request: symbol;
-  readonly scope: string;
-  readonly record: LayoutRow;
-  readonly previous: LayoutRow | null;
-  readonly observedSeq: number;
-  readonly confirmedSeq: number | null;
-}
-
 export interface StoreState {
   readonly loaded: boolean;
   readonly tables: Tables;
@@ -114,7 +107,7 @@ export interface StoreState {
   readonly assistant: AssistantStatus | null;
   readonly turns: Turns;
   readonly session: Session | null;
-  readonly deviceValues: Readonly<Record<string, DeviceValues>>;
+  readonly deviceValues: DeviceValueIndex;
   readonly sync: SyncState;
   readonly hub: HubStatus | null;
   readonly firewall: FirewallStatus | null;
@@ -122,9 +115,6 @@ export interface StoreState {
   readonly serviceLog: readonly string[];
   readonly consentRequests: readonly McpConsentRequest[];
   readonly ledger: Readonly<Record<string, LedgerEntry>>;
-  readonly layoutWrites: Readonly<Record<string, LayoutWrite>>;
-  readonly layoutWriteEpoch: number;
-  readonly layoutWritesSuspended: boolean;
 }
 
 function emptyTable<R>(): Table<R> {
@@ -138,6 +128,7 @@ function emptyTables(): Tables {
     rooms: emptyTable(),
     device_groups: emptyTable(),
     devices: emptyTable(),
+    television_settings: emptyTable(),
     commands: emptyTable(),
     events: emptyTable(),
     cameras: emptyTable(),
@@ -147,7 +138,6 @@ function emptyTables(): Tables {
     scenes: emptyTable(),
     automations: emptyTable(),
     automation_values: emptyTable(),
-    automation_sequences: emptyTable(),
     automation_runs: emptyTable(),
     layouts: emptyTable(),
     push_targets: emptyTable(),
@@ -180,17 +170,20 @@ export function emptyState(): StoreState {
     assistant: null,
     turns: {},
     session: null,
-    deviceValues: {},
-    sync: { status: 'connecting', seq: null, problem: null, outdated: [] },
+    deviceValues: DeviceValueIndex.empty,
+    sync: {
+      status: 'connecting',
+      seq: null,
+      problem: null,
+      outdated: [],
+      offlineSince: Date.now(),
+    },
     hub: null,
     firewall: null,
     smartthingsWebhook: null,
     serviceLog: [],
     consentRequests: [],
     ledger: {},
-    layoutWrites: {},
-    layoutWriteEpoch: 0,
-    layoutWritesSuspended: false,
   };
 }
 
@@ -263,14 +256,14 @@ function pendingValues(reported: DeviceValues, entries: readonly PendingEntry[])
 }
 
 export function deviceValuesOf(state: StoreState, deviceId: string): DeviceValues {
-  const cache = projectedValues.get(state) ?? new Map<string, DeviceValues>();
-  projectedValues.set(state, cache);
+  const reported = deviceValuesRecord(state, deviceId) ?? NO_VALUES;
+  const ledger = ledgerOfDevice(state, deviceId);
+  const raw = rawState(state);
+  const cache = projectedValues.get(raw) ?? new Map<string, DeviceValues>();
+  projectedValues.set(raw, cache);
   const known = cache.get(deviceId);
   if (known !== undefined) return known;
-  const values = pendingValues(
-    state.deviceValues[deviceId] ?? NO_VALUES,
-    entriesByDevice(state.ledger).get(deviceId) ?? [],
-  );
+  const values = pendingValues(reported, entriesByDevice(ledger).get(deviceId) ?? []);
   cache.set(deviceId, values);
   return values;
 }

@@ -12,9 +12,10 @@ import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { plural } from '../../../format/text';
 import { SettingsFrame } from '../../../settings/settings-frame';
-import { savePlugin } from '../data/plugin-actions';
+import { changePlugin } from '../data/plugin-actions';
 import { usePluginTools } from '../data/plugin-queries';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
+import { background } from '@smarteverything/logging';
 
 function reachOf(tool: PluginToolRow): string {
   if (tool.human_only) {
@@ -47,9 +48,12 @@ function ToolRow({
       title={tool.title}
       subtitle={reachOf(tool)}
       value={tool.enabled}
-      onChange={(on) =>
-        void savePlugin(row, { tool_switches: { [tool.name]: on } }, `${tool.title} wasn’t changed`)
-      }
+      onChange={(on) => {
+        background(
+          changePlugin(row, { tool_switches: { [tool.name]: on } }, `${tool.title} wasn’t changed`),
+          'plugin.change_failed',
+        );
+      }}
     />
   );
 }
@@ -64,7 +68,14 @@ function ToolList({ row }: { readonly row: PluginRow }): ReactNode {
     );
   }
   if (tools.isError) {
-    return <ErrorState error={tools.error} retry={() => void tools.refetch()} />;
+    return (
+      <ErrorState
+        error={tools.error}
+        retry={() => {
+          background(tools.refetch(), 'tools.refetch_failed');
+        }}
+      />
+    );
   }
   if (tools.data === undefined) {
     return <Skeleton shape="block" className="mx-gutter h-56" />;

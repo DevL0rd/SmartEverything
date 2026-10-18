@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WIDGET_SIZES } from './board-layout';
+import { WIDGET_SIZE } from './board-layout';
 import { MCP_TOOL_AREAS } from './mcp/areas';
 import type { SignalSourceSpec } from './signal-sources/spec';
 import {
@@ -72,6 +72,7 @@ export const PLUGIN_DATA_STREAM = z.strictObject({
   schema: JSON_OBJECT,
   unit: z.string().min(1).max(20).nullable().default(null),
   history: z.int().min(0).max(200).default(200),
+  live: z.boolean().default(false),
 });
 
 export type PluginDataStream = z.output<typeof PLUGIN_DATA_STREAM>;
@@ -126,7 +127,10 @@ export const WIDGET_SPEC = z.strictObject({
   id: KEY,
   title: TITLE,
   icon: z.string().min(1).max(40),
-  sizes: z.array(z.enum(WIDGET_SIZES)).min(1),
+  sizes: z
+    .array(WIDGET_SIZE)
+    .min(1)
+    .transform((sizes) => [...new Set(sizes)]),
   body: WIDGET_BODY,
 });
 
@@ -185,19 +189,19 @@ export const PLUGIN_STATUSES = [
 
 export type PluginStatus = (typeof PLUGIN_STATUSES)[number];
 
-export const PLUGIN_ROW = z.strictObject({
+export const PLUGIN_ROW = z.object({
   id: PLUGIN_ID,
   manifest: PLUGIN_MANIFEST,
   source: z.enum(PLUGIN_SOURCES),
-  location: z.string().min(1).max(1000).nullable(),
+  location: z.string().min(1).nullable(),
   enabled: z.boolean(),
   trusted: z.boolean(),
   status: z.enum(PLUGIN_STATUSES),
-  status_detail: z.string().max(400).nullable(),
+  status_detail: z.string().nullable(),
   tool_switches: z.record(TOOL, z.boolean()),
   settings: JSON_OBJECT,
   secret_names: z.array(KEY),
-  icon_url: z.string().min(1).max(500).nullable(),
+  icon_url: z.string().min(1).nullable(),
   installed_at: MOMENT,
   updated_at: MOMENT,
 });
@@ -206,50 +210,49 @@ export type PluginRow = z.infer<typeof PLUGIN_ROW>;
 
 export const INBOUND_PRIORITIES = ['normal', 'urgent'] as const;
 
-export const INBOUND_ATTACHMENT = z.strictObject({
-  name: z.string().min(1).max(200),
-  mime: z.string().min(1).max(100),
+export const INBOUND_ATTACHMENT = z.object({
+  name: z.string().min(1),
+  mime: z.string().min(1),
   source: z.discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('url'), url: z.url({ protocol: /^https?$/ }) }),
-    z.strictObject({ kind: z.literal('path'), path: z.string().min(1).max(1000) }),
-    z.strictObject({ kind: z.literal('base64'), data: z.base64().max(14_000_000) }),
+    z.object({ kind: z.literal('url'), url: z.url({ protocol: /^https?$/ }) }),
+    z.object({ kind: z.literal('path'), path: z.string().min(1) }),
+    z.object({ kind: z.literal('base64'), data: z.base64() }),
   ]),
 });
 
-export const PLUGIN_REPLY_FILE = z.strictObject({
-  path: z.string().min(1).max(1000),
-  name: z.string().min(1).max(200),
-  mime: z.string().min(1).max(100),
+export const PLUGIN_REPLY_FILE = z.object({
+  path: z.string().min(1),
+  name: z.string().min(1),
+  mime: z.string().min(1),
 });
 
 export type PluginReplyFile = z.output<typeof PLUGIN_REPLY_FILE>;
 
-export const INBOUND_MESSAGE = z.strictObject({
-  eventId: z.string().min(1).max(200),
-  conversation: z.strictObject({ key: z.string().min(1).max(200), title: TITLE }),
-  text: z.string().max(16_000),
-  from: z.strictObject({
-    id: z.string().min(1).max(200),
-    name: z.string().trim().min(1).max(120),
+export const INBOUND_MESSAGE = z.object({
+  eventId: z.string().min(1),
+  conversation: z.object({ key: z.string().min(1), title: TITLE }),
+  text: z.string(),
+  from: z.object({
+    id: z.string().min(1),
+    name: z.string().trim().min(1),
     trusted: z.boolean().default(false),
   }),
-  attachments: z.array(INBOUND_ATTACHMENT).max(10).default([]),
-  reply: z.strictObject({
+  attachments: z.array(INBOUND_ATTACHMENT).default([]),
+  reply: z.object({
     tool: TOOL,
     eventIdArg: KEY.default('eventId'),
     textArg: KEY.default('text'),
-    idempotencyArg: KEY.nullable().default(null),
     progressArg: KEY.nullable().default(null),
     filesArg: KEY.nullable().default(null),
   }),
-  rule: z.string().max(2000).nullable().default(null),
+  rule: z.string().nullable().default(null),
   voice: z.boolean().default(false),
   priority: z.enum(INBOUND_PRIORITIES).default('normal'),
 });
 
 export type InboundMessage = z.output<typeof INBOUND_MESSAGE>;
 
-export const PLUGIN_DATA_POINT = z.strictObject({
+export const PLUGIN_DATA_POINT = z.object({
   stream: KEY,
   value: JSON_VALUE,
   at: MOMENT,
@@ -257,7 +260,7 @@ export const PLUGIN_DATA_POINT = z.strictObject({
 
 export type PluginDataPoint = z.infer<typeof PLUGIN_DATA_POINT>;
 
-export const PLUGIN_STREAM_ROW = z.strictObject({
+export const PLUGIN_STREAM_ROW = z.object({
   plugin_id: PLUGIN_ID,
   stream: KEY,
   value: JSON_VALUE,
@@ -270,32 +273,29 @@ export function pluginStreamKey(pluginId: string, stream: string): string {
   return `${pluginId}/${stream}`;
 }
 
-export const PLUGIN_EVENT = z.strictObject({
+export const PLUGIN_EVENT = z.object({
   kind: KEY,
-  subject: z.string().min(1).max(200).nullable().default(null),
+  subject: z.string().min(1).nullable().default(null),
   data: JSON_OBJECT.default({}),
 });
 
 export type PluginEvent = z.output<typeof PLUGIN_EVENT>;
 
-export const PLUGIN_SEARCH_ENTRY = z.strictObject({
-  id: z.string().min(1).max(200),
+export const PLUGIN_SEARCH_ENTRY = z.object({
+  id: z.string().min(1),
   title: TITLE,
-  subtitle: z.string().max(120).nullable().default(null),
-  keywords: z.array(z.string().min(1).max(60)).max(20).default([]),
+  subtitle: z.string().nullable().default(null),
+  keywords: z.array(z.string().min(1)).default([]),
   target: z.discriminatedUnion('kind', [
-    z.strictObject({
+    z.object({
       kind: z.literal('device'),
-      externalId: z.string().min(1).max(200),
+      externalId: z.string().min(1),
       section: KEY.nullable().default(null),
-      query: z.record(KEY, z.string().max(200)).default({}),
+      query: z.record(KEY, z.string()).default({}),
     }),
-    z.strictObject({
+    z.object({
       kind: z.literal('path'),
-      path: z
-        .string()
-        .regex(/^\/[^\s?#]*$/, 'an app path starting with /')
-        .max(300),
+      path: z.string().regex(/^\/[^\s?#]*$/, 'an app path starting with /'),
     }),
   ]),
 });

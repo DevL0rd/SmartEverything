@@ -6,6 +6,7 @@ import { Text } from '../components/text';
 import { screenPause } from '../app-shell/screen-pause';
 import { useStackOptions } from '../app-shell/tab-stack';
 import { useSizeClass } from '../design/size-class';
+import { BuiltSettingsPages } from './availability';
 import { SettingsNav } from './settings-nav';
 
 function Master(): ReactNode {
@@ -28,5 +29,9 @@ export function SettingsLayout(): ReactNode {
       screenOptions={split ? { ...options, animation: 'none' } : options}
     />
   );
-  return <MasterDetail master={<Master />} detail={<View className="flex-1">{stack}</View>} />;
+  return (
+    <BuiltSettingsPages>
+      <MasterDetail master={<Master />} detail={<View className="flex-1">{stack}</View>} />
+    </BuiltSettingsPages>
+  );
 }

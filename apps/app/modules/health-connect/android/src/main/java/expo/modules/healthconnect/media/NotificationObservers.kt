@@ -3,6 +3,7 @@ package expo.modules.healthconnect.media
 import android.content.Context
 import android.service.notification.StatusBarNotification
 import expo.modules.healthconnect.phone.PhoneNotificationObserver
+import expo.modules.healthconnect.phone.PhoneNotificationsDetail
 
 interface NotificationObserver {
   fun connected(context: Context)
@@ -13,5 +14,5 @@ interface NotificationObserver {
 }
 
 object NotificationObservers {
-  val ALL: List<NotificationObserver> = listOf(PhoneNotificationObserver)
+  val ALL: List<NotificationObserver> = listOf(PhoneNotificationObserver, PhoneNotificationsDetail)
 }

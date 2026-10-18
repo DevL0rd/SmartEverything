@@ -1,8 +1,8 @@
-export const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000] as const;
+const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000] as const;
 
 const LAST_DELAY_MS = 4000;
 
-export const RECONNECT_WINDOW_MS = 20_000;
+const RECONNECT_WINDOW_MS = 20_000;
 
 export class Reconnect {
   private attempts = 0;

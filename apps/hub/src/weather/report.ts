@@ -8,7 +8,7 @@ import {
   type WeatherRow,
 } from '@smarteverything/domain';
 
-export const NO_LOCATION_MESSAGE =
+const NO_LOCATION_MESSAGE =
   'Set the home’s location in Settings › Home › Location to get the weather.';
 
 export function reportOf(row: WeatherRow, settings: SettingsRow, now: Date): WeatherReport {

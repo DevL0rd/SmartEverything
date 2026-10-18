@@ -2,13 +2,13 @@ import { z } from 'zod';
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm';
 import { SubscriptionProviderError } from './errors';
 
-export const SUBSCRIPTION_USE_PRINCIPAL = z.strictObject({
+const SUBSCRIPTION_USE_PRINCIPAL = z.strictObject({
   profileId: z.string().min(1).max(200),
   source: z.enum(['interactive', 'automation', 'voice', 'camera', 'subagent', 'maintenance']),
   authorizationId: z.string().min(1).max(200),
   sessionId: z.string().min(1).max(200),
 });
-export type SubscriptionUsePrincipal = z.infer<typeof SUBSCRIPTION_USE_PRINCIPAL>;
+type SubscriptionUsePrincipal = z.infer<typeof SUBSCRIPTION_USE_PRINCIPAL>;
 
 export interface SubscriptionUseAuthorizationPort {
   principal(options: GenerateOptions): Promise<SubscriptionUsePrincipal>;

@@ -1,120 +1,81 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { ShellyPresenceDevice, ShellyResources } from '@smarteverything/domain';
+import { shellyOperation, type ShellyAction, type ShellyDevice } from '@smarteverything/shelly';
 import { Button } from '../../components/button';
-import { SwitchRow } from '../../components/rows';
-import { TextField } from '../../components/text-field';
+import { NavRow } from '../../components/rows';
+import { List } from '../../components/section';
+import { ActionRunner, useActionDraft } from './action-runner';
+import { actionAvailable } from './presence-operation';
+import type { ItemEditorContext, ResourceItem } from './resource-list';
 import { ScriptSource } from './script-source';
-import { usePresenceOperation } from './use-presence-operation';
-import { OperationFeedback } from './operation-feedback';
 
-export type ScriptRow = NonNullable<ShellyResources['scripts']>['scripts'][number];
-function ScriptIdentity({
+const SCRIPT_ACTIONS = [
+  'script_config',
+  'script_start',
+  'script_stop',
+  'script_eval',
+  'script_delete',
+] as const satisfies readonly ShellyAction[];
+
+function ScriptAction({
   sensor,
-  row,
+  item,
+  action,
+  back,
+  done,
 }: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly row: ScriptRow;
+  readonly sensor: ShellyDevice;
+  readonly item: ResourceItem;
+  readonly action: ShellyAction;
+  readonly back: () => void;
+  readonly done: () => void;
 }): ReactNode {
-  const [name, setName] = useState(row.name ?? '');
-  const [enable, setEnable] = useState(row.enable === true);
-  const [capturedRevision] = useState(sensor.revision);
-  const operation = usePresenceOperation(sensor);
-  const revision = operation.acceptedRevision ?? capturedRevision;
+  const draft = useActionDraft(action === 'script_config' ? item.initial : {});
   return (
-    <View className="gap-3">
-      <TextField label="Script name" value={name} onChange={setName} />
-      <SwitchRow title="Run on device boot" value={enable} onChange={setEnable} />
-      <Button
-        label="Save script settings"
-        disabled={revision !== sensor.revision}
-        variant="tonal"
-        onPress={() => {
-          void operation.run({
-            action: 'script_config',
-            id: row.id,
-            config: { name, enable },
-            ...(revision === null ? {} : { expectedRevision: revision }),
-          });
-        }}
-      />
-      <OperationFeedback operation={operation} />
-    </View>
-  );
-}
-function ScriptExecution({
-  sensor,
-  id,
-}: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly id: number;
-}): ReactNode {
-  const [expression, setExpression] = useState('');
-  const operation = usePresenceOperation(sensor);
-  return (
-    <View className="gap-3">
-      <View className="flex-row flex-wrap gap-2">
-        <Button
-          label="Start script"
-          icon="play"
-          variant="tonal"
-          onPress={() => {
-            void operation.run({ action: 'script_start', id });
-          }}
-        />
-        <Button
-          label="Stop script"
-          icon="pause"
-          variant="tonal"
-          onPress={() => {
-            void operation.run({ action: 'script_stop', id });
-          }}
-        />
-      </View>
-      <TextField
-        label="Expression to evaluate"
-        multiline
-        value={expression}
-        onChange={setExpression}
-      />
-      <Button
-        label="Evaluate expression"
-        variant="tonal"
-        disabled={expression === ''}
-        onPress={() => {
-          void operation.run({ action: 'script_eval', id, code: expression });
-        }}
-      />
-      <OperationFeedback operation={operation} />
-    </View>
+    <ActionRunner
+      sensor={sensor}
+      action={action}
+      draft={draft}
+      close={back}
+      fixed={item.fixed}
+      done={done}
+      {...(action === 'script_config' ? { wrap: 'config' } : {})}
+    />
   );
 }
 
-export function ScriptEditor({
-  sensor,
-  row,
-  close,
-}: {
-  readonly sensor: ShellyPresenceDevice;
-  readonly row: ScriptRow;
-  readonly close: () => void;
-}): ReactNode {
-  const operation = usePresenceOperation(sensor);
+export function ScriptEditor({ sensor, item, close, reload }: ItemEditorContext): ReactNode {
+  const [action, setAction] = useState<ShellyAction | null>(null);
+  const id = item.fixed['id'];
+  if (action !== null)
+    return (
+      <ScriptAction
+        sensor={sensor}
+        item={item}
+        action={action}
+        back={() => {
+          setAction(null);
+        }}
+        done={() => {
+          reload();
+          if (action === 'script_delete') close();
+        }}
+      />
+    );
   return (
     <View className="gap-section-gap">
-      <ScriptIdentity sensor={sensor} row={row} />
-      <ScriptSource sensor={sensor} id={row.id} />
-      <ScriptExecution sensor={sensor} id={row.id} />
-      <Button
-        label="Delete script"
-        variant="destructive"
-        onPress={() => {
-          void operation.run({ action: 'script_delete', id: row.id }).then((saved) => {
-            if (saved) close();
-          });
-        }}
-      />
-      <OperationFeedback operation={operation} />
+      {typeof id === 'number' ? <ScriptSource sensor={sensor} id={id} /> : null}
+      <List title={item.title}>
+        {SCRIPT_ACTIONS.filter((entry) => actionAvailable(sensor, entry)).map((entry) => (
+          <NavRow
+            key={entry}
+            title={shellyOperation(entry).title}
+            onPress={() => {
+              setAction(entry);
+            }}
+          />
+        ))}
+      </List>
       <Button label="Back" variant="text" onPress={close} />
     </View>
   );

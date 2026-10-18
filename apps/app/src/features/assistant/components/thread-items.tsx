@@ -1,38 +1,41 @@
 import type { ReactElement, ReactNode, RefObject } from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  View,
-  useWindowDimensions,
-  type ListRenderItem,
-} from 'react-native';
+import { Dimensions, FlatList, View, type ListRenderItem } from 'react-native';
 import type { AssistantMessageRow } from '@smarteverything/domain';
-import { useColour } from '../../../design/colour';
+import { ListLoader } from '../../../components/list-loader';
+import { useValue } from '../../../design/external-store';
+import { useOlderLoading } from '../data/history';
+import {
+  RowScope,
+  useRowTracking,
+  type RowVisibility,
+} from '../../../components/virtual-list-visibility';
 import { FloatingDay, JumpPill } from './jump-pill';
 import { MessageBubble } from './message-bubble';
 import { PendingBubble } from './pending-bubble';
 import { useListProbe } from '../../../perf/list-probe';
 import { PerfProbe } from '../../../perf/probe-kit';
 import { StatusAnnouncer } from './status-announcer';
-import type { MessageItem } from '../data/thread';
+import { startsMessage, type MessageItem } from '../data/thread';
 import { initialRowCount, type RowShape } from '../model/initial-rows';
 import type { ThreadRow } from './thread-rows';
 import { ImageOperationBubble } from '../images/components/image-receipts';
 import { useFocusedMessage } from './use-focused-message';
 import {
   AWAY_PX,
+  WINDOW_SIZE,
   unseenOf,
   useIndexScroller,
   useThreadScroll,
   useTopKey,
   type Newest,
+  type TopKey,
   type ThreadScroll,
 } from './use-thread-scroll';
 
 export interface ThreadItemsProps {
   readonly rows: readonly ThreadRow[];
-  readonly loading: boolean;
+  readonly historyKey: string;
   readonly readAt: string | null;
   readonly intro: ReactElement | null;
   readonly focusId: string | null;
@@ -45,11 +48,11 @@ export interface ThreadItemsProps {
 
 const TOP_THIRD = 0.33;
 
-const BATCH = 6;
+const BATCH = 8;
 
-const OPEN_WINDOW = 3;
+const HEAVY_BATCH = 3;
 
-const WARM_MS = 700;
+const PREFETCH_SCREENS = 2;
 
 function shapeOf(row: ThreadRow): RowShape {
   if (row.type === 'image-operation')
@@ -59,43 +62,30 @@ function shapeOf(row: ThreadRow): RowShape {
     : { text: row.message.text, attachments: row.message.attachments.length, embeds: 0 };
 }
 
-function useWindowSize(wanted: number): number {
-  const [warm, setWarm] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setWarm(true);
-    }, WARM_MS);
-    return (): void => {
-      clearTimeout(timer);
-    };
-  }, []);
-  return warm ? wanted : Math.min(wanted, OPEN_WINDOW);
+function hasSegments(rows: readonly ThreadRow[]): boolean {
+  return rows.some((row) => row.type === 'message' && row.segment !== null);
 }
 
-function useListWindow(
-  rows: readonly ThreadRow[],
-  wanted: number,
-): { readonly initialNumToRender: number; readonly windowSize: number } {
-  const { height } = useWindowDimensions();
+function useListWindow(rows: readonly ThreadRow[]): {
+  readonly initialNumToRender: number;
+  readonly windowSize: number;
+  readonly maxToRenderPerBatch: number;
+} {
   const [initialNumToRender] = useState(() =>
-    initialRowCount(rows.slice(0, 10).map(shapeOf), height),
+    initialRowCount(rows.slice(0, 10).map(shapeOf), Dimensions.get('window').height),
   );
-  return { initialNumToRender, windowSize: useWindowSize(wanted) };
-}
-
-function Loader({ loading }: { readonly loading: boolean }): ReactNode {
-  const tint = useColour('primary');
-  return loading ? (
-    <View className="items-center py-4">
-      <ActivityIndicator color={tint} />
-    </View>
-  ) : null;
+  return {
+    initialNumToRender,
+    windowSize: WINDOW_SIZE,
+    maxToRenderPerBatch: hasSegments(rows) ? HEAVY_BATCH : BATCH,
+  };
 }
 
 function spacingOf(row: ThreadRow): string {
   if (row.type !== 'message') {
     return 'pt-2';
   }
+  if (!startsMessage(row)) return 'pt-2.5';
   const startOfRun = row.position === 'first' || row.position === 'only';
   return startOfRun || row.day !== null ? 'pt-6' : 'pt-0.5';
 }
@@ -110,7 +100,8 @@ function sameMessage(left: MessageItem, right: MessageItem): boolean {
     left.latestReply === right.latestReply &&
     left.multiParty === right.multiParty &&
     left.waiting === right.waiting &&
-    left.replied === right.replied
+    left.replied === right.replied &&
+    left.segment === right.segment
   );
 }
 
@@ -177,7 +168,7 @@ function newestOf(rows: readonly ThreadRow[], readAt: string | null): Newest | n
 function newestMessageOf(row: MessageItem, readAt: string | null): Newest {
   const ai = row.speaker.kind === 'ai';
   return {
-    key: row.key,
+    key: row.row.id,
     streaming: row.row.state === 'working' && ai,
     unread: ai && readAt !== null && row.row.created_at > readAt,
     mine: row.speaker.kind === 'me' && row.row.origin?.source === 'app',
@@ -200,10 +191,10 @@ interface ItemsModel {
   readonly scroll: ThreadScroll;
   readonly newestKey: string | null;
   readonly scroller: ReturnType<typeof useIndexScroller>;
-  readonly topKeys: ReturnType<typeof useTopKey>;
+  readonly topKeys: TopKey;
   readonly flashed: string | null;
   readonly unseen: number;
-  readonly dayLabel: string | null;
+  readonly dayOf: ReadonlyMap<string, string>;
 }
 
 function messageOf(row: ThreadRow): MessageItem | null {
@@ -239,7 +230,10 @@ function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>
   const topKeys = useTopKey();
   const keys = useMemo(() => rows.map((row) => row.key), [rows]);
   const messageKeys = useMemo(
-    () => rows.flatMap((row) => (row.type !== 'outbox' ? [row.key] : [])),
+    () =>
+      rows.flatMap((row) =>
+        row.type === 'outbox' || (row.type === 'message' && !startsMessage(row)) ? [] : [row.key],
+      ),
     [rows],
   );
   const dayOf = useMemo(
@@ -253,7 +247,11 @@ function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>
     [rows],
   );
   const focusedKey =
-    rows.find((row) => row.key === focusId || messageOf(row)?.row.id === focusId)?.key ?? focusId;
+    rows.find(
+      (row) =>
+        row.key === focusId ||
+        (messageOf(row)?.row.id === focusId && (row.type !== 'message' || startsMessage(row))),
+    )?.key ?? focusId;
   const flashed = useFocusedMessage({
     keys,
     focusId: focusedKey,
@@ -263,7 +261,6 @@ function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>
     onDone: onFocused,
   });
   useLanding(rows, scroller.scrollTo);
-  const showDay = scroll.away && scroll.active;
   return {
     scroll,
     newestKey: rows.find((row) => row.type !== 'outbox')?.key ?? null,
@@ -271,15 +268,23 @@ function useItemsModel(props: ThreadItemsProps, list: RefObject<FlatList | null>
     topKeys,
     flashed,
     unseen: scroll.away ? unseenOf(messageKeys, scroll.anchor) : 0,
-    dayLabel: showDay ? (dayOf.get(topKeys.topKey ?? '') ?? null) : null,
+    dayOf,
   };
+}
+
+function flashes(row: ThreadRow, flashed: string | null): boolean {
+  return (
+    flashed !== null &&
+    (row.key === flashed ||
+      (row.type === 'message' && row.segment !== null && row.row.id === flashed))
+  );
 }
 
 function keyOf(row: ThreadRow): string {
   return row.key;
 }
 
-function useRenderRow(model: ItemsModel): ListRenderItem<ThreadRow> {
+function useRenderRow(model: ItemsModel, visibility: RowVisibility): ListRenderItem<ThreadRow> {
   const { onNewestLayout } = model.scroll;
   const { newestKey, flashed } = model;
   return useCallback(
@@ -288,23 +293,26 @@ function useRenderRow(model: ItemsModel): ListRenderItem<ThreadRow> {
         {...(item.key === newestKey ? { onLayout: onNewestLayout } : {})}
         className={`w-full max-w-reading self-center ${spacingOf(item)}`}
       >
-        <PerfProbe id="row">
-          <RowView row={item} flash={flashed === item.key} />
-        </PerfProbe>
+        <RowScope rows={visibility} rowKey={item.key}>
+          <PerfProbe id="row">
+            <RowView row={item} flash={flashes(item, flashed)} />
+          </PerfProbe>
+        </RowScope>
       </View>
     ),
-    [newestKey, flashed, onNewestLayout],
+    [newestKey, flashed, onNewestLayout, visibility],
   );
 }
 
 export function ThreadItems(props: ThreadItemsProps): ReactNode {
-  const { rows, loading, intro, onOlder, announced, footer = null } = props;
+  const { rows, historyKey, intro, onOlder, announced, footer = null } = props;
   const list = useRef<FlatList<ThreadRow>>(null);
   const model = useItemsModel(props, list);
   const { scroll } = model;
-  const renderItem = useRenderRow(model);
+  const tracking = useRowTracking(model.topKeys.onViewableItemsChanged);
+  const renderItem = useRenderRow(model, tracking.rows);
   const probe = useListProbe('chat', rows.length);
-  const listWindow = useListWindow(rows, scroll.windowSize);
+  const listWindow = useListWindow(rows);
   return (
     <View className="flex-1" onLayout={scroll.onViewportLayout}>
       <PerfProbe id="flat">
@@ -312,7 +320,6 @@ export function ThreadItems(props: ThreadItemsProps): ReactNode {
           ref={list}
           inverted
           {...listWindow}
-          maxToRenderPerBatch={BATCH}
           data={rows}
           keyExtractor={keyOf}
           keyboardShouldPersistTaps="handled"
@@ -328,32 +335,40 @@ export function ThreadItems(props: ThreadItemsProps): ReactNode {
           onContentSizeChange={scroll.onContentSizeChange}
           scrollEventThrottle={100}
           onEndReached={onOlder}
-          onEndReachedThreshold={0.4}
+          onEndReachedThreshold={PREFETCH_SCREENS}
           onScrollToIndexFailed={model.scroller.onFailed}
-          onViewableItemsChanged={model.topKeys.onViewableItemsChanged}
+          viewabilityConfigCallbackPairs={tracking.pairs}
           ListHeaderComponent={footer}
-          ListFooterComponent={<ThreadEnd loading={loading} intro={intro} />}
+          ListFooterComponent={<ThreadEnd historyKey={historyKey} intro={intro} />}
           contentContainerClassName="px-gutter pb-section-gap"
           renderItem={renderItem}
         />
       </PerfProbe>
-      {model.dayLabel === null ? null : <FloatingDay label={model.dayLabel} />}
+      {scroll.away ? <DayLabel model={model} /> : null}
       {scroll.away ? <JumpPill unseen={model.unseen} onPress={scroll.toBottom} /> : null}
       <StatusAnnouncer row={announced} />
     </View>
   );
 }
 
+function DayLabel({ model }: { readonly model: ItemsModel }): ReactNode {
+  const active = useValue(model.scroll.activity);
+  const topKey = useValue(model.topKeys.store);
+  const label = active ? (model.dayOf.get(topKey ?? '') ?? null) : null;
+  return label === null ? null : <FloatingDay label={label} />;
+}
+
 function ThreadEnd({
-  loading,
+  historyKey,
   intro,
 }: {
-  readonly loading: boolean;
+  readonly historyKey: string;
   readonly intro: ReactElement | null;
 }): ReactNode {
+  const loading = useOlderLoading(historyKey);
   return (
     <>
-      <Loader loading={loading} />
+      <ListLoader loading={loading} />
       {intro}
     </>
   );

@@ -1,12 +1,14 @@
 import type { DeviceCommand, JsonValue } from '@smarteverything/domain';
-import { JSON_VALUE } from '@smarteverything/domain';
+import { z } from 'zod';
 import type { DeviceDriverContext } from '../../../local/device-driver';
 import type { PluginRecords } from '../contract';
+import { jsonOf } from '../json-value';
 import { wizCommand } from './light';
 import { WizPublication } from './publication';
 import { WIZ_OFFLINE_MS, type WizConfig, type WizPilot, type WizSaved } from './protocol';
 import type { WizTransport } from './transport';
-import { z } from 'zod';
+
+const PILOT_ACCEPTED = z.object({ success: z.literal(true) });
 
 function observedPilot(previous: WizPilot, incoming: WizPilot): WizPilot {
   const merged = { ...previous, ...incoming };
@@ -22,43 +24,70 @@ function observedPilot(previous: WizPilot, incoming: WizPilot): WizPilot {
 }
 
 export class WizBulb {
-  private saved: WizSaved;
   private readonly publication = new WizPublication();
   private online = false;
+  private seen = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
-    saved: WizSaved,
+    private saved: WizSaved,
     private readonly records: PluginRecords,
-  ) {
-    this.saved = saved;
-  }
+  ) {}
+
   get current(): WizSaved {
     return this.saved;
   }
+
   get connected(): boolean {
     return this.online;
   }
+
   attach(context: DeviceDriverContext): void {
     this.publication.attach(context);
     this.publish();
   }
-  settled(): Promise<void> {
-    return this.publication.settled();
-  }
-  detach(): void {
+
+  async detach(): Promise<void> {
     this.stop();
+    await this.publication.settled();
     this.publication.detach();
   }
+
   observe(address: string, pilot: WizPilot): void {
+    const moved = address !== this.saved.address;
+    this.seen = true;
     this.saved = { ...this.saved, address, pilot: observedPilot(this.saved.pilot, pilot) };
+    if (moved) this.save();
     this.alive();
-    this.persist();
   }
+
   configure(config: WizConfig): void {
     this.saved = { ...this.saved, config: { ...this.saved.config, ...config } };
-    this.persist();
+    this.save();
+    this.publish();
   }
-  alive(): void {
+
+  acknowledge(): boolean {
+    if (this.seen) this.alive();
+    return this.seen;
+  }
+
+  save(): void {
+    this.records.put(this.saved.mac, jsonOf(this.saved));
+  }
+
+  async execute(command: DeviceCommand, transport: WizTransport): Promise<JsonValue> {
+    const response = await transport.request(
+      this.saved.address,
+      'setPilot',
+      wizCommand(this.saved, command),
+    );
+    PILOT_ACCEPTED.parse(response.result);
+    await transport.request(this.saved.address, 'getPilot', {});
+    return { success: true };
+  }
+
+  private alive(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.online = true;
     this.timer = setTimeout(() => {
@@ -69,24 +98,15 @@ export class WizBulb {
     this.timer.unref();
     this.publish();
   }
-  stop(): void {
-    if (!this.online && this.timer === null) return;
+
+  private stop(): void {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+    if (!this.online) return;
     this.online = false;
     this.publish();
   }
-  async execute(command: DeviceCommand, transport: WizTransport): Promise<JsonValue> {
-    const params = wizCommand(this.saved, command);
-    const response = await transport.request(this.saved.address, 'setPilot', params);
-    z.object({ success: z.literal(true) }).parse(response.result);
-    await transport.request(this.saved.address, 'getPilot', {});
-    return { success: true };
-  }
-  private persist(): void {
-    this.records.put(this.saved.mac, JSON_VALUE.parse(JSON.parse(JSON.stringify(this.saved))));
-    this.publish();
-  }
+
   private publish(): void {
     this.publication.update({
       bulb: this.saved,

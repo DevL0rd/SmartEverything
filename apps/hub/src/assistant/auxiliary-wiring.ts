@@ -1,17 +1,15 @@
 import { ChatTitles } from './titles/chat-titles';
 import { ReplySuggestions } from './suggestions/reply-suggestions';
-import { engineAuxiliary } from './engine-auxiliary';
-import type { EngineRegistry } from './engines/registry';
+import type { SideParts } from './side-completion';
 import type { AssistantServiceOptions, TurnEnded } from './service-contract';
 export function assistantAuxiliaries(
   options: AssistantServiceOptions,
-  engines: EngineRegistry,
+  parts: SideParts,
   onFinished: (listener: TurnEnded) => () => void,
 ): ChatTitles {
   const { store, now, log } = options;
-  const auxiliary = engineAuxiliary(engines, store);
-  const titles = new ChatTitles({ store, now, log, auxiliary });
+  const titles = new ChatTitles({ ...parts, store, now, log });
   onFinished(titles.afterReply);
-  onFinished(new ReplySuggestions({ store, log, auxiliary }).afterReply);
+  onFinished(new ReplySuggestions({ ...parts, store, log }).afterReply);
   return titles;
 }

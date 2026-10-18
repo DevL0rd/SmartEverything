@@ -1,26 +1,28 @@
 import {
   ASSISTANT_MESSAGES_SNAPSHOT,
   API_ENDPOINTS as E,
-  BODY_READINGS_SNAPSHOT,
   HEALTH_METRICS,
   NUTRITION_METRICS,
   WATCH_METRICS,
   SNAPSHOT_WINDOWS,
-  automationRunForReader,
-  automationRunVisible,
   TALK_MESSAGES_SNAPSHOT,
   type ClientRow,
+  type EventRow,
   type OwnerSnapshotTables,
   type SnapshotTables,
 } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
+import { visibleHome, viewerOfClient } from '../../computers/computer-access';
+import { phoneViewerOfClient } from '../../phones/phone-detail';
+import { otherPhoneTiers, visibleEvents, visiblePhoneValues } from '../../phones/phone-visibility';
 import { clientOf, profileIdOf } from '../auth';
 import type { ServerContext } from '../context';
-import { bound, type Bound } from '../router';
-
-type SnapshotRoutes = Record<'readSnapshot', Bound>;
-
-const DAY_MS = 86_400_000;
+import { bound } from '../router';
+import { channelHidden, scopesOfClient } from '../person-scope';
+import { bodyTables } from '../person-privacy';
+import { reachableSnapshot } from '../snapshot-reach';
+import { wireMessages } from '../../assistant/wire-message';
+import { DAY_MS } from '../../metrics/minute';
 
 function dayOf(moment: Date): string {
   return moment.toISOString().slice(0, 10);
@@ -30,40 +32,68 @@ function lastLocalDayOf(now: Date): string {
   return dayOf(new Date(now.getTime() + DAY_MS));
 }
 
+function homeTables(
+  store: Store,
+  client: ClientRow,
+): Pick<SnapshotTables, 'devices' | 'device_state' | 'television_settings'> {
+  const { devices, state } = visibleHome(
+    store,
+    viewerOfClient(store, client),
+    scopesOfClient(store, client)?.devices ?? null,
+    { devices: store.devices.list(), state: store.state.list() },
+  );
+  const tiers = otherPhoneTiers(devices, phoneViewerOfClient(store, client));
+  const visible = new Set(devices.map((device) => device.id));
+  return {
+    devices,
+    device_state: visiblePhoneValues(tiers, state),
+    television_settings: store.televisionSettings
+      .list()
+      .filter((settings) => visible.has(settings.device_id)),
+  };
+}
+
 interface Viewer {
   readonly client: ClientRow;
   readonly profileId: string;
 }
 
-function tablesOf(
+function snapshotEvents(store: Store, { client, profileId }: Viewer): EventRow[] {
+  return visibleEvents(
+    store,
+    { role: client.role, profileId },
+    store.events.list({ limit: SNAPSHOT_WINDOWS.events }),
+  );
+}
+
+interface SnapshotExtras {
+  readonly nutrition: boolean;
+  readonly watch: boolean;
+  readonly weather: boolean;
+}
+
+function unfilteredTablesOf(
   store: Store,
   { client, profileId }: Viewer,
   now: Date,
-  extras: {
-    readonly nutrition: boolean;
-    readonly watch: boolean;
-    readonly weather: boolean;
-    readonly automationRuntime: boolean;
-    readonly groupRuntime: boolean;
-    readonly automationRunDetails: boolean;
-  },
+  extras: SnapshotExtras,
 ): SnapshotTables {
   const firstDay = new Date(now.getTime() - (SNAPSHOT_WINDOWS.healthDailyDays - 1) * DAY_MS);
   return {
     settings: store.settings.read(),
     rooms: store.rooms.list(),
-    devices: store.devices.list(),
-    ...(extras.groupRuntime ? { device_groups: store.deviceGroups.list() } : {}),
-    device_state: store.state.list(),
+    ...homeTables(store, client),
+    device_groups: store.deviceGroups.list(),
     cameras: store.cameras.list(),
     scenes: store.scenes.list(),
     automations: store.automations.list(),
-    ...(extras.automationRuntime ? automationTablesOf(store, extras.automationRunDetails) : {}),
+    automation_values: store.automationValues.list(),
+    automation_runs: store.automationRuns.list(),
     provider_links: store.providers.list(),
     ir_remotes: store.infrared.remotes(),
     ir_codes: store.infrared.codes(),
     layouts: store.personal.layouts({ clientId: client.id, profileId }),
-    events: store.events.list({ limit: SNAPSHOT_WINDOWS.events }),
+    events: snapshotEvents(store, { client, profileId }),
     commands: store.commands.recent(SNAPSHOT_WINDOWS.commands),
     recordings: store.cameras.recordings({ limit: SNAPSHOT_WINDOWS.recordings }),
     health_sources: store.healthSources.list(),
@@ -77,8 +107,7 @@ function tablesOf(
           (extras.watch || !WATCH_METRICS.has(metric)),
       ),
     ),
-    profiles: store.profiles.list(),
-    body_readings: store.bodyReadings.recent(BODY_READINGS_SNAPSHOT),
+    ...bodyTables(store, { role: client.role, profileId }),
     scheduled_actions: store.schedules.list(),
     plugin_streams: store.pluginData.streams(),
     exchange_rates: store.exchangeRates.read(),
@@ -86,28 +115,27 @@ function tablesOf(
   };
 }
 
-function automationTablesOf(
+function tablesOf(
   store: Store,
-  details: boolean,
-): Pick<SnapshotTables, 'automation_values' | 'automation_runs' | 'automation_sequences'> {
-  return {
-    automation_values: store.automationValues.list(),
-    ...(details ? { automation_sequences: store.automationSequences.list() } : {}),
-    automation_runs: store.automationRuns
-      .list()
-      .filter((run) => automationRunVisible(run, details))
-      .map((run) => automationRunForReader(run, details)),
-  };
+  viewer: Viewer,
+  now: Date,
+  extras: Parameters<typeof unfilteredTablesOf>[3],
+): SnapshotTables {
+  return reachableSnapshot(store, viewer.client, unfilteredTablesOf(store, viewer, now, extras));
 }
 
 function talkTablesOf(
   context: ServerContext,
+  client: ClientRow,
 ): Pick<SnapshotTables, 'talk_channels' | 'talk_members' | 'talk_messages' | 'talk_presence'> {
   const { talk } = context.store;
+  const scope = scopesOfClient(context.store, client)?.channels ?? null;
   return {
-    talk_channels: talk.channels(),
-    talk_members: talk.members(),
-    talk_messages: talk.messages({ limit: TALK_MESSAGES_SNAPSHOT }),
+    talk_channels: talk.channels().filter((row) => !channelHidden(scope, row.id)),
+    talk_members: talk.members().filter((row) => !channelHidden(scope, row.channel_id)),
+    talk_messages: talk
+      .messages({ limit: TALK_MESSAGES_SNAPSHOT })
+      .filter((row) => !channelHidden(scope, row.channel_id)),
     talk_presence: context.talk.presence(),
   };
 }
@@ -117,7 +145,9 @@ function assistantTablesOf(
   profileId: string,
 ): Pick<SnapshotTables, 'assistant_messages' | 'assistant_status' | 'ai_chats' | 'chat_activity'> {
   return {
-    assistant_messages: context.store.assistantChat.recent(profileId, ASSISTANT_MESSAGES_SNAPSHOT),
+    assistant_messages: wireMessages(
+      context.store.assistantChat.recent(profileId, ASSISTANT_MESSAGES_SNAPSHOT),
+    ),
     assistant_status: context.assistant.status(),
     ai_chats: context.store.aiChats.chats({ profileId, archived: false }),
     chat_activity: context.assistant.activity(profileId),
@@ -131,30 +161,28 @@ function ownerTablesOf(store: Store, client: ClientRow): OwnerSnapshotTables | n
   return {
     clients: store.clients.list(),
     push_targets: store.personal.pushTargets(),
-    mcp_tokens: store.assistant.tokens(),
-    oauth_clients: store.assistant.grants(),
+    mcp_tokens: store.oauth.personalTokens(),
+    oauth_clients: store.oauth.grants(),
     plugins: store.plugins.list(),
   };
 }
 
-export function snapshotRoutes(context: ServerContext, now: () => Date): SnapshotRoutes {
-  const { store } = context;
-  return {
+export const snapshotRoutes = (context: ServerContext, now: () => Date) =>
+  ({
     readSnapshot: bound(E.readSnapshot, async ({ caller, query }) => {
       const client = clientOf(caller);
-      const profileId = profileIdOf(store, caller);
+      const profileId = profileIdOf(context.store, caller);
       const firewall = await context.firewall.current();
       return {
-        seq: store.feed.seq,
+        seq: context.store.feed.seq,
         session: { client, hub: context.status() },
         firewall,
         tables: {
-          ...tablesOf(store, { client, profileId }, now(), query),
-          ...(query.talk ? talkTablesOf(context) : {}),
+          ...tablesOf(context.store, { client, profileId }, now(), query),
+          ...(query.talk ? talkTablesOf(context, client) : {}),
           ...(query.assistant ? assistantTablesOf(context, profileId) : {}),
         },
-        owner: ownerTablesOf(store, client),
+        owner: ownerTablesOf(context.store, client),
       };
     }),
-  };
-}
+  }) as const;

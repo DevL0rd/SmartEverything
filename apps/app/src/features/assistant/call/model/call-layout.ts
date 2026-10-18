@@ -1,8 +1,8 @@
 import type { Idiom } from '../../../../design/tokens';
 
-export type CallLayoutKind = 'column' | 'side';
+type CallLayoutKind = 'column' | 'side';
 
-export type SettingsPlacement = 'sheet' | 'panel';
+type SettingsPlacement = 'sheet' | 'panel';
 
 export interface CallLayoutInput {
   readonly width: number;

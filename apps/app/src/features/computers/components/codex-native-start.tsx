@@ -86,10 +86,10 @@ function StartModel({
         }}
       />
       <SelectRow
-        title="Thinking effort"
+        title="Thinking"
         value={effort ?? ''}
         options={[
-          { value: '', label: 'Runtime default' },
+          { value: '', label: 'Default' },
           ...(model?.efforts ?? []).map((value) => ({ value, label: value })),
         ]}
         onChange={(value) => {
@@ -119,7 +119,7 @@ function StartButton({
 }): ReactNode {
   return (
     <Button
-      label="Start native Codex session"
+      label="Start Codex session"
       loading={execute.isPending}
       disabled={
         model === undefined ||
@@ -152,8 +152,7 @@ function StartOptions({
     <>
       <CodexOptions options={options} save={setOptions} pending={false} disabled={blocked} />
       <Text tone="variant">
-        Saved options above apply to this native start. An empty folder creates a private workspace
-        on this computer.
+        Uses the options above. Leave the folder empty to use a new private folder.
       </Text>
     </>
   );

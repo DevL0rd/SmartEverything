@@ -5,11 +5,13 @@ import type { IconName } from './icon-glyphs';
 import { Interactive } from './interactive';
 import { Text } from './text';
 import { cn } from '../design/cn';
+import { count as formatCount } from '../format/number';
 
 export interface FilterChipProps {
   readonly label: string;
   readonly value: string;
   readonly icon: IconName;
+  readonly count?: number;
   readonly active: boolean;
   readonly onPress: () => void;
   readonly anchorRef?: RefObject<View | null>;
@@ -19,6 +21,7 @@ export function FilterChip({
   label,
   value,
   icon,
+  count,
   active,
   onPress,
   anchorRef,
@@ -26,7 +29,7 @@ export function FilterChip({
   return (
     <View ref={anchorRef}>
       <Interactive
-        label={`${label}: ${value}`}
+        label={`${label}: ${value}${count === undefined ? '' : `, ${formatCount(count)}`}`}
         selected={active}
         onPress={onPress}
         className={cn(
@@ -44,6 +47,11 @@ export function FilterChip({
         >
           {value}
         </Text>
+        {count === undefined ? null : (
+          <Text variant="label" tone="variant" className="tabular">
+            {formatCount(count)}
+          </Text>
+        )}
         <Icon name="chooser" size={16} tone="faint" />
       </Interactive>
     </View>

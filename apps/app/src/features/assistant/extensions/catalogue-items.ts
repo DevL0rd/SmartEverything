@@ -1,20 +1,11 @@
 import type { AiHarnessExtensions, HarnessExtensionItem } from '@smarteverything/domain';
 import type { Href } from 'expo-router';
 import type { IconName } from '../../../components/icon';
-import { extensionIcon, matchesExtension } from './items';
+import { extensionIcon, matchesExtension, pageKind } from './items';
 import { bundledSkillHref, extensionHref } from './links';
 
 export type CatalogueItem =
   HarnessExtensionItem | NonNullable<AiHarnessExtensions['bundled_skills']>[number];
-
-export function catalogueItems(
-  catalogue: AiHarnessExtensions | undefined,
-  kind: 'extension' | 'skill',
-): readonly CatalogueItem[] {
-  if (catalogue === undefined) return [];
-  const items = catalogue.items.filter((item) => item.kind === kind);
-  return kind === 'skill' ? [...(catalogue.bundled_skills ?? []), ...items] : items;
-}
 
 export function matchesCatalogueItem(item: CatalogueItem, query: string): boolean {
   return item.kind === 'bundled_skill'
@@ -29,5 +20,7 @@ export function catalogueItemIcon(item: CatalogueItem): IconName {
 }
 
 export function catalogueItemHref(item: CatalogueItem): Href {
-  return item.kind === 'bundled_skill' ? bundledSkillHref(item.id) : extensionHref(item.id);
+  return item.kind === 'bundled_skill'
+    ? bundledSkillHref(item.id)
+    : extensionHref(item.id, pageKind(item));
 }

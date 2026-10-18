@@ -87,7 +87,7 @@ function OpenMenu(props: MenuProps & { readonly anchor: Rect }): ReactNode {
   return touch && !split ? <SheetMenu {...props} /> : <PopoverMenu {...props} touch={touch} />;
 }
 
-function Menu(props: MenuProps): ReactNode {
+export function Menu(props: MenuProps): ReactNode {
   const { anchor } = props;
   return anchor === null ? null : <OpenMenu {...props} anchor={anchor} />;
 }
@@ -104,16 +104,17 @@ function pressAnchor(event: GestureResponderEvent | undefined): Rect {
     : pointRect(event.nativeEvent.pageX, event.nativeEvent.pageY);
 }
 
-export function useContextMenu(
-  items: readonly MenuItem[],
-  label = 'Actions',
-  options: MenuOptions = {},
-): ContextMenu {
+export interface MenuTrigger {
+  readonly anchor: Rect | null;
+  readonly onLongPress: (event?: GestureResponderEvent) => void;
+  readonly onContextMenu: (point: Point) => void;
+  readonly close: () => void;
+}
+
+export function useMenuTrigger(): MenuTrigger {
   const [anchor, setAnchor] = useState<Rect | null>(null);
-  if (items.length === 0) {
-    return { onLongPress: undefined, onContextMenu: undefined, host: null };
-  }
   return {
+    anchor,
     onLongPress: (event): void => {
       heavyThud();
       setAnchor(pressAnchor(event));
@@ -121,15 +122,31 @@ export function useContextMenu(
     onContextMenu: (point): void => {
       setAnchor(pointRect(point.x, point.y));
     },
+    close: (): void => {
+      setAnchor(null);
+    },
+  };
+}
+
+export function useContextMenu(
+  items: readonly MenuItem[],
+  label = 'Actions',
+  options: MenuOptions = {},
+): ContextMenu {
+  const trigger = useMenuTrigger();
+  if (items.length === 0) {
+    return { onLongPress: undefined, onContextMenu: undefined, host: null };
+  }
+  return {
+    onLongPress: trigger.onLongPress,
+    onContextMenu: trigger.onContextMenu,
     host: (
       <Menu
         items={items}
         options={options}
-        anchor={anchor}
+        anchor={trigger.anchor}
         label={label}
-        onClose={() => {
-          setAnchor(null);
-        }}
+        onClose={trigger.close}
       />
     ),
   };

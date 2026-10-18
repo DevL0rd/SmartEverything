@@ -14,7 +14,7 @@ import {
 import { z } from 'zod';
 import { found, moment, type StoreContext } from '../context';
 import { dailyFigures } from '../health-daily';
-import { jsonText } from '../sql';
+import { inList, jsonText } from '../sql';
 import { HealthDaily } from './health-daily-rows';
 import type { WatchDaysRepository } from './watch-days';
 
@@ -142,16 +142,16 @@ export class HealthRecordsRepository {
   }
 
   records(window: RecordWindow, profileId: string): HealthRecord[] {
-    const types = window.types.map((_type, index) => `$type${String(index)}`);
+    const types = inList('record_type', 'types', window.types);
     return this.context.sql.all(
       STORED_RECORD,
       `select ${RECORD_COLUMNS} from health_records
-       where deleted = 0 and profile_id = $profileId and record_type in (${types.join(', ')})
+       where deleted = 0 and profile_id = $profileId and ${types.text}
          and start_time < $to
          and (end_time >= $from or start_time >= $from)
        order by start_time, record_id`,
       {
-        ...Object.fromEntries(window.types.map((type, index) => [`type${String(index)}`, type])),
+        ...types.parameters,
         from: moment(window.from),
         to: moment(window.to),
         profileId,

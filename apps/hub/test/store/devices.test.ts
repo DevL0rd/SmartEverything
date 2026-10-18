@@ -101,15 +101,32 @@ describe('devices', () => {
     ]);
   });
 
-  it('creates missing rooms by name and reuses existing ones', () => {
+  it('matches names to existing rooms only and never creates one', () => {
     const { store } = opened;
     const hall = store.rooms.create('Hall', 3);
-    const rooms = store.rooms.ensureNames(['Hall', 'Study']);
-    expect(rooms.get('Hall')).toBe(hall.id);
-    expect(store.rooms.list().map((room) => [room.name, room.position])).toStrictEqual([
-      ['Study', 0],
-      ['Hall', 3],
+    const rooms = store.rooms.matchNames(['hall ', 'Study']);
+    expect(rooms.get('hall ')).toBe(hall.id);
+    expect(rooms.has('Study')).toBe(false);
+    expect(store.rooms.list().map((room) => room.name)).toStrictEqual(['Hall']);
+  });
+
+  it('reads one current value by device and capability, including null', () => {
+    const { store } = opened;
+    const [plug] = store.devices.upsert([discovered()]);
+    const id = plug?.id ?? '';
+    expect(store.state.value(id, 'power')).toBeUndefined();
+    store.state.write([
+      {
+        deviceId: id,
+        capability: 'power',
+        value: { on: true },
+        observedAt: '2026-10-08T08:00:00Z',
+      },
+      { deviceId: id, capability: 'mode', value: null, observedAt: '2026-10-08T08:00:00Z' },
     ]);
+    expect(store.state.value(id, 'power')).toStrictEqual({ on: true });
+    expect(store.state.value(id, 'mode')).toBeNull();
+    expect(store.state.value(id, 'other')).toBeUndefined();
   });
 
   it('records history only when a value changes and keeps the latest value', () => {

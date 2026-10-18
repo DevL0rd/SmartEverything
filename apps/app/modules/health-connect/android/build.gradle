@@ -1,6 +1,7 @@
 plugins {
   id 'com.android.library'
   id 'expo-module-gradle-plugin'
+  id 'org.jetbrains.kotlin.plugin.serialization' version '2.1.20'
 }
 
 group = 'expo.modules.healthconnect'
@@ -12,20 +13,97 @@ android {
     versionCode 1
     versionName '0.1.0'
   }
+  sourceSets {
+    main {
+      assets.srcDir layout.buildDirectory.dir('generated/wakeModel')
+    }
+  }
+  testOptions {
+    unitTests.returnDefaultValues = true
+  }
+}
+
+def wakeModel = tasks.register('syncWakeModel', Sync) {
+  from "${projectDir}/../../../../hub/src/wake-name/wake-name-model"
+  include 'encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt'
+  into layout.buildDirectory.dir('generated/wakeModel/wake-name-model')
+}
+
+tasks.named('preBuild') {
+  dependsOn wakeModel
+}
+
+configurations {
+  detekt
 }
 
 dependencies {
+  detekt "io.gitlab.arturbosch.detekt:detekt-cli:1.23.8"
   implementation "androidx.health.connect:connect-client:1.1.0"
   implementation "androidx.work:work-runtime-ktx:2.12.0"
+  implementation "androidx.lifecycle:lifecycle-process:2.10.0"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+  implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0"
   implementation "com.squareup.okhttp3:okhttp:4.9.2"
   implementation "io.netty:netty-codec-http:4.1.139.Final"
   implementation "io.netty:netty-handler:4.1.139.Final"
-  implementation "io.netty:netty-handler-proxy:4.1.139.Final"
   implementation "io.netty:netty-transport:4.1.139.Final"
-  implementation "com.github.gkonovalov.android-vad:silero:2.0.10"
+  implementation "com.github.k2-fsa.sherpa-onnx:sherpa-onnx:1.13.8"
   implementation "com.google.android.gms:play-services-location:21.3.0"
+  compileOnly "com.facebook.react:react-android"
   compileOnly "com.google.firebase:firebase-messaging:25.0.1"
   compileOnly "host.exp.exponent:expo.modules.notifications:57.0.22"
   compileOnly project(":react-native-webrtc")
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "org.json:json:20250517"
+  testImplementation "io.mockk:mockk:1.14.9"
+}
+
+def detektClasspath = {
+  def debug = android.libraryVariants.find { it.name == 'debug' }
+  (android.bootClasspath + debug.getCompileClasspath(null).files).join(File.pathSeparator)
+}
+
+def detektArguments = {
+  [
+    '--input', "${projectDir}/src/main/java,${projectDir}/src/test/java",
+    '--config', "${projectDir}/detekt.yml",
+    '--baseline', "${projectDir}/detekt-baseline.xml",
+    '--classpath', detektClasspath()
+  ]
+}
+
+tasks.register('detekt', JavaExec) {
+  group = 'verification'
+  classpath = configurations.detekt
+  mainClass = 'io.gitlab.arturbosch.detekt.cli.Main'
+  doFirst { args detektArguments() }
+}
+
+tasks.register('detektBaseline', JavaExec) {
+  group = 'verification'
+  classpath = configurations.detekt
+  mainClass = 'io.gitlab.arturbosch.detekt.cli.Main'
+  doFirst { args detektArguments() + ['--create-baseline'] }
+}
+
+tasks.register('checkKotlinSources') {
+  group = 'verification'
+  def sources = fileTree(dir: "${projectDir}/src", include: '**/*.kt')
+  doLast {
+    def problems = sources.findAll { it.readLines().count { line -> line.trim() } > 400 }
+      .collect { "${it.name}: more than 400 code lines" }
+    if (problems) {
+      throw new GradleException(problems.join('\n'))
+    }
+  }
+}
+
+tasks.register('kotlinGates') {
+  group = 'verification'
+  dependsOn 'detekt', 'checkKotlinSources', 'testDebugUnitTest'
+}
+
+tasks.named('check') {
+  dependsOn 'detekt', 'checkKotlinSources'
 }

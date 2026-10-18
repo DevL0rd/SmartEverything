@@ -15,6 +15,7 @@ import {
   useOpenRouterActions,
   useOpenRouterStatus,
 } from '../data/openrouter';
+import { background } from '@smarteverything/logging';
 
 const LOW_CREDITS_USD = 1;
 
@@ -51,10 +52,10 @@ export function topUp(recheck: () => void): void {
       recheck();
     }
   });
-  void Linking.openURL(OPENROUTER_TOP_UP_URL);
+  background(Linking.openURL(OPENROUTER_TOP_UP_URL), 'url.open_failed');
 }
 
-export function BalanceView({ account }: { readonly account: OpenRouterAccount }): ReactNode {
+function BalanceView({ account }: { readonly account: OpenRouterAccount }): ReactNode {
   const money = useMoney();
   const balance = balanceOf(account);
   if (balance === null) {

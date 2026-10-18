@@ -3,6 +3,7 @@ import {
   HSV_COLOR,
   catalogueEntryOf,
   checkValue,
+  humanizeKey,
   isRawCapability,
   type CapabilityKey,
   type DeviceCapability,
@@ -126,11 +127,6 @@ function claim(rule: CapabilityRule, available: readonly DataPoint[]): Capabilit
   });
 }
 
-function humanized(code: string): string {
-  const words = code.replaceAll('_', ' ').trim();
-  return words === '' ? code : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
-}
-
 function rawKey(point: DataPoint, used: ReadonlySet<string>): CapabilityKey {
   const candidate = `raw:${point.code.toLowerCase().replaceAll(/[^a-z0-9_.:-]/g, '_')}`;
   if (isRawCapability(candidate) && !used.has(candidate)) {
@@ -187,7 +183,7 @@ export function buildDeviceModel(
     const key = rawKey(point, used);
     used.add(key);
     bindings.push(
-      binding(key, point.name ?? humanized(point.code), DIRECT, { point, status: undefined }),
+      binding(key, point.name ?? humanizeKey(point.code), DIRECT, { point, status: undefined }),
     );
   }
   const capabilities = bindings.map((existing) => existing.capability);

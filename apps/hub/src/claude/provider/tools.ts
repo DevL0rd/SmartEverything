@@ -21,7 +21,7 @@ export interface ProviderToolCall {
   readonly input: Record<string, z.infer<typeof JSON_VALUE>>;
 }
 
-export class ProviderToolSchemaError extends Error {
+class ProviderToolSchemaError extends Error {
   override readonly name = 'ProviderToolSchemaError';
 }
 

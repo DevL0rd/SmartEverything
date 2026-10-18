@@ -1,48 +1,41 @@
-import type { ReactNode, ReactElement } from 'react';
+import { useState, type ReactNode, type ReactElement } from 'react';
 import { useIsFocused, useLocalSearchParams } from 'expo-router';
-import { useQueryClient } from '@tanstack/react-query';
-import type { TranscriptHit } from '@smarteverything/domain';
-import { deleteTranscript } from '../../../api/transcripts';
-import { confirm } from '../../../components/confirm-store';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
-import { TranscriptFeed, TRANSCRIPT_READER_PREFIX } from '../../../components/transcript-feed';
+import { Select } from '../../../components/select';
+import { TranscriptFeed } from '../../../components/transcript-feed';
 import { useFeedController } from '../../../queries/transcript-reader/use-feed-controller';
-import { useIsOwner, useSettings } from '../../../store/selectors';
-import { cameraTranscriptPort } from '../data/camera-transcript-port';
+import type { TranscriptSelection } from '../../../queries/transcript-reader/selection';
+import { useTranscriptRemoval } from '../../../queries/transcript-reader/use-transcript-removal';
+import { useSettings } from '../../../store/selectors';
+import { useCameraEntries } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
 import { TranscribeRow } from './transcribe-row';
 
-function useRemove(): ((hit: TranscriptHit) => void) | undefined {
-  const owner = useIsOwner();
-  const client = useQueryClient();
-  if (!owner) return undefined;
-  return (hit): void => {
-    void (async (): Promise<void> => {
-      const accepted = await confirm({
-        title: 'Delete this transcript?',
-        body: `All lines in “${hit.session.title}” are removed for good.`,
-        confirmLabel: 'Delete',
-        tone: 'destructive',
-      });
-      if (!accepted) return;
-      try {
-        await deleteTranscript(hit.session.id);
-        await client.invalidateQueries({
-          queryKey: TRANSCRIPT_READER_PREFIX,
-          predicate: (query) =>
-            query.queryKey[2] === 'camera' &&
-            (query.queryKey[3] === 'all' || query.queryKey[3] === hit.session.source_id),
-        });
-      } catch (error) {
-        notify({ message: 'The transcript wasn’t deleted', error, tone: 'critical' });
-      }
-    })();
-  };
-}
+const ALL_CAMERAS = 'all';
 
-function CameraControls({ entry }: { readonly entry: CameraEntry | undefined }): ReactNode {
-  if (entry?.camera === null || entry === undefined) return null;
+function CameraControls({
+  entry,
+  filter,
+  filterCamera,
+}: {
+  readonly entry: CameraEntry | undefined;
+  readonly filter: string;
+  readonly filterCamera: (cameraId: string) => void;
+}): ReactNode {
+  const entries = useCameraEntries();
+  if (entry === undefined)
+    return (
+      <Select
+        label="Camera"
+        value={filter}
+        onChange={filterCamera}
+        options={[
+          { value: ALL_CAMERAS, label: 'All cameras' },
+          ...entries.map((item) => ({ value: item.device.id, label: item.name })),
+        ]}
+      />
+    );
+  if (entry.camera === null) return null;
   return (
     <List footer="Anyone who can view this camera can read its text. Audio is never kept. Listening pauses in privacy mode, offline, during a call and at the daily budget.">
       <TranscribeRow camera={entry.camera} />
@@ -64,20 +57,25 @@ export function CameraTranscriptFeed({
   readonly maxWidth?: 'dashboard' | 'detail';
 }): ReactNode {
   const { focus } = useLocalSearchParams<{ focus?: string }>();
-  const port = cameraTranscriptPort(entry?.device.id);
-  const remove = useRemove();
-  const focused = useIsFocused();
-  const feed = useFeedController(port, focused);
+  const [filter, filterCamera] = useState(ALL_CAMERAS);
+  const sourceId = entry?.device.id ?? (filter === ALL_CAMERAS ? undefined : filter);
+  const selection: TranscriptSelection = {
+    source: 'camera',
+    ...(sourceId === undefined ? {} : { sourceId }),
+  };
+  const feed = useFeedController(selection, useIsFocused());
   const { time_zone: timeZone } = useSettings();
+  const remove = useTranscriptRemoval();
   return (
     <TranscriptFeed
       feed={feed}
       timeZone={timeZone}
+      grouped={sourceId !== undefined}
       {...(remove === undefined ? {} : { remove })}
       header={header}
       {...(pageHeader === undefined ? {} : { pageHeader })}
       banner={banner}
-      controls={<CameraControls entry={entry} />}
+      controls={<CameraControls entry={entry} filter={filter} filterCamera={filterCamera} />}
       maxWidth={maxWidth}
       focus={focus === 'transcripts' || focus === 'transcript-search'}
       focusSearch={focus === 'transcript-search'}

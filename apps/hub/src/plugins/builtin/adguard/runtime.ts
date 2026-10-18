@@ -7,10 +7,17 @@ import {
 import type { PluginContext, PluginStop } from '../contract';
 import { DeviceMirror } from '../device-mirror';
 import { AdGuardClient } from './adguard-client';
-import { ADGUARD_DRIVER_ID, ADGUARD_EXTERNAL_ID, ADGUARD_MIRROR } from './adguard-device';
+import {
+  ADGUARD_DRIVER_ID,
+  ADGUARD_EXTERNAL_ID,
+  BLOCKED_RATE_KEY,
+  LOOKUPS_RATE_KEY,
+  adguardMirror,
+} from './adguard-device';
 import { adguardSearchEntries, adguardSearchSignature } from './adguard-search';
 import { changeProtection } from './controls';
 import { AdGuardMonitor } from './monitor';
+import type { LookupRate } from './lookup-rates';
 import { importAdGuardFromRouterMonitor } from './router-monitor-import';
 import { PASSWORD_SECRET, type AdGuardSettings } from './settings';
 import { adguardTools } from './tools';
@@ -42,6 +49,12 @@ export function startAdGuard(ctx: Context): PluginStop {
   return startMonitor(ctx, url, new AdGuardClient(url, { user, password }));
 }
 
+function recordRate(ctx: Context, snapshot: AdGuardSnapshot, rate: LookupRate | null): void {
+  if (rate === null) return;
+  ctx.metrics.push(ADGUARD_EXTERNAL_ID, LOOKUPS_RATE_KEY, rate.lookupsPerSecond, snapshot.at);
+  ctx.metrics.push(ADGUARD_EXTERNAL_ID, BLOCKED_RATE_KEY, rate.blockedPerSecond, snapshot.at);
+}
+
 function createMonitor(
   ctx: Context,
   url: string,
@@ -53,9 +66,12 @@ function createMonitor(
     client,
     url,
     log: ctx.log,
+    record: (snapshot, rate): void => {
+      mirror.update(snapshot);
+      if (mirror.attached) recordRate(ctx, snapshot, rate);
+    },
     publish: (snapshot): void => {
       ctx.data.publish(SNAPSHOT_STREAM, snapshot);
-      mirror.update(snapshot);
       const signature = adguardSearchSignature(snapshot.filters);
       if (signature !== searched) {
         searched = signature;
@@ -109,7 +125,7 @@ function registerDevice(
 }
 
 function startMonitor(ctx: Context, url: string, client: AdGuardClient): PluginStop {
-  const mirror = new DeviceMirror(ADGUARD_MIRROR);
+  const mirror = new DeviceMirror(adguardMirror(ctx.metrics));
   const monitor = createMonitor(ctx, url, client, mirror);
   ctx.tools.register(
     adguardTools({

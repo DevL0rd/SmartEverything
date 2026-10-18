@@ -1,122 +1,22 @@
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 export { createRelayLink, relaySupported } from './mse-relay.web';
+import { createPeer } from './camera-peer';
 import {
   PeerError,
-  peerIceServers,
-  stateOfConnection,
   type CameraPeer,
   type CaptureMode,
   type FrameCapture,
   type MediaHandle,
   type PeerOptions,
-  type PeerState,
   type ScreenFill,
 } from './peer-types';
-import {
-  audioSenderOf,
-  gathered,
-  microphoneFor,
-  offeredSdp,
-  type GatheringSource,
-} from './peer-shared';
-
-function gatheringOf(connection: RTCPeerConnection): GatheringSource {
-  return {
-    state: (): string => connection.iceGatheringState,
-    onChange: (listener): void => {
-      connection.addEventListener('icegatheringstatechange', listener);
-    },
-  };
-}
-
-interface Received {
-  readonly onMedia: (listener: (media: MediaHandle) => void) => void;
-  readonly onVideoFlow: (listener: (flowing: boolean) => void) => void;
-}
-
-function watchFlow(
-  track: MediaStreamTrack,
-  listeners: readonly ((flowing: boolean) => void)[],
-): void {
-  const tell = (flowing: boolean): void => {
-    for (const listener of listeners) {
-      listener(flowing);
-    }
-  };
-  track.addEventListener('mute', () => {
-    tell(false);
-  });
-  track.addEventListener('unmute', () => {
-    tell(true);
-  });
-}
-
-function receive(connection: RTCPeerConnection, remote: MediaStream): Received {
-  const media: ((media: MediaHandle) => void)[] = [];
-  const flow: ((flowing: boolean) => void)[] = [];
-  connection.addEventListener('track', (event) => {
-    remote.addTrack(event.track);
-    if (event.track.kind === 'video') {
-      watchFlow(event.track, flow);
-    }
-    for (const listener of media) {
-      listener({ id: remote.id, source: remote });
-    }
-  });
-  return {
-    onMedia: (listener): void => {
-      media.push(listener);
-    },
-    onVideoFlow: (listener): void => {
-      flow.push(listener);
-    },
-  };
-}
-
-async function offerOf(connection: RTCPeerConnection): Promise<string> {
-  await connection.setLocalDescription(await connection.createOffer());
-  await gathered(gatheringOf(connection));
-  return offeredSdp(connection.localDescription?.sdp);
-}
-
-async function captureMicrophone(): Promise<MediaStreamTrack | null> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  return stream.getAudioTracks()[0] ?? null;
-}
 
 export function createCameraPeer(options: PeerOptions): CameraPeer {
-  const connection = new RTCPeerConnection({ iceServers: peerIceServers(options.iceServers) });
-  const sender = audioSenderOf(connection, options.twoWayAudio, options.video);
   const remote = new MediaStream();
-  const microphone = microphoneFor({
-    sender,
-    twoWayAudio: options.twoWayAudio,
-    capture: captureMicrophone,
+  return createPeer(options, (event) => {
+    remote.addTrack(event.track);
+    return remote;
   });
-  const received = receive(connection, remote);
-  const peer: CameraPeer = {
-    offer: () => offerOf(connection),
-    answer: (sdp) => connection.setRemoteDescription({ type: 'answer', sdp }),
-    onMedia: received.onMedia,
-    onVideoFlow: received.onVideoFlow,
-    onState: (listener: (state: PeerState) => void) => {
-      connection.addEventListener('connectionstatechange', () => {
-        listener(stateOfConnection(connection.connectionState));
-      });
-    },
-    setListening: (listening) => {
-      for (const track of remote.getAudioTracks()) {
-        track.enabled = listening;
-      }
-    },
-    setTalking: microphone.setTalking,
-    stats: async () => connection.getStats(),
-    close: () => {
-      microphone.stop();
-      connection.close();
-    },
-  };
-  return peer;
 }
 
 function canvasOf(stream: MediaStream): Promise<HTMLCanvasElement> {
@@ -254,7 +154,5 @@ export function enterPictureInPicture(media: MediaHandle | null): void {
   if (video === undefined) {
     return;
   }
-  video.requestPictureInPicture().catch((error: unknown) => {
-    notify({ message: 'Picture in picture didn’t open', error, tone: 'critical' });
-  });
+  video.requestPictureInPicture().catch(notifyFailure('Picture in picture didn’t open'));
 }

@@ -29,10 +29,14 @@ class HubBrowserPolicy(json: String, private val view: WebView) : AutoCloseable 
   }
   fun allows(value: String): Boolean {
     val parsed = Uri.parse(value)
-    if (parsed.scheme != "https" || parsed.userInfo != null) return false
-    if (origin != null) return parsed.scheme == origin.scheme && parsed.host == origin.host && parsed.port == origin.port
+    if (parsed.userInfo != null) return false
+    if (origin != null) return parsed.scheme == "https" && parsed.host == origin.host && parsed.port == origin.port
     val host = parsed.host?.lowercase() ?: return false
-    return host.contains('.') && !Regex("[0-9.]+").matches(host) && !host.contains(':') && listOf("localhost", "local", "internal", "test", "invalid", "home").none { host == it || host.endsWith(".$it") }
+    return when (parsed.scheme) {
+      "https" -> publicHost(host) || privateNetworkHost(host)
+      "http" -> privateNetworkHost(host)
+      else -> false
+    }
   }
   private fun readProfile(): Any {
     check(!closed) { "The preview profile was closed" }
@@ -55,6 +59,28 @@ class HubBrowserPolicy(json: String, private val view: WebView) : AutoCloseable 
   }
   companion object {
     private val UUID_PATTERN = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+    private val IPV4 = Regex("[0-9]+(\\.[0-9]+){3}")
+    private val NON_PUBLIC_SUFFIXES = listOf("localhost", "local", "internal", "test", "invalid", "home", "lan", "home.arpa")
+    private val PRIVATE_SUFFIXES = listOf("local", "internal", "home", "lan", "home.arpa")
+    private const val UNIQUE_LOCAL_MASK = 0xfe
+    private const val UNIQUE_LOCAL_PREFIX = 0xfc
+
     fun supported(): Boolean = Class.forName("androidx.webkit.WebViewFeature").getMethod("isFeatureSupported", String::class.java).invoke(null, "MULTI_PROFILE") == true
+
+    fun publicHost(host: String): Boolean =
+      host.contains('.') && !host.contains(':') && !IPV4.matches(host) && NON_PUBLIC_SUFFIXES.none { host == it || host.endsWith(".$it") }
+
+    fun privateNetworkHost(host: String): Boolean {
+      val name = host.removePrefix("[").removeSuffix("]")
+      if (IPV4.matches(name) || name.contains(':')) return runCatching { privateAddress(name) }.getOrDefault(false)
+      return name != "localhost" && (!name.contains('.') || PRIVATE_SUFFIXES.any { name.endsWith(".$it") })
+    }
+
+    private fun privateAddress(literal: String): Boolean {
+      val address = HubTrust.literal(literal)
+      if (address.isLoopbackAddress || address.isAnyLocalAddress) return false
+      val uniqueLocal = address.address.size == 16 && (address.address[0].toInt() and UNIQUE_LOCAL_MASK) == UNIQUE_LOCAL_PREFIX
+      return address.isSiteLocalAddress || address.isLinkLocalAddress || uniqueLocal
+    }
   }
 }

@@ -2,19 +2,25 @@ import type { ReactNode, RefObject } from 'react';
 import type { AiChatRow, AiMessageReference } from '@smarteverything/domain';
 import { useComposerState, type ComposerState } from './use-composer-state';
 import { CommandTransientProvider } from '../commands/transient';
-import { useRef, useState } from 'react';
+import { memo, useRef } from 'react';
 import type { TextInput } from 'react-native';
-import { View, useWindowDimensions } from 'react-native';
+import { View } from 'react-native';
+import type { ProfileGateProps } from '../../../components/profile-gate';
+import type { ReasonAction } from '../../../components/reason-line';
 import { useKeyboard, type KeyPress } from '../../../app-shell/shortcuts';
-import { useIdiom } from '../../../design/platform';
 import { useFilePaste } from '../../../platform/file-drop';
+import { DEFAULT_DRAFT_KEY } from '../data/ai-drafts';
+import { draftText, setReferenceDraft, useDraftSelected } from '../data/drafts';
 import { attachFiles } from '../data/uploads';
-import { sendModeOf, showsCounter } from '../model/composer-state';
-import { ComposerAccessoryLayoutProvider } from './composer-accessory-layout';
+import { useAiLayout } from '../shell/use-ai-layout';
+import { AccessoryRow, ComposerSend } from './composer-accessories';
+import { ComposerClassProvider } from './composer-accessory-layout';
 import { ComposerEditor } from './composer-editor';
 import { ComposerField } from './composer-field';
-import { AttachButton, Counter, ExpandButton, QuoteChip } from './composer-extras';
-import { SendButton } from './composer-send';
+import { ComposerStatusLine } from './composer-status';
+import { SuggestionKeys, suggestionKey } from './suggestion-keys';
+import { AttachButton, QuoteChip } from './composer-extras';
+import { QueueTray } from './queue-tray';
 import { ReferenceChips } from '../references/chips';
 import { UploadChips } from './upload-chips';
 
@@ -25,40 +31,35 @@ export type MessageSender = (
   clientMessageId?: string,
 ) => Promise<boolean>;
 
-const EXPAND_LINES = 4;
-
-const EXPAND_CHARS = 240;
-
-const ACCESSORIES_ROW_MIN_WIDTH = 300;
-const COMPACT_ACCESSORIES_AT = 400;
-const COMPACT_PICKER_CHROME = 38;
-interface ActionWidths {
-  readonly attach: number;
-  readonly send: number;
-  readonly expand: number;
-}
-type MeasureAction = (part: keyof ActionWidths, width: number) => void;
-
-function wantsEditor(text: string): boolean {
-  return text.split('\n').length > EXPAND_LINES || text.length > EXPAND_CHARS;
-}
-
 export interface ComposerProps {
   readonly commandChat?: AiChatRow;
   readonly disabled: boolean;
-  readonly sendDisabled?: boolean;
+  readonly reason?: string | null;
+  readonly attachmentReason?: string | null;
   readonly placeholder: string;
   readonly focusOnMount?: boolean;
+  readonly onFocus?: () => void;
   readonly onSent?: () => void;
   readonly draftKey?: string;
   readonly send: MessageSender;
   readonly stop?: (() => void) | null;
   readonly accessory?: ReactNode;
+  readonly tools?: ReactNode;
   readonly rightAccessory?: ReactNode;
+  readonly queueFor?: string;
   readonly offline?: boolean;
   readonly onEditLatest?: (() => void) | null;
   readonly shortcuts?: boolean;
+  readonly steerable?: boolean;
+  readonly profileGate?: ProfileGateProps | null;
+  readonly unsupportedUploads?: ReadonlySet<string>;
+  readonly fixes?: {
+    readonly engine?: readonly ReasonAction[];
+    readonly attachment?: readonly ReasonAction[];
+  };
 }
+
+const NO_UPLOADS: ReadonlySet<string> = new Set();
 
 function useFocusShortcut(input: RefObject<TextInput | null>, enabled: boolean): void {
   useKeyboard((press: KeyPress) => {
@@ -80,18 +81,16 @@ function Field({ config, state }: PartProps): ReactNode {
   return (
     <ComposerField
       input={state.input}
-      text={state.text}
-      setText={state.setText}
+      draftKey={state.draftKey}
       disabled={config.disabled}
       placeholder={config.placeholder}
+      onFocus={config.onFocus}
       selection={state.mentions.selection}
       onSelection={state.mentions.select}
-      onCommandKey={(key): boolean =>
-        state.mentions.handleKey(key) || state.commands.handleKey(key)
-      }
+      onCommandKey={(key): boolean => suggestionKey(key, state.suggestions)}
       onSend={state.send}
       onEscape={() => {
-        if (state.text === '' && stop !== null) {
+        if (draftText(state.draftKey) === '' && stop !== null) {
           stop();
         } else {
           state.input.current?.blur();
@@ -102,130 +101,36 @@ function Field({ config, state }: PartProps): ReactNode {
   );
 }
 
-function Action({ config, state }: PartProps): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  const { stop = null, offline = false } = config;
-  const ready = state.filled && !config.disabled && config.sendDisabled !== true;
-  const mode = sendModeOf(ready, stop !== null, offline);
+function Controls({ config, state }: PartProps): ReactNode {
+  const plain =
+    (config.accessory ?? null) === null &&
+    (config.tools ?? null) === null &&
+    (config.rightAccessory ?? null) === null;
+  if (!plain) {
+    return (
+      <>
+        <View className="flex-row px-2">
+          <Field config={config} state={state} />
+        </View>
+        <AccessoryRow config={config} state={state} />
+      </>
+    );
+  }
   return (
-    <View className="flex-row items-center gap-1">
-      {mode === 'send' && stop !== null && !offline ? (
-        <SendButton mode="stop" onSend={state.send} onStop={stop} shortcut={null} />
-      ) : null}
-      <SendButton
-        mode={mode}
-        onSend={state.send}
-        onStop={() => {
-          stop?.();
-        }}
-        shortcut={pointer ? 'Enter' : null}
-      />
+    <View className="flex-row items-end gap-1">
+      <AttachButton disabled={config.disabled} reason={config.reason ?? null} />
+      <Field config={config} state={state} />
+      <ComposerSend config={config} state={state} />
     </View>
   );
 }
 
-function Rows({ config, state }: PartProps): ReactNode {
-  const [width, setWidth] = useState(0);
-  const [permissionWidth, setPermissionWidth] = useState(100);
-  const { actions, measureAction } = useActionWidths();
-  const { fontScale } = useWindowDimensions();
-  const pointer = useIdiom() === 'pointer';
-  const stacked =
-    config.rightAccessory !== undefined && width / fontScale < ACCESSORIES_ROW_MIN_WIDTH;
-  const compact = width / fontScale < COMPACT_ACCESSORIES_AT;
-  const expand = !pointer && wantsEditor(state.text);
-  const labelWidth = modelLabelWidth({
-    width,
-    permission: permissionWidth,
-    actions,
-    stacked,
-    expand,
-    compact,
-  });
+function ComposerCard({ config, state }: PartProps): ReactNode {
   return (
-    <>
-      <View className="flex-row px-2">
-        <Field config={config} state={state} />
-      </View>
-      {showsCounter(state.text.length) ? (
-        <View className="items-end px-2">
-          <Counter length={state.text.length} />
-        </View>
-      ) : null}
-      <View
-        onLayout={(event): void => {
-          setWidth(event.nativeEvent.layout.width);
-        }}
-        className="gap-1"
-      >
-        <ComposerAccessoryLayoutProvider
-          value={{ compact, modelLabelWidth: labelWidth / fontScale }}
-        >
-          <ComposerAccessories
-            config={config}
-            state={state}
-            stacked={stacked}
-            measurePermission={setPermissionWidth}
-            measureAction={measureAction}
-          />
-        </ComposerAccessoryLayoutProvider>
-      </View>
-    </>
-  );
-}
-function ComposerAccessories({
-  config,
-  state,
-  stacked,
-  measurePermission,
-  measureAction,
-}: PartProps & {
-  readonly stacked: boolean;
-  readonly measurePermission: (width: number) => void;
-  readonly measureAction: MeasureAction;
-}): ReactNode {
-  const pointer = useIdiom() === 'pointer';
-  const expand =
-    !pointer && wantsEditor(state.text) ? (
-      <MeasuredExpand state={state} measure={measureAction} />
-    ) : null;
-  return (
-    <>
-      <View className="flex-row items-center gap-1">
-        <MeasuredAction part="attach" measure={measureAction}>
-          <AttachButton disabled={false} />
-        </MeasuredAction>
-        <View
-          className="shrink-0"
-          onLayout={(event): void => {
-            measurePermission(event.nativeEvent.layout.width);
-          }}
-        >
-          {config.accessory}
-        </View>
-        <View className="flex-1" />
-        {stacked ? null : config.rightAccessory}
-        {stacked ? null : expand}
-        <MeasuredAction part="send" measure={measureAction}>
-          <Action config={config} state={state} />
-        </MeasuredAction>
-      </View>
-      {stacked ? (
-        <View className="flex-row items-center justify-end gap-1">
-          {expand}
-          {config.rightAccessory}
-        </View>
-      ) : null}
-    </>
-  );
-}
-
-function ChatComposerBody({ config, state }: PartProps): ReactNode {
-  const plain =
-    (config.accessory === undefined || config.accessory === null) &&
-    (config.rightAccessory === undefined || config.rightAccessory === null);
-  return (
-    <View className="rounded-xxl border-hairline border-outline-variant bg-surface-2 p-1">
+    <View className="rounded-xxl border-hairline border-outline-variant bg-surface-2 p-2 pb-1">
+      {state.status === null ? null : (
+        <ComposerStatusLine status={state.status} actions={state.statusActions} />
+      )}
       {state.quote === null ? null : (
         <QuoteChip
           quote={state.quote}
@@ -234,140 +139,81 @@ function ChatComposerBody({ config, state }: PartProps): ReactNode {
           }}
         />
       )}
-      {plain ? (
-        <View className="flex-row items-end gap-1">
-          <AttachButton disabled={config.disabled} />
-          <Field config={config} state={state} />
-          <Action config={config} state={state} />
-        </View>
-      ) : (
-        <Rows config={config} state={state} />
-      )}
+      <UploadChips unsupported={config.unsupportedUploads ?? NO_UPLOADS} />
+      <ReferenceChips references={state.references} remove={state.mentions.remove} />
+      <Controls config={config} state={state} />
     </View>
   );
 }
 
-export function Composer(props: ComposerProps): ReactNode {
+function EditorHost({ config, state }: PartProps): ReactNode {
+  return (
+    <ComposerEditor
+      open={state.editor}
+      onClose={() => {
+        state.setEditor(false);
+      }}
+      draftKey={state.draftKey}
+      placeholder={config.placeholder}
+      ready={state.ready}
+      onSend={state.send}
+      mentions={state.mentions}
+      references={state.references}
+    />
+  );
+}
+
+const isFilled = (text: string): boolean => text !== '';
+
+function QueueHost({ config, state }: PartProps): ReactNode {
+  const filled = useDraftSelected(state.draftKey, isFilled);
+  if (config.queueFor === undefined) return null;
+  return (
+    <QueueTray
+      chatId={config.queueFor}
+      fieldHasText={filled}
+      onEdit={(message): void => {
+        setReferenceDraft(config.draftKey ?? DEFAULT_DRAFT_KEY, {
+          text: message.text,
+          references: message.references,
+        });
+        state.input.current?.focus();
+      }}
+    />
+  );
+}
+
+function ComposerBase(props: ComposerProps): ReactNode {
   const state = useComposerState(props);
-  const ready = state.filled && !props.disabled && props.sendDisabled !== true;
+  const { composerClass } = useAiLayout();
   const pasteTarget = useRef<View>(null);
   useFilePaste(pasteTarget, attachFiles);
   useFocusShortcut(state.input, props.shortcuts === true);
   return (
-    <View ref={pasteTarget} className="gap-2">
-      {state.commands.result}
-      {state.commands.hint}
-      <UploadChips />
-      <ReferenceChips references={state.references} remove={state.mentions.remove} />
-      <View className="relative">
-        {state.editor ? null : state.mentions.panel}
-        {state.commands.panel}
-        <CommandTransientProvider
-          opened={state.commands.opened || state.mentions.opened}
-          dismiss={(): void => {
-            state.commands.dismiss();
-            state.mentions.dismiss();
-          }}
-        >
-          <ChatComposerBody config={props} state={state} />
-        </CommandTransientProvider>
+    <ComposerClassProvider value={composerClass}>
+      <View ref={pasteTarget} className="gap-2">
+        {state.commands.result}
+        {state.commands.hint}
+        <QueueHost config={props} state={state} />
+        <SuggestionKeys suggestions={state.suggestions}>
+          <View className="relative">
+            {state.editor || state.commands.opened ? null : state.mentions.panel}
+            {state.commands.panel}
+            <CommandTransientProvider
+              opened={state.commands.opened || state.mentions.opened}
+              dismiss={(): void => {
+                state.commands.dismiss();
+                state.mentions.dismiss();
+              }}
+            >
+              <ComposerCard config={props} state={state} />
+            </CommandTransientProvider>
+          </View>
+        </SuggestionKeys>
+        <EditorHost config={props} state={state} />
       </View>
-      <ComposerEditor
-        open={state.editor}
-        onClose={() => {
-          state.setEditor(false);
-        }}
-        text={state.text}
-        setText={state.setText}
-        placeholder={props.placeholder}
-        ready={ready}
-        onSend={state.send}
-        mentions={state.mentions}
-        onCommandKey={(key): boolean =>
-          state.mentions.handleKey(key) || state.commands.handleKey(key)
-        }
-        references={state.references}
-      />
-    </View>
+    </ComposerClassProvider>
   );
 }
 
-function MeasuredAction({
-  part,
-  measure,
-  children,
-}: {
-  readonly part: keyof ActionWidths;
-  readonly measure: MeasureAction;
-  readonly children: ReactNode;
-}): ReactNode {
-  return (
-    <View
-      className="shrink-0"
-      onLayout={(event): void => {
-        measure(part, event.nativeEvent.layout.width);
-      }}
-    >
-      {children}
-    </View>
-  );
-}
-function modelLabelWidth({
-  width,
-  permission,
-  actions,
-  stacked,
-  expand,
-  compact,
-}: {
-  readonly width: number;
-  readonly permission: number;
-  readonly actions: ActionWidths;
-  readonly stacked: boolean;
-  readonly expand: boolean;
-  readonly compact: boolean;
-}): number {
-  const chrome = COMPACT_PICKER_CHROME + (compact ? 0 : 20);
-  const editor = expand ? actions.expand : 0;
-  if (stacked)
-    return Math.max(0, Math.min(192 - chrome, width - editor - (expand ? 4 : 0) - chrome));
-  const gaps = expand ? 20 : 16;
-  return Math.max(
-    0,
-    Math.min(
-      192 - chrome,
-      width - permission - actions.attach - actions.send - editor - gaps - chrome,
-    ),
-  );
-}
-
-function MeasuredExpand({
-  state,
-  measure,
-}: {
-  readonly state: ComposerState;
-  readonly measure: MeasureAction;
-}): ReactNode {
-  return (
-    <MeasuredAction part="expand" measure={measure}>
-      <ExpandButton
-        onPress={(): void => {
-          state.setEditor(true);
-        }}
-      />
-    </MeasuredAction>
-  );
-}
-
-function useActionWidths(): {
-  readonly actions: ActionWidths;
-  readonly measureAction: MeasureAction;
-} {
-  const [actions, setActions] = useState<ActionWidths>({ attach: 48, send: 48, expand: 48 });
-  const measureAction: MeasureAction = (part, width): void => {
-    setActions((previous) =>
-      previous[part] === width ? previous : { ...previous, [part]: width },
-    );
-  };
-  return { actions, measureAction };
-}
+export const Composer = memo(ComposerBase);

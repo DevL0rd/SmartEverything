@@ -46,6 +46,7 @@ export function ruleText(rule: PortRule): string {
       return `${protocol} port ${String(rule.port)}`;
     case 'hub':
     case 'discovery':
+    case 'announcement':
     case 'plugin':
       return `${protocol} port ${String(rule.port)} from ${rule.source}`;
     case 'camera':
@@ -62,6 +63,8 @@ export function openingTitle(opening: FirewallOpening, names: readonly string[])
       return 'Local server connection';
     case 'discovery':
       return 'Server discovery';
+    case 'announcement':
+      return 'Device announcements';
     case 'camera':
     case 'device':
     case 'plugin':

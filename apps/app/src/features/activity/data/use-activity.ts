@@ -1,9 +1,12 @@
-import { useDevices, useRows } from '../../../store/selectors';
+import { memoOnInputs } from '../../../store/memo-selector';
+import { rowsOf, type StoreState } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
 import { commandAtom, eventAtom, type ActivityAtom, type ActivityCategory } from '../model/atoms';
-import { coalesce, type ActivityItem } from '../model/coalesce';
+import { coalesce, reuseItems, type ActivityItem } from '../model/coalesce';
 
 export interface ActivityFilter {
   readonly deviceId?: string;
+  readonly deviceIds?: ReadonlySet<string>;
 }
 
 const ACTIVITY_CATEGORIES: readonly ActivityCategory[] = [
@@ -24,17 +27,52 @@ function present(atom: ActivityAtom | null): atom is ActivityAtom {
   return atom !== null;
 }
 
-export function useActivity(filter: ActivityFilter = {}): readonly ActivityItem[] {
-  const events = useRows('events');
-  const commands = useRows('commands');
-  const devices = new Map(useDevices({ includeHidden: true }).map((device) => [device.id, device]));
+const activityInputs = (state: StoreState): readonly unknown[] => [
+  state.tables.events,
+  state.tables.commands,
+  state.tables.devices,
+];
+
+function activityOf(
+  state: StoreState,
+  deviceId: string | undefined,
+  deviceIds: ReadonlySet<string> | undefined,
+): readonly ActivityItem[] {
+  const devices = new Map(rowsOf(state.tables.devices).map((device) => [device.id, device]));
   const atoms = [
-    ...events.map((event) => eventAtom(event, devices)),
-    ...commands.map((command) => commandAtom(command, devices)),
+    ...rowsOf(state.tables.events).map((event) => eventAtom(event, devices)),
+    ...rowsOf(state.tables.commands).map((command) => commandAtom(command, devices)),
   ]
     .filter(present)
-    .filter((atom) => filter.deviceId === undefined || atom.deviceId === filter.deviceId);
+    .filter((atom) => deviceId === undefined || atom.deviceId === deviceId)
+    .filter(
+      (atom) => deviceIds === undefined || (atom.deviceId !== null && deviceIds.has(atom.deviceId)),
+    );
   return coalesce(atoms);
+}
+
+const ACTIVITY_SELECTORS = new Map<string, (state: StoreState) => readonly ActivityItem[]>();
+
+function activitySelector(
+  deviceId: string | undefined,
+  deviceIds: ReadonlySet<string> | undefined,
+): (state: StoreState) => readonly ActivityItem[] {
+  const key = `${deviceId === undefined ? '*' : `=${deviceId}`}|${deviceIds === undefined ? '' : [...deviceIds].join(',')}`;
+  const known = ACTIVITY_SELECTORS.get(key);
+  if (known !== undefined) {
+    return known;
+  }
+  let shown: readonly ActivityItem[] = [];
+  const selector = memoOnInputs(activityInputs, (state) => {
+    shown = reuseItems(shown, activityOf(state, deviceId, deviceIds));
+    return shown;
+  });
+  ACTIVITY_SELECTORS.set(key, selector);
+  return selector;
+}
+
+export function useActivity(filter: ActivityFilter = {}): readonly ActivityItem[] {
+  return useStoreSelector(activitySelector(filter.deviceId, filter.deviceIds));
 }
 
 export function categoriesOf(items: readonly ActivityItem[]): readonly ActivityCategory[] {

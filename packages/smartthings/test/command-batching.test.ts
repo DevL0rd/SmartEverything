@@ -128,10 +128,10 @@ describe('command results', () => {
       SmartThingsResponseError,
     );
     expect(() => outcomesOf({ results: 'none' }, 1)).toThrow(
-      /^The SmartThings command response did not have the expected shape: .*Received \{"results":"none"\}\.$/s,
+      'The SmartThings command response did not have the expected shape: results.',
     );
     expect(() => outcomesOf({ results: [] }, 1)).toThrow(
-      'The SmartThings command response did not have the expected shape: expected 1 results. Received {"results":[]}.',
+      'The SmartThings command response did not have the expected shape: expected 1 results.',
     );
   });
 });

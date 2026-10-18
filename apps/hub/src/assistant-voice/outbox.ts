@@ -1,3 +1,4 @@
+import { appendTo } from '@smarteverything/domain';
 const TRACKED_TASKS = 200;
 
 export function combined(notes: readonly string[]): string {
@@ -26,7 +27,7 @@ export class Outbox {
   }
 
   add(profileId: string, note: string): void {
-    this.untold.set(profileId, [...(this.untold.get(profileId) ?? []), note]);
+    appendTo(this.untold, profileId, note);
   }
 
   take(profileId: string): string[] {

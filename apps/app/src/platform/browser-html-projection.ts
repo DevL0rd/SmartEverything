@@ -1,9 +1,4 @@
 import {
-  serverSupportsNativeHtml,
-  serverSupportsNativeProject,
-  serverSupportsChatPages,
-} from '../api/connection/server-capabilities';
-import {
   BrowserPolicyError,
   type NativePageDescriptor,
   type BrowserTarget,
@@ -21,36 +16,14 @@ export function htmlPreviewBridge(): NativeHtmlPreview | null {
 }
 export function nativeHtmlPreviewAvailable(): boolean {
   const connection = connectionState.get();
-  return (
-    connection.status === 'paired' &&
-    serverSupportsNativeHtml(connection.connection.url) &&
-    htmlPreviewBridge() !== null
-  );
-}
-export function nativeProjectPreviewAvailable(): boolean {
-  const connection = connectionState.get();
-  return (
-    nativeHtmlPreviewAvailable() &&
-    connection.status === 'paired' &&
-    serverSupportsNativeProject(connection.connection.url) &&
-    (htmlPreviewBridge()?.projectVersion?.() ?? 0) >= 1
-  );
-}
-export function nativeChatPageAvailable(): boolean {
-  const connection = connectionState.get();
-  return (
-    connection.status === 'paired' &&
-    serverSupportsChatPages(connection.connection.url) &&
-    (htmlPreviewBridge()?.pageVersion?.() ?? 0) >= 2
-  );
+  return connection.status === 'paired' && htmlPreviewBridge() !== null;
 }
 export async function projectHtmlTarget(
   page: NativePageDescriptor,
   id: string,
 ): Promise<BrowserTarget> {
   const bridge = htmlPreviewBridge();
-  if (bridge === null || (bridge.pageVersion?.() ?? 0) < 2)
-    throw new BrowserPolicyError('Update the app to open saved chat pages.');
+  if (bridge === null) throw new BrowserPolicyError('Update the app to open saved chat pages.');
   const connection = connectionState.get();
   if (connection.status !== 'paired')
     throw new BrowserPolicyError('Reconnect to open this chat page.');

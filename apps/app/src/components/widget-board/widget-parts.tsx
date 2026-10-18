@@ -9,12 +9,12 @@ import { IconWell } from '../icon-well';
 import { Text } from '../text';
 import type { Tone } from '../tone';
 import type { WidgetSize } from './types';
+import { WidgetSurface } from './widget-frame';
+import { useWidgetActions } from './widget-scope';
 
 const HERO: Readonly<Record<WidgetSize, FigureSize>> = {
-  S: 'm',
   M: 'l',
   W: 'l',
-  L: 'xl',
   XL: 'xl',
 };
 
@@ -23,7 +23,7 @@ export function heroFigure(size: WidgetSize): FigureSize {
 }
 
 export function isTall(size: WidgetSize): boolean {
-  return size === 'L' || size === 'XL';
+  return size === 'XL';
 }
 
 export interface WidgetStatProps {
@@ -104,34 +104,58 @@ export interface WidgetEmptyProps {
   readonly title: string;
   readonly body?: string;
   readonly action?: { readonly label: string; readonly href: Href };
-  readonly size: WidgetSize;
 }
 
-export function WidgetEmpty({
-  icon,
-  colour,
-  title,
-  body,
-  action,
-  size,
-}: WidgetEmptyProps): ReactNode {
-  const small = size === 'S';
+export function WidgetEmpty({ icon, colour, title, body, action }: WidgetEmptyProps): ReactNode {
   return (
-    <View className={small ? 'flex-1 justify-end gap-2' : 'flex-1 flex-row items-center gap-4'}>
-      <IconWell icon={icon} colour={colour} size={small ? 'm' : 'l'} />
+    <View className="flex-1 flex-row items-center gap-4">
+      <IconWell icon={icon} colour={colour} size="l" />
       <View className="min-w-0 flex-1 gap-0.5">
         <Text variant="body-strong" numberOfLines={2}>
           {title}
         </Text>
-        {body === undefined || small ? null : (
+        {body === undefined ? null : (
           <Text variant="footnote" tone="variant" numberOfLines={2}>
             {body}
           </Text>
         )}
       </View>
-      {action === undefined || small ? null : (
+      {action === undefined ? null : (
         <Button label={action.label} href={action.href} variant="tonal" />
       )}
     </View>
+  );
+}
+
+export interface WidgetGoneProps {
+  readonly icon: IconName;
+  readonly title: string;
+  readonly body: string;
+}
+
+export function WidgetGone({ icon, title, body }: WidgetGoneProps): ReactNode {
+  const actions = useWidgetActions();
+  return (
+    <WidgetSurface>
+      <View className="flex-1 justify-center gap-3 p-card-pad">
+        <View className="flex-row items-center gap-3">
+          <IconWell icon={icon} colour="warning" size="m" />
+          <View className="min-w-0 flex-1 gap-0.5">
+            <Text variant="body-strong" numberOfLines={2}>
+              {title}
+            </Text>
+            <Text variant="footnote" tone="variant" numberOfLines={2}>
+              {body}
+            </Text>
+          </View>
+        </View>
+        {actions === null ? null : (
+          <View className="flex-row flex-wrap gap-2">
+            <Button label="Choose another" variant="tonal" onPress={actions.choose} />
+            <Button label="Remove" variant="text" onPress={actions.remove} />
+          </View>
+        )}
+      </View>
+    </WidgetSurface>
   );
 }

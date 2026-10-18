@@ -1,12 +1,13 @@
+import { rawTimers } from '../../dev/raw-timers';
 import { ActionLog } from './actions';
 import {
-  addCommit,
-  addComponent,
-  addFan,
+  commitStat,
+  componentStat,
   addFrame,
   addHot,
   addMount,
   emptyWindow,
+  type FanStat,
   listStat,
   type WindowData,
 } from './collector';
@@ -22,27 +23,31 @@ import {
   JSON_NOTE_MS,
   NET_NOTE_MS,
 } from './config';
-import { nextEpoch, type CommitReport } from './fibers';
+import { FanKeys, type FanNode } from './fan';
+import type { RenderReason } from './fiber-diff';
+import { collect, nextEpoch, type RenderSink } from './fibers';
 import { ListTracker } from './lists';
 import { NavTracker } from './nav';
 import type { PerfSink } from '../sink';
+import { RouteVisits } from '../../dev/route-visits';
 
 const STALLS_MAX = 30;
 const TRIGGER_KINDS: readonly string[] = ['store', 'query', 'net'];
+const KEYS_NAMED = 3;
+const EXPLAIN_EVERY = 4;
+const EXPLAIN_SLOW_MS = 8;
 
-interface Trigger {
-  readonly key: string;
-  readonly at: number;
+interface Screen {
+  readonly id: string;
+  readonly nested: boolean;
 }
 
-function changedKeys(previous: object, next: object): string[] {
-  const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
-  return [...keys].filter((key) => !Object.is(Reflect.get(previous, key), Reflect.get(next, key)));
-}
-
-export class Probe implements PerfSink {
+export class Probe implements PerfSink, RenderSink {
   data: WindowData = emptyWindow();
   screenName = NO_SCREEN;
+  readonly visits = new RouteVisits(NO_SCREEN, performance.now());
+  fanout = true;
+  navigation = true;
   fibers = 0;
   readonly actions = new ActionLog();
   readonly commits = new CommitLog();
@@ -54,14 +59,20 @@ export class Probe implements PerfSink {
   private keyboardUntil = 0;
   private dragUntil = 0;
   private moved = false;
-  private trigger: Trigger | null = null;
+  private triggerStat: FanStat | null = null;
+  private triggerAt = 0;
+  private readonly fan = new FanKeys();
+  private readonly changed: string[] = new Array<string>(KEYS_NAMED).fill('');
+  private stateKeys: string[] | null = null;
+  private readonly screens = new Map<string, Screen>();
+  private commitCount = 0;
   private stopped = false;
   private readonly frames = new Set<number>();
 
   stop(): void {
     this.stopped = true;
     this.frames.forEach((handle) => {
-      cancelAnimationFrame(handle);
+      rawTimers.cancelAnimationFrame(handle);
     });
     this.frames.clear();
   }
@@ -70,7 +81,7 @@ export class Probe implements PerfSink {
     if (this.stopped) {
       return;
     }
-    const handle = requestAnimationFrame(() => {
+    const handle = rawTimers.requestAnimationFrame(() => {
       this.frames.delete(handle);
       if (!this.stopped) {
         work();
@@ -86,34 +97,52 @@ export class Probe implements PerfSink {
   private noteCommit(ms: number, top: string): void {
     const now = this.now();
     this.commits.add(now, ms, top);
-    if (this.trigger !== null && now - this.trigger.at <= STORE_ATTRIBUTION_MS) {
-      addFan(this.data, this.trigger.key, { commits: 1, ms });
+    const stat = this.triggerStat;
+    if (stat !== null && now - this.triggerAt <= STORE_ATTRIBUTION_MS) {
+      stat.commits += 1;
+      stat.ms += ms;
     }
   }
 
   record(id: string, ms: number, mounted: boolean): void {
     const key = this.now() < this.keyboardUntil ? `kb.${id}` : id;
-    addCommit(this.data, this.screenName, key, { ms, mounted });
+    commitStat(this.data, this.screenName, key).add(ms, mounted);
+  }
+
+  private screenOf(label: string): Screen {
+    let known = this.screens.get(label);
+    if (known === undefined) {
+      known = { id: `@${label}`, nested: label.includes('>') };
+      this.screens.set(label, known);
+    }
+    return known;
   }
 
   screenCommit(label: string, phase: string, ms: number): void {
-    this.record(`@${label}`, ms, phase === 'mount');
-    if (this.fibers === 0 && !label.includes('>')) {
+    const screen = this.screenOf(label);
+    this.record(screen.id, ms, phase === 'mount');
+    if (this.fibers === 0 && !screen.nested) {
       this.noteCommit(ms, label);
     }
   }
 
-  fiberCommit(report: CommitReport, collectionMs = 0): void {
-    this.fibers = report.timed ? 2 : 1;
-    this.data.probeMs += collectionMs;
-    const start = this.now();
-    this.noteCommit(report.rootMs, report.top);
+  render(name: string, instance: number, self: number, reason: RenderReason | null): void {
+    componentStat(this.data, this.screenName, name)?.add(instance, self, reason);
+  }
+
+  fiberCommit(root: unknown): void {
+    const started = this.now();
+    this.commitCount += 1;
+    const explainFrom = this.commitCount % EXPLAIN_EVERY === 0 ? 0 : EXPLAIN_SLOW_MS;
+    const totals = collect(root, this, explainFrom);
+    if (totals === null) {
+      return;
+    }
+    this.fibers = totals.timed ? 2 : 1;
+    this.noteCommit(totals.rootMs, totals.top);
     this.data.roots += 1;
-    this.data.rootMs += report.rootMs;
-    report.components.forEach((item) => {
-      addComponent(this.data, this.screenName, item);
-    });
-    this.data.probeMs += this.now() - start;
+    this.data.rootMs += totals.rootMs;
+    this.data.probeMs += this.now() - started;
   }
 
   screenMount(label: string, ms: number): void {
@@ -135,21 +164,50 @@ export class Probe implements PerfSink {
       this.nav.begin(now, this.screenName);
     }
     if (TRIGGER_KINDS.includes(kind)) {
-      this.startTrigger(`${kind}:${label}`, now, 0);
+      const node = this.fan.child(this.fan.root(kind), label, ':');
+      this.startTrigger(node, now, 0);
     }
   }
 
-  private startTrigger(key: string, now: number, listeners: number): void {
-    this.trigger = { key, at: now };
-    addFan(this.data, key, { updates: 1, listeners });
+  private startTrigger(node: FanNode, now: number, listeners: number): void {
+    if (!this.fanout) {
+      return;
+    }
+    const stat = this.fan.statOf(node, this.data);
+    stat.updates += 1;
+    stat.listeners += listeners;
+    this.triggerStat = stat;
+    this.triggerAt = now;
+  }
+
+  private collectChanged(previous: object, next: object): number {
+    const keys = (this.stateKeys ??= Object.keys(next));
+    let count = 0;
+    for (let index = 0; index < keys.length && count < KEYS_NAMED; index += 1) {
+      const key = keys[index] ?? '';
+      if (!Object.is(Reflect.get(previous, key), Reflect.get(next, key))) {
+        this.changed[count] = key;
+        count += 1;
+      }
+    }
+    return count;
   }
 
   store(previous: object, next: object, listeners: number): void {
-    const keys = changedKeys(previous, next).slice(0, 3);
-    const label = keys.length === 0 ? 'state' : keys.join('+');
+    if (!this.fanout) {
+      return;
+    }
+    const count = this.collectChanged(previous, next);
+    let node = this.fan.root('store');
+    if (count === 0) {
+      node = this.fan.child(node, 'state', ':');
+    }
+    for (let index = 0; index < count; index += 1) {
+      node = this.fan.child(node, this.changed[index] ?? '', '+');
+    }
     const now = this.now();
-    this.actions.note('store', label, now);
-    this.startTrigger(`store:${label}`, now, listeners);
+    this.actions.note('store', node.tail, now);
+    this.startTrigger(node, now, listeners);
   }
 
   screen(screen: string): void {
@@ -158,8 +216,9 @@ export class Probe implements PerfSink {
     }
     const from = this.screenName;
     this.screenName = screen === '' ? NO_SCREEN : screen;
+    this.visits.enter(this.screenName, this.now());
     this.lists.seed();
-    if (from === NO_SCREEN) {
+    if (from === NO_SCREEN || !this.navigation) {
       return;
     }
     const arrival = this.nav.arrive(this.now(), from);
@@ -251,12 +310,19 @@ export class Probe implements PerfSink {
     this.lists.viewport(list, height);
   }
 
+  listContent(list: string, height: number): void {
+    this.lists.content(list, height);
+  }
+
   listScroll(list: string, offset: number): void {
     this.lists.scroll(list, offset, this.now());
   }
 
   reset(): void {
     nextEpoch();
+    this.fan.nextWindow();
+    this.triggerStat = null;
+    this.stateKeys = null;
     this.data = emptyWindow();
     this.lists.seed();
   }

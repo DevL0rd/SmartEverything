@@ -1,20 +1,18 @@
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AiChatRow, AiHarnessSession } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { useChatHarness, useHarnessCatalogue, useHarnessSupportReason } from '../data/harness';
+import { useChatHarness, useHarnessCatalogue } from '../data/harness';
 import { harnessHostName, harnessRouteLabel } from '../model/harness-context';
-import { QueryState } from '../../computers/components/query-state';
-import { HarnessHandoffStatus } from './harness-handoff';
+import { QueryState } from '../../computers';
 import { HarnessInteraction } from './harness-interactions';
 import { Segmented } from '../../../components/segmented';
 import { HarnessSessionPermission } from './harness-session-permission';
 import type { WorkTab } from './work-tabs';
+import { background } from '@smarteverything/logging';
 
 function HarnessWorkBody({
   chat,
@@ -27,23 +25,16 @@ function HarnessWorkBody({
     chat.id,
     chat.engine.kind === 'dsh' && chat.engine.session_id !== null,
   );
-  const supportReason = useHarnessSupportReason();
-  if (supportReason !== null) return <Text tone="variant">{supportReason}</Text>;
   if (chat.engine.kind !== 'dsh') return null;
   if (chat.engine.session_id === null)
-    return (
-      <Text tone="variant">
-        No native session has opened. Send a message after the selected host and model supplier
-        report ready.
-      </Text>
-    );
+    return <Text tone="variant">Nothing running yet. Send a message to start.</Text>;
   return (
     <View className="gap-section-gap">
       <QueryState
         pending={state.isPending}
         error={state.error}
         retry={() => {
-          void state.refetch();
+          background(state.refetch(), 'state.refetch_failed');
         }}
       />
       {state.data === undefined ? null : (
@@ -69,41 +60,6 @@ export function HarnessWorkSheet({
     </Sheet>
   );
 }
-export function HarnessWorkButton({
-  chat,
-  label = 'Work',
-}: {
-  readonly chat: AiChatRow;
-  readonly label?: string;
-}): ReactNode {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button
-        label={label}
-        variant="text"
-        onPress={() => {
-          setOpen(true);
-        }}
-      />
-      <HarnessWorkSheet
-        chat={chat}
-        open={open}
-        onClose={() => {
-          setOpen(false);
-        }}
-      />
-    </>
-  );
-}
-export function HarnessExecutionContext({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  const session = useChatHarness(
-    chat.id,
-    chat.engine.kind === 'dsh' && chat.engine.session_id !== null,
-  );
-  return session.data === undefined ? null : <HarnessHandoffStatus session={session.data} />;
-}
-
 function HarnessSessionDetails({
   session,
   initial,
@@ -126,7 +82,7 @@ function HarnessSessionDetails({
       />
       {session.failure === null ? null : (
         <Text selectable tone="critical">
-          {CHAT_ERROR_MESSAGE}
+          The work session failed.
         </Text>
       )}
       <HarnessWorkSection section={section} session={session} />

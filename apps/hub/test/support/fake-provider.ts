@@ -102,6 +102,7 @@ export interface FakeModule {
   readonly started: { readonly account: StoredAccount; readonly context: RunContext }[];
   linkFailure: Error | null;
   askDuringLink: boolean;
+  linkGate: Promise<void> | null;
 }
 
 export function fakeModule(): FakeModule {
@@ -112,10 +113,12 @@ export function fakeModule(): FakeModule {
     started: [],
     linkFailure: null,
     askDuringLink: false,
+    linkGate: null,
     module: {
       provider: 'xiaomi',
       link: async (credentials, context): Promise<StoredAccount> => {
         fake.linked.push({ username: credentials.username, context });
+        await fake.linkGate;
         if (fake.linkFailure !== null) {
           throw fake.linkFailure;
         }

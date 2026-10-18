@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { href } from '../../../app-shell/hrefs';
-import type { WidgetSize } from '../../../components/widget-board';
+import { isTile } from '../../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { clock, dayTitle } from '../../../format/time';
 import { joinParts } from '../../../format/text';
 import { useSyncedAt } from '../data/synced-at';
@@ -19,25 +20,19 @@ function sumCaption(spec: DailySpec, syncedAt: string | null, average: number | 
   ]);
 }
 
-export function MetricWidget({
-  spec,
-  size,
-}: {
-  readonly spec: DailySpec;
-  readonly size: WidgetSize;
-}): ReactNode {
+export function MetricWidget({ spec }: { readonly spec: DailySpec }): ReactNode {
   const { figures, day, today } = useTodayContext();
+  const tile = isTile(useWidgetFace().cls);
   const glance = glanceOf(figures, { metric: spec.daily, day, days: DAYS, better: spec.better });
   const partial = spec.combine === 'sum';
   const average = glance.average;
   const syncedAt = useSyncedAt(spec.daily, glance.latest?.day ?? null);
-  const caption = partial ? sumCaption(spec, syncedAt, size === 'S' ? null : average) : '';
+  const caption = partial ? sumCaption(spec, syncedAt, tile ? null : average) : '';
   return (
     <ReadingWidget
-      title={dayTitle(size === 'S' ? (spec.short ?? spec.label) : spec.label, day, today)}
+      title={dayTitle(tile ? (spec.short ?? spec.label) : spec.label, day, today)}
       icon={spec.icon}
       href={href.healthMetric(spec.key, { day })}
-      size={size}
       day={day}
       glance={partial ? { ...glance, delta: null } : glance}
       {...(caption === '' ? {} : { caption })}

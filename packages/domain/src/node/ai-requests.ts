@@ -7,7 +7,13 @@ import {
   AI_NATIVE_COMMAND_CATALOGUE,
   AI_NATIVE_COMMAND_RECEIPT,
 } from '../ai-native-commands';
-import { PROVIDER_CONTROL, PROVIDER_METADATA, PROVIDER_READ_QUERY } from './provider-controls';
+import {
+  PROVIDER_CONTROL,
+  PROVIDER_FILE_MATCHES,
+  PROVIDER_FILE_SEARCH,
+  PROVIDER_METADATA,
+  PROVIDER_READ_QUERY,
+} from './provider-controls';
 import { JSON_VALUE } from '../values';
 import {
   CLAUDE_ANSWER,
@@ -46,6 +52,7 @@ import {
 export const COMPUTER_AI_READ = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('provider_commands'), scope: AI_NATIVE_COMMAND_SCOPE }),
   AI_NATIVE_COMMAND_READ.extend({ operation: z.literal('provider_command_receipt') }),
+  PROVIDER_FILE_SEARCH.extend({ operation: z.literal('provider_files') }),
   z.strictObject({ operation: z.literal('native_operation'), operation_id: z.uuid() }),
   z.strictObject({ operation: z.literal('status') }),
   z.strictObject({ operation: z.literal('models') }),
@@ -120,6 +127,18 @@ export const COMPUTER_AI_EXECUTE = z.discriminatedUnion('operation', [
   }),
   z.strictObject({ operation: z.literal('provider_interrupt'), job_id: z.uuid() }),
   z.strictObject({
+    operation: z.literal('provider_steer'),
+    job_id: z.uuid(),
+    content: z.array(PROVIDER_CONTENT).min(1).max(64),
+  }),
+  z.strictObject({
+    operation: z.literal('provider_adopt'),
+    session_id: CLAUDE_SESSION_ID,
+    chat_id: z.uuid(),
+    profile_id: z.uuid(),
+    cwd: z.string().min(1).max(4096),
+  }),
+  z.strictObject({
     operation: z.literal('provider_tool_result'),
     job_id: z.uuid(),
     call_id: z.string().min(1).max(200),
@@ -135,10 +154,10 @@ export const COMPUTER_AI_EXECUTE = z.discriminatedUnion('operation', [
   }),
 ]);
 export type ComputerAiExecute = z.infer<typeof COMPUTER_AI_EXECUTE>;
-export const COMPUTER_AI_REQUEST = z.union([COMPUTER_AI_READ, COMPUTER_AI_EXECUTE]);
-export type ComputerAiRequest = z.infer<typeof COMPUTER_AI_REQUEST>;
+export type ComputerAiRequest = ComputerAiRead | ComputerAiExecute;
 export const COMPUTER_AI_REPLY = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('provider_commands'), value: AI_NATIVE_COMMAND_CATALOGUE }),
+  z.strictObject({ operation: z.literal('provider_files'), value: PROVIDER_FILE_MATCHES }),
   z.strictObject({ operation: z.literal('provider_command'), value: AI_NATIVE_COMMAND_RECEIPT }),
   z.strictObject({
     operation: z.literal('provider_command_dispatch'),
@@ -192,6 +211,14 @@ export const COMPUTER_AI_REPLY = z.discriminatedUnion('operation', [
   z.strictObject({
     operation: z.literal('provider_interrupt'),
     value: z.strictObject({ interrupted: z.boolean() }),
+  }),
+  z.strictObject({
+    operation: z.literal('provider_steer'),
+    value: z.strictObject({ steered: z.boolean() }),
+  }),
+  z.strictObject({
+    operation: z.literal('provider_adopt'),
+    value: z.strictObject({ session_id: CLAUDE_SESSION_ID }),
   }),
   z.strictObject({
     operation: z.literal('provider_answer'),

@@ -30,7 +30,7 @@ function approxCostText(dollars: number, money: Money): string {
   return text.startsWith('<') ? `under ${text.slice(1)}` : `about ${text}`;
 }
 
-export function tokensText(tokens: number): string {
+function tokensText(tokens: number): string {
   return tokens < TOKENS_PER_THOUSAND
     ? `${String(tokens)} tokens`
     : `${(tokens / TOKENS_PER_THOUSAND).toFixed(1)}k tokens`;

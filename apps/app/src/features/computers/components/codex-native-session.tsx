@@ -16,6 +16,7 @@ import { CodexPromptCard } from './codex-prompt';
 import { NativeOperationFeedback } from './native-operation';
 import { CodexSessionActions } from './codex-session-actions';
 import { QueryState } from './query-state';
+import { background } from '@smarteverything/logging';
 function NativePrompts({
   deviceId,
   sessionId,
@@ -32,7 +33,7 @@ function NativePrompts({
         error={prompts.error}
         pending={prompts.isPending}
         retry={() => {
-          void prompts.refetch();
+          background(prompts.refetch(), 'prompts.refetch_failed');
         }}
       />
       {prompts.data?.operation === 'prompts'
@@ -76,12 +77,12 @@ function NativeThread({
   const page = thread.data?.operation === 'thread' ? thread.data.value : null;
   return (
     <View className="gap-3">
-      <Text variant="title-3">Published native activity</Text>
+      <Text variant="title-3">Session activity</Text>
       <QueryState
         error={thread.error}
         pending={thread.isPending}
         retry={() => {
-          void thread.refetch();
+          background(thread.refetch(), 'thread.refetch_failed');
         }}
       />
       <ThreadItems items={page?.items ?? []} />
@@ -146,9 +147,7 @@ function ThreadPageControls({
 }): ReactNode {
   return (
     <>
-      {page?.truncated === true ? (
-        <Text tone="warning">Retained native activity is truncated.</Text>
-      ) : null}
+      {page?.truncated === true ? <Text tone="warning">Older activity is not shown.</Text> : null}
       {page?.next_cursor === null || page === null ? null : (
         <Button
           label="Next activity page"

@@ -1,5 +1,6 @@
+import { HC_CODES } from '@smarteverything/domain';
 import { exerciseChoices } from './exercise-types';
-import { NOTES, TITLE, choices, temperature, type LogForm } from './form-kit';
+import { NOTES, TITLE, choicesOf, temperature, type LogForm } from './form-kit';
 
 const SESSIONS: readonly LogForm[] = [
   {
@@ -14,7 +15,7 @@ const SESSIONS: readonly LogForm[] = [
         kind: 'choice',
         key: 'exerciseType',
         label: 'Kind',
-        options: exerciseChoices().map((kind) => ({ value: kind.code, label: kind.name })),
+        options: exerciseChoices(),
         initial: 0,
       },
       TITLE,
@@ -44,14 +45,7 @@ const SESSIONS: readonly LogForm[] = [
         kind: 'choice',
         key: 'mindfulnessSessionType',
         label: 'Kind',
-        options: [
-          { value: 1, label: 'Meditation' },
-          { value: 3, label: 'Breathing' },
-          { value: 4, label: 'Music' },
-          { value: 5, label: 'Movement' },
-          { value: 6, label: 'Unguided' },
-          { value: 2, label: 'Other' },
-        ],
+        options: choicesOf(HC_CODES.mindfulnessType),
         initial: 1,
       },
       NOTES,
@@ -72,7 +66,7 @@ const CYCLE: readonly LogForm[] = [
         kind: 'choice',
         key: 'flow',
         label: 'Flow',
-        options: choices('Not set', 'Light', 'Medium', 'Heavy'),
+        options: choicesOf(HC_CODES.flow),
         initial: 2,
       },
     ],
@@ -105,14 +99,14 @@ const CYCLE: readonly LogForm[] = [
         kind: 'choice',
         key: 'appearance',
         label: 'Appearance',
-        options: choices('Not set', 'Dry', 'Sticky', 'Creamy', 'Watery', 'Egg white', 'Unusual'),
+        options: choicesOf(HC_CODES.mucusAppearance),
         initial: 0,
       },
       {
         kind: 'choice',
         key: 'sensation',
         label: 'Sensation',
-        options: choices('Not set', 'Light', 'Medium', 'Heavy'),
+        options: choicesOf(HC_CODES.sensation),
         initial: 0,
       },
     ],
@@ -128,8 +122,8 @@ const CYCLE: readonly LogForm[] = [
         kind: 'choice',
         key: 'result',
         label: 'Result',
-        options: choices('Positive', 'High', 'Negative', 'Inconclusive'),
-        initial: 2,
+        options: choicesOf(HC_CODES.ovulationResult),
+        initial: 3,
       },
     ],
   },
@@ -145,7 +139,7 @@ const CYCLE: readonly LogForm[] = [
         kind: 'choice',
         key: 'protectionUsed',
         label: 'Protection',
-        options: choices('Not set', 'Protected', 'Unprotected'),
+        options: choicesOf(HC_CODES.protection),
         initial: 0,
       },
     ],

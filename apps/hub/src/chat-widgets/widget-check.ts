@@ -1,13 +1,9 @@
-import {
-  PLUGIN_CHAT_BOARDS,
-  isCamera,
-  type ChatWidget,
-  type HealthMetric,
-} from '@smarteverything/domain';
+import { isCamera, type ChatWidget, type HealthMetric } from '@smarteverything/domain';
 import { StoreNotFoundError } from '../store/context';
 import type { Store } from '../store/store';
+import { boardTypes } from './boards';
+import { DAY_MS } from '../metrics/minute';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const HEALTH_LOOKBACK_DAYS = 30;
 const MACROS: readonly HealthMetric[] = ['protein', 'carbohydrate', 'fat'];
 
@@ -42,26 +38,30 @@ type IdWidget = Exclude<
   { readonly kind: 'page_link' | 'device' | 'camera' }
 >;
 
-type Rows = (store: Store) => readonly { readonly id: string }[];
+type Exists = (store: Store, id: string) => boolean;
 
-const ROWS: Readonly<Record<IdWidget['kind'], Rows>> = {
-  device_settings_link: (store) => store.devices.list(),
-  remote: (store) => store.infrared.remotes(),
-  automation_link: (store) => store.automations.list(),
-  scene_link: (store) => store.scenes.list(),
-  room_link: (store) => store.rooms.list(),
-  scheduled_link: (store) => store.schedules.list(),
+function listed(rows: (store: Store) => readonly { readonly id: string }[]): Exists {
+  return (store, id) => rows(store).some((row) => row.id === id);
+}
+
+const EXISTS: Readonly<Record<IdWidget['kind'], Exists>> = {
+  device_settings_link: (store, id) => store.devices.find(id) !== undefined,
+  remote: listed((store) => store.infrared.remotes()),
+  automation_link: (store, id) => store.automations.find(id) !== undefined,
+  scene_link: listed((store) => store.scenes.list()),
+  room_link: listed((store) => store.rooms.list()),
+  scheduled_link: listed((store) => store.schedules.list()),
 };
 
 function isRowWidget(widget: ChatWidget): widget is IdWidget {
-  return widget.kind in ROWS;
+  return widget.kind in EXISTS;
 }
 
 function deviceReason(
   store: Store,
   widget: Extract<ChatWidget, { kind: 'device' | 'camera' }>,
 ): string | null {
-  const device = store.devices.list().find((candidate) => candidate.id === widget.id);
+  const device = store.devices.find(widget.id);
   if (device === undefined || device.hidden) {
     return `There is no device ${widget.id}`;
   }
@@ -97,15 +97,7 @@ function pageKnown(store: Store, link: Extract<ChatWidget, { kind: 'page_link' }
 }
 
 function boardReason(store: Store, type: string): string | null {
-  const enabled = new Set(
-    store.plugins
-      .list()
-      .filter((plugin) => plugin.enabled)
-      .map((plugin) => plugin.id),
-  );
-  const shown = Object.entries(PLUGIN_CHAT_BOARDS)
-    .filter(([plugin]) => enabled.has(plugin))
-    .flatMap(([, types]) => types);
+  const shown = boardTypes(store);
   return shown.includes(type)
     ? null
     : `There is no board ${type}; boards of enabled plugins: ${shown.join(', ') || 'none'}`;
@@ -147,9 +139,9 @@ export function widgetRejection(
     return deviceReason(store, widget);
   }
   if (isRowWidget(widget)) {
-    return ROWS[widget.kind](store).some((row) => row.id === widget.id)
+    return EXISTS[widget.kind](store, widget.id)
       ? null
-      : `There is no ${widget.kind.replace('_link', '').replace('_', ' ')} ${widget.id}`;
+      : `There is no ${widget.kind.replace('_link', '').replaceAll('_', ' ')} ${widget.id}`;
   }
   return targetReason(store, widget) ?? dataReason(store, widget, viewer);
 }

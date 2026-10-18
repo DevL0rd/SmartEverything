@@ -1,12 +1,14 @@
 import {
-  ATTRIBUTION_RULES,
   COMPOSITION_FORMULA,
+  acceptedWeights,
   attributeReading,
   bmiOf,
   bodyComposition,
   bodyFactsOf,
   fitnessReady,
   impedancePair,
+  isOutlier,
+  type AttributionResult,
   type Attribution,
   type BodyReadingRow,
 } from '@smarteverything/domain';
@@ -14,8 +16,6 @@ import type { Logger } from '@smarteverything/logging';
 import type { ReadingOwner, ScaleMeasurement } from '../store/repositories/body-readings';
 import type { Store } from '../store/store';
 import { healthRecordsOf, recordIdsOf } from './reading-records';
-
-const DAY_MS = 86_400_000;
 
 function measuredChange(before: BodyReadingRow, after: BodyReadingRow): boolean {
   return (
@@ -36,7 +36,6 @@ function stale(reading: BodyReadingRow, ready: boolean): boolean {
 export interface ScaleReadingsOptions {
   readonly store: Store;
   readonly log: Logger;
-  readonly now: () => Date;
 }
 
 export class ScaleReadings {
@@ -102,21 +101,36 @@ export class ScaleReadings {
   }
 
   private attribute(reading: BodyReadingRow, weightKg: number): BodyReadingRow {
-    const { store, now } = this.options;
-    const since = new Date(now().getTime() - ATTRIBUTION_RULES.lookbackDays * DAY_MS);
-    const weights = store.bodyReadings.lastWeights(since.toISOString());
-    const candidates = store.profiles.list().map((profile) => ({
+    const candidates = this.options.store.profiles.list().map((profile) => ({
       profileId: profile.id,
       scaleUser: profile.scale_user,
-      lastWeightKg: weights.get(profile.id) ?? null,
     }));
-    const result = attributeReading({ weightKg, scaleUser: reading.scale_user }, candidates);
+    const result = this.unlessOutlier(
+      attributeReading({ scaleUser: reading.scale_user }, candidates),
+      weightKg,
+    );
     this.options.log.info('scale.attributed', {
       readingId: reading.id,
       attribution: result.attribution,
       candidates: candidates.length,
     });
     return this.own(reading, result.profileId, result.attribution);
+  }
+
+  private unlessOutlier(result: AttributionResult, weightKg: number): AttributionResult {
+    if (result.profileId === null || result.attribution === 'person') {
+      return result;
+    }
+    const history = this.options.store.bodyReadings
+      .ofProfile(result.profileId)
+      .flatMap((reading) =>
+        reading.weight_kg === null
+          ? []
+          : [{ weightKg: reading.weight_kg, confirmed: reading.attribution === 'person' }],
+      );
+    return isOutlier(weightKg, acceptedWeights(history))
+      ? { profileId: null, attribution: 'pending' }
+      : result;
   }
 
   private ownerOf(

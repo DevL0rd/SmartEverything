@@ -1,0 +1,34 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1 flex-row gap-4" pointerEvents="box-none"
+      View className="self-start"
+        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-lg" pointerEvents="none"
+          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(76, 80, 84, 0.3) 0%, rgba(76, 80, 84, 0.09999999999999999) 60%, rgba(76, 80, 84, 0) 100%)"}]
+          View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
+            Svg.default height=96 viewBox="0 0 100 100" width=96
+              Svg.Ellipse cx=50 cy=55 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=46 ry=44
+              Svg.Circle cx=50 cy=50 fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) r=38 stroke="#3d444b" strokeWidth=0.6
+              Svg.Path d="M50.00 12.00 A38 38 0 1 1 50.00 88.00 A38 38 0 1 1 50.00 12.00 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#ceb8a2" stopOpacity=0.12; ); Svg.Stop(offset="0.22" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.34" stopColor="#FFFFFF" stopOpacity=0.85; ); Svg.Stop(offset="0.56" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+              Svg.Circle cx=50 cy=50 fill="#1f2c39" r=30 stroke="#3d444b" strokeWidth=0.4
+              Svg.Circle cx=50 cy=78 fill="#79746f" r=1.4
+            View className="items-center justify-center" pointerEvents="none" style={position:"absolute",left:19.2,top:19.2,width:57.6,height:57.6}
+              View className="flex-row items-baseline gap-1" onLayout=undefined ref={current:null}
+                Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-s text-on-surface" selectable=false
+                Text className="font-sans text-footnote text-on-surface-variant text-left" selectable=false
+      View className="min-w-0 flex-1 gap-3" pointerEvents="box-none"
+        View className="flex-row items-start gap-2" pointerEvents="box-none"
+          View className="min-w-0 flex-1" pointerEvents="none"
+            View className="min-w-0 gap-0.5" pointerEvents="none"
+              Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=2 selectable=false
+              Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
+          View className="flex-row items-center"
+        View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+          View className="gap-2 flex-row flex-wrap" pointerEvents="none"
+            View className="min-w-24 gap-0.5 rounded-md bg-surface-2 px-3 py-2"
+              View className="flex-row items-center gap-1.5"
+                Svg.Svg aria-hidden=true className=undefined data-testid=undefined fill="none" height=16 ref=null stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2 viewBox="0 0 24 24" width=16 xmlns="http://www.w3.org/2000/svg"
+                  Svg.Path aria-hidden=true d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" fill="none" stroke="#333c45" strokeLinecap="round" strokeLinejoin="round" strokeWidth=2
+                Text className="font-sans-medium text-caption text-on-surface-variant text-left shrink" numberOfLines=1 selectable=false
+              View className="flex-row items-baseline gap-1" onLayout=undefined ref={current:null}
+                Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-s text-on-surface" selectable=false
+                Text className="font-sans text-footnote text-on-surface-variant text-left" selectable=false

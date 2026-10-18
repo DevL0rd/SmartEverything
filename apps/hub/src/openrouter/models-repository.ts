@@ -9,6 +9,11 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import {
+  EMPTY_IMAGE_ENDPOINTS,
+  IMAGE_ENDPOINT_SNAPSHOT,
+  type ImageEndpointSnapshot,
+} from './image-wire';
+import {
   EMPTY_MODEL_SEARCH_STATE,
   MODEL_SEARCH_STATE,
   type ModelSearchState,
@@ -67,7 +72,7 @@ const SYNC_KEY = 'catalogue';
 
 const MOMENT = z.iso.datetime({ offset: true });
 
-export const CATALOGUE_STATE = z.strictObject({
+const CATALOGUE_STATE = z.strictObject({
   synced_at: MOMENT.nullable(),
   error: z.string().max(400).nullable(),
   error_at: MOMENT.nullable(),
@@ -126,6 +131,14 @@ export class AiModelsRepository {
     return this.context.sql.all(
       STORED_MODEL,
       `select ${COLUMN_LIST} from ai_models order by created desc`,
+    );
+  }
+
+  row(id: string): AiModelRow | undefined {
+    return this.context.sql.get(
+      STORED_MODEL,
+      `select ${COLUMN_LIST} from ai_models where id = $id`,
+      { id },
     );
   }
 
@@ -197,6 +210,14 @@ export class AiModelsRepository {
 
   saveSearchState(state: ModelSearchState): void {
     this.saveSetting('model-search/order-v1', MODEL_SEARCH_STATE.parse(state));
+  }
+
+  imageEndpoints(): ImageEndpointSnapshot {
+    return this.setting('image-endpoints/v1', IMAGE_ENDPOINT_SNAPSHOT, EMPTY_IMAGE_ENDPOINTS);
+  }
+
+  saveImageEndpoints(snapshot: ImageEndpointSnapshot): void {
+    this.saveSetting('image-endpoints/v1', IMAGE_ENDPOINT_SNAPSHOT.parse(snapshot));
   }
 
   private upsert(row: AiModelRow): void {

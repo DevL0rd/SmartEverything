@@ -1,20 +1,27 @@
 import {
   API_ENDPOINTS,
-  MCP_UNAVAILABLE_OPERATIONS,
-  mcpOperationArea,
+  endpointAccessArea,
+  turnRoleOf,
   type ClientRow,
   type EndpointName,
 } from '@smarteverything/domain';
-import type { Caller } from '../../../server/auth';
+import { effectiveClientById } from '../../../server/person-access';
+import { profileIdOf, roleOfCaller, type Caller } from '../../../server/auth';
 import type { OperationInput } from '../../../server/operations';
+import { areaRefusal, reachableAreas } from './person-reach';
 import { ToolError, type ToolContext } from './registry';
 
+export type ActingContext = Pick<ToolContext, 'store' | 'actor' | 'caller'>;
+export type OperatingContext = ActingContext & {
+  readonly operations: Pick<ToolContext['operations'], 'run'>;
+};
+
 export interface ActingAs {
-  readonly profileId?: string | undefined;
+  readonly personId?: string | undefined;
   readonly clientId?: string | undefined;
 }
 
-export function ownerOf(context: ToolContext): ClientRow {
+export function ownerOf(context: ActingContext): ClientRow {
   const owner = context.store.clients.owner();
   if (owner === undefined) {
     throw new ToolError('This server has no owner yet; open the desktop app once to create one');
@@ -22,21 +29,15 @@ export function ownerOf(context: ToolContext): ClientRow {
   return owner;
 }
 
-function clientFor(context: ToolContext, clientId: string | undefined): ClientRow {
+function clientFor(context: ActingContext, clientId: string | undefined): ClientRow {
   const chosen = clientId ?? context.actor?.clientId ?? null;
-  return chosen === null ? ownerOf(context) : context.store.clients.byId(chosen);
+  return chosen === null ? ownerOf(context) : effectiveClientById(context.store, chosen);
 }
 
-export function profileFor(context: ToolContext, as: ActingAs): string {
-  const profileId = as.profileId ?? context.actor?.profileId;
-  if (profileId !== undefined) {
-    return context.store.profiles.byId(profileId).id;
-  }
-  return context.store.profiles.activeOf(clientFor(context, as.clientId).id).id;
-}
+type ActingCaller = Extract<Caller, { kind: 'client' | 'service' }>;
 
 function pluginOrigin(
-  context: ToolContext,
+  context: ActingContext,
 ): Pick<Extract<Caller, { kind: 'client' }>, 'pluginId' | 'pluginRequester'> {
   const pluginId = context.caller?.via === 'plugin' ? context.caller.id : context.actor?.pluginId;
   return {
@@ -47,17 +48,41 @@ function pluginOrigin(
   };
 }
 
-function serviceCaller(context: ToolContext, as: ActingAs): Caller | null {
+function assistantOrigin(
+  context: ActingContext,
+): Pick<Extract<Caller, { kind: 'client' }>, 'authority' | 'mcpOrigin'> {
+  return {
+    ...(context.actor?.authority === undefined ? {} : { authority: context.actor.authority }),
+    ...(context.caller === null || context.caller.via === 'plugin'
+      ? {}
+      : { mcpOrigin: context.caller.via }),
+  };
+}
+
+function actingClient(context: ActingContext, client: ClientRow): ClientRow {
+  const member =
+    context.actor?.role === 'member' ||
+    (context.actor?.pluginRequester !== undefined &&
+      turnRoleOf(context.actor.pluginRequester) === 'member');
+  return member && client.role === 'owner' ? { ...client, role: 'member' } : client;
+}
+
+function clientCaller(context: ActingContext, client: ClientRow): ActingCaller {
+  const chatId = context.actor?.chatId ?? null;
+  return {
+    kind: 'client',
+    client: actingClient(context, client),
+    via: 'assistant',
+    local: context.caller?.localOnly === true,
+    ...(chatId === null ? {} : { chatId }),
+    ...pluginOrigin(context),
+    ...assistantOrigin(context),
+  };
+}
+
+function principalOf(context: ActingContext): ActingCaller {
   const authority = context.actor?.authority;
-  if (authority?.kind === 'service') {
-    if (
-      as.clientId !== undefined ||
-      (as.profileId !== undefined && as.profileId !== authority.profile_id)
-    )
-      throw new ToolError(
-        'Service actions cannot impersonate a paired app or another profile.',
-        'forbidden',
-      );
+  if (authority?.kind === 'service' && authority.role !== 'owner') {
     return {
       kind: 'service',
       authority,
@@ -66,74 +91,63 @@ function serviceCaller(context: ToolContext, as: ActingAs): Caller | null {
       ...pluginOrigin(context),
     };
   }
-  return null;
+  return clientCaller(context, clientFor(context, undefined));
 }
-function admitActor(context: ToolContext, as: ActingAs): void {
-  const authority = context.actor?.authority;
-  if (
-    authority !== undefined &&
-    ((as.clientId !== undefined && as.clientId !== authority.client_id) ||
-      (as.profileId !== undefined && as.profileId !== authority.profile_id))
-  )
-    throw new ToolError(
-      'Initiating grants cannot impersonate another app or profile.',
-      'forbidden',
-    );
+
+function admit(context: ActingContext, as: ActingAs): ActingCaller {
+  const principal = principalOf(context);
+  if (roleOfCaller(principal) === 'owner') return principal;
+  const own = context.actor?.profileId ?? profileIdOf(context.store, principal);
+  const ownClient = principal.kind === 'client' ? principal.client.id : undefined;
+  if ((as.personId ?? own) !== own || (as.clientId ?? ownClient) !== ownClient)
+    throw new ToolError('Only an owner may act for another person or app.', 'forbidden');
+  return principal;
 }
-export function callerFor(context: ToolContext, as: ActingAs = {}): Caller {
-  admitActor(context, as);
-  const service = serviceCaller(context, as);
-  if (service !== null) return service;
-  const client = clientFor(context, as.clientId);
-  const local = context.caller?.localOnly === true;
-  const chatId = context.actor?.chatId ?? null;
-  const base = {
-    kind: 'client',
-    client,
-    via: 'assistant',
-    local,
-    ...pluginOrigin(context),
-    ...assistantOrigin(context),
-  } as const;
-  const acting = chatId === null ? base : { ...base, chatId };
-  return as.profileId === undefined && context.actor === null
+
+export function profileFor(context: ActingContext, as: ActingAs): string {
+  admit(context, as);
+  const personId = as.personId ?? context.actor?.profileId;
+  if (personId !== undefined) {
+    return context.store.profiles.byId(personId).id;
+  }
+  const clientId = as.clientId ?? context.actor?.clientId ?? null;
+  return clientId === null
+    ? context.store.personAccess.homeOwner()
+    : context.store.profiles.activeOf(clientId).id;
+}
+
+export function callerFor(context: ActingContext, as: ActingAs = {}): Caller {
+  const principal = admit(context, as);
+  if (principal.kind === 'service') return principal;
+  const acting = clientCaller(context, clientFor(context, as.clientId));
+  return as.personId === undefined && as.clientId !== undefined && context.actor === null
     ? acting
     : { ...acting, profileId: profileFor(context, as) };
 }
 
+function ownerCaller(caller: Caller): boolean {
+  return (
+    roleOfCaller(caller) === 'owner' && (caller.kind !== 'client' || caller.client.role === 'owner')
+  );
+}
+
 export function operate(
-  context: ToolContext,
+  context: OperatingContext,
   name: EndpointName,
   input: OperationInput,
   as: ActingAs = {},
 ): Promise<unknown> {
-  const unavailable = MCP_UNAVAILABLE_OPERATIONS[name];
-  if (unavailable !== undefined)
-    throw new ToolError(`${name} is unavailable to AI: ${unavailable}`, 'unsupported_operation');
   const caller = callerFor(context, as);
-  if (
-    (caller.kind === 'service' || (caller.kind === 'client' && caller.client.role !== 'owner')) &&
-    API_ENDPOINTS[name].access === 'owner'
-  ) {
+  if (!ownerCaller(caller) && API_ENDPOINTS[name].access === 'owner') {
     throw new ToolError(`Only an owner may use ${name}`, 'forbidden');
   }
-  const areas = context.caller?.areas;
-  if (areas !== undefined && !areas.includes(mcpOperationArea(API_ENDPOINTS[name]))) {
-    throw new ToolError(
-      `This plugin may not use ${name}; the owner chooses what it can reach`,
-      'forbidden',
-    );
-  }
+  admitArea(context, name);
   return context.operations.run(name, caller, input);
 }
 
-function assistantOrigin(
-  context: ToolContext,
-): Pick<Extract<Caller, { kind: 'client' }>, 'authority' | 'mcpOrigin'> {
-  return {
-    ...(context.actor?.authority === undefined ? {} : { authority: context.actor.authority }),
-    ...(context.caller === null || context.caller.via === 'plugin'
-      ? {}
-      : { mcpOrigin: context.caller.via }),
-  };
+function admitArea(context: OperatingContext, name: EndpointName): void {
+  const area = endpointAccessArea(API_ENDPOINTS[name]);
+  if (area !== null && reachableAreas(context)?.includes(area) === false) {
+    throw areaRefusal(context, name, area);
+  }
 }

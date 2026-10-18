@@ -5,6 +5,7 @@ import { ApiError } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { claudeLinkRoutes } from '../server/handlers/claude-link';
 import type { LinkPlane } from './link-plane';
+import { isMissing } from '../fs-util';
 
 export interface ClaudeLoopback {
   readonly url: string;
@@ -63,7 +64,7 @@ export async function startClaudeLoopback(options: {
         }),
       );
       const known = await readFile(file, 'utf8').catch((cause: unknown) => {
-        if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return null;
+        if (isMissing(cause)) return null;
         throw cause;
       });
       if (known === JSON.stringify({ url })) await rm(file, { force: true });

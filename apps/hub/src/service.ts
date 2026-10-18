@@ -3,7 +3,8 @@ import process, { argv, env, execPath, exit, kill, pid } from 'node:process';
 import { Logger } from '@smarteverything/logging';
 import { SUPERVISE_ARGUMENT, dataDirectoryFrom } from './service/configuration';
 import { parseArgs } from 'node:util';
-import { pairNode, pairNodeWindow } from './node/setup';
+import { HUB_FINGERPRINT } from '@smarteverything/domain';
+import { pairNode } from './node/setup';
 import { runService } from './service/runner';
 import { runSupervisor, type ServiceChild } from './service/supervisor';
 
@@ -24,7 +25,9 @@ class MissingEntryError extends Error {
 class NodeSetupArgumentsError extends Error {
   override readonly name = 'NodeSetupArgumentsError';
   constructor() {
-    super('Node setup requires --hub <central hub URL> and --code <owner-issued pairing code>.');
+    super(
+      'Node setup requires --hub <central hub URL> and --code <owner-issued pairing code>, plus --pin <hub pin> for an HTTPS hub.',
+    );
   }
 }
 
@@ -82,21 +85,26 @@ function supervise(dataDirectory: string): Promise<void> {
 
 function start(): Promise<unknown> {
   const dataDirectory = dataDirectoryFrom(env);
-  if (argv.includes('--pair-node') || argv.includes('--pair-node-window')) {
+  if (argv.includes('--pair-node')) {
     const { values } = parseArgs({
       args: argv.slice(2),
       options: {
         'pair-node': { type: 'boolean' },
-        'pair-node-window': { type: 'boolean' },
         hub: { type: 'string' },
         code: { type: 'string' },
+        pin: { type: 'string' },
       },
     });
-    if (values.hub === undefined || values.code === undefined) {
+    const pin = HUB_FINGERPRINT.optional().safeParse(values.pin);
+    if (
+      values.hub === undefined ||
+      values.code === undefined ||
+      !pin.success ||
+      (pin.data === undefined && values.hub.startsWith('https:'))
+    ) {
       throw new NodeSetupArgumentsError();
     }
-    const options = { dataDirectory, hubUrl: values.hub, code: values.code };
-    return values['pair-node-window'] === true ? pairNodeWindow(options) : pairNode(options);
+    return pairNode({ dataDirectory, hubUrl: values.hub, code: values.code, pin: pin.data });
   }
   if (argv.includes(SUPERVISE_ARGUMENT)) {
     return supervise(dataDirectory);

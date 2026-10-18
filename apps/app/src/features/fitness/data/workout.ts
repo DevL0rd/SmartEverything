@@ -1,8 +1,8 @@
 import type { HealthRecord } from '@smarteverything/domain';
-import { endOf, recordsOfType, startOf, type RecordOf } from '../model/records';
+import { recordsOfType, type RecordOf } from '../model/records';
 import { workoutOf, type Workout } from '../model/workouts';
-import { useRecord, useRecords } from './queries';
-import { WORKOUT_RELATED } from './workouts';
+import { useRecord } from './queries';
+import { useRelatedRecords } from './workouts';
 
 export type WorkoutDetail =
   | { readonly status: 'loading' }
@@ -18,18 +18,10 @@ function sessionOf(record: HealthRecord | null | undefined): Session | null {
     : (recordsOfType([record], 'ExerciseSession')[0] ?? null);
 }
 
-function useRelated(session: Session | null): ReturnType<typeof useRecords> {
-  return useRecords(
-    session === null ? [] : WORKOUT_RELATED,
-    session === null ? 0 : startOf(session),
-    session === null ? 0 : endOf(session),
-  );
-}
-
 export function useWorkoutDetail(recordId: string): WorkoutDetail {
   const record = useRecord(recordId);
   const session = sessionOf(record.data);
-  const related = useRelated(session);
+  const related = useRelatedRecords(session);
   const error = record.error ?? related.error;
   if (error !== null) {
     return { status: 'failed', error };

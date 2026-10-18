@@ -111,6 +111,7 @@ export const PROVIDER_EVENT = z.discriminatedUnion('kind', [
     cache_read_tokens: z.int().nonnegative(),
     cache_write_tokens: z.int().nonnegative(),
     cost_usd: z.number().nonnegative().nullable(),
+    context_percent: z.number().min(0).max(100).nullable(),
   }),
   z.strictObject({
     ...BASE,

@@ -53,6 +53,7 @@ function Stats({
   const stats = seriesStats({
     spec,
     range: view.window.range,
+    current: view.current,
     summary: view.summary,
     previous: view.previous,
     trend: view.trend,
@@ -83,16 +84,16 @@ function Empty({
   return <NoDataRow what={`${spec.label.toLowerCase()} data`} lastDay={lastDay} />;
 }
 
-export function MetricSection({
+export function MetricCard({
   spec,
-  window,
+  view,
   link = true,
 }: {
   readonly spec: SeriesSpec;
-  readonly window: Window;
+  readonly view: SeriesView;
   readonly link?: boolean;
 }): ReactNode {
-  const view = useSeries(spec, window, false);
+  const window = view.window;
   if (view.problem !== null) {
     return <ErrorState error={new Error(view.problem)} />;
   }
@@ -127,4 +128,15 @@ export function MetricSection({
       />
     </Card>
   );
+}
+
+export function MetricSection({
+  spec,
+  window,
+}: {
+  readonly spec: SeriesSpec;
+  readonly window: Window;
+}): ReactNode {
+  const view = useSeries(spec, window, false);
+  return <MetricCard spec={spec} view={view} />;
 }

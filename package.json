@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@11.3.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=24.2"
   },
   "scripts": {
     "build:go2rtc": "tsx tooling/go2rtc/build.ts",
@@ -26,10 +26,10 @@
     "lint": "eslint . --max-warnings=0 --cache --cache-location .cache/eslint/",
     "test": "vitest run",
     "test:contracts": "vitest run --project contracts",
-    "test:coverage": "vitest run --coverage --project logging --project domain --project xiaomi --project ble --project tuya --project smartthings",
+    "test:coverage": "vitest run --coverage --project logging --project domain --project xiaomi --project ble --project tuya --project smartthings --project shelly",
     "test:guards": "vitest run --project guards",
     "test:mutation": "stryker run",
-    "test:unit": "vitest run --project logging --project domain --project xiaomi --project ble --project tuya --project smartthings --project hub --project desktop --project app",
+    "test:unit": "vitest run --project logging --project domain --project xiaomi --project ble --project tuya --project smartthings --project shelly --project hub --project desktop --project app",
     "typecheck": "tsc --build --force",
     "validate": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run check:types-coverage && pnpm run check:cycles && pnpm run check:unused && pnpm run check:spelling && pnpm run check:licenses && pnpm run check:links && pnpm run test:unit && pnpm run test:coverage && pnpm run test:contracts && pnpm run test:guards && pnpm run check:pinned && pnpm run check:duplication && pnpm run test:mutation"
   },
@@ -44,6 +44,7 @@
     "@vitest/coverage-v8": "4.1.11",
     "cspell": "10.1.1",
     "dpdm": "4.3.0",
+    "esbuild": "0.28.2",
     "eslint": "10.9.1",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react": "7.37.5",

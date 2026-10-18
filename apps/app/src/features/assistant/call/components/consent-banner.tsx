@@ -21,6 +21,7 @@ export interface ConsentBannerProps {
   readonly request: CallSightRequest;
   readonly name: string;
   readonly onAnswer: (accepted: boolean) => void;
+  readonly onExpire: () => void;
 }
 
 function Countdown({ onElapsed }: { readonly onElapsed: () => void }): ReactNode {
@@ -38,13 +39,22 @@ function Countdown({ onElapsed }: { readonly onElapsed: () => void }): ReactNode
   }, [motion.reduced, remaining]);
   const style = useAnimatedStyle(() => ({ transform: [{ scaleX: remaining.get() }] }));
   return (
-    <View className="h-1 overflow-hidden rounded-full bg-surface-3">
+    <View
+      accessible
+      accessibilityLabel={`Declines in ${String(SIGHT_REQUEST_TIMEOUT_MS / 1000)} seconds`}
+      className="h-1 overflow-hidden rounded-full bg-surface-3"
+    >
       <Animated.View style={style} className="h-1 w-full origin-left rounded-full bg-primary" />
     </View>
   );
 }
 
-export function ConsentBanner({ request, name, onAnswer }: ConsentBannerProps): ReactNode {
+export function ConsentBanner({
+  request,
+  name,
+  onAnswer,
+  onExpire,
+}: ConsentBannerProps): ReactNode {
   const motion = useMotion();
   const focus = useFocusFirst();
   return (
@@ -84,11 +94,7 @@ export function ConsentBanner({ request, name, onAnswer }: ConsentBannerProps): 
           }}
         />
       </View>
-      <Countdown
-        onElapsed={() => {
-          onAnswer(false);
-        }}
-      />
+      <Countdown onElapsed={onExpire} />
     </Animated.View>
   );
 }

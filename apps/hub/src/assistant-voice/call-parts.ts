@@ -17,6 +17,8 @@ import type { VoiceProvider } from './gemini';
 import type { HomeCameras } from './home-cameras';
 import type { HostedListening, HostedSpeaking } from './outreach';
 import type { Caller } from './persona';
+import type { SpeakingMedia } from '../reach/room-media';
+import { messageOf } from '@smarteverything/logging';
 
 export interface CallDeskOptions {
   readonly store: Store;
@@ -25,6 +27,7 @@ export interface CallDeskOptions {
   readonly tools: ToolHub;
   readonly prices: PriceBook;
   readonly cameras: HomeCameras;
+  readonly roomMedia?: SpeakingMedia;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -35,23 +38,14 @@ export interface SightBudget {
 
 export class CallLive {
   private mutedNow = false;
-  private modernNow = false;
   private timer: NodeJS.Timeout | null = null;
 
   get muted(): boolean {
     return this.mutedNow;
   }
 
-  get modern(): boolean {
-    return this.modernNow;
-  }
-
   mute(muted: boolean): void {
     this.mutedNow = muted;
-  }
-
-  markModern(): void {
-    this.modernNow = true;
   }
 
   hold(timer: NodeJS.Timeout): void {
@@ -81,6 +75,7 @@ export interface Call {
   readonly outreachId: string | null;
   readonly pluginId: string | null;
   readonly place: string | null;
+  readonly deviceId: string | null;
   readonly speaking: HostedSpeaking | null;
   readonly listening: HostedListening | null;
   readonly detachers: (() => void)[];
@@ -131,7 +126,7 @@ export function meter(
   } catch (cause) {
     options.log.error('voice.usage_unrecorded', {
       callId: call.id,
-      reason: cause instanceof Error ? cause.message : String(cause),
+      reason: messageOf(cause),
     });
   }
 }

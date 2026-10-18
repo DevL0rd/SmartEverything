@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import {
-  ASSISTANT_TEXT_MAX,
   type ChatToolItem,
   type ProviderEvent,
   type CodexProviderEvent,
@@ -22,7 +21,7 @@ const TOOL_RESULT = z.object({
 });
 const MESSAGE = z.object({ message: z.object({ content: z.array(z.unknown()) }) });
 
-export function nativeToolItems(
+function nativeToolItems(
   event: Extract<ProviderEvent, { kind: 'runtime' }>,
   known: readonly ChatToolItem[],
 ): ChatToolItem[] {
@@ -55,11 +54,8 @@ export function streamDelta(
   stream: TurnStream,
   event: Extract<ProviderEvent, { kind: 'text' | 'thinking' }>,
 ): void {
-  for (let offset = 0; offset < event.delta.length; offset += ASSISTANT_TEXT_MAX) {
-    const chunk = event.delta.slice(offset, offset + ASSISTANT_TEXT_MAX);
-    if (event.kind === 'text') stream.text(chunk);
-    else stream.reasoning(chunk);
-  }
+  if (event.kind === 'text') stream.text(event.delta);
+  else stream.reasoning(event.delta);
 }
 
 export type ReplyEvent = Extract<

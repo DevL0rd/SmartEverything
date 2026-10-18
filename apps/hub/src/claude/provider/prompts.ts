@@ -52,20 +52,7 @@ export class ProviderPrompts {
         event: toolName === 'AskUserQuestion' ? 'PreToolUse' : 'PermissionRequest',
       } as const;
       const output = ANSWER_OUTPUT.parse(await this.broker.hold(request, context.signal));
-      const specific = output.hookSpecificOutput;
-      if (specific?.permissionDecision === 'allow' || specific?.decision?.behavior === 'allow') {
-        return {
-          behavior: 'allow',
-          updatedInput: specific.updatedInput ?? input,
-          toolUseID: context.toolUseID,
-        };
-      }
-      return {
-        behavior: 'deny',
-        message:
-          specific?.permissionDecisionReason ?? 'The request was declined, cancelled, or expired.',
-        toolUseID: context.toolUseID,
-      };
+      return permissionResult(output, input, context.toolUseID);
     };
   }
 
@@ -86,4 +73,30 @@ export class ProviderPrompts {
   stop(): void {
     this.broker.stop();
   }
+}
+
+type Specific = NonNullable<z.infer<typeof ANSWER_OUTPUT>['hookSpecificOutput']>;
+
+function allowed(specific: Specific | undefined): specific is Specific {
+  return specific?.permissionDecision === 'allow' || specific?.decision?.behavior === 'allow';
+}
+
+function declineReason(specific: Specific | undefined): string {
+  const decision = specific?.decision;
+  return (
+    specific?.permissionDecisionReason ??
+    (decision?.behavior === 'deny' ? decision.message : undefined) ??
+    'The request was declined, cancelled, or expired.'
+  );
+}
+
+function permissionResult(
+  output: z.infer<typeof ANSWER_OUTPUT>,
+  input: Record<string, unknown>,
+  toolUseID: string,
+): PermissionResult {
+  const specific = output.hookSpecificOutput;
+  if (allowed(specific))
+    return { behavior: 'allow', updatedInput: specific.updatedInput ?? input, toolUseID };
+  return { behavior: 'deny', message: declineReason(specific), toolUseID };
 }

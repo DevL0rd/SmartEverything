@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { CLAUDE_PROVIDER_OPTIONS, type ClaudeProviderOptions } from '@smarteverything/domain';
+import type { ClaudeProviderOptions } from '@smarteverything/domain';
 import { TextField } from '../../../components/text-field';
+import { checkOptions } from './provider-check';
 
 const FIELDS = [
   { key: 'thinking_budget', label: 'Thinking budget' },
@@ -33,16 +34,12 @@ export function ProviderNumbers({
             const rest = Object.fromEntries(
               Object.entries(value).filter(([name]) => name !== field.key),
             );
-            const checked = CLAUDE_PROVIDER_OPTIONS.safeParse(
+            checkOptions(
               text === '' ? rest : { ...rest, [field.key]: Number(text) },
-            );
-            invalid(
               field.key,
-              checked.success
-                ? null
-                : checked.error.issues.map((issue) => issue.message).join('; '),
+              change,
+              invalid,
             );
-            if (checked.success) change(checked.data);
           }}
         />
       ))}

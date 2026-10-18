@@ -72,7 +72,7 @@ export const AI_PROVIDER_ENDPOINTS = {
   readAiChatProvider: endpoint({
     method: 'GET',
     path: '/api/ai/chats/:chatId/provider',
-    access: 'member',
+    access: 'owner',
     summary:
       'Read this chat’s separate subscription session, prompts, runtime metadata and provider events',
     params: CHAT,
@@ -83,7 +83,7 @@ export const AI_PROVIDER_ENDPOINTS = {
   readAiChatProviderState: endpoint({
     method: 'POST',
     path: '/api/ai/chats/:chatId/provider/read',
-    access: 'member',
+    access: 'owner',
     summary:
       'Read supported subscription context, tasks, MCP status and chat-owned session details',
     params: CHAT,
@@ -97,7 +97,7 @@ export const AI_PROVIDER_ENDPOINTS = {
   controlAiChatProvider: endpoint({
     method: 'POST',
     path: '/api/ai/chats/:chatId/provider/control',
-    access: 'member',
+    access: 'owner',
     summary:
       'Control this chat’s subscription model, native settings, tasks, MCP and session lifecycle',
     params: CHAT,
@@ -111,7 +111,7 @@ export const AI_PROVIDER_ENDPOINTS = {
   answerAiChatProvider: endpoint({
     method: 'POST',
     path: '/api/ai/chats/:chatId/provider/prompts/:promptId',
-    access: 'member',
+    access: 'owner',
     summary:
       'Answer an exact pending permission, question, plan or elicitation prompt of this chat’s provider',
     params: CHAT.extend({ promptId: z.string().min(1).max(200) }),

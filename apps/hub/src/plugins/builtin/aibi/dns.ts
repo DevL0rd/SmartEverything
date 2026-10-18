@@ -1,9 +1,21 @@
 import { createSocket, type Socket as UdpSocket } from 'node:dgram';
 import type { Server, Socket } from 'node:net';
 import type { PluginNetwork } from '../../plugin-listen';
-import { localAnswer, serverFailure } from './dns-message';
+import {
+  AUTHORITATIVE_ANSWER,
+  decode,
+  encode,
+  RECURSION_AVAILABLE,
+  RECURSION_DESIRED,
+  type DecodedPacket,
+  type Question,
+} from 'dns-packet';
+import { AIBI_HOST } from './host-name';
+import { background, messageOf } from '@smarteverything/logging';
 
 const UPSTREAM_TIMEOUT_MS = 2500;
+const ANSWER_TTL_SECONDS = 30;
+const SERVER_FAILURE = 2;
 
 const ANNOUNCE_GAP_MS = 15_000;
 const LENGTH_PREFIX_BYTES = 2;
@@ -22,6 +34,55 @@ class DnsUpstreamTimeoutError extends Error {
   constructor(readonly upstream: string) {
     super(`DNS upstream ${upstream} timed out`);
   }
+}
+
+function queryOf(message: Buffer): DecodedPacket | null {
+  try {
+    return decode(message);
+  } catch (cause) {
+    if (cause instanceof Error) {
+      return null;
+    }
+    throw cause;
+  }
+}
+
+function ownQuestion(query: DecodedPacket): Question | null {
+  const asked = query.questions?.[0];
+  const name = asked?.name.toLowerCase() ?? '';
+  return asked !== undefined && (name === AIBI_HOST || name.endsWith(`.${AIBI_HOST}`))
+    ? asked
+    : null;
+}
+
+export function localAnswer(message: Buffer, address: string): Buffer | null {
+  const query = queryOf(message);
+  const asked = query === null ? null : ownQuestion(query);
+  if (query === null || asked === null) {
+    return null;
+  }
+  const wanted = asked.type === 'A' && asked.class === 'IN';
+  return encode({
+    type: 'response',
+    id: query.id ?? 0,
+    flags: AUTHORITATIVE_ANSWER | RECURSION_AVAILABLE | ((query.flags ?? 0) & RECURSION_DESIRED),
+    questions: [asked],
+    answers: wanted
+      ? [{ type: 'A', name: asked.name, class: 'IN', ttl: ANSWER_TTL_SECONDS, data: address }]
+      : [],
+  });
+}
+
+export function serverFailure(message: Buffer): Buffer | null {
+  const query = queryOf(message);
+  return query === null
+    ? null
+    : encode({
+        type: 'response',
+        id: query.id ?? 0,
+        flags: RECURSION_AVAILABLE | SERVER_FAILURE | ((query.flags ?? 0) & RECURSION_DESIRED),
+        questions: query.questions ?? [],
+      });
 }
 
 export interface DnsOptions {
@@ -98,11 +159,14 @@ export class DnsServer {
       return;
     }
     udp.on('message', (message, remote) => {
-      void this.reply(message, remote.address).then((answer) => {
-        if (answer !== null && this.udp === udp && !this.lifetime.signal.aborted) {
-          udp.send(answer, remote.port, remote.address);
-        }
-      });
+      background(
+        this.reply(message, remote.address).then((answer) => {
+          if (answer !== null && this.udp === udp && !this.lifetime.signal.aborted) {
+            udp.send(answer, remote.port, remote.address);
+          }
+        }),
+        'dns.reply_failed',
+      );
     });
     udp.on('error', (error) => {
       this.events.warning('DNS server error', error.message);
@@ -117,10 +181,7 @@ export class DnsServer {
     try {
       tcp = await network.listenTcp(port, address);
     } catch (error) {
-      this.events.warning(
-        'DNS over TCP did not start; AIBI uses UDP',
-        error instanceof Error ? error.message : String(error),
-      );
+      this.events.warning('DNS over TCP did not start; AIBI uses UDP', messageOf(error));
       return;
     }
     if (this.lifetime.signal.aborted) {
@@ -158,10 +219,7 @@ export class DnsServer {
       return local;
     } catch (error) {
       if (this.lifetime.signal.aborted) return null;
-      this.events.warning(
-        'DNS query failed',
-        error instanceof Error ? error.message : String(error),
-      );
+      this.events.warning('DNS query failed', messageOf(error));
       return serverFailure(message);
     }
   }
@@ -193,13 +251,16 @@ export class DnsServer {
         }
         const message = buffer.subarray(LENGTH_PREFIX_BYTES, size + LENGTH_PREFIX_BYTES);
         buffer = buffer.subarray(size + LENGTH_PREFIX_BYTES);
-        void this.reply(message, client.remoteAddress ?? '').then((answer) => {
-          if (answer !== null && !client.destroyed) {
-            const prefix = Buffer.alloc(LENGTH_PREFIX_BYTES);
-            prefix.writeUInt16BE(answer.length, 0);
-            client.write(Buffer.concat([prefix, answer]));
-          }
-        });
+        background(
+          this.reply(message, client.remoteAddress ?? '').then((answer) => {
+            if (answer !== null && !client.destroyed) {
+              const prefix = Buffer.alloc(LENGTH_PREFIX_BYTES);
+              prefix.writeUInt16BE(answer.length, 0);
+              client.write(Buffer.concat([prefix, answer]));
+            }
+          }),
+          'dns.reply_failed',
+        );
       }
     });
   }

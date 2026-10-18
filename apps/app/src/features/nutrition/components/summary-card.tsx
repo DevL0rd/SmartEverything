@@ -25,18 +25,18 @@ export function SummaryCard({
   return (
     <Card>
       <View className="gap-5">
-        <View className={wide ? 'flex-row items-center gap-8' : 'flex-row items-center gap-5'}>
+        <View className={wide ? 'flex-row items-center gap-8' : 'items-center gap-5'}>
           <CalorieDial
             eaten={totals.energy_in ?? null}
             goal={prefs === null ? null : prefs.energyKcal}
             size={wide ? 'l' : 'm'}
           />
-          <View className="min-w-0 max-w-dialog flex-1">
+          <View className={wide ? 'min-w-0 flex-1' : 'w-full'}>
             <MacroList totals={totals} prefs={prefs} />
           </View>
         </View>
         {burned === undefined ? null : (
-          <EnergyBalance eaten={totals.energy_in ?? 0} burned={burned} />
+          <EnergyBalance eaten={totals.energy_in ?? 0} burned={burned} stacked={!wide} />
         )}
         <View className="h-hairline bg-outline-variant" />
         <WaterRow litresDrunk={totals.hydration ?? 0} day={day} today={today} />

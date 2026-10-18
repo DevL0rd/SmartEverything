@@ -1,4 +1,10 @@
-import type { CameraRow, EventKind, JsonValue, MediaSize } from '@smarteverything/domain';
+import type {
+  CameraQuality,
+  CameraRow,
+  EventKind,
+  JsonValue,
+  MediaSize,
+} from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { DeviceRecord, HubDatabase } from '../database/port';
 import type { RecordedEvent } from '../state/event-router';
@@ -37,6 +43,21 @@ function h264Transcode(stream: string): string {
   return `ffmpeg:${stream}#video=h264`;
 }
 
+const TILE_SUFFIX = '~tile';
+
+export function tileStreamOf(deviceId: string): string {
+  return `${deviceId}${TILE_SUFFIX}`;
+}
+
+function tileSourceOf(source: string): string | null {
+  if (!source.startsWith('xiaomi:')) {
+    return null;
+  }
+  const url = new URL(source);
+  url.searchParams.set('subtype', 'sd');
+  return url.toString();
+}
+
 export class UnknownStreamError extends Error {
   override readonly name = 'UnknownStreamError';
 
@@ -67,6 +88,7 @@ function compactTime(iso: string): string {
 
 export class CameraService {
   private readonly streams = new Map<string, string>();
+  private readonly tiles = new Set<string>();
   private readonly recordEvents = new Map<string, boolean>();
   private syncing: Promise<void> = Promise.resolve();
   private readonly frames: FrameCache;
@@ -97,24 +119,58 @@ export class CameraService {
   }
 
   private async syncNow(devices: readonly DeviceRecord[]): Promise<void> {
+    const startedAt = this.options.now().getTime();
+    try {
+      await this.syncStreams(devices);
+    } catch (cause) {
+      this.options.log.error('stream.sync_failed', cause, {
+        devices: devices.length,
+        registered: this.streams.size,
+        durationMs: this.options.now().getTime() - startedAt,
+      });
+      throw cause;
+    }
+    this.options.log.debug('stream.synced', () => ({
+      devices: devices.length,
+      registered: this.streams.size,
+      tiles: this.tiles.size,
+      durationMs: this.options.now().getTime() - startedAt,
+    }));
+  }
+
+  private async syncStreams(devices: readonly DeviceRecord[]): Promise<void> {
     for (const device of devices) {
       const source = cameraSourceOf(device);
       const registered = this.streams.get(device.id);
       if (source !== null && source !== registered) {
         await this.options.client.putStream(device.id, [source, h264Transcode(device.id)]);
+        await this.putTile(device.id, source);
         this.streams.set(device.id, source);
         this.options.log.info('stream.added', { deviceId: device.id });
       } else if (source === null && registered !== undefined) {
         await this.options.client.deleteStream(device.id);
+        await this.putTile(device.id, null);
         this.streams.delete(device.id);
         this.options.log.info('stream.removed', { deviceId: device.id });
       }
     }
   }
 
+  private async putTile(deviceId: string, source: string | null): Promise<void> {
+    const name = tileStreamOf(deviceId);
+    const tile = source === null ? null : tileSourceOf(source);
+    if (source !== null && tile !== null) {
+      await this.options.client.putStream(name, [tile, source, h264Transcode(name)]);
+      this.tiles.add(deviceId);
+    } else if (this.tiles.delete(deviceId)) {
+      await this.options.client.deleteStream(name);
+    }
+  }
+
   async resync(devices: readonly DeviceRecord[]): Promise<void> {
     await this.syncing;
     this.streams.clear();
+    this.tiles.clear();
     await this.sync(devices);
   }
 
@@ -126,48 +182,107 @@ export class CameraService {
     return this.streams.has(deviceId);
   }
 
-  async answer(deviceId: string, sdp: string, clientId: string): Promise<string> {
+  async answer(
+    deviceId: string,
+    sdp: string,
+    clientId: string,
+    quality: CameraQuality,
+  ): Promise<string> {
+    const startedAt = this.options.now().getTime();
     await this.streamReady(deviceId);
-    const answer = await this.viewers.open({
-      deviceId,
-      clientId,
-      kind: 'view',
-      answer: () => this.options.client.answer(deviceId, listenOnly(sdp)),
-    });
-    this.options.log.info('webrtc.answered', { deviceId, talk: false });
-    return answer;
+    const stream =
+      quality === 'tile' && this.tiles.has(deviceId) ? tileStreamOf(deviceId) : deviceId;
+    try {
+      const answer = await this.viewers.open({
+        deviceId: stream,
+        clientId,
+        kind: 'view',
+        answer: () => this.options.client.answer(stream, listenOnly(sdp)),
+      });
+      this.options.log.info('webrtc.answered', {
+        deviceId,
+        stream,
+        talk: false,
+        quality,
+        clientId,
+        offerLength: sdp.length,
+        answerLength: answer.length,
+        durationMs: this.options.now().getTime() - startedAt,
+      });
+      return answer;
+    } catch (cause) {
+      this.options.log.error('webrtc.answer_failed', cause, {
+        deviceId,
+        stream,
+        talk: false,
+        quality,
+        clientId,
+        durationMs: this.options.now().getTime() - startedAt,
+      });
+      throw cause;
+    }
   }
 
   async talk(deviceId: string, sdp: string, clientId: string): Promise<string> {
+    const startedAt = this.options.now().getTime();
     await this.streamReady(deviceId);
     if (!this.options.conditions.twoWayAudio(deviceId)) {
+      this.options.log.warn('webrtc.talk_unsupported', { deviceId, clientId });
       throw new CameraTalkUnsupportedError(deviceId);
     }
-    const answer = await this.viewers.open({
-      deviceId,
-      clientId,
-      kind: 'talk',
-      answer: () => this.options.client.answer(deviceId, sdp),
-    });
-    this.options.log.info('webrtc.answered', { deviceId, talk: true });
-    return answer;
+    try {
+      const answer = await this.viewers.open({
+        deviceId,
+        clientId,
+        kind: 'talk',
+        answer: () => this.options.client.answer(deviceId, sdp),
+      });
+      this.options.log.info('webrtc.answered', {
+        deviceId,
+        talk: true,
+        clientId,
+        offerLength: sdp.length,
+        answerLength: answer.length,
+        durationMs: this.options.now().getTime() - startedAt,
+      });
+      return answer;
+    } catch (cause) {
+      this.options.log.error('webrtc.answer_failed', cause, {
+        deviceId,
+        talk: true,
+        clientId,
+        durationMs: this.options.now().getTime() - startedAt,
+      });
+      throw cause;
+    }
   }
 
   async snapshot(deviceId: string, size: MediaSize): Promise<Uint8Array> {
     await this.streamReady(deviceId);
-    return this.frames.frame(deviceId, size);
+    const startedAt = this.options.now().getTime();
+    const frame = await this.frames.frame(deviceId, size);
+    this.options.log.debug('snapshot.served', () => ({
+      deviceId,
+      size,
+      bytes: frame.byteLength,
+      durationMs: this.options.now().getTime() - startedAt,
+    }));
+    return frame;
   }
 
   async streamReady(deviceId: string): Promise<void> {
     await this.syncing;
     if (!this.streams.has(deviceId)) {
+      this.options.log.debug('camera.stream_refused', { deviceId, reason: 'unknown_stream' });
       throw new UnknownStreamError(deviceId);
     }
     const { online, privacyOn } = this.options.conditions;
     if (!online(deviceId)) {
+      this.options.log.debug('camera.stream_refused', { deviceId, reason: 'offline' });
       throw new CameraOfflineError(deviceId);
     }
     if (privacyOn(deviceId)) {
+      this.options.log.debug('camera.stream_refused', { deviceId, reason: 'privacy_on' });
       throw new CameraPrivacyError(deviceId);
     }
   }
@@ -177,6 +292,13 @@ export class CameraService {
     const startedAt = this.options.now();
     const path = `${deviceId}/${compactTime(startedAt.toISOString())}-manual.mp4`;
     const bytes = await this.options.client.clip(deviceId, seconds);
+    this.options.log.debug('recording.captured', () => ({
+      deviceId,
+      kind: 'clip',
+      seconds,
+      bytes: bytes.byteLength,
+      durationMs: this.options.now().getTime() - startedAt.getTime(),
+    }));
     await this.options.store.storeRecording(
       { path, bytes, contentType: 'video/mp4' },
       {
@@ -238,9 +360,20 @@ export class CameraService {
           bytes: bytes.byteLength,
         },
       );
-      this.options.log.info('recording.stored', { deviceId, kind, bytes: bytes.byteLength });
+      this.options.log.info('recording.stored', {
+        deviceId,
+        kind,
+        eventId: event.id,
+        bytes: bytes.byteLength,
+        durationMs: this.options.now().getTime() - startedAt.getTime(),
+      });
     } catch (cause) {
-      this.options.log.error('recording.failed', cause, { deviceId, kind });
+      this.options.log.error('recording.failed', cause, {
+        deviceId,
+        kind,
+        eventId: event.id,
+        durationMs: this.options.now().getTime() - startedAt.getTime(),
+      });
     }
   }
 }

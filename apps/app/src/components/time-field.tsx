@@ -31,17 +31,29 @@ class DayPeriodError extends Error {
   }
 }
 
+const PERIOD_FORMAT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', hour12: true });
+
+const LOCALE_HOUR12 =
+  new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 === true;
+
 export function localeUsesHour12(): boolean {
-  return new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 === true;
+  return LOCALE_HOUR12;
 }
 
+const PERIOD_LABELS = new Map<number, string>();
+
 function periodLabel(hour: number): string {
-  const part = new Intl.DateTimeFormat(undefined, { hour: 'numeric', hour12: true })
-    .formatToParts(new Date(2000, 0, 1, hour))
-    .find((entry) => entry.type === 'dayPeriod');
+  const known = PERIOD_LABELS.get(hour);
+  if (known !== undefined) {
+    return known;
+  }
+  const part = PERIOD_FORMAT.formatToParts(new Date(2000, 0, 1, hour)).find(
+    (entry) => entry.type === 'dayPeriod',
+  );
   if (part === undefined) {
     throw new DayPeriodError(hour);
   }
+  PERIOD_LABELS.set(hour, part.value);
   return part.value;
 }
 
@@ -145,7 +157,7 @@ export function TimeField({
   value,
   onChange,
   label,
-  hour12 = localeUsesHour12(),
+  hour12 = LOCALE_HOUR12,
 }: TimeFieldProps): ReactNode {
   const period: Period = value.hour < 12 ? 'am' : 'pm';
   const offset = period === 'pm' ? 12 : 0;

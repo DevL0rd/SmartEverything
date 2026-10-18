@@ -90,8 +90,36 @@ export function formatMicros(format: MoneyFormat, micros: number): string {
   return formatDollars(format, micros / MICROS_PER_DOLLAR);
 }
 
+function localAmountOf(format: MoneyFormat, usd: number): number {
+  const digits = minorDigitsOf(format);
+  return Number((usd * format.rate).toFixed(digits));
+}
+
+function usdAmountOf(format: MoneyFormat, local: number): number {
+  return Math.round((local / format.rate) * MICROS_PER_DOLLAR) / MICROS_PER_DOLLAR;
+}
+
+function localBoundsOf(
+  format: MoneyFormat,
+  usdMin: number,
+  usdMax: number,
+): { readonly min: number; readonly max: number } {
+  const digits = minorDigitsOf(format);
+  const scale = 10 ** digits;
+  return {
+    min: Math.ceil(usdMin * format.rate * scale) / scale,
+    max: Math.floor(usdMax * format.rate * scale) / scale,
+  };
+}
+
 export interface Money {
   readonly format: MoneyFormat;
+  readonly toLocal: (usd: number) => number;
+  readonly toUsd: (local: number) => number;
+  readonly bounds: (
+    usdMin: number,
+    usdMax: number,
+  ) => { readonly min: number; readonly max: number };
   readonly cost: (micros: number) => string;
   readonly dollars: (dollars: number) => string;
 }
@@ -99,6 +127,9 @@ export interface Money {
 export function moneyOf(format: MoneyFormat): Money {
   return {
     format,
+    toLocal: (usd) => localAmountOf(format, usd),
+    toUsd: (local) => usdAmountOf(format, local),
+    bounds: (usdMin, usdMax) => localBoundsOf(format, usdMin, usdMax),
     cost: (micros) => formatMicros(format, micros),
     dollars: (dollars) => formatDollars(format, dollars),
   };

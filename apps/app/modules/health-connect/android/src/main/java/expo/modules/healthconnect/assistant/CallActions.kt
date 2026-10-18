@@ -5,25 +5,26 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import expo.modules.healthconnect.NativeGuard
+import expo.modules.healthconnect.overlay.OverlayControl
 
 object CallActions {
-  const val MUTE = "toggle_mute"
-  const val STOP_SCREEN = "stop_screen"
-  const val END = "end"
   private const val INTENT_PREFIX = "expo.modules.healthconnect.assistant.call."
 
-  fun pending(context: Context, action: String): PendingIntent = PendingIntent.getBroadcast(
+  fun pending(context: Context, control: OverlayControl): PendingIntent = PendingIntent.getBroadcast(
     context,
-    action.hashCode(),
-    Intent(context, CallActionReceiver::class.java).setAction(INTENT_PREFIX + action).setPackage(context.packageName),
+    control.ordinal,
+    Intent(context, CallActionReceiver::class.java).setAction(INTENT_PREFIX + control.name).setPackage(context.packageName),
     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
   )
 
-  fun actionOf(intent: Intent): String? = intent.action?.removePrefix(INTENT_PREFIX)?.takeIf { it != intent.action }
+  fun controlOf(intent: Intent): OverlayControl? {
+    val name = intent.action?.removePrefix(INTENT_PREFIX)?.takeIf { it != intent.action } ?: return null
+    return OverlayControl.entries.firstOrNull { it.name == name }
+  }
 }
 
 class CallActionReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) = NativeGuard.run("CallActionReceiver") {
-    CallActions.actionOf(intent)?.let(AssistantCallEvents::control)
+    CallActions.controlOf(intent)?.let { AssistantCalls.command(context, it) }
   }
 }

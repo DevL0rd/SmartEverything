@@ -1,84 +1,62 @@
-import { DuplicateSpeechOccurrenceError } from '../store/repositories/speech';
-import { admitRun, type ActionExecutionContext } from './run-context';
-import type { OwnedRunAdmission } from './owned-runs';
-import type { AutomationRunRequest } from './run-task';
 import {
-  AUTOMATION_DEFINITION,
-  automationRunForReader,
-  ApiError,
+  AUTOMATION_V2,
   GEO_POINT,
-  SCENE_ACTIONS,
   TIME_ZONE,
-  conditionsHold,
-  isTimedTrigger,
+  automationSignalErrorV2,
   nextOccurrence,
-  usesStructuredActions,
-  type AutomationDefinition,
-  type JsonValue,
-  type AutomationBindingContext,
-  type AutomationRunRow,
-  type CommandAction,
-  type ConditionContext,
+  timedTriggerOf,
+  type AutomationRow,
+  type AutomationV2,
   type Place,
   type SignalInput,
   type SignalSourceSpec,
   type TimedTrigger,
-  type Trigger,
-  type WeatherForecast,
+  type TriggerV2,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
-import { describeError } from '../commands/executor';
-import type { AutomationRecord, HubDatabase } from '../database/port';
 import { SignalWatchers } from '../signals/signal-watchers';
-import { watchedTriggers, unknownSignalOf } from './engine-signals';
-import type { ActionRunner } from './actions';
-import { legacyTriggerFires } from './legacy-triggers';
+import type { Store } from '../store/store';
+import { DuplicateSpeechOccurrenceError } from '../store/repositories/speech';
+import { subjectOf, type AutomationRunner } from './run-task';
 import type { TriggerAdmission, TriggerArmer } from './trigger-armers';
+import { watchedTriggers, weatherFieldsOf, weatherLevelSignals } from './triggers';
+import type { AutomationWorld } from './world';
+import { failureLine } from '@smarteverything/logging';
 
-type AutomationStore = Pick<
-  HubDatabase,
-  'loadHome' | 'loadAutomations' | 'loadScenes' | 'updateAutomation'
->;
-
-export interface AutomationRun {
-  readonly automationId: string;
-  readonly name: string;
-  readonly startedAt: string;
-  readonly durationMs: number;
-  readonly error: string | null;
-}
-
-export interface AutomationEngineOptions {
-  readonly store: AutomationStore;
-  readonly recordRun: (run: AutomationRun) => void;
-  readonly actions: (waitForCommands?: boolean) => ActionRunner;
-  readonly ownRun?: (request: AutomationRunRequest) => OwnedRunAdmission;
-  readonly cancelRuns?: () => void;
-  readonly admitManual?: (definition: AutomationDefinition) => () => void;
-  readonly valueOf: ConditionContext['stateOf'];
-  readonly automationValue?: (id: string) => JsonValue;
-  readonly bindings?: () => AutomationBindingContext;
-  readonly forecast: () => WeatherForecast | null;
+interface AutomationEngineOptions {
+  readonly store: Store;
+  readonly runner: Pick<AutomationRunner, 'start'>;
+  readonly world: Pick<AutomationWorld, 'holds'>;
   readonly armers: readonly TriggerArmer[];
   readonly sources: () => readonly SignalSourceSpec[];
+  readonly stopRuns: () => void;
   readonly clock: Clock;
   readonly log: Logger;
 }
 
-type ManualRun = Pick<AutomationRunRequest, 'admit' | 'occurrence'>;
-
 interface Loaded {
-  readonly record: AutomationRecord;
-  readonly definition: AutomationDefinition;
+  readonly row: AutomationRow;
+  readonly definition: AutomationV2;
+}
+
+function problemOf(
+  parsed: ReturnType<typeof AUTOMATION_V2.safeParse>,
+  sources: readonly SignalSourceSpec[],
+): string | null {
+  if (!parsed.success)
+    return `InvalidAutomationError: ${parsed.error.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('; ')}`;
+  const error = automationSignalErrorV2(sources, parsed.data);
+  return error === null ? null : `${error.name}: ${error.message}`;
 }
 
 export class AutomationEngine {
   private automations = new Map<string, Loaded>();
-  private scenes = new Map<string, readonly CommandAction[]>();
   private place: Place | null = null;
+  private weatherFields: ReadonlySet<string> = new Set();
   private cancels: Cancel[] = [];
-  private readonly runCounts = new Map<string, number>();
   private readonly watchers: SignalWatchers;
 
   constructor(private readonly options: AutomationEngineOptions) {
@@ -87,66 +65,56 @@ export class AutomationEngine {
       fire: (automationId, signal): void => {
         const automation = this.automations.get(automationId);
         if (automation !== undefined) {
-          void this.run(automation, signal);
+          this.run(automation, signal);
         }
       },
     });
   }
 
-  sceneActions(sceneId: string): readonly CommandAction[] | undefined {
-    return this.scenes.get(sceneId);
-  }
-
-  async reload(): Promise<void> {
-    const [home, automations, scenes] = await Promise.all([
-      this.options.store.loadHome(),
-      this.options.store.loadAutomations(),
-      this.options.store.loadScenes(),
-    ]);
-    const location = GEO_POINT.safeParse({ latitude: home.latitude, longitude: home.longitude });
+  reload(): void {
+    const { store, log } = this.options;
+    const settings = store.settings.read();
+    const location = GEO_POINT.safeParse({
+      latitude: settings.latitude,
+      longitude: settings.longitude,
+    });
     this.place = {
-      timeZone: TIME_ZONE.parse(home.timeZone),
+      timeZone: TIME_ZONE.parse(settings.time_zone),
       location: location.success ? location.data : null,
     };
-    this.scenes = new Map(
-      scenes.flatMap((scene) => {
-        const actions = SCENE_ACTIONS.safeParse(scene.actions);
-        if (!actions.success) {
-          this.options.log.warn('scene.invalid', {
-            sceneId: scene.id,
-            issues: actions.error.issues.length,
-          });
-          return [];
-        }
-        return [[scene.id, actions.data] as const];
-      }),
-    );
     const sources = this.options.sources();
     this.automations = new Map(
-      (await Promise.all(automations.map((record) => this.loaded(record, sources)))).flat(),
+      store.automations.list().flatMap((row) => this.loaded(row, sources)),
     );
+    const definitions = [...this.automations.values()].map((automation) => automation.definition);
+    this.weatherFields = weatherFieldsOf(definitions);
     this.watchers.load(
       [...this.automations.values()].map((automation) => ({
-        automationId: automation.record.id,
+        automationId: automation.row.id,
         triggers: watchedTriggers(automation.definition, sources),
       })),
     );
     this.reschedule();
-    this.options.log.info('automations.loaded', {
+    log.info('automations.loaded', {
       automations: this.automations.size,
-      scenes: this.scenes.size,
+      enabledRows: this.automations.size,
+      timers: this.cancels.length,
+      timeZone: this.place.timeZone,
+      hasLocation: this.place.location !== null,
     });
   }
 
   signal(signal: SignalInput): void {
-    this.fire((trigger) => legacyTriggerFires(trigger, signal), signal);
     this.watchers.observe(signal);
+    for (const level of weatherLevelSignals(signal, this.weatherFields)) {
+      this.watchers.observe(level);
+    }
   }
 
   stop(): void {
     this.clearTimers();
     this.watchers.stop();
-    this.options.cancelRuns?.();
+    this.options.stopRuns();
   }
 
   private clearTimers(): void {
@@ -156,56 +124,45 @@ export class AutomationEngine {
     this.cancels = [];
   }
 
-  private async loaded(
-    record: AutomationRecord,
+  private loaded(
+    row: AutomationRow,
     sources: readonly SignalSourceSpec[],
-  ): Promise<(readonly [string, Loaded])[]> {
-    if (!record.enabled) {
+  ): (readonly [string, Loaded])[] {
+    if (!row.enabled) {
       return [];
     }
-    const definition = AUTOMATION_DEFINITION.safeParse(record.definition);
-    const message = definition.success
-      ? unknownSignalOf(sources, definition.data)
-      : `InvalidAutomationError: ${definition.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}`;
-    if (definition.success && message === null) {
-      this.runCounts.set(record.id, record.runCount);
-      return [[record.id, { record, definition: definition.data }]];
+    const parsed = AUTOMATION_V2.safeParse(row.definition);
+    const problem = problemOf(parsed, sources);
+    if (parsed.success && problem === null) {
+      return [[row.id, { row, definition: parsed.data }]];
     }
-    this.options.log.warn('automation.invalid', { automationId: record.id });
-    if (record.lastError !== message) {
-      await this.options.store.updateAutomation(record.id, { lastError: message });
-    }
+    this.options.log.warn('automation.invalid', {
+      automationId: row.id,
+      parsed: parsed.success,
+      reason: problem ?? undefined,
+    });
+    this.recordError(row, problem ?? 'InvalidAutomationError');
     return [];
-  }
-
-  private fire(matches: (trigger: Trigger) => boolean, signal: SignalInput): void {
-    for (const automation of this.automations.values()) {
-      if (!automation.definition.triggers.some(matches)) continue;
-      void this.run(automation, signal);
-    }
   }
 
   private reschedule(): void {
     this.clearTimers();
     for (const automation of this.automations.values()) {
-      for (const trigger of automation.definition.triggers.filter(isTimedTrigger)) {
-        this.schedule(automation, trigger, this.options.clock.now());
+      for (const trigger of automation.definition.when) {
+        const timed = timedTriggerOf(trigger);
+        if (timed !== null) this.schedule(automation, timed, this.options.clock.now());
+        this.arm(automation, trigger);
       }
-      this.arm(automation);
     }
   }
 
-  private arm(automation: Loaded): void {
-    for (const trigger of automation.definition.triggers) {
-      for (const armer of this.options.armers.filter((entry) =>
-        entry.types.includes(trigger.type),
-      )) {
-        this.cancels.push(
-          armer.arm(automation.record.id, trigger, (signal, admission) => {
-            void this.run(automation, signal, admission);
-          }),
-        );
-      }
+  private arm(automation: Loaded, trigger: TriggerV2): void {
+    for (const armer of this.options.armers.filter((entry) => entry.types.includes(trigger.on))) {
+      this.cancels.push(
+        armer.arm(automation.row.id, trigger, (signal, admission) => {
+          this.run(automation, signal, admission);
+        }),
+      );
     }
   }
 
@@ -218,7 +175,7 @@ export class AutomationEngine {
   }
 
   private schedule(automation: Loaded, trigger: TimedTrigger, after: Date): void {
-    const place = this.place;
+    const { place } = this;
     if (place === null) {
       return;
     }
@@ -226,203 +183,81 @@ export class AutomationEngine {
     try {
       next = this.upcoming(trigger, after, place);
     } catch (cause) {
-      void this.recordError(automation, describeError(cause));
+      this.recordError(automation.row, failureLine(cause));
       return;
     }
     if (next === null) {
       this.options.log.warn('automation.never_due', {
-        automationId: automation.record.id,
+        automationId: automation.row.id,
         trigger: trigger.type,
       });
       return;
     }
     const due = next;
+    this.options.log.debug('automation.scheduled', () => ({
+      automationId: automation.row.id,
+      trigger: trigger.type,
+      dueAt: due.toISOString(),
+      inMs: due.getTime() - this.options.clock.now().getTime(),
+    }));
     this.cancels.push(
       this.options.clock.at(due, () => {
         this.schedule(automation, trigger, due);
-        void this.run(automation, null);
+        this.run(automation, null);
       }),
     );
   }
 
-  private conditionsHold(automation: Loaded, place: Place): boolean {
-    return conditionsHold(automation.definition.conditions, {
-      stateOf: this.options.valueOf,
-      ...(this.options.bindings === undefined ? {} : { bindings: this.options.bindings() }),
-      ...(this.options.automationValue === undefined
-        ? {}
-        : { valueOf: this.options.automationValue }),
-      now: this.options.clock.now(),
-      timeZone: place.timeZone,
-      forecast: this.options.forecast(),
-      location: place.location,
-    });
-  }
-
-  private async manual(automationId: string): Promise<Loaded> {
-    const record = (await this.options.store.loadAutomations()).find(
-      (candidate) => candidate.id === automationId,
-    );
-    if (record === undefined) {
-      throw new ApiError('not_found', `There is no automation ${automationId}.`);
-    }
-    const definition = AUTOMATION_DEFINITION.safeParse(record.definition);
-    if (!definition.success) {
-      throw new ApiError(
-        'invalid_request',
-        `The automation ${record.name} is not valid, so it cannot run: ${definition.error.message}`,
-      );
-    }
-    return { record, definition: definition.data };
-  }
-
-  async startNow(automationId: string): Promise<AutomationRunRow> {
-    const automation = await this.manual(automationId);
-    const manual = { admit: this.options.admitManual?.(automation.definition) };
-    const admission = this.admitOwned(automation, null, manual);
-    if (admission === undefined)
-      throw new ApiError('conflict', 'Owned automation runs are not available.');
-    return automationRunForReader(admission.row, false);
-  }
-
-  async runNow(automationId: string): Promise<void> {
-    const automation = await this.manual(automationId);
-    const manual = { admit: this.options.admitManual?.(automation.definition) };
-    const error = await this.execute(automation, null, manual);
-    if (error !== null) {
-      throw new ApiError('command_refused', error);
-    }
-  }
-
-  private async run(
-    automation: Loaded,
-    signal: SignalInput | null,
-    admission?: TriggerAdmission,
-  ): Promise<void> {
-    const place = this.place;
-    if (place === null) return;
+  private run(automation: Loaded, signal: SignalInput | null, admission?: TriggerAdmission): void {
+    const { runner, world } = this.options;
+    const { row, definition } = automation;
     try {
-      if (!this.conditionsHold(automation, place)) return;
-      await this.execute(
-        automation,
-        signal,
-        admission === undefined
-          ? undefined
-          : { admit: admission.validate, occurrence: admission.occurrence },
-      );
-    } catch (cause) {
-      if (cause instanceof DuplicateSpeechOccurrenceError) return;
-      await this.recordError(automation, describeError(cause));
-    }
-  }
-
-  private admitOwned(
-    automation: Loaded,
-    signal: SignalInput | null,
-    manual?: ManualRun,
-  ): OwnedRunAdmission | undefined {
-    return this.options.ownRun?.({
-      ...automation,
-      ordered:
-        manual !== undefined ||
-        automation.definition.runPolicy !== undefined ||
-        usesStructuredActions(automation.definition.actions),
-      admit: manual?.admit,
-      ...(manual?.occurrence === undefined ? {} : { occurrence: manual.occurrence }),
-      execute: (context) => this.perform(automation, signal, manual, context),
-    });
-  }
-
-  private async execute(
-    automation: Loaded,
-    signal: SignalInput | null,
-    manual?: ManualRun,
-  ): Promise<string | null> {
-    const admission = this.admitOwned(automation, signal, manual);
-    return admission === undefined ? this.perform(automation, signal, manual) : admission.finished;
-  }
-
-  private async perform(
-    automation: Loaded,
-    signal: SignalInput | null,
-    manual?: ManualRun,
-    context?: ActionExecutionContext,
-  ): Promise<string | null> {
-    const automationId = automation.record.id;
-    const run = this.options.log.operation('automation.run', { automationId });
-    const startedAt = this.options.clock.now();
-    let lastError: string | null = null;
-    try {
-      await this.options
-        .actions(
-          manual !== undefined ||
-            automation.definition.runPolicy !== undefined ||
-            usesStructuredActions(automation.definition.actions),
-        )
-        .run(
-          automation.definition.actions,
-          {
-            automationId,
-            name: automation.record.name,
-            signal,
-            plugin: automation.definition.origin,
-          },
-          manual?.admit,
-          context,
-        );
-      admitRun(context);
-      manual?.admit?.();
-      run.succeeded();
-    } catch (cause) {
-      lastError = describeError(cause);
-      run.failed(cause);
-    }
-    return this.recordResult(automation, startedAt, lastError);
-  }
-
-  private async recordResult(
-    automation: Loaded,
-    startedAt: Date,
-    lastError: string | null,
-  ): Promise<string | null> {
-    const automationId = automation.record.id;
-    this.options.recordRun({
-      automationId,
-      name: automation.record.name,
-      startedAt: startedAt.toISOString(),
-      durationMs: this.options.clock.now().getTime() - startedAt.getTime(),
-      error: lastError,
-    });
-    const runCount = (this.runCounts.get(automationId) ?? automation.record.runCount) + 1;
-    this.runCounts.set(automationId, runCount);
-    const recordingError = await this.options.store
-      .updateAutomation(automationId, {
-        lastRunAt: this.options.clock.now().toISOString(),
-        runCount,
-        lastError,
-      })
-      .then(() => null)
-      .catch((cause: unknown) => {
-        this.options.log.error('automation.run_not_recorded', cause, { automationId });
-        return `The automation run could not be recorded: ${describeError(cause)}`;
+      if (definition.onlyIf !== undefined && !world.holds(definition.onlyIf, {})) {
+        this.options.log.debug('automation.skipped', () => ({
+          automationId: row.id,
+          reason: 'only_if_false',
+          trigger: signal === null ? 'timer' : `${signal.source}:${signal.kind}`,
+        }));
+        return;
+      }
+      this.options.log.debug('automation.triggered', () => ({
+        automationId: row.id,
+        trigger: signal === null ? 'timer' : `${signal.source}:${signal.kind}`,
+        admitted: admission !== undefined,
+      }));
+      runner.start({
+        subject: subjectOf(row),
+        definition,
+        trigger: signal,
+        inputs: {},
+        lasting: true,
+        ...(admission === undefined
+          ? {}
+          : { admit: admission.validate, occurrence: admission.occurrence }),
       });
-    return recordingError ?? lastError;
+    } catch (cause) {
+      if (cause instanceof DuplicateSpeechOccurrenceError) {
+        this.options.log.debug('automation.skipped', {
+          automationId: row.id,
+          reason: 'duplicate_speech_occurrence',
+        });
+      } else {
+        this.options.log.error('automation.start_failed', cause, { automationId: row.id });
+        this.recordError(row, failureLine(cause));
+      }
+    }
   }
 
-  private async recordError(automation: Loaded, message: string): Promise<void> {
-    this.options.log.warn('automation.not_scheduled', {
-      automationId: automation.record.id,
-      reason: message,
-    });
-    if (automation.record.lastError === message) {
+  private recordError(row: AutomationRow, message: string): void {
+    const { store, log } = this.options;
+    log.warn('automation.not_scheduled', { automationId: row.id, reason: message });
+    if (row.last_error === message) {
       return;
     }
-    await this.options.store
-      .updateAutomation(automation.record.id, { lastError: message })
-      .catch((cause: unknown) => {
-        this.options.log.error('automation.error_not_recorded', cause, {
-          automationId: automation.record.id,
-        });
-      });
+    try {
+      store.automations.recordRun(row.id, { lastError: message });
+    } catch (cause) {
+      log.error('automation.error_not_recorded', cause, { automationId: row.id });
+    }
   }
 }

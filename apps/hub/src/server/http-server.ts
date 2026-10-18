@@ -1,38 +1,18 @@
-import {
-  AUTOMATION_EFFECTS_CAPABILITY,
-  AUTOMATION_SPEECH_CAPABILITY,
-} from '@smarteverything/domain';
-import {
-  EMBEDDED_BROWSER_CAPABILITY,
-  EMBEDDED_BROWSER_PATH,
-  PREVIEW_DIAGNOSTICS_CAPABILITY,
-  PREVIEW_BROWSER_DATA_CAPABILITY,
-  PREVIEW_DIAGNOSTICS_PATH,
-} from '@smarteverything/domain';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createServer as createSecureServer, type ServerOptions as TlsOptions } from 'node:https';
 import type { Duplex } from 'node:stream';
 import {
-  DEVICE_GROUP_CAPABILITY,
-  LAYOUT_WRITE_CAPABILITY,
-  LIVE_SEQUENCE_HEADER,
-  AI_ENGINE_CAPABILITIES_HEADER,
-  AI_HARNESS_CAPABILITY,
-  AI_PREVIEW_CAPABILITY,
-  AI_PREVIEW_LIFETIME_CAPABILITY,
-  AI_NATIVE_HTML_CAPABILITY,
-  AI_NATIVE_PROJECT_CAPABILITY,
-  AI_CHAT_PAGES_CAPABILITY,
-  AI_ENGINE_CAPABILITY,
-  AI_ENGINE_CAPABILITY_V2,
   ASSISTANT_VOICE_PATH,
   ApiError,
+  EMBEDDED_BROWSER_PATH,
   HUB_IDENTITY_PATH,
+  LIVE_SEQUENCE_HEADER,
   MEDIA_PATHS,
   TALK_PATH,
   NODE_AI_PATH,
   NODE_HARNESS_PATH,
   NODE_PREVIEW_PATH,
+  PREVIEW_DIAGNOSTICS_PATH,
   matchPath,
   type HttpMethod,
 } from '@smarteverything/domain';
@@ -43,6 +23,8 @@ import type { CameraSockets } from './camera-socket';
 import type { ServerContext } from './context';
 import { apiErrorFor } from './errors';
 import { sendError } from './http';
+import { ServerObserver, log, refusals } from './http-observe';
+import { beginTrace, noteRoute, type RequestTrace } from './request-trace';
 import { recordingFile, sendRecording } from './recording-files';
 import type { Router } from './router';
 
@@ -83,25 +65,28 @@ function corsAllowed(
   request: IncomingMessage,
   response: ServerResponse,
 ): boolean {
-  response.setHeader(
-    AI_ENGINE_CAPABILITIES_HEADER,
-    `${AI_ENGINE_CAPABILITY}, ${AI_ENGINE_CAPABILITY_V2}, ${AI_HARNESS_CAPABILITY}, ${AI_PREVIEW_CAPABILITY}, ${AI_PREVIEW_LIFETIME_CAPABILITY}, ${AI_NATIVE_HTML_CAPABILITY}, ${AI_NATIVE_PROJECT_CAPABILITY}, ${AI_CHAT_PAGES_CAPABILITY}, ${PREVIEW_DIAGNOSTICS_CAPABILITY}, ${PREVIEW_BROWSER_DATA_CAPABILITY}, ${EMBEDDED_BROWSER_CAPABILITY}, ${DEVICE_GROUP_CAPABILITY}, ${LAYOUT_WRITE_CAPABILITY}, ${AUTOMATION_EFFECTS_CAPABILITY}, ${AUTOMATION_SPEECH_CAPABILITY}`,
-  );
-  response.setHeader(
-    'access-control-expose-headers',
-    `${AI_ENGINE_CAPABILITIES_HEADER}, x-smarteverything-ai-unavailable, ${LIVE_SEQUENCE_HEADER}`,
-  );
+  response.setHeader('access-control-expose-headers', LIVE_SEQUENCE_HEADER);
   const origin = request.headers.origin;
   if (origin === undefined || isPublicOrigin(options, origin)) {
     return true;
   }
   if (!options.allowedOrigins.has(origin)) {
+    const suppressed = refusals.pass(`origin:${origin}`);
+    if (suppressed !== null) {
+      log.warn('origin.refused', {
+        origin,
+        method: request.method ?? null,
+        suppressedSince: suppressed,
+        decision: 'forbidden',
+      });
+    }
     sendError(response, new ApiError('forbidden', `Requests from ${origin} are not allowed.`));
     return false;
   }
   response.setHeader('access-control-allow-origin', origin);
   response.setHeader('vary', 'origin');
   if (request.method === 'OPTIONS') {
+    log.debug('cors.preflight', { origin, decision: 'allowed' });
     response.writeHead(204, {
       'access-control-allow-methods': ALLOWED_METHODS,
       'access-control-allow-headers': ALLOWED_HEADERS,
@@ -130,6 +115,7 @@ const answerProbe: PublicPath = (options, _request, response, url) => {
   if (probe === null) {
     return Promise.resolve(false);
   }
+  noteRoute(response, `GET ${MEDIA_PATHS.publicUrlProbe}`, 'public');
   const nonce = probe['nonce'] ?? '';
   if (!options.context.publicUrl.answers(nonce)) {
     throw new ApiError('not_found', 'This server is not waiting for that nonce.');
@@ -147,6 +133,7 @@ const serveRecordingFile: PublicPath = async (options, request, response, url) =
   if (recording === null) {
     return false;
   }
+  noteRoute(response, `GET ${MEDIA_PATHS.recording}`, 'signed');
   const size = options.context.links.verifyImage(url);
   const row = options.context.store.cameras.recording(recording['recordingId'] ?? '');
   const path = options.context.recordingPath(row.storage_path);
@@ -159,6 +146,7 @@ const serveSnapshot: PublicPath = async (options, _request, response, url) => {
   if (camera === null) {
     return false;
   }
+  noteRoute(response, `GET ${MEDIA_PATHS.cameraSnapshot}`, 'signed');
   const size = options.context.links.verifyImage(url);
   const deviceId = camera['deviceId'] ?? '';
   const frame = await options.context.hub.snapshot(deviceId, size);
@@ -176,6 +164,7 @@ const serveTalkMessage: PublicPath = async (options, request, response, url) => 
   if (message === null) {
     return false;
   }
+  noteRoute(response, `GET ${MEDIA_PATHS.talkMessage}`, 'signed');
   options.context.links.verify(url);
   const row = options.context.store.talk.message(message['messageId'] ?? '');
   if (row.storage_path === null) {
@@ -191,6 +180,7 @@ const serveAssistantAttachment: PublicPath = async (options, request, response, 
   if (found === null) {
     return false;
   }
+  noteRoute(response, `GET ${MEDIA_PATHS.assistantAttachment}`, 'signed');
   options.context.links.verify(url);
   const file = options.context.store.assistantChat.attachment(found['attachmentId'] ?? '');
   const path = options.context.assistant.files.pathOf(file);
@@ -232,6 +222,7 @@ async function serveRawRoutes(
   for (const route of options.rawRoutes) {
     const params = matchPath(route.path, pathname);
     if (params !== null && route.method === request.method) {
+      noteRoute(response, `${route.method} ${route.path}`, 'raw');
       await route.handle(request, response, params);
       return true;
     }
@@ -266,12 +257,16 @@ async function serve(
     : new ApiError('not_found', `There is nothing at ${urlOf(request).pathname}.`);
 }
 
-function failed(options: HttpServerOptions, cause: unknown): ApiError {
+function failed(options: HttpServerOptions, cause: unknown, trace?: RequestTrace): ApiError {
   const known = apiErrorFor(cause);
   if (known !== null) {
     return known;
   }
-  options.context.log.exception('request.crashed', cause);
+  options.context.log.exception('request.crashed', cause, {
+    requestId: trace?.id ?? null,
+    route: trace?.route ?? null,
+    clientId: trace?.clientId ?? null,
+  });
   return new ApiError('internal', 'The server failed while handling this request; see its log.');
 }
 
@@ -327,16 +322,36 @@ async function upgrade(
 
 export function createHttpServer(options: HttpServerOptions, tls?: TlsOptions): Server {
   const serving: Serving = { ...options, thumbnails: new Thumbnails() };
+  const observer = new ServerObserver(tls === undefined ? 'http' : 'https');
   const handler = (request: IncomingMessage, response: ServerResponse): void => {
+    const trace = beginTrace(response);
+    response.once('close', () => {
+      observer.finished(request, response, trace);
+    });
     serve(serving, request, response).catch((cause: unknown) => {
-      sendError(response, failed(options, cause));
+      const error = failed(options, cause, trace);
+      trace.errorCode = error.code;
+      trace.reason = error.message.slice(0, 200);
+      sendError(response, error);
     });
   };
   const server = tls === undefined ? createServer(handler) : createSecureServer(tls, handler);
+  server.on('connection', (socket) => {
+    observer.connected(socket);
+  });
   server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    observer.upgrading(request, socket);
     upgrade(options, request, socket, head).catch((cause: unknown) => {
-      refuseUpgrade(socket, failed(options, cause));
+      const error = failed(options, cause);
+      observer.upgradeRefused(request, error);
+      refuseUpgrade(socket, error);
     });
   });
+  if (tls !== undefined) {
+    server.on('tlsClientError', (cause: NodeJS.ErrnoException) => {
+      observer.tlsRejected(cause);
+    });
+  }
+  observer.summarise(server);
   return server;
 }

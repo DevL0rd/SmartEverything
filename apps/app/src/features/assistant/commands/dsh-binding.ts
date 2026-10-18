@@ -1,7 +1,5 @@
 import { useCommandPreparation } from './preparation';
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import type { Engine, AiHarnessCatalogue } from '@smarteverything/domain';
-import { randomUUID } from 'expo-crypto';
 import {
   harnessTargetKey,
   type AiChatRow,
@@ -9,20 +7,11 @@ import {
   type AiHarnessHost,
   type AiHarnessCommandScope,
 } from '@smarteverything/domain';
-import { api } from '../../../api/transport';
+import { connectionId } from './connection-id';
 import { useActiveProfile } from '../../../store/people';
 import { useSyncStatus } from '../../../store/selectors';
 import { useChatHarness, useHarnessCatalogue } from '../data/harness';
-const connections = new WeakMap<ReturnType<typeof api>, string>();
-function connectionId(live: boolean): string {
-  if (!live) return 'offline';
-  const client = api();
-  const existing = connections.get(client);
-  if (existing !== undefined) return existing;
-  const id = randomUUID();
-  connections.set(client, id);
-  return id;
-}
+import { background } from '@smarteverything/logging';
 interface BindingInput {
   readonly chat: AiChatRow | undefined;
   readonly state: AiHarnessSession | undefined;
@@ -30,10 +19,23 @@ interface BindingInput {
   readonly live: boolean;
   readonly profileId: string | undefined;
 }
+export type BindingProblem =
+  'offline' | 'preparing' | 'machine-offline' | 'machine-outdated' | 'not-ready' | 'failed';
+
+const COMMAND_REASONS: Readonly<Record<BindingProblem, string>> = {
+  offline: 'Reconnect to see commands for this chat.',
+  preparing: 'Finding commands…',
+  'machine-offline': 'Reconnect the selected machine to use commands.',
+  'machine-outdated': 'Update the selected machine to use commands.',
+  'not-ready': 'Commands aren’t ready yet. Try again in a moment.',
+  failed: 'Couldn’t load commands.',
+};
+
 export interface DshCommandBinding {
   readonly key: string;
   readonly chatId: string | null;
   readonly scope: AiHarnessCommandScope | null;
+  readonly problem: BindingProblem | null;
   readonly reason: string | null;
   readonly retry: () => void;
 }
@@ -56,17 +58,19 @@ export function useDshCommandBinding(
     profileId: profile?.id,
   };
   const scope = boundScope(input);
+  const problem = preparation.isFetching
+    ? 'preparing'
+    : bindingProblem(input, scope, session.error ?? preparation.error, catalogue.error);
   return {
     key: scopeKey(input, scope),
     chatId: chat?.id ?? null,
     scope,
-    reason: preparation.isFetching
-      ? 'Finding commands…'
-      : bindingProblem(input, scope, session.error ?? preparation.error, catalogue.error),
+    problem,
+    reason: problem === null ? null : COMMAND_REASONS[problem],
     retry: (): void => {
-      void preparation.refetch();
-      if (hasSession(own)) void session.refetch();
-      void catalogue.refetch();
+      background(preparation.refetch(), 'preparation.refetch_failed');
+      if (hasSession(own)) background(session.refetch(), 'session.refetch_failed');
+      background(catalogue.refetch(), 'catalogue.refetch_failed');
     },
   };
 }
@@ -115,28 +119,29 @@ function scopeKey(input: BindingInput, scope: AiHarnessCommandScope | null): str
     state === undefined ? null : [state.permission, state.permission_change, state.route],
   ]);
 }
-function unavailable(input: BindingInput, scope: AiHarnessCommandScope | null): string | null {
+function unavailable(
+  input: BindingInput,
+  scope: AiHarnessCommandScope | null,
+): BindingProblem | null {
   const { chat, host, state } = input;
-  if (!input.live) return 'Reconnect to see commands for this chat.';
-  if (chat === undefined) return 'Finding commands…';
-  if (chat.engine.kind !== 'dsh' && chat.engine.kind !== 'openrouter') return 'Finding commands…';
-  if (host === undefined || state === undefined) return 'Finding commands…';
+  if (!input.live) return 'offline';
+  if (chat === undefined) return 'preparing';
+  if (chat.engine.kind !== 'dsh' && chat.engine.kind !== 'openrouter') return 'preparing';
+  if (host === undefined || state === undefined) return 'preparing';
   return hostUnavailable(host) ?? sessionUnavailable(state, scope);
 }
-function hostUnavailable(host: AiHarnessHost): string | null {
-  if (!host.online) return 'Reconnect the selected host to use commands here.';
-  return host.manifest?.human_commands === true
-    ? null
-    : 'Update the selected host to use commands here.';
+function hostUnavailable(host: AiHarnessHost): BindingProblem | null {
+  if (!host.online) return 'machine-offline';
+  return host.manifest?.human_commands === true ? null : 'machine-outdated';
 }
 function sessionUnavailable(
   state: AiHarnessSession,
   scope: AiHarnessCommandScope | null,
-): string | null {
+): BindingProblem | null {
   return scope === null ||
     ['switching', 'unavailable', 'failed'].includes(state.state) ||
     pendingPermission(state)
-    ? 'The session binding is unavailable. Refresh commands to continue.'
+    ? 'not-ready'
     : null;
 }
 
@@ -167,7 +172,7 @@ function bindingProblem(
   scope: AiHarnessCommandScope | null,
   sessionError: Error | null,
   catalogueError: Error | null,
-): string | null {
-  if (sessionError !== null || catalogueError !== null) return CHAT_ERROR_MESSAGE;
+): BindingProblem | null {
+  if (sessionError !== null || catalogueError !== null) return 'failed';
   return unavailable(input, scope);
 }

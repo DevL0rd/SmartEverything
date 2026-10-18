@@ -1,23 +1,5 @@
 import { portionOf, type FoodCandidate, type FoodRow } from './foods';
-import { FOOD_MULTIPLIER, type HealthEntryInput } from './health-entries';
-
-const AMOUNT_DECIMALS = 100;
-
-export function scaledAmount(weight: number, multiplier: number): number {
-  const parsed = FOOD_MULTIPLIER.parse(multiplier);
-  return Math.round(weight * parsed * AMOUNT_DECIMALS) / AMOUNT_DECIMALS;
-}
-
-export function multiplierOf(portion: { readonly multiplier?: number | undefined } | null): number {
-  return portion?.multiplier ?? 1;
-}
-
-export function weightOf(portion: {
-  readonly amount: number;
-  readonly multiplier?: number | undefined;
-}): number {
-  return Math.round((portion.amount / multiplierOf(portion)) * AMOUNT_DECIMALS) / AMOUNT_DECIMALS;
-}
+import type { HealthEntryInput } from './health-entries';
 
 export interface EntrySpan {
   readonly startTime: string;
@@ -65,20 +47,11 @@ export interface FoodLog {
   readonly food: FoodCandidate;
   readonly foodId: string | null;
   readonly amount: number;
-  readonly multiplier?: number | undefined;
   readonly mealType: number;
   readonly span: EntrySpan;
 }
 
-export function foodEntryOf({
-  food,
-  foodId,
-  amount: weight,
-  multiplier = 1,
-  mealType,
-  span,
-}: FoodLog): HealthEntryInput {
-  const amount = scaledAmount(weight, multiplier);
+export function foodEntryOf({ food, foodId, amount, mealType, span }: FoodLog): HealthEntryInput {
   const portion = portionOf(food, amount);
   return {
     type: 'Nutrition',
@@ -97,20 +70,15 @@ export function foodEntryOf({
       unit: food.basis.unit,
       label: portionLabel(food, amount),
       waterMl: portion.waterMl,
-      ...(multiplier === 1 ? {} : { multiplier }),
     },
   };
 }
 
-export function waterEntryOf(
-  millilitres: number,
-  span: EntrySpan,
-  multiplier = 1,
-): HealthEntryInput {
+export function waterEntryOf(millilitres: number, span: EntrySpan): HealthEntryInput {
   return {
     type: 'Hydration',
     ...span,
-    data: { liters: scaledAmount(millilitres, multiplier) / 1000 },
+    data: { liters: millilitres / 1000 },
     food: null,
   };
 }

@@ -31,9 +31,10 @@ describe('linking a Xiaomi account', () => {
   it('signs in with the password and keeps only the session secrets', async () => {
     const account = new FakeAccount({ captcha: false, verification: false, wrongCaptchas: 0 });
     const stored = await link(account);
-    expect(stored.label).toBe(`Xiaomi account ${USER_ID} (de)`);
+    expect(stored.label).toBe(`${credentials.username} · Europe`);
     const { deviceId, ...secrets } = stored.secrets;
     expect(secrets).toStrictEqual({
+      account: credentials.username,
       userId: USER_ID,
       passToken: 'V1:pass-1',
       ssecurity: SSECURITY,
@@ -95,13 +96,14 @@ describe('linking a Xiaomi account', () => {
     const module = createXiaomiModule(dependencies(routedFetch([account.route]), 0), null);
     await expect(
       module.link({ ...credentials, password: 'nope' }, current.context),
-    ).rejects.toThrow(
-      new XiaomiLoginError(
+    ).rejects.toMatchObject({
+      problem: 'bad_credentials',
+      cause: new XiaomiLoginError(
         'serviceLoginAuth2',
         'a session, a captcha or a verification',
         'code 70016 wrong password',
       ),
-    );
+    });
   });
 
   it('refuses a captcha that is not an image', async () => {

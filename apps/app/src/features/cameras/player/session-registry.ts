@@ -1,4 +1,4 @@
-import type { IceServer } from '@smarteverything/domain';
+import type { CameraQuality, IceServer } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { ApiClient } from '../../../api/connection/client';
 import { ValueStore } from '../../../design/external-store';
@@ -9,6 +9,18 @@ import {
   type SessionPhase,
   type VideoFlow,
 } from './player-state';
+import {
+  connectionTimedOut,
+  linkAttached,
+  phaseChanged,
+  recoverSkipped,
+  restartSkipped,
+  retryScheduled,
+  sessionStopping,
+  videoFlow,
+  videoMissing,
+  type SessionTrace,
+} from './session-log';
 import { guarded, logFailure, startDirect, startRelay, type SessionHooks } from './session-start';
 import { sampleOf, type StreamSample } from './stats';
 import { surfaceReportsFrames } from './video-surface';
@@ -40,6 +52,7 @@ export interface SessionKey {
   readonly deviceId: string;
   readonly client: ApiClient;
   readonly iceServers: readonly IceServer[];
+  readonly quality: CameraQuality;
 }
 
 function framesArrived(
@@ -64,11 +77,22 @@ export class SharedSession {
   private users = 0;
   private retries = 0;
   private directRetried = false;
+  private beganAt = 0;
+
+  private trace(): SessionTrace {
+    return {
+      deviceId: this.key.deviceId,
+      transport: this.state.get().transport,
+      sinceBeganMs: Date.now() - this.beganAt,
+    };
+  }
 
   retryDelay(): number {
     const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** this.retries);
     this.retries += 1;
-    return delay + Math.random() * RETRY_JITTER_MS;
+    const total = delay + Math.random() * RETRY_JITTER_MS;
+    retryScheduled(this.key.deviceId, this.retries, Math.round(total));
+    return total;
   }
   private leaving: ReturnType<typeof setTimeout> | null = null;
 
@@ -81,6 +105,7 @@ export class SharedSession {
 
   leaveAfter(ms: number, leave: () => void): void {
     this.cancelLeave();
+    log.debug('camera.leave_scheduled', { deviceId: this.key.deviceId, graceMs: ms });
     this.leaving = setTimeout(() => {
       this.leaving = null;
       leave();
@@ -101,7 +126,7 @@ export class SharedSession {
     return this.users > 0;
   }
 
-  constructor(readonly key: SessionKey) {}
+  constructor(public key: SessionKey) {}
 
   start(): void {
     this.directRetried = false;
@@ -110,14 +135,25 @@ export class SharedSession {
 
   private begin(transport: Transport): void {
     this.stop();
+    this.beganAt = Date.now();
+    log.info('camera.transport_begun', {
+      deviceId: this.key.deviceId,
+      transport,
+      quality: this.key.quality,
+      iceServers: this.key.iceServers.length,
+      retries: this.retries,
+    });
     let stopped = false;
     this.stopped = (): boolean => stopped;
     this.close = (): void => {
       stopped = true;
     };
     const hooks = guarded(this.hooks(), () => stopped);
-    const { deviceId, iceServers, client } = this.key;
-    (transport === 'mse' ? startRelay : startDirect)({ deviceId, iceServers, client }, hooks);
+    const { deviceId, iceServers, client, quality } = this.key;
+    (transport === 'mse' ? startRelay : startDirect)(
+      { deviceId, iceServers, client, quality },
+      hooks,
+    );
   }
 
   private hooks(): SessionHooks {
@@ -131,6 +167,7 @@ export class SharedSession {
         this.patch({ media });
       },
       onFlow: (flowing): void => {
+        videoFlow(this.trace(), flowing);
         this.patch({ video: flowing ? 'flowing' : 'stalled' });
         if (flowing) {
           this.clearWatch();
@@ -139,6 +176,7 @@ export class SharedSession {
         }
       },
       onLink: (next, transport): void => {
+        linkAttached(this.trace());
         this.link = next;
         this.applyListening();
         this.patch({ transport });
@@ -147,6 +185,7 @@ export class SharedSession {
   }
 
   private report(phase: SessionPhase): void {
+    phaseChanged(this.trace(), phase);
     if (phase.kind === 'failed') {
       logFailure(this.key.deviceId, phase.error);
       if (this.recover(phase.error)) {
@@ -162,16 +201,20 @@ export class SharedSession {
       this.clearWatch();
       this.watch = setTimeout(() => {
         this.watch = null;
+        connectionTimedOut(this.trace(), phase.kind, MEDIA_CONNECTION_LIMIT_MS);
         this.report({ kind: 'failed', error: { kind: 'noPath' } });
       }, MEDIA_CONNECTION_LIMIT_MS);
     }
   }
 
   private recover(error: SessionError): boolean {
+    const transport = this.state.get().transport;
     if (!['noPath', 'dropped', 'gathering'].includes(error.kind)) {
+      recoverSkipped(this.key.deviceId, 'unrecoverable_error', error.kind);
       return false;
     }
-    if (this.state.get().transport !== 'webrtc') {
+    if (transport !== 'webrtc') {
+      recoverSkipped(this.key.deviceId, 'already_on_relay', error.kind);
       return false;
     }
     if (relaySupported()) {
@@ -180,8 +223,10 @@ export class SharedSession {
       return true;
     }
     if (this.directRetried) {
+      recoverSkipped(this.key.deviceId, 'direct_already_retried', error.kind);
       return false;
     }
+    log.info('camera.direct_retried', { deviceId: this.key.deviceId, error: error.kind });
     this.directRetried = true;
     this.begin('webrtc');
     return true;
@@ -196,6 +241,7 @@ export class SharedSession {
   }
 
   stop(): void {
+    sessionStopping(this.key.deviceId, this.users, this.link !== null);
     this.close();
     this.clearWatch();
     this.link?.close();
@@ -236,6 +282,7 @@ export class SharedSession {
   }
 
   private videoMissing(): void {
+    videoMissing(this.trace(), NO_VIDEO_AFTER_MS);
     if (!this.recover({ kind: 'noPath' })) {
       this.patch({ video: 'stalled' });
     }
@@ -292,23 +339,8 @@ export class SharedSession {
 
 const sessions = new Map<string, SharedSession>();
 
-export const sessionsChanged = new ValueStore<number>(0);
-
-export function peekSession(key: SessionKey): SharedSession | null {
-  return sessions.get(keyOf(key)) ?? null;
-}
-
-const clients = new WeakMap<ApiClient, number>();
-let nextClient = 0;
-
 function keyOf(key: SessionKey): string {
-  let identity = clients.get(key.client);
-  if (identity === undefined) {
-    identity = nextClient;
-    nextClient += 1;
-    clients.set(key.client, identity);
-  }
-  return `${String(identity)}/${key.deviceId}/${JSON.stringify(key.iceServers)}`;
+  return `${key.client.baseUrl}/${key.deviceId}/${key.quality}`;
 }
 
 export function acquireSession(key: SessionKey): SharedSession {
@@ -320,12 +352,33 @@ export function acquireSession(key: SessionKey): SharedSession {
   }
   session.cancelLeave();
   const state = session.state.get();
+  const iceChanged = session.key.iceServers !== key.iceServers;
+  session.key = key;
   const needsStart =
-    existing === undefined || state.phase.kind === 'failed' || state.video === 'stalled';
-  if (session.hold() === 1 && needsStart) {
-    log.info('camera.session_opened', { deviceId: key.deviceId });
+    existing === undefined ||
+    iceChanged ||
+    state.phase.kind === 'failed' ||
+    state.video === 'stalled';
+  const users = session.hold();
+  if (users === 1 && needsStart) {
+    log.info('camera.session_opened', {
+      deviceId: key.deviceId,
+      quality: key.quality,
+      reused: existing !== undefined,
+      iceChanged,
+      previousPhase: state.phase.kind,
+      previousVideo: state.video,
+      sessions: sessions.size,
+    });
     session.start();
-    sessionsChanged.update((version) => version + 1);
+  } else {
+    log.debug('camera.session_joined', {
+      deviceId: key.deviceId,
+      users,
+      needsStart,
+      phase: state.phase.kind,
+      video: state.video,
+    });
   }
   return session;
 }
@@ -333,7 +386,9 @@ export function acquireSession(key: SessionKey): SharedSession {
 const LEAVE_GRACE_MS = 10_000;
 
 export function releaseSession(session: SharedSession): void {
-  if (session.release() > 0) {
+  const remaining = session.release();
+  log.debug('camera.session_released', { deviceId: session.key.deviceId, users: remaining });
+  if (remaining > 0) {
     return;
   }
   session.leaveAfter(LEAVE_GRACE_MS, () => {
@@ -342,19 +397,26 @@ export function releaseSession(session: SharedSession): void {
     }
     session.stop();
     sessions.delete(keyOf(session.key));
-    sessionsChanged.update((version) => version + 1);
-    log.info('camera.session_closed', { deviceId: session.key.deviceId });
+    log.info('camera.session_closed', {
+      deviceId: session.key.deviceId,
+      quality: session.key.quality,
+      sessions: sessions.size,
+    });
   });
 }
 
 export function restartSession(session: SharedSession): void {
   if (!session.held()) {
+    restartSkipped(session.key.deviceId, 'not_held');
     return;
   }
+  log.info('camera.restart_requested', { deviceId: session.key.deviceId });
   session.stop();
   setTimeout(() => {
     if (session.held()) {
       session.start();
+    } else {
+      restartSkipped(session.key.deviceId, 'released');
     }
   }, session.retryDelay());
 }

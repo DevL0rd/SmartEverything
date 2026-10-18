@@ -19,7 +19,7 @@ const EMOJI_IMAGE = z
   .max(EMOJI_IMAGE_LIMIT)
   .regex(/^data:image\/(png|jpeg|gif);base64,[A-Za-z0-9+/]+={0,2}$/);
 
-export const ASK_COMMAND = 'ask';
+const ASK_COMMAND = 'ask';
 export const ASK_COMMANDS: ReadonlySet<string> = new Set([ASK_COMMAND]);
 
 export const GUILD_OPERATIONS: readonly Operation[] = [

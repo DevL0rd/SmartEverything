@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { Href } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
@@ -79,7 +79,7 @@ export interface ActivityRowProps {
   readonly flush?: boolean;
 }
 
-export function ActivityRow({
+export const ActivityRow = memo(function ActivityRow({
   item,
   time = 'clock',
   withName = true,
@@ -112,4 +112,4 @@ export function ActivityRow({
       {content}
     </Interactive>
   );
-}
+});

@@ -27,7 +27,7 @@ export const TOOL_ACTION = z
   .object({
     type: z.literal('tool'),
     profileId: z.uuid().describe('The person the tool acts for'),
-    tool: z.string().min(1).max(120).describe('Any tool name, e.g. call_person'),
+    tool: z.string().min(1).max(120).describe('Any tool name, e.g. call'),
     args: z.record(z.string(), JSON_VALUE).default({}).describe('The tool’s arguments'),
   })
   .describe('Calls one tool without an AI turn');

@@ -1,4 +1,4 @@
-import { presentDevice, type PresentedCapability } from '@smarteverything/domain';
+import { appendTo, presentDevice, type PresentedCapability } from '@smarteverything/domain';
 import type { Device } from '../../../store/state';
 
 export interface CapabilitySection {
@@ -37,7 +37,7 @@ export function cameraSections(device: Device): readonly CapabilitySection[] {
   for (const presented of presentDevice(device).capabilities) {
     const title = shownIn(presented);
     if (title !== null) {
-      sections.set(title, [...(sections.get(title) ?? []), presented]);
+      appendTo(sections, title, presented);
     }
   }
   return ORDER.flatMap((title) => {

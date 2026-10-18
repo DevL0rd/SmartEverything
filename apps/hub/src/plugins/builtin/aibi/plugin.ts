@@ -6,6 +6,7 @@ import {
   type PluginManifestInput,
 } from '@smarteverything/domain';
 import type { BuiltinPlugin } from '../contract';
+import { figureWidget } from '../board-widget';
 import { defineBuiltinPlugin } from '../define';
 import { startAibi, type AibiEnvironment } from './runtime';
 import { AIBI_SETTINGS } from './settings';
@@ -45,6 +46,16 @@ const AIBI_MANIFEST: PluginManifestInput = {
     events: [
       { kind: 'conversation_started', title: 'AIBI started a conversation' },
       { kind: 'conversation_ended', title: 'AIBI’s conversation ended' },
+    ],
+    widgets: [
+      figureWidget('aibi-status', 'AIBI', 'bot', ROBOT_STATUS_STREAM),
+      figureWidget(
+        'aibi-conversation',
+        'AIBI conversation',
+        'messageCircle',
+        ROBOT_ACTIVITY_STREAM,
+      ),
+      figureWidget('aibi-moves', 'AIBI moves', 'move', ROBOT_MOVES_STREAM),
     ],
     settings: AIBI_SETTINGS_FORM,
     search: 'push',

@@ -90,7 +90,7 @@ const PLANNED = {
   ],
 };
 
-const SAMPLE_DATA: Readonly<Record<HealthRecordType, unknown>> = {
+const SAMPLE_DATA: Readonly<Record<HealthRecordType, object>> = {
   ActiveCaloriesBurned: { kilocalories: 120.5 },
   BasalBodyTemperature: { celsius: 36.4, measurementLocation: 3 },
   BasalMetabolicRate: { kilocaloriesPerDay: 1650 },
@@ -201,15 +201,19 @@ describe('health record types', () => {
     }
   });
 
-  it('refuses a record of every type whose data belongs to another shape', () => {
+  it('keeps only the known data fields of a record of every type', () => {
     for (const type of HEALTH_RECORD_TYPES) {
-      expect(accepts(withData(type, { unexpected: 1 }))).toBe(false);
+      const sample = SAMPLE_DATA[type];
+      const parsed = HEALTH_RECORD.parse(withData(type, { ...sample, unexpected: 1 }));
+      expect(parsed.data).not.toHaveProperty('unexpected');
     }
   });
 
-  it('refuses an unknown type and unknown envelope fields', () => {
+  it('refuses an unknown type and ignores unknown envelope fields', () => {
     expect(accepts(recordOf('Steps', { type: 'Stairs' }))).toBe(false);
-    expect(accepts(recordOf('Steps', { origin: 'phone' }))).toBe(false);
+    expect(HEALTH_RECORD.parse(recordOf('Steps', { origin: 'phone' }))).not.toHaveProperty(
+      'origin',
+    );
   });
 
   it('requires an end time on interval records and forbids one on instantaneous records', () => {
@@ -243,13 +247,11 @@ describe('health record types', () => {
     expect(accepts(recordOf('Weight', { startTime: '2026-10-08T06:00:00' }))).toBe(false);
   });
 
-  it('bounds the record id, the source app and the zone offset', () => {
+  it('requires a record id and source app of any length and bounds the zone offset', () => {
     expect(accepts(recordOf('Steps', { recordId: '' }))).toBe(false);
-    expect(accepts(recordOf('Steps', { recordId: 'r'.repeat(200) }))).toBe(true);
-    expect(accepts(recordOf('Steps', { recordId: 'r'.repeat(201) }))).toBe(false);
+    expect(accepts(recordOf('Steps', { recordId: 'r'.repeat(5000) }))).toBe(true);
     expect(accepts(recordOf('Steps', { sourceApp: '' }))).toBe(false);
-    expect(accepts(recordOf('Steps', { sourceApp: 'a'.repeat(255) }))).toBe(true);
-    expect(accepts(recordOf('Steps', { sourceApp: 'a'.repeat(256) }))).toBe(false);
+    expect(accepts(recordOf('Steps', { sourceApp: 'a'.repeat(5000) }))).toBe(true);
     expect(accepts(recordOf('Steps', { zoneOffsetSeconds: null }))).toBe(true);
     expect(accepts(recordOf('Steps', { zoneOffsetSeconds: -64_800 }))).toBe(true);
     expect(accepts(recordOf('Steps', { zoneOffsetSeconds: 64_800 }))).toBe(true);

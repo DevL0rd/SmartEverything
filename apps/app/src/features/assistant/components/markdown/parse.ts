@@ -197,7 +197,27 @@ function nextBlock(cursor: Cursor): Block | null {
   return paragraph(cursor);
 }
 
+const CACHE_SIZE = 600;
+
+const parsed = new Map<string, readonly Block[]>();
+
 export function parseMarkdown(text: string): readonly Block[] {
+  const known = parsed.get(text);
+  if (known !== undefined) {
+    parsed.delete(text);
+    parsed.set(text, known);
+    return known;
+  }
+  const blocks = parseBlocks(text);
+  parsed.set(text, blocks);
+  if (parsed.size > CACHE_SIZE) {
+    const oldest = parsed.keys().next();
+    if (oldest.done !== true) parsed.delete(oldest.value);
+  }
+  return blocks;
+}
+
+function parseBlocks(text: string): readonly Block[] {
   const cursor = new Cursor(text.replaceAll('\r\n', '\n').split('\n'));
   const blocks: Block[] = [];
   while (!cursor.done) {
@@ -240,4 +260,12 @@ function blockReadable(block: Block): string {
 
 export function readableText(markdown: string): string {
   return parseMarkdown(markdown).map(blockReadable).join('\n\n');
+}
+
+export function readableBlocks(view: {
+  readonly settled: readonly string[];
+  readonly tail: string;
+}): string {
+  const texts = view.tail === '' ? view.settled : [...view.settled, view.tail];
+  return texts.map(readableText).join('\n\n');
 }

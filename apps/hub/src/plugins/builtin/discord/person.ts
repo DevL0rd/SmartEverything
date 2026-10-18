@@ -1,19 +1,14 @@
-import { z } from 'zod';
-import { SNOWFLAKE, USER_MENTION } from './ids';
+import { USER_MENTION } from './ids';
 import type { RawMember, RawUser } from './payloads';
 
 const NAME_LENGTH = 100;
 
-const nameText = z.string().max(NAME_LENGTH).nullable();
-
-export const PERSON = z.strictObject({
-  id: SNOWFLAKE,
-  username: nameText,
-  globalName: nameText,
-  nickname: nameText,
-});
-
-export type Person = z.output<typeof PERSON>;
+export interface Person {
+  readonly id: string;
+  readonly username: string | null;
+  readonly globalName: string | null;
+  readonly nickname: string | null;
+}
 
 function clean(value: string | null | undefined): string | null {
   const text = (value ?? '')

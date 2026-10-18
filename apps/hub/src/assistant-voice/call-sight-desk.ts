@@ -32,7 +32,7 @@ export function isSightMessage(message: AssistantVoiceClientMessage): message is
   return SIGHT_TYPES.has(message.type);
 }
 
-export function watchCamera(call: Call, sight: CallSight, cameraId: string): void {
+function watchCamera(call: Call, sight: CallSight, cameraId: string): void {
   try {
     sight.watch(cameraId);
   } catch (cause) {
@@ -54,7 +54,6 @@ export function watchCamera(call: Call, sight: CallSight, cameraId: string): voi
 export function routeSight(call: Call, sight: CallSight, message: SightMessage): void {
   switch (message.type) {
     case 'sight_settings':
-      call.live.markModern();
       sight.settings(message);
       break;
     case 'sight_start':
@@ -78,7 +77,7 @@ export function routeSight(call: Call, sight: CallSight, message: SightMessage):
   }
 }
 
-export function callRowOf(call: Call): CallRow {
+function callRowOf(call: Call): CallRow {
   const { caller } = call;
   return {
     callId: call.id,

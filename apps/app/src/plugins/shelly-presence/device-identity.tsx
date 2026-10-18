@@ -1,10 +1,10 @@
 import { TextExportButton } from './text-export-button';
 import { View } from 'react-native';
 import type { ReactNode } from 'react';
-import type { ShellyPresenceDevice } from '@smarteverything/domain';
+import type { ShellyDevice } from '@smarteverything/shelly';
 import { ValueRow } from '../../components/rows';
 import { List } from '../../components/section';
-export function DeviceIdentity({ sensor }: { readonly sensor: ShellyPresenceDevice }): ReactNode {
+export function DeviceIdentity({ sensor }: { readonly sensor: ShellyDevice }): ReactNode {
   const info = sensor.info;
   return (
     <View className="gap-3">

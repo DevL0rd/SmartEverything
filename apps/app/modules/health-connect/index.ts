@@ -4,8 +4,7 @@ export {
   addScaleEventListener,
   addSyncProgressListener,
   cancelSchedule,
-  configure,
-  configureScaleRelay,
+  configureServer,
   deliverBodyReadings,
   deliverEntries,
   entryWritesGranted,
@@ -69,7 +68,6 @@ export type {
   SyncProgress,
   SyncReport,
   SyncSchedule,
-  SyncTarget,
   ScaleEvent,
   ScaleRelayStatus,
   PhoneApp,
@@ -103,6 +101,8 @@ export {
   assistantCallCan,
   assistantCallLevel,
   assistantCallLinked,
+  assistantCallOutputLevel,
+  attachAssistantCall,
   beginAssistantCall,
   captureAssistantScreenStill,
   dismissIncomingCall,
@@ -126,13 +126,26 @@ export type {
   IncomingCallRing,
   NativeAudioSettings,
   NativeFrameSampling,
+  RunningCall,
 } from './src/assistant-call';
+export {
+  addOverlayActionListener,
+  openAssistantSettings,
+  openOverlaySettings,
+  overlayLinked,
+  overlayStatus,
+  setOverlayPrefs,
+  showAssistantSession,
+} from './src/assistant-overlay';
+export type { OverlayStatus } from './src/assistant-overlay';
 export {
   addPhoneEventListener,
   choosePhoneCar,
   forgetPhoneCar,
+  openAccessibilitySettings,
   openBatteryOptimization,
   openUsageAccess,
+  openWriteSettings,
   parkedSpot,
   phoneCarCandidates,
   phoneNodeLinked,
@@ -149,3 +162,18 @@ export type {
   PhoneNodeStatus,
   PhoneSensor,
 } from './src/phone';
+export {
+  addListeningListeners,
+  configureListening,
+  listeningLinked,
+  releaseWake,
+  restListening,
+  resumeListening,
+  stopListening,
+  watchListeningLevel,
+} from './src/listening';
+export type {
+  ListeningNativeConfig,
+  ListeningNativeState,
+  ListeningNativeWake,
+} from './src/listening';

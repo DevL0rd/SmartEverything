@@ -3,19 +3,22 @@ import { memo } from 'react';
 import { View } from 'react-native';
 import type { AiChatHit } from '@smarteverything/domain';
 import { Highlighted } from '../../../components/highlighted';
+import { useKeyboardRow } from '../../../components/keyboard-list';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
+import { cn } from '../../../design/cn';
 import { useMinute } from '../../../store/clock';
 import { chatListTime } from '../model/chat-list-time';
 import type { ChatSource } from '../model/chat-source';
 import { SourceMark } from './source-mark';
 
 export interface HitRowProps {
+  readonly itemKey: string;
   readonly hit: AiChatHit;
   readonly source: ChatSource;
   readonly query: string;
   readonly timeZone: string | null;
-  readonly onOpen: (chatId: string, messageId: string | null) => void;
+  readonly onOpen: () => void;
 }
 
 function rangeOf(
@@ -26,31 +29,35 @@ function rangeOf(
   return start < 0 ? null : { start, end: start + query.trim().length };
 }
 
-function Row({ hit, source, query, timeZone, onOpen }: HitRowProps): ReactNode {
+function Row({ itemKey, hit, source, query, timeZone, onOpen }: HitRowProps): ReactNode {
   const now = useMinute();
+  const keyboard = useKeyboardRow(itemKey);
   return (
-    <Interactive
-      label={`${hit.title}, ${hit.snippet}`}
-      onPress={() => {
-        onOpen(hit.chatId, hit.messageId);
-      }}
-      className="min-h-chat-row flex-row items-center gap-3 px-gutter py-3"
+    <View
+      nativeID={keyboard.nativeID}
+      className={cn('-mx-gutter', keyboard.highlighted && 'bg-on-surface/8')}
     >
-      <SourceMark source={source} size={40} />
-      <View className="min-w-0 flex-1 gap-0.5">
-        <View className="flex-row items-center gap-2">
-          <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
-            {hit.title}
-          </Text>
-          <Text variant="caption" tone="variant" className="tabular">
-            {chatListTime(hit.at, now, timeZone)}
+      <Interactive
+        label={`${hit.title}, ${hit.snippet}`}
+        onPress={onOpen}
+        className="min-h-chat-row flex-row items-center gap-3 px-gutter py-3"
+      >
+        <SourceMark source={source} size={40} />
+        <View className="min-w-0 flex-1 gap-0.5">
+          <View className="flex-row items-center gap-2">
+            <Text variant="body-strong" numberOfLines={1} className="min-w-0 flex-1">
+              {hit.title}
+            </Text>
+            <Text variant="caption" tone="variant" className="tabular">
+              {chatListTime(hit.at, now, timeZone)}
+            </Text>
+          </View>
+          <Text variant="footnote" tone="variant" numberOfLines={2}>
+            <Highlighted text={hit.snippet} range={rangeOf(hit.snippet, query)} />
           </Text>
         </View>
-        <Text variant="footnote" tone="variant" numberOfLines={2}>
-          <Highlighted text={hit.snippet} range={rangeOf(hit.snippet, query)} />
-        </Text>
-      </View>
-    </Interactive>
+      </Interactive>
+    </View>
   );
 }
 

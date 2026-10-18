@@ -4,6 +4,7 @@ import { basename, dirname, extname, join, posix } from 'node:path';
 import { z } from 'zod';
 import { AIBI_HOST } from './host-name';
 import type { Json, PatchedFirmware } from './ota-offer';
+import { isMissing } from '../../../fs-util';
 
 const FIRMWARE_FOLDER = 'firmware';
 const PATCHED_FOLDER = 'patched';
@@ -38,16 +39,12 @@ function textOf(value: string | number | undefined, fallback = ''): string {
   return value === undefined ? fallback : String(value);
 }
 
-function missing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
-}
-
 async function readJson(path: string): Promise<unknown> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
     return parsed;
   } catch (cause) {
-    if (missing(cause) || cause instanceof SyntaxError) {
+    if (isMissing(cause) || cause instanceof SyntaxError) {
       return null;
     }
     throw cause;
@@ -58,7 +55,7 @@ async function listOptional(path: string): Promise<string[]> {
   try {
     return await readdir(path);
   } catch (cause) {
-    if (missing(cause)) {
+    if (isMissing(cause)) {
       return [];
     }
     throw cause;
@@ -103,7 +100,7 @@ async function stamp(path: string): Promise<string> {
     const info = await stat(path);
     return `${String(info.mtimeMs)}:${String(info.size)}`;
   } catch (cause) {
-    if (missing(cause)) {
+    if (isMissing(cause)) {
       return 'none';
     }
     throw cause;

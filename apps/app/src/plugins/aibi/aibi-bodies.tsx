@@ -9,19 +9,18 @@ import { plural } from '../../format/text';
 import { useMinute } from '../../store/clock';
 import type { Device } from '../../store/state';
 import { useMoveControl } from './aibi-data';
-import { LINE_WHO, conversationText, lastContactText, lastHeard } from './aibi-text';
+import { LINE_WHO, conversationBadge, lastContactText, lastHeard } from './aibi-text';
 import { quickMoves } from './move-model';
+import { background } from '@smarteverything/logging';
 
-const LINES_BY_SIZE: Readonly<Record<WidgetSize, number>> = { S: 0, M: 2, W: 2, L: 4, XL: 6 };
-const MOVES_BY_SIZE: Readonly<Record<WidgetSize, number>> = { S: 2, M: 4, W: 6, L: 8, XL: 10 };
+const LINES_BY_SIZE: Readonly<Record<WidgetSize, number>> = { M: 2, W: 2, XL: 6 };
+const MOVES_BY_SIZE: Readonly<Record<WidgetSize, number>> = { M: 4, W: 6, XL: 10 };
 
 function Badges({
   status,
-  small,
   online,
 }: {
   readonly status: RobotStatus;
-  readonly small: boolean;
   readonly online: boolean | null;
 }): ReactNode {
   return (
@@ -29,11 +28,11 @@ function Badges({
       {online === null ? null : (
         <Badge label={online ? 'Online' : 'Offline'} tone={online ? 'positive' : 'neutral'} />
       )}
-      <Badge label={conversationText(status)} tone={status.conversation ? 'primary' : 'neutral'} />
-      {small || status.waiting === 0 ? null : (
+      <Badge {...conversationBadge(status)} />
+      {status.waiting === 0 ? null : (
         <Badge label={`${plural(status.waiting, 'thing')} to tell`} tone="info" />
       )}
-      {small || status.tasks === 0 ? null : (
+      {status.tasks === 0 ? null : (
         <Badge label={`${plural(status.tasks, 'task')} running`} tone="info" />
       )}
     </View>
@@ -42,12 +41,10 @@ function Badges({
 
 export function StatusBody({
   status,
-  size,
   device,
   showOnline,
 }: {
   readonly status: RobotStatus;
-  readonly size: WidgetSize;
   readonly device: Device | null;
   readonly showOnline: boolean;
 }): ReactNode {
@@ -55,15 +52,11 @@ export function StatusBody({
   const firmware = status.robot?.firmware ?? null;
   return (
     <View className="gap-2">
-      <Badges
-        status={status}
-        small={size === 'S'}
-        online={showOnline ? device?.online === true : null}
-      />
+      <Badges status={status} online={showOnline ? device?.online === true : null} />
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {`Last heard from ${lastContactText(status, now)}`}
       </Text>
-      {size === 'S' || firmware === null ? null : (
+      {firmware === null ? null : (
         <Text variant="footnote" tone="variant" numberOfLines={1}>
           {`Firmware ${firmware}`}
         </Text>
@@ -81,7 +74,7 @@ export function ConversationBody({
 }): ReactNode {
   const heard = lastHeard(status);
   const lines = status.lines.slice(-LINES_BY_SIZE[size]);
-  if (size === 'S' || lines.length === 0) {
+  if (lines.length === 0) {
     return (
       <Text variant="footnote" tone="variant" numberOfLines={3}>
         {heard === null ? 'Nothing said yet' : `Heard: ${heard.text}`}
@@ -122,7 +115,7 @@ export function QuickMoves({
           variant="tonal"
           disabled={control.pending}
           onPress={() => {
-            void control.set({ action: move.id });
+            background(control.set({ action: move.id }), 'control.set_failed');
           }}
         />
       ))}

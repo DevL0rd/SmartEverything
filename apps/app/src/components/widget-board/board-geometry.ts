@@ -12,12 +12,18 @@ export interface Cell {
   readonly width: number;
   readonly height: number;
   readonly gap: number;
+  readonly pad: number;
 }
 
 export function cellOf(boardWidth: number, columns: number, idiom: Idiom, density: Density): Cell {
   const sizes = SEMANTIC_SIZES[idiom][density];
   const gap = sizes.gridGap;
-  return { width: (boardWidth - gap * (columns - 1)) / columns, height: sizes.rowUnit, gap };
+  return {
+    width: (boardWidth - gap * (columns - 1)) / columns,
+    height: sizes.rowUnit,
+    gap,
+    pad: sizes.cardPad,
+  };
 }
 
 export interface Frame {

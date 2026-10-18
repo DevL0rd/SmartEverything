@@ -1,46 +1,38 @@
-import { deviceRuntimeTables, deviceRuntimeCapabilities } from './live-device-capabilities';
 import {
   API_ENDPOINTS as E,
-  AI_PREVIEW_CAPABILITY,
-  AI_ENGINE_CAPABILITY,
-  AI_ENGINE_CAPABILITY_V2,
-  AI_HARNESS_CAPABILITY,
-  AI_REFERENCE_CAPABILITY,
-  HARNESS_CONFIGURATION_NOTICE_CAPABILITY,
-  TRANSCRIPT_NOTICE_CAPABILITY,
   LIVE_TABLES,
   type LiveChange,
-  type LiveTable,
   type LiveMessage,
+  type LiveTable,
 } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { api, connectionRefused, type ServerConnection } from '../api/transport';
 import { noticeTo } from './live-notices';
-import { routeFeatureNotice } from './live-feature-notices';
 import { platformStreams } from './live-streams';
 import type { EntityStore } from './entity-store';
-import { notify } from '../components/toast-store';
+import { loadOwnerConsents } from './live-consents';
+import { liveVoiceWatch } from './live-voice-watch';
+import { liveWatch } from './live-watch';
+import { rejectedTables } from './live-subscription';
 import { UnreadableChangeError } from './live-reducers';
 import { TOKEN_WITHDRAWN, backoffOf, openLiveSocket, type Received } from './live-socket';
-import {
-  clearServerCapabilities,
-  serverSupportsComputerAi,
-  serverSupportsDeviceGroups,
-  serverSupportsComputerAiV2,
-  serverSupportsAiHarness,
-} from '../api/connection/server-capabilities';
 import { rawErrorText } from '../format/errors';
 import type { LiveSyncHooks } from './live-sync-hooks';
 export type { LiveSyncHooks } from './live-sync-hooks';
 import { routeFor } from '../api/connection/active-route';
 import { followLiveRouteReadiness } from './live-route-readiness';
-import { deployed } from './live-deployment';
-export { awaitingHubDeploy } from './live-deployment';
+import { recordNotice } from '../dev/frame-probe';
+import { RearmTimer } from '../design/rearm-timer';
+import { LogTally, logEnabled } from '../design/log-tally';
 
 const log = new Logger('app.live');
 const SNAPSHOT_ROOTS: readonly string[] = ['tables', 'owner'];
+const SNAPSHOT_REQUEST = {
+  query: { nutrition: true, watch: true, weather: true, talk: true, assistant: true },
+};
 export const LINK_DEADLINE_MS = 20_000;
 type Phase = 'closed' | 'buffering' | 'live';
+const traffic = new LogTally(log, 'live.summarised', 5000);
 type ActivityNotice = Extract<LiveMessage, { type: 'chat_activity' | 'chat_stream' }>;
 
 export class LiveSync {
@@ -50,7 +42,9 @@ export class LiveSync {
   private socketRun = 0;
   private stopSocket: (() => void) | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
-  private deadline: ReturnType<typeof setTimeout> | null = null;
+  private readonly deadline = new RearmTimer(() => {
+    this.timedOut();
+  });
   private attempt = 0;
   private phase: Phase = 'closed';
   private buffer: LiveChange[] = [];
@@ -58,10 +52,10 @@ export class LiveSync {
   private batch: LiveChange[] = [];
   private snapshotRun = 0;
   private outdated: ReadonlySet<string> = new Set();
+  private unsupportedTables: ReadonlySet<string> = new Set();
+  private sentTables: readonly LiveTable[] = [];
   private suspended = false;
-  private computerAiAdvertised = false;
-  private computerAiV2Advertised = false;
-  private harnessAdvertised = false;
+  private phaseSince = Date.now();
 
   constructor(
     private readonly connection: ServerConnection,
@@ -71,12 +65,32 @@ export class LiveSync {
     this.snapshotCommands = hooks.onSnapshotCommands ?? ((): void => undefined);
   }
 
+  private ids(): Record<string, unknown> {
+    return {
+      phase: this.phase,
+      socketRun: this.socketRun,
+      snapshotRun: this.snapshotRun,
+      attempt: this.attempt,
+      buffered: this.buffer.length,
+    };
+  }
+
+  private enter(next: Phase): void {
+    if (next === this.phase) return;
+    const now = Date.now();
+    log.info('live.phase_changed', { ...this.ids(), to: next, afterMs: now - this.phaseSince });
+    this.phaseSince = now;
+    this.phase = next;
+  }
+
   start(): void {
+    log.info('live.starting', this.ids());
     const manager = routeFor(this.connection);
     let generation = manager.state.get().generation;
     this.stopRoute = manager.state.subscribe(() => {
       const next = manager.state.get().generation;
       if (next === generation || this.suspended || !manager.running) return;
+      log.info('live.route_changed', { ...this.ids(), from: generation, to: next });
       generation = next;
       this.stopSocket?.();
       this.socketRun += 1;
@@ -89,16 +103,18 @@ export class LiveSync {
       generation: (): number => this.socketRun,
       active: (): boolean => !this.suspended && this.stopRoute !== null,
       ready: (): void => {
+        log.info('live.route_ready', this.ids());
         this.open();
       },
       failed: (error): void => {
-        log.error('live.route_failed', error);
+        log.error('live.route_failed', error, this.ids());
         this.store.setSync({ status: 'interrupted', problem: rawErrorText(error) });
       },
     });
   }
 
   stop(): void {
+    log.info('live.stopping', this.ids());
     this.retryRoute = null;
     this.stopRoute?.();
     this.stopRoute = null;
@@ -109,11 +125,13 @@ export class LiveSync {
       clearTimeout(this.retry);
       this.retry = null;
     }
-    this.clearDeadline();
-    this.phase = 'closed';
+    this.deadline.cancel();
+    this.enter('closed');
     this.snapshotRun += 1;
     this.stopSocket?.();
     this.stopSocket = null;
+    liveWatch.detach();
+    liveVoiceWatch.detach();
   }
 
   suspend(): void {
@@ -135,6 +153,7 @@ export class LiveSync {
   }
 
   online(): void {
+    log.info('live.online_hint', { ...this.ids(), retryPending: this.retry !== null });
     if (!this.suspended && this.retryRoute?.() === true) return;
     if (!this.suspended && this.retry !== null) {
       clearTimeout(this.retry);
@@ -144,59 +163,45 @@ export class LiveSync {
 
   refresh(): void {
     if (this.suspended || this.phase !== 'live') return;
+    log.info('live.refresh_requested', this.ids());
     this.resnapshot(this.store.get().sync.problem);
-  }
-
-  private subscribedTables(): LiveTable[] {
-    return deviceRuntimeTables(deployed(LIVE_TABLES), this.connection.url);
   }
 
   private open(): void {
     this.socketRun += 1;
     const socketRun = this.socketRun;
     this.retry = null;
-    this.phase = 'buffering';
+    this.enter('buffering');
     this.buffer = [];
     this.activityBuffer = [];
     this.store.setSync({ status: this.store.get().loaded ? 'interrupted' : 'connecting' });
-    this.armDeadline();
-    this.computerAiAdvertised = serverSupportsComputerAi(this.connection.url);
-    this.computerAiV2Advertised = serverSupportsComputerAiV2(this.connection.url);
-    this.harnessAdvertised = serverSupportsAiHarness(this.connection.url);
+    log.info('live.opening', { ...this.ids(), loaded: this.store.get().loaded });
+    this.deadline.rearm(LINK_DEADLINE_MS);
     this.stopSocket = openLiveSocket(
       {
         url: this.connection.url,
         token: this.connection.token,
         subscribe: {
           type: 'subscribe',
-          tables: this.subscribedTables(),
-          streams: deployed(platformStreams()),
-          capabilities: [
-            ...deviceRuntimeCapabilities(this.connection.url),
-            TRANSCRIPT_NOTICE_CAPABILITY,
-            AI_REFERENCE_CAPABILITY,
-            ...(this.computerAiAdvertised ? [AI_ENGINE_CAPABILITY] : []),
-            ...(this.computerAiV2Advertised ? [AI_ENGINE_CAPABILITY_V2] : []),
-            ...(this.harnessAdvertised
-              ? [
-                  AI_HARNESS_CAPABILITY,
-                  HARNESS_CONFIGURATION_NOTICE_CAPABILITY,
-                  TRANSCRIPT_NOTICE_CAPABILITY,
-                  AI_PREVIEW_CAPABILITY,
-                ]
-              : []),
-          ],
+          tables: this.subscriptionTables(),
+          streams: [...platformStreams()],
         },
       },
       {
-        onOpen: () => {
+        onOpen: (send) => {
           log.debug('live.opened', { attempt: this.attempt });
+          if (socketRun === this.socketRun) {
+            liveWatch.attach(send);
+            liveVoiceWatch.attach(send);
+          }
         },
         onMessage: (received) => {
           if (socketRun === this.socketRun) this.receive(received);
+          else traffic.bump('staleMessages');
         },
         onClose: (code, reason) => {
           if (socketRun === this.socketRun) this.closed(code, reason);
+          else traffic.bump('staleCloses');
         },
       },
     );
@@ -206,6 +211,14 @@ export class LiveSync {
     if (received.kind === 'unreadable') {
       this.unreadable(received.reason, received.table);
       return;
+    }
+    recordNotice();
+    if (logEnabled('debug')) {
+      traffic.bump(
+        received.message.type === 'change'
+          ? `change.${received.message.table}`
+          : `notice.${received.message.type}`,
+      );
     }
     this.handle(received.message);
   }
@@ -223,32 +236,49 @@ export class LiveSync {
     this.resnapshot(`The server sent something this app cannot read: ${reason}`);
   }
 
+  private subscriptionTables(): LiveTable[] {
+    this.sentTables = LIVE_TABLES.filter((table) => !this.unsupportedTables.has(table));
+    return [...this.sentTables];
+  }
+
+  private dropUnsupported(reason: string): void {
+    const rejected = rejectedTables(this.sentTables, reason);
+    if (rejected.length === 0) return;
+    log.warn('live.tables_unsupported', { tables: rejected });
+    this.unsupportedTables = new Set([...this.unsupportedTables, ...rejected]);
+  }
+
   private handle(message: LiveMessage): void {
+    if (message.type === 'refused') this.dropUnsupported(message.error.message);
     if (message.type === 'change') {
       this.change(message);
       return;
     }
     if (message.type === 'profile_changed') {
       log.info('live.profile_changed', { profileId: message.profileId });
-      this.phase = 'buffering';
+      this.enter('buffering');
       this.buffer = [];
       this.activityBuffer = [];
       this.store.setSync({ status: 'loading', problem: null });
       this.hooks.onProfileChanged();
-      void this.loadSnapshot();
+      background(this.loadSnapshot(), 'snapshot.load_failed');
       return;
     }
     if (message.type === 'subscribed') {
-      log.debug('live.subscribed', { tables: message.tables.length, seq: message.seq });
-      void this.loadSnapshot();
+      log.info('live.subscribed', { tables: message.tables.length, seq: message.seq });
+      background(this.loadSnapshot(), 'snapshot.load_failed');
       return;
     }
-    if (routeFeatureNotice(this.hooks, message, this.phase !== 'closed')) return;
+    if (this.hooks.onNotice?.(message, this.phase !== 'closed') === true) {
+      traffic.bump('noticeHandledByHook');
+      return;
+    }
     if (
       this.phase === 'buffering' &&
       (message.type === 'chat_activity' || message.type === 'chat_stream')
     ) {
       this.activityBuffer.push(message);
+      traffic.bump('activityBuffered');
       return;
     }
     noticeTo(this.store, message.type, message);
@@ -257,10 +287,14 @@ export class LiveSync {
   private change(change: LiveChange): void {
     if (this.phase === 'buffering') {
       this.buffer.push(change);
+      traffic.bump('changeBuffered');
       return;
     }
     const seq = this.store.get().sync.seq;
-    if (seq !== null && change.seq <= seq) return;
+    if (seq !== null && change.seq <= seq) {
+      traffic.bump('changeDuplicate');
+      return;
+    }
     this.batch.push(change);
     if (this.batch.length === 1) {
       queueMicrotask(() => {
@@ -271,7 +305,10 @@ export class LiveSync {
 
   private flush(): void {
     const changes = this.phase === 'live' ? this.batch : [];
+    if (changes.length !== this.batch.length) traffic.bump('batchDropped');
     this.batch = [];
+    traffic.bump('batchesApplied');
+    traffic.bump('changesApplied', changes.length);
     this.applyAll(changes);
   }
 
@@ -288,68 +325,56 @@ export class LiveSync {
   }
 
   private resnapshot(problem: string | null): void {
-    this.phase = 'buffering';
+    log.warn('live.resnapshot', { ...this.ids(), reasonLength: problem?.length ?? 0 });
+    this.enter('buffering');
     this.buffer = [];
     this.activityBuffer = [];
     this.store.setSync({ status: 'interrupted', problem });
-    void this.loadSnapshot();
-  }
-
-  private upgradeComputerAi(): boolean {
-    const supported = serverSupportsComputerAi(this.connection.url);
-    const v2 = serverSupportsComputerAiV2(this.connection.url);
-    const harness = serverSupportsAiHarness(this.connection.url);
-    if (
-      this.computerAiAdvertised === supported &&
-      this.computerAiV2Advertised === v2 &&
-      this.harnessAdvertised === harness
-    )
-      return false;
-    this.stopSocket?.();
-    this.open();
-    return true;
+    background(this.loadSnapshot(), 'snapshot.load_failed');
   }
 
   private async loadSnapshot(): Promise<void> {
     this.snapshotRun += 1;
     const run = this.snapshotRun;
-    this.armDeadline();
+    const begun = Date.now();
+    log.info('live.snapshot_started', this.ids());
+    this.deadline.rearm(LINK_DEADLINE_MS);
     this.store.setSync({ status: this.store.get().loaded ? 'interrupted' : 'loading' });
     try {
-      const read = await api().callTables(
-        E.readSnapshot,
-        {
-          query: {
-            nutrition: true,
-            watch: true,
-            weather: true,
-            talk: true,
-            assistant: true,
-            ...(serverSupportsDeviceGroups(this.connection.url) ? { groupRuntime: true } : {}),
-          },
-        },
-        SNAPSHOT_ROOTS,
-      );
+      const read = await api().callTables(E.readSnapshot, SNAPSHOT_REQUEST, SNAPSHOT_ROOTS);
       const snapshot = read.data;
-      if (run !== this.snapshotRun || this.phase === 'closed') return;
-      if (this.upgradeComputerAi()) return;
+      if (run !== this.snapshotRun || this.phase === 'closed') {
+        log.info('live.snapshot_discarded', { ...this.ids(), run, durationMs: Date.now() - begun });
+        return;
+      }
+      const readMs = Date.now() - begun;
       this.store.replace(snapshot);
       this.snapshotCommands(snapshot.tables.commands);
       this.outdated = new Set(read.skipped);
       const replay = this.buffer.filter((change) => change.seq > snapshot.seq);
       this.buffer = [];
-      this.phase = 'live';
-      this.clearDeadline();
+      this.enter('live');
+      this.deadline.cancel();
       this.applyAll(replay);
       this.replayActivity();
       this.attempt = 0;
       this.store.setSync({ status: 'live', problem: null, outdated: read.skipped });
       this.hooks.onSynchronized?.(replay);
-      log.info('live.ready', { seq: snapshot.seq, replayed: replay.length });
-      this.loadOwnerConsents(snapshot.session.client.role === 'owner');
+      log.info('live.ready', {
+        ...this.ids(),
+        seq: snapshot.seq,
+        replayed: replay.length,
+        skippedTables: read.skipped.length,
+        durationMs: readMs,
+      });
+      loadOwnerConsents(
+        this.store,
+        snapshot.session.client.role === 'owner',
+        () => run === this.snapshotRun && this.phase !== 'closed',
+      );
     } catch (error) {
       if (run !== this.snapshotRun) return;
-      log.error('live.snapshot_failed', error);
+      log.error('live.snapshot_failed', error, { ...this.ids(), durationMs: Date.now() - begun });
       this.store.setSync({
         status: 'interrupted',
         problem: rawErrorText(error),
@@ -359,57 +384,28 @@ export class LiveSync {
     }
   }
 
-  private loadOwnerConsents(owner: boolean): void {
-    if (!owner) return;
-    this.loadConsents().catch((error: unknown) => {
-      log.error('live.consents_failed', error);
-      notify({ message: 'Waiting assistant requests could not be read', error, tone: 'critical' });
-    });
-  }
-
-  private async loadConsents(): Promise<void> {
-    const run = this.snapshotRun;
-    const requests = await api().call(E.listMcpConsents, {});
-    if (run === this.snapshotRun && this.phase !== 'closed')
-      this.store.update((state) => ({ ...state, consentRequests: requests }));
-  }
-
   private replayActivity(): void {
     for (const notice of this.activityBuffer) noticeTo(this.store, notice.type, notice);
     this.activityBuffer = [];
   }
 
-  private armDeadline(): void {
-    this.clearDeadline();
-    this.deadline = setTimeout(() => {
-      this.deadline = null;
-      this.timedOut();
-    }, LINK_DEADLINE_MS);
-  }
-
-  private clearDeadline(): void {
-    if (this.deadline !== null) {
-      clearTimeout(this.deadline);
-      this.deadline = null;
-    }
-  }
-
   private timedOut(): void {
-    log.warn('live.link_timed_out', { attempt: this.attempt });
+    log.warn('live.link_timed_out', this.ids());
     this.stopSocket?.();
     this.store.setSync({ status: 'interrupted', problem: 'The server did not answer in time' });
     this.closed(0, 'link timed out');
   }
 
   private closed(code: number, reason: string): void {
-    clearServerCapabilities(this.connection.url);
-    this.clearDeadline();
+    this.deadline.cancel();
     if (this.retry !== null) {
       clearTimeout(this.retry);
       this.retry = null;
     }
     this.stopSocket = null;
-    this.phase = 'closed';
+    liveWatch.detach();
+    liveVoiceWatch.detach();
+    this.enter('closed');
     this.snapshotRun += 1;
     this.store.setSync({ status: 'interrupted' });
     log.info('live.closed', { code, reason });
@@ -417,9 +413,11 @@ export class LiveSync {
       connectionRefused(this.connection);
       return;
     }
+    const wait = backoffOf(this.attempt);
+    log.info('live.retry_scheduled', { ...this.ids(), inMs: wait, code });
     this.retry = setTimeout(() => {
       this.open();
-    }, backoffOf(this.attempt));
+    }, wait);
     this.attempt += 1;
   }
 }

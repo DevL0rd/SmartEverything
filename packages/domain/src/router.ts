@@ -1,9 +1,5 @@
 import { z } from 'zod';
-
-export const MAC_ADDRESS = z
-  .string()
-  .regex(/^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$/)
-  .transform((mac) => mac.toLowerCase());
+import { MAC_ADDRESS } from './mac-address';
 
 const IPV4 = z.ipv4();
 

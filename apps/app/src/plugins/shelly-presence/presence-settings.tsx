@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { SHELLY_PRESENCE_PAGES } from '@smarteverything/domain';
+import { SHELLY_PAGES } from '@smarteverything/shelly';
 import { List } from '../../components/section';
 import { NavRow } from '../../components/rows';
 import { href } from '../../app-shell/hrefs';
@@ -33,7 +33,7 @@ export function PresenceSettings({ device }: { readonly device: Device }): React
   }
   return (
     <List title="Shelly Presence">
-      {SHELLY_PRESENCE_PAGES.map((page) => (
+      {SHELLY_PAGES.map((page) => (
         <NavRow
           key={page.id}
           title={page.title}

@@ -1,14 +1,17 @@
+import { Logger, background, describeFailure, messageOf } from '@smarteverything/logging';
 import type { CallEnding } from '@smarteverything/domain';
 import type { Picture } from '../../../assistant-voice/gemini';
-import { FAREWELL, WAITING, clean, combined } from './conversation-text';
+import { FAREWELL, WAITING, combined } from './conversation-text';
 import { wrapTool, type ToolDesk } from './conversation-tools';
 import type { ConversationHooks, DeskAnswer, VoiceTurn } from './conversation-types';
 import { IdleTimer } from './idle-timer';
 import { BigEndianPcm } from './pcm';
 import { SpeechGate } from './rms-gate';
 import { Errand } from './errand';
-import type { SpeechStream, Speeches } from './speech-stream';
+import { clean, type SpeechStream, type Speeches } from './speech-stream';
 import { TURN_TIMEOUT_MS, Turn, type BodyOutcome, type Outcome } from './turn';
+
+const log = new Logger('hub.aibi-conversation');
 
 export class Conversation {
   private session: Promise<VoiceTurn> | null = null;
@@ -35,7 +38,7 @@ export class Conversation {
       seconds: (): number => hooks.settings().idleSeconds,
       busy: (): boolean => hooks.working() || this.turn !== null,
       expired: (): void => {
-        void this.end();
+        background(this.end(), 'conversation.end_failed');
       },
     });
     this.toolDesk = {
@@ -57,7 +60,7 @@ export class Conversation {
   async open(): Promise<VoiceTurn> {
     await this.reopening;
     this.session ??= this.connect().catch((error: unknown) => {
-      void this.end();
+      background(this.end(), 'conversation.end_failed');
       throw error instanceof Error ? error : new Error('The conversation could not open');
     });
     return this.session;
@@ -206,7 +209,7 @@ export class Conversation {
   private async finish(turn: Turn): Promise<Outcome> {
     const outcome = await turn.outcome;
     if (outcome.kind === 'quit') {
-      void this.end();
+      background(this.end(), 'conversation.end_failed');
     }
     return outcome;
   }
@@ -241,16 +244,13 @@ export class Conversation {
         session.say(note, true);
       })
       .catch((error: unknown) => {
-        this.hooks.warn(
-          'AIBI could not be told something',
-          error instanceof Error ? error.message : '',
-        );
+        this.hooks.warn('AIBI could not be told something', messageOf(error));
         errand.release();
       });
   }
 
   private quit(): Outcome {
-    void this.end();
+    background(this.end(), 'conversation.end_failed');
     return { kind: 'quit' };
   }
 
@@ -274,7 +274,7 @@ export class Conversation {
       this.hold(turn.held);
     }
     if ((this.ending && this.untold.length === 0) || this.oneShot) {
-      void this.end();
+      background(this.end(), 'conversation.end_failed');
     }
   }
 
@@ -366,9 +366,9 @@ export class Conversation {
       return;
     }
     this.reopening = stale
-      .then((session) => session.reopen({ fresh: true }))
+      .then((session) => session.reopen())
       .catch((error: unknown) => {
-        this.hooks.warn('Gemini did not reopen', error instanceof Error ? error.message : '');
+        this.hooks.warn('Gemini did not reopen', messageOf(error));
       });
   }
 
@@ -379,7 +379,7 @@ export class Conversation {
     if (reason === 'failed') {
       this.hooks.warn('Gemini Live closed the conversation', detail ?? '');
     }
-    void this.end();
+    background(this.end(), 'conversation.end_failed');
   }
 
   async end(): Promise<void> {
@@ -391,7 +391,10 @@ export class Conversation {
     this.turn?.abort();
     this.spare?.abort();
     this.errand?.release();
-    const session = await this.session?.catch(() => null);
+    const session = await this.session?.catch((cause: unknown) => {
+      log.debug('session.open_failed_at_end', () => ({ error: describeFailure(cause).message }));
+      return null;
+    });
     session?.end();
     this.hooks.ended(this, this.untold.splice(0));
   }

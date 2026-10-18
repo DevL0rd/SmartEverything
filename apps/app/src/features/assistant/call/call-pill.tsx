@@ -11,6 +11,7 @@ import { callActive, orbStateOf, useCall } from './call-state';
 import { SightIndicator } from './components/sight-indicator';
 import { useElapsed } from './components/use-elapsed';
 import { statusOf } from './model/call-copy';
+import { useDesktopOverlayOn } from '../overlay/overlay-surface';
 import { AssistantOrb } from './orb';
 import { useCallAudio } from './settings-sheet/call-audio-pref';
 
@@ -24,7 +25,8 @@ export function CallPill(): ReactNode {
   const active = callActive(call);
   const elapsed = useElapsed(call.startedAt, active);
   const onCallScreen = usePathname() === CALL_PATH;
-  if (!active || onCallScreen) {
+  const overlayOn = useDesktopOverlayOn();
+  if (!active || onCallScreen || overlayOn) {
     return null;
   }
   return (

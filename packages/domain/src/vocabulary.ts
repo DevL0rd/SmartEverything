@@ -8,15 +8,19 @@ export {
   presentValue,
   withRole,
 } from './capability-presentation';
-export { AIR_BANDS, AIR_BAND_LABELS, airBand } from './presentation/air';
+export { AIR_BANDS, AIR_BAND_LABELS, PM25_UPPER_BOUNDS, airBand } from './presentation/air';
 export { isPrivate, privacySwitchOf } from './presentation/camera-privacy';
 export { readPresentedColor, writePresentedColor } from './presentation/color';
-export { hsvToPackedRgb, packedRgbToHsv } from './color';
+export { hsvToPackedRgb, hsvToRgbChannels, packedRgbToHsv, rgbChannelsToHsv } from './color';
+export type { RgbChannels } from './color';
+export { COLOR_INPUT_FORMS, colorFromInput, kelvinFromText } from './color-input';
 export type { PrivacySwitch } from './presentation/camera-privacy';
 export type { AirBand } from './presentation/air';
 export { dangerOf } from './presentation/danger';
+export { familyDefinition, isBleObservable, isLiveControl } from './presentation/families';
+export type { FamilyDefinition, GlowTone, SummaryPart } from './presentation/families';
 export { CLIMATE_FAMILIES, deviceFamily, sleepsBetweenUse } from './presentation/device-family';
-export { friendlyUnit, humanizeEnum } from './presentation/humanize';
+export { friendlyUnit, humanizeEnum, humanizeKey } from './presentation/humanize';
 export { MODEL_OVERRIDES } from './presentation/overrides/index';
 export { CAPABILITY_GROUP_LABELS, ROLE_ORDER, STANDARD_TIERS } from './presentation/standard';
 export { DEVICE_FAMILIES, EXTRA_ROLES, PRESENTATION_TIERS } from './presentation/types';
@@ -42,7 +46,6 @@ export type {
 export {
   DEVICE_KIND_LABELS,
   baseNameOf,
-  displayName,
   replacedIds,
   roomNameOf,
   isCamera,
@@ -56,6 +59,7 @@ export type { NamedDevice, NamedRoom } from './device-kinds';
 export {
   CAMERA_DETECTION_PRESENTATIONS,
   EVENT_KIND_LABELS,
+  LAUNDRY_EVENT_FAMILY,
   eventKeywords,
   eventLabel,
 } from './event-labels';
@@ -96,11 +100,17 @@ export {
   RESERVED_LAYOUT_KEYS,
   SURFACE_STYLES,
   THEMES,
+  callAudioWith,
   layoutScopeOf,
 } from './client-prefs';
+export { DEVICE_ALERTS_PREF, deviceAlertsOn, withDeviceAlerts } from './device-alerts';
+export type { DeviceAlertsPref } from './device-alerts';
+export { CLIPBOARD_CLIP, CLIPBOARD_NOTICE, SHARED_CLIPBOARD_PREF } from './shared-clipboard';
+export type { ClipboardClip, ClipboardNotice, SharedClipboardPref } from './shared-clipboard';
 export type {
   AiSpeechPref,
   AppearancePref,
+  CallAudio,
   CallAudioPref,
   CallRingPref,
   CamerasPref,
@@ -122,9 +132,9 @@ export {
   BOARD_WIDGET,
   WIDGET_FOOTPRINTS,
   WIDGET_KEY,
+  WIDGET_SIZE,
   WIDGET_SIZES,
   WIDGET_TYPE,
-  migrateLayout,
   readBoardLayout,
   withArrangementFor,
   withKnownWidgets,

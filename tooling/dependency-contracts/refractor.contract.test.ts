@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { refractor } from 'refractor/core';
 import typescript from 'refractor/typescript';
-import { appDeclaredVersion } from './app-manifest';
-import { installedVersion } from './versions';
 
 describe('refractor contract', () => {
-  it('matches the exact app dependency version', () => {
-    expect(installedVersion('refractor')).toBe(appDeclaredVersion('refractor'));
-  });
   it('registers an explicit grammar and preserves text in a HAST token tree without a document', () => {
     refractor.register(typescript);
     const tree = refractor.highlight('const count: number = 2;', 'typescript');

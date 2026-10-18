@@ -1,213 +1,206 @@
-import { discoverShelly } from './discovery';
+import { ApiError } from '@smarteverything/domain';
 import {
-  ApiError,
-  SHELLY_PRESENCE_ACTION_REQUEST,
-  type ShellyPresenceAction,
-  type ShellyPresenceDevice,
-  type ShellyPresenceOutcome,
-  type ShellyPresenceSnapshot,
-} from '@smarteverything/domain';
+  SHELLY_ACTION,
+  SHELLY_ACTION_REQUEST,
+  SHELLY_ACTIONS,
+  SHELLY_ENROLL_REQUEST,
+  shellyOperation,
+  type ShellyDevice,
+  type ShellySnapshot,
+} from '@smarteverything/shelly';
 import { z } from 'zod';
-import type { ToolCaller } from '../../../ai-tools/hub-tool';
-import type { PluginTool } from '../contract';
+import type { PluginTool, ToolCaller } from '../contract';
 import { definePluginTool } from '../define';
-import { attemptTool, DANGER_HINTS, READ_HINTS, WRITE_HINTS } from '../tool-kit';
-import { SHELLY_ENROLL_INPUT } from './enrollment';
-import { shellyActionPermission } from './action-rules';
-import type { ShellyResource } from './read-resources';
-import { shellyActionInput } from './tool-input';
+import {
+  attemptTool,
+  DANGER_HINTS,
+  NO_INPUT,
+  ownerOnly,
+  READ_HINTS,
+  WRITE_HINTS,
+} from '../tool-kit';
+import { discoverShelly } from './discovery';
+import type { ShellyEnrollInput } from './enrollment';
+import type { ShellyOutcome, ShellyRequest } from './operate';
+import type { ShellyResource } from './resources';
+import { appHolder } from './tracking';
 
-const READ_RESOURCE = z.strictObject({
-  externalId: z.string().min(1).max(200).nullable().default(null),
+const SENSOR = z.string().min(1);
+const OWNER_RESOURCES: ReadonlySet<string> = new Set([
+  'schedules',
+  'webhooks',
+  'scripts',
+  'storedValues',
+]);
+const READ_INPUT = z.strictObject({
+  externalId: SENSOR.nullable().default(null),
   resource: z
-    .enum(['status', 'schedules', 'webhooks', 'scripts', 'storedValues'])
+    .enum(['status', 'actions', 'schedules', 'webhooks', 'scripts', 'storedValues'])
     .default('status'),
+  action: SHELLY_ACTION.optional(),
 });
-const READ_INPUT = z
-  .strictObject({
-    externalId: READ_RESOURCE.shape.externalId.unwrap().optional(),
-    resource: READ_RESOURCE.shape.resource.unwrap().optional(),
-    operation: shellyActionInput('read').shape.operation.optional(),
-  })
-  .transform((input, context) => {
-    const parsed = z.union([SHELLY_PRESENCE_ACTION_REQUEST, READ_RESOURCE]).safeParse(input);
-    if (parsed.success) return parsed.data;
-    for (const issue of parsed.error.issues)
-      context.addIssue({ code: 'custom', path: issue.path, message: issue.message });
-    return z.NEVER;
-  });
+
 export interface ShellyToolPorts {
   readonly signal: AbortSignal;
-  readonly snapshot: () => ShellyPresenceSnapshot;
-  readonly read: (externalId: string, resource: ShellyResource) => Promise<ShellyPresenceDevice>;
-  readonly execute: (
-    externalId: string,
-    action: ShellyPresenceAction,
-    caller: ToolCaller,
-  ) => Promise<ShellyPresenceOutcome>;
-  readonly enroll: (input: z.output<typeof SHELLY_ENROLL_INPUT>) => Promise<ShellyPresenceDevice>;
+  readonly snapshot: () => ShellySnapshot;
+  readonly read: (externalId: string, resource: ShellyResource) => Promise<ShellyDevice>;
+  readonly execute: (externalId: string, request: ShellyRequest) => Promise<ShellyOutcome>;
+  readonly enroll: (input: ShellyEnrollInput) => Promise<ShellyDevice>;
   readonly forget: (externalId: string) => Promise<void>;
-  readonly live: (
+  readonly track: (
     externalId: string,
     holder: string,
     enabled: boolean,
-  ) => Promise<{ enabled: boolean; expiresAt: string | null; renewAfterMs: number | null }>;
+  ) => Promise<{ readonly enabled: boolean }>;
 }
+
+function actionRows(sensor: ShellyDevice | undefined): readonly Record<string, unknown>[] {
+  const available = new Set(sensor?.features.map((feature) => feature.id));
+  return SHELLY_ACTIONS.filter((action) => sensor === undefined || available.has(action)).map(
+    (action) => {
+      const { title, page, group, owner } = shellyOperation(action);
+      return { action, title, page, group, owner };
+    },
+  );
+}
+
+function actionDetail(action: z.output<typeof SHELLY_ACTION>): Record<string, unknown> {
+  const { title, method, owner, params } = shellyOperation(action);
+  return {
+    action,
+    title,
+    method,
+    owner,
+    params: z.toJSONSchema(params, { io: 'input', unrepresentable: 'any' }),
+  };
+}
+
 function readTool(ports: ShellyToolPorts): PluginTool {
   return definePluginTool({
     name: 'read',
     title: 'Read Shelly sensor',
     description:
-      'Read configured Shelly Presence sensors, settings, on-device resources or a typed read operation.',
+      'Read Shelly Presence sensors: resource status (default), schedules, webhooks, scripts, storedValues, or actions (list the operations; add action for its exact params).',
     input: READ_INPUT,
     annotations: { ...READ_HINTS, openWorldHint: true },
     humanOnly: false,
     run: (input, caller) =>
       attemptTool(async () => {
-        if ('operation' in input) return execute(ports, input, 'read', caller);
-        if (
-          (input.resource === 'scripts' || input.resource === 'storedValues') &&
-          caller.role !== 'owner'
-        )
+        const snapshot = ports.snapshot();
+        const device = snapshot.devices.find((entry) => entry.externalId === input.externalId);
+        if (input.resource === 'status') return { snapshot, device: device ?? null };
+        if (input.resource === 'actions')
+          return input.action === undefined
+            ? { actions: actionRows(device) }
+            : actionDetail(input.action);
+        if (OWNER_RESOURCES.has(input.resource) && caller.role !== 'owner')
           throw new ApiError(
             'forbidden',
-            'Only the owner can read device scripts and stored values.',
+            'Only the owner can read device schedules, webhooks, scripts and stored values.',
           );
-        if (input.resource === 'status')
-          return {
-            snapshot: ports.snapshot(),
-            device:
-              input.externalId === null
-                ? null
-                : ports.snapshot().devices.find((device) => device.externalId === input.externalId),
-          };
         if (input.externalId === null)
-          throw new ApiError(
-            'invalid_request',
-            'Select a sensor before reading its on-device resources.',
-          );
-        const device = await ports.read(input.externalId, input.resource);
-        return { snapshot: ports.snapshot(), device };
+          throw new ApiError('invalid_request', 'Select a sensor to read its on-device resources.');
+        return { device: await ports.read(input.externalId, input.resource) };
       }),
   });
 }
-function liveTool(ports: ShellyToolPorts): PluginTool {
+
+function operateTool(ports: ShellyToolPorts): PluginTool {
   return definePluginTool({
-    name: 'set_live_view',
-    title: 'Shelly live map viewer',
+    name: 'operate',
+    title: 'Shelly sensor operation',
     description:
-      'Open, renew or close a client-bound live map lease; tracking stops renewing after the last viewer.',
-    input: z.strictObject({ externalId: z.string().min(1).max(200), enabled: z.boolean() }),
-    annotations: WRITE_HINTS,
+      'Run one operation on a Shelly Presence sensor. Read resource actions (with action) for the exact params. Members can read and make everyday changes; other operations are for the owner.',
+    input: SHELLY_ACTION_REQUEST,
+    annotations: { ...DANGER_HINTS, openWorldHint: true },
     humanOnly: false,
     run: (input, caller) =>
       attemptTool(async () => {
-        if (caller.clientId === null)
-          throw new ApiError('forbidden', 'Live map viewing requires a paired client.');
-        return ports.live(
-          input.externalId,
-          `${caller.clientId}:${caller.profileId}`,
-          input.enabled,
-        );
+        if (shellyOperation(input.action).owner && caller.role !== 'owner')
+          throw new ApiError('forbidden', 'Only the home owner can run this Shelly operation.');
+        return ports.execute(input.externalId, {
+          action: input.action,
+          params: input.params,
+          expectedRevision: input.expectedRevision,
+        });
       }),
   });
 }
-export function shellyTools(ports: ShellyToolPorts): PluginTool[] {
-  return [readTool(ports), ...operationTools(ports), ...setupTools(ports), liveTool(ports)];
-}
-function operationTools(ports: ShellyToolPorts): PluginTool[] {
-  const groups = [
-    { name: 'operate', permission: 'write', hints: WRITE_HINTS },
-    { name: 'operate_privileged', permission: 'privileged', hints: WRITE_HINTS },
-    { name: 'operate_destructive', permission: 'destructive', hints: DANGER_HINTS },
-    { name: 'operate_access', permission: 'access', hints: DANGER_HINTS },
-  ] as const;
-  return groups.map((group) =>
-    definePluginTool({
-      name: group.name,
-      title: 'Shelly sensor operation',
-      description: `Run a typed ${group.permission} operation on one configured Shelly Presence sensor; the actual firmware method and current revision are validated.`,
-      input: shellyActionInput(group.permission),
-      annotations: { ...group.hints, openWorldHint: true },
-      humanOnly: group.permission === 'access',
-      run: (input, caller) => attemptTool(() => execute(ports, input, group.permission, caller)),
-    }),
+
+function holderOf(caller: ToolCaller, name: string | undefined): string {
+  if (caller.via === 'app' && caller.clientId !== null)
+    return appHolder(caller.clientId, caller.profileId, name);
+  return [caller.via, caller.clientId ?? caller.chatId ?? '', caller.profileId, name ?? ''].join(
+    ':',
   );
 }
-async function execute(
-  ports: ShellyToolPorts,
-  input: z.output<typeof SHELLY_PRESENCE_ACTION_REQUEST>,
-  permission: ReturnType<typeof shellyActionPermission>,
-  caller: ToolCaller,
-): Promise<ShellyPresenceOutcome> {
-  if (
-    ['script_code', 'kvs_get', 'kvs_many'].includes(input.operation.action) &&
-    caller.role !== 'owner'
-  )
-    throw new ApiError(
-      'forbidden',
-      'Only the owner can read private script source and stored values.',
-    );
-  if (shellyActionPermission(input.operation) !== permission)
-    throw new ApiError(
-      'forbidden',
-      'Use the operation tool matching this action permission category.',
-    );
-  if (permission !== 'read' && permission !== 'write' && caller.role !== 'owner')
-    throw new ApiError('forbidden', 'Only the home owner can run privileged Shelly operations.');
-  if (permission === 'access' && (caller.via !== 'app' || caller.pluginRequester !== undefined))
-    throw new ApiError('forbidden', 'Access-granting operations require a person in the app.');
-  return ports.execute(input.externalId, input.operation, caller);
+
+function trackTool(ports: ShellyToolPorts): PluginTool {
+  return definePluginTool({
+    name: 'set_live_view',
+    title: 'Shelly live tracking',
+    description:
+      'Start or stop live object tracking for the caller; the sensor keeps tracking while any caller holds it. Give a holder name so one automation does not release another.',
+    input: z.strictObject({
+      externalId: SENSOR,
+      enabled: z.boolean(),
+      holder: z.string().min(1).optional(),
+    }),
+    annotations: WRITE_HINTS,
+    humanOnly: false,
+    run: (input, caller) =>
+      attemptTool(() =>
+        ports.track(input.externalId, holderOf(caller, input.holder), input.enabled),
+      ),
+  });
 }
+
 function setupTools(ports: ShellyToolPorts): PluginTool[] {
   return [
     definePluginTool({
       name: 'discover',
-      title: 'Find configured Shelly sensors',
-      description:
-        'Browse local Shelly advertisements for eight seconds on explicit request, without scanning addresses or changing devices.',
-      input: z.strictObject({}),
+      title: 'Find Shelly sensors',
+      description: 'Browse local Shelly advertisements for eight seconds; changes nothing.',
+      input: NO_INPUT,
       annotations: READ_HINTS,
-      humanOnly: true,
+      humanOnly: false,
       run: (_, caller) =>
-        attemptTool(() => {
-          requireOwnerApp(caller);
-          return discoverShelly(ports.signal);
-        }),
+        ownerOnly(caller, 'Only the home owner can look for sensors.', () =>
+          attemptTool(() => discoverShelly(ports.signal)),
+        ),
     }),
     definePluginTool({
       name: 'enroll',
-      title: 'Add configured Shelly sensor',
+      title: 'Add Shelly sensor',
       description:
-        'Enroll a Wi-Fi-configured Shelly Presence by its local address and optional local password; no cloud account is required.',
-      input: SHELLY_ENROLL_INPUT,
+        'Add a Shelly Presence sensor by its local address and optional local password and TLS material.',
+      input: SHELLY_ENROLL_REQUEST,
       annotations: WRITE_HINTS,
       humanOnly: true,
       run: (input, caller) =>
-        attemptTool(async () => {
-          requireOwnerApp(caller);
-          return { device: await ports.enroll(input) };
-        }),
+        ownerOnly(caller, 'Only the home owner can add a sensor.', () =>
+          attemptTool(async () => ({ device: await ports.enroll(input) })),
+        ),
     }),
     definePluginTool({
       name: 'forget',
       title: 'Remove Shelly sensor',
       description:
-        'Remove this sensor and its zone targets from SmartEverything without resetting the physical sensor.',
-      input: z.strictObject({ externalId: z.string().min(1).max(200) }),
+        'Remove a sensor and its zones from SmartEverything; the physical sensor is not reset.',
+      input: z.strictObject({ externalId: SENSOR }),
       annotations: DANGER_HINTS,
       humanOnly: false,
       run: (input, caller) =>
-        attemptTool(async () => {
-          if (caller.role !== 'owner')
-            throw new ApiError('forbidden', 'Only the home owner can remove a sensor.');
-          await ports.forget(input.externalId);
-          return { removed: true };
-        }),
+        ownerOnly(caller, 'Only the home owner can remove a sensor.', () =>
+          attemptTool(async () => {
+            await ports.forget(input.externalId);
+            return { removed: true };
+          }),
+        ),
     }),
   ];
 }
-function requireOwnerApp(caller: ToolCaller): void {
-  if (caller.role !== 'owner' || caller.via !== 'app' || caller.pluginRequester !== undefined)
-    throw new ApiError('forbidden', 'Adding a configured sensor requires the owner in the app.');
+
+export function shellyTools(ports: ShellyToolPorts): PluginTool[] {
+  return [readTool(ports), operateTool(ports), trackTool(ports), ...setupTools(ports)];
 }

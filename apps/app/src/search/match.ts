@@ -1,7 +1,9 @@
 import {
+  loweredText,
+  loweredTokenScore,
   numberIn,
-  scoreEntry,
-  tokenScore,
+  scoreLowered,
+  type LoweredText,
   tokensOf,
   typedNumberEntries,
   type SearchEntry,
@@ -23,10 +25,8 @@ const FUZZY_ONLY = 1;
 
 const PLAIN = { recent: {}, now: 0, limit: 0 };
 
-function exact(entry: SearchEntry, tokens: readonly string[]): boolean {
-  const title = entry.title.toLowerCase();
-  const extra = [entry.detail, ...entry.keywords].join(' ').toLowerCase();
-  return tokens.every((token) => tokenScore(token, title, extra) > FUZZY_ONLY);
+function exact(lowered: LoweredText, tokens: readonly string[]): boolean {
+  return tokens.every((token) => loweredTokenScore(token, lowered) > FUZZY_ONLY);
 }
 
 const JOINERS = /[-‐‑]/g;
@@ -44,10 +44,43 @@ function comparable(entry: SearchEntry): SearchEntry {
   };
 }
 
-function candidatesOf(index: SearchIndex, tokens: readonly string[]): readonly SearchEntry[] {
-  const known = new Set(index.entries.map((entry) => entry.id));
-  const typed = typedNumberEntries(index, numberIn(tokens)).filter((entry) => !known.has(entry.id));
-  return [...index.entries, ...typed];
+interface Candidate {
+  readonly entry: SearchEntry;
+  readonly plain: SearchEntry;
+  readonly lowered: LoweredText;
+}
+
+interface Prepared {
+  readonly known: ReadonlySet<string>;
+  readonly all: readonly Candidate[];
+}
+
+function candidateOf(entry: SearchEntry): Candidate {
+  const plain = comparable(entry);
+  return { entry, plain, lowered: loweredText(plain) };
+}
+
+const prepared = new WeakMap<SearchIndex, Prepared>();
+
+function preparedOf(index: SearchIndex): Prepared {
+  const cached = prepared.get(index);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const built: Prepared = {
+    known: new Set(index.entries.map((entry) => entry.id)),
+    all: index.entries.map(candidateOf),
+  };
+  prepared.set(index, built);
+  return built;
+}
+
+function candidatesOf(index: SearchIndex, tokens: readonly string[]): readonly Candidate[] {
+  const { known, all } = preparedOf(index);
+  const typed = typedNumberEntries(index, numberIn(tokens))
+    .filter((entry) => !known.has(entry.id))
+    .map(candidateOf);
+  return typed.length === 0 ? all : [...all, ...typed];
 }
 
 export function matchIndex(index: SearchIndex, query: string): Matched {
@@ -56,10 +89,9 @@ export function matchIndex(index: SearchIndex, query: string): Matched {
   if (tokens.length === 0) {
     return { tokens, hits };
   }
-  for (const entry of candidatesOf(index, tokens)) {
-    const plain = comparable(entry);
-    const score = scoreEntry(plain, tokens, PLAIN);
-    if (score !== null && (tokens.length === 1 || exact(plain, tokens))) {
+  for (const { entry, plain, lowered } of candidatesOf(index, tokens)) {
+    const score = scoreLowered(plain, lowered, tokens, PLAIN);
+    if (score !== null && (tokens.length === 1 || exact(lowered, tokens))) {
       hits.set(entry.id, { entry, score });
     }
   }

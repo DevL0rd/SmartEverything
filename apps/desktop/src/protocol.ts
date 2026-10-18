@@ -1,12 +1,17 @@
 import { NATIVE_HTML_SCHEME } from '@smarteverything/domain';
 import { stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import { Logger } from '@smarteverything/logging';
 import { net, protocol, type Session } from 'electron';
+import { OVERLAY_SCHEME } from './overlay/overlay-assets-route.js';
 import { APP_HOST, APP_SCHEME, isAppOrigin } from './origin.js';
 import { planWebResponse, resolveWebPath } from './web-root.js';
 
+const log = new Logger('desktop.protocol');
+
 export function registerAppScheme(): void {
   protocol.registerSchemesAsPrivileged([
+    { scheme: OVERLAY_SCHEME, privileges: { standard: true, secure: true } },
     {
       scheme: NATIVE_HTML_SCHEME,
       privileges: {
@@ -50,6 +55,7 @@ async function isFile(filePath: string): Promise<boolean> {
 }
 
 function refusal(status: number, message: string): Response {
+  log.debug('web.refused', { status, messageLength: message.length });
   return new Response(message, { status, headers: { 'content-type': 'text/plain' } });
 }
 
@@ -64,6 +70,7 @@ async function respond(root: string, request: Request): Promise<Response> {
   const resolved = resolveWebPath(root, url.pathname);
   const exists = resolved.kind === 'inside' && (await isFile(resolved.filePath));
   const plan = planWebResponse(root, resolved, exists);
+  log.trace('web.planned', { kind: plan.kind, resolved: resolved.kind, exists });
   switch (plan.kind) {
     case 'file':
     case 'index':
@@ -76,10 +83,12 @@ async function respond(root: string, request: Request): Promise<Response> {
 }
 
 export function serveWebExport(root: string): void {
+  log.info('web.serving', { scheme: APP_SCHEME });
   protocol.handle(APP_SCHEME, (request) => respond(root, request));
 }
 
 export function enforceContentSecurityPolicy(session: Session, policy: string): void {
+  log.info('csp.enforced', { policyLength: policy.length });
   session.webRequest.onHeadersReceived((details, callback) => {
     if (!isAppOrigin(details.url)) {
       callback({});

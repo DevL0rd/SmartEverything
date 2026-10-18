@@ -8,6 +8,7 @@ import { useIsOwner } from '../../../store/selectors';
 import { useNativeSessions } from '../data/computer-ai';
 import { NativeTools } from './native-tools';
 import { QueryState } from './query-state';
+import { background } from '@smarteverything/logging';
 
 export function attachedCliToolsReady(status: ComputerAiStatus): boolean {
   return (
@@ -31,7 +32,7 @@ export function AttachedCliTools({ status }: { readonly status: ComputerAiStatus
         error={sessions.error}
         pending={enabled ? sessions.isPending : false}
         retry={() => {
-          void sessions.refetch();
+          background(sessions.refetch(), 'sessions.refetch_failed');
         }}
       />
       <Text tone="variant">
@@ -61,11 +62,11 @@ function AttachedSessionRows({
   readonly enabled: boolean;
 }): ReactNode {
   return (
-    <List title="Live native sessions">
+    <List title="Open Claude sessions">
       {sessions.map((session) => (
         <NavRow
           key={session.id}
-          title={session.title ?? 'Untitled native session'}
+          title={session.title ?? 'Untitled session'}
           subtitle={`${session.state} · ${session.cwd ?? 'Folder unavailable'}`}
           disabled={!enabled}
           onPress={() => {
@@ -73,9 +74,7 @@ function AttachedSessionRows({
           }}
         />
       ))}
-      {sessions.length === 0 ? (
-        <Text tone="variant">No live native sessions in this view.</Text>
-      ) : null}
+      {sessions.length === 0 ? <Text tone="variant">No open sessions here.</Text> : null}
     </List>
   );
 }

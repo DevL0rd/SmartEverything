@@ -1,5 +1,4 @@
-import { SubscriptionUsageBars } from '../../assistant/provider/subscription-usage';
-import { claudeSubscriptionWindows } from '../../assistant/provider/subscription-usage-values';
+import { SubscriptionUsageBars, claudeSubscriptionWindows } from '../../assistant';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import type { ClaudeSession, ComputerAiStatus, ClaudeUsage } from '@smarteverything/domain';
@@ -8,14 +7,18 @@ import { Button } from '../../../components/button';
 import { NavRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
+import { useRevealed } from '../../../components/show-more';
 import { Text } from '../../../components/text';
 import { useIsOwner, useDevice } from '../../../store/selectors';
 import { ComputerFrame } from '../components/computer-frame';
 import { ClaudeCliStart } from '../components/claude-cli-start';
-import { NativeSession } from '../components/native-session';
+import { NativeSession, type ContinueAccess } from '../components/native-session';
+import { ProviderReasonNotice } from '../components/provider-reason-notice';
+import { canStart, continueAccess, startReason } from '../model/continue-access';
 import { QueryState } from '../components/query-state';
 import { useComputerAi, useNativeSessions, useNativeStatus } from '../data/computer-ai';
 import { useClaudeCliSessions } from '../data/claude-cli-sessions';
+import { background } from '@smarteverything/logging';
 
 function ManagedSessions({
   deviceId,
@@ -27,20 +30,18 @@ function ManagedSessions({
   readonly owner: boolean;
 }): ReactNode {
   const sessions = useClaudeCliSessions(deviceId, archived, owner);
+  const revealed = useRevealed(sessions.data ?? []);
   return (
     <>
       <QueryState
         error={sessions.error}
         pending={owner ? sessions.isPending : false}
         retry={() => {
-          void sessions.refetch();
+          background(sessions.refetch(), 'sessions.refetch_failed');
         }}
       />
-      <List
-        title="Owned CLI sessions"
-        footer="Open the shared chat for history, approvals, questions, model, context and tasks."
-      >
-        {(sessions.data ?? []).map((session) => (
+      <List title="Claude sessions" footer="Open a session to see its chat.">
+        {revealed.shown.map((session) => (
           <NavRow
             key={session.chat.id}
             title={session.chat.title}
@@ -49,10 +50,9 @@ function ManagedSessions({
             href={href.assistantChat(session.chat.id)}
           />
         ))}
+        {revealed.more}
       </List>
-      {sessions.data?.length === 0 ? (
-        <Text tone="variant">No owned CLI sessions in this view.</Text>
-      ) : null}
+      {sessions.data?.length === 0 ? <Text tone="variant">No Claude sessions here.</Text> : null}
     </>
   );
 }
@@ -61,10 +61,12 @@ function LegacySessions({
   deviceId,
   archived,
   enabled,
+  access,
 }: {
   readonly deviceId: string;
   readonly archived: boolean;
   readonly enabled: boolean;
+  readonly access: ContinueAccess;
 }): ReactNode {
   const sessions = useNativeSessions(deviceId, archived, enabled);
   const [chosen, choose] = useState<ClaudeSession | null>(null);
@@ -75,26 +77,26 @@ function LegacySessions({
         error={sessions.error}
         pending={enabled ? sessions.isPending : false}
         retry={() => {
-          void sessions.refetch();
+          background(sessions.refetch(), 'sessions.refetch_failed');
         }}
       />
       <LegacyRows sessions={sessions.data} choose={choose} />
       <LegacyNativeUsage deviceId={deviceId} usage={native.data?.usage} />
       {enabled ? null : (
         <Text tone="variant">
-          Connect this computer and enable legacy native access to read its saved transcripts.
+          Connect this computer and turn on Earlier Claude history to read it.
         </Text>
       )}
       <Sheet
         open={chosen !== null}
-        title={chosen?.title ?? 'Legacy native history'}
+        title={chosen?.title ?? 'Earlier Claude history'}
         onClose={() => {
           choose(null);
         }}
         detents={['full']}
       >
         {chosen === null ? null : (
-          <NativeSession key={chosen.id} deviceId={deviceId} session={chosen} />
+          <NativeSession key={chosen.id} deviceId={deviceId} session={chosen} access={access} />
         )}
       </Sheet>
     </>
@@ -125,12 +127,15 @@ function SessionList({
           setCreating(true);
         }}
       />
-      {enabled ? null : <Text tone="variant">{startReason(status, owner)}</Text>}
+      {enabled ? null : (
+        <ProviderReasonNotice deviceId={deviceId} reason={startReason(status, owner)} />
+      )}
       <ManagedSessions deviceId={deviceId} archived={archived} owner={owner} />
       <LegacySessions
         deviceId={deviceId}
         archived={archived}
         enabled={legacyEnabled(status, owner)}
+        access={continueAccess(status, owner)}
       />
       <CreateSheet
         creating={creating}
@@ -152,7 +157,7 @@ export function ComputerSessionsScreen({ deviceId }: { readonly deviceId: string
         error={status.error}
         pending={status.isPending}
         retry={() => {
-          void status.refetch();
+          background(status.refetch(), 'status.refetch_failed');
         }}
       />
       <SessionList deviceId={deviceId} status={status.data} owner={owner} />
@@ -167,42 +172,27 @@ function LegacyRows({
   readonly sessions: readonly ClaudeSession[] | undefined;
   readonly choose: (session: ClaudeSession) => void;
 }): ReactNode {
+  const revealed = useRevealed(sessions ?? []);
   return (
     <List
-      title="Legacy native history"
-      footer="Original Desktop and terminal records stay read-only; they do not confer CLI ownership."
+      title="Earlier Claude history"
+      footer="Open a session from Claude Desktop or the terminal to read it or continue it in a new chat."
     >
-      {(sessions ?? []).map((session) => (
+      {revealed.shown.map((session) => (
         <NavRow
           key={session.id}
-          title={session.title ?? 'Untitled native session'}
+          title={session.title ?? 'Untitled session'}
           subtitle={`${session.state} · ${session.cwd ?? 'Folder unavailable'}`}
           onPress={() => {
             choose(session);
           }}
         />
       ))}
+      {revealed.more}
     </List>
   );
 }
 
-function canStart(status: ComputerAiStatus | undefined, owner: boolean): boolean {
-  return (
-    owner &&
-    status?.online === true &&
-    status.settings.provider.enabled &&
-    status.capabilities.provider_reason === null
-  );
-}
-function startReason(status: ComputerAiStatus | undefined, owner: boolean): string {
-  if (!owner) return 'Native CLI access requires the hub owner.';
-  if (status?.online === false)
-    return 'This computer is offline. Saved owned chats remain readable.';
-  return (
-    status?.capabilities.provider_reason ??
-    'Enable the native Claude provider to start a CLI session. Saved owned chats remain readable.'
-  );
-}
 function CreateSheet({
   creating,
   status,
@@ -230,7 +220,7 @@ function LegacyNativeUsage({
   const device = useDevice(deviceId);
   return (
     <SubscriptionUsageBars
-      provider="Claude legacy history"
+      provider="Earlier Claude history"
       computer={device?.label ?? 'Computer unavailable'}
       windows={claudeSubscriptionWindows(usage)}
     />

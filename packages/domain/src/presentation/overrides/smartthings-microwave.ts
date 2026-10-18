@@ -1,9 +1,22 @@
-import type { ModelOverride } from '../types';
-import { MICROWAVE_DETAILS } from './smartthings-microwave-details';
-export const SMARTTHINGS_MICROWAVE: ModelOverride = {
+import { MICROWAVE_KEYS, MICROWAVE_MODE_LABELS } from '../../microwave-core';
+import { microwaveRecipeLabel, microwaveStageLabel } from '../../microwave-readings';
+import type { CapabilityMatch, ModelOverride, UnlistedOverride } from '../types';
+const DETAILS: UnlistedOverride = {
+  tier: 'diagnostic',
+  groupLabel: 'Details',
+  readOnly: true,
+  keywords: ['microwave', 'cooking', 'oven'],
+};
+const SMARTTHINGS_MICROWAVE: ModelOverride = {
   family: 'microwave',
+  unlisted: DETAILS,
   capabilities: {
-    ...MICROWAVE_DETAILS,
+    'raw:oven_operating_state:stop': { label: 'Oven operating state stop', ...DETAILS },
+    'raw:oven_operating_state:start': { label: 'Oven operating state start', ...DETAILS },
+    'raw:samsungce.oven_operating_state.completion_time': {
+      label: 'Reported completion time',
+      ...DETAILS,
+    },
     'raw:refresh:refresh': {
       label: 'Refresh readings',
       tier: 'maintenance',
@@ -96,29 +109,22 @@ export const SMARTTHINGS_MICROWAVE: ModelOverride = {
         'air fry',
         'convection',
       ],
-      options: {
-        NoOperation: 'No program',
-        Autocook: 'Automatic recipe',
-        AutocookCustom: 'Custom recipe',
-        AirFryer: 'Air fry',
-        MicroWave: 'Microwave',
-        MicroWaveGrill: 'Microwave + grill',
-        MicroWaveConvection: 'Microwave + convection',
-        Deodorization: 'Deodorize',
-      },
+      options: MICROWAVE_MODE_LABELS,
       role: 'mode',
     },
-    'raw:samsungce.cook_recipe.stage_status': {
+    [MICROWAVE_KEYS.stageStatus]: {
       label: 'Recipe stage',
       tier: 'reading',
       groupLabel: 'Recipes',
       keywords: ['microwave', 'cooking', 'oven'],
+      format: microwaveStageLabel,
     },
-    'raw:samsungce.cook_recipe.cook_recipe': {
+    [MICROWAVE_KEYS.currentRecipe]: {
       label: 'Current recipe',
       tier: 'reading',
       groupLabel: 'Recipes',
       keywords: ['microwave', 'cooking', 'oven'],
+      format: microwaveRecipeLabel,
     },
     'raw:samsungce.cook_recipe:set_cook_recipe': {
       label: 'Prepare staged recipe',
@@ -256,4 +262,10 @@ export const SMARTTHINGS_MICROWAVE: ModelOverride = {
       keywords: ['microwave', 'cooking', 'oven'],
     },
   },
+};
+
+export const SMARTTHINGS_MICROWAVE_MATCH: CapabilityMatch = {
+  kind: 'appliance',
+  requires: [MICROWAVE_KEYS.mode, MICROWAVE_KEYS.power, MICROWAVE_KEYS.state],
+  override: SMARTTHINGS_MICROWAVE,
 };

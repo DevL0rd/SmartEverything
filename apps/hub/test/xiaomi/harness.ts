@@ -11,8 +11,9 @@ import type {
   StateUpdate,
 } from '@smarteverything/domain';
 import { Logger, type LogRecord } from '@smarteverything/logging';
-import type { RunContext, StoredAccount } from '../../src/adapters/contract';
-import type { Fetch, XiaomiDependencies } from '../../src/adapters/xiaomi/dependencies';
+import type { RunContext, ShownPrompt, StoredAccount } from '../../src/adapters/contract';
+import type { XiaomiDependencies } from '../../src/adapters/xiaomi/dependencies';
+import type { FetchLike } from '../../src/plugins/builtin/fetch-like';
 import { requestOf, type Route } from './fake-http';
 
 export interface Recorded {
@@ -31,7 +32,7 @@ export interface Harness {
   readonly cleanup: () => Promise<void>;
 }
 
-export function routedFetch(routes: readonly Route[], seen: string[] = []): Fetch {
+export function routedFetch(routes: readonly Route[], seen: string[] = []): FetchLike {
   return (url, init): Promise<Response> => {
     seen.push(`${init.method ?? 'GET'} ${url}`);
     const request = requestOf(url, init);
@@ -45,7 +46,7 @@ export function routedFetch(routes: readonly Route[], seen: string[] = []): Fetc
   };
 }
 
-export function dependencies(fetch: Fetch, miioPort: number): XiaomiDependencies {
+export function dependencies(fetch: FetchLike, miioPort: number): XiaomiDependencies {
   let counter = 0;
   return {
     fetch,
@@ -55,6 +56,7 @@ export function dependencies(fetch: Fetch, miioPort: number): XiaomiDependencies
       return Uint8Array.from({ length }, (_, index) => (index + counter) % 256);
     },
     now: () => Date.now(),
+    jitter: () => 0.5,
     timing: {
       lanPollMs: 80,
       cloudPollMs: 120,
@@ -63,6 +65,14 @@ export function dependencies(fetch: Fetch, miioPort: number): XiaomiDependencies
       requestAttempts: 2,
       handshakeMaxAgeMs: 60_000,
       lanFailuresBeforeCloud: 2,
+      cameraFollowUps: { delaysMs: [], gridMs: 80 },
+      lanRetryFirstMs: 40,
+      lanRetryMaxMs: 160,
+      keepAliveMinMs: 60,
+      keepAliveMaxMs: 120,
+      fastPingMs: 30,
+      fastPings: 2,
+      duplicateWindowMs: 500,
     },
     specBaseUrl: 'https://miot-spec.org',
     miioPort,
@@ -84,12 +94,19 @@ export async function harness(answers: (prompt: ProviderPrompt) => string): Prom
       prompts.push(prompt);
       return Promise.resolve(answers(prompt));
     },
+    show: (prompt): Promise<ShownPrompt> => {
+      prompts.push(prompt);
+      return Promise.resolve({
+        answer: Promise.resolve(answers(prompt)),
+        dismiss: () => Promise.resolve(),
+      });
+    },
     saveAccount: (account): Promise<void> => {
       saved.push(account);
       return Promise.resolve();
     },
     needsAttention: (reason): Promise<void> => {
-      attention.push(reason);
+      attention.push(reason.message);
       return Promise.resolve();
     },
   };

@@ -36,7 +36,7 @@ export function draftOf(row: ScheduleRow, zone: string, now: number): ScheduleDr
   return {
     label: row.label ?? '',
     when: whenOf(row.timing, zone, now),
-    actions: actionsOf(row.steps),
+    actions: actionsOf(row.steps, row.profile_id),
   };
 }
 

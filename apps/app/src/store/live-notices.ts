@@ -1,28 +1,34 @@
-import type { LiveMessage } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
+import { LogTally } from '../design/log-tally';
 import type { EntityStore } from './entity-store';
+import type { LiveNotice } from './notice-registry';
 import { withFrame, withSnapshot } from './chat-turns';
-import { runPushCommand } from '../../modules/health-connect';
+import { runPushCommandNotice } from './push-command-notice';
 import { deliverAiSpeech } from './ai-speech-requests';
-import {
-  refreshResponseStyle,
-  mergeResponseStyle,
-  responseStyleSupported,
-} from './assistant-response-style';
 const log = new Logger('app.live');
-type Notice = Exclude<LiveMessage, { type: 'change' | 'subscribed' | 'profile_changed' }>;
+const applied = new LogTally(log, 'notices.applied', 5000);
+type NoticeMap = { readonly [K in LiveNotice['type']]: Extract<LiveNotice, { readonly type: K }> };
 
-type NoticeMap = { readonly [K in Notice['type']]: Extract<Notice, { readonly type: K }> };
-
-type NoticeHandler<K extends Notice['type']> = (store: EntityStore, message: NoticeMap[K]) => void;
+type NoticeHandler<K extends LiveNotice['type']> = (
+  store: EntityStore,
+  message: NoticeMap[K],
+) => void;
 
 function setHub(store: EntityStore, message: NoticeMap['ready' | 'presence']): void {
   store.update((state) => ({ ...state, hub: message.hub }));
 }
 
-const NOTICES: { readonly [K in Notice['type']]: NoticeHandler<K> } = {
+const NOTICES: { readonly [K in LiveNotice['type']]: NoticeHandler<K> } = {
   ready: setHub,
   transcript_changed: ignoreNotice,
+  listening_changed: ignoreNotice,
+  listening_level: ignoreNotice,
+  wake_test_heard: ignoreNotice,
+  listening_ear: ignoreNotice,
+  voice_activity: ignoreNotice,
+  voice_levels: ignoreNotice,
+  voice_calls: ignoreNotice,
+  voice_caption: ignoreNotice,
   ai_preview: ignoreNotice,
   ai_harness: ignoreNotice,
   ai_harness_configuration: ignoreNotice,
@@ -63,14 +69,7 @@ const NOTICES: { readonly [K in Notice['type']]: NoticeHandler<K> } = {
       talkPresence: { floors: message.floors, online: message.online },
     }));
   },
-  assistant_status: (store, message) => {
-    const supported = responseStyleSupported();
-    store.update((state) => ({
-      ...state,
-      assistant: mergeResponseStyle(message.status, state.assistant),
-    }));
-    if (supported) void refreshResponseStyle(store);
-  },
+  assistant_status: ignoreNotice,
   chat_activity: (store, message) => {
     store.update((state) => ({ ...state, turns: withSnapshot(state.turns, message) }));
   },
@@ -81,13 +80,9 @@ const NOTICES: { readonly [K in Notice['type']]: NoticeHandler<K> } = {
     log.info('live.ai_speech', { listeners: deliverAiSpeech(message) });
   },
   push_command: (_store, message) => {
-    runPushCommand(message.command, JSON.stringify(message.payload)).catch((error: unknown) => {
-      log.error('live.push_command_failed', error, { command: message.command });
-    });
+    runPushCommandNotice(message);
   },
-  watch_action: (_store, message) => {
-    log.warn('live.legacy_watch_action_ignored', { requestId: message.requestId });
-  },
+  notification: ignoreNotice,
   claude_operation: ignoreNotice,
   claude_session: ignoreNotice,
   claude_session_gone: ignoreNotice,
@@ -99,35 +94,22 @@ const NOTICES: { readonly [K in Notice['type']]: NoticeHandler<K> } = {
   ai_chat_runtime_provider: ignoreNotice,
   computer_runtime_status: ignoreNotice,
   computer_runtime_native: ignoreNotice,
+  computer_live: ignoreNotice,
+  phone_detail: ignoreNotice,
+  clipboard: ignoreNotice,
 };
 
 function ignoreNotice(): void {
   return undefined;
 }
 
-export function noticeTo<K extends Notice['type']>(
+export function noticeTo<K extends LiveNotice['type']>(
   store: EntityStore,
   type: K,
   message: NoticeMap[K],
 ): void {
   const handle: NoticeHandler<K> = NOTICES[type];
+  applied.bump(type);
+  if (type === 'ready' || type === 'firewall') log.info('live.notice_applied', { type });
   handle(store, message);
-}
-
-export function isRuntimeComputerNotice(message: LiveMessage): message is Extract<
-  LiveMessage,
-  {
-    type:
-      | 'computer_ai_status'
-      | 'computer_claude'
-      | 'computer_runtime_status'
-      | 'computer_runtime_native';
-  }
-> {
-  return (
-    message.type === 'computer_ai_status' ||
-    message.type === 'computer_claude' ||
-    message.type === 'computer_runtime_status' ||
-    message.type === 'computer_runtime_native'
-  );
 }

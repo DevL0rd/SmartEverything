@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-export const PREVIEW_DIAGNOSTICS_CAPABILITY = 'preview-diagnostics-v1';
-export const PREVIEW_BROWSER_DATA_CAPABILITY = 'preview-browser-data-v2';
 export const PREVIEW_DIAGNOSTICS_PATH = '/api/preview-diagnostics';
 export const PREVIEW_DIAGNOSTICS_PROTOCOL = 'se-preview-diagnostics-v1';
 export const PREVIEW_LOG_MAX_BYTES = 8192;
@@ -24,15 +22,6 @@ export const PREVIEW_RECORD_REFUSAL = z.strictObject({
   reason: z.string().max(512),
 });
 export type PreviewRecordRefusal = z.infer<typeof PREVIEW_RECORD_REFUSAL>;
-export function legacyConsoleRecords(records: readonly PreviewConsoleRecord[]): boolean {
-  return records.every(
-    (record) =>
-      record.message.length <= 8192 &&
-      (record.source === null || record.source.length <= 2048) &&
-      (record.stack === null || record.stack.length <= 2048),
-  );
-}
-export const NATIVE_BROWSER_OBSERVE = z.literal(2).optional();
 export const NATIVE_BROWSER_DIAGNOSTIC = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('epoch'),
@@ -76,9 +65,6 @@ export const PREVIEW_PIXELS = z.strictObject({
 });
 export type PreviewPixels = z.infer<typeof PREVIEW_PIXELS>;
 export interface NativeBrowserDiagnostics {
-  readonly version: 1;
-  readonly rawVersion?: 2;
-  readonly subscribeRaw?: (listener: (event: NativeBrowserDiagnostic) => void) => () => void;
   readonly subscribe: (listener: (event: NativeBrowserDiagnostic) => void) => () => void;
   readonly perform: (
     input: z.infer<typeof NATIVE_BROWSER_OPERATION>,
@@ -128,7 +114,6 @@ const SELECTOR = z.strictObject({
   epoch: ID.optional(),
 });
 export const PREVIEW_LOG_READ = SELECTOR.extend({
-  diagnosticsVersion: z.literal(2).optional(),
   cursor: z.int().nonnegative().optional(),
   direction: z.enum(['before', 'after']).default('before'),
   limit: z.int().min(1).max(200).default(100),
@@ -151,22 +136,18 @@ export const PREVIEW_ERROR_RULE = z.strictObject({
   scopeKey: z.string().min(1).max(512),
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/u),
   reason: z.string().min(1).max(1024),
+  sample: z.string().max(512),
   createdAt: z.iso.datetime({ offset: true }),
 });
 export type PreviewErrorRule = z.infer<typeof PREVIEW_ERROR_RULE>;
-export const PREVIEW_ERROR_POLICY_WRITE = z.discriminatedUnion('operation', [
-  PREVIEW_CAPTURE_SELECTOR.extend({
-    operation: z.literal('ignore'),
-    recordId: z.int().positive(),
-    reason: PREVIEW_ERROR_RULE.shape.reason,
-  }),
-  z.strictObject({
-    operation: z.literal('restore'),
-    scopeKey: PREVIEW_ERROR_RULE.shape.scopeKey,
-    fingerprint: PREVIEW_ERROR_RULE.shape.fingerprint,
-  }),
-  z.strictObject({ operation: z.literal('clear') }),
-]);
+export const PREVIEW_ERROR_IGNORE = SELECTOR.extend({
+  recordId: z.int().positive(),
+  reason: PREVIEW_ERROR_RULE.shape.reason,
+});
+export const PREVIEW_ERROR_RESTORE = z.strictObject({
+  scopeKey: PREVIEW_ERROR_RULE.shape.scopeKey,
+  fingerprint: PREVIEW_ERROR_RULE.shape.fingerprint,
+});
 export const PREVIEW_LOG_PAGE = z.strictObject({
   scope: PREVIEW_VIEW_SCOPE,
   records: z.array(PREVIEW_CONSOLE_RECORD),

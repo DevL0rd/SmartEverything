@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DAY, MOMENT, knownResponseStrings } from './api/primitives';
+import { DAY, MOMENT } from './api/primitives';
 
 export const AI_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
@@ -215,18 +215,19 @@ export function latestGeminiFlashLite(models: readonly AiModelRow[]): AiModelRow
   return latestVersioned(models, FLASH_LITE_ID, 'chat');
 }
 
-export function closestEffort(model: AiModelRow, wanted: AiEffort): AiEffort | null {
-  if (model.efforts.length === 0) {
-    return null;
-  }
-  if (model.efforts.includes(wanted)) {
-    return wanted;
-  }
+export function closestEffort(
+  model: Pick<AiModelRow, 'efforts'>,
+  wanted: AiEffort,
+): AiEffort | null {
   const target = AI_EFFORTS.indexOf(wanted);
-  const ranked = [...model.efforts].sort(
-    (a, b) => Math.abs(AI_EFFORTS.indexOf(a) - target) - Math.abs(AI_EFFORTS.indexOf(b) - target),
-  );
-  return ranked[0] ?? null;
+  const distance = (effort: AiEffort): number => Math.abs(AI_EFFORTS.indexOf(effort) - target);
+  let closest: AiEffort | null = null;
+  for (const effort of model.efforts) {
+    if (closest === null || distance(effort) < distance(closest)) {
+      closest = effort;
+    }
+  }
+  return closest;
 }
 
 export function displayNameOf(model: AiModelRow, choice: AiModelChoice): string {
@@ -294,7 +295,6 @@ export const OPENROUTER_KEY = z
 
 export const OPENROUTER_STATUS = z.strictObject({
   key: z.enum(['set', 'missing']),
-  sources: knownResponseStrings(z.never()),
   settings: OPENROUTER_SETTINGS,
   default: AI_RESOLVED_MODEL.nullable(),
   synced_at: MOMENT.nullable(),

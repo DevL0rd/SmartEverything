@@ -1,6 +1,7 @@
 import type { Logger } from '@smarteverything/logging';
 import { classifyLocalPayload, isKeyMismatchError } from '@smarteverything/tuya';
 import type { LocalClient, LocalClientOptions, LocalValue } from './local-client';
+import { messageOf } from '@smarteverything/logging';
 
 const STATUS_PUSH = 8;
 
@@ -59,10 +60,6 @@ export class LocalKeyRejectedError extends Error {
       `Tuya device ${deviceId} refuses the local key the cloud holds for it, so it is controlled through the cloud until the key changes.`,
     );
   }
-}
-
-export function describeLocalError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function sameTarget(left: LinkTarget, right: LinkTarget): boolean {
@@ -176,7 +173,7 @@ export class LocalLink {
         this.options.log.warn('tuya.local_connect_failed', {
           deviceId: this.target.deviceId,
           ip: this.target.ip,
-          reason: describeLocalError(cause),
+          reason: messageOf(cause),
         });
         this.retry();
       }
@@ -202,7 +199,7 @@ export class LocalLink {
   }
 
   private onError(error: unknown): void {
-    const reason = describeLocalError(error);
+    const reason = messageOf(error);
     if (isKeyMismatchError(reason)) {
       this.options.handlers.keyMismatch();
       return;

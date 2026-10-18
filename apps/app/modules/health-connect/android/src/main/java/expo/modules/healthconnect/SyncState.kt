@@ -2,7 +2,6 @@ package expo.modules.healthconnect
 
 import android.content.Context
 import java.time.Instant
-import org.json.JSONObject
 
 class ChangesCursor(val token: String, val syncedAt: Instant)
 
@@ -38,11 +37,11 @@ class SyncState(context: Context) {
   }
 
   fun saveReport(report: SyncReport) {
-    preferences.edit().putString(REPORT, report.toJson().toString()).commit()
+    preferences.edit().putString(REPORT, HubJson.encode(report)).commit()
   }
 
   fun lastReport(): SyncReport? =
-    preferences.getString(REPORT, null)?.let { SyncReport.fromJson(JSONObject(it)) }
+    preferences.getString(REPORT, null)?.let { HubJson.decode<SyncReport>(it) }
 
   private companion object {
     const val PREFERENCES = "expo.modules.healthconnect.sync"

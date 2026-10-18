@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
 import { ErrorState } from '../../../components/error-state';
@@ -7,13 +7,15 @@ import { List } from '../../../components/section';
 import { ValueRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { useRow } from '../../../store/selectors';
+import { dateTimeText } from '../../../format/locale';
+import { background } from '@smarteverything/logging';
 
 interface RunCommandProps {
   readonly id: string;
 }
 export function RunCommand({ id }: RunCommandProps): ReactNode {
   const live = useRow('commands', id);
-  const query = useQuery({
+  const query = useScreenQuery({
     queryKey: ['run-command', id],
     queryFn: () => api().call(E.readCommand, { params: { commandId: id } }),
     retry: false,
@@ -24,7 +26,7 @@ export function RunCommand({ id }: RunCommandProps): ReactNode {
       <ErrorState
         error={query.error}
         retry={() => {
-          void query.refetch();
+          background(query.refetch(), 'query.refetch_failed');
         }}
       />
     );
@@ -34,7 +36,7 @@ export function RunCommand({ id }: RunCommandProps): ReactNode {
       <List>
         <ValueRow title="Status" value={row.status} />
         <ValueRow title="Capability" value={row.capability} />
-        <ValueRow title="Created" value={new Date(row.created_at).toLocaleString()} />
+        <ValueRow title="Created" value={dateTimeText(new Date(row.created_at))} />
       </List>
       <Text
         variant="footnote"

@@ -7,6 +7,8 @@ import android.os.Build
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 object ProcessExits {
   private const val KEPT = 5
@@ -52,11 +54,60 @@ object ProcessExits {
 }
 
 class DiagnosticsModule : Module() {
+  private var logForwarding: Job? = null
+
   override fun definition() = ModuleDefinition {
     Name("Diagnostics")
 
+    Events("onLog")
+
+    OnCreate {
+      logForwarding = appContext.backgroundCoroutineScope.launch {
+        NativeLog.events.collect { if (NativeLog.claim(it)) sendEvent("onLog", it) }
+      }
+      NativeLog.info("native-diagnostics", "bridge.started") { mapOf("sdk" to Build.VERSION.SDK_INT, "level" to NativeLog.level().label) }
+    }
+
+    OnDestroy {
+      logForwarding?.cancel()
+      logForwarding = null
+    }
+
+    Function("setLogLevel") { level: String ->
+      val parsed = NativeLevel.parse(level)
+      if (parsed != null && parsed != NativeLog.level()) {
+        val previous = NativeLog.level()
+        NativeLog.setLevel(parsed)
+        NativeLog.info("native-diagnostics", "level.changed") { mapOf("from" to previous.label, "to" to parsed.label) }
+      }
+      parsed != null
+    }
+
     AsyncFunction("recentProcessExits") {
       ProcessExits.recent(appContext.reactContext ?: throw Exceptions.ReactContextLost())
+    }
+
+    AsyncFunction("perfSnapshot") {
+      PerfSnapshot.read(appContext.reactContext ?: throw Exceptions.ReactContextLost())
+    }
+
+    Function("processTimes") {
+      PerfSnapshot.processTimes()
+    }
+
+    Function("startFrameStats") {
+      appContext.currentActivity?.let { activity ->
+        FrameStats.start(activity)
+        true
+      } ?: false
+    }
+
+    Function("stopFrameStats") {
+      FrameStats.stop(appContext.currentActivity)
+    }
+
+    Function("takeFrameStats") {
+      FrameStats.takeWindow()
     }
   }
 }

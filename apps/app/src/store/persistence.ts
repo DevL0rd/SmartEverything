@@ -1,21 +1,36 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState } from 'react-native';
 import { z } from 'zod';
-import {
-  ASSISTANT_MESSAGES_SNAPSHOT,
-  SNAPSHOT,
-  type Snapshot,
-  type StateRow,
-} from '@smarteverything/domain';
+import { SESSION, SNAPSHOT } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
+import { LogTally, errorFields } from '../design/log-tally';
+import { touchQuietIn } from '../design/touch-activity';
 import { jsonText } from '../format/json-text';
 import type { EntityStore } from './entity-store';
-import { rowsOf, type StoreState } from './state';
-import { shallowEqual } from './store-context';
+import {
+  CACHE_VERSION,
+  CACHED_SHARED_LISTS,
+  LIST_DEBOUNCE_MS,
+  OWNER_LISTS,
+  SHARED_LISTS,
+  metaKey,
+  metaSlot,
+  slotsOf,
+  type Slot,
+} from './persistence-slots';
+import { readStored, removeStored, writeStored } from './snapshot-storage';
+import type { StoreState } from './state';
 
 const log = new Logger('app.persistence');
+const written = new LogTally(log, 'snapshot.summarised', 10_000);
 
-const IDLE_MS = 2000;
-const AT_MOST_EVERY_MS = 10_000;
+const TOUCH_QUIET_MS = 1500;
+
+const META = z.looseObject({
+  version: z.literal(CACHE_VERSION),
+  seq: z.number(),
+  session: SESSION,
+  tables: z.record(z.string(), z.unknown()),
+});
 
 function hashOf(text: string): string {
   let hash = 5381;
@@ -25,206 +40,241 @@ function hashOf(text: string): string {
   return (hash >>> 0).toString(36);
 }
 
-const SCHEMA_HASH = hashOf(
-  JSON.stringify(z.toJSONSchema(SNAPSHOT, { unrepresentable: 'any', io: 'input' })),
-);
-
-const PERSISTED = z.strictObject({ schema: z.literal(SCHEMA_HASH), snapshot: SNAPSHOT });
-
 function keyOf(serverUrl: string): string {
   return `smarteverything.snapshot.${hashOf(serverUrl)}`;
 }
 
-function stateRows(deviceValues: StoreState['deviceValues']): StateRow[] {
-  return Object.entries(deviceValues).flatMap(([device_id, values]) =>
-    Object.entries(values).map(([capability, reading]) => ({
-      device_id,
-      capability,
-      value: reading.value,
-      observed_at: reading.observedAt,
-    })),
+function parsedKey(texts: ReadonlyMap<string, string>, key: string): unknown {
+  const text = texts.get(key);
+  const read = text === undefined ? null : jsonText(text);
+  return read?.ok === true ? read.value : undefined;
+}
+
+function assemble(base: string, texts: ReadonlyMap<string, string>): unknown {
+  const meta = META.safeParse(parsedKey(texts, metaKey(base)));
+  if (!meta.success) {
+    return undefined;
+  }
+  const lists = (names: readonly string[], prefix: 't' | 'o'): Record<string, unknown> =>
+    Object.fromEntries(names.map((name) => [name, parsedKey(texts, `${base}.${prefix}.${name}`)]));
+  const owner = meta.data.session.client.role === 'owner';
+  const empty = SHARED_LISTS.filter((name) => !CACHED_SHARED_LISTS.includes(name));
+  return {
+    seq: meta.data.seq,
+    session: meta.data.session,
+    firewall: meta.data['firewall'],
+    tables: {
+      ...Object.fromEntries(empty.map((name) => [name, []])),
+      ...lists(CACHED_SHARED_LISTS, 't'),
+      ...meta.data.tables,
+      device_state: parsedKey(texts, `${base}.device_state`),
+    },
+    owner: owner ? lists(OWNER_LISTS, 'o') : null,
+  };
+}
+
+export async function restoreSnapshot(
+  serverUrl: string,
+  store: Pick<EntityStore, 'get' | 'replace'>,
+): Promise<void> {
+  const base = keyOf(serverUrl);
+  const keys = [metaKey(base), ...slotsOf(base).map((slot) => slot.key)];
+  const begun = Date.now();
+  const texts = await readStored(keys);
+  let chars = 0;
+  texts.forEach((text) => {
+    chars += text.length;
+  });
+  const readMs = Date.now() - begun;
+  if (texts.size === 0) {
+    log.info('snapshot.restore_empty', { keys: keys.length, readMs });
+    return;
+  }
+  const parsed = SNAPSHOT.safeParse(assemble(base, texts));
+  if (!parsed.success) {
+    log.info('snapshot.discarded', {
+      reason: 'version changed or unreadable',
+      keys: texts.size,
+      chars,
+      issues: parsed.error.issues.length,
+      firstIssuePath: parsed.error.issues[0]?.path.join('.') ?? '',
+    });
+    await removeStored(keys);
+    return;
+  }
+  const applied = !store.get().loaded;
+  if (applied) {
+    store.replace(parsed.data);
+  }
+  log.info('snapshot.restored', {
+    keys: texts.size,
+    chars,
+    readMs,
+    durationMs: Date.now() - begun,
+    seq: parsed.data.seq,
+    applied,
+  });
+}
+
+function sameRefs(left: readonly unknown[], right: readonly unknown[]): boolean {
+  return left.length === right.length && left.every((item, index) => Object.is(item, right[index]));
+}
+
+function ready(state: StoreState): boolean {
+  return (
+    state.settings !== null &&
+    state.session !== null &&
+    state.firewall !== null &&
+    state.sync.seq !== null
   );
 }
 
-type PersistedInputs = Pick<
-  StoreState,
-  'settings' | 'session' | 'firewall' | 'weather' | 'exchangeRates' | 'assistant' | 'deviceValues'
-> &
-  Pick<
-    StoreState['tables'],
-    | 'rooms'
-    | 'devices'
-    | 'cameras'
-    | 'scenes'
-    | 'automations'
-    | 'provider_links'
-    | 'ir_remotes'
-    | 'ir_codes'
-    | 'layouts'
-    | 'events'
-    | 'commands'
-    | 'recordings'
-    | 'health_sources'
-    | 'health_daily'
-    | 'profiles'
-    | 'body_readings'
-    | 'talk_channels'
-    | 'talk_members'
-    | 'talk_messages'
-    | 'assistant_messages'
-    | 'scheduled_actions'
-    | 'ai_chats'
-    | 'clients'
-    | 'push_targets'
-    | 'mcp_tokens'
-    | 'oauth_clients'
-  >;
+class SnapshotWriter {
+  private readonly meta: Slot;
+  private readonly slots: readonly Slot[];
+  private readonly written = new Map<Slot, readonly unknown[]>();
+  private readonly wroteAt = new Map<Slot, number>();
+  private lastSeq: number | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private stepTimer: ReturnType<typeof setTimeout> | null = null;
+  private flushing = false;
 
-function inputsOf(state: StoreState): PersistedInputs {
-  const t = state.tables;
-  return {
-    settings: state.settings,
-    session: state.session,
-    firewall: state.firewall,
-    weather: state.weather,
-    exchangeRates: state.exchangeRates,
-    assistant: state.assistant,
-    deviceValues: state.deviceValues,
-    rooms: t.rooms,
-    devices: t.devices,
-    cameras: t.cameras,
-    scenes: t.scenes,
-    automations: t.automations,
-    provider_links: t.provider_links,
-    ir_remotes: t.ir_remotes,
-    ir_codes: t.ir_codes,
-    layouts: t.layouts,
-    events: t.events,
-    commands: t.commands,
-    recordings: t.recordings,
-    health_sources: t.health_sources,
-    health_daily: t.health_daily,
-    profiles: t.profiles,
-    body_readings: t.body_readings,
-    talk_channels: t.talk_channels,
-    talk_members: t.talk_members,
-    talk_messages: t.talk_messages,
-    assistant_messages: t.assistant_messages,
-    scheduled_actions: t.scheduled_actions,
-    ai_chats: t.ai_chats,
-    clients: t.clients,
-    push_targets: t.push_targets,
-    mcp_tokens: t.mcp_tokens,
-    oauth_clients: t.oauth_clients,
-  };
-}
-
-function snapshotOf(state: StoreState, inputs: PersistedInputs): Snapshot | null {
-  const { sync } = state;
-  const { settings, session, firewall } = inputs;
-  if (settings === null || session === null || firewall === null || sync.seq === null) {
-    return null;
+  constructor(
+    base: string,
+    private readonly store: EntityStore,
+  ) {
+    this.meta = metaSlot(base);
+    this.slots = slotsOf(base);
   }
-  const owner = session.client.role === 'owner';
-  return {
-    seq: sync.seq,
-    session,
-    firewall,
-    tables: {
-      settings,
-      rooms: [...rowsOf(inputs.rooms)],
-      devices: rowsOf(inputs.devices).map(({ label: _label, ...row }) => row),
-      device_state: stateRows(inputs.deviceValues),
-      cameras: [...rowsOf(inputs.cameras)],
-      scenes: [...rowsOf(inputs.scenes)],
-      automations: [...rowsOf(inputs.automations)],
-      provider_links: [...rowsOf(inputs.provider_links)],
-      ir_remotes: [...rowsOf(inputs.ir_remotes)],
-      ir_codes: [...rowsOf(inputs.ir_codes)],
-      layouts: [...rowsOf(inputs.layouts)],
-      events: [...rowsOf(inputs.events)],
-      commands: [...rowsOf(inputs.commands)],
-      recordings: [...rowsOf(inputs.recordings)],
-      health_sources: [...rowsOf(inputs.health_sources)],
-      health_daily: [...rowsOf(inputs.health_daily)],
-      profiles: [...rowsOf(inputs.profiles)],
-      body_readings: [...rowsOf(inputs.body_readings)],
-      ...(inputs.weather === null ? {} : { weather: inputs.weather }),
-      ...(inputs.exchangeRates === null ? {} : { exchange_rates: inputs.exchangeRates }),
-      talk_channels: [...rowsOf(inputs.talk_channels)],
-      talk_members: [...rowsOf(inputs.talk_members)],
-      talk_messages: [...rowsOf(inputs.talk_messages)],
-      assistant_messages: rowsOf(inputs.assistant_messages).slice(0, ASSISTANT_MESSAGES_SNAPSHOT),
-      scheduled_actions: [...rowsOf(inputs.scheduled_actions)],
-      ...(inputs.assistant === null ? {} : { assistant_status: inputs.assistant }),
-      ai_chats: [...rowsOf(inputs.ai_chats)],
-    },
-    owner: owner
-      ? {
-          clients: [...rowsOf(inputs.clients)],
-          push_targets: [...rowsOf(inputs.push_targets)],
-          mcp_tokens: [...rowsOf(inputs.mcp_tokens)],
-          oauth_clients: [...rowsOf(inputs.oauth_clients)],
+
+  readonly arm = (): void => {
+    const state = this.store.get();
+    if (this.timer !== null || this.flushing || !ready(state)) {
+      return;
+    }
+    const now = Date.now();
+    const waits = [...this.slots, this.meta]
+      .filter((slot) => this.isDirty(slot, state))
+      .map((slot) => this.dueIn(slot, now));
+    if (waits.length > 0) {
+      this.timer = setTimeout(this.flush, Math.min(...waits));
+    }
+  };
+
+  readonly flushNow = (): void => {
+    log.debug('snapshot.flush_forced', { seq: this.lastSeq });
+    this.cancel();
+    this.flushing = false;
+    this.start(true);
+  };
+
+  readonly cancel = (): void => {
+    if (this.timer !== null) clearTimeout(this.timer);
+    if (this.stepTimer !== null) clearTimeout(this.stepTimer);
+    this.timer = null;
+    this.stepTimer = null;
+  };
+
+  private readonly flush = (): void => {
+    this.timer = null;
+    const wait = touchQuietIn(TOUCH_QUIET_MS);
+    if (wait > 0) {
+      this.timer = setTimeout(this.flush, wait);
+      return;
+    }
+    this.start(false);
+  };
+
+  private isDirty(slot: Slot, state: StoreState): boolean {
+    const before = this.written.get(slot);
+    return slot.active(state) && (before === undefined || !sameRefs(before, slot.refs(state)));
+  }
+
+  private dueIn(slot: Slot, now: number): number {
+    return Math.max(
+      LIST_DEBOUNCE_MS,
+      (this.wroteAt.get(slot) ?? -Infinity) + slot.intervalMs - now,
+    );
+  }
+
+  private writeSlot(slot: Slot, state: StoreState, seq: number): void {
+    const begun = Date.now();
+    const text = slot.text(state, seq);
+    const serialiseMs = Date.now() - begun;
+    this.written.set(slot, slot.refs(state));
+    this.wroteAt.set(slot, Date.now());
+    written.bump('slotsWritten');
+    written.bump('chars', text.length);
+    if (serialiseMs > 30) {
+      log.debug('snapshot.slow_serialise', { chars: text.length, durationMs: serialiseMs, seq });
+    }
+    writeStored(slot.key, text)
+      .then(() => {
+        const durationMs = Date.now() - begun;
+        if (durationMs > 100) {
+          log.debug('snapshot.slow_write', { chars: text.length, durationMs, seq });
         }
-      : null,
-  };
-}
-
-function persistedParts(inputs: PersistedInputs): readonly unknown[] {
-  return Object.values(inputs);
-}
-
-export async function restoreSnapshot(serverUrl: string, store: EntityStore): Promise<void> {
-  const text = await AsyncStorage.getItem(keyOf(serverUrl));
-  if (text === null) {
-    return;
+      })
+      .catch((error: unknown) => {
+        this.written.delete(slot);
+        log.warn('snapshot.not_saved', { chars: text.length, seq, ...errorFields(error) });
+      });
   }
-  const read = jsonText(text);
-  const parsed = read.ok ? PERSISTED.safeParse(read.value) : null;
-  if (parsed?.success !== true) {
-    log.info('snapshot.discarded', { reason: 'schema changed or unreadable' });
-    await AsyncStorage.removeItem(keyOf(serverUrl));
-    return;
+
+  private run(state: StoreState, queue: readonly Slot[], seq: number, chunked: boolean): void {
+    const [slot, ...rest] = queue;
+    if (slot === undefined) {
+      this.flushing = false;
+      this.arm();
+      return;
+    }
+    this.writeSlot(slot, state, seq);
+    if (chunked) {
+      this.stepTimer = setTimeout(() => {
+        this.run(state, rest, seq, true);
+      }, 0);
+    } else {
+      this.run(state, rest, seq, false);
+    }
   }
-  if (!store.get().loaded) {
-    store.replace(parsed.data.snapshot);
+
+  private start(force: boolean): void {
+    const state = this.store.get();
+    if (!ready(state)) {
+      return;
+    }
+    const now = Date.now();
+    const dirty = this.slots.filter((slot) => this.isDirty(slot, state));
+    const due = dirty.filter((slot) => force || this.dueIn(slot, now) <= LIST_DEBOUNCE_MS);
+    const seq = dirty.length > due.length ? this.lastSeq : state.sync.seq;
+    if (seq === null || (due.length === 0 && !this.isDirty(this.meta, state))) {
+      this.arm();
+      return;
+    }
+    this.lastSeq = seq;
+    this.flushing = true;
+    log.debug('snapshot.flush_started', {
+      due: due.length,
+      dirty: dirty.length,
+      seq,
+      forced: force,
+    });
+    this.run(state, [...due, this.meta], seq, !force);
   }
 }
 
 export function persistSnapshots(serverUrl: string, store: EntityStore): () => void {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let lastWrite = 0;
-  let written: readonly unknown[] | null = null;
-  const write = (): void => {
-    timer = null;
-    lastWrite = Date.now();
-    const state = store.get();
-    const inputs = inputsOf(state);
-    written = persistedParts(inputs);
-    const snapshot = snapshotOf(state, inputs);
-    if (snapshot === null) {
-      return;
-    }
-    AsyncStorage.setItem(keyOf(serverUrl), JSON.stringify({ schema: SCHEMA_HASH, snapshot })).catch(
-      (error: unknown) => {
-        log.warn('snapshot.not_saved', { reason: String(error) });
-      },
-    );
-  };
-  const unsubscribe = store.subscribe(() => {
-    if (
-      timer !== null ||
-      (written !== null && shallowEqual(written, persistedParts(inputsOf(store.get()))))
-    ) {
-      return;
-    }
-    const wait = Math.max(IDLE_MS, lastWrite + AT_MOST_EVERY_MS - Date.now());
-    timer = setTimeout(write, wait);
+  const writer = new SnapshotWriter(keyOf(serverUrl), store);
+  log.info('snapshot.persisting', { key: keyOf(serverUrl) });
+  const unsubscribe = store.subscribe(writer.arm);
+  const appState = AppState.addEventListener('change', (next) => {
+    log.debug('snapshot.app_state', { appState: next });
+    if (next !== 'active') writer.flushNow();
   });
   return (): void => {
+    log.info('snapshot.persisting_stopped');
     unsubscribe();
-    if (timer !== null) {
-      clearTimeout(timer);
-    }
+    appState.remove();
+    writer.cancel();
   };
 }

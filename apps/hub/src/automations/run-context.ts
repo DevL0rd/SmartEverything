@@ -2,9 +2,12 @@ import type {
   AutomationRunStep,
   CommandAction,
   CommandRow,
-  AutomationSequenceRow,
+  JsonValue,
+  PluginOrigin,
+  SignalInput,
 } from '@smarteverything/domain';
 import type { Clock } from '../clock';
+import { background } from '@smarteverything/logging';
 
 export class AutomationRunCancelledError extends Error {
   override readonly name = 'AutomationRunCancelledError';
@@ -12,49 +15,52 @@ export class AutomationRunCancelledError extends Error {
     super(`Automation run ${runId} was cancelled.`);
   }
 }
-export class AutomationRunClockError extends Error {
-  override readonly name = 'AutomationRunClockError';
-  constructor(readonly runId: string) {
-    super(`Automation run ${runId} needs Clock.now and Clock.at for an owned cancellable delay.`);
-  }
-}
-export interface ActionExecutionContext {
+
+export interface RunHooks {
   readonly runId: string;
-  readonly ownerProfileId?: string | null;
-  readonly sequence?: (id: string) => AutomationSequenceRow;
   readonly signal: AbortSignal;
-  readonly authorize: () => void;
-  readonly sceneActions: (sceneId: string) => readonly CommandAction[] | undefined;
-  readonly step: (
-    index: number | string,
-    status: AutomationRunStep['status'],
-    error: string | null,
-  ) => void;
+  readonly begin: (nodeId: string) => void;
+  readonly end: (step: AutomationRunStep) => void;
   readonly commands: (rows: readonly CommandRow[]) => void;
 }
-export function admitRun(context?: ActionExecutionContext): void {
-  if (context === undefined) return;
-  if (context.signal.aborted) throw new AutomationRunCancelledError(context.runId);
-  context.authorize();
+
+export interface RunContext extends RunHooks {
+  readonly automationId: string;
+  readonly name: string;
+  readonly ownerProfileId: string | null;
+  readonly origin: PluginOrigin | null;
+  readonly trigger: SignalInput | null;
+  readonly inputs: Readonly<Record<string, JsonValue>>;
+  readonly scenes: Readonly<Record<string, readonly CommandAction[]>>;
 }
 
-export function awaitRun<T>(work: Promise<T>, context: ActionExecutionContext): Promise<T> {
+export function admitRun(context: Pick<RunHooks, 'runId' | 'signal'>): void {
+  if (context.signal.aborted) throw new AutomationRunCancelledError(context.runId);
+}
+
+export function awaitRun<T>(
+  work: Promise<T>,
+  context: Pick<RunHooks, 'runId' | 'signal'>,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const abort = (): void => {
       reject(new AutomationRunCancelledError(context.runId));
     };
     context.signal.addEventListener('abort', abort, { once: true });
     if (context.signal.aborted) abort();
-    void work.then(resolve, reject).finally(() => {
-      context.signal.removeEventListener('abort', abort);
-    });
+    background(
+      work.then(resolve, reject).finally(() => {
+        context.signal.removeEventListener('abort', abort);
+      }),
+      'run_context.background_failed',
+    );
   });
 }
 
 export function runDelay(
   clock: Pick<Clock, 'now' | 'at'>,
   milliseconds: number,
-  context: ActionExecutionContext,
+  context: Pick<RunHooks, 'runId' | 'signal'>,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const abort = (): void => {

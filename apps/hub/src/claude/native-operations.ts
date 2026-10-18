@@ -11,6 +11,7 @@ import {
   ClaudeControlUncertainError,
   ClaudeNotReadyError,
 } from './errors';
+import { messageOf } from '@smarteverything/logging';
 
 export type NativeOperationRequest = Extract<
   ComputerAiExecute,
@@ -136,8 +137,7 @@ export class NativeOperations {
           cause instanceof ClaudeControlTimeoutError || cause instanceof ClaudeControlUncertainError
             ? 'uncertain'
             : 'failed',
-        error:
-          cause instanceof Error ? cause.message.slice(0, 2000) : 'The native operation failed.',
+        error: messageOf(cause).slice(0, 2000),
       };
       this.receipts.set(id, { ...receipt, operation });
       this.changed(operation);

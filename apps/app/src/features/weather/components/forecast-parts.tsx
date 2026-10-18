@@ -1,13 +1,11 @@
 import type { WeatherDay, WeatherForecast, WeatherHour } from '@smarteverything/domain';
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { View } from 'react-native';
+import { ProgressBar } from '../../../components/charts';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import Svg, { Path } from 'react-native-svg';
 import { cn } from '../../../design/cn';
-import { useColour } from '../../../design/colour';
 import { localDayKey } from '../../../format/time';
-import { rounded } from '../../device-visuals';
 import {
   chanceText,
   conditionColour,
@@ -18,7 +16,7 @@ import {
   hourName,
 } from '../model/present';
 
-export function HourCell({
+export const HourCell = memo(function HourCell({
   hour,
   index,
   timeZone,
@@ -51,7 +49,7 @@ export function HourCell({
       </Text>
     </View>
   );
-}
+});
 
 interface Span {
   readonly low: number;
@@ -67,21 +65,14 @@ function spanOf(days: readonly WeatherDay[]): Span {
 
 function RangeBar({ day, span }: { readonly day: WeatherDay; readonly span: Span }): ReactNode {
   const width = Math.max(span.high - span.low, 1);
-  const left = ((day.minC - span.low) / width) * 100;
-  const right = ((day.maxC - span.low) / width) * 100;
-  const track = useColour('surface-3');
-  const fill = useColour('temp-warm');
   return (
-    <View className="h-1.5 min-w-8 flex-1">
-      <View pointerEvents="none" className="absolute inset-0">
-        <Svg width="100%" height="100%" viewBox="0 0 100 6" preserveAspectRatio="none">
-          <Path d={rounded({ x: 0, y: 0, w: 100, h: 6, r: 3 })} fill={track} />
-          <Path
-            d={rounded({ x: left, y: 0, w: Math.max(right - left, 3), h: 6, r: 3 })}
-            fill={fill}
-          />
-        </Svg>
-      </View>
+    <View className="min-w-8 flex-1">
+      <ProgressBar
+        from={(day.minC - span.low) / width}
+        progress={(day.maxC - span.low) / width}
+        colour="temp-warm"
+        label={`${degrees(day.minC)} to ${degrees(day.maxC)}`}
+      />
     </View>
   );
 }

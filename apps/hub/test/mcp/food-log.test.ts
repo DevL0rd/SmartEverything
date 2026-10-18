@@ -69,7 +69,7 @@ async function energy(): Promise<number> {
 describe('food logged through the AI tool', () => {
   it('by food object stores what the app path stores and counts at once', async () => {
     const result = await tool('log_food', {
-      what: 'food',
+      action: 'food',
       food: FOOD,
       amount: 375,
       meal: 'breakfast',
@@ -93,7 +93,7 @@ describe('food logged through the AI tool', () => {
     expect(await energy()).toBeCloseTo(260, 0);
   });
 
-  it('by foodId and multiplier counts the scaled nutrients at once', async () => {
+  it('by foodId and a larger amount counts the nutrients at once', async () => {
     const saved = await tool('edit_food', {
       action: 'create',
       ...FOOD,
@@ -105,10 +105,9 @@ describe('food logged through the AI tool', () => {
       .body;
     const id = E.listFoods.response.parse(foodId)[0]?.id;
     const result = await tool('log_food', {
-      what: 'food',
+      action: 'food',
       foodId: id,
-      amount: 100,
-      multiplier: 2,
+      amount: 200,
       meal: 'lunch',
       at: AT,
     });
@@ -125,7 +124,7 @@ describe('food logged through the AI tool', () => {
       body: { time_zone: 'Asia/Bangkok' },
     });
     const result = await tool('log_food', {
-      what: 'food',
+      action: 'food',
       food: FOOD,
       amount: 375,
       meal: 'breakfast',
@@ -141,5 +140,111 @@ describe('food logged through the AI tool', () => {
       .map((row) => row.day);
     expect(days).toEqual(['2026-10-11']);
     expect(await energy()).toBeCloseTo(260, 0);
+  });
+
+  it('by barcode uses the person’s own saved food and never replaces it with Open Food Facts', async () => {
+    const barcode = '5000112637922';
+    const created = await tool('edit_food', {
+      action: 'create',
+      ...FOOD,
+      barcode,
+      origin: 'custom',
+      favourite: true,
+    });
+    expect(created.isError, JSON.stringify(created.content)).toBe(false);
+    const result = await tool('log_food', {
+      action: 'food',
+      barcode,
+      amount: 375,
+      meal: 'lunch',
+      at: AT,
+    });
+    expect(result.isError, JSON.stringify(result.content)).toBe(false);
+    const [row] = await entries();
+    const foods = E.listFoods.response.parse(
+      (await call(booted.base, booted.owner, { method: 'GET', path: '/api/foods' })).body,
+    );
+    expect(foods).toHaveLength(1);
+    expect(foods[0]).toMatchObject({ origin: 'custom', favourite: true, serving: FOOD.serving });
+    expect(row?.food?.foodId).toBe(foods[0]?.id);
+    const found = await tool('find_food', { view: 'search', barcode });
+    expect(found.isError, JSON.stringify(found.content)).toBe(false);
+    expect(JSON.stringify(found.content)).toContain('Fish congee');
+    expect(JSON.stringify(found.content)).not.toContain('Open Food Facts');
+  });
+
+  it('saving an Open Food Facts product with a saved custom food’s barcode keeps the custom food', async () => {
+    const barcode = '5000112637922';
+    await tool('edit_food', {
+      action: 'create',
+      ...FOOD,
+      barcode,
+      origin: 'custom',
+      favourite: true,
+    });
+    const reply = await call(booted.base, booted.owner, {
+      method: 'POST',
+      path: '/api/foods',
+      body: {
+        ...FOOD,
+        name: 'Other name',
+        barcode,
+        serving: null,
+        origin: 'open_food_facts',
+        favourite: false,
+      },
+    });
+    expect(reply.status).toBeLessThan(300);
+    const foods = E.listFoods.response.parse(
+      (await call(booted.base, booted.owner, { method: 'GET', path: '/api/foods' })).body,
+    );
+    expect(foods).toHaveLength(1);
+    expect(foods[0]).toMatchObject({
+      name: 'Fish congee',
+      origin: 'custom',
+      favourite: true,
+      serving: FOOD.serving,
+    });
+  });
+  it('saving an Open Food Facts product again keeps the saved copy with its serving and favourite', async () => {
+    const barcode = '5000112637922';
+    const body = { ...FOOD, barcode, origin: 'open_food_facts', favourite: true };
+    await call(booted.base, booted.owner, { method: 'POST', path: '/api/foods', body });
+    const again = await call(booted.base, booted.owner, {
+      method: 'POST',
+      path: '/api/foods',
+      body: { ...body, name: 'Renamed upstream', serving: null, favourite: false },
+    });
+    expect(again.status).toBeLessThan(300);
+    const foods = E.listFoods.response.parse(
+      (await call(booted.base, booted.owner, { method: 'GET', path: '/api/foods' })).body,
+    );
+    expect(foods).toHaveLength(1);
+    expect(foods[0]).toMatchObject({
+      name: 'Fish congee',
+      origin: 'open_food_facts',
+      favourite: true,
+      serving: FOOD.serving,
+    });
+  });
+
+  it('a custom food saved with a saved product’s barcode becomes custom and keeps the favourite', async () => {
+    const barcode = '5000112637922';
+    await call(booted.base, booted.owner, {
+      method: 'POST',
+      path: '/api/foods',
+      body: { ...FOOD, barcode, origin: 'open_food_facts', favourite: true },
+    });
+    const mine = { amount: 250, label: 'my bowl' };
+    await call(booted.base, booted.owner, {
+      method: 'POST',
+      path: '/api/foods',
+      body: { ...FOOD, barcode, serving: mine, origin: 'custom', favourite: false },
+    });
+    const foods = E.listFoods.response.parse(
+      (await call(booted.base, booted.owner, { method: 'GET', path: '/api/foods' })).body,
+    );
+    expect(foods).toHaveLength(1);
+    expect(foods[0]).toMatchObject({ origin: 'custom', favourite: true, serving: mine });
   });
 });

@@ -7,6 +7,7 @@ import { Sheet } from '../../../components/sheet';
 import { TimeField, localeUsesHour12, type TimeOfDay } from '../../../components/time-field';
 import type { Control } from '../../../store/control';
 import { clockLabel, clockTextOf, parseClockText } from '../model/clock-text';
+import { background } from '@smarteverything/logging';
 
 const MIDNIGHT: TimeOfDay = { hour: 0, minute: 0 };
 
@@ -37,7 +38,7 @@ function TimeSheet({
             label="Save"
             onPress={() => {
               onClose();
-              void control.set(clockTextOf(time, clock));
+              background(control.set(clockTextOf(time, clock)), 'control.set_failed');
             }}
           />
         </>

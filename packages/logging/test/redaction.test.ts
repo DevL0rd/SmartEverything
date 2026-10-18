@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
-import { DENIED_FIELDS, REDACTED, isDeniedField, redact } from '../src/redaction';
+import { DENIED_FIELDS, REDACTED, isDeniedField, redact, redactText } from '../src/redaction';
 
 describe('redaction', () => {
   it('denies exactly the fields it says it denies, in one list nobody has to remember', () => {
@@ -9,12 +9,14 @@ describe('redaction', () => {
       'accessToken',
       'address',
       'apiKey',
+      'api_key',
       'authorization',
       'clientSecret',
       'code',
       'deliveryAddress',
       'deviceToken',
       'email',
+      'geminiKey',
       'idToken',
       'localKey',
       'local_key',
@@ -128,5 +130,19 @@ describe('redaction', () => {
         },
       ),
     );
+  });
+});
+
+describe('redacting free text', () => {
+  it('hides addresses, links, e-mail and long tokens but keeps ids', () => {
+    const uuid = '123e4567-e89b-12d3-a456-426614174000';
+    const text = `see https://a.example/x?k=1 mail me@a.example at 192.168.1.5 key ${'k'.repeat(30)} id ${uuid}`;
+    expect(redactText(text, 500)).toBe(
+      `see ${REDACTED} mail ${REDACTED} at ${REDACTED} key ${REDACTED} id ${uuid}`,
+    );
+  });
+
+  it('cuts the result to the limit', () => {
+    expect(redactText('abcdef', 3)).toBe('abc');
   });
 });

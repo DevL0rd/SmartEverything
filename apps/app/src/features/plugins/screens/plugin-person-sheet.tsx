@@ -15,6 +15,7 @@ import { TextField } from '../../../components/text-field';
 import { useMutationState } from '../../../store/mutation';
 import type { PluginPeopleActions } from '../data/plugin-people-actions';
 import { PersonPick } from '../picker/person-pick';
+import { background } from '@smarteverything/logging';
 
 export interface PersonRequest {
   readonly person: PluginPerson | null;
@@ -104,11 +105,14 @@ function EditorFooter({
           label="Remove"
           variant="destructive"
           onPress={() => {
-            void actions.forget(person).then((removed) => {
-              if (removed) {
-                onClose();
-              }
-            });
+            background(
+              actions.forget(person).then((removed) => {
+                if (removed) {
+                  onClose();
+                }
+              }),
+              'actions.forget_failed',
+            );
           }}
         />
       )}

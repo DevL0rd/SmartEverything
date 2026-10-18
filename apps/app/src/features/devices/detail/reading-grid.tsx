@@ -1,53 +1,53 @@
 import type { ReactNode } from 'react';
-import { presentValue, type PresentedCapability } from '@smarteverything/domain';
+import type { PresentedCapability } from '@smarteverything/domain';
 import { Grid } from '../../../components/grid';
 import { Section } from '../../../components/section';
-import { StatTile } from '../../../components/stat-tile';
 import type { Device, DeviceValues } from '../../../store/state';
 import { useDeviceValues } from '../../../store/selectors';
-import { valueOf, useDeviceModel, type DeviceModel } from '../model/device-model';
+import { useDeviceModel, valueOf, type DeviceModel } from '../model/device-model';
 import { heroReadingOf, readingsOf } from '../model/readings';
-import { splitUnit } from './device-hero';
+import { useStateLine } from '../model/state-line';
+import { shownReadings } from './readings-filter';
+import { PlainTile, TrendTile } from './reading-tile';
 
-function Tile({
-  presented,
-  values,
-  stale,
-}: {
-  readonly presented: PresentedCapability;
-  readonly values: DeviceValues;
-  readonly stale: boolean;
-}): ReactNode {
-  const value = valueOf(values, presented);
-  if (value === undefined) {
-    return null;
-  }
-  const shown = splitUnit(presentValue(presented, value), presented.unit);
-  return <StatTile label={presented.label} {...shown} stale={stale} />;
-}
+const TREND_TILES = 4;
 
 export function hasReadings(model: DeviceModel, values: DeviceValues): boolean {
   return readingsOf(model, values, heroReadingOf(model, values)).length > 0;
 }
 
-function useReadings(device: Device): readonly PresentedCapability[] {
-  const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
-  return readingsOf(model, values, heroReadingOf(model, values));
+function trendable(presented: PresentedCapability, position: number): boolean {
+  return position < TREND_TILES && presented.capability.value.kind === 'number';
 }
 
 export function ReadingGrid({ device }: { readonly device: Device }): ReactNode {
+  const model = useDeviceModel(device);
   const values = useDeviceValues(device.id);
-  const readings = useReadings(device);
+  const line = useStateLine(model, false);
+  const readings = shownReadings(model, values, line);
   if (readings.length === 0) {
     return null;
   }
   return (
     <Section title="Readings">
-      <Grid minItemWidth={140} maxColumns={4}>
-        {readings.map((presented) => (
-          <Tile key={presented.key} presented={presented} values={values} stale={!device.online} />
-        ))}
+      <Grid minItemWidth={156} maxColumns={4}>
+        {readings.map((presented, position) =>
+          trendable(presented, position) ? (
+            <TrendTile
+              key={presented.key}
+              device={device}
+              presented={presented}
+              value={valueOf(values, presented)}
+            />
+          ) : (
+            <PlainTile
+              key={presented.key}
+              device={device}
+              presented={presented}
+              value={valueOf(values, presented)}
+            />
+          ),
+        )}
       </Grid>
     </Section>
   );

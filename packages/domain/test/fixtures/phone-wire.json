@@ -1,0 +1,366 @@
+{
+  "live": {
+    "at": "2026-10-18T10:00:00Z",
+    "values": {
+      "battery": 62,
+      "charging": true,
+      "screen_on": true,
+      "network": "wifi",
+      "ringer_mode": "normal",
+      "dnd": false,
+      "volume": 40,
+      "playback": "playing",
+      "now_playing": "Song \u00b7 Artist",
+      "screen_time_today": 215,
+      "phone_context": "walking",
+      "context_confidence": 90,
+      "place": "Park",
+      "charger": "wireless",
+      "charge_full_at": "2026-10-18T18:40:00Z",
+      "battery_temperature": 31.5,
+      "power_save": false,
+      "thermal_state": "normal",
+      "ring_volume": 70,
+      "alarm_volume": 80,
+      "notification_volume": 50,
+      "audio_output": "bluetooth",
+      "in_call": false,
+      "brightness": 60,
+      "auto_brightness": true,
+      "flashlight": "off",
+      "ringing": false,
+      "storage_free": 41000000000,
+      "notification_count": 4,
+      "next_alarm": "2026-10-19T06:30:00Z",
+      "signal_strength": 3
+    },
+    "events": [
+      {
+        "kind": "phone_context_changed",
+        "at": "2026-10-18T10:00:00Z",
+        "details": {
+          "from": "still",
+          "to": "walking",
+          "confidence": 90,
+          "place": "Park"
+        }
+      },
+      {
+        "kind": "phone_unlocked",
+        "at": "2026-10-18T10:00:01Z",
+        "details": {}
+      },
+      {
+        "kind": "parked",
+        "at": "2026-10-18T10:00:02Z",
+        "details": {
+          "place": null
+        }
+      },
+      {
+        "kind": "place_arrived",
+        "at": "2026-10-18T10:00:03Z",
+        "details": {
+          "place": "Gym"
+        }
+      },
+      {
+        "kind": "place_left",
+        "at": "2026-10-18T10:00:04Z",
+        "details": {
+          "place": "Gym"
+        }
+      }
+    ],
+    "detail": {
+      "power": {
+        "level": 62,
+        "voltageMv": 4137,
+        "currentMa": 1500,
+        "temperatureC": 30.5,
+        "health": "good",
+        "cycles": 212,
+        "charger": "wireless",
+        "fullAt": "2026-10-18T18:40:00Z",
+        "memory": {
+          "totalBytes": 12000000000,
+          "availableBytes": 3000000000
+        }
+      },
+      "sound": {
+        "streams": {
+          "media": 40,
+          "ring": 70,
+          "alarm": 80,
+          "notification": 50,
+          "call": 60
+        },
+        "output": {
+          "kind": "bluetooth",
+          "name": "Galaxy Buds3"
+        },
+        "media": {
+          "title": "Song",
+          "artist": "Artist",
+          "app": "com.spotify.music",
+          "appLabel": "Spotify",
+          "state": "playing",
+          "positionMs": 1000,
+          "durationMs": 200000
+        }
+      },
+      "screen": {
+        "brightness": 60,
+        "auto": true,
+        "timeoutSeconds": 60,
+        "fold": "open",
+        "writable": true,
+        "usage": {
+          "unlocksToday": 41,
+          "screenMinutesByDay": [
+            {
+              "day": "2026-10-12",
+              "minutes": 100
+            },
+            {
+              "day": "2026-10-13",
+              "minutes": 101
+            },
+            {
+              "day": "2026-10-14",
+              "minutes": 102
+            },
+            {
+              "day": "2026-10-15",
+              "minutes": 103
+            },
+            {
+              "day": "2026-10-16",
+              "minutes": 104
+            },
+            {
+              "day": "2026-10-17",
+              "minutes": 105
+            },
+            {
+              "day": "2026-10-18",
+              "minutes": 106
+            }
+          ]
+        }
+      },
+      "network": {
+        "kind": "wifi",
+        "wifi": {
+          "ssid": "Home",
+          "rssiDbm": -52,
+          "bars": 4,
+          "linkMbps": 866,
+          "bandGhz": 5.0
+        },
+        "cellular": {
+          "bars": 3,
+          "generation": "5g",
+          "operator": "Telstra"
+        },
+        "vpn": false,
+        "metered": false,
+        "airplane": false,
+        "data": {
+          "today": {
+            "wifiBytes": 1000000000,
+            "mobileBytes": 200000000
+          },
+          "month": {
+            "wifiBytes": 30000000000,
+            "mobileBytes": 4000000000
+          }
+        }
+      },
+      "connections": {
+        "bluetooth": [
+          {
+            "name": "Galaxy Buds3",
+            "kind": "headset",
+            "batteryPercent": 80
+          }
+        ]
+      },
+      "storage": {
+        "totalBytes": 256000000000,
+        "freeBytes": 41000000000,
+        "parts": [
+          {
+            "kind": "apps",
+            "bytes": 60000000000
+          },
+          {
+            "kind": "system",
+            "bytes": 20000000000
+          }
+        ],
+        "apps": [
+          {
+            "package": "com.example.big",
+            "label": "Big",
+            "bytes": 5000000000
+          }
+        ]
+      },
+      "apps": {
+        "installedCount": 2,
+        "installed": [
+          {
+            "package": "com.a",
+            "label": "A",
+            "iconHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "package": "com.b",
+            "label": "B",
+            "iconHash": null
+          }
+        ],
+        "usage": [
+          {
+            "package": "com.a",
+            "minutesToday": 30,
+            "minutesByDay": [1, 2, 3, 4, 5, 6, 30],
+            "lastUsedAt": "2026-10-18T09:50:00Z"
+          }
+        ],
+        "front": "com.a"
+      },
+      "notifications": {
+        "count": 4,
+        "apps": [
+          {
+            "package": "com.a",
+            "label": "A",
+            "count": 4
+          }
+        ],
+        "items": [
+          {
+            "key": "k1",
+            "package": "com.a",
+            "title": "Hello",
+            "at": "2026-10-18T09:59:00Z"
+          }
+        ]
+      },
+      "alarm": {
+        "nextAt": "2026-10-19T06:30:00Z",
+        "appLabel": "Clock"
+      }
+    }
+  },
+  "rest": {
+    "at": "2026-10-18T10:00:00Z",
+    "values": {
+      "battery": 62,
+      "charging": true,
+      "screen_on": true,
+      "network": "wifi",
+      "ringer_mode": "normal",
+      "dnd": false,
+      "volume": 40,
+      "playback": "playing"
+    },
+    "events": [],
+    "detail": {
+      "power": {
+        "level": 62,
+        "voltageMv": 4137,
+        "currentMa": null,
+        "temperatureC": 30.5,
+        "health": "good",
+        "cycles": null,
+        "charger": "wireless",
+        "fullAt": null,
+        "memory": {
+          "totalBytes": 12000000000,
+          "availableBytes": 3000000000
+        }
+      },
+      "sound": {
+        "streams": {
+          "media": 40,
+          "ring": 70,
+          "alarm": 80,
+          "notification": 50,
+          "call": 60
+        },
+        "output": {
+          "kind": "speaker",
+          "name": null
+        },
+        "media": null
+      },
+      "screen": {
+        "brightness": 60,
+        "auto": true,
+        "timeoutSeconds": 60,
+        "fold": null,
+        "writable": true,
+        "usage": null
+      },
+      "network": {
+        "kind": "offline",
+        "wifi": null,
+        "cellular": null,
+        "vpn": false,
+        "metered": false,
+        "airplane": false,
+        "data": null
+      },
+      "connections": {
+        "bluetooth": [
+          {
+            "name": null,
+            "kind": "other",
+            "batteryPercent": null
+          }
+        ]
+      },
+      "storage": {
+        "totalBytes": 256000000000,
+        "freeBytes": 41000000000,
+        "parts": [],
+        "apps": []
+      },
+      "apps": {
+        "installedCount": 2,
+        "installed": [
+          {
+            "package": "com.a",
+            "label": "A",
+            "iconHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "package": "com.b",
+            "label": "B",
+            "iconHash": null
+          }
+        ],
+        "usage": [],
+        "front": null
+      },
+      "notifications": {
+        "count": 4,
+        "apps": [
+          {
+            "package": "com.a",
+            "label": "A",
+            "count": 4
+          }
+        ],
+        "items": null
+      },
+      "alarm": {
+        "nextAt": null,
+        "appLabel": null
+      }
+    }
+  }
+}

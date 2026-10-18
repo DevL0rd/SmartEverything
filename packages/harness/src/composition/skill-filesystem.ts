@@ -1,9 +1,5 @@
-import { readSkillCacheFile } from './skill-asset-paths';
-import { parseMarkdownFile } from 'dsh-claude-plugin-loader-compat';
-import { HarnessRuntimeError } from '../host/errors';
-import { withCodingProcess } from './coding-process';
 import type { Context } from '@deepseek-ai/cordis';
-import type { FileSystemSkillProvider } from '@deepseek-ai/dsh-skill-filesystem';
+import type { Config, FileSystemSkillProvider } from '@deepseek-ai/dsh-skill-filesystem';
 import type * as SkillFilesystem from '@deepseek-ai/dsh-skill-filesystem';
 import { createLazyRequire } from '@deepseek-ai/dsh-lazy-require';
 import type {
@@ -14,208 +10,128 @@ import type {
   SkillProviderControl,
   SkillProviderObservation,
 } from '@deepseek-ai/dsh-skill';
-import { watch, type FSWatcher } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { access } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import type { HarnessHost } from '../host/contracts';
-import { Logger, describeFailure } from '@smarteverything/logging';
 import type { InstalledHarnessSkillAsset } from './skill-assets';
 
-const MAX_WATCHED_PROJECTS = 32;
 const loadSkillFilesystem = createLazyRequire<typeof SkillFilesystem>(
   '@deepseek-ai/dsh-skill-filesystem',
   import.meta.url,
 );
+const CLAUDE_SKILLS = '.claude/skills';
+const SKILL_FILE = 'SKILL.md';
+const EMPTY: SkillProviderObservation = { candidates: [], complete: true };
 
-interface WorkspaceSkillSelection {
-  readonly assets: readonly InstalledHarnessSkillAsset[];
-  readonly codingProcessAssets: readonly string[];
-  readonly visibleNames?: Set<string>;
+export function filesystemSkillProvider(
+  ctx: Context,
+  control: SkillProviderControl,
+  config: Config,
+): FileSystemSkillProvider {
+  const { FileSystemSkillProvider } = loadSkillFilesystem();
+  return new FileSystemSkillProvider(ctx, control, config);
 }
 
 export class NativeWorkspaceSkills implements SkillProvider {
   readonly name = 'smarteverything-local-filesystem';
-  private readonly assets: readonly InstalledHarnessSkillAsset[];
-  private readonly codingProcessAssets: readonly string[];
-  private readonly visibleNames: Set<string> | undefined;
   private readonly native: FileSystemSkillProvider;
-  private readonly watchers = new Map<string, FSWatcher[]>();
-  private incomplete = false;
-  private readonly log = new Logger('desktop.harness-skills');
+  private readonly userClaude: FileSystemSkillProvider;
+  private readonly projectClaude = new Map<string, FileSystemSkillProvider>();
 
   constructor(
-    ctx: Context,
+    private readonly ctx: Context,
     private readonly host: HarnessHost,
     private readonly control: SkillProviderControl,
-    selection: readonly InstalledHarnessSkillAsset[] | WorkspaceSkillSelection = [],
+    private readonly assets: readonly InstalledHarnessSkillAsset[],
   ) {
-    const selected = workspaceSkillSelection(selection);
-    this.assets = selected.assets;
-    this.codingProcessAssets = selected.codingProcessAssets;
-    this.visibleNames = selected.visibleNames;
-    const { FileSystemSkillProvider } = loadSkillFilesystem();
-    this.native = new FileSystemSkillProvider(ctx, control, {
+    this.native = filesystemSkillProvider(ctx, control, {
       providerName: this.name,
       dshHome: host.stateDirectory,
       agentsHome: join(host.homeDirectory, '.agents'),
-      includeDefaultRoots: host.target.kind !== 'server',
-      watch: false,
-      customSkillDirs: this.assets.map((asset) => asset.directory),
+      customSkillDirs: assets.map((asset) => asset.directory),
     });
-    ctx.effect(() => (): void => {
-      this.closeWatchers();
-    });
+    this.userClaude = this.claudeProvider(join(host.homeDirectory, CLAUDE_SKILLS));
     ctx.on('fs/observed', (target, _observation, actor): void => {
       if (actor === undefined || !('name' in actor)) return;
       if (actor.name !== 'write' && actor.name !== 'edit') return;
       this.native.observeHostMutation(target.displayPath);
-      control.invalidate();
+      this.userClaude.observeHostMutation(target.displayPath);
+      for (const provider of this.projectClaude.values()) {
+        provider.observeHostMutation(target.displayPath);
+      }
     });
   }
 
   async list(options: SkillLookupOptions): Promise<SkillProviderObservation> {
-    options.signal?.throwIfAborted();
-    for (const asset of this.assets) await asset.verify();
-    const observed = await this.native.list(options);
-    const candidates = ('candidates' in observed ? observed.candidates : observed).filter(
-      (candidate) =>
-        candidate.source !== 'custom' ||
-        this.assets.some((asset) => asset.entrypoint === candidate.path),
-    );
-    this.visibleNames?.clear();
-    for (const candidate of candidates) this.visibleNames?.add(candidate.name);
-    const roots = this.roots(options.cwd, candidates);
-    const complete = await this.observe(roots);
+    const project = await this.projectProvider(options.cwd);
+    const [native, claude, user] = await Promise.all([
+      this.native.list(options).then(observation),
+      project === undefined ? EMPTY : project.list(options).then(observation),
+      this.userClaude.list(options).then(observation),
+    ]);
     return {
-      candidates,
-      complete: complete && !this.incomplete && (!('complete' in observed) || observed.complete),
+      candidates: [
+        ...native.candidates.filter(
+          (candidate) => candidate.source !== 'custom' || this.isEntrypoint(candidate),
+        ),
+        ...claude.candidates,
+        ...user.candidates,
+      ],
+      complete: native.complete && claude.complete && user.complete,
     };
   }
 
-  async get(
+  get(
     candidate: SkillCandidate,
     options: SkillLookupOptions,
   ): Promise<SkillDefinition | undefined> {
-    const asset =
-      candidate.source === 'custom'
-        ? this.assets.find((item) => item.entrypoint === candidate.path)
-        : undefined;
-    if (candidate.source === 'custom' && asset === undefined)
-      throw new Error('Distributed skill candidate has no verified immutable asset.');
-    if (asset !== undefined) {
-      await asset.verify();
-      await sharedSkillRestrictions(asset);
-    }
-    const definition = await this.native.get(candidate, options);
-    if (
-      definition === undefined ||
-      asset === undefined ||
-      !this.codingProcessAssets.includes(asset.asset.id)
-    )
-      return definition;
-    return withCodingProcess(definition);
+    return this.native.get(candidate, options);
   }
 
-  private roots(cwd: string | undefined, candidates: readonly SkillCandidate[]): readonly string[] {
-    if (this.host.target.kind === 'server') return this.assets.map((asset) => asset.directory);
-    const project =
-      cwd === undefined ? [] : [join(cwd, '.dsh/skills'), join(cwd, '.agents/skills')];
-    const discovered = candidates.flatMap((candidate) =>
-      candidate.path === undefined
-        ? []
-        : [
-            basename(candidate.path) === 'SKILL.md'
-              ? dirname(dirname(candidate.path))
-              : dirname(candidate.path),
-          ],
-    );
-    return [
-      ...new Set([
-        ...project,
-        join(this.host.stateDirectory, 'skills'),
-        join(this.host.homeDirectory, '.agents/skills'),
-        ...discovered,
-      ]),
-    ];
+  private isEntrypoint(candidate: SkillCandidate): boolean {
+    return this.assets.some((asset) => join(asset.directory, SKILL_FILE) === candidate.path);
   }
 
-  private async observe(roots: readonly string[]): Promise<boolean> {
-    if (this.control.signal.aborted) return false;
-    for (const root of roots) {
-      if (this.watchers.has(root)) continue;
-      if (this.watchers.size >= MAX_WATCHED_PROJECTS) {
-        this.evictWatcher();
-        this.control.invalidate();
-      }
-      const watches = await this.watchRoot(root);
-      if (watches === undefined) return false;
-      this.watchers.set(root, watches);
-    }
-    return true;
+  private async projectProvider(
+    cwd: string | undefined,
+  ): Promise<FileSystemSkillProvider | undefined> {
+    if (cwd === undefined) return undefined;
+    const root = join(await projectRoot(resolve(cwd)), CLAUDE_SKILLS);
+    if (root === join(this.host.homeDirectory, CLAUDE_SKILLS)) return undefined;
+    const known = this.projectClaude.get(root);
+    if (known !== undefined) return known;
+    const provider = this.claudeProvider(root);
+    this.projectClaude.set(root, provider);
+    return provider;
   }
 
-  private async watchRoot(root: string): Promise<FSWatcher[] | undefined> {
-    const anchor = await existingDirectory(root);
-    if (this.control.signal.aborted) return undefined;
-    try {
-      const observer = watch(
-        anchor,
-        { recursive: anchor === root, persistent: false },
-        (): void => {
-          this.evictWatcher(root);
-          this.control.invalidate();
-        },
-      );
-      observer.on('error', (): void => {
-        this.incomplete = true;
-        this.evictWatcher(root);
-        this.control.invalidate();
-      });
-      return [observer];
-    } catch (error) {
-      this.log.warn('skills.observation_unavailable', { failure: describeFailure(error) });
-      return undefined;
-    }
-  }
-
-  private evictWatcher(root: string | undefined = this.watchers.keys().next().value): void {
-    if (root === undefined) return;
-    for (const watcher of this.watchers.get(root) ?? []) watcher.close();
-    this.watchers.delete(root);
-  }
-
-  private closeWatchers(): void {
-    for (const root of this.watchers.keys()) this.evictWatcher(root);
+  private claudeProvider(directory: string): FileSystemSkillProvider {
+    return filesystemSkillProvider(this.ctx, this.control, {
+      providerName: this.name,
+      includeDefaultRoots: false,
+      customSkillDirs: [directory],
+    });
   }
 }
 
-async function existingDirectory(path: string): Promise<string> {
-  try {
-    if ((await stat(path)).isDirectory()) return path;
-  } catch (error) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+async function projectRoot(cwd: string): Promise<string> {
+  for (let current = cwd; ; current = dirname(current)) {
+    if (await exists(join(current, '.git'))) return current;
+    if (dirname(current) === current) return cwd;
   }
-  const parent = dirname(path);
-  if (parent === path) throw new Error('Native skill observation requires an existing directory.');
-  return existingDirectory(parent);
 }
 
-function workspaceSkillSelection(
-  selection: readonly InstalledHarnessSkillAsset[] | WorkspaceSkillSelection,
-): WorkspaceSkillSelection {
-  if ('assets' in selection) return selection;
-  return { assets: selection, codingProcessAssets: [] };
-}
-
-async function sharedSkillRestrictions(asset: InstalledHarnessSkillAsset): Promise<void> {
-  const source = parseMarkdownFile(
-    (await readSkillCacheFile(asset.entrypoint)).toString('utf8'),
-    asset.entrypoint,
+async function exists(path: string): Promise<boolean> {
+  return access(path).then(
+    () => true,
+    () => false,
   );
-  const unsupported = ['allowed-tools', 'context', 'agent', 'hooks', 'permissionMode'];
-  if (unsupported.some((key) => source.frontmatter[key] !== undefined))
-    throw new HarnessRuntimeError(
-      'capability_unsupported',
-      'This shared instruction requires unsupported invocation or permission semantics.',
-    );
+}
+
+function observation(
+  observed: readonly SkillCandidate[] | SkillProviderObservation,
+): SkillProviderObservation {
+  return 'candidates' in observed
+    ? { candidates: observed.candidates, complete: observed.complete }
+    : { candidates: observed, complete: true };
 }

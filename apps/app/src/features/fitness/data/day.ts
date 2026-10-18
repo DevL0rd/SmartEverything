@@ -1,10 +1,10 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useMinute } from '../../../store/clock';
-import { DAY_KEY, dayKeyOf } from '../../../format/time';
+import { useDayKey } from '../../../store/clock';
+import { DAY_KEY } from '../../../format/time';
 import { RANGE, type Range } from '../model/window';
 
 export function useToday(): string {
-  return dayKeyOf(useMinute());
+  return useDayKey();
 }
 
 export interface FitnessParams {

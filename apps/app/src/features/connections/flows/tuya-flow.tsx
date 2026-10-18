@@ -19,11 +19,12 @@ function PathChips(): ReactNode {
   return (
     <View className="flex-row flex-wrap items-center gap-1">
       {PATH.map((step, index) => (
-        <View key={step} className="flex-row items-center gap-1">
+        <View
+          key={step}
+          className="flex-row items-center gap-1 rounded-full bg-surface-2 px-3 py-1"
+        >
           {index === 0 ? null : <Icon name="chevronRight" size={16} tone="faint" />}
-          <View className="rounded-full bg-surface-2 px-3 py-1">
-            <Text variant="caption">{step}</Text>
-          </View>
+          <Text variant="caption">{step}</Text>
         </View>
       ))}
     </View>
@@ -50,7 +51,7 @@ function CodeForm({
       </View>
       <TextField
         label="User Code"
-        kind="url"
+        kind="code"
         value={code}
         onChange={onChange}
         onSubmit={onSubmit}

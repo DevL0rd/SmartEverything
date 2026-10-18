@@ -1,11 +1,11 @@
 import {
   SIGNAL_LIMITS,
-  compare,
-  signalMatches,
+  signalMatchesV2,
+  triggerTestHolds,
   windowValue,
   type JsonValue,
   type SignalInput,
-  type SignalTrigger,
+  type SignalTriggerV2,
   type WindowSample,
 } from '@smarteverything/domain';
 import type { Cancel, Clock } from '../clock';
@@ -13,7 +13,7 @@ import type { Cancel, Clock } from '../clock';
 const SECOND_MS = 1000;
 
 export interface SignalWatchOptions {
-  readonly trigger: SignalTrigger;
+  readonly trigger: SignalTriggerV2;
   readonly pulse: boolean;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly fire: (signal: SignalInput) => void;
@@ -33,20 +33,22 @@ export class SignalWatch {
 
   observe(signal: SignalInput): void {
     const { trigger } = this.options;
-    if (!signalMatches(trigger, signal)) {
+    if (!signalMatchesV2(trigger, signal)) {
       return;
     }
+    this.seedEdge(signal);
     this.latest = signal;
-    if (trigger.window !== null) {
+    if (trigger.window !== undefined) {
       this.samples.push({ atMs: this.options.clock.now().getTime(), value: signal.value });
       this.samples = this.samples.slice(-SIGNAL_LIMITS.windowSamples);
     }
-    if (trigger.debounceSeconds === 0) {
+    const debounce = trigger.debounceSeconds ?? 0;
+    if (debounce === 0) {
       this.evaluate(true);
       return;
     }
     this.settleTimer?.();
-    this.settleTimer = this.after(trigger.debounceSeconds, () => {
+    this.settleTimer = this.after(debounce, () => {
       this.settleTimer = null;
       this.evaluate(true);
     });
@@ -63,9 +65,16 @@ export class SignalWatch {
 
   private get pulse(): boolean {
     const { trigger } = this.options;
-    return (
-      (this.options.pulse && trigger.window === null) || trigger.comparison?.operator === 'changed'
-    );
+    return (this.options.pulse && trigger.window === undefined) || trigger.test?.is === 'changed';
+  }
+
+  private seedEdge(signal: SignalInput): void {
+    const { trigger } = this.options;
+    if (this.latest !== null || this.pulse || trigger.window !== undefined) return;
+    this.holding =
+      trigger.test !== undefined &&
+      signal.previous !== null &&
+      triggerTestHolds(trigger.test, signal.previous, undefined);
   }
 
   private evaluate(fresh: boolean): void {
@@ -86,17 +95,17 @@ export class SignalWatch {
   }
 
   private holds(signal: SignalInput): boolean {
-    const { comparison, window } = this.options.trigger;
-    if (window === null) {
-      return comparison === null || compare(comparison, signal.value, signal.previous ?? undefined);
+    const { test, window } = this.options.trigger;
+    if (window === undefined) {
+      return triggerTestHolds(test, signal.value, signal.previous ?? undefined);
     }
-    const value = windowValue(window.mode, this.samples);
+    const value = windowValue(window.of, this.samples);
     const previous = this.previousAggregate;
     this.previousAggregate = value;
     if (value === null) {
       return false;
     }
-    return comparison === null || compare(comparison, value, previous ?? undefined);
+    return triggerTestHolds(test, value, previous ?? undefined);
   }
 
   private edge(holds: boolean, signal: SignalInput): void {
@@ -110,12 +119,12 @@ export class SignalWatch {
       return;
     }
     this.holding = true;
-    const { holdSeconds } = this.options.trigger;
-    if (holdSeconds === 0) {
+    const hold = this.options.trigger.holdSeconds ?? 0;
+    if (hold === 0) {
       this.fire(signal);
       return;
     }
-    this.holdTimer = this.after(holdSeconds, () => {
+    this.holdTimer = this.after(hold, () => {
       this.holdTimer = null;
       this.fire(this.latest ?? signal);
     });
@@ -123,7 +132,8 @@ export class SignalWatch {
 
   private fire(signal: SignalInput): void {
     const now = this.options.clock.now().getTime();
-    if (now - this.lastFiredMs < this.options.trigger.cooldownSeconds * SECOND_MS) {
+    const cooldown = this.options.trigger.cooldownSeconds ?? 0;
+    if (now - this.lastFiredMs < cooldown * SECOND_MS) {
       return;
     }
     this.lastFiredMs = now;
@@ -132,7 +142,7 @@ export class SignalWatch {
 
   private prune(): void {
     const { window } = this.options.trigger;
-    if (window === null) {
+    if (window === undefined) {
       return;
     }
     const oldest = this.options.clock.now().getTime() - window.seconds * SECOND_MS;
@@ -144,7 +154,7 @@ export class SignalWatch {
     this.expiryTimer = null;
     const { window } = this.options.trigger;
     const first = this.samples[0];
-    if (window === null || first === undefined) {
+    if (window === undefined || first === undefined) {
       return;
     }
     this.expiryTimer = this.options.clock.at(

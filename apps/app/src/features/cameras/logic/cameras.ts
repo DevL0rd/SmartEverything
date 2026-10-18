@@ -1,5 +1,5 @@
 import {
-  displayName,
+  baseNameOf,
   isCamera,
   roomNameOf,
   type CameraRow,
@@ -25,7 +25,7 @@ export function cameraEntriesOf({ devices, cameras, rooms }: CameraSources): Cam
   return shown.map((device) => ({
     device,
     camera: cameras[device.id] ?? null,
-    name: displayName(device, devices, rooms),
+    name: baseNameOf(device),
     room: roomNameOf(device, rooms) ?? device.provider_room,
   }));
 }

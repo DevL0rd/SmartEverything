@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import SubagentRuntime, { type SubagentCapabilities } from '@deepseek-ai/dsh-subagent';
 import type { ToolRunContext, ObjectJsonSchema } from '@deepseek-ai/dsh-tools';
 import { z } from 'zod';
-import type { ClaudeAgentFile, LoadedPlugin } from 'dsh-claude-plugin-loader-compat';
+import type { ClaudeAgentFile, LoadedPlugin } from './claude-plugin-manifest';
 import type { InstalledHarnessSkillAsset } from './skill-assets';
 import type { PluginAgentPort } from './plugin-agent-port';
 import { harnessMountRevisionBinding } from './mount-revision';

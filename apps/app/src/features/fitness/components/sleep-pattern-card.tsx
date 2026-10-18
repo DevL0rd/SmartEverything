@@ -2,12 +2,15 @@ import type { ReactNode } from 'react';
 import { Card } from '../../../components/card';
 import { percent } from '../../../format/number';
 import { useRecords } from '../data/queries';
-import { hoursMinutes } from '../../../format/time';
 import { recordsOfType } from '../model/records';
 import { patternOf, sleepDaysOf } from '../model/sleep';
-import { clockOfMinutes } from '../../../format/time';
+import { clock, hoursMinutes } from '../../../format/time';
 import { type Window } from '../model/window';
 import { StatList } from './stat-list';
+
+function minuteClock(minuteOfDay: number): string {
+  return clock(new Date(2000, 0, 1, 0, Math.round(minuteOfDay)));
+}
 
 export function SleepPatternCard({ window }: { readonly window: Window }): ReactNode {
   const records = useRecords(['SleepSession'], window.start, window.end);
@@ -20,8 +23,8 @@ export function SleepPatternCard({ window }: { readonly window: Window }): React
     <Card title="Schedule" icon="clock">
       <StatList
         stats={[
-          { label: 'Usual bedtime', value: clockOfMinutes(pattern.usualBedtime) },
-          { label: 'Usual wake-up', value: clockOfMinutes(pattern.usualWake) },
+          { label: 'Usual bedtime', value: minuteClock(pattern.usualBedtime) },
+          { label: 'Usual wake-up', value: minuteClock(pattern.usualWake) },
           { label: 'Average asleep', value: hoursMinutes(pattern.averageAsleep) },
           {
             label: 'On schedule',

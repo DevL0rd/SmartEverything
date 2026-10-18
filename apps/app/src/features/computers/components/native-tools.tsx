@@ -15,6 +15,7 @@ import { useNativeToolCall } from '../data/native-tool';
 import { NativeOperationFeedback } from './native-operation';
 import { useNativeTools } from '../data/native-session';
 import { QueryState } from './query-state';
+import { background } from '@smarteverything/logging';
 
 function ToolResult({ call }: { readonly call: ReturnType<typeof useNativeToolCall> }): ReactNode {
   return (
@@ -53,7 +54,7 @@ function ToolForm({
         </Text>
       )}
       <Button
-        label="Run native tool"
+        label="Run tool"
         loading={call.isPending}
         disabled={
           !body.success || tool.reason !== null || tool.input_schema === null || operation.blocked
@@ -82,13 +83,10 @@ export function NativeTools({
         error={tools.error}
         pending={tools.isPending}
         retry={() => {
-          void tools.refetch();
+          background(tools.refetch(), 'tools.refetch_failed');
         }}
       />
-      <List
-        title="Native harness tools"
-        footer="Commands and session management depend on exact tools advertised by this session."
-      >
+      <List title="Claude’s tools" footer="What you can do depends on this session.">
         {(tools.data ?? []).map((tool) => (
           <NavRow
             key={tool.name}
@@ -103,7 +101,7 @@ export function NativeTools({
       </List>
       <Sheet
         open={chosen !== null}
-        title={chosen?.name ?? 'Native tool'}
+        title={chosen?.name ?? 'Tool'}
         onClose={() => {
           setChosen(null);
         }}

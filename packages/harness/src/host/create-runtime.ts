@@ -8,11 +8,6 @@ export async function createHarnessRuntime(
   options: HarnessRuntimeOptions,
 ): Promise<HarnessRuntime> {
   const host = HARNESS_HOST.parse(options.host);
-  if (host.platform === 'windows')
-    throw new HarnessRuntimeError(
-      'operation_failed',
-      'The current composition requires Bash; Windows PowerShell composition is not ready.',
-    );
   const root = new Context();
   const fiber = bootComposition(root, host, options);
   try {

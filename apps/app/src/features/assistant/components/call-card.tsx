@@ -11,7 +11,7 @@ import { joinParts } from '../../../format/text';
 import { useRow } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { callFailuresOf, callTitleOf, callTurnsOf } from '../data/call-transcript';
-import { CollapseBody, CollapseRoot, TurnChevron } from './disclosure';
+import { CollapseBody, CollapseRoot, TurnChevron } from '../../../components/disclosure';
 
 const WAVE = [6, 12, 8, 16, 10, 14, 5, 11] as const;
 

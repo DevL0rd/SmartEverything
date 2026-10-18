@@ -1,0 +1,40 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+config:
+  validation: true
+  warningsAsErrors: true
+
+complexity:
+  LongMethod:
+    active: true
+    threshold: 51
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 11
+  LargeClass:
+    active: true
+    threshold: 401
+
+exceptions:
+  SwallowedException:
+    active: true
+
+empty-blocks:
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: '^$'
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    active: true
+
+style:
+  ForbiddenComment:
+    active: true
+    comments:
+      - '.'

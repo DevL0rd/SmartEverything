@@ -1,15 +1,19 @@
+import { TEST_AUTHOR } from './support/automation-author';
 import { DEFAULT_ENGINE, type RowChange, type SignalInput } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ActionOrigin } from '../src/automations/actions';
 import { SignalBus } from '../src/signals/bus';
 import { feedSignals } from '../src/signals/sources/feed';
 import { feedContextOf } from '../src/signals/sources/feed-context';
-import { WakeRunner, type WakeTurnInput } from '../src/wake/wake-runner';
+import { WAKE_GATHER_MS, WakeRunner, type WakeTurnInput } from '../src/wake/wake-runner';
 import { FakeClock } from './support/fake-clock';
+import { legacyAutomation } from './support/legacy-automation';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
 
 const START = '2026-10-08T10:00:00.000Z';
+
+const afterStart = (ms: number): string => new Date(Date.parse(START) + ms).toISOString();
 const CAMERA = '1d000000-0000-4000-8000-000000000009';
 
 interface Bench {
@@ -54,12 +58,13 @@ async function bench(): Promise<Bench> {
   const automation = opened.store.automations.create({
     name: 'Baby monitor',
     enabled: true,
-    definition: {
+    definition: legacyAutomation({
       triggers: [{ type: 'interval', everyMinutes: 5 }],
       conditions: { mode: 'all', items: [] },
       actions: [{ type: 'delay', seconds: 1 }],
-      origin: null,
-    },
+    }),
+    origin: null,
+    author: TEST_AUTHOR,
   });
   const turns: WakeTurnInput[] = [];
   const state: Bench = {
@@ -119,12 +124,12 @@ function wakeAction(chatId: string | null): {
 }
 
 describe('WakeRunner', () => {
-  it('gathers wakes for one chat within three seconds into one turn', async () => {
+  it('gathers wakes for one chat inside the gather window into one turn', async () => {
     const first = current.runner.wake(wakeAction(current.chatId), current.origin);
-    current.clock.advanceTo('2026-10-08T10:00:02.000Z');
+    current.clock.advanceTo(afterStart(WAKE_GATHER_MS / 2));
     const second = current.runner.wake(wakeAction(current.chatId), current.origin);
     expect(current.turns).toHaveLength(0);
-    current.clock.advanceTo('2026-10-08T10:00:03.000Z');
+    current.clock.advanceTo(afterStart(WAKE_GATHER_MS));
     await Promise.all([first, second]);
     expect(current.turns).toHaveLength(1);
     expect(current.turns[0]?.text.match(/\[Wake\]/g)).toHaveLength(2);
@@ -135,7 +140,7 @@ describe('WakeRunner', () => {
 
   it('starts a new chat when none is named', async () => {
     const woke = current.runner.wake(wakeAction(null), current.origin);
-    current.clock.advanceTo('2026-10-08T10:00:03.000Z');
+    current.clock.advanceTo(afterStart(WAKE_GATHER_MS));
     await woke;
     expect(current.turns[0]?.chatId).toBeNull();
     expect(current.turns[0]?.title).toBe('Baby monitor');
@@ -161,7 +166,7 @@ describe('WakeRunner', () => {
   it('records a failed turn and rejects the automation step', async () => {
     current.failNext = true;
     const woke = current.runner.wake(wakeAction(current.chatId), current.origin);
-    current.clock.advanceTo('2026-10-08T10:00:03.000Z');
+    current.clock.advanceTo(afterStart(WAKE_GATHER_MS));
     await expect(woke).rejects.toThrow('not set up');
     const row = current.opened.store.aiWakes.recent(current.profileId, 10)[0];
     expect(row?.state).toBe('failed');
@@ -202,8 +207,9 @@ describe('feed signals', () => {
 
   function daily(day: string): RowChange {
     return {
+      type: 'change',
       table: 'health_daily',
-      operation: 'insert',
+      operation: 'INSERT',
       record: {
         profile_id: current.profileId,
         day,

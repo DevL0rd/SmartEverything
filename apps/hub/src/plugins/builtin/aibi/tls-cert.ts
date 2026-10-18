@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { generate } from 'selfsigned';
 import { AIBI_HOST } from './host-name';
+import { isMissing } from '../../../fs-util';
 
 export interface TlsPair {
   readonly key: string;
@@ -19,15 +20,11 @@ const PRIVATE_MODE = 0o600;
 const FOLDER_MODE = 0o700;
 const DNS_NAME = 2;
 
-function missing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
-}
-
 async function readOptional(path: string): Promise<string> {
   try {
     return await readFile(path, 'utf8');
   } catch (cause) {
-    if (missing(cause)) {
+    if (isMissing(cause)) {
       return '';
     }
     throw cause;

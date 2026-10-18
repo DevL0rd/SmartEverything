@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { SHELLY_AREA, type ShellyArea } from '@smarteverything/domain';
+import { SHELLY_AREA, type ShellyArea } from '@smarteverything/shelly';
 
-export type AreaDraft = readonly (readonly string[])[];
+type AreaDraft = readonly (readonly string[])[];
 export interface AreaControls {
   readonly value: AreaDraft;
   readonly canUndo: boolean;

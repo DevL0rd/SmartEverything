@@ -1,3 +1,4 @@
+import { appendTo } from '@smarteverything/domain';
 import { deviceIdOf, type SearchCatalogue } from './catalogue';
 import {
   addsToDevice,
@@ -16,6 +17,7 @@ import {
   type ResultGroup,
   type ResultNode,
 } from './nodes';
+import { compareText } from '../format/text';
 
 const STRONGER = 6;
 
@@ -103,7 +105,7 @@ function nested(
     const parent = nearestShown(draft, drafts, catalogue);
     const above = parent === null ? undefined : drafts.get(parent);
     if (above === undefined || !echoes(draft, above)) {
-      children.set(parent, [...(children.get(parent) ?? []), draft]);
+      appendTo(children, parent, draft);
     }
   }
   for (const draft of drafts.values()) {
@@ -166,7 +168,7 @@ function rankIn(catalogue: SearchCatalogue): (left: ResultNode, right: ResultNod
   return (left, right) =>
     byScore(left, right) ||
     offline(left, catalogue) - offline(right, catalogue) ||
-    titleOf(left.item).localeCompare(titleOf(right.item));
+    compareText(titleOf(left.item), titleOf(right.item));
 }
 
 function branchesOf(roots: readonly ResultNode[], catalogue: SearchCatalogue): ResultBranch[] {

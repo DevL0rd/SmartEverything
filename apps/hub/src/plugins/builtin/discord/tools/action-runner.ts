@@ -1,11 +1,9 @@
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ToolCaller } from '../../../../ai-tools/hub-tool';
 import type { Access } from '../authority';
 import { DiscordInputError } from '../errors';
 import { SNOWFLAKE } from '../ids';
 import type { Operation, OperationContext } from '../operations/kit';
-import { project } from '../project';
 import type { DiscordServices } from '../services';
 
 const OUTPUT_LIMIT = 512_000;
@@ -14,11 +12,10 @@ const TARGET = z.looseObject({ guildId: SNOWFLAKE.optional(), channelId: SNOWFLA
 
 export interface ParsedCall {
   readonly eventId: string | undefined;
-  readonly idempotencyKey: string | undefined;
   readonly args: Readonly<Record<string, unknown>>;
 }
 
-export function resultFits(value: unknown): boolean {
+function resultFits(value: unknown): boolean {
   return Buffer.byteLength(JSON.stringify(value)) <= OUTPUT_LIMIT;
 }
 
@@ -46,18 +43,9 @@ export class ActionRunner {
     const { services } = this;
     services.identity.assertReady();
     const args = await this.resolved(call);
-    const access = await services.authority.access(caller, call.eventId, op.mode !== 'read');
+    const access = await services.authority.access(caller, call.eventId);
     await this.authorize(op, args);
-    if (op.mode === 'read') {
-      return project(await op.run(args, this.contextOf(access)));
-    }
-    const key = call.idempotencyKey ?? randomUUID();
-    const input = { operation: op.action, args, eventId: call.eventId, idempotencyKey: key };
-    return services.journal.execute(key, input, async () => {
-      const again = await services.authority.access(caller, call.eventId, true);
-      await this.authorize(op, args);
-      return project(await op.run(args, this.contextOf(again)));
-    });
+    return op.run(args, this.contextOf(access));
   }
 
   private contextOf(access: Access): OperationContext {

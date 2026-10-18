@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react';
-import { FlatList, type TextInput, View } from 'react-native';
+import { type TextInput, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useLocalSearchParams } from 'expo-router';
 import { useIdiom } from '../../../design/platform';
 import { Text } from '../../../components/text';
@@ -25,6 +26,7 @@ const DELIVERY_COPY: Readonly<Record<Exclude<ConsolePage['delivery'], 'none'>, s
 };
 const CONSOLE_HEIGHT = 240;
 const TOUCH_BODY_SHARE = 0.4;
+const CONSOLE_DRAW_DISTANCE = 480;
 interface BrowserConsoleProps {
   readonly controller: PreviewDiagnostics;
   readonly snapshot: PreviewDiagnosticsSnapshot;
@@ -229,20 +231,27 @@ function ConsoleLog({
   emptyReason,
 }: ConsoleLogProps): ReactNode {
   return (
-    <FlatList
-      ref={listRef}
-      data={records}
-      keyExtractor={(record) => record.id}
-      renderItem={({ item }) => <BrowserConsoleRow record={item} onInspect={onInspect} />}
-      className="min-h-0 flex-1"
-      accessibilityLabel="Console entries"
-      maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-      onScroll={onScroll}
-      scrollEventThrottle={16}
-      onContentSizeChange={onResize}
-      ListEmptyComponent={<ConsoleUnavailable reason={emptyReason} />}
-    />
+    <View className="min-h-0 flex-1">
+      <FlashList
+        ref={listRef}
+        data={records}
+        keyExtractor={recordKey}
+        drawDistance={CONSOLE_DRAW_DISTANCE}
+        renderItem={({ item }) => (
+          <BrowserConsoleRow key={item.id} record={item} onInspect={onInspect} />
+        )}
+        accessibilityLabel="Console entries"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onContentSizeChange={onResize}
+        ListEmptyComponent={<ConsoleUnavailable reason={emptyReason} />}
+      />
+    </View>
   );
+}
+
+function recordKey(record: ConsoleRecord): string {
+  return record.id;
 }
 
 function consoleOpenActions(

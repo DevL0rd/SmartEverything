@@ -13,11 +13,11 @@ function HomeTools({ status }: { readonly status: ComputerAiStatus }): ReactNode
   const change = useNativeMcpPolicyChange(status.device_id);
   const policy = query.data;
   if (policy === undefined)
-    return <List footer={query.error?.message ?? 'Loading native home-tool access…'}>{null}</List>;
+    return <List footer={query.error?.message ?? 'Loading home tools access…'}>{null}</List>;
   return (
-    <List footer="Independent of provider execution and attached CLI access. The hub enforces its global tool policy. Repair the native link after enabling a previously revoked remote grant.">
+    <List footer="Lets Claude on this computer use your home tools. After turning it on, repair the link.">
       <SwitchRow
-        title="Allow native home tools"
+        title="Let Claude use home tools"
         value={policy.enabled}
         disabled={change.isPending}
         onChange={(enabled) => {
@@ -61,13 +61,13 @@ function ControlRows({
   const change = useComputerAiChange(status.device_id);
   return (
     <List
-      title="CLI sessions and native access"
+      title="Claude sessions and history"
       footer={
-        'Owned CLI chats use the native provider below. Legacy reads and attached CLI tools use native access. Home-tool grants have an independent switch.'
+        'Claude chats from SmartEverything use the settings below. Earlier history and attached tools need Earlier Claude history on.'
       }
     >
       <SwitchRow
-        title="Legacy history and attached CLI access"
+        title="Earlier Claude history"
         value={status.settings.control.enabled}
         disabled={change.isPending}
         onChange={(enabled) => {
@@ -76,11 +76,11 @@ function ControlRows({
       />
       <NavRow
         title="Sessions"
-        subtitle="Owned shared CLI chats and read-only legacy history"
+        subtitle="Claude chats and earlier history"
         href={href.settings.device(status.device_id, 'claude-sessions')}
       />
       <SwitchRow
-        title="Keep native link installed"
+        title="Keep home tools link"
         value={status.settings.control.auto_link}
         disabled={change.isPending}
         onChange={(auto_link) => {
@@ -89,7 +89,7 @@ function ControlRows({
       />
       <NavRow
         title="Home tool access"
-        subtitle="Independent native MCP enablement and allowed areas"
+        subtitle="Which home areas Claude may use"
         onPress={() => {
           showTools();
         }}

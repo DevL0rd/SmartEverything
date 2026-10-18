@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
+import { DEFAULT_HISTORY_SETTINGS } from '../src/history-settings';
 import {
   API_ENDPOINTS,
   HISTORY_BUCKET,
@@ -15,18 +16,12 @@ import { CAMERA_SERVICE_STATES, ISSUED_TOKEN } from '../src/api/endpoints-access
 import { STORED_LAYOUT } from '../src/api/endpoints-automation';
 import { BEST_DAY, HEALTH_SIGHTING } from '../src/api/endpoints-health';
 import { RECORDING_LINK } from '../src/api/endpoints-media';
-import {
-  PUSH_STATUS,
-  SEALING_KEY,
-  SMARTTHINGS_APP_STATUS,
-  SMARTTHINGS_AUTHORIZATION,
-} from '../src/api/endpoints-settings';
+import { PUSH_STATUS } from '../src/api/endpoints-settings';
 
 const FIRST = '00000000-0000-4000-8000-000000000001';
 const SECOND = '00000000-0000-4000-8000-000000000002';
 const AT = '2026-10-08T07:00:00Z';
 const TOKEN = `set_${'ab'.repeat(32)}`;
-const HEX = 'ab'.repeat(32);
 
 const HUB = { version: '1.4.0', startedAt: AT, cameras: 'running' };
 
@@ -36,6 +31,7 @@ const CLIENT = {
   platform: 'android',
   role: 'member',
   built_in: false,
+  profile_id: null,
   created_at: AT,
   last_seen_at: null,
 };
@@ -45,6 +41,21 @@ const SETTINGS = {
   time_zone: 'Europe/London',
   latitude: null,
   longitude: null,
+  location_name: null,
+  max_heart_rate: null,
+  fitness_goals: {
+    steps: null,
+    move_kcal: null,
+    active_minutes: null,
+    sleep_minutes: null,
+    hydration_ml: null,
+  },
+  mcp_disabled_tools: [],
+  history_settings: DEFAULT_HISTORY_SETTINGS,
+  end_of_speech_pause_ms: 200,
+  ear_host_device_id: null,
+  device_refills: {},
+  ir_remotes: {},
   public_url: 'https://home.example.com',
   public_url_checked_at: AT,
   public_url_verified_at: null,
@@ -56,14 +67,12 @@ const SETTINGS = {
 };
 
 const HEALTH_SOURCE = {
-  id: FIRST,
   client_id: SECOND,
   name: 'Pixel 9',
   granted_types: ['Steps'],
   last_sync_at: null,
   last_error: null,
   created_at: AT,
-  revoked_at: null,
 };
 
 const MCP_TOKEN = {
@@ -119,7 +128,21 @@ describe('access responses', () => {
     const pairing = {
       code: 'ABCD-2345',
       expiresAt: AT,
-      qr: { url: 'https://home.example.com', code: 'ABCD-2345' },
+      qr: {
+        url: 'https://home.example.com',
+        code: 'ABCD-2345',
+        identity: {
+          id: 'ab'.repeat(32),
+          protocolVersion: 1,
+          name: 'Home',
+          tls: {
+            serverName: `smarteverything-${'ab'.repeat(16)}.local`,
+            certificateSha256: 'cd'.repeat(32),
+            publicKeySha256: 'ab'.repeat(32),
+          },
+        },
+        endpoints: [{ kind: 'remote', url: 'https://home.example.com' }],
+      },
     };
     expectKept(PAIRING, pairing);
     expectKept(API_ENDPOINTS.startPairing.response, pairing);
@@ -162,17 +185,6 @@ describe('settings responses', () => {
     ]);
   });
 
-  it('SEALING_KEY carries a 64-character lower-case hex public key', () => {
-    expectKept(SEALING_KEY, { publicKey: HEX });
-    expectKept(API_ENDPOINTS.sealingKey.response, { publicKey: '0'.repeat(64) });
-    expectRefused(
-      SEALING_KEY,
-      ['a'.repeat(63), 'a'.repeat(65), 'AB'.repeat(32), 'g'.repeat(64), `x${HEX}`, `${HEX}x`].map(
-        (publicKey) => ({ publicKey }),
-      ),
-    );
-  });
-
   it('PUSH_STATUS counts deliveries and keeps the last attempt, success and failure', () => {
     const status = {
       lastAttemptAt: AT,
@@ -199,38 +211,67 @@ describe('settings responses', () => {
     ]);
   });
 
-  it('SMARTTHINGS_APP_STATUS reports the client id, public URLs and webhook state', () => {
+  it('the SmartThings app status reports the client, public URLs and webhook state', () => {
+    const webhook = { confirmedAt: AT, lastEventAt: null, lastError: 'refused' };
     const status = {
-      clientId: 'client',
+      app: { appId: 'app', clientId: 'client' },
+      publicUrl: 'verified',
       redirectUri: 'https://home.example.com/smartthings/callback',
       webhookUrl: 'https://home.example.com/smartthings/webhook',
-      webhook: { confirmedAt: AT, lastEventAt: null, lastError: 'refused' },
+      webhook,
     };
     const none = {
-      clientId: null,
+      app: null,
+      publicUrl: 'missing',
       redirectUri: null,
       webhookUrl: null,
       webhook: { confirmedAt: null, lastEventAt: AT, lastError: null },
     };
-    expectKept(SMARTTHINGS_APP_STATUS, status);
-    expectKept(API_ENDPOINTS.readSmartThingsApp.response, none);
-    expectKept(API_ENDPOINTS.saveSmartThingsApp.response, status);
-    expectKept(API_ENDPOINTS.forgetSmartThingsApp.response, none);
-    expectRefused(SMARTTHINGS_APP_STATUS, [
+    const schema = API_ENDPOINTS.readSmartThingsApp.response;
+    expectKept(schema, status);
+    expectKept(schema, none);
+    expectKept(schema, { ...status, app: { appId: null, clientId: 'client' } });
+    expectRefused(schema, [
+      { ...status, publicUrl: 'unknown' },
       { ...status, redirectUri: 'callback' },
       { ...status, webhookUrl: 'webhook' },
-      { ...status, webhook: { ...status.webhook, confirmedAt: 'now' } },
-      { ...status, webhook: { ...status.webhook, lastEventAt: 'now' } },
-      { ...status, webhook: { ...status.webhook, extra: 1 } },
+      { ...status, webhook: { ...webhook, confirmedAt: 'now' } },
+      { ...status, webhook: { ...webhook, lastEventAt: 'now' } },
+      { ...status, webhook: { ...webhook, extra: 1 } },
       { ...status, extra: 1 },
     ]);
   });
 
-  it('SMARTTHINGS_AUTHORIZATION carries the sign-in URL and when its state expires', () => {
+  it('the SmartThings setup outcome carries what each result needs', () => {
+    const schema = API_ENDPOINTS.setUpSmartThings.response;
+    const status = {
+      app: { appId: 'app', clientId: 'client' },
+      publicUrl: 'verified',
+      redirectUri: null,
+      webhookUrl: null,
+      webhook: { confirmedAt: null, lastEventAt: null, lastError: null },
+    };
+    const authorization = { url: 'https://api.smartthings.com/oauth/authorize', expiresAt: AT };
+    expectKept(schema, { outcome: 'ready', authorization, status });
+    expectKept(schema, { outcome: 'token_refused', reason: 'bad token' });
+    expectKept(schema, { outcome: 'scopes_missing', missing: ['r:apps:*'], reason: 'scopes' });
+    expectKept(schema, { outcome: 'rate_limited', retryAfterSeconds: null, reason: 'slow down' });
+    expectKept(schema, { outcome: 'not_confirmed', reason: 'no ping', status });
+    expectRefused(schema, [
+      { outcome: 'ready', status },
+      { outcome: 'token_refused', reason: '' },
+      { outcome: 'scopes_missing', missing: [], reason: 'scopes' },
+      { outcome: 'scopes_missing', missing: ['x:y'], reason: 'scopes' },
+      { outcome: 'rate_limited', retryAfterSeconds: -1, reason: 'slow down' },
+      { outcome: 'other' },
+    ]);
+  });
+
+  it('the SmartThings authorization carries the sign-in URL and when its state expires', () => {
     const authorization = { url: 'https://api.smartthings.com/oauth/authorize?x=1', expiresAt: AT };
-    expectKept(SMARTTHINGS_AUTHORIZATION, authorization);
-    expectKept(API_ENDPOINTS.authorizeSmartThings.response, authorization);
-    expectRefused(SMARTTHINGS_AUTHORIZATION, [
+    const schema = API_ENDPOINTS.authorizeSmartThings.response;
+    expectKept(schema, authorization);
+    expectRefused(schema, [
       { ...authorization, url: 'sign in' },
       { ...authorization, expiresAt: 'soon' },
       { ...authorization, extra: 1 },
@@ -331,12 +372,11 @@ describe('client and health responses', () => {
     ]);
   });
 
-  it('createHealthSource returns the upload token with the new source', () => {
-    expectKept(API_ENDPOINTS.createHealthSource.response, {
-      token: 'hst_x',
-      source: HEALTH_SOURCE,
-    });
-    expectRefused(API_ENDPOINTS.createHealthSource.response, [{ token: 'hst_x' }]);
+  it('createHealthSource returns the phone’s sync status row and no token', () => {
+    expectKept(API_ENDPOINTS.createHealthSource.response, HEALTH_SOURCE);
+    expectRefused(API_ENDPOINTS.createHealthSource.response, [
+      { token: 'hst_x', source: HEALTH_SOURCE },
+    ]);
   });
 
   it('createMcpToken returns the token with its row', () => {

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { SelectRow } from '../../../components/rows';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import {
   useTranscriptActions,
   useTranscriptSettings,
@@ -8,12 +8,6 @@ import {
 } from '../data/use-transcripts';
 import { useMoney } from '../../region';
 import { capOptions, retentionOptions } from './transcript-model';
-
-function failed(message: string): (error: unknown) => void {
-  return (error): void => {
-    notify({ message, error, tone: 'critical' });
-  };
-}
 
 export function RetentionRow(): ReactNode {
   const settings = useTranscriptSettings();
@@ -31,7 +25,7 @@ export function RetentionRow(): ReactNode {
       onChange={(days) => {
         actions
           .saveSettings({ retention_days: Number(days) })
-          .catch(failed('The retention wasn’t changed'));
+          .catch(notifyFailure('The retention wasn’t changed'));
       }}
     />
   );
@@ -59,7 +53,7 @@ export function BudgetRow(): ReactNode {
       onChange={(cap) => {
         actions
           .saveSettings({ daily_cap_usd: Number(cap) })
-          .catch(failed('The daily budget wasn’t changed'));
+          .catch(notifyFailure('The daily budget wasn’t changed'));
       }}
     />
   );

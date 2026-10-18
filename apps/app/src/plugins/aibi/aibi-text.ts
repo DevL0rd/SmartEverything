@@ -1,4 +1,5 @@
 import type { RobotLine, RobotStatus } from '@smarteverything/domain';
+import type { BadgeTone } from '../../components/badge';
 import { relative } from '../../format/time';
 
 export const LINE_WHO: Readonly<Record<RobotLine['who'], string>> = {
@@ -20,4 +21,11 @@ export function conversationText(status: RobotStatus): string {
 
 export function lastHeard(status: RobotStatus): RobotLine | null {
   return [...status.lines].reverse().find((line) => line.who === 'user') ?? null;
+}
+
+export function conversationBadge(status: RobotStatus): {
+  readonly label: string;
+  readonly tone: BadgeTone;
+} {
+  return { label: conversationText(status), tone: status.conversation ? 'primary' : 'neutral' };
 }

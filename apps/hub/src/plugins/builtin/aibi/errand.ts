@@ -1,8 +1,4 @@
-import type { SpeechStream } from './speech-stream';
-
-function clean(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
+import { clean, type SpeechStream } from './speech-stream';
 
 export class Errand {
   private said = '';

@@ -9,15 +9,18 @@ import type {
   PluginOptionQuery,
   PluginPerson,
   PluginPersonChange,
+  PluginRequester,
   PluginSearchEntry,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import type { HubToolResult, ToolAnnotationHints, ToolCaller } from '../../ai-tools/hub-tool';
-import type { DeviceDriver } from '../../local/device-driver';
+import type { DeviceDriver, DeviceDriverContext } from '../../local/device-driver';
 import type { PluginNetwork } from '../plugin-listen';
-import type { PluginSpeaker } from '../plugin-reach';
+import type { PluginSpeaker } from '../plugin-speakers';
 import type { PluginVoice } from '../plugin-voice';
+
+export type { DeviceDriverContext, ToolCaller };
 
 export type Unsubscribe = () => void;
 
@@ -49,7 +52,7 @@ export interface PluginTool {
 
 export type PluginOptionProvider = (query: PluginOptionQuery) => Promise<PluginOptionPage>;
 
-export interface PluginOptions {
+interface PluginOptions {
   readonly register: (source: string, provider: PluginOptionProvider) => Unsubscribe;
 }
 
@@ -75,6 +78,10 @@ export interface PluginViewers {
   readonly watchDevice: (externalId: string, onChange: (viewed: boolean) => void) => Unsubscribe;
 }
 
+interface PluginClients {
+  readonly gone: (listener: (clientId: string) => void) => Unsubscribe;
+}
+
 export interface PluginMetrics {
   readonly push: (externalId: string, key: string, value: number, at: string) => void;
 }
@@ -87,6 +94,7 @@ export interface PluginPeopleView {
   readonly save: (externalId: string, change: PluginPersonChange) => PluginPerson;
   readonly find: (externalId: string) => PluginPerson | null;
   readonly list: () => readonly PluginPerson[];
+  readonly requesterOf: (externalId: string) => PluginRequester;
   readonly watch: (listener: () => void) => Unsubscribe;
 }
 
@@ -121,18 +129,27 @@ export interface PluginAssistant {
     readonly reuseChatMinutes: number;
     readonly compactAtPercent: number;
   };
-  readonly conversation: (key: string) => PluginConversationState | null;
-  readonly usage: () => PluginUsageView;
-  readonly compact: (key: string) => Promise<boolean>;
-  readonly startOver: (key: string) => Promise<boolean>;
-  readonly stop: (key: string) => Promise<boolean>;
-  readonly setModel: (key: string, model: string | null) => Promise<string | null>;
+  readonly conversation: (key: string, actor?: string) => PluginConversationState | null;
+  readonly usage: (actor?: string) => PluginUsageView;
+  readonly compact: (key: string, actor?: string) => Promise<boolean>;
+  readonly startOver: (key: string, actor?: string) => Promise<boolean>;
+  readonly stop: (key: string, actor?: string) => Promise<boolean>;
+  readonly setModel: (key: string, model: string | null, actor?: string) => Promise<string | null>;
+}
+
+interface MachineFile {
+  readonly data: Buffer;
+  readonly name: string;
 }
 
 export interface PluginFiles {
   readonly folder: string;
   readonly outbox: string;
   readonly attachmentsOf: (chatId: string) => readonly string[];
+  readonly fromMachine: (
+    caller: ToolCaller,
+    input: { readonly machine: string; readonly path: string },
+  ) => Promise<MachineFile | null>;
 }
 
 export interface PluginContext<S> {
@@ -154,8 +171,6 @@ export interface PluginContext<S> {
       },
       caller: ToolCaller,
     ) => Promise<JsonValue>;
-    readonly callerOf: (commandId: string) => ToolCaller | null;
-    readonly valueOf: (commandId: string) => JsonValue | undefined;
   };
   readonly data: { readonly publish: (stream: string, value: JsonValue) => void };
   readonly events: { readonly emit: (event: PluginEvent) => void };
@@ -167,6 +182,7 @@ export interface PluginContext<S> {
   readonly records: (collection: string) => PluginRecords;
   readonly configure: (change: Partial<PluginConfiguration>, by?: ToolCaller) => Promise<void>;
   readonly viewers: PluginViewers;
+  readonly clients: PluginClients;
   readonly metrics: PluginMetrics;
   readonly messages: PluginMessages;
   readonly people: PluginPeopleView;

@@ -2,10 +2,7 @@ package expo.modules.healthconnect.voice
 
 import android.content.Context
 import android.os.SystemClock
-import com.konovalov.vad.silero.VadSilero
-import com.konovalov.vad.silero.config.FrameSize
-import com.konovalov.vad.silero.config.Mode
-import com.konovalov.vad.silero.config.SampleRate
+import expo.modules.healthconnect.diagnostics.NativeLog
 import kotlin.math.sqrt
 
 interface SpeechGateSink {
@@ -15,37 +12,28 @@ interface SpeechGateSink {
 }
 
 data class GateSettings(
-  val echoTailMs: Long = 300,
-  val sustainMs: Int = 256,
-  val bargeInLevel: Double = 0.04,
-  val ignoreAssistantAudible: Boolean = false,
-  val aggressiveWhileAudible: Boolean = true,
-  val interruptible: Boolean = true,
-  val speechThreshold: Double = LIBRARY_STANDARD_THRESHOLD,
-  val minSpeechMs: Int = 64,
-  val pauseMs: Int = 200
-) {
-  companion object {
-    const val LIBRARY_STANDARD_THRESHOLD = 0.3
-  }
-}
+  val echoTailMs: Long,
+  val sustainMs: Int,
+  val bargeInLevel: Double,
+  val ignoreAssistantAudible: Boolean,
+  val aggressiveWhileAudible: Boolean,
+  val interruptible: Boolean,
+  val speechThreshold: Double,
+  val minSpeechMs: Int,
+  val pauseMs: Int
+)
 
 class SpeechGate(
   context: Context,
   private val sink: SpeechGateSink,
   private val assistantAudible: () -> Boolean,
-  initial: GateSettings = GateSettings()
+  initial: GateSettings,
+  vads: SpeechVadFactory = ::SileroVad
 ) : AutoCloseable {
   private var settings = initial
-  private val vad = VadSilero(
-    context,
-    sampleRate = SampleRate.SAMPLE_RATE_16K,
-    frameSize = FrameSize.FRAME_SIZE_512,
-    mode = Mode.NORMAL,
-    silenceDurationMs = initial.pauseMs,
-    speechDurationMs = initial.minSpeechMs
-  )
+  private val vad = vads(context, VadMode.NORMAL, initial.minSpeechMs, initial.pauseMs).also { NativeLog.info("speech-gate", "vad.created") }
   private val frame = ShortArray(VAD_FRAME_SAMPLES)
+  private var firstFrame = true
   private val boosted = ShortArray(VAD_FRAME_SAMPLES)
   private val preroll = ArrayDeque<ByteArray>()
   private var filled = 0
@@ -103,12 +91,16 @@ class SpeechGate(
     if (assistantAudible() && !settings.ignoreAssistantAudible) audibleAt = now
     val quiet = now - audibleAt > settings.echoTailMs
     vad.mode = modeOf(quiet)
-    val speech = vad.isSpeech(heard())
-    bargeMs = if (speech && !quiet && levelOf(frame) >= settings.bargeInLevel) bargeMs + VAD_FRAME_MS else 0
-    if (!speech) {
-      finishSpeech()
-      return
+    if (firstFrame) {
+      firstFrame = false
+      NativeLog.info("speech-gate", "vad.first_frame")
     }
+    val speech = vad.isSpeech(heard())
+    bargeMs = if (speech && levelOf(frame) >= settings.bargeInLevel) bargeMs + VAD_FRAME_MS else 0
+    if (speech) onSpeech(quiet) else finishSpeech()
+  }
+
+  private fun onSpeech(quiet: Boolean) {
     if (!speaking) {
       speaking = true
       overEcho = !quiet
@@ -119,15 +111,16 @@ class SpeechGate(
 
   private fun bargesIn(): Boolean = settings.interruptible && bargeMs + settings.minSpeechMs >= settings.sustainMs
 
-  private fun modeOf(quiet: Boolean): Mode {
-    val base = if (settings.speechThreshold > GateSettings.LIBRARY_STANDARD_THRESHOLD) Mode.AGGRESSIVE else Mode.NORMAL
-    return if (!quiet && settings.aggressiveWhileAudible) Mode.AGGRESSIVE else base
+  private fun modeOf(quiet: Boolean): VadMode {
+    val base = MODE_THRESHOLDS.firstOrNull { it.second >= settings.speechThreshold }?.first ?: VadMode.VERY_AGGRESSIVE
+    return if (!quiet && settings.aggressiveWhileAudible) maxOf(base, VadMode.AGGRESSIVE) else base
   }
 
   private fun heard(): ShortArray {
-    if (settings.speechThreshold >= GateSettings.LIBRARY_STANDARD_THRESHOLD) return frame
+    val gain = MODE_THRESHOLDS.first().second / settings.speechThreshold
+    if (gain <= 1.0) return frame
     for (index in frame.indices) {
-      boosted[index] = (frame[index] * SENSITIVE_GAIN).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+      boosted[index] = (frame[index] * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
     }
     return boosted
   }
@@ -158,7 +151,7 @@ class SpeechGate(
     const val DOWNSAMPLE = VoiceCapture.SAMPLE_RATE / 16_000
     const val VAD_FRAME_SAMPLES = 512
     const val VAD_FRAME_MS = 32
-    const val SENSITIVE_GAIN = 2
+    val MODE_THRESHOLDS = listOf(VadMode.NORMAL to 0.5, VadMode.AGGRESSIVE to 0.8, VadMode.VERY_AGGRESSIVE to 0.95)
     const val PREROLL_PACKETS = 32
     const val FULL_SCALE = 32_768.0
   }

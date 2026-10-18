@@ -116,8 +116,3 @@ export function statsText(stats: StreamStats | null): string | null {
   ].filter((part): part is string => part !== null);
   return parts.length === 0 ? null : parts.join(' · ');
 }
-
-export function hasDecodedFrames(report: unknown): boolean {
-  const decoded = sampleOf(report)?.framesDecoded ?? null;
-  return decoded !== null && decoded > 0;
-}

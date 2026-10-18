@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-export const EMBEDDED_BROWSER_CAPABILITY = 'embedded-browser-tabs-v1';
 export const EMBEDDED_BROWSER_PROTOCOL = 'smarteverything.embedded-browser.v1';
 export const EMBEDDED_BROWSER_PATH = '/api/embedded-browser';
 export const EMBEDDED_BROWSER_MAX_TABS = 16;
@@ -63,18 +62,15 @@ export const EMBEDDED_BROWSER_CONTENT = z.strictObject({
 });
 export const EMBEDDED_BROWSER_SNAPSHOT = EMBEDDED_BROWSER_SCOPE.extend({
   ...EMBEDDED_BROWSER_CONTENT.shape,
-  capabilities: z.array(z.enum(EMBEDDED_BROWSER_ACTION_NAMES)).max(6),
+  capabilities: z.array(z.enum(EMBEDDED_BROWSER_ACTION_NAMES)).max(6).optional(),
 });
 export type EmbeddedBrowserSnapshot = z.infer<typeof EMBEDDED_BROWSER_SNAPSHOT>;
 export const EMBEDDED_BROWSER_SELECTOR = z.strictObject({
   viewerId: z.uuid().optional(),
   clientId: z.string().min(1).max(512).optional(),
 });
-export const EMBEDDED_BROWSER_EDIT = z.strictObject({
+export const EMBEDDED_BROWSER_EDIT = EMBEDDED_BROWSER_SELECTOR.extend({
   requestId: z.uuid(),
-  viewerId: z.uuid(),
-  generation: z.uuid(),
-  clientId: z.string().min(1).max(512).optional(),
   action: EMBEDDED_BROWSER_ACTION,
 });
 export const EMBEDDED_BROWSER_OPERATION = z.discriminatedUnion('kind', [

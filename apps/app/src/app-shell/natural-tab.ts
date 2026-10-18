@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { Logger } from '@smarteverything/logging';
 import { router, useGlobalSearchParams, useSegments, type Href } from 'expo-router';
+
+const log = new Logger('app.nav');
 
 function homeHref(
   segments: readonly string[],
@@ -54,6 +57,7 @@ export function useNaturalTabForColdLinks(): void {
     checked.current = true;
     const target =
       group === '(home)' ? null : homeHref(segments, deviceId ?? roomId, section, page);
+    log.debug('coldlink.checked', { group, page: segments[2] ?? null, redirect: target !== null });
     if (target !== null) {
       router.dismissAll();
       router.replace(target, { withAnchor: true });

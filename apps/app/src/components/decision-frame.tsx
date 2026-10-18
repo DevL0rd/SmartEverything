@@ -4,7 +4,7 @@ import { Button } from './button';
 import { IconButton } from './icon-button';
 import { Text } from './text';
 import { focusDecisionHeading } from './decision-keyboard';
-export interface DecisionRequest {
+interface DecisionRequest {
   readonly id: string;
   readonly content: ReactNode;
 }

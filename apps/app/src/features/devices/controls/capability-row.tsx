@@ -10,16 +10,17 @@ import { SelectRow, SwitchRow, ValueRow } from '../../../components/rows';
 import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
-import { useLiveControl } from '../../../store/use-live-control';
-import { useControl, type Control } from '../../../store/control';
+import type { Control } from '../../../store/control';
 import type { Device } from '../../../store/state';
 import { shownValue } from '../model/device-model';
 import { FAMILY_CONTROLS } from './family-controls';
+import { liveChange, useDeviceControl } from './use-device-control';
 import { ColourBlock } from './colour-block';
 import { TimeRow } from './time-row';
 import { Guard } from './guard';
 import { usesStepper, type NumberDescriptor } from './number-kind';
 import { useAction } from './use-action';
+import { background } from '@smarteverything/logging';
 
 interface RowProps {
   readonly device: Device;
@@ -52,7 +53,7 @@ function NumberRow(props: RowProps & { readonly descriptor: NumberDescriptor }):
   const value = typeof control.value === 'number' ? control.value : null;
   const format = (next: number): string => shownValue(presented, next);
   const set = (next: number): void => {
-    void control.set(next);
+    background(control.set(next), 'control.set_failed');
   };
   const bounds = { min: descriptor.min, max: descriptor.max, step: descriptor.step };
   if (usesStepper(descriptor, presented)) {
@@ -87,7 +88,7 @@ function NumberRow(props: RowProps & { readonly descriptor: NumberDescriptor }):
         disabled={disabled}
         formatValue={format}
         unknownValue={shownValue(presented, control.value)}
-        {...(deviceFamily(props.device) === 'light' ? { onChange: set } : {})}
+        {...liveChange(presented, set)}
         onCommit={set}
       />
     </View>
@@ -159,7 +160,7 @@ function WritableRow(props: RowProps): ReactNode {
   const { presented, control, disabled } = props;
   const descriptor = presented.capability.value;
   const set = (value: JsonValue): void => {
-    void control.set(value);
+    background(control.set(value), 'control.set_failed');
   };
   const heading = { title: presented.label, titleHighlight: props.highlight };
   switch (descriptor.kind) {
@@ -217,8 +218,7 @@ export function CapabilityRow({
   readonly reason: string | null;
   readonly highlight?: TextRange | null;
 }): ReactNode {
-  const raw = useControl(device.id, presented.key);
-  const control = useLiveControl(device, presented.key, raw, deviceFamily(device) === 'light');
+  const control = useDeviceControl(device, presented);
   const Custom = FAMILY_CONTROLS[deviceFamily(device)]?.rows[presented.key];
   if (Custom !== undefined && presented.writable) {
     return <Custom device={device} presented={presented} />;

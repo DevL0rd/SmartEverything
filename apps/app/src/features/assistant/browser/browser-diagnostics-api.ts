@@ -1,19 +1,26 @@
-import { connectionState } from '../../../api/connection/connection';
-import { serverSupportsBrowserData } from '../../../api/connection/server-capabilities';
-import { notify } from '../../../components/toast-store';
 import type { z } from 'zod';
+import { Logger } from '@smarteverything/logging';
+import { jsonText } from '../../../format/json-text';
 import {
-  legacyConsoleRecords,
   type PREVIEW_CAPTURE_RESULT,
   AI_PREVIEW_ENDPOINTS,
   PREVIEW_LOG_PAGE,
+  PREVIEW_VIEW_RESPONSE,
   type PreviewLogPage,
   type PreviewDiagnosticScope,
   type PreviewRecordRefusal,
-  type PreviewConsoleRecord,
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
 import type { PreviewViewScope } from './browser-diagnostics-contract';
+
+const log = new Logger('app.preview-diagnostics');
+export function parseViewResponse(data: unknown): z.infer<typeof PREVIEW_VIEW_RESPONSE> | null {
+  const json = typeof data === 'string' ? jsonText(data) : null;
+  const parsed = json?.ok === true ? PREVIEW_VIEW_RESPONSE.safeParse(json.value) : null;
+  if (parsed?.success === true) return parsed.data;
+  log.warn('preview.message_ignored', {});
+  return null;
+}
 
 function viewer(
   scope: PreviewViewScope,
@@ -45,7 +52,6 @@ export async function readOlderPreviewRecords(
         direction: 'before',
         limit: 100,
         byteLimit: 65536,
-        ...(browserDataSupported() ? { diagnosticsVersion: 2 as const } : {}),
       },
     }),
   );
@@ -71,23 +77,10 @@ export function captureBrowserViewport(
   });
 }
 
-export function browserDataSupported(): boolean {
-  const connection = connectionState.get();
-  return connection.status === 'paired' && serverSupportsBrowserData(connection.connection.url);
-}
 export function browserRecordMetadata(
   final: boolean,
   lastRecordId: number,
   refusedRecords: readonly PreviewRecordRefusal[],
 ): { readonly lastRecordId?: number; readonly refusedRecords?: readonly PreviewRecordRefusal[] } {
-  return final && browserDataSupported() ? { lastRecordId, refusedRecords } : {};
-}
-export function transferableConsoleRecords(records: readonly PreviewConsoleRecord[]): boolean {
-  if (browserDataSupported() || legacyConsoleRecords(records)) return true;
-  notify({
-    message:
-      'Update the hub to transfer these full raw console entries. The batch was refused; its text remains unchanged in this browser.',
-    tone: 'critical',
-  });
-  return false;
+  return final ? { lastRecordId, refusedRecords } : {};
 }

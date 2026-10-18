@@ -1,22 +1,7 @@
-import { providerHubOsBan } from '../assistant/engines/computer/tool-authority';
 import { toolMediaReferences } from '@smarteverything/harness/process';
-import {
-  openRouterSearchAvailable,
-  limitSearchToolSchemas,
-} from '../assistant/web-search-supplier';
-import { inheritedOrigin, validateAuthorityGraph } from '../assistant/authority-inheritance';
-import {
-  executionRole,
-  principalAuthority,
-  bindExecutionHost,
-  bindExecutionToolAdmission,
-  eventAuthority,
-  currentExecutionAuthority,
-  currentExecutionAuthorities,
-  validateExecutionAuthority,
-  withExecutionAuthority,
-} from '../assistant/execution-authority';
-import { ServerToolPolicy } from './server-tool-policy';
+import { openRouterSearchAvailable } from '../assistant/web-search-supplier';
+import { executionRole, eventAuthority } from '../assistant/turn-authority';
+import { reachesNativeBridge } from './native-bridge';
 import { z } from 'zod';
 import { JSON_VALUE, ApiError, HARNESS_CENTRAL_RESULT } from '@smarteverything/domain';
 import type { HARNESS_CENTRAL_CATALOGUE } from '@smarteverything/domain';
@@ -24,9 +9,9 @@ import type { Context } from '@deepseek-ai/cordis';
 import { harnessToolSchema } from './tool-schema';
 import type { ToolCallId, ContentBlock } from '@deepseek-ai/dsh-llm';
 import type { HarnessServerToolAccess, HarnessAuthority } from '@smarteverything/harness';
-import type { ToolHub } from '../ai-tools/tool-hub';
+import { toolAdmission, type ToolAdmission } from '../ai-tools/tool-admission';
+import { forwardedCall, type ToolHub } from '../ai-tools/tool-hub';
 import type { ToolCaller, ToolSpec, HubToolResult } from '../ai-tools/hub-tool';
-import { META_TOOL_NAMES } from '../ai-tools/tool-sets';
 import {
   centralToolSpecs,
   centralToolCatalogue,
@@ -34,137 +19,26 @@ import {
 } from './tool-declarations';
 import { effectiveTools } from '../assistant/coordination/grants';
 import { DISCOVERY_NAMES } from '../ai-tools/tool-discovery';
+import { META_TOOL_NAMES } from '../ai-tools/tool-sets';
 import { scopedHub } from '../assistant/coordination/scoped-tools';
 import type { HarnessService } from './service';
 
+const CHAT_FOLDER_TOOLS: ReadonlySet<string> = new Set([
+  'read_project_files',
+  'edit_project_files',
+]);
 const IMAGE_MIME = z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 export class HarnessHubTools implements HarnessServerToolAccess {
-  private readonly policy: ServerToolPolicy;
+  private readonly admit: ToolAdmission;
   constructor(
     private readonly service: HarnessService,
     private readonly tools: ToolHub,
-    localComputer: (id: string) => boolean,
   ) {
-    this.policy = new ServerToolPolicy(service.store, localComputer);
-    bindExecutionHost(service.store, localComputer);
-    bindExecutionToolAdmission(service.store, (name, args, authority): void => {
-      this.admit(name, args, {
-        authority,
-        profileId: authority.profile_id,
-        role: 'member',
-        chatId: service.store.assistantEvents.event(authority.event_id).chat_id,
-        clientId: authority.client_id,
-        via: 'plugin',
-      });
-    });
-    tools.setAdmission((name, args, caller) => this.admit(name, args, caller));
+    this.admit = toolAdmission(service.store);
   }
-  private admit(
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-    caller: ToolCaller,
-  ): ToolCaller {
-    const authority = this.toolAuthority(caller);
-    if (authority === undefined) return caller;
-    this.admitInherited(name, args, authority, caller.profileId);
-
-    validateExecutionAuthority(this.service.store, authority);
-    if (authority.profile_id !== caller.profileId)
-      throw new ApiError('forbidden', 'Tool caller changed its initiating profile.');
-    if (!this.scopeAllows(authority, name))
-      throw new ApiError('forbidden', 'The current initiating grant does not expose this tool.');
-    const refusal = withExecutionAuthority(authority, () =>
-      authority.hub_os_ban || providerHubOsBan() ? this.policy.refusal(name, args) : undefined,
-    );
-    if (refusal !== undefined) throw new ApiError('forbidden', refusal);
-    return this.admittedCaller(caller, authority);
-  }
-  private admittedCaller(
-    caller: ToolCaller,
-    authority: Parameters<typeof validateExecutionAuthority>[1],
-  ): ToolCaller {
-    const origin = inheritedOrigin([
-      authority,
-      ...currentExecutionAuthorities(),
-      {
-        plugin_id: caller.pluginId ?? null,
-        requester: caller.pluginRequester ?? null,
-      },
-    ]);
-    return {
-      ...caller,
-      authority,
-      clientId: authority.client_id,
-      role: this.principalRole(caller, authority),
-      ...(origin.plugin_id === null ? {} : { pluginId: origin.plugin_id }),
-      ...(origin.requester === null ? {} : { pluginRequester: origin.requester }),
-    };
-  }
-  private admitInherited(
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-    authority: Parameters<typeof validateExecutionAuthority>[1],
-    profile: string,
-  ): void {
-    for (const source of [authority, ...currentExecutionAuthorities()])
-      for (const scope of validateAuthorityGraph(this.service.store, source)) {
-        if (scope.event_id === authority.event_id) continue;
-        this.admitScope(name, args, scope, profile);
-      }
-  }
-  private principalRole(
-    caller: ToolCaller,
-    authority: Parameters<typeof validateExecutionAuthority>[1],
-  ): ToolCaller['role'] {
-    for (const source of [authority, ...currentExecutionAuthorities()]) {
-      if (executionRole(this.service.store, source) === 'member') return 'member';
-    }
-    return caller.role;
-  }
-  private admitScope(
-    name: string,
-    args: Readonly<Record<string, unknown>>,
-    authority: Parameters<typeof validateExecutionAuthority>[1],
-    profile: string,
-  ): void {
-    validateExecutionAuthority(this.service.store, authority);
-    if (authority.profile_id !== profile || !this.scopeAllows(authority, name))
-      throw new ApiError('forbidden', 'The inherited initiating scope does not expose this tool.');
-    const refusal = withExecutionAuthority(authority, () =>
-      authority.hub_os_ban || providerHubOsBan() ? this.policy.refusal(name, args) : undefined,
-    );
-    if (refusal !== undefined) throw new ApiError('forbidden', refusal);
-  }
-  private toolAuthority(caller: ToolCaller): ReturnType<typeof currentExecutionAuthority> {
-    const own =
-      caller.authority ??
-      currentExecutionAuthority() ??
-      (caller.chatId === null
-        ? undefined
-        : this.service.store.harnessRecovery.latestAuthority(caller.chatId));
-    return principalAuthority(this.service.store, [
-      ...(own === undefined ? [] : [own]),
-      ...currentExecutionAuthorities(),
-    ]);
-  }
-  admitOperation(name: string, args: Readonly<Record<string, unknown>>): void {
-    for (const authority of currentExecutionAuthorities()) {
-      validateExecutionAuthority(this.service.store, authority);
-      if (!authority.hub_os_ban && !providerHubOsBan()) continue;
-      const refusal = withExecutionAuthority(authority, () =>
-        this.policy.refusal('call_operation', { operation: name, arguments: args }),
-      );
-      if (refusal !== undefined) throw new ApiError('forbidden', refusal);
-    }
-  }
-  nativeAccess(id: string, authority: HarnessAuthority): boolean {
-    const grant = this.service.storage.grant(id);
-    const caller = this.caller(id);
+  nativeAccess(id: string): boolean {
     return (
-      grant.target.kind === 'server' &&
-      authority.kind === 'manual' &&
-      authority.profileId === caller.profileId &&
-      caller.role === 'owner'
+      this.service.storage.grant(id).target.kind === 'server' && this.caller(id).role === 'owner'
     );
   }
   hubToolNames(_authority: HarnessAuthority): readonly string[] {
@@ -175,21 +49,14 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     execution: Parameters<HarnessServerToolAccess['deny']>[1],
   ): string | undefined {
     if (execution.agent === undefined) return 'Hub actions require an owned native conversation.';
-    const caller = this.caller(execution.agent.id);
-    if (caller.profileId !== authority.profileId)
+    const session = this.session(execution.agent.id);
+    if (session.caller.profileId !== authority.profileId)
       return 'This initiating profile no longer owns the tool grant.';
     const args = z.record(z.string(), z.unknown()).parse(execution.arguments);
-    const checked = this.scoped(execution.agent.id).check(execution.name, args);
-    if (!checked.ok) return checked.reason;
-    const refusal =
-      caller.authority === undefined
-        ? this.policy.refusal(execution.name, args)
-        : withExecutionAuthority(caller.authority, () => this.policy.refusal(execution.name, args));
-    if (refusal !== undefined) return refusal;
-    return undefined;
+    const checked = this.restricted(session).check(execution.name, args);
+    return checked.ok ? undefined : checked.reason;
   }
   install(ctx: Context): void {
-    limitSearchToolSchemas(ctx, this.service);
     const disposers = new Map<string, () => void>();
     const registered = new Set<string>();
     const contents = new Map<ToolCallId, ContentBlock[]>();
@@ -266,16 +133,12 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     name: string,
     args: Readonly<Record<string, unknown>>,
   ): { readonly caller: ToolCaller; readonly hub: ToolHub } {
-    const hub = this.scoped(id);
-    const checked = hub.check(name, args);
+    const session = this.session(id);
+    const hub = this.restricted(session);
+    const target = forwardedCall(name, args);
+    const checked = hub.check(target.name, target.arguments);
     if (!checked.ok) throw new HubCapabilityFailure(name, checked.reason);
-    const caller = this.admit(name, args, this.caller(id));
-    const refusal =
-      caller.authority === undefined
-        ? this.policy.refusal(name, args)
-        : withExecutionAuthority(caller.authority, () => this.policy.refusal(name, args));
-    if (refusal !== undefined) throw new ApiError('forbidden', refusal);
-    return { caller, hub };
+    return { caller: this.admit(target.name, target.arguments, session.caller), hub };
   }
   async call(
     id: string,
@@ -283,18 +146,17 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     args: Readonly<Record<string, unknown>>,
   ): Promise<HubToolResult> {
     const { caller, hub } = this.authorizeCall(id, name, args);
-    const result = await hub.call(name, args, caller);
+    const result = await hub.callAdmitted(name, args, caller);
     if (typeof result.response['error'] === 'string')
       throw new HubCapabilityFailure(name, result.response['error']);
     return result;
   }
   async transportCall(
-    id: string,
+    authorized: { readonly caller: ToolCaller; readonly hub: ToolHub },
     name: string,
     args: Readonly<Record<string, unknown>>,
   ): Promise<z.infer<typeof HARNESS_CENTRAL_RESULT>> {
-    const { caller, hub } = this.authorizeCall(id, name, args);
-    const result = await hub.call(name, args, caller);
+    const result = await authorized.hub.callAdmitted(name, args, authorized.caller);
     return HARNESS_CENTRAL_RESULT.parse({
       response: result.response,
       pictures: result.pictures.map((picture) => ({
@@ -304,69 +166,63 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     });
   }
   scoped(id: string): ToolHub {
-    const grant = this.service.storage.grant(id);
-    const metadata = this.service.store.dshSessions.stat(id, grant.profile_id);
-    if (metadata === undefined)
-      throw new ApiError('not_found', 'Native tool conversation is absent.');
-    const chat = this.service.store.aiChats.chat(metadata.chat_id);
-    const authority = this.caller(id).authority;
-    const scopes =
-      authority === undefined ? [] : validateAuthorityGraph(this.service.store, authority);
-    const allowed = effectiveTools(this.service.store, chat);
+    return this.restricted(this.session(id));
+  }
+  caller(id: string): ToolCaller {
+    return this.session(id).caller;
+  }
+  private restricted({ caller, chatId, server }: HubSession): ToolHub {
+    const chat = this.service.store.aiChats.chat(chatId);
+    const granted = caller.authority?.tools ?? null;
+    const grantedNames = granted === null ? null : new Set(granted);
     const search = openRouterSearchAvailable(this.service, chat);
-    const hub = scopedHub(this.tools, allowed)?.restrict(
+    const hub = scopedHub(this.tools, effectiveTools(this.service.store, chat))?.restrict(
       (tool) =>
         (tool.name !== 'web_search' || search) &&
-        scopes.every((scope) => this.scopeAllows(scope, tool.name)),
+        !(server && CHAT_FOLDER_TOOLS.has(tool.name)) &&
+        !reachesNativeBridge(tool.name) &&
+        (grantedNames === null ||
+          grantedNames.has(tool.name) ||
+          tool.name === META_TOOL_NAMES.call ||
+          DISCOVERY_NAMES.has(tool.name)),
     );
     if (hub === undefined)
       throw new ApiError('forbidden', 'This conversation has no available hub capabilities.');
     return hub;
   }
-  private scopeAllows(authority: NonNullable<ToolCaller['authority']>, name: string): boolean {
-    if (name === META_TOOL_NAMES.call || DISCOVERY_NAMES.has(name)) return true;
-    const event = this.service.store.assistantEvents.event(authority.event_id);
-    const allowed = effectiveTools(
-      this.service.store,
-      this.service.store.aiChats.chat(event.chat_id),
-    );
-    return (
-      (authority.tools === null || authority.tools.includes(name)) &&
-      (allowed === null || allowed.includes(name))
-    );
-  }
-  private callerRole(
-    grant: ToolCaller['role'],
-    client: ToolCaller['role'] | undefined,
-    authority: ToolCaller['authority'],
-  ): ToolCaller['role'] {
-    if (authority !== undefined && executionRole(this.service.store, authority) === 'member')
-      return 'member';
-    return toolRole(grant, client, authority?.requester ?? undefined);
-  }
-  caller(id: string): ToolCaller {
-    const grant = this.service.storage.grant(id);
-    const metadata = this.service.store.dshSessions.stat(id, grant.profile_id);
+  private session(id: string): HubSession {
+    const { store, storage } = this.service;
+    const grant = storage.grant(id);
+    const metadata = store.dshSessions.stat(id, grant.profile_id);
     if (metadata === undefined)
       throw new ApiError('not_found', 'Native tool conversation is absent.');
-    const client =
-      grant.client_id === null ? undefined : this.service.store.clients.byId(grant.client_id);
     const authority =
       grant.event_id === null
         ? undefined
-        : eventAuthority(
-            this.service.store,
-            this.service.store.assistantEvents.event(grant.event_id),
-          );
+        : eventAuthority(store, store.assistantEvents.event(grant.event_id));
     return {
-      ...(authority === undefined ? {} : { authority }),
-      profileId: grant.profile_id,
-      role: this.callerRole(grant.role, client?.role, authority),
       chatId: metadata.chat_id,
-      clientId: grant.client_id,
-      via: grant.authority.kind === 'trigger' ? 'automation' : 'chat',
+      server: grant.target.kind === 'server',
+      caller: {
+        ...(authority === undefined ? {} : { authority }),
+        profileId: grant.profile_id,
+        role:
+          grant.role === 'owner' &&
+          (authority === undefined || executionRole(authority) === 'owner')
+            ? 'owner'
+            : 'member',
+        chatId: metadata.chat_id,
+        clientId: grant.client_id,
+        via: grant.authority.kind === 'trigger' ? 'automation' : 'chat',
+      },
     };
   }
+}
+
+interface HubSession {
+  readonly caller: ToolCaller;
+  readonly chatId: string;
+  readonly server: boolean;
 }
 
 class HubCapabilityFailure extends ApiError {
@@ -376,13 +232,4 @@ class HubCapabilityFailure extends ApiError {
   ) {
     super('invalid_request', message);
   }
-}
-
-function toolRole(
-  grant: ToolCaller['role'],
-  client: ToolCaller['role'] | undefined,
-  requester: ToolCaller['pluginRequester'],
-): ToolCaller['role'] {
-  if (requester === 'unlisted') return 'member';
-  return grant === 'owner' && client === 'owner' ? 'owner' : 'member';
 }

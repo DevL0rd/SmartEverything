@@ -5,15 +5,11 @@ import { Rings } from '../../../components/charts';
 import { Button } from '../../../components/button';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
-import {
-  WidgetFrame,
-  boardClassOf,
-  heroFigure,
-  type WidgetSize,
-} from '../../../components/widget-board';
+import { WidgetFrame, heroFigure, type WidgetSize } from '../../../components/widget-board';
+import { isTile } from '../../../components/widget-board/all-sizes';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useIdiom } from '../../../design/platform';
-import { useSizeClass } from '../../../design/size-class';
 import { CalorieDial } from '../components/calorie-dial';
 import { MacroList } from '../components/macro-list';
 import { GlassIcon } from '../components/glass-icon';
@@ -23,6 +19,7 @@ import { useNutritionPrefs } from '../data/prefs';
 import { useDayTotals } from '../data/totals';
 import { useWaterGoal } from '../data/water-goal';
 import { NUTRIENT_MACROS, amountText, goalOf } from '../model/macros';
+import { energyLayoutOf, type EnergyLayout } from './energy-layout';
 import { Icon, type IconName } from '../../../components/icon';
 import { cn } from '../../../design/cn';
 import type { ColourRole } from '../../../design/tokens';
@@ -86,11 +83,13 @@ function energyFacts(
 
 function EnergyRow({
   fact,
-  wide,
+  layout,
 }: {
   readonly fact: EnergyFact;
-  readonly wide: boolean;
+  readonly layout: Exclude<EnergyLayout, 'dial'>;
 }): ReactNode {
+  const wide = layout === 'strip';
+  const stacked = wide || layout === 'narrow-rows';
   return (
     <View
       className={
@@ -106,12 +105,18 @@ function EnergyRow({
       >
         <Icon name={ENERGY_ICON[fact.key]} size={16} colour={ENERGY_ROLE[fact.key]} />
       </View>
-      {wide ? (
+      {stacked ? (
         <View className="min-w-0 flex-1">
           <Text variant="footnote" tone="variant" numberOfLines={1}>
             {fact.label}
           </Text>
-          <Figure value={amountText(fact.value, 'kcal')} unit="kcal" size="s" />
+          {wide ? (
+            <Figure value={amountText(fact.value, 'kcal')} unit="kcal" size="s" />
+          ) : (
+            <Text variant="callout" className="tabular" numberOfLines={1}>
+              {`${amountText(fact.value, 'kcal')} kcal`}
+            </Text>
+          )}
         </View>
       ) : (
         <>
@@ -127,27 +132,30 @@ function EnergyRow({
   );
 }
 
-export function CaloriesWidget({ size, day, today }: DayProps): ReactNode {
+export function CaloriesWidget({ day, today }: DayProps): ReactNode {
   const totals = useDayTotals(day);
   const prefs = useNutritionPrefs();
+  const { cls, frame } = useWidgetFace();
   const eaten = totals.energy_in ?? 0;
   const goal = prefs === null ? null : prefs.energyKcal;
-  const board = boardClassOf(useSizeClass().width);
-  const wide = size === 'W' && board !== 'compact';
+  const layout = energyLayoutOf(cls, frame.width);
   return (
     <WidgetFrame
       title={dayTitle('Calories', day, today)}
       icon="flame"
       accent="viz-2"
       href={page(day)}
-      size={size}
     >
       <View className="flex-1 flex-row items-center gap-5">
-        <CalorieDial eaten={totals.energy_in ?? null} goal={goal} size={wide ? 's' : 'xs'} />
-        {size === 'S' ? null : (
-          <View className={cn('min-w-0 flex-1', wide ? 'flex-row gap-4' : 'gap-2')}>
+        <CalorieDial
+          eaten={totals.energy_in ?? null}
+          goal={goal}
+          size={layout === 'strip' ? 's' : 'xs'}
+        />
+        {layout === 'dial' ? null : (
+          <View className={cn('min-w-0 flex-1', layout === 'strip' ? 'flex-row gap-4' : 'gap-2')}>
             {energyFacts(eaten, totals.total_energy, goal).map((fact) => (
-              <EnergyRow key={fact.key} fact={fact} wide={wide} />
+              <EnergyRow key={fact.key} fact={fact} layout={layout} />
             ))}
           </View>
         )}
@@ -184,7 +192,7 @@ function NothingLogged({
   );
 }
 
-export function MacrosWidget({ size, day, today }: DayProps): ReactNode {
+export function MacrosWidget({ day, today }: DayProps): ReactNode {
   const totals = useDayTotals(day);
   const prefs = useNutritionPrefs();
   const rings = NUTRIENT_MACROS.map((macro) => {
@@ -197,17 +205,17 @@ export function MacrosWidget({ size, day, today }: DayProps): ReactNode {
     };
   });
   const empty = NUTRIENT_MACROS.every((macro) => (totals[macro.metric] ?? 0) === 0);
+  const tile = isTile(useWidgetFace().cls);
   return (
     <WidgetFrame
       title={dayTitle('Macros', day, today)}
       icon="salad"
       accent="positive"
       href={page(day)}
-      size={size}
     >
       {empty ? (
-        <NothingLogged day={day} goal={prefs?.energyKcal ?? null} compact={size === 'S'} />
-      ) : size === 'S' ? (
+        <NothingLogged day={day} goal={prefs?.energyKcal ?? null} compact={tile} />
+      ) : tile ? (
         <View className="flex-1 items-center justify-center">
           <Rings rings={rings} size={96} />
         </View>
@@ -220,26 +228,39 @@ export function MacrosWidget({ size, day, today }: DayProps): ReactNode {
   );
 }
 
+function AddGlass({
+  labelled,
+  day,
+  today,
+}: {
+  readonly labelled: boolean;
+  readonly day: string;
+  readonly today: string;
+}): ReactNode {
+  return labelled ? <GlassButton day={day} today={today} /> : <GlassIcon day={day} today={today} />;
+}
+
 export function WaterWidget({ size, day, today }: DayProps): ReactNode {
   const totals = useDayTotals(day);
   const goal = useWaterGoal();
   const drunk = (totals.hydration ?? 0) * 1000;
+  const tile = isTile(useWidgetFace().cls);
   const idiom = useIdiom();
   const row = useMeasuredWidth();
   const readout = useMeasuredWidth();
-  const labelled = size !== 'S' && row.width - readout.width >= GLASS_BUTTON_ROOM[idiom];
+  const labelled = !tile && row.width - readout.width >= GLASS_BUTTON_ROOM[idiom];
   return (
     <WidgetFrame
       title={dayTitle('Water', day, today)}
       icon="glassWater"
       accent="humidity"
       href={page(day)}
-      size={size}
+      action={tile ? <GlassIcon day={day} today={today} /> : undefined}
     >
       <View onLayout={row.onLayout} className="flex-1 flex-row items-end gap-3">
         <View className="min-w-0 flex-1 flex-row">
           <View onLayout={readout.onLayout} className="flex-row items-end gap-3">
-            <WaterGlass progress={drunk / goal.ml} size={size === 'S' ? 'm' : 'l'} />
+            <WaterGlass progress={drunk / goal.ml} size={tile ? 'm' : 'l'} />
             <View>
               <Figure value={decimal(drunk / 1000, 2)} unit="L" size={heroFigure(size)} />
               <Text variant="footnote" tone="variant" numberOfLines={1}>
@@ -248,7 +269,7 @@ export function WaterWidget({ size, day, today }: DayProps): ReactNode {
             </View>
           </View>
         </View>
-        {labelled ? <GlassButton day={day} today={today} /> : <GlassIcon day={day} today={today} />}
+        {tile ? null : <AddGlass labelled={labelled} day={day} today={today} />}
       </View>
     </WidgetFrame>
   );

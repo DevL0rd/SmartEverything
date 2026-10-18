@@ -1,11 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "..",
     "outDir": "./dist",
     "types": ["node"],
+    "rewriteRelativeImportExtensions": true,
     "typeRoots": ["../../node_modules/@types", "./types"]
   },
-  "include": ["**/*.ts"],
-  "references": [{ "path": ".." }]
+  "include": ["**/*.ts", "../service-runtime.ts", "../build-service.ts", "../pinned-versions.ts"]
 }

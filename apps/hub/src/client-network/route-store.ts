@@ -6,6 +6,7 @@ import {
   NATIVE_HUB_ROUTE_CONFIGURATION,
   type NativeHubRouteConfiguration,
 } from '@smarteverything/domain';
+import { isMissing } from '../fs-util';
 
 const STORED_ROUTE = z.strictObject({
   version: z.literal(1),
@@ -26,7 +27,7 @@ export class NodeRouteStore {
       const stored = STORED_ROUTE.parse(JSON.parse(await readFile(this.path, 'utf8')));
       return stored.credentialDigest === this.credentialDigest ? stored.configuration : null;
     } catch (cause) {
-      if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') return null;
+      if (isMissing(cause)) return null;
       throw cause;
     }
   }

@@ -1,6 +1,6 @@
 import type { LiveSession } from './gemini';
 
-export const CONNECT_TIMEOUT_MS = 15_000;
+const CONNECT_TIMEOUT_MS = 15_000;
 
 export class LiveConnectTimeoutError extends Error {
   override readonly name = 'LiveConnectTimeoutError';

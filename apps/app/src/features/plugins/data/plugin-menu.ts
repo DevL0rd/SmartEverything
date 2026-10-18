@@ -1,6 +1,7 @@
 import type { PluginRow } from '@smarteverything/domain';
 import type { MenuItem } from '../../../components/menu';
 import { remove, restart, switchPlugin } from './plugin-actions';
+import { background } from '@smarteverything/logging';
 
 function removeItems(row: PluginRow): MenuItem[] {
   if (row.source === 'builtin') {
@@ -12,7 +13,7 @@ function removeItems(row: PluginRow): MenuItem[] {
       icon: 'trash',
       destructive: true,
       onPress: (): void => {
-        void remove(row);
+        background(remove(row), 'plugin_menu.remove_failed');
       },
     },
   ];
@@ -24,7 +25,7 @@ export function pluginMenu(row: PluginRow): MenuItem[] {
       label: row.enabled ? 'Switch off' : 'Switch on',
       icon: 'power',
       onPress: (): void => {
-        void switchPlugin(row, !row.enabled);
+        background(switchPlugin(row, !row.enabled), 'plugin.switch_failed');
       },
     },
     {

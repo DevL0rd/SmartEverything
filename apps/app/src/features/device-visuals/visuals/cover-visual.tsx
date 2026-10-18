@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import type { ViewStyle } from 'react-native';
 import { View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { LinearGradient, Path, Stop } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { eased } from '../../../design/loops';
-import { Canvas, FULL, Layer, boxStyle, scaled, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, boxStyle, scaled, useSvgId } from '../parts/frame';
 import { useInk } from '../parts/ink';
 import { rounded } from '../parts/shapes';
 import type { VisualProps } from '../types';
@@ -61,9 +61,7 @@ export function CoverVisual({ state, px, reduced }: VisualProps): ReactNode {
   return (
     <>
       <Canvas px={px}>
-        <Defs>
-          <Sky id={sky} />
-        </Defs>
+        <Sky id={sky} />
         <Path
           d={rounded({ x: 14, y: 10, w: 72, h: 78, r: 5 })}
           fill={ink.dark}
@@ -83,16 +81,14 @@ export function CoverVisual({ state, px, reduced }: VisualProps): ReactNode {
         />
       </Canvas>
       <Blind px={px} closed={closed} reduced={reduced} />
-      <Layer box={FULL} px={px}>
-        <Canvas px={px}>
-          <Path
-            d={rounded({ x: 16, y: 11, w: 68, h: 4, r: 2 })}
-            fill={ink.light}
-            stroke={ink.edge}
-            strokeWidth={0.5}
-          />
-        </Canvas>
-      </Layer>
+      <Canvas px={px} layer>
+        <Path
+          d={rounded({ x: 16, y: 11, w: 68, h: 4, r: 2 })}
+          fill={ink.light}
+          stroke={ink.edge}
+          strokeWidth={0.5}
+        />
+      </Canvas>
     </>
   );
 }

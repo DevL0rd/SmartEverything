@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useProviderLink } from '../../../store/selectors';
 import { stageOf } from '../model/link-stage';
 import { FlowButton } from './flow-button';
-import { closeFlow } from './use-link-flow';
+import { leaveFlow } from './leave-flow';
 import type { SmartThingsFlow } from './use-smartthings-flow';
 
 function SignInFooter({
@@ -14,7 +14,7 @@ function SignInFooter({
 }): ReactNode {
   const stage = stageOf(useProviderLink('smartthings'), { baseline });
   if (stage.kind === 'done') {
-    return <FlowButton label="Done" onPress={closeFlow} />;
+    return <FlowButton label="Done" onPress={leaveFlow} />;
   }
   return (
     <FlowButton

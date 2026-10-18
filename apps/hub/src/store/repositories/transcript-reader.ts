@@ -1,11 +1,9 @@
 import {
   TRANSCRIPT_HIT,
-  TRANSCRIPT_PAGE_LIMIT,
   type TranscriptHit,
   type TranscriptPage,
   type TranscriptRange,
 } from '@smarteverything/domain';
-import { z } from 'zod';
 import { storedRow } from '../codec';
 import type { StoreContext } from '../context';
 import {
@@ -20,7 +18,6 @@ import {
 export type { TranscriptScope } from './transcript-reader-scope';
 
 const HIT = storedRow(TRANSCRIPT_HIT, { json: ['session', 'line'] });
-const LIMIT = z.int().min(1).max(TRANSCRIPT_PAGE_LIMIT);
 const COLUMNS = `json_object('id',s.id,'source',s.source,'source_id',s.source_id,'plugin_id',s.plugin_id,
  'title',s.title,'retention_days',s.retention_days,'started_at',s.started_at,'ended_at',s.ended_at,
  'last_line_at',s.last_line_at,'line_count',s.line_count,'participants',json(s.participants)) as session,
@@ -43,14 +40,13 @@ interface ReadQuery {
 export class TranscriptReaderRepository {
   constructor(private readonly context: StoreContext) {}
   feed(scope: TranscriptScope, query: TranscriptFeedQuery): TranscriptPage {
-    const filter = transcriptSqlScope(scope, query.words);
+    const filter = transcriptSqlScope(scope);
     const match = query.words === undefined ? undefined : transcriptMatch(query.words);
     if (match === null) return { items: [], before: null, after: null };
-    const position =
-      query.cursor === undefined ? undefined : readTranscriptCursor(query.cursor, filter.identity);
+    const position = query.cursor === undefined ? undefined : readTranscriptCursor(query.cursor);
     const read = {
       direction: query.direction ?? 'before',
-      limit: LIMIT.parse(query.limit),
+      limit: query.limit,
       ...(position === undefined ? {} : { position }),
       ...(match === undefined ? {} : { match }),
     };
@@ -61,16 +57,15 @@ export class TranscriptReaderRepository {
     const anchor = this.context.sql.get(
       HIT,
       `select ${COLUMNS} from ${JOIN} where ${filter.clause} and l.id = $anchor`,
-      { ...filter.parameters, anchor: z.int().min(1).parse(anchorId) },
+      { ...filter.parameters, anchor: anchorId },
     );
     if (anchor === undefined)
       return { anchor: null, page: { items: [], before: null, after: null } };
-    const count = LIMIT.parse(limit);
-    const before = Math.floor((count - 1) / 2);
+    const before = Math.floor((limit - 1) / 2);
     const position = anchor.line;
     const older =
       before === 0 ? [] : this.rows(filter, { position, direction: 'before', limit: before });
-    const newer = this.rows(filter, { position, direction: 'after', limit: count - before - 1 });
+    const newer = this.rows(filter, { position, direction: 'after', limit: limit - before - 1 });
     return { anchor: anchor.line, page: this.page(filter, [...older, anchor, ...newer]) };
   }
   private rows(filter: TranscriptSqlScope, query: ReadQuery): TranscriptHit[] {
@@ -113,6 +108,6 @@ export class TranscriptReaderRepository {
       limit: 1,
       ...(match === undefined ? {} : { match }),
     });
-    return rows.length === 0 ? null : transcriptCursor(position, filter.identity);
+    return rows.length === 0 ? null : transcriptCursor(position);
   }
 }

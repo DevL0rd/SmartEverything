@@ -1,20 +1,26 @@
-import { createHash } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { DiscordInputError } from './errors';
-import { outgoingType } from './media-formats';
-import { safeFileName } from './media-service';
+import { mimeOf, safeFileName, type Downloader } from './media-download';
 import type { OutFile } from './outgoing';
+import { messageOf } from '@smarteverything/logging';
 
 export const MAX_FILES = 10;
-export const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
-const FETCH_TIMEOUT_MS = 30_000;
+const MAX_TOTAL_BYTES = 25 * 1024 * 1024;
 const NAME_MAX = 100;
 
 export const SEND_FILE = z.union([
   z.strictObject({
-    path: z.string().min(1).max(1024).describe('Absolute path of any local file the hub can read.'),
+    path: z.string().min(1).max(1024).describe('Absolute path of a file on the machine.'),
+    machine: z
+      .string()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe(
+        'Machine name or id from list_machines that holds the file; omit for the home hub’s own machine.',
+      ),
   }),
   z.strictObject({
     url: z.url({ protocol: /^https?$/ }).describe('An http or https URL to download and attach.'),
@@ -33,7 +39,6 @@ export const SEND_FILE = z.union([
     name: z.string().min(1).max(NAME_MAX).describe('File name including its extension.'),
     base64: z.base64().min(1).describe('Inline file content as base64.'),
   }),
-  z.strictObject({ uploadId: z.uuid().describe('A sealed upload from the upload tool.') }),
 ]);
 
 export type SendFile = z.output<typeof SEND_FILE>;
@@ -42,41 +47,26 @@ function limitText(maxBytes: number): string {
   return `${String(Math.round(maxBytes / 1024))} KiB file limit in the plugin settings`;
 }
 
-function describeFile(data: Buffer, name: string, contentType: string): OutFile {
-  return { data, name, contentType, sha256: createHash('sha256').update(data).digest('hex') };
-}
-
-function cleanName(raw: string): string {
-  const name = safeFileName(raw);
-  if (name === '') {
-    throw new DiscordInputError(`"${raw}" has no usable file name; pass a name with an extension`);
-  }
-  return name;
-}
-
 async function packed(
   data: Buffer,
   raw: string,
   maxBytes: number,
-  provided?: string,
+  provided?: string | null,
 ): Promise<OutFile> {
-  const name = cleanName(raw);
-  if (data.length === 0) {
-    throw new DiscordInputError(`${name} is empty`);
-  }
+  const name = safeFileName(raw);
   if (data.length > maxBytes) {
     throw new DiscordInputError(`${name} is larger than the ${limitText(maxBytes)}`);
   }
-  return describeFile(data, name, await outgoingType(data, name, provided));
+  return { data, name, contentType: await mimeOf(data, provided) };
 }
 
 export async function pathFile(path: string, maxBytes: number): Promise<OutFile> {
-  if (!path.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(path)) {
+  if (!isAbsolute(path)) {
     throw new DiscordInputError(`Path must be absolute: ${path}`);
   }
   const real = await realpath(path).catch((cause: unknown) => {
     throw new DiscordInputError(
-      `File not found or unreadable: ${basename(path)} (${cause instanceof Error ? cause.message : String(cause)})`,
+      `File not found or unreadable: ${basename(path)} (${messageOf(cause)})`,
     );
   });
   const info = await stat(real);
@@ -89,61 +79,37 @@ export async function pathFile(path: string, maxBytes: number): Promise<OutFile>
   return packed(await readFile(real), basename(real), maxBytes);
 }
 
-async function body(response: Response, maxBytes: number, shown: string): Promise<Buffer> {
-  const declared = Number(response.headers.get('content-length') ?? 0);
-  if (declared > maxBytes) {
-    throw new DiscordInputError(`${shown} is larger than the ${limitText(maxBytes)}`);
-  }
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  const reader = response.body?.getReader();
-  for (
-    let part = await reader?.read();
-    part !== undefined && !part.done;
-    part = await reader?.read()
-  ) {
-    const value = z.instanceof(Uint8Array).parse(part.value);
-    size += value.byteLength;
-    if (size > maxBytes) {
-      await reader?.cancel();
-      throw new DiscordInputError(`${shown} is larger than the ${limitText(maxBytes)}`);
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks);
-}
-
-function urlName(url: URL, type: string | null): string {
-  const last = decodeURIComponent(url.pathname.split('/').at(-1) ?? '');
-  if (last !== '') {
-    return last;
-  }
-  return type === 'image/png' ? 'image.png' : 'download';
-}
-
-export type UrlFetch = (url: string, signal: AbortSignal) => Promise<Response>;
-
 export async function urlFile(
   address: string,
   name: string | undefined,
   maxBytes: number,
-  fetchUrl: UrlFetch,
+  download: Downloader,
 ): Promise<OutFile> {
   const url = new URL(address);
-  const shown = `${url.host}${url.pathname}`;
-  const response = await fetchUrl(address, AbortSignal.timeout(FETCH_TIMEOUT_MS)).catch(
-    (cause: unknown) => {
-      throw new DiscordInputError(
-        `Download of ${shown} failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-      );
-    },
+  const { data, type } = await download(address, maxBytes).catch((cause: unknown) => {
+    throw new DiscordInputError(
+      `Download of ${url.host}${url.pathname} failed: ${messageOf(cause)}`,
+    );
+  });
+  return packed(
+    data,
+    name ?? (decodeURIComponent(url.pathname.split('/').at(-1) ?? '') || 'download'),
+    maxBytes,
+    type,
   );
-  if (!response.ok) {
-    throw new DiscordInputError(`Download of ${shown} failed with HTTP ${String(response.status)}`);
-  }
-  const type = response.headers.get('content-type');
-  const data = await body(response, maxBytes, shown);
-  return packed(data, name ?? urlName(url, type), maxBytes, type ?? undefined);
+}
+
+export async function machineFile(
+  file: { readonly machine: string; readonly path: string },
+  read: () => Promise<{ readonly data: Buffer; readonly name: string } | null>,
+  maxBytes: number,
+): Promise<OutFile | null> {
+  const found = await read().catch((cause: unknown) => {
+    throw new DiscordInputError(
+      `Could not read ${file.path} on ${file.machine}: ${messageOf(cause)}`,
+    );
+  });
+  return found === null ? null : packed(found.data, found.name, maxBytes);
 }
 
 export function inlineFile(

@@ -1,5 +1,6 @@
 import { open, stat } from 'node:fs/promises';
 import { ClaudeFileReadError } from './errors';
+import { isMissing } from '../fs-util';
 
 const CHUNK_BYTES = 256 * 1024;
 const LONGEST_LINE_BYTES = 16 * 1024 * 1024;
@@ -18,10 +19,6 @@ function lineOf(offset: number, bytes: Buffer, oversized: boolean): RawLine {
     head: bytes.subarray(0, HEAD_BYTES).toString('utf8'),
     text: oversized ? null : bytes.toString('utf8'),
   };
-}
-
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
 
 export async function sizeOf(path: string): Promise<number | null> {

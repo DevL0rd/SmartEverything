@@ -6,6 +6,7 @@ import type { CameraMicrophones } from './camera-microphone';
 import type { CameraSpeakers } from './camera-speaker';
 import type { TalkMembership } from './membership';
 import type { PacketSink, TalkEndpoint } from './transmission';
+import { messageOf } from '@smarteverything/logging';
 
 export function continuousSpeaker(sink: PacketSink): PacketSink {
   const pacer = new SpeakerPacer(systemClock, sink.packet, {
@@ -201,10 +202,11 @@ export class LiveSessions {
   }
 
   private speakersFor(channelId: string, conversationId: string): PacketSink[] {
-    return this.options.membership.speakerCameras(channelId).flatMap((cameraId) => {
-      const sink = this.options.speakers.open(cameraId, conversationId, 'assistant');
-      return sink === null ? [] : [continuousSpeaker(sink)];
-    });
+    return this.options.membership
+      .speakerCameras(channelId)
+      .map((cameraId) =>
+        continuousSpeaker(this.options.speakers.open(cameraId, conversationId, 'assistant')),
+      );
   }
 
   private openMicrophones(session: Session): void {
@@ -233,7 +235,7 @@ export class LiveSessions {
           (cause: unknown) => {
             this.options.log.warn('talk.live_microphone_failed', {
               cameraId,
-              reason: cause instanceof Error ? cause.message : String(cause),
+              reason: messageOf(cause),
             });
           },
         );

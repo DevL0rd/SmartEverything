@@ -1,7 +1,6 @@
-import { concatBytes } from '@noble/ciphers/utils.js';
+import { createDecipheriv } from 'node:crypto';
 import { BIND_KEY } from '@smarteverything/domain';
-import { hexToBytes, macBytes, macOf, uint16 } from './bytes';
-import { decryptCcm } from './ccm';
+import { hexToBytes, macBytes, macOf, uint8, uint16 } from './bytes';
 
 export const MIBEACON_SERVICE_UUID = '0000fe95-0000-1000-8000-00805f9b34fb';
 
@@ -15,6 +14,17 @@ const ASSOCIATED_DATA = new Uint8Array([0x11]);
 
 export class MiBeaconFormatError extends Error {
   override readonly name = 'MiBeaconFormatError';
+}
+
+export class CcmTagMismatchError extends Error {
+  override readonly name = 'CcmTagMismatchError';
+
+  constructor(cause: unknown) {
+    super(
+      'The message authentication code does not match; the key is wrong or the frame was altered.',
+      { cause },
+    );
+  }
 }
 
 export interface MiBeaconFrame {
@@ -61,7 +71,7 @@ export function parseMiBeacon(data: Uint8Array): MiBeaconFrame {
   return {
     version: control >> 12,
     productId: uint16(data, 2),
-    counter: data[4] ?? 0,
+    counter: uint8(data, 4),
     mac: hasMac
       ? macOf(Uint8Array.from(data.subarray(HEADER_BYTES, HEADER_BYTES + MAC_BYTES)).reverse())
       : null,
@@ -76,7 +86,7 @@ function readObjects(payload: Uint8Array): MiBeaconObject[] {
   const objects: MiBeaconObject[] = [];
   let offset = 0;
   while (offset + 3 <= payload.length) {
-    const length = payload[offset + 2] ?? 0;
+    const length = uint8(payload, offset + 2);
     const end = offset + 3 + length;
     if (end > payload.length) {
       throw new MiBeaconFormatError(
@@ -90,6 +100,24 @@ function readObjects(payload: Uint8Array): MiBeaconObject[] {
     throw new MiBeaconFormatError('The MiBeacon object payload has a truncated object header.');
   }
   return objects;
+}
+
+function decryptCcm(
+  key: Uint8Array,
+  nonce: Uint8Array,
+  ciphertext: Uint8Array,
+  tag: Uint8Array,
+): Uint8Array {
+  const decipher = createDecipheriv('aes-128-ccm', key, nonce, { authTagLength: MIC_BYTES });
+  decipher.setAuthTag(tag);
+  decipher.setAAD(ASSOCIATED_DATA, { plaintextLength: ciphertext.length });
+  try {
+    const plain = decipher.update(ciphertext);
+    decipher.final();
+    return new Uint8Array(plain.buffer, plain.byteOffset, plain.length);
+  } catch (cause) {
+    throw new CcmTagMismatchError(cause);
+  }
 }
 
 export interface Decryption {
@@ -113,17 +141,16 @@ export function decryptObjects(frame: MiBeaconFrame, decryption: Decryption): Mi
     throw new MiBeaconFormatError('The encrypted frame has no payload.');
   }
   const cut = frame.body.length - EXT_COUNTER_BYTES - MIC_BYTES;
-  const nonce = concatBytes(
-    macBytes(decryption.mac).reverse(),
-    frame.header.subarray(2, 5),
-    frame.body.subarray(cut, cut + EXT_COUNTER_BYTES),
-  );
-  const plain = decryptCcm({
-    key: hexToBytes(BIND_KEY.parse(decryption.bindKey)),
+  const nonce = Uint8Array.from([
+    ...macBytes(decryption.mac).reverse(),
+    ...frame.header.subarray(2, 5),
+    ...frame.body.subarray(cut, cut + EXT_COUNTER_BYTES),
+  ]);
+  const plain = decryptCcm(
+    hexToBytes(BIND_KEY.parse(decryption.bindKey)),
     nonce,
-    ciphertext: frame.body.subarray(0, cut),
-    tag: frame.body.subarray(cut + EXT_COUNTER_BYTES),
-    aad: ASSOCIATED_DATA,
-  });
+    frame.body.subarray(0, cut),
+    frame.body.subarray(cut + EXT_COUNTER_BYTES),
+  );
   return readObjects(plain);
 }

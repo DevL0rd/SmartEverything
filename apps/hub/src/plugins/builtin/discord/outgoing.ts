@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { Embed } from './embeds';
 
 export interface Rich {
@@ -13,10 +13,10 @@ export interface SendOptions {
 
 export const NO_MENTIONS = { parse: [], replied_user: false } as const;
 
-const NONCE_LENGTH = 24;
+const NONCE_BYTES = 12;
 
-export function nonceOf(key: string): string {
-  return createHash('sha256').update(key).digest('hex').slice(0, NONCE_LENGTH);
+export function newNonce(): string {
+  return randomBytes(NONCE_BYTES).toString('hex');
 }
 
 export function withMention(content: string, options: SendOptions): string {
@@ -38,11 +38,10 @@ export interface Part {
   readonly index: number;
   readonly count: number;
   readonly message: Rich;
-  readonly key: string;
 }
 
 export function partBody(part: Part, options: SendOptions): Readonly<Record<string, unknown>> {
-  const { content, index, count, message, key } = part;
+  const { content, index, count, message } = part;
   const first = index === 0;
   return {
     content,
@@ -50,10 +49,10 @@ export function partBody(part: Part, options: SendOptions): Readonly<Record<stri
       ? { embeds: message.embeds }
       : {}),
     allowed_mentions: first ? mentionRule(options) : NO_MENTIONS,
-    nonce: nonceOf(`${key}:${String(index)}`),
+    nonce: newNonce(),
     enforce_nonce: true,
     ...(first && options.replyTo !== undefined
-      ? { message_reference: { message_id: options.replyTo, fail_if_not_exists: true } }
+      ? { message_reference: { message_id: options.replyTo, fail_if_not_exists: false } }
       : {}),
   };
 }
@@ -62,7 +61,6 @@ export interface OutFile {
   readonly data: Buffer;
   readonly name: string;
   readonly contentType: string;
-  readonly sha256: string;
 }
 
 export interface Delivery {

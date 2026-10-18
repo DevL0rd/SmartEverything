@@ -25,7 +25,7 @@ function PersonBubble({
   return (
     <View
       className={cn(
-        'max-w-full rounded-xl border-hairline border-outline-variant bg-surface-1 px-4 py-2.5',
+        'max-w-4/5 rounded-xl border-hairline border-outline-variant bg-surface-1 px-4 py-2.5',
         TAIL[item.position],
       )}
     >
@@ -55,7 +55,7 @@ export function PersonMessage({ item }: { readonly item: MessageItem }): ReactNo
         actions.run('quote');
       }}
     >
-      <View className="flex-row items-end gap-2 pr-12 medium:pr-24">
+      <View className="flex-row items-end gap-2">
         <View className="w-7">{endOfRun ? <SpeakerAvatar name={speaker.name} /> : null}</View>
         <View className="min-w-0 flex-1 items-start">
           {startOfRun ? <RunHeader item={item} ai={false} inset /> : null}

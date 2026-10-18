@@ -47,3 +47,19 @@ export function readDisplayEnvironment(): DisplayEnvironment {
     ozoneHint: parsed.ELECTRON_OZONE_PLATFORM_HINT,
   };
 }
+
+const agentEnvironmentSchema = z.object({
+  XDG_RUNTIME_DIR: z.string().min(1).optional(),
+  LOCALAPPDATA: z.string().min(1).optional(),
+});
+
+export function readAgentEnvironment(): {
+  runtimeDirectory: string | null;
+  localAppData: string | null;
+} {
+  const parsed = agentEnvironmentSchema.parse(env);
+  return {
+    runtimeDirectory: parsed.XDG_RUNTIME_DIR ?? null,
+    localAppData: parsed.LOCALAPPDATA ?? null,
+  };
+}

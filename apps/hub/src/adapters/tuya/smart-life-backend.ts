@@ -9,7 +9,12 @@ import { statusesInBatches, type MessageStream, type TuyaBackend } from './backe
 import type { LoadedInventory } from './cloud-inventory';
 import type { TuyaDependencies } from './dependencies';
 import { SmartLifeCloud } from './smart-life-cloud';
-import { deviceDetails, loadSmartLifeInventory } from './smart-life-inventory';
+import { LoadOnce } from './bounded';
+import {
+  deviceDetails,
+  loadSmartLifeInventory,
+  type DescribedDevice,
+} from './smart-life-inventory';
 import { SmartLifeMessages, type Subscriptions } from './smart-life-messages';
 
 export interface SmartLifeBackendOptions {
@@ -21,13 +26,14 @@ export interface SmartLifeBackendOptions {
 
 export function smartLifeBackend(options: SmartLifeBackendOptions): TuyaBackend {
   const cloud = new SmartLifeCloud(options);
+  const descriptions = new LoadOnce<DescribedDevice>();
   let subscriptions: Subscriptions = { owners: [], devices: new Map() };
   let stream: SmartLifeMessages | null = null;
   return {
     method: 'smart_life',
     project: null,
     loadInventory: async (log): Promise<LoadedInventory> => {
-      const loaded = await loadSmartLifeInventory(cloud, log);
+      const loaded = await loadSmartLifeInventory(cloud, log, descriptions);
       subscriptions = { owners: loaded.owners, devices: loaded.reportsDataPoints };
       stream?.follow();
       return loaded.inventory;

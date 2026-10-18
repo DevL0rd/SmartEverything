@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Path } from 'react-native-svg';
-import { Canvas, Squash, useSvgId, type Box } from '../parts/frame';
+import { Circle, Path } from 'react-native-svg';
+import { type Box, Canvas, Squash, useSvgId } from '../parts/frame';
 import { BodyGradient, useInk, type VisualInk, WELL } from '../parts/ink';
 import { Readout } from '../parts/readout';
 import { rounded } from '../parts/shapes';
@@ -17,9 +17,7 @@ function Platform({ ink, px }: { readonly ink: VisualInk; readonly px: number })
   return (
     <Squash box={TOP} px={px} ratio={SQUASH}>
       <Canvas px={inner}>
-        <Defs>
-          <BodyGradient id={glass} ink={ink} vertical />
-        </Defs>
+        <BodyGradient id={glass} ink={ink} vertical />
         <Path
           d={rounded({ x: 2, y: 2, w: 96, h: 96, r: 18 })}
           fill={`url(#${glass})`}

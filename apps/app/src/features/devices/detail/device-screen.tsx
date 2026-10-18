@@ -1,12 +1,16 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { isCamera } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
+import { AfterPaint } from '../../../components/after-paint';
 import { EmptyState } from '../../../components/empty-state';
 import { Screen } from '../../../components/screen';
 import { TabsBar } from '../../../components/tabs-bar';
+import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { href } from '../../../app-shell/hrefs';
+import { cn } from '../../../design/cn';
 import { atLeast, useSizeClass } from '../../../design/size-class';
 import { useDevice } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
@@ -19,11 +23,19 @@ import {
   sectionsOf,
   useHasOverviewDetails,
   OverviewDetails,
+  type DeviceSection,
 } from './sections';
 import { MissingDevice } from './missing-device';
 import { Shortcuts } from './shortcuts';
+import { LaundryPage } from '../laundry/page';
+import { TelevisionLead } from '../television/lead';
+
+const log = new Logger('app.devices');
 
 function Lead({ device }: { readonly device: Device }): ReactNode {
+  if (useDeviceModel(device).family === 'television') {
+    return <TelevisionLead device={device} />;
+  }
   return (
     <>
       <Hero device={device} />
@@ -32,43 +44,50 @@ function Lead({ device }: { readonly device: Device }): ReactNode {
   );
 }
 
-function Stacked({
+function Overview({
   device,
+  columns,
   narrow = false,
 }: {
   readonly device: Device;
+  readonly columns: boolean;
   readonly narrow?: boolean;
 }): ReactNode {
+  const side = cn('gap-section-gap', columns && 'flex-1');
   return (
     <Screen
       header={<DeviceHeader device={device} sectionTitle={null} />}
       maxWidth={narrow ? 'reading' : 'detail'}
       banner={<DeviceBanner device={device} />}
     >
-      <Lead device={device} />
-      <OverviewDetails device={device} />
-      <Shortcuts device={device} />
+      <View className={cn('gap-section-gap', columns && 'flex-row items-start')}>
+        <View className={side}>
+          <Lead device={device} />
+        </View>
+        <View className={side}>
+          <AfterPaint>
+            <OverviewDetails device={device} />
+            <Shortcuts device={device} />
+          </AfterPaint>
+        </View>
+      </View>
     </Screen>
   );
 }
 
-function TwoColumns({ device }: { readonly device: Device }): ReactNode {
-  return (
-    <Screen
-      header={<DeviceHeader device={device} sectionTitle={null} />}
-      maxWidth="detail"
-      banner={<DeviceBanner device={device} />}
-    >
-      <View className="flex-row items-start gap-section-gap">
-        <View className="flex-1 gap-section-gap">
-          <Lead device={device} />
-        </View>
-        <View className="flex-1 gap-section-gap">
-          <OverviewDetails device={device} />
-          <Shortcuts device={device} />
-        </View>
-      </View>
-    </Screen>
+function BesideBody({
+  device,
+  section,
+}: {
+  readonly device: Device;
+  readonly section: DeviceSection;
+}): ReactNode {
+  return section.scrolls === true ? (
+    <View className="flex-1 pt-section-gap">{section.render(device, true)}</View>
+  ) : (
+    <ScrollView contentContainerClassName="gap-section-gap py-section-gap">
+      {section.render(device, true)}
+    </ScrollView>
   );
 }
 
@@ -82,6 +101,10 @@ function Split({
   const model = useDeviceModel(device);
   const sections = sectionsOf(model);
   const [active, setActive] = useState(initial);
+  const deviceId = device.id;
+  useEffect(() => {
+    log.info('section.changed', { deviceId, section: active, layout: 'split' });
+  }, [deviceId, active]);
   const shown = sections.find((section) => section.key === active) ?? sectionOf('overview');
   return (
     <Screen
@@ -109,9 +132,7 @@ function Split({
               },
             }))}
           />
-          <ScrollView contentContainerClassName="gap-section-gap py-section-gap">
-            {shown.render(device, true)}
-          </ScrollView>
+          <BesideBody device={device} section={shown} />
         </View>
       </View>
     </Screen>
@@ -126,12 +147,22 @@ function SubPage({
   readonly section: string;
 }): ReactNode {
   const shown = findSection(useDeviceModel(device), section);
+  const deviceId = device.id;
+  const found = shown !== undefined;
+  useEffect(() => {
+    if (found) {
+      log.info('section.changed', { deviceId, section, layout: 'page' });
+    } else {
+      log.warn('section.missing', { deviceId, section });
+    }
+  }, [deviceId, section, found]);
   return (
     <Screen
       header={
         <DeviceHeader device={device} sectionTitle={shown === undefined ? null : shown.title} />
       }
       maxWidth="detail"
+      scroll={shown?.scrolls !== true}
       banner={<DeviceBanner device={device} />}
     >
       {shown === undefined ? (
@@ -140,6 +171,10 @@ function SubPage({
           title="This page isn’t here"
           body="The plugin that adds it may be off or removed."
         />
+      ) : shown.scrolls === true ? (
+        <View className="w-full max-w-detail flex-1 self-center px-gutter">
+          {shown.render(device, false)}
+        </View>
       ) : (
         shown.render(device, false)
       )}
@@ -156,16 +191,20 @@ function DevicePage({
 }): ReactNode {
   const { width } = useSizeClass();
   const details = useHasOverviewDetails(device);
+  const { family } = useDeviceModel(device);
+  if (family === 'laundry' && section === 'overview') {
+    return <LaundryPage device={device} />;
+  }
   if (section !== 'overview' && !(atLeast(width, 'expanded') && details)) {
     return <SubPage device={device} section={section} />;
   }
   if (!details) {
-    return <Stacked device={device} narrow={width !== 'compact'} />;
+    return <Overview device={device} columns={false} narrow={width !== 'compact'} />;
   }
   if (atLeast(width, 'expanded')) {
     return <Split device={device} initial={section} />;
   }
-  return width === 'medium' ? <TwoColumns device={device} /> : <Stacked device={device} />;
+  return <Overview device={device} columns={width === 'medium' && family !== 'television'} />;
 }
 
 export function DeviceScreen({
@@ -176,6 +215,18 @@ export function DeviceScreen({
   readonly section: string;
 }): ReactNode {
   const device = useDevice(deviceId);
+  const found = device !== null;
+  const camera = device !== null && isCamera(device);
+  useLifecycleLog(log, 'device_screen', deviceId);
+  useEffect(() => {
+    if (!found) {
+      log.warn('device.missing', { deviceId, section });
+    } else if (camera) {
+      log.info('device.redirected', { deviceId, to: 'camera' });
+    } else {
+      log.info('device.opened', { deviceId, section });
+    }
+  }, [deviceId, section, found, camera]);
   if (device === null) {
     return <MissingDevice />;
   }

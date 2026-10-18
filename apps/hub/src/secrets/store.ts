@@ -1,20 +1,14 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import {
-  JSON_VALUE,
-  PROVIDER,
-  PUSH_SERVICE_ACCOUNT,
-  type Provider,
-  type SealingKeys,
-} from '@smarteverything/domain';
+import { JSON_VALUE, PROVIDER, PUSH_SERVICE_ACCOUNT, type Provider } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { StoredAccount } from '../adapters/contract';
+import { isMissing } from '../fs-util';
 
 const ALGORITHM = 'aes-256-gcm';
 const NONCE_BYTES = 12;
 const ASSOCIATED_DATA = Buffer.from('smarteverything/hub-secrets/v1');
-const HEX_KEY = z.string().regex(/^[0-9a-f]{64}$/);
 
 const STORED_ACCOUNT = z.object({
   label: z.string().min(1),
@@ -28,7 +22,6 @@ const SMARTTHINGS_APP = z.object({
 });
 
 const HUB_SECRETS = z.object({
-  sealingKeys: z.object({ publicKey: HEX_KEY, secretKey: HEX_KEY }).nullable(),
   accounts: z.partialRecord(PROVIDER, STORED_ACCOUNT),
   pushServiceAccount: PUSH_SERVICE_ACCOUNT.nullable(),
   smartthingsApp: SMARTTHINGS_APP.nullable().default(null),
@@ -48,7 +41,6 @@ const SEALED_FILE = z.object({
 });
 
 const EMPTY: HubSecrets = {
-  sealingKeys: null,
   accounts: {},
   pushServiceAccount: null,
   smartthingsApp: null,
@@ -113,10 +105,6 @@ function decrypt(path: string, key: Buffer, text: string): HubSecrets {
   }
 }
 
-function isMissing(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
-}
-
 export class SecretStore {
   private current: HubSecrets;
   private writing: Promise<void> = Promise.resolve();
@@ -142,14 +130,6 @@ export class SecretStore {
 
   read(): HubSecrets {
     return this.current;
-  }
-
-  sealingKeys(): SealingKeys {
-    const keys = this.current.sealingKeys;
-    if (keys === null) {
-      throw new SecretStoreError(this.path, 'it holds no sealing keys yet');
-    }
-    return keys;
   }
 
   async update(change: (secrets: HubSecrets) => HubSecrets): Promise<HubSecrets> {

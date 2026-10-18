@@ -65,9 +65,9 @@ export async function nativeMediaNote(
       data,
     }));
   scope.authorize();
-  const text = await files.ensureMediaNote(cached);
+  const line = files.noteLine(cached);
   scope.authorize();
-  return `[Native image ${image.attachmentId}${image.name === undefined ? '' : `: ${image.name}`} (${image.mediaType})${original === undefined ? '' : `; original attachment: ${original.id}; use read_assistant_attachment for explicit inspection`}]\n${text}`;
+  return line;
 }
 
 function originalImage(
@@ -154,7 +154,6 @@ async function nativeNoteFile(
     if (!(cause instanceof StoreNotFoundError)) throw cause;
     return files.keepBytes({
       id,
-      chatId: input.chatId,
       authorize: input.authorize,
       profileId: input.profileId,
       name: input.image.name ?? 'native-image',

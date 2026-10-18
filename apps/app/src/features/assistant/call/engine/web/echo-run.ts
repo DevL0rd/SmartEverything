@@ -1,4 +1,4 @@
-import type { CallAudioPref, EchoTestOutcome } from '@smarteverything/domain';
+import type { CallAudio, CallAudioPref, EchoTestOutcome } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { rawErrorText } from '../../../../../format/errors';
 import type { Playback } from '../../../../talk';
@@ -62,10 +62,7 @@ export async function measureInCall(test: InCallTest): Promise<EchoTestOutcome> 
   }
 }
 
-export async function measureAlone(
-  audio: CallAudioPref,
-  playback: Playback,
-): Promise<EchoTestOutcome> {
+export async function measureAlone(audio: CallAudio, playback: Playback): Promise<EchoTestOutcome> {
   const handlers: MicrophoneHandlers = {
     sink: NO_SINK,
     assistantAudible: () => false,

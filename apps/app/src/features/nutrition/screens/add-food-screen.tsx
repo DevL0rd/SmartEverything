@@ -1,9 +1,10 @@
+import { Logger } from '@smarteverything/logging';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { z } from 'zod';
-import { ApiError, factsOf, type FoodCandidate } from '@smarteverything/domain';
+import { ApiError, factsOf, type FoodCandidate, type FoodRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { lookupBarcode } from '../../../api/nutrition';
 import { FlowFrame } from '../../../components/flow-frame';
@@ -20,12 +21,14 @@ import { ProductResults, SavedFoods } from '../components/food-results';
 import { usePortionForm } from '../components/portion-sheet';
 import { useFoods } from '../data/foods';
 import { useAddGlass } from '../data/water';
+import { savedFoodByBarcode } from '../model/barcode';
 import { momentOn } from '../model/day';
 import { MEAL_INFO, isMeal, type Meal } from '../model/meals';
 import { newTarget, type PortionTarget } from '../model/target';
 import { dayKeyOf } from '../../../format/time';
 import { millilitres } from '../../../format/number';
 
+const log = new Logger('app.nutrition');
 const DAY = z.iso.date();
 
 interface AddParams {
@@ -80,15 +83,30 @@ function PortionStep({
 function useBarcodeLookup(
   params: AddParams,
   choose: (target: PortionTarget) => void,
+  saved: readonly FoodRow[],
 ): (barcode: string) => void {
   const router = useRouter();
   return (barcode) => {
+    const own = savedFoodByBarcode(saved, barcode);
+    if (own !== null) {
+      log.info('barcode.found_saved', { origin: own.origin });
+      choose(newTarget(factsOf(own), { food: own }, params.meal, params.at));
+      return;
+    }
+    const startedAt = Date.now();
+    log.debug('barcode.lookup_started', { length: barcode.length });
     lookupBarcode(barcode).then(
       (product) => {
+        log.info('barcode.found', { durationMs: Date.now() - startedAt });
         choose(candidateTarget(product, params));
       },
       (error: unknown) => {
         const missing = error instanceof ApiError && error.code === 'not_found';
+        log.info('barcode.not_resolved', {
+          missing,
+          error: error instanceof Error ? error.name : typeof error,
+          durationMs: Date.now() - startedAt,
+        });
         notify({
           message: missing ? 'Not in Open Food Facts' : 'Barcode not looked up',
           tone: 'critical',
@@ -176,14 +194,18 @@ function SearchBar({
   );
 }
 
-function useScannedBarcode(barcode: string | null, lookup: (barcode: string) => void): void {
+function useScannedBarcode(
+  barcode: string | null,
+  lookup: (barcode: string) => void,
+  savedKnown: boolean,
+): void {
   const looked = useRef<string | null>(null);
   useEffect(() => {
-    if (barcode !== null && looked.current !== barcode) {
+    if (barcode !== null && savedKnown && looked.current !== barcode) {
       looked.current = barcode;
       lookup(barcode);
     }
-  }, [barcode, lookup]);
+  }, [barcode, lookup, savedKnown]);
 }
 
 function SearchStep({
@@ -196,9 +218,9 @@ function SearchStep({
   const router = useRouter();
   const [query, setQuery] = useState('');
   const foods = useFoods();
-  const lookup = useBarcodeLookup(params, onChoose);
-  useScannedBarcode(params.barcode, lookup);
   const saved = foods.data ?? [];
+  const lookup = useBarcodeLookup(params, onChoose, saved);
+  useScannedBarcode(params.barcode, lookup, foods.data !== undefined || foods.error !== null);
   return (
     <FlowFrame
       title={params.meal === null ? 'Add food' : `Add to ${MEAL_INFO[params.meal].label}`}

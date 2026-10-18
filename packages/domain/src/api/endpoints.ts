@@ -12,6 +12,7 @@ import { COMPUTER_RUNTIME_ENDPOINTS } from './endpoints-computer-runtimes';
 import { AI_AGENT_RUN_ENDPOINTS } from './endpoints-ai-agent-runs';
 import { AI_PROVIDER_ENDPOINTS } from './endpoints-ai-provider';
 import type { z } from 'zod';
+import type { EndpointShape } from './endpoint';
 import { MCP_ACCESS_ENDPOINTS } from './assistants';
 import { ASSISTANT_AREA_ENDPOINTS } from './endpoints-assistant';
 import { AI_CHAT_AREA_ENDPOINTS } from './endpoints-ai-chats';
@@ -21,6 +22,7 @@ import { AI_USAGE_ENDPOINTS } from './endpoints-ai-usage';
 import { AI_BUDGET_ENDPOINTS } from './endpoints-ai-budget';
 import { AI_MODEL_ENDPOINTS } from './endpoints-ai-models';
 import { ACCESS_ENDPOINTS } from './endpoints-access';
+import { PERSON_ACCESS_ENDPOINTS } from './endpoints-person-access';
 import { CONNECTION_ENDPOINTS } from './endpoints-connections';
 import { AUTOMATION_AREA_ENDPOINTS } from './endpoints-automation';
 import { CALL_ENDPOINTS } from './endpoints-calls';
@@ -29,9 +31,12 @@ import { CLAUDE_ENDPOINTS } from './endpoints-claude';
 import { CLIENT_FAILURE_ENDPOINTS } from './endpoints-client-failures';
 import { COMPUTER_AI_ENDPOINTS } from './endpoints-computer-ai';
 import { COMPUTER_NODE_ENDPOINTS } from './endpoints-computer-nodes';
+import { MACHINE_UPDATE_ENDPOINTS } from './endpoints-machine-updates';
 import { COMPUTER_ENDPOINTS } from './endpoints-computers';
 import { COMPUTER_SESSION_ENDPOINTS } from './endpoints-computer-session';
+import { COMPUTER_SYSTEM_ENDPOINTS } from './endpoints-computer-system';
 import { DEVICE_AREA_ENDPOINTS } from './endpoints-devices';
+import { TELEVISION_ENDPOINTS } from './endpoints-television';
 import { FIREWALL_ENDPOINTS } from './firewall';
 import { HEALTH_AREA_ENDPOINTS } from './endpoints-health';
 import { MEDIA_ENDPOINTS } from './endpoints-media';
@@ -50,101 +55,22 @@ import { PHONE_AREA_ENDPOINTS } from './endpoints-phones';
 import { SIGNAL_ENDPOINTS } from './endpoints-signals';
 import { REACH_ENDPOINTS } from './endpoints-reach';
 import { TRANSCRIPT_ENDPOINTS } from './endpoints-transcripts';
+import { LISTENING_ENDPOINTS } from './endpoints-listening';
+import { CLIPBOARD_ENDPOINTS } from './endpoints-clipboard';
+import { APP_VIEW_ENDPOINTS } from './endpoints-app-view';
 
-type ApiEndpointRegistry = typeof DEVICE_EFFECT_ENDPOINTS &
-  typeof DEVICE_GROUP_ENDPOINTS &
-  typeof AI_REFERENCE_ENDPOINTS &
-  typeof AI_PROJECT_ENDPOINTS &
-  typeof AI_NATIVE_COMMAND_ENDPOINTS &
-  typeof AI_PREVIEW_ENDPOINTS &
-  typeof AI_HARNESS_COMMAND_ENDPOINTS &
-  typeof IMAGE_AREA_ENDPOINTS &
-  typeof AI_HARNESS_EXTENSION_ENDPOINTS &
-  typeof AI_HARNESS_ENDPOINTS &
-  typeof AI_HARNESS_CONFIGURATION_ENDPOINTS &
-  typeof AI_PROVIDER_ENDPOINTS &
-  typeof COMPUTER_RUNTIME_ENDPOINTS &
-  typeof AI_AGENT_RUN_ENDPOINTS &
-  typeof AI_MODEL_ENDPOINTS &
-  typeof ACCESS_ENDPOINTS &
-  typeof CONNECTION_ENDPOINTS &
-  typeof CLIENT_FAILURE_ENDPOINTS &
-  typeof SNAPSHOT_ENDPOINTS &
-  typeof SETTINGS_AREA_ENDPOINTS &
-  typeof DEVICE_AREA_ENDPOINTS &
-  typeof MEDIA_ENDPOINTS &
-  typeof FIREWALL_ENDPOINTS &
-  typeof AUTOMATION_AREA_ENDPOINTS &
-  typeof HEALTH_AREA_ENDPOINTS &
-  typeof MCP_ACCESS_ENDPOINTS &
-  typeof PEOPLE_AREA_ENDPOINTS &
-  typeof NUTRITION_AREA_ENDPOINTS &
-  typeof WATCH_AREA_ENDPOINTS &
-  typeof TALK_AREA_ENDPOINTS &
-  typeof WEATHER_AREA_ENDPOINTS &
-  typeof EXCHANGE_RATES_AREA_ENDPOINTS &
-  typeof PLACE_AREA_ENDPOINTS &
-  typeof SCHEDULE_ENDPOINTS &
-  typeof PLUGIN_ENDPOINTS &
-  typeof PHONE_AREA_ENDPOINTS &
-  typeof SIGNAL_ENDPOINTS &
-  typeof REACH_ENDPOINTS &
-  typeof CALL_ENDPOINTS &
-  typeof TRANSCRIPT_ENDPOINTS &
-  typeof ASSISTANT_AREA_ENDPOINTS &
-  typeof AI_CHAT_AREA_ENDPOINTS &
-  typeof AI_COORDINATION_ENDPOINTS &
-  typeof ASSISTANT_VOICE_ENDPOINTS &
-  typeof AI_USAGE_ENDPOINTS &
-  typeof AI_BUDGET_ENDPOINTS &
-  typeof CLAUDE_CLI_ENDPOINTS &
-  typeof CLAUDE_ENDPOINTS &
-  typeof COMPUTER_ENDPOINTS &
-  typeof COMPUTER_AI_ENDPOINTS &
-  typeof COMPUTER_NODE_ENDPOINTS &
-  typeof COMPUTER_SESSION_ENDPOINTS;
-
-export const API_ENDPOINTS: ApiEndpointRegistry = {
-  ...DEVICE_GROUP_ENDPOINTS,
-  ...DEVICE_EFFECT_ENDPOINTS,
+const AI_ENDPOINTS = {
   ...AI_REFERENCE_ENDPOINTS,
   ...AI_PROJECT_ENDPOINTS,
   ...AI_NATIVE_COMMAND_ENDPOINTS,
   ...AI_PREVIEW_ENDPOINTS,
   ...AI_HARNESS_COMMAND_ENDPOINTS,
   ...AI_HARNESS_EXTENSION_ENDPOINTS,
-  ...IMAGE_AREA_ENDPOINTS,
   ...AI_HARNESS_ENDPOINTS,
   ...AI_HARNESS_CONFIGURATION_ENDPOINTS,
   ...AI_PROVIDER_ENDPOINTS,
-  ...COMPUTER_RUNTIME_ENDPOINTS,
   ...AI_AGENT_RUN_ENDPOINTS,
   ...AI_MODEL_ENDPOINTS,
-  ...ACCESS_ENDPOINTS,
-  ...CONNECTION_ENDPOINTS,
-  ...CLIENT_FAILURE_ENDPOINTS,
-  ...SNAPSHOT_ENDPOINTS,
-  ...SETTINGS_AREA_ENDPOINTS,
-  ...DEVICE_AREA_ENDPOINTS,
-  ...MEDIA_ENDPOINTS,
-  ...FIREWALL_ENDPOINTS,
-  ...AUTOMATION_AREA_ENDPOINTS,
-  ...HEALTH_AREA_ENDPOINTS,
-  ...MCP_ACCESS_ENDPOINTS,
-  ...PEOPLE_AREA_ENDPOINTS,
-  ...NUTRITION_AREA_ENDPOINTS,
-  ...WATCH_AREA_ENDPOINTS,
-  ...TALK_AREA_ENDPOINTS,
-  ...WEATHER_AREA_ENDPOINTS,
-  ...EXCHANGE_RATES_AREA_ENDPOINTS,
-  ...PLACE_AREA_ENDPOINTS,
-  ...SCHEDULE_ENDPOINTS,
-  ...PLUGIN_ENDPOINTS,
-  ...PHONE_AREA_ENDPOINTS,
-  ...SIGNAL_ENDPOINTS,
-  ...REACH_ENDPOINTS,
-  ...CALL_ENDPOINTS,
-  ...TRANSCRIPT_ENDPOINTS,
   ...ASSISTANT_AREA_ENDPOINTS,
   ...AI_CHAT_AREA_ENDPOINTS,
   ...AI_COORDINATION_ENDPOINTS,
@@ -153,13 +79,68 @@ export const API_ENDPOINTS: ApiEndpointRegistry = {
   ...AI_BUDGET_ENDPOINTS,
   ...CLAUDE_CLI_ENDPOINTS,
   ...CLAUDE_ENDPOINTS,
+  ...IMAGE_AREA_ENDPOINTS,
+  ...CALL_ENDPOINTS,
+} satisfies Readonly<Record<string, EndpointShape>>;
+
+const COMPUTER_REGISTRY = {
+  ...COMPUTER_RUNTIME_ENDPOINTS,
   ...COMPUTER_ENDPOINTS,
   ...COMPUTER_AI_ENDPOINTS,
   ...COMPUTER_NODE_ENDPOINTS,
+  ...MACHINE_UPDATE_ENDPOINTS,
   ...COMPUTER_SESSION_ENDPOINTS,
-} as const;
+  ...COMPUTER_SYSTEM_ENDPOINTS,
+  ...PHONE_AREA_ENDPOINTS,
+} satisfies Readonly<Record<string, EndpointShape>>;
 
-export type ApiEndpoints = typeof API_ENDPOINTS;
+const HOME_ENDPOINTS = {
+  ...DEVICE_GROUP_ENDPOINTS,
+  ...DEVICE_EFFECT_ENDPOINTS,
+  ...DEVICE_AREA_ENDPOINTS,
+  ...TELEVISION_ENDPOINTS,
+  ...MEDIA_ENDPOINTS,
+  ...AUTOMATION_AREA_ENDPOINTS,
+  ...SCHEDULE_ENDPOINTS,
+  ...SIGNAL_ENDPOINTS,
+  ...REACH_ENDPOINTS,
+  ...PLACE_AREA_ENDPOINTS,
+  ...WEATHER_AREA_ENDPOINTS,
+  ...EXCHANGE_RATES_AREA_ENDPOINTS,
+  ...FIREWALL_ENDPOINTS,
+  ...TRANSCRIPT_ENDPOINTS,
+  ...LISTENING_ENDPOINTS,
+  ...WATCH_AREA_ENDPOINTS,
+  ...TALK_AREA_ENDPOINTS,
+} satisfies Readonly<Record<string, EndpointShape>>;
+
+const PEOPLE_REGISTRY = {
+  ...ACCESS_ENDPOINTS,
+  ...PERSON_ACCESS_ENDPOINTS,
+  ...CONNECTION_ENDPOINTS,
+  ...CLIENT_FAILURE_ENDPOINTS,
+  ...SNAPSHOT_ENDPOINTS,
+  ...SETTINGS_AREA_ENDPOINTS,
+  ...CLIPBOARD_ENDPOINTS,
+  ...APP_VIEW_ENDPOINTS,
+  ...HEALTH_AREA_ENDPOINTS,
+  ...MCP_ACCESS_ENDPOINTS,
+  ...PEOPLE_AREA_ENDPOINTS,
+  ...NUTRITION_AREA_ENDPOINTS,
+  ...PLUGIN_ENDPOINTS,
+} satisfies Readonly<Record<string, EndpointShape>>;
+
+export type ApiEndpoints = typeof AI_ENDPOINTS &
+  typeof COMPUTER_REGISTRY &
+  typeof HOME_ENDPOINTS &
+  typeof PEOPLE_REGISTRY;
+
+export const API_ENDPOINTS: ApiEndpoints = {
+  ...AI_ENDPOINTS,
+  ...COMPUTER_REGISTRY,
+  ...HOME_ENDPOINTS,
+  ...PEOPLE_REGISTRY,
+};
 
 export type EndpointName = keyof ApiEndpoints;
 

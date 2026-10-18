@@ -16,24 +16,21 @@ import { CodexJob } from './job';
 import { launchCodex, type CodexProcessOptions } from './process';
 import { requireSubscription, requireSubscriptionInference } from './account';
 import { modelsOf } from './models';
-import {
-  executionOptions,
-  threadOptions,
-  turnOptions,
-  validateModel,
-  requireExecutionLocation,
-} from './options';
-import { THREAD_REPLY, TURN_REPLY, type RpcRecord, type RpcId } from './protocol';
+import { executionOptions, threadOptions, turnOptions, validateModel } from './options';
+import { TURN_REPLY, type RpcRecord, type RpcId } from './protocol';
 import { requireLocalProject } from './project-access';
 import { CodexRuntimeError } from './errors';
 import { providerRead, providerControl } from './provider-controls';
 import { CodexInputs } from './inputs';
 import { providerMetadata } from './provider-metadata';
 import { readRateLimits, updatedRateLimits, subscriptionBillingBlock } from './rate-limits';
+import { ProviderLog } from './provider-log';
+import { openThread } from './provider-thread';
 import { CodexAdmission } from './provider-admission';
 import { CodexProviderCommands } from './provider-commands';
 import { commandDispatchDecision } from './command-request';
 import { codexNotificationJob } from './provider-routing';
+import { messageOf } from '@smarteverything/logging';
 export interface CodexProviderRuntimeOptions extends CodexProcessOptions {
   readonly deviceId: string;
   readonly dataDirectory: string;
@@ -54,8 +51,10 @@ export class CodexProvider {
   private readonly admission: CodexAdmission;
   private readonly commands: CodexProviderCommands;
   private readonly jobs = new Map<string, CodexJob>();
+  private readonly trace: ProviderLog;
   readonly sessions: CodexSessions;
   constructor(private readonly options: CodexProviderRuntimeOptions) {
+    this.trace = new ProviderLog(options.log);
     this.sessions = new CodexSessions(join(options.dataDirectory, 'codex'));
     this.admission = new CodexAdmission(options.deviceId, this.jobs);
     this.commands = new CodexProviderCommands({
@@ -79,6 +78,7 @@ export class CodexProvider {
     });
   }
   configure(enabled: boolean, options: TurnOptions): void {
+    this.trace.configured(enabled, this.enabled, this.jobs.size, this.client !== null);
     this.configuredOptions = options;
     this.enabled = enabled;
     if (!enabled) this.stop();
@@ -99,11 +99,13 @@ export class CodexProvider {
     }
   }
   async models(): Promise<ComputerRuntimeModel[]> {
+    const startedAt = performance.now();
     const client = await this.ready();
     await requireSubscription(client);
     this.rateLimits = await readRateLimits(client);
     this.observedModels = await modelsOf(client, this.options.deviceId);
     const blocked = subscriptionBillingBlock(this.rateLimits);
+    this.trace.models(this.observedModels.length, blocked !== null, startedAt);
     if (blocked !== null)
       return this.observedModels.map((model) => ({
         ...model,
@@ -122,10 +124,17 @@ export class CodexProvider {
       ...raw,
       options: { ...this.configuredOptions, ...raw.options },
     });
+    const startedAt = performance.now();
+    this.trace.received(turn, this.jobs.size);
     requireLocalProject(turn);
     this.admission.reserve(turn);
     try {
-      return await this.submit(turn);
+      const submitted = await this.submit(turn);
+      this.trace.admitted(turn, submitted.session_id, startedAt);
+      return submitted;
+    } catch (cause) {
+      this.trace.failed(turn, cause, startedAt);
+      throw cause;
     } finally {
       this.admission.release(turn.chat_id);
     }
@@ -144,7 +153,8 @@ export class CodexProvider {
     const inputs = new CodexInputs(join(this.options.dataDirectory, 'codex', 'inputs'));
     try {
       const input = await inputs.prepare(turn);
-      const thread = await this.thread(turn, client, location);
+      const thread = await openThread(turn, client, location);
+      this.trace.threadReady(turn, thread);
       await this.sessions.remember({
         session_id: thread,
         chat_id: turn.chat_id,
@@ -157,6 +167,7 @@ export class CodexProvider {
       await this.startTurn(job, turn, input);
       return { job_id: turn.job_id, session_id: job.threadId };
     } catch (cause) {
+      this.trace.inputsDiscarded(turn.job_id);
       await inputs.remove();
       throw cause;
     }
@@ -195,7 +206,7 @@ export class CodexProvider {
     input: RpcRecord[],
   ): Promise<void> {
     await requireSubscriptionInference(job.client, job.cwd).catch((cause: unknown): never => {
-      job.rejected(cause instanceof Error ? cause.message : 'Codex billing admission failed.');
+      job.rejected(messageOf(cause));
       throw cause;
     });
     try {
@@ -210,44 +221,12 @@ export class CodexProvider {
         }),
       );
       job.started(result.turn.id);
+      this.trace.turnStarted(turn, job.threadId, result.turn.id);
     } catch (cause) {
+      this.trace.turnUnconfirmed(turn, job.threadId, cause);
       job.lost('The Codex turn submission was not confirmed; explicit reconciliation is required.');
       throw cause;
     }
-  }
-  private async thread(
-    turn: CodexProviderTurn,
-    client: CodexClient,
-    location: { readonly cwd: string; readonly roots: readonly string[] },
-  ): Promise<string> {
-    const thread = THREAD_REPLY.parse(
-      await client.request(turn.session_id === null ? 'thread/start' : 'thread/resume', {
-        ...(turn.session_id === null ? {} : { threadId: turn.session_id }),
-        model: turn.model,
-        modelProvider: 'openai',
-        allowProviderModelFallback: false,
-        ...threadOptions(turn.options, location.cwd, location.roots),
-        baseInstructions: turn.system,
-        ...(turn.session_id === null
-          ? {
-              dynamicTools: turn.tools.map((tool) => ({
-                type: 'function',
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.input_schema,
-              })),
-            }
-          : {}),
-      }),
-    );
-    if (thread.modelProvider !== 'openai')
-      throw new CodexRuntimeError(
-        'thread/start',
-        'Codex reported a different inference provider than selected.',
-        true,
-      );
-    requireExecutionLocation(thread, location);
-    return thread.thread.id;
   }
   async execute(
     request: Extract<CodexAiExecute, { operation: `provider_${string}` }>,
@@ -271,6 +250,7 @@ export class CodexProvider {
     if (request.operation === 'provider_interrupt') {
       if (!job.active || job.turnId === null)
         throw new CodexRuntimeError('interrupt', 'The Codex job has no interruptible turn.');
+      this.trace.interrupting(job.turn, job.threadId, job.turnId);
       await job.client.request('turn/interrupt', { threadId: job.threadId, turnId: job.turnId });
       job.lifecycle('stopping');
       return { interrupted: true };
@@ -306,6 +286,7 @@ export class CodexProvider {
     return providerMetadata(this.rateLimits, this.commands.revision());
   }
   stop(): void {
+    this.trace.stopping(this.jobs.size, this.client !== null, this.epoch);
     this.epoch++;
     this.commands.stop();
     this.client?.stop();
@@ -318,6 +299,7 @@ export class CodexProvider {
     return job;
   }
   private publish(event: CodexProviderEvent): void {
+    this.trace.event(event);
     this.options.publish(event);
     if (event.kind === 'context')
       this.job(event.job_id).emit({
@@ -338,8 +320,11 @@ export class CodexProvider {
   }
   private async initialize(): Promise<CodexClient> {
     const epoch = this.epoch;
+    this.trace.initializing(epoch);
     const client = new CodexClient({
       process: await launchCodex(this.options, 'provider'),
+      log: this.options.log,
+      mode: 'provider',
       received: (method, params, id): void => {
         if (this.client === client) this.receive(method, params, id);
       },
@@ -363,6 +348,7 @@ export class CodexProvider {
       this.options.changed(null);
       return client;
     } catch (cause) {
+      this.trace.initializeFailed(cause);
       client.stop();
       throw cause;
     }

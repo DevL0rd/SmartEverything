@@ -1,4 +1,9 @@
-import type { CapabilityKey, RawCapability, StandardCapability } from '@smarteverything/domain';
+import {
+  humanizeKey,
+  type CapabilityKey,
+  type RawCapability,
+  type StandardCapability,
+} from '@smarteverything/domain';
 
 export const MAIN_COMPONENT = 'main';
 
@@ -38,19 +43,14 @@ export function rawCapabilityKey(component: string, capability: string): RawCapa
   return `raw:${componentPrefix(component)}${snakeOf(capability)}`;
 }
 
-export function humanize(name: string): string {
-  const words = name
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[._-]+/g, ' ')
-    .trim()
-    .toLowerCase();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
+export { humanizeKey as humanize } from '@smarteverything/domain';
 
 export function componentLabel(
   component: string,
   label: string,
   componentName: string | null,
 ): string {
-  return component === MAIN_COMPONENT ? label : `${componentName ?? humanize(component)}: ${label}`;
+  return component === MAIN_COMPONENT
+    ? label
+    : `${componentName ?? humanizeKey(component)}: ${label}`;
 }

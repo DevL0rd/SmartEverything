@@ -1,11 +1,11 @@
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import { CommandBindingError } from './types';
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import type { AiChatRow } from '@smarteverything/domain';
 import { useCommandBinding } from './binding';
 import { commandAdapter } from './adapters';
 import type { CommandBinding, CommandDescriptor, CommandScope, DiscoveredCommands } from './types';
-export const COMMAND_QUERY_PREFIX = ['window', 'ai-harness-commands'] as const;
+import { background } from '@smarteverything/logging';
+const COMMAND_QUERY_PREFIX = ['window', 'ai-harness-commands'] as const;
 export interface CommandCatalogue extends CommandBinding {
   readonly scope: CommandScope | null;
   readonly commands: readonly CommandDescriptor[];
@@ -22,7 +22,7 @@ async function discover(binding: CommandBinding): Promise<DiscoveredCommands> {
 }
 export function useCommands(chat: AiChatRow | undefined, opened: boolean): CommandCatalogue {
   const binding = useCommandBinding(chat, opened);
-  const query = useQuery({
+  const query = useScreenQuery({
     queryKey: [...COMMAND_QUERY_PREFIX, binding.key, binding.discoveryKey],
     enabled: opened && binding.reason === null,
     retry: false,
@@ -38,15 +38,15 @@ export function useCommands(chat: AiChatRow | undefined, opened: boolean): Comma
     error: query.error !== null,
     retry: (): void => {
       binding.retry();
-      void query.refetch();
+      background(query.refetch(), 'query.refetch_failed');
     },
   };
 }
 
 function catalogueReason(
   binding: CommandBinding,
-  query: ReturnType<typeof useQuery<DiscoveredCommands>>,
+  query: ReturnType<typeof useScreenQuery<DiscoveredCommands>>,
 ): string | null {
-  if (query.error !== null) return CHAT_ERROR_MESSAGE;
+  if (query.error !== null) return 'Couldn’t load commands.';
   return binding.reason ?? (query.isFetching ? 'Finding commands…' : null);
 }

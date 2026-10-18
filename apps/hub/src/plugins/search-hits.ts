@@ -1,13 +1,14 @@
-import type { PluginSearchEntry, PluginSearchHit } from '@smarteverything/domain';
+import type { DeviceRow, PluginSearchEntry, PluginSearchHit } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 
-function pathOf(store: Store, target: PluginSearchEntry['target']): string | null {
+function pathOf(
+  localDevices: ReadonlyMap<string, DeviceRow>,
+  target: PluginSearchEntry['target'],
+): string | null {
   if (target.kind === 'path') {
     return target.path;
   }
-  const device = store.devices
-    .list()
-    .find((row) => row.provider === 'local' && row.external_id === target.externalId);
+  const device = localDevices.get(target.externalId);
   if (device === undefined) {
     return null;
   }
@@ -16,9 +17,20 @@ function pathOf(store: Store, target: PluginSearchEntry['target']): string | nul
   return `/device/${device.id}${section}${query === '' ? '' : `?${query}`}`;
 }
 
-export function searchHitsOf(store: Store): PluginSearchHit[] {
+export interface SearchHitStore {
+  readonly devices: Pick<Store['devices'], 'list'>;
+  readonly pluginData: Pick<Store['pluginData'], 'searchEntries'>;
+}
+
+export function searchHitsOf(store: SearchHitStore): PluginSearchHit[] {
+  const localDevices = new Map(
+    store.devices
+      .list()
+      .filter((row) => row.provider === 'local')
+      .map((row) => [row.external_id, row] as const),
+  );
   return store.pluginData.searchEntries().flatMap(({ pluginId, entry }) => {
-    const path = pathOf(store, entry.target);
+    const path = pathOf(localDevices, entry.target);
     return path === null
       ? []
       : [

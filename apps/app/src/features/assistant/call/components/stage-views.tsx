@@ -8,10 +8,10 @@ import { Interactive } from '../../../../components/interactive';
 import { Text } from '../../../../components/text';
 import { cn } from '../../../../design/cn';
 import { isNative } from '../../../../design/platform';
-import type { CallView } from '../call-state';
-import { stageNameOf, type StageKind } from '../model/call-stage';
+import { callActive, orbStateOf, type CallView } from '../call-state';
+import { stageNameOf } from '../model/call-stage';
 import { AssistantOrb } from '../orb';
-import { orbStateOf } from '../call-state';
+import { CallWave } from './call-wave';
 import { SightPreview } from './sight-preview';
 
 export interface StageActions {
@@ -36,30 +36,33 @@ export function OrbStage({
   readonly stoppable: boolean;
   readonly onStopTalking: () => void;
 }): ReactNode {
-  const active = call.phase !== 'ended' && call.phase !== 'idle';
+  const active = callActive(call);
   return (
-    <View className="items-center justify-center">
-      <View className={cn(call.phase === 'reconnecting' && 'opacity-60')}>
-        <AssistantOrb
-          state={orbStateOf(call)}
-          level={level}
-          size={size}
-          dimmed={!active || call.phase === 'reconnecting'}
-        />
-      </View>
-      {stoppable ? (
-        <View className="absolute inset-0 items-center justify-center">
-          <Interactive
-            label="Stop the assistant talking"
-            onPress={onStopTalking}
-            className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-raised px-5 elevation-2"
-            layerClassName="rounded-full"
-          >
-            <Icon name="square" size={16} tone="default" />
-            <Text variant="label">Stop</Text>
-          </Interactive>
+    <View className="items-center justify-center gap-6">
+      <View className="items-center justify-center">
+        <View className={cn(call.phase === 'reconnecting' && 'opacity-60')}>
+          <AssistantOrb
+            state={orbStateOf(call)}
+            level={level}
+            size={size}
+            dimmed={!active || call.phase === 'reconnecting'}
+          />
         </View>
-      ) : null}
+        {stoppable ? (
+          <View className="absolute inset-0 items-center justify-center">
+            <Interactive
+              label="Stop the assistant talking"
+              onPress={onStopTalking}
+              className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-surface-raised px-5 elevation-2"
+              layerClassName="rounded-full"
+            >
+              <Icon name="square" size={16} tone="default" />
+              <Text variant="label">Stop</Text>
+            </Interactive>
+          </View>
+        ) : null}
+      </View>
+      {active ? <CallWave phase={call.phase} level={level} muted={call.muted} /> : null}
     </View>
   );
 }
@@ -217,8 +220,4 @@ export function HomeStage({ call }: { readonly call: CallView }): ReactNode {
       {entry === undefined ? null : <HomeCameraView cameraId={entry.device.id} />}
     </View>
   );
-}
-
-export function stageNeedsPreviewChip(kind: StageKind): boolean {
-  return kind === 'camera' || kind === 'home' || kind === 'screen-preview';
 }

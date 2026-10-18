@@ -7,15 +7,18 @@ import type { Store } from '../store/store';
 import { cameraConversation, type CameraParts } from './camera-conversation';
 import type { CameraFraming } from './camera-framing';
 import { channelConversation, type OpenLive } from './channel-conversation';
+import { computerConversation, computerOpening, type ComputerParts } from './computer-conversation';
 import type { HostVoice, HostedVoiceDeps } from './hosted-call';
 import { ReachRefusedError } from './reach-errors';
 import type { Asker } from './reach-guards';
 import { STARTED_HINT, cameraOpening, channelOpening } from './reach-text';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface HostingOptions {
   readonly store: Pick<Store, 'aiOutreach'>;
   readonly host: HostVoice;
   readonly camera: CameraParts;
+  readonly computer: ComputerParts;
   readonly framing: CameraFraming;
   readonly openLive: OpenLive;
   readonly chatFor: (asker: Asker, label: string) => string;
@@ -27,7 +30,7 @@ export interface HostingOptions {
 }
 
 interface LiveSpec {
-  readonly how: 'camera' | 'channel';
+  readonly how: 'camera' | 'channel' | 'desktop';
   readonly target: string;
   readonly label: string;
   readonly reason: string;
@@ -57,7 +60,12 @@ export class Hosting {
           cameraId: device.id,
           cameraName: label,
           caller: hostedUnder(
-            { profileId: asker.profileId, role: asker.role, label },
+            {
+              profileId: asker.profileId,
+              role: asker.role,
+              label,
+              machine: { name: label, kind: 'camera', room: null },
+            },
             asker.origin,
           ),
           opening: this.opening(
@@ -67,6 +75,44 @@ export class Hosting {
           ...(heard === undefined ? {} : { heard }),
           liveVideo: live,
           muteMic: this.options.muteMic(),
+        },
+      ),
+    );
+  }
+
+  computer(
+    asker: Asker,
+    computer: { readonly device: DeviceRow; readonly label: string },
+    reason: string,
+    heard?: () => Int16Array,
+  ): Promise<AiOutreachRow> {
+    const { device, label } = computer;
+    const row = this.live(asker, { how: 'desktop', target: device.id, label, reason });
+    const tap = this.options.computer.activity.begin({
+      callId: row.id,
+      device: { kind: 'computer', id: device.id },
+      profileId: profileOf(device),
+    });
+    tap.phase('connecting');
+    return this.hostOrFail(row, () =>
+      computerConversation(
+        { ...this.voiceDeps(), computer: this.options.computer },
+        {
+          computerId: device.id,
+          computerName: label,
+          caller: hostedUnder(
+            {
+              profileId: asker.profileId,
+              role: asker.role,
+              label,
+              machine: { name: label, kind: 'computer', room: null },
+            },
+            asker.origin,
+          ),
+          opening: this.opening(row, computerOpening(label, reason, heard !== undefined)),
+          ...(heard === undefined ? {} : { heard }),
+          muteMic: this.options.muteMic(),
+          tap,
         },
       ),
     );
@@ -115,7 +161,7 @@ export class Hosting {
 
   stop(): void {
     [...this.hosted.values()].forEach((call) => {
-      void call.end('hung_up');
+      background(call.end('hung_up'), 'call.end_failed');
     });
   }
 
@@ -151,7 +197,7 @@ export class Hosting {
       this.hosted.set(row.id, await start());
       return this.options.store.aiOutreach.byId(row.id);
     } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : String(cause);
+      const reason = messageOf(cause);
       this.options.store.aiOutreach.step(row.id, { state: 'failed', detail: reason });
       this.ended(row.id);
       this.options.log.warn('reach.host_failed', { outreachId: row.id, reason });
@@ -170,4 +216,9 @@ export class Hosting {
   private voiceDeps(): HostedVoiceDeps {
     return { host: this.options.host, clock: this.options.clock, log: this.options.log };
   }
+}
+
+function profileOf(device: DeviceRow): string | null {
+  const profile = device.details['profileId'];
+  return typeof profile === 'string' ? profile : null;
 }

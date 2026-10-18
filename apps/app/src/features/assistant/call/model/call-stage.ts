@@ -1,5 +1,4 @@
 import type { CallView } from '../call-state';
-import { isScreenSource } from './call-copy';
 
 export type StageKind = 'orb' | 'camera' | 'screen-panel' | 'screen-preview' | 'home';
 
@@ -29,10 +28,6 @@ export function selfViewOf(call: CallView, stage: StageKind): boolean {
   );
 }
 
-export function sentPreviewLabel(stage: StageKind): string {
-  return stage === 'camera' ? 'Your camera' : 'Your shared screen';
-}
-
 export function stageNameOf(call: CallView, stage: StageKind): string {
   if (stage === 'camera') {
     return call.video.facing === 'front'
@@ -45,8 +40,4 @@ export function stageNameOf(call: CallView, stage: StageKind): string {
     return call.sight?.label ?? 'Home camera';
   }
   return call.sight?.label ?? 'Your screen';
-}
-
-export function stageIsScreen(call: CallView): boolean {
-  return call.sight !== null && isScreenSource(call.sight.source);
 }

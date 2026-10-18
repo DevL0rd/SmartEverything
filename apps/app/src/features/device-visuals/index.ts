@@ -1,7 +1,8 @@
-export { DeviceVisual } from './device-visual';
+export { DeviceVisual, FamilyVisual, ownsVisualState } from './device-visual';
 export { useVisualPx, type VisualPx } from './visual-size';
 export { deviceIcon, familyIcon } from './family-icon';
 export {
+  useDeviceColour,
   useDeviceVisualState,
   useWatchVisualState,
   type WatchLive,
@@ -13,14 +14,21 @@ export {
   type StepsReading,
   type TodaySteps,
 } from './model/watch-steps';
-export { VisualVisibility } from '../../design/visibility';
+export { LAUNDRY_GLOW_ROLE, startingFacts } from './model/laundry-facts';
 export { visualStateOf } from './model/visual-state';
-export type { VisualSize } from './types';
+export type {
+  ButtonGesture,
+  RobotFacts,
+  RobotMood,
+  VisualSize,
+  VisualState,
+} from './types';
+export { robotFactsOf, robotMood } from './model/facts/robot';
+export { GESTURE_ACTIONS, lastPressOf, pressesOf, type Press } from './model/button-facts';
 export { CameraSnapshot } from './media/camera-snapshot';
 export { snapshotQuery } from './media/snapshot-link';
-export { Canvas, FULL, Layer, scaled, useSvgId, type Box } from './parts/frame';
-export { BLINK, GLOW, SPIN, loopStyle, sway, type Loop } from '../../design/loops';
-export { useAnimationGate } from '../../design/animation-gate';
-export { useOnScreen } from '../../design/visibility';
+export { Layer, scaled, useSvgId, type Box } from './parts/frame';
 export { rounded } from './parts/shapes';
 export { SIZE_CLASS } from './visual-size';
+export { LightingScope } from './parts/material';
+export { IR_CATEGORIES, type IrCategory } from './model/ir-category';

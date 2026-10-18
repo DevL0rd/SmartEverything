@@ -8,47 +8,36 @@ import {
   type ImageOperationRequest,
   type ImageOperationReceipt,
   type ImageResolvedSelection,
+  type ImageEndpoint,
 } from '@smarteverything/domain';
+import { Logger, messageOf } from '@smarteverything/logging';
+import pLimit from 'p-limit';
 import type { ImageActor, ImageServiceOptions } from './contract';
 import { ImageOperationError } from './errors';
 import { ownedChat, readInputs, resolveImage, resolveInputs, type ResolvedImage } from './inputs';
 import { keepResults } from './results';
 import { summaryOf } from '../../store/repositories/assistant-chat';
 import { imagePreview } from './preview';
-import type { ImageBytes } from './media';
 import { recordImageUsage } from './usage';
-import { rasterIssue, requireRasterRuntime } from './raster-process';
 import { waitForImageBatch } from './wait';
+import { admitOptions } from '../../openrouter/image-options';
 
-const PROVIDER_TIMEOUT_MS = 180_000;
-const ACTIVE_IMAGE_OPERATIONS_MAX = 4;
+const log = new Logger('hub.assistant');
+const PROVIDER_CONCURRENCY = 4;
 interface RunningImage {
   readonly controller: AbortController;
   readonly settled: Promise<ImageOperationReceipt>;
 }
 export class ImageOperationService {
   private readonly running = new Map<string, RunningImage>();
+  private readonly queue = pLimit(PROVIDER_CONCURRENCY);
   private accepting = true;
   private readonly listeners = new Set<(receipt: ImageOperationReceipt) => void>();
   constructor(private readonly options: ImageServiceOptions) {
     options.repository.recover((receipt) => recordImageUsage(options.store, receipt));
   }
-  availability(): {
-    readonly accepting: boolean;
-    readonly active: number;
-    readonly capacity: number;
-    readonly rasterIssue: string | null;
-  } {
-    return {
-      accepting: this.accepting,
-      active: this.running.size,
-      capacity: ACTIVE_IMAGE_OPERATIONS_MAX,
-      rasterIssue: rasterIssue(),
-    };
-  }
-  endpoints(actor: ImageActor): ReturnType<ImageServiceOptions['catalog']['list']> {
-    actor.authorize('read', '');
-    return this.options.catalog.list();
+  availability(): { readonly accepting: boolean; readonly active: number } {
+    return { accepting: this.accepting, active: this.running.size };
   }
   resolve(actor: ImageActor, chatId: string, selector: unknown): ImageResolvedSelection {
     const resolved = resolveImage(this.options, actor, chatId, {
@@ -106,26 +95,28 @@ export class ImageOperationService {
     this.options.publish(receipt);
     for (const listener of this.listeners) listener(receipt);
   }
-  start(actor: ImageActor, value: unknown): ImageOperationReceipt {
+  async start(actor: ImageActor, value: unknown): Promise<ImageOperationReceipt> {
     const request = IMAGE_OPERATION_REQUEST.parse(value);
     ownedChat(this.options, actor, request.chat_id);
     const replay = this.options.repository.replay(actor.key, request);
     if (replay !== undefined) return replay;
-    if (!this.accepting) throw new ApiError('conflict', 'The image service is stopping.');
-    if (this.running.size >= ACTIVE_IMAGE_OPERATIONS_MAX)
-      throw new ApiError(
-        'conflict',
-        'Four image operations are already active. Wait for one to finish.',
-      );
     actor.signal?.throwIfAborted();
     actor.authorize('provider', request.chat_id);
-    const { receipt, inputs } = this.reserve(actor, request);
+    return this.begin(actor, request, await this.options.catalog.endpointFor(request));
+  }
+  private begin(
+    actor: ImageActor,
+    request: ImageOperationRequest,
+    endpoint: ImageEndpoint,
+  ): ImageOperationReceipt {
+    if (!this.accepting) throw new ApiError('conflict', 'The image service is stopping.');
+    const { receipt, inputs } = this.reserve(actor, request, endpoint);
     const controller = new AbortController();
     const signal =
       actor.signal === undefined
         ? controller.signal
         : AbortSignal.any([controller.signal, actor.signal]);
-    const settled = this.execute(actor, receipt, inputs, signal).finally(() =>
+    const settled = this.enqueue(receipt, inputs, signal).finally(() =>
       this.running.delete(receipt.id),
     );
     void settled.catch((cause: unknown): void => {
@@ -138,6 +129,43 @@ export class ImageOperationService {
     this.publish(receipt);
     return receipt;
   }
+  private enqueue(
+    receipt: ImageOperationReceipt,
+    inputs: readonly ResolvedImage[],
+    signal: AbortSignal,
+  ): Promise<ImageOperationReceipt> {
+    return new Promise((resolve, reject) => {
+      let queued = true;
+      signal.addEventListener(
+        'abort',
+        () => {
+          if (!queued) return;
+          queued = false;
+          try {
+            resolve(this.cancelQueued(receipt.id, signal));
+          } catch (cause) {
+            reject(
+              new ImageOperationError(
+                'unknown',
+                `The queued cancellation was not recorded: ${messageOf(cause)}`,
+              ),
+            );
+          }
+        },
+        { once: true },
+      );
+      this.queue(async () => {
+        if (!queued) return;
+        queued = false;
+        resolve(await this.execute(receipt, inputs, signal));
+      }).catch(reject);
+    });
+  }
+  private cancelQueued(id: string, signal: AbortSignal): ImageOperationReceipt {
+    const next = this.failure(this.options.repository.read(id), signal.reason, signal, false);
+    this.publish(next);
+    return next;
+  }
   async settled(actor: ImageActor, id: string): Promise<ImageOperationReceipt> {
     const receipt = this.read(actor, id);
     const running = this.running.get(id);
@@ -147,10 +175,9 @@ export class ImageOperationService {
     const receipt = this.read(actor, id);
     const running = this.running.get(id);
     if (running === undefined) return receipt;
-    const next = this.options.repository.update({ ...receipt, cancellation_requested: true });
+    this.publish(this.options.repository.update({ ...receipt, cancellation_requested: true }));
     running.controller.abort();
-    this.publish(next);
-    return next;
+    return this.options.repository.read(id);
   }
   async stop(): Promise<void> {
     this.accepting = false;
@@ -166,10 +193,11 @@ export class ImageOperationService {
   private reserve(
     actor: ImageActor,
     request: ImageOperationRequest,
+    endpoint: ImageEndpoint,
   ): { readonly receipt: ImageOperationReceipt; readonly inputs: ResolvedImage[] } {
     return this.options.store.write(() => {
       const inputs = resolveInputs(this.options, actor, request);
-      const endpoint = this.options.catalog.selected(request, inputs.length);
+      admitOptions(endpoint, request, inputs.length);
       const now = this.options.now().toISOString();
       const receipt = IMAGE_OPERATION_RECEIPT.parse({
         id: request.operation_id,
@@ -192,25 +220,22 @@ export class ImageOperationService {
     });
   }
   private async execute(
-    actor: ImageActor,
     initial: ImageOperationReceipt,
     inputs: readonly ResolvedImage[],
     signal: AbortSignal,
   ): Promise<ImageOperationReceipt> {
     let receipt = initial;
     let submitted = false;
-    const bounded = AbortSignal.any([signal, AbortSignal.timeout(PROVIDER_TIMEOUT_MS)]);
     try {
-      const images = await this.prepareInputs(actor, receipt, inputs, bounded);
+      signal.throwIfAborted();
+      const images = await readInputs(this.options, inputs, signal);
       receipt = this.options.repository.update({ ...receipt, state: 'running' });
       this.publish(receipt);
-      actor.authorize('provider', receipt.chat_id);
-      await this.options.catalog.verify(receipt.endpoint, bounded);
       const result = await this.options.provider.generate({
         request: receipt.request,
         endpoint: receipt.endpoint,
         inputs: images,
-        signal: bounded,
+        signal,
         submitted: () => {
           submitted = true;
         },
@@ -218,62 +243,47 @@ export class ImageOperationService {
           receipt = this.options.repository.update({ ...receipt, usage, usage_source: source });
           this.publish(receipt);
         },
-        authorize: () => {
-          ownedChat(this.options, actor, receipt.chat_id);
-          actor.authorize('provider', receipt.chat_id);
-        },
-        preview: async (image) => {
-          receipt = await this.preview(actor, receipt, { image, signal: bounded });
+        preview: async (content) => {
+          receipt = await this.preview(receipt, content, signal);
         },
       });
-      if (result.images.length > receipt.request.options.n)
-        throw new ImageOperationError('limit', 'Provider returned more images than requested.');
-      receipt = await keepResults(this.options, actor, receipt, { result, signal: bounded });
+      receipt = await keepResults(this.options, receipt, { result, signal });
     } catch (cause) {
-      const shutdown =
-        signal.reason instanceof ImageOperationError && signal.reason.code === 'unknown';
-      receipt = this.failure(receipt, cause, signal.aborted && !shutdown, submitted);
+      receipt = this.failure(receipt, cause, signal, submitted);
     }
     this.publish(receipt);
     return receipt;
   }
-  private async prepareInputs(
-    actor: ImageActor,
-    receipt: ImageOperationReceipt,
-    inputs: readonly ResolvedImage[],
-    signal: AbortSignal,
-  ): ReturnType<typeof readInputs> {
-    await requireRasterRuntime(signal);
-    const images = await readInputs(this.options, actor, receipt.chat_id, { inputs, signal });
-    signal.throwIfAborted();
-    return images;
-  }
   private async preview(
-    actor: ImageActor,
     receipt: ImageOperationReceipt,
-    input: { readonly image: ImageBytes; readonly signal: AbortSignal },
+    content: Buffer,
+    signal: AbortSignal,
   ): Promise<ImageOperationReceipt> {
-    input.signal.throwIfAborted();
+    signal.throwIfAborted();
     const next = this.options.repository.update({ ...receipt, progress: receipt.progress + 1 });
     this.publish(next);
-    const preview = await imagePreview(next, input.image, input.signal);
-    input.signal.throwIfAborted();
-    ownedChat(this.options, actor, next.chat_id);
-    this.options.preview?.(preview);
+    try {
+      this.options.preview?.(await imagePreview(next, content));
+    } catch (cause) {
+      log.warn('image.preview_skipped', {
+        operationId: next.id,
+        reason: messageOf(cause),
+      });
+    }
     return next;
   }
   private failure(
     receipt: ImageOperationReceipt,
     cause: unknown,
-    cancelled: boolean,
+    signal: AbortSignal,
     submitted: boolean,
   ): ImageOperationReceipt {
+    const shutdown =
+      signal.reason instanceof ImageOperationError && signal.reason.code === 'unknown';
+    const cancelled = signal.aborted && !shutdown;
     const definitive = cause instanceof ImageOperationError && cause.code === 'provider';
     const state = failureState(cancelled, submitted, definitive);
-    const reason =
-      state === 'failed' && cause instanceof ApiError && cause.code === 'invalid_request'
-        ? cause.message.slice(0, 200)
-        : FAILURE_REASONS[state];
+    const reason = reasonOf(state, cause, submitted);
     this.options.failed(
       receipt.id,
       cause instanceof ImageOperationError ? cause.code : 'operation',
@@ -295,8 +305,25 @@ export type { ImageActor, ImageServiceOptions } from './contract';
 const FAILURE_REASONS = {
   unknown: 'Provider delivery or billing is unknown. Do not automatically resubmit.',
   cancelled: 'Cancelled locally. Provider billing is unverified.',
+  cancelledUnsent: 'Cancelled before it was sent to the provider. Nothing was billed.',
   failed: 'Image operation failed. No result was saved.',
 } as const;
+function reasonOf(
+  state: 'cancelled' | 'unknown' | 'failed',
+  cause: unknown,
+  submitted: boolean,
+): string {
+  if (state === 'failed') return failedReason(cause);
+  if (state === 'cancelled' && !submitted) return FAILURE_REASONS.cancelledUnsent;
+  return FAILURE_REASONS[state];
+}
+function failedReason(cause: unknown): string {
+  if (cause instanceof ApiError && cause.code === 'invalid_request')
+    return cause.message.slice(0, 200);
+  if (cause instanceof ImageOperationError && cause.code !== 'unknown')
+    return cause.detail.slice(0, 200);
+  return FAILURE_REASONS.failed;
+}
 function failureState(
   cancelled: boolean,
   submitted: boolean,

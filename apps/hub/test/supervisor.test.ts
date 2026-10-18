@@ -2,6 +2,7 @@ import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { pidHolder } from '../src/pid-lock';
 import {
   RESTART_EXIT_CODE,
   RESTART_REQUEST_FILE,
@@ -10,13 +11,9 @@ import {
   STOP_REQUEST_FILE,
   SUPERVISOR_PID_FILE,
 } from '../src/service/configuration';
-import {
-  runSupervisor,
-  supervisorHolder,
-  type ServiceChild,
-  type SupervisorHost,
-} from '../src/service/supervisor';
+import { runSupervisor, type ServiceChild, type SupervisorHost } from '../src/service/supervisor';
 import { temporaryDirectory } from './support/server';
+import { until } from './support/wait';
 
 let directory: { path: string; remove: () => Promise<void> };
 
@@ -118,22 +115,18 @@ async function exists(path: string): Promise<boolean> {
   );
 }
 
-function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 20));
-}
-
 describe('runSupervisor', () => {
   it('records its pid, keeps the output, starts it again at once on a restart and after a delay on a crash', async () => {
     const run = harness();
     await runSupervisor(run.host);
-    expect(await supervisorHolder(directory.path)).toBe(4242);
+    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBe(4242);
     run.children[0]?.stdoutStream.write('booting\n');
     await writeFile(join(directory.path, SERVICE_READY_FILE), '{}');
     run.children[0]?.exit(RESTART_EXIT_CODE);
     await run.spawned(2);
     expect(await exists(join(directory.path, SERVICE_READY_FILE))).toBe(false);
     run.children[1]?.exit(1);
-    await settle();
+    await until(() => run.timers.length === 1, 'the retry timer');
     expect(run.children).toHaveLength(2);
     expect(run.timers.map((timer) => timer.delayMs)).toStrictEqual([5000]);
     run.timers[0]?.run();
@@ -150,7 +143,7 @@ describe('runSupervisor', () => {
     const run = harness();
     await runSupervisor(run.host);
     await writeFile(join(directory.path, STOP_REQUEST_FILE), 'stop');
-    await settle();
+    await until(() => exists(join(directory.path, RESTART_REQUEST_FILE)), 'the restart request');
     expect(await readFile(join(directory.path, RESTART_REQUEST_FILE), 'utf8')).toBe('stop');
     const grace = run.timers.at(-1);
     expect(grace?.delayMs).toBe(30_000);
@@ -167,7 +160,7 @@ describe('runSupervisor', () => {
     const run = harness();
     await runSupervisor(run.host);
     run.children[0]?.exit(1);
-    await settle();
+    await until(() => run.timers.length === 1, 'the retry timer');
     await writeFile(join(directory.path, STOP_REQUEST_FILE), 'stop');
     expect(await run.exited).toBe(0);
     expect(run.timers[0]?.cancelled).toBe(true);
@@ -179,12 +172,12 @@ describe('runSupervisor', () => {
     await runSupervisor(blocked.host);
     expect(await blocked.exited).toBe(0);
     expect(blocked.children).toHaveLength(0);
-    expect(await supervisorHolder(directory.path)).toBe(777);
+    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBe(777);
     const replacing = harness();
     await runSupervisor(replacing.host);
-    expect(await supervisorHolder(directory.path)).toBe(4242);
+    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBe(4242);
     replacing.children[0]?.exit(0);
     expect(await replacing.exited).toBe(0);
-    expect(await supervisorHolder(directory.path)).toBeNull();
+    expect(await pidHolder(join(directory.path, SUPERVISOR_PID_FILE))).toBeNull();
   });
 });

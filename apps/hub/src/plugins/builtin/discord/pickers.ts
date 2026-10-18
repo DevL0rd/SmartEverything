@@ -1,5 +1,7 @@
+import { Logger, describeFailure, messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
 import {
+  PLUGIN_OPTION_IDS_MAX,
   PLUGIN_OPTION_PAGE_MAX,
   type PluginOption,
   type PluginOptionPage,
@@ -7,6 +9,8 @@ import {
 } from '@smarteverything/domain';
 import type { PluginOptionProvider } from '../contract';
 import type { RestCalls } from './link';
+
+const log = new Logger('hub.discord-pickers');
 
 const SNOWFLAKE = z.string().regex(/^\d{1,20}$/);
 const CACHE_MS = 15_000;
@@ -77,7 +81,7 @@ function pageOf(options: readonly PluginOption[], query: PluginOptionQuery): Plu
       state: 'ready',
       options: options
         .filter((option) => wanted.includes(option.id))
-        .slice(0, PLUGIN_OPTION_PAGE_MAX),
+        .slice(0, PLUGIN_OPTION_IDS_MAX),
       next: null,
     };
   }
@@ -233,9 +237,16 @@ async function membersOf(world: PickerWorld, ask: MembersAsk): Promise<PluginOpt
 
 async function usersByIds(world: PickerWorld, ids: readonly string[]): Promise<PluginOption[]> {
   const users = await Promise.all(
-    ids
-      .slice(0, PLUGIN_OPTION_PAGE_MAX)
-      .map(async (id) => await world.rest.get(`/users/${id}`).catch(() => null)),
+    ids.slice(0, PLUGIN_OPTION_IDS_MAX).map(
+      async (id) =>
+        await world.rest.get(`/users/${id}`).catch((cause: unknown) => {
+          log.debug('user.lookup_failed', () => ({
+            userId: id,
+            error: describeFailure(cause).message,
+          }));
+          return null;
+        }),
+    ),
   );
   return users.flatMap((raw) => {
     const user = USER.safeParse(raw);
@@ -317,9 +328,7 @@ export function discordPicker(
     try {
       return (await sources[source]?.(query)) ?? unavailable(NOT_CONNECTED);
     } catch (cause) {
-      return unavailable(
-        `Discord would not list that: ${cause instanceof Error ? cause.message : 'unknown error'}`,
-      );
+      return unavailable(`Discord would not list that: ${messageOf(cause)}`);
     }
   };
 }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { localClock, type Place, type ScheduleRow } from '@smarteverything/domain';
+import type { Place, ScheduleRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
@@ -14,53 +14,17 @@ import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { dateFormat } from '../../../format/locale';
 import { clock, localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { scheduledOf, useAutomationsPage, type RuleView } from '../data/use-automations';
-import { dayWindow, upcomingRuns, type Upcoming } from '../model/schedule';
+import { scheduledOf, useAutomationsPage } from '../data/use-automations';
+import type { Upcoming } from '../model/schedule';
 import { useScheduledRows } from '../scheduled/use-scheduled';
 import { upcomingOf } from '../scheduled/view';
-import { oneOffRuns, type OneOff } from '../scheduled/week';
-
-const WEEK = 7;
+import { weekOf, type Day, type OneOff, type TimedRule } from '../scheduled/week';
 
 function dateOf(day: Date, timeZone: string): string {
-  return day.toLocaleDateString(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    timeZone,
-  });
-}
-
-interface Day {
-  readonly key: string;
-  readonly start: Date;
-  readonly runs: readonly Upcoming[];
-  readonly oneOffs: readonly OneOff[];
-}
-
-function weekOf(
-  value: Date,
-  rules: readonly RuleView[],
-  scheduled: readonly ScheduleRow[],
-  place: Place,
-): Day[] {
-  const weekday = localClock(value, place.timeZone).weekday;
-  const back = -((weekday + 6) % WEEK);
-  const runs = upcomingRuns(
-    rules.map((rule) => ({ id: rule.row.id, name: rule.row.name, scheduled: scheduledOf(rule) })),
-    dayWindow(value, place.timeZone, back, WEEK),
-    place,
-  );
-  const oneOffs = oneOffRuns(scheduled, dayWindow(value, place.timeZone, back, WEEK));
-  return Array.from({ length: WEEK }, (_, index) => {
-    const start = dayWindow(value, place.timeZone, back + index).start;
-    const key = localDayKey(start, place.timeZone);
-    const onDay = (run: { readonly at: Date }): boolean =>
-      localDayKey(run.at, place.timeZone) === key;
-    return { key, start, runs: runs.filter(onDay), oneOffs: oneOffs.filter(onDay) };
-  });
+  return dateFormat({ weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(day);
 }
 
 function RunLine({ run, place }: { readonly run: Upcoming; readonly place: Place }): ReactNode {
@@ -100,15 +64,8 @@ function OneOffLine({ run, place }: { readonly run: OneOff; readonly place: Plac
   );
 }
 
-function DayCard({
-  day,
-  place,
-  now,
-}: {
-  readonly day: Day;
-  readonly place: Place;
-  readonly now: number;
-}): ReactNode {
+function DayCard({ day, place }: { readonly day: Day; readonly place: Place }): ReactNode {
+  const now = useMinute();
   const today = day.key === localDayKey(new Date(now), place.timeZone);
   return (
     <Card padding="none" className={cn('gap-1 p-3', today && 'border border-primary')}>
@@ -135,20 +92,20 @@ function DayCard({
 
 function Week({
   rules,
+  scheduled,
   place,
 }: {
-  readonly rules: readonly RuleView[];
+  readonly rules: readonly TimedRule[];
+  readonly scheduled: readonly ScheduleRow[];
   readonly place: Place;
 }): ReactNode {
-  const now = useMinute();
-  const scheduled = useScheduledRows();
-  const [value, setValue] = useState(() => new Date(now));
+  const [value, setValue] = useState(() => new Date());
   return (
     <>
       <DateNav value={value} range="week" onChange={setValue} />
       <Grid minItemWidth={180}>
         {weekOf(value, rules, scheduled, place).map((day) => (
-          <DayCard key={day.key} day={day} place={place} now={now} />
+          <DayCard key={day.key} day={day} place={place} />
         ))}
       </Grid>
     </>
@@ -160,7 +117,9 @@ function ScheduleBody({
 }: {
   readonly page: ReturnType<typeof useAutomationsPage>;
 }): ReactNode {
-  const timed = page.rules.filter((rule) => rule.section === 'scheduled');
+  const timed = page.rules
+    .filter((rule) => rule.section === 'scheduled')
+    .map((rule) => ({ id: rule.row.id, name: rule.row.name, scheduled: scheduledOf(rule) }));
   const scheduled = useScheduledRows();
   if (!page.reading.usable) {
     return (
@@ -181,13 +140,13 @@ function ScheduleBody({
       />
     );
   }
-  return <Week rules={timed} place={page.reading.place} />;
+  return <Week rules={timed} scheduled={scheduled} place={page.reading.place} />;
 }
 
 export function ScheduleScreen(): ReactNode {
   const page = useAutomationsPage();
   return (
-    <Screen maxWidth="dashboard" header={<PageHeader title="Schedule" />}>
+    <Screen maxWidth="dashboard" header={<PageHeader title="Week view" />}>
       <ScheduleBody page={page} />
     </Screen>
   );

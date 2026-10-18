@@ -1,15 +1,10 @@
 import type { Bar, ChartPoint, RangeBucket } from '../../../components/charts';
-import {
-  bestBucket,
-  isFilled,
-  type BucketValue,
-  type PeriodSummary,
-  type Trend,
-} from './aggregate';
+import { bestBucket, type BucketValue, type PeriodSummary, type Trend } from './aggregate';
+import { downsample } from './downsample';
 import { formatReading } from './catalogue';
 import { trendWords } from './format';
-import type { Point } from './points';
-import type { SeriesSpec } from './series-spec';
+import type { Point } from './readers';
+import { isOccurrence, type SeriesSpec } from './series-spec';
 import type { Range } from './window';
 
 export interface SeriesStat {
@@ -19,14 +14,17 @@ export interface SeriesStat {
   readonly good?: boolean | null;
 }
 
-const PERIOD: Readonly<Record<Range, string>> = {
-  day: 'Yesterday',
-  week: 'Last week',
-  month: 'Last month',
-  year: 'Last year',
+const PREVIOUS: Readonly<Record<Range, { readonly current: string; readonly earlier: string }>> = {
+  day: { current: 'Yesterday', earlier: 'Previous day' },
+  week: { current: 'Last week', earlier: 'Previous week' },
+  month: { current: 'Last month', earlier: 'Previous month' },
+  year: { current: 'Last year', earlier: 'Previous year' },
 };
 
 export function headlineLabel(spec: SeriesSpec, range: Range): string {
+  if (isOccurrence(spec)) {
+    return 'Count';
+  }
   switch (spec.combine) {
     case 'sum':
       return range === 'day' ? 'Total' : 'Daily average';
@@ -40,6 +38,7 @@ export function headlineLabel(spec: SeriesSpec, range: Range): string {
 export interface SeriesFacts {
   readonly spec: SeriesSpec;
   readonly range: Range;
+  readonly current: boolean;
   readonly summary: PeriodSummary;
   readonly previous: PeriodSummary;
   readonly trend: Trend | null;
@@ -61,10 +60,10 @@ function bestStat(facts: SeriesFacts): SeriesStat | null {
   };
 }
 
-export function seriesStats(facts: SeriesFacts): readonly SeriesStat[] {
-  const { spec, summary, previous } = facts;
+function periodStats(facts: SeriesFacts): SeriesStat[] {
+  const { spec, summary } = facts;
   const stats: SeriesStat[] = [];
-  if (summary.total !== null && facts.range !== 'day') {
+  if (summary.total !== null && facts.range !== 'day' && !isOccurrence(spec)) {
     stats.push({ label: 'Total', value: formatReading(spec, summary.total) });
   }
   if (spec.combine === 'mean' && summary.low !== null && summary.high !== null) {
@@ -73,16 +72,27 @@ export function seriesStats(facts: SeriesFacts): readonly SeriesStat[] {
       value: `${formatReading(spec, summary.low)} – ${formatReading(spec, summary.high)}`,
     });
   }
-  if (previous.headline !== null) {
-    stats.push({
-      label: PERIOD[facts.range],
-      value: formatReading(spec, previous.headline),
-      note: trendWords(spec, facts.trend, true),
-      good: facts.trend?.good ?? null,
-    });
+  return stats;
+}
+
+function previousStat(facts: SeriesFacts): SeriesStat[] {
+  const headline = facts.previous.headline;
+  if (headline === null) {
+    return [];
   }
+  return [
+    {
+      label: PREVIOUS[facts.range][facts.current ? 'current' : 'earlier'],
+      value: formatReading(facts.spec, headline),
+      note: trendWords(facts.spec, facts.trend, true),
+      good: facts.trend?.good ?? null,
+    },
+  ];
+}
+
+export function seriesStats(facts: SeriesFacts): readonly SeriesStat[] {
   const best = bestStat(facts);
-  return best === null ? stats : [...stats, best];
+  return [...periodStats(facts), ...previousStat(facts), ...(best === null ? [] : [best])];
 }
 
 const MONTH_TICKS = new Set(['1', '8', '15', '22', '29']);
@@ -101,23 +111,20 @@ function tickOf(range: Range, label: string): string | null {
   }
 }
 
-export function barsOf(range: Range, buckets: readonly BucketValue[]): readonly Bar[] {
-  return buckets.map((bucket) => {
-    const tick = tickOf(range, bucket.label);
-    return {
-      key: String(bucket.start),
-      value: bucket.value ?? 0,
-      ...(tick === null ? {} : { label: tick }),
-    };
-  });
+function markOf(range: Range, bucket: BucketValue): { key: string; label?: string } {
+  const tick = tickOf(range, bucket.label);
+  return { key: String(bucket.start), ...(tick === null ? {} : { label: tick }) };
 }
 
-export function rangeBucketsOf(buckets: readonly BucketValue[]): readonly RangeBucket[] {
-  return buckets.filter(isFilled).map((bucket) => ({
-    key: String(bucket.start),
-    min: bucket.low,
-    max: bucket.high,
-  }));
+export function barsOf(range: Range, buckets: readonly BucketValue[]): readonly Bar[] {
+  return buckets.map((bucket) => ({ ...markOf(range, bucket), value: bucket.value ?? 0 }));
+}
+
+export function rangeBucketsOf(
+  range: Range,
+  buckets: readonly BucketValue[],
+): readonly RangeBucket[] {
+  return buckets.map((bucket) => ({ ...markOf(range, bucket), min: bucket.low, max: bucket.high }));
 }
 
 export function chartPointsOf(
@@ -125,7 +132,11 @@ export function chartPointsOf(
   from: number,
   to: number,
 ): readonly ChartPoint[] {
-  return points
-    .filter((point) => point.at >= from && point.at < to)
-    .map((point) => ({ t: point.at, v: point.value }));
+  return downsample(
+    points
+      .filter((point) => point.at >= from && point.at < to)
+      .map((point) => ({ t: point.at, v: point.value })),
+    from,
+    to,
+  );
 }

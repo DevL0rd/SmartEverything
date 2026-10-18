@@ -1,4 +1,5 @@
-import { MEAL_CODES, choices, temperature, type LogForm } from './form-kit';
+import { HC_CODES } from '@smarteverything/domain';
+import { choicesOf, temperature, type LogForm } from './form-kit';
 
 const BODY: readonly LogForm[] = [
   {
@@ -93,20 +94,14 @@ const VITALS: readonly LogForm[] = [
         kind: 'choice',
         key: 'bodyPosition',
         label: 'Position',
-        options: choices('Not set', 'Standing', 'Sitting', 'Lying down', 'Reclining'),
+        options: choicesOf(HC_CODES.bodyPosition),
         initial: 0,
       },
       {
         kind: 'choice',
         key: 'measurementLocation',
         label: 'Arm or wrist',
-        options: choices(
-          'Not set',
-          'Left wrist',
-          'Right wrist',
-          'Left upper arm',
-          'Right upper arm',
-        ),
+        options: choicesOf(HC_CODES.bloodPressureLocation),
         initial: 0,
       },
     ],
@@ -132,23 +127,21 @@ const VITALS: readonly LogForm[] = [
         kind: 'choice',
         key: 'relationToMeal',
         label: 'When',
-        options: choices('Not set', 'Any time', 'Fasting', 'Before a meal', 'After a meal'),
+        options: choicesOf(HC_CODES.relationToMeal),
         initial: 0,
       },
-      { kind: 'choice', key: 'mealType', label: 'Meal', options: MEAL_CODES, initial: 0 },
+      {
+        kind: 'choice',
+        key: 'mealType',
+        label: 'Meal',
+        options: choicesOf(HC_CODES.mealType),
+        initial: 0,
+      },
       {
         kind: 'choice',
         key: 'specimenSource',
         label: 'Sample',
-        options: choices(
-          'Not set',
-          'Sensor (interstitial)',
-          'Finger prick',
-          'Plasma',
-          'Serum',
-          'Tears',
-          'Whole blood',
-        ),
+        options: choicesOf(HC_CODES.specimenSource),
         initial: 0,
       },
     ],

@@ -1,36 +1,56 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { AutomationInput } from '@smarteverything/domain';
-import { Select } from '../../../components/select';
+import type { FromV2 } from '@smarteverything/domain';
 import { SwitchRow } from '../../../components/rows';
+import { Select } from '../../../components/select';
 import { NumberInput } from './number-input';
 
 interface OffsetProps {
-  readonly input: AutomationInput;
-  readonly onChange: (input: AutomationInput) => void;
+  readonly input: FromV2;
+  readonly onChange: (input: FromV2) => void;
 }
 
-function OffsetBounds({ input, onChange }: OffsetProps): ReactNode {
-  const { offset } = input;
-  if (offset === undefined) return null;
+function withBound(input: FromV2, key: 'min' | 'max', value: number | undefined): FromV2 {
+  const { [key]: _removed, ...rest } = input;
+  return value === undefined ? rest : { ...rest, [key]: value };
+}
+
+function Adjustment({ input, onChange }: OffsetProps): ReactNode {
+  const add = input.add ?? 0;
   return (
     <>
-      <NumberInput
-        label="Minimum result (optional)"
-        value={offset.minimum}
-        optional
-        onChange={(minimum) => {
-          const { minimum: _minimum, ...rest } = offset;
-          onChange({ ...input, offset: minimum === undefined ? rest : { ...rest, minimum } });
+      <Select
+        label="Adjust by"
+        value={add < 0 ? 'subtract' : 'add'}
+        options={[
+          { value: 'add', label: 'Add' },
+          { value: 'subtract', label: 'Subtract' },
+        ]}
+        onChange={(direction) => {
+          onChange({ ...input, add: direction === 'add' ? Math.abs(add) : -Math.abs(add) });
         }}
       />
       <NumberInput
-        label="Maximum result (optional)"
-        value={offset.maximum}
+        label="Amount"
+        value={Math.abs(add)}
+        onChange={(amount) => {
+          if (amount !== undefined) onChange({ ...input, add: add < 0 ? -amount : amount });
+        }}
+      />
+      <NumberInput
+        label="Lowest result"
         optional
-        onChange={(maximum) => {
-          const { maximum: _maximum, ...rest } = offset;
-          onChange({ ...input, offset: maximum === undefined ? rest : { ...rest, maximum } });
+        value={input.min}
+        onChange={(min) => {
+          onChange(withBound(input, 'min', min));
+        }}
+      />
+      <NumberInput
+        label="Highest result"
+        optional
+        value={input.max}
+        onChange={(max) => {
+          onChange(withBound(input, 'max', max));
         }}
       />
     </>
@@ -38,50 +58,18 @@ function OffsetBounds({ input, onChange }: OffsetProps): ReactNode {
 }
 
 export function InputOffsetFields({ input, onChange }: OffsetProps): ReactNode {
-  const { offset } = input;
+  const adjusted = input.add !== undefined || input.min !== undefined || input.max !== undefined;
   return (
     <View className="gap-3">
       <SwitchRow
-        title="Add an offset"
-        value={offset !== undefined}
+        title="Adjust the reading"
+        subtitle="Add or subtract an amount and keep the result within limits."
+        value={adjusted}
         onChange={(enabled) => {
-          onChange(
-            enabled
-              ? {
-                  ...input,
-                  offset: {
-                    operation: 'add',
-                    amount: 0,
-                    unit: input.binding.kind === 'duration' ? 'milliseconds' : 'number',
-                  },
-                }
-              : { binding: input.binding },
-          );
+          onChange(enabled ? { ...input, add: 1 } : { from: input.from });
         }}
       />
-      {offset === undefined ? null : (
-        <>
-          <Select
-            label="Offset"
-            value={offset.operation}
-            options={[
-              { value: 'add', label: 'Add' },
-              { value: 'subtract', label: 'Subtract' },
-            ]}
-            onChange={(operation) => {
-              onChange({ ...input, offset: { ...offset, operation } });
-            }}
-          />
-          <NumberInput
-            label="Amount"
-            value={offset.amount}
-            onChange={(amount) => {
-              if (amount !== undefined) onChange({ ...input, offset: { ...offset, amount } });
-            }}
-          />
-          <OffsetBounds input={input} onChange={onChange} />
-        </>
-      )}
+      {adjusted ? <Adjustment input={input} onChange={onChange} /> : null}
     </View>
   );
 }

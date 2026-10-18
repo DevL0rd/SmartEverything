@@ -1,10 +1,11 @@
-import { SHELLY_DEVICE_INFO, type ShellyDiscoveryResult } from '@smarteverything/domain';
-import type { PluginContext, PluginStop } from '../contract';
+import { SHELLY_DEVICE_INFO, type ShellyDiscoveryResult } from '@smarteverything/shelly';
+import type { PluginStop } from '../contract';
 import { watchShelly } from './discovery';
-import { enrolledDevices, saveEnrollment, type ShellyEnrollment } from './enrollment';
-import { boundedText } from './http';
-import type { ShellySettings } from './settings';
+import { enrolledDevices, type ShellyEnrollment } from './enrollment';
+import { readBounded, shellyHttp } from './http';
+import type { ShellyContext } from './settings';
 
+const IDENTITY_BYTES = 65536;
 type Candidate = ShellyDiscoveryResult['candidates'][number];
 interface AddressWatch {
   readonly stopped: () => boolean;
@@ -12,7 +13,7 @@ interface AddressWatch {
 }
 
 export function watchShellyAddresses(
-  ctx: PluginContext<ShellySettings>,
+  ctx: ShellyContext,
   accept: (enrollment: ShellyEnrollment) => void,
 ): PluginStop {
   let stopped = false;
@@ -41,21 +42,17 @@ export function watchShellyAddresses(
   const settingsStop = ctx.settingsChanged((settings) => {
     if (!settings.paused) for (const candidate of candidates.values()) observe(candidate);
   });
-  const observer = watchShelly(observe, failed).catch((cause: unknown) => {
-    failed(cause);
-    return (): Promise<void> => Promise.resolve();
-  });
+  const stopObserver = watchShelly(observe, failed);
   return async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
     settingsStop();
-    const stop = await observer;
-    await stop();
+    await stopObserver();
   };
 }
 
 async function updateAddress(
-  ctx: PluginContext<ShellySettings>,
+  ctx: ShellyContext,
   known: ShellyEnrollment,
   candidate: Candidate,
   watch: AddressWatch,
@@ -64,12 +61,9 @@ async function updateAddress(
   const newUrl = new URL(candidate.address);
   if (oldUrl.protocol !== 'http:') return;
   if (oldUrl.origin === newUrl.origin) return;
-  const response = await fetch(new URL('/shelly', newUrl), {
-    signal: AbortSignal.any([ctx.signal, AbortSignal.timeout(10000)]),
-    redirect: 'error',
-  });
+  const response = await shellyHttp(new URL('/shelly', newUrl), { signal: ctx.signal, tls: null });
   if (!response.ok) throw new Error('Shelly address verification did not return HTTP success.');
-  const info = SHELLY_DEVICE_INFO.parse(JSON.parse(await boundedText(response)));
+  const info = SHELLY_DEVICE_INFO.parse(JSON.parse(await readBounded(response, IDENTITY_BYTES)));
   verifyIdentity(known, info);
   const records = ctx.records('enrollments');
   const latest = enrolledDevices(records).find((entry) => entry.info.id === known.info.id);
@@ -80,9 +74,7 @@ async function updateAddress(
     latest?.address !== known.address
   )
     return;
-  const enrollment = { ...latest, address: newUrl.origin, info };
-  saveEnrollment(records, enrollment);
-  watch.accept(enrollment);
+  watch.accept({ ...latest, address: newUrl.origin, info });
   ctx.log.info('shelly.address_changed', {});
 }
 

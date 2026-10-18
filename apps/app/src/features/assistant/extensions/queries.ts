@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { queryOptions, type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
   type AiHarnessConfigurationCatalogue,
@@ -7,47 +8,39 @@ import {
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
 import { useSyncStatus } from '../../../store/selectors';
-import { useHarnessSupported } from '../data/harness';
+import { EXTENSIONS_KEY, EXTENSION_CONFIGURATION_KEY } from '../../../queries/extension-keys';
 
-import {
-  EXTENSIONS_KEY,
-  EXTENSION_CONFIGURATION_KEY,
-  RESOLVED_EXTENSION_KEY,
-} from '../../../queries/extension-keys';
-export {
-  EXTENSIONS_KEY,
-  EXTENSION_CONFIGURATION_KEY,
-  RESOLVED_EXTENSION_KEY,
-} from '../../../queries/extension-keys';
-
-export function readExtensionConfiguration(): Promise<AiHarnessConfigurationCatalogue> {
-  return api().call(E.readAiHarnessConfiguration, {});
-}
-
-export function useExtensionConfiguration(): ReturnType<
-  typeof useQuery<AiHarnessConfigurationCatalogue>
+function extensionsQuery(
+  live: boolean,
+): ReturnType<
+  typeof queryOptions<AiHarnessExtensions, Error, AiHarnessExtensions, typeof EXTENSIONS_KEY>
 > {
-  const supported = useHarnessSupported();
-  const sync = useSyncStatus();
-  return useQuery({
-    queryKey: EXTENSION_CONFIGURATION_KEY,
-    enabled: supported && sync.status === 'live',
-    queryFn: readExtensionConfiguration,
-  });
-}
-
-export function useExtensions(): ReturnType<typeof useQuery<AiHarnessExtensions>> {
-  const supported = useHarnessSupported();
-  const sync = useSyncStatus();
-  return useQuery({
+  return queryOptions({
     queryKey: EXTENSIONS_KEY,
-    enabled: supported && sync.status === 'live',
+    enabled: live,
     queryFn: () => api().call(E.readAiHarnessExtensions, {}),
   });
 }
 
-export function useResolvedExtension(
-  id: string,
-): ReturnType<typeof useQuery<HarnessExtensionItem>> {
-  return useQuery({ queryKey: [...RESOLVED_EXTENSION_KEY, id], enabled: false });
+export function useExtensionConfiguration(): ReturnType<
+  typeof useScreenQuery<AiHarnessConfigurationCatalogue>
+> {
+  const sync = useSyncStatus();
+  return useScreenQuery({
+    queryKey: EXTENSION_CONFIGURATION_KEY,
+    enabled: sync.status === 'live',
+    queryFn: () => api().call(E.readAiHarnessConfiguration, {}),
+  });
+}
+
+export function useExtensions(): ReturnType<typeof useScreenQuery<AiHarnessExtensions>> {
+  return useScreenQuery(extensionsQuery(useSyncStatus().status === 'live'));
+}
+
+export function useExtension(id: string): UseQueryResult<HarnessExtensionItem | null> {
+  const live = useSyncStatus().status === 'live';
+  return useScreenQuery({
+    ...extensionsQuery(live),
+    select: (catalogue) => catalogue.items.find((item) => item.id === id) ?? null,
+  });
 }

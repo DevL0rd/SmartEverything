@@ -643,6 +643,9 @@ describe('conditionsHold', () => {
     },
     now: new Date(iso),
     timeZone: 'Europe/Berlin',
+    valueOf: () => null,
+    forecast: null,
+    location: null,
   });
   const parse = (value: unknown): Conditions => CONDITIONS.parse(value);
   const lampOn = {

@@ -6,8 +6,9 @@ import { ActionDetails } from '../../../components/action-details';
 import { DecisionStatus } from '../../../components/decision-frame';
 import { ElicitationForm } from './elicitation-form';
 import { Text } from '../../../components/text';
-import { PromptQuestions, type QuestionAnswer } from '../../computers/components/prompt-questions';
+import { PromptQuestions, type QuestionAnswer } from '../../computers';
 import { useProviderAnswer } from './provider-data';
+import { timeText } from '../../../format/locale';
 type Prompt = AiChatProvider['prompts'][number];
 function Details({ prompt }: { readonly prompt: ClaudePrompt }): ReactNode {
   return (
@@ -26,7 +27,7 @@ function Details({ prompt }: { readonly prompt: ClaudePrompt }): ReactNode {
         </Text>
       ))}
       <Text variant="caption" tone="variant">
-        Expires {new Date(prompt.expires_at).toLocaleTimeString()}
+        Expires {timeText(new Date(prompt.expires_at))}
       </Text>
     </View>
   );
@@ -49,7 +50,7 @@ function NativePrompt({
   if (!parsed.success)
     return (
       <View className="gap-3">
-        <Text tone="warning">Unsupported native request. Answer on the supplying computer.</Text>
+        <Text tone="warning">This request can’t be answered here. Answer it on the computer.</Text>
         <Button
           label="Cancel request"
           disabled={frozen}

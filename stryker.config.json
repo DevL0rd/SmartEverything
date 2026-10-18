@@ -19,7 +19,9 @@
     "packages/tuya/src/**/*.ts",
     "!packages/tuya/src/index.ts",
     "packages/smartthings/src/**/*.ts",
-    "!packages/smartthings/src/index.ts"
+    "!packages/smartthings/src/index.ts",
+    "packages/shelly/src/**/*.ts",
+    "!packages/shelly/src/index.ts"
   ],
   "thresholds": {
     "high": 100,
@@ -29,5 +31,15 @@
   "tempDirName": ".stryker-tmp",
   "cleanTempDir": true,
   "plugins": ["@stryker-mutator/vitest-runner"],
-  "ignorePatterns": [".claude", ".agents", "dist", "dist-types", "coverage", "reports"]
+  "ignorePatterns": [
+    ".claude",
+    ".agents",
+    ".cache",
+    "apps",
+    "dist",
+    "dist-types",
+    "coverage",
+    "reports",
+    "tmp"
+  ]
 }

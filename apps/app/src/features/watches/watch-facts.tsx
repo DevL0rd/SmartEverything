@@ -10,8 +10,9 @@ import { dayAge, daysBetween, hoursMinutes, relative } from '../../format/time';
 import type { WatchGlance } from './watch-glance';
 import { syncNow } from './watch-link';
 import { PHASE_TEXT } from './watch-phone-rows';
+import { background } from '@smarteverything/logging';
 
-export type FactKey = 'heart' | 'sleep' | 'battery' | 'sync' | 'distance' | 'energy';
+type FactKey = 'heart' | 'sleep' | 'battery' | 'sync' | 'distance' | 'energy';
 
 export interface Fact {
   readonly key: FactKey;
@@ -208,7 +209,7 @@ export function FactChip({ fact: item }: { readonly fact: Fact }): ReactNode {
   );
 }
 
-export function canSync(glance: WatchGlance): boolean {
+function canSync(glance: WatchGlance): boolean {
   return glance.onThisPhone && glance.phase === 'connected' && !glance.syncing;
 }
 
@@ -222,7 +223,7 @@ export function SyncButton({ glance }: { readonly glance: WatchGlance }): ReactN
       label={glance.syncing ? 'Syncing' : 'Sync now'}
       disabled={!canSync(glance)}
       onPress={() => {
-        void syncNow();
+        background(syncNow(), 'now.sync_failed');
       }}
     />
   );

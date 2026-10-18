@@ -4,10 +4,10 @@ import { NATIVE_HUB_CREDENTIAL_BINDING } from './hub-native';
 export const NATIVE_HUB_RESOURCE_PURPOSE = z.enum(['image', 'audio', 'recording', 'attachment']);
 export type NativeHubResourcePurpose = z.infer<typeof NATIVE_HUB_RESOURCE_PURPOSE>;
 export const NATIVE_HUB_RESOURCE_OPEN = z.strictObject({
-  scopeId: z.string().min(1).max(200),
-  binding: z.lazy(() => NATIVE_HUB_CREDENTIAL_BINDING),
-  routeGeneration: z.int().nonnegative(),
-  url: z.url({ protocol: /^https?$/ }).max(4096),
+  scopeId: z.string().min(1),
+  binding: NATIVE_HUB_CREDENTIAL_BINDING,
+  routeGeneration: z.int().nonnegative().optional(),
+  url: z.url({ protocol: /^https?$/ }),
   expiresAt: z.iso.datetime(),
   purpose: NATIVE_HUB_RESOURCE_PURPOSE,
 });
@@ -50,7 +50,6 @@ export function nativeHubResourceIdentity(input: NativeHubResourceOpen): string 
   return JSON.stringify([
     input.scopeId,
     NATIVE_HUB_CREDENTIAL_BINDING.parse(input.binding),
-    input.routeGeneration,
     input.purpose,
     url.origin,
     url.pathname,

@@ -1,7 +1,7 @@
-import type { ShellyPresenceDevice, ShellyPresenceZone } from '@smarteverything/domain';
+import type { ShellyDevice, ShellyZone } from '@smarteverything/shelly';
 import type { Device } from '../../store/state';
 
-export function shownZone(sensor: ShellyPresenceDevice, device: Device): ShellyPresenceZone | null {
+export function shownZone(sensor: ShellyDevice, device: Device): ShellyZone | null {
   return (
     sensor.zones.find((zone) => zone.externalId === device.external_id) ??
     (sensor.externalId === device.external_id
@@ -10,12 +10,12 @@ export function shownZone(sensor: ShellyPresenceDevice, device: Device): ShellyP
   );
 }
 
-function occupancyLabel(zone: ShellyPresenceZone | null): string {
+function occupancyLabel(zone: ShellyZone | null): string {
   const value = zone?.status?.value ?? null;
   return value === null ? 'Unknown' : value ? 'Occupied' : 'Clear';
 }
 
-export function zoneState(sensor: ShellyPresenceDevice, zone: ShellyPresenceZone | null): string {
+export function zoneState(sensor: ShellyDevice, zone: ShellyZone | null): string {
   if (sensor.connection.state !== 'online')
     return {
       offline: 'Offline',
@@ -29,7 +29,7 @@ export function zoneState(sensor: ShellyPresenceDevice, zone: ShellyPresenceZone
   return occupancyLabel(zone);
 }
 
-export function zoneCount(sensor: ShellyPresenceDevice, zone: ShellyPresenceZone | null): string {
+export function zoneCount(sensor: ShellyDevice, zone: ShellyZone | null): string {
   if (
     sensor.connection.state !== 'online' ||
     ['Detection paused', 'Disabled', 'Unknown', 'Sensor fault'].includes(zoneState(sensor, zone))
@@ -39,7 +39,7 @@ export function zoneCount(sensor: ShellyPresenceDevice, zone: ShellyPresenceZone
   return count === null ? '—' : String(count);
 }
 
-export function lightText(sensor: ShellyPresenceDevice): string {
+export function lightText(sensor: ShellyDevice): string {
   const light = sensor.light[0];
   if (light?.status === undefined || light.status === null || sensor.connection.state !== 'online')
     return 'Light unknown';

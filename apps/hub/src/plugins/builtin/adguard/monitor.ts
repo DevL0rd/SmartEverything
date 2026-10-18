@@ -7,18 +7,23 @@ import type {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { PolledLoop, type Cadence } from '../polled-loop';
-import { AdGuardRefusedError, reasonOf, type AdGuardClient } from './adguard-client';
+import { JsonApiRefusedError, reasonOf } from '../json-api';
+import { WireGate } from '../wire-gate';
+import type { AdGuardClient } from './adguard-client';
 import { CLIENTS_REPLY, FILTERING_REPLY, STATS_REPLY, STATUS_REPLY } from './api-schemas';
+import { LookupRates, type LookupRate } from './lookup-rates';
 import { clientNames, filtersOf, statsOf, statusOf } from './readings';
 
-const FAST_SECONDS = 10;
-const SLOW_SECONDS = 60;
-const FULL_EVERY = 6;
+const SAMPLE_SECONDS = 1;
+const STATUS_MS = 10_000;
+const FULL_MS = 60_000;
+const WIRE_QUIET_MS = 60_000;
 
 export interface MonitorOptions {
   readonly client: AdGuardClient;
   readonly url: string;
   readonly log: Logger;
+  readonly record: (snapshot: AdGuardSnapshot, rate: LookupRate | null) => void;
   readonly publish: (snapshot: AdGuardSnapshot) => void;
   readonly protectionChanged: (status: AdGuardStatus) => void;
 }
@@ -30,10 +35,12 @@ export class AdGuardMonitor {
   #filters: AdGuardFilter[] = [];
   #rules: string[] = [];
   #names: ReadonlyMap<string, string> = new Map();
-  #tick = 0;
+  #statusAt = 0;
+  #fullAt = 0;
+  readonly #rates = new LookupRates();
+  readonly #wire = new WireGate(WIRE_QUIET_MS);
   readonly #loop = new PolledLoop({
-    fastSeconds: FAST_SECONDS,
-    slowSeconds: SLOW_SECONDS,
+    sampleSeconds: SAMPLE_SECONDS,
     tick: (): Promise<void> => this.#readOnce(),
   });
 
@@ -61,12 +68,14 @@ export class AdGuardMonitor {
     this.#loop.setCadence(cadence);
     if (cadence === 'paused') {
       this.#connection = { state: 'paused' };
+      this.options.record(this.latest, null);
       this.options.publish(this.latest);
     }
   }
 
   refresh(): void {
-    this.#tick = 0;
+    this.#statusAt = 0;
+    this.#fullAt = 0;
     this.#loop.runNow();
   }
 
@@ -75,18 +84,25 @@ export class AdGuardMonitor {
   }
 
   async #readOnce(): Promise<void> {
-    const full = this.#tick % FULL_EVERY === 0 || this.#loop.cadence === 'slow';
-    this.#tick += 1;
+    const now = Date.now();
+    const before = this.#connection.state;
+    let rate: LookupRate | null = null;
     try {
-      if (full) {
+      if (now - this.#fullAt >= FULL_MS) {
         await this.#readSlowParts();
+        this.#fullAt = now;
       }
-      await this.#readStatusAndStats();
+      rate = await this.#readStatusAndStats(now);
       this.#connection = { state: 'online' };
     } catch (error) {
+      this.#rates.reset();
       this.#fail(error);
     }
-    this.options.publish(this.latest);
+    const snapshot = this.latest;
+    this.options.record(snapshot, rate);
+    if (this.#wire.due(this.#loop.viewed, snapshot.connection.state !== before)) {
+      this.options.publish(snapshot);
+    }
   }
 
   async #readSlowParts(): Promise<void> {
@@ -100,16 +116,24 @@ export class AdGuardMonitor {
     this.#rules = filtering.user_rules ?? [];
   }
 
-  async #readStatusAndStats(): Promise<void> {
+  async #readStatusAndStats(now: number): Promise<LookupRate | null> {
     const client = this.options.client;
+    const statusDue = now - this.#statusAt >= STATUS_MS;
     const [status, stats] = await Promise.all([
-      client.read('/control/status', STATUS_REPLY),
+      statusDue ? client.read('/control/status', STATUS_REPLY) : Promise.resolve(null),
       client.read('/control/stats', STATS_REPLY),
     ]);
-    const next = statusOf(status, new Date());
+    if (status !== null) {
+      this.#statusAt = now;
+      this.#applyStatus(statusOf(status, new Date()));
+    }
+    this.#stats = statsOf(stats, this.#names);
+    return this.#rates.sample(this.#stats.queries, this.#stats.blocked, now);
+  }
+
+  #applyStatus(next: AdGuardStatus): void {
     const previous = this.#status;
     this.#status = next;
-    this.#stats = statsOf(stats, this.#names);
     if (previous !== null && previous.protection !== next.protection) {
       this.options.protectionChanged(next);
     }
@@ -117,7 +141,7 @@ export class AdGuardMonitor {
 
   #fail(error: unknown): void {
     const reason = reasonOf(error);
-    if (error instanceof AdGuardRefusedError) {
+    if (error instanceof JsonApiRefusedError) {
       this.#connection = { state: 'refused', reason };
       return;
     }

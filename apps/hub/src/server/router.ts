@@ -1,13 +1,14 @@
-import { clientResponse } from './response-compatibility';
 import { withRequestSignal } from './request-signal';
+import { assertOwnerRoute } from './owner-route';
+import { assertScopeRoute } from './person-scope';
 import { withControlCaller } from './local-control-context';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   API_ENDPOINTS,
-  ASSISTANT_POST,
   ApiError,
   NO_BODY,
-  matchPath,
+  type ApiEndpoints,
+  type ClientRow,
   type EndpointName,
   type EndpointShape,
 } from '@smarteverything/domain';
@@ -16,14 +17,12 @@ import type { z } from 'zod';
 import type { ComputerEndpointName } from '../computers/computer-routes';
 import type { PhoneEndpointName } from '../phones/phone-routes';
 import type { Store } from '../store/store';
-import {
-  assertReaderEngineWrite,
-  engineReader,
-  memberEngineProjection,
-  legacyTargetChat,
-} from './engine-compatibility';
-import { authenticate, profileIdOf, roleOfCaller, type Caller } from './auth';
+import { beginHandler, type HandlerRun } from './handlers/handler-log';
+import { memberEngineProjection } from './member-engine';
+import { RouteIndex, type Found } from './route-index';
+import { authenticate, roleOfCaller, type Caller } from './auth';
 import { invalid, issuesOf } from './errors';
+import { noteCaller, noteRoute } from './request-trace';
 import { BODY_LIMIT, PUBLIC_BODY_LIMIT, parseJsonBody, readBody, remoteOf, sendJson } from './http';
 
 export interface HandlerInput<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType> {
@@ -53,9 +52,49 @@ interface RawInput {
   readonly remote: string;
 }
 
-export interface Bound {
-  readonly endpoint: EndpointShape;
+export interface Bound<S extends EndpointShape = EndpointShape> {
+  readonly endpoint: S;
   readonly run: (caller: Caller, raw: RawInput, log: Logger) => Promise<unknown>;
+}
+
+function roleFor(caller: Caller, access: EndpointShape['access']): ClientRow['role'] | null {
+  const role = caller.kind === 'client' || caller.kind === 'service' ? roleOfCaller(caller) : null;
+  if (access === 'owner' && role !== 'owner')
+    throw new ApiError('forbidden', 'Only an owner may do this.');
+  return role;
+}
+
+function validResponse(endpoint: EndpointShape, result: unknown, log: Logger): unknown {
+  const response = endpoint.response.safeParse(result);
+  if (response.success) return response.data;
+  log.error('response.invalid', undefined, {
+    path: endpoint.path,
+    issues: issuesOf(response.error),
+  });
+  throw new ApiError('internal', `The server built an invalid response for ${endpoint.path}.`);
+}
+
+function validated<P extends z.ZodType, Q extends z.ZodType, B extends z.ZodType>(
+  endpoint: Typed<P, Q, B, z.ZodType>,
+  raw: RawInput,
+  run: HandlerRun,
+): { params: z.output<P>; query: z.output<Q>; body: z.output<B> } {
+  const params = endpoint.params.safeParse(raw.params);
+  if (!params.success) {
+    run.rejected('path', params.error);
+    throw invalid('path', params.error);
+  }
+  const query = endpoint.query.safeParse(raw.query);
+  if (!query.success) {
+    run.rejected('query', query.error);
+    throw invalid('query', query.error);
+  }
+  const body = endpoint.body.safeParse(raw.body);
+  if (!body.success) {
+    run.rejected('body', body.error);
+    throw invalid('body', body.error);
+  }
+  return { params: params.data, query: query.data, body: body.data };
 }
 
 export function bound<
@@ -63,48 +102,31 @@ export function bound<
   Q extends z.ZodType,
   B extends z.ZodType,
   R extends z.ZodType,
+  S extends EndpointShape,
 >(
-  endpoint: Typed<P, Q, B, R>,
+  endpoint: S & Typed<P, Q, B, R>,
   handler: (input: HandlerInput<P, Q, B>) => z.input<R> | Promise<z.input<R>>,
-): Bound {
+): Bound<S> {
   return {
     endpoint,
     run: async (caller, raw, log): Promise<unknown> => {
-      const params = endpoint.params.safeParse(raw.params);
-      if (!params.success) {
-        throw invalid('path', params.error);
-      }
-      const query = endpoint.query.safeParse(raw.query);
-      if (!query.success) {
-        throw invalid('query', query.error);
-      }
-      const body = endpoint.body.safeParse(raw.body);
-      if (!body.success) {
-        throw invalid('body', body.error);
-      }
-      const result = await withControlCaller(caller, () =>
-        handler({
-          params: params.data,
-          query: query.data,
-          body: body.data,
-          caller,
-          remote: raw.remote,
-        }),
-      );
-      const response = endpoint.response.safeParse(result);
-      if (!response.success) {
-        log.error('response.invalid', undefined, {
-          path: endpoint.path,
-          issues: issuesOf(response.error),
-        });
-        throw new ApiError(
-          'internal',
-          `The server built an invalid response for ${endpoint.path}.`,
+      const run = beginHandler(`${endpoint.method} ${endpoint.path}`, endpoint.access, caller);
+      try {
+        const role = roleFor(caller, endpoint.access);
+        const input = validated(endpoint, raw, run);
+        const startedAt = performance.now();
+        const result = await withControlCaller(caller, () =>
+          handler({ ...input, caller, remote: raw.remote }),
         );
+        const response = validResponse(endpoint, result, log);
+        run.finished(Math.round((performance.now() - startedAt) * 100) / 100);
+        return caller.kind === 'client' && role !== 'owner'
+          ? memberEngineProjection(response)
+          : response;
+      } catch (cause) {
+        run.failed(cause);
+        throw cause;
       }
-      return caller.kind === 'client' && roleOfCaller(caller) !== 'owner'
-        ? memberEngineProjection(response.data)
-        : response.data;
     },
   };
 }
@@ -122,67 +144,38 @@ type ExtensionEndpointName =
   | 'decideMcpConsent'
   | PhoneEndpointName
   | 'reportClientFailures'
+  | 'readMachineUpdate'
   | ComputerEndpointName;
 
-export type RouteTable = Readonly<Record<Exclude<EndpointName, ExtensionEndpointName>, Bound>>;
+export type RouteOf<N extends EndpointName> = Bound<ApiEndpoints[N]>;
 
-export type ExtensionRouteTable = Readonly<Partial<Record<ExtensionEndpointName, Bound>>>;
+export type Routes<K extends EndpointName> = {
+  readonly [N in K]: RouteOf<N>;
+};
 
-class RouteTableError extends Error {
-  override readonly name = 'RouteTableError';
+export type RouteTable = Routes<Exclude<EndpointName, ExtensionEndpointName>>;
 
-  constructor(name: string) {
-    super(`The handler registered as ${name} implements a different endpoint.`);
-  }
-}
+export type ExtensionRouteTable = Partial<Routes<ExtensionEndpointName>>;
 
-interface Route {
-  readonly name: string;
-  readonly bound: Bound;
-  readonly literals: number;
-}
-
-export interface Matched {
-  readonly route: Route;
-  readonly params: Readonly<Record<string, string>>;
-}
-
-function literalCount(path: string): number {
-  return path.split('/').filter((segment) => segment !== '' && !segment.startsWith(':')).length;
-}
+export type Matched = Found<Bound>;
 
 export class Router {
-  private readonly routes: readonly Route[];
+  private readonly index = new RouteIndex<Bound>();
 
   constructor(
     table: RouteTable & ExtensionRouteTable,
     private readonly store: Store,
     private readonly log: Logger,
   ) {
-    this.routes = Object.entries(table)
-      .map(([name, entry]: [string, Bound]) => {
-        const declared: unknown = Object.entries(API_ENDPOINTS).find(([key]) => key === name)?.[1];
-        if (declared !== entry.endpoint) {
-          throw new RouteTableError(name);
-        }
-        return { name, bound: entry, literals: literalCount(entry.endpoint.path) };
-      })
-      .sort((left, right) => right.literals - left.literals);
+    for (const entry of Object.values<Bound | undefined>(table)) {
+      if (entry !== undefined) {
+        this.index.add(entry.endpoint.method, entry.endpoint.path, entry);
+      }
+    }
   }
 
   match(method: string, pathname: string): Matched | 'wrong_method' | null {
-    let pathMatched = false;
-    for (const route of this.routes) {
-      const params = matchPath(route.bound.endpoint.path, pathname);
-      if (params === null) {
-        continue;
-      }
-      pathMatched = true;
-      if (route.bound.endpoint.method === method) {
-        return { route, params };
-      }
-    }
-    return pathMatched ? 'wrong_method' : null;
+    return this.index.find(method, pathname);
   }
 
   async dispatch(
@@ -190,28 +183,25 @@ export class Router {
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
-    const endpoint = matched.route.bound.endpoint;
-    const caller = authenticate(this.store, request, endpoint.access);
+    const endpoint = matched.value.endpoint;
+    noteRoute(response, `${endpoint.method} ${endpoint.path}`, endpoint.access);
+    const caller = authenticate(
+      this.store,
+      request,
+      endpoint.access,
+      endpoint === API_ENDPOINTS.session,
+    );
+    noteCaller(response, caller);
+    assertOwnerRoute(this.store, caller, endpoint);
+    assertScopeRoute(this.store, caller, endpoint, matched.params);
     const limit = endpoint.access === 'public' ? PUBLIC_BODY_LIMIT : BODY_LIMIT;
     const body = parseJsonBody(request, await readBody(request, limit));
     if (endpoint.body === NO_BODY && body !== undefined) {
       throw new ApiError('invalid_request', `${endpoint.method} ${endpoint.path} takes no body.`);
     }
     const url = new URL(request.url ?? '/', 'http://server');
-    const reader = engineReader(request.headers);
-    const computerEngines = reader !== 'legacy';
-    if (endpoint.method !== 'GET')
-      assertReaderEngineWrite(
-        this.store,
-        matched.route.name,
-        {
-          ...matched.params,
-          ...legacyChatParams(this.store, matched, caller, body),
-        },
-        { body, reader },
-      );
     const result = await withRequestSignal(request, response, () =>
-      matched.route.bound.run(
+      matched.value.run(
         caller,
         {
           params: matched.params,
@@ -222,29 +212,6 @@ export class Router {
         this.log,
       ),
     );
-    if (!computerEngines)
-      response.setHeader(
-        'x-smarteverything-ai-unavailable',
-        'Computer AI chats require an updated app; computer chats are unavailable in this app.',
-      );
-    response.setHeader('vary', 'origin, accept');
-    sendJson(response, 200, clientResponse(result, request.headers, matched.route.name, reader));
+    sendJson(response, 200, result);
   }
-}
-
-function legacyChatParams(
-  store: Store,
-  matched: Matched,
-  caller: Caller,
-  body: unknown,
-): Readonly<Record<string, string>> {
-  const post = matched.route.name === 'postAssistant' ? ASSISTANT_POST.safeParse(body) : null;
-  const profileId = post?.success === true ? post.data.profileId : undefined;
-  const id = legacyTargetChat(
-    store,
-    matched.route.name,
-    matched.params,
-    profileId ?? (caller.kind === 'client' ? profileIdOf(store, caller) : null),
-  );
-  return id === undefined ? {} : { chatId: id };
 }

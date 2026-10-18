@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
 import { renameRoom } from '../../../api/settings';
@@ -12,8 +12,10 @@ import { Screen } from '../../../components/screen';
 import { Section } from '../../../components/section';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { useDevices, useRoom } from '../../../store/selectors';
-import type { TableRow } from '@smarteverything/domain';
+import { roomLightsTarget, type TableRow } from '@smarteverything/domain';
 import { DeviceTile } from '../../devices';
+import { LightGroupCard } from '../../device-groups';
+import { splitRoomLights } from '../../device-list';
 import { useRoomClimate } from '../components/room-card';
 import { RoomScenes } from '../components/room-scenes';
 import { useTurnOff } from '../data/turn-off';
@@ -55,6 +57,23 @@ function useClimateLine(roomId: string): string | undefined {
   return climate === '' ? undefined : climate;
 }
 
+function RoomLightsCard({
+  room,
+  count,
+}: {
+  readonly room: Room;
+  readonly count: number;
+}): ReactNode {
+  return (
+    <LightGroupCard
+      target={roomLightsTarget(room.id)}
+      rows="all"
+      title={`Lights · ${String(count)}`}
+      href={href.roomLights(room.id)}
+    />
+  );
+}
+
 function RoomBody({ room }: { readonly room: Room }): ReactNode {
   const devices = useDevices({ room: room.id });
   const [renaming, setRenaming] = useState<TextEditRequest | null>(null);
@@ -62,6 +81,8 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
     setRenaming(renameRequest(room));
   });
   const climate = useClimateLine(room.id);
+  const split = useMemo(() => splitRoomLights(devices), [devices]);
+  const tiles = split === null ? devices : split.rest;
   return (
     <Screen
       header={
@@ -80,13 +101,18 @@ function RoomBody({ room }: { readonly room: Room }): ReactNode {
           action={<Button label="All devices" href={href.devices()} variant="tonal" />}
         />
       ) : (
-        <Section title="Devices">
-          <Grid minItemWidth={156} maxColumns={6}>
-            {devices.map((device) => (
-              <DeviceTile key={device.id} device={device} showRoom={false} />
-            ))}
-          </Grid>
-        </Section>
+        <>
+          {split === null ? null : <RoomLightsCard room={room} count={split.lights.length} />}
+          {tiles.length === 0 ? null : (
+            <Section title="Devices">
+              <Grid minItemWidth={156} maxColumns={6}>
+                {tiles.map((device) => (
+                  <DeviceTile key={device.id} device={device} showRoom={false} />
+                ))}
+              </Grid>
+            </Section>
+          )}
+        </>
       )}
       <RoomScenes devices={devices} />
       <TextEditSheet

@@ -1,6 +1,14 @@
-import { EVENT_KINDS } from '@smarteverything/domain';
+import {
+  EVENT_KINDS,
+  appendTo,
+  type DeviceScope,
+  type RecordingRow,
+} from '@smarteverything/domain';
 import { z } from 'zod';
+import type { PhoneViewer } from '../../../phones/phone-detail';
+import { visibleEvents, visibleRows } from '../../../phones/phone-visibility';
 import type { Store } from '../../../store/store';
+import { deviceScopeOfActor, phoneViewerOfActor } from './person-reach';
 import { MOMENT_ARGUMENT, READS, ToolError, defineTool, type Tool } from './registry';
 import { capabilityOf, placedDevice, placedDevices } from './targets';
 
@@ -26,7 +34,7 @@ const HISTORY = z
     message: `the range must not exceed ${String(HISTORY_DAYS)} days`,
   });
 
-type History = z.infer<typeof HISTORY>;
+export type History = z.infer<typeof HISTORY>;
 
 const EVENTS = z.strictObject({
   deviceIds: z.array(z.uuid()).min(1).optional().describe('Only events of these devices'),
@@ -36,10 +44,15 @@ const EVENTS = z.strictObject({
   limit: z.number().int().min(1).max(200).default(50),
 });
 
-type Events = z.infer<typeof EVENTS>;
+export type Events = z.infer<typeof EVENTS>;
 
-function history(store: Store, input: History): Record<string, unknown> {
-  const presented = capabilityOf(placedDevice(store, input.deviceId), input.capability);
+export function historyOf(
+  store: Store,
+  scope: DeviceScope | null,
+  viewer: PhoneViewer,
+  input: History,
+): Record<string, unknown> {
+  const presented = capabilityOf(placedDevice(store, scope, input.deviceId), input.capability);
   const kind = presented.capability.value.kind;
   const series = {
     capabilities: [presented.key],
@@ -48,9 +61,11 @@ function history(store: Store, input: History): Record<string, unknown> {
     to: input.to,
   };
   if (input.bucket === 'raw') {
-    const points = store.state
-      .history({ ...series, order: 'asc', limit: input.limit })
-      .map((row) => ({ value: row.value, observed_at: row.observed_at }));
+    const points = visibleRows(
+      store,
+      viewer,
+      store.state.history({ ...series, order: 'asc', limit: input.limit }),
+    ).map((row) => ({ value: row.value, observed_at: row.observed_at }));
     return {
       capability: presented.key,
       label: presented.label,
@@ -65,16 +80,7 @@ function history(store: Store, input: History): Record<string, unknown> {
       `${presented.label} holds ${kind} values; only numbers can be bucketed, use raw`,
     );
   }
-  const points = store.state
-    .buckets({ ...series, bucketSeconds: BUCKET_SECONDS[input.bucket] })
-    .slice(0, input.limit)
-    .map((row) => ({
-      bucket: row.bucket_start,
-      average: row.average,
-      minimum: row.minimum,
-      maximum: row.maximum,
-      samples: row.count,
-    }));
+  const points = bucketedPoints(store, viewer, series, input);
   return {
     capability: presented.key,
     label: presented.label,
@@ -85,38 +91,89 @@ function history(store: Store, input: History): Record<string, unknown> {
   };
 }
 
-function recordingsOf(store: Store, eventId: string): Record<string, unknown>[] {
-  return store.cameras.recordingsOfEvent(eventId).map((recording) => ({
-    id: recording.id,
-    kind: recording.kind,
-    started_at: recording.started_at,
-  }));
+interface Series {
+  readonly capabilities: string[];
+  readonly deviceIds: string[];
+  readonly from: string;
+  readonly to: string;
 }
 
-function events(store: Store, input: Events): Record<string, unknown>[] {
-  const placed = new Map(placedDevices(store).map((entry) => [entry.device.id, entry]));
-  return store.events
-    .list({
-      from: input.since,
-      to: input.until,
-      deviceIds: input.deviceIds,
-      kinds: input.kinds,
-      limit: input.limit,
-    })
-    .map((event) => {
-      const where = event.device_id === null ? undefined : placed.get(event.device_id);
-      return {
-        id: event.id,
-        device_id: event.device_id,
-        device: where === undefined ? null : where.name,
-        room: where?.room?.name ?? null,
-        kind: event.kind,
-        occurred_at: event.occurred_at,
-        details: event.details,
-        acknowledged_at: event.acknowledged_at,
-        recordings: recordingsOf(store, event.id),
-      };
-    });
+function bucketedPoints(
+  store: Store,
+  viewer: PhoneViewer,
+  series: Series,
+  input: History,
+): Record<string, unknown>[] {
+  if (input.bucket === 'raw') return [];
+  return visibleRows(
+    store,
+    viewer,
+    store.state.buckets({ ...series, bucketSeconds: BUCKET_SECONDS[input.bucket] }),
+  )
+    .slice(0, input.limit)
+    .map((row) => ({
+      bucket: row.bucket_start,
+      average: row.average,
+      minimum: row.minimum,
+      maximum: row.maximum,
+      samples: row.count,
+    }));
+}
+
+function recordingsByEvent(store: Store, eventIds: readonly string[]): Map<string, RecordingRow[]> {
+  const grouped = new Map<string, RecordingRow[]>();
+  for (const recording of store.cameras.recordingsOfEvents(eventIds)) {
+    const eventId = recording.event_id;
+    if (eventId !== null) {
+      appendTo(grouped, eventId, recording);
+    }
+  }
+  return grouped;
+}
+
+export function eventsOf(
+  store: Store,
+  scope: DeviceScope | null,
+  viewer: PhoneViewer,
+  input: Events,
+): Record<string, unknown>[] {
+  const placed = new Map(placedDevices(store, scope).map((entry) => [entry.device.id, entry]));
+  const everything = store.events.list({
+    from: input.since,
+    to: input.until,
+    deviceIds: input.deviceIds,
+    kinds: input.kinds,
+    limit: input.limit,
+  });
+  const listed = visibleEvents(
+    store,
+    viewer,
+    everything.filter(
+      (event) => scope === null || event.device_id === null || placed.has(event.device_id),
+    ),
+  );
+  const recordings = recordingsByEvent(
+    store,
+    listed.map((event) => event.id),
+  );
+  return listed.map((event) => {
+    const where = event.device_id === null ? undefined : placed.get(event.device_id);
+    return {
+      id: event.id,
+      device_id: event.device_id,
+      device: where === undefined ? null : where.name,
+      room: where?.room?.name ?? null,
+      kind: event.kind,
+      occurred_at: event.occurred_at,
+      details: event.details,
+      acknowledged_at: event.acknowledged_at,
+      recordings: (recordings.get(event.id) ?? []).map((recording) => ({
+        id: recording.id,
+        kind: recording.kind,
+        started_at: recording.started_at,
+      })),
+    };
+  });
 }
 
 export const HISTORY_TOOLS: readonly Tool[] = [
@@ -124,12 +181,28 @@ export const HISTORY_TOOLS: readonly Tool[] = [
     name: 'get_history',
     input: HISTORY,
     annotations: READS,
-    run: ({ store }, input) => ({ structured: history(store, input) }),
+    run: (context, input) => ({
+      structured: historyOf(
+        context.store,
+        deviceScopeOfActor(context),
+        phoneViewerOfActor(context),
+        input,
+      ),
+    }),
   }),
   defineTool({
     name: 'list_events',
     input: EVENTS,
     annotations: READS,
-    run: ({ store }, input) => ({ structured: { events: events(store, input) } }),
+    run: (context, input) => ({
+      structured: {
+        events: eventsOf(
+          context.store,
+          deviceScopeOfActor(context),
+          phoneViewerOfActor(context),
+          input,
+        ),
+      },
+    }),
   }),
 ];

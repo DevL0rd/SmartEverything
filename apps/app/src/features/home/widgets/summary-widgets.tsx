@@ -1,128 +1,189 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { WidgetSize } from '@smarteverything/domain';
+import type { SceneRow } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import { Sparkline } from '../../../components/charts';
 import { Figure } from '../../../components/figure';
 import { Icon, type IconName } from '../../../components/icon';
 import { IconWell } from '../../../components/icon-well';
-import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { WidgetEmpty, WidgetFrame, heroFigure } from '../../../components/widget-board';
-import { cn } from '../../../design/cn';
-import { useIdiom } from '../../../design/platform';
+import { WidgetEmpty, WidgetFrame } from '../../../components/widget-board';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import type { ColourRole } from '../../../design/tokens';
 import { decimal } from '../../../format/number';
-import { localDayKey } from '../../../format/time';
+import { plural, joinParts } from '../../../format/text';
+import { DAY_MS, localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { useHistory } from '../../../queries/history';
 import { useSettings } from '../../../store/selectors';
-import { ActivityRow } from '../../activity';
-import { runSceneNow, sceneIcon } from '../../automations';
-import { FitGrid } from '../components/fit-grid';
+import { useStoreSelector } from '../../../store/store-context';
 import { useHome } from '../data/home-data';
+import { consumersOf, sameConsumers } from '../model/consumers';
 import type { FitnessFigure } from '../model/fitness-today';
+import type { SecurityLine } from '../model/security';
+import {
+  activityRowCount,
+  bodyHeight,
+  consumerRowCount,
+  securityRowCount,
+} from '../model/widget-fit';
+import { ActivityLatest, ActivityRows } from './activity-rows';
+import { ConsumerRows } from './energy-rows';
+import { SceneChipGrid, SceneGlance, SceneScroller } from './scene-chips';
 import { FitnessSetupWidget, useFitnessReady } from '../../profiles';
 
-export function ActivityWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+export function ActivityWidget(): ReactNode {
   const activity = useHome((view) => view.activity);
-  const pointer = useIdiom() === 'pointer';
+  const { frame, cls, sizes } = useWidgetFace();
+  const tall = cls === 'l' || cls === 'xl';
   return (
-    <WidgetFrame title="Activity" icon="activity" accent="info" href={href.activity()} size={size}>
-      <View className="relative flex-1">
-        <View
-          className={cn(
-            'absolute bottom-6 top-6 w-px bg-outline-variant',
-            pointer ? 'left-4' : 'left-5',
-          )}
-        />
-        <FitGrid
+    <WidgetFrame title="Activity" icon="activity" accent="info" href={href.activity()}>
+      {cls === 's' ? (
+        <ActivityLatest item={activity[0]} />
+      ) : (
+        <ActivityRows
           items={activity}
-          keyOf={(item) => item.id}
-          minItemWidth={240}
-          maxColumns={1}
-          renderItem={(item) => <ActivityRow item={item} time="moment" flush />}
+          count={activityRowCount(bodyHeight(frame), sizes, tall)}
+          footer={tall}
         />
-      </View>
+      )}
     </WidgetFrame>
   );
 }
 
-export function ScenesWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+function SceneFace({ scenes }: { readonly scenes: readonly SceneRow[] }): ReactNode {
+  const { frame, cls, sizes } = useWidgetFace();
+  if (cls === 's') {
+    return <SceneGlance scenes={scenes} />;
+  }
+  if (cls === 'l' || cls === 'xl') {
+    return (
+      <SceneChipGrid
+        scenes={scenes}
+        columns={cls === 'xl' ? 3 : 2}
+        body={bodyHeight(frame)}
+        sizes={sizes}
+      />
+    );
+  }
+  return <SceneScroller scenes={scenes} />;
+}
+
+export function ScenesWidget(): ReactNode {
   const scenes = useHome((view) => view.scenes);
   return (
-    <WidgetFrame title="Scenes" icon="sparkles" accent="primary" href={href.scenes()} size={size}>
+    <WidgetFrame title="Scenes" icon="sparkles" accent="primary" href={href.scenes()}>
       {scenes.length === 0 ? (
         <WidgetEmpty
           icon="sparkles"
           colour="primary"
           title="No scenes yet"
           body="Scenes you create show up here."
-          size={size}
         />
       ) : (
-        <View className="flex-1 flex-row flex-wrap content-start gap-2 overflow-hidden">
-          {scenes.map((scene) => (
-            <Interactive
-              key={scene.id}
-              label={`Run ${scene.name}`}
-              onPress={() => {
-                runSceneNow(scene);
-              }}
-              className="min-h-touch-min flex-row items-center gap-2 rounded-full bg-primary-container pl-3 pr-4"
-              layerClassName="rounded-full"
-            >
-              <Icon name={sceneIcon(scene.icon)} size={20} tone="primary" />
-              <Text variant="label" tone="primary" numberOfLines={1}>
-                {scene.name}
-              </Text>
-            </Interactive>
-          ))}
-        </View>
+        <SceneFace scenes={scenes} />
       )}
     </WidgetFrame>
   );
 }
 
-function PowerTrend({ keys }: { readonly keys: readonly string[] }): ReactNode {
-  const history = useHistory(keys, TREND_HOURS);
-  const points = (history.data ?? []).flatMap((row) =>
-    typeof row.value === 'number' ? [{ t: Date.parse(row.observed_at), v: row.value }] : [],
-  );
-  if (points.length < 2) {
-    return null;
-  }
-  return <Sparkline points={points} colour="viz-2" height={40} area />;
-}
+const CONSUMER_FIGURE_HEIGHT = 44;
 
-const TREND_HOURS = 24;
-
-export function EnergyWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+export function EnergyWidget(): ReactNode {
   const power = useHome((view) => view.power);
+  const consumers = useStoreSelector(consumersOf, sameConsumers);
+  const { frame, cls } = useWidgetFace();
   if (power === null) {
     return null;
   }
+  const small = cls === 's';
+  const shown = small
+    ? 0
+    : consumerRowCount(
+        bodyHeight(frame),
+        CONSUMER_FIGURE_HEIGHT,
+        consumers.length > 1 ? consumers.length : 0,
+      );
   return (
-    <WidgetFrame title="Energy" icon="plug" accent="viz-2" glow="viz-2" size={size}>
+    <WidgetFrame title="Energy" icon="plug" accent="viz-2" glow="viz-2">
       <View className="flex-1 justify-end gap-2">
         <View className="flex-row items-end justify-between gap-3">
           <Figure
             value={decimal(power.watts, 0)}
-            size={heroFigure(size)}
+            size={small ? 'm' : 'l'}
             {...(power.unit === null ? {} : { unit: power.unit })}
           />
-          <Text variant="footnote" tone="variant" numberOfLines={1}>
-            Using now
-          </Text>
+          {small ? null : (
+            <Text variant="footnote" tone="variant" numberOfLines={1}>
+              Using now
+            </Text>
+          )}
         </View>
-        {size === 'S' ? null : <PowerTrend keys={power.keys} />}
+        {shown === 0 ? null : <ConsumerRows consumers={consumers.slice(0, shown)} />}
       </View>
     </WidgetFrame>
   );
 }
 
-export function SecurityWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+function SecurityGlance({ security }: { readonly security: readonly SecurityLine[] }): ReactNode {
+  const alerts = security.filter((line) => line.alert);
+  const [first] = alerts;
+  return (
+    <View className="gap-0.5">
+      <View className="flex-row items-center gap-1.5">
+        <Icon
+          name={first === undefined ? 'circleCheck' : 'warning'}
+          size={20}
+          tone={first === undefined ? 'positive' : 'critical'}
+        />
+        <Text
+          variant="callout"
+          tone={first === undefined ? 'default' : 'critical'}
+          numberOfLines={1}
+          className="min-w-0 flex-1"
+        >
+          {first === undefined ? 'All closed' : plural(alerts.length, 'alert')}
+        </Text>
+      </View>
+      <Text variant="footnote" tone="variant" numberOfLines={2}>
+        {first === undefined
+          ? `${plural(security.length, 'device')} watched`
+          : joinParts([first.name, first.state])}
+      </Text>
+    </View>
+  );
+}
+
+function SecurityLines({ security }: { readonly security: readonly SecurityLine[] }): ReactNode {
+  const { frame } = useWidgetFace();
+  const { shown, more } = securityRowCount(bodyHeight(frame), security.length);
+  return (
+    <View className="flex-1 gap-2.5 overflow-hidden">
+      {security.slice(0, shown).map((line) => (
+        <View key={line.deviceId} className="flex-row items-center gap-3">
+          <IconWell
+            icon={line.alert ? 'warning' : 'shield'}
+            colour={line.alert ? 'critical' : 'positive'}
+            size="s"
+          />
+          <Text variant="body" numberOfLines={1} className="min-w-0 flex-1">
+            {line.name}
+          </Text>
+          <Text variant="label" tone={line.alert ? 'critical' : 'positive'} numberOfLines={1}>
+            {line.state}
+          </Text>
+        </View>
+      ))}
+      {more === 0 ? null : (
+        <Text variant="footnote" tone="variant">
+          {`+${String(more)} more`}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+export function SecurityWidget(): ReactNode {
   const security = useHome((view) => view.security);
+  const { cls } = useWidgetFace();
   const alert = security.some((line) => line.alert);
   return (
     <WidgetFrame
@@ -130,7 +191,6 @@ export function SecurityWidget({ size }: { readonly size: WidgetSize }): ReactNo
       icon="shield"
       accent={alert ? 'critical' : 'positive'}
       glow={alert ? 'critical' : null}
-      size={size}
     >
       {security.length === 0 ? (
         <WidgetEmpty
@@ -138,32 +198,15 @@ export function SecurityWidget({ size }: { readonly size: WidgetSize }): ReactNo
           colour="positive"
           title="Nothing to watch yet"
           body="Locks and sensors show up here."
-          size={size}
         />
+      ) : cls === 's' ? (
+        <SecurityGlance security={security} />
       ) : (
-        <View className="flex-1 gap-2.5 overflow-hidden">
-          {security.map((line) => (
-            <View key={line.deviceId} className="flex-row items-center gap-3">
-              <IconWell
-                icon={line.alert ? 'warning' : 'shield'}
-                colour={line.alert ? 'critical' : 'positive'}
-                size="s"
-              />
-              <Text variant="body" numberOfLines={1} className="min-w-0 flex-1">
-                {line.name}
-              </Text>
-              <Text variant="label" tone={line.alert ? 'critical' : 'positive'} numberOfLines={1}>
-                {line.state}
-              </Text>
-            </View>
-          ))}
-        </View>
+        <SecurityLines security={security} />
       )}
     </WidgetFrame>
   );
 }
-
-const DAY_MS = 86_400_000;
 
 function fitnessDayTitle(day: string, now: number, zone: string): string {
   if (day === localDayKey(new Date(now), zone)) {
@@ -181,20 +224,14 @@ const FIGURE_LOOK: Readonly<Record<string, { icon: IconName; colour: ColourRole 
   distance: { icon: 'route', colour: 'viz-1' },
 };
 
-function FitnessFigureView({
-  figure,
-  big,
-}: {
-  readonly figure: FitnessFigure;
-  readonly big: boolean;
-}): ReactNode {
+function FitnessFigureView({ figure }: { readonly figure: FitnessFigure }): ReactNode {
   const look = FIGURE_LOOK[figure.key] ?? FALLBACK_LOOK;
   return (
     <View className="min-w-0 flex-1 gap-1.5">
-      <IconWell icon={look.icon} colour={look.colour} size={big ? 'm' : 's'} />
+      <IconWell icon={look.icon} colour={look.colour} size="s" />
       <Figure
         value={figure.value}
-        size={big ? 'l' : 'm'}
+        size="m"
         {...(figure.unit === '' ? {} : { unit: figure.unit })}
       />
       <Text variant="footnote" tone="variant" numberOfLines={1}>
@@ -204,29 +241,23 @@ function FitnessFigureView({
   );
 }
 
-export function FitnessTodayWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+export function FitnessTodayWidget(): ReactNode {
   const fitness = useHome((view) => view.fitness);
   const zone = useSettings().time_zone;
   const now = useMinute();
   const ready = useFitnessReady();
   if (!ready) {
-    return <FitnessSetupWidget title="Fitness" size={size} />;
+    return <FitnessSetupWidget title="Fitness" />;
   }
   if (fitness === null) {
     return null;
   }
   const day = fitnessDayTitle(fitness.day, now, zone);
   return (
-    <WidgetFrame
-      title={size === 'S' ? 'Fitness' : day}
-      icon="fitness"
-      accent="move"
-      href={href.fitness()}
-      size={size}
-    >
+    <WidgetFrame title={day} icon="fitness" accent="move" href={href.fitness()}>
       <View className="flex-1 flex-row items-end gap-4">
-        {fitness.figures.slice(0, size === 'S' ? 1 : 3).map((figure) => (
-          <FitnessFigureView key={figure.key} figure={figure} big={size === 'S'} />
+        {fitness.figures.slice(0, 3).map((figure) => (
+          <FitnessFigureView key={figure.key} figure={figure} />
         ))}
       </View>
     </WidgetFrame>

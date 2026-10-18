@@ -1,15 +1,10 @@
 import type { RobotStatus } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
-import type { BoardClass, WidgetDefinition, WidgetSize } from '../../components/widget-board';
-import { PluginWidgetFrame } from '../shared/plugin-widget';
+import type { WidgetDefinition, WidgetSize } from '../../components/widget-board';
+import { PluginWidgetFrame, PLUGIN_WIDGET_SIZES } from '../shared/plugin-widget';
+import { usePluginDevice } from '../shared/use-plugin-device';
 import { ConversationBody, QuickMoves, StatusBody } from './aibi-bodies';
-import { robotProblem, useRobotDevice, useRobotMoves, useRobotStatus } from './aibi-data';
-
-const SIZES: Readonly<Record<BoardClass, readonly WidgetSize[]>> = {
-  compact: ['S', 'M', 'L'],
-  medium: ['S', 'M', 'L'],
-  expanded: ['S', 'M', 'W', 'L'],
-};
+import { robotProblem, useRobotMoves, useRobotStatus } from './aibi-data';
 
 function unavailable(status: RobotStatus): string | null {
   const problem = robotProblem(status);
@@ -19,14 +14,14 @@ function unavailable(status: RobotStatus): string | null {
   return status.contact === null ? 'Waiting for AIBI…' : null;
 }
 
-export function StatusWidget({
+function StatusWidget({
   size,
   showOnline = true,
 }: {
   readonly size: WidgetSize;
   readonly showOnline?: boolean;
 }): ReactNode {
-  const device = useRobotDevice();
+  const device = usePluginDevice('robot');
   return (
     <PluginWidgetFrame
       title="AIBI"
@@ -37,9 +32,7 @@ export function StatusWidget({
       stream={useRobotStatus()}
       unavailable={unavailable}
     >
-      {(status) => (
-        <StatusBody status={status} size={size} device={device} showOnline={showOnline} />
-      )}
+      {(status) => <StatusBody status={status} device={device} showOnline={showOnline} />}
     </PluginWidgetFrame>
   );
 }
@@ -51,7 +44,7 @@ export function ConversationWidget({ size }: { readonly size: WidgetSize }): Rea
       icon="messageCircle"
       accent="positive"
       size={size}
-      device={useRobotDevice()}
+      device={usePluginDevice('robot')}
       stream={useRobotStatus()}
       unavailable={() => null}
     >
@@ -60,8 +53,8 @@ export function ConversationWidget({ size }: { readonly size: WidgetSize }): Rea
   );
 }
 
-export function MovesWidget({ size }: { readonly size: WidgetSize }): ReactNode {
-  const device = useRobotDevice();
+function MovesWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+  const device = usePluginDevice('robot');
   return (
     <PluginWidgetFrame
       title="AIBI moves"
@@ -85,7 +78,7 @@ export const AIBI_WIDGETS: readonly WidgetDefinition[] = [
     title: 'AIBI',
     icon: 'bot',
     group: 'Devices',
-    sizes: SIZES,
+    sizes: PLUGIN_WIDGET_SIZES,
     defaultSize: 'M',
     render: ({ size }) => <StatusWidget size={size} />,
   },
@@ -94,7 +87,7 @@ export const AIBI_WIDGETS: readonly WidgetDefinition[] = [
     title: 'AIBI conversation',
     icon: 'messageCircle',
     group: 'Devices',
-    sizes: SIZES,
+    sizes: PLUGIN_WIDGET_SIZES,
     defaultSize: 'M',
     render: ({ size }) => <ConversationWidget size={size} />,
   },
@@ -103,7 +96,7 @@ export const AIBI_WIDGETS: readonly WidgetDefinition[] = [
     title: 'AIBI moves',
     icon: 'move',
     group: 'Devices',
-    sizes: SIZES,
+    sizes: PLUGIN_WIDGET_SIZES,
     defaultSize: 'M',
     render: ({ size }) => <MovesWidget size={size} />,
   },

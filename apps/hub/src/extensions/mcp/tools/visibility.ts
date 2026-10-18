@@ -1,4 +1,6 @@
 import { MCP_TOOLS } from '@smarteverything/domain';
+import { switchedOffTools } from '../../../ai-tools/tool-discovery';
+import { reachableAreas } from './person-reach';
 import type { Tool, ToolContext } from './registry';
 
 const SCOPED_DISPATCH_TOOLS: ReadonlySet<string> = new Set([
@@ -8,8 +10,11 @@ const SCOPED_DISPATCH_TOOLS: ReadonlySet<string> = new Set([
   'call_operation',
 ]);
 
-export function toolInScope(context: ToolContext, name: string): boolean {
-  const areas = context.caller?.areas;
+export function toolInScope(
+  context: Pick<ToolContext, 'store' | 'actor' | 'caller'>,
+  name: string,
+): boolean {
+  const areas = reachableAreas(context);
   if (areas === undefined) {
     return true;
   }
@@ -21,6 +26,6 @@ export function toolInScope(context: ToolContext, name: string): boolean {
 }
 
 export function visibleTools(tools: readonly Tool[], context: ToolContext): readonly Tool[] {
-  const off = new Set(context.store.settings.read().mcp_disabled_tools);
+  const off = switchedOffTools(context.store.settings.read().mcp_disabled_tools);
   return tools.filter((tool) => !off.has(tool.name) && toolInScope(context, tool.name));
 }

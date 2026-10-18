@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs';
 import { posix } from 'node:path';
+import { fsCode } from '../fs-code';
 
 export interface Folder {
   readonly cwd: string;
@@ -10,15 +11,11 @@ const PARENT_SEGMENT = /(^|\/)\.\.(\/|$)/;
 
 const NOT_THERE = new Set(['ENOENT', 'ENOTDIR']);
 
-function code(cause: unknown): string {
-  return cause instanceof Error && 'code' in cause ? String(cause.code) : '';
-}
-
 function realOf(path: string): string | null {
   try {
     return realpathSync(path);
   } catch (cause) {
-    if (!NOT_THERE.has(code(cause))) {
+    if (!NOT_THERE.has(fsCode(cause) ?? '')) {
       return null;
     }
   }

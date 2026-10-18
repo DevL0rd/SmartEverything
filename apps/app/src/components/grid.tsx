@@ -12,12 +12,7 @@ export interface GridProps {
 
 const GAP_PX = { grid: 12, tight: 8 } as const;
 
-export function columnsFor(
-  width: number,
-  minItemWidth: number,
-  gap: number,
-  maxColumns: number,
-): number {
+function columnsFor(width: number, minItemWidth: number, gap: number, maxColumns: number): number {
   return Math.max(1, Math.min(maxColumns, Math.floor((width + gap) / (minItemWidth + gap))));
 }
 

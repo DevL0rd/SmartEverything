@@ -1,10 +1,9 @@
-import { closeBrowserSurface } from './browser-runtime';
+import { closeBrowserSurface } from './browser-surfaces';
 import { Logger } from '@smarteverything/logging';
 import { AI_PREVIEW_LEASE } from '@smarteverything/domain';
 import { trustedHubOrigins } from '../../../api/connection/route-consumers';
 import { releaseHtmlTarget } from '../../../platform/browser-html-projection';
 import { createPreviewLease, openChatPage, releasePreviewLease } from '../data/previews';
-import { previewRevisions } from '../../../queries/preview-notices';
 import {
   isHtmlPublication,
   chatPageSelection,
@@ -17,19 +16,13 @@ export async function admitBrowserPublication(
   chatId: string,
   publication: BrowserPublication,
 ): Promise<BrowserSelection> {
-  const notice = previewRevisions.get().get(publication.id) ?? 0;
   if (isHtmlPublication(publication)) {
     const { page, target } = await openChatPage(publication);
-    return chatPageSelection(publication, page, target, notice);
+    return chatPageSelection(publication, page, target);
   }
   const lease = await createPreviewLease(chatId, publication);
   try {
-    return previewSelection(
-      publication,
-      AI_PREVIEW_LEASE.parse(lease),
-      notice,
-      trustedHubOrigins(),
-    );
+    return previewSelection(publication, AI_PREVIEW_LEASE.parse(lease), trustedHubOrigins());
   } catch (error: unknown) {
     await releasePreviewLease(chatId, lease);
     throw error;

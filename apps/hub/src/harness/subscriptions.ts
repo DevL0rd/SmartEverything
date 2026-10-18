@@ -112,7 +112,7 @@ export class HarnessSubscriptions {
     this.routes.publish(status.route);
   }
 }
-export function subscriptionRouteId(
+function subscriptionRouteId(
   profileId: string,
   target: AiHarnessTarget,
   provider: AiSubscriptionProvider,

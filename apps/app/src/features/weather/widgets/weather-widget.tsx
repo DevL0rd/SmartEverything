@@ -1,7 +1,6 @@
 import type { WeatherForecast } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Figure } from '../../../components/figure';
 import { Text } from '../../../components/text';
@@ -9,20 +8,21 @@ import {
   WidgetFrame,
   WidgetStat,
   WidgetStats,
-  heroFigure,
-  type WidgetSize,
+  type FrameClass,
 } from '../../../components/widget-board';
+import { useWidgetFace } from '../../../components/widget-board/use-widget-face';
 import { useMinute } from '../../../store/clock';
 import { DayList } from '../components/forecast-parts';
 import { HourStrip } from '../components/hour-strip';
 import { WeatherHero } from '../components/weather-hero';
 import { WeatherWidgetNotice } from '../components/weather-notice';
-import { useWeather } from '../data/use-weather';
+import { LocationPrompt } from './location-prompt';
+import { useWeather, type WeatherView } from '../data/use-weather';
 import { conditionOf, degrees } from '../model/present';
 import { weatherStats } from '../model/stats';
 import { WeatherVisual } from '../visual/weather-visual';
 
-const ROOMY_PX = 520;
+const SMALL_ICON_PX = 48;
 
 interface ReadyProps {
   readonly forecast: WeatherForecast;
@@ -33,14 +33,14 @@ interface ReadyProps {
 function Small({ forecast, stale }: ReadyProps): ReactNode {
   const { now } = forecast;
   return (
-    <View className="flex-1 justify-between">
-      <WeatherVisual code={now.code} day={now.isDay} px={48} />
-      <View>
-        <Figure value={degrees(now.temperatureC)} size={heroFigure('S')} stale={stale} />
-        <Text variant="footnote" tone="variant" numberOfLines={2}>
-          {conditionOf(now.code)}
-        </Text>
+    <View className="flex-1 justify-end">
+      <View className="flex-row items-center gap-1.5">
+        <WeatherVisual code={now.code} day={now.isDay} px={SMALL_ICON_PX} />
+        <Figure value={degrees(now.temperatureC)} size="m" stale={stale} />
       </View>
+      <Text variant="footnote" tone="variant" numberOfLines={1}>
+        {conditionOf(now.code)}
+      </Text>
     </View>
   );
 }
@@ -65,10 +65,7 @@ function Medium(props: ReadyProps): ReactNode {
   );
 }
 
-function Wide(props: ReadyProps & { readonly roomy: boolean }): ReactNode {
-  if (!props.roomy) {
-    return <Medium {...props} />;
-  }
+function Wide(props: ReadyProps): ReactNode {
   return (
     <View className="flex-1 flex-row items-center gap-6">
       <WeatherHero forecast={props.forecast} now={props.now} scale="m" stale={props.stale} />
@@ -89,10 +86,7 @@ function Large(props: ReadyProps): ReactNode {
   );
 }
 
-function ExtraLarge(props: ReadyProps & { readonly roomy: boolean }): ReactNode {
-  if (!props.roomy) {
-    return <Large {...props} />;
-  }
+function ExtraLarge(props: ReadyProps): ReactNode {
   return (
     <View className="flex-1 flex-row gap-6">
       <View className="flex-1 justify-between gap-3">
@@ -107,47 +101,45 @@ function ExtraLarge(props: ReadyProps & { readonly roomy: boolean }): ReactNode 
   );
 }
 
-function Ready({
-  size,
-  roomy,
-  ...props
-}: ReadyProps & { readonly size: WidgetSize; readonly roomy: boolean }): ReactNode {
-  switch (size) {
-    case 'S':
+function Ready({ cls, ...props }: ReadyProps & { readonly cls: FrameClass }): ReactNode {
+  switch (cls) {
+    case 's':
       return <Small {...props} />;
-    case 'M':
+    case 'xs':
+    case 'm':
       return <Medium {...props} />;
-    case 'W':
-      return <Wide {...props} roomy={roomy} />;
-    case 'L':
+    case 'w':
+      return <Wide {...props} />;
+    case 'l':
       return <Large {...props} />;
-    case 'XL':
-      return <ExtraLarge {...props} roomy={roomy} />;
+    case 'xl':
+      return <ExtraLarge {...props} />;
   }
 }
 
-export function WeatherWidget({ size }: { readonly size: WidgetSize }): ReactNode {
+function Notice({
+  view,
+}: {
+  readonly view: Exclude<WeatherView, { readonly kind: 'ready' }>;
+}): ReactNode {
+  const { cls } = useWidgetFace();
+  if (cls === 's' && view.kind === 'no_location') {
+    return <LocationPrompt canSet={view.canSet} />;
+  }
+  return <WeatherWidgetNotice view={view} />;
+}
+
+export function WeatherWidget(): ReactNode {
   const view = useWeather();
   const now = useMinute();
-  const [width, setWidth] = useState(0);
-  const measure = (event: LayoutChangeEvent): void => {
-    setWidth(event.nativeEvent.layout.width);
-  };
+  const { cls } = useWidgetFace();
   return (
-    <WidgetFrame title="Weather" icon="weather" accent="info" size={size} href={href.weather()}>
-      <View className="flex-1" onLayout={measure}>
-        {view.kind === 'ready' ? (
-          <Ready
-            size={size}
-            roomy={width >= ROOMY_PX}
-            forecast={view.forecast}
-            now={now}
-            stale={view.stale}
-          />
-        ) : (
-          <WeatherWidgetNotice view={view} size={size} />
-        )}
-      </View>
+    <WidgetFrame title="Weather" icon="weather" accent="info" href={href.weather()}>
+      {view.kind === 'ready' ? (
+        <Ready cls={cls} forecast={view.forecast} now={now} stale={view.stale} />
+      ) : (
+        <Notice view={view} />
+      )}
     </WidgetFrame>
   );
 }

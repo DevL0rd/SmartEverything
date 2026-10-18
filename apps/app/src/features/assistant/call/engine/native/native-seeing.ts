@@ -16,7 +16,8 @@ import { SightStartError } from '../sight-failure';
 import { CallFeatureUnavailableError } from '../unavailable';
 import { postCallMessage } from './native-messages';
 import { NativeSight, sightFailureOf } from './native-sight';
-import { HUB_TOO_OLD, nativeCapabilities } from './native-support';
+import { HUB_TOO_OLD } from '../hub-reasons';
+import { nativeCapabilities } from './native-support';
 
 const log = new Logger('app.assistant-call');
 

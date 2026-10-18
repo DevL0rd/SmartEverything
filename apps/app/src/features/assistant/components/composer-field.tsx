@@ -1,10 +1,11 @@
 import type { ReactNode, RefObject } from 'react';
 import { TextInput, type TextInputKeyPressEvent } from 'react-native';
-import { ASSISTANT_TEXT_MAX } from '@smarteverything/domain';
 import type { ComposerSelection } from '../references/intent';
+import { useKeyboardCombobox } from '../../../components/keyboard-list';
 import { useIdiom } from '../../../design/platform';
+import { useDraft } from '../data/drafts';
 
-export interface FieldKeys {
+interface FieldKeys {
   readonly onCommandKey?: (key: string) => boolean;
   readonly onSend: () => void;
   readonly onEscape: () => void;
@@ -13,12 +14,12 @@ export interface FieldKeys {
 
 export interface ComposerFieldProps extends FieldKeys {
   readonly input: RefObject<TextInput | null>;
-  readonly text: string;
-  readonly setText: (text: string) => void;
+  readonly draftKey: string;
   readonly disabled: boolean;
   readonly placeholder: string;
   readonly tall?: boolean;
-  readonly selection?: ComposerSelection;
+  readonly onFocus?: (() => void) | undefined;
+  readonly selection?: ComposerSelection | undefined;
   readonly onSelection?: (selection: ComposerSelection) => void;
 }
 
@@ -43,25 +44,29 @@ function handleKey(event: TextInputKeyPressEvent, text: string, keys: FieldKeys)
 
 export function ComposerField({
   input,
-  text,
-  setText,
+  draftKey,
   disabled,
   placeholder,
   tall = false,
+  onFocus,
   selection,
   onSelection,
   ...keys
 }: ComposerFieldProps): ReactNode {
+  const [text, setText] = useDraft(draftKey);
   const pointer = useIdiom() === 'pointer';
+  const combobox = useKeyboardCombobox();
   return (
     <TextInput
       ref={input}
+      {...combobox}
       value={text}
       selection={selection}
       onSelectionChange={(event): void => {
         onSelection?.(event.nativeEvent.selection);
       }}
       onChangeText={setText}
+      onFocus={onFocus}
       onKeyPress={(event) => {
         if (pointer) {
           handleKey(event, text, keys);
@@ -70,7 +75,6 @@ export function ComposerField({
       editable={!disabled}
       multiline
       numberOfLines={1}
-      maxLength={ASSISTANT_TEXT_MAX}
       placeholder={placeholder}
       placeholderTextColorClassName="accent-on-surface-faint"
       cursorColorClassName="accent-primary"

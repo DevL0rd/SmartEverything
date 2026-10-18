@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Path } from 'react-native-svg';
+import { Circle, Path } from 'react-native-svg';
 import { useColour } from '../../../design/colour';
 import { GLOW, loopStyle } from '../../../design/loops';
-import { Canvas, Layer, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, Layer, useSvgId } from '../parts/frame';
 import { BodyGradient, useInk, WELL } from '../parts/ink';
 import { rounded } from '../parts/shapes';
 import { ContactShadow, Shine } from '../parts/material';
@@ -49,9 +49,7 @@ export function SpeakerVisual({ state, px, tone, moving }: VisualProps): ReactNo
   return (
     <>
       <Canvas px={px}>
-        <Defs>
-          <BodyGradient id={body} ink={ink} />
-        </Defs>
+        <BodyGradient id={body} ink={ink} />
         <ContactShadow cx={50} cy={91} rx={24} ry={3.5} />
         <Path
           d={rounded({ x: 28, y: 10, w: 44, h: 80, r: 14 })}

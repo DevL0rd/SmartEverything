@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   DSH_SESSION_HEADER,
   DSH_SESSION_ID,
-  DSH_SESSION_COMPOSITION,
   DSH_WRITER_CLAIM,
   DSH_SESSION_METADATA,
   type DshSessionId,
@@ -12,23 +11,18 @@ import { found, type StoreContext } from '../context';
 import { SQL_JSON } from '../sql';
 import { DshSessionStorageError } from './dsh-session-errors';
 
-export const DSH_STORED_SESSION = z.strictObject({
+const DSH_STORED_SESSION = z.strictObject({
   session_id: DSH_SESSION_ID,
   chat_id: z.uuid(),
   profile_id: z.uuid(),
   header: SQL_JSON.pipe(DSH_SESSION_HEADER),
-  composition: SQL_JSON.pipe(DSH_SESSION_COMPOSITION),
   inherited_event_count: z.int().nonnegative(),
   next_seq: z.int().nonnegative(),
   epoch: z.int().nonnegative(),
   claim: SQL_JSON.pipe(DSH_WRITER_CLAIM).nullable(),
-  claim_state: z.enum(['active', 'released']).nullable(),
-  acquire_operation: z.uuid().nullable(),
-  creation_request: z.string(),
 });
 export type DshStoredSession = z.infer<typeof DSH_STORED_SESSION>;
-const COLUMNS =
-  'session_id,chat_id,profile_id,header,composition,inherited_event_count,next_seq,epoch,claim,claim_state,acquire_operation,creation_request';
+const COLUMNS = 'session_id,chat_id,profile_id,header,inherited_event_count,next_seq,epoch,claim';
 
 export class DshSessionRows {
   constructor(readonly context: StoreContext) {}
@@ -77,7 +71,6 @@ export function sessionMetadata(row: DshStoredSession): DshSessionMetadata {
     chat_id: row.chat_id,
     profile_id: row.profile_id,
     header: row.header,
-    composition: row.composition,
     inherited_event_count: row.inherited_event_count,
     next_seq: row.next_seq,
     durable_seq: row.next_seq - 1,

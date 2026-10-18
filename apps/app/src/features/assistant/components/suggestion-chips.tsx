@@ -8,7 +8,7 @@ import {
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useDraft } from '../data/drafts';
+import { setDraft, useDraftSelected } from '../data/drafts';
 
 const PARSED = new WeakMap<object, ReplySuggestionsEmbed | null>();
 
@@ -32,10 +32,12 @@ function suggestionsOf(row: AssistantMessageRow): ReplySuggestionsEmbed | null {
   return found;
 }
 
+const isFilled = (text: string): boolean => text !== '';
+
 export function SuggestionChips({ row }: { readonly row: AssistantMessageRow }): ReactNode {
-  const [draft, setDraft] = useDraft(row.chat_id);
+  const filled = useDraftSelected(row.chat_id, isFilled);
   const embed = suggestionsOf(row);
-  if (embed === null || draft !== '') {
+  if (embed === null || filled) {
     return null;
   }
   return (
@@ -51,7 +53,7 @@ export function SuggestionChips({ row }: { readonly row: AssistantMessageRow }):
           label={suggestion}
           hint="Fills the message field without sending"
           onPress={() => {
-            setDraft(suggestion);
+            setDraft(row.chat_id, suggestion);
           }}
           className="min-h-touch-min flex-row items-center gap-1.5 rounded-full border border-outline px-3.5"
           layerClassName="rounded-full"

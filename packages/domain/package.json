@@ -7,12 +7,12 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./voice-overlay": "./src/voice-overlay.ts",
     "./node/harness-frames": "./src/node/harness-frames.ts"
   },
   "dependencies": {
-    "@noble/ciphers": "2.4.0",
-    "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
+    "colord": "2.9.3",
     "zod": "4.4.3"
   }
 }

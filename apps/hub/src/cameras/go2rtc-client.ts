@@ -1,5 +1,10 @@
+import { Logger, messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
 import { THUMBNAIL_WIDTH, type MediaSize } from '@smarteverything/domain';
+
+const log = new Logger('hub.cameras');
+
+const HOT_OPERATIONS: ReadonlySet<string> = new Set(['frame.jpeg', 'streams.get']);
 
 export interface Go2rtcAccess {
   readonly baseUrl: string;
@@ -91,18 +96,43 @@ function requester(access: Go2rtcAccess): Request {
   return async (operation, call) => {
     const url = new URL(call.path, access.baseUrl);
     url.search = searchOf(call.query);
-    const response = await access.fetch(url, {
-      method: call.method,
-      headers: {
-        authorization,
-        ...(call.sdp === undefined ? {} : { 'content-type': 'application/sdp' }),
-      },
-      ...(call.sdp === undefined ? {} : { body: call.sdp }),
-      ...(call.signal === undefined ? {} : { signal: call.signal }),
-    });
+    const startedAt = performance.now();
+    const stream = call.query['src'] ?? call.query['name'] ?? call.query['dst'];
+    const response = await access
+      .fetch(url, {
+        method: call.method,
+        headers: {
+          authorization,
+          ...(call.sdp === undefined ? {} : { 'content-type': 'application/sdp' }),
+        },
+        ...(call.sdp === undefined ? {} : { body: call.sdp }),
+        ...(call.signal === undefined ? {} : { signal: call.signal }),
+      })
+      .catch((cause: unknown): never => {
+        log.warn('go2rtc.request_unreachable', {
+          operation,
+          method: call.method,
+          stream,
+          durationMs: Math.round(performance.now() - startedAt),
+          errorName: cause instanceof Error ? cause.name : typeof cause,
+          reason: messageOf(cause).slice(0, 200),
+        });
+        throw cause;
+      });
+    const durationMs = Math.round(performance.now() - startedAt);
     if (!response.ok) {
+      log.warn('go2rtc.request_refused', {
+        operation,
+        method: call.method,
+        stream,
+        status: response.status,
+        durationMs,
+      });
       throw new Go2rtcError(operation, response.status, await response.text());
     }
+    const fields = { operation, method: call.method, stream, status: response.status, durationMs };
+    if (HOT_OPERATIONS.has(operation)) log.trace('go2rtc.request_answered', fields);
+    else log.debug('go2rtc.request_answered', fields);
     return response;
   };
 }

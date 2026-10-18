@@ -12,6 +12,7 @@ import { authorizeNativeDispatch } from './native-command-admission';
 import { CODEX_COMPACT_DEFINITION } from '../../../codex/provider-commands';
 import { commandAuthority } from './native-command-authority';
 import { canonicalRuntimeInput } from '../../../computers/runtime-receipts';
+import { messageOf } from '@smarteverything/logging';
 export function nativeCommandConfiguration(
   deps: ComputerRunnerDeps,
   chat: AiChatRow,
@@ -33,7 +34,7 @@ export function nativeCommandConfiguration(
     tools: grant.tools,
   });
 }
-export function assertNativeCommandConfiguration(
+function assertNativeCommandConfiguration(
   deps: ComputerRunnerDeps,
   input: AiNativeCommandWrite,
   expected: CodexCommandConfiguration | undefined,
@@ -71,10 +72,7 @@ export async function submitNativeCommand(
     return {
       ...deps.store.nativeCommandOperations.read(input.operation_id),
       status: 'unknown',
-      text:
-        cause instanceof Error
-          ? cause.message.slice(0, 2000)
-          : 'Native command dispatch is unconfirmed.',
+      text: messageOf(cause).slice(0, 2000),
     };
   }
 }

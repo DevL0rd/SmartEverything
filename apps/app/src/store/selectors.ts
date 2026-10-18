@@ -14,6 +14,7 @@ import {
   replacedIds,
 } from '@smarteverything/domain';
 import { memoOnInputs } from './memo-selector';
+import { sameJson } from './same-json';
 import { shallowEqual, useStoreSelector } from './store-context';
 import {
   rowsOf,
@@ -56,7 +57,7 @@ export function useLoaded(): boolean {
   return useStoreSelector(selectLoaded);
 }
 
-export type SyncStatus = Omit<SyncState, 'seq'>;
+export type SyncStatus = Omit<SyncState, 'seq' | 'offlineSince'>;
 
 const selectSync = (state: StoreState): SyncStatus => state.sync;
 
@@ -131,6 +132,10 @@ function deviceSelector(filter: DeviceFilter): (state: StoreState) => readonly D
   return selector;
 }
 
+export function devicesIn(state: StoreState, filter: DeviceFilter): readonly Device[] {
+  return deviceSelector(filter)(state);
+}
+
 export function useDevices(filter: DeviceFilter = {}): readonly Device[] {
   return useStoreSelector(deviceSelector(filter), shallowEqual);
 }
@@ -151,6 +156,18 @@ export function useDevice(deviceId: string): Device | null {
 
 export function useDeviceValues(deviceId: string): DeviceValues {
   return useStoreSelector((state) => deviceValuesOf(state, deviceId), Object.is, [deviceId]);
+}
+
+export function useDeviceDerived<T>(
+  deviceId: string,
+  derive: (values: DeviceValues) => T,
+  deps: readonly unknown[],
+  equal: (left: T, right: T) => boolean = sameJson,
+): T {
+  return useStoreSelector((state) => derive(deviceValuesOf(state, deviceId)), equal, [
+    deviceId,
+    ...deps,
+  ]);
 }
 
 export function useDeviceValue(deviceId: string, capability: string): DeviceValue | null {
@@ -258,7 +275,7 @@ const availabilityOf = memoOnInputs(availabilityInputs, (state): Availability =>
     hasCameras: devices.some(isCamera),
     hasHealth:
       state.tables.health_daily.ids.length > 0 ||
-      rowsOf(state.tables.health_sources).some((source) => source.revoked_at === null) ||
+      state.tables.health_sources.ids.length > 0 ||
       devices.some((device) => isWearable(device) || isScale(device)),
     hasScenes: state.tables.scenes.ids.length > 0,
     hasEnergy: devices.some((device) =>

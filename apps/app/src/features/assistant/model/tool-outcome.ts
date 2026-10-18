@@ -67,10 +67,29 @@ function resultFailed(output: Readonly<Record<string, unknown>> | null): boolean
   return output['error'] !== undefined && output['error'] !== null && output['error'] !== false;
 }
 
+const RECORDS = new WeakMap<ChatTimelineTool, readonly Readonly<Record<string, unknown>>[]>();
+const DONE_OUTCOMES = new WeakMap<ChatTimelineTool, ChatTimelineTool['state']>();
+
+function recordsOf(tool: ChatTimelineTool): readonly Readonly<Record<string, unknown>>[] {
+  const cached = RECORDS.get(tool);
+  if (cached !== undefined) return cached;
+  const records = outputRecords(tool.output);
+  RECORDS.set(tool, records);
+  return records;
+}
+
 export function toolOutcome(tool: ChatTimelineTool, live: boolean): ChatTimelineTool['state'] {
   if (tool.state === 'running') return live ? 'running' : 'unknown';
   if (tool.state !== 'done') return tool.state;
-  const records = outputRecords(tool.output);
+  const cached = DONE_OUTCOMES.get(tool);
+  if (cached !== undefined) return cached;
+  const outcome = doneOutcome(tool);
+  DONE_OUTCOMES.set(tool, outcome);
+  return outcome;
+}
+
+function doneOutcome(tool: ChatTimelineTool): ChatTimelineTool['state'] {
+  const records = recordsOf(tool);
   if (
     records.some((record) =>
       ['declined', 'interrupted', 'cancelled', 'stopped'].includes(String(record['status'])),
@@ -83,13 +102,13 @@ export function toolOutcome(tool: ChatTimelineTool, live: boolean): ChatTimeline
   return 'done';
 }
 
-function failureOutput(text: string | null): Readonly<Record<string, unknown>> | null {
-  const records = outputRecords(text);
+function failureOutput(tool: ChatTimelineTool): Readonly<Record<string, unknown>> | null {
+  const records = recordsOf(tool);
   return records.find(resultFailed) ?? records[0] ?? null;
 }
 
 function failureLine(tool: ChatTimelineTool): string | null {
-  const output = failureOutput(tool.output);
+  const output = failureOutput(tool);
   const error = RECORD.safeParse(output?.['error']);
   const message = reportedLine(error.success ? error.data : output, [
     'error',
@@ -126,7 +145,7 @@ export function toolResultLine(tool: ChatTimelineTool, live: boolean): string | 
   if (state === 'running') return null;
   if (tool.image_operation_id !== null)
     return 'Image request accepted. Its progress appears below.';
-  const result = outputRecords(tool.output)
+  const result = recordsOf(tool)
     .map((record) => reportedLine(record, ['summary', 'line', 'message']) ?? countLine(record))
     .find((line) => line !== null);
   return result ?? meaningfulDetail(tool.detail);

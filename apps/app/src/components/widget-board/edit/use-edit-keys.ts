@@ -5,6 +5,7 @@ import type { KeyPress } from '../../../design/keyboard';
 import { useBackPress, useDocumentKeys } from './keys';
 import type { BoardEditor } from './use-board-editor';
 import type { EditSession } from './use-edit-handlers';
+import { background } from '@smarteverything/logging';
 
 const MOVES: Readonly<Record<string, WidgetCommand>> = {
   ArrowLeft: 'earlier',
@@ -27,16 +28,19 @@ function useLeaveEditing(editor: BoardEditor): () => void {
       return;
     }
     warningBuzz();
-    void confirm({
-      title: 'Discard layout changes?',
-      body: 'Your changes to this page will be lost.',
-      confirmLabel: 'Discard',
-      tone: 'destructive',
-    }).then((discard) => {
-      if (discard) {
-        editor.cancel();
-      }
-    });
+    background(
+      confirm({
+        title: 'Discard layout changes?',
+        body: 'Your changes to this page will be lost.',
+        confirmLabel: 'Discard',
+        tone: 'destructive',
+      }).then((discard) => {
+        if (discard) {
+          editor.cancel();
+        }
+      }),
+      'use_edit_keys.confirm_failed',
+    );
   };
 }
 

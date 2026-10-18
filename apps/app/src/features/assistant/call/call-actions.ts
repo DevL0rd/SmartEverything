@@ -36,7 +36,7 @@ export function startCamera(facing: SightFacing): void {
   );
 }
 
-export function stopSource(source: SightSource): void {
+function stopSource(source: SightSource): void {
   attempt('Sharing did not stop', () => {
     callEngine.stopSight(source);
   });
@@ -97,7 +97,6 @@ async function startDesktop(
   pick: Extract<SourcePick, { kind: 'desktop' }>,
   still: boolean,
 ): Promise<void> {
-  await desktopBridge()?.chooseCaptureSource?.(pick.captureId);
   const start = startOf(pick);
   await (still ? callEngine.showThis(start) : callEngine.startSight(start));
 }

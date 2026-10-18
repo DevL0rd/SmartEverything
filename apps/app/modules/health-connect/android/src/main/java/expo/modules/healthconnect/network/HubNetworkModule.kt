@@ -1,8 +1,10 @@
 package expo.modules.healthconnect.network
 
-import expo.modules.healthconnect.Credentials
+import android.content.Context
 import expo.modules.healthconnect.CredentialSlot
+import expo.modules.healthconnect.Credentials
 import expo.modules.healthconnect.ServerEnrollment
+import expo.modules.healthconnect.diagnostics.NativeLog
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
@@ -10,52 +12,189 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 class HubNetworkModule : Module() {
-  private var activationAuthority: ServerEnrollment? = null
-  private var activationOwner = 0L
-  private var routeEvents: AutoCloseable? = null
-  private fun authority(): HubRoutePolicy {
-    val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-    val policy = HubRoutePolicy.get(context)
-    if (routeEvents == null) routeEvents = policy.subscribe { sendEvent("onRoute", it) }
-    return policy
+  private companion object {
+    const val SCOPE = "hub-module"
   }
-  private val resources = HubResourceRegistrar(
-    { appContext.reactContext ?: throw Exceptions.ReactContextLost() },
-    { appContext.currentActivity }, ::authority)
-  private val inspection = HubPairingInspection()
-  private val html = HubHtmlRegistrar({ appContext.reactContext ?: throw Exceptions.ReactContextLost() }, ::authority, ::htmlEnrollment) { sendEvent("onHtmlRetired", mapOf("id" to it)) }
+
+  private var routeEvents: AutoCloseable? = null
   private var discovery: HubDiscovery? = null
   private var connectivity: HubConnectivity? = null
-  private val sockets = HubSockets({ sendEvent("onSocket", it) }, ::authority)
-  private fun htmlEnrollment(binding: HubRouteBinding): () -> Unit {
-    val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-    val authority = ServerEnrollment(context)
-    val ticket = authority.capture(binding.canonicalOrigin, binding.principalId)
-    return { authority.use(ticket, binding.scopeId, binding.credentialGeneration) {} }
+  private val inspection = HubPairingInspection()
+  private val enrollment by lazy { ServerEnrollment(context()) }
+  private val resources = HubResourceRegistrar(::context, { appContext.currentActivity }, ::authority)
+  private val html = HubHtmlRegistrar(::context, ::authority, ::htmlEnrollment) { sendEvent("onHtmlRetired", mapOf("id" to it)) }
+
+  private fun context(): Context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+
+  private fun authority(): HubRoutePolicy {
+    val policy = HubRoutePolicy.get(context())
+    if (routeEvents == null) {
+      routeEvents = policy.subscribe {
+        NativeLog.debug(SCOPE, "route.event_sent") { mapOf("scope" to NativeLog.scopeLabel(it.scopeId), "generation" to it.routeGeneration, "network" to it.networkGeneration, "readiness" to it.readiness.wire) }
+        sendEvent("onRoute", it.toMap())
+      }
+      NativeLog.info(SCOPE, "route.subscribed")
+    }
+    return policy
   }
+
+  private fun htmlEnrollment(binding: HubRouteBinding): () -> Unit {
+    val ticket = enrollment.capture(binding.canonicalOrigin, binding.principalId)
+    return { enrollment.use(ticket) {} }
+  }
+
+  private fun retireScope(scopeId: String) {
+    resources.clear(scopeId)
+    html.clear(scopeId)
+  }
+
+  private fun <T> traced(event: String, fields: () -> Map<String, Any?>, block: () -> T): T {
+    val started = System.nanoTime()
+    try {
+      val result = block()
+      NativeLog.debug(SCOPE, "$event.done", NativeLog.elapsedMs(started), fields)
+      return result
+    } catch (failure: Exception) {
+      NativeLog.warn(SCOPE, "$event.failed", failure, NativeLog.elapsedMs(started), fields)
+      throw failure
+    }
+  }
+
+  private fun shutdown() {
+    NativeLog.info(SCOPE, "module.shutdown") { mapOf("discovery" to (discovery != null), "connectivity" to (connectivity != null)) }
+    html.close()
+    inspection.close()
+    routeEvents?.close()
+    routeEvents = null
+    discovery?.stop()
+    connectivity?.stop()
+    resources.close()
+    discovery = null
+    connectivity = null
+  }
+
   override fun definition() = ModuleDefinition {
     Name("HubNetwork")
-    Events("onDiscovery", "onNetwork", "onSocket", "onRoute", "onHtmlRetired")
-    OnCreate {
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      val authority = ServerEnrollment(context)
-      activationOwner = authority.beginActivationOwner()
-      activationAuthority = authority
+    Events("onDiscovery", "onNetwork", "onRoute", "onHtmlRetired")
+    OnDestroy { shutdown() }
+    OnCreate { NativeLog.info(SCOPE, "module.created") }
+    OnActivityEntersBackground {
+      NativeLog.info(SCOPE, "activity.background") { mapOf("discovery" to (discovery != null)) }
+      inspection.invalidate()
+      discovery?.stop()
     }
-    OnDestroy { html.close(); inspection.close(); activationAuthority?.endActivationOwner(activationOwner); activationAuthority = null; routeEvents?.close(); routeEvents = null; discovery?.stop(); connectivity?.stop(); sockets.stop(); resources.close(); discovery = null; connectivity = null }
-    OnActivityEntersBackground { inspection.invalidate(); discovery?.stop() }
-    AsyncFunction("inspectCandidate") Coroutine { json: String -> withContext(Dispatchers.IO) {
-      inspection.inspect(json) { input -> discovery?.selected(input) ?: error("Pairing requires active discovery") }
-    } }
-    AsyncFunction("cancelInspection") { requestId: String -> inspection.cancel(requestId) }
+    pairingFunctions()
     enrollmentFunctions()
+    transportFunctions()
     resources.register(this)
     html.register(this)
+    browserFunctions()
+  }
+
+  private fun ModuleDefinitionBuilder.pairingFunctions() {
+    AsyncFunction("inspectCandidate") Coroutine { json: String ->
+      withContext(Dispatchers.IO) {
+        val started = System.nanoTime()
+        try {
+          inspection.inspect(json) { input -> discovery?.selected(input) ?: error("Pairing requires active discovery") }.also {
+            NativeLog.info(SCOPE, "pairing.inspected", NativeLog.elapsedMs(started))
+          }
+        } catch (failure: Exception) {
+          NativeLog.warn(SCOPE, "pairing.inspect_failed", failure, NativeLog.elapsedMs(started))
+          throw failure
+        }
+      }
+    }
+    AsyncFunction("cancelInspection") { requestId: String ->
+      NativeLog.info(SCOPE, "pairing.cancelled") { mapOf("request" to requestId.take(8)) }
+      inspection.cancel(requestId)
+    }
+    AsyncFunction("startDiscovery") Coroutine { ->
+      withContext(Dispatchers.Main) {
+        val source = discovery ?: HubDiscovery(context()) { inspection.reconcile(); sendEvent("onDiscovery", it.toMap()) }.also { discovery = it }
+        NativeLog.info(SCOPE, "discovery.start_requested")
+        source.start().toMap()
+      }
+    }
+    AsyncFunction("stopDiscovery") Coroutine { ->
+      withContext(Dispatchers.Main) {
+        NativeLog.info(SCOPE, "discovery.stop_requested")
+        discovery?.stop()
+      }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.enrollmentFunctions() {
+    AsyncFunction("activateServerEnrollment") { canonical: String, principal: String ->
+      traced("enrollment.activate", { mapOf("principal" to principal.take(8), "host" to NativeLog.hostOnly(canonical)) }) {
+        val ticket = Credentials(context(), CredentialSlot.SERVER).activate(canonical, principal)
+        html.retainEnrollment(canonical, principal)
+        ticket
+      }
+    }
+    AsyncFunction("captureServerEnrollment") { canonical: String, principal: String ->
+      traced("enrollment.capture", { mapOf("principal" to principal.take(8)) }) { enrollment.capture(canonical, principal) }
+    }
+    AsyncFunction("clearServerCredential") { principal: String ->
+      traced("enrollment.clear", { mapOf("principal" to principal.take(8)) }) {
+        Credentials(context(), CredentialSlot.SERVER).clear(principal)
+        html.clearPrincipal(principal)
+      }
+    }
+    AsyncFunction("configureRoutes") Coroutine { json: String, ticket: String ->
+      withContext(Dispatchers.IO) {
+        traced("routes.configure", { mapOf("bytes" to json.length) }) { enrollment.use(ticket) { authority().configure(JSONObject(json)).toMap() } }
+      }
+    }
+    AsyncFunction("clearRoutes") { scopeId: String ->
+      traced("routes.clear", { mapOf("scope" to NativeLog.scopeLabel(scopeId)) }) {
+        html.clear(scopeId)
+        authority().clear(scopeId)
+      }
+    }
+    AsyncFunction("refreshRoutes") { scopeId: String ->
+      traced("routes.refresh", { mapOf("scope" to NativeLog.scopeLabel(scopeId)) }) { authority().refresh(scopeId).toMap() }
+    }
+    AsyncFunction("routeState") { scopeId: String ->
+      traced("routes.state", { mapOf("scope" to NativeLog.scopeLabel(scopeId)) }) { authority().snapshot(scopeId).toMap() }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.transportFunctions() {
+    AsyncFunction("configureTrust") { json: String ->
+      traced("trust.configure", { mapOf("bytes" to json.length) }) {
+        val trust = HubTrust.parse(json)
+        if (HubTransport.configure(trust)) retireScope(trust.scopeId)
+      }
+    }
+    AsyncFunction("clearTrust") { scopeId: String ->
+      traced("trust.clear", { mapOf("scope" to NativeLog.scopeLabel(scopeId)) }) {
+        retireScope(scopeId)
+        HubTransport.clear(scopeId)
+      }
+    }
+    AsyncFunction("startNetwork") Coroutine { ->
+      withContext(Dispatchers.Main) {
+        val source = connectivity ?: HubConnectivity(context(), { inspection.invalidate(); discovery?.networkChanged() }) {
+          NativeLog.debug(SCOPE, "network.event_sent") { mapOf("generation" to it["generation"]) }
+          sendEvent("onNetwork", it)
+        }.also { connectivity = it }
+        NativeLog.info(SCOPE, "network.start_requested")
+        source.start()
+      }
+    }
+    AsyncFunction("stopNetwork") Coroutine { ->
+      withContext(Dispatchers.Main) {
+        NativeLog.info(SCOPE, "network.stop_requested")
+        connectivity?.stop()
+      }
+    }
+  }
+
+  private fun ModuleDefinitionBuilder.browserFunctions() {
     Function("browserDiagnosticsVersion") { 1 }
     Function("browserDiagnosticsRawVersion") { 2 }
     Function("browserProfileReady") { HubBrowserPolicy.supported() }
@@ -67,107 +206,12 @@ class HubNetworkModule : Module() {
       Prop("target") { view: HubHtmlView, json: String -> view.bindBrowser(json) }
       Prop("displayed") { view: HubHtmlView, value: Boolean -> view.displayed(value) }
       Prop("projection") { view: HubHtmlView, json: String -> html.attach(view, json) }
-      Prop("command") { view: HubHtmlView, json: String -> view.command(json) }
+      AsyncFunction("navigate") { view: HubHtmlView, url: String -> view.navigate(url) }
+      AsyncFunction("reload") { view: HubHtmlView -> view.reload() }
+      AsyncFunction("stop") { view: HubHtmlView -> view.stop() }
+      AsyncFunction("back") { view: HubHtmlView -> view.back() }
+      AsyncFunction("forward") { view: HubHtmlView -> view.forward() }
       OnViewDestroys { view: HubHtmlView -> view.dispose() }
     }
-    AsyncFunction("configureTrust") { json: String -> if (HubTransport.configure(json)) { val scope = JSONObject(json).getString("scopeId"); sockets.clearScope(scope); resources.clear(scope); html.clear(scope) } }
-    AsyncFunction("clearTrust") { scopeId: String -> sockets.clearScope(scopeId); resources.clear(scopeId); html.clear(scopeId); HubTransport.clear(scopeId) }
-    AsyncFunction("startNetwork") Coroutine { -> withContext(Dispatchers.Main) {
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      val source = connectivity ?: HubConnectivity(context, { sendEvent("onNetwork", it) }, { inspection.invalidate(); discovery?.networkChanged() }).also { connectivity = it }
-      source.start()
-    } }
-    AsyncFunction("stopNetwork") Coroutine { -> withContext(Dispatchers.Main) { connectivity?.stop() } }
-    AsyncFunction("openSocket") { json: String -> sockets.open(json) }
-    AsyncFunction("sendSocket") { json: String -> sockets.send(json) }
-    AsyncFunction("closeSocket") { id: String -> sockets.close(id) }
-    AsyncFunction("startDiscovery") Coroutine { -> withContext(Dispatchers.Main) {
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      val source = discovery ?: HubDiscovery(context) { inspection.reconcile(); sendEvent("onDiscovery", it) }.also { discovery = it }
-      source.start()
-    } }
-    AsyncFunction("stopDiscovery") Coroutine { -> withContext(Dispatchers.Main) { discovery?.stop() } }
-    AsyncFunction("request") Coroutine { json: String -> withContext(Dispatchers.IO) { request(json) } }
   }
-  private fun ModuleDefinitionBuilder.enrollmentFunctions() {
-    Function("reserveServerActivation") { order: Long ->
-      val authority = activationAuthority ?: error("Native activation owner is not initialized")
-      authority.reserveActivation(activationOwner, order)
-    }
-    AsyncFunction("configureRoutes") Coroutine { json: String, enrollment: String -> withContext(Dispatchers.IO) {
-      val policy = authority()
-      val input = JSONObject(json)
-      val scope = input.getJSONObject("trust").getString("scopeId")
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      val generation = input.getJSONArray("bindings").getJSONObject(0).getLong("credentialGeneration")
-      ServerEnrollment(context).use(enrollment, scope, generation) {
-        val owner = JSONObject(enrollment)
-        require(input.getString("canonicalOrigin") == owner.getString("canonicalOrigin"))
-        val bindings = input.getJSONArray("bindings")
-        require((0 until bindings.length()).all { bindings.getJSONObject(it).getString("principalId") == owner.getString("principalId") })
-        policy.configure(input)
-        ServerEnrollment(context).advance(scope, generation)
-      }
-      policy.awaitReady(scope)
-    } }
-    AsyncFunction("activateServerEnrollment") { canonical: String, principal: String, intent: String ->
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      if (JSONObject(intent).getLong("owner") != activationOwner) throw expo.modules.healthconnect.NativeCredentialWithdrawn()
-      val ticket = Credentials(context, CredentialSlot.SERVER).activate(canonical, principal, intent)
-      html.retainEnrollment(canonical, principal)
-      ticket
-    }
-    AsyncFunction("claimServerEnrollment") { canonical: String, principal: String, scope: String ->
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      ServerEnrollment(context).claim(canonical, principal, scope)
-    }
-    AsyncFunction("captureServerEnrollment") { canonical: String, principal: String ->
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      ServerEnrollment(context).capture(canonical, principal)
-    }
-    AsyncFunction("clearServerCredential") { principal: String ->
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      Credentials(context, CredentialSlot.SERVER).clear(principal)
-      html.clearPrincipal(principal)
-    }
-    AsyncFunction("clearRoutes") { scopeId: String ->
-      val context = appContext.reactContext ?: throw Exceptions.ReactContextLost()
-      synchronized(ServerEnrollment.LOCK) { ServerEnrollment(context).retire(scopeId); html.clear(scopeId); authority().clear(scopeId) }
-    }
-    AsyncFunction("refreshRoutes") { scopeId: String -> authority().refresh(scopeId) }
-    AsyncFunction("routeState") { scopeId: String -> authority().snapshot(scopeId) }
-  }
-  private fun request(json: String): Map<String, Any?> {
-    val input = JSONObject(json)
-    val scope = input.getString("scopeId")
-    val binding = input.optJSONObject("binding")?.let { HubRouteBinding.parse(it) }
-    require((binding != null) == input.has("routeGeneration")) { "Binding and route generation must be supplied together" }
-    require(binding == null || binding.scopeId == scope)
-    val policy = if (binding == null) null else authority()
-    val lease = if (binding == null) HubTransport.lease(input.getString("url"), scope)
-      else policy?.lease(binding, input.getString("url"), input.getLong("routeGeneration")) ?: error("Missing route authority")
-    val method = input.getString("method")
-    require(method in listOf("GET", "POST", "PUT", "PATCH", "DELETE"))
-    val body = if (input.isNull("body")) null else input.getString("body")
-    require(body == null || body.toByteArray().size <= MAX_BYTES)
-    val builder = Request.Builder().url(lease.url).method(method, (body ?: if (method in listOf("POST", "PUT", "PATCH")) "" else null)?.toRequestBody())
-    val headers = input.getJSONObject("headers")
-    require(headers.length() <= 64)
-    headers.keys().forEach { key ->
-      require(key.lowercase() !in listOf("host", "connection", "content-length", "transfer-encoding"))
-      builder.header(key, headers.getString(key))
-    }
-    try { lease.client.newBuilder().retryOnConnectionFailure(method == "GET").callTimeout(15, java.util.concurrent.TimeUnit.SECONDS).build().newCall(builder.build()).execute().use { response ->
-      require(response.code !in 300..399) { "Hub redirects are forbidden" }
-      val source = response.body?.source()
-      if (source != null) require(!source.request(MAX_BYTES.toLong() + 1)) { "Hub response exceeds limit" }
-      val text = source?.readUtf8() ?: ""
-      lease.check()
-      return mapOf("status" to response.code, "body" to text, "headers" to response.headers.names().associateWith { response.header(it) ?: "" })
-    } } catch (failure: java.io.IOException) {
-      if (binding != null) policy?.failed(binding, lease.routeGeneration)
-      throw failure
-    }
-  }
-  companion object { private const val MAX_BYTES = 8 * 1024 * 1024 }
 }

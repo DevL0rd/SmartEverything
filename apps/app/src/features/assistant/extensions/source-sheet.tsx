@@ -6,6 +6,17 @@ import { ListRow } from '../../../components/list-row';
 import { CopyButton } from '../../../components/copy-button';
 import { Text } from '../../../components/text';
 
+function sourceIdentity(source: HarnessExtensionItem['source']): string {
+  switch (source.kind) {
+    case 'git':
+      return source.url;
+    case 'included':
+      return 'Included with SmartEverything';
+    case 'editor':
+      return 'Written in the app';
+  }
+}
+
 export function ExtensionSourceSheet({
   item,
   open,
@@ -15,20 +26,11 @@ export function ExtensionSourceSheet({
   readonly open: boolean;
   readonly onClose: () => void;
 }): ReactNode {
-  const selection = item.selection;
-  const metadata = selection.kind === 'entry' ? selection.entry.metadata : selection.asset;
-  const source = metadata?.source;
-  const identity =
-    source === undefined
-      ? 'Source not reported'
-      : source.kind === 'artifact'
-        ? source.url
-        : source.identity;
-  const version = selection.kind === 'entry' ? selection.entry.version : selection.asset.version;
-  const integrity = metadata?.integrity;
+  const identity = sourceIdentity(item.source);
+  const commit = item.source.kind === 'git' ? item.source.commit : null;
   return (
     <Sheet open={open} onClose={onClose} title="Source" detents={['half', 'full']}>
-      <SourceHeader publisher={item.publisher} version={version} />
+      <SourceHeader publisher={item.publisher} version={item.version} />
       <List inset>
         <ListRow
           title="Source"
@@ -36,18 +38,17 @@ export function ExtensionSourceSheet({
           wrapSubtitle
           trailing={<CopyButton value={identity} label="Copy source" />}
         />
-        {integrity === undefined ? null : (
+        {commit === null ? null : (
           <ListRow
-            title="Integrity"
-            subtitle={integrity}
+            title="Commit"
+            subtitle={commit}
             wrapSubtitle
-            trailing={<CopyButton value={integrity} label="Copy integrity" />}
+            trailing={<CopyButton value={commit} label="Copy commit" />}
           />
         )}
       </List>
       <Text variant="footnote" tone="variant">
-        Shared updates replace approved official sources with verified pinned versions. Installing
-        does not grant file, shell or account access.
+        Automatic updates fetch the newest version from the source.
       </Text>
     </Sheet>
   );
@@ -58,17 +59,19 @@ function SourceHeader({
   version,
 }: {
   readonly publisher: string;
-  readonly version: string;
+  readonly version: string | null;
 }): ReactNode {
   return (
     <List inset>
       <ListRow title="Publisher" subtitle={publisher} wrapSubtitle />
-      <ListRow
-        title="Pinned version"
-        subtitle={version}
-        wrapSubtitle
-        trailing={<CopyButton value={version} label="Copy version" />}
-      />
+      {version === null ? null : (
+        <ListRow
+          title="Version"
+          subtitle={version}
+          wrapSubtitle
+          trailing={<CopyButton value={version} label="Copy version" />}
+        />
+      )}
     </List>
   );
 }

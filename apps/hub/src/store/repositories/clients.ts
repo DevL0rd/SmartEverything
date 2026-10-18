@@ -15,6 +15,14 @@ export interface NewClient {
   readonly platform: ClientRow['platform'];
   readonly role: Role;
   readonly tokenHash: string;
+  readonly profileId?: string | undefined;
+}
+
+export interface NewPairing {
+  readonly role: Role;
+  readonly createdBy: string;
+  readonly expiresAt: string;
+  readonly profileId?: string | undefined;
 }
 
 export interface ClientChange {
@@ -22,10 +30,14 @@ export interface ClientChange {
   readonly role?: Role | undefined;
 }
 
-const PAIRING = z.object({ role: z.enum(['owner', 'member']), expires_at: z.string() });
+const PAIRING = z.object({
+  role: z.enum(['owner', 'member']),
+  profile_id: z.string().nullable(),
+  expires_at: z.string(),
+});
 
 export type PairingClaim =
-  | { readonly claimed: true; readonly role: Role }
+  | { readonly claimed: true; readonly role: Role; readonly profileId: string | null }
   | { readonly claimed: false; readonly reason: 'unknown' | 'expired' | 'used' };
 
 export const OWNER_CLIENT_NAME = 'This computer';
@@ -48,6 +60,12 @@ export class ClientsRepository {
     );
   }
 
+  find(id: string): ClientRow | undefined {
+    return this.context.sql.get(STORED_CLIENT, `select ${COLUMNS} from clients where id = $id`, {
+      id,
+    });
+  }
+
   byTokenHash(tokenHash: string): ClientRow | undefined {
     return this.context.sql.get(
       STORED_CLIENT,
@@ -67,7 +85,8 @@ export class ClientsRepository {
         'add the client',
         `insert into clients (id, name, platform, role, built_in, token_hash, profile_id, created_at)
          values ($id, $name, $platform, $role, $builtIn, $tokenHash,
-           (select id from profiles order by position, created_at limit 1), $now)`,
+           coalesce($profileId, (select p.id from profiles p join person_access a on a.profile_id = p.id
+             order by a.role = 'owner' desc, p.position, p.created_at limit 1)), $now)`,
         {
           id,
           name: client.name,
@@ -75,6 +94,7 @@ export class ClientsRepository {
           role: client.role,
           builtIn: builtIn ? 1 : 0,
           tokenHash: client.tokenHash,
+          profileId: client.profileId ?? null,
           now: this.context.now(),
         },
       );
@@ -153,20 +173,30 @@ export class ClientsRepository {
     });
   }
 
-  addPairing(codeHash: string, role: Role, createdBy: string, expiresAt: string): void {
+  addPairing(codeHash: string, pairing: NewPairing): void {
     this.context.sql.run(
       'add the pairing code',
-      `insert into pairings (code_hash, role, created_by, expires_at)
-       values ($codeHash, $role, $createdBy, $expiresAt)`,
-      { codeHash, role, createdBy, expiresAt },
+      `insert into pairings (code_hash, role, created_by, expires_at, profile_id)
+       values ($codeHash, $role, $createdBy, $expiresAt, $profileId)`,
+      { codeHash, ...pairing, profileId: pairing.profileId ?? null },
     );
+  }
+
+  openPairingHashes(): string[] {
+    return this.context.sql
+      .all(
+        z.object({ code_hash: z.string() }),
+        'select code_hash from pairings where claimed_at is null and expires_at > $now',
+        { now: this.context.now() },
+      )
+      .map((row) => row.code_hash);
   }
 
   claimPairing(codeHash: string): PairingClaim {
     return this.context.write(() => {
       const pairing = this.context.sql.get(
         PAIRING.extend({ claimed_at: z.string().nullable() }),
-        'select role, expires_at, claimed_at from pairings where code_hash = $codeHash',
+        'select role, profile_id, expires_at, claimed_at from pairings where code_hash = $codeHash',
         { codeHash },
       );
       if (pairing === undefined) {
@@ -183,8 +213,16 @@ export class ClientsRepository {
         'update pairings set claimed_at = $now where code_hash = $codeHash',
         { codeHash, now: this.context.now() },
       );
-      return { claimed: true, role: pairing.role };
+      return { claimed: true, role: pairing.role, profileId: pairing.profile_id };
     });
+  }
+
+  forgetOpenPairingsOf(profileId: string): number {
+    return this.context.sql.run(
+      'forget the open pairing codes of the person',
+      'delete from pairings where profile_id = $profileId and claimed_at is null',
+      { profileId },
+    );
   }
 
   forgetPairingsBefore(moment: string): number {

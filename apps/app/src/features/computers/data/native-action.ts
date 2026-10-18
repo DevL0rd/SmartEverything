@@ -1,16 +1,18 @@
+import { Logger } from '@smarteverything/logging';
 import {
   useMutation,
-  useQuery,
   useQueryClient,
   type UseMutationResult,
   type QueryClient,
 } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { randomUUID } from 'expo-crypto';
 import { ApiError, type ClaudeOperation } from '@smarteverything/domain';
 import { rawErrorText } from '../../../format/errors';
 import { computerAiKey } from './computer-ai';
 import { nativeReceipt, useNativeOperation, type NativeOperationState } from './native-operation';
 
+const log = new Logger('app.computers');
 interface NativeActionOptions<TData, TVariables> {
   readonly deviceId: string;
   readonly kind: ClaudeOperation['operation'];
@@ -37,12 +39,20 @@ async function submitNativeAction<TData, TVariables>(
     error: null,
   };
   save(pending);
+  const operation = log.operation('native_action.submit', {
+    deviceId: options.deviceId,
+    kind: options.kind,
+    scope: options.scope,
+    operationId: pending.id,
+  });
   try {
     const result = await options.send(variables, pending.id);
     save(nativeReceipt(result));
+    operation.succeeded();
     return result;
   } catch (error) {
     const rejected = error instanceof ApiError && error.status < 500;
+    operation.failed(error, { outcome: rejected ? 'failed' : 'uncertain' });
     save({ ...pending, state: rejected ? 'failed' : 'uncertain', error: rawErrorText(error) });
     throw error;
   }
@@ -71,7 +81,7 @@ export function useNativeAction<TData, TVariables>(
 ): NativeActionResult<TData, TVariables> {
   const client = useQueryClient();
   const actionKey = [...computerAiKey(options.deviceId), 'action', options.scope];
-  const action = useQuery<ClaudeOperation | null>({
+  const action = useScreenQuery<ClaudeOperation | null>({
     queryKey: actionKey,
     enabled: false,
     gcTime: Infinity,

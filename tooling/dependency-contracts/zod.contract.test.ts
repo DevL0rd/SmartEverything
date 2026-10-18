@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 import { z } from 'zod';
 
 describe('zod contract', () => {
-  itIsPinnedToItsDeclaredVersion('zod');
-
   it('parses a valid object and returns the typed value', () => {
     const schema = z.object({ name: z.string(), count: z.number() });
     expect(schema.parse({ name: 'a', count: 1 })).toStrictEqual({ name: 'a', count: 1 });

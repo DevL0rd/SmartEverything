@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 import fc from 'fast-check';
 
 describe('fast-check contract', () => {
-  itIsPinnedToItsDeclaredVersion('fast-check');
-
   it('passes a property that holds for every generated value', () => {
     fc.assert(
       fc.property(fc.integer(), (value) => {

@@ -1,22 +1,12 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { Logger } from '@smarteverything/logging';
 import { app } from 'electron';
 import { AUTOSTART_FILE, autostartEntry } from './autostart.js';
 import { HIDDEN_START_ARGUMENT } from './origin.js';
 import { windowsLoginItem } from './squirrel.js';
 
-class SquirrelInstallMissingError extends Error {
-  readonly expected: string;
-
-  constructor(expected: string) {
-    super(
-      `start on login launches SmartEverything through Squirrel's ${expected}; ` +
-        'received an app that was not installed by its Setup.exe',
-    );
-    this.name = 'SquirrelInstallMissingError';
-    this.expected = expected;
-  }
-}
+const log = new Logger('desktop.login');
 
 function autostartFile(): string {
   return path.join(app.getPath('appData'), 'autostart', AUTOSTART_FILE);
@@ -62,17 +52,16 @@ export function getStartOnLogin(): boolean {
 export function setStartOnLogin(enabled: boolean): boolean {
   if (process.platform === 'linux') {
     setLinuxStartOnLogin(enabled);
-    return getStartOnLogin();
+  } else {
+    app.setLoginItemSettings({ ...loginItem(), openAtLogin: enabled });
   }
-  const item = loginItem();
-  if (item.path !== undefined && enabled && !existsSync(item.path)) {
-    throw new SquirrelInstallMissingError(item.path);
-  }
-  app.setLoginItemSettings({ ...item, openAtLogin: enabled });
-  return getStartOnLogin();
+  const actual = getStartOnLogin();
+  log.info('login.changed', { requested: enabled, actual, platform: process.platform });
+  return actual;
 }
 
 export function removeWindowsLoginItem(): void {
+  log.info('login.windows_item_removed');
   app.setLoginItemSettings({
     ...windowsLoginItem(process.execPath, HIDDEN_START_ARGUMENT),
     openAtLogin: false,

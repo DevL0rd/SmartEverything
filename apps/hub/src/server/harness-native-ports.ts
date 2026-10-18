@@ -1,5 +1,4 @@
 import { DurablePluginAgents, type NativeMediaNote } from '@smarteverything/harness/process';
-import type { HarnessHost } from '@smarteverything/harness';
 import { pluginAgentTransport } from '../harness/plugin-agents';
 import { nativeMediaNote } from '../harness/native-media-notes';
 import type { HarnessHubTools } from '../harness/tools';
@@ -10,7 +9,6 @@ export function hubPluginAgents(ports: {
   readonly context: ServerContext;
   readonly persistence: LocalHarnessPersistence;
   readonly access: HarnessHubTools;
-  readonly host: HarnessHost;
 }): DurablePluginAgents {
   return new DurablePluginAgents(ports.persistence, (request, signal) =>
     pluginAgentTransport(
@@ -18,7 +16,6 @@ export function hubPluginAgents(ports: {
         service: ports.context.harness,
         access: ports.access,
         assistant: ports.context.assistant,
-        stateDirectory: ports.host.stateDirectory,
       },
       request,
       signal,

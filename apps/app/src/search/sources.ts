@@ -1,12 +1,11 @@
+import { routinesOf } from './routines';
 import { automationRuntimePages } from './automation-runtime-pages';
 import { deviceGroupPages } from './device-group-pages';
 import { cameraTranscriptPages } from './camera-transcript-pages';
 import { APP_PLUGINS } from '../plugins/registry';
 import type { Href } from 'expo-router';
 import {
-  displayName,
-  triggerSearchKeywords,
-  AUTOMATION_DEFINITION,
+  baseNameOf,
   CAMERA_EVENT_SEARCH_WORDS,
   isCamera,
   isScheduleActive,
@@ -35,9 +34,7 @@ export interface SearchTables extends ExtensionSearchData {
   readonly deviceGroups: StoreState['tables']['device_groups'];
   readonly scenes: StoreState['tables']['scenes'];
   readonly automations: StoreState['tables']['automations'];
-  readonly automationRuns?: StoreState['tables']['automation_runs'];
   readonly automationValues?: StoreState['tables']['automation_values'];
-  readonly automationSequences?: StoreState['tables']['automation_sequences'];
   readonly scheduled: StoreState['tables']['scheduled_actions'];
   readonly plugins: StoreState['tables']['plugins'];
   readonly pluginStreams: StoreState['tables']['plugin_streams'];
@@ -103,10 +100,7 @@ function treePage(page: SettingsPageDefinition, out: SourceLinks): SearchSetting
 
 function registrySetting(setting: SettingDefinition, out: SourceLinks): SearchSetting {
   const page = settingsPage(setting.page);
-  out.links.set(
-    `setting:${setting.id}`,
-    setting.control === 'link' ? setting.href : href.settings.focus(setting.page, setting.id),
-  );
+  out.links.set(`setting:${setting.id}`, href.settings.focus(setting.page, setting.id));
   out.icons.set(`setting:${setting.id}`, setting.icon ?? page?.icon ?? 'settings');
   out.parents.set(`setting:${setting.id}`, settingsPageKey(setting.page));
   return {
@@ -127,7 +121,9 @@ function settingsOf(env: SettingEnv, out: SourceLinks): SearchSources['settings'
   );
   return [
     ...pages.map((page) => treePage(page, out)),
-    ...visibleSettings(env).map((setting) => registrySetting(setting, out)),
+    ...visibleSettings(env)
+      .filter((setting) => setting.control !== 'link')
+      .map((setting) => registrySetting(setting, out)),
   ];
 }
 
@@ -295,7 +291,7 @@ export function namedDevices(tables: SearchTables): readonly NamedDevice[] {
     .filter((device) => !device.hidden)
     .map((device) => ({
       device,
-      name: displayName(device, all, rooms),
+      name: baseNameOf(device),
       room: roomNameOf(device, rooms),
     }));
 }
@@ -311,21 +307,6 @@ function deviceOf(named: NamedDevice): SearchDevice {
     favourite: named.device.favourite,
     capabilities: isCamera(named.device) ? [] : named.device.capabilities,
     state: {},
-  };
-}
-
-function routinesOf(tables: SearchTables): Pick<SearchSources, 'scenes' | 'automations'> {
-  return {
-    scenes: rowsOf(tables.scenes).map((scene) => ({ id: scene.id, name: scene.name, path: '' })),
-    automations: rowsOf(tables.automations).map((automation) => ({
-      id: automation.id,
-      name: automation.name,
-      enabled: automation.enabled,
-      triggerKeywords: triggerSearchKeywords(
-        AUTOMATION_DEFINITION.parse(automation.definition).triggers,
-      ),
-      path: '',
-    })),
   };
 }
 
@@ -398,7 +379,7 @@ function nativePluginSettings(row: PluginRow, parent: string): readonly PluginPa
     keywords: item.keywords,
     to: {
       pathname: '/settings/[...page]',
-      params: { page: ['plugins', row.id], focus: item.focus },
+      params: { page: ['plugins', row.id], focus: item.id },
     },
   }));
 }

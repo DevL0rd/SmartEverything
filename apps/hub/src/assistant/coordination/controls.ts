@@ -3,6 +3,7 @@ import type { AI_AGENT_RUN_CONTROL } from '@smarteverything/domain';
 import { ApiError, type AiAgentRun, type AiChatRow } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import type { ComputerRunner } from '../engines/computer/runner';
+import { computerEngine } from '../engine-kind';
 export interface AgentControlPorts {
   readonly store: Store;
   readonly interrupt: (chat: AiChatRow) => Promise<void>;
@@ -17,11 +18,12 @@ export async function controlAgent(
     throw new ApiError('conflict', 'This agent has not advertised that control action.');
   if (run.source === 'smarteverything') return controlOwnAgent(ports, run, control);
   const parent = ports.store.aiChats.chat(run.parent_chat_id);
-  if (parent.engine.kind === 'dsh' || parent.engine.kind === 'openrouter')
+  const bound = computerEngine(parent.engine);
+  if (bound === null)
     throw new ApiError('conflict', 'This run has no native computer provider binding.');
-  if (parent.engine.kind !== run.runtime || parent.engine.device_id !== run.device_id)
+  if (bound.kind !== run.runtime || bound.device_id !== run.device_id)
     throw new ApiError('conflict', 'The parent runtime binding changed.');
-  const runner = ports.computer(parent.engine.kind);
+  const runner = ports.computer(bound.kind);
   if (runner === undefined) throw new ApiError('conflict', 'This runtime is unavailable.');
   const state = runner.state.bound(parent);
   assertCurrentChild(state, run);

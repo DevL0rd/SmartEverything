@@ -1,9 +1,11 @@
 import { effectiveTools } from '../../coordination/grants';
+import { effectiveClientById, hasOwnerDevice } from '../../../server/person-access';
+import { computerEngine } from '../../engine-kind';
 import { randomUUID } from 'node:crypto';
-import { ApiError, ASSISTANT_TEXT_MAX, type AiChatRow } from '@smarteverything/domain';
+import { ApiError, type AiChatRow } from '@smarteverything/domain';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import { TurnStream } from '../../conversation/stream';
-import { eventAuthority } from '../../execution-authority';
+import { eventAuthority } from '../../turn-authority';
 import { turnCaller } from '../../conversation/turn-caller';
 import { ProviderReplies } from './replies';
 import { providerGrant } from './tool-bridge';
@@ -14,21 +16,21 @@ export function openProviderTurn(
   event: StoredEvent,
   chat: AiChatRow,
 ): Turn {
-  if (chat.engine.kind === 'openrouter' || chat.engine.kind === 'dsh')
-    throw new ApiError('conflict', 'The provider binding changed.');
-  const bound = { ...chat, engine: chat.engine };
+  const engine = computerEngine(chat.engine);
+  if (engine === null) throw new ApiError('conflict', 'The provider binding changed.');
+  const bound = { ...chat, engine };
   const { store } = deps;
   const caller = {
     ...turnCaller({
       chat,
       event,
       latest: event.message_id === null ? null : store.assistantChat.message(event.message_id),
-      client: event.client_id === null ? undefined : store.clients.byId(event.client_id),
+      client: event.client_id === null ? undefined : effectiveClientById(store, event.client_id),
     }),
     authority: eventAuthority(store, event),
   };
   if (caller.role !== 'owner' || !ownsNativeWork(store, caller))
-    throw new ApiError('forbidden', 'Native computer work is available only to the owner.');
+    throw new ApiError('forbidden', 'Only the home owner can use Claude or Codex on computers.');
   let finish = (): void => {
     return;
   };
@@ -50,6 +52,7 @@ export function openProviderTurn(
     done,
     finish,
     calls: new Set<string>(),
+    steered: [],
   };
 }
 
@@ -57,9 +60,7 @@ function ownsNativeWork(store: ComputerRunnerDeps['store'], caller: Turn['caller
   return (
     caller.clientId !== null ||
     caller.pluginRequester !== undefined ||
-    store.clients
-      .list()
-      .some((client) => client.profile_id === caller.profileId && client.role === 'owner')
+    hasOwnerDevice(store, caller.profileId)
   );
 }
 
@@ -81,7 +82,6 @@ function providerOutput(
       profileId: bound.profile_id,
     },
     deps.emit,
-    ASSISTANT_TEXT_MAX,
   );
   const replies = new ProviderReplies(
     deps.conversation,

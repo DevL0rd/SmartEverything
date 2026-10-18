@@ -11,6 +11,7 @@ import { ColourPicker } from '../../../components/colour-picker';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import type { Control } from '../../../store/control';
+import { background } from '@smarteverything/logging';
 
 interface ColourProps {
   readonly presented: PresentedCapability;
@@ -26,10 +27,10 @@ function Picker({ presented, control, disabled }: ColourProps): ReactNode {
       value={readPresentedColor(presented, control.value)}
       disabled={disabled || control.offline}
       onChange={(colour) => {
-        void control.set(writePresentedColor(presented, colour));
+        background(control.set(writePresentedColor(presented, colour)), 'control.set_failed');
       }}
       onCommit={(colour) => {
-        void control.set(writePresentedColor(presented, colour));
+        background(control.set(writePresentedColor(presented, colour)), 'control.set_failed');
       }}
     />
   );

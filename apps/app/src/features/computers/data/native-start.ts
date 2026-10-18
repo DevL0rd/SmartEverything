@@ -1,4 +1,6 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { Logger, background } from '@smarteverything/logging';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { randomUUID } from 'expo-crypto';
 import {
   API_ENDPOINTS as E,
@@ -14,6 +16,7 @@ import {
   type ClaudeCliOrigin,
 } from './claude-cli-origin';
 
+const log = new Logger('app.computers');
 type CliSubmission =
   | {
       readonly state: 'pending' | 'unknown' | 'rejected';
@@ -35,23 +38,28 @@ async function submit(
   input: Omit<ClaudeCliStart, 'operation_id'>,
 ): Promise<ClaudeCliReceipt> {
   const { deviceId, origin, save, current } = context;
-  if (current !== undefined && current !== null && current.state !== 'rejected')
-    throw new ApiError(
-      'conflict',
-      'Reconcile the existing CLI start before starting another session.',
-    );
+  if (current !== undefined && current !== null && current.state !== 'rejected') {
+    log.warn('cli_session.start_blocked', { deviceId, previous: current.state });
+    throw new ApiError('conflict', 'Check the last session’s status before starting another.');
+  }
   const operationId = randomUUID();
   origin.assertCurrent(operationId);
   save({ state: 'pending', operationId, reason: null });
+  const operation = log.operation('cli_session.start', { deviceId, operationId });
   try {
     const receipt = await origin.requester.call(E.startClaudeCliSession, {
       params: { deviceId },
       body: { ...input, operation_id: operationId },
     });
     save({ state: 'received', receipt });
+    operation.succeeded({ state: receipt.state });
     return receipt;
   } catch (error) {
-    if (error instanceof ClaudeCliOriginChangedError) throw error;
+    if (error instanceof ClaudeCliOriginChangedError) {
+      log.warn('cli_session.start_origin_changed', { deviceId, operationId });
+      throw error;
+    }
+    operation.failed(error);
     save({
       state: error instanceof ApiError && error.status < 500 ? 'rejected' : 'unknown',
       operationId,
@@ -89,7 +97,7 @@ export function useNativeStart(deviceId: string): {
   const client = useQueryClient();
   const origin = useClaudeCliOrigin();
   const key = [...computerAiKey(deviceId), 'cli-start', ...origin.key];
-  const state = useQuery<CliSubmission | null>({
+  const state = useScreenQuery<CliSubmission | null>({
     queryKey: key,
     enabled: false,
     gcTime: Infinity,
@@ -98,10 +106,10 @@ export function useNativeStart(deviceId: string): {
   });
   const save = (value: CliSubmission): void => {
     saveSubmission(client, key, origin, value);
-    if (value.state === 'received')
-      void client.invalidateQueries({
-        queryKey: [...computerAiKey(deviceId), 'cli-sessions', ...origin.key],
-      });
+    if (value.state === 'received') {
+      const queryKey = [...computerAiKey(deviceId), 'cli-sessions', ...origin.key];
+      background(client.invalidateQueries({ queryKey }), 'sessions.invalidate_failed');
+    }
   };
   const mutation = useMutation({
     mutationFn: (input: Omit<ClaudeCliStart, 'operation_id'>) =>
@@ -119,7 +127,7 @@ export function useNativeStart(deviceId: string): {
     checking: receipt.isFetching,
     checkError: receipt.error,
     check: (): void => {
-      void receipt.refetch();
+      background(receipt.refetch(), 'receipt.refetch_failed');
     },
     clear: clearSubmission(client, key, { origin, current: submission }),
   };
@@ -127,11 +135,11 @@ export function useNativeStart(deviceId: string): {
 function useStartReceipt(
   context: CliStartContext,
   key: readonly (string | null)[],
-): ReturnType<typeof useQuery<ClaudeCliReceipt>> {
+): ReturnType<typeof useScreenQuery<ClaudeCliReceipt>> {
   const { deviceId, origin, save, current } = context;
   const operationId =
     current === null || current === undefined ? undefined : operationIdOf(current);
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...key, operationId ?? 'none'],
     enabled: false,
     queryFn: async () => {

@@ -1,3 +1,7 @@
+import { Logger } from '@smarteverything/logging';
+
+const log = new Logger('hub.assistant-coordination');
+
 export interface Settled {
   readonly state: 'answered' | 'failed' | 'working';
   readonly text: string | null;
@@ -14,8 +18,16 @@ export class Waiters {
 
   wait(eventId: string, from: string | null, target: string, seconds: number): Promise<Settled> {
     return new Promise((settle) => {
+      log.debug('waiter.registered', {
+        eventId,
+        from,
+        target,
+        seconds,
+        waiting: this.waiting.size + 1,
+      });
       const timer = setTimeout(() => {
         this.waiting.delete(eventId);
+        log.info('waiter.timed_out', { eventId, from, target, seconds });
         settle({ state: 'working', text: null });
       }, seconds * 1000);
       this.waiting.set(eventId, {
@@ -39,6 +51,13 @@ export class Waiters {
       return false;
     }
     this.waiting.delete(eventId);
+    log.debug('waiter.settled', {
+      eventId,
+      from: waiter.from,
+      target: waiter.target,
+      state: result.state,
+      textChars: result.text?.length ?? 0,
+    });
     waiter.settle(result);
     return true;
   }

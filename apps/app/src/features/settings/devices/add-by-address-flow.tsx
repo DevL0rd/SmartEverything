@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SAMSUNG_TV_CREDENTIALS, type TableRow } from '@smarteverything/domain';
+import { closeFlow } from '../../../app-shell/close-flow';
+import { href } from '../../../app-shell/hrefs';
 import { linkProvider } from '../../../api/providers';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
@@ -11,8 +12,8 @@ import { FlowFrame } from '../../../components/flow-frame';
 import { ProgressSteps, type ProgressStep } from '../../../components/progress-steps';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
-import { useProviderLink, useRow } from '../../../store/selectors';
-import { rawErrorText } from '../../../format/errors';
+import { useMutationState } from '../../../store/mutation';
+import { useProviderLink } from '../../../store/selectors';
 
 type Outcome =
   | { readonly kind: 'working' }
@@ -29,15 +30,9 @@ function linkOutcome(link: TableRow<'provider_links'> | null): Outcome {
   return { kind: 'failed', reason: link?.last_error ?? 'The TV did not answer' };
 }
 
-function outcomeOf(
-  command: TableRow<'commands'> | null,
-  link: TableRow<'provider_links'> | null,
-): Outcome {
-  if (command === null || command.status === 'pending' || command.status === 'running') {
+function outcomeOf(link: TableRow<'provider_links'> | null, baseline: string | null): Outcome {
+  if (link === null || link.updated_at === baseline) {
     return { kind: 'working' };
-  }
-  if (command.status !== 'succeeded') {
-    return { kind: 'failed', reason: command.error ?? 'The TV did not answer' };
   }
   return linkOutcome(link);
 }
@@ -109,10 +104,8 @@ function Fields({
   );
 }
 
-function Progress({ commandId }: { readonly commandId: string }): ReactNode {
-  const command = useRow('commands', commandId);
-  const link = useProviderLink('samsung_tv');
-  const outcome = outcomeOf(command, link);
+function Progress({ baseline }: { readonly baseline: string | null }): ReactNode {
+  const outcome = outcomeOf(useProviderLink('samsung_tv'), baseline);
   if (outcome.kind === 'done') {
     return <EmptyState icon="tv" title="Device added" body="It is in Devices now." />;
   }
@@ -127,12 +120,13 @@ function Progress({ commandId }: { readonly commandId: string }): ReactNode {
 function useAddTv(): {
   readonly busy: boolean;
   readonly problem: string | null;
-  readonly commandId: string | null;
+  readonly sent: { readonly baseline: string | null } | null;
   readonly submit: (form: Form) => void;
 } {
-  const [problem, setProblem] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [commandId, setCommandId] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ readonly baseline: string | null } | null>(null);
+  const link = useProviderLink('samsung_tv');
+  const mutation = useMutationState();
   const submit = (form: Form): void => {
     const parsed = SAMSUNG_TV_CREDENTIALS.safeParse({
       provider: 'samsung_tv',
@@ -141,38 +135,33 @@ function useAddTv(): {
       macAddress: form.macAddress.trim(),
     });
     if (!parsed.success) {
-      setProblem('Fill in all three; the MAC address looks like 00:11:22:33:44:55');
+      setInvalid('Fill in all three; the MAC address looks like 00:11:22:33:44:55');
       return;
     }
-    setBusy(true);
-    setProblem(null);
-    linkProvider(parsed.data).then(
-      (command) => {
-        setBusy(false);
-        setCommandId(command.id);
+    setInvalid(null);
+    mutation.run(() => linkProvider(parsed.data), {
+      failure: 'The TV was not added',
+      inline: true,
+      onDone: () => {
+        setSent({ baseline: link?.updated_at ?? null });
       },
-      (error: unknown) => {
-        setBusy(false);
-        setProblem(rawErrorText(error));
-      },
-    );
+    });
   };
-  return { busy, problem, commandId, submit };
+  return { busy: mutation.busy, problem: invalid ?? mutation.problem, sent, submit };
 }
 
 export function AddByAddressFlow(): ReactNode {
-  const router = useRouter();
   const [form, setForm] = useState<Form>(EMPTY);
-  const { busy, problem, commandId, submit } = useAddTv();
+  const { busy, problem, sent, submit } = useAddTv();
   const close = (): void => {
-    router.back();
+    closeFlow(href.settings.index());
   };
   return (
     <FlowFrame
       title="Add by address"
       onCancel={close}
       footer={
-        commandId === null ? (
+        sent === null ? (
           <>
             <Button label="Cancel" variant="text" onPress={close} />
             <Button
@@ -188,10 +177,10 @@ export function AddByAddressFlow(): ReactNode {
         )
       }
     >
-      {commandId === null ? (
+      {sent === null ? (
         <Fields form={form} onForm={setForm} problem={problem} />
       ) : (
-        <Progress commandId={commandId} />
+        <Progress baseline={sent.baseline} />
       )}
     </FlowFrame>
   );

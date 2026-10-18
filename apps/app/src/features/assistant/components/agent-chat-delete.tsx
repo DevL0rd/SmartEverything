@@ -12,18 +12,17 @@ export function AgentChatDelete({
   readonly run: AiAgentRun;
   readonly onDeleted: () => void;
 }): ReactNode {
-  const chat = useRow('ai_chats', run.child_chat_id ?? '');
+  const chat = useRow('ai_chats', run.child_chat_id);
   const owner = useIsOwner();
   if (chat === null || (isComputerEngine(chat.engine) && !owner)) return null;
   return (
     <Button
       label="Delete child chat"
       icon="trash"
-      variant="destructive"
+      variant="outlined"
       onPress={() => {
-        void deleteChat(chat).then((gone) => {
-          if (gone) onDeleted();
-        });
+        deleteChat(chat);
+        onDeleted();
       }}
     />
   );

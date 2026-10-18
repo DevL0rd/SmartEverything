@@ -13,9 +13,10 @@ import { cn } from '../../../design/cn';
 import { bytes } from '../../../format/number';
 import { joinParts } from '../../../format/text';
 import { isImageAttachment } from '../data/chat-images';
-import { downloadFile, isPreviewable, previewFile } from '../data/file-actions';
+import { downloadFile, isPreviewable, previewFile } from '../../../platform/file-actions';
 import { useAttachmentLinks } from '../data/remote';
 import { ImageViewer } from './image-viewer';
+import { background } from '@smarteverything/logging';
 
 const IMAGE_MAX = 360;
 const FRAME = 'overflow-hidden rounded-xl border-hairline border-outline-variant bg-surface-2';
@@ -228,7 +229,7 @@ export function Attachments({ attachments, chatId }: AttachmentsProps): ReactNod
                   setViewed(attachment.id);
                 }}
                 onRetry={() => {
-                  void links.refetch();
+                  background(links.refetch(), 'links.refetch_failed');
                 }}
               />
             </View>

@@ -20,7 +20,7 @@ export const MICROWAVE_RECIPE_STAGE = z.object({
     })
     .optional(),
 });
-function recipeLabel(value: JsonValue): string {
+export function microwaveRecipeLabel(value: JsonValue): string {
   const recipe = CURRENT_RECIPE.parse(value);
   return recipe.menu === undefined || recipe.menu === ''
     ? 'No recipe selected'
@@ -28,7 +28,7 @@ function recipeLabel(value: JsonValue): string {
         .filter((part) => part !== undefined && part !== '')
         .join(' · ');
 }
-function stageLabel(value: JsonValue): string {
+export function microwaveStageLabel(value: JsonValue): string {
   const stage = MICROWAVE_RECIPE_STAGE.parse(value);
   if (stage.currentStage === undefined) {
     return 'No active recipe stage';
@@ -42,14 +42,6 @@ function stageLabel(value: JsonValue): string {
     .filter((part) => part !== undefined)
     .join(' · ');
 }
-const READING_FORMATTERS: Readonly<Record<string, (value: JsonValue) => string>> = {
-  'raw:samsungce.cook_recipe.cook_recipe': recipeLabel,
-  'raw:samsungce.cook_recipe.stage_status': stageLabel,
-};
-export function microwaveReading(key: string, value: JsonValue): string | undefined {
-  const format = READING_FORMATTERS[key];
-  return format === undefined ? undefined : format(value);
-}
 export function microwaveRemaining(
   values: Readonly<Record<string, JsonValue | undefined>>,
 ): string | null {
@@ -57,7 +49,7 @@ export function microwaveRemaining(
   if (state !== 'running' && state !== 'paused') {
     return null;
   }
-  const value = values['raw:samsungce.cook_recipe.stage_status'];
+  const value = values[MICROWAVE_KEYS.stageStatus];
   if (value === undefined) {
     return null;
   }

@@ -14,7 +14,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { HubToolResult } from '../ai-tools/hub-tool';
-import { Looks, type LookContext, type Seen } from './call-look';
+import { Looks, SOURCE_TEXT, type LookContext, type OwnScreen, type Seen } from './call-look';
 import type { Picture } from './gemini';
 import type { HomeCameras } from './home-cameras';
 import type { SightTuning } from './live-window';
@@ -38,6 +38,7 @@ export interface SightPorts {
   readonly note: (text: string, picture?: Picture, respond?: boolean) => void;
   readonly tune: (tuning: SightTuning | null) => void;
   readonly record: (text: string) => void;
+  readonly own: () => OwnScreen;
   readonly delegate: (args: Readonly<Record<string, unknown>>) => Promise<HubToolResult>;
   readonly cameras: HomeCameras;
   readonly blocked: () => string | null;
@@ -59,14 +60,6 @@ interface ExpectedStill {
   readonly source: SightSource;
   readonly label: string;
 }
-
-const SOURCE_TEXT: Readonly<Record<SightSource, string>> = {
-  home_camera: 'a camera of the home',
-  phone_camera: 'their phone camera',
-  phone_screen: 'their phone screen',
-  desktop_screen: 'their computer screen',
-  desktop_window: 'a window on their computer',
-};
 
 const SOURCE_LABEL: Readonly<Record<SightSource, string>> = {
   home_camera: 'Home camera',
@@ -100,6 +93,8 @@ export class CallSight {
       note: ports.note,
       delegate: ports.delegate,
       context: (): LookContext => ({ look: this.look, available: this.available }),
+      own: ports.own,
+      shared: (source): boolean => this.active?.source === source,
       looked: (source, label): void => {
         this.taken += 1;
         this.touch(source);

@@ -1,22 +1,15 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { createLazyRequire } from '@deepseek-ai/dsh-lazy-require';
 import type * as BrowserUse from '@deepseek-ai/dsh-browser-use';
-import type * as PlaywrightBrowser from '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp';
 import type * as McpResources from '@deepseek-ai/dsh-mcp-resources';
-import { constants } from 'node:fs';
-import { access, stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { mountSessionMcp } from '@deepseek-ai/dsh-experimental-browser-use-runtime/mcp';
+import { dirname, isAbsolute, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { HarnessRuntimeError } from '../host/errors';
-import { verifyBrowserPackages } from './browser-provenance';
-import { browserPermissionDenial } from './browser-permission';
+import { mountBrowserPermission } from './browser-permission';
 
 const loadBrowserUse = createLazyRequire<typeof BrowserUse>(
   '@deepseek-ai/dsh-browser-use',
-  import.meta.url,
-);
-const loadPlaywrightBrowser = createLazyRequire<typeof PlaywrightBrowser>(
-  '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp',
   import.meta.url,
 );
 const loadResources = createLazyRequire<typeof McpResources>(
@@ -24,32 +17,26 @@ const loadResources = createLazyRequire<typeof McpResources>(
   import.meta.url,
 );
 const BROWSER_CONFIG = z.strictObject({
+  browser: z.enum(['chrome', 'chromium', 'msedge', 'firefox', 'webkit']).default('chrome'),
   executable_path: z.string().min(1).refine(isAbsolute).optional(),
-  tool_call_timeout_ms: z.int().min(1).max(300_000).default(60_000),
+  tool_call_timeout_ms: z.int().min(1).default(60_000),
 });
-const CHROMIUM_EXECUTABLES = [
-  '/usr/bin/chromium',
-  '/usr/bin/chromium-browser',
-  '/usr/bin/google-chrome-stable',
-  '/opt/google/chrome/chrome',
-];
 
 export async function mountHeadlessBrowser(
   ctx: Context,
   raw: unknown,
 ): Promise<{ readonly dispose: () => Promise<void> }> {
-  const config = BROWSER_CONFIG.parse(raw);
-  await verifyBrowserPackages();
-  const executablePath = await chromiumExecutable(config.executable_path);
+  const server = playwrightServer(raw);
   const fiber = ctx.inject(['tools', 'sandboxPolicy'], async (scope: Context): Promise<void> => {
-    scope.tools.guard((execution) => browserPermissionDenial(scope, execution));
+    mountBrowserPermission(scope);
     await scope.plugin(loadBrowserUse().default);
     await scope.plugin(loadResources().default);
-    await scope.plugin(loadPlaywrightBrowser(), {
-      mode: 'launch',
-      headless: true,
-      executablePath,
-      toolCallTimeoutMs: config.tool_call_timeout_ms,
+    await scope.plugin({
+      name: 'harness-playwright-mcp',
+      inject: ['browserUse', 'agents', 'tools', 'systemPrompt', 'workingDirectory'],
+      apply: (inner: Context): void => {
+        mountSessionMcp(inner, server);
+      },
     });
   });
   try {
@@ -61,24 +48,26 @@ export async function mountHeadlessBrowser(
   }
 }
 
-async function chromiumExecutable(configured: string | undefined): Promise<string> {
-  const candidates = configured === undefined ? CHROMIUM_EXECUTABLES : [configured];
-  for (const path of candidates) {
-    try {
-      if (!(await stat(path)).isFile()) continue;
-      await access(path, constants.X_OK);
-      return path;
-    } catch (error) {
-      if (!(
-        error instanceof Error &&
-        'code' in error &&
-        ['ENOENT', 'ENOTDIR', 'EACCES'].includes(String(error.code))
-      ))
-        throw error;
-    }
-  }
-  throw new HarnessRuntimeError(
-    'runtime_unavailable',
-    `Headless browser requires an installed executable Chromium browser; checked ${candidates.join(', ')}. Configure executable_path for an existing installation.`,
+export function playwrightServer(raw: unknown): Parameters<typeof mountSessionMcp>[1] {
+  const config = BROWSER_CONFIG.parse(raw);
+  const cli = join(
+    dirname(fileURLToPath(import.meta.resolve('@playwright/mcp/package.json'))),
+    'cli.js',
   );
+  return {
+    name: 'playwright-mcp',
+    exclusive: false,
+    command: process.execPath,
+    args: [
+      cli,
+      '--browser',
+      config.browser,
+      '--isolated',
+      '--headless',
+      ...(config.executable_path === undefined
+        ? []
+        : ['--executable-path', config.executable_path]),
+    ],
+    toolCallTimeoutMs: config.tool_call_timeout_ms,
+  };
 }

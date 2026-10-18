@@ -18,12 +18,21 @@ object PhoneNotices {
     if (uri.scheme !in SCHEMES) {
       return PhoneActionResult(false, "Only ${SCHEMES.joinToString()} links can be opened; received \"${uri.scheme}\"")
     }
+    val view = Intent(Intent.ACTION_VIEW, uri)
+    if (!PhonePermissions.overlay(context)) {
+      return tapToOpen(context, label, view)
+    }
+    context.startActivity(view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    return PhoneActionResult(true, "Opened $label")
+  }
+
+  fun tapToOpen(context: Context, label: String, intent: Intent): PhoneActionResult {
     val manager = context.getSystemService(NotificationManager::class.java)
     manager.createNotificationChannel(NotificationChannel(CHANNEL, "Open on this phone", NotificationManager.IMPORTANCE_HIGH))
     val open = PendingIntent.getActivity(
       context,
       NOTIFICATION_ID,
-      Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
     )
     val notification = Notification.Builder(context, CHANNEL)

@@ -5,11 +5,13 @@ import { deviceTarget } from '../metrics/viewers';
 import { BUILTIN_PLUGINS } from '../plugins/builtin';
 import type { Catalogue } from '../openrouter/catalogue';
 import { PluginHost } from '../plugins/host';
+import { machineFileReader } from '../plugins/machine-file';
+import type { PluginFiles } from '../plugins/builtin/contract';
 import { PluginConversations, chatAttachmentPaths } from '../plugins/plugin-assistant';
 import type { PluginVoiceServices } from '../plugins/plugin-voice';
 import { portNeedsOf } from '../plugins/plugin-listen';
 import { PluginPeople } from '../plugins/plugin-people';
-import type { PluginSpeakers } from '../plugins/plugin-reach';
+import type { PluginSpeakers } from '../plugins/plugin-speakers';
 import { PluginInbox } from '../plugins/inbound';
 import { PluginAdmin } from '../plugins/plugin-admin';
 import { PluginSecrets } from '../plugins/plugin-secrets';
@@ -34,6 +36,7 @@ interface HostLinks {
   readonly voice: PluginVoiceServices;
   readonly conversations: PluginConversations;
   readonly attachments: (chatId: string) => readonly string[];
+  readonly machineFile: PluginFiles['fromMachine'];
 }
 
 function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
@@ -48,6 +51,7 @@ function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
       voice: links.voice,
       conversations: links.conversations,
       attachments: links.attachments,
+      machineFile: links.machineFile,
       dataDirectory: options.dataDirectory,
       submit: options.core.hub.submit,
       now: options.clock.now,
@@ -141,6 +145,7 @@ export function wirePlugins(
     ...links,
     conversations,
     attachments: (chatId) => chatAttachmentPaths(options.store, context.assistant.files, chatId),
+    machineFile: machineFileReader({ tools, harness: context.harness }),
   });
   const inbox = inboxOf(options, context, host);
   const admin = adminOf(options, { host, inbox, secrets, people });

@@ -1,36 +1,77 @@
 import type { z } from 'zod';
-import { apiErrorOf } from '@smarteverything/domain';
+import { ApiError, apiErrorOf } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { HarnessRuntimeError } from '../host/errors';
-import { HARNESS_TRANSPORT_REQUEST } from '@smarteverything/domain/node/harness-frames';
-import type { HarnessTransportRequest } from '@smarteverything/domain/node/harness-frames';
+import type { HarnessCallRequest, HarnessTransportRequest } from '@smarteverything/domain';
 import type { HarnessBoot } from './boot';
 import { connectionDiagnosticFetch } from './connection-diagnostics';
 
-export class HarnessHttp {
+export interface HarnessCallPort {
+  call(request: HarnessCallRequest, signal?: AbortSignal): Promise<unknown>;
+}
+
+function errorBody(response: Response): Promise<unknown> {
+  const json = response.headers.get('content-type')?.includes('json') === true;
+  return json ? response.json() : response.text();
+}
+
+const log = new Logger('hub.harness-hub');
+
+export class HarnessHub {
   constructor(
     private readonly boot: HarnessBoot,
+    private readonly port: HarnessCallPort,
     private readonly fetcher: typeof fetch = fetch,
   ) {}
 
+  async download(path: string, signal?: AbortSignal): Promise<Uint8Array> {
+    const startedAt = performance.now();
+    const response = await this.fetcher(new URL(path, this.boot.hub_url), {
+      headers: { authorization: `Bearer ${this.boot.token}` },
+      redirect: 'error',
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (!response.ok) {
+      log.warn('download.refused', {
+        status: response.status,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw apiErrorOf(response.status, await errorBody(response));
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    log.debug('download.finished', () => ({
+      bytes: bytes.length,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
+    return bytes;
+  }
+
   async call<S extends z.ZodType>(
-    request: HarnessTransportRequest['request'],
+    request: HarnessCallRequest,
     schema: S,
     signal?: AbortSignal,
   ): Promise<z.output<S>> {
-    const response = await this.fetcher(new URL('/api/ai/harness/transport', this.boot.hub_url), {
-      method: 'POST',
-      headers: { authorization: `Bearer ${this.boot.token}`, 'content-type': 'application/json' },
-      redirect: 'error',
-      signal: signal ?? AbortSignal.timeout(30_000),
-      body: JSON.stringify(HARNESS_TRANSPORT_REQUEST.parse({ ...this.identity(), request })),
-    });
-    if (!response.ok) {
-      const refusal = apiErrorOf(response.status, await response.json());
-      if (refusal.code === 'ownership_lost')
-        throw new HarnessRuntimeError('ownership_lost', refusal.message);
-      throw refusal;
+    let value: unknown;
+    const startedAt = performance.now();
+    try {
+      value = await this.port.call(request, signal);
+    } catch (cause) {
+      log.warn('call.failed', {
+        operation: request.operation,
+        cause: cause instanceof Error ? cause.name : typeof cause,
+        errorCode: cause instanceof ApiError ? cause.code : undefined,
+        aborted: signal?.aborted === true,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      if (cause instanceof ApiError && cause.code === 'ownership_lost')
+        throw new HarnessRuntimeError('ownership_lost', cause.message);
+      throw cause;
     }
-    return schema.parse(await response.json());
+    log.trace('call.finished', () => ({
+      operation: request.operation,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
+    return schema.parse(value);
   }
 
   identity(): Pick<HarnessTransportRequest, 'device_id' | 'generation' | 'runtime_instance'> {

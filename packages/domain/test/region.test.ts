@@ -161,3 +161,28 @@ describe('exchange rate status', () => {
     ).toMatchObject({ kind: 'ready', stale: true, error: 'down' });
   });
 });
+
+describe('locale region through Intl.Locale', () => {
+  it('reads script-qualified, numeric and mixed-case tags', () => {
+    expect(localeRegionOf('zh-Hans-CN')).toBe('CN');
+    expect(localeRegionOf('es-419')).toBe('419');
+    expect(localeRegionOf('EN-us')).toBe('US');
+    expect(localeRegionOf('de_AT')).toBe('AT');
+  });
+
+  it('reads the region of every tabled locale and none from a bare language', () => {
+    for (const code of REGION_CODES) {
+      expect(localeRegionOf(REGIONS[code].locale)).toBe(code);
+    }
+    expect(localeRegionOf('fr')).toBeNull();
+  });
+});
+
+describe('automatic region without a detection', () => {
+  it('reports why nothing was detected', () => {
+    expect(resolveRegion({ region: 'auto' }, { locale: 'en', timeZone: 'Etc/UTC' })).toStrictEqual({
+      kind: 'undetected',
+      detection: { status: 'unknown' },
+    });
+  });
+});

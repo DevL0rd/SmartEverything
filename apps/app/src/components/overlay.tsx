@@ -50,6 +50,21 @@ function useContentWatchdog(
   }, [open, signal]);
 }
 
+function useOverlayLog(open: boolean, label: string, scrim: boolean, signal: ShownSignal): void {
+  useEffect(() => {
+    if (!open) return undefined;
+    const openedAt = Date.now();
+    log.info('overlay.opened', { component: label, scrim });
+    return (): void => {
+      log.info('overlay.closed', {
+        component: label,
+        visibleMs: Date.now() - openedAt,
+        contentShown: signal.seen(),
+      });
+    };
+  }, [open, label, scrim, signal]);
+}
+
 export interface OverlayProps {
   readonly open: boolean;
   readonly onClose: () => void;
@@ -73,6 +88,7 @@ export function Overlay({
     if (open) return coverBrowser(browserOwner);
     return undefined;
   }, [open, browserOwner]);
+  useOverlayLog(open, label, scrim, signal);
   useEscape(open, onClose);
   useContentWatchdog(open, label, signal, onClose);
   return (

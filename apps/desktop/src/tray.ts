@@ -1,9 +1,9 @@
 import type {
-  DesktopFfmpeg,
   DesktopServiceStatus,
   DesktopTalkCommand,
   DesktopTalkTray,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import {
   Menu,
   nativeImage,
@@ -17,11 +17,12 @@ import { revealWindow } from './window.js';
 
 const TRAY_ICON_SIZE = 24;
 
+const log = new Logger('desktop.tray');
+
 interface TrayServiceControls {
   readonly start: () => void;
   readonly stop: () => void;
   readonly restart: () => void;
-  readonly showFfmpeg: () => void;
 }
 
 export interface TrayOptions {
@@ -30,17 +31,26 @@ export interface TrayOptions {
   readonly service: TrayServiceControls;
   readonly managedBy: 'stable-app' | undefined;
   readonly talk: (command: DesktopTalkCommand) => void;
+  readonly overlayItems: () => MenuItemConstructorOptions[];
+  readonly updateItems: () => MenuItemConstructorOptions[];
   readonly quit: () => void;
 }
 
 export interface DesktopTray {
-  readonly show: (status: DesktopServiceStatus | null, ffmpeg: DesktopFfmpeg) => void;
+  readonly show: (status: DesktopServiceStatus | null) => void;
   readonly talk: (state: DesktopTalkTray) => void;
+  readonly refresh: () => void;
   readonly destroy: () => void;
 }
 
 function toggle(window: BrowserWindow): void {
-  if (window.isVisible() && window.isFocused()) {
+  const hiding = window.isVisible() && window.isFocused();
+  log.debug('tray.toggled', () => ({
+    hiding,
+    visible: window.isVisible(),
+    focused: window.isFocused(),
+  }));
+  if (hiding) {
     window.hide();
     return;
   }
@@ -68,13 +78,13 @@ function stableAppItems(status: DesktopServiceStatus | null): MenuItemConstructo
   ];
 }
 
-function ffmpegItems(
-  ffmpeg: DesktopFfmpeg,
-  controls: TrayServiceControls,
+function statusItems(
+  options: TrayOptions,
+  status: DesktopServiceStatus | null,
 ): MenuItemConstructorOptions[] {
-  return ffmpeg.found
-    ? []
-    : [{ label: 'ffmpeg is missing: how to install it', click: controls.showFfmpeg }];
+  return options.managedBy === 'stable-app'
+    ? stableAppItems(status)
+    : serviceItems(status, options.service);
 }
 
 function menuOf(
@@ -90,8 +100,10 @@ function menuOf(
       },
     },
     { type: 'separator' },
+    ...options.overlayItems(),
     ...talkMenuItems(talk, options.talk),
     ...service,
+    ...options.updateItems(),
     { type: 'separator' },
     { label: 'Quit', click: options.quit },
   ]);
@@ -104,10 +116,12 @@ export function createTray(options: TrayOptions): DesktopTray {
       .resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE }),
   );
   const tray = new Tray(images.idle);
+  log.info('tray.created', { managedBy: options.managedBy ?? 'self', iconSize: TRAY_ICON_SIZE });
   let service: MenuItemConstructorOptions[] = [];
   let talk: DesktopTalkTray | null = null;
   let health = trayHealthLabel(null);
   const render = (): void => {
+    log.trace('tray.rendered', { health, talking: talk !== null });
     tray.setToolTip(
       talk === null ? `SmartEverything: ${health}` : `SmartEverything: ${health} · ${talk.status}`,
     );
@@ -117,20 +131,28 @@ export function createTray(options: TrayOptions): DesktopTray {
     toggle(options.window);
   });
   return {
-    show: (status, ffmpeg): void => {
+    show: (status): void => {
+      log.debug('tray.status_shown', {
+        health: status?.health ?? null,
+        active: status?.active ?? null,
+      });
       health = trayHealthLabel(status);
-      service =
-        options.managedBy === 'stable-app'
-          ? stableAppItems(status)
-          : [...serviceItems(status, options.service), ...ffmpegItems(ffmpeg, options.service)];
+      service = statusItems(options, status);
       render();
     },
     talk: (state): void => {
       talk = state;
+      log.debug('tray.talk_changed', {
+        activity: state.activity,
+        channels: state.channels.length,
+        statusLength: state.status.length,
+      });
       tray.setImage(images[state.activity]);
       render();
     },
+    refresh: render,
     destroy: (): void => {
+      log.info('tray.destroyed');
       tray.destroy();
     },
   };

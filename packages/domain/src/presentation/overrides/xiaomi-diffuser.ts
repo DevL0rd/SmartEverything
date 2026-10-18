@@ -19,7 +19,7 @@ export const DIFFUSER_XW2IV: ModelOverride = {
       role: 'spray_duration',
       group: 'fragrance',
       unit: 's',
-      keywords: ['scent', 'duration'],
+      keywords: ['scent', 'duration', 'strength', 'how strong', 'light', 'medium', 'strong'],
     },
     'raw:2.4': {
       label: 'Spray interval',
@@ -27,7 +27,7 @@ export const DIFFUSER_XW2IV: ModelOverride = {
       role: 'spray_interval',
       group: 'fragrance',
       unit: 'min',
-      keywords: ['scent', 'interval'],
+      keywords: ['scent', 'interval', 'strength', 'how often', 'light', 'medium', 'strong'],
     },
     'raw:action.4.1': {
       label: 'Spray now',
@@ -59,18 +59,18 @@ export const DIFFUSER_XW2IV: ModelOverride = {
       keywords: ['color', 'hue', 'rgb', 'ambient light'],
     },
     'raw:4.1': {
-      label: 'Automatic fragrance',
+      label: 'Spray when someone moves',
       tier: 'control',
       role: 'auto_fragrance',
       group: 'fragrance',
-      keywords: ['scent', 'auto fragrance'],
+      keywords: ['scent', 'auto fragrance', 'built-in', 'motion', 'movement', 'on the device'],
     },
     'raw:4.2': {
-      label: 'Automatic light',
+      label: 'Light when someone moves',
       tier: 'control',
       role: 'auto_light',
       group: 'lighting',
-      keywords: ['ambient light', 'auto light'],
+      keywords: ['ambient light', 'auto light', 'built-in', 'motion', 'movement', 'on the device'],
     },
     'raw:4.3': {
       label: 'Light auto-off',

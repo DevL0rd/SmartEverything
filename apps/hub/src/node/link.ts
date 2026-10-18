@@ -1,4 +1,5 @@
 import type { HubFrame, NodeFrame } from '@smarteverything/domain';
+import { Listeners } from '../listeners';
 
 type Listener<T> = (frame: T) => void;
 
@@ -11,38 +12,17 @@ export type NodeLink = Link<NodeFrame, HubFrame>;
 
 export type HubLink = Link<HubFrame, unknown>;
 
-class Channel<T> {
-  private readonly listeners = new Set<Listener<T>>();
-
-  emit(frame: T): void {
-    for (const listener of this.listeners) {
-      listener(frame);
-    }
-  }
-
-  listen(listener: Listener<T>): () => void {
-    this.listeners.add(listener);
-    return (): void => {
-      this.listeners.delete(listener);
-    };
-  }
-}
-
-export function localLinks(): { readonly node: NodeLink; readonly hub: HubLink } {
-  const up = new Channel<unknown>();
-  const down = new Channel<HubFrame>();
+export function pipeLink<Outgoing, Incoming>(
+  send: (frame: Outgoing) => void,
+): { readonly link: Link<Outgoing, Incoming>; readonly deliver: (frame: Incoming) => void } {
+  const incoming = new Listeners<Incoming>();
   return {
-    node: {
-      send: (frame): void => {
-        up.emit(frame);
-      },
-      onFrame: (listener) => down.listen(listener),
+    link: {
+      send,
+      onFrame: (listener) => incoming.listen(listener),
     },
-    hub: {
-      send: (frame): void => {
-        down.emit(frame);
-      },
-      onFrame: (listener) => up.listen(listener),
+    deliver: (frame): void => {
+      incoming.emit(frame);
     },
   };
 }

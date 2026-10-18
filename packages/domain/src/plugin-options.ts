@@ -20,7 +20,7 @@ export type PluginOption = z.output<typeof PLUGIN_OPTION>;
 export const PLUGIN_OPTION_PAGE = z.discriminatedUnion('state', [
   z.strictObject({
     state: z.literal('ready'),
-    options: z.array(PLUGIN_OPTION).max(PLUGIN_OPTION_PAGE_MAX),
+    options: z.array(PLUGIN_OPTION).max(PLUGIN_OPTION_IDS_MAX),
     next: z.string().min(1).max(200).nullable(),
   }),
   z.strictObject({ state: z.literal('unavailable'), message: z.string().min(1).max(300) }),

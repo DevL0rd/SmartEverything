@@ -22,6 +22,7 @@ import { TELL_NOW, Tasks, type TaskResult } from './tasks';
 import type { Outcome } from './turn';
 import { reportLine } from './status-report';
 import type { AibiSettings } from './settings';
+import { messageOf } from '@smarteverything/logging';
 
 const LEAVE_FOR_MS = 60_000;
 const READ_ALOUD_MAX = 1000;
@@ -43,6 +44,7 @@ export interface DeskHost {
   readonly speeches: Speeches;
   readonly photos: Photos;
   readonly report: () => RobotReport | null;
+  readonly deviceExternalId: () => string | null;
   readonly changed: () => void;
   readonly now: () => Date;
 }
@@ -217,11 +219,7 @@ export class VoiceDesk {
   }
 
   private failure(error: unknown): Outcome {
-    this.host.activity.add(
-      'warning',
-      'Gemini Live failed',
-      error instanceof Error ? error.message : 'unknown error',
-    );
+    this.host.activity.add('warning', 'Gemini Live failed', messageOf(error));
     return { kind: 'quit' };
   }
 
@@ -242,6 +240,7 @@ export class VoiceDesk {
     request: Parameters<ConversationHooks['open']>[0],
   ): Promise<VoiceTurn> {
     const settings = this.host.settings();
+    const externalId = this.host.deviceExternalId();
     return this.host.voice.turn({
       title: TITLE,
       label: TITLE,
@@ -252,6 +251,7 @@ export class VoiceDesk {
       events: request.events,
       conversation: { key: ROBOT_CONVERSATION, earlier: oneShot ? 0 : settings.memory_lines },
       hidden: ['do_task'],
+      ...(externalId === null ? {} : { deviceExternalId: externalId }),
       ...(oneShot ? { bare: true } : { ending: ROBOT_ENDING }),
     });
   }

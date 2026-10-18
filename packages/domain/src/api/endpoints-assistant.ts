@@ -2,12 +2,10 @@ import { AI_MESSAGE_REFERENCES, referencesMatchText } from '../ai-references';
 import { z } from 'zod';
 import {
   ASSISTANT_ATTACHMENT,
-  ASSISTANT_ATTACHMENTS_MAX,
   ASSISTANT_ATTACHMENT_BYTES_MAX,
   ASSISTANT_MESSAGE_ROW,
   ASSISTANT_SETTINGS_CHANGE,
   ASSISTANT_STATUS,
-  ASSISTANT_TEXT_MAX,
   ASSISTANT_UPLOAD_CHUNK_BYTES,
 } from '../assistant';
 import { ASSISTANT_RESPONSE_STYLE } from '../assistant-response-style';
@@ -15,11 +13,11 @@ import { NO_BODY, endpoint } from './endpoint';
 import { MEDIA_LINK } from './endpoints-media';
 import { DONE, ID, MOMENT, NOTHING, queryLimit } from './primitives';
 
-const ATTACHMENT_IDS = z.array(ID).max(ASSISTANT_ATTACHMENTS_MAX).default([]);
+const ATTACHMENT_IDS = z.array(ID).default([]);
 
 export const ASSISTANT_NEW_MESSAGE = z
   .strictObject({
-    text: z.string().trim().max(ASSISTANT_TEXT_MAX).default(''),
+    text: z.string().trim().default(''),
     attachments: ATTACHMENT_IDS,
     references: AI_MESSAGE_REFERENCES.optional(),
     client_message_id: ID.optional().describe(
@@ -50,8 +48,8 @@ export const ASSISTANT_OUT_FILE = z.union([LOCAL_FILE, UPLOADED_FILE]);
 export type AssistantOutFile = z.infer<typeof ASSISTANT_OUT_FILE>;
 
 export const ASSISTANT_POST = z.strictObject({
-  text: z.string().trim().max(ASSISTANT_TEXT_MAX).default(''),
-  files: z.array(ASSISTANT_OUT_FILE).max(ASSISTANT_ATTACHMENTS_MAX).default([]),
+  text: z.string().trim().default(''),
+  files: z.array(ASSISTANT_OUT_FILE).default([]),
   profileId: ID.optional().describe(
     'Whose chat: a person’s profile id from list_people (not a device or client id); the owner’s when left out',
   ),

@@ -6,20 +6,14 @@ import { Text } from '../../components/text';
 import {
   WidgetFrame,
   WidgetEmpty,
-  type BoardClass,
   type WidgetDefinition,
   type WidgetSize,
 } from '../../components/widget-board';
+import { PLUGIN_WIDGET_SIZES } from '../shared/plugin-widget';
 import { DISCORD_PLUGIN, useDiscordStatus } from './discord-data';
 import { NO_CALL_HINT, callDetail, callState, callTitle } from './call-rows';
 
-const SIZES: Readonly<Record<BoardClass, readonly WidgetSize[]>> = {
-  compact: ['S', 'M', 'L'],
-  medium: ['S', 'M', 'L'],
-  expanded: ['S', 'M', 'W', 'L'],
-};
-
-const SHOWN: Readonly<Record<WidgetSize, number>> = { S: 1, M: 2, W: 2, L: 4, XL: 6 };
+const SHOWN: Readonly<Record<WidgetSize, number>> = { M: 2, W: 2, XL: 6 };
 
 function Line({ text }: { readonly text: string }): ReactNode {
   return (
@@ -37,7 +31,6 @@ function CallWidget({ size }: { readonly size: WidgetSize }): ReactNode {
       title="Discord call"
       icon="mic"
       accent="primary"
-      size={size}
       href={href.pluginSettings(DISCORD_PLUGIN)}
     >
       {stream.state !== 'ready' ? (
@@ -45,13 +38,7 @@ function CallWidget({ size }: { readonly size: WidgetSize }): ReactNode {
           text={stream.state === 'waiting' ? 'Waiting for Discord…' : 'Discord could not be read.'}
         />
       ) : calls.length === 0 ? (
-        <WidgetEmpty
-          icon="mic"
-          colour="primary"
-          title="Not in a call"
-          body={NO_CALL_HINT}
-          size={size}
-        />
+        <WidgetEmpty icon="mic" colour="primary" title="Not in a call" body={NO_CALL_HINT} />
       ) : (
         <View className="flex-1 justify-center gap-2">
           {calls.slice(0, SHOWN[size]).map((call) => {
@@ -78,11 +65,11 @@ function CallWidget({ size }: { readonly size: WidgetSize }): ReactNode {
 
 export const DISCORD_WIDGETS: readonly WidgetDefinition[] = [
   {
-    type: 'discord.call',
+    type: 'discord-call',
     title: 'Discord call',
     icon: 'mic',
     group: 'Assistant',
-    sizes: SIZES,
+    sizes: PLUGIN_WIDGET_SIZES,
     defaultSize: 'M',
     render: ({ size }) => <CallWidget size={size} />,
   },

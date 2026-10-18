@@ -3,16 +3,11 @@ import type { TalkChannelRow, TalkMemberRow } from '@smarteverything/domain';
 import { removeTalkMember, setTalkMember, type TalkMemberTarget } from '../../../api/talk';
 import { SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { useRows, useSession } from '../../../store/selectors';
 import { useTalkChannels } from '../data/talk-data';
 
-function failed(message: string): (error: unknown) => void {
-  return (error) => {
-    notify({ message, error, tone: 'critical' });
-  };
-}
-
+import { trackTalk } from '../data/talk-log';
 function rowsFor(
   channel: TalkChannelRow,
   membership: TalkMemberRow | undefined,
@@ -25,8 +20,10 @@ function rowsFor(
       icon={channel.icon}
       value={membership !== undefined}
       onChange={(joining) => {
-        (joining ? setTalkMember(target, true) : removeTalkMember(target)).catch(
-          failed(joining ? 'Couldn’t join the channel' : 'Couldn’t leave the channel'),
+        trackTalk(joining ? 'channel.join' : 'channel.leave', { channelId: channel.id }, () =>
+          joining ? setTalkMember(target, true) : removeTalkMember(target),
+        ).catch(
+          notifyFailure(joining ? 'Couldn’t join the channel' : 'Couldn’t leave the channel'),
         );
       }}
     />
@@ -43,7 +40,9 @@ function rowsFor(
       subtitle={`Hear ${channel.name} on this device`}
       value={membership.listening}
       onChange={(listening) => {
-        setTalkMember(target, listening).catch(failed('Sound not changed'));
+        trackTalk('channel.listening', { channelId: channel.id, listening }, () =>
+          setTalkMember(target, listening),
+        ).catch(notifyFailure('Sound not changed'));
       }}
     />,
   ];

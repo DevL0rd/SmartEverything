@@ -1,61 +1,40 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { z } from 'zod';
-import { API_ENDPOINTS as E } from '@smarteverything/domain';
-import { api } from '../../../api/transport';
-import { ErrorState } from '../../../components/error-state';
-import { Screen } from '../../../components/screen';
-import { Skeleton } from '../../../components/skeleton';
-import { NotFound } from './not-found';
+import { href } from '../../../app-shell/hrefs';
+import { useRows } from '../../../store/selectors';
 import { ProgramLibraryProvider } from '../editor/program-library';
-import { SequenceEditor } from '../editor/sequence-editor';
+import { ReusableEditor } from '../editor/reusable-editor';
+import { isReusable, storedAutomationOf } from '../model/reusable-steps';
+import { NotFound } from './not-found';
 
-interface ExistingSequenceProps {
-  readonly id: string;
-  readonly reload: string | undefined;
-}
-function ExistingSequence({ id, reload }: ExistingSequenceProps): ReactNode {
-  const query = useQuery({
-    queryKey: ['sequence-editor', id, reload],
-    queryFn: () => api().call(E.readAutomationSequence, { params: { sequenceId: id } }),
-    staleTime: 0,
-    retry: false,
-  });
-  if (query.isPending)
+const PARAMS = z.object({ sequenceId: z.string(), reload: z.string().optional() });
+
+function OpenedReusable({ sequenceId }: { readonly sequenceId: string }): ReactNode {
+  const rows = useRows('automations');
+  const row = sequenceId === 'new' ? null : (rows.find((entry) => entry.id === sequenceId) ?? null);
+  if (sequenceId !== 'new' && row === null)
     return (
-      <Screen>
-        <Skeleton shape="block" className="h-40" />
-      </Screen>
+      <NotFound title="These steps are gone" body="They may have been deleted on another device." />
     );
-  if (query.error !== null)
-    return (
-      <Screen>
-        <ErrorState
-          error={query.error}
-          retry={() => {
-            void query.refetch();
-          }}
-        />
-      </Screen>
-    );
-  return <SequenceEditor key={`${id}:${reload ?? ''}`} start={query.data} />;
+  const automation = row === null ? null : storedAutomationOf(row);
+  if (row !== null && automation !== null && !isReusable(automation))
+    return <Redirect href={href.automation(row.id)} />;
+  return <ReusableEditor row={row} />;
 }
+
 export function SequenceEditorScreen(): ReactNode {
-  const params = z
-    .object({ sequenceId: z.string(), reload: z.string().optional() })
-    .safeParse(useLocalSearchParams());
-  const [newAtOpen] = useState(params.success && params.data.sequenceId === 'new');
+  const params = PARAMS.safeParse(useLocalSearchParams());
+  const [openedId] = useState(params.success ? params.data.sequenceId : null);
   if (!params.success)
-    return <NotFound title="Sequence not found" body="This link doesn’t point to a sequence." />;
+    return <NotFound title="Not found" body="This link doesn’t point to reusable steps." />;
   return (
     <ProgramLibraryProvider>
-      {newAtOpen ? (
-        <SequenceEditor start={null} />
-      ) : (
-        <ExistingSequence id={params.data.sequenceId} reload={params.data.reload} />
-      )}
+      <OpenedReusable
+        key={`${openedId ?? params.data.sequenceId}:${params.data.reload ?? ''}`}
+        sequenceId={params.data.sequenceId}
+      />
     </ProgramLibraryProvider>
   );
 }

@@ -7,7 +7,6 @@ export class Status {
   private botName: string | null = null;
   private botId: string | null = null;
   private serverCount = 0;
-  private dropped = 0;
   private callList: DiscordStatus['calls'] = [];
   private notice: string | null = null;
 
@@ -23,7 +22,7 @@ export class Status {
       botName: this.botName,
       botId: this.botId,
       serverCount: this.serverCount,
-      droppedMessages: this.dropped,
+      droppedMessages: 0,
       calls: this.callList,
       voiceNotice: this.notice,
       updatedAt: this.now().toISOString(),
@@ -55,10 +54,6 @@ export class Status {
   voiceNotice(text: string | null): void {
     this.notice = text;
     this.announce();
-  }
-
-  dropMessage(): void {
-    this.dropped += 1;
   }
 
   announce(): void {

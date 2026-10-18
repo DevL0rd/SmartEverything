@@ -31,6 +31,11 @@ describe('cloud response envelopes', () => {
     ]);
   });
 
+  it('classifies a code given as text like the number it spells', () => {
+    expect(errorKindOf('1004')).toBe('credentials');
+    expect(errorKindOf('not-a-code')).toBe('other');
+  });
+
   it('classifies every documented error code and nothing else', () => {
     expect(
       [1004, 1010, 1106, 28841101, 28841105, 28841002, 2001, 2008, 2009, 500].map(errorKindOf),
@@ -81,7 +86,7 @@ describe('cloud response envelopes', () => {
       name: 'TuyaResponseError',
       operation: 'listing',
       message:
-        'Tuya cloud answered listing with a body that is not a success or failure envelope of the expected shape: success: Invalid input: expected true; result: Invalid input: expected nonoptional, received undefined.',
+        'Tuya cloud answered listing with a body that is not a success or failure envelope of the expected shape: ✖ Invalid input: expected true\n  → at success\n✖ Invalid input: expected nonoptional, received undefined\n  → at result.',
     });
   });
 
@@ -93,7 +98,7 @@ describe('cloud response envelopes', () => {
       }),
     );
     expect(error).toMatchObject({
-      problems: ['list.0: Invalid input: expected string, received number'],
+      problems: '✖ Invalid input: expected string, received number\n  → at list[0]',
     });
   });
 });

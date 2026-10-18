@@ -5,12 +5,15 @@ import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { env } from 'node:process';
 import { ClaudeLinkError, ClaudeNotReadyError } from './errors';
+import { fsCode } from '../fs-code';
 
 export type ClaudeCli = (args: readonly string[]) => Promise<string>;
 
 const TIMEOUT_MS = 120_000;
 
 const MAX_OUTPUT = 4 * 1024 * 1024;
+
+const UNREACHABLE: readonly string[] = ['ENOENT', 'EACCES', 'ENOTDIR'];
 
 async function findClaude(): Promise<string> {
   const directories = [
@@ -23,11 +26,7 @@ async function findClaude(): Promise<string> {
       await access(candidate, constants.X_OK);
       return candidate;
     } catch (cause) {
-      if (!(
-        cause instanceof Error &&
-        'code' in cause &&
-        ['ENOENT', 'EACCES', 'ENOTDIR'].includes(String(cause.code))
-      )) {
+      if (!UNREACHABLE.includes(fsCode(cause) ?? '')) {
         throw cause;
       }
     }

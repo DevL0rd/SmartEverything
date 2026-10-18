@@ -2,7 +2,7 @@ import type { TalkChannelRow } from '@smarteverything/domain';
 import { localPref, setLocalPref, useLocalPref } from '../../../store/local-prefs';
 import { useMyChannels } from './talk-data';
 
-export function talkChannelOf(
+function talkChannelOf(
   channels: readonly Pick<TalkChannelRow, 'id'>[],
   chosen: string,
 ): string | null {

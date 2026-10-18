@@ -163,7 +163,6 @@ function admitComputerConsumer(
     connection.actor.kind !== 'node' ||
     connection.actor.id !== deviceId ||
     (host.platform !== 'linux' && host.platform !== 'macos') ||
-    !host.inbound_execution ||
     connection.execute === undefined ||
     service.store.devices.byId(deviceId).kind !== 'computer'
   )

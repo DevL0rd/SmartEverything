@@ -1,7 +1,13 @@
 import { weatherStatusOf, type WeatherForecast, type WeatherRow } from '@smarteverything/domain';
+import { useEffect } from 'react';
+import { Logger } from '@smarteverything/logging';
 import { useMinute } from '../../../store/clock';
 import { useIsOwner, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
+
+const log = new Logger('app.weather');
+
+let lastSignature: string | null = null;
 
 export type WeatherView =
   | { readonly kind: 'unsupported' }
@@ -17,11 +23,34 @@ export type WeatherView =
       readonly airError: string | null;
     };
 
-export function useWeatherRow(): WeatherRow | null {
+function useWeatherRow(): WeatherRow | null {
   return useStoreSelector((state) => state.weather);
 }
 
+function useWeatherNote(view: WeatherView): void {
+  const signature =
+    view.kind === 'ready' ? `ready:${String(view.stale)}:${view.problem ?? ''}` : view.kind;
+  useEffect(() => {
+    if (signature === lastSignature) {
+      return;
+    }
+    lastSignature = signature;
+    log.info('weather.view_changed', {
+      kind: view.kind,
+      stale: view.kind === 'ready' ? view.stale : null,
+      problem: view.kind === 'ready' ? view.problem : null,
+      reason: view.kind === 'failed' ? view.reason : null,
+    });
+  }, [signature, view]);
+}
+
 export function useWeather(): WeatherView {
+  const view = useWeatherView();
+  useWeatherNote(view);
+  return view;
+}
+
+function useWeatherView(): WeatherView {
   const row = useWeatherRow();
   const settings = useSettings();
   const owner = useIsOwner();
@@ -44,11 +73,6 @@ export function useWeather(): WeatherView {
     problem: status.problem,
     airError: row.air_error,
   };
-}
-
-export function useForecast(): WeatherForecast | null {
-  const view = useWeather();
-  return view.kind === 'ready' ? view.forecast : null;
 }
 
 export function weatherShown(view: WeatherView): boolean {

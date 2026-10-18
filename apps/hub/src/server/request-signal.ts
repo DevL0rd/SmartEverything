@@ -4,16 +4,20 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 interface RequestContext {
   readonly signal: AbortSignal;
-  readonly response: ServerResponse;
+  readonly response?: ServerResponse;
 }
 const requests = new AsyncLocalStorage<RequestContext>();
 
 export function requestSequence(seq: number): void {
-  requests.getStore()?.response.setHeader(LIVE_SEQUENCE_HEADER, String(seq));
+  requests.getStore()?.response?.setHeader(LIVE_SEQUENCE_HEADER, String(seq));
 }
 
 export function currentRequestSignal(): AbortSignal | undefined {
   return requests.getStore()?.signal;
+}
+
+export function withSignal<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
+  return requests.run({ signal }, work);
 }
 
 export async function withRequestSignal<T>(
@@ -37,11 +41,4 @@ export async function withRequestSignal<T>(
     request.off('aborted', aborted);
     response.off('close', closed);
   }
-}
-
-export function requestSignalHandler(
-  handler: (request: IncomingMessage, response: ServerResponse) => Promise<void>,
-): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
-  return (request, response) =>
-    withRequestSignal(request, response, () => handler(request, response));
 }

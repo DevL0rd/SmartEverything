@@ -8,6 +8,7 @@ import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { useIsOwner } from '../../../store/selectors';
 import { agentRunKey } from '../data/agent-runs';
+import { background } from '@smarteverything/logging';
 export function AgentMessage({ run }: { readonly run: AiAgentRun }): ReactNode {
   const [text, setText] = useState('');
   const [turn, setTurn] = useState('');
@@ -21,7 +22,10 @@ export function AgentMessage({ run }: { readonly run: AiAgentRun }): ReactNode {
       }),
     onSuccess: () => {
       setText('');
-      void client.invalidateQueries({ queryKey: agentRunKey(run.parent_chat_id) });
+      background(
+        client.invalidateQueries({ queryKey: agentRunKey(run.parent_chat_id) }),
+        'queries.invalidate_failed',
+      );
     },
   });
   const actions = run.supported_actions.filter((action) => action === 'send' || action === 'steer');

@@ -1,5 +1,6 @@
 import type { Href } from 'expo-router';
 import {
+  appendTo,
   buildSearchIndex,
   isCamera,
   type SearchEntry,
@@ -30,6 +31,7 @@ import {
 import { deviceSources, type DeviceControl } from './device-entries';
 import { useCachedProviderChats } from './cached-provider-chats';
 import { synonymsOf } from './synonyms';
+import { sameSearchDevices, sameSearchStreams } from './table-equality';
 
 export interface SearchCatalogue {
   readonly index: SearchIndex;
@@ -130,7 +132,7 @@ function widened(entry: SearchEntry): SearchEntry {
 function childrenOf(parents: ReadonlyMap<string, string>): Map<string, string[]> {
   const children = new Map<string, string[]>();
   for (const [child, parent] of parents) {
-    children.set(parent, [...(children.get(parent) ?? []), child]);
+    appendTo(children, parent, child);
   }
   return children;
 }
@@ -185,9 +187,7 @@ function catalogueFor(tables: SearchTables, env: SettingEnv): SearchCatalogue {
     tables.deviceGroups,
     tables.scenes,
     tables.automations,
-    tables.automationRuns,
     tables.automationValues,
-    tables.automationSequences,
     tables.scheduled,
     tables.plugins,
     tables.pluginStreams,
@@ -251,9 +251,7 @@ function searchTablesOf(state: StoreState): SearchTables {
     deviceGroups: t.device_groups,
     scenes: t.scenes,
     automations: t.automations,
-    automationRuns: t.automation_runs,
     automationValues: t.automation_values,
-    automationSequences: t.automation_sequences,
     scheduled: t.scheduled_actions,
     plugins: t.plugins,
     pluginStreams: t.plugin_streams,
@@ -263,25 +261,17 @@ function searchTablesOf(state: StoreState): SearchTables {
   };
 }
 
-function sameAutomationRuntimeTables(left: SearchTables, right: SearchTables): boolean {
-  return (
-    left.automationRuns === right.automationRuns &&
-    left.automationValues === right.automationValues &&
-    left.automationSequences === right.automationSequences
-  );
-}
-
 function sameTables(left: SearchTables, right: SearchTables): boolean {
   return (
-    left.devices === right.devices &&
+    sameSearchDevices(left.devices, right.devices) &&
     left.rooms === right.rooms &&
     left.deviceGroups === right.deviceGroups &&
     left.scenes === right.scenes &&
     left.automations === right.automations &&
-    sameAutomationRuntimeTables(left, right) &&
+    left.automationValues === right.automationValues &&
     left.scheduled === right.scheduled &&
     left.plugins === right.plugins &&
-    left.pluginStreams === right.pluginStreams &&
+    sameSearchStreams(right.devices, left.pluginStreams, right.pluginStreams) &&
     sameChats(left.chats, right.chats)
   );
 }

@@ -1,0 +1,161 @@
+.glow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--gh, 140px);
+  container-type: inline-size;
+  pointer-events: none;
+  isolation: isolate;
+  opacity: calc(var(--gon, 0) * var(--overlay-glow-cap, 1));
+  transition: opacity 280ms ease-out;
+}
+.glow-bloom,
+.glow-lv,
+.glow-mode {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  transform-origin: 50% 100%;
+}
+.glow-lv {
+  transform: scaleY(0.4);
+  opacity: 0.35;
+  transition:
+    transform 140ms ease-out,
+    opacity 140ms ease-out;
+}
+.glow-bloom.play {
+  animation: g-bloom 520ms ease-out both;
+}
+@keyframes g-bloom {
+  0% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  45% {
+    transform: scaleY(2.6);
+    opacity: 1;
+    animation-timing-function: ease-in-out;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+.glow[data-glow='thinking'] .glow-mode {
+  animation: g-shimmer 1200ms ease-in-out infinite alternate;
+}
+@keyframes g-shimmer {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 0.6;
+  }
+}
+.glow-q {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 25%;
+  height: 25%;
+  transform: scale(4);
+  transform-origin: 0 100%;
+  container-type: inline-size;
+}
+.blob {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 46%;
+  height: 200%;
+  border-radius: 50%;
+  translate: calc(var(--bx) * 1cqw - 50%) 0;
+  transition: translate 700ms var(--ease);
+  animation: g-drift var(--dp, 14s) ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.b1 {
+  --bx: 25;
+  --d0: -5;
+  --d1: 5;
+  background: radial-gradient(closest-side, rgba(94, 211, 207, 0.9), rgba(94, 211, 207, 0));
+}
+.b2 {
+  --bx: 52.5;
+  --d0: -2.5;
+  --d1: 2.5;
+  background: radial-gradient(closest-side, rgba(242, 180, 94, 0.9), rgba(242, 180, 94, 0));
+}
+.b3 {
+  --bx: 75;
+  --d0: 5;
+  --d1: -5;
+  background: radial-gradient(closest-side, rgba(244, 154, 142, 0.9), rgba(244, 154, 142, 0));
+}
+.glow[data-glow='thinking'] .b1 {
+  --bx: 40;
+}
+.glow[data-glow='thinking'] .b2 {
+  --bx: 50;
+}
+.glow[data-glow='thinking'] .b3 {
+  --bx: 60;
+}
+.glow[data-glow='listening'] .blob {
+  animation-play-state: running;
+}
+.glow[data-glow='speaking'] .blob {
+  animation-play-state: running;
+  --dp: 6s;
+}
+@keyframes g-drift {
+  from {
+    transform: translateX(calc(var(--d0) * 1cqw));
+  }
+  to {
+    transform: translateX(calc(var(--d1) * 1cqw));
+  }
+}
+.ov.rm .glow {
+  transition: opacity 150ms linear;
+}
+.ov.rm .glow-lv,
+.ov.rm .glow-rim {
+  transition: none;
+}
+.glow-rim {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    #5ed3cf 22%,
+    #f2b45e 52%,
+    #f49a8e 80%,
+    transparent
+  );
+  filter: blur(0.6px);
+  opacity: 0.5;
+  transition: opacity 140ms ease-out;
+  pointer-events: none;
+}
+.ov.rm .glow-rim,
+.ov.nogpu .glow-rim {
+  display: none;
+}
+.ov.nogpu .blob,
+.ov.nogpu .glow-mode,
+.ov.nogpu .glow-bloom {
+  animation: none !important;
+}
+.ov.nogpu .blob {
+  transition: none;
+}

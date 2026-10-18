@@ -3,18 +3,45 @@ import {
   SUPERVISE_ARGUMENT,
 } from '@smarteverything/hub/service/configuration';
 
-export const SYSTEMD_UNIT = 'smarteverything.service';
-export const SYSTEMD_TUNNEL_UNIT = 'smarteverything-tunnel.service';
-export const LAUNCH_AGENT_LABEL = 'app.smarteverything.server';
+const SYSTEMD_UNIT = 'smarteverything.service';
+const NODE_SYSTEMD_UNIT = 'smarteverything-node.service';
+const LAUNCH_AGENT_LABEL = 'app.smarteverything.server';
+const NODE_LAUNCH_AGENT_LABEL = 'app.smarteverything.node';
 export const WINDOWS_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 export const WINDOWS_RUN_VALUE = 'SmartEverything';
+const NODE_WINDOWS_RUN_VALUE = 'SmartEverything Node';
 const RUN_AS_NODE_VARIABLE = 'ELECTRON_RUN_AS_NODE';
+
+export interface ServiceNames {
+  readonly role: 'hub' | 'node';
+  readonly unit: string;
+  readonly launchAgentLabel: string;
+  readonly runValue: string;
+  readonly keepsRunningLoggedOut: boolean;
+}
+
+export const HUB_SERVICE_NAMES: ServiceNames = {
+  role: 'hub',
+  unit: SYSTEMD_UNIT,
+  launchAgentLabel: LAUNCH_AGENT_LABEL,
+  runValue: WINDOWS_RUN_VALUE,
+  keepsRunningLoggedOut: true,
+};
+
+export const NODE_SERVICE_NAMES: ServiceNames = {
+  role: 'node',
+  unit: NODE_SYSTEMD_UNIT,
+  launchAgentLabel: NODE_LAUNCH_AGENT_LABEL,
+  runValue: NODE_WINDOWS_RUN_VALUE,
+  keepsRunningLoggedOut: false,
+};
 
 export interface ServiceLaunch {
   readonly executable: string;
   readonly entry: string;
   readonly dataDirectory: string;
   readonly path: string;
+  readonly efficiencyCores: string | null;
 }
 
 export class ServiceDefinitionError extends Error {
@@ -34,12 +61,20 @@ function singleLine(subject: string, value: string): string {
   return value;
 }
 
+function cpuList(value: string): string {
+  if (!/^\d+(-\d+)?(,\d+(-\d+)?)*$/u.test(value)) {
+    throw new ServiceDefinitionError('efficiency cores', 'be a CPU list such as 16-31', value);
+  }
+  return value;
+}
+
 function launchValues(launch: ServiceLaunch): ServiceLaunch {
   return {
     executable: singleLine('executable', launch.executable),
     entry: singleLine('entry', launch.entry),
     dataDirectory: singleLine('data directory', launch.dataDirectory),
     path: singleLine('PATH', launch.path),
+    efficiencyCores: launch.efficiencyCores === null ? null : cpuList(launch.efficiencyCores),
   };
 }
 
@@ -55,13 +90,12 @@ function systemdExecQuoted(value: string): string {
   return systemdQuoted(value).replaceAll('$', '$$$$');
 }
 
-export interface UnitAccount {
-  readonly user: string;
-  readonly group: string;
-}
-
-function serviceSection(values: ServiceLaunch): readonly string[] {
+function unitText(description: string, launch: ServiceLaunch): string {
+  const values = launchValues(launch);
   return [
+    '[Unit]',
+    `Description=${description}`,
+    '',
     '[Service]',
     'Type=simple',
     `WorkingDirectory=${systemdPath(values.dataDirectory)}`,
@@ -73,15 +107,10 @@ function serviceSection(values: ServiceLaunch): readonly string[] {
     'RestartSec=5',
     'TimeoutStopSec=30',
     'UMask=0077',
-  ];
-}
-
-export function systemdUnit(launch: ServiceLaunch): string {
-  return [
-    '[Unit]',
-    'Description=SmartEverything server',
-    '',
-    ...serviceSection(launchValues(launch)),
+    'IOSchedulingClass=best-effort',
+    'IOSchedulingPriority=7',
+    'CPUWeight=1000',
+    ...(values.efficiencyCores === null ? [] : [`CPUAffinity=${values.efficiencyCores}`]),
     '',
     '[Install]',
     'WantedBy=default.target',
@@ -89,49 +118,12 @@ export function systemdUnit(launch: ServiceLaunch): string {
   ].join('\n');
 }
 
-function accountName(subject: string, value: string): string {
-  if (!/^[a-z_][a-z0-9_-]*\$?$/u.test(value)) {
-    throw new ServiceDefinitionError(subject, 'be a plain account name', value);
-  }
-  return value;
+export function systemdUnit(launch: ServiceLaunch): string {
+  return unitText('SmartEverything server', launch);
 }
 
-export function systemdSystemUnit(launch: ServiceLaunch, account: UnitAccount): string {
-  return [
-    '[Unit]',
-    'Description=SmartEverything server',
-    'Wants=network-online.target',
-    'After=network-online.target',
-    '',
-    ...serviceSection(launchValues(launch)),
-    `User=${accountName('user', account.user)}`,
-    `Group=${accountName('group', account.group)}`,
-    '',
-    '[Install]',
-    'WantedBy=multi-user.target',
-    '',
-  ].join('\n');
-}
-
-export function systemdSystemTunnelUnit(execStart: string, account: UnitAccount): string {
-  return [
-    '[Unit]',
-    'Description=Cloudflare Tunnel for SmartEverything',
-    'Wants=network-online.target',
-    `After=network-online.target ${SYSTEMD_UNIT}`,
-    '',
-    '[Service]',
-    'Type=simple',
-    `ExecStart=${singleLine('tunnel command', execStart)}`,
-    `User=${accountName('user', account.user)}`,
-    `Group=${accountName('group', account.group)}`,
-    'Restart=always',
-    'RestartSec=5',
-    '',
-    '[Install]',
-    'WantedBy=multi-user.target',
-    '',
-  ].join('\n');
+export function nodeSystemdUnit(launch: ServiceLaunch): string {
+  return unitText('SmartEverything computer client', launch);
 }
 
 function xmlEscaped(value: string): string {
@@ -147,14 +139,22 @@ function plistString(value: string): string {
   return `<string>${xmlEscaped(value)}</string>`;
 }
 
-export function launchAgent(launch: ServiceLaunch, outputLog: string): string {
+export function serviceUnit(names: ServiceNames, launch: ServiceLaunch): string {
+  return names.role === 'node' ? nodeSystemdUnit(launch) : systemdUnit(launch);
+}
+
+export function launchAgent(
+  launch: ServiceLaunch,
+  outputLog: string,
+  label: string = LAUNCH_AGENT_LABEL,
+): string {
   const values = launchValues(launch);
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
     '<plist version="1.0">',
     '<dict>',
-    `  <key>Label</key>${plistString(LAUNCH_AGENT_LABEL)}`,
+    `  <key>Label</key>${plistString(label)}`,
     '  <key>ProgramArguments</key>',
     '  <array>',
     `    ${plistString(values.executable)}`,

@@ -10,13 +10,12 @@ import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { rawErrorText } from '../../../format/errors';
+import { timeText } from '../../../format/locale';
 
 function PairInstructions({
   pairing,
-  url,
 }: {
   readonly pairing: z.infer<typeof COMPUTER_NODE_PAIRING> | undefined;
-  readonly url: string;
 }): ReactNode {
   return (
     <View className="gap-3">
@@ -25,28 +24,18 @@ function PairInstructions({
           <Text variant="title-2" selectable>
             {pairing.code}
           </Text>
-          <Text tone="variant">Expires {new Date(pairing.expires_at).toLocaleTimeString()}</Text>
+          <Text tone="variant">Expires {timeText(new Date(pairing.expires_at))}</Text>
           <Text selectable>
             smarteverything-service --pair-node --hub {pairing.url} --code {pairing.code}
+            {pairing.pin === null ? '' : ` --pin ${pairing.pin}`}
           </Text>
           <Text>
-            Then start the packaged computer service normally. Sign into the official Claude Code
-            runtime locally on that computer. Its models appear after you enable “Supply Claude
-            models”.
+            Run this once on that computer. It joins your home together with its SmartEverything
+            window, and pairing it again replaces the old pairing. Sign in to Claude Code there; its
+            models appear after you turn on “Supply Claude models”.
           </Text>
         </>
       )}
-      <Text tone="variant">
-        For the desktop app window, generate a separate ordinary app pairing code from Pair a
-        device, then run:
-      </Text>
-      <Text selectable>
-        smarteverything-service --pair-node-window --hub {url} --code APP_PAIRING_CODE
-      </Text>
-      <Text tone="variant">
-        The service credential and desktop window credential are separate. Use the ordinary app
-        pairing code for the window.
-      </Text>
     </View>
   );
 }
@@ -60,8 +49,8 @@ function PairComputerBody(): ReactNode {
   return (
     <View className="gap-4">
       <Text>
-        Install the packaged SmartEverything computer service on the computer you want to connect.
-        This code grants that service its own connection.
+        Install SmartEverything on the computer you want to connect. The code connects that computer
+        to your home.
       </Text>
       <TextField
         label="Hub URL reachable from this computer"
@@ -78,7 +67,7 @@ function PairComputerBody(): ReactNode {
         }}
       />
       {pairing.error === null ? null : <Text tone="critical">{rawErrorText(pairing.error)}</Text>}
-      <PairInstructions pairing={pairing.data} url={url} />
+      <PairInstructions pairing={pairing.data} />
     </View>
   );
 }

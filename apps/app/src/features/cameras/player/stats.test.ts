@@ -93,9 +93,9 @@ describe('stats between two samples', () => {
 
 describe('writing stats', () => {
   it('writes megabits above a thousand kilobits and rounds kilobits below', () => {
-    expect(bitrateText(6100)).toBe('6.1 Mb/s');
-    expect(bitrateText(1000)).toBe('1.0 Mb/s');
-    expect(bitrateText(849.6)).toBe('850 kb/s');
+    expect(bitrateText(6100)).toBe('6.1\u00a0Mb/s');
+    expect(bitrateText(1000)).toBe('1.0\u00a0Mb/s');
+    expect(bitrateText(849.6)).toBe('850\u00a0kb/s');
   });
 
   it('writes the frame size only when both sides are known', () => {
@@ -106,9 +106,9 @@ describe('writing stats', () => {
 
   it('joins what is known and says nothing when nothing is', () => {
     const stats = statsBetween(sample, { ...sample, at: 11_000, bytes: 600_000 });
-    expect(statsText(stats)).toBe('1920×1080 · 800 kb/s');
+    expect(statsText(stats)).toBe('1920×1080 · 800\u00a0kb/s');
     expect(statsText({ ...stats, kbps: null })).toBe('1920×1080');
-    expect(statsText({ ...stats, width: null })).toBe('800 kb/s');
+    expect(statsText({ ...stats, width: null })).toBe('800\u00a0kb/s');
     expect(statsText({ ...stats, width: null, kbps: null })).toBeNull();
     expect(statsText(null)).toBeNull();
   });

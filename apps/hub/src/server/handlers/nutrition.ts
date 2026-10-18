@@ -7,22 +7,7 @@ import {
 import type { Store } from '../../store/store';
 import { profileIdOf } from '../auth';
 import type { ServerContext } from '../context';
-import { DONE_REPLY, bound, type Bound } from '../router';
-
-type NutritionRoutes = Record<
-  | 'readHealthEntries'
-  | 'createHealthEntry'
-  | 'updateHealthEntry'
-  | 'deleteHealthEntry'
-  | 'retryHealthEntry'
-  | 'listFoods'
-  | 'createFood'
-  | 'updateFood'
-  | 'deleteFood'
-  | 'lookupFood'
-  | 'searchFoods',
-  Bound
->;
+import { DONE_REPLY, bound } from '../router';
 
 function noteFoodUse(store: Store, profileId: string, input: HealthEntryInput): void {
   const foodId = input.food?.foodId ?? null;
@@ -31,20 +16,13 @@ function noteFoodUse(store: Store, profileId: string, input: HealthEntryInput): 
   }
 }
 
-function entryRoutes(
-  context: ServerContext,
-): Pick<
-  NutritionRoutes,
-  | 'readHealthEntries'
-  | 'createHealthEntry'
-  | 'updateHealthEntry'
-  | 'deleteHealthEntry'
-  | 'retryHealthEntry'
-> {
-  const { store } = context;
-  return {
+const entryRoutes = ({ store }: ServerContext) =>
+  ({
     readHealthEntries: bound(E.readHealthEntries, ({ query, caller }) =>
       store.healthEntries.window(profileIdOf(store, caller), query),
+    ),
+    readHealthEntry: bound(E.readHealthEntry, ({ params, caller }) =>
+      store.healthEntries.byId(params.entryId, profileIdOf(store, caller)),
     ),
     createHealthEntry: bound(E.createHealthEntry, ({ body, caller }) =>
       store.write(() => {
@@ -67,21 +45,10 @@ function entryRoutes(
       store.healthEntries.remove(params.entryId, profileIdOf(store, caller));
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;
 
-function foodRoutes(
-  context: ServerContext,
-): Omit<
-  NutritionRoutes,
-  | 'readHealthEntries'
-  | 'createHealthEntry'
-  | 'updateHealthEntry'
-  | 'deleteHealthEntry'
-  | 'retryHealthEntry'
-> {
-  const { store, foodLookup } = context;
-  return {
+const foodRoutes = ({ store, foodLookup }: ServerContext) =>
+  ({
     listFoods: bound(E.listFoods, ({ caller }) => store.foods.list(profileIdOf(store, caller))),
     createFood: bound(E.createFood, ({ body, caller }) =>
       store.foods.save(profileIdOf(store, caller), body),
@@ -97,12 +64,10 @@ function foodRoutes(
     searchFoods: bound(E.searchFoods, async ({ query }) => ({
       products: await foodLookup.search(query.q),
     })),
-  };
-}
+  }) as const;
 
-export function nutritionRoutes(context: ServerContext): NutritionRoutes {
-  return { ...entryRoutes(context), ...foodRoutes(context) };
-}
+export const nutritionRoutes = (context: ServerContext) =>
+  ({ ...entryRoutes(context), ...foodRoutes(context) }) as const;
 
 export interface EntryAcker {
   readonly sourceId: string;

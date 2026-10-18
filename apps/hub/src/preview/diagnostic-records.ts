@@ -1,6 +1,5 @@
 import {
   ApiError,
-  legacyConsoleRecords,
   type PreviewConsoleRecord,
   type PreviewRecordRefusal,
   type PreviewLogPage,
@@ -59,18 +58,11 @@ export class PreviewRecords {
     const pool = contextual(retained, matching, search);
     const candidates = pool.filter((record) => atCursor(record, input));
     const selected = pageRecords(candidates, input);
-    if (input.diagnosticsVersion !== 2 && !legacyConsoleRecords(selected))
-      throw new ApiError(
-        'invalid_request',
-        'Update this client and request diagnosticsVersion 2 to read these complete raw console records.',
-      );
     const cursors = pageCursors(pool, selected);
     return {
       scope,
       records: selected,
-      ...(input.diagnosticsVersion === 2
-        ? { refusedRecords: this.refusedRecords.filter((entry) => entry.recordId <= snapshot) }
-        : {}),
+      refusedRecords: this.refusedRecords.filter((entry) => entry.recordId <= snapshot),
       snapshot,
       ...cursors,
       omittedRecords: this.omitted,

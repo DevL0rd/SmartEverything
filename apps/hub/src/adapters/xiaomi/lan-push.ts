@@ -5,6 +5,7 @@ import {
   checkSubscription,
   needsSubscription,
   parseUplink,
+  statusNoticeId,
   subscriptionParams,
   uplinkAck,
   type MiioHeader,
@@ -14,7 +15,9 @@ import {
   type Uplink,
 } from '@smarteverything/xiaomi';
 import type { XiaomiTiming } from './dependencies';
+import { RepeatLog } from '../../providers/repeat-log';
 import { MiioTimeoutError, type MiioClient } from './miio-client';
+import { background, failureLine } from '@smarteverything/logging';
 
 const MILLISECONDS_PER_SECOND = 1000;
 const JITTER_SPAN = 0.2;
@@ -55,12 +58,15 @@ export class LanPush {
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private readonly seen = new Map<string, number>();
+  private readonly repeat: RepeatLog;
+  private duplicates = 0;
 
   constructor(
     private readonly options: LanPushOptions,
     private readonly listener: PushListener,
   ) {
     this.interval = options.timing.keepAliveMinMs;
+    this.repeat = new RepeatLog(options.log);
   }
 
   get state(): PushState {
@@ -71,7 +77,7 @@ export class LanPush {
     this.options.client.onUplink((body, header) => {
       this.received(body, header);
     });
-    void this.probe();
+    background(this.probe(), 'lan_push.probe_failed');
   }
 
   async close(): Promise<void> {
@@ -86,7 +92,7 @@ export class LanPush {
       const params = subscriptionParams(virtualDid, this.subscribedAt);
       checkSubscription(UNSUBSCRIBE_METHOD, await client.call(UNSUBSCRIBE_METHOD, params));
     } catch (error) {
-      log.warn('xiaomi_push.unsubscribe_failed', { did, reason: String(error) });
+      log.warn('xiaomi_push.unsubscribe_failed', { did, reason: failureLine(error) });
     }
     this.subscribedAt = null;
   }
@@ -99,6 +105,12 @@ export class LanPush {
       const reply = await this.options.client.probe(this.options.virtualDid);
       await this.answered(reply);
     } catch (error) {
+      this.options.log.debug('xiaomi_push.probe_unanswered', () => ({
+        did: this.options.did,
+        missed: this.missed + 1,
+        answeredOnce: this.answeredOnce,
+        reason: failureLine(error),
+      }));
       this.unanswered(error);
     }
   }
@@ -152,7 +164,7 @@ export class LanPush {
       }
       this.setState({
         kind: 'unsupported',
-        reason: `the device refused ${SUBSCRIBE_METHOD}: ${String(error)}`,
+        reason: `the device refused ${SUBSCRIBE_METHOD}: ${failureLine(error)}`,
       });
       return;
     }
@@ -176,11 +188,11 @@ export class LanPush {
     if (!this.answeredOnce) {
       this.setState({
         kind: 'unsupported',
-        reason: `the device at ${host} did not answer the push probe: ${String(error)}`,
+        reason: `the device at ${host} did not answer the push probe: ${failureLine(error)}`,
       });
       return;
     }
-    this.lose(`the device stopped answering keep-alive probes at ${host}: ${String(error)}`);
+    this.lose(`the device stopped answering keep-alive probes at ${host}: ${failureLine(error)}`);
   }
 
   private lose(reason: string): void {
@@ -197,22 +209,30 @@ export class LanPush {
     if (this.stopped || String(header.deviceId) !== did) {
       return;
     }
+    const noticeId = statusNoticeId(body);
+    if (noticeId !== null) {
+      client.answer(header, uplinkAck(noticeId));
+      log.debug('xiaomi_push.status_notice', { did });
+      return;
+    }
     let uplink: Uplink;
     try {
       uplink = parseUplink(did, body);
     } catch (error) {
-      log.warn('xiaomi_push.uplink_refused', { did, reason: String(error) });
-      return;
-    }
-    const deliver = this.delivery(uplink);
-    if (deliver === null) {
-      log.warn('xiaomi_push.child_refused', {
+      this.repeat.warn('xiaomi_push.uplink_refused', did, {
         did,
-        reason: 'the current inventory does not authorize this child event',
+        host: this.options.host,
+        bodyLength: body.length,
+        reason: failureLine(error),
       });
       return;
     }
     client.answer(header, uplinkAck(uplink.id));
+    const deliver = this.delivery(uplink);
+    if (deliver === null) {
+      log.debug('xiaomi_push.child_unknown', { did, reason: 'no known device matches this child' });
+      return;
+    }
     const key = JSON.stringify([
       did,
       uplink.kind === 'child-event' ? uplink.childDid : did,
@@ -220,6 +240,8 @@ export class LanPush {
     ]);
     const at = now();
     if ((this.seen.get(key) ?? 0) > at) {
+      this.duplicates += 1;
+      this.repeat.debug('xiaomi_push.uplink_duplicate', did, { did, duplicates: this.duplicates });
       return;
     }
     this.remember(key, at + timing.duplicateWindowMs, at);
@@ -261,7 +283,7 @@ export class LanPush {
     }
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.probe();
+      background(this.probe(), 'lan_push.probe_failed');
     }, delayMs);
   }
 
@@ -273,6 +295,13 @@ export class LanPush {
   }
 
   private setState(state: PushState): void {
+    this.options.log.info('xiaomi_push.state_changed', {
+      did: this.options.did,
+      host: this.options.host,
+      from: this.current.kind,
+      to: state.kind,
+      reason: 'reason' in state ? state.reason : undefined,
+    });
     this.current = state;
     this.listener.changed(state);
   }

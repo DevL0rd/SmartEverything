@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { keyPressOf, type KeyPress } from '../design/keyboard';
 import { isNative, useIdiom } from '../design/platform';
 import { useDebouncedValue } from '../design/use-debounced-value';
+import { useStableCallback } from '../design/use-stable-callback';
 import { inlineOf, useSearchActions, type SearchActions } from './actions';
 import { useSearchCatalogue, type SearchCatalogue } from './catalogue';
 import { useResultNavigation, type ResultNavigation } from './navigation';
@@ -150,6 +151,10 @@ export function useSettledSearchPanel(
   const actions = useSearchActions(catalogue, query, props.onDone);
   const keys: Keys = { navigation, actions, catalogue, props };
   useCapturedKeys(pointer, (press) => handle(press, keys));
+  const onOpen = useStableCallback(actions.open);
+  const onToggle = useStableCallback(navigation.toggle);
+  const onShowAll = useStableCallback(navigation.showAll);
+  const onQuery = useStableCallback(props.onQuery);
   const model: SearchListModel = {
     rows: navigation.rows,
     query,
@@ -158,10 +163,10 @@ export function useSettledSearchPanel(
     selectedKey: navigation.selected?.key ?? null,
     keyboard: pointer,
     navigating: navigation.navigating,
-    onOpen: actions.open,
-    onToggle: navigation.toggle,
-    onShowAll: navigation.showAll,
-    onQuery: props.onQuery,
+    onOpen,
+    onToggle,
+    onShowAll,
+    onQuery,
     onClearRecent: clear,
   };
   const submit = (): void => {

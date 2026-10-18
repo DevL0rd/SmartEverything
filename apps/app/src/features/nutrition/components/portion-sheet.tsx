@@ -1,14 +1,8 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import {
-  MEALS,
-  MULTIPLIER_MAX,
-  MULTIPLIER_MIN,
-  portionLabel,
-  scaledAmount,
-  unitLabel,
-} from '@smarteverything/domain';
+import { useMutation } from '@tanstack/react-query';
+import { MEALS, portionLabel, unitLabel } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { DateNav } from '../../../components/date-nav';
 import { NumberStepper } from '../../../components/number-stepper';
@@ -131,26 +125,6 @@ function AmountControl({
   );
 }
 
-function MultiplierControl({
-  multiplier,
-  onChange,
-}: {
-  readonly multiplier: number;
-  readonly onChange: (multiplier: number) => void;
-}): ReactNode {
-  return (
-    <NumberStepper
-      label="Multiplier"
-      value={multiplier}
-      min={MULTIPLIER_MIN}
-      max={MULTIPLIER_MAX}
-      step={0.5}
-      unit="×"
-      onChange={onChange}
-    />
-  );
-}
-
 function Footer({
   target,
   busy,
@@ -180,7 +154,6 @@ function Footer({
 
 interface PortionValues {
   readonly amount: number;
-  readonly multiplier: number;
   readonly day: Date;
   readonly meal: Meal;
   readonly time: TimeOfDay;
@@ -188,7 +161,6 @@ interface PortionValues {
 
 interface PortionSetters {
   readonly setAmount: (amount: number) => void;
-  readonly setMultiplier: (multiplier: number) => void;
   readonly setDay: (day: Date) => void;
   readonly setMeal: (meal: Meal) => void;
   readonly setTime: (time: TimeOfDay) => void;
@@ -203,21 +175,17 @@ function PortionBody({
   readonly values: PortionValues;
   readonly set: PortionSetters;
 }): ReactNode {
-  const { amount, multiplier, day, meal, time } = values;
-  const total = scaledAmount(amount, multiplier);
-  const subtitle = joinParts([target.food.brand, portionLabel(target.food, total)]);
+  const { amount, day, meal, time } = values;
+  const subtitle = joinParts([target.food.brand, portionLabel(target.food, amount)]);
   return (
     <View className="gap-5 pb-2">
       <Text variant="callout" tone="variant" numberOfLines={1}>
         {subtitle}
       </Text>
-      <NutrientPreview food={target.food} amount={total} />
+      <NutrientPreview food={target.food} amount={amount} />
       {target.fromOpenFoodFacts ? <Attribution /> : null}
       <Field label="Amount">
         <AmountControl target={target} amount={amount} onChange={set.setAmount} />
-      </Field>
-      <Field label="Multiplier">
-        <MultiplierControl multiplier={multiplier} onChange={set.setMultiplier} />
       </Field>
       <Field label="Meal">
         <Segmented<Meal> label="Meal" options={MEAL_OPTIONS} value={meal} onChange={set.setMeal} />
@@ -239,39 +207,36 @@ export interface PortionForm {
 
 export function usePortionForm(target: PortionTarget, onDone: () => void): PortionForm {
   const [amount, setAmount] = useState(target.amount);
-  const [multiplier, setMultiplier] = useState(target.multiplier);
   const [day, setDay] = useState(() => new Date(target.at));
   const [meal, setMeal] = useState<Meal>(target.meal);
   const [time, setTime] = useState<TimeOfDay>(timeOf(target.at));
-  const [busy, setBusy] = useState(false);
   const log = useLogFood();
-  const finish = (work: Promise<boolean>): void => {
-    setBusy(true);
-    void work.then((ok) => {
-      setBusy(false);
+  const finish = useMutation({
+    mutationFn: (work: () => Promise<boolean>) => work(),
+    onSuccess: (ok): void => {
       if (ok) {
         onDone();
       }
-    });
-  };
+    },
+  });
   return {
     footer: (
       <Footer
         target={target}
-        busy={busy}
+        busy={finish.isPending}
         onSave={() => {
-          finish(log.save(target, { amount, multiplier, meal, at: atTime(day, time) }));
+          finish.mutate(() => log.save(target, { amount, meal, at: atTime(day, time) }));
         }}
         onRemove={() => {
-          finish(log.remove(target));
+          finish.mutate(() => log.remove(target));
         }}
       />
     ),
     body: (
       <PortionBody
         target={target}
-        values={{ amount, multiplier, day, meal, time }}
-        set={{ setAmount, setMultiplier, setDay, setMeal, setTime }}
+        values={{ amount, day, meal, time }}
+        set={{ setAmount, setDay, setMeal, setTime }}
       />
     ),
   };

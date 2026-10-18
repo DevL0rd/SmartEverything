@@ -1,6 +1,7 @@
 import { BlockList, isIP } from 'node:net';
-import { hostname, networkInterfaces } from 'node:os';
+import { hostname } from 'node:os';
 import type { PluginMcp } from '@smarteverything/domain';
+import { interfaceEntries } from '../network/lan';
 const loopbacks = new BlockList();
 loopbacks.addSubnet('127.0.0.0', 8, 'ipv4');
 loopbacks.addAddress('::1', 'ipv6');
@@ -32,9 +33,6 @@ export function localPluginTransport(mcp: PluginMcp | null, callback: string): b
     host === hostname()
   )
     return true;
-  const addresses = [
-    urlHost(callback),
-    ...Object.values(networkInterfaces()).flatMap((rows) => rows?.map((row) => row.address) ?? []),
-  ];
+  const addresses = [urlHost(callback), ...interfaceEntries().map((row) => row.address)];
   return addresses.some((address) => sameAddress(address, host));
 }

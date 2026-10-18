@@ -1,12 +1,12 @@
 import { API_ENDPOINTS as E, type ComputerRuntimeTarget } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import { bound, type Bound } from '../server/router';
+import { bound, type Routes } from '../server/router';
 import type { ComputerAiDirectory } from './ai-directory';
 
 export function computerMcpPolicyRoutes(
   directory: ComputerAiDirectory,
   store: Store,
-): Record<'readComputerNativeMcpPolicy' | 'updateComputerNativeMcpPolicy', Bound> {
+): Routes<'readComputerNativeMcpPolicy' | 'updateComputerNativeMcpPolicy'> {
   const target = (params: {
     readonly deviceId: string;
     readonly runtime: 'claude' | 'codex';

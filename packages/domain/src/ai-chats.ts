@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { DSH_ENGINE, DSH_ENGINE_WRITE } from './ai-harness-session';
+import { AI_HARNESS_TARGET } from './ai-harness';
+import { CLAUDE_SESSION_ID } from './claude';
 import { CLAUDE_PROVIDER_OPTIONS } from './computer-ai';
 import { CODEX_PROVIDER_OPTIONS } from './codex';
 import { PLUGIN_REQUESTERS } from './plugin-people';
@@ -24,6 +26,7 @@ const CLAUDE_ENGINE_FIELDS = {
   model: z.string().trim().min(1).max(200),
   effort: z.string().trim().min(1).max(32).nullable().default(null),
   settings: CLAUDE_PROVIDER_OPTIONS.default({ builtin_tools: [] }),
+  continued_from: CLAUDE_SESSION_ID.optional(),
 };
 const CODEX_ENGINE_FIELDS = {
   kind: z.literal('codex'),
@@ -108,6 +111,9 @@ export const AI_CHAT_ROW = z.object({
   parent_id: ID.nullable(),
   source_key: z.string().min(1).max(300).nullable(),
   engine: ENGINE,
+  pending_execution_target: AI_HARNESS_TARGET.nullable()
+    .default(null)
+    .describe('The machine the chat moves to at the AI’s next tool call; null when no move waits'),
   tools: z.array(z.string().min(1).max(200)).nullable(),
   pinned: z.boolean(),
   archived_at: MOMENT.nullable(),
@@ -124,6 +130,11 @@ export const AI_CHAT_ROW = z.object({
     .min(0)
     .default(0)
     .describe('Messages that arrived after read_at and were not written by the person in the app'),
+  pending_requests: z
+    .int()
+    .min(0)
+    .default(0)
+    .describe('Requests from the AI waiting for the person’s answer; 0 when none'),
   context_percent: z
     .int()
     .min(0)
@@ -145,8 +156,6 @@ export type AiChatRow = z.infer<typeof AI_CHAT_ROW>;
 
 export const WEB_SOURCES_KIND = 'web_sources';
 
-export const WEB_SOURCES_MAX = 20;
-
 export const WEB_SOURCE = z.strictObject({
   url: z.url({ protocol: /^https?$/ }).max(2000),
   title: z.string().max(300),
@@ -156,7 +165,7 @@ export type WebSource = z.infer<typeof WEB_SOURCE>;
 
 export const WEB_SOURCES_EMBED = z.strictObject({
   kind: z.literal(WEB_SOURCES_KIND),
-  sources: z.array(WEB_SOURCE).min(1).max(WEB_SOURCES_MAX),
+  sources: z.array(WEB_SOURCE).min(1),
 });
 
 export type WebSourcesEmbed = z.infer<typeof WEB_SOURCES_EMBED>;
@@ -204,7 +213,7 @@ export const CHAT_ACTIVITY_SQL = chatActivitySql('assistant_messages');
 export const AI_MESSAGE_FIELDS = {
   chat_id: ID,
   origin: MESSAGE_ORIGIN.nullable(),
-  embeds: z.array(MESSAGE_EMBED).max(20),
+  embeds: z.array(MESSAGE_EMBED),
   cost_micros: z.int().min(0),
   cost_incomplete: z.boolean().optional(),
   model: z.string().max(200).nullable(),
@@ -231,12 +240,14 @@ export const CHAT_STEP_OUTCOMES = ['done', 'failed', 'retried'] as const;
 export type ChatStepOutcome = (typeof CHAT_STEP_OUTCOMES)[number];
 
 export const CHAT_STREAM_PART = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('text'), delta: z.string().max(16_000) }),
-  z.strictObject({ kind: z.literal('reasoning'), delta: z.string().max(16_000) }),
+  z.strictObject({ kind: z.literal('text'), delta: z.string() }),
+  z.strictObject({ kind: z.literal('reasoning'), delta: z.string() }),
   CHAT_TOOL_ITEM.extend({ kind: z.literal('tool') }),
 ]);
 
 export type ChatStreamPart = z.infer<typeof CHAT_STREAM_PART>;
+
+export const CHAT_RECONNECTING_REASON = 'reconnecting';
 
 export const CHAT_ACTIVITY_NOTICE = z.strictObject({
   type: z.literal('chat_activity'),
@@ -245,10 +256,10 @@ export const CHAT_ACTIVITY_NOTICE = z.strictObject({
   messageId: ID.nullable(),
   seq: z.int().min(0),
   state: z.enum(CHAT_ACTIVITY_STATES),
-  steps: z.array(z.string().min(1).max(200)).max(40),
-  draft: z.string().max(64_000),
-  reasoning: z.string().max(64_000),
-  tools: z.array(CHAT_TOOL_ITEM).max(64),
+  steps: z.array(z.string().min(1).max(200)),
+  draft: z.string(),
+  reasoning: z.string(),
+  tools: z.array(CHAT_TOOL_ITEM),
   finish: z.string().max(40).nullable(),
   reason: z.string().max(400).nullable(),
 });
@@ -260,7 +271,7 @@ export const CHAT_STREAM_NOTICE = z.strictObject({
   chatId: ID,
   turnId: ID,
   seq: z.int().min(1),
-  parts: z.array(CHAT_STREAM_PART).min(1).max(64),
+  parts: z.array(CHAT_STREAM_PART).min(1),
 });
 
 export type ChatStreamNotice = z.infer<typeof CHAT_STREAM_NOTICE>;
@@ -300,6 +311,9 @@ export const AI_CHAT_BRANCH = z.strictObject({
     'The message to branch from; the new chat holds the chat up to and including it',
   ),
   title: z.string().trim().min(1).max(AI_CHAT_TITLE_MAX).optional(),
+  engine: ENGINE_REQUEST.optional().describe(
+    'The engine, model and thinking the branch continues with; left out, it keeps the original’s',
+  ),
 });
 
 export type AiChatBranch = z.output<typeof AI_CHAT_BRANCH>;

@@ -1,4 +1,4 @@
-import type { Query } from '@anthropic-ai/claude-agent-sdk';
+import type { ModelInfo, Query } from '@anthropic-ai/claude-agent-sdk';
 import { JSON_VALUE, type ProviderTurn, type JsonValue } from '@smarteverything/domain';
 import { ProviderInputError } from './input';
 export function requireSubscription(
@@ -32,4 +32,8 @@ export function turnScope(turn: ProviderTurn): string {
 export function serializableServerResult(value: unknown): JsonValue {
   const json: unknown = JSON.parse(JSON.stringify(value));
   return JSON_VALUE.parse(json);
+}
+
+export function findModel(models: readonly ModelInfo[], wanted: string): ModelInfo | undefined {
+  return models.find((entry) => entry.value === wanted || entry.resolvedModel === wanted);
 }

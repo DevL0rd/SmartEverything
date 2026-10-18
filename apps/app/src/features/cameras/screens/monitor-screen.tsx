@@ -1,20 +1,25 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, View } from 'react-native';
 import { useIsFocused, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ScopedTheme } from 'uniwind';
+import { Logger } from '@smarteverything/logging';
+import { ThemeScope } from '../../../design/theme-scope';
 import { useKeyboard, type KeyPress } from '../../../app-shell/shortcuts';
 import { IconButton } from '../../../components/icon-button';
+import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { ClockText, useMinute } from '../../../store/clock';
+import { ClockText } from '../../../components/time-text';
+import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { CameraSnapshot } from '../../device-visuals';
 import { useCameraEntries } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
 import { PlayerStage } from '../player/player-stage';
 import { useScreenSession } from '../player/use-live-session';
+
+const log = new Logger('app.cameras');
 
 const FILL = { flex: 1 };
 
@@ -139,6 +144,11 @@ export function MonitorScreen(): ReactNode {
   const entries = useCameraEntries();
   const visible = useIsFocused();
   const [focused, setFocused] = useState<string | null>(null);
+  const cameraCount = entries.length;
+  useLifecycleLog(log, 'monitor');
+  useEffect(() => {
+    log.info('monitor.focus_changed', { focused, cameras: cameraCount, visible });
+  }, [focused, cameraCount, visible]);
   const leave = (): void => {
     router.back();
   };
@@ -153,12 +163,12 @@ export function MonitorScreen(): ReactNode {
       statusBarTranslucent
     >
       <GestureHandlerRootView style={FILL}>
-        <ScopedTheme theme="dark">
+        <ThemeScope theme="dark">
           <View className="flex-1 gap-0.5 bg-black">
             <Wall shown={shown} focused={focused} setFocused={setFocused} />
             <Corner leave={leave} />
           </View>
-        </ScopedTheme>
+        </ThemeScope>
       </GestureHandlerRootView>
     </Modal>
   );

@@ -7,26 +7,33 @@ import {
   type ProfileRow,
   type SignalKindSpec,
   type SignalSubject,
-  type SignalTrigger,
-  type Trigger,
+  type SignalTriggerV2,
 } from '@smarteverything/domain';
 import { Select, type SelectOption } from '../../../components/select';
 import { useProfiles } from '../../../store/people';
 import { useRows } from '../../../store/selectors';
-import type { DeviceLike } from '../model/capability-choices';
+import type { Catalog } from '../data/use-automations';
+import type { DeviceLike, TestOperator } from '../model/capability-choices';
 import { signalFieldOf } from '../model/signal-text';
-import { countComparison, genericSources, timingOf, withKind } from '../model/signal-triggers';
+import {
+  genericSources,
+  signalOf,
+  timingOf,
+  windowModesFor,
+  withTiming,
+} from '../model/signal-triggers';
 import { SignalMatchFields } from './signal-match-fields';
-import { SignalAmountFields } from './signal-amount-fields';
 import { deviceOptions } from './target-fields';
+import { TestFields } from './test-fields';
 import { TimingSection } from './timing-section';
 
 const ANY = 'any';
+const AMOUNT_OPERATORS: readonly TestOperator[] = ['changed', 'gt', 'gte', 'lt', 'lte', 'between'];
 
 interface SignalProps {
-  readonly trigger: SignalTrigger;
-  readonly devices: readonly DeviceLike[];
-  readonly onChange: (trigger: Trigger) => void;
+  readonly catalog: Catalog;
+  readonly trigger: SignalTriggerV2;
+  readonly onChange: (trigger: SignalTriggerV2) => void;
 }
 
 function sourceOptions(current: string): SelectOption<string>[] {
@@ -91,7 +98,16 @@ function useSubjectChoice(
   return choose === null ? null : choose({ devices, people, chats });
 }
 
-function FieldPicker({ trigger, onChange }: Omit<SignalProps, 'devices'>): ReactNode {
+function withoutKey(
+  trigger: SignalTriggerV2,
+  key: 'field' | 'subject',
+  value: string,
+): SignalTriggerV2 {
+  const { [key]: _removed, ...rest } = trigger;
+  return value === ANY ? rest : { ...rest, [key]: value };
+}
+
+function FieldPicker({ trigger, onChange }: Omit<SignalProps, 'catalog'>): ReactNode {
   const spec = kindSpecOf(SIGNAL_SOURCES, trigger);
   if (spec === undefined || spec.fields === 'capabilities' || spec.fields.length === 0) {
     return null;
@@ -104,16 +120,16 @@ function FieldPicker({ trigger, onChange }: Omit<SignalProps, 'devices'>): React
       options={spec.pulse ? [{ value: ANY, label: 'Anything' }, ...options] : options}
       searchable
       onChange={(field) => {
-        onChange({ ...trigger, field: field === ANY ? null : field });
+        onChange(withoutKey(trigger, 'field', field));
       }}
     />
   );
 }
 
-function SignalPickers({ trigger, devices, onChange }: SignalProps): ReactNode {
+function SignalPickers({ catalog, trigger, onChange }: SignalProps): ReactNode {
   const source = SIGNAL_SOURCES.find((spec) => spec.source === trigger.source);
   const spec = kindSpecOf(SIGNAL_SOURCES, trigger);
-  const subject = useSubjectChoice(spec, devices);
+  const subject = useSubjectChoice(spec, catalog.devices);
   return (
     <View className="gap-3">
       <Select
@@ -123,7 +139,7 @@ function SignalPickers({ trigger, devices, onChange }: SignalProps): ReactNode {
         onChange={(next) => {
           const first = SIGNAL_SOURCES.find((entry) => entry.source === next)?.kinds[0];
           if (first !== undefined) {
-            onChange(withKind(trigger, next, first));
+            onChange(signalOf(next, first, trigger));
           }
         }}
       />
@@ -135,7 +151,7 @@ function SignalPickers({ trigger, devices, onChange }: SignalProps): ReactNode {
         onChange={(next) => {
           const kind = source?.kinds.find((entry) => entry.kind === next);
           if (kind !== undefined) {
-            onChange(withKind(trigger, trigger.source, kind));
+            onChange(signalOf(trigger.source, kind, trigger));
           }
         }}
       />
@@ -147,7 +163,7 @@ function SignalPickers({ trigger, devices, onChange }: SignalProps): ReactNode {
           options={subject.options}
           searchable
           onChange={(id) => {
-            onChange({ ...trigger, subject: id === ANY ? null : id });
+            onChange(withoutKey(trigger, 'subject', id));
           }}
         />
       )}
@@ -156,39 +172,38 @@ function SignalPickers({ trigger, devices, onChange }: SignalProps): ReactNode {
 }
 
 export function GenericSignalFields(props: SignalProps): ReactNode {
-  const { trigger, onChange } = props;
+  const { catalog, trigger, onChange } = props;
   const pulse = kindSpecOf(SIGNAL_SOURCES, trigger)?.pulse === true;
+  const unit = signalFieldOf(trigger)?.unit ?? null;
   return (
     <View className="gap-3">
       <SignalPickers {...props} />
       <SignalMatchFields
-        {...trigger}
+        source={trigger.source}
+        kind={trigger.kind}
+        match={trigger.match}
         onChange={(match) => {
-          onChange({ ...trigger, match });
+          const { match: _old, ...rest } = trigger;
+          onChange(match === undefined ? rest : { ...rest, match });
         }}
       />
-      {pulse || trigger.comparison === null ? null : (
-        <SignalAmountFields
-          comparison={trigger.comparison}
-          unit={signalFieldOf(trigger)?.unit ?? null}
-          onChange={(comparison) => {
-            onChange({ ...trigger, comparison });
+      {pulse || trigger.test === undefined ? null : (
+        <TestFields
+          catalog={catalog}
+          shape={{ type: 'kind', kind: 'number', unit }}
+          test={trigger.test}
+          operators={AMOUNT_OPERATORS}
+          onChange={(test) => {
+            onChange({ ...trigger, test });
           }}
         />
       )}
       <TimingSection
         timing={timingOf(trigger)}
-        modes={pulse ? ['count'] : ['avg', 'min', 'max', 'rate']}
+        modes={windowModesFor('generic', null).filter((mode) => !pulse || mode === 'count')}
         pulse={pulse}
         onChange={(next) => {
-          onChange({
-            ...trigger,
-            ...(pulse ? { comparison: countComparison(next) } : {}),
-            window: next.window,
-            holdSeconds: next.holdSeconds,
-            debounceSeconds: next.debounceSeconds,
-            cooldownSeconds: next.cooldownSeconds,
-          });
+          onChange(withTiming(trigger, next));
         }}
       />
     </View>

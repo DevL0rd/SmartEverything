@@ -181,6 +181,19 @@ export function spentSince(sql: Sql, from: string): number {
   return row.spent;
 }
 
+export function spentByProfile(sql: Sql, from: string, profileId: string): number {
+  const row = sql.get(
+    SPENT,
+    `select coalesce(sum(cost_micros), 0) as spent from ai_usage
+     where at >= $from and profile_id = $profileId`,
+    { from: new Date(from).toISOString(), profileId },
+  );
+  if (row === undefined) {
+    throw new Error('The spend query returned no row.');
+  }
+  return row.spent;
+}
+
 export function choicesOf(sql: Sql, filter: UsageFilter): UsageChoices {
   const parts = (split: UsageSplit): UsagePart[] =>
     partsOf(sql, filter, split, USAGE_CHOICES_LIMIT);

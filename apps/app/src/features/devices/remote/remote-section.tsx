@@ -1,21 +1,85 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { IrCodeRow, IrRemoteRow } from '@smarteverything/domain';
+import type { IrRemoteRow } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
-import { Text } from '../../../components/text';
 import { href } from '../../../app-shell/hrefs';
 import { useControl } from '../../../store/control';
-import { useDevices, useIrCodes, useIrRemotes } from '../../../store/selectors';
-import type { Device } from '../../../store/state';
+import { devicesIn } from '../../../store/selectors';
+import { rowsOf, type Device } from '../../../store/state';
+import { shallowEqual, useStoreSelector } from '../../../store/store-context';
 import { ControlBlock } from '../controls/control-block';
 import { Guard, offlineReason } from '../controls/guard';
-import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
+import { useDisplayName } from '../model/display-name';
 import { blasterOf, remotesShownOn } from '../model/ir-links';
 import { remoteKeysOf } from '../model/remote-layout';
+import { KeyGrid } from './key-grid';
+import { RemoteExtras } from './remote-extras';
+import { RemoteFace } from './remote-face';
 import { RemotePad } from './remote-pad';
+import { useLearnedSource, useLibrarySource, type RemoteSource } from './remote-source';
+import { SceneSheet } from './scene-sheet';
+import { useRemoteSend } from './use-remote-send';
+
+interface Remotes {
+  readonly blaster: Device | null;
+  readonly library: readonly Device[];
+  readonly remotes: readonly IrRemoteRow[];
+}
+
+const EVERY_DEVICE = { includeHidden: true } as const;
+
+function sameRemotes(left: Remotes, right: Remotes): boolean {
+  return (
+    left.blaster === right.blaster &&
+    shallowEqual(left.library, right.library) &&
+    shallowEqual(left.remotes, right.remotes)
+  );
+}
+
+export function useRemotes(device: Device): Remotes {
+  return useStoreSelector(
+    (state): Remotes => {
+      const devices = devicesIn(state, EVERY_DEVICE);
+      const linked = blasterOf(device, devices);
+      return {
+        blaster: devices.find((candidate) => candidate.id === linked?.id) ?? null,
+        library:
+          device.kind === 'ir_blaster'
+            ? devices.filter(
+                (candidate) => candidate.kind === 'ir_remote' && candidate.parent_id === device.id,
+              )
+            : [],
+        remotes: remotesShownOn(device, rowsOf(state.tables.ir_remotes), devices),
+      };
+    },
+    sameRemotes,
+    [device],
+  );
+}
+
+function RemotePanel({
+  source,
+  children,
+}: {
+  readonly source: RemoteSource;
+  readonly children?: ReactNode;
+}): ReactNode {
+  const send = useRemoteSend(source);
+  return (
+    <Card>
+      <View className="gap-4">
+        <RemoteFace source={source} cls="l" />
+        <RemoteExtras source={source} />
+        {children}
+        <KeyGrid source={source} press={send.press} />
+      </View>
+    </Card>
+  );
+}
 
 function LearnedRemote({
   blaster,
@@ -24,44 +88,7 @@ function LearnedRemote({
   readonly blaster: Device;
   readonly remote: IrRemoteRow;
 }): ReactNode {
-  const codes = useIrCodes(remote.id);
-  const control = useControl(blaster.id, 'ir_send');
-  const send = (code: IrCodeRow): void => {
-    void control.set({ format: code.format, code: code.code });
-  };
-  return (
-    <Card title={remote.name} icon="remote">
-      {codes.length === 0 ? (
-        <Text variant="callout" tone="variant">
-          No buttons learned yet.
-        </Text>
-      ) : (
-        <View className="flex-row flex-wrap gap-2">
-          {codes.map((code) => (
-            <Button
-              key={code.id}
-              label={code.button}
-              variant="tonal"
-              onPress={() => {
-                send(code);
-              }}
-            />
-          ))}
-        </View>
-      )}
-    </Card>
-  );
-}
-
-export function useRemotes(device: Device): {
-  readonly blaster: Device | null;
-  readonly remotes: readonly IrRemoteRow[];
-} {
-  const devices = useDevices({ includeHidden: true });
-  const remotes = useIrRemotes();
-  const linked = blasterOf(device, devices);
-  const blaster = devices.find((candidate) => candidate.id === linked?.id) ?? null;
-  return { blaster, remotes: remotesShownOn(device, remotes, devices) };
+  return <RemotePanel source={useLearnedSource(blaster, remote)} />;
 }
 
 function MediaKeys({
@@ -91,37 +118,112 @@ function MediaKeys({
   );
 }
 
-export function RemoteSection({ device }: { readonly device: Device }): ReactNode {
-  const { blaster, remotes } = useRemotes(device);
+function PlainPad({
+  device,
+  reason,
+}: {
+  readonly device: Device;
+  readonly reason: string | null;
+}): ReactNode {
+  const control = useControl(device.id, 'remote_key');
+  return (
+    <Card>
+      <View className="gap-6">
+        <Guard reason={reason}>
+          <RemotePad
+            device={device}
+            press={(key) => {
+              background(control.set(key), 'control.set_failed');
+            }}
+          />
+        </Guard>
+        <MediaKeys device={device} reason={reason} />
+      </View>
+    </Card>
+  );
+}
+
+function LibraryRemote({ device }: { readonly device: Device }): ReactNode {
+  const source = useLibrarySource(device);
+  const send = useRemoteSend(source);
   const name = useDisplayName(device.id);
   const reason = device.online ? null : offlineReason(name);
   return (
-    <View className="gap-section-gap">
-      {remoteKeysOf(device.capabilities).length === 0 ? null : (
-        <Card>
-          <View className="gap-6">
-            <Guard reason={reason}>
-              <RemotePad device={device} />
-            </Guard>
-            <MediaKeys device={device} reason={reason} />
-          </View>
-        </Card>
-      )}
-      {blaster === null
-        ? null
-        : remotes.map((remote) => (
-            <LearnedRemote key={remote.id} blaster={blaster} remote={remote} />
-          ))}
-      {blaster !== null && remotes.length === 0 ? (
+    <RemotePanel source={source}>
+      <Guard reason={reason}>
+        <RemotePad device={device} press={send.press} />
+      </Guard>
+    </RemotePanel>
+  );
+}
+
+function BlasterRemotes({
+  blaster,
+  library,
+  remotes,
+}: {
+  readonly blaster: Device;
+  readonly library: readonly Device[];
+  readonly remotes: readonly IrRemoteRow[];
+}): ReactNode {
+  const [scene, setScene] = useState(false);
+  const settings = href.settings.device(blaster.id, 'remotes');
+  return (
+    <>
+      {library.map((device) => (
+        <LibraryRemote key={device.id} device={device} />
+      ))}
+      {remotes.map((remote) => (
+        <LearnedRemote key={remote.id} blaster={blaster} remote={remote} />
+      ))}
+      {library.length === 0 && remotes.length === 0 ? (
         <EmptyState
           icon="remote"
-          title="No learned buttons"
+          title="No remotes yet"
           body="Teach this blaster the buttons of a remote."
-          action={
-            <Button label="Learn buttons" href={href.settings.device(blaster.id, 'remotes')} />
-          }
+          action={<Button label="Learn a button" href={settings} />}
+        />
+      ) : (
+        <View className="flex-row flex-wrap gap-2">
+          <Button label="Add a remote" icon="plus" variant="tonal" href={settings} />
+          <Button
+            label="Make a scene"
+            icon="film"
+            variant="tonal"
+            onPress={() => {
+              setScene(true);
+            }}
+          />
+        </View>
+      )}
+      {scene ? (
+        <SceneSheet
+          blaster={blaster}
+          onClose={() => {
+            setScene(false);
+          }}
         />
       ) : null}
+    </>
+  );
+}
+
+export function RemoteSection({ device }: { readonly device: Device }): ReactNode {
+  const { blaster, library, remotes } = useRemotes(device);
+  const name = useDisplayName(device.id);
+  const reason = device.online ? null : offlineReason(name);
+  const own = device.kind === 'ir_remote';
+  return (
+    <View className="gap-section-gap">
+      {own ? <LibraryRemote device={device} /> : null}
+      {!own && remoteKeysOf(device.capabilities).length > 0 ? (
+        <PlainPad device={device} reason={reason} />
+      ) : null}
+      {blaster === null ? null : own ? (
+        remotes.map((remote) => <LearnedRemote key={remote.id} blaster={blaster} remote={remote} />)
+      ) : (
+        <BlasterRemotes blaster={blaster} library={library} remotes={remotes} />
+      )}
     </View>
   );
 }
@@ -129,5 +231,8 @@ export function RemoteSection({ device }: { readonly device: Device }): ReactNod
 const IR_KINDS: ReadonlySet<Device['kind']> = new Set(['ir_blaster', 'ir_remote']);
 
 export function hasRemote(device: Device): boolean {
-  return remoteKeysOf(device.capabilities).length > 0 || IR_KINDS.has(device.kind);
+  return (
+    device.kind !== 'television' &&
+    (remoteKeysOf(device.capabilities).length > 0 || IR_KINDS.has(device.kind))
+  );
 }

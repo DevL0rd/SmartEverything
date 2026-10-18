@@ -1,5 +1,7 @@
 import type { ScheduleRow } from '@smarteverything/domain';
 import { useRow, useRows, useSettings } from '../../../store/selectors';
+import { rowsOf } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
 import { forDevice } from './view';
 
 export function useScheduledRows(): readonly ScheduleRow[] {
@@ -7,7 +9,11 @@ export function useScheduledRows(): readonly ScheduleRow[] {
 }
 
 export function useDeviceSchedule(deviceId: string): ScheduleRow | null {
-  return forDevice(useScheduledRows(), deviceId)[0] ?? null;
+  return useStoreSelector(
+    (state) => forDevice(rowsOf(state.tables.scheduled_actions), deviceId)[0] ?? null,
+    Object.is,
+    [deviceId],
+  );
 }
 
 export function useScheduleRow(scheduleId: string): ScheduleRow | null {

@@ -1,6 +1,6 @@
 import { useDesktopHarness } from './desktop-harness';
 import { DEFAULT_ENGINE, type Engine } from '@smarteverything/domain';
-import { useComputerProviderSupported, useEngineCatalogue } from '../provider/provider-data';
+import { useEngineCatalogue } from '../provider/provider-data';
 import { ValueStore, useValue } from '../../../design/external-store';
 
 const engine = new ValueStore<Engine | null>(null);
@@ -9,7 +9,6 @@ export const draftHostChoice = new ValueStore<string | null>(null);
 export function useDraftEngine(): readonly [Engine, (next: Engine) => void, boolean] {
   const explicit = useValue(engine);
   const catalogue = useEngineCatalogue();
-  const supported = useComputerProviderSupported();
   const local = useDesktopHarness();
   const host = useValue(draftHostChoice);
   const saved = catalogue.data?.default ?? DEFAULT_ENGINE;
@@ -17,8 +16,12 @@ export function useDraftEngine(): readonly [Engine, (next: Engine) => void, bool
   return [
     explicit ?? draftDefault(saved, local),
     engine.set,
-    explicit !== null || (defaultReady && (!supported || catalogue.data !== undefined)),
+    explicit !== null || (defaultReady && catalogue.data !== undefined),
   ];
+}
+
+export function setDraftEngine(next: Engine): void {
+  engine.set(next);
 }
 
 export function resetDraftEngine(): void {

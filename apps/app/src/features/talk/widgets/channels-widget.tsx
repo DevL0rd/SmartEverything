@@ -15,9 +15,9 @@ import { TalkButton } from '../components/talk-button';
 import { useChannelActivity } from '../data/channel-activity';
 import { useMyChannels } from '../data/talk-data';
 import { useTalkEngine } from '../engine/engine-state';
-import { LIST_SIZES } from './sizes';
+import { EVERY_SIZE } from './sizes';
 
-const ROWS: Readonly<Record<WidgetSize, number>> = { S: 1, M: 2, L: 4, W: 2, XL: 6 };
+const ROWS: Readonly<Record<WidgetSize, number>> = { M: 2, W: 2, XL: 6 };
 
 function ChannelLine({
   channel,
@@ -63,14 +63,7 @@ function ChannelsWidget({
   const glow =
     engine.transmit.status === 'talking' ? 'critical' : engine.receive === null ? null : 'primary';
   return (
-    <WidgetFrame
-      title="My channels"
-      icon="radio"
-      accent="primary"
-      glow={glow}
-      size={size}
-      href={href.talk()}
-    >
+    <WidgetFrame title="My channels" icon="radio" accent="primary" glow={glow} href={href.talk()}>
       {channels.length === 0 ? (
         <WidgetEmpty
           icon="radio"
@@ -78,7 +71,6 @@ function ChannelsWidget({
           title="No channels yet"
           body="Join a channel to talk from here."
           action={{ label: 'Open', href: href.talk() }}
-          size={size}
         />
       ) : (
         <View className={size === 'W' ? 'flex-row flex-wrap gap-2' : 'gap-2'}>
@@ -98,7 +90,7 @@ export const CHANNELS_WIDGET: WidgetDefinition = {
   title: 'My channels',
   icon: 'radio',
   group: 'Walkie-talkie',
-  sizes: LIST_SIZES,
+  sizes: EVERY_SIZE,
   defaultSize: 'M',
   render: ({ size, editing }) => <ChannelsWidget size={size} editing={editing} />,
 };

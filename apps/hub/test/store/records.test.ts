@@ -1,4 +1,5 @@
-import type { AutomationDefinition, RowChange } from '@smarteverything/domain';
+import { TEST_AUTHOR } from '../support/automation-author';
+import { AUTOMATION_V2, type AutomationV2, type RowChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -16,10 +17,9 @@ afterEach(async () => {
   await opened.close();
 });
 
-const DEFINITION: AutomationDefinition = {
-  triggers: [{ type: 'interval', everyMinutes: 5 }],
-  conditions: { mode: 'all', items: [] },
-  actions: [{ type: 'notify', message: 'tick' }],
+const DEFINITION: AutomationV2 = {
+  when: [{ on: 'every', minutes: 5 }],
+  steps: [{ do: 'notify', message: 'tick' }],
 };
 
 function plug(): string {
@@ -219,11 +219,23 @@ describe('clients and pairing', () => {
       { name: 'Desk', platform: 'desktop', role: 'owner', tokenHash: 'a' },
       true,
     );
-    store.clients.addPairing('h1', 'member', owner.id, '2026-10-08T10:10:00.000Z');
-    store.clients.addPairing('h2', 'owner', owner.id, '2026-10-08T10:00:00.000Z');
+    store.clients.addPairing('h1', {
+      role: 'member',
+      createdBy: owner.id,
+      expiresAt: '2026-10-08T10:10:00.000Z',
+    });
+    store.clients.addPairing('h2', {
+      role: 'owner',
+      createdBy: owner.id,
+      expiresAt: '2026-10-08T10:00:00.000Z',
+    });
     expect(store.clients.claimPairing('nope')).toStrictEqual({ claimed: false, reason: 'unknown' });
     expect(store.clients.claimPairing('h2')).toStrictEqual({ claimed: false, reason: 'expired' });
-    expect(store.clients.claimPairing('h1')).toStrictEqual({ claimed: true, role: 'member' });
+    expect(store.clients.claimPairing('h1')).toStrictEqual({
+      claimed: true,
+      role: 'member',
+      profileId: null,
+    });
     expect(store.clients.claimPairing('h1')).toStrictEqual({ claimed: false, reason: 'used' });
     expect(store.clients.forgetPairingsBefore('2026-10-08T10:05:00.000Z')).toBe(1);
   });
@@ -242,7 +254,13 @@ describe('scenes, automations, remotes and personal settings', () => {
 
   it('clears the last error of an automation only when its definition changes', () => {
     const { store } = opened;
-    const rule = store.automations.create({ name: 'Rule', enabled: true, definition: DEFINITION });
+    const rule = store.automations.create({
+      name: 'Rule',
+      enabled: true,
+      definition: DEFINITION,
+      origin: null,
+      author: TEST_AUTHOR,
+    });
     store.automations.recordRun(rule.id, {
       lastError: 'boom',
       lastRunAt: '2026-10-08T10:00:00.000Z',
@@ -253,11 +271,12 @@ describe('scenes, automations, remotes and personal settings', () => {
       last_error: 'boom',
       run_count: 1,
     });
-    expect(store.automations.update(rule.id, { definition: DEFINITION }).last_error).toBe('boom');
-    const redefined: AutomationDefinition = {
-      ...DEFINITION,
-      actions: [{ type: 'notify', message: 'tock' }],
-    };
+    expect(
+      store.automations.update(rule.id, {
+        definition: AUTOMATION_V2.parse(rule.definition),
+      }).last_error,
+    ).toBe('boom');
+    const redefined: AutomationV2 = { ...DEFINITION, steps: [{ do: 'notify', message: 'tock' }] };
     expect(
       store.automations.update(rule.id, { definition: redefined, name: 'Rule 2' }),
     ).toMatchObject({ last_error: null, name: 'Rule 2' });
@@ -293,7 +312,7 @@ describe('scenes, automations, remotes and personal settings', () => {
     expect(store.infrared.codes()).toStrictEqual([]);
   });
 
-  it('keeps layouts per client and lets only the owning client forget its push token', () => {
+  it('keeps client-scoped layouts per client, shares the others through their profile, and lets only the owning client forget its push token', () => {
     const { store } = opened;
     const phone = store.clients.create({
       name: 'Pixel',
@@ -307,9 +326,16 @@ describe('scenes, automations, remotes and personal settings', () => {
       role: 'member',
       tokenHash: 'c',
     });
-    store.personal.saveLayout(phone.id, 'home', { a: 1 });
-    expect(store.personal.saveLayout(phone.id, 'home', { a: 2 }).layout).toStrictEqual({ a: 2 });
-    expect(store.personal.layout(other.id, 'home')).toBeUndefined();
+    const phoneOwner = { clientId: phone.id, profileId: store.profiles.activeOf(phone.id).id };
+    const otherOwner = { clientId: other.id, profileId: store.profiles.activeOf(other.id).id };
+    store.personal.saveLayout(phoneOwner, 'camera-prefs', { a: 1 });
+    expect(store.personal.saveLayout(phoneOwner, 'camera-prefs', { a: 2 }).layout).toStrictEqual({
+      a: 2,
+    });
+    expect(store.personal.layout(otherOwner, 'camera-prefs')).toBeUndefined();
+    store.personal.saveLayout(phoneOwner, 'home', { shared: true });
+    expect(store.personal.layout(otherOwner, 'home')?.layout).toStrictEqual({ shared: true });
+    expect(store.personal.layout(phoneOwner, 'home')?.layout).toStrictEqual({ shared: true });
     store.personal.savePushTarget('fcm-1', phone.id, 'android');
     expect(() => {
       store.personal.removePushTarget('fcm-1', other.id);
@@ -320,14 +346,14 @@ describe('scenes, automations, remotes and personal settings', () => {
 
   it('revokes MCP tokens and OAuth grants', () => {
     const { store } = opened;
-    const token = store.assistant.createToken('Claude', 'hash-1');
-    expect(store.assistant.activeTokenByHash('hash-1')?.id).toBe(token.id);
-    expect(store.assistant.revokeToken(token.id).revoked_at).toBe('2026-10-08T10:00:00.000Z');
-    expect(store.assistant.activeTokenByHash('hash-1')).toBeUndefined();
-    expect(store.assistant.tokens()).toHaveLength(1);
-    expect(store.assistant.grants()).toStrictEqual([]);
+    const token = store.oauth.createPersonalToken('Claude', 'hash-1');
+    expect(store.oauth.activePersonalTokenByHash('hash-1')?.id).toBe(token.id);
+    expect(store.oauth.revokePersonalToken(token.id).revoked_at).toBe('2026-10-08T10:00:00.000Z');
+    expect(store.oauth.activePersonalTokenByHash('hash-1')).toBeUndefined();
+    expect(store.oauth.personalTokens()).toHaveLength(1);
+    expect(store.oauth.grants()).toStrictEqual([]);
     expect(() => {
-      store.assistant.revokeGrant('nobody');
+      store.oauth.revokeGrant('nobody');
     }).toThrow('There is no OAuth client nobody.');
   });
 });

@@ -6,33 +6,12 @@ import type {
 } from '@smarteverything/domain';
 import { useRows } from '../../../store/selectors';
 import { useImageOperations } from '../images/data/image-queries';
+import { compareText } from '../../../format/text';
 
 export const isImageAttachment = (attachment: AssistantAttachment): boolean =>
   attachment.mime.startsWith('image/');
 
-export function chatImagesOf(
-  rows: readonly AssistantMessageRow[],
-  attachmentId: string,
-): readonly AssistantAttachment[] {
-  const home = rows.find((row) => row.attachments.some((file) => file.id === attachmentId));
-  if (home === undefined) {
-    return [];
-  }
-  const seen = new Set<string>();
-  return rows
-    .filter((row) => row.chat_id === home.chat_id)
-    .sort((left, right) => left.created_at.localeCompare(right.created_at))
-    .flatMap((row) => row.attachments)
-    .filter((file) => {
-      if (!isImageAttachment(file) || seen.has(file.id)) {
-        return false;
-      }
-      seen.add(file.id);
-      return true;
-    });
-}
-
-export function galleryImagesOf(
+function galleryImagesOf(
   rows: readonly AssistantMessageRow[],
   receipts: readonly ImageOperationReceipt[],
   chatId: string,
@@ -57,7 +36,7 @@ export function galleryImagesOf(
   ];
   const seen = new Set<string>();
   return entries
-    .sort((left, right) => left.at.localeCompare(right.at))
+    .sort((left, right) => compareText(left.at, right.at))
     .flatMap((entry) => entry.images)
     .filter((image) => {
       if (!isImageAttachment(image) || seen.has(image.id)) return false;

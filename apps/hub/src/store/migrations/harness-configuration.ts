@@ -12,8 +12,4 @@ export const HARNESS_CONFIGURATION_TABLES: readonly string[] = [
   `create table harness_configuration_reports (
     target_key text primary key, report text not null, received_at text not null
   ) strict`,
-  `create table harness_configuration_assets (
-    kind text not null check(kind in ('package','skill')), name text not null,
-    version text not null, identity text not null, primary key(kind,name,version)
-  ) strict`,
 ];

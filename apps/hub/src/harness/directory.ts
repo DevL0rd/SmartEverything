@@ -85,6 +85,10 @@ export class HarnessDirectory {
       throw new ApiError('conflict', 'The selected SmartEverything execution host is absent.');
     return connection;
   }
+  holds(target: AiHarnessTarget, sessionId: string, epoch: number): boolean {
+    const connection = this.hosts.get(harnessTargetKey(target));
+    return connection?.host.online === true && connection.hasSession?.(sessionId, epoch) === true;
+  }
   bound(deviceId: string, generation: string, instance: string): HarnessConnection {
     const connection = this.get({ kind: 'device', device_id: deviceId });
     if (
@@ -146,11 +150,8 @@ export class HarnessDirectory {
     this.admit?.(request);
     const connection = this.get(target);
     requireReferenceCapability(connection.host, request);
-    if (!connection.host.inbound_execution || connection.execute === undefined)
-      throw new ApiError(
-        'forbidden',
-        'This host accepts only requests started locally in its app.',
-      );
+    if (connection.execute === undefined)
+      throw new ApiError('conflict', 'This host has no conversation channel.');
     return connection.execute(id, request);
   }
   onFrame(listener: (frame: NodeHarnessFrame) => void): () => void {

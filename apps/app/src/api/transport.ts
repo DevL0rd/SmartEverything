@@ -1,12 +1,10 @@
 export {
   api,
-  checkServer,
   chooseRemoteServer,
   chooseThisComputer,
   connectionRefused,
   forgetServer,
   loadConnection,
-  pairWith,
   type ConnectionState,
 } from './connection/connection';
 export type { ServerConnection, StoredKind } from './connection/storage';

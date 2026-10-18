@@ -10,10 +10,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { ToolCaller } from '../../src/ai-tools/hub-tool';
 import { PluginHost } from '../../src/plugins/host';
+import { PluginPeople } from '../../src/plugins/plugin-people';
+import { PluginSpeakers } from '../../src/plugins/plugin-speakers';
 import { PluginSecrets } from '../../src/plugins/plugin-secrets';
 import { SecretStore } from '../../src/secrets/store';
+import { Transcripts } from '../../src/transcripts/transcript-service';
 import type { Store } from '../../src/store/store';
-import { testLogger } from '../support/logs';
+import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { writeFakePlugin } from './fake-plugin';
 
@@ -29,6 +32,10 @@ const ECHOED = z.strictObject({ said: z.string(), url: z.string(), token: z.stri
 
 function nothing(): void {
   return undefined;
+}
+
+function unused(): never {
+  throw new Error('This test runs no built-in plugin.');
 }
 
 function now(): Date {
@@ -100,9 +107,35 @@ async function rigged(): Promise<Rig> {
         registry: { register: (): (() => void) => nothing },
         viewers: { watch: (): (() => void) => nothing, watched: (): boolean => false },
         metrics: { push: nothing },
+        sources: { push: nothing },
         deviceIdOf: (): undefined => undefined,
         target: (deviceId): string => `device:${deviceId}`,
       },
+      people: new PluginPeople(store),
+      speakers: new PluginSpeakers(),
+      voice: {
+        store,
+        host: unused,
+        turn: unused,
+        chat: unused,
+        keys: { changes: (): (() => void) => nothing },
+        ears: { make: unused },
+        transcripts: new Transcripts({
+          store,
+          clock: { now, at: (): (() => void) => nothing },
+          log: testLogger('transcripts'),
+        }),
+        transcriber: { transcribe: unused },
+        names: (): string[] => [],
+        keyPresent: (): boolean => false,
+        clock: { now, at: (): (() => void) => nothing },
+        log: testLogger('plugin-voice'),
+      },
+      conversations: { forPlugin: unused },
+      attachments: (): string[] => [],
+      machineFile: (): Promise<null> => Promise.resolve(null),
+      dataDirectory: directory,
+      submit: (): [] => [],
       now,
     },
     contributions: {
@@ -192,6 +225,21 @@ describe('plugin host', () => {
     expect(hostOf().host.running()).toStrictEqual([]);
     await reaches(id, 'running');
     expect(hostOf().host.running()).toHaveLength(2);
+  });
+
+  it('logs why a plugin crashed', async () => {
+    const logs = captureLogs();
+    const id = await addPlugin(true);
+    await hostOf().host.launch(id);
+    const crashed = reaches(id, 'crashed');
+    await hostOf()
+      .host.call(id, 'crash', {}, CALLER)
+      .catch(() => undefined);
+    await crashed;
+    const record = logs.records.find(
+      (entry) => entry.event === 'plugin.status' && entry.payload['status'] === 'crashed',
+    );
+    expect(record?.payload['detail']).toBe('Fake stopped unexpectedly');
   });
 
   it('stops the plugin and drops its key when switched off', async () => {

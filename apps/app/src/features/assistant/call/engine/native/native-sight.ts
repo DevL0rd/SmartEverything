@@ -92,10 +92,10 @@ export class NativeSight {
     this.camera.stream(this.ports.mode() === 'live');
   }
 
-  async startScreen(): Promise<void> {
-    const granted = await this.screen.open(this.ports.mode() === 'live');
+  async startScreen(): Promise<boolean> {
+    const granted = await this.screen.open(false);
     if (!granted) {
-      return;
+      return false;
     }
     try {
       await this.tell({
@@ -108,6 +108,8 @@ export class NativeSight {
       this.screen.close();
       throw error;
     }
+    this.screen.stream(this.ports.mode() === 'live');
+    return true;
   }
 
   stop(source: SightSource, tell: boolean): void {
@@ -182,18 +184,11 @@ export class NativeSight {
   }
 
   private async lookScreen(request: LookRequest): Promise<void> {
-    const wasOn = this.screen.on;
-    if (!wasOn && !(await this.screen.open(false))) {
+    if (!this.screen.on && !(await this.startScreen())) {
       throw new SightStartError('phone_screen', 'declined', SCREEN_DECLINED);
     }
-    try {
-      await this.announce('phone_screen', 'Phone screen', request.lookId);
-      await this.screen.still();
-    } finally {
-      if (!wasOn) {
-        this.screen.close();
-      }
-    }
+    await this.announce('phone_screen', 'Phone screen', request.lookId);
+    await this.screen.still();
   }
 
   private async announce(source: AppSightSource, label: string, lookId: string): Promise<void> {

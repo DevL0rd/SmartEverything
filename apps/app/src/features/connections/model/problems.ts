@@ -18,7 +18,7 @@ function problemTitles(provider: Provider): Readonly<Record<ProviderProblem, str
     cancelled: 'Sign-in was cancelled',
     rate_limited: 'Too many tries. Wait a bit.',
     not_supported: 'This account isn’t supported',
-    unknown: 'Something went wrong',
+    unknown: 'That didn’t work',
   };
 }
 

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { Defs, Ellipse, LinearGradient, Path, Stop } from 'react-native-svg';
+import { Ellipse, LinearGradient, Path, Stop } from 'react-native-svg';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
 import { BREATHE, loopStyle } from '../../../design/loops';
-import { Canvas, FULL, Layer, boxStyle, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, FULL, Layer, boxStyle, useSvgId } from '../parts/frame';
 import { GlowGradient, useInk, WELL, type VisualInk } from '../parts/ink';
 import { ContactShadow, LIGHT, Shine } from '../parts/material';
 import { rounded } from '../parts/shapes';
@@ -36,22 +36,24 @@ function Ambient({ px, running }: { readonly px: number; readonly running: boole
   return (
     <Layer box={FULL} px={px} motion={motion}>
       <Canvas px={px}>
-        <Defs>
-          <GlowGradient id={id} colour={colour} strength={0.45} />
-        </Defs>
+        <GlowGradient id={id} colour={colour} strength={0.45} />
         <Ellipse cx={50} cy={44} rx={50} ry={42} fill={`url(#${id})`} />
       </Canvas>
     </Layer>
   );
 }
 
-function Set({ ink, lit }: { readonly ink: VisualInk; readonly lit: boolean }): ReactNode {
+function TelevisionSet({
+  ink,
+  lit,
+}: {
+  readonly ink: VisualInk;
+  readonly lit: boolean;
+}): ReactNode {
   const picture = useSvgId('screen');
   return (
     <>
-      <Defs>
-        <Picture id={picture} />
-      </Defs>
+      <Picture id={picture} />
       <ContactShadow cx={50} cy={86} rx={30} ry={4.5} />
       <Path d="M44 72 H56 L57 82 H43 Z" fill={ink.dark} />
       <Ellipse
@@ -96,11 +98,9 @@ export function TelevisionVisual({ state, size, px, tone, moving }: VisualProps)
   return (
     <>
       {lit ? <Ambient px={px} running={moving} /> : null}
-      <Layer box={FULL} px={px}>
-        <Canvas px={px}>
-          <Set ink={ink} lit={lit} />
-        </Canvas>
-      </Layer>
+      <Canvas px={px} layer>
+        <TelevisionSet ink={ink} lit={lit} />
+      </Canvas>
       {lit && size !== 'tile' && state.source !== null ? (
         <Source px={px} label={state.source} />
       ) : null}

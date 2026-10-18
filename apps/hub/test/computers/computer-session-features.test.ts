@@ -3,11 +3,12 @@ import {
   DEVICE_COMMAND,
   type ComputerSessionState,
   type DeviceCommand,
+  type FileList,
   type NodeRequest,
 } from '@smarteverything/domain';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppFocusTracker, type AppTime } from '../../src/computers/app-focus';
 import {
@@ -16,9 +17,7 @@ import {
 } from '../../src/computers/computer-commands';
 import { sessionCapabilities, sessionReadings } from '../../src/computers/session-readings';
 import { parseDesktopEntry } from '../../src/node/controls/linux/desktop-entries';
-import { HomeFiles } from '../../src/node/controls/linux/home-files';
-import { jpegSize } from '../../src/node/controls/linux/jpeg-size';
-import { parseVolume } from '../../src/node/controls/linux/pulse-volume';
+import { HomeFiles } from '../../src/node/controls/home-files';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -76,6 +75,8 @@ describe('media commands (fake node)', () => {
     const context: ComputerCommandContext = {
       directory: {
         byExternalId: () => ({
+          role: 'pc',
+          machineActions: () => [],
           call: (request: NodeRequest): Promise<null> => {
             requests.push(request);
             return Promise.resolve(null);
@@ -84,9 +85,11 @@ describe('media commands (fake node)', () => {
       },
       deviceIdOf: () => 'device-1',
       scopesOf: () => ({ ...DEFAULT_COMPUTER_SCOPES, power: false }),
-      originOf: () => ({ source: 'assistant', client: null }),
+      originOf: () => ({ source: 'assistant', client: null, clientId: null }),
+      visibleTo: () => true,
       macsOf: () => [],
       wake: (): Promise<void> => Promise.resolve(),
+      approve: (): Promise<void> => Promise.resolve(),
       sink: {
         state: () => undefined,
         event: () => undefined,
@@ -108,15 +111,6 @@ describe('media commands (fake node)', () => {
 });
 
 describe('linux parsers', () => {
-  it('reads pactl volume and mute', () => {
-    expect(
-      parseVolume(
-        'Volume: front-left: 32768 /  50% / -18.06 dB,   front-right: 32768 /  50%',
-        'Mute: yes',
-      ),
-    ).toEqual({ volume: 50, muted: true });
-  });
-
   it('keeps visible applications from desktop entries', () => {
     const entry =
       '[Desktop Entry]\nType=Application\nName=Dolphin\nIcon=system-file-manager\n[Desktop Action new]\nName=New';
@@ -134,13 +128,6 @@ describe('linux parsers', () => {
         '[Desktop Entry]\nType=Application\nName=X\nNoDisplay=true',
       ),
     ).toBeNull();
-  });
-
-  it('reads the size of a JPEG', () => {
-    const frame = Buffer.from([
-      0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x02, 0xd0, 0x05, 0x00, 0x03, 0, 0, 0, 0, 0,
-    ]);
-    expect(jpegSize(frame)).toEqual({ width: 1280, height: 720 });
   });
 });
 
@@ -160,13 +147,13 @@ describe('home files', () => {
 
   it('lists folders first and reads text or base64', async () => {
     const files = new HomeFiles(home);
-    const list = await files.list(null);
+    const list = await files.list(null, 0);
     expect(list.entries.map((entry) => entry.name)).toEqual([
       'Documents',
       'notes.txt',
       'photo.bin',
     ]);
-    expect(list.parent).toBeNull();
+    expect(list.parent).toBe(dirname(list.path));
     await expect(files.read(join(home, 'notes.txt'))).resolves.toMatchObject({
       encoding: 'text',
       content: 'hello',
@@ -177,8 +164,73 @@ describe('home files', () => {
     });
   });
 
-  it('refuses anything outside the home folder', async () => {
-    await expect(new HomeFiles(home).list('/etc')).rejects.toMatchObject({ code: 'not_permitted' });
+  it('opens folders and files anywhere the user can read, not only the home', async () => {
+    const elsewhere = await mkdtemp(join(tmpdir(), 'elsewhere-'));
+    try {
+      await writeFile(join(elsewhere, 'movie.txt'), 'frames');
+      const files = new HomeFiles(home);
+      const list = await files.list(elsewhere, 0);
+      expect(list.entries.map((entry) => entry.name)).toEqual(['movie.txt']);
+      expect(list.parent).toBe(dirname(list.path));
+      await expect(files.read(join(elsewhere, 'movie.txt'))).resolves.toMatchObject({
+        content: 'frames',
+      });
+      await expect(files.list('/', 0)).resolves.toMatchObject({ parent: null });
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it('says not found for a missing path and not permitted for one it cannot read', async () => {
+    const files = new HomeFiles(home);
+    await expect(files.list(join(home, 'missing'), 0)).rejects.toMatchObject({ code: 'not_found' });
+    const sealed = join(home, 'sealed');
+    await mkdir(sealed);
+    await chmod(sealed, 0o000);
+    try {
+      if (process.getuid?.() !== 0) {
+        await expect(files.list(sealed, 0)).rejects.toMatchObject({ code: 'not_permitted' });
+      }
+    } finally {
+      await chmod(sealed, 0o700);
+    }
+  });
+
+  it('pages a 1,200-entry folder by cursor without losing or repeating an entry', async () => {
+    const crowded = join(home, 'crowded');
+    await mkdir(crowded);
+    await Promise.all(
+      Array.from({ length: 1200 }, (_, index) =>
+        writeFile(join(crowded, `file-${String(index).padStart(4, '0')}.txt`), ''),
+      ),
+    );
+    const files = new HomeFiles(home);
+    const names: string[] = [];
+    const nexts: (number | null)[] = [];
+    for (let cursor: number | null = 0; cursor !== null;) {
+      const page: FileList = await files.list(crowded, cursor);
+      names.push(...page.entries.map((entry) => entry.name));
+      nexts.push(page.next);
+      expect(page.total).toBe(1200);
+      cursor = page.next;
+    }
+    expect(nexts).toEqual([500, 1000, null]);
+    expect(names).toHaveLength(1200);
+    expect(new Set(names).size).toBe(1200);
+    expect(names).toEqual([...names].sort());
+  });
+
+  it('reads a byte range of a large file and reports its size', async () => {
+    const big = join(home, 'big.bin');
+    const bytes = Buffer.alloc(3 * 1024 * 1024 + 7, 7);
+    bytes[bytes.length - 1] = 9;
+    await writeFile(big, bytes);
+    const files = new HomeFiles(home);
+    await expect(files.read(big)).resolves.toMatchObject({ size: bytes.length });
+    const tail = await files.range(big, bytes.length - 3, 100);
+    expect(tail).toMatchObject({ size: bytes.length, mimeType: 'application/octet-stream' });
+    expect([...Buffer.from(tail.data, 'base64')]).toEqual([7, 7, 9]);
+    expect((await files.range(big, bytes.length, 10)).data).toBe('');
   });
 });
 

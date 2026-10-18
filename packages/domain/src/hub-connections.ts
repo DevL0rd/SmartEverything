@@ -59,7 +59,7 @@ export type HubDiscoveryStatus = z.infer<typeof HUB_DISCOVERY_STATUS>;
 
 export const HUB_CONNECTION_METADATA = z.object({
   identity: HUB_IDENTITY,
-  endpoints: z.array(HUB_ENDPOINT).max(32),
+  endpoints: z.array(HUB_ENDPOINT),
   remoteAvailable: z.boolean(),
   discovery: HUB_DISCOVERY_STATUS,
 });

@@ -5,6 +5,8 @@ import android.content.Context
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import expo.modules.healthconnect.calls.IncomingCall
+import expo.modules.healthconnect.diagnostics.NativeLog
+import expo.modules.healthconnect.diagnostics.NativeTally
 import expo.modules.healthconnect.calls.IncomingCalls
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.events.OnActivityResultPayload
@@ -14,6 +16,7 @@ import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.modules.ModuleDefinitionBuilder
+import expo.modules.healthconnect.overlay.CallOwner
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -25,9 +28,10 @@ class AssistantCallModule : Module() {
   private var forwarding: Job? = null
   private var deviceWatch: AutoCloseable? = null
   private var pendingShare: PendingShare? = null
+  private var overlayForwarding: Job? = null
 
-  @Volatile
-  private var call: AssistantCall? = null
+  private val call: AssistantCall?
+    get() = AssistantCalls.current
 
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -37,13 +41,14 @@ class AssistantCallModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("AssistantCall")
 
-    Events(MESSAGE_EVENT, CLOSED_EVENT, LINK_EVENT, CONTROL_EVENT, DEVICES_EVENT)
+    Events(MESSAGE_EVENT, CLOSED_EVENT, LINK_EVENT, CONTROL_EVENT, DEVICES_EVENT, OVERLAY_EVENT)
 
     observing()
     callFunctions()
     audioFunctions()
     sightFunctions()
     ringFunctions()
+    overlayFunctions { context }
     lifecycle()
   }
 
@@ -67,12 +72,26 @@ class AssistantCallModule : Module() {
       deviceWatch?.close()
       deviceWatch = null
     }
+
+    OnStartObserving(OVERLAY_EVENT) {
+      overlayForwarding = appContext.backgroundCoroutineScope.launch {
+        AssistantCallEvents.overlayActions.collect { sendEvent(OVERLAY_EVENT, mapOf("action" to it)) }
+      }
+    }
+
+    OnStopObserving(OVERLAY_EVENT) {
+      overlayForwarding?.cancel()
+      overlayForwarding = null
+    }
   }
 
   private fun ModuleDefinitionBuilder.callFunctions() {
     AsyncFunction("openAssistantCall") { serverUrl: String, token: String, enrollment: String ->
-      call?.close()
-      call = AssistantCall(context, serverUrl, token, enrollment).also { it.open() }
+      AssistantCalls.openForApp(context, serverUrl, token, enrollment)
+    }
+
+    Function("attachAssistantCall") {
+      AssistantCalls.attach()
     }
 
     AsyncFunction("beginAssistantCall") { callId: String, source: String, device: String, chatId: String? ->
@@ -93,17 +112,20 @@ class AssistantCallModule : Module() {
 
     AsyncFunction("endAssistantCall") { callId: String? ->
       call?.end(callId)
-      call = null
     }
 
     Function("assistantCallLevel") {
       call?.inputLevel ?: 0.0
     }
+
+    Function("assistantCallOutputLevel") {
+      call?.outputLevel ?: 0.0
+    }
   }
 
   private fun ModuleDefinitionBuilder.audioFunctions() {
     AsyncFunction("applyAssistantCallAudio") { settings: CallAudioSettings ->
-      CallAudioStore.latest = settings
+      CallAudioStore.remember(context, settings)
       call?.apply(settings)
     }.runOnQueue(Queues.MAIN)
 
@@ -162,6 +184,7 @@ class AssistantCallModule : Module() {
 
     OnActivityEntersForeground {
       IncomingCalls.appForeground = true
+      appContext.currentActivity?.let(CallPip::refresh)
     }
 
     OnActivityEntersBackground {
@@ -170,17 +193,30 @@ class AssistantCallModule : Module() {
 
     OnDestroy {
       IncomingCalls.appForeground = false
-      call?.close()
-      call = null
+      call?.takeIf { it.owner == CallOwner.App }?.close()
     }
   }
 
+  private val messages = NativeTally("assistant-call", "message.summary")
+
   private fun forward(event: AssistantCallEvent) {
     when (event) {
-      is AssistantCallEvent.Message -> sendEvent(MESSAGE_EVENT, mapOf("json" to event.json))
-      is AssistantCallEvent.Closed -> sendEvent(CLOSED_EVENT, mapOf("code" to event.code, "reason" to event.reason))
-      is AssistantCallEvent.Link -> sendEvent(LINK_EVENT, mapOf("state" to event.state))
-      is AssistantCallEvent.Control -> sendEvent(CONTROL_EVENT, mapOf("action" to event.action))
+      is AssistantCallEvent.Message -> {
+        messages.add(0)
+        sendEvent(MESSAGE_EVENT, mapOf("json" to event.json))
+      }
+      is AssistantCallEvent.Closed -> {
+        NativeLog.info("assistant-call", "call.closed") { mapOf("closeCode" to event.code, "reason" to NativeLog.reasonText(event.reason)) }
+        sendEvent(CLOSED_EVENT, mapOf("code" to event.code, "reason" to event.reason))
+      }
+      is AssistantCallEvent.Link -> {
+        NativeLog.info("assistant-call", "link.changed") { mapOf("state" to event.state) }
+        sendEvent(LINK_EVENT, mapOf("state" to event.state))
+      }
+      is AssistantCallEvent.Control -> {
+        NativeLog.debug("assistant-call", "control.sent") { mapOf("action" to event.action) }
+        sendEvent(CONTROL_EVENT, mapOf("action" to event.action))
+      }
     }
   }
 
@@ -190,7 +226,7 @@ class AssistantCallModule : Module() {
     pendingShare?.promise?.resolve(false)
     pendingShare = PendingShare(sampling, promise)
     val manager = activity.getSystemService(MediaProjectionManager::class.java)
-    activity.startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_PROJECTION)
+    activity.startActivityForResult(ScreenConsent.intent(manager), REQUEST_PROJECTION)
   }
 
   private fun finishProjection(payload: OnActivityResultPayload) {
@@ -233,6 +269,7 @@ class AssistantCallModule : Module() {
     const val LINK_EVENT = "onAssistantLink"
     const val CONTROL_EVENT = "onAssistantControl"
     const val DEVICES_EVENT = "onAssistantDevices"
+    const val OVERLAY_EVENT = "onOverlayAction"
     const val REQUEST_PROJECTION = 0x5C41
   }
 }

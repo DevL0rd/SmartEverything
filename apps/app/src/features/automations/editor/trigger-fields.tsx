@@ -1,113 +1,129 @@
 import type { ReactNode } from 'react';
-import { Text } from '../../../components/text';
 import { View } from 'react-native';
-import type { Trigger } from '@smarteverything/domain';
-import type { DeviceLike } from '../model/capability-choices';
-import { baseOf } from '../model/signal-triggers';
+import type { TriggerV2 } from '@smarteverything/domain';
+import type { Catalog } from '../data/use-automations';
+import { formOf, timingOf, windowModesFor, withTiming } from '../model/signal-triggers';
+import { StateFields, EventFields } from './device-trigger-fields';
+import { MINUTE_UNITS } from './duration-units';
 import { GenericSignalFields } from './generic-signal-fields';
-import { TimedFields } from './timed-trigger-fields';
+import { SpeechFields } from './speech-trigger-fields';
+import { TimingSection } from './timing-section';
+import { targetOf } from './target-fields';
 import { WeatherTriggerFields } from './weather-fields';
-import {
-  ClockField,
-  DurationField,
-  SunField,
-  WeekdayToggles,
-  type DurationUnits,
-} from './time-fields';
+import { ClockField, DurationField, SunField, WeekdayToggles } from './time-fields';
 
-const MINUTE_UNITS: DurationUnits = [
-  { value: 'minutes', label: 'min', size: 1 },
-  { value: 'hours', label: 'h', size: 60 },
-  { value: 'days', label: 'd', size: 1440 },
-];
+type Signal = Extract<TriggerV2, { on: 'signal' }>;
 
-interface FieldsProps<T extends Trigger['type']> {
-  readonly trigger: Extract<Trigger, { type: T }>;
-  readonly devices: readonly DeviceLike[];
-  readonly onChange: (trigger: Trigger) => void;
+interface FieldsProps {
+  readonly catalog: Catalog;
+  readonly trigger: TriggerV2;
+  readonly onChange: (trigger: TriggerV2) => void;
 }
 
-function TimeFields({ trigger, onChange }: FieldsProps<'time'>): ReactNode {
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+
+function DaysField({
+  trigger,
+  onChange,
+}: {
+  readonly trigger: Extract<TriggerV2, { on: 'time' }>;
+  readonly onChange: (trigger: TriggerV2) => void;
+}): ReactNode {
   return (
-    <View className="gap-4">
-      <ClockField
-        label="At"
-        value={trigger.at}
-        onChange={(at) => {
-          onChange({ ...trigger, at });
-        }}
-      />
-      <WeekdayToggles
-        value={trigger.weekdays}
-        onChange={(weekdays) => {
-          onChange({ ...trigger, weekdays });
-        }}
-      />
-    </View>
+    <WeekdayToggles
+      value={trigger.days ?? EVERY_DAY}
+      onChange={(days) => {
+        const { days: _old, ...rest } = trigger;
+        onChange(days.length === EVERY_DAY.length ? rest : { ...rest, days });
+      }}
+    />
   );
 }
 
-function SignalCapableFields({
+function SignalFields({
+  catalog,
   trigger,
-  devices,
-  onChange,
-}: FieldsProps<'state' | 'event' | 'signal'>): ReactNode {
-  const base = baseOf(trigger);
-  if (base === null) {
-    return trigger.type === 'signal' ? (
-      <GenericSignalFields trigger={trigger} devices={devices} onChange={onChange} />
-    ) : null;
-  }
-  return <TimedFields trigger={trigger} base={base} devices={devices} onChange={onChange} />;
-}
-
-export function TriggerFields({
-  trigger,
-  devices,
   onChange,
 }: {
-  readonly trigger: Trigger;
-  readonly devices: readonly DeviceLike[];
-  readonly onChange: (trigger: Trigger) => void;
+  readonly catalog: Catalog;
+  readonly trigger: Signal;
+  readonly onChange: (trigger: TriggerV2) => void;
 }): ReactNode {
-  switch (trigger.type) {
-    case 'speech':
+  const form = formOf(trigger);
+  const state = targetOf(catalog.devices, trigger.subject ?? '', trigger.field ?? '');
+  const modes = windowModesFor(form, state?.capability.value ?? null);
+  const timing = (
+    <TimingSection
+      timing={timingOf(trigger)}
+      modes={modes}
+      pulse={form === 'event'}
+      onChange={(next) => {
+        onChange(withTiming(trigger, next));
+      }}
+    />
+  );
+  switch (form) {
+    case 'device':
       return (
-        <Text variant="callout" tone="variant">
-          This saved speech trigger is preserved. Editing becomes available when the connected hub
-          provides its authorized speech sources.
-        </Text>
+        <View className="gap-3">
+          <StateFields catalog={catalog} trigger={trigger} onChange={onChange} />
+          {timing}
+        </View>
       );
-    case 'state':
     case 'event':
+      return (
+        <View className="gap-3">
+          <EventFields catalog={catalog} trigger={trigger} onChange={onChange} />
+          {timing}
+        </View>
+      );
+    case 'weather':
+      return <WeatherTriggerFields catalog={catalog} trigger={trigger} onChange={onChange} />;
+    case 'generic':
+      return <GenericSignalFields catalog={catalog} trigger={trigger} onChange={onChange} />;
+  }
+}
+
+export function TriggerFields({ catalog, trigger, onChange }: FieldsProps): ReactNode {
+  switch (trigger.on) {
+    case 'speech':
+      return <SpeechFields trigger={trigger} onChange={onChange} />;
     case 'signal':
-      return <SignalCapableFields trigger={trigger} devices={devices} onChange={onChange} />;
+      return <SignalFields catalog={catalog} trigger={trigger} onChange={onChange} />;
     case 'time':
-      return <TimeFields trigger={trigger} devices={devices} onChange={onChange} />;
+      return (
+        <View className="gap-4">
+          <ClockField
+            label="At"
+            value={trigger.at}
+            onChange={(at) => {
+              onChange({ ...trigger, at });
+            }}
+          />
+          <DaysField trigger={trigger} onChange={onChange} />
+        </View>
+      );
     case 'sun':
       return (
         <SunField
           event={trigger.event}
-          offsetMinutes={trigger.offsetMinutes}
+          offsetMinutes={trigger.offsetMinutes ?? 0}
           onChange={(event, offsetMinutes) => {
             onChange({ ...trigger, event, offsetMinutes });
           }}
         />
       );
-    case 'interval':
+    case 'every':
       return (
         <DurationField
           label="Every"
-          value={trigger.everyMinutes}
+          value={trigger.minutes}
           units={MINUTE_UNITS}
           max={10_080}
-          onChange={(everyMinutes) => {
-            onChange({ ...trigger, everyMinutes });
+          onChange={(minutes) => {
+            onChange({ ...trigger, minutes });
           }}
         />
       );
-    case 'weather':
-    case 'weather_kind':
-      return <WeatherTriggerFields trigger={trigger} onChange={onChange} />;
   }
 }

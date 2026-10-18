@@ -5,14 +5,13 @@ import { href } from '../../../app-shell/hrefs';
 import { BrandMark } from '../../../components/brand-mark';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
-import { useSizeClass } from '../../../design/size-class';
+import { useIsPhone } from '../../../design/size-class';
 import { useProviderLink } from '../../../store/selectors';
 
 export function TuyaHandoff(): ReactNode {
   const row = useProviderLink('tuya');
   const pathname = usePathname();
-  const { idiom, width } = useSizeClass();
-  const phone = idiom === 'touch' && (width === 'compact' || width === 'medium');
+  const phone = useIsPhone();
   if (phone || row?.prompt?.kind !== 'scan_qr' || pathname.startsWith('/connect/tuya')) {
     return null;
   }

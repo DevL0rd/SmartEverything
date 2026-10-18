@@ -1,11 +1,26 @@
+import { PERSON_ACCESS_STATEMENTS, backfillPersonAccess } from './person-access';
+import { PHONE_DETAIL_STATEMENTS } from './phone-details';
+import { IR_REMOTE_STATES_COLUMNS } from './ir-remote-states';
+import { EAR_HOST_STATEMENTS } from './ear-host';
+import { TELEVISION_SETTINGS_STATEMENTS } from './television-settings';
+import { COMPUTER_NODE_WINDOW_STATEMENTS } from './computer-node-window';
+import { recomputeSleepFigures } from './sleep-asleep-minutes';
+import { AI_CHAT_PENDING_MACHINE_COLUMNS } from './ai-chat-pending-machine';
+import { AUTOMATION_AUTHOR_STATEMENTS } from './automation-author';
 import { AUTOMATION_SPEECH_TABLES } from './automation-speech';
+import { AUTOMATION_V2_STATEMENTS, moveAutomationsToV2 } from './automation-v2';
+import { TRANSCRIPT_LINES_AUTOINCREMENT_TABLES } from './transcript-lines-autoincrement';
+import { UNBOUNDED_TEXT_TABLES } from './unbounded-text';
 import { DEVICE_EFFECT_TABLES } from './device-effects';
+import { DEVICE_EFFECT_ROW_STATEMENTS } from './device-effect-rows';
 import { DEVICE_GROUP_TABLES } from './device-groups';
 import { AUTOMATION_SEQUENCE_TABLES } from './automation-sequences';
 import { AUTOMATION_RUNTIME_TABLES } from './automation-runtime';
 import { TRANSCRIPT_READER_COLUMNS } from './transcript-reader';
 import { AI_REFERENCE_COLUMNS } from './ai-references';
 import { PREVIEW_ERROR_RULE_TABLES } from './preview-error-rules';
+import { PREVIEW_ERROR_RULES_DROP_STATEMENTS } from './preview-error-rules-drop';
+import { PREVIEW_ERROR_RULES_RESTORE_STATEMENTS } from './preview-error-rules-restore';
 import { NATIVE_MANAGED_PROJECT_COLUMNS } from './native-managed-projects';
 import { HARNESS_SKILL_UPDATE_TABLES } from './harness-skill-updates';
 import { PREVIEW_PROJECT_TABLES } from './preview-projects';
@@ -18,12 +33,17 @@ import { BLE_OBSERVATION_TABLES } from './ble-observations';
 import { HARNESS_SKILL_PRESENTATION_TABLES } from './harness-skill-presentations';
 import { HARNESS_CONFIGURATION_TABLES } from './harness-configuration';
 import { HARNESS_EFFECT_AUTHORITY_TABLES } from './harness-effect-authority';
+import { HARNESS_GRANTS_REVOKED_DROP_STATEMENTS } from './harness-grants-revoked-drop';
 import { DURABLE_EFFECT_AUTHORITY_TABLES } from './durable-effect-authorities';
 import { HARNESS_DELIVERY_DELETION_TABLES } from './harness-delivery-deletion';
 import { AI_SUBSCRIPTION_USAGE_COLUMNS } from './ai-subscription-usage';
+import { DSH_ATTACH_STATEMENTS } from './dsh-attach';
+import { DSH_ENGINE_STATEMENTS, moveOpenrouterEngines } from './dsh-engines';
 import { DSH_SESSION_TABLES } from './dsh-sessions';
 import { HARNESS_COORDINATION_TABLES } from './harness-coordination';
 import { HARNESS_RECOVERY_TABLES } from './harness-recovery';
+import { HARNESS_STREAM_MEMORY_STATEMENTS } from './harness-stream-memory';
+import { HARNESS_EXTENSION_TABLES, moveConfigurationToExtensions } from './harness-extensions';
 import { IMAGE_OPERATION_TABLES } from './image-operations';
 import { COMPUTER_RUNTIME_TABLES } from './computer-runtimes';
 import type { LogPayload } from '@smarteverything/logging';
@@ -35,9 +55,13 @@ import { CHAT_STATE_COLUMNS } from './chat-state';
 import { CHAT_WEB_SEARCH_COLUMNS } from './chat-web-search';
 import { CORE_TABLES } from './core-tables';
 import { FITNESS_SETTINGS_COLUMNS, moveLegacyFitnessSettings } from './fitness-settings';
+import { DEVICE_REFILLS_COLUMNS } from './device-refills';
+import { END_OF_SPEECH_PAUSE_STATEMENTS } from './end-of-speech-pause';
+import { HISTORY_SETTINGS_COLUMNS } from './history-settings';
 import { HOME_TIME_ZONE_COLUMNS } from './home-time-zone';
 import { MCP_TOOL_SWITCHES } from './mcp-tools';
 import { ENTRY_FAILURE_TABLES } from './entry-failures';
+import { HEALTH_SOURCES_BY_CLIENT_STATEMENTS } from './health-sources-by-client';
 import { NUTRITION_TABLES } from './nutrition';
 import { ACCESS_TABLES, MEDIA_TABLES } from './more-tables';
 import { OAUTH_TABLES } from './oauth-tables';
@@ -70,23 +94,28 @@ import { AI_OUTREACH_TABLES } from './ai-outreach';
 import { AI_OUTREACH_CLIENT_TABLES } from './ai-outreach-clients';
 import { DEVICE_METRIC_TABLES } from './device-metrics';
 import { PHONE_CONTEXT_TABLES } from './phone-contexts';
+import { CHECK_LISTS_CURRENT_STATEMENTS } from './check-lists-current';
+import { moveLayoutsToV2 } from './board-layouts-v2';
 
 import { repriceLiveUsage } from './ai-usage-live-reprice';
 import { VOICE_MEMORY_LINES } from './voice-memory-lines';
 import { VOICE_HISTORY_COLUMNS } from './voice-history';
-import { renameToolNames } from './tool-names';
+import { renameRetiredDisabledTools } from './tool-names';
 import { COMPUTER_SCOPE_TABLES } from './computer-scopes';
 import { AI_PROVIDER_TABLES } from './ai-provider';
 import { AI_PROVIDER_RETENTION, retainExistingProviderEvents } from './ai-provider-retention';
 import { COMPUTER_AI_TABLES } from './computer-ai';
 import { APP_SESSION_TABLES } from './app-sessions';
+import { TRANSCRIPT_SOURCES_STATEMENTS } from './transcript-sources';
+import { mergeComputerRoleRows } from './computer-identity';
+import { placeDevicesInProviderRooms } from './provider-rooms';
 import { RESERVED_MIGRATION_VERSIONS, inOrder } from './order';
 
 export interface Migration {
   readonly version: number;
   readonly name: string;
   readonly statements: readonly string[];
-  readonly backfill?: (sql: Sql) => LogPayload;
+  readonly backfill?: (sql: Sql, now: string) => LogPayload;
   readonly foreignKeys?: 'off';
 }
 
@@ -145,7 +174,7 @@ export const MIGRATIONS: readonly Migration[] = inOrder(
     { version: 30, name: 'ai_outreach', statements: AI_OUTREACH_TABLES },
     { version: 31, name: 'ai_outreach_clients', statements: AI_OUTREACH_CLIENT_TABLES },
     { version: 32, name: 'voice_history', statements: VOICE_HISTORY_COLUMNS },
-    { version: 33, name: 'tool_names', statements: [], backfill: renameToolNames },
+    { version: 33, name: 'tool_names', statements: [] },
     { version: 34, name: 'chat_activity', statements: CHAT_ACTIVITY_REPAIR },
     { version: 35, name: 'camera_wake_sensitivity', statements: CAMERA_WAKE_SENSITIVITY_COLUMNS },
     { version: 36, name: 'retire_responders', statements: RETIRE_RESPONDERS },
@@ -217,6 +246,111 @@ export const MIGRATIONS: readonly Migration[] = inOrder(
     { version: 80, name: 'device_groups', statements: DEVICE_GROUP_TABLES },
     { version: 81, name: 'device_effects', statements: DEVICE_EFFECT_TABLES },
     { version: 82, name: 'automation_speech', statements: AUTOMATION_SPEECH_TABLES },
+    {
+      version: 83,
+      name: 'transcript_lines_autoincrement',
+      statements: TRANSCRIPT_LINES_AUTOINCREMENT_TABLES,
+      foreignKeys: 'off',
+    },
+    {
+      version: 84,
+      name: 'ai_chat_pending_machine',
+      statements: AI_CHAT_PENDING_MACHINE_COLUMNS,
+    },
+    {
+      version: 85,
+      name: 'unbounded_text',
+      statements: UNBOUNDED_TEXT_TABLES,
+      foreignKeys: 'off',
+    },
+    {
+      version: 86,
+      name: 'automation_v2',
+      statements: AUTOMATION_V2_STATEMENTS,
+      backfill: moveAutomationsToV2,
+    },
+    {
+      version: 87,
+      name: 'harness_stream_memory',
+      statements: HARNESS_STREAM_MEMORY_STATEMENTS,
+    },
+    {
+      version: 88,
+      name: 'retired_disabled_tools',
+      statements: [],
+      backfill: renameRetiredDisabledTools,
+    },
+    {
+      version: 89,
+      name: 'harness_extensions',
+      statements: HARNESS_EXTENSION_TABLES,
+      backfill: moveConfigurationToExtensions,
+    },
+    { version: 90, name: 'computer_node_window', statements: COMPUTER_NODE_WINDOW_STATEMENTS },
+    { version: 91, name: 'device_effect_rows', statements: DEVICE_EFFECT_ROW_STATEMENTS },
+    { version: 92, name: 'dsh_attach', statements: DSH_ATTACH_STATEMENTS },
+    {
+      version: 93,
+      name: 'dsh_engines',
+      statements: DSH_ENGINE_STATEMENTS,
+      backfill: moveOpenrouterEngines,
+    },
+    {
+      version: 94,
+      name: 'preview_error_rules_drop',
+      statements: PREVIEW_ERROR_RULES_DROP_STATEMENTS,
+    },
+    {
+      version: 95,
+      name: 'harness_grants_revoked_drop',
+      statements: HARNESS_GRANTS_REVOKED_DROP_STATEMENTS,
+    },
+    {
+      version: 96,
+      name: 'sleep_asleep_minutes',
+      statements: [],
+      backfill: recomputeSleepFigures,
+    },
+    {
+      version: 97,
+      name: 'check_lists_current',
+      statements: CHECK_LISTS_CURRENT_STATEMENTS,
+      foreignKeys: 'off',
+    },
+    { version: 98, name: 'board_layouts_v2', statements: [], backfill: moveLayoutsToV2 },
+    { version: 99, name: 'history_settings', statements: HISTORY_SETTINGS_COLUMNS },
+    {
+      version: 100,
+      name: 'health_sources_by_client',
+      statements: HEALTH_SOURCES_BY_CLIENT_STATEMENTS,
+      foreignKeys: 'off',
+    },
+    {
+      version: 101,
+      name: 'transcript_sources',
+      statements: TRANSCRIPT_SOURCES_STATEMENTS,
+      foreignKeys: 'off',
+    },
+    { version: 102, name: 'computer_identity', statements: [], backfill: mergeComputerRoleRows },
+    { version: 103, name: 'end_of_speech_pause', statements: END_OF_SPEECH_PAUSE_STATEMENTS },
+    { version: 104, name: 'provider_rooms', statements: [], backfill: placeDevicesInProviderRooms },
+    { version: 105, name: 'automation_author', statements: AUTOMATION_AUTHOR_STATEMENTS },
+    {
+      version: 106,
+      name: 'preview_error_rules_restore',
+      statements: PREVIEW_ERROR_RULES_RESTORE_STATEMENTS,
+    },
+    {
+      version: 107,
+      name: 'person_access',
+      statements: PERSON_ACCESS_STATEMENTS,
+      backfill: backfillPersonAccess,
+    },
+    { version: 108, name: 'phone_details', statements: PHONE_DETAIL_STATEMENTS },
+    { version: 109, name: 'television_settings', statements: TELEVISION_SETTINGS_STATEMENTS },
+    { version: 110, name: 'device_refills', statements: DEVICE_REFILLS_COLUMNS },
+    { version: 111, name: 'ir_remote_states', statements: IR_REMOTE_STATES_COLUMNS },
+    { version: 112, name: 'ear_host', statements: EAR_HOST_STATEMENTS },
   ],
   RESERVED_MIGRATION_VERSIONS,
 );

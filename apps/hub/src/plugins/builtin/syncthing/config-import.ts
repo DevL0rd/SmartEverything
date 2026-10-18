@@ -55,6 +55,7 @@ export function parseGui(xml: string): z.output<typeof GUI> {
 
 async function firstReadable(paths: readonly string[]): Promise<string> {
   for (const path of paths) {
+    // eslint-disable-next-line local/no-swallowed-errors -- an unreadable candidate path is skipped for the next one
     const text = await readFile(path, 'utf8').catch(() => null);
     if (text !== null) {
       return text;

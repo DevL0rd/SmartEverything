@@ -1,6 +1,7 @@
+import { Logger, background } from '@smarteverything/logging';
 import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
   ApiError,
   AI_HARNESS_ENDPOINTS as E,
@@ -12,6 +13,8 @@ import type { z } from 'zod';
 import { api } from '../../../api/transport';
 import { subscriptionInteractionIdentity } from '../model/subscription';
 import { HARNESS_CATALOGUE_KEY } from '../../../queries/harness-notices';
+
+const log = new Logger('app.computers');
 type Command = z.infer<typeof AI_SUBSCRIPTION_COMMAND>;
 interface Binding {
   readonly deviceId: string;
@@ -51,6 +54,37 @@ function useAlive(): () => boolean {
   }, []);
   return (): boolean => active.current;
 }
+interface ControlTrace {
+  readonly startedAt?: number | undefined;
+  readonly error?: unknown;
+}
+
+function logControl(
+  event: string,
+  binding: Binding,
+  command: Command,
+  trace: ControlTrace = {},
+): void {
+  const { startedAt, error } = trace;
+  const payload = {
+    deviceId: binding.deviceId,
+    provider: binding.provider,
+    command: command.kind,
+    ...(startedAt === undefined ? {} : { durationMs: Date.now() - startedAt }),
+  };
+  if (error === undefined) log.info(event, payload);
+  else log.error(event, error, payload);
+}
+function rejectAnswer(binding: Binding, command: Command, setError: (text: string) => void): void {
+  logControl('subscription.answer_rejected', binding, command);
+  setError('This sign-in prompt was answered or changed. Check status for the next step.');
+}
+function refreshCatalogue(client: QueryClient): void {
+  background(
+    client.invalidateQueries({ queryKey: HARNESS_CATALOGUE_KEY }),
+    'catalogue.invalidate_failed',
+  );
+}
 export function useSubscriptionControl(binding: Binding): SubscriptionControl {
   const client = useQueryClient();
   const [status, setStatus] = useState<AiSubscriptionHostStatus | null>(null);
@@ -66,10 +100,11 @@ export function useSubscriptionControl(binding: Binding): SubscriptionControl {
     if (busy.current || !alive()) return;
     const identity = answerIdentity(command, status);
     if (!answerAdmitted(command, identity, accepted.current)) {
-      setError('This sign-in prompt was answered or changed. Check status for the next step.');
+      rejectAnswer(binding, command, setError);
       return;
     }
     if (command.kind !== 'status') setInputRevision((revision) => revision + 1);
+    const startedAt = Date.now();
     busy.current = true;
     setPending(true);
     setError(null);
@@ -83,11 +118,13 @@ export function useSubscriptionControl(binding: Binding): SubscriptionControl {
         result,
       });
       setAcknowledgement(accepted.current);
+      logControl('subscription.control_succeeded', binding, command, { startedAt });
       setStatus(result);
       setCompleted(command.kind);
       binding.changed(result);
-      void client.invalidateQueries({ queryKey: HARNESS_CATALOGUE_KEY });
+      refreshCatalogue(client);
     } catch (error) {
+      logControl('subscription.control_failed', binding, command, { startedAt, error });
       if (alive()) setError(subscriptionError(error));
     } finally {
       busy.current = false;
@@ -148,7 +185,7 @@ async function subscriptionResponse(
     },
   });
   if (!bound(result, binding))
-    throw new Error('Subscription response belongs to a different profile or computer.');
+    throw new Error('This sign-in is for another profile or computer. Start sign-in again.');
   return result;
 }
 function useSubscriptionRefresh(control: (command: Command) => Promise<void>): void {
@@ -157,12 +194,13 @@ function useSubscriptionRefresh(control: (command: Command) => Promise<void>): v
     latest.current = control;
   }, [control]);
   useEffect(() => {
-    void latest.current({ kind: 'status' });
+    background(latest.current({ kind: 'status' }), 'latest.current_failed');
     const listener = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void latest.current({ kind: 'status' });
+      if (state === 'active')
+        background(latest.current({ kind: 'status' }), 'latest.current_failed');
     });
     const refresh = (): void => {
-      void latest.current({ kind: 'status' });
+      background(latest.current({ kind: 'status' }), 'latest.current_failed');
     };
     if (typeof window !== 'undefined') window.addEventListener('focus', refresh);
     return (): void => {

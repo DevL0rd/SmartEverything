@@ -10,6 +10,7 @@ import type { Contributions } from './contributions';
 import { LogRing } from './log-ring';
 import { MissingSecretError } from './placeholders';
 import type { PluginRuntime, RuntimeSinks, RuntimeTool } from './runtime';
+import { messageOf } from '@smarteverything/logging';
 
 export interface SlotOptions {
   readonly factory: (sinks: RuntimeSinks) => PluginRuntime;
@@ -17,10 +18,6 @@ export interface SlotOptions {
   readonly status: (status: PluginStatus, detail: string | null) => void;
   readonly toolsChanged: () => void;
   readonly now: () => Date;
-}
-
-function reasonOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message.slice(0, 400) : 'The plugin could not start';
 }
 
 export class PluginSlot {
@@ -99,7 +96,7 @@ export class PluginSlot {
   }
 
   private failed(cause: unknown): void {
-    const reason = reasonOf(cause);
+    const reason = messageOf(cause).slice(0, 400);
     this.log(reason);
     if (cause instanceof MissingSecretError) {
       this.options.status('needs_auth', reason);

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Circle, Defs, Path } from 'react-native-svg';
+import { Circle, Path } from 'react-native-svg';
 import { SPIN, loopStyle } from '../../../design/loops';
-import { Canvas, Layer, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, Layer, useSvgId } from '../parts/frame';
 import { BodyGradient, useInk, useTint, WELL } from '../parts/ink';
 import { ContactShadow, Shine } from '../parts/material';
 import { circlePath } from '../parts/shapes';
@@ -16,9 +16,7 @@ export function VacuumVisual({ px, tone, moving }: VisualProps): ReactNode {
   return (
     <>
       <Canvas px={px}>
-        <Defs>
-          <BodyGradient id={body} ink={ink} vertical />
-        </Defs>
+        <BodyGradient id={body} ink={ink} vertical />
         <ContactShadow cx={51} cy={55} rx={40} ry={40} />
         <Circle cx={50} cy={52} r={40} fill={`url(#${body})`} stroke={ink.edge} strokeWidth={0.6} />
         <Shine d={circlePath({ cx: 50, cy: 52, r: 40 })} />

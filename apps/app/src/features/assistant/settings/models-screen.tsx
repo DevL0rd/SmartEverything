@@ -1,53 +1,40 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { View } from 'react-native';
 import type { HeaderAction } from '../../../components/page-header';
-import { notify } from '../../../components/toast-store';
-import { useIsOwner } from '../../../store/selectors';
+import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { SettingsFrame } from '../../../settings/settings-frame';
-import { useOpenRouterActions } from '../data/openrouter';
-import { ModelBrowser } from '../picker/model-browser';
+import { LibraryBody } from '../picker/library/library-body';
+import { useModelsRefresh } from '../picker/library/library-refresh';
 
 const MODELS_PAGE = 'assistant/models';
+const BROWSE_PICKER = { picked: null, onPick: null } as const;
 
 function useRefreshAction(): HeaderAction | null {
-  const owner = useIsOwner();
-  const { refresh } = useOpenRouterActions();
-  const [busy, setBusy] = useState(false);
-  if (!owner) {
-    return null;
-  }
-  const run = async (): Promise<void> => {
-    setBusy(true);
-    try {
-      const sync = await refresh();
-      notify({
-        message: 'Models updated',
-        detail: `${String(sync.added)} new, ${String(sync.repriced)} new prices`,
-        tone: 'positive',
-      });
-    } catch (error) {
-      notify({ message: 'Couldn’t update the models', error });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const refresh = useModelsRefresh();
+  if (refresh === null) return null;
   return {
-    icon: busy ? 'loader' : 'refresh',
-    label: busy ? 'Updating' : 'Refresh',
+    icon: refresh.busy ? 'loader' : 'refresh',
+    label: refresh.busy ? 'Updating' : 'Refresh',
     iconOnly: true,
-    onPress: (): void => {
-      if (!busy) {
-        void run();
-      }
-    },
+    onPress: refresh.run,
   };
 }
 
 export function ModelsScreen(): ReactNode {
   const refresh = useRefreshAction();
+  const { width, onLayout } = useMeasuredWidth();
   return (
-    <SettingsFrame page={MODELS_PAGE} scroll={false} actions={refresh === null ? [] : [refresh]}>
-      <ModelBrowser />
+    <SettingsFrame
+      page={MODELS_PAGE}
+      scroll={false}
+      maxWidth="detail"
+      actions={refresh === null ? [] : [refresh]}
+    >
+      <View onLayout={onLayout} className="min-h-0 flex-1">
+        {width === 0 ? null : (
+          <LibraryBody mode="browse" width={width} picker={BROWSE_PICKER} note={null} />
+        )}
+      </View>
     </SettingsFrame>
   );
 }

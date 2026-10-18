@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
   CLAUDE_OPERATION_ACCEPTED,
@@ -8,6 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { api } from '../../../api/transport';
 import { computerAiKey } from './computer-ai';
+import { background } from '@smarteverything/logging';
 
 export interface NativeOperationState {
   readonly receipt: ClaudeOperation | z.output<typeof CODEX_OPERATION> | null;
@@ -25,13 +26,13 @@ export function nativeReceipt(result: unknown): ClaudeOperation | null {
 class NativeOperationMissingError extends Error {
   override readonly name = 'NativeOperationMissingError';
   constructor() {
-    super('A correlated native operation ID is required to check its status.');
+    super('An operation ID is required to check its status.');
   }
 }
 
 export function useNativeOperation(deviceId: string, result: unknown): NativeOperationState {
   const accepted = nativeReceipt(result);
-  const query = useQuery({
+  const query = useScreenQuery({
     queryKey: [...computerAiKey(deviceId), 'operation', accepted?.id ?? 'none'],
     enabled: false,
     initialData: accepted ?? undefined,
@@ -49,7 +50,7 @@ export function useNativeOperation(deviceId: string, result: unknown): NativeOpe
     checking: query.isFetching,
     error: query.error,
     check: (): void => {
-      void query.refetch();
+      background(query.refetch(), 'query.refetch_failed');
     },
   };
 }

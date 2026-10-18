@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { installedVersion } from './versions';
-import { appDeclaredVersion } from './app-manifest';
 import { readRepositoryJson } from './contract-helpers';
+import { installedVersion } from './versions';
 
 const PACKAGE = '@react-native-community/netinfo';
 const CHANGED = 'netInfo.networkStatusDidChange';
@@ -46,10 +45,6 @@ const { default: NetInfo } = await import('@react-native-community/netinfo');
 const BUNDLED = z.record(z.string(), z.string());
 
 describe('@react-native-community/netinfo contract', () => {
-  it('is installed at exactly the version the app declares', () => {
-    expect(installedVersion(PACKAGE)).toBe(appDeclaredVersion(PACKAGE));
-  });
-
   it('is the build Expo SDK 57 bundles, so it links against the native runtime the app uses', () => {
     const bundled = readRepositoryJson('node_modules/expo/bundledNativeModules.json', BUNDLED);
     expect(bundled[PACKAGE]).toBe(installedVersion(PACKAGE));

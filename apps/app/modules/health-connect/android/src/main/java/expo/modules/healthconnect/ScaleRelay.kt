@@ -5,41 +5,10 @@ import android.app.PendingIntent
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
-import android.os.ParcelUuid
-import java.util.UUID
-import org.json.JSONArray
-import org.json.JSONObject
-
-class WatchedDevice(val address: String, val serviceUuid: String, val prefix: ByteArray, val mask: ByteArray) {
-  fun toJson(): JSONObject = jsonOf(
-    "address" to address,
-    "serviceUuid" to serviceUuid,
-    "dataPrefix" to prefix.toHex(),
-    "dataMask" to mask.toHex()
-  )
-
-  fun filter(): ScanFilter = ScanFilter.Builder()
-    .setServiceData(ParcelUuid(UUID.fromString(serviceUuid)), prefix, mask)
-    .build()
-
-  companion object {
-    fun of(json: JSONObject) = WatchedDevice(
-      json.getString("address").uppercase(),
-      json.getString("serviceUuid"),
-      json.getString("dataPrefix").fromHex(),
-      json.getString("dataMask").fromHex()
-    )
-  }
-}
-
-fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
-
-fun String.fromHex(): ByteArray = chunked(2).map { it.toInt(16).toByte() }.toByteArray()
 
 class BluetoothScanNotAllowed : SyncFailure(
   "Listening for the scale needs the Nearby devices permission, which is not granted",
@@ -51,8 +20,8 @@ class BluetoothUnavailable : SyncFailure(
   retryable = false
 )
 
-class ScaleRelayNotConfigured : SyncFailure(
-  "The scale relay has no server connection yet; open the app once so it can pass it on",
+class ServerNotConfigured : SyncFailure(
+  "This phone has no server connection yet; open the app once so it can pass it on",
   retryable = false
 )
 
@@ -66,12 +35,9 @@ class ScaleRelay(private val context: Context) {
   private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
   private val status = ScaleStatus(context)
 
-  fun configure(serverUrl: String, token: String, enrollment: String) = configureServer(context, serverUrl, token, enrollment)
-
   suspend fun start(): Int {
-    val answer = HubClient(relayTarget(context)).get(WATCH_PATH).getJSONArray("devices")
-    val devices = (0 until answer.length()).map { WatchedDevice.of(answer.getJSONObject(it)) }
-    preferences.edit().putString(WATCHED, JSONArray(devices.map { it.toJson() }).toString()).apply()
+    val devices = HubClient(relayTarget(context)).get<BleWatch>(WATCH_PATH).devices
+    preferences.edit().putString(WATCHED, HubJson.encode(devices)).apply()
     ScaleAdverts.resume(context)
     register(devices)
     return devices.size
@@ -91,8 +57,7 @@ class ScaleRelay(private val context: Context) {
 
   fun watched(): List<WatchedDevice> {
     val stored = preferences.getString(WATCHED, null) ?: return emptyList()
-    val array = JSONArray(stored)
-    return (0 until array.length()).map { WatchedDevice.of(array.getJSONObject(it)) }
+    return HubJson.decode(stored)
   }
 
   @SuppressLint("MissingPermission")
@@ -170,8 +135,8 @@ class ScaleRelay(private val context: Context) {
 
   companion object {
     const val API_BASE = "/api/ble/"
-    const val WATCH_PATH = "watch"
-    const val ADVERTS_PATH = "adverts"
+    const val WATCH_PATH = "/api/ble/watch"
+    const val ADVERTS_PATH = "/api/ble/adverts"
     private const val PREFERENCES = "expo.modules.healthconnect.scale"
     private const val WATCHED = "watched"
     private const val REQUEST_CODE = 7400

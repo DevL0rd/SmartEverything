@@ -1,98 +1,138 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { MICROWAVE_KEYS, type MicrowaveMode } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
+import { MICROWAVE_KEYS, microwaveReadiness, type JsonValue } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
-import { Text } from '../../../components/text';
+import { confirm } from '../../../components/confirm-store';
+import type { IconName } from '../../../components/icon';
 import { useControl } from '../../../store/control';
-import { useDeviceValues } from '../../../store/selectors';
-import type { Device, DeviceValues } from '../../../store/state';
+import { useDeviceDerived } from '../../../store/selectors';
+import type { Device } from '../../../store/state';
+import { microwaveValues } from './model';
+
+interface Operation {
+  readonly capability: string;
+  readonly label: string;
+  readonly icon: IconName;
+  readonly look: 'filled' | 'tonal' | 'text';
+  readonly disabled: boolean;
+  readonly ask: boolean;
+}
+
+const STOP_QUESTION = {
+  title: 'Stop cooking?',
+  body: 'The food stays inside. You can start again from here.',
+  confirmLabel: 'Stop',
+  tone: 'destructive',
+} as const;
 
 function OperationButton({
   device,
-  capability,
-  label,
-  disabled,
+  operation,
 }: {
   readonly device: Device;
-  readonly capability: string;
-  readonly label: string;
-  readonly disabled: boolean;
+  readonly operation: Operation;
 }): ReactNode {
-  const control = useControl(device.id, capability);
-  const supported = device.capabilities.some((entry) => entry.key === capability);
+  const control = useControl(device.id, operation.capability);
+  const supported = device.capabilities.some((entry) => entry.key === operation.capability);
   return supported ? (
     <Button
-      label={label}
-      variant="tonal"
-      disabled={disabled}
+      label={operation.label}
+      icon={operation.icon}
+      variant={operation.look}
+      disabled={operation.disabled}
       loading={control.pending}
       onPress={() => {
-        if (disabled || control.pending) {
+        if (operation.disabled || control.pending) {
           return;
         }
-        void control.set(null);
+        background(
+          (operation.ask ? confirm(STOP_QUESTION) : Promise.resolve(true)).then((accepted) =>
+            accepted ? control.set(null) : undefined,
+          ),
+          'control.set_failed',
+        );
       }}
     />
   ) : null;
 }
-function operations(
-  values: DeviceValues,
-  disabled: boolean,
-): readonly { readonly capability: string; readonly label: string; readonly disabled: boolean }[] {
-  const state = values[MICROWAVE_KEYS.state]?.value;
-  const result = [];
-  if (state === 'ready' || state === 'paused') {
-    result.push({
-      capability: MICROWAVE_KEYS.start,
-      label: state === 'paused' ? 'Resume cooking' : 'Start cooking',
-      disabled,
-    });
-  }
-  if (state === 'running') {
-    result.push({ capability: MICROWAVE_KEYS.pause, label: 'Pause', disabled: false });
-  }
-  if (state === 'running' || state === 'paused') {
-    result.push({ capability: MICROWAVE_KEYS.stop, label: 'Stop', disabled: false });
-  }
-  return result;
-}
-export function OperatingButtons({
-  device,
-  mode,
-  reason,
-}: {
-  readonly device: Device;
-  readonly mode: MicrowaveMode | undefined;
-  readonly reason: string | null;
-}): ReactNode {
-  const values = useDeviceValues(device.id);
-  const mayStart = mode?.supportedOperations.includes('start') === true;
-  const unavailable = !device.online || values[MICROWAVE_KEYS.remote]?.value !== 'true';
-  const buttons = operations(values, reason !== null || !mayStart);
-  return (
-    <View className="gap-3">
-      <ModeStartNotice mode={mode} />
-      <View className="flex-row flex-wrap gap-2">
-        {buttons.map((button) => (
-          <OperationButton
-            key={button.capability}
-            device={device}
-            {...button}
-            disabled={button.disabled || unavailable}
-          />
-        ))}
-      </View>
-    </View>
-  );
+
+function operations(state: JsonValue | undefined, resumeBlocked: boolean): readonly Operation[] {
+  const running = state === 'running';
+  const paused = state === 'paused';
+  return [
+    ...(paused
+      ? [
+          {
+            capability: MICROWAVE_KEYS.start,
+            label: 'Resume',
+            icon: 'play',
+            look: 'filled',
+            disabled: resumeBlocked,
+            ask: false,
+          } as const,
+        ]
+      : []),
+    ...(running
+      ? [
+          {
+            capability: MICROWAVE_KEYS.pause,
+            label: 'Pause',
+            icon: 'pause',
+            look: 'tonal',
+            disabled: false,
+            ask: false,
+          } as const,
+        ]
+      : []),
+    ...(running || paused
+      ? [
+          {
+            capability: MICROWAVE_KEYS.stop,
+            label: 'Stop',
+            icon: 'square',
+            look: 'text',
+            disabled: false,
+            ask: true,
+          } as const,
+        ]
+      : []),
+  ];
 }
 
-function ModeStartNotice({ mode }: { readonly mode: MicrowaveMode | undefined }): ReactNode {
-  if (mode === undefined || mode.supportedOperations.includes('start')) {
-    return null;
-  }
+interface Gate {
+  readonly state: JsonValue | undefined;
+  readonly blocked: boolean;
+  readonly remote: boolean;
+}
+
+export function OperatingButtons({
+  device,
+  primaryOnly = false,
+}: {
+  readonly device: Device;
+  readonly primaryOnly?: boolean;
+}): ReactNode {
+  const gate = useDeviceDerived(
+    device.id,
+    (values): Gate => ({
+      state: values[MICROWAVE_KEYS.state]?.value,
+      blocked: microwaveReadiness(microwaveValues(values)) !== null,
+      remote: values[MICROWAVE_KEYS.remote]?.value === 'true',
+    }),
+    [],
+  );
+  const unavailable = !device.online || !gate.remote;
+  const listed = operations(gate.state, gate.blocked);
   return (
-    <Text variant="footnote" tone="variant">
-      This mode starts on the microwave.
-    </Text>
+    <View className="flex-row flex-wrap items-center gap-2" pointerEvents="box-none">
+      {(primaryOnly ? listed.slice(0, 1) : listed).map((operation) => (
+        <OperationButton
+          key={operation.capability}
+          device={device}
+          operation={{ ...operation, disabled: operation.disabled || unavailable }}
+        />
+      ))}
+    </View>
   );
 }

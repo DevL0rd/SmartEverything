@@ -1,7 +1,8 @@
 package expo.modules.healthconnect.watch
 
-import expo.modules.healthconnect.jsonOf
-import org.json.JSONArray
+import expo.modules.healthconnect.HubJson
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonPrimitive
 import org.json.JSONObject
 
 sealed class SettingValue {
@@ -12,6 +13,20 @@ sealed class SettingValue {
   }
 }
 
+@Serializable
+class OptionWire(val value: String, val label: String)
+
+@Serializable
+class SettingWire(
+  val key: String,
+  val section: String,
+  val label: String,
+  val description: String?,
+  val kind: String,
+  val value: JsonPrimitive,
+  val options: List<OptionWire>? = null
+)
+
 class SettingInfo(
   val key: String,
   val section: String,
@@ -20,16 +35,18 @@ class SettingInfo(
   val value: SettingValue,
   val options: List<Pair<String, String>> = emptyList()
 ) {
-  fun toJson(): JSONObject {
-    val base = jsonOf("key" to key, "section" to section, "label" to label, "description" to description)
-    return when (value) {
-      is SettingValue.Flag -> base.put("kind", "switch").put("value", value.on)
-      is SettingValue.Clock -> base.put("kind", "time").put("value", value.text)
-      is SettingValue.Pick -> base.put("kind", "choice").put("value", value.value)
-        .put("options", JSONArray(options.map { (v, l) -> jsonOf("value" to v, "label" to l) }))
-    }
+  fun wire(): SettingWire = when (value) {
+    is SettingValue.Flag -> SettingWire(key, section, label, description, "switch", JsonPrimitive(value.on))
+    is SettingValue.Clock -> SettingWire(key, section, label, description, "time", JsonPrimitive(value.text))
+    is SettingValue.Pick -> SettingWire(
+      key, section, label, description, "choice", JsonPrimitive(value.value),
+      options.map { (v, l) -> OptionWire(v, l) }
+    )
   }
 }
+
+@Serializable
+class AlarmWire(val id: Int?, val time: String, val enabled: Boolean, val days: List<String>, val smart: Boolean)
 
 class AlarmInfo(
   val id: Int?,
@@ -39,13 +56,7 @@ class AlarmInfo(
   val days: List<String>,
   val smart: Boolean
 ) {
-  fun toJson(): JSONObject = jsonOf(
-    "id" to id,
-    "time" to "%02d:%02d".format(hour, minute),
-    "enabled" to enabled,
-    "days" to JSONArray(days),
-    "smart" to smart
-  )
+  fun wire(): AlarmWire = AlarmWire(id, "%02d:%02d".format(hour, minute), enabled, days, smart)
 
   companion object {
     val WEEKDAYS = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -65,13 +76,20 @@ class AlarmInfo(
   }
 }
 
-class FaceInfo(val id: String, val name: String, val active: Boolean, val removable: Boolean) {
-  fun toJson(): JSONObject = jsonOf("id" to id, "name" to name, "active" to active, "removable" to removable)
-}
+@Serializable
+class FaceInfo(val id: String, val name: String, val active: Boolean, val removable: Boolean)
 
-class GoalInfo(val key: String, val sent: Int?, val reported: Int?, val shown: Boolean?) {
-  fun toJson(): JSONObject = jsonOf("key" to key, "sent" to sent, "reported" to reported, "shown" to shown)
-}
+@Serializable
+class GoalInfo(val key: String, val sent: Int?, val reported: Int?, val shown: Boolean?)
+
+@Serializable
+class ConfigWire(
+  val settings: List<SettingWire>,
+  val alarms: List<AlarmWire>,
+  val faces: List<FaceInfo>,
+  val goals: List<GoalInfo>,
+  val sports: List<String>
+)
 
 class WatchConfigSnapshot(
   val settings: List<SettingInfo>,
@@ -80,13 +98,10 @@ class WatchConfigSnapshot(
   val goals: List<GoalInfo>,
   val sports: List<String>
 ) {
-  fun toJson(): JSONObject = jsonOf(
-    "settings" to JSONArray(settings.map { it.toJson() }),
-    "alarms" to JSONArray(alarms.map { it.toJson() }),
-    "faces" to JSONArray(faces.map { it.toJson() }),
-    "goals" to JSONArray(goals.map { it.toJson() }),
-    "sports" to JSONArray(sports)
-  )
+  fun wire(): ConfigWire =
+    ConfigWire(settings.map { it.wire() }, alarms.map { it.wire() }, faces, goals, sports)
+
+  fun json(): String = HubJson.encode(wire())
 }
 
 class ActionOutcome(val ok: Boolean, val detail: String)

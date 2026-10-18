@@ -1,15 +1,16 @@
 export {
   BEARER_PROTOCOL_PREFIX,
+  CAMERA_QUALITY,
+  CAMERA_QUALITIES,
   CLIENT_TOKEN,
   LIVE_PROTOCOL,
   MEDIA_PATHS,
   MEDIA_SIZE,
   MEDIA_SIZES,
   PAIRING_CODE,
+  PAIRING_NONCE,
+  PAIRING_PROOF,
   PAIRING_QR,
-  PAIRING_INVITATION_MAX_LENGTH,
-  parsePairingInvitation,
-  pairingInvitationText,
   SIGNED_IMAGE_LINK,
   SIGNED_LINK,
   THUMBNAIL_WIDTH,
@@ -18,12 +19,19 @@ export {
   hashClientToken,
   hashPairingCode,
   liveProtocols,
+  pairingProof,
 } from './access';
+export {
+  PAIRING_INVITATION_MAX_LENGTH,
+  parsePairingInvitation,
+  pairingInvitationText,
+} from '../pairing-invitation';
+export type { PairingInvitation, PairingInvitationParse } from '../pairing-invitation';
 export type {
+  CameraQuality,
   MediaSize,
+  PairingProofSide,
   PairingQr,
-  PairingInvitation,
-  PairingInvitationParse,
   SignedImageLink,
   SignedLink,
 } from './access';
@@ -77,6 +85,8 @@ export {
   ROOM_ROW,
   SETTINGS_ROW,
   STATE_ROW,
+  TELEVISION_INPUT_NAMES,
+  TELEVISION_SETTINGS_ROW,
 } from './rows-home';
 export type {
   ClientRow,
@@ -91,9 +101,12 @@ export type {
   RoomRow,
   SettingsRow,
   StateRow,
+  TelevisionInputNames,
+  TelevisionSettingsRow,
 } from './rows-home';
 
 export {
+  AUTOMATION_AUTHOR,
   AUTOMATION_ROW,
   CAMERA_ROW,
   IR_CODE_FORMATS,
@@ -106,6 +119,7 @@ export {
   SCENE_ROW,
 } from './rows-media';
 export type {
+  AutomationAuthor,
   AutomationRow,
   CameraRow,
   IrCodeRow,
@@ -207,7 +221,6 @@ export type {
 export {
   LIVE_CHANGE,
   LIVE_SEQUENCE_HEADER,
-  LAYOUT_WRITE_CAPABILITY,
   LIVE_CLIENT_MESSAGE,
   LIVE_MESSAGE,
   LIVE_NOTICE,
@@ -219,11 +232,13 @@ export {
   ROW_CHANGE,
   ROW_OPERATIONS,
   TABLE_ROWS,
+  splitLiveTables,
 } from './live';
 export type {
   LiveChange,
   LiveClientMessage,
   LiveClientMessageInput,
+  LiveSubscribeMessage,
   LiveMessage,
   CommittedNotice,
   LiveServerMessage,
@@ -245,6 +260,7 @@ export * from '../robot';
 
 export * from './endpoints-computer-ai';
 export * from './endpoints-computer-nodes';
+export * from './endpoints-machine-updates';
 
 export * from './endpoints-ai-provider';
 
@@ -256,3 +272,44 @@ export * from '../ai-harness-extensions';
 export { CONNECTION_ENDPOINTS } from './endpoints-connections';
 
 export * from '../ai-harness-discovery';
+
+export * from './endpoints-device-effects';
+export { AUTOMATION_TOOL_ROW } from './endpoints-automation';
+export type { AutomationToolRow } from './endpoints-automation';
+export * from './endpoints-device-groups';
+export * from './endpoints-exchange-rates';
+export * from './endpoints-ai-usage';
+export * from './endpoints-computers';
+export * from './endpoints-computer-session';
+export * from './endpoints-ai-budget';
+export * from './endpoints-ai-chats';
+export { AI_COORDINATION_ENDPOINTS } from './endpoints-ai-coordination';
+export * from './endpoints-assistant-voice';
+export {
+  ASSISTANT_AREA_ENDPOINTS,
+  ASSISTANT_ATTACHMENT_LINK,
+  ASSISTANT_NEW_MESSAGE,
+  ASSISTANT_OUT_FILE,
+  ASSISTANT_POST,
+  ASSISTANT_UPLOAD,
+  ASSISTANT_UPLOAD_CHUNK,
+  ASSISTANT_UPLOAD_START,
+} from './endpoints-assistant';
+export type { AssistantNewMessage, AssistantOutFile, AssistantPost } from './endpoints-assistant';
+export {
+  TALK_AREA_ENDPOINTS,
+  TALK_CHANNEL_CHANGE,
+  TALK_MESSAGE_LINK,
+  TALK_NEW_CHANNEL,
+  TALK_NEW_MEMBER,
+} from './endpoints-talk';
+export type { TalkChannelChange, TalkNewChannel, TalkNewMember } from './endpoints-talk';
+export * from './endpoints-ai-models';
+export * from './endpoints-schedules';
+export * from './endpoints-plugins';
+export * from './endpoints-signals';
+export * from './endpoints-phones';
+export * from './endpoints-reach';
+export * from './endpoints-calls';
+export * from './endpoints-ai-projects';
+export * from './endpoints-ai-references';

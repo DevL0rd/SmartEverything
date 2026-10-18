@@ -10,8 +10,9 @@ import {
   boundedText,
 } from './primitives';
 import { DEFAULT_WAKE_SENSITIVITY, WAKE_SENSITIVITY } from '../wake-sensitivity';
+import { PLUGIN_ORIGIN } from '../plugin-people';
 
-export const CAMERA_ROW = z.strictObject({
+export const CAMERA_ROW = z.object({
   device_id: ID,
   stream_name: z.string().min(1),
   source_url_kind: z.string().min(1),
@@ -30,7 +31,7 @@ export const RECORDING_KIND = z.enum(RECORDING_KINDS);
 
 export type RecordingKind = z.infer<typeof RECORDING_KIND>;
 
-export const RECORDING_ROW = z.strictObject({
+export const RECORDING_ROW = z.object({
   id: ID,
   device_id: ID,
   event_id: ID.nullable(),
@@ -50,7 +51,7 @@ export const IR_CODE_FORMAT = z.enum(IR_CODE_FORMATS);
 
 export const REMOTE_NAME = boundedText(80);
 
-export const IR_REMOTE_ROW = z.strictObject({
+export const IR_REMOTE_ROW = z.object({
   id: ID,
   blaster_id: ID,
   name: REMOTE_NAME,
@@ -63,7 +64,7 @@ export type IrRemoteRow = z.infer<typeof IR_REMOTE_ROW>;
 
 export const BUTTON_NAME = boundedText(60);
 
-export const IR_CODE_ROW = z.strictObject({
+export const IR_CODE_ROW = z.object({
   id: ID,
   remote_id: ID,
   button: BUTTON_NAME,
@@ -76,7 +77,7 @@ export type IrCodeRow = z.infer<typeof IR_CODE_ROW>;
 
 export const SCENE_NAME = boundedText(80);
 
-export const SCENE_ROW = z.strictObject({
+export const SCENE_ROW = z.object({
   id: ID,
   name: SCENE_NAME,
   icon: z.string().min(1),
@@ -89,11 +90,21 @@ export type SceneRow = z.infer<typeof SCENE_ROW>;
 
 export const AUTOMATION_NAME = boundedText(80);
 
-export const AUTOMATION_ROW = z.strictObject({
+export const AUTOMATION_AUTHOR = z.strictObject({
+  via: z.enum(['person', 'assistant']),
+  profile_id: ID,
+});
+
+export type AutomationAuthor = z.infer<typeof AUTOMATION_AUTHOR>;
+
+export const AUTOMATION_ROW = z.object({
   id: ID,
   name: AUTOMATION_NAME,
   enabled: FLAG,
+  revision: z.int().positive(),
   definition: JSON_OBJECT,
+  origin: PLUGIN_ORIGIN.nullable(),
+  author: AUTOMATION_AUTHOR.nullable(),
   last_run_at: MOMENT.nullable(),
   last_error: z.string().nullable(),
   run_count: COUNT,
@@ -105,7 +116,7 @@ export type AutomationRow = z.infer<typeof AUTOMATION_ROW>;
 
 export const LAYOUT_PAGE_NAME = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}$/);
 
-export const LAYOUT_ROW = z.strictObject({
+export const LAYOUT_ROW = z.object({
   client_id: ID.nullable(),
   profile_id: ID.nullable().default(null),
   page: LAYOUT_PAGE_NAME,
@@ -119,7 +130,7 @@ export const PUSH_PLATFORMS = ['android'] as const;
 
 export const PUSH_TOKEN = z.string().min(1).max(4096);
 
-export const PUSH_TARGET_ROW = z.strictObject({
+export const PUSH_TARGET_ROW = z.object({
   token: PUSH_TOKEN,
   client_id: ID,
   platform: z.enum(PUSH_PLATFORMS),

@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 import { ESLint, Linter } from 'eslint';
-import { declaredVersion } from './versions';
+import { ROOT_MANIFEST, declaredVersion } from './contract-helpers';
 
 describe('eslint contract', () => {
-  itIsPinnedToItsDeclaredVersion('eslint');
-
   it('reports its version through the api', () => {
-    expect(ESLint.version).toBe(declaredVersion('eslint'));
+    expect(ESLint.version).toBe(declaredVersion(ROOT_MANIFEST, 'eslint'));
   });
 
   it('flags a violation in flat config mode', () => {

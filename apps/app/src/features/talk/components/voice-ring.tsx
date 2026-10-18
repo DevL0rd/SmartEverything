@@ -9,7 +9,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { cn } from '../../../design/cn';
-import { DURATION, useMotion } from '../../../design/motion';
+import { useAnimationGate } from '../../../design/animation-gate';
+import { DURATION } from '../../../design/motion';
+import { useScopeVisible } from '../../../design/visibility';
 
 export type RingMotion = 'still' | 'level' | 'pulse';
 
@@ -29,18 +31,18 @@ export interface VoiceRingProps {
 }
 
 export function VoiceRing({ motion, level, tone, className }: VoiceRingProps): ReactNode {
-  const { reduced } = useMotion();
+  const { moving, reduced } = useAnimationGate(motion === 'pulse', useScopeVisible());
   const scale = useSharedValue(1);
   useEffect(() => {
     cancelAnimation(scale);
-    if (reduced || motion === 'still') {
+    if (reduced || motion === 'still' || (motion === 'pulse' && !moving)) {
       scale.set(withTiming(1, { duration: DURATION.short }));
     } else if (motion === 'pulse') {
       scale.set(withRepeat(withTiming(1.18, { duration: PULSE_MS }), -1, true));
     } else {
       scale.set(withTiming(1 + level * 0.35, { duration: DURATION.fast }));
     }
-  }, [motion, level, reduced, scale]);
+  }, [motion, level, reduced, moving, scale]);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   if (motion === 'still') {
     return <View pointerEvents="none" className={cn('absolute rounded-full', className)} />;

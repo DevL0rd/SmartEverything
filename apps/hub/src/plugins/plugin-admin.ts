@@ -26,6 +26,7 @@ import { applyChange, type AppliedChange, type PluginChangeInput } from './plugi
 import type { PluginPeople } from './plugin-people';
 import type { PluginSecrets } from './plugin-secrets';
 import type { SettingsAuthor } from './plugin-settings';
+import { failureLine } from '@smarteverything/logging';
 
 export interface PluginAdminOptions {
   readonly store: Store;
@@ -111,7 +112,7 @@ export class PluginAdmin {
     setImmediate(() => {
       this.applyLive(applied);
       this.restartIf(applied.restart, applied.row).catch((cause: unknown) => {
-        this.options.host().slot(id)?.logs.add(String(cause), new Date());
+        this.options.host().slot(id)?.logs.add(failureLine(cause), new Date());
       });
     });
   }

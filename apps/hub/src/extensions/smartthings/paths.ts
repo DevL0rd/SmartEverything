@@ -42,19 +42,13 @@ export function publicUrlState(store: Store): PublicUrlState {
   return settings.public_url_verified_at === null ? 'unverified' : 'verified';
 }
 
-export function verifiedPaths(store: Store): PublicPaths {
-  const url = store.settings.read().public_url;
-  if (url === null) {
+export function requiredPaths(store: Store): PublicPaths {
+  const paths = savedPaths(store);
+  if (paths === null) {
     throw new ApiError(
       'public_url_not_verified',
       'SmartThings sends its sign-in and events to the public URL; save the public URL first.',
     );
   }
-  if (publicUrlState(store) !== 'verified') {
-    throw new ApiError(
-      'public_url_not_verified',
-      `SmartThings sends its sign-in and events to ${url}; verify that it reaches this server first.`,
-    );
-  }
-  return publicPathsOf(url);
+  return paths;
 }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Circle, Defs, Ellipse, Path, Pattern } from 'react-native-svg';
 import { BREATHE, SPIN, loopStyle } from '../../../design/loops';
-import { Canvas, FULL, Layer, Squash, useSvgId, type Box } from '../parts/frame';
+import { type Box, Canvas, FULL, Layer, Squash, useSvgId } from '../parts/frame';
 import { BodyGradient, bandRole, useInk, useTint, type VisualInk, WELL } from '../parts/ink';
 import { Dots } from '../parts/particles';
 import { bladesPath, rounded, spinPeriod } from '../parts/shapes';

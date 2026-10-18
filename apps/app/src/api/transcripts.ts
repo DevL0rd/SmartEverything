@@ -1,5 +1,6 @@
 import {
   API_ENDPOINTS as E,
+  type TranscriptSession,
   type TranscriptSettings,
   type TranscriptSettingsChange,
   type TranscriptStatus,
@@ -12,6 +13,19 @@ const log = new Logger('app.transcripts');
 export async function deleteTranscript(sessionId: string): Promise<void> {
   await api().call(E.removeTranscript, { params: { sessionId } });
   log.info('transcript.deleted', { sessionId });
+}
+
+export async function deleteTranscriptLine(sessionId: string, lineId: number): Promise<void> {
+  await api().call(E.removeTranscript, { params: { sessionId }, query: { lineId } });
+  log.info('transcript.line_deleted', { sessionId, lineId });
+}
+
+export function listTranscriptSessions(query: {
+  readonly source: TranscriptSession['source'];
+  readonly pluginId?: string;
+  readonly limit: number;
+}): Promise<TranscriptSession[]> {
+  return api().call(E.listTranscripts, { query });
 }
 
 export function readTranscriptSettings(): Promise<TranscriptSettings> {

@@ -1,6 +1,7 @@
-import { ApiError, type LiveClientMessage } from '@smarteverything/domain';
+import { ApiError, type LiveSubscribeMessage } from '@smarteverything/domain';
 import type { PreviewLeases } from '../preview/leases';
 import type { Connection } from './live-visibility';
+import { messageOf } from '@smarteverything/logging';
 export class LivePreviewOwners {
   private leases: PreviewLeases | null = null;
   private readonly stops = new Map<Connection, () => void>();
@@ -9,7 +10,7 @@ export class LivePreviewOwners {
       throw new ApiError('conflict', 'Preview ownership is already attached.');
     this.leases = leases;
   }
-  receive(connection: Connection, message: LiveClientMessage): boolean {
+  receive(connection: Connection, message: LiveSubscribeMessage): boolean {
     if (message.previewOwner === undefined) return true;
     try {
       if (this.stops.has(connection) || this.leases === null)
@@ -28,7 +29,7 @@ export class LivePreviewOwners {
           type: 'refused',
           error: {
             code: 'forbidden',
-            message: cause instanceof Error ? cause.message : 'Preview owner admission failed.',
+            message: messageOf(cause),
           },
         }),
       );

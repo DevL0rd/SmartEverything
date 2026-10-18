@@ -22,6 +22,9 @@ import { routeSight, SightCalls, type SightMessage } from './call-sight-desk';
 import { callSightOf } from './call-sight-ports';
 import { EndpointSlot } from './call-slot';
 import { Conversation } from './conversation';
+import type { ConversationHooks } from './conversation-hooks';
+import type { LiveOptions } from './gemini';
+import { liveOptionsOf } from './conversation-live';
 import { combined, Outbox } from './outbox';
 import type {
   HostedCall,
@@ -35,6 +38,9 @@ import { callerOf, hostedCallerOf, type Caller } from './persona';
 import { answeredCaller } from './plugin-caller';
 import type { SpeechSource } from './speech-input';
 import { NoSuchCallError, type VideoSource } from './video';
+import type { VoiceLine } from './voice-line';
+import { WarmSessions, type WarmKey } from './warm-sessions';
+import { messageOf } from '@smarteverything/logging';
 
 type CallStart = Extract<AssistantVoiceClientMessage, { type: 'call_start' }>;
 
@@ -54,20 +60,32 @@ interface CallSpec {
   readonly listening: HostedListening | null;
   readonly pluginId: string | null;
   readonly place: string | null;
+  readonly deviceId: string | null;
   readonly heard?: () => Int16Array;
 }
 
 const NOTHING_CALLING = 'Nothing is calling you right now.';
+
+function warmKeyOf(spec: CallSpec): WarmKey {
+  const path = spec.decoder === null ? 'hosted' : 'app';
+  return {
+    profileId: spec.caller.profileId,
+    chatId: spec.chatId,
+    kind: `${path}:${spec.source ?? spec.pluginId ?? 'call'}`,
+  };
+}
 
 export class CallDesk {
   private readonly calls = new Map<string, Call>();
   readonly sights = new SightCalls(() => this.calls.values());
   private readonly outbox = new Outbox();
   private readonly deps: CallHooksDeps;
+  private readonly warm: WarmSessions;
   private outreach: OutreachDesk | null = null;
   private budget: SightBudget | null = null;
 
   constructor(private readonly options: CallDeskOptions) {
+    this.warm = new WarmSessions(options.provider);
     this.deps = {
       options,
       outbox: this.outbox,
@@ -119,6 +137,7 @@ export class CallDesk {
       listening: null,
       pluginId: null,
       place: null,
+      deviceId: null,
     });
   }
 
@@ -137,6 +156,7 @@ export class CallDesk {
       listening: request.listening ?? null,
       pluginId: request.pluginId ?? null,
       place: request.place ?? null,
+      deviceId: request.deviceId ?? null,
       ...(request.heard === undefined
         ? {}
         : { heard: this.backlog(request.callId, request.heard) }),
@@ -226,11 +246,7 @@ export class CallDesk {
     if (call === undefined) {
       return;
     }
-    if (call.live.modern) {
-      holdCall(call, this.options.log);
-    } else {
-      void call.conversation.end('disconnected');
-    }
+    holdCall(call, this.options.log);
   }
 
   resume(endpoint: VoiceEndpoint, client: ClientRow, callId: string): void {
@@ -276,6 +292,7 @@ export class CallDesk {
     await Promise.all(
       [...this.calls.values()].map((call) => call.conversation.end('disconnected')),
     );
+    this.warm.stop();
   }
 
   private byId(callId: string): Call | undefined {
@@ -329,7 +346,7 @@ export class CallDesk {
             ),
       record,
       detachers: [],
-      conversation: new Conversation(this.options.provider, link, hooks),
+      conversation: new Conversation(this.lineOf(spec, hooks), link, hooks),
     };
     this.calls.set(slot.id, call);
     const notes = [
@@ -339,12 +356,14 @@ export class CallDesk {
     await call.conversation
       .start(notes.length > 0 ? combined(notes) : null, spec.heard)
       .catch(async (cause: unknown) => {
-        await call.conversation.end(
-          'failed',
-          cause instanceof Error ? cause.message : 'Gemini did not connect',
-        );
+        await call.conversation.end('failed', messageOf(cause));
       });
     return call;
+  }
+
+  private lineOf(spec: CallSpec, hooks: ConversationHooks): VoiceLine {
+    const base = (): LiveOptions => liveOptionsOf(hooks, null, null);
+    return this.warm.line(warmKeyOf(spec), spec.id, base, hooks.settings().live_warm_enabled);
   }
 
   private ended(call: Call, reason: CallEnding, detail: string | null): void {

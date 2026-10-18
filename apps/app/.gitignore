@@ -8,3 +8,10 @@ expo-env.d.ts
 /android
 /ios
 /public/vad
+
+# Stray tsc output next to sources
+/src/**/*.js
+/src/**/*.js.map
+/src/**/*.d.ts
+/src/**/*.d.ts.map
+/assets/third-party-notices.txt

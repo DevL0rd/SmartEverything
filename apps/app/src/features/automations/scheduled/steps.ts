@@ -12,7 +12,7 @@ const CONTROL_DEVICES: McpToolName = 'control_devices';
 const RUN_SCENE: McpToolName = 'run_scene';
 const LONGEST_DELAY = 86_400;
 
-export const STEP_ACTION_TYPES = ['command', 'scene', 'delay'] as const;
+export const STEP_ACTION_TYPES = ['command', 'scene', 'delay', 'wake_ai', 'tool'] as const;
 
 const CONTROL_ARGS = z.strictObject({
   changes: z.tuple([
@@ -26,7 +26,7 @@ const CONTROL_ARGS = z.strictObject({
 
 const RUN_SCENE_ARGS = z.strictObject({ sceneId: z.uuid() });
 
-export function stepOf(action: Action): ScheduleStepInput | null {
+function stepOf(action: Action): ScheduleStepInput | null {
   switch (action.type) {
     case 'command':
       return {
@@ -46,9 +46,11 @@ export function stepOf(action: Action): ScheduleStepInput | null {
       return { kind: 'tool', tool: RUN_SCENE, args: { sceneId: action.sceneId } };
     case 'delay':
       return { kind: 'wait', seconds: action.seconds };
-    case 'notify':
     case 'wake_ai':
+      return { kind: 'ai', prompt: action.instruction, chatId: action.chatId };
     case 'tool':
+      return { kind: 'tool', tool: action.tool, args: action.args };
+    case 'notify':
       return null;
   }
 }
@@ -60,13 +62,7 @@ export function stepsOf(actions: readonly Action[]): ScheduleStepInput[] {
   });
 }
 
-function actionOf(step: ScheduleStep): Action | null {
-  if (step.kind === 'wait') {
-    return step.seconds <= LONGEST_DELAY ? { type: 'delay', seconds: step.seconds } : null;
-  }
-  if (step.kind !== 'tool') {
-    return null;
-  }
+function builtInOf(step: Extract<ScheduleStep, { kind: 'tool' }>): Action | null {
   if (step.tool === CONTROL_DEVICES) {
     const args = CONTROL_ARGS.safeParse(step.args);
     if (!args.success) {
@@ -83,8 +79,21 @@ function actionOf(step: ScheduleStep): Action | null {
   return null;
 }
 
-export function actionsOf(steps: readonly ScheduleStep[]): Action[] | null {
-  const actions = steps.map(actionOf);
+function actionOf(step: ScheduleStep, profileId: string): Action | null {
+  if (step.kind === 'wait') {
+    return step.seconds <= LONGEST_DELAY ? { type: 'delay', seconds: step.seconds } : null;
+  }
+  if (step.stopOnFailure) {
+    return null;
+  }
+  if (step.kind === 'ai') {
+    return { type: 'wake_ai', profileId, chatId: step.chatId, instruction: step.prompt };
+  }
+  return builtInOf(step) ?? { type: 'tool', profileId, tool: step.tool, args: step.args };
+}
+
+export function actionsOf(steps: readonly ScheduleStep[], profileId: string): Action[] | null {
+  const actions = steps.map((step) => actionOf(step, profileId));
   return actions.every((action): action is Action => action !== null) ? actions : null;
 }
 
@@ -93,9 +102,10 @@ export function powerActions(deviceId: string, on: boolean): Action[] {
 }
 
 export function powerVerbOf(steps: readonly ScheduleStep[], deviceId: string): string | null {
-  for (const action of actionsOf(steps) ?? []) {
+  for (const step of steps) {
+    const action = step.kind === 'tool' ? builtInOf(step) : null;
     if (
-      action.type === 'command' &&
+      action?.type === 'command' &&
       action.deviceId === deviceId &&
       action.capability === 'power'
     ) {

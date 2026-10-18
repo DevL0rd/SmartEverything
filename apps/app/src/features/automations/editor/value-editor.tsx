@@ -11,7 +11,7 @@ import { LibraryReturnContext } from './library-return';
 import { EditorFocusProvider, FocusedFields, focusedField, useEditorFocus } from './editor-focus';
 import { ValueContentFields } from './value-content-fields';
 import { useValueEditor, type ValueEditorState } from './use-value-editor';
-import { blankValue } from '../model/value-content';
+import { VALUE_TYPE_LABELS, blankValue } from '../model/value-content';
 
 interface ValueEditorProps {
   readonly row: AutomationValueRow | null;
@@ -43,12 +43,10 @@ function ValueForm({ editor, lockKind }: ValueFormProps): ReactNode {
         <Select
           label="Type"
           value={editor.content.kind}
-          options={[
-            { value: 'boolean', label: 'On / off' },
-            { value: 'number', label: 'Number' },
-            { value: 'duration', label: 'Duration' },
-            { value: 'choice', label: 'Choice' },
-          ]}
+          options={(['boolean', 'number', 'duration', 'choice'] as const).map((value) => ({
+            value,
+            label: VALUE_TYPE_LABELS[value],
+          }))}
           onChange={(kind) => {
             editor.setContent({ ...blankValue(kind), name: editor.content.name });
           }}
@@ -75,7 +73,7 @@ export function ValueEditor({ row, initialKind, lockKind }: ValueEditorProps): R
         maxWidth="reading"
         header={
           <PageHeader
-            title={editor.row === null ? 'New Value' : editor.row.content.name}
+            title={editor.row === null ? 'New value' : editor.row.content.name}
             overflow={
               editor.row === null
                 ? []

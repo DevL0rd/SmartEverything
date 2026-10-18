@@ -1,6 +1,7 @@
-import type { Point } from './points';
-import type { Better, Combine, SeriesSpec } from './series-spec';
-import { dayKeyOf } from '../../../format/time';
+import { max, min } from 'd3-array';
+import type { Point } from './readers';
+import { isOccurrence, type Better, type SeriesSpec } from './series-spec';
+import { DAY_MS } from '../../../format/time';
 import { type Window } from './window';
 
 export interface BucketValue {
@@ -18,7 +19,6 @@ export interface PeriodSummary {
   readonly low: number | null;
   readonly high: number | null;
   readonly latest: number | null;
-  readonly daysWithData: number;
   readonly count: number;
 }
 
@@ -35,18 +35,22 @@ function total(points: readonly Point[]): number {
   return points.reduce((sum, point) => sum + point.value, 0);
 }
 
-function distinctDays(points: readonly Point[]): number {
-  return new Set(points.map((point) => dayKeyOf(point.at))).size;
+function elapsedDays(from: number, to: number, until: number): number {
+  return Math.max(1, Math.round((Math.min(to, until) - from) / DAY_MS));
 }
 
-function combined(combine: Combine, points: readonly Point[], perDay: boolean): number {
-  switch (combine) {
+function latestOf(points: readonly Point[]): number {
+  return points.reduce((latest, point) => (point.at >= latest.at ? point : latest)).value;
+}
+
+function combined(spec: SeriesSpec, points: readonly Point[], perDays: number | null): number {
+  switch (spec.combine) {
     case 'sum':
-      return perDay ? total(points) / distinctDays(points) : total(points);
+      return perDays === null || isOccurrence(spec) ? total(points) : total(points) / perDays;
     case 'mean':
       return total(points) / points.length;
     case 'latest':
-      return points.reduce((latest, point) => (point.at >= latest.at ? point : latest)).value;
+      return latestOf(points);
   }
 }
 
@@ -54,23 +58,26 @@ function within(points: readonly Point[], from: number, to: number): Point[] {
   return points.filter((point) => point.at >= from && point.at < to);
 }
 
+function boundsOf(points: readonly Point[]): Pick<BucketValue, 'low' | 'high'> {
+  return {
+    low: min(points, (point) => point.low) ?? null,
+    high: max(points, (point) => point.high) ?? null,
+  };
+}
+
 export function bucketise(
   spec: SeriesSpec,
   window: Window,
   points: readonly Point[],
+  until: number,
 ): BucketValue[] {
-  const perDay = window.range === 'year';
   return window.buckets.map((bucket) => {
     const inside = within(points, bucket.start, bucket.end);
     if (inside.length === 0) {
       return { ...bucket, value: null, low: null, high: null };
     }
-    return {
-      ...bucket,
-      value: combined(spec.combine, inside, perDay),
-      low: Math.min(...inside.map((point) => point.low)),
-      high: Math.max(...inside.map((point) => point.high)),
-    };
+    const perDays = window.range === 'year' ? elapsedDays(bucket.start, bucket.end, until) : null;
+    return { ...bucket, value: combined(spec, inside, perDays), ...boundsOf(inside) };
   });
 }
 
@@ -78,9 +85,9 @@ export function summarise(
   spec: SeriesSpec,
   window: Window,
   points: readonly Point[],
+  until: number,
 ): PeriodSummary {
   const inside = within(points, window.start, window.end);
-  const days = distinctDays(inside);
   if (inside.length === 0) {
     return {
       headline: null,
@@ -88,17 +95,15 @@ export function summarise(
       low: null,
       high: null,
       latest: null,
-      daysWithData: 0,
       count: 0,
     };
   }
+  const perDays = window.range === 'day' ? null : elapsedDays(window.start, window.end, until);
   return {
-    headline: combined(spec.combine, inside, window.range !== 'day'),
+    headline: combined(spec, inside, perDays),
     total: spec.combine === 'sum' ? total(inside) : null,
-    low: Math.min(...inside.map((point) => point.low)),
-    high: Math.max(...inside.map((point) => point.high)),
-    latest: combined('latest', inside, false),
-    daysWithData: days,
+    ...boundsOf(inside),
+    latest: latestOf(inside),
     count: inside.length,
   };
 }
@@ -128,7 +133,7 @@ export type FilledBucket = BucketValue & {
   readonly high: number;
 };
 
-export function isFilled(bucket: BucketValue): bucket is FilledBucket {
+function isFilled(bucket: BucketValue): bucket is FilledBucket {
   return bucket.value !== null && bucket.low !== null && bucket.high !== null;
 }
 

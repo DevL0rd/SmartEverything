@@ -19,6 +19,7 @@ import { projectHtml, projectAssetPath, readProjectAsset } from './project-conte
 import { ProjectQueue } from '../projects/queue';
 import { PreviewProjectWatch } from './project-watch';
 import type { HtmlPublication } from './documents';
+import { background } from '@smarteverything/logging';
 
 export class PreviewProjectDocuments {
   private readonly mutations = new ProjectQueue();
@@ -85,7 +86,6 @@ export class PreviewProjectDocuments {
       operation: 'write',
       path,
       version,
-      operation_id: randomUUID(),
       content: input.html,
       encoding: 'utf8',
     });
@@ -230,10 +230,7 @@ export class PreviewProjectDocuments {
     this.unavailable.delete(row.id);
     this.watchers.add(row.id, join(this.projects.root(row.chat_id), row.root), {
       changed: (): void => {
-        void this.refresh(row.id);
-      },
-      failed: (): void => {
-        this.retire(row.id);
+        background(this.refresh(row.id), 'project_documents.refresh_failed');
       },
       touched: (): void => {
         this.events.invalidate(row.id);
@@ -264,7 +261,7 @@ export class PreviewProjectDocuments {
       if (path !== root && !path.startsWith(`${root}/`)) continue;
       this.events.invalidate(entry.view.id);
       this.watchers.signal(entry.view.id, () => {
-        void this.refresh(entry.view.id);
+        background(this.refresh(entry.view.id), 'project_documents.refresh_failed');
       });
     }
   }

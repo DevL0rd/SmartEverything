@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import Svg, { Circle, G, Line, Path } from 'react-native-svg';
-import type { ShellyArea, ShellyTrack } from '@smarteverything/domain';
+import type { ShellyArea, ShellyTrack } from '@smarteverything/shelly';
 import { useColour } from '../../design/colour';
 import type { GridCell } from './area-geometry';
 import type { PainterViewport } from './painter-viewport';

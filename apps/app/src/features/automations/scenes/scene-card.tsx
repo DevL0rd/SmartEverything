@@ -15,10 +15,11 @@ import { orderScenes } from '../../../api/scenes';
 import { plural } from '../../../format/text';
 import { attempt, removeScene, runSceneNow } from '../data/actions';
 import type { Names } from '../model/describe';
-import { describeAction } from '../model/describe';
+import { describeAction } from '../model/describe-action';
 import { readScene, reordered } from '../model/scene-state';
 import { sentenceStart } from '../model/time-text';
 import { sceneIcon } from './icon-sheet';
+import { background } from '@smarteverything/logging';
 
 const DESCRIBED = 2;
 
@@ -44,7 +45,13 @@ function moveItems(scene: SceneRow, scenes: readonly SceneRow[]): MenuItem[] {
   const move = (by: -1 | 1): void => {
     const order = reordered(scenes, scene.id, by);
     if (order !== null) {
-      void attempt('The order didn’t change', () => orderScenes(order));
+      background(
+        attempt('The order didn’t change', () => orderScenes(order), {
+          action: 'order-scenes',
+          scenes: order.length,
+        }),
+        'scene_card.attempt_failed',
+      );
     }
   };
   const index = scenes.findIndex((candidate) => candidate.id === scene.id);
@@ -76,15 +83,18 @@ function deleteItem(scene: SceneRow): MenuItem {
     icon: 'trash',
     destructive: true,
     onPress: (): void => {
-      void confirm({
-        title: `Delete ${scene.name}?`,
-        confirmLabel: 'Delete',
-        tone: 'destructive',
-      }).then((accepted) => {
-        if (accepted) {
-          void removeScene(scene.id, restore);
-        }
-      });
+      background(
+        confirm({
+          title: `Delete ${scene.name}?`,
+          confirmLabel: 'Delete',
+          tone: 'destructive',
+        }).then((accepted) => {
+          if (accepted) {
+            background(removeScene(scene.id, restore), 'scene.remove_failed');
+          }
+        }),
+        'scene_card.confirm_failed',
+      );
     },
   };
 }

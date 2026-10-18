@@ -1,7 +1,10 @@
 import {
   CLIENT_PREFS,
+  DEFAULT_PAUSE_MS,
+  callAudioWith,
   ECHO_POLICY,
   speechDetectionOf,
+  type CallAudio,
   type CallAudioPref,
   type EchoMode,
   type EchoPolicy,
@@ -10,7 +13,10 @@ import {
 } from '@smarteverything/domain';
 import type { VadTuning } from './vad-library';
 
-export const DEFAULT_CALL_AUDIO: CallAudioPref = CLIENT_PREFS.call_audio.defaultValue;
+export const DEFAULT_CALL_AUDIO: CallAudio = callAudioWith(
+  CLIENT_PREFS.call_audio.defaultValue,
+  DEFAULT_PAUSE_MS,
+);
 
 const AUTOMATIC = 'auto';
 
@@ -28,7 +34,7 @@ export interface MicrophoneSettings {
   readonly deviceId: string | null;
 }
 
-export function gateSettingsOf(pref: CallAudioPref): GateSettings {
+export function gateSettingsOf(pref: CallAudio): GateSettings {
   return { echo: pref.echo, detection: pref.detection, pauseMs: pref.pause_ms };
 }
 

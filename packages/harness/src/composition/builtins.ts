@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { isDeepStrictEqual } from 'node:util';
+import type { HarnessPluginMetadata, HarnessSkillAsset, JsonValue } from '@smarteverything/domain';
+import { HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
 import type { HarnessHost } from '../host/contracts';
 import type {
   HarnessDesiredConfiguration,
@@ -14,27 +15,117 @@ import {
 } from './claude-plugin-metadata';
 import { mountManagedPlugins } from './claude-plugins';
 import type { PluginAgentPort } from './plugin-agent-port';
-import { mountNativeSkills } from './skills';
-import {
-  HARNESS_CODEGRAPH_METADATA,
-  HARNESS_SKILLS_METADATA,
-  HARNESS_BROWSER_METADATA,
-  HARNESS_RUNTIME_REVISION,
-} from './builtin-metadata';
+import { mountNativeSkills, SKILLS_CONFIG } from './skills';
+import { builtinMetadata, HARNESS_DSH_VERSION } from './builtin-metadata';
 import { mountHeadlessBrowser } from './browser';
-import type { HarnessSkillAssets } from './skill-assets';
+import type {
+  HarnessExtensionKind,
+  HarnessSkillAssets,
+  InstalledHarnessSkillAsset,
+} from './skill-assets';
 import { HarnessRuntimeError } from '../host/errors';
-import { HARNESS_PLUGIN_METADATA } from '@smarteverything/domain';
-import { upgradeBuiltinRuntimeMetadata } from './builtin-runtime-upgrade';
 
 export const HARNESS_CODEGRAPH_PACKAGE = '@smarteverything/harness-codegraph';
-export const HARNESS_CODEGRAPH_VERSION = '0.1.6-smarteverything.3';
+export const HARNESS_CODEGRAPH_VERSION = '0.1.6';
 export const HARNESS_SKILLS_PACKAGE = '@smarteverything/harness-skills';
-export const HARNESS_SKILLS_VERSION = '0.2.1-alpha.2';
+export const HARNESS_SKILLS_VERSION = HARNESS_DSH_VERSION;
 export const HARNESS_BROWSER_PACKAGE = '@smarteverything/harness-browser';
-export const HARNESS_BROWSER_VERSION = '0.2.1-alpha.2';
-const PRE_BROWSER_DEFAULT_REVISION = 'builtin-indexer-skills-v3-native-value-imports';
-const DEFAULT_REVISION = 'builtin-indexer-skills-browser-v1';
+export const HARNESS_BROWSER_VERSION = HARNESS_DSH_VERSION;
+const ALL_PLATFORMS: HarnessPluginMetadata['platforms'] = ['linux', 'macos', 'windows'];
+
+export function skillCatalogueLength(desired: HarnessDesiredConfiguration): number {
+  const entry = desired.entries.find(
+    (candidate) => candidate.package === HARNESS_SKILLS_PACKAGE && candidate.enabled,
+  );
+  return SKILLS_CONFIG.parse(entry?.config ?? {}).catalog_description_max_length;
+}
+
+interface Builtin {
+  readonly id: string;
+  readonly package: string;
+  readonly version: string;
+  readonly metadata: HarnessPluginMetadata;
+}
+
+const CODEGRAPH: Builtin = {
+  id: 'codegraph',
+  package: HARNESS_CODEGRAPH_PACKAGE,
+  version: HARNESS_CODEGRAPH_VERSION,
+  metadata: builtinMetadata({
+    id: 'codegraph',
+    version: HARNESS_CODEGRAPH_VERSION,
+    kind: 'tools',
+    platforms: ['linux'],
+    serverSafe: true,
+  }),
+};
+const SKILLS: Builtin = {
+  id: 'skills',
+  package: HARNESS_SKILLS_PACKAGE,
+  version: HARNESS_SKILLS_VERSION,
+  metadata: builtinMetadata({
+    id: 'skills',
+    version: HARNESS_SKILLS_VERSION,
+    kind: 'skills',
+    platforms: ALL_PLATFORMS,
+    serverSafe: true,
+  }),
+};
+const BROWSER: Builtin = {
+  id: 'browser',
+  package: HARNESS_BROWSER_PACKAGE,
+  version: HARNESS_BROWSER_VERSION,
+  metadata: builtinMetadata({
+    id: 'browser',
+    version: HARNESS_BROWSER_VERSION,
+    kind: 'tools',
+    platforms: ['linux'],
+    serverSafe: false,
+  }),
+};
+const CLAUDE_PLUGINS: Builtin = {
+  id: 'claude-plugins',
+  package: HARNESS_CLAUDE_PLUGINS_PACKAGE,
+  version: HARNESS_CLAUDE_PLUGINS_VERSION,
+  metadata: HARNESS_CLAUDE_PLUGINS_METADATA,
+};
+const BUILTINS: readonly Builtin[] = [CODEGRAPH, SKILLS, BROWSER, CLAUDE_PLUGINS];
+
+export interface HarnessBuiltinSelection {
+  readonly enabled: boolean;
+  readonly config: Readonly<Record<string, JsonValue>>;
+}
+export interface HarnessDesiredInputs {
+  readonly selections?: Readonly<Record<string, HarnessBuiltinSelection>>;
+  readonly skills?: readonly HarnessSkillAsset[];
+  readonly plugins?: readonly HarnessSkillAsset[];
+}
+
+export const HARNESS_BUILTIN_IDS = BUILTINS.map((builtin) => builtin.id);
+
+export function desiredHarnessConfiguration(
+  input: HarnessDesiredInputs = {},
+): HarnessDesiredConfiguration {
+  const assets: Readonly<Record<string, readonly HarnessSkillAsset[]>> = {
+    skills: input.skills ?? [],
+    'claude-plugins': input.plugins ?? [],
+  };
+  const entries = BUILTINS.map((builtin): HarnessDesiredEntry => ({
+    id: builtin.id,
+    package: builtin.package,
+    version: builtin.version,
+    enabled: input.selections?.[builtin.id]?.enabled ?? true,
+    config: input.selections?.[builtin.id]?.config ?? {},
+    metadata: {
+      ...builtin.metadata,
+      skill_assets: [...(assets[builtin.id] ?? [])].sort((a, b) => (a.id < b.id ? -1 : 1)),
+    },
+  }));
+  return {
+    revision: `configuration-${createHash('sha256').update(JSON.stringify(entries)).digest('hex')}`,
+    entries,
+  };
+}
 
 export function installedHarnessBuiltins(
   host: HarnessHost,
@@ -43,10 +134,7 @@ export function installedHarnessBuiltins(
 ): readonly InstalledHarnessPlugin[] {
   return [
     {
-      package: HARNESS_CODEGRAPH_PACKAGE,
-      version: HARNESS_CODEGRAPH_VERSION,
-      provenance: HARNESS_CODEGRAPH_METADATA.provenance,
-      metadata: HARNESS_CODEGRAPH_METADATA,
+      ...installed(CODEGRAPH),
       platforms: ['linux'],
       serverSafe: true,
       mount: mountCodeIndexer,
@@ -54,10 +142,7 @@ export function installedHarnessBuiltins(
     installedSkills(host, assets),
     installedManagedPlugins(host, assets, pluginAgents),
     {
-      package: HARNESS_BROWSER_PACKAGE,
-      version: HARNESS_BROWSER_VERSION,
-      provenance: HARNESS_BROWSER_METADATA.provenance,
-      metadata: HARNESS_BROWSER_METADATA,
+      ...installed(BROWSER),
       platforms: ['linux'],
       serverSafe: false,
       features: ['browser', 'mcp'],
@@ -73,54 +158,14 @@ export function installedHarnessBuiltins(
   ];
 }
 
-export function defaultHarnessBuiltins(): HarnessDesiredConfiguration {
+function installed(
+  builtin: Builtin,
+): Pick<InstalledHarnessPlugin, 'package' | 'version' | 'provenance' | 'metadata'> {
   return {
-    revision: DEFAULT_REVISION,
-    entries: [
-      {
-        id: 'codegraph',
-        package: HARNESS_CODEGRAPH_PACKAGE,
-        version: HARNESS_CODEGRAPH_VERSION,
-        enabled: true,
-        config: {},
-        metadata: HARNESS_CODEGRAPH_METADATA,
-      },
-      {
-        id: 'skills',
-        package: HARNESS_SKILLS_PACKAGE,
-        version: HARNESS_SKILLS_VERSION,
-        enabled: true,
-        config: {},
-        metadata: HARNESS_SKILLS_METADATA,
-      },
-      browserDefault(),
-    ],
-  };
-}
-
-export function upgradeHarnessBuiltins(
-  current: HarnessDesiredConfiguration,
-): HarnessDesiredConfiguration {
-  const previous =
-    current.revision === PRE_BROWSER_DEFAULT_REVISION &&
-    !current.entries.some(
-      (entry) => entry.id === 'browser' || entry.package === HARNESS_BROWSER_PACKAGE,
-    )
-      ? { revision: DEFAULT_REVISION, entries: [...current.entries, browserDefault()] }
-      : current;
-  return upgradeBuiltinRuntimeMetadata(
-    upgradeNativeIndexer(upgradeSharedSkillEligibility(previous)),
-  );
-}
-
-function browserDefault(): HarnessDesiredEntry {
-  return {
-    id: 'browser',
-    package: HARNESS_BROWSER_PACKAGE,
-    version: HARNESS_BROWSER_VERSION,
-    enabled: true,
-    config: {},
-    metadata: HARNESS_BROWSER_METADATA,
+    package: builtin.package,
+    version: builtin.version,
+    provenance: builtin.metadata.provenance,
+    metadata: builtin.metadata,
   };
 }
 
@@ -129,46 +174,18 @@ function installedSkills(
   assets: HarnessSkillAssets | undefined,
 ): InstalledHarnessPlugin {
   return {
-    package: HARNESS_SKILLS_PACKAGE,
-    version: HARNESS_SKILLS_VERSION,
-    provenance: HARNESS_SKILLS_METADATA.provenance,
-    metadata: HARNESS_SKILLS_METADATA,
-    platforms: ['linux', 'macos', 'windows'],
+    ...installed(SKILLS),
+    platforms: ALL_PLATFORMS,
     serverSafe: true,
     mount: (ctx, config) => mountNativeSkills(ctx, host, config),
-    resolve: (entry) => resolveSkills(host, assets, entry),
-  };
-}
-
-async function resolveSkills(
-  host: HarnessHost,
-  assets: HarnessSkillAssets | undefined,
-  entry: HarnessDesiredEntry,
-): Promise<InstalledHarnessPlugin> {
-  if (
-    entry.metadata === undefined ||
-    JSON.stringify({ ...entry.metadata, skill_assets: [] }) !==
-      JSON.stringify(HARNESS_SKILLS_METADATA)
-  )
-    throw new HarnessRuntimeError(
-      'composition_incompatible',
-      'Desired native skill metadata differs from the pinned artifact.',
-    );
-  if (entry.metadata.skill_assets.length === 0) return installedSkills(host, assets);
-  if (assets === undefined)
-    throw new HarnessRuntimeError(
-      'runtime_unavailable',
-      'Immutable skill asset source is unavailable on this host.',
-    );
-  const acquired = await assets.acquireAll(entry.metadata.skill_assets);
-  const metadata = HARNESS_PLUGIN_METADATA.parse({
-    ...HARNESS_SKILLS_METADATA,
-    skill_assets: acquired.map((asset) => asset.asset),
-  });
-  return {
-    ...installedSkills(host, assets),
-    metadata,
-    mount: (ctx, config) => mountNativeSkills(ctx, host, config, acquired),
+    resolve: async (entry): Promise<InstalledHarnessPlugin> => {
+      const acquired = await acquire(assets, 'skill', entry);
+      return {
+        ...installedSkills(host, assets),
+        metadata: withAssets(SKILLS, acquired),
+        mount: (ctx, config) => mountNativeSkills(ctx, host, config, acquired),
+      };
+    },
   };
 }
 
@@ -178,93 +195,42 @@ function installedManagedPlugins(
   pluginAgents?: PluginAgentPort,
 ): InstalledHarnessPlugin {
   return {
-    package: HARNESS_CLAUDE_PLUGINS_PACKAGE,
-    version: HARNESS_CLAUDE_PLUGINS_VERSION,
-    provenance: HARNESS_CLAUDE_PLUGINS_METADATA.provenance,
-    metadata: HARNESS_CLAUDE_PLUGINS_METADATA,
-    platforms: ['linux', 'macos', 'windows'],
+    ...installed(CLAUDE_PLUGINS),
+    platforms: ALL_PLATFORMS,
     serverSafe: true,
     mount: (ctx, config) => mountManagedPlugins(ctx, config, [], pluginAgents),
     resolve: async (entry): Promise<InstalledHarnessPlugin> => {
-      if (
-        entry.metadata === undefined ||
-        JSON.stringify({ ...entry.metadata, skill_assets: [] }) !==
-          JSON.stringify(HARNESS_CLAUDE_PLUGINS_METADATA)
-      )
-        throw new HarnessRuntimeError(
-          'composition_incompatible',
-          'Managed package metadata differs from its pinned adapter.',
-        );
-      if (assets === undefined)
-        throw new HarnessRuntimeError(
-          'runtime_unavailable',
-          'Managed package assets are unavailable on this host.',
-        );
-      const acquired = await assets.acquireAll(entry.metadata.skill_assets);
+      const acquired = await acquire(assets, 'plugin', entry);
       return {
         ...installedManagedPlugins(host, assets, pluginAgents),
-        metadata: entry.metadata,
+        metadata: withAssets(CLAUDE_PLUGINS, acquired),
         mount: (ctx, config) => mountManagedPlugins(ctx, config, acquired, pluginAgents),
       };
     },
   };
 }
 
-function upgradeSharedSkillEligibility(
-  current: HarnessDesiredConfiguration,
-): HarnessDesiredConfiguration {
-  const entries = current.entries.map((entry): HarnessDesiredEntry => {
-    if (
-      entry.id !== 'skills' ||
-      entry.package !== HARNESS_SKILLS_PACKAGE ||
-      entry.version !== HARNESS_SKILLS_VERSION ||
-      entry.metadata === undefined
-    )
-      return entry;
-    const previous = {
-      ...HARNESS_SKILLS_METADATA,
-      runtime_version: HARNESS_RUNTIME_REVISION,
-      platforms: ['linux'],
-      server_safe: false,
-      skill_assets: entry.metadata.skill_assets,
-    };
-    if (!isDeepStrictEqual(entry.metadata, previous)) return entry;
-    return {
-      ...entry,
-      metadata: { ...HARNESS_SKILLS_METADATA, skill_assets: entry.metadata.skill_assets },
-    };
-  });
-  return entries.some((entry, index) => entry !== current.entries[index])
-    ? {
-        revision: `shared-skills-${createHash('sha256')
-          .update(JSON.stringify({ previous: current.revision, entries }))
-          .digest('hex')}`,
-        entries,
-      }
-    : current;
+async function acquire(
+  assets: HarnessSkillAssets | undefined,
+  kind: HarnessExtensionKind,
+  entry: HarnessDesiredEntry,
+): Promise<readonly InstalledHarnessSkillAsset[]> {
+  const wanted = entry.metadata?.skill_assets ?? [];
+  if (wanted.length === 0) return [];
+  if (assets === undefined)
+    throw new HarnessRuntimeError(
+      'runtime_unavailable',
+      'This host cannot reach the Home Hub skill and plugin store.',
+    );
+  return assets.acquireAll(kind, wanted);
 }
 
-function upgradeNativeIndexer(current: HarnessDesiredConfiguration): HarnessDesiredConfiguration {
-  const entries = current.entries.map((entry): HarnessDesiredEntry => {
-    if (
-      entry.package !== HARNESS_CODEGRAPH_PACKAGE ||
-      entry.version !== '0.1.6-smarteverything.2' ||
-      !isDeepStrictEqual(entry.metadata, {
-        ...HARNESS_CODEGRAPH_METADATA,
-        runtime_version: HARNESS_RUNTIME_REVISION,
-        server_safe: false,
-        adapter: { ...HARNESS_CODEGRAPH_METADATA.adapter, version: '0.1.6-smarteverything.2' },
-      })
-    )
-      return entry;
-    return { ...entry, version: HARNESS_CODEGRAPH_VERSION, metadata: HARNESS_CODEGRAPH_METADATA };
+function withAssets(
+  builtin: Builtin,
+  acquired: readonly InstalledHarnessSkillAsset[],
+): HarnessPluginMetadata {
+  return HARNESS_PLUGIN_METADATA.parse({
+    ...builtin.metadata,
+    skill_assets: acquired.map((asset) => asset.asset),
   });
-  return entries.some((entry, index) => entry !== current.entries[index])
-    ? {
-        revision: `native-indexer-${createHash('sha256')
-          .update(JSON.stringify({ previous: current.revision, entries }))
-          .digest('hex')}`,
-        entries,
-      }
-    : current;
 }

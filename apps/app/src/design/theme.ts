@@ -77,7 +77,7 @@ function radiusVariables(corners: Corners): Variables {
   return variables;
 }
 
-export interface AppliedTheme {
+interface AppliedTheme {
   readonly settings: ThemeSettings;
   readonly idiom: Idiom;
 }
@@ -129,7 +129,22 @@ function publish(next: AppliedTheme): void {
   }
 }
 
+function sameSettings(left: ThemeSettings, right: ThemeSettings): boolean {
+  return (
+    left.theme === right.theme &&
+    left.accent === right.accent &&
+    left.background === right.background &&
+    left.surface === right.surface &&
+    left.corners === right.corners &&
+    left.density === right.density &&
+    left.motion === right.motion
+  );
+}
+
 export function applyTheme(settings: ThemeSettings): void {
+  if (sameSettings(settings, applied.settings)) {
+    return;
+  }
   if (settings.theme !== applied.settings.theme) {
     Uniwind.setTheme(settings.theme);
   }
@@ -164,10 +179,10 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-function snapshot(): AppliedTheme {
-  return applied;
-}
-
-export function useAppliedTheme(): AppliedTheme {
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
+export function useThemeSetting<K extends keyof ThemeSettings>(key: K): ThemeSettings[K] {
+  return useSyncExternalStore(
+    subscribe,
+    () => applied.settings[key],
+    () => applied.settings[key],
+  );
 }

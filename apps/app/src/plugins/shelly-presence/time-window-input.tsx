@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { SHELLY_TIME_WINDOW, type JsonValue } from '@smarteverything/domain';
+import type { JsonValue } from '@smarteverything/domain';
+import { SHELLY_TIME_WINDOW } from '@smarteverything/shelly';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { TextField } from '../../components/text-field';

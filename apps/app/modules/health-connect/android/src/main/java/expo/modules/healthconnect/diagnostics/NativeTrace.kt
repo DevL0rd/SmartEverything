@@ -24,7 +24,7 @@ object DiagnosticText {
 
   fun module(value: String?): String? {
     val name = value?.substringAfterLast('/')?.removeSuffix(" (deleted)") ?: return null
-    if (!name.matches(Regex("(?:lib[A-Za-z0-9_.-]{1,100}\\.so|node|proot|supervisor|base\\.apk)"))) return null
+    if (!name.matches(Regex("(?:lib[A-Za-z0-9_.-]{1,100}\\.so|node|base\\.apk)"))) return null
     return description(name)
   }
 }

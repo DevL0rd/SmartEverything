@@ -7,6 +7,7 @@ import type { ToolCaller } from '../ai-tools/hub-tool';
 import type { Store } from '../store/store';
 import type {
   PluginConfiguration,
+  PluginFiles,
   PluginHostContext,
   PluginPeopleView,
   PluginRecords,
@@ -17,7 +18,7 @@ import { metricsOf, viewersOf, type DriverServices } from './driver-services';
 import { networkOf } from './plugin-listen';
 import { pluginFiles, type PluginConversations } from './plugin-assistant';
 import type { PluginPeople } from './plugin-people';
-import type { PluginSpeakers } from './plugin-reach';
+import type { PluginSpeakers } from './plugin-speakers';
 import { voiceOf, type PluginVoiceServices } from './plugin-voice';
 import type { PluginSecrets } from './plugin-secrets';
 import type { ContributionSinks } from './runtime';
@@ -31,6 +32,7 @@ export interface BuiltinContextOptions {
   readonly voice: PluginVoiceServices;
   readonly conversations: Pick<PluginConversations, 'forPlugin'>;
   readonly attachments: (chatId: string) => readonly string[];
+  readonly machineFile: PluginFiles['fromMachine'];
   readonly dataDirectory: string;
   readonly configure: (
     pluginId: string,
@@ -94,7 +96,23 @@ function peopleOf(
     save: (externalId, change) => people.set(pluginId, externalId, change),
     find: (externalId) => people.find(pluginId, externalId) ?? null,
     list: () => people.list(pluginId),
+    requesterOf: (externalId) => people.requesterOf(pluginId, externalId),
     watch: (listener) => track(people.watch(pluginId, listener)),
+  };
+}
+
+function clientsOf(
+  store: BuiltinContextOptions['store'],
+  track: BuiltinSession['track'],
+): PluginHostContext['clients'] {
+  return {
+    gone: (listener): Unsubscribe =>
+      track(
+        store.feed.subscribe((change) => {
+          if (change.table !== 'clients' || change.operation !== 'DELETE') return;
+          if (change.oldRecord !== null) listener(change.oldRecord.id);
+        }),
+      ),
   };
 }
 
@@ -103,6 +121,25 @@ function secretsOf(options: BuiltinContextOptions, id: string): PluginHostContex
     get: (name) => options.secrets.get(id, name),
     set: (name, value) => options.secrets.set(id, { [name]: value }),
     remove: (name) => options.secrets.remove(id, name),
+  };
+}
+
+function devicesOf(
+  options: BuiltinContextOptions,
+  session: BuiltinSession,
+  ownDrivers: Set<string>,
+): PluginHostContext['devices'] {
+  const { command, withTransientValues } = commandPorts(options, session, ownDrivers);
+  return {
+    command,
+    register: (driver): Unsubscribe => {
+      const stop = options.drivers.registry.register(withTransientValues(driver));
+      ownDrivers.add(driver.id);
+      return session.track((): void => {
+        ownDrivers.delete(driver.id);
+        stop();
+      });
+    },
   };
 }
 
@@ -120,17 +157,7 @@ export function builtinContext(
     signal: session.signal,
     log,
     tools: { register: session.tools },
-    devices: {
-      ...commandPorts(options, session, ownDrivers),
-      register: (driver): Unsubscribe => {
-        const stop = options.drivers.registry.register(driver);
-        ownDrivers.add(driver.id);
-        return track((): void => {
-          ownDrivers.delete(driver.id);
-          stop();
-        });
-      },
-    },
+    devices: devicesOf(options, session, ownDrivers),
     data: {
       publish: (stream, value): void => {
         sinks.data({ stream, value, at: options.now().toISOString() });
@@ -144,15 +171,16 @@ export function builtinContext(
     configure: (change, by) => options.configure(id, change, by),
     watchSettings: session.watchSettings,
     viewers: viewersOf(options.store, options.drivers, track),
+    clients: clientsOf(options.store, track),
     metrics: metricsOf(options.drivers, (externalId) => {
       log.warn('plugin.metric_without_device', { externalId });
     }),
     messages: { post: sinks.message },
     people: peopleOf(options.people, id, track),
     reach: { register: (speaker) => track(options.speakers.register(id, speaker, ownDrivers)) },
-    network: networkOf(id, session.manifest.permissions.listen, track),
+    network: networkOf(track),
     voice: voiceOf(options.voice, { pluginId: id, track }, session.manifest.permissions.voice),
     assistant: options.conversations.forPlugin(id),
-    files: pluginFiles(options.dataDirectory, id, options.attachments),
+    files: pluginFiles(options.dataDirectory, id, options.attachments, options.machineFile),
   };
 }

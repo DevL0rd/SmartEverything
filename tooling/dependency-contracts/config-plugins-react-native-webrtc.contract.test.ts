@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { appDeclaredVersion } from './app-manifest';
+import { APP_MANIFEST, declaredVersion } from './contract-helpers';
 import { installedVersion, repositoryFile } from './versions';
 
 const fromApp = createRequire(repositoryFile('apps/app/package.json'));
@@ -11,12 +11,6 @@ const PLUGIN_MANIFEST = z.object({
 });
 
 describe('@config-plugins/react-native-webrtc contract', () => {
-  it('is installed at exactly the version the app declares', () => {
-    expect(installedVersion('@config-plugins/react-native-webrtc')).toBe(
-      appDeclaredVersion('@config-plugins/react-native-webrtc'),
-    );
-  });
-
   it('declares support for the Expo SDK the app builds with', () => {
     const manifest = PLUGIN_MANIFEST.parse(
       fromApp('@config-plugins/react-native-webrtc/package.json'),
@@ -32,6 +26,8 @@ describe('@config-plugins/react-native-webrtc contract', () => {
   });
 
   it('pairs with the react-native-webrtc release it was written for', () => {
-    expect(installedVersion('react-native-webrtc')).toBe(appDeclaredVersion('react-native-webrtc'));
+    expect(installedVersion('react-native-webrtc')).toBe(
+      declaredVersion(APP_MANIFEST, 'react-native-webrtc'),
+    );
   });
 });

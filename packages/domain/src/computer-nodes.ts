@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { HUB_CONNECTION_METADATA } from './hub-connections';
+import { CLIENT_TOKEN } from './api/access';
+import { HUB_CONNECTION_METADATA, HUB_FINGERPRINT } from './hub-connections';
 import { NODE_AI_TOKEN } from './node/ai-frames';
 
 export const COMPUTER_NODE_ROW = z.strictObject({
@@ -14,11 +15,13 @@ export const COMPUTER_NODE_PAIRING = z.strictObject({
   code: z.string().min(1),
   expires_at: z.iso.datetime({ offset: true }),
   url: z.url({ protocol: /^https?$/ }),
+  pin: HUB_FINGERPRINT.nullable(),
 });
 export const COMPUTER_NODE_PAIRED = z.strictObject({
   token: NODE_AI_TOKEN,
   device_id: z.uuid(),
   hub_url: z.url({ protocol: /^https?$/ }),
+  window_token: CLIENT_TOKEN,
 });
 
 export const COMPUTER_MCP_TOKEN = z.string().regex(/^scg_[A-Za-z0-9_-]{43}$/);

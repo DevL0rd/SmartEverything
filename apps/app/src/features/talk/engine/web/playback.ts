@@ -5,8 +5,13 @@ import {
   TALK_START_TONE,
 } from '@smarteverything/domain';
 
-const JITTER_S = 0.06;
+const JITTER_FLOOR_S = 0.12;
+const JITTER_CEILING_S = 0.5;
+const JITTER_GROWTH = 2;
+const JITTER_DECAY = 0.995;
+const SAME_UTTERANCE_GAP_S = 0.4;
 const VOLUME_RAMP_S = 0.03;
+const LEVEL_GAIN = 4;
 const FRAME_US = TALK_FRAME_MS * 1000;
 
 export type Tone = 'permit' | 'busy' | 'roger' | 'end';
@@ -26,18 +31,20 @@ export class Playback {
   private context: AudioContext | null = null;
   private decoder: AudioDecoder | null = null;
   private nextTime = 0;
+  private jitter = JITTER_FLOOR_S;
   private timestamp = 0;
-  private output: { readonly gain: GainNode; readonly analyser: AnalyserNode } | null = null;
+  private output: GainNode | null = null;
   private volume = 1;
   private sinkId = '';
-  private readonly scheduled = new Set<AudioBufferSourceNode>();
+  private levelListener: ((level: number) => void) | null = null;
+  private readonly scheduled = new Map<AudioBufferSourceNode, number>();
 
   constructor(private readonly onFailure: (error: unknown) => void) {}
 
   begin(): void {
     const context = this.contextNow();
     this.end();
-    this.nextTime = context.currentTime + JITTER_S;
+    this.nextTime = context.currentTime + this.jitter;
     this.timestamp = 0;
     const decoder = new AudioDecoder({
       output: (data): void => {
@@ -88,7 +95,7 @@ export class Playback {
   }
 
   cut(): void {
-    this.scheduled.forEach((source) => {
+    this.scheduled.forEach((_level, source) => {
       source.stop();
     });
     this.scheduled.clear();
@@ -102,18 +109,8 @@ export class Playback {
     return this.scheduled.size > 0;
   }
 
-  outputLevel(): number {
-    const analyser = this.output?.analyser;
-    if (analyser === undefined) {
-      return 0;
-    }
-    const samples = new Float32Array(analyser.fftSize);
-    analyser.getFloatTimeDomainData(samples);
-    let sum = 0;
-    for (const sample of samples) {
-      sum += sample * sample;
-    }
-    return Math.min(1, Math.sqrt(sum / samples.length) * 4);
+  onLevel(listener: ((level: number) => void) | null): void {
+    this.levelListener = listener;
   }
 
   unlock(): void {
@@ -123,7 +120,7 @@ export class Playback {
   setVolume(volume: number): void {
     this.volume = volume;
     if (this.output !== null && this.context !== null) {
-      this.output.gain.gain.setTargetAtTime(volume, this.context.currentTime, VOLUME_RAMP_S);
+      this.output.gain.setTargetAtTime(volume, this.context.currentTime, VOLUME_RAMP_S);
     }
   }
 
@@ -141,7 +138,7 @@ export class Playback {
     buffer.copyToChannel(samples, 0);
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.outputOf(context).gain);
+    source.connect(this.outputOf(context));
     return new Promise((resolve) => {
       source.addEventListener('ended', () => {
         resolve();
@@ -171,21 +168,38 @@ export class Playback {
     return context;
   }
 
-  private outputOf(context: AudioContext): {
-    readonly gain: GainNode;
-    readonly analyser: AnalyserNode;
-  } {
+  private outputOf(context: AudioContext): GainNode {
     if (this.output !== null) {
       return this.output;
     }
     const gain = context.createGain();
     gain.gain.value = this.volume;
-    const analyser = context.createAnalyser();
-    analyser.fftSize = 512;
-    gain.connect(analyser);
-    analyser.connect(context.destination);
-    this.output = { gain, analyser };
-    return this.output;
+    gain.connect(context.destination);
+    this.output = gain;
+    return gain;
+  }
+
+  private levelOf(samples: Float32Array): number {
+    let sum = 0;
+    for (const sample of samples) {
+      sum += sample * sample;
+    }
+    const rms = Math.sqrt(sum / Math.max(1, samples.length));
+    return Math.min(1, rms * this.volume * LEVEL_GAIN);
+  }
+
+  private played(source: AudioBufferSourceNode): void {
+    this.scheduled.delete(source);
+    this.levelListener?.(this.scheduled.values().next().value ?? 0);
+  }
+
+  private settle(currentTime: number): number {
+    const late = currentTime - this.nextTime;
+    this.jitter =
+      late > 0 && late < SAME_UTTERANCE_GAP_S
+        ? Math.min(JITTER_CEILING_S, this.jitter * JITTER_GROWTH)
+        : Math.max(JITTER_FLOOR_S, this.jitter * JITTER_DECAY);
+    return this.jitter / 2;
   }
 
   private schedule(context: AudioContext, data: AudioData): void {
@@ -196,12 +210,17 @@ export class Playback {
     data.close();
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.outputOf(context).gain);
-    this.scheduled.add(source);
+    source.connect(this.outputOf(context));
+    const first = this.scheduled.size === 0;
+    const level = this.levelOf(samples);
+    this.scheduled.set(source, level);
+    if (first) {
+      this.levelListener?.(level);
+    }
     source.addEventListener('ended', () => {
-      this.scheduled.delete(source);
+      this.played(source);
     });
-    const at = Math.max(this.nextTime, context.currentTime + JITTER_S / 2);
+    const at = Math.max(this.nextTime, context.currentTime + this.settle(context.currentTime));
     source.start(at);
     this.nextTime = at + buffer.duration;
   }

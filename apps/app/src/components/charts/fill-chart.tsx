@@ -1,11 +1,9 @@
+import { extent } from 'd3-array';
+import { scaleLinear } from 'd3-scale';
 import type { ReactNode } from 'react';
 import { useId, useState } from 'react';
 import { View } from 'react-native';
-import Animated, {
-  useAnimatedProps,
-  useAnimatedStyle,
-  type SharedValue,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg';
 import { useColour } from '../../design/colour';
 import { useMotion } from '../../design/motion';
@@ -13,7 +11,9 @@ import { useDraw } from '../use-draw';
 import type { ColourRole } from '../../design/tokens';
 import { startOfDayKey, weekdayShort } from '../../format/time';
 import { Text } from '../text';
-import { linePath, scaleLinear, type Extent } from './scale';
+import { BAR_STUB, BarMarks, type BarShape } from './bar-marks';
+import { barSlots } from './bar-path';
+import { areaPath, linePath, type Extent } from './scale';
 
 export interface FillValue {
   readonly key: string;
@@ -38,7 +38,8 @@ interface Drawn {
 
 const PAD = 4;
 const BAR_GAP = 0.32;
-const STUB = 3;
+const BAR_RADIUS = 4;
+const STUB_RADIUS = 1.5;
 
 interface Area {
   readonly width: number;
@@ -50,12 +51,10 @@ function domainOf(props: FillChartProps): Extent {
   const extra = [props.reference ?? null, props.band?.min ?? null, props.band?.max ?? null].flatMap(
     (value) => (value === null ? [] : [value]),
   );
-  const all = [...known, ...extra];
-  const max = Math.max(...all);
+  const [min = 0, max = 0] = extent([...known, ...extra]);
   if (props.kind === 'bars') {
     return { min: 0, max: max <= 0 ? 1 : max };
   }
-  const min = Math.min(...all);
   const room = Math.max((max - min) * 0.2, Math.abs(max) * 0.01, 0.5);
   return { min: min - room, max: max + room };
 }
@@ -81,12 +80,10 @@ function LineMarks({
     item.value === null ? [] : [{ x: xOf(index, count, area), y: y(item.value) }],
   );
   const last = placed.at(-1);
-  const first = placed[0];
-  if (last === undefined || first === undefined) {
+  if (last === undefined) {
     return null;
   }
   const line = linePath(placed);
-  const bottom = String(area.height);
   return (
     <>
       <Defs>
@@ -95,10 +92,7 @@ function LineMarks({
           <Stop offset="1" stopColor={stroke} stopOpacity={0} />
         </LinearGradient>
       </Defs>
-      <Path
-        d={`${line} L${last.x.toFixed(1)} ${bottom} L${first.x.toFixed(1)} ${bottom} Z`}
-        fill={`url(#${id})`}
-      />
+      <Path d={areaPath(placed, area.height)} fill={`url(#${id})`} />
       <Path
         d={line}
         fill="none"
@@ -113,84 +107,44 @@ function LineMarks({
   );
 }
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
-
-interface GrowingBar {
-  readonly x: number;
-  readonly width: number;
-  readonly radius: number;
-  readonly height: number;
-  readonly bottom: number;
-  readonly fill: string;
-  readonly opacity: number;
-  readonly grow: SharedValue<number>;
-}
-
-function GrowingBarPath({
-  x,
-  width,
-  radius,
-  height,
-  bottom,
-  fill,
-  opacity,
-  grow,
-}: GrowingBar): ReactNode {
-  const animated = useAnimatedProps(() => {
-    const top = Math.min(bottom - STUB, bottom - height * grow.get());
-    return { d: roundedTop({ x, y: top, w: width, h: bottom - top }, radius) };
-  }, [x, width, radius, height, bottom]);
-  return <AnimatedPath fill={fill} fillOpacity={opacity} animatedProps={animated} />;
-}
-
-function BarMarks({ chart, area, y, grow }: Drawn): ReactNode {
-  const fill = useColour(chart.colour);
-  const track = useColour('surface-3');
-  const slot = area.width / Math.max(1, chart.values.length);
-  const width = Math.max(2, slot * (1 - BAR_GAP));
-  const radius = Math.min(width / 2, 4);
+function barShapes({ chart, area, y, grow }: Drawn, track: string): BarShape[] {
+  const slots = barSlots(chart.values.length, area.width, { gap: BAR_GAP, min: 2 });
   const lastIndex = chart.values.length - 1;
-  return chart.values.map((item, index) => {
-    const x = index * slot + (slot - width) / 2;
+  return chart.values.flatMap((item, index): BarShape[] => {
+    const slot = slots[index];
+    if (slot === undefined) {
+      return [];
+    }
+    const base = { key: item.key, x: slot.x, width: slot.width, bottom: area.height };
     if (item.value === null || item.value <= 0) {
-      return (
-        <Path
-          key={item.key}
-          d={roundedTop({ x, y: area.height - STUB, w: width, h: STUB }, 1.5)}
-          fill={track}
-        />
-      );
+      return [
+        {
+          ...base,
+          top: area.height - BAR_STUB,
+          radii: { top: STUB_RADIUS, bottom: 0 },
+          opacity: 1,
+          fill: track,
+        },
+      ];
     }
     const reached =
       chart.reference !== undefined && chart.reference !== null && item.value >= chart.reference;
-    return (
-      <GrowingBarPath
-        key={item.key}
-        x={x}
-        width={width}
-        radius={radius}
-        height={area.height - y(item.value)}
-        bottom={area.height}
-        fill={fill}
-        opacity={index === lastIndex || reached ? 1 : 0.45}
-        grow={grow}
-      />
-    );
+    return [
+      {
+        ...base,
+        top: y(item.value),
+        radii: { top: Math.min(slot.width / 2, BAR_RADIUS), bottom: 0 },
+        opacity: index === lastIndex || reached ? 1 : 0.45,
+        grow,
+      },
+    ];
   });
 }
 
-interface Slot {
-  readonly x: number;
-  readonly y: number;
-  readonly w: number;
-  readonly h: number;
-}
-
-function roundedTop({ x, y, w, h }: Slot, r: number): string {
-  'worklet';
-  const radius = Math.min(r, w / 2, h);
-  const n = (value: number): string => value.toFixed(1);
-  return `M${n(x)} ${n(y + h)} V${n(y + radius)} Q${n(x)} ${n(y)} ${n(x + radius)} ${n(y)} H${n(x + w - radius)} Q${n(x + w)} ${n(y)} ${n(x + w)} ${n(y + radius)} V${n(y + h)} Z`;
+function BarGroup(drawn: Drawn): ReactNode {
+  const fill = useColour(drawn.chart.colour);
+  const track = useColour('surface-3');
+  return <BarMarks shapes={barShapes(drawn, track)} fill={fill} />;
 }
 
 function Guides({
@@ -246,7 +200,7 @@ function LineClip({ area, grow, children }: Drawn & { readonly children: ReactNo
 function Marks(drawn: Drawn): ReactNode {
   const { chart, area } = drawn;
   if (chart.kind === 'bars') {
-    return <BarMarks {...drawn} />;
+    return <BarGroup {...drawn} />;
   }
   return (
     <LineClip {...drawn}>
@@ -264,10 +218,10 @@ export function FillChart(props: FillChartProps): ReactNode {
   const y =
     area === null
       ? null
-      : scaleLinear(domain, {
-          min: area.height - (props.kind === 'bars' ? 0 : PAD * 2),
-          max: PAD * 2,
-        });
+      : scaleLinear(
+          [domain.min, domain.max],
+          [area.height - (props.kind === 'bars' ? 0 : PAD * 2), PAD * 2],
+        );
   return (
     <View
       className="min-h-8 w-full flex-1"

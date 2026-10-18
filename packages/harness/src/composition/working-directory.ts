@@ -1,11 +1,17 @@
 import type { Context } from '@deepseek-ai/cordis';
+import { ToolCallId } from '@deepseek-ai/dsh-llm';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { HarnessRuntime } from '../host/runtime';
 import { HarnessRuntimeError } from '../host/errors';
-import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
+import type { JsonValue } from '@smarteverything/domain';
 
 const INPUT = z.strictObject({ path: z.string().min(1).max(4096) });
 const PRIMARY_DIRECTORY_TIMEOUT_MS = 300_000;
+const UNAVAILABLE_INDEX: JsonValue = {
+  state: 'unavailable',
+  reason: 'The code indexer is not enabled for this session.',
+};
 
 export function mountWorkingDirectoryTool(ctx: Context, runtime: HarnessRuntime): void {
   ctx.tools.register({
@@ -35,18 +41,20 @@ export function mountWorkingDirectoryTool(ctx: Context, runtime: HarnessRuntime)
         );
       const input = INPUT.parse(raw);
       const directory = await runtime.directory(agent.id, input.path, execution.signal);
-      const indexer = ctx.tools.get('codegraph_index', agent);
-      if (indexer === undefined)
-        return {
-          directory,
-          index: {
-            state: 'unavailable',
-            reason: 'The code indexer is not enabled for this session.',
-          },
-        };
-      runtime.assertNativeAccess(agent.id);
-      const index = JSON_VALUE.parse(await indexer.execute({ project_path: directory }, execution));
-      return { directory, index };
+      if (ctx.tools.get('codegraph_index', agent) === undefined)
+        return { directory, index: UNAVAILABLE_INDEX };
+      const result = await ctx.tools.execute({
+        callId: ToolCallId(randomUUID()),
+        rootCallId: execution.rootCallId,
+        parent: execution.token,
+        name: 'codegraph_index',
+        arguments: { project_path: directory },
+        agent,
+        signal: execution.signal,
+      });
+      if (result.isError)
+        throw new HarnessRuntimeError('operation_failed', result.error.message, agent.id);
+      return { directory, index: result.value };
     },
   });
 }

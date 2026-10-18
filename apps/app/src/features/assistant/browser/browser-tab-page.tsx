@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback, type ReactNode } from 'react';
 import { type TextInput, View } from 'react-native';
-import type { AiChatRow } from '@smarteverything/domain';
+import type { AiChatRow, BrowserTarget } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
 import { Text } from '../../../components/text';
 import { IconButton } from '../../../components/icon-button';
@@ -12,7 +12,11 @@ import { BrowserTools } from './browser-tools';
 import { usePreviewDiagnostics } from './browser-diagnostics';
 import { BrowserActionScope } from './browser-action-scope';
 import { useRequestedBrowserAction } from './browser-requested-action';
-import { browserTabOperation } from './browser-tab-operation';
+import {
+  announcedBrowserTabOperation,
+  browserTabOperation,
+  openBrowserAddress,
+} from './browser-tab-operation';
 import { shiftedTabs, type BrowserTab } from './browser-tab-state';
 import type { BrowserTabs } from './browser-tabs';
 import type { BrowserPublication } from './browser-selection';
@@ -78,7 +82,7 @@ function useTabControls(
         });
       },
       reload: (): void => {
-        reloadBrowserTab(tabs, tab.id);
+        browserTabOperation(tabs.reload(tab.id));
       },
       stop: (): void => {
         localBrowserControl(nativeRef, (handle): void => {
@@ -91,7 +95,7 @@ function useTabControls(
   return { surfaceRef, controls };
 }
 function TabContent(props: BrowserTabPageProps): ReactNode {
-  const { chat, tabs, tab, selected, visible } = props;
+  const { chat, tabs, tab, selected } = props;
   const { surfaceRef, controls } = useTabControls(tabs, tab);
   const addressRef = useRef<TextInput>(null);
   const [height, setHeight] = useState(0);
@@ -99,7 +103,6 @@ function TabContent(props: BrowserTabPageProps): ReactNode {
     chat.id,
     chat.profile_id,
     tab.selection?.target ?? null,
-    selected && visible,
   );
   useEffect(() => {
     if (selected && tab.phase === 'blank') addressRef.current?.focus();
@@ -116,16 +119,7 @@ function TabContent(props: BrowserTabPageProps): ReactNode {
       >
         <View className="min-h-0 flex-1 overflow-hidden">
           {tab.selection !== null ? (
-            <BrowserSurfaceSlot
-              chatId={chat.id}
-              key={tab.selection.target.id}
-              target={tab.selection.target}
-              ref={surfaceRef}
-              visible={selected ? visible : false}
-              onStatus={(status) => {
-                tabs.status(tab.id, status);
-              }}
-            />
+            <TabSurface {...props} target={tab.selection.target} surfaceRef={surfaceRef} />
           ) : (
             <TabEmpty {...props} />
           )}
@@ -137,6 +131,34 @@ function TabContent(props: BrowserTabPageProps): ReactNode {
         />
       </View>
     </>
+  );
+}
+function TabSurface({
+  chat,
+  tabs,
+  tab,
+  selected,
+  visible,
+  target,
+  surfaceRef,
+}: BrowserTabPageProps & {
+  readonly target: BrowserTarget;
+  readonly surfaceRef: (handle: BrowserHandle | null) => void;
+}): ReactNode {
+  return (
+    <BrowserSurfaceSlot
+      chatId={chat.id}
+      key={target.id}
+      target={target}
+      ref={surfaceRef}
+      visible={selected ? visible : false}
+      onStatus={(status) => {
+        tabs.status(tab.id, status);
+      }}
+      onOpenWindow={(url) => {
+        openBrowserAddress(tabs, url);
+      }}
+    />
   );
 }
 interface TabChromeProps extends BrowserTabPageProps {
@@ -232,7 +254,7 @@ function useTabActions(props: BrowserTabPageProps, input: React.RefObject<TextIn
   useRequestedBrowserAction({
     'new-tab': props.onNew,
     'close-tab': (): void => {
-      browserTabOperation(tabs.close(tab.id));
+      announcedBrowserTabOperation(tabs.close(tab.id));
     },
     'tab-earlier': (): void => {
       move(-1);
@@ -268,7 +290,7 @@ function TabTools({
           label: 'Close tab',
           icon: 'close',
           onPress: (): void => {
-            browserTabOperation(tabs.close(tab.id));
+            announcedBrowserTabOperation(tabs.close(tab.id));
           },
         },
       ]}
@@ -286,14 +308,4 @@ function localBrowserControl(
     return;
   }
   action(handle);
-}
-
-function reloadBrowserTab(tabs: BrowserTabs, id: string): void {
-  void tabs.reload(id).catch((error: unknown): void => {
-    notify({
-      message: error instanceof Error ? error.message : 'The browser page could not be reloaded.',
-      error,
-      tone: 'default',
-    });
-  });
 }

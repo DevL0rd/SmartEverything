@@ -1,6 +1,7 @@
 import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
 import { z } from 'zod';
 import { XiaomiCloudError } from './errors';
+import { parseJson } from './json';
 
 const ENVELOPE = z.object({
   code: z.number().int(),
@@ -17,18 +18,15 @@ export interface CloudPayload {
 const EXPIRED_CODES: ReadonlySet<number> = new Set([2, 3]);
 const EXPIRED_MESSAGES = ['auth err', 'invalid signature', 'SERVICETOKEN_EXPIRED'];
 
-function parseJson(path: string, text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch (cause) {
-    throw new XiaomiCloudError(path, -1, `the reply was not JSON (${String(cause)})`);
-  }
-}
-
 export function parseCloudEnvelope(path: string, text: string): CloudPayload {
-  const parsed = ENVELOPE.safeParse(parseJson(path, text));
+  const body = parseJson(
+    text,
+    (cause) =>
+      new XiaomiCloudError(path, -1, `the reply was not JSON (${cause.split(':', 1).join('')})`),
+  );
+  const parsed = ENVELOPE.safeParse(body);
   if (!parsed.success) {
-    throw new XiaomiCloudError(path, -1, `the reply had no numeric code: ${text}`);
+    throw new XiaomiCloudError(path, -1, 'the reply had no numeric code');
   }
   const { code, message, result, data } = parsed.data;
   if (code !== 0) {

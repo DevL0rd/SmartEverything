@@ -4,7 +4,7 @@ import { Banner } from '../../../components/banner';
 import { useMoney } from '../data/use-money';
 import { noticeText } from '../model/money';
 
-export const REGION_PAGE = 'region';
+const REGION_PAGE = 'region';
 
 export function MoneyNoticeBanner(): ReactNode {
   const { format } = useMoney();

@@ -6,19 +6,19 @@ import {
   type UsageMetadata,
 } from '@google/genai';
 import {
-  VOICE_PREVIEW_BYTES,
   VOICE_PREVIEW_TEXT,
   VOICE_PREVIEW_TIMEOUT_MS,
-  type VoicePreviewRequest,
+  type CallVoice,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { MissingGeminiKeyError } from './gemini';
 import { previewWav } from './preview-audio';
+import { messageOf } from '@smarteverything/logging';
 
 const PREVIEW_OUTPUT_TOKENS = 256;
 const AUDIO_CHUNK = z.strictObject({ data: z.base64(), mime: z.literal('audio/pcm;rate=24000') });
 
-export class VoicePreviewError extends Error {
+class VoicePreviewError extends Error {
   override readonly name = 'VoicePreviewError';
   constructor(readonly reason: string) {
     super(reason);
@@ -27,7 +27,7 @@ export class VoicePreviewError extends Error {
 
 export interface VoiceSampleRequest {
   readonly model: string;
-  readonly voice: VoicePreviewRequest['voice'];
+  readonly voice: CallVoice;
   readonly signal: AbortSignal;
   readonly usage: (usage: UsageMetadata) => void;
 }
@@ -35,49 +35,20 @@ export interface VoiceSampleProvider {
   readonly sample: (request: VoiceSampleRequest) => Promise<Buffer>;
 }
 
-class SampleAudio {
-  private readonly chunks: Buffer[] = [];
-  private bytes = 0;
-  append(message: LiveServerMessage): void {
-    for (const part of message.serverContent?.modelTurn?.parts ?? []) {
-      const inline = part.inlineData;
-      if (inline === undefined) continue;
-      const chunk = AUDIO_CHUNK.parse({ data: inline.data, mime: inline.mimeType });
-      const data = Buffer.from(chunk.data, 'base64');
-      if (data.length % 2 !== 0 || this.bytes + data.length > VOICE_PREVIEW_BYTES)
-        throw new VoicePreviewError(
-          'The Live sample exceeded its audio limit or contained invalid PCM.',
-        );
-      this.bytes += data.length;
-      this.chunks.push(data);
-    }
-  }
-  wav(): Buffer {
-    if (this.bytes === 0) throw new VoicePreviewError('Gemini Live returned no sample audio.');
-    return previewWav(Buffer.concat(this.chunks));
-  }
-}
-
 class SampleRun {
-  private readonly audio = new SampleAudio();
+  private readonly chunks: Buffer[] = [];
+  private readonly timeout = AbortSignal.timeout(VOICE_PREVIEW_TIMEOUT_MS);
   private session: Session | null = null;
   private settled = false;
-  private readonly timer: NodeJS.Timeout;
   constructor(
     private readonly request: VoiceSampleRequest,
     private readonly resolve: (audio: Buffer) => void,
     private readonly reject: (error: Error) => void,
   ) {
-    this.timer = setTimeout(() => {
-      this.fail('Gemini Live did not return the sample in time.');
-    }, VOICE_PREVIEW_TIMEOUT_MS);
-    this.timer.unref();
-    request.signal.addEventListener('abort', this.abort, { once: true });
-    if (request.signal.aborted) this.abort();
+    this.timeout.addEventListener('abort', this.expire, { once: true });
+    request.signal.addEventListener('abort', this.stop, { once: true });
+    if (request.signal.aborted) this.stop();
   }
-  readonly abort = (): void => {
-    this.fail('Voice sample stopped.');
-  };
   ready(session: Session): void {
     if (this.settled) {
       session.close();
@@ -92,17 +63,13 @@ class SampleRun {
   message(message: LiveServerMessage): void {
     if (this.settled) return;
     try {
-      this.audio.append(message);
+      this.collect(message);
       if (message.usageMetadata !== undefined) this.request.usage(message.usageMetadata);
       if (message.toolCall !== undefined)
         throw new VoicePreviewError('Gemini Live tried to use a tool during a voice sample.');
-      if (message.serverContent?.turnComplete === true) {
-        const wav = this.audio.wav();
-        this.finish();
-        this.resolve(wav);
-      }
+      if (message.serverContent?.turnComplete === true) this.complete();
     } catch (error) {
-      this.fail(error instanceof Error ? error.message : 'Gemini Live returned an invalid sample.');
+      this.fail(messageOf(error));
     }
   }
   fail(reason: string): void {
@@ -110,10 +77,31 @@ class SampleRun {
     this.finish();
     this.reject(new VoicePreviewError(reason));
   }
+  private readonly stop = (): void => {
+    this.fail('Voice sample stopped.');
+  };
+  private readonly expire = (): void => {
+    this.fail('Gemini Live did not return the sample in time.');
+  };
+  private collect(message: LiveServerMessage): void {
+    for (const part of message.serverContent?.modelTurn?.parts ?? []) {
+      const inline = part.inlineData;
+      if (inline === undefined) continue;
+      const chunk = AUDIO_CHUNK.parse({ data: inline.data, mime: inline.mimeType });
+      this.chunks.push(Buffer.from(chunk.data, 'base64'));
+    }
+  }
+  private complete(): void {
+    if (this.chunks.length === 0)
+      throw new VoicePreviewError('Gemini Live returned no sample audio.');
+    const wav = previewWav(Buffer.concat(this.chunks));
+    this.finish();
+    this.resolve(wav);
+  }
   private finish(): void {
     this.settled = true;
-    clearTimeout(this.timer);
-    this.request.signal.removeEventListener('abort', this.abort);
+    this.timeout.removeEventListener('abort', this.expire);
+    this.request.signal.removeEventListener('abort', this.stop);
     this.session?.close();
     this.session = null;
   }
@@ -124,8 +112,6 @@ export class GeminiLivePreview implements VoiceSampleProvider {
   sample(request: VoiceSampleRequest): Promise<Buffer> {
     const apiKey = this.key();
     if (apiKey === null) return Promise.reject(new MissingGeminiKeyError());
-    if (request.signal.aborted)
-      return Promise.reject(new VoicePreviewError('Voice sample stopped.'));
     return new Promise((resolve, reject) => {
       const run = new SampleRun(request, resolve, reject);
       const ai = new GoogleGenAI({ apiKey });
@@ -162,7 +148,7 @@ export class GeminiLivePreview implements VoiceSampleProvider {
           },
         )
         .catch((error: unknown) => {
-          run.fail(error instanceof Error ? error.message : 'The voice sample could not start.');
+          run.fail(messageOf(error));
         });
     });
   }

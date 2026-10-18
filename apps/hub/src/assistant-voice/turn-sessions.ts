@@ -8,12 +8,15 @@ import type { VoiceProvider } from './gemini';
 import type { HostedSpeaking } from './outreach';
 import { hostedCallerOf, type HostedCaller } from './persona';
 import { TurnSession, type TurnEvents, type TurnTool } from './turn-session';
+import { SpeakingScope, type SpeakingAnchor, type SpeakingMedia } from '../reach/room-media';
+import { messageOf } from '@smarteverything/logging';
 
 export interface TurnRequest {
   readonly pluginId: string;
   readonly caller: HostedCaller;
   readonly chatId: string;
   readonly place: string | null;
+  readonly at?: SpeakingAnchor;
   readonly speaking: HostedSpeaking;
   readonly tools: readonly TurnTool[];
   readonly opening: string | null;
@@ -28,7 +31,31 @@ export interface TurnSessionsOptions {
   readonly tools: ToolHub;
   readonly prices: PriceBook;
   readonly now: () => Date;
+  readonly roomMedia?: SpeakingMedia;
   readonly log: Logger;
+}
+
+function speakingEvents(scope: SpeakingScope, events: TurnEvents, left: () => void): TurnEvents {
+  return {
+    ...events,
+    audio: (pcm): void => {
+      scope.start();
+      events.audio(pcm);
+    },
+    interrupted: (): void => {
+      scope.stop();
+      events.interrupted();
+    },
+    turnComplete: (): void => {
+      scope.stop();
+      events.turnComplete();
+    },
+    ended: (reason, detail): void => {
+      scope.close();
+      left();
+      events.ended(reason, detail);
+    },
+  };
 }
 
 export class TurnSessions {
@@ -53,19 +80,24 @@ export class TurnSessions {
       pluginId: request.pluginId,
       tools: request.tools,
       ...(request.bare === undefined ? {} : { bare: request.bare }),
-      events: {
-        ...request.events,
-        ended: (reason, detail): void => {
+      events: speakingEvents(
+        new SpeakingScope(this.options.roomMedia, {
+          id,
+          deviceId: null,
+          clientId: null,
+          ...request.at,
+        }),
+        request.events,
+        () => {
           this.sessions.delete(session);
-          request.events.ended(reason, detail);
         },
-      },
+      ),
     });
     this.sessions.add(session);
     try {
       await session.start(request.opening);
     } catch (cause) {
-      session.end('failed', cause instanceof Error ? cause.message : 'Gemini did not connect');
+      session.end('failed', messageOf(cause));
       throw cause;
     }
     log.info('voice.turn_session_started', { sessionId: id, pluginId: request.pluginId });

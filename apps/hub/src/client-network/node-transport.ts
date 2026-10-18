@@ -1,7 +1,6 @@
 import WebSocket, { type ClientOptions } from 'ws';
 import type { ComputerAiRuntime } from '@smarteverything/domain';
 import type { NodeRouteAuthority, NodeRouteState } from './route-authority';
-import { HubTransportError } from './policy';
 import { streamHubFetch } from './stream-fetch';
 
 const locallyRetiredSockets = new WeakSet<WebSocket>();
@@ -48,18 +47,13 @@ function routedNodeFetch(authority: NodeRouteAuthority, canonicalOrigin: string)
     if (!authority.ownsCredential(headers.get('authorization'))) return fetch(input, init);
     const request = new Request(input, init);
     const lease = authority.lease(request.url);
-    try {
-      return await streamHubFetch(request, {
-        ...lease,
-        signal: AbortSignal.any([lease.signal, request.signal]),
-        failed: (): void => {
-          if (!request.signal.aborted && !lease.signal.aborted) authority.failed(lease.generation);
-        },
-      });
-    } catch (cause) {
-      if (!request.signal.aborted && !lease.signal.aborted) authority.failed(lease.generation);
-      throw cause;
-    }
+    return streamHubFetch(request, {
+      ...lease,
+      signal: AbortSignal.any([lease.signal, request.signal]),
+      failed: (): void => {
+        authority.failed(lease.generation);
+      },
+    });
   };
 }
 function routedNodeSocket(
@@ -70,27 +64,22 @@ function routedNodeSocket(
 ): WebSocket {
   const canonicalUrl = new URL(input);
   canonicalUrl.protocol = canonicalUrl.protocol === 'wss:' ? 'https:' : 'http:';
-  for (const [name, value] of Object.entries(options.headers ?? {})) {
+  for (const [name, value] of Object.entries(options.headers ?? {}))
     if (name.toLowerCase() === 'authorization' && !authority.ownsCredential(value))
       return new WebSocket(input, protocols, {
         ...options,
         rejectUnauthorized: true,
         followRedirects: false,
       });
-    if (['host', 'connection', 'content-length', 'transfer-encoding'].includes(name.toLowerCase()))
-      throw new HubTransportError('Hub socket contains a reserved transport header');
-  }
   const lease = authority.lease(canonicalUrl.href);
   const url = new URL(lease.url);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  const leasedOptions: ClientOptions & { readonly hubAbortSignal: AbortSignal } = {
+  const socket = new WebSocket(url, protocols, {
     ...options,
-    agent: lease.agent,
-    hubAbortSignal: lease.signal,
+    ...(lease.agent === undefined ? {} : { agent: lease.agent }),
     rejectUnauthorized: true,
     followRedirects: false,
-  };
-  const socket = new WebSocket(url, protocols, leasedOptions);
+  });
   const retire = (): void => {
     retireNodeHubSocket(socket);
   };

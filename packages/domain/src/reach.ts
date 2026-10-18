@@ -29,21 +29,21 @@ export const OUTREACH_REASON_MAX = 500;
 
 export const OUTREACH_RING_SECONDS = 45;
 
-export const AI_OUTREACH_ROW = z.strictObject({
+export const AI_OUTREACH_ROW = z.object({
   id: ID,
   profile_id: ID,
   chat_id: ID.nullable(),
   from_chat_id: ID.nullable(),
   how: z.enum(OUTREACH_HOWS),
-  target: z.string().min(1).max(200),
-  target_label: z.string().min(1).max(120),
-  reason: z.string().min(1).max(OUTREACH_REASON_MAX),
+  target: z.string().min(1),
+  target_label: z.string().min(1),
+  reason: z.string().min(1),
   urgent: z.boolean(),
   state: z.enum(OUTREACH_STATES),
-  detail: z.string().max(2000).nullable(),
+  detail: z.string().nullable(),
   call_id: ID.nullable(),
   client_id: ID.nullable(),
-  clients: z.array(ID).max(50).default([]),
+  clients: z.array(ID).default([]),
   origin: PLUGIN_ORIGIN.nullable().default(null),
   created_at: MOMENT,
   answered_at: MOMENT.nullable(),
@@ -66,11 +66,9 @@ export type QuietHours = z.infer<typeof QUIET_HOURS>;
 const WAKE_OFF = z
   .array(ID)
   .max(100)
-  .describe(
-    'Allowed cameras that do not listen for “hey <AI name>”; every other allowed camera does',
-  );
+  .describe('Allowed cameras that do not listen for the AI name; every other allowed camera does');
 
-export const REACH_SETTINGS = z.strictObject({
+export const REACH_SETTINGS = z.object({
   quiet: QUIET_HOURS.nullable(),
   cameras: z.array(ID).max(100),
   wakeOff: WAKE_OFF.default([]),
@@ -93,7 +91,7 @@ export const REACH_SETTINGS_CHANGE = z
 
 export type ReachSettingsChange = z.output<typeof REACH_SETTINGS_CHANGE>;
 
-const PRESENCE_APP = z.strictObject({
+const PRESENCE_APP = z.object({
   clientId: ID,
   name: z.string(),
   platform: CLIENT_PLATFORM,
@@ -101,7 +99,7 @@ const PRESENCE_APP = z.strictObject({
   lastSeenAt: MOMENT.nullable(),
 });
 
-const PRESENCE_ROOM = z.strictObject({
+const PRESENCE_ROOM = z.object({
   deviceId: ID,
   device: z.string(),
   room: z.string().nullable(),
@@ -110,9 +108,9 @@ const PRESENCE_ROOM = z.strictObject({
   minutesAgo: z.int().min(0),
 });
 
-const PRESENCE_PLACE = z.strictObject({ id: z.string(), name: z.string() });
+const PRESENCE_PLACE = z.object({ id: z.string(), name: z.string() });
 
-export const REACH_PRESENCE = z.strictObject({
+export const REACH_PRESENCE = z.object({
   personId: ID,
   name: z.string(),
   quietNow: z.boolean(),
@@ -129,12 +127,12 @@ export type ReachPresence = z.infer<typeof REACH_PRESENCE>;
 
 export const AI_SPEECH_AUDIO_MAX = 1_500_000;
 
-export const AI_SPEECH_NOTICE = z.strictObject({
+export const AI_SPEECH_NOTICE = z.object({
   type: z.literal('ai_speech'),
   id: ID,
-  from: z.string().min(1).max(80),
-  text: z.string().min(1).max(1000),
-  audio: z.base64().max(AI_SPEECH_AUDIO_MAX),
+  from: z.string().min(1),
+  text: z.string().min(1),
+  audio: z.base64(),
   showText: z.boolean().optional(),
 });
 
@@ -142,6 +140,6 @@ export type AiSpeechNotice = z.infer<typeof AI_SPEECH_NOTICE>;
 
 export const AI_SPEECH_FETCH_SECONDS = 20;
 
-export const AI_SPEECH_PUSH = z.strictObject({ id: ID, expiresAt: MOMENT });
+export const AI_SPEECH_PUSH = z.object({ id: ID, expiresAt: MOMENT });
 
 export type AiSpeechPush = z.infer<typeof AI_SPEECH_PUSH>;

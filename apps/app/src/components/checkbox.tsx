@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { cn } from '../design/cn';
 import { selectionTick } from '../platform/haptics';
-import { Icon } from './icon';
+import { Icon, type IconName } from './icon';
 import { Interactive } from './interactive';
 import { Text } from './text';
 
@@ -11,9 +11,16 @@ export interface CheckboxProps {
   readonly onChange: (checked: boolean) => void;
   readonly label: string;
   readonly disabled?: boolean;
+  readonly icon?: IconName;
 }
 
-export function Checkbox({ checked, onChange, label, disabled = false }: CheckboxProps): ReactNode {
+export function Checkbox({
+  checked,
+  onChange,
+  label,
+  disabled = false,
+  icon,
+}: CheckboxProps): ReactNode {
   return (
     <Interactive
       role="checkbox"
@@ -36,6 +43,7 @@ export function Checkbox({ checked, onChange, label, disabled = false }: Checkbo
       >
         {checked ? <Icon name="check" size={16} tone="onPrimary" /> : null}
       </View>
+      {icon === undefined ? null : <Icon name={icon} size={20} />}
       <Text variant="body" className="flex-1">
         {label}
       </Text>

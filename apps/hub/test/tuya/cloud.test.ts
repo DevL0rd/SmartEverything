@@ -2,12 +2,19 @@ import { TuyaCloudError, TuyaResponseError } from '@smarteverything/tuya';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { TuyaCloud, TuyaHttpError } from '../../src/adapters/tuya/cloud-client';
-import { listDevices, loadInventory } from '../../src/adapters/tuya/cloud-inventory';
+import { LoadOnce } from '../../src/adapters/tuya/bounded';
+import {
+  CLOUD_CONCURRENCY,
+  listDevices,
+  loadInventory,
+  type LoadedSpecification,
+} from '../../src/adapters/tuya/cloud-inventory';
 import { createTuyaModule } from '../../src/adapters/tuya/module';
 import { ACCESS_ID, ACCESS_SECRET, APP_USER, item, type FakeDevice } from './fake-cloud';
 import { harness, type Harness } from './harness';
 
 const SECRETS = {
+  method: 'developer_project',
   accessId: ACCESS_ID,
   accessSecret: ACCESS_SECRET,
   region: 'eu',
@@ -25,6 +32,10 @@ function device(id: string, category: string, extra: Partial<FakeDevice> = {}): 
     online: true,
     ...extra,
   };
+}
+
+function specifications(): LoadOnce<LoadedSpecification> {
+  return new LoadOnce<LoadedSpecification>();
 }
 
 let current: Harness | null = null;
@@ -144,6 +155,7 @@ describe('Tuya inventory', () => {
       new TuyaCloud(SECRETS, dependencies),
       APP_USER,
       context.log,
+      specifications(),
     );
     expect(
       inventory.devices.map((loaded) => [
@@ -159,6 +171,42 @@ describe('Tuya inventory', () => {
     expect(cloud.calls('GET', '/v1.3/iot-03/devices')).toHaveLength(2);
   });
 
+  it('reuses specifications across inventory loads and reads only new devices', async () => {
+    const { cloud, dependencies, context } = setup();
+    cloud.devices.push(device('a', 'cz'), device('b', 'dj'));
+    const client = new TuyaCloud(SECRETS, dependencies);
+    const shared = specifications();
+    await loadInventory(client, APP_USER, context.log, shared);
+    const specificationCalls = (): number =>
+      cloud.requests.filter((request) => request.path.endsWith('/specifications')).length;
+    expect(specificationCalls()).toBe(2);
+    await loadInventory(client, APP_USER, context.log, shared);
+    expect(specificationCalls()).toBe(2);
+    cloud.devices.push(device('c', 'wsdcg'));
+    const grown = await loadInventory(client, APP_USER, context.log, shared);
+    expect(grown.devices).toHaveLength(3);
+    expect(specificationCalls()).toBe(3);
+  });
+
+  it('reads specifications with a small bounded parallelism', async () => {
+    const { cloud, dependencies, context } = setup();
+    cloud.devices.push(...['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((id) => device(id, 'cz')));
+    let inFlight = 0;
+    let peak = 0;
+    const slow: typeof dependencies.fetch = async (url, init) => {
+      const reading = url.includes('/specifications');
+      inFlight += reading ? 1 : 0;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight -= reading ? 1 : 0;
+      return dependencies.fetch(url, init);
+    };
+    const bounded = new TuyaCloud(SECRETS, { ...dependencies, fetch: slow });
+    const inventory = await loadInventory(bounded, APP_USER, context.log, specifications());
+    expect(inventory.devices).toHaveLength(8);
+    expect(peak).toBe(CLOUD_CONCURRENCY);
+  });
+
   it('places devices in their rooms and works without room access', async () => {
     const { cloud, dependencies, context } = setup();
     cloud.devices.push(device('a', 'cz'), device('b', 'dj'));
@@ -168,13 +216,13 @@ describe('Tuya inventory', () => {
       rooms: [{ room_id: 3, name: 'Kitchen', devices: ['b'] }],
     });
     const client = new TuyaCloud(SECRETS, dependencies);
-    const placed = await loadInventory(client, APP_USER, context.log);
+    const placed = await loadInventory(client, APP_USER, context.log, specifications());
     expect(placed.devices.map((loaded) => loaded.room)).toStrictEqual([null, 'Kitchen']);
     cloud.failures.set(`GET /v1.0/users/${APP_USER}/homes`, {
       code: 28841105,
       msg: 'No permissions',
     });
-    const unplaced = await loadInventory(client, APP_USER, context.log);
+    const unplaced = await loadInventory(client, APP_USER, context.log, specifications());
     expect(unplaced.devices.map((loaded) => loaded.room)).toStrictEqual([null, null]);
   });
 
@@ -182,7 +230,7 @@ describe('Tuya inventory', () => {
     const { cloud, dependencies, context } = setup();
     cloud.failures.set(`GET /v1.0/users/${APP_USER}/homes`, { code: 500, msg: 'system error' });
     await expect(
-      loadInventory(new TuyaCloud(SECRETS, dependencies), APP_USER, context.log),
+      loadInventory(new TuyaCloud(SECRETS, dependencies), APP_USER, context.log, specifications()),
     ).rejects.toBeInstanceOf(TuyaCloudError);
   });
 
@@ -204,6 +252,7 @@ describe('Tuya inventory', () => {
       new TuyaCloud(SECRETS, dependencies),
       APP_USER,
       context.log,
+      specifications(),
     );
     expect(inventory.devices.map((loaded) => loaded.cloud.id)).toStrictEqual(['blaster']);
     expect(
@@ -217,6 +266,7 @@ describe('Tuya inventory', () => {
       new TuyaCloud(SECRETS, dependencies),
       APP_USER,
       context.log,
+      specifications(),
     );
     expect(without.remotes).toStrictEqual([]);
     expect(without.devices.map((loaded) => loaded.cloud.id)).toStrictEqual(['blaster', 'remote-1']);
@@ -231,7 +281,10 @@ describe('linking a Tuya project', () => {
       { provider: 'tuya', ...SECRETS },
       context,
     );
-    expect(account).toStrictEqual({ label: 'Tuya (eu, 1 devices)', secrets: { ...SECRETS } });
+    expect(account).toStrictEqual({
+      label: 'Developer project · EU · 1 device',
+      secrets: { ...SECRETS },
+    });
   });
 
   it('refuses wrong credentials', async () => {
@@ -241,7 +294,10 @@ describe('linking a Tuya project', () => {
         { provider: 'tuya', ...SECRETS, accessSecret: 'nope' },
         context,
       ),
-    ).rejects.toMatchObject({ kind: 'credentials' });
+    ).rejects.toMatchObject({
+      problem: 'bad_credentials',
+      cause: { kind: 'credentials' },
+    });
   });
 
   it('asks for attention when the stored project is no longer allowed to read devices', async () => {

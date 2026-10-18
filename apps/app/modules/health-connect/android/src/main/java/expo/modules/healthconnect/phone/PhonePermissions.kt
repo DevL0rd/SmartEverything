@@ -36,6 +36,13 @@ object PhonePermissions {
   fun batteryUnrestricted(context: Context): Boolean =
     context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
 
+  fun writeSettings(context: Context): Boolean = Settings.System.canWrite(context)
+
+  fun overlay(context: Context): Boolean = Settings.canDrawOverlays(context)
+
+  fun bluetooth(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.S || granted(context, Manifest.permission.BLUETOOTH_CONNECT)
+
   fun all(context: Context): Map<String, Any?> = mapOf(
     "activity" to activity(context),
     "location" to location(context),
@@ -43,7 +50,11 @@ object PhonePermissions {
     "notificationAccess" to notificationAccess(context),
     "dndAccess" to dndAccess(context),
     "usageAccess" to PhoneReadings.usageAllowed(context),
-    "batteryUnrestricted" to batteryUnrestricted(context)
+    "batteryUnrestricted" to batteryUnrestricted(context),
+    "writeSettings" to writeSettings(context),
+    "overlay" to overlay(context),
+    "accessibility" to PhoneAccessibility.enabled(context),
+    "bluetooth" to bluetooth(context)
   )
 
   private fun granted(context: Context, permission: String): Boolean =

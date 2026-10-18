@@ -32,8 +32,12 @@ export interface WidgetMotion {
   readonly reduced: boolean;
 }
 
-function settle(value: SharedValue<number>, to: number, reduced: boolean): void {
-  value.set(reduced ? to : withSpring(to, SPRING));
+export function animatesPlacement(placed: Frame, reduced: boolean): boolean {
+  return !reduced && placed.height > 0;
+}
+
+function settle(value: SharedValue<number>, to: number, animate: boolean): void {
+  value.set(animate ? withSpring(to, SPRING) : to);
 }
 
 export function useWidgetMotion(frame: Frame, reduced: boolean): WidgetMotion {
@@ -44,11 +48,12 @@ export function useWidgetMotion(frame: Frame, reduced: boolean): WidgetMotion {
   const home = useSharedValue(frame);
   const lift = useSharedValue(1);
   useEffect(() => {
+    const animate = animatesPlacement(home.get(), reduced);
     home.set({ left: frame.left, top: frame.top, width: frame.width, height: frame.height });
-    settle(left, frame.left, reduced);
-    settle(top, frame.top, reduced);
-    settle(width, frame.width, reduced);
-    settle(height, frame.height, reduced);
+    settle(left, frame.left, animate);
+    settle(top, frame.top, animate);
+    settle(width, frame.width, animate);
+    settle(height, frame.height, animate);
   }, [frame.left, frame.top, frame.width, frame.height, reduced, left, top, width, height, home]);
   return { left, top, width, height, home, lift, reduced };
 }

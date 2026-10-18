@@ -1,4 +1,4 @@
-import { use, useEffect } from 'react';
+import { useEffect } from 'react';
 import {
   Easing,
   cancelAnimation,
@@ -6,13 +6,13 @@ import {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import { ScreenPausedContext } from '../design/screen-pause';
+import { useScreenPaused } from '../design/screen-pause';
 
 const DRAW_MS = 700;
 const EASE_OUT = Easing.out(Easing.cubic);
 
 export function useDraw(target: number, enabled: boolean): SharedValue<number> {
-  const paused = use(ScreenPausedContext);
+  const paused = useScreenPaused();
   const drawn = useSharedValue(enabled ? 0 : target);
   useEffect(() => {
     if (paused) {

@@ -1,6 +1,5 @@
 import {
   API_ENDPOINTS as E,
-  seal,
   type BodyReadingRow,
   type DeviceRow,
   type NewProfile,
@@ -46,14 +45,13 @@ export interface ManualScale {
 }
 
 export async function addManualScale(scale: ManualScale): Promise<DeviceRow> {
-  const { publicKey } = await api().call(E.sealingKey, {});
   return api().call(E.addLocalDevice, {
     body: {
       driver: 'xiaomi_scale',
       source: 'manual',
       name: scale.name,
       address: scale.address,
-      bindKey: seal(publicKey, scale.bindKey),
+      bindKey: scale.bindKey,
     },
   });
 }

@@ -15,24 +15,16 @@ export const WATCH_SPORT_LABELS = {
   jump_rope: 'Jump rope',
 } as const;
 
-export const WATCH_SPORTS = [
-  'treadmill',
-  'indoor_walking',
-  'outdoor_running',
-  'walking',
-  'indoor_cycling',
-  'outdoor_cycling',
-  'elliptical',
-  'rowing',
-  'free_training',
-  'hiit',
-  'yoga',
-  'jump_rope',
-] as const;
+export type WatchSport = keyof typeof WATCH_SPORT_LABELS;
+
+function isWatchSport(value: string): value is WatchSport {
+  return Object.hasOwn(WATCH_SPORT_LABELS, value);
+}
+
+export const WATCH_SPORTS: readonly WatchSport[] =
+  Object.keys(WATCH_SPORT_LABELS).filter(isWatchSport);
 
 export const WATCH_SPORT = z.enum(WATCH_SPORTS);
-
-export type WatchSport = z.infer<typeof WATCH_SPORT>;
 
 export const WATCH_WORKOUT_STATES = ['running', 'paused', 'finished'] as const;
 

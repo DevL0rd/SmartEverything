@@ -23,8 +23,11 @@ import {
   canLocateHere,
   locateHere,
 } from '../../../platform/location';
+import { useMutationState } from '../../../store/mutation';
 import { useSettings } from '../../../store/selectors';
 
+import { settingsLog, trackSetting } from '../settings-log';
+import { background } from '@smarteverything/logging';
 const TYPING_MS = 300;
 
 type Step = { readonly kind: 'search' } | { readonly kind: 'zone'; readonly zone: string };
@@ -108,7 +111,7 @@ function deniedBanner(error: LocationDeniedError): ReactNode {
             action: {
               label: 'Open settings',
               onPress: (): void => {
-                void Linking.openSettings();
+                background(Linking.openSettings(), 'settings.open_failed');
               },
             },
           })}
@@ -116,28 +119,39 @@ function deniedBanner(error: LocationDeniedError): ReactNode {
   );
 }
 
+async function locatePlace(
+  onDenied: (error: LocationDeniedError) => void,
+): Promise<PlaceMatch | null> {
+  try {
+    return await locateHere().then(placeAt);
+  } catch (error) {
+    if (error instanceof LocationDeniedError) {
+      settingsLog.info('location.denied');
+      onDenied(error);
+      return null;
+    }
+    if (error instanceof LocationMissingError) {
+      settingsLog.info('location.missing');
+      notify({ message: error.message });
+      return null;
+    }
+    throw error;
+  }
+}
+
 function CurrentLocation({ onPick }: { readonly onPick: (place: PlaceMatch) => void }): ReactNode {
-  const [busy, setBusy] = useState(false);
   const [denied, setDenied] = useState<LocationDeniedError | null>(null);
+  const mutation = useMutationState();
   const locate = (): void => {
-    setBusy(true);
     setDenied(null);
-    locateHere()
-      .then(placeAt)
-      .then(onPick, (error: unknown) => {
-        if (error instanceof LocationDeniedError) {
-          setDenied(error);
-          return;
+    mutation.run(() => locatePlace(setDenied), {
+      failure: 'Your location couldn’t be found',
+      onDone: (place) => {
+        if (place !== null) {
+          onPick(place);
         }
-        if (error instanceof LocationMissingError) {
-          notify({ message: error.message });
-          return;
-        }
-        notify({ message: 'Your location couldn’t be found', error, tone: 'critical' });
-      })
-      .finally(() => {
-        setBusy(false);
-      });
+      },
+    });
   };
   return (
     <View className="gap-3">
@@ -145,7 +159,7 @@ function CurrentLocation({ onPick }: { readonly onPick: (place: PlaceMatch) => v
         label="Use my current location"
         icon="locate"
         size="lg"
-        loading={busy}
+        loading={mutation.busy}
         onPress={locate}
       />
       {denied === null ? null : deniedBanner(denied)}
@@ -162,7 +176,7 @@ function ZoneStep({
   readonly current: string;
   readonly onDone: () => void;
 }): ReactNode {
-  const [busy, setBusy] = useState(false);
+  const mutation = useMutationState();
   return (
     <View className="gap-4">
       <Text variant="title-3">Also set the time zone?</Text>
@@ -173,13 +187,15 @@ function ZoneStep({
         <Button
           label={`Use ${zoneLabel(zone)}`}
           icon="clock"
-          loading={busy}
+          loading={mutation.busy}
           onPress={() => {
-            setBusy(true);
-            updateHome({ time_zone: zone }).then(onDone, (error: unknown) => {
-              setBusy(false);
-              notify({ message: 'The time zone was not changed', error, tone: 'critical' });
-            });
+            mutation.run(
+              () => trackSetting('home_time_zone.set', {}, () => updateHome({ time_zone: zone })),
+              {
+                failure: 'The time zone was not changed',
+                onDone,
+              },
+            );
           }}
         />
         <Button label={`Keep ${zoneLabel(current)}`} variant="text" onPress={onDone} />
@@ -194,19 +210,28 @@ function usePick(onClose: () => void): {
 } {
   const zone = useSettings().time_zone;
   const [step, setStep] = useState<Step>({ kind: 'search' });
+  const mutation = useMutationState();
   const pick = (place: PlaceMatch): void => {
     const label = placeLabel(place);
-    updateHome({ latitude: place.latitude, longitude: place.longitude, location_name: label }).then(
-      () => {
-        notify({ message: `Home set to ${label}`, tone: 'positive' });
-        if (place.timeZone !== null && place.timeZone !== zone) {
-          setStep({ kind: 'zone', zone: place.timeZone });
-          return;
-        }
-        onClose();
-      },
-      (error: unknown) => {
-        notify({ message: 'The location was not saved', error, tone: 'critical' });
+    mutation.run(
+      () =>
+        trackSetting('home_location.set', { named: label !== '' }, () =>
+          updateHome({
+            latitude: place.latitude,
+            longitude: place.longitude,
+            location_name: label,
+          }),
+        ),
+      {
+        failure: 'The location was not saved',
+        onDone: () => {
+          notify({ message: `Home set to ${label}`, tone: 'positive' });
+          if (place.timeZone !== null && place.timeZone !== zone) {
+            setStep({ kind: 'zone', zone: place.timeZone });
+            return;
+          }
+          onClose();
+        },
       },
     );
   };

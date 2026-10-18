@@ -1,3 +1,4 @@
+import { messageOf } from '@smarteverything/logging';
 export class ClaudeNotReadyError extends Error {
   override readonly name = 'ClaudeNotReadyError';
 
@@ -24,10 +25,7 @@ export class ClaudeWatchError extends Error {
     readonly directory: string,
     cause: unknown,
   ) {
-    super(
-      `Could not watch ${directory}: ${cause instanceof Error ? cause.message : String(cause)}.`,
-      { cause },
-    );
+    super(`Could not watch ${directory}: ${messageOf(cause)}.`, { cause });
   }
 }
 
@@ -49,7 +47,7 @@ export class ClaudeFileReadError extends Error {
     readonly path: string,
     cause: unknown,
   ) {
-    super(`Could not read ${path}: ${cause instanceof Error ? cause.message : String(cause)}.`, {
+    super(`Could not read ${path}: ${messageOf(cause)}.`, {
       cause,
     });
   }

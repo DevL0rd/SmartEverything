@@ -24,9 +24,11 @@ import type { RunContext } from '../contract';
 import { ArtModeChannel } from './art-mode';
 import { TvConnection, TvConnectionError, TvRefusedError } from './connection';
 import type { SamsungTvIo } from './io';
-import { readTvInfo, REMOTE_APP_NAME, type TvAccount } from './link';
+import { accountSecrets, readTvInfo, REMOTE_APP_NAME, type TvAccount } from './link';
 import { PowerStatePolling } from './power-polling';
 import { ReusedConnection } from './reused-connection';
+import { sameTelevision } from './address-follow';
+import { background, failureLine } from '@smarteverything/logging';
 
 const CONNECT_TIMEOUT_MS = 10_000;
 
@@ -56,7 +58,7 @@ class TvController {
   readonly polling: PowerStatePolling;
 
   constructor(
-    private readonly account: TvAccount,
+    private account: TvAccount,
     private readonly io: SamsungTvIo,
     private readonly context: RunContext,
   ) {
@@ -67,8 +69,13 @@ class TvController {
         this.powerChanged(on);
       },
       context.log,
+      () => io.clock.now().getTime(),
     );
-    this.art = account.frame ? this.artChannel() : null;
+    this.art = account.frame && !this.attached ? this.artChannel() : null;
+  }
+
+  get attached(): boolean {
+    return this.account.attachedTo !== undefined;
   }
 
   get frame(): boolean {
@@ -98,6 +105,9 @@ class TvController {
   }
 
   async refresh(): Promise<readonly StateUpdate[]> {
+    if (this.attached) {
+      return [];
+    }
     const on = await this.polling.checkNow();
     const power = this.update('power', on);
     if (this.art === null) {
@@ -123,6 +133,36 @@ class TvController {
     }
   }
 
+  async moveTo(host: string): Promise<void> {
+    if (host === this.account.host) {
+      return;
+    }
+    let info: Awaited<ReturnType<typeof readTvInfo>>;
+    try {
+      info = await readTvInfo(this.io, host);
+    } catch (cause) {
+      if (cause instanceof TvConnectionError) {
+        return;
+      }
+      throw cause;
+    }
+    if (!sameTelevision(info, this.account.macAddress)) {
+      return;
+    }
+    const from = this.account.host;
+    this.close();
+    this.account = { ...this.account, host };
+    await this.context.saveAccount({
+      label: this.account.name,
+      secrets: accountSecrets(this.account),
+    });
+    this.context.log.info('television.address_changed', { from, host });
+    if (!this.attached) {
+      this.sink?.devices([tvDevice(this.identity(), true)]);
+    }
+    await this.polling.checkNow();
+  }
+
   close(): void {
     this.remote.close();
     this.art?.close();
@@ -130,7 +170,7 @@ class TvController {
 
   private artChannel(): ArtModeChannel {
     return new ArtModeChannel({
-      host: this.account.host,
+      host: () => this.account.host,
       io: this.io,
       log: this.context.log,
       token: () => this.token,
@@ -153,7 +193,9 @@ class TvController {
   }
 
   private powerChanged(on: boolean): void {
-    this.sink?.state(this.update('power', on));
+    if (!this.attached) {
+      this.sink?.state(this.update('power', on));
+    }
     if (!on) {
       this.close();
       if (this.art !== null) {
@@ -170,7 +212,7 @@ class TvController {
   }
 
   private warn(event: string, cause: unknown): void {
-    this.context.log.warn(event, { host: this.account.host, reason: String(cause) });
+    this.context.log.warn(event, { host: this.account.host, reason: failureLine(cause) });
   }
 
   private async open(): Promise<TvConnection> {
@@ -199,12 +241,12 @@ class TvController {
     this.token = token;
     await this.context.saveAccount({
       label: this.account.name,
-      secrets: { ...this.account, token },
+      secrets: accountSecrets({ ...this.account, token }),
     });
   }
 
   private async powerOn(): Promise<void> {
-    if (await this.polling.checkNow()) {
+    if (await this.polling.current()) {
       return;
     }
     await this.io.sendMagicPacket(magicPacket(this.account.macAddress));
@@ -218,7 +260,7 @@ class TvController {
   }
 
   private async powerOff(): Promise<void> {
-    if (!(await this.polling.checkNow())) {
+    if (!(await this.polling.current())) {
       return;
     }
     const connection = await this.remote.get();
@@ -228,7 +270,7 @@ class TvController {
   }
 
   private async refuseWhileOff(capability: string): Promise<void> {
-    if (!(await this.polling.checkNow())) {
+    if (!(await this.polling.current())) {
       throw new CommandRefusedError(capability, 'the television is off');
     }
   }
@@ -267,11 +309,22 @@ export function createSamsungTvAdapter(
   const tv = new TvController(account, io, context);
   return {
     provider: 'samsung_tv',
-    discover: () => Promise.resolve([tvDevice(tv.identity(), true)]),
+    discover: () => Promise.resolve(tv.attached ? [] : [tvDevice(tv.identity(), true)]),
     subscribe: (sink): Promise<Unsubscribe> => {
       tv.attach(sink);
-      tv.polling.start();
+      if (!tv.attached) {
+        tv.polling.start();
+      }
+      const stopWatching = io.announcements(
+        (host) => {
+          background(tv.moveTo(host), 'television.address_follow_failed');
+        },
+        (cause) => {
+          context.log.warn('television.announcements_failed', { reason: failureLine(cause) });
+        },
+      );
       return Promise.resolve(() => {
+        stopWatching();
         tv.polling.stop();
         tv.close();
         tv.attach(null);

@@ -6,10 +6,13 @@ import {
   type GenerateContentResponse,
   type SpeechConfig,
 } from '@google/genai';
+import { Logger } from '@smarteverything/logging';
 import { MissingGeminiKeyError } from '../assistant-voice/gemini';
 import type { SpeechChunk, SpeechOptions, SpeechProvider, SpeechUsage } from './speech-provider';
 
-export class SpeechNotReturnedError extends Error {
+const log = new Logger('hub.speech');
+
+class SpeechNotReturnedError extends Error {
   override readonly name = 'SpeechNotReturnedError';
 
   constructor(model: string) {
@@ -50,7 +53,7 @@ export function speechConfigOf(voice: string): SpeechConfig {
   return { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } };
 }
 
-export function speechRequestOf(options: SpeechOptions): GenerateContentParameters {
+function speechRequestOf(options: SpeechOptions): GenerateContentParameters {
   return {
     model: options.model,
     contents: options.text,
@@ -71,19 +74,47 @@ export class GeminiSpeech implements SpeechProvider {
       throw new MissingGeminiKeyError();
     }
     const ai = new GoogleGenAI({ apiKey });
+    const startedAt = performance.now();
+    log.debug('synthesis.requesting', {
+      model: options.model,
+      voice: options.voice,
+      textChars: options.text.length,
+    });
     const stream = await ai.models.generateContentStream(speechRequestOf(options));
+    log.debug('synthesis.streaming', () => ({
+      model: options.model,
+      headersMs: Math.round(performance.now() - startedAt),
+    }));
     let last: GenerateContentResponse | null = null;
     let spoke = false;
+    let responses = 0;
     for await (const response of stream) {
       last = response;
+      responses += 1;
       for (const pcm of audioOf(response)) {
+        if (!spoke) {
+          log.debug('synthesis.first_audio', () => ({
+            model: options.model,
+            firstAudioMs: Math.round(performance.now() - startedAt),
+          }));
+        }
         spoke = true;
         yield { kind: 'audio', pcm };
       }
     }
     if (!spoke || last === null) {
+      log.warn('synthesis.silent', {
+        model: options.model,
+        responses,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       throw new SpeechNotReturnedError(options.model);
     }
+    log.debug('synthesis.finished', () => ({
+      model: options.model,
+      responses,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
     yield { kind: 'usage', usage: usageOf(last) };
   }
 }

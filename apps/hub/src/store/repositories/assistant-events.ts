@@ -2,11 +2,8 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
 import { assertQueuedChatWork, holdQueuedChatWork } from './ai-chat-removal-hold';
-import { chatHasUnsettledWork } from './ai-chat-work';
 
-export const ASSISTANT_EVENT_KINDS = ['chat', 'voice', 'plugin', 'wake', 'report'] as const;
-
-export type AssistantEventKind = (typeof ASSISTANT_EVENT_KINDS)[number];
+const ASSISTANT_EVENT_KINDS = ['chat', 'voice', 'plugin', 'wake', 'report'] as const;
 
 const MOMENT = z.iso.datetime({ offset: true });
 
@@ -45,6 +42,29 @@ const COUNT = z.strictObject({ count: z.int().min(0) });
 const LATEST = z.strictObject({ at: MOMENT.nullable() });
 
 const HOPS = z.strictObject({ hops: z.int().min(0) });
+
+const ROOT = z.strictObject({ root: z.uuid() });
+
+const UNSETTLED = z.strictObject({ unsettled: z.int().min(0).max(1) });
+
+function chatHasUnsettledWork(context: StoreContext, chatId: string): boolean {
+  const row = context.sql.get(
+    UNSETTLED,
+    `select (
+      exists(select 1 from assistant_events where chat_id=$chat and answered_at is null)
+      or exists(select 1 from harness_operations o join dsh_sessions s using(session_id)
+        where s.chat_id=$chat and o.state<>'completed')
+      or exists(select 1 from harness_deliveries d join dsh_sessions s using(session_id)
+        where s.chat_id=$chat and d.state<>'completed')
+      or exists(select 1 from harness_children c join dsh_sessions s
+        on s.session_id=c.parent_session or s.session_id=c.child_session
+        where s.chat_id=$chat and (c.state not in ('completed','failed') or c.delivered=0))
+    ) as unsettled`,
+    { chat: chatId },
+  );
+  if (row === undefined) throw new Error('Chat work admission did not return its required state.');
+  return row.unsettled === 1;
+}
 
 export class AssistantEventsRepository {
   constructor(private readonly context: StoreContext) {}
@@ -117,6 +137,26 @@ export class AssistantEventsRepository {
       `select ${EVENT_COLUMNS} from assistant_events
        where delivered_at is null and answered_at is null order by cursor`,
     );
+  }
+
+  pendingSubagentRoots(): string[] {
+    return this.context.sql
+      .all(
+        ROOT,
+        `with recursive lineage(event_cursor, chat_id, parent_id, kind) as (
+           select e.cursor, c.id, c.parent_id, c.kind
+           from assistant_events e join ai_chats c on c.id = e.chat_id
+           where e.delivered_at is null and e.answered_at is null and c.kind = 'subagent'
+           union all
+           select l.event_cursor, c.id, c.parent_id, c.kind
+           from lineage l join ai_chats c on c.id = l.parent_id
+           where l.kind = 'subagent' and l.parent_id is not null
+         )
+         select chat_id as root from lineage
+         where not (kind = 'subagent' and parent_id is not null)
+         order by event_cursor`,
+      )
+      .map((row) => row.root);
   }
 
   abandoned(): StoredEvent[] {

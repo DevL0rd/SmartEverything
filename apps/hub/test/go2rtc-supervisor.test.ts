@@ -34,6 +34,7 @@ const OPTIONS = {
   rtspPort: 8554,
   webrtcPort: 8555,
   exited: (): void => undefined,
+  reported: (): void => undefined,
 };
 
 function config(xiaomi: Readonly<Record<string, string>>): Go2rtcConfig {

@@ -1,19 +1,23 @@
 import { browserTabOperation } from './browser-tab-operation';
 import { BrowserPublicationEvents } from './browser-publication-events';
-import { useEffect, useState, useEffectEvent, useMemo, useSyncExternalStore } from 'react';
+import { usePausable } from '../../../design/external-store';
+import { useEffect, useState, useEffectEvent, useMemo } from 'react';
 import { useIsFocused } from 'expo-router';
 import type { AiChatRow, AiPreviewCatalogue } from '@smarteverything/domain';
+import type { ServerConnection } from '../../../api/connection/storage';
 import { useValue } from '../../../design/external-store';
 import { connectionState } from '../../../api/connection/connection';
 import { useActiveProfile } from '../../../store/people';
 import { useSession } from '../../../store/selectors';
 import { browserWorkspace } from './browser-runtime';
+import { browserTabsKey } from './browser-tab-persistence';
 import { setLocalPref } from '../../../store/local-prefs';
-import { previewNotices, previewRevisions } from '../../../queries/preview-notices';
+import { previewNotices } from '../../../queries/preview-notices';
 import { usePreviews } from '../data/previews';
 import { browserPublications } from './browser-publications';
-import { selectionProblem } from './browser-selection';
+import { selectionState } from './browser-selection';
 import { BrowserTabs } from './browser-tabs';
+import { followRouteRecovery, recoverUnavailableTabs } from './browser-tab-recovery';
 export function useBrowserTabs(
   chat: AiChatRow,
   active: boolean,
@@ -28,7 +32,7 @@ export function useBrowserTabs(
   const connection = useValue(connectionState);
   const owner = connection.status === 'paired' ? connection.connection : null;
   const storageKey =
-    owner === null ? null : JSON.stringify([owner.url, clientId, chat.profile_id, chat.id]);
+    owner === null ? null : browserTabsKey(owner.url, clientId, chat.profile_id, chat.id);
   const tabs = useMemo(
     () =>
       owner === null || storageKey === null
@@ -41,14 +45,16 @@ export function useBrowserTabs(
           }),
     [chat.id, chat.profile_id, owner, storageKey, clientId],
   );
-  const authorized = profile?.id === chat.profile_id && connection.status === 'paired';
+  const profileMatches = profile?.id === chat.profile_id;
+  const authorized = profileMatches && connection.status === 'paired';
   useStoredTabs(tabs, authorized ? active && focused : false, catalogue.data);
   tabs.setCatalogue(catalogue.data);
   usePublicationEvents(tabs, catalogue.data, chat, { authorized, visible: active && focused });
   useTabAuthority(tabs, catalogue.data, {
-    profileMatches: profile?.id === chat.profile_id,
+    profileMatches,
     connection,
   });
+  useRouteRecovery(tabs, catalogue.data, profileMatches ? owner : null);
   return { tabs, catalogue };
 }
 function useStoredTabs(
@@ -78,29 +84,23 @@ function usePublicationEvents(
   useEffect(
     () =>
       previewNotices.subscribe(() => {
-        const notice = previewNotices.get();
-        if (!events.receive(chat, authorized, notice) || notice === null) return;
-        for (const tab of tabs.read().tabs) {
-          if (
-            tab.source.kind === 'publication' &&
-            tab.source.publication.id === notice.publication_id
-          )
-            browserTabOperation(
-              tabs.unavailable(
-                tab.id,
-                notice.state === 'revoked'
-                  ? 'This page is no longer shared with this chat.'
-                  : 'Loading the current shared page.',
-              ),
-            );
-        }
-        consume();
+        if (events.receive(chat, authorized, previewNotices.get())) consume();
       }),
     [chat, authorized, events, tabs],
   );
   useEffect(() => {
     consume();
   }, [catalogue, authorized, visible]);
+}
+function useRouteRecovery(
+  tabs: BrowserTabs,
+  catalogue: AiPreviewCatalogue | undefined,
+  owner: ServerConnection | null,
+): void {
+  const recover = useEffectEvent((): void => {
+    recoverUnavailableTabs(tabs, catalogue);
+  });
+  useEffect(() => (owner === null ? undefined : followRouteRecovery(owner, recover)), [owner]);
 }
 function useTabAuthority(
   tabs: BrowserTabs,
@@ -111,19 +111,23 @@ function useTabAuthority(
   },
 ): void {
   const { profileMatches, connection } = context;
-  const snapshot = useSyncExternalStore(tabs.subscribe, tabs.read, tabs.read);
-  const notices = useValue(previewRevisions);
+  const snapshot = usePausable(tabs.subscribe, tabs.read);
   useEffect(() => {
     const ownerLost = !profileMatches || connection.status !== 'paired';
     for (const tab of tabs.read().tabs) {
-      if (tab.selection === null && (!ownerLost || tab.phase !== 'opening')) continue;
-      const problem = ownerLost
-        ? 'This browser viewer’s profile or paired connection changed.'
-        : selectionProblem(tab.selection, catalogue, notices);
-      if (problem !== null && tabs.read().tabs.includes(tab))
-        browserTabOperation(tabs.unavailable(tab.id, problem));
+      if (ownerLost) {
+        if (tab.selection !== null || tab.phase === 'opening')
+          browserTabOperation(
+            tabs.unavailable(tab.id, 'This browser viewer’s profile or paired connection changed.'),
+          );
+        continue;
+      }
+      const state = selectionState(tab.selection, catalogue);
+      if (state.kind === 'gone') browserTabOperation(tabs.unavailable(tab.id, state.problem));
+      else if (state.kind === 'stale')
+        browserTabOperation(tabs.replacePublication(tab.id, state.publication));
     }
-  }, [tabs, snapshot, catalogue, notices, profileMatches, connection]);
+  }, [tabs, snapshot, catalogue, profileMatches, connection]);
 }
 
 function consumePublicationEvents(

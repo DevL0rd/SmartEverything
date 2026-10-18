@@ -4,7 +4,7 @@ import type { Device } from '../store/state';
 
 interface AssistantChatOptions {
   readonly sheet?: 'chat';
-  readonly section?: 'info' | 'branches' | 'files' | 'browser';
+  readonly section?: 'overview' | 'activity' | 'files' | 'branches' | 'tools' | 'browser';
   readonly agent?: string;
   readonly message?: string;
   readonly work?: string;
@@ -24,8 +24,36 @@ function assistantChatParams(options: AssistantChatOptions): Readonly<Record<str
   };
 }
 
+interface HomeReveal {
+  readonly reveal: string;
+  readonly member?: string;
+}
+
+export interface GroupPageOptions {
+  readonly member?: string | undefined;
+  readonly edit?: boolean | undefined;
+  readonly focus?: string | undefined;
+}
+
+function groupPageParams(options: GroupPageOptions): Readonly<Record<string, string>> {
+  return {
+    ...(options.member === undefined ? {} : { member: options.member }),
+    ...(options.edit === true ? { edit: '1' } : {}),
+    ...(options.focus === undefined ? {} : { focus: options.focus }),
+  };
+}
+
 export const href = {
-  home: (): Href => '/',
+  home: (target?: HomeReveal): Href =>
+    target === undefined
+      ? '/'
+      : {
+          pathname: '/',
+          params: {
+            reveal: target.reveal,
+            ...(target.member === undefined ? {} : { member: target.member }),
+          },
+        },
   devicesPage: (page: 'air' | 'supplies'): Href => `/devices/${page}`,
   cameras: (): Href => '/cameras',
   fitness: (): Href => '/fitness',
@@ -102,6 +130,15 @@ export const href = {
   activity: (): Href => '/activity',
   weather: (): Href => '/weather',
   room: (roomId: string): Href => ({ pathname: '/rooms/[roomId]', params: { roomId } }),
+  roomLights: (roomId: string, options: GroupPageOptions = {}): Href => ({
+    pathname: '/rooms/[roomId]/lights',
+    params: { roomId, ...groupPageParams(options) },
+  }),
+  group: (groupId: string, options: GroupPageOptions = {}): Href => ({
+    pathname: '/groups/[groupId]',
+    params: { groupId, ...groupPageParams(options) },
+  }),
+  newGroup: (): Href => '/groups/new',
   search: (query = ''): Href =>
     query === '' ? '/search' : { pathname: '/search', params: { q: query } },
   device: (device: Pick<Device, 'id' | 'kind' | 'model'>): Href =>
@@ -118,9 +155,13 @@ export const href = {
   }),
   cameraEvents: (): Href => '/cameras/events',
   cameraMonitor: (): Href => '/cameras/monitor',
-  deviceSection: (deviceId: string, section: string): Href => ({
+  deviceSection: (
+    deviceId: string,
+    section: string,
+    query: Readonly<Record<string, string>> = {},
+  ): Href => ({
     pathname: '/device/[deviceId]/[section]',
-    params: { deviceId, section },
+    params: { ...query, deviceId, section },
   }),
   pluginSettings: (pluginId: string, page?: 'tools' | 'log' | 'people'): Href => ({
     pathname: '/settings/[...page]',
@@ -144,10 +185,14 @@ export const href = {
       pathname: '/settings/[...page]',
       params: { page: ['connections'] },
     }),
-    device: (deviceId: string, page?: string): Href =>
+    device: (
+      deviceId: string,
+      page?: string,
+      query: Readonly<Record<string, string>> = {},
+    ): Href =>
       page === undefined
         ? { pathname: '/device/[deviceId]/settings', params: { deviceId } }
-        : { pathname: '/device/[deviceId]/settings/[page]', params: { deviceId, page } },
+        : { pathname: '/device/[deviceId]/settings/[page]', params: { ...query, deviceId, page } },
     cameras: (): Href => '/settings/cameras',
     talk: (): Href => '/settings/talk',
     talkChannel: (channelId: string): Href => ({
@@ -192,7 +237,8 @@ export const href = {
       ...(answering === null ? {} : { answering }),
     },
   }),
-  pairPhone: (): Href => '/pair-phone',
+  pairPhone: (profileId?: string): Href =>
+    profileId === undefined ? '/pair-phone' : { pathname: '/pair-phone', params: { profileId } },
   fitnessSetup: (step?: 'about' | 'goals' | 'connect'): Href =>
     step === undefined ? '/fitness-setup' : { pathname: '/fitness-setup', params: { step } },
   addByAddress: (): Href => '/add-by-address',

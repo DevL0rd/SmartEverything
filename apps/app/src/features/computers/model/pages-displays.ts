@@ -1,0 +1,43 @@
+import type { DevicePageContribution } from '../../../app-shell/device-pages';
+
+export const DISPLAYS_PAGES: readonly DevicePageContribution[] = [
+  {
+    id: 'displays',
+    title: 'Displays',
+    subtitle: 'Screens, resolution, brightness and night light',
+    icon: 'tv',
+    keywords: [
+      'displays',
+      'screen',
+      'monitor',
+      'resolution',
+      'refresh rate',
+      'hz',
+      'scale',
+      'rotate',
+      'primary',
+      'brightness',
+      'night light',
+      'hdr',
+      'vrr',
+      'adaptive sync',
+      'turn off screen',
+    ],
+    settings: [
+      'Arrangement',
+      'Identify',
+      'Resolution',
+      'Refresh rate',
+      'Scale',
+      'Orientation',
+      'Primary',
+      'Brightness',
+      'HDR',
+      'Adaptive sync',
+      'Mirror of',
+      'Position',
+      'Night light',
+      'Keep these display settings?',
+    ],
+  },
+];

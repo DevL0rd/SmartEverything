@@ -1,30 +1,64 @@
-import { deviceFamily } from '@smarteverything/domain';
-import { useLiveControl } from '../../../store/use-live-control';
 import type { ReactNode } from 'react';
 import { IconButton } from '../../../components/icon-button';
-import { useControl } from '../../../store/control';
-import { useDeviceValues } from '../../../store/selectors';
-import type { Device } from '../../../store/state';
-import { useDisplayName } from '../model/display-name';
-import { powerStateOf, useDeviceModel } from '../model/device-model';
+import { readControl, sameControl, useControlOf, type ControlState } from '../../../store/control';
+import { deviceValuesOf, type Device } from '../../../store/state';
+import { useEntityStore, useStoreSelector } from '../../../store/store-context';
+import { displayNameOf } from '../model/display-name';
+import { powerStateOf, useDeviceModel, type PowerState } from '../model/device-model';
+import { background } from '@smarteverything/logging';
+import { confirmPowerOff } from '../laundry/power-guard';
+
+interface PowerRead {
+  readonly control: ControlState;
+  readonly name: string;
+  readonly state: PowerState;
+}
+
+function samePower(left: PowerRead, right: PowerRead): boolean {
+  return (
+    left.name === right.name &&
+    left.state === right.state &&
+    sameControl(left.control, right.control)
+  );
+}
 
 export function usePowerAction(device: Device): {
-  readonly state: ReturnType<typeof powerStateOf>;
+  readonly state: PowerState;
   readonly label: string;
   readonly toggle: () => void;
+  readonly set: (next: boolean) => void;
 } {
   const model = useDeviceModel(device);
-  const values = useDeviceValues(device.id);
-  const raw = useControl(device.id, 'power');
-  const control = useLiveControl(device, 'power', raw, deviceFamily(device) === 'light');
-  const name = useDisplayName(device.id);
-  const state = powerStateOf(model, values);
+  const read = useStoreSelector(
+    (state): PowerRead => ({
+      control: readControl(state, device.id, 'power'),
+      name: displayNameOf(state, device.id),
+      state: powerStateOf(model, deviceValuesOf(state, device.id)),
+    }),
+    samePower,
+    [device.id, model],
+  );
+  const control = useControlOf(device.id, 'power', read.control);
+  const store = useEntityStore();
+  const apply = async (next: boolean): Promise<void> => {
+    if (
+      !next &&
+      !(await confirmPowerOff(model, deviceValuesOf(store.get(), device.id), device.online))
+    ) {
+      return;
+    }
+    await control.set(next);
+  };
+  const { name, state } = read;
   const on = control.value === true;
   return {
     state: state === 'on' || state === 'off' ? (on ? 'on' : 'off') : state,
     label: on ? `Turn off ${name}` : `Turn on ${name}`,
     toggle: (): void => {
-      void control.set(!on);
+      background(apply(!on), 'control.set_failed');
+    },
+    set: (next): void => {
+      background(apply(next), 'control.set_failed');
     },
   };
 }

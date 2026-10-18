@@ -6,7 +6,7 @@ import {
   channel,
   define,
   guild,
-  originOf,
+  message,
   query,
   shortName,
   text,
@@ -26,6 +26,8 @@ const overwrite = {
   allow: z.string().regex(/^\d{1,25}$/),
   deny: z.string().regex(/^\d{1,25}$/),
 };
+
+const PUBLIC_THREAD = 11;
 
 const KEEP = z.looseObject({ id: z.string() });
 
@@ -160,22 +162,23 @@ export const CHANNEL_OPERATIONS: readonly Operation[] = [
     'change',
     {
       action: 'thread_create',
-      description: 'Start a public thread from the message that started this request.',
+      description:
+        'Start a public thread from messageId, from the message that started this request when it is in this channel, or on its own in the channel.',
       ...ON_CHANNEL,
     },
-    { ...channel, name: shortName, autoArchiveMinutes: archive },
+    {
+      ...channel,
+      messageId: message.messageId.optional(),
+      name: shortName,
+      autoArchiveMinutes: archive,
+    },
     (a, c) => {
-      const origin = originOf(c);
-      if (origin.messageId === undefined) {
-        throw new DiscordInputError('A triggering message is required');
-      }
-      if (origin.channelId !== a.channelId) {
-        throw new DiscordInputError('A thread starts from the request message, in its channel');
-      }
-      return c.rest.post(`/channels/${a.channelId}/messages/${origin.messageId}/threads`, {
-        name: a.name,
-        auto_archive_duration: a.autoArchiveMinutes,
-      });
+      const messageId =
+        a.messageId ?? (c.origin?.channelId === a.channelId ? c.origin.messageId : undefined);
+      const thread = { name: a.name, auto_archive_duration: a.autoArchiveMinutes };
+      return messageId === undefined
+        ? c.rest.post(`/channels/${a.channelId}/threads`, { ...thread, type: PUBLIC_THREAD })
+        : c.rest.post(`/channels/${a.channelId}/messages/${messageId}/threads`, thread);
     },
   ),
   define(

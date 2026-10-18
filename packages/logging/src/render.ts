@@ -1,5 +1,5 @@
 import type { LogLevel } from './levels';
-import { BACKGROUND, BOLD, FOREGROUND, RESET, type Colour } from './palette';
+import { FOREGROUND, RESET, type Colour } from './palette';
 import type { LogPayload } from './redaction';
 import type { LogRecord } from './record';
 
@@ -40,7 +40,7 @@ const COLOURED: Ink = {
   close: RESET,
 };
 
-export function colourOfLevel(level: LogLevel): Colour {
+function colourOfLevel(level: LogLevel): Colour {
   return LEVEL_COLOUR[level];
 }
 
@@ -97,8 +97,4 @@ export function renderPlain(record: LogRecord): string {
 
 export function renderJson(record: LogRecord): string {
   return JSON.stringify(record);
-}
-
-export function renderBanner(text: string, colour: Colour): string {
-  return `\n${BACKGROUND[colour]}${BOLD} ${text} ${RESET}\n`;
 }

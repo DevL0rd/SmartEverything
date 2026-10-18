@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { watch } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { isMissing } from '../fs-util';
 
 interface ProgramResult {
   readonly code: number;
@@ -46,7 +47,7 @@ class ProgramFailedError extends Error {
   }
 }
 
-function errorCode(error: unknown): unknown {
+export function errorCode(error: unknown): unknown {
   return error instanceof Error && 'code' in error ? error.code : undefined;
 }
 
@@ -75,7 +76,7 @@ const readText: ReadText = async (path) => {
   try {
     return await readFile(path, 'utf8');
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') {
+    if (isMissing(error)) {
       return null;
     }
     throw error;
@@ -90,7 +91,7 @@ const watchPath: WatchPath = (path, changed) => {
       watcher.close();
     };
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') {
+    if (isMissing(error)) {
       return null;
     }
     throw error;

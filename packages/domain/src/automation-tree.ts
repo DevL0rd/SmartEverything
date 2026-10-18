@@ -21,34 +21,6 @@ export interface AutomationBlockTarget {
   readonly block: 'root' | 'body' | 'otherwise' | AutomationNodeId;
   readonly index: number;
 }
-export type AutomationTreeEdit =
-  | {
-      readonly type: 'insert';
-      readonly target: AutomationBlockTarget;
-      readonly actions: readonly Action[];
-    }
-  | { readonly type: 'replace'; readonly nodeId: AutomationNodeId; readonly action: Action }
-  | { readonly type: 'remove'; readonly nodeId: AutomationNodeId }
-  | {
-      readonly type: 'move';
-      readonly nodeId: AutomationNodeId;
-      readonly target: AutomationBlockTarget;
-    }
-  | {
-      readonly type: 'group';
-      readonly nodeIds: readonly AutomationNodeId[];
-      readonly group: Extract<Action, { type: 'repeat' }>;
-    }
-  | { readonly type: 'ungroup'; readonly nodeId: AutomationNodeId };
-export interface AutomationTreeTransaction {
-  readonly type: 'transaction';
-  readonly edits: readonly AutomationTreeEdit[];
-}
-export interface AutomationTreeHistory {
-  readonly present: readonly Action[];
-  readonly past: readonly (readonly Action[])[];
-  readonly future: readonly (readonly Action[])[];
-}
 function changeChildren(
   action: Action,
   edit: (block: readonly Action[], parent: AutomationNodeId | null, name: string) => Action[],
@@ -67,23 +39,22 @@ function changeChildren(
       : { otherwise: edit(action.otherwise, action.nodeId, 'otherwise') }),
   };
 }
-function transform(
+function detach(
   actions: readonly Action[],
   nodeId: AutomationNodeId,
-  replace: (action: Action) => readonly Action[],
-): Action[] {
-  const found = { value: false };
+): { readonly rest: Action[]; readonly node: Action } {
+  const found: { node: Action | undefined } = { node: undefined };
   const visit = (block: readonly Action[]): Action[] =>
     block.flatMap((action) => {
       if (action.nodeId === nodeId) {
-        found.value = true;
-        return [...replace(action)];
+        found.node = action;
+        return [];
       }
       return [changeChildren(action, visit)];
     });
-  const result = visit(actions);
-  if (!found.value) throw new AutomationTreeEditError(`node ${nodeId} does not exist`);
-  return result;
+  const rest = visit(actions);
+  if (found.node === undefined) throw new AutomationTreeEditError(`node ${nodeId} does not exist`);
+  return { rest, node: found.node };
 }
 function insert(
   actions: readonly Action[],
@@ -110,105 +81,16 @@ function insert(
   if (!found.value) throw new AutomationTreeEditError('target block does not exist');
   return result;
 }
-function applyEdit(actions: readonly Action[], edit: AutomationTreeEdit): Action[] {
-  switch (edit.type) {
-    case 'insert':
-      return insert(actions, edit.target, edit.actions);
-    case 'replace':
-      if (edit.action.nodeId !== edit.nodeId)
-        throw new AutomationTreeEditError('replacement must retain node identity');
-      return transform(actions, edit.nodeId, () => [edit.action]);
-    case 'remove':
-      return transform(actions, edit.nodeId, () => []);
-    case 'move': {
-      let moved: Action | undefined;
-      const removed = transform(actions, edit.nodeId, (action) => {
-        moved = action;
-        return [];
-      });
-      if (moved === undefined) throw new AutomationTreeEditError('move source does not exist');
-      return insert(removed, edit.target, [moved]);
-    }
-    case 'group':
-      return groupActions(actions, edit);
-    case 'ungroup':
-      return transform(actions, edit.nodeId, (action) => {
-        if (action.type !== 'repeat')
-          throw new AutomationTreeEditError('only repeat bodies can be ungrouped');
-        return action.actions;
-      });
-  }
-}
-function groupActions(
+export function moveAutomationNode(
   actions: readonly Action[],
-  edit: Extract<AutomationTreeEdit, { type: 'group' }>,
-): Action[] {
-  const selected = new Set(edit.nodeIds);
-  const found = { value: false };
-  const visit = (block: readonly Action[]): Action[] => {
-    const indexes = block.flatMap((action, index) =>
-      action.nodeId !== undefined && selected.has(action.nodeId) ? [index] : [],
-    );
-    if (indexes.length === 0) return block.map((action) => changeChildren(action, visit));
-    const start = indexes[0];
-    if (
-      start === undefined ||
-      indexes.length !== selected.size ||
-      indexes.some((index, offset) => index !== start + offset)
-    )
-      throw new AutomationTreeEditError('group selection must be contiguous in one block');
-    found.value = true;
-    return [
-      ...block.slice(0, start),
-      { ...edit.group, actions: block.slice(start, start + indexes.length) },
-      ...block.slice(start + indexes.length),
-    ];
-  };
-  const result = visit(actions);
-  if (!found.value) throw new AutomationTreeEditError('group selection is empty or missing');
-  return result;
-}
-export function editAutomationTree(
-  actions: readonly Action[],
-  edit: AutomationTreeEdit | AutomationTreeTransaction,
+  nodeId: AutomationNodeId,
+  target: AutomationBlockTarget,
 ): readonly Action[] {
-  const operations = edit.type === 'transaction' ? edit.edits : [edit];
-  const next = operations.reduce((block, operation) => applyEdit(block, operation), [...actions]);
-  return z.array(ACTION).superRefine(validateActionTree).parse(next);
-}
-export function reduceAutomationTree(
-  history: AutomationTreeHistory,
-  edit:
-    | AutomationTreeEdit
-    | AutomationTreeTransaction
-    | { readonly type: 'undo' }
-    | { readonly type: 'redo' },
-): AutomationTreeHistory {
-  if (edit.type === 'undo') {
-    const previous = history.past.at(-1);
-    return previous === undefined
-      ? history
-      : {
-          present: previous,
-          past: history.past.slice(0, -1),
-          future: [history.present, ...history.future],
-        };
-  }
-  if (edit.type === 'redo') {
-    const next = history.future[0];
-    return next === undefined
-      ? history
-      : {
-          present: next,
-          past: [...history.past, history.present],
-          future: history.future.slice(1),
-        };
-  }
-  return {
-    present: editAutomationTree(history.present, edit),
-    past: [...history.past, history.present].slice(-AUTOMATION_TREE_HISTORY_LIMIT),
-    future: [],
-  };
+  const { rest, node } = detach(actions, nodeId);
+  return z
+    .array(ACTION)
+    .superRefine(validateActionTree)
+    .parse(insert(rest, target, [node]));
 }
 export function identifyActions(
   actions: readonly Action[],

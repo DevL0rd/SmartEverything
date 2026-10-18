@@ -2,25 +2,20 @@ import type { ReactNode } from 'react';
 import {
   chooseRemoteServer,
   chooseThisComputer,
-  forgetServer,
   useConnection,
   type ConnectionState,
 } from '../../../api/transport';
 import { confirm } from '../../../components/confirm-store';
 import { ActionRow, ValueRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { appPlatform } from '../../../design/platform';
-import { forgetThisPhone } from '../../../platform/push';
 import { useSettings } from '../../../store/selectors';
+import { forgetPairing } from './forget-pairing';
 
+import { trackConnection } from '../connections-log';
+import { background } from '@smarteverything/logging';
 type Paired = Extract<ConnectionState, { status: 'paired' }>;
-
-function failed(message: string): (error: unknown) => void {
-  return (error) => {
-    notify({ message, error, tone: 'critical' });
-  };
-}
 
 function howConnected(state: Paired, publicUrl: string | null): string {
   if (state.kind === 'desktop') {
@@ -30,16 +25,21 @@ function howConnected(state: Paired, publicUrl: string | null): string {
 }
 
 function unpair(): void {
-  void confirm({
-    title: 'Unpair this device?',
-    body: 'You’ll need a new pairing code to come back.',
-    confirmLabel: 'Unpair',
-    tone: 'destructive',
-  }).then((accepted) => {
-    if (accepted) {
-      forgetThisPhone().then(forgetServer).catch(failed('This device wasn’t unpaired'));
-    }
-  });
+  background(
+    confirm({
+      title: 'Unpair this device?',
+      body: 'You’ll need a new pairing code to come back.',
+      confirmLabel: 'Unpair',
+      tone: 'destructive',
+    }).then((accepted) => {
+      if (accepted) {
+        trackConnection('pairing.forget', {}, forgetPairing).catch(
+          notifyFailure('This device wasn’t unpaired'),
+        );
+      }
+    }),
+    'this_device.confirm_failed',
+  );
 }
 
 function switchRow(state: Paired): ReactNode {
@@ -51,7 +51,9 @@ function switchRow(state: Paired): ReactNode {
       icon="server"
       title="Use another server"
       onPress={() => {
-        chooseRemoteServer().catch(failed('The server wasn’t switched'));
+        trackConnection('server.choose_remote', {}, chooseRemoteServer).catch(
+          notifyFailure('The server wasn’t switched'),
+        );
       }}
     />
   ) : (
@@ -59,7 +61,9 @@ function switchRow(state: Paired): ReactNode {
       icon="monitor"
       title="Use this computer’s server"
       onPress={() => {
-        chooseThisComputer().catch(failed('The server wasn’t switched'));
+        trackConnection('server.choose_this_computer', {}, chooseThisComputer).catch(
+          notifyFailure('The server wasn’t switched'),
+        );
       }}
     />
   );

@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { TextInput, View, type TextInputKeyPressEvent } from 'react-native';
-import {
-  ASSISTANT_TEXT_MAX,
-  type AssistantMessageRow,
-  type AiMessageReference,
-} from '@smarteverything/domain';
+import { type AssistantMessageRow, type AiMessageReference } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { useFocusOnMount } from '../../../components/use-focus-on-mount';
@@ -13,6 +9,7 @@ import { useIdiom } from '../../../design/platform';
 import { stopEditing } from '../data/editing';
 import { adjustedReferences } from '../references/spans';
 import { editMessage } from '../data/send';
+import { background } from '@smarteverything/logging';
 
 function enterPressed(event: TextInputKeyPressEvent): boolean {
   const native = event.nativeEvent;
@@ -37,12 +34,15 @@ function useSave(
         return;
       }
       setSaving(true);
-      void editMessage(row, text, references).then((saved) => {
-        setSaving(false);
-        if (saved) {
-          stopEditing();
-        }
-      });
+      background(
+        editMessage(row, text, references).then((saved) => {
+          setSaving(false);
+          if (saved) {
+            stopEditing();
+          }
+        }),
+        'message.edit_failed',
+      );
     },
   };
 }
@@ -66,7 +66,6 @@ function EditField({
       multiline
       value={text}
       onChangeText={setText}
-      maxLength={ASSISTANT_TEXT_MAX}
       editable={!saving}
       accessibilityLabel="Edit your message"
       cursorColorClassName="accent-primary"

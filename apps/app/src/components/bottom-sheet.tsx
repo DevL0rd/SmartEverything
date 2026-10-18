@@ -173,7 +173,7 @@ function SheetPanel({
       accessibilityLabel={label}
       onLayout={onMounted}
       style={[sized, slide]}
-      className="w-full overflow-hidden rounded-t-xxl bg-surface-raised pb-safe elevation-3"
+      className="w-full max-w-140 self-center overflow-hidden rounded-t-xxl bg-surface-raised pb-safe elevation-3"
     >
       <GestureDetector gesture={pan}>
         <Handle title={title} onClose={onClose} />

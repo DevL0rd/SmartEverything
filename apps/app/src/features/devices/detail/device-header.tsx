@@ -3,14 +3,13 @@ import { useRouter } from 'expo-router';
 import { copyText } from '../../../components/copy-button';
 import type { MenuItem } from '../../../components/menu';
 import { PageHeader, type HeaderAction } from '../../../components/page-header';
-import { notify } from '../../../components/toast-store';
 import { href } from '../../../app-shell/hrefs';
-import { updateDevice } from '../../../api/devices';
 import { joinParts } from '../../../format/text';
 import { useRoomName } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { useScheduleBelow, useScheduleItems } from '../../automations';
 import { usePowerAction } from '../controls/power-toggle';
+import { changeDevice } from '../data/change-device';
 import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
 import { useStateLine } from '../model/state-line';
@@ -21,13 +20,7 @@ function useOverflow(device: Device, name: string): readonly MenuItem[] {
   const model = useDeviceModel(device);
   const health = model.family === 'scale' || model.family === 'wearable';
   const favourite = (): void => {
-    updateDevice(device.id, { favourite: !device.favourite }).catch((error: unknown) => {
-      notify({
-        message: `${name} was not changed`,
-        error,
-        tone: 'critical',
-      });
-    });
+    changeDevice(device, name, { favourite: !device.favourite });
   };
   return [
     {
@@ -86,6 +79,7 @@ export function DeviceHeader({
   return (
     <PageHeader
       title={sectionTitle ?? name}
+      titleLines={2}
       subtitle={sectionTitle === null ? joinParts([room, line]) : name}
       actions={sectionTitle === null ? actions : []}
       overflow={sectionTitle === null ? [...schedule, ...overflow] : []}

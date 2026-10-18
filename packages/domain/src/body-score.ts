@@ -15,16 +15,22 @@ export const BODY_TYPES = [
 
 export type BodyType = (typeof BODY_TYPES)[number];
 
+type Level = 0 | 1 | 2;
+
+type TypeRow = readonly [BodyType, BodyType, BodyType];
+
+const TYPE_BY_FAT_THEN_MUSCLE: readonly [TypeRow, TypeRow, TypeRow] = [
+  ['obese', 'overweight', 'thick_set'],
+  ['lack_exercise', 'balanced', 'balanced_muscular'],
+  ['skinny', 'balanced_skinny', 'skinny_muscular'],
+];
+
 export function bodyTypeOf(input: CompositionInput, parts: Compartments): BodyType {
   const fat = fatScale(input.sex, input.age);
   const muscle = muscleScale(input.sex, input.heightCm);
-  const fatFactor = parts.fatPercent > fat[2] ? 0 : parts.fatPercent < fat[1] ? 2 : 1;
-  const muscleFactor = parts.muscle > muscle[1] ? 2 : parts.muscle < muscle[0] ? 0 : 1;
-  const type = BODY_TYPES[muscleFactor + fatFactor * 3];
-  if (type === undefined) {
-    throw new RangeError('The body type index is out of range.');
-  }
-  return type;
+  const fatLevel: Level = parts.fatPercent > fat[2] ? 0 : parts.fatPercent < fat[1] ? 2 : 1;
+  const muscleLevel: Level = parts.muscle > muscle[1] ? 2 : parts.muscle < muscle[0] ? 0 : 1;
+  return TYPE_BY_FAT_THEN_MUSCLE[fatLevel][muscleLevel];
 }
 
 interface Line {
@@ -35,15 +41,10 @@ interface Line {
 }
 
 function malus(value: number, line: Line): number {
-  if (line.from === line.to) {
-    return 0;
-  }
-  const [low, high, lowPenalty, highPenalty] =
-    line.to < line.from
-      ? [line.to, line.from, line.toPenalty, line.fromPenalty]
-      : [line.from, line.to, line.fromPenalty, line.toPenalty];
-  const clamped = Math.min(high, Math.max(low, value));
-  const penalty = lowPenalty + ((clamped - low) / (high - low)) * (highPenalty - lowPenalty);
+  const clamped = Math.min(line.to, Math.max(line.from, value));
+  const penalty =
+    line.fromPenalty +
+    ((clamped - line.from) / (line.to - line.from)) * (line.toPenalty - line.fromPenalty);
   return Math.max(0, penalty);
 }
 

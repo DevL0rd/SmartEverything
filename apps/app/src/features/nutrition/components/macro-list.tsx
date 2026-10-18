@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { NutritionPref } from '@smarteverything/domain';
+import { ProgressBar } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
+import { withUnit } from '../../../format/number';
 import type { DayTotals } from '../data/totals';
 import { NUTRIENT_MACROS, amountText, goalOf, type MacroInfo } from '../model/macros';
-import { Meter } from './meter';
 
 function MacroRow({
   macro,
@@ -18,7 +19,10 @@ function MacroRow({
   readonly goal: number | null;
   readonly compact: boolean;
 }): ReactNode {
-  const amount = `${amountText(value, macro.unit)}${goal === null ? '' : ` / ${amountText(goal, macro.unit)}`} ${macro.unit}`;
+  const amount = withUnit(
+    `${amountText(value, macro.unit)}${goal === null ? '' : ` / ${amountText(goal, macro.unit)}`}`,
+    macro.unit,
+  );
   return (
     <View className="gap-1">
       <View className="flex-row items-center gap-2">
@@ -36,7 +40,12 @@ function MacroRow({
         </Text>
       </View>
       {goal === null ? null : (
-        <Meter progress={value / goal} fill={macro.dot} over={value > goal * 1.1} />
+        <ProgressBar
+          progress={value / goal}
+          colour={value > goal * 1.1 ? 'warning' : macro.colour}
+          label={macro.label}
+          thick
+        />
       )}
     </View>
   );

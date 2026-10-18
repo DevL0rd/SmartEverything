@@ -18,7 +18,7 @@ export function answeredCaller(caller: Caller, answer: OutreachAnswer | null): C
 }
 
 export function hostedUnder(
-  caller: Pick<HostedCaller, 'profileId' | 'role' | 'label'>,
+  caller: Pick<HostedCaller, 'profileId' | 'role' | 'label' | 'machine'>,
   origin: PluginOrigin | null | undefined,
 ): HostedCaller {
   return origin === null || origin === undefined

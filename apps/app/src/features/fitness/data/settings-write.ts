@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import {
   FITNESS_GOAL_KEYS,
   type FitnessGoals,
@@ -10,6 +11,7 @@ import { applyChange } from '../../../store/live-reducers';
 import type { StoreState } from '../../../store/state';
 import { activeProfileIn } from '../../../store/people';
 
+const log = new Logger('app.fitness');
 function goalsAfter(goals: FitnessGoals, change: FitnessSettingsChange['goals']): FitnessGoals {
   const next = { ...goals };
   for (const key of FITNESS_GOAL_KEYS) {
@@ -45,12 +47,19 @@ export async function writeFitnessSettings(
   change: FitnessSettingsChange,
 ): Promise<void> {
   const previous = activeProfileIn(store.get());
+  const operation = log.operation('fitness_settings.write', {
+    goalKeys: Object.keys(change.goals ?? {}).join(','),
+    maxHeartRate: change.maxHeartRate !== undefined,
+    optimistic: previous !== null,
+  });
   if (previous !== null) {
     store.update((state) => withProfile(state, merged(previous, change)));
   }
   try {
     await updateFitnessSettings(change);
+    operation.succeeded();
   } catch (error) {
+    operation.failed(error, { rolledBack: previous !== null });
     if (previous !== null) {
       store.update((state) => withProfile(state, previous));
     }

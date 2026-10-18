@@ -1,4 +1,3 @@
-import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   MiioDeviceError,
@@ -6,7 +5,6 @@ import {
   MiotRefusedError,
   actionParams,
   checkPropertyWrites,
-  chunk,
   encodeRequest,
   getPropertiesParams,
   nextMessageId,
@@ -59,10 +57,10 @@ describe('RPC requests and responses', () => {
 
   it('refuse text that is not JSON or not a reply', () => {
     expect(() => parseResponse(request, 'garbage')).toThrow(
-      /expected a JSON body, received garbage/,
+      /expected a JSON body, received text that is not JSON \(SyntaxError\)/,
     );
     expect(() => parseResponse(request, '{"id":7}')).toThrow(
-      new MiioPacketError('an RPC result or error', '{"id":7}'),
+      new MiioPacketError('an RPC result or error', 'a reply of another shape'),
     );
   });
 });
@@ -98,7 +96,7 @@ describe('MIoT payloads', () => {
       { siid: 2, piid: 4, ok: false, code: -1 },
     ]);
     expect(() => parsePropertyReadings({})).toThrow(
-      new MiioPacketError('a list of property results', '{}'),
+      new MiioPacketError('a list of property results', 'a reply of another shape'),
     );
   });
 
@@ -114,7 +112,7 @@ describe('MIoT payloads', () => {
     }).toThrow(new MiotRefusedError('property', 2, 3, -4003));
     expect(() => {
       checkPropertyWrites(null);
-    }).toThrow(new MiioPacketError('a list of property write results', 'null'));
+    }).toThrow(new MiioPacketError('a list of property write results', 'a reply of another shape'));
   });
 
   it('return the out values of an accepted action and refuse the rest', () => {
@@ -125,18 +123,7 @@ describe('MIoT payloads', () => {
       new MiotRefusedError('action', 4, 1, -1),
     );
     expect(() => parseActionResult(action, 'x')).toThrow(
-      new MiioPacketError('an action result', '"x"'),
-    );
-  });
-
-  it('chunk any list into consecutive slices of at most the given size', () => {
-    fc.assert(
-      fc.property(fc.array(fc.integer()), fc.integer({ min: 1, max: 20 }), (items, size) => {
-        const chunks = chunk(items, size);
-        expect(chunks.flat()).toStrictEqual(items);
-        expect(chunks.every((part) => part.length > 0 && part.length <= size)).toBe(true);
-        expect(chunks.slice(0, -1).every((part) => part.length === size)).toBe(true);
-      }),
+      new MiioPacketError('an action result', 'a reply of another shape'),
     );
   });
 });

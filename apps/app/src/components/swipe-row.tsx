@@ -23,7 +23,7 @@ import { Icon, type IconName } from './icon';
 import { Text } from './text';
 import { useMeasuredWidth } from './use-measured-width';
 
-export type SwipeTone = 'primary' | 'neutral' | 'critical';
+type SwipeTone = 'primary' | 'neutral' | 'critical';
 
 export interface SwipeAction {
   readonly label: string;

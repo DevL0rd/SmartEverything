@@ -1,14 +1,14 @@
-import { API_ENDPOINTS as E, type CLAUDE_ENDPOINTS } from '@smarteverything/domain';
+import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import type { ClaudeService } from '../../claude/service';
 import type { Caller } from '../auth';
-import { bound, type Bound } from '../router';
+import { bound } from '../router';
 
 function requesterOf(caller: Caller): 'owner' | 'ai' {
   return caller.kind === 'client' && caller.via === 'assistant' ? 'ai' : 'owner';
 }
 
-export function claudeRoutes(service: ClaudeService): Record<keyof typeof CLAUDE_ENDPOINTS, Bound> {
-  return {
+export const claudeRoutes = (service: ClaudeService) =>
+  ({
     readClaudeStatus: bound(E.readClaudeStatus, () => service.status()),
     listClaudeSessions: bound(E.listClaudeSessions, ({ query }) => service.sessions(query)),
     readClaudeSession: bound(E.readClaudeSession, ({ params }) =>
@@ -30,5 +30,4 @@ export function claudeRoutes(service: ClaudeService): Record<keyof typeof CLAUDE
     removeClaudeLink: bound(E.removeClaudeLink, () => service.removeLink()),
     registerClaudeController: bound(E.registerClaudeController, () => service.registerController()),
     removeClaudeController: bound(E.removeClaudeController, () => service.removeController()),
-  };
-}
+  }) as const;

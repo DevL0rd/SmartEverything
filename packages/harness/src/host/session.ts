@@ -11,13 +11,16 @@ import type { Context } from '@deepseek-ai/cordis';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import type { UserMessage } from '@deepseek-ai/dsh-llm';
 import type { AiHarnessPermission } from '@smarteverything/domain';
-import { HubSessionPersistence } from '../persistence/service';
-import { cancelOwnedJobs, JOB_CLEANUP_TIMEOUT_MS } from './job-cleanup';
+import { Logger } from '@smarteverything/logging';
+import { MachineSessionPersistence } from '../persistence/service';
+import { cancelOwnedJobs, JOB_CLEANUP_WINDOW_MS } from './job-cleanup';
 import type { HarnessCleanup } from './job-cleanup';
 import { setSessionPermission } from './permission';
 import type { HarnessInteractions } from './interactions';
-import { assertDrained, sessionWork, workDrained } from './work';
+import { assertDrained, sessionWork } from './work';
 import type { HarnessWork } from './work';
+
+const log = new Logger('hub.harness');
 
 export class HarnessSession {
   private frozen = false;
@@ -29,16 +32,17 @@ export class HarnessSession {
   private stopping: Promise<void> | undefined;
   private compacting = false;
   private cleanup: HarnessCleanup = { state: 'idle' };
-  private readonly persistence: HubSessionPersistence;
+  private readonly persistence: MachineSessionPersistence;
   private readonly humanCommands: HarnessHumanCommands;
 
   constructor(
     private readonly ctx: Context,
     private readonly handle: AgentHandle,
     private readonly interactions: HarnessInteractions,
+    private readonly settled: () => void,
   ) {
     const persistence = ctx.get('sessionPersistence');
-    if (!(persistence instanceof HubSessionPersistence))
+    if (!(persistence instanceof MachineSessionPersistence))
       throw new HarnessRuntimeError(
         'runtime_unavailable',
         'Native hub persistence is unavailable.',
@@ -55,20 +59,23 @@ export class HarnessSession {
     return sessionWork(this.ctx, this.handle.agent, this.interactions, this.cleanup);
   }
 
-  configurationIdle(): boolean {
+  quiet(): boolean {
+    const work = this.work();
     return (
-      !this.frozen &&
       !this.lostOwnership &&
       this.closing === undefined &&
       this.stopping === undefined &&
       !this.compacting &&
       !this.humanCommands.active() &&
-      workDrained(this.work())
+      !work.turn &&
+      work.interactions === 0 &&
+      work.queuedMessages === 0
     );
   }
 
   prompt(message: UserMessage): void {
     this.assertAdmitted();
+    log.debug('session.prompt_queued', () => ({ session_id: this.id, ...this.workFields() }));
     this.handle.agent.followup(message);
   }
 
@@ -78,17 +85,42 @@ export class HarnessSession {
 
   steer(message: UserMessage): void {
     this.assertAdmitted();
+    log.debug('session.steer_queued', () => ({ session_id: this.id, ...this.workFields() }));
     this.handle.agent.steer(message);
   }
 
+  note(message: UserMessage): void {
+    this.assertAdmitted();
+    log.debug('session.note_injected', { session_id: this.id });
+    this.handle.agent.inject(message);
+  }
+
+  private workFields(): Record<string, unknown> {
+    const work = this.work();
+    return {
+      turnRunning: work.turn,
+      interactions: work.interactions,
+      queuedMessages: work.queuedMessages,
+      shells: work.shells.length,
+    };
+  }
+
   async interrupt(): Promise<void> {
+    const startedAt = performance.now();
+    log.info('session.interrupt_started', { session_id: this.id, ...this.workFields() });
     await this.stop({ kind: 'user' }, 'User interrupted the session.');
     await this.flush();
+    this.settled();
+    log.info('session.interrupt_finished', {
+      session_id: this.id,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
   }
 
   ownershipLost(): Promise<void> {
     this.freeze();
     this.lostOwnership = true;
+    log.warn('session.ownership_lost', { session_id: this.id, ...this.workFields() });
     this.ownershipCleanup ??= this.stop(
       { kind: 'hook', reason: 'Session writer ownership was lost.' },
       'Session writer ownership was lost.',
@@ -122,21 +154,59 @@ export class HarnessSession {
     attachments: readonly CommandSubmitAttachment[],
   ): Promise<CommandExecution | undefined> {
     this.assertAdmitted();
+    const startedAt = performance.now();
+    log.debug('session.command_started', {
+      session_id: this.id,
+      lineLength: line.length,
+      attachments: attachments.length,
+    });
     try {
-      return await this.humanCommands.execute(line, attachments);
+      const execution = await this.humanCommands.execute(line, attachments);
+      log.debug('session.command_finished', () => ({
+        session_id: this.id,
+        handled: execution !== undefined,
+        durationMs: Math.round(performance.now() - startedAt),
+      }));
+      return execution;
+    } catch (error) {
+      log.warn('session.command_failed', {
+        session_id: this.id,
+        cause: error instanceof Error ? error.name : typeof error,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw error;
     } finally {
       await this.flush();
+      this.settled();
     }
   }
 
   async compact(): Promise<CompactionResult | null> {
     this.assertAdmitted();
     this.compacting = true;
+    const startedAt = performance.now();
+    log.info('session.compaction_started', { session_id: this.id, ...this.workFields() });
     try {
-      return await this.ctx.compaction.compactNow(this.handle.agent, new AbortController().signal);
+      const result = await this.ctx.compaction.compactNow(
+        this.handle.agent,
+        new AbortController().signal,
+      );
+      log.info('session.compaction_finished', {
+        session_id: this.id,
+        compacted: result !== null,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      return result;
+    } catch (error) {
+      log.error('session.compaction_failed', error, {
+        session_id: this.id,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw error;
     } finally {
       this.compacting = false;
       await this.flush();
+      this.settled();
     }
   }
 
@@ -148,6 +218,11 @@ export class HarnessSession {
   async permission(input: AiHarnessPermission): Promise<void> {
     this.assertAdmitted();
     setSessionPermission(this.ctx, this.handle.agent, input);
+    log.info('session.permission_set', {
+      session_id: this.id,
+      sandbox: input.sandbox,
+      approval: input.approval,
+    });
     await this.flush();
   }
 
@@ -156,6 +231,7 @@ export class HarnessSession {
   }
 
   async drain(): Promise<void> {
+    log.debug('session.drain_started', () => ({ session_id: this.id, ...this.workFields() }));
     this.freeze();
     await this.humanCommands.settle();
     await this.handle.agent.whenIdle();
@@ -180,6 +256,12 @@ export class HarnessSession {
   }
 
   private async performStop(cause: AgentCancelCause, reason: string): Promise<void> {
+    const startedAt = performance.now();
+    log.info('session.stop_started', {
+      session_id: this.id,
+      cause: cause.kind,
+      ...this.workFields(),
+    });
     this.cleanup = { state: 'running' };
     this.humanCommands.cancel(reason);
     const failures: unknown[] = [];
@@ -196,6 +278,12 @@ export class HarnessSession {
     for (const result of results) if (result.status === 'rejected') failures.push(result.reason);
     const work = this.work();
     if (failures.length > 0 || work.turn || work.interactions > 0 || work.shells.length > 0) {
+      log.error('session.stop_unproven', undefined, {
+        session_id: this.id,
+        failures: failures.length,
+        ...this.workFields(),
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       this.cleanup = {
         state: 'unknown',
         jobs: work.shells,
@@ -206,6 +294,11 @@ export class HarnessSession {
       });
     }
     this.cleanup = { state: 'completed' };
+    log.info('session.stop_finished', {
+      session_id: this.id,
+      cause: cause.kind,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
   }
 
   private async awaitIdle(): Promise<void> {
@@ -215,6 +308,11 @@ export class HarnessSession {
         this.handle.agent.whenIdle(),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
+            log.error('session.idle_timeout', undefined, {
+              session_id: this.id,
+              deadlineMs: JOB_CLEANUP_WINDOW_MS,
+              ...this.workFields(),
+            });
             reject(
               new HarnessRuntimeError(
                 'source_outcome_unknown',
@@ -222,7 +320,7 @@ export class HarnessSession {
                 this.id,
               ),
             );
-          }, JOB_CLEANUP_TIMEOUT_MS);
+          }, JOB_CLEANUP_WINDOW_MS);
         }),
       ]);
     } finally {
@@ -231,6 +329,10 @@ export class HarnessSession {
   }
 
   private async finishClose(): Promise<void> {
+    log.debug('session.close_started', {
+      session_id: this.id,
+      redispose: this.nativeDisposal !== undefined,
+    });
     if (this.nativeDisposal === undefined) {
       await this.stop({ kind: 'disposed' }, 'Session is closing.');
       this.nativeDisposal = this.handle.dispose();
@@ -249,6 +351,7 @@ export class HarnessSession {
     }
     await this.persistence.finalize(this.id);
     this.assertReleased();
+    log.debug('session.close_finished', { session_id: this.id });
   }
 
   private assertReleased(): void {

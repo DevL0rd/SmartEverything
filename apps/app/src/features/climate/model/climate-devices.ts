@@ -1,6 +1,6 @@
 import { isClimateDevice, type TableRow } from '@smarteverything/domain';
 import { memoOnInputs } from '../../../store/memo-selector';
-import { useStoreSelector } from '../../../store/store-context';
+import { shallowEqual, useStoreSelector } from '../../../store/store-context';
 import {
   deviceValuesOf,
   rowsOf,
@@ -44,27 +44,51 @@ const devicesByRoom = memoOnInputs(
   },
 );
 
-export function sourcesIn(state: StoreState, room: string | null): readonly ClimateSource[] {
+function devicesIn(state: StoreState, room: string | null): readonly Device[] {
   const devices = devicesByRoom(state);
-  const selected = room === null ? devices.all : (devices.rooms.get(room) ?? []);
-  return selected.map((device) => ({
-    model: climateModelOf(device),
-    values: deviceValuesOf(state, device.id),
-  }));
+  return room === null ? devices.all : (devices.rooms.get(room) ?? []);
 }
 
-function sameSources(left: readonly ClimateSource[], right: readonly ClimateSource[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every((source, index) => {
-      const other = right[index];
-      return other?.model === source.model && other.values === source.values;
-    })
+function modelsIn(state: StoreState, room: string | null): readonly DeviceModel[] {
+  return devicesIn(state, room).map(climateModelOf);
+}
+
+const sourceCache = new WeakMap<DeviceValues, WeakMap<DeviceModel, ClimateSource>>();
+
+function sourceOf(model: DeviceModel, values: DeviceValues): ClimateSource {
+  const byModel = sourceCache.get(values) ?? new WeakMap<DeviceModel, ClimateSource>();
+  sourceCache.set(values, byModel);
+  const known = byModel.get(model);
+  if (known !== undefined) return known;
+  const source = { model, values };
+  byModel.set(model, source);
+  return source;
+}
+
+const lastSources = new Map<string | null, readonly ClimateSource[]>();
+
+function stable(room: string | null, next: readonly ClimateSource[]): readonly ClimateSource[] {
+  const last = lastSources.get(room);
+  if (last !== undefined && shallowEqual(last, next)) return last;
+  lastSources.set(room, next);
+  return next;
+}
+
+export function sourcesIn(state: StoreState, room: string | null): readonly ClimateSource[] {
+  return stable(
+    room,
+    devicesIn(state, room).map((device) =>
+      sourceOf(climateModelOf(device), deviceValuesOf(state, device.id)),
+    ),
   );
 }
 
+export function useClimateModels(room: string | null): readonly DeviceModel[] {
+  return useStoreSelector((state) => modelsIn(state, room), shallowEqual);
+}
+
 export function useClimateSources(room: string | null): readonly ClimateSource[] {
-  return useStoreSelector((state) => sourcesIn(state, room), sameSources);
+  return useStoreSelector((state) => sourcesIn(state, room));
 }
 
 export function useClimateDerived<T>(

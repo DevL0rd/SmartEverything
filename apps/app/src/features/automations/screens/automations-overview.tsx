@@ -2,22 +2,21 @@ import type { ReactNode } from 'react';
 import { mainPageSettings } from '../../../app-shell/main-pages';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
-import { Button } from '../../../components/button';
 import { Grid } from '../../../components/grid';
 import { PageHeader } from '../../../components/page-header';
 import { Screen } from '../../../components/screen';
-import { List } from '../../../components/section';
 import { StatTile } from '../../../components/stat-tile';
 import { localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
-import { useRunEvents } from '../data/use-run-events';
 import { FirstRun } from '../components/ideas';
 import { IdeaRows } from '../components/new-automation';
 import { NextUp } from '../components/next-up';
 import { PlaceBanner } from '../components/place-banner';
-import { RunRow, useRunSheet } from '../components/runs';
+import { RecentRuns } from '../components/recent-runs';
+import { useZone } from '../components/owned-runs';
 import { countLine, useAutomationsPage, type AutomationsPage } from '../data/use-automations';
-import { runsOf } from '../model/history';
+import { useRows } from '../../../store/selectors';
+import { countRunsOnDay } from '../model/run-history';
 import { subtitleProp } from './shared';
 
 const RECENT = 5;
@@ -42,30 +41,15 @@ function Glance({
 
 function Overview({ page }: { readonly page: AutomationsPage }): ReactNode {
   const router = useRouter();
-  const events = useRunEvents().events;
+  const runs = useRows('automation_runs');
   const now = useMinute();
-  const zone = page.reading.usable ? page.reading.place.timeZone : null;
-  const runs = runsOf(events, null);
+  const zone = useZone();
   const today = localDayKey(new Date(now), zone);
-  const sheet = useRunSheet(events, zone);
   return (
     <>
-      <Glance
-        page={page}
-        ranToday={runs.filter((run) => localDayKey(run.at, zone) === today).length}
-      />
+      <Glance page={page} ranToday={countRunsOnDay(runs, today, zone)} />
       {page.reading.usable ? <NextUp rules={page.rules} place={page.reading.place} /> : null}
-      {runs.length === 0 ? null : (
-        <List
-          title="Recent runs"
-          inset
-          action={<Button label="See all" variant="text" href={href.automationRuns()} />}
-        >
-          {runs.slice(0, RECENT).map((run) => (
-            <RunRow key={run.id} run={run} timeZone={zone} onOpen={sheet.open} />
-          ))}
-        </List>
-      )}
+      <RecentRuns count={RECENT} />
       {page.ideas.length === 0 ? null : (
         <IdeaRows
           ideas={page.ideas.slice(0, IDEAS)}
@@ -74,7 +58,6 @@ function Overview({ page }: { readonly page: AutomationsPage }): ReactNode {
           }}
         />
       )}
-      {sheet.sheet}
     </>
   );
 }

@@ -8,7 +8,6 @@ export class NodeHarnessBinding {
   private generation: string | null = null;
   constructor(
     readonly instance: string,
-    private readonly timer: NodeJS.Timeout,
     readonly os: 'linux' | 'macos',
   ) {}
   validate(frame: HubHarnessControl, device: string): void {
@@ -17,7 +16,6 @@ export class NodeHarnessBinding {
     if (frame.type === 'harness_welcome') {
       if (this.generation !== null) throw new NodeHarnessError('Duplicate computer welcome.');
       this.generation = frame.generation;
-      clearTimeout(this.timer);
       return;
     }
     if (this.generation !== frame.generation)

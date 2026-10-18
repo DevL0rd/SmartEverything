@@ -7,7 +7,12 @@ import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { useComputerAiChange, useComputerModels } from '../data/computer-ai';
+import { ProviderReasonNotice } from './provider-reason-notice';
 import { QueryState } from './query-state';
+import { background } from '@smarteverything/logging';
+
+const READY_FOOTER =
+  'Uses your Claude sign-in on this computer. Pick this computer in any chat with Switch machine.';
 
 function Models({ status }: { readonly status: ComputerAiStatus }): ReactNode {
   const enabled = status.online && status.settings.provider.enabled;
@@ -18,7 +23,7 @@ function Models({ status }: { readonly status: ComputerAiStatus }): ReactNode {
         error={models.error}
         pending={models.isPending ? enabled : false}
         retry={() => {
-          void models.refetch();
+          background(models.refetch(), 'models.refetch_failed');
         }}
       />
       <List>
@@ -34,7 +39,7 @@ function Models({ status }: { readonly status: ComputerAiStatus }): ReactNode {
       {enabled ? null : (
         <Text tone="variant">
           {status.online
-            ? 'Enable the provider to discover its models.'
+            ? 'Turn this on to see its models.'
             : 'This computer is offline. Its configured models stay bound to this computer.'}
         </Text>
       )}
@@ -45,14 +50,15 @@ function Models({ status }: { readonly status: ComputerAiStatus }): ReactNode {
 export function ProviderSettings({ status }: { readonly status: ComputerAiStatus }): ReactNode {
   const change = useComputerAiChange(status.device_id);
   const [shown, setShown] = useState(false);
+  const reason = status.capabilities.provider_reason;
   return (
     <>
+      {reason === null ? null : (
+        <ProviderReasonNotice deviceId={status.device_id} reason={reason} />
+      )}
       <List
         title="Models in SmartEverything"
-        footer={
-          status.capabilities.provider_reason ??
-          'Uses the official Claude sign-in on this computer. Choose a supplying computer in your existing chat.'
-        }
+        {...(reason === null ? { footer: READY_FOOTER } : {})}
       >
         <SwitchRow
           title="Supply Claude models"

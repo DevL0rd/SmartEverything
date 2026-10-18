@@ -1,5 +1,6 @@
 import type { SubscriptionUseAuthorizationPort } from './principal';
 import { LlmError } from '@deepseek-ai/dsh-llm';
+import * as trace from './supplier-trace';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import { SUBSCRIPTION_INFERENCE_RESULT } from '@smarteverything/domain';
 import type {
@@ -14,17 +15,26 @@ import { SubscriptionRouteAdapter, SUBSCRIPTION_ROUTE } from './adapter';
 import { inferenceOptions } from './inference-codec';
 import { InferenceImages } from './inference-images';
 import { SubscriptionProviderError } from './errors';
+import { CallSlots } from './call-slots';
 
-const MAX_PENDING_CALLS = 4;
-const CALL_TIMEOUT_MS = 15 * 60_000;
+const CONCURRENT_CALLS = 4;
+const CALL_IDLE_TIMEOUT_MS = 15 * 60_000;
 const CREDIT_TIMEOUT_MS = 30_000;
 class SupplierCall {
   sequence = 0;
   private credit: (() => void) | undefined;
-  constructor(
-    readonly abort: AbortController,
-    readonly timer: ReturnType<typeof setTimeout>,
-  ) {}
+  private idle: ReturnType<typeof setTimeout> | undefined;
+  constructor(readonly abort: AbortController) {}
+  touch(): void {
+    clearTimeout(this.idle);
+    this.idle = setTimeout(() => {
+      trace.idleTimeout(CALL_IDLE_TIMEOUT_MS, this.sequence);
+      this.abort.abort('Supplier model call was idle for too long.');
+    }, CALL_IDLE_TIMEOUT_MS);
+  }
+  dispose(): void {
+    clearTimeout(this.idle);
+  }
   advance(): void {
     this.sequence += 1;
   }
@@ -49,6 +59,7 @@ class SupplierCall {
         );
       };
       const timer = setTimeout(() => {
+        trace.creditTimeout(CREDIT_TIMEOUT_MS, this.sequence);
         this.abort.abort('Execution stream stopped consuming.');
       }, CREDIT_TIMEOUT_MS);
       const cleanup = (): void => {
@@ -77,7 +88,7 @@ class FrozenSupplierAuthorization extends SubscriptionAuthorization {
 }
 export class SubscriptionInferenceSupplier {
   private readonly pending = new Map<string, SupplierCall>();
-  private stopped = false;
+  private readonly slots = new CallSlots(CONCURRENT_CALLS);
   constructor(
     private readonly hostId: string,
     private readonly subscriptions: ProcessSubscriptions,
@@ -92,24 +103,18 @@ export class SubscriptionInferenceSupplier {
         'AUTH_INVALID',
         'Supplier inference identity is already in use.',
       );
-    if (this.stopped || this.pending.size >= MAX_PENDING_CALLS) {
-      await send({
-        kind: 'failure',
-        failure: {
-          code: 'AUTH_BUSY',
-          message:
-            'The model supplier has no available bounded inference slot. No provider request was sent.',
-        },
-      });
-      return;
-    }
     const abort = new AbortController();
-    const timer = setTimeout(() => {
-      abort.abort('Supplier model call exceeded its bounded lifetime.');
-    }, CALL_TIMEOUT_MS);
-    const call = new SupplierCall(abort, timer);
+    const call = new SupplierCall(abort);
     this.pending.set(id, call);
+    let held = false;
+    const startedAt = performance.now();
+    const fields = trace.callFields(id, request, this.pending.size);
+    trace.admitted(fields);
     try {
+      await this.slots.acquire(abort.signal);
+      held = true;
+      trace.slotAcquired(fields, startedAt);
+      call.touch();
       this.assertRequest(request);
       const adapter = this.adapter(request);
       if (request.kind === 'resolve') {
@@ -117,16 +122,20 @@ export class SubscriptionInferenceSupplier {
         abort.signal.throwIfAborted();
         await send(SUBSCRIPTION_INFERENCE_RESULT.parse({ kind: 'model', model }));
       } else await this.stream(request, adapter, call, send);
+      trace.finished(fields, call.sequence + 1, startedAt);
     } catch (cause) {
+      const failure = supplierFailure(cause, abort.signal);
+      trace.failed(fields, { cause, failure, abort, call, startedAt });
       await send(
         SUBSCRIPTION_INFERENCE_RESULT.parse({
           kind: 'failure',
-          failure: supplierFailure(cause, abort.signal),
+          failure,
         }),
       );
     } finally {
+      if (held) this.slots.release();
       abort.abort('Supplier call released.');
-      clearTimeout(timer);
+      call.dispose();
       this.pending.delete(id);
     }
   }
@@ -136,10 +145,11 @@ export class SubscriptionInferenceSupplier {
     call.acceptCredit(sequence);
   }
   cancel(id: string): void {
+    trace.cancelRequested(id, this.pending.has(id));
     this.pending.get(id)?.abort.abort('Execution host cancelled model inference.');
   }
   stop(): void {
-    this.stopped = true;
+    trace.channelStopped(this.pending.size);
     for (const call of this.pending.values())
       call.abort.abort('Authenticated supplier channel disconnected.');
   }
@@ -155,6 +165,7 @@ export class SubscriptionInferenceSupplier {
       sessionId: SessionId(request.claim.session_id),
     })) {
       call.abort.signal.throwIfAborted();
+      call.touch();
       terminal = chunk.type === 'finish';
       const result = SUBSCRIPTION_INFERENCE_RESULT.parse({
         kind: 'chunk',
@@ -225,7 +236,7 @@ export class SubscriptionInferenceSupplier {
           return Promise.resolve({
             profileId: route.profile_id,
             source: 'interactive',
-            authorizationId: request.claim.token,
+            authorizationId: attachmentOf(request.claim),
             sessionId: request.claim.session_id,
           });
         },
@@ -238,11 +249,14 @@ export class SubscriptionInferenceSupplier {
               input.subscriberProfileId === route.profile_id &&
               input.supplierHostId === this.hostId &&
               input.credentialGeneration === route.credential_generation &&
-              input.principal.authorizationId === request.claim.token,
+              input.principal.authorizationId === attachmentOf(request.claim),
           ),
       },
     });
   }
+}
+function attachmentOf(claim: { readonly session_id: string; readonly epoch: number }): string {
+  return `${claim.session_id}:${String(claim.epoch)}`;
 }
 function subscriptionKind(route: AiModelRoute): string {
   if (route.auth.provider === 'anthropic') return 'claude-subscription';

@@ -6,7 +6,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
 import type { HsvColor } from '@smarteverything/domain';
 import { cn } from '../design/cn';
-import { useFocusedKeys } from './slider';
+import { useFocusedKeys } from './focused-keys';
 import {
   COLOUR_SIZE,
   COLOUR_PADDING,
@@ -19,6 +19,12 @@ import {
 } from './colour-picker-model';
 
 const SECTOR_STEP = 2;
+const WHEEL_CENTRE = COLOUR_SIZE / 2;
+const MARKER_RADIUS = 10;
+const MARKER_OUTER_WIDTH = 5;
+const MARKER_INNER_WIDTH = 3;
+const WHEEL_WHITE = 'white';
+const MARKER_SHADOW = 'black';
 const WHEEL_MAX_SIZE = 288;
 const WHEEL_MIN_SIZE = 160;
 const SHEET_CHROME_HEIGHT = 280;
@@ -54,8 +60,8 @@ function Disk({ value }: { readonly value: HsvColor | null }): ReactNode {
     >
       <Defs>
         <RadialGradient id={id}>
-          <Stop offset="0" stopColor="white" />
-          <Stop offset="1" stopColor="white" stopOpacity="0" />
+          <Stop offset="0" stopColor={WHEEL_WHITE} />
+          <Stop offset="1" stopColor={WHEEL_WHITE} stopOpacity="0" />
         </RadialGradient>
       </Defs>
       {HUES.map((hue) => (
@@ -65,11 +71,25 @@ function Disk({ value }: { readonly value: HsvColor | null }): ReactNode {
           fill={`hsl(${String(hue)}, 100%, 50%)`}
         />
       ))}
-      <Circle cx={128} cy={128} r={128} fill={`url(#${id})`} />
+      <Circle cx={WHEEL_CENTRE} cy={WHEEL_CENTRE} r={WHEEL_CENTRE} fill={`url(#${id})`} />
       {marker === null ? null : (
         <>
-          <Circle cx={marker.x} cy={marker.y} r={10} fill="none" stroke="black" strokeWidth={5} />
-          <Circle cx={marker.x} cy={marker.y} r={10} fill="none" stroke="white" strokeWidth={3} />
+          <Circle
+            cx={marker.x}
+            cy={marker.y}
+            r={MARKER_RADIUS}
+            fill="none"
+            stroke={MARKER_SHADOW}
+            strokeWidth={MARKER_OUTER_WIDTH}
+          />
+          <Circle
+            cx={marker.x}
+            cy={marker.y}
+            r={MARKER_RADIUS}
+            fill="none"
+            stroke={WHEEL_WHITE}
+            strokeWidth={MARKER_INNER_WIDTH}
+          />
         </>
       )}
     </Svg>
@@ -172,36 +192,42 @@ function Wheel(props: Props): ReactNode {
   );
 }
 
+function Swatches({ value, label, disabled = false, onCommit }: Props): ReactNode {
+  return (
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel={`${label} presets`}
+      className="flex-row flex-wrap justify-center gap-2"
+    >
+      {SWATCHES.map(({ name, colour }) => {
+        const fill = { backgroundColor: colourCss(colour) };
+        return (
+          <Pressable
+            key={name}
+            accessibilityRole="radio"
+            accessibilityLabel={name}
+            accessibilityState={{
+              checked: value !== null && colourCss(value) === colourCss(colour),
+              disabled,
+            }}
+            disabled={disabled}
+            onPress={() => {
+              onCommit(colour);
+            }}
+            style={fill}
+            className="size-touch-min rounded-full border-2 border-outline focus:outline-2 focus:outline-offset-2 focus:outline-focus"
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 export function ColourPicker(props: Props): ReactNode {
   return (
     <View className="gap-3">
       <Wheel {...props} />
-      <View
-        accessibilityRole="radiogroup"
-        accessibilityLabel={`${props.label} presets`}
-        className="flex-row flex-wrap justify-center gap-2"
-      >
-        {SWATCHES.map(({ name, colour }) => {
-          const fill = { backgroundColor: colourCss(colour) };
-          return (
-            <Pressable
-              key={name}
-              accessibilityRole="radio"
-              accessibilityLabel={name}
-              accessibilityState={{
-                checked: props.value !== null && colourCss(props.value) === colourCss(colour),
-                disabled: props.disabled === true,
-              }}
-              disabled={props.disabled}
-              onPress={() => {
-                props.onCommit(colour);
-              }}
-              style={fill}
-              className="size-touch-min rounded-full border-2 border-outline focus:outline-2 focus:outline-offset-2 focus:outline-focus"
-            />
-          );
-        })}
-      </View>
+      <Swatches {...props} />
     </View>
   );
 }

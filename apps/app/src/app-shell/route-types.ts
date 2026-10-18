@@ -10,7 +10,7 @@ export interface PreloadContext {
   readonly queryClient: QueryClient;
 }
 
-export interface RouteAction {
+interface RouteAction {
   readonly key: string;
   readonly title: string;
   readonly icon: IconName;

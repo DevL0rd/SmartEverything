@@ -1,6 +1,10 @@
 import type { SignalInput, StateChange } from '@smarteverything/domain';
 import type { RecordedEvent } from '../../state/event-router';
 
+export function isTransition(change: StateChange): boolean {
+  return change.value !== null && change.previous !== null;
+}
+
 export function stateSignal(change: StateChange, at: string): SignalInput {
   return {
     source: 'device',

@@ -1,6 +1,7 @@
 import {
   API_ENDPOINTS as E,
   assistantLabel,
+  CLIENT_PREFS,
   isPushed,
   type AssistantMessageRow,
   type RowChange,
@@ -8,6 +9,7 @@ import {
   type PushStatus,
   type PushTargetRow,
 } from '@smarteverything/domain';
+import { effectiveClientById } from '../../server/person-access';
 import type { Logger } from '@smarteverything/logging';
 import type { ExtensionContext, ServerExtension } from '../../extensions';
 import type { OwnerAlert, OwnerAlerts } from '../owner-alerts';
@@ -15,7 +17,10 @@ import { bound } from '../../server/router';
 import type { PushCommandOutcome, PushDelivery } from './commands';
 import { FcmClient, type Delivery, type PushNotification } from './fcm';
 import { notificationFor, urgentEventOf } from './messages';
-import { replyAudience } from './reply-audience';
+import { deviceAudience } from './device-audience';
+import { clientsReachedLive, liveNotificationOf } from './live-delivery';
+import { replyAudience, type Audience } from './reply-audience';
+import { background, failureLine } from '@smarteverything/logging';
 
 export interface PushOptions {
   readonly fetch: typeof fetch;
@@ -41,10 +46,6 @@ function added(tally: Tally, more: Tally): Tally {
     removed: tally.removed + more.removed,
     reasons: [...tally.reasons, ...more.reasons],
   };
-}
-
-function reasonOf(cause: unknown): string {
-  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
 }
 
 const ASSISTANT_BODY_MAX = 180;
@@ -99,17 +100,33 @@ class PushSender {
     private readonly options: PushOptions,
     private readonly log: Logger,
   ) {
-    this.fcm = new FcmClient(options.fetch, options.now);
+    this.fcm = new FcmClient(options.fetch);
   }
 
   eventWritten(row: EventRow): void {
     if (isPushed(row.kind, row.details)) {
-      this.track({ eventId: row.id, kind: row.kind }, () => this.notificationOf(row));
+      const { store } = this.context;
+      const audience = deviceAudience(row.device_id, {
+        alertsOf: (clientId) =>
+          store.personal.pref(CLIENT_PREFS.device_alerts, {
+            clientId,
+            profileId: store.profiles.activeOf(clientId).id,
+          }),
+        log: this.log,
+      });
+      this.track({ eventId: row.id, kind: row.kind }, () => this.notificationOf(row), audience);
     }
   }
 
   alertRaised(alert: OwnerAlert): void {
-    this.track(alert.data, () => alert);
+    const { store } = this.context;
+    this.track(
+      alert.data,
+      () => alert,
+      (clientId) =>
+        effectiveClientById(store, clientId).role === 'owner' ||
+        (alert.person !== undefined && store.profiles.activeOf(clientId).id === alert.person),
+    );
   }
 
   assistantReplied(row: AssistantMessageRow): void {
@@ -197,33 +214,56 @@ class PushSender {
   private track(
     subject: Subject,
     compose: () => PushNotification,
-    accept: (target: PushTargetRow) => boolean = () => true,
+    accept: Audience = () => true,
   ): void {
     const delivery = this.deliver(subject, compose, accept).catch((cause: unknown) => {
-      this.record({ ...NOTHING, reasons: [reasonOf(cause)] });
+      this.record({ ...NOTHING, reasons: [failureLine(cause)] });
       this.log.error('push.failed', cause, subject);
     });
     this.inflight.add(delivery);
-    void delivery.finally(() => this.inflight.delete(delivery));
+    background(
+      delivery.finally(() => this.inflight.delete(delivery)),
+      'index.background_failed',
+    );
   }
 
   private async deliver(
     subject: Subject,
     compose: () => PushNotification,
-    accept: (target: PushTargetRow) => boolean,
+    accept: Audience,
   ): Promise<void> {
+    const pushTargets = this.context.store.personal.pushTargets();
+    const audience = [
+      ...new Set([
+        ...pushTargets.map((target) => target.client_id),
+        ...this.context.live.backgroundClients(),
+      ]),
+    ].filter(accept);
+    if (audience.length === 0) {
+      this.log.info('push.no_targets', subject);
+      return;
+    }
+    const notification = compose();
+    const live = await this.reachedLive(subject, audience, notification);
+    const targets = pushTargets.filter(
+      (target) => audience.includes(target.client_id) && !live.has(target.client_id),
+    );
+    if (targets.length === 0) {
+      return;
+    }
     const account = this.context.secrets.read().pushServiceAccount;
-    const targets = this.context.store.personal.pushTargets().filter(accept);
     if (account === null) {
       this.record({ ...NOTHING, reasons: ['no Firebase service account is saved'] });
       this.log.warn('push.not_configured', { ...subject, targets: targets.length });
       return;
     }
-    if (targets.length === 0) {
-      this.log.info('push.no_targets', subject);
-      return;
-    }
-    const notification = compose();
+    this.log.debug('push.sending', () => ({
+      ...subject,
+      targets: targets.length,
+      dataOnly: notification.dataOnly === true,
+      titleChars: notification.title.length,
+      bodyChars: notification.body.length,
+    }));
     const deliveries = await Promise.all(
       targets.map(async (target) => ({
         target,
@@ -245,6 +285,23 @@ class PushSender {
     }
   }
 
+  private async reachedLive(
+    subject: Subject,
+    clientIds: readonly string[],
+    notification: PushNotification,
+  ): Promise<ReadonlySet<string>> {
+    const live = await clientsReachedLive(
+      (clientId, notice) => this.context.live.notifications.show(clientId, notice),
+      clientIds,
+      liveNotificationOf(subject, notification),
+      this.log,
+    );
+    if (live.size > 0) {
+      this.log.info('push.delivered_live', { ...subject, clients: live.size });
+    }
+    return live;
+  }
+
   private sendTo(
     account: Parameters<FcmClient['send']>[0],
     target: PushTargetRow,
@@ -257,7 +314,11 @@ class PushSender {
     try {
       return await send();
     } catch (cause) {
-      return { outcome: 'failed', reason: reasonOf(cause) };
+      this.log.warn('push.send_threw', {
+        cause: cause instanceof Error ? cause.name : typeof cause,
+        reason: failureLine(cause).slice(0, 300),
+      });
+      return { outcome: 'failed', reason: failureLine(cause) };
     }
   }
 
@@ -275,7 +336,7 @@ class PushSender {
       return { ...NOTHING, removed: 1, reasons };
     } catch (cause) {
       this.log.error('push.target_not_removed', cause, { clientId: target.client_id });
-      return { ...NOTHING, failed: 1, reasons: [...reasons, reasonOf(cause)] };
+      return { ...NOTHING, failed: 1, reasons: [...reasons, failureLine(cause)] };
     }
   }
 

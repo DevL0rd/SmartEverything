@@ -5,6 +5,7 @@ import { Select } from '../../../components/select';
 import { notify } from '../../../components/toast-store';
 import { useProfiles } from '../../../store/people';
 
+import { trackSetting } from '../settings-log';
 export function ClientProfile({
   client,
   label,
@@ -19,7 +20,9 @@ export function ClientProfile({
       options={profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
       value={client.profile_id}
       onChange={(profileId) => {
-        setClientProfile(client.id, profileId).catch((error: unknown) => {
+        trackSetting('client.profile_change', { clientId: client.id, profileId }, () =>
+          setClientProfile(client.id, profileId),
+        ).catch((error: unknown) => {
           notify({
             message: 'The profile was not changed',
             error,

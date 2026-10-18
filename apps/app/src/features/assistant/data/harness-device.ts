@@ -2,6 +2,7 @@ import { randomUUID } from 'expo-crypto';
 import {
   harnessTargetKey,
   type AiChatRow,
+  type AiHarnessHandoffRequest,
   type AiHarnessHost,
   type AiHarnessSession,
   type AiHarnessTarget,
@@ -11,20 +12,17 @@ import {
 import { useSyncStatus } from '../../../store/selectors';
 import { notify } from '../../../components/toast-store';
 import type { MenuItem } from '../../../components/menu';
-import {
-  useChatHarness,
-  useHarnessCatalogue,
-  useHarnessSwitch,
-  useHarnessSupported,
-} from './harness';
+import { useChatHarness, useHarnessCatalogue, useHarnessSwitch } from './harness';
 import { harnessHostName, harnessHostReason } from '../model/harness-context';
 import {
-  harnessDeviceIntent,
   harnessHandoffPolicyReason,
-  harnessHandoffActive,
+  machineSwitchNotice,
+  machineSwitchOf,
+  machineSwitchRequest,
 } from '../model/harness-handoff';
 import { useOwnDeviceSelection } from './own-device-selection';
 import { changeChat } from '../chats/chat-actions';
+import { background } from '@smarteverything/logging';
 
 export function useHarnessDevice(chat: AiChatRow): {
   readonly name: string;
@@ -39,20 +37,23 @@ export function useHarnessDevice(chat: AiChatRow): {
   const resolve = useOwnDeviceSelection(chat.engine);
   const connectionReason = useDeviceConnectionReason();
   const engine = chat.engine;
-  const session = state.data;
-  const target = session?.target ?? ownTarget(engine);
-  const blocked =
-    connectionReason ?? deviceSwitchReason(chat, session, state.error, catalogue.data);
+  const target = ownTarget(engine);
+  const blocked = connectionReason ?? deviceSwitchReason(chat, state.data);
   const items = deviceItems(catalogue.data?.hosts ?? [], {
     blocked,
-    session,
+    session: state.data,
     target,
     pending: mutation.isPending,
     resolve,
     bound: engine.kind === 'dsh',
     select: (host): void => {
       if (blocked === null) {
-        selectDevice(chat, host, { session, mutation, resolve, catalogue: catalogue.data });
+        selectDevice(chat, host, {
+          session: state.data,
+          mutation,
+          resolve,
+          catalogue: catalogue.data,
+        });
       }
     },
   });
@@ -62,12 +63,44 @@ export function useHarnessDevice(chat: AiChatRow): {
   };
 }
 
+export function useCancelMachineSwitch(chat: AiChatRow): (() => void) | null {
+  const catalogue = useHarnessCatalogue();
+  const session = useChatHarness(
+    chat.id,
+    chat.engine.kind === 'dsh' && chat.engine.session_id !== null,
+  );
+  const mutation = useHarnessSwitch(chat.id);
+  const engine = chat.engine;
+  const route =
+    engine.kind === 'dsh'
+      ? catalogue.data?.routes.find((row) => row.id === engine.model_route_id)
+      : undefined;
+  if (
+    engine.kind !== 'dsh' ||
+    route === undefined ||
+    machineSwitchOf(chat.pending_execution_target).kind === 'idle'
+  ) {
+    return null;
+  }
+  return (): void => {
+    const request = machineSwitchRequest({
+      engine,
+      route,
+      session: session.data,
+      operationId: randomUUID(),
+    });
+    submitMachineSwitch(
+      mutation,
+      request,
+      harnessHostName(engine.execution_target, catalogue.data),
+    );
+  };
+}
+
 function ownTarget(engine: Engine): AiHarnessTarget {
   return engine.kind === 'dsh' ? engine.execution_target : { kind: 'server' };
 }
-function ownSessionId(engine: Engine): string | null {
-  return engine.kind === 'dsh' ? engine.session_id : null;
-}
+
 function selectDevice(
   chat: AiChatRow,
   host: AiHarnessHost,
@@ -77,58 +110,53 @@ function selectDevice(
     readonly catalogue: AiHarnessCatalogue | undefined;
     readonly resolve: ReturnType<typeof useOwnDeviceSelection>;
   },
-): boolean {
+): void {
   const engine = context.resolve(host, true);
-  if (engine === null || context.mutation.isPending) return false;
+  if (engine === null || context.mutation.isPending) return;
   if (engine.session_id === null) {
-    void changeChat(chat.id, { engine });
-    return true;
+    background(changeChat(chat.id, { engine }), 'chat.change_failed');
+    return;
   }
-  const session = context.session;
   const route = context.catalogue?.routes.find((row) => row.id === engine.model_route_id);
-  if (session === undefined || route === undefined) return false;
-  const intent = harnessDeviceIntent(
-    session,
-    host,
+  if (route === undefined) return;
+  const request = machineSwitchRequest({
+    engine,
     route,
-    sourceDisconnected(session, context.catalogue),
-  );
-  if (intent === null) return false;
-  context.mutation.mutate(
-    { ...intent, operation_id: randomUUID() },
-    { onError: notifyDeviceSwitchError },
-  );
-  return true;
+    session: context.session,
+    operationId: randomUUID(),
+  });
+  submitMachineSwitch(context.mutation, request, host.name);
 }
 
-function deviceSwitchReason(
-  chat: AiChatRow,
-  session: AiHarnessSession | undefined,
-  error: Error | null,
-  catalogue: AiHarnessCatalogue | undefined,
-): string | null {
-  const sessionId = ownSessionId(chat.engine);
-  if (sessionId === null) return null;
-  if (error !== null) return 'Reconnect to confirm current work.';
-  if (session === undefined) return 'Checking current work…';
-  if (!deviceProjectionMatches(chat, session, sessionId))
-    return 'Refresh the current device binding.';
-  if (harnessHandoffActive(session)) return 'Device switch in progress.';
-  if (!sourceDisconnected(session, catalogue) && session.handoff?.source_outcome === 'unknown')
-    return 'Current work is unconfirmed.';
-  return null;
+function submitMachineSwitch(
+  mutation: ReturnType<typeof useHarnessSwitch>,
+  request: AiHarnessHandoffRequest,
+  machine: string,
+): void {
+  mutation.mutate(request, {
+    onSuccess: (result): void => {
+      const notice = machineSwitchNotice(result, machine);
+      if (notice !== null) notify({ ...notice, tone: 'positive' });
+    },
+    onError: (error): void => {
+      notify({
+        message: 'Machine not changed',
+        error,
+        tone: 'critical',
+        action: {
+          label: 'Try again',
+          onPress: (): void => {
+            submitMachineSwitch(mutation, request, machine);
+          },
+        },
+      });
+    },
+  });
 }
 
-function deviceProjectionMatches(
-  chat: AiChatRow,
-  session: AiHarnessSession,
-  sessionId: string,
-): boolean {
-  return (
-    session.chat_id === chat.id &&
-    session.session_id === sessionId &&
-    session.metadata.profile_id === chat.profile_id
-  );
+function deviceSwitchReason(chat: AiChatRow, session: AiHarnessSession | undefined): string | null {
+  if (chat.engine.kind !== 'dsh' || chat.engine.session_id === null) return null;
+  return session === undefined ? 'Checking current work…' : null;
 }
 
 function deviceItems(
@@ -146,7 +174,7 @@ function deviceItems(
   if (hosts.length === 0)
     return [
       {
-        label: context.blocked ?? 'Checking available devices…',
+        label: context.blocked ?? 'Checking available machines…',
         disabled: true,
         onPress: (): void => undefined,
       },
@@ -183,22 +211,6 @@ function deviceItemReason(
 }
 
 function useDeviceConnectionReason(): string | null {
-  const supported = useHarnessSupported();
   const sync = useSyncStatus();
-  if (sync.status !== 'live') return 'Reconnect to switch devices.';
-  return supported ? null : 'Device switching is unavailable on this hub.';
-}
-
-function sourceDisconnected(
-  session: AiHarnessSession,
-  catalogue: AiHarnessCatalogue | undefined,
-): boolean {
-  const source = catalogue?.hosts.find(
-    (host) => harnessTargetKey(host.target) === harnessTargetKey(session.target),
-  );
-  return source?.online !== true;
-}
-
-function notifyDeviceSwitchError(error: Error): void {
-  notify({ message: 'Device switch did not finish', error, tone: 'critical' });
+  return sync.status === 'live' ? null : 'Reconnect to switch machines.';
 }

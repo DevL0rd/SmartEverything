@@ -5,7 +5,11 @@ import { DEVICE_CAPABILITY, DEVICE_KINDS, PROVIDER } from '../devices';
 import { EVENT_KINDS } from '../events';
 import { FITNESS_GOALS, MAX_HEART_RATE, UNSET_FITNESS_GOALS } from '../fitness-settings';
 import { PROVIDER_PROMPT } from '../hub-commands';
+import { DEVICE_REFILLS } from '../diffuser';
+import { DEFAULT_HISTORY_SETTINGS, HISTORY_SETTINGS } from '../history-settings';
+import { IR_REMOTE_STATES } from '../ir-remote-state';
 import { JSON_VALUE } from '../values';
+import { DEFAULT_PAUSE_MS, PAUSE_MS } from '../voice-activity';
 import {
   CLIENT_PLATFORM,
   COUNT,
@@ -27,7 +31,7 @@ export const LATITUDE = z.number().min(-90).max(90);
 
 export const LONGITUDE = z.number().min(-180).max(180);
 
-export const SETTINGS_ROW = z.strictObject({
+export const SETTINGS_ROW = z.object({
   home_name: HOME_NAME,
   time_zone: z.string().min(1),
   latitude: LATITUDE.nullable(),
@@ -43,6 +47,19 @@ export const SETTINGS_ROW = z.strictObject({
   mcp_disabled_tools: z.array(z.string().min(1)).default([]),
   fitness_goals: FITNESS_GOALS.default(UNSET_FITNESS_GOALS),
   max_heart_rate: MAX_HEART_RATE.nullable().default(null),
+  history_settings: HISTORY_SETTINGS.default(DEFAULT_HISTORY_SETTINGS),
+  device_refills: DEVICE_REFILLS.default({}),
+  ir_remotes: IR_REMOTE_STATES.default({}).describe(
+    'What each IR remote is assumed to be doing, by remote id (a library remote’s device id or a learned remote’s id): on, temperature, mode, speed, mute, the last key sent, the 24 hour send times and the device that confirms its power. IR cannot report back, so these are the keys sent or what a person corrected, never a reading',
+  ),
+  end_of_speech_pause_ms: PAUSE_MS.default(DEFAULT_PAUSE_MS).describe(
+    'How long to wait after someone stops talking before a sentence counts as finished, in milliseconds: 200, 320, 640, 1000 or 2500. One gate for calls and for every listening ear (cameras, computers, phones)',
+  ),
+  ear_host_device_id: ID.nullable()
+    .default(null)
+    .describe(
+      'The computer that listens for the AI name on behalf of the cameras, walkie channels and Discord, or null to use the first online computer that can',
+    ),
   updated_at: MOMENT,
 });
 
@@ -50,7 +67,7 @@ export type SettingsRow = z.infer<typeof SETTINGS_ROW>;
 
 export const CLIENT_NAME = boundedText(80);
 
-export const CLIENT_ROW = z.strictObject({
+export const CLIENT_ROW = z.object({
   id: ID,
   name: CLIENT_NAME,
   platform: CLIENT_PLATFORM,
@@ -83,7 +100,7 @@ export const PROVIDER_PROBLEMS = [
 
 export type ProviderProblem = (typeof PROVIDER_PROBLEMS)[number];
 
-export const PROVIDER_LINK_ROW = z.strictObject({
+export const PROVIDER_LINK_ROW = z.object({
   provider: PROVIDER,
   account_label: z.string().nullable(),
   status: z.enum(PROVIDER_STATUSES),
@@ -99,7 +116,7 @@ export type ProviderLinkRow = z.infer<typeof PROVIDER_LINK_ROW>;
 
 export const ROOM_NAME = boundedText(60);
 
-export const ROOM_ROW = z.strictObject({
+export const ROOM_ROW = z.object({
   id: ID,
   name: ROOM_NAME,
   position: POSITION,
@@ -109,7 +126,7 @@ export type RoomRow = z.infer<typeof ROOM_ROW>;
 
 export const DEVICE_NAME = boundedText(120);
 
-export const DEVICE_ROW = z.strictObject({
+export const DEVICE_ROW = z.object({
   id: ID,
   provider: PROVIDER,
   external_id: z.string().min(1),
@@ -133,7 +150,21 @@ export const DEVICE_ROW = z.strictObject({
 
 export type DeviceRow = z.infer<typeof DEVICE_ROW>;
 
-export const STATE_ROW = z.strictObject({
+const TELEVISION_INPUT_NAME = boundedText(40);
+
+export const TELEVISION_INPUT_NAMES = z.record(z.string().min(1), TELEVISION_INPUT_NAME);
+
+export type TelevisionInputNames = z.infer<typeof TELEVISION_INPUT_NAMES>;
+
+export const TELEVISION_SETTINGS_ROW = z.object({
+  device_id: ID,
+  direct_link: FLAG,
+  input_names: TELEVISION_INPUT_NAMES,
+});
+
+export type TelevisionSettingsRow = z.infer<typeof TELEVISION_SETTINGS_ROW>;
+
+export const STATE_ROW = z.object({
   device_id: ID,
   capability: z.string().min(1),
   value: JSON_VALUE,
@@ -152,7 +183,7 @@ export const COMMAND_SOURCE = z.enum(COMMAND_SOURCES);
 
 export type CommandSource = z.infer<typeof COMMAND_SOURCE>;
 
-export const COMMAND_ROW = z.strictObject({
+export const COMMAND_ROW = z.object({
   id: ID,
   device_id: ID.nullable(),
   capability: z.string().min(1),
@@ -170,7 +201,7 @@ export const COMMAND_ROW = z.strictObject({
 
 export type CommandRow = z.infer<typeof COMMAND_ROW>;
 
-export const EVENT_ROW = z.strictObject({
+export const EVENT_ROW = z.object({
   id: ID,
   device_id: ID.nullable(),
   kind: z.enum(EVENT_KINDS),

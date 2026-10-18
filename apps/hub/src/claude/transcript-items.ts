@@ -2,6 +2,7 @@ import { CLAUDE_TEXT_LIMIT, type ClaudeThreadItem } from '@smarteverything/domai
 import { z } from 'zod';
 import { isoOf } from './tolerant';
 import type { RawLine } from './transcript-file';
+import { messageOf } from '@smarteverything/logging';
 
 const CONVERSATION_TYPES: ReadonlySet<string> = new Set(['user', 'assistant', 'system']);
 
@@ -201,7 +202,7 @@ function jsonOf(raw: RawLine): { readonly json: unknown } | LineResult {
   try {
     return { json: JSON.parse(raw.text) };
   } catch (cause) {
-    return { kind: 'skipped', reason: cause instanceof Error ? cause.message : String(cause) };
+    return { kind: 'skipped', reason: messageOf(cause) };
   }
 }
 

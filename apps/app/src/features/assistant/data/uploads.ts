@@ -1,8 +1,6 @@
-import {
-  ASSISTANT_ATTACHMENTS_MAX,
-  ASSISTANT_ATTACHMENT_BYTES_MAX,
-  type AssistantAttachment,
-} from '@smarteverything/domain';
+import { useMemo } from 'react';
+import { randomUUID } from 'expo-crypto';
+import { ASSISTANT_ATTACHMENT_BYTES_MAX } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import {
   finishAssistantUpload,
@@ -10,48 +8,80 @@ import {
   startAssistantUpload,
 } from '../../../api/assistant';
 import { notify } from '../../../components/toast-store';
-import { ValueStore, useValue } from '../../../design/external-store';
 import { bytes } from '../../../format/number';
 import type { PickedFile } from '../../../platform/pick-files';
+import {
+  DEFAULT_DRAFT_KEY,
+  aiDrafts,
+  patchAiDrafts,
+  useAiDrafts,
+  type Upload,
+  type UploadFailure,
+} from './ai-drafts';
 
 const log = new Logger('app.assistant');
 
-export type UploadState = 'uploading' | 'done' | 'failed';
+export type { Upload };
 
-export interface Upload {
-  readonly key: string;
-  readonly name: string;
-  readonly mime: string;
-  readonly preview: string | null;
-  readonly progress: number;
-  readonly state: UploadState;
-  readonly attachment: AssistantAttachment | null;
+export class UploadTooLargeError extends Error {
+  override readonly name = 'UploadTooLargeError';
+
+  constructor(
+    readonly fileName: string,
+    readonly size: number,
+  ) {
+    super(`${fileName} is ${bytes(size)}; the limit is ${bytes(ASSISTANT_ATTACHMENT_BYTES_MAX)}.`);
+  }
 }
 
-const uploads = new ValueStore<readonly Upload[]>([]);
+const RETRYABLE_FAILURE: UploadFailure = { text: 'Failed', retryable: true };
+
+function tooLarge(size: number): UploadFailure {
+  return {
+    text: `Too large · ${bytes(size)} of ${bytes(ASSISTANT_ATTACHMENT_BYTES_MAX)}`,
+    retryable: false,
+  };
+}
+
 const uploadFiles = new Map<string, PickedFile>();
 const commandFiles = new Map<string, PickedFile>();
 
-let counter = 0;
-
-export function useUploads(): readonly Upload[] {
-  return useValue(uploads);
+export function useUploads(draftKey?: string): readonly Upload[] {
+  const all = useAiDrafts((state) => state.uploads);
+  return useMemo(
+    () => (draftKey === undefined ? all : all.filter((item) => item.draftKey === draftKey)),
+    [all, draftKey],
+  );
 }
 
 function patch(key: string, change: Partial<Upload>): void {
-  uploads.update((list) => list.map((item) => (item.key === key ? { ...item, ...change } : item)));
+  patchAiDrafts('uploads', (list) =>
+    list.map((item) => (item.key === key ? { ...item, ...change } : item)),
+  );
 }
 
 export function removeUpload(key: string): void {
   uploadFiles.delete(key);
   commandFiles.delete(key);
-  uploads.update((list) => list.filter((item) => item.key !== key));
+  patchAiDrafts('uploads', (list) => list.filter((item) => item.key !== key));
 }
 
-export function clearUploads(): void {
-  uploadFiles.clear();
-  commandFiles.clear();
-  uploads.set([]);
+export function clearUploads(draftKey?: string): void {
+  const inScope = (item: Upload): boolean => draftKey === undefined || item.draftKey === draftKey;
+  aiDrafts
+    .get()
+    .uploads.filter(inScope)
+    .forEach((item) => {
+      uploadFiles.delete(item.key);
+      commandFiles.delete(item.key);
+    });
+  patchAiDrafts('uploads', (list) => list.filter((item) => !inScope(item)));
+}
+
+export function moveUploads(from: string, to: string): void {
+  patchAiDrafts('uploads', (list) =>
+    list.map((item) => (item.draftKey === from ? { ...item, draftKey: to } : item)),
+  );
 }
 
 function base64Of(buffer: ArrayBuffer, start: number, end: number): string {
@@ -67,7 +97,7 @@ async function send(key: string, file: PickedFile): Promise<void> {
   const data = await file.data();
   if (uploadFiles.get(key) !== file) return;
   if (data.byteLength > ASSISTANT_ATTACHMENT_BYTES_MAX) {
-    throw new RangeError(`${file.name} is over ${bytes(ASSISTANT_ATTACHMENT_BYTES_MAX)}.`);
+    throw new UploadTooLargeError(file.name, data.byteLength);
   }
   const upload = await startAssistantUpload({
     name: file.name,
@@ -92,49 +122,52 @@ async function send(key: string, file: PickedFile): Promise<void> {
 function runUpload(key: string, file: PickedFile): void {
   void send(key, file).catch((error: unknown) => {
     if (uploadFiles.get(key) !== file) return;
+    if (error instanceof UploadTooLargeError) {
+      patch(key, { state: 'failed', failure: tooLarge(error.size) });
+      return;
+    }
     log.warn('upload.failed', { reason: String(error) });
-    patch(key, { state: 'failed' });
+    patch(key, { state: 'failed', failure: RETRYABLE_FAILURE });
     notify({ message: `${file.name} couldn’t be attached`, error, tone: 'critical' });
   });
 }
 
 export function retryUpload(key: string): void {
   const source = uploadFiles.get(key);
-  const upload = uploads.get().find((item) => item.key === key);
+  const upload = aiDrafts.get().uploads.find((item) => item.key === key);
   if (source === undefined || upload?.state !== 'failed') return;
-  patch(key, { state: 'uploading', progress: 0, attachment: null });
+  patch(key, { state: 'uploading', progress: 0, attachment: null, failure: null });
   runUpload(key, source);
 }
 
-function enqueue(file: PickedFile): void {
-  counter += 1;
-  const key = `upload-${String(counter)}`;
-  uploadFiles.set(key, file);
-  commandFiles.set(key, file);
-  uploads.update((list) => [
+function enqueue(file: PickedFile, draftKey: string): void {
+  const key = randomUUID();
+  const oversized = file.bytes > ASSISTANT_ATTACHMENT_BYTES_MAX;
+  if (!oversized) {
+    uploadFiles.set(key, file);
+    commandFiles.set(key, file);
+  }
+  patchAiDrafts('uploads', (list) => [
     ...list,
     {
       key,
+      draftKey,
       name: file.name,
       mime: file.mime,
       preview: file.preview,
       progress: 0,
-      state: 'uploading',
+      state: oversized ? 'failed' : 'uploading',
       attachment: null,
+      failure: oversized ? tooLarge(file.bytes) : null,
     },
   ]);
-  runUpload(key, file);
+  if (!oversized) runUpload(key, file);
 }
 
-export function attachFiles(files: readonly PickedFile[]): void {
-  const room = ASSISTANT_ATTACHMENTS_MAX - uploads.get().length;
-  if (files.length > room) {
-    notify({
-      message: `Up to ${String(ASSISTANT_ATTACHMENTS_MAX)} files per message`,
-      tone: 'critical',
-    });
-  }
-  files.slice(0, Math.max(0, room)).forEach(enqueue);
+export function attachFiles(files: readonly PickedFile[], draftKey = DEFAULT_DRAFT_KEY): void {
+  files.forEach((file) => {
+    enqueue(file, draftKey);
+  });
 }
 
 export function readyAttachments(list: readonly Upload[]): readonly string[] | null {

@@ -1,9 +1,10 @@
-import { validateExecutionAuthority } from '../../../assistant/execution-authority';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ASSISTANT_POST, SHOW_WIDGETS_INPUT } from '@smarteverything/domain';
 import { z } from 'zod';
-import { operate } from './acting';
+import { callerFor, operate, type ActingContext } from './acting';
+import { ownedAttachment } from '../../../assistant/chat-directory';
+import { chatOwnerOf } from '../../../server/auth';
 import { showWidgets } from '../../../chat-widgets/show-widgets';
 import type { StoredAttachment } from '../../../store/repositories/assistant-chat';
 import { MediaTooLargeError, mediaKindOf } from '../../../transcripts/media-notes';
@@ -26,17 +27,23 @@ async function transcriptOf(context: ToolContext, file: StoredAttachment): Promi
   }
 }
 
+export function readableAttachment(context: ActingContext, id: string): StoredAttachment {
+  const authority = context.actor?.authority;
+  const owner = chatOwnerOf(context.store, callerFor(context));
+  const file =
+    owner.role === 'owner'
+      ? context.store.assistantChat.attachment(id)
+      : ownedAttachment(context.store, owner, id);
+  if (authority !== undefined && file.profile_id !== authority.profile_id)
+    throw new ToolError('Attachment belongs to another initiating profile.', 'forbidden');
+  return file;
+}
+
 async function attachment(
   context: ToolContext,
   id: string,
 ): Promise<{ structured: Record<string, unknown>; images?: { data: string; mimeType: string }[] }> {
-  const file = context.store.assistantChat.attachment(id);
-  const authority = context.actor?.authority;
-  if (authority !== undefined) {
-    validateExecutionAuthority(context.store, authority);
-    if (file.profile_id !== authority.profile_id)
-      throw new ToolError('Attachment belongs to another initiating profile.', 'forbidden');
-  }
+  const file = readableAttachment(context, id);
   const summary = {
     id: file.id,
     name: file.name,
@@ -68,13 +75,23 @@ async function attachment(
   return { structured: { ...summary, base64: content.toString('base64') } };
 }
 
+const POST = ASSISTANT_POST.omit({ profileId: true }).extend({
+  personId: ASSISTANT_POST.shape.profileId.describe(
+    'Whose chat: a person id from list_people (not a device or app id); the owner’s when left out',
+  ),
+});
+
 export const ASSISTANT_TOOLS: readonly Tool[] = [
   defineTool({
     name: 'assistant_post',
-    input: ASSISTANT_POST,
+    input: POST,
     annotations: WRITES,
-    run: async (context, input) => ({
-      structured: { result: await operate(context, 'postAssistant', { body: input }) },
+    run: async (context, { personId, ...post }) => ({
+      structured: {
+        result: await operate(context, 'postAssistant', {
+          body: { ...post, profileId: personId },
+        }),
+      },
     }),
   }),
   defineTool({

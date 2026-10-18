@@ -5,16 +5,16 @@ const MOMENT = z.iso.datetime({ offset: true });
 const COUNT = z.int().min(0);
 const SPEAKER = z.string().trim().min(1).max(120);
 
-export const TRANSCRIPT_SOURCES = ['camera', 'plugin'] as const;
+export const TRANSCRIPT_SOURCES = ['camera', 'plugin', 'phone', 'computer'] as const;
 
 export type TranscriptSource = (typeof TRANSCRIPT_SOURCES)[number];
 
 export const TRANSCRIPT_SOURCE_LABELS: Readonly<Record<TranscriptSource, string>> = {
   camera: 'Camera',
   plugin: 'Plugin',
+  phone: 'Phone',
+  computer: 'Computer',
 };
-
-export const TRANSCRIPT_TEXT_MAX = 4000;
 
 export const TRANSCRIPT_LINES_MAX = 20_000;
 
@@ -48,7 +48,7 @@ export const TRANSCRIPT_SETTINGS_CHANGE = z
     retention_days: RETENTION_DAYS.optional(),
     daily_cap_usd: DAILY_CAP_USD.optional(),
   })
-  .refine((change) => change.retention_days !== undefined || change.daily_cap_usd !== undefined, {
+  .refine((change) => Object.values(change).some((value) => value !== undefined), {
     message: 'Change the retention or the daily cap',
   });
 
@@ -76,7 +76,7 @@ export const TRANSCRIPT_LINE_INPUT = z.strictObject({
   timing: z.literal('wall_clock').nullable().optional(),
   speaker_id: z.string().min(1).max(200).nullable(),
   speaker: SPEAKER,
-  text: z.string().trim().min(1).max(TRANSCRIPT_TEXT_MAX),
+  text: z.string().trim().min(1),
   bot: z.boolean(),
 });
 
@@ -105,7 +105,6 @@ export const TRANSCRIPT_HIT = z.strictObject({
 export type TranscriptHit = z.output<typeof TRANSCRIPT_HIT>;
 
 export const TRANSCRIPT_PAUSE_REASONS = [
-  'no_gemini_key',
   'no_openrouter_key',
   'cap_reached',
   'privacy',
@@ -116,7 +115,6 @@ export const TRANSCRIPT_PAUSE_REASONS = [
 export type TranscriptPauseReason = (typeof TRANSCRIPT_PAUSE_REASONS)[number];
 
 export const TRANSCRIPT_PAUSE_LABELS: Readonly<Record<TranscriptPauseReason, string>> = {
-  no_gemini_key: 'Needs a Gemini key in the voice settings',
   no_openrouter_key: 'Needs an OpenRouter key in the AI settings',
   cap_reached: 'Today’s transcript budget is used up',
   privacy: 'Privacy mode is on',

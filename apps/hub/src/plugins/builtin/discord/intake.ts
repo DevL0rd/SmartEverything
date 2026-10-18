@@ -1,10 +1,10 @@
+import { Logger, describeFailure } from '@smarteverything/logging';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { InboundMessage } from '@smarteverything/domain';
 import { attachedFiles } from './attachments';
 import type { History } from './history';
 import { DiscordPolicyError } from './errors';
-import type { Downloader } from './media-download';
 import { MEDIA_MESSAGE, type MediaIndex } from './media-index';
 import { authorOf, mentionedOf, observe } from './observation';
 import type { EventOrigin } from './origins';
@@ -16,9 +16,10 @@ import type { Triggers } from './triggers';
 import type { Typing } from './typing';
 import type { VoiceService } from './voice/service';
 
+const log = new Logger('hub.discord-intake');
+
 const SEEN_LIMIT = 2000;
 const SEEN_MS = 10 * 60_000;
-const MAX_ACTIVE = 32;
 const NEGATIVE_MS = 10 * 60_000;
 
 const ROLES = z.array(
@@ -33,7 +34,6 @@ export interface IntakeDeps {
   readonly triggers: Triggers;
   readonly history: History;
   readonly mediaIndex: MediaIndex;
-  readonly download: Downloader;
   readonly typing: Typing;
   readonly calls: Pick<VoiceService, 'contextFor'>;
   readonly status: Status;
@@ -53,7 +53,6 @@ export class Intake {
   private readonly seen = new Map<string, number>();
   private readonly unknownMembers = new Map<string, number>();
   private readonly botRoles = new Map<string, Promise<string | null>>();
-  private active = 0;
 
   constructor(private readonly deps: IntakeDeps) {}
 
@@ -73,12 +72,7 @@ export class Intake {
     for (const who of mentionedOf(raw)) {
       services.directory.learnVisible(who, guildId);
     }
-    this.active += 1;
-    try {
-      await this.capture(raw);
-    } finally {
-      this.active -= 1;
-    }
+    await this.capture(raw);
   }
 
   edited(raw: unknown): void {
@@ -114,10 +108,6 @@ export class Intake {
       }
     }
     if (this.seen.has(id)) {
-      return false;
-    }
-    if (this.active >= MAX_ACTIVE) {
-      this.deps.status.dropMessage();
       return false;
     }
     if (this.seen.size >= SEEN_LIMIT) {
@@ -214,7 +204,16 @@ export class Intake {
       return;
     }
     for (const guildId of guilds) {
-      const found = await rest.get(`/guilds/${guildId}/members/${userId}`).catch(() => null);
+      const found = await rest
+        .get(`/guilds/${guildId}/members/${userId}`)
+        .catch((cause: unknown) => {
+          log.debug('member.lookup_failed', () => ({
+            guildId,
+            userId,
+            error: describeFailure(cause).message,
+          }));
+          return null;
+        });
       const member = z.looseObject({ roles: z.array(z.string()) }).safeParse(found);
       if (member.success) {
         policy.noteRoles(userId, guildId, member.data.roles);
@@ -295,7 +294,14 @@ export class Intake {
     const target = RAW_MESSAGE.safeParse(
       await services.rest
         .get(`/channels/${raw.channel_id}/messages/${reference.message_id}`)
-        .catch(() => null),
+        .catch((cause: unknown) => {
+          log.debug('reference.lookup_failed', () => ({
+            channelId: raw.channel_id,
+            messageId: reference.message_id,
+            error: describeFailure(cause).message,
+          }));
+          return null;
+        }),
     );
     return (
       target.success &&
@@ -309,12 +315,11 @@ export class Intake {
     const { services, history, typing } = this.deps;
     const files = await attachedFiles(
       raw.attachments,
-      origin.channelId,
       {
         enabled: services.settings.media_enabled,
         maxFileBytes: services.settings.media_max_file_bytes,
       },
-      this.deps.download,
+      services.download,
     );
     const past = await history.textFor(origin).catch((cause: unknown) => {
       this.deps.report(cause);

@@ -1,5 +1,11 @@
 import { BlockList, isIP } from 'node:net';
-import { powershellQuoted, rulePort, ruleSource, type PortRule } from '@smarteverything/domain';
+import {
+  encodedPowerShell,
+  powershellQuoted,
+  rulePort,
+  ruleSource,
+  type PortRule,
+} from '@smarteverything/domain';
 import { z } from 'zod';
 import {
   FIXABLE_UNLESS_DENIED,
@@ -9,8 +15,8 @@ import {
   type OpeningState,
   type Probe,
 } from './openings';
-import { encodedPowerShell } from './powershell';
 import { answerOf, type FirewallSystem } from './system';
+import { messageOf } from '@smarteverything/logging';
 
 function listOf<T extends z.ZodType>(item: T): z.ZodType<z.output<T>[]> {
   return z.preprocess((value: unknown): unknown => {
@@ -79,9 +85,7 @@ function parsed(stdout: string): WindowsFirewall {
   try {
     json = JSON.parse(stdout);
   } catch (error) {
-    throw new WindowsFirewallAnswerError(
-      `it answered text that is not JSON (${error instanceof Error ? error.message : String(error)})`,
-    );
+    throw new WindowsFirewallAnswerError(`it answered text that is not JSON (${messageOf(error)})`);
   }
   const result = WINDOWS_FIREWALL.safeParse(json);
   if (!result.success) {

@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   newestEventId,
   SyncthingEventStreams,
 } from '../../../src/plugins/builtin/syncthing/event-streams';
 import { SyncthingRest } from '../../../src/plugins/builtin/syncthing/rest-client';
 import { fakeHttp } from '../fake-http';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('syncthing event streams', () => {
   it('detects a gap in event ids', () => {
@@ -58,5 +62,32 @@ describe('syncthing event streams', () => {
     release();
     expect(seen.slice(0, 2)).toEqual(['0/0', '7/55']);
     expect(up).toBe(1);
+  });
+
+  it('retries a down server after one second, then two, then four seconds, and not after stop', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const attempts: number[] = [];
+    const started = Date.now();
+    const failing: typeof fetch = () => {
+      attempts.push(Date.now() - started);
+      return Promise.reject(new Error('down'));
+    };
+    let down = 0;
+    const streams = new SyncthingEventStreams(new SyncthingRest('http://st', 'key', failing), {
+      onEvents: (): void => undefined,
+      onGap: (): void => undefined,
+      onUp: (): void => undefined,
+      onDown: (): void => {
+        down += 1;
+      },
+    });
+    streams.start();
+    await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000);
+    expect(down).toBe(4);
+    expect([...new Set(attempts)]).toEqual([0, 1000, 3000, 7000]);
+    streams.stop();
+    const seen = attempts.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(attempts).toHaveLength(seen);
   });
 });

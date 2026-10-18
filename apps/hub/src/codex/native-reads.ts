@@ -26,7 +26,7 @@ const KNOWN_ITEMS = new Set([
   'imageGeneration',
 ]);
 
-export function nativeSession(raw: unknown, archived = false): z.infer<typeof CODEX_SESSION> {
+function nativeSession(raw: unknown, archived = false): z.infer<typeof CODEX_SESSION> {
   const thread = THREAD.parse(raw);
   return CODEX_SESSION.parse({
     id: thread.id,

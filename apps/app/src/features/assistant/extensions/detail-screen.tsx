@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { z } from 'zod';
 import type {
@@ -9,16 +8,17 @@ import type {
 } from '@smarteverything/domain';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { EmptyState } from '../../../components/empty-state';
-import { IconWell } from '../../../components/icon-well';
-import { Text } from '../../../components/text';
-import { useExtensionConfiguration, useExtensions, useResolvedExtension } from './queries';
-import { installedItems, extensionIcon } from './items';
+import { useSyncStatus } from '../../../store/selectors';
+import { ReasonLine } from '../../../components/reason-line';
+import { useExtensionConfiguration, useExtension, useExtensions } from './queries';
+import { extensionIcon, pageKind } from './items';
+import { ItemHeader } from './item-header';
 import { ExtensionDevicesSheet } from './devices-sheet';
 import { ExtensionSourceSheet } from './source-sheet';
-import { ExtensionReadStatus } from './query-status';
-import { useExtensionWriter } from './change';
-import { ExtensionChangeReview } from './change-review';
+import { ExtensionReadStatus, useMemberBanner } from './query-status';
+import { useExtensionActions } from './change';
 import { ExtensionDetailRows } from './detail-rows';
+import { background } from '@smarteverything/logging';
 
 function Detail({
   item,
@@ -31,15 +31,15 @@ function Detail({
 }): ReactNode {
   const [devices, setDevices] = useState(section === 'devices');
   const [source, setSource] = useState(section === 'source');
-  const writer = useExtensionWriter();
+  const actions = useExtensionActions();
   return (
     <>
       <DetailHeader item={item} />
-      <ExtensionChangeReview writer={writer} />
+      <ExecutesNote item={item} />
       <ExtensionDetailRows
         item={item}
         configuration={configuration}
-        writer={writer}
+        actions={actions}
         onDevices={() => {
           setDevices(true);
         }}
@@ -66,34 +66,30 @@ function Detail({
   );
 }
 
-function useDetailItem(id: string, inspected: boolean): HarnessExtensionItem | undefined {
-  const configuration = useExtensionConfiguration();
-  const catalogue = useExtensions();
-  const resolved = useResolvedExtension(id);
-  const items =
-    configuration.data === undefined
-      ? []
-      : installedItems(catalogue.data?.items ?? [], configuration.data.desired);
-  if (inspected) return resolved.data;
-  return (
-    items.find((entry) => entry.id === id) ??
-    catalogue.data?.items.find((entry) => entry.id === id) ??
-    resolved.data
-  );
+function ExecutesNote({ item }: { readonly item: HarnessExtensionItem }): ReactNode {
+  return item.executes && item.confirmed ? (
+    <ReasonLine
+      icon="siren"
+      tone="warning"
+      text="This extension runs programs on your computers. The home owner allowed it. Turn it off or remove it to stop that."
+    />
+  ) : null;
 }
 
 function DetailReadStatus({ kind }: { readonly kind: 'extension' | 'skill' }): ReactNode {
   const configuration = useExtensionConfiguration();
   const catalogue = useExtensions();
-  const loading = configuration.isFetching && configuration.data === undefined;
+  const loading =
+    (configuration.isFetching && configuration.data === undefined) ||
+    (catalogue.isFetching && catalogue.data === undefined);
   return (
     <ExtensionReadStatus
       kind={kind}
       loading={loading}
       error={configuration.error ?? catalogue.error}
       retry={() => {
-        void configuration.refetch();
-        void catalogue.refetch();
+        background(configuration.refetch(), 'configuration.refetch_failed');
+        background(catalogue.refetch(), 'catalogue.refetch_failed');
       }}
     />
   );
@@ -101,46 +97,67 @@ function DetailReadStatus({ kind }: { readonly kind: 'extension' | 'skill' }): R
 
 export function AiExtensionScreen(): ReactNode {
   const params = z
-    .object({
-      extensionId: z.string().max(400).optional(),
-      section: z.string().optional(),
-      inspect: z.literal('true').optional(),
-    })
+    .object({ extensionId: z.string().optional(), section: z.string().optional() })
     .parse(useLocalSearchParams());
-  const item = useDetailItem(params.extensionId ?? '', params.inspect === 'true');
-  const configuration = useExtensionConfiguration().data;
+  const extension = useExtension(params.extensionId ?? '');
+  const item = extension.data ?? undefined;
+  const query = useExtensionConfiguration();
+  const configuration = query.data;
+  const banner = useMemberBanner('add, update or remove extensions');
+  const kind = item === undefined ? 'extension' : pageKind(item);
   return (
     <SettingsFrame
-      page={item?.kind === 'skill' ? 'assistant/skills/detail' : 'assistant/extensions/detail'}
+      page={kind === 'skill' ? 'assistant/skills/detail' : 'assistant/extensions/detail'}
       title={item?.name ?? 'Extension or skill'}
+      {...(banner === undefined ? {} : { banner })}
     >
-      <DetailReadStatus kind={item?.kind === 'skill' ? 'skill' : 'extension'} />
-      {item === undefined || configuration === undefined ? (
-        <EmptyState
-          icon="puzzle"
-          title="Extension unavailable"
-          body="Refresh the catalogue or inspect the source again."
-        />
-      ) : (
-        <Detail key={item.id} item={item} configuration={configuration} section={params.section} />
-      )}
+      <DetailReadStatus kind={kind} />
+      <DetailBody
+        item={item}
+        configuration={configuration}
+        section={params.section}
+        loading={query.isFetching || extension.isFetching}
+      />
     </SettingsFrame>
+  );
+}
+
+function DetailBody({
+  item,
+  configuration,
+  section,
+  loading,
+}: {
+  readonly item: HarnessExtensionItem | undefined;
+  readonly configuration: AiHarnessConfigurationCatalogue | undefined;
+  readonly section: string | undefined;
+  readonly loading: boolean;
+}): ReactNode {
+  if (item === undefined || configuration === undefined) return <DetailMissing loading={loading} />;
+  return <Detail key={item.id} item={item} configuration={configuration} section={section} />;
+}
+
+function DetailMissing({ loading }: { readonly loading: boolean }): ReactNode {
+  const sync = useSyncStatus();
+  return loading || sync.status !== 'live' ? null : (
+    <EmptyState
+      icon="puzzle"
+      title="Extension unavailable"
+      body="It may have been removed. Go back to the list to see what is installed."
+    />
   );
 }
 
 function DetailHeader({ item }: { readonly item: HarnessExtensionItem }): ReactNode {
   return (
-    <View className="flex-row items-start gap-4 px-1">
-      <IconWell icon={extensionIcon(item)} colour="primary" size="l" />
-      <View className="min-w-0 flex-1 gap-1">
-        <Text variant="body">{item.description}</Text>
-        <Text variant="footnote" tone="variant">
-          {item.publisher} · version{' '}
-          {item.selection.kind === 'entry'
-            ? item.selection.entry.version
-            : item.selection.asset.version}
-        </Text>
-      </View>
-    </View>
+    <ItemHeader
+      icon={extensionIcon(item)}
+      kind={pageKind(item)}
+      included={item.source.kind === 'included'}
+      description={item.description}
+      byline={
+        item.version === null ? item.publisher : `${item.publisher} · version ${item.version}`
+      }
+    />
   );
 }

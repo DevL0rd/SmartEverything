@@ -1,153 +1,116 @@
-import { createHash } from 'node:crypto';
 import {
   ApiError,
   IMAGE_ENDPOINT,
   type ImageEndpoint,
   type ImageOperationRequest,
 } from '@smarteverything/domain';
-import { IMAGE_MODELS_WIRE, IMAGE_ENDPOINTS_WIRE, type ImageEndpointWire } from './image-wire';
-import { boundedText, parseImageJson } from './image-response';
+import { Logger, messageOf } from '@smarteverything/logging';
+import pLimit from 'p-limit';
+import type { OpenRouterClient } from './client';
+import { OpenRouterError } from './errors';
+import type { ImageEndpointSnapshot } from './image-wire';
+import type { OrImageModel } from './wire';
 
-const ORIGIN = 'https://openrouter.ai/api/v1';
-const METADATA_BYTES_MAX = 4 * 1024 * 1024;
-export type ImageFetch = typeof fetch;
+const log = new Logger('hub.assistant');
+const REFRESH_TIMEOUT_MS = 30_000;
+const ENDPOINT_FETCHES = 6;
+const STALE_MS = 86_400_000;
+interface ImageEndpointStore {
+  readonly imageEndpoints: () => ImageEndpointSnapshot;
+  readonly saveImageEndpoints: (snapshot: ImageEndpointSnapshot) => void;
+}
 export class OpenRouterImageCatalog {
-  private rows: readonly ImageEndpoint[] = [];
-  constructor(private readonly request: ImageFetch) {}
-  list(): readonly ImageEndpoint[] {
-    return this.rows;
+  private snapshot: ImageEndpointSnapshot;
+  private refreshing: Promise<readonly ImageEndpoint[]> | null = null;
+  private readonly stopping = new AbortController();
+  constructor(
+    private readonly deps: {
+      readonly client: OpenRouterClient;
+      readonly store: ImageEndpointStore;
+      readonly now: () => Date;
+    },
+  ) {
+    this.snapshot = deps.store.imageEndpoints();
   }
-  async refresh(signal: AbortSignal): Promise<readonly ImageEndpoint[]> {
-    const models = IMAGE_MODELS_WIRE.parse(await this.read('/images/models', signal));
-    const rows: ImageEndpoint[] = [];
-    for (const model of models.data) {
-      const path = modelEndpointPath(model.id);
-      const metadata = IMAGE_ENDPOINTS_WIRE.parse(await this.read(path, signal));
-      if (metadata.id !== model.id)
-        throw new ApiError('invalid_request', 'Image endpoint metadata identity mismatch.');
-      for (const endpoint of metadata.endpoints) {
-        if (endpoint.provider_tag === null || endpoint.provider_tag === '') continue;
-        const revision = endpointRevision(endpoint);
-        rows.push(
-          IMAGE_ENDPOINT.parse({
-            model: model.id,
-            name: model.name,
-            provider_tag: endpoint.provider_tag,
-            revision,
-            parameters: endpoint.supported_parameters,
-            supports_streaming: endpoint.supports_streaming,
-            pricing: endpoint.pricing,
-          }),
-        );
-      }
-    }
-    this.rows = rows;
-    return rows;
+  async list(refresh: boolean): Promise<readonly ImageEndpoint[]> {
+    if (refresh || this.snapshot.endpoints.length === 0) return this.refresh();
+    if (this.stale())
+      void this.refresh().catch((cause: unknown) => {
+        log.warn('image.catalog_refresh_failed', {
+          reason: messageOf(cause),
+        });
+      });
+    return this.snapshot.endpoints;
   }
-  selected(request: ImageOperationRequest, references: number): ImageEndpoint {
-    const endpoint = this.rows.find(
-      (row) =>
-        row.model === request.model &&
-        row.provider_tag === request.provider_tag &&
-        row.revision === request.capability_revision,
-    );
-    if (endpoint === undefined)
+  async endpointFor(
+    request: Pick<ImageOperationRequest, 'model' | 'provider_tag'>,
+  ): Promise<ImageEndpoint> {
+    const found = this.find(request) ?? (await this.refresh().then(() => this.find(request)));
+    if (found === undefined)
       throw new ApiError('invalid_request', 'Select a currently available image endpoint.');
-    const eligible = this.rows.filter(
+    return found;
+  }
+  stop(): Promise<unknown> {
+    this.stopping.abort();
+    return Promise.allSettled([this.refreshing]);
+  }
+  private find(
+    request: Pick<ImageOperationRequest, 'model' | 'provider_tag'>,
+  ): ImageEndpoint | undefined {
+    return this.snapshot.endpoints.find(
       (row) => row.model === request.model && row.provider_tag === request.provider_tag,
     );
-    if (eligible.some((row) => row.revision !== endpoint.revision))
-      throw new ApiError(
-        'invalid_request',
-        'This provider tag selects multiple distinct endpoints and cannot be pinned exactly.',
+  }
+  private stale(): boolean {
+    const refreshed = this.snapshot.refreshed_at;
+    return refreshed === null || this.deps.now().getTime() - Date.parse(refreshed) > STALE_MS;
+  }
+  private refresh(): Promise<readonly ImageEndpoint[]> {
+    this.refreshing ??= this.load().finally(() => {
+      this.refreshing = null;
+    });
+    return this.refreshing;
+  }
+  private async load(): Promise<readonly ImageEndpoint[]> {
+    const signal = AbortSignal.any([this.stopping.signal, AbortSignal.timeout(REFRESH_TIMEOUT_MS)]);
+    try {
+      const models = await this.deps.client.imageModels(signal);
+      const limit = pLimit(ENDPOINT_FETCHES);
+      const groups = await Promise.all(
+        models.map((model) => limit(() => this.endpointsOf(model, signal))),
       );
-    admitOptions(endpoint, request, references);
-    return endpoint;
+      this.snapshot = {
+        refreshed_at: this.deps.now().toISOString(),
+        endpoints: groups.flat(),
+      };
+      this.deps.store.saveImageEndpoints(this.snapshot);
+      return this.snapshot.endpoints;
+    } catch (cause) {
+      if (cause instanceof OpenRouterError) throw new ApiError('upstream_failed', cause.message);
+      throw cause;
+    }
   }
-  async verify(endpoint: ImageEndpoint, signal: AbortSignal): Promise<void> {
-    const path = modelEndpointPath(endpoint.model);
-    const metadata = IMAGE_ENDPOINTS_WIRE.parse(await this.read(path, signal));
-    const eligible = metadata.endpoints.filter((row) => row.provider_tag === endpoint.provider_tag);
-    const selected = eligible.find(
-      (row) =>
-        row.provider_tag === endpoint.provider_tag && endpointRevision(row) === endpoint.revision,
-    );
-    if (
-      metadata.id !== endpoint.model ||
-      selected === undefined ||
-      eligible.some((row) => endpointRevision(row) !== endpoint.revision)
-    )
-      throw new ApiError(
-        'invalid_request',
-        'The selected image endpoint changed. Refresh and select it again.',
+  private async endpointsOf(model: OrImageModel, signal: AbortSignal): Promise<ImageEndpoint[]> {
+    try {
+      const wire = await this.deps.client.imageEndpoints(model, signal);
+      return wire.flatMap((endpoint) =>
+        endpoint.provider_tag === null || endpoint.provider_tag === ''
+          ? []
+          : [
+              IMAGE_ENDPOINT.parse({
+                model: model.id,
+                name: model.name,
+                provider_tag: endpoint.provider_tag,
+                parameters: endpoint.supported_parameters,
+                supports_streaming: endpoint.supports_streaming,
+                pricing: endpoint.pricing,
+              }),
+            ],
       );
+    } catch (cause) {
+      if (!(cause instanceof OpenRouterError) || cause.code !== 'unreadable') throw cause;
+      log.warn('image.endpoints_unreadable', { model: model.id, reason: cause.message });
+      return [];
+    }
   }
-  private async read(path: string, signal: AbortSignal): Promise<unknown> {
-    const response = await this.request(`${ORIGIN}${path}`, { signal, redirect: 'error' });
-    if (!response.ok)
-      throw new ApiError('invalid_request', `Image metadata HTTP ${String(response.status)}.`);
-    return parseImageJson(await boundedText(response, METADATA_BYTES_MAX, signal));
-  }
-}
-function admitParameter(endpoint: ImageEndpoint, key: string, value: string | number): void {
-  const descriptor = endpoint.parameters[key];
-  if (descriptor === undefined) {
-    if (isOmittedDefault(key, value)) return;
-    throw new ApiError('invalid_request', `This image endpoint does not support ${key}.`);
-  }
-  if (descriptor.type === 'boolean') return;
-  const valid =
-    descriptor.type === 'enum'
-      ? descriptor.values.includes(value)
-      : typeof value === 'number' && value >= descriptor.min && value <= descriptor.max;
-  if (!valid)
-    throw new ApiError('invalid_request', `This image endpoint rejects the selected ${key}.`);
-}
-function admitOptions(
-  endpoint: ImageEndpoint,
-  request: ImageOperationRequest,
-  references: number,
-): void {
-  admitOutput(endpoint, request);
-  admitParameter(endpoint, 'input_references', references);
-  for (const [key, value] of Object.entries(request.options)) {
-    if (key === 'stream') {
-      if (value === true && !endpoint.supports_streaming)
-        throw new ApiError('invalid_request', 'This image endpoint does not stream previews.');
-    } else if (typeof value === 'string' || typeof value === 'number')
-      admitParameter(endpoint, key, value);
-  }
-}
-
-function isOmittedDefault(key: string, value: string | number): boolean {
-  return (key === 'n' && value === 1) || (key === 'input_references' && value === 0);
-}
-
-function admitOutput(endpoint: ImageEndpoint, request: ImageOperationRequest): void {
-  const formats = endpoint.parameters['output_format'];
-  if (formats?.type === 'enum') admitRasterFormats(formats.values, request.options.output_format);
-  if (request.options.background === 'transparent' && request.options.output_format === 'jpeg')
-    throw new ApiError('invalid_request', 'Transparent images require PNG or WebP output.');
-}
-function admitRasterFormats(
-  values: readonly (string | number)[],
-  selected: string | undefined,
-): void {
-  if (!values.some((value) => value === 'png' || value === 'jpeg' || value === 'webp'))
-    throw new ApiError(
-      'unsupported_media_type',
-      'This image endpoint produces no supported raster output.',
-    );
-  if (values.includes('svg') && selected === undefined)
-    throw new ApiError(
-      'invalid_request',
-      'Select a supported raster output format for this endpoint.',
-    );
-}
-
-function modelEndpointPath(model: string): string {
-  return `/images/models/${model.split('/').map(encodeURIComponent).join('/')}/endpoints`;
-}
-function endpointRevision(endpoint: ImageEndpointWire): string {
-  return createHash('sha256').update(JSON.stringify(endpoint)).digest('hex');
 }

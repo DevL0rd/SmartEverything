@@ -5,6 +5,7 @@ import { useSession } from '../../store/selectors';
 import type { Device } from '../../store/state';
 import { heldElsewhere } from './watch-bridge';
 import { takeOverBridge } from './watch-link';
+import { background } from '@smarteverything/logging';
 
 export function BridgeBanner({ device }: { readonly device: Device }): ReactNode {
   const clientId = useSession().client.id;
@@ -21,7 +22,7 @@ export function BridgeBanner({ device }: { readonly device: Device }): ReactNode
       action={{
         label: 'Take over',
         onPress: () => {
-          void takeOverBridge(device.id);
+          background(takeOverBridge(device.id), 'over_bridge.take_failed');
         },
       }}
     />

@@ -1,6 +1,4 @@
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import { type ReactNode } from 'react';
-import { randomUUID } from 'expo-crypto';
 import { View } from 'react-native';
 import {
   harnessTargetKey,
@@ -13,14 +11,13 @@ import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
 import { useHarnessCatalogue } from '../data/harness';
 import { useChangeHarnessPermission } from '../data/harness-permission';
-import { permissionKey, permissionLabel } from './harness-permission';
+import { permissionLabel } from './harness-permission';
 
 interface SessionPermissionControl {
   readonly mutation: ReturnType<typeof useChangeHarnessPermission>;
   readonly host: AiHarnessHost | undefined;
   readonly policies: readonly AiHarnessPermission[];
   readonly pending: AiHarnessPermissionChange | null;
-  readonly disabled: boolean;
 }
 export function useSessionPermission(session: AiHarnessSession): SessionPermissionControl {
   const catalogue = useHarnessCatalogue();
@@ -35,25 +32,7 @@ export function useSessionPermission(session: AiHarnessSession): SessionPermissi
     host,
     policies,
     pending,
-    disabled: permissionDisabled(session, mutation.isPending, host, policies.length),
   };
-}
-
-function permissionDisabled(
-  session: AiHarnessSession,
-  applying: boolean,
-  host: AiHarnessHost | undefined,
-  policyCount: number,
-): boolean {
-  return (
-    applying ||
-    (session.permission_change !== undefined && session.permission_change !== null) ||
-    session.epoch === null ||
-    session.state === 'switching' ||
-    host?.online !== true ||
-    host.manifest?.permission_change !== true ||
-    policyCount < 2
-  );
 }
 
 function PermissionStatus({
@@ -64,20 +43,22 @@ function PermissionStatus({
   const { mutation, pending, host } = control;
   return (
     <>
-      {mutation.isPending ? <Text tone="variant">Applying permissions…</Text> : null}
-      {mutation.error === null ? null : <Text tone="critical">{CHAT_ERROR_MESSAGE}</Text>}
-      {host?.manifest?.permission_change === true ? null : (
-        <Text tone="variant">
-          Update this execution host to change permissions in an existing session.
+      {mutation.isPending ? <Text tone="variant">Changing access…</Text> : null}
+      {mutation.error === null ? null : (
+        <Text tone="critical">
+          {'Couldn’t change access. The machine didn’t confirm the change.'}
         </Text>
+      )}
+      {host?.manifest?.permission_change === true ? null : (
+        <Text tone="variant">Update this machine to change access in a running chat.</Text>
       )}
       {pending === null ? null : (
         <>
           <Text tone="warning">
-            Permission change is unconfirmed. Confirm it before changing hosts.
+            Access change not confirmed. Confirm it before you switch machine.
           </Text>
           <Button
-            label="Confirm permission change"
+            label="Confirm access change"
             variant="text"
             disabled={mutation.isPending}
             onPress={() => {
@@ -119,24 +100,4 @@ export function HarnessSessionPermission({
       <PermissionExplanation session={session} />
     </View>
   );
-}
-
-export function changeSessionPermission(
-  session: AiHarnessSession,
-  control: SessionPermissionControl,
-  key: string,
-): void {
-  const permission = control.policies.find((policy) => permissionKey(policy) === key);
-  if (
-    control.disabled ||
-    permission === undefined ||
-    session.epoch === null ||
-    key === permissionKey(session.permission)
-  )
-    return;
-  control.mutation.mutate({
-    operation_id: randomUUID(),
-    expected_epoch: session.epoch,
-    permission,
-  });
 }

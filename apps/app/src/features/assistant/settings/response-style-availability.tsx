@@ -1,6 +1,7 @@
 import { useConnection } from '../../../api/transport';
 import { useActiveProfile } from '../../../store/people';
 import { useEffect, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
 import { Text } from '../../../components/text';
@@ -10,15 +11,17 @@ import {
   refreshResponseStyle,
   useResponseStyleProblem,
 } from '../../../store/assistant-response-style';
+import { background } from '@smarteverything/logging';
 export function ResponseStyleAvailability(): ReactNode {
   const store = useEntityStore();
+  const client = useQueryClient();
   const connection = useConnection();
   const profileId = useActiveProfile()?.id;
   const live = useSyncStatus().status === 'live';
   const problem = useResponseStyleProblem();
   useEffect(() => {
-    if (live) void refreshResponseStyle(store);
-  }, [store, live, connection, profileId]);
+    if (live) background(refreshResponseStyle(client, store), 'response_style.refresh_failed');
+  }, [client, store, live, connection, profileId]);
   return (
     <View className="gap-2 px-4 py-3">
       <Text variant="footnote" tone="variant">
@@ -30,7 +33,7 @@ export function ResponseStyleAvailability(): ReactNode {
           label="Try again"
           variant="text"
           onPress={() => {
-            void refreshResponseStyle(store);
+            background(refreshResponseStyle(client, store), 'response_style.refresh_failed');
           }}
         />
       )}

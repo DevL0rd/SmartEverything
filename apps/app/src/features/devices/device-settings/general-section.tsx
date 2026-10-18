@@ -3,23 +3,14 @@ import { useState } from 'react';
 import { ListRow } from '../../../components/list-row';
 import { SelectRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
-import { updateDevice, type DeviceChange } from '../../../api/devices';
+import { updateDevice } from '../../../api/devices';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { useRooms } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
+import { changeDevice } from '../data/change-device';
+import { DeviceAlertsRow } from './device-alerts-row';
 
 const NO_ROOM = 'no-room';
-
-function change(device: Device, name: string, patch: DeviceChange): void {
-  updateDevice(device.id, patch).catch((error: unknown) => {
-    notify({
-      message: `${name} was not changed`,
-      error,
-      tone: 'critical',
-    });
-  });
-}
 
 function NameRow({ device, name }: { readonly device: Device; readonly name: string }): ReactNode {
   const [request, setRequest] = useState<TextEditRequest | null>(null);
@@ -72,7 +63,7 @@ export function GeneralSection({
         ]}
         value={device.room_id ?? NO_ROOM}
         onChange={(value) => {
-          change(device, name, { room_id: value === NO_ROOM ? null : value });
+          changeDevice(device, name, { room_id: value === NO_ROOM ? null : value });
         }}
       />
       <SwitchRow
@@ -80,16 +71,17 @@ export function GeneralSection({
         icon="star"
         value={device.favourite}
         onChange={(favourite) => {
-          change(device, name, { favourite });
+          changeDevice(device, name, { favourite });
         }}
       />
+      <DeviceAlertsRow deviceId={device.id} />
       <SwitchRow
         title="Show on Home"
         subtitle="Hidden devices stay on the Devices page"
         icon="eye"
         value={!device.hidden}
         onChange={(shown) => {
-          change(device, name, { hidden: !shown });
+          changeDevice(device, name, { hidden: !shown });
         }}
       />
     </List>

@@ -1,6 +1,6 @@
 import type { SpeechTrigger } from '@smarteverything/domain';
 const WORDS = new Intl.Segmenter('und', { granularity: 'word' });
-export function speechWords(text: string, caseSensitive: boolean): readonly string[] {
+function speechWords(text: string, caseSensitive: boolean): readonly string[] {
   const normalized = text.normalize('NFC');
   const value = caseSensitive ? normalized : normalized.toLowerCase();
   return [...WORDS.segment(value)]

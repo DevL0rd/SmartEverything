@@ -1,8 +1,9 @@
 import type { Store } from '../store/store';
 import type { AssistantService } from './service';
+
 export async function removeProfileChats(
   store: Store,
-  assistant: AssistantService,
+  assistant: Pick<AssistantService, 'removeChat'>,
   profileId: string,
 ): Promise<void> {
   const chats = [false, true].flatMap((archived) => store.aiChats.chats({ profileId, archived }));

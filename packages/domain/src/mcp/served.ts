@@ -2,14 +2,31 @@ import { z } from 'zod';
 import type { McpToolSummary } from './areas';
 import type { McpPartName } from './names';
 import { SERVED_CLAUDE } from './served-claude';
+import { SERVED_IMAGES } from './served-images';
+import { SERVED_PREVIEWS } from './served-previews';
+import { SERVED_PROJECTS } from './served-projects';
 import { SERVED_AI } from './served-ai';
+import { SERVED_MACHINES } from './served-machines';
+import { SERVED_TOOL_RESULTS } from './served-tool-results';
+import { SERVED_AUTOMATIONS } from './served-automations';
 import { SERVED_HOME } from './served-home';
 import { SERVED_LIFE } from './served-life';
 import type { McpRoute } from './served-types';
 
 export type { McpRoute } from './served-types';
 
-const SERVED = [...SERVED_HOME, ...SERVED_LIFE, ...SERVED_AI, ...SERVED_CLAUDE] as const;
+const SERVED = [
+  ...SERVED_HOME,
+  ...SERVED_AUTOMATIONS,
+  ...SERVED_LIFE,
+  ...SERVED_PROJECTS,
+  ...SERVED_PREVIEWS,
+  ...SERVED_IMAGES,
+  ...SERVED_AI,
+  ...SERVED_MACHINES,
+  ...SERVED_TOOL_RESULTS,
+  ...SERVED_CLAUDE,
+] as const;
 
 export type McpToolName = (typeof SERVED)[number][0];
 

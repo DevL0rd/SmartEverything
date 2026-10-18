@@ -5,7 +5,7 @@ import { href } from '../../../app-shell/hrefs';
 import { Sparkline, TimeSeriesChart, type ChartSeries } from '../../../components/charts';
 import { ErrorState } from '../../../components/error-state';
 import { Skeleton } from '../../../components/skeleton';
-import { WidgetFrame, type WidgetSize } from '../../../components/widget-board';
+import { WidgetFrame } from '../../../components/widget-board';
 import {
   metricSources,
   seriesOf,
@@ -13,7 +13,8 @@ import {
   useAirHistory,
   type AirMetric,
 } from '../data/air-history';
-import { useClimateSources } from '../model/climate-devices';
+import { useClimateModels } from '../model/climate-devices';
+import { background } from '@smarteverything/logging';
 
 const MIN_CHART = 96;
 
@@ -46,14 +47,21 @@ function Chart({
   readonly metric: AirMetric;
   readonly room: string | null;
 }): ReactNode {
-  const sources = metricSources(useClimateSources(room), metric);
+  const sources = metricSources(useClimateModels(room), metric);
   const history = useAirHistory(sources, '24h');
   const [height, setHeight] = useState(0);
   if (history.isPending) {
     return <Skeleton shape="block" className="flex-1" />;
   }
   if (history.isError) {
-    return <ErrorState error={history.error} retry={() => void history.refetch()} />;
+    return (
+      <ErrorState
+        error={history.error}
+        retry={() => {
+          background(history.refetch(), 'history.refetch_failed');
+        }}
+      />
+    );
   }
   const unit = sources[0]?.presented.unit ?? null;
   const series = seriesOf(history.data, sources, metric, '24h');
@@ -82,18 +90,15 @@ function Chart({
 export function AirChartWidget({
   metric,
   room,
-  size,
 }: {
   readonly metric: AirMetric;
   readonly room: string | null;
-  readonly size: WidgetSize;
 }): ReactNode {
   return (
     <WidgetFrame
       title={AIR_CHART_TITLES[metric]}
       icon="activity"
       accent="viz-1"
-      size={size}
       href={href.devicesPage('air')}
     >
       <Chart metric={metric} room={room} />

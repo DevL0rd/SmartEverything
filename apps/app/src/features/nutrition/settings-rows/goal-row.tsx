@@ -10,6 +10,7 @@ import { Text } from '../../../components/text';
 import { useEntityStore } from '../../../store/store-context';
 import { saveNutritionPrefs, useNutritionPrefRead } from '../data/prefs';
 import { amountText } from '../model/macros';
+import { background } from '@smarteverything/logging';
 
 function GoalFooter({
   canClear,
@@ -69,7 +70,7 @@ function GoalSheet({
   const limit = NUTRITION_GOAL_LIMITS[goal];
   const [chosen, setChosen] = useState(value ?? limit.suggested);
   const save = (next: number | null): void => {
-    void saveNutritionPrefs(store, { [goal]: next });
+    background(saveNutritionPrefs(store, { [goal]: next }), 'nutrition_prefs.save_failed');
     onClose();
   };
   return (

@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import { TurnTimeline } from './turn-timeline';
 import type { ToolTimelineDetails } from './tool-timeline-details';
 import type { ChatTimelineEmbed } from '@smarteverything/domain';
@@ -10,10 +11,10 @@ import {
   type SettledStep,
 } from '@smarteverything/domain';
 
+const log = new Logger('hub.assistant-stream');
+const STALL_MS = 15_000;
 const FLUSH_MS = 50;
 const PARTS_PER_FRAME = 64;
-const TOOLS_PER_SNAPSHOT = 64;
-const STEPS_PER_SNAPSHOT = 40;
 
 export interface StreamTarget {
   readonly chatId: string;
@@ -45,6 +46,7 @@ class AssistantAttemptProjectionError extends Error {
 }
 export class TurnStream {
   private readonly timeline = new TurnTimeline();
+  private messageId: string | null;
   private attempt: AssistantAttempt | null = null;
   private seq = 0;
   private parts: ChatStreamPart[] = [];
@@ -52,22 +54,59 @@ export class TurnStream {
   private draft = '';
   private reasoningText = '';
   private readonly tools = new Map<string, ChatToolItem>();
+  private readonly openedAt = performance.now();
+  private lastPartAt = performance.now();
+  private firstPartMs: number | null = null;
+  private pushed = { text: 0, reasoning: 0, tool: 0 };
+  private frames = 0;
+  private stalls = 0;
 
   constructor(
     private readonly target: StreamTarget,
     private readonly emit: StreamEmit,
-    private readonly textLimit?: number,
-  ) {}
+  ) {
+    this.messageId = target.messageId;
+  }
+
+  private ids(): Record<string, unknown> {
+    return {
+      chatId: this.target.chatId,
+      turnId: this.target.turnId,
+      messageId: this.messageId,
+      profileId: this.target.profileId,
+    };
+  }
+
+  get quiet(): boolean {
+    return (
+      this.attempt === null && ![...this.tools.values()].some((tool) => tool.state === 'running')
+    );
+  }
+
+  endSegment(): void {
+    this.flush();
+    this.timeline.finish(false);
+    this.timeline.flush();
+  }
+
+  beginSegment(messageId: string): void {
+    this.messageId = messageId;
+    this.timeline.clear();
+    this.tools.clear();
+    this.draft = '';
+    this.reasoningText = '';
+    this.seq += 1;
+    this.snapshot('thinking', null, null);
+  }
 
   text(delta: string): void {
     this.timeline.text('text', delta);
     this.draft += delta;
-    if (this.textLimit !== undefined) this.draft = this.draft.slice(-this.textLimit);
     this.state = 'replying';
     this.push({ kind: 'text', delta });
   }
 
-  assistantAttempt(settlement: AssistantAttemptSettlement): boolean {
+  assistantAttempt(settlement: AssistantAttemptSettlement): void {
     if (settlement.state === 'started') {
       if (this.attempt !== null)
         throw new AssistantAttemptProjectionError(this.attempt.id, settlement.id);
@@ -78,13 +117,13 @@ export class TurnStream {
         reasoning: this.reasoningText,
         timeline: this.timeline.current(),
       };
-      return false;
+      return;
     }
     const checkpoint = this.attempt;
     if (checkpoint?.id !== settlement.id)
       throw new AssistantAttemptProjectionError(checkpoint?.id ?? null, settlement.id);
     this.attempt = null;
-    if (settlement.state === 'committed') return false;
+    if (settlement.state === 'committed') return;
     this.close();
     this.parts = [];
     this.draft = checkpoint.text;
@@ -92,10 +131,6 @@ export class TurnStream {
     this.timeline.restore(checkpoint.timeline);
     this.seq += 1;
     this.snapshot('thinking', null, null);
-    return true;
-  }
-  get content(): string {
-    return this.draft;
   }
   get spoken(): string {
     return this.draft.trim();
@@ -104,8 +139,6 @@ export class TurnStream {
   reasoning(delta: string): void {
     this.timeline.text('reasoning', delta);
     this.reasoningText += delta;
-    if (this.textLimit !== undefined)
-      this.reasoningText = this.reasoningText.slice(-this.textLimit);
     this.state = 'thinking';
     this.push({ kind: 'reasoning', delta });
   }
@@ -113,10 +146,6 @@ export class TurnStream {
   tool(item: ChatToolItem, details: ToolTimelineDetails = {}): void {
     this.timeline.tool(item, details);
     this.tools.set(item.callId, item);
-    if (this.textLimit !== undefined && this.tools.size > TOOLS_PER_SNAPSHOT) {
-      const oldest = this.tools.keys().next().value;
-      if (oldest !== undefined) this.tools.delete(oldest);
-    }
     this.push({ kind: 'tool', ...item });
     this.snapshot('tool', null, null);
   }
@@ -138,12 +167,10 @@ export class TurnStream {
       type: 'chat_activity',
       chatId: this.target.chatId,
       turnId: this.target.turnId,
-      messageId: this.target.messageId,
+      messageId: this.messageId,
       seq: this.seq,
       state: this.state,
-      steps: this.settled()
-        .map((step) => step.title)
-        .slice(-STEPS_PER_SNAPSHOT),
+      steps: this.settled().map((step) => step.title),
       draft: this.draft,
       reasoning: this.reasoningText,
       tools: [...this.tools.values()],
@@ -156,6 +183,29 @@ export class TurnStream {
     this.flush();
     if (state === 'idle' || state === 'failed') this.timeline.finish(finish === 'stopped');
     this.timeline.flush();
+    if (this.state !== state) {
+      log.debug('stream.state_changed', () => ({
+        ...this.ids(),
+        from: this.state,
+        to: state,
+        finish,
+      }));
+    }
+    if (state === 'idle' || state === 'failed') {
+      log.debug('stream.summary', () => ({
+        ...this.ids(),
+        outcome: state,
+        finish,
+        textChars: this.pushed.text,
+        reasoningChars: this.pushed.reasoning,
+        toolParts: this.pushed.tool,
+        tools: this.tools.size,
+        frames: this.frames,
+        stalls: this.stalls,
+        firstPartMs: this.firstPartMs ?? undefined,
+        durationMs: Math.round(performance.now() - this.openedAt),
+      }));
+    }
     this.state = state;
     this.finish = finish;
     this.reason = reason;
@@ -170,6 +220,26 @@ export class TurnStream {
   }
 
   private push(part: ChatStreamPart): void {
+    const now = performance.now();
+    if (this.firstPartMs === null) {
+      this.firstPartMs = Math.round(now - this.openedAt);
+      log.debug('stream.first_part', () => ({
+        ...this.ids(),
+        kind: part.kind,
+        firstPartMs: this.firstPartMs,
+      }));
+    } else if (now - this.lastPartAt > STALL_MS) {
+      this.stalls += 1;
+      log.warn('stream.resumed_after_stall', {
+        ...this.ids(),
+        gapMs: Math.round(now - this.lastPartAt),
+        kind: part.kind,
+      });
+    }
+    this.lastPartAt = now;
+    if (part.kind === 'text') this.pushed.text += part.delta.length;
+    else if (part.kind === 'reasoning') this.pushed.reasoning += part.delta.length;
+    else this.pushed.tool += 1;
     this.parts.push(part);
     if (this.parts.length >= PARTS_PER_FRAME) {
       this.flush();
@@ -185,8 +255,8 @@ export class TurnStream {
     if (this.parts.length === 0) {
       return;
     }
-    this.timeline.flush();
     const parts = this.parts.splice(0, PARTS_PER_FRAME);
+    this.frames += 1;
     this.seq += 1;
     this.emit(
       {

@@ -23,6 +23,21 @@ export interface Turn {
 
 export type Turns = Readonly<Record<string, Turn>>;
 
+export function isWorking(turn: Turn): boolean {
+  return turn.state !== 'idle' && turn.state !== 'failed';
+}
+
+export function stepOf(turn: Turn): string | null {
+  const running = turn.tools.findLast((tool) => tool.state === 'running');
+  return running?.title ?? turn.steps.at(-1) ?? null;
+}
+
+export function workKey(turn: Turn | undefined): string | null {
+  return turn === undefined || !isWorking(turn)
+    ? null
+    : `${turn.chatId}\u0000${stepOf(turn) ?? ''}`;
+}
+
 const WAITING_MAX = 200;
 
 function withTool(tools: readonly ChatToolItem[], tool: ChatToolItem): readonly ChatToolItem[] {
@@ -133,6 +148,9 @@ export function withFrame(turns: Turns, frame: ChatStreamNotice): Turns {
   if (frame.seq <= turn.seq) {
     return turns;
   }
+  if (frame.seq === turn.seq + 1 && turn.waiting.length === 0) {
+    return { ...turns, [frame.turnId]: { ...applyFrame(turn, frame), behind: false } };
+  }
   const waiting = [...turn.waiting, frame].slice(-WAITING_MAX);
   return { ...turns, [frame.turnId]: drain({ ...turn, waiting }) };
 }
@@ -142,13 +160,4 @@ export function liveTurnOf(turns: Turns, chatId: string): Turn | null {
     (turn) => turn.chatId === chatId && turn.state !== 'idle',
   );
   return running.at(-1) ?? null;
-}
-
-export function turnForReply(turns: Turns, chatId: string, replyTo: string | null): Turn | null {
-  const ofChat = Object.values(turns).filter((turn) => turn.chatId === chatId);
-  return (
-    (replyTo === null ? undefined : ofChat.find((turn) => turn.messageId === replyTo)) ??
-    ofChat.find((turn) => turn.messageId === null) ??
-    null
-  );
 }

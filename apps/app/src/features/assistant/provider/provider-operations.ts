@@ -199,7 +199,7 @@ export const PROVIDER_OPERATIONS: readonly ProviderOperation[] = [
   {
     id: 'reload_plugins',
     title: 'Reload plugins',
-    description: 'Hold changes that would invalidate the prompt cache unless explicitly disabled.',
+    description: 'Wait to apply changes that would make the next reply slower and costlier.',
     kind: 'control',
     fields: [
       {

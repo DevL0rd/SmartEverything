@@ -1,6 +1,14 @@
-import type { ReactElement, ReactNode, RefObject } from 'react';
-import { useEffect, useRef } from 'react';
-import { View, type FlatList } from 'react-native';
+import type { ComponentType, ReactElement, ReactNode, Ref, RefObject } from 'react';
+import { memo, useEffect, useRef } from 'react';
+import { useResolveClassNames } from 'uniwind';
+import { background } from '@smarteverything/logging';
+import { View } from 'react-native';
+import {
+  FlashList,
+  type FlashListProps,
+  type FlashListRef,
+  type ListRenderItem,
+} from '@shopify/flash-list';
 import Animated, { type useAnimatedScrollHandler } from 'react-native-reanimated';
 import { Interactive } from '../components/interactive';
 import { ListRow } from '../components/list-row';
@@ -92,22 +100,54 @@ function RowBody({ row, model }: RowProps): ReactNode {
   }
 }
 
-function ResultRowView(props: RowProps): ReactNode {
+function sameRow(left: SearchRow, right: SearchRow): boolean {
+  if (left === right) {
+    return true;
+  }
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => Object.is(Reflect.get(left, key), Reflect.get(right, key)))
+  );
+}
+
+interface ViewProps extends RowProps {
+  readonly selected: boolean;
+}
+
+function sameModel(a: SearchListModel, b: SearchListModel): boolean {
+  return (
+    a.look === b.look &&
+    a.catalogue === b.catalogue &&
+    a.query === b.query &&
+    a.onOpen === b.onOpen &&
+    a.onToggle === b.onToggle &&
+    a.onShowAll === b.onShowAll &&
+    a.onQuery === b.onQuery &&
+    a.onClearRecent === b.onClearRecent
+  );
+}
+
+function sameView(left: ViewProps, right: ViewProps): boolean {
+  return (
+    left.selected === right.selected &&
+    left.first === right.first &&
+    sameRow(left.row, right.row) &&
+    sameModel(left.model, right.model)
+  );
+}
+
+const ResultRowView = memo(function ResultRowView(props: ViewProps): ReactNode {
   const { row, model } = props;
   if (row.kind === 'group') {
     return <GroupRow {...props} />;
   }
   return (
-    <RowFrame
-      look={model.look}
-      edge={row.edge}
-      depth={row.depth}
-      selected={model.keyboard ? model.selectedKey === row.key : false}
-    >
+    <RowFrame look={model.look} edge={row.edge} depth={row.depth} selected={props.selected}>
       <RowBody {...props} />
     </RowFrame>
   );
-}
+}, sameView);
 
 function NoMatches({ query }: { readonly query: string }): ReactElement | null {
   if (query === '') {
@@ -126,13 +166,19 @@ function NoMatches({ query }: { readonly query: string }): ReactElement | null {
 }
 
 function useScrollToSelected(
-  list: RefObject<FlatList<SearchRow> | null>,
+  list: RefObject<FlashListRef<SearchRow> | null>,
   model: SearchListModel,
 ): void {
   const index = model.rows.findIndex((row) => row.key === model.selectedKey);
   useEffect(() => {
     if (model.navigating && index >= 0) {
-      list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
+      const current = list.current;
+      if (current !== null) {
+        background(
+          current.scrollToIndex({ index, viewPosition: 0.5, animated: true }),
+          'search.scroll_to_selected_failed',
+        );
+      }
     }
   }, [list, index, model.navigating]);
 }
@@ -152,29 +198,51 @@ export function ResultList({
   footer,
   grow = true,
 }: ResultListProps): ReactNode {
-  const list = useRef<FlatList<SearchRow>>(null);
+  const list = useRef<FlashListRef<SearchRow>>(null);
   useScrollToSelected(list, model);
-  return (
-    <Animated.FlatList
-      ref={list}
-      data={model.rows}
-      keyExtractor={(row) => row.key}
-      renderItem={({ item, index }) => (
-        <ResultRowView row={item} first={index === 0} model={model} />
-      )}
-      ListEmptyComponent={<NoMatches query={model.query} />}
-      {...(footer === undefined ? {} : { ListFooterComponent: footer })}
-      {...(onScroll === undefined ? {} : { onScroll })}
-      scrollEventThrottle={16}
-      onScrollToIndexFailed={(failed) => {
-        list.current?.scrollToOffset({ offset: failed.averageItemLength * failed.index });
-      }}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      initialNumToRender={24}
-      windowSize={7}
-      className={grow ? 'flex-1' : 'shrink grow-0'}
-      {...(contentClassName === undefined ? {} : { contentContainerClassName: contentClassName })}
+  const padding = useResolveClassNames(contentClassName ?? '');
+  const renderRow: ListRenderItem<SearchRow> = ({ item, index }) => (
+    <ResultRowView
+      key={item.key}
+      row={item}
+      first={index === 0}
+      model={model}
+      selected={model.keyboard ? model.selectedKey === item.key : false}
     />
   );
+  return (
+    <View className={grow ? 'flex-1' : 'shrink grow-0'}>
+      <AnimatedRows
+        ref={list}
+        data={model.rows}
+        keyExtractor={rowKey}
+        getItemType={rowType}
+        drawDistance={RESULT_DRAW_DISTANCE}
+        renderItem={renderRow}
+        ListEmptyComponent={<NoMatches query={model.query} />}
+        contentContainerStyle={padding}
+        {...(footer === undefined ? {} : { ListFooterComponent: footer })}
+        {...(onScroll === undefined ? {} : { onScroll })}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      />
+    </View>
+  );
+}
+
+const RESULT_DRAW_DISTANCE = 1000;
+
+const SearchRows: ComponentType<
+  FlashListProps<SearchRow> & { ref?: Ref<FlashListRef<SearchRow>> }
+> = FlashList;
+
+const AnimatedRows = Animated.createAnimatedComponent(SearchRows);
+
+function rowKey(row: SearchRow): string {
+  return row.key;
+}
+
+function rowType(row: SearchRow): SearchRow['kind'] {
+  return row.kind;
 }

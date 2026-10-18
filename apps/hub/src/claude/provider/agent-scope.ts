@@ -1,4 +1,6 @@
 import type { ProviderTurn } from '@smarteverything/domain';
+import { effectiveSettingSources } from './configured-options';
+import { managedConfiguration } from './managed-project';
 
 export function agentServerNames(turn: ProviderTurn): string[] {
   return Object.values(turn.options.agents ?? {})
@@ -11,5 +13,6 @@ export function agentServerNames(turn: ProviderTurn): string[] {
 }
 
 export function nativeSourcesEnabled(turn: ProviderTurn): boolean {
-  return (turn.options.plugins?.length ?? 0) > 0 || (turn.options.setting_sources?.length ?? 0) > 0;
+  const options = managedConfiguration(turn);
+  return (options.plugins?.length ?? 0) > 0 || effectiveSettingSources(options).length > 0;
 }

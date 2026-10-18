@@ -19,6 +19,8 @@ export interface WindowMeta {
   readonly gcCount: number | null;
   readonly gcMs: number | null;
   readonly fibers: number;
+  readonly screen: string;
+  readonly visited: string;
 }
 
 type Row = readonly unknown[];
@@ -29,7 +31,7 @@ export function safe(text: string, limit: number): string {
   return text.replace(LONG_RUN, (run) => run.slice(0, NAME_MAX)).slice(0, limit);
 }
 
-export function r1(value: number): number {
+function r1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
@@ -38,17 +40,25 @@ export function packLines(
   field: string,
   rows: readonly Row[],
 ): string[] {
+  const head = JSON.stringify({ ...base, [field]: [] }).slice(0, -2);
   const lines: string[] = [];
-  let current: Row[] = [];
-  const text = (list: readonly Row[]): string => JSON.stringify({ ...base, [field]: list });
+  let current: string[] = [];
+  let length = head.length + 2;
   for (const row of rows) {
-    if (current.length > 0 && text([...current, row]).length > LINE_MAX) {
-      lines.push(text(current));
+    const text = JSON.stringify(row);
+    const joined = length + text.length + (current.length > 0 ? 1 : 0);
+    if (current.length > 0 && joined > LINE_MAX) {
+      lines.push(`${head}${current.join(',')}]}`);
       current = [];
+      length = head.length + 2;
     }
-    current.push(row);
+    length += text.length + (current.length > 0 ? 1 : 0);
+    current.push(text);
   }
-  return current.length > 0 ? [...lines, text(current)] : lines;
+  if (current.length > 0) {
+    lines.push(`${head}${current.join(',')}]}`);
+  }
+  return lines;
 }
 
 function topKeys(counts: ReadonlyMap<string, number>): string {
@@ -142,6 +152,12 @@ function listLines(data: WindowData, context: Readonly<Record<string, unknown>>)
       stat.blankSamples === 0 ? 0 : Math.round(stat.blankSum / stat.blankSamples),
       stat.scrollFrames,
       stat.scrollJanks,
+      Math.round(stat.content),
+      Math.round(stat.viewport),
+      Math.round(stat.offsetMax),
+      Number.isFinite(stat.firstIndex) ? stat.firstIndex : -1,
+      stat.lastIndex,
+      Math.round(stat.cellMax),
     ],
     pick: (values) => [...values.entries()],
   });
@@ -222,6 +238,8 @@ function headerLine(data: WindowData, meta: WindowMeta, dropped: number): string
     t: 'w',
     b: meta.boot,
     w: meta.seq,
+    s: meta.screen,
+    vis: meta.visited,
     v: meta.version,
     th: meta.theme,
     ms: WINDOW_MS,

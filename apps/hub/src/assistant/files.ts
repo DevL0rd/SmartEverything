@@ -1,5 +1,7 @@
-import { hubFileImportForbidden } from './output-authority';
-import type { ManagedOutputs } from './managed-outputs';
+import { hubOriginated } from './turn-authority';
+import mime from 'mime-types';
+import type { ProjectFilesService } from '../projects/service';
+import { chatFolder } from '../projects/paths';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   appendFile,
@@ -12,7 +14,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, extname, join, sep } from 'node:path';
+import { basename, dirname, join, relative, sep } from 'node:path';
 import {
   ASSISTANT_ATTACHMENT_BYTES_MAX,
   ASSISTANT_UPLOAD_CHUNK_BYTES,
@@ -23,31 +25,12 @@ import type {
   AssistantChatRepository,
   StoredAttachment,
 } from '../store/repositories/assistant-chat';
-import { imageSize } from './image-size';
+import { imageSize } from './image/dimensions';
+import { attachmentNote } from '@smarteverything/domain';
 import { mediaKindOf, type MediaNotes } from '../transcripts/media-notes';
 
 const UPLOAD_LIFETIME_MS = 10 * 60_000;
 const UNATTACHED_KEPT_MS = 24 * 60 * 60_000;
-
-const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.pdf': 'application/pdf',
-  '.txt': 'text/plain',
-  '.md': 'text/markdown',
-  '.json': 'application/json',
-  '.csv': 'text/csv',
-  '.html': 'text/html',
-  '.zip': 'application/zip',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.wav': 'audio/wav',
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-};
 
 interface Upload {
   readonly id: string;
@@ -71,7 +54,7 @@ export interface FilesOptions {
   readonly dataDirectory: string;
   readonly chat: AssistantChatRepository;
   readonly now: () => Date;
-  readonly outputs?: ManagedOutputs;
+  readonly projects?: ProjectFilesService;
 }
 
 function safeName(name: string): string {
@@ -81,8 +64,9 @@ function safeName(name: string): string {
   return cleaned === '' || cleaned.startsWith('.') ? `file${cleaned}` : cleaned.slice(0, 120);
 }
 
-export function mimeOf(name: string): string {
-  return MIME_BY_EXTENSION[extname(name).toLowerCase()] ?? 'application/octet-stream';
+function mimeOf(name: string): string {
+  const type = mime.lookup(name);
+  return type === false ? 'application/octet-stream' : type;
 }
 
 function within(path: string, root: string): boolean {
@@ -91,19 +75,26 @@ function within(path: string, root: string): boolean {
 
 export class AssistantFiles {
   private readonly uploads = new Map<string, Upload>();
-  private notes: Pick<MediaNotes, 'ensure' | 'later'> | undefined;
+  private notes: Pick<MediaNotes, 'ensure' | 'later' | 'wants'> | undefined;
 
   constructor(private readonly options: FilesOptions) {}
 
-  attachMediaNotes(notes: Pick<MediaNotes, 'ensure' | 'later'>): void {
+  attachMediaNotes(notes: Pick<MediaNotes, 'ensure' | 'later' | 'wants'>): void {
     this.notes = notes;
   }
 
-  ensureMediaNote(file: StoredAttachment): Promise<string> {
-    if (file.transcript !== null) return Promise.resolve(file.transcript);
-    if (this.notes === undefined)
-      throw new ApiError('conflict', `The cached description for ${file.name} is unavailable.`);
-    return this.notes.ensure(file);
+  noteOf(file: StoredAttachment): string | null {
+    if (mediaKindOf(file.mime) === null) return file.transcript;
+    const stored = this.options.chat.attachment(file.id).transcript;
+    if (stored === null) this.notes?.later(file);
+    return stored;
+  }
+
+  noteLine(file: StoredAttachment): string {
+    const stored = this.noteOf(file);
+    return attachmentNote(file, stored, {
+      pending: stored === null && this.notes?.wants(file) === true,
+    });
   }
 
   private noted(file: StoredAttachment): StoredAttachment {
@@ -192,31 +183,40 @@ export class AssistantFiles {
       );
     }
     scope.authorize();
-    const managed = /^(workspace|temporary|transfers)(\/|$)/u.test(file.path);
-    if (!managed && hubFileImportForbidden())
+    const folder = chatFolder(this.options.dataDirectory, scope.chatId);
+    const path = within(file.path, folder) ? relative(folder, file.path) : file.path;
+    const managed = /^(workspace|temporary)(\/|$)/u.test(path);
+    if (!managed && hubOriginated())
       throw new ApiError(
         'forbidden',
-        'Hub conversations can attach only files from their admitted managed project.',
+        'Hub conversations can attach only files from their chat folder.',
       );
-    const content =
-      managed && this.options.outputs !== undefined
-        ? await this.options.outputs.read({
-            profileId,
-            chatId: scope.chatId,
-            path: file.path,
-            authorize: scope.authorize,
-          })
-        : await readFile(await this.tempFile(file.path));
+    const content = managed
+      ? await this.managedFile(profileId, scope, path)
+      : await readFile(await this.tempFile(file.path));
     const name = safeName(basename(file.path));
     return this.keepBytes({
       profileId,
-      chatId: scope.chatId,
       authorize: scope.authorize,
       name,
       mime: mimeOf(name),
       content,
       signal: new AbortController().signal,
     });
+  }
+
+  private managedFile(
+    profileId: string,
+    scope: { readonly chatId: string; readonly authorize: () => void },
+    path: string,
+  ): Promise<Buffer> {
+    if (this.options.projects === undefined)
+      throw new ApiError('conflict', 'Chat folder storage is unavailable.');
+    return this.options.projects.readFile(
+      { chatId: scope.chatId, profileId, validate: scope.authorize },
+      path,
+      ASSISTANT_ATTACHMENT_BYTES_MAX,
+    );
   }
 
   async copy(file: StoredAttachment): Promise<StoredAttachment> {
@@ -232,7 +232,6 @@ export class AssistantFiles {
   }
 
   async keepBytes(input: {
-    readonly chatId: string;
     readonly authorize: () => void;
     readonly id?: string;
     readonly profileId: string;
@@ -241,24 +240,16 @@ export class AssistantFiles {
     readonly content: Buffer;
     readonly signal: AbortSignal;
   }): Promise<StoredAttachment> {
-    if (this.options.outputs === undefined)
-      throw new ApiError('conflict', 'Managed output storage is unavailable.');
-    return this.noted(
-      await this.options.outputs.keep({
-        ...input,
-        id: input.id ?? randomUUID(),
-        name: safeName(input.name),
-      }),
-    );
+    if (input.content.length === 0 || input.content.length > ASSISTANT_ATTACHMENT_BYTES_MAX)
+      throw new ApiError('invalid_request', 'Output bytes exceed the supported attachment bound.');
+    input.signal.throwIfAborted();
+    input.authorize();
+    return this.keep({ ...input, id: input.id ?? randomUUID() });
   }
 
   async remove(files: readonly StoredAttachment[]): Promise<void> {
     await Promise.all(
-      files.map((file) =>
-        file.storage_path.startsWith('projects/') && this.options.outputs !== undefined
-          ? this.options.outputs.remove(file)
-          : rm(join(this.root, 'files', file.id), { recursive: true, force: true }),
-      ),
+      files.map((file) => rm(dirname(this.pathOf(file)), { recursive: true, force: true })),
     );
   }
 
@@ -286,12 +277,12 @@ export class AssistantFiles {
     readonly transcript?: string | null;
   }): Promise<StoredAttachment> {
     const name = safeName(input.name);
-    const relative = join('files', input.id, name);
+    const storagePath = join('files', input.id, name);
     await mkdir(join(this.root, 'files', input.id), { recursive: true, mode: 0o700 });
     const temporary = join(this.root, 'files', input.id, `.${name}.part`);
     await writeFile(temporary, input.content, { mode: 0o600 });
-    await rename(temporary, join(this.root, relative));
-    const size = input.mime.startsWith('image/') ? imageSize(input.content) : null;
+    await rename(temporary, join(this.root, storagePath));
+    const size = input.mime.startsWith('image/') ? await imageSize(input.content) : null;
     const file = this.options.chat.addAttachment({
       id: input.id,
       profile_id: input.profileId,
@@ -300,7 +291,7 @@ export class AssistantFiles {
       bytes: input.content.length,
       width: size?.width ?? null,
       height: size?.height ?? null,
-      storage_path: relative,
+      storage_path: storagePath,
       sha256: createHash('sha256').update(input.content).digest('hex'),
     });
     if (input.transcript !== undefined && input.transcript !== null) {

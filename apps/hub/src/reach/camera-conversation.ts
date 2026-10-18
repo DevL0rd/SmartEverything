@@ -5,8 +5,8 @@ import type { CameraMicrophones, OpenMicrophone } from '../talk/camera-microphon
 import type { CameraSpeakers } from '../talk/camera-speaker';
 import type { CameraVideo } from '../talk/camera-video';
 import { hostLine, once, type HostedLine, type HostedVoiceDeps } from './hosted-call';
-import { ReachRefusedError } from './reach-errors';
 import { OpusSpeech } from './voice-pacing';
+import { background } from '@smarteverything/logging';
 
 export interface CameraParts {
   readonly speakers: CameraSpeakers;
@@ -39,7 +39,7 @@ function listen(deps: CameraDeps, cameraId: string, line: HostedLine): Promise<O
         speech.free();
         if (failure !== null) {
           deps.log.warn('reach.camera_microphone_ended', { cameraId, reason: failure });
-          void line.call.end('failed');
+          background(line.call.end('failed'), 'call.end_failed');
         }
       },
     })
@@ -56,9 +56,6 @@ export async function cameraConversation(
 ): Promise<HostedCall> {
   const { cameraId, opening } = request;
   const sink = deps.camera.speakers.open(cameraId, opening.outreachId, 'assistant');
-  if (sink === null) {
-    throw new ReachRefusedError(`${request.cameraName}’s speaker is in use right now.`);
-  }
   const microphone: { current: OpenMicrophone | null } = { current: null };
   const video: { stop: () => void } = { stop: (): void => undefined };
   const close = once(() => {
@@ -68,6 +65,7 @@ export async function cameraConversation(
   });
   const line = await hostLine(deps, {
     key: `camera:${cameraId}`,
+    deviceId: cameraId,
     callId: opening.outreachId,
     caller: request.caller,
     opening,

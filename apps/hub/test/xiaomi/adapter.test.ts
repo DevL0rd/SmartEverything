@@ -33,8 +33,8 @@ describe('the Xiaomi inventory', () => {
         specType: 'urn:miot-spec-v2:device:air-purifier:0000A007:zhimi-mb5:1',
       },
     });
-    expect(byId.get('100001')?.details['polling']).toBe(
-      'lan-poll every 0.08 s: miIO and the MIoT cloud offer no push to this hub',
+    expect(byId.get('100001')?.details['updates']).toBe(
+      'starting: waiting for the device to answer the push probe',
     );
     expect(byId.get('lumi.158d0001')).toMatchObject({
       kind: 'sensor',
@@ -49,7 +49,7 @@ describe('the Xiaomi inventory', () => {
       kind: 'other',
       online: false,
       capabilities: [],
-      details: { specType: null, polling: 'none: the device has no readable MIoT properties' },
+      details: { specType: null, updates: 'none: the device has no readable MIoT properties' },
     });
     expect(byId.get('100004')?.details['specProblem']).toEqual(
       expect.stringContaining('a released MIoT spec for this model'),
@@ -64,8 +64,8 @@ describe('the Xiaomi inventory', () => {
       twoWayAudio: true,
       physicalPtz: true,
       transport: 'cloud',
-      cameraEvents: 'camera-events every 0.08 s: Xiaomi offers no event push to this hub',
     });
+    expect(camera?.details['cameraEvents']).toEqual(expect.any(String));
     expect(camera?.details['transportReason']).toEqual(
       expect.stringMatching(
         /^the LAN handshake with 127\.0\.0\.3 failed: MiioTimeoutError: The device at 127\.0\.0\.3 did not answer the miIO handshake within 150 ms\.$/,

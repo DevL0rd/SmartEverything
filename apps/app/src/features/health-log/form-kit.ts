@@ -1,4 +1,4 @@
-import type { LoggableType } from '@smarteverything/domain';
+import { HC_CODES, type HcCode, type LoggableType } from '@smarteverything/domain';
 import type { IconName } from '../../components/icon';
 
 export interface Choice {
@@ -40,28 +40,12 @@ export interface LogForm {
   readonly fixed?: Readonly<Record<string, unknown>>;
 }
 
-export function choices(...labels: readonly string[]): readonly Choice[] {
-  return labels.map((label, value) => ({ value, label }));
+export function choicesOf(codes: readonly HcCode[]): readonly Choice[] {
+  return codes.map(({ code, short }) => ({ value: code, label: short }));
 }
 
 export const NOTES: LogField = { kind: 'text', key: 'notes', label: 'Notes' };
 export const TITLE: LogField = { kind: 'text', key: 'title', label: 'Title' };
-
-const TEMPERATURE_PLACES = choices(
-  'Not set',
-  'Armpit',
-  'Finger',
-  'Forehead',
-  'Mouth',
-  'Rectum',
-  'Temple',
-  'Toe',
-  'Ear',
-  'Wrist',
-  'Vagina',
-);
-
-export const MEAL_CODES = choices('Not set', 'Breakfast', 'Lunch', 'Dinner', 'Snack');
 
 export function temperature(
   type: 'BodyTemperature' | 'BasalBodyTemperature',
@@ -89,7 +73,7 @@ export function temperature(
         kind: 'choice',
         key: 'measurementLocation',
         label: 'Measured at',
-        options: TEMPERATURE_PLACES,
+        options: choicesOf(HC_CODES.temperatureLocation),
         initial: 0,
       },
     ],

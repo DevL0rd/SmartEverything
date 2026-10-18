@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { JsonValue } from '@smarteverything/domain';
 import { userConfigHome } from './user-directories';
+import { messageOf } from '@smarteverything/logging';
 
 export class RouterMonitorImportError extends Error {
   override readonly name = 'RouterMonitorImportError';
@@ -25,7 +26,7 @@ export async function readRouterMonitorConfig(): Promise<unknown> {
     return parsed;
   } catch (error) {
     throw new RouterMonitorImportError(
-      `Router Monitor settings are not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      `Router Monitor settings are not valid JSON: ${messageOf(error)}`,
     );
   }
 }

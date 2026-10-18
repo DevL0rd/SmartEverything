@@ -25,6 +25,12 @@ const HERO_ROLES: Partial<Readonly<Record<DeviceFamily, readonly CapabilityRole[
 
 const NO_HERO_READING: ReadonlySet<DeviceFamily> = new Set(['tower_fan', 'fan', 'light']);
 
+const FIRST_READING_HERO: ReadonlySet<DeviceFamily> = new Set([
+  'sensor',
+  'presence_phone',
+  'generic',
+]);
+
 export function heroReadingOf(
   model: DeviceModel,
   values: DeviceValues,
@@ -39,7 +45,7 @@ export function heroReadingOf(
       return found;
     }
   }
-  return model.family === 'sensor' || model.family === 'generic'
+  return FIRST_READING_HERO.has(model.family)
     ? (inTier(model.presentation, 'reading').find((presented) => hasValue(values, presented)) ??
         null)
     : null;

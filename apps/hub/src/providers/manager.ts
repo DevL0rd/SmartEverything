@@ -2,31 +2,28 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   PROVIDER,
-  PROVIDER_CREDENTIALS,
-  unseal,
   type AdapterSink,
   type ProviderHubCommand,
   type JsonValue,
   type Provider,
   type ProviderAdapter,
-  type Sealed,
+  type ProviderCredentials,
   type Unsubscribe,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { LinkContext, RunContext, StoredAccount } from '../adapters/contract';
-import {
-  ProviderNotRunningError,
-  describeError,
-  type AdapterDirectory,
-} from '../commands/executor';
+import { ProviderNotRunningError, type AdapterDirectory } from '../commands/executor';
 import type { HubDatabase } from '../database/port';
 import type { SecretStore } from '../secrets/store';
 import type { EventRouter } from '../state/event-router';
 import type { Inventory } from '../state/inventory';
 import type { StateWriter } from '../state/state-writer';
 import { problemOf } from './problems';
+import { LinkCancelledError, type Attempt } from './link-attempt';
+import { adapterSink } from './adapter-sink';
 import { PromptBroker } from './prompts';
 import { linkAccount, starterFor, type ModuleRegistry } from './registry-types';
+import { background, failureLine } from '@smarteverything/logging';
 
 export interface ProviderManagerOptions {
   readonly registry: ModuleRegistry;
@@ -50,17 +47,10 @@ interface Running {
   readonly unsubscribe: Unsubscribe;
 }
 
-class CredentialsMismatchError extends Error {
-  override readonly name = 'CredentialsMismatchError';
-
-  constructor(expected: Provider, received: Provider) {
-    super(`The link command was for ${expected}, but the sealed credentials are for ${received}.`);
-  }
-}
-
 export class ProviderManager implements AdapterDirectory {
   private readonly running = new Map<Provider, Running>();
   private readonly retries = new Map<Provider, NodeJS.Timeout>();
+  private readonly attempts = new Map<Provider, Attempt>();
   private readonly prompts: PromptBroker;
 
   constructor(private readonly options: ProviderManagerOptions) {
@@ -84,16 +74,23 @@ export class ProviderManager implements AdapterDirectory {
     attempt: number,
   ): Promise<void> {
     this.cancelRetry(provider);
+    const startedAt = performance.now();
     try {
       await this.start(provider, account);
     } catch (cause) {
       const problem = problemOf(cause);
-      this.options.log.error('provider.start_failed', cause, { provider, attempt });
+      this.options.log.error('provider.start_failed', cause, {
+        provider,
+        attempt,
+        problem,
+        willRetry: problem === 'network',
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       await this.options.store.updateProviderLink(provider, {
         status: 'needs_attention',
         phase: null,
         problem,
-        lastError: describeError(cause),
+        lastError: failureLine(cause),
       });
       if (problem === 'network') {
         this.scheduleRetry(provider, account, attempt);
@@ -106,7 +103,7 @@ export class ProviderManager implements AdapterDirectory {
     this.options.log.info('provider.start_retry_scheduled', { provider, attempt, seconds });
     const timer = setTimeout(() => {
       this.retries.delete(provider);
-      void this.startStored(provider, account, attempt + 1);
+      background(this.startStored(provider, account, attempt + 1), 'stored.start_failed');
     }, seconds * 1000);
     timer.unref();
     this.retries.set(provider, timer);
@@ -119,11 +116,6 @@ export class ProviderManager implements AdapterDirectory {
 
   async handle(command: ProviderHubCommand): Promise<JsonValue> {
     switch (command.capability) {
-      case 'hub:link_provider':
-        return this.link(command.value.provider, command.value.credentials);
-      case 'hub:answer_prompt':
-        await this.prompts.answer(command.value.provider, this.unsealed(command.value.answer));
-        return { provider: command.value.provider };
       case 'hub:unlink_provider':
         await this.unlink(command.value.provider);
         return { provider: command.value.provider };
@@ -140,10 +132,6 @@ export class ProviderManager implements AdapterDirectory {
     await Promise.all([...this.running.keys()].map((provider) => this.stop(provider)));
   }
 
-  private unsealed(sealed: Sealed): string {
-    return unseal(this.options.secrets.sealingKeys(), sealed);
-  }
-
   private linkContext(provider: Provider): LinkContext {
     return {
       log: this.options.log.child({ actorId: provider }),
@@ -153,36 +141,92 @@ export class ProviderManager implements AdapterDirectory {
     };
   }
 
-  private async link(provider: Provider, sealed: Sealed): Promise<JsonValue> {
-    const credentials = PROVIDER_CREDENTIALS.parse(JSON.parse(this.unsealed(sealed)));
-    if (credentials.provider !== provider) {
-      throw new CredentialsMismatchError(provider, credentials.provider);
-    }
-    await this.options.store.updateProviderLink(provider, {
-      status: 'linking',
-      prompt: null,
-      phase: 'signing_in',
-      problem: null,
-      lastError: null,
+  async link(credentials: ProviderCredentials): Promise<JsonValue> {
+    const { provider } = credentials;
+    const attempt: Attempt = { cancelled: false };
+    this.attempts.set(provider, attempt);
+    const startedAt = performance.now();
+    this.options.log.info('provider.link_started', {
+      provider,
+      running: this.running.has(provider),
     });
     try {
+      await this.options.store.updateProviderLink(provider, {
+        status: 'linking',
+        prompt: null,
+        phase: 'signing_in',
+        problem: null,
+        lastError: null,
+      });
       const context = this.linkContext(provider);
       await mkdir(context.dataDirectory, { recursive: true, mode: 0o700 });
       const account = await linkAccount(this.options.registry, credentials, context);
+      if (attempt.cancelled) {
+        throw new LinkCancelledError(provider);
+      }
       await this.saveAccount(provider, account);
       const deviceCount = await this.start(provider, account);
+      this.options.log.info('provider.link_finished', {
+        provider,
+        deviceCount,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       return { provider, deviceCount };
     } catch (cause) {
-      this.prompts.cancel(provider);
-      await this.options.store.updateProviderLink(provider, {
-        status: 'unlinked',
-        prompt: null,
-        phase: null,
+      this.options.log.error('provider.link_failed', cause, {
+        provider,
+        cancelled: attempt.cancelled,
         problem: problemOf(cause),
-        lastError: describeError(cause),
+        durationMs: Math.round(performance.now() - startedAt),
       });
+      if (!attempt.cancelled) {
+        await this.failLink(provider, cause);
+      }
       throw cause;
+    } finally {
+      if (this.attempts.get(provider) === attempt) {
+        this.attempts.delete(provider);
+      }
     }
+  }
+
+  answer(provider: Provider, answer: string): Promise<void> {
+    return this.prompts.answer(provider, answer);
+  }
+
+  async cancelLink(provider: Provider): Promise<void> {
+    const attempt = this.attempts.get(provider);
+    if (attempt !== undefined) {
+      attempt.cancelled = true;
+    }
+    this.prompts.cancel(provider);
+    await this.options.store.updateProviderLink(provider, {
+      status: this.restingStatus(provider),
+      prompt: null,
+      phase: null,
+    });
+  }
+
+  private restingStatus(provider: Provider): 'linked' | 'needs_attention' | 'unlinked' {
+    if (!this.hasAccount(provider)) {
+      return 'unlinked';
+    }
+    return this.running.has(provider) ? 'linked' : 'needs_attention';
+  }
+
+  private hasAccount(provider: Provider): boolean {
+    return this.options.secrets.read().accounts[provider] !== undefined;
+  }
+
+  private async failLink(provider: Provider, cause: unknown): Promise<void> {
+    this.prompts.cancel(provider);
+    await this.options.store.updateProviderLink(provider, {
+      status: this.restingStatus(provider),
+      prompt: null,
+      phase: null,
+      problem: problemOf(cause),
+      lastError: failureLine(cause),
+    });
   }
 
   private async saveAccount(provider: Provider, account: StoredAccount): Promise<void> {
@@ -204,59 +248,34 @@ export class ProviderManager implements AdapterDirectory {
     };
   }
 
-  private sink(provider: Provider): AdapterSink {
-    return {
-      state: (update): void => {
-        this.options.state.push(provider, update);
-      },
-      event: (event): void => {
-        this.options.events.fromProvider(provider, event);
-      },
-      online: (externalId, online): void => {
-        this.options.inventory.setOnline(provider, externalId, online).catch((cause: unknown) => {
-          this.options.log.error('provider.online_not_applied', cause, {
-            provider,
-            externalId,
-            online,
-          });
-        });
-      },
-      devices: (devices): void => {
-        this.applyDevices(provider, devices).catch((cause: unknown) => {
-          this.options.log.error('provider.devices_not_applied', cause, {
-            provider,
-            count: devices.length,
-          });
-        });
-      },
-      failure: (failure): void => {
-        this.options.log.error('provider.failed', failure.cause, {
-          provider,
-          externalId: failure.externalId,
-          operation: failure.operation,
-        });
-        void this.options.store
-          .updateProviderLink(provider, {
-            lastError: `${failure.operation}: ${describeError(failure.cause)}`,
-          })
-          .catch((cause: unknown) => {
-            this.options.log.error('provider.error_not_recorded', cause, { provider });
-          });
-      },
-    };
-  }
-
   private async applyDevices(
     provider: Provider,
     devices: Parameters<AdapterSink['devices']>[0],
   ): Promise<number> {
     const records = await this.options.inventory.apply(provider, devices);
-    const deviceCount = this.options.inventory.devicesOf(provider).length;
-    await this.options.store.updateProviderLink(provider, { deviceCount });
+    await this.recordDeviceCount(provider);
     return records.length;
   }
 
+  private async publishDevices(
+    provider: Provider,
+    devices: Parameters<AdapterSink['devices']>[0],
+  ): Promise<void> {
+    const known = this.options.inventory.devicesOf(provider).length;
+    await this.options.inventory.apply(provider, devices);
+    if (this.options.inventory.devicesOf(provider).length !== known) {
+      await this.recordDeviceCount(provider);
+    }
+  }
+
+  private async recordDeviceCount(provider: Provider): Promise<void> {
+    const deviceCount = this.options.inventory.devicesOf(provider).length;
+    await this.options.store.updateProviderLink(provider, { deviceCount });
+  }
+
   private async start(provider: Provider, account: StoredAccount): Promise<number> {
+    const startedAt = performance.now();
+    this.options.log.info('provider.starting', { provider });
     await this.stop(provider);
     await this.options.store.updateProviderLink(provider, { phase: 'discovering' });
     const context = this.runContext(provider);
@@ -264,8 +283,17 @@ export class ProviderManager implements AdapterDirectory {
     const starter = starterFor(this.options.registry, provider);
     const adapter = await starter.start(account, context);
     this.options.prepareAdapter?.(adapter);
-    const deviceCount = await this.applyDevices(provider, await adapter.discover());
-    const unsubscribe = await adapter.subscribe(this.sink(provider));
+    const discovered = await adapter.discover();
+    const deviceCount = await this.applyDevices(provider, discovered);
+    this.options.log.debug('provider.discovered', () => ({
+      provider,
+      discovered: discovered.length,
+      deviceCount,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
+    const unsubscribe = await adapter.subscribe(
+      adapterSink(this.options, provider, (devices) => this.publishDevices(provider, devices)),
+    );
     this.running.set(provider, { adapter, unsubscribe });
     await this.refresh(provider, adapter);
     await this.options.store.updateProviderLink(provider, {
@@ -276,7 +304,11 @@ export class ProviderManager implements AdapterDirectory {
       problem: null,
       lastError: null,
     });
-    this.options.log.info('provider.started', { provider, deviceCount });
+    this.options.log.info('provider.started', {
+      provider,
+      deviceCount,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
     return deviceCount;
   }
 
@@ -284,9 +316,17 @@ export class ProviderManager implements AdapterDirectory {
     const externalIds = this.options.inventory
       .devicesOf(provider)
       .map((device) => device.externalId);
-    for (const update of await adapter.refresh(externalIds)) {
+    const startedAt = performance.now();
+    const updates = await adapter.refresh(externalIds);
+    for (const update of updates) {
       this.options.state.push(provider, update);
     }
+    this.options.log.debug('provider.refreshed', () => ({
+      provider,
+      devices: externalIds.length,
+      updates: updates.length,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
   }
 
   private async stop(provider: Provider): Promise<void> {
@@ -324,7 +364,7 @@ export class ProviderManager implements AdapterDirectory {
       return null;
     } catch (cause) {
       this.options.log.error('provider.sign_out_failed', cause, { provider });
-      return `Unlinked from this hub, but ${provider} did not end the hub's session: ${describeError(cause)}`;
+      return `Unlinked from this hub, but ${provider} did not end the hub's session: ${failureLine(cause)}`;
     }
   }
 
@@ -346,10 +386,22 @@ export class ProviderManager implements AdapterDirectory {
 
   private async rediscover(provider: Provider, running: Running): Promise<number> {
     await this.options.store.updateProviderLink(provider, { phase: 'discovering' });
+    const startedAt = performance.now();
     try {
       const deviceCount = await this.applyDevices(provider, await running.adapter.discover());
       await this.refresh(provider, running.adapter);
+      this.options.log.info('provider.rediscovered', {
+        provider,
+        deviceCount,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       return deviceCount;
+    } catch (cause) {
+      this.options.log.error('provider.rediscover_failed', cause, {
+        provider,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw cause;
     } finally {
       await this.options.store.updateProviderLink(provider, { phase: null });
     }

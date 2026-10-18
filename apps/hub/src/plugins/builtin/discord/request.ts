@@ -65,7 +65,6 @@ export function inboundOf(input: {
       tool: REPLY_TOOL_NAME,
       eventIdArg: 'eventId',
       textArg: 'text',
-      idempotencyArg: 'idempotencyKey',
       progressArg: input.progress ? 'progress' : null,
       filesArg: 'files',
     },

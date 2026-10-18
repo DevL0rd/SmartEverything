@@ -1,4 +1,4 @@
-import { captureNativeServerEnrollment } from './hub-network';
+import { withNativeEnrollment } from './hub-network';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { HEALTH_RECORD_TYPE, type HealthRecordType } from '@smarteverything/domain';
 import { z } from 'zod';
@@ -16,7 +16,6 @@ import {
   SYNC_PROGRESS,
   SYNC_REPORT,
   SYNC_SCHEDULE,
-  SYNC_TARGET,
   WRITE_REPORT,
   type EntryReport,
   type HealthConnectGrants,
@@ -25,7 +24,6 @@ import {
   type SyncProgress,
   type SyncReport,
   type SyncSchedule,
-  type SyncTarget,
   type ScaleEvent,
   type ScaleRelayStatus,
   type WriteReport,
@@ -47,7 +45,6 @@ declare class HealthConnectNative extends NativeModule<HealthConnectEvents> {
   ): Promise<unknown>;
   grantedPermissions(): Promise<unknown>;
   requestAllPermissions(): Promise<unknown>;
-  configure(endpoint: string, token: string): Promise<void>;
   syncNow(): Promise<unknown>;
   schedule(intervalMinutes: number): Promise<void>;
   cancelSchedule(): Promise<void>;
@@ -60,12 +57,12 @@ declare class HealthConnectNative extends NativeModule<HealthConnectEvents> {
   deliverEntries(): Promise<unknown>;
   startScaleRelay(): Promise<unknown>;
   stopScaleRelay(): Promise<void>;
-  configureScaleRelay(serverUrl: string, token: string, enrollment?: string): Promise<void>;
+  configureServer(serverUrl: string, token: string, enrollment: string): Promise<void>;
   healthConnectConfigured(): Promise<unknown>;
   scaleRelayStatus(): Promise<unknown>;
   startScaleLiveScan(): Promise<void>;
   stopScaleLiveScan(): Promise<void>;
-  syncWatches(serverUrl: string, token: string, enrollment?: string): Promise<unknown>;
+  syncWatches(serverUrl: string, token: string, enrollment: string): Promise<unknown>;
   startWatches(): Promise<void>;
   runPushCommand(command: string, payloadJson: string): Promise<void>;
   pauseWatch(deviceId: string, paused: boolean): Promise<void>;
@@ -152,11 +149,6 @@ export async function requestAllPermissions(): Promise<HealthConnectGrants> {
   return grants;
 }
 
-export async function configure(target: SyncTarget): Promise<void> {
-  const { endpoint, token } = SYNC_TARGET.parse(target);
-  await nativeFor('configure').configure(endpoint, token);
-}
-
 export async function syncNow(): Promise<SyncReport> {
   return SYNC_REPORT.parse(await nativeFor('syncNow').syncNow());
 }
@@ -200,11 +192,11 @@ export async function healthConnectConfigured(): Promise<boolean> {
   return GRANTED.parse(await nativeFor('healthConnectConfigured').healthConnectConfigured());
 }
 
-export async function configureScaleRelay(serverUrl: string, token: string): Promise<void> {
-  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
-  const source = nativeFor('configureScaleRelay');
-  if (enrollment === null) await source.configureScaleRelay(serverUrl, token);
-  else await source.configureScaleRelay(serverUrl, token, enrollment);
+export async function configureServer(serverUrl: string, token: string): Promise<void> {
+  const source = nativeFor('configureServer');
+  await withNativeEnrollment(serverUrl, token, (enrollment) =>
+    source.configureServer(serverUrl, token, enrollment),
+  );
 }
 
 export async function startScaleRelay(): Promise<number> {

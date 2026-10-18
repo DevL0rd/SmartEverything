@@ -1,20 +1,39 @@
 import { deviceFamily, type DeviceFamily } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
+import { Logger } from '@smarteverything/logging';
 import { cn } from '../../design/cn';
+import { LogTally } from '../../design/log-tally';
 import type { Device } from '../../store/state';
+import { useButtonVisualState, useHubVisualState } from './model/use-button-facts';
 import {
   useDeviceVisualState,
   useScaleVisualState,
   useWatchVisualState,
 } from './model/use-visual-state';
-import { useAnimationGate } from '../../design/animation-gate';
-import { useOnScreen } from '../../design/visibility';
+import { useOnScreenGate } from '../../design/visibility';
 import { VISUALS } from './registry';
 import type { VisualSize, VisualState, VisualTone } from './types';
-import { SIZE_CLASS, useVisualPx, type VisualPx } from './visual-size';
+import { FIXED_PX, SIZE_CLASS, useVisualPx, type VisualPx } from './visual-size';
 import { CameraMedia } from './visuals/camera-media';
+
+const log = new Logger('app.device-visuals');
+
+let mountedVisuals = 0;
+
+const tally = new LogTally(log, 'visual.summarised', 10_000, () => ({ mountedVisuals }));
+
+function useVisualTally(family: DeviceFamily): void {
+  useEffect(() => {
+    mountedVisuals += 1;
+    tally.bump(`mounted_${family}`);
+    return (): void => {
+      mountedVisuals -= 1;
+      tally.bump(`unmounted_${family}`);
+    };
+  }, [family]);
+}
 
 function toneOf(state: VisualState): VisualTone {
   if (!state.online) {
@@ -30,14 +49,31 @@ interface VisualViewProps {
   readonly px?: VisualPx;
 }
 
-function VisualView({ family, state, size, px: fixed }: VisualViewProps): ReactNode {
+function HeroVisualView(props: VisualViewProps): ReactNode {
+  return <SizedVisualView {...props} px={useVisualPx('hero')} />;
+}
+
+function VisualView(props: VisualViewProps): ReactNode {
+  const { size, px } = props;
+  if (px !== undefined) return <SizedVisualView {...props} px={px} />;
+  return size === 'hero' ? (
+    <HeroVisualView {...props} />
+  ) : (
+    <SizedVisualView {...props} px={FIXED_PX[size]} />
+  );
+}
+
+function SizedVisualView({
+  family,
+  state,
+  size,
+  px,
+}: VisualViewProps & { readonly px: VisualPx }): ReactNode {
   const frame = useRef<View>(null);
-  const natural = useVisualPx(size);
-  const px = fixed ?? natural;
   const tone = toneOf(state);
-  const { visible, onLayout } = useOnScreen(frame);
   const animated = tone === 'active' || (state.online && state.ambientLight === true);
-  const { moving, reduced } = useAnimationGate(animated, visible);
+  const { moving, reduced, onLayout } = useOnScreenGate(frame, animated);
+  useVisualTally(family);
   const Visual = VISUALS[family];
   return (
     <View
@@ -71,11 +107,41 @@ function WatchVisual({ device, size }: HostProps): ReactNode {
   return <VisualView family="wearable" state={useWatchVisualState(device)} size={size} />;
 }
 
+function ButtonHost({ device, size }: HostProps): ReactNode {
+  return <VisualView family="button" state={useButtonVisualState(device)} size={size} />;
+}
+
+function HubHost({ device, size }: HostProps): ReactNode {
+  return <VisualView family="gateway" state={useHubVisualState(device)} size={size} />;
+}
+
 const HOSTS: Partial<Readonly<Record<DeviceFamily, (props: HostProps) => ReactNode>>> = {
   scale: ScaleVisual,
   wearable: WatchVisual,
+  button: ButtonHost,
+  gateway: HubHost,
   camera: CameraMedia,
 };
+
+export function ownsVisualState(device: Device): boolean {
+  return HOSTS[deviceFamily(device)] !== undefined;
+}
+
+export function FamilyVisual({
+  family,
+  state,
+  size,
+  px,
+}: {
+  readonly family: DeviceFamily;
+  readonly state: VisualState;
+  readonly size: VisualSize;
+  readonly px?: VisualPx;
+}): ReactNode {
+  return (
+    <VisualView family={family} state={state} size={size} {...(px === undefined ? {} : { px })} />
+  );
+}
 
 export interface DeviceVisualProps {
   readonly device: Device;

@@ -5,7 +5,13 @@ import type {
   AiChatProvider,
   AiChatRuntimeProvider,
 } from '@smarteverything/domain';
-import type { TurnFeedback } from './turn-feedback';
+import {
+  ANSWER_LABEL,
+  APPROVAL_LABEL,
+  RECONNECTING_LABEL,
+  SWITCHING_LABEL,
+  type TurnFeedback,
+} from './turn-feedback';
 
 type NativeProvider = AiChatProvider | AiChatRuntimeProvider;
 
@@ -14,20 +20,19 @@ export function harnessFeedback(
   session: AiHarnessSession | undefined,
 ): TurnFeedback | null {
   if (session === undefined || !harnessBound(chat, session)) return null;
-  if (reconnecting(session)) return { label: 'Reconnecting…', moving: true };
+  if (reconnecting(session)) return { label: RECONNECTING_LABEL, moving: true };
   if (session.interactions.some((interaction) => interaction.kind === 'permission'))
-    return { label: 'Waiting for approval', moving: false };
-  if (session.interactions.length > 0) return { label: 'Waiting for your answer', moving: false };
-  if (session.state === 'waiting')
-    return { label: 'Waiting for the execution host…', moving: false };
-  if (session.state === 'switching') return { label: 'Switching devices…', moving: true };
+    return { label: APPROVAL_LABEL, moving: false };
+  if (session.interactions.length > 0) return { label: ANSWER_LABEL, moving: false };
+  if (session.state === 'waiting') return { label: 'Waiting for the machine…', moving: false };
+  if (session.state === 'switching') return { label: SWITCHING_LABEL, moving: true };
   return null;
 }
 
 const NATIVE_FEEDBACK: Readonly<Record<NativeProvider['state'], TurnFeedback | null>> = {
   starting: { label: 'Starting…', moving: true },
-  waiting_answer: { label: 'Waiting for your answer', moving: false },
-  waiting_approval: { label: 'Waiting for approval', moving: false },
+  waiting_answer: { label: ANSWER_LABEL, moving: false },
+  waiting_approval: { label: APPROVAL_LABEL, moving: false },
   stopping: { label: 'Stopping…', moving: true },
   unknown: { label: 'Waiting for provider status', moving: false },
   idle: null,
@@ -43,7 +48,7 @@ function promptFeedback(provider: NativeProvider): TurnFeedback | null {
   const question = ['user_input', 'question', 'elicitation', 'mcp_form', 'mcp_url'].includes(
     prompt.kind,
   );
-  return { label: question ? 'Waiting for your answer' : 'Waiting for approval', moving: false };
+  return { label: question ? ANSWER_LABEL : APPROVAL_LABEL, moving: false };
 }
 
 export function nativeFeedback(

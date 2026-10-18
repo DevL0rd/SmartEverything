@@ -1,17 +1,20 @@
 import {
-  currentExecutionAuthorities,
-  executionRole,
-  validateExecutionAuthority,
+  currentExecutionAuthority,
+  hubOriginated,
   withExecutionAuthority,
-} from '../assistant/execution-authority';
-import { API_ENDPOINTS } from '@smarteverything/domain';
+} from '../assistant/turn-authority';
+import { HubLocalBoundary } from '../harness/hub-local-boundary';
 import type { Store } from '../store/store';
 import { ApiError, type EndpointName } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { operationRefusal } from '../ai-tools/plugin-turn';
 import type { Caller } from './auth';
+import { admitConfined } from './confinement';
+import { assertOwnerRoute } from './owner-route';
+import { assertScopeRoute } from './person-scope';
 import { issuesOf } from './errors';
 import type { Bound } from './router';
+import { messageOf } from '@smarteverything/logging';
 
 export interface OperationInput {
   readonly params?: Readonly<Record<string, string>>;
@@ -43,20 +46,15 @@ function queryOf(query: Readonly<Record<string, unknown>>): Record<string, strin
 }
 
 export class Operations {
-  private executionAdmission:
-    ((name: string, args: Readonly<Record<string, unknown>>) => void) | null = null;
-  bindExecutionAdmission(
-    admit: (name: string, args: Readonly<Record<string, unknown>>) => void,
-  ): void {
-    this.executionAdmission = admit;
-  }
-  private store: Store | null = null;
-  bindServiceAuthority(store: Store): void {
-    this.store = store;
-  }
+  private readonly boundary: HubLocalBoundary;
   private table: ReadonlyMap<string, Bound> | null = null;
 
-  constructor(private readonly log: Logger) {}
+  constructor(
+    private readonly log: Logger,
+    private readonly store: Store,
+  ) {
+    this.boundary = new HubLocalBoundary(store);
+  }
 
   attach(table: Readonly<Record<string, Bound | undefined>>): void {
     this.table = new Map(
@@ -92,13 +90,23 @@ export class Operations {
   }
 
   private admit(name: EndpointName, caller: Caller, input: OperationInput): void {
-    this.executionAdmission?.(name, {
-      params: input.params ?? {},
-      body: input.body ?? null,
-      query: input.query ?? {},
-    });
-    if (caller.kind === 'service') this.admitService(name, caller);
-    this.admitInherited(name);
+    const authority = caller.kind === 'service' ? caller.authority : currentExecutionAuthority();
+    if (hubOriginated(authority)) {
+      const refusal = withExecutionAuthority(authority, () =>
+        this.boundary.refusal('call_operation', {
+          operation: name,
+          arguments: {
+            params: input.params ?? {},
+            body: input.body ?? null,
+            query: input.query ?? {},
+          },
+        }),
+      );
+      if (refusal !== undefined) throw new ApiError('forbidden', refusal);
+    }
+    assertOwnerRoute(this.store, caller, this.bound(name).endpoint);
+    assertScopeRoute(this.store, caller, this.bound(name).endpoint, input.params ?? {});
+    admitConfined(this.store, name, caller, input);
     const refusal =
       (caller.kind === 'client' || caller.kind === 'service') &&
       caller.pluginRequester !== undefined
@@ -108,32 +116,23 @@ export class Operations {
       throw refusal;
     }
   }
-  private admitInherited(name: EndpointName): void {
-    if (this.store !== null)
-      for (const scope of currentExecutionAuthorities()) {
-        if (
-          API_ENDPOINTS[name].access !== 'member' &&
-          API_ENDPOINTS[name].access !== 'public' &&
-          executionRole(this.store, scope) !== 'owner'
-        )
-          throw new ApiError(
-            'forbidden',
-            'Inherited authority does not grant owner/device operations.',
-          );
-      }
-  }
-  private admitService(name: EndpointName, caller: Extract<Caller, { kind: 'service' }>): void {
-    if (this.store === null)
-      throw new ApiError('forbidden', 'Internal service authority is not bound.');
-    validateExecutionAuthority(this.store, caller.authority);
-    if (API_ENDPOINTS[name].access !== 'member' && API_ENDPOINTS[name].access !== 'public')
-      throw new ApiError(
-        'forbidden',
-        'This initiating service grant does not authorize owner/device access.',
-      );
-  }
   run(name: EndpointName, caller: Caller, input: OperationInput): Promise<unknown> {
-    this.admit(name, caller, input);
+    const startedAt = performance.now();
+    const who = {
+      operation: name,
+      callerKind: caller.kind,
+      clientId: caller.kind === 'client' ? caller.client.id : null,
+    };
+    try {
+      this.admit(name, caller, input);
+    } catch (cause) {
+      this.log.warn('operation.refused', {
+        ...who,
+        errorName: cause instanceof Error ? cause.name : 'unknown',
+        reason: messageOf(cause).slice(0, 200),
+      });
+      throw cause;
+    }
     const run = (): Promise<unknown> =>
       this.bound(name).run(
         caller,
@@ -145,6 +144,25 @@ export class Operations {
         },
         this.log,
       );
-    return caller.kind === 'service' ? withExecutionAuthority(caller.authority, run) : run();
+    const running =
+      caller.kind === 'service' ? withExecutionAuthority(caller.authority, run) : run();
+    return running.then(
+      (value) => {
+        this.log.debug('operation.finished', () => ({
+          ...who,
+          durationMs: Math.round(performance.now() - startedAt),
+        }));
+        return value;
+      },
+      (cause: unknown) => {
+        this.log.warn('operation.failed', {
+          ...who,
+          durationMs: Math.round(performance.now() - startedAt),
+          errorName: cause instanceof Error ? cause.name : 'unknown',
+          reason: messageOf(cause).slice(0, 200),
+        });
+        throw cause;
+      },
+    );
   }
 }

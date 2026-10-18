@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
   HEIGHT_LIMITS,
   type ProfileChange,
@@ -11,7 +12,9 @@ import { ListRow } from '../../components/list-row';
 import { NumberStepper } from '../../components/number-stepper';
 import { SelectRow } from '../../components/rows';
 import { notify } from '../../components/toast-store';
-import { TextEditSheet, type TextEditRequest } from '../../settings/text-edit-sheet';
+import { useCommittedNumber } from '../../design/use-committed-number';
+import { dateFormat } from '../../format/locale';
+import { AddHeightSheet, BirthDateSheet } from './body-sheets';
 
 type SexChoice = Sex | 'unset';
 
@@ -21,28 +24,42 @@ const SEX_OPTIONS = [
   { value: 'male', label: 'Male' },
 ] as const;
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-export function saveProfile(profileId: string, change: ProfileChange): void {
-  updateProfile(profileId, change).catch((error: unknown) => {
-    notify({ message: 'The profile was not changed', error, tone: 'critical' });
+export function useProfileSave(profileId: string): {
+  readonly save: (change: ProfileChange, onSaved?: () => void) => void;
+  readonly saveAsync: (change: ProfileChange) => Promise<unknown>;
+} {
+  const mutation = useMutation({
+    mutationFn: (change: ProfileChange) => updateProfile(profileId, change),
+    onError: (error): void => {
+      notify({ message: 'The profile was not changed', error, tone: 'critical' });
+    },
   });
+  return {
+    save: (change, onSaved): void => {
+      mutation.mutate(change, onSaved === undefined ? {} : { onSuccess: onSaved });
+    },
+    saveAsync: mutation.mutateAsync,
+  };
 }
 
 function birthText(birthDate: string | null): string {
   if (birthDate === null) {
     return 'Not set';
   }
-  return new Date(`${birthDate}T12:00:00Z`).toLocaleDateString(undefined, {
+  return dateFormat({
     day: 'numeric',
     month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
-  });
+  }).format(new Date(`${birthDate}T12:00:00Z`));
 }
 
 function BirthDate({ profile }: { readonly profile: ProfileRow }): ReactNode {
-  const [request, setRequest] = useState<TextEditRequest | null>(null);
+  const [open, setOpen] = useState(false);
+  const { save } = useProfileSave(profile.id);
+  const close = (): void => {
+    setOpen(false);
+  };
   return (
     <>
       <ListRow
@@ -51,47 +68,31 @@ function BirthDate({ profile }: { readonly profile: ProfileRow }): ReactNode {
         value={birthText(profile.birth_date)}
         chevron
         onPress={() => {
-          setRequest({
-            title: 'Birth date',
-            label: 'Birth date',
-            initial: profile.birth_date ?? '',
-            placeholder: '1990-05-01',
-            confirmLabel: 'Save',
-            maxLength: 10,
-            helper: 'Year, month and day, like 1990-05-01',
-            problemOf: (text) =>
-              DATE.test(text) && !Number.isNaN(Date.parse(text)) ? null : 'Use the form 1990-05-01',
-            save: (text) => updateProfile(profile.id, { birth_date: text }).then(() => undefined),
-          });
+          setOpen(true);
         }}
       />
-      <TextEditSheet
-        request={request}
-        onClose={() => {
-          setRequest(null);
-        }}
-      />
+      {open ? (
+        <BirthDateSheet
+          birthDate={profile.birth_date}
+          onClose={close}
+          onSave={(birthDate) => {
+            save({ birth_date: birthDate }, close);
+          }}
+        />
+      ) : null}
     </>
   );
 }
 
-const TYPICAL_HEIGHT_CM = 170;
-
-function Height({ profile }: { readonly profile: ProfileRow }): ReactNode {
-  const height = profile.height_cm;
-  if (height === null) {
-    return (
-      <ListRow
-        icon="ruler"
-        title="Height"
-        value="Add"
-        chevron
-        onPress={() => {
-          saveProfile(profile.id, { height_cm: TYPICAL_HEIGHT_CM });
-        }}
-      />
-    );
-  }
+function HeightStepper({
+  profileId,
+  height,
+}: {
+  readonly profileId: string;
+  readonly height: number;
+}): ReactNode {
+  const { saveAsync } = useProfileSave(profileId);
+  const committed = useCommittedNumber(height, (cm) => saveAsync({ height_cm: cm }));
   return (
     <ListRow
       icon="ruler"
@@ -103,17 +104,48 @@ function Height({ profile }: { readonly profile: ProfileRow }): ReactNode {
           min={HEIGHT_LIMITS.min}
           max={HEIGHT_LIMITS.max}
           step={1}
-          value={height}
-          onChange={(next) => {
-            saveProfile(profile.id, { height_cm: next });
-          }}
+          value={committed.shown}
+          onChange={committed.set}
         />
       }
     />
   );
 }
 
+function Height({ profile }: { readonly profile: ProfileRow }): ReactNode {
+  const [adding, setAdding] = useState(false);
+  const { save } = useProfileSave(profile.id);
+  if (profile.height_cm !== null) {
+    return <HeightStepper profileId={profile.id} height={profile.height_cm} />;
+  }
+  const close = (): void => {
+    setAdding(false);
+  };
+  return (
+    <>
+      <ListRow
+        icon="ruler"
+        title="Height"
+        value="Add"
+        chevron
+        onPress={() => {
+          setAdding(true);
+        }}
+      />
+      {adding ? (
+        <AddHeightSheet
+          onClose={close}
+          onSave={(heightCm) => {
+            save({ height_cm: heightCm }, close);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
+
 export function BodyDetails({ profile }: { readonly profile: ProfileRow }): ReactNode {
+  const { save } = useProfileSave(profile.id);
   return (
     <>
       <SelectRow<SexChoice>
@@ -122,7 +154,7 @@ export function BodyDetails({ profile }: { readonly profile: ProfileRow }): Reac
         options={SEX_OPTIONS}
         value={profile.sex ?? 'unset'}
         onChange={(choice) => {
-          saveProfile(profile.id, { sex: choice === 'unset' ? null : choice });
+          save({ sex: choice === 'unset' ? null : choice });
         }}
       />
       <BirthDate profile={profile} />

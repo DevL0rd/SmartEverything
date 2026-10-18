@@ -1,5 +1,6 @@
 package expo.modules.healthconnect.network
 
+import expo.modules.healthconnect.diagnostics.NativeLog
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.SimpleChannelInboundHandler
 import io.netty.handler.codec.http.*
@@ -31,19 +32,16 @@ class HubResourceHttp(private val broker: HubResourceBroker) : SimpleChannelInbo
         }
         else -> error("Unexpected HTTP message")
       }
-    } catch (failure: Exception) { if (admitted) context.close() else reject(context) }
+    } catch (failure: Exception) {
+      NativeLog.warn("hub-resource", "request.refused", failure) { mapOf("admitted" to admitted, "method" to request?.method()?.name()) }
+      if (admitted) context.close() else reject(context)
+    }
   }
   private fun validate(input: HttpRequest) {
     require(input.protocolVersion() == HttpVersion.HTTP_1_1)
     require(input.method() == HttpMethod.GET || input.method() == HttpMethod.HEAD)
     require(Regex("/resource/[0-9a-f]{64}").matches(input.uri()))
     val headers = input.headers()
-    require(headers.size() <= 24 && headers.getAll("Host") == listOf("127.0.0.1:${broker.port}"))
-    require(headers.getAll("Origin").isEmpty()) { "Browser origins cannot consume native media grants" }
-    headers.names().forEach { name ->
-      require(name.lowercase() in ALLOWED_HEADERS && headers.getAll(name).size == 1)
-      require(headers.get(name).length <= 4096)
-    }
     require(!headers.contains("Transfer-Encoding") && !headers.contains("Expect"))
     require(!headers.contains("Content-Length") || headers.get("Content-Length") == "0")
     grant = broker.grants.get(input.uri().removePrefix("/resource/"))
@@ -58,6 +56,7 @@ class HubResourceHttp(private val broker: HubResourceBroker) : SimpleChannelInbo
     context.channel().config().isAutoRead = true
     val upstream = HubResourceStream.request(selected, input.headers())
     call = upstream
+    NativeLog.debug("hub-resource", "request.admitted") { mapOf("method" to input.method().name(), "ranged" to input.headers().contains("Range")) }
     try { broker.io.execute { HubResourceStream.relay(broker.grants, selected, upstream, input.method() == HttpMethod.HEAD, context) } }
     catch (failure: RejectedExecutionException) { upstream.cancel(); selected.untrack(upstream); reject(context) }
   }
@@ -68,8 +67,4 @@ class HubResourceHttp(private val broker: HubResourceBroker) : SimpleChannelInbo
   }
   override fun channelInactive(context: ChannelHandlerContext) { admissionDeadline?.cancel(false); call?.cancel(); grant?.untrack(context.channel()) }
   override fun exceptionCaught(context: ChannelHandlerContext, cause: Throwable) { context.close() }
-  companion object {
-    private val ALLOWED_HEADERS = setOf("host", "range", "if-range", "if-none-match", "if-modified-since", "if-match", "if-unmodified-since",
-      "accept", "accept-encoding", "user-agent", "connection", "content-length")
-  }
 }

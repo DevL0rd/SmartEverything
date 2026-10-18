@@ -1,33 +1,24 @@
-import type { HealthRecord } from '@smarteverything/domain';
+import { HC_CODES, hcLabel, type HealthRecord } from '@smarteverything/domain';
 import { hoursMinutes } from '../../../format/time';
 import type { Trend } from './aggregate';
 import { formatReading, seriesOfType } from './catalogue';
 import { exerciseKindOf } from '../../health-log';
-import { pointsOfRecord, type Point } from './points';
-import type { SeriesSpec } from './series-spec';
-import { count, signed } from '../../../format/number';
-
-const FLOW = ['Unknown flow', 'Light flow', 'Medium flow', 'Heavy flow'];
-const OVULATION = ['Inconclusive', 'Positive', 'High', 'Negative'];
-const MUCUS = ['Unknown', 'Dry', 'Sticky', 'Creamy', 'Watery', 'Egg white', 'Unusual'];
-const PROTECTION = ['Protection not recorded', 'Protected', 'Unprotected'];
-
-function labelOf(labels: readonly string[], code: number): string {
-  return labels[code] ?? `Code ${String(code)}`;
-}
+import type { Point } from './readers';
+import { isOccurrence, type SeriesSpec } from './series-spec';
+import { count, signed, withUnit } from '../../../format/number';
 
 function categorical(record: HealthRecord): string | null {
   if (record.type === 'MenstruationFlow') {
-    return labelOf(FLOW, record.data.flow);
+    return hcLabel(HC_CODES.flow, record.data.flow);
   }
   if (record.type === 'OvulationTest') {
-    return labelOf(OVULATION, record.data.result);
+    return hcLabel(HC_CODES.ovulationResult, record.data.result);
   }
   if (record.type === 'CervicalMucus') {
-    return labelOf(MUCUS, record.data.appearance);
+    return hcLabel(HC_CODES.mucusAppearance, record.data.appearance);
   }
   if (record.type === 'SexualActivity') {
-    return labelOf(PROTECTION, record.data.protectionUsed);
+    return hcLabel(HC_CODES.protection, record.data.protectionUsed);
   }
   if (record.type === 'MindfulnessSession' || record.type === 'Nutrition') {
     return record.type === 'Nutrition' ? record.data.name : record.data.title;
@@ -39,10 +30,10 @@ function categorical(record: HealthRecord): string | null {
 }
 
 function measured(spec: SeriesSpec, points: readonly Point[], first: Point): string {
-  if (spec.read.kind === 'field' && spec.read.second !== undefined) {
-    return `${count(first.value)}/${count(first.low)} ${spec.unit}`;
+  if (spec.read === 'pair') {
+    return withUnit(`${count(first.value)}/${count(first.low)}`, spec.unit);
   }
-  if (spec.read.kind === 'samples') {
+  if (spec.read === 'samples') {
     const mean = points.reduce((sum, point) => sum + point.value, 0) / points.length;
     return `${formatReading(spec, mean)} · ${String(points.length)} samples`;
   }
@@ -55,19 +46,19 @@ function joined(label: string | null, shown: string): string {
 
 export function recordSummary(record: HealthRecord): string {
   const spec = seriesOfType(record.type);
-  const points = pointsOfRecord(spec, record);
+  const points = spec.pointsOf(record);
   const label = categorical(record);
   const first = points[0];
-  if (first === undefined || spec.read.kind === 'occurrence') {
+  if (first === undefined || isOccurrence(spec)) {
     return label ?? spec.label;
   }
-  if (spec.read.kind === 'duration') {
+  if (spec.read === 'duration') {
     return joined(label, hoursMinutes(first.value));
   }
   return joined(label, measured(spec, points, first));
 }
 
-export function trendWords(spec: SeriesSpec, trend: Trend | null, withUnit: boolean): string {
+export function trendWords(spec: SeriesSpec, trend: Trend | null, showUnit: boolean): string {
   if (trend === null) {
     return 'no earlier data';
   }
@@ -79,8 +70,7 @@ export function trendWords(spec: SeriesSpec, trend: Trend | null, withUnit: bool
     return '→ steady';
   }
   const arrow = trend.direction === 'up' ? '↑' : '↓';
-  const unit = withUnit && spec.unit !== '' ? ` ${spec.unit}` : '';
-  const amount = `${change}${unit}`;
+  const amount = withUnit(change, showUnit ? spec.unit : '');
   return trend.percent === null
     ? `${arrow} ${amount}`
     : `${arrow} ${amount} (${signed(trend.percent, 0)}%)`;

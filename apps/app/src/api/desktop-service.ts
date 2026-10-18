@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
-import type {
-  DesktopFfmpeg,
-  DesktopServiceLogs,
-  DesktopServiceStatus,
-} from '@smarteverything/domain';
+import { type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../queries/use-screen-query';
+import type { DesktopServiceLogs, DesktopServiceStatus } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { DesktopBridge } from '../design/platform';
-import { FFMPEG_KEY, SERVICE_LOG_TAIL_KEY } from '../queries/keys';
+import { SERVICE_LOG_TAIL_KEY } from '../queries/keys';
 import { rawErrorText } from '../format/errors';
 
 const log = new Logger('app.desktop-service');
@@ -48,10 +45,6 @@ export function useServiceStatus(bridge: DesktopBridge): {
   };
 }
 
-export function useFfmpeg(bridge: DesktopBridge): UseQueryResult<DesktopFfmpeg> {
-  return useQuery({ queryKey: FFMPEG_KEY, queryFn: () => bridge.checkFfmpeg() });
-}
-
 export function useServiceLogTail(bridge: DesktopBridge): UseQueryResult<DesktopServiceLogs> {
-  return useQuery({ queryKey: SERVICE_LOG_TAIL_KEY, queryFn: () => bridge.serviceLogs() });
+  return useScreenQuery({ queryKey: SERVICE_LOG_TAIL_KEY, queryFn: () => bridge.serviceLogs() });
 }

@@ -1,4 +1,3 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import {
@@ -10,20 +9,18 @@ import {
   type MiotSpecIndex,
 } from '@smarteverything/xiaomi';
 import type { z } from 'zod';
-import type { Fetch } from './dependencies';
+import type { FetchLike } from '../../plugins/builtin/fetch-like';
+import { cachedJson, refreshJson } from '../../fs-util';
+import { failureLine } from '@smarteverything/logging';
 
 const INDEX_FILE = 'miot-spec-index.json';
 const SPEC_DIRECTORY = 'miot-specs';
 
 export interface SpecStoreOptions {
-  readonly fetch: Fetch;
+  readonly fetch: FetchLike;
   readonly baseUrl: string;
   readonly directory: string;
   readonly log: Logger;
-}
-
-function isMissingFile(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 export class SpecStore {
@@ -64,18 +61,22 @@ export class SpecStore {
     return `${this.options.baseUrl}/miot-spec-v2/instances?status=released`;
   }
 
-  private async cached<T>(file: string, url: string, schema: z.ZodType<T>): Promise<T> {
-    try {
-      return schema.parse(JSON.parse(await readFile(file, 'utf8')));
-    } catch (error) {
-      if (!isMissingFile(error)) {
-        this.options.log.warn('miot_spec.cache_unreadable', { file, reason: String(error) });
-      }
-      return this.download(file, url, schema);
-    }
+  private cached<T>(file: string, url: string, schema: z.ZodType<T>): Promise<T> {
+    return cachedJson(
+      file,
+      schema,
+      () => this.fetchJson(file, url),
+      (cause) => {
+        this.options.log.warn('miot_spec.cache_unreadable', { file, reason: failureLine(cause) });
+      },
+    );
   }
 
-  private async download<T>(file: string, url: string, schema: z.ZodType<T>): Promise<T> {
+  private download<T>(file: string, url: string, schema: z.ZodType<T>): Promise<T> {
+    return refreshJson(file, schema, () => this.fetchJson(file, url));
+  }
+
+  private async fetchJson(file: string, url: string): Promise<unknown> {
     if (file.endsWith(INDEX_FILE)) {
       this.indexFetched = true;
     }
@@ -83,10 +84,8 @@ export class SpecStore {
     if (response.status !== 200) {
       throw new MiotSpecError(url, 'HTTP 200', `HTTP ${String(response.status)}`);
     }
-    const parsed = schema.parse(await response.json());
-    await mkdir(join(file, '..'), { recursive: true });
-    await writeFile(file, JSON.stringify(parsed));
+    const body: unknown = await response.json();
     this.options.log.info('miot_spec.cached', { url });
-    return parsed;
+    return body;
   }
 }

@@ -5,12 +5,13 @@ import {
   microwaveReadiness,
   microwaveProgramError,
   type MicrowaveProgram,
-  microwaveRemaining,
+  microwaveSecondsLeft,
   microwavePowerOptions,
   type MicrowaveMode,
   type JsonValue,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import { playTime } from '../../../format/time';
 import type { Device, DeviceValues } from '../../../store/state';
 
 export function microwaveValues(
@@ -20,6 +21,7 @@ export function microwaveValues(
 }
 export interface MicrowaveConfiguration {
   readonly modes: readonly MicrowaveMode[];
+  readonly applied: string | undefined;
   readonly problem: string | null;
   readonly supportedPower: JsonValue | undefined;
   readonly unit: string;
@@ -31,7 +33,9 @@ export function microwaveConfiguration(
   const spec = MICROWAVE_SPECIFICATION.safeParse(values[MICROWAVE_KEYS.specification]?.value);
   const supported = z.array(z.string()).safeParse(values[MICROWAVE_KEYS.supportedModes]?.value);
   const unit = temperatureUnit(device);
+  const applied = values[MICROWAVE_KEYS.mode]?.value;
   return {
+    applied: typeof applied === 'string' ? applied : undefined,
     modes:
       spec.success && supported.success
         ? spec.data.single.filter((mode) => supported.data.includes(mode.mode))
@@ -47,13 +51,20 @@ export function microwaveConfiguration(
 export function microwaveReason(device: Device, values: DeviceValues): string | null {
   return device.online ? microwaveReadiness(microwaveValues(values)) : 'The microwave is offline.';
 }
+export function programPowerOptions(
+  mode: MicrowaveMode,
+  config: MicrowaveConfiguration,
+): readonly string[] {
+  return mode.mode === config.applied
+    ? microwavePowerOptions(mode, config.supportedPower)
+    : (mode.supportedOptions.powerLevel?.supportedValues ?? []);
+}
 export function microwaveModeLabel(mode: string): string {
   return MICROWAVE_MODE_LABELS[mode] ?? mode;
 }
 export function microwaveStateLine(values: DeviceValues): string {
   const state = values[MICROWAVE_KEYS.state]?.value;
-  const job = values[MICROWAVE_KEYS.job]?.value;
-  if (job === 'finished') {
+  if (values[MICROWAVE_KEYS.job]?.value === 'finished') {
     return 'Finished';
   }
   const labels: Readonly<Record<string, string>> = {
@@ -61,9 +72,9 @@ export function microwaveStateLine(values: DeviceValues): string {
     running: 'Cooking',
     paused: 'Paused',
   };
-  const remaining = microwaveRemaining(microwaveValues(values));
+  const left = microwaveSecondsLeft(microwaveValues(values));
   const label = typeof state === 'string' ? (labels[state] ?? state) : 'Waiting for cooking state';
-  return remaining === null ? label : `${label} · ${remaining} remaining`;
+  return left === null ? label : `${label} · ${playTime(left)} left`;
 }
 export function initialProgram(
   mode: MicrowaveMode,
@@ -74,7 +85,7 @@ export function initialProgram(
   readonly power: string;
   readonly temperature: number;
 } {
-  const powers = microwavePowerOptions(mode, config.supportedPower);
+  const powers = programPowerOptions(mode, config);
   const suggested = mode.supportedOptions.powerLevel?.default;
   return {
     mode: mode.mode,
@@ -106,12 +117,8 @@ export function reportedProgram(
     power: typeof power === 'string' ? power : initial.power,
     temperature: typeof temperature === 'number' ? temperature : initial.temperature,
   };
-  return microwaveProgramError(
-    reported,
-    mode,
-    microwavePowerOptions(mode, config.supportedPower),
-    config.unit,
-  ) === null
+  return microwaveProgramError(reported, mode, programPowerOptions(mode, config), config.unit) ===
+    null
     ? reported
     : initial;
 }

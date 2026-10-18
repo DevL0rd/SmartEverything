@@ -9,15 +9,13 @@ import {
   STOP_REQUEST_FILE,
   SUPERVISOR_PID_FILE,
 } from '@smarteverything/hub/service/configuration';
-import { LAUNCH_AGENT_LABEL, SYSTEMD_UNIT } from './definitions.js';
+import { HUB_SERVICE_NAMES, type ServiceNames } from './definitions.js';
 
 const WINDOWS_LAUNCHER_FILE = 'service-launch.js';
-export const SYSTEMD_SYSTEM_DIRECTORY = '/etc/systemd/system';
 
 export interface ServiceLocations {
   readonly dataDirectory: string;
   readonly unitFile: string;
-  readonly systemUnitFile: string;
   readonly launchAgentFile: string;
   readonly windowsLauncherFile: string;
   readonly configFile: string;
@@ -36,7 +34,7 @@ export interface LocationInput {
   readonly xdgConfigHome: string | undefined;
 }
 
-export function systemdUserDirectory(input: LocationInput): string {
+function systemdUserDirectory(input: LocationInput): string {
   const configured = input.xdgConfigHome;
   const base =
     configured !== undefined && path.isAbsolute(configured)
@@ -45,17 +43,23 @@ export function systemdUserDirectory(input: LocationInput): string {
   return path.join(base, 'systemd', 'user');
 }
 
-export function serviceLocations(input: LocationInput): ServiceLocations {
+export function companionDirectory(dataDirectory: string): string {
+  return `${dataDirectory}-node`;
+}
+
+export function serviceLocations(
+  input: LocationInput,
+  names: ServiceNames = HUB_SERVICE_NAMES,
+): ServiceLocations {
   const inData = (file: string): string => path.join(input.dataDirectory, file);
   return {
     dataDirectory: input.dataDirectory,
-    unitFile: path.join(systemdUserDirectory(input), SYSTEMD_UNIT),
-    systemUnitFile: path.join(SYSTEMD_SYSTEM_DIRECTORY, SYSTEMD_UNIT),
+    unitFile: path.join(systemdUserDirectory(input), names.unit),
     launchAgentFile: path.join(
       input.home,
       'Library',
       'LaunchAgents',
-      `${LAUNCH_AGENT_LABEL}.plist`,
+      `${names.launchAgentLabel}.plist`,
     ),
     windowsLauncherFile: inData(WINDOWS_LAUNCHER_FILE),
     configFile: inData(SERVICE_CONFIG_FILE),

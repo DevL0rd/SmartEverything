@@ -1,5 +1,6 @@
 import type { ImageOperationReceipt } from '@smarteverything/domain';
 import type { MessageItem } from '../../data/thread';
+import { compareText } from '../../../../format/text';
 
 export interface ImageOperationItem {
   readonly type: 'image-operation';
@@ -12,6 +13,7 @@ export function withImageOperations(
   items: readonly MessageItem[],
   receipts: readonly ImageOperationReceipt[],
 ): readonly (MessageItem | ImageOperationItem)[] {
+  if (receipts.length === 0) return items;
   const messageIds = new Set(receipts.map(resultMessageId));
   const messages = items.filter((item) => !messageIds.has(item.row.id));
   const operations = receipts
@@ -23,7 +25,7 @@ export function withImageOperations(
       message: items.find((item) => item.row.id === resultMessageId(receipt)) ?? null,
     }));
   const chronological = [...messages, ...operations].sort((left, right) =>
-    createdAt(right).localeCompare(createdAt(left)),
+    compareText(createdAt(right), createdAt(left)),
   );
   return chronological;
 }

@@ -5,7 +5,7 @@ import {
   type ReachTarget,
   type TalkChannelRow,
 } from '@smarteverything/domain';
-import type { PluginSpeaker, PluginSpeakers } from '../plugins/plugin-reach';
+import type { PluginSpeaker, PluginSpeakers } from '../plugins/plugin-speakers';
 import { clientsOf, deviceName, type PresenceStore } from './presence';
 import { ReachRefusedError } from './reach-errors';
 import type { Asker } from './reach-guards';

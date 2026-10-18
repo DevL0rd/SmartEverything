@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import expo.modules.healthconnect.CredentialSlot
 import expo.modules.healthconnect.Credentials
+import expo.modules.healthconnect.diagnostics.NativeLog
 import expo.modules.healthconnect.voice.OpusEncoderPipe
 import expo.modules.healthconnect.voice.OpusPlayer
 import expo.modules.healthconnect.voice.VoiceCapture
@@ -37,6 +38,7 @@ class TalkClient(context: Context) : VoiceSocketListener {
   private var state = TalkState(talkChannel = store.talkChannel())
 
   fun start() {
+    NativeLog.info(SCOPE, "client.start")
     val target = credentials.load()
     val url = URL(URL(target.endpoint), TALK_PATH).toString().replaceFirst("http", "ws")
     socket = VoiceSocket(url, listOf(PROTOCOL, "bearer.${target.token}"), this, HEARTBEAT_SECONDS, target).also { it.open() }
@@ -44,6 +46,7 @@ class TalkClient(context: Context) : VoiceSocketListener {
   }
 
   fun stop() {
+    NativeLog.info(SCOPE, "client.stop") { mapOf("link" to state.link) }
     stopCapture()
     socket?.close()
     socket = null
@@ -97,13 +100,16 @@ class TalkClient(context: Context) : VoiceSocketListener {
 
   fun channelsChanged() = update { it.copy(talkChannel = store.talkChannel()) }
 
-  override fun opened() = Unit
+  override fun opened() {
+    NativeLog.info(SCOPE, "link.opened")
+  }
 
   override fun text(text: String) {
     handler.post {
       try {
         TalkProtocol.handle(this, JSONObject(text))
       } catch (failure: JSONException) {
+        NativeLog.warn(SCOPE, "message.unreadable", failure) { mapOf("length" to text.length) }
         update { it.copy(problem = "The server sent a talk message this app cannot read") }
       }
     }
@@ -213,6 +219,7 @@ class TalkClient(context: Context) : VoiceSocketListener {
         }
       }
     } catch (failure: Exception) {
+      NativeLog.warn(SCOPE, "capture.failed", failure)
       update { it.copy(problem = failure.message) }
       release()
     }
@@ -228,11 +235,29 @@ class TalkClient(context: Context) : VoiceSocketListener {
   }
 
   private fun update(change: (TalkState) -> TalkState) {
+    val before = state
     state = change(state)
+    if (before.link != state.link || before.transmit.status != state.transmit.status || (before.receive == null) != (state.receive == null) ||
+      (before.live == null) != (state.live == null) || before.problem != state.problem || before.ending != state.ending
+    ) {
+      NativeLog.info(SCOPE, "state.changed") {
+        mapOf(
+          "link" to state.link,
+          "previousLink" to before.link,
+          "transmit" to state.transmit.status,
+          "receiving" to (state.receive != null),
+          "live" to (state.live != null),
+          "problem" to state.problem?.let { NativeLog.reasonText(it) },
+          "ending" to state.ending,
+          "denied" to (state.denial != null),
+        )
+      }
+    }
     TalkEvents.flow.value = state
   }
 
   private companion object {
+    const val SCOPE = "talk"
     const val TALK_PATH = "/talk"
     const val HEARTBEAT_SECONDS = 60L
     const val PROTOCOL = "smarteverything.talk.v1"

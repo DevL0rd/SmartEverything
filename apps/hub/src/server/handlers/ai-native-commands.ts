@@ -1,13 +1,9 @@
 import { ApiError, API_ENDPOINTS } from '@smarteverything/domain';
 import type { ServerContext } from '../context';
 import { bound } from '../router';
-import { clientOf, roleOfCaller, type Caller } from '../auth';
-export function nativeCommandRoutes(context: ServerContext): {
-  readonly listAiChatNativeCommands: ReturnType<typeof bound>;
-  readonly executeAiChatNativeCommand: ReturnType<typeof bound>;
-  readonly readAiChatNativeCommandReceipt: ReturnType<typeof bound>;
-} {
-  return {
+import { clientOf, profileIdOf, type Caller } from '../auth';
+export const nativeCommandRoutes = (context: ServerContext) =>
+  ({
     listAiChatNativeCommands: bound(
       API_ENDPOINTS.listAiChatNativeCommands,
       ({ params, caller }) => {
@@ -38,8 +34,7 @@ export function nativeCommandRoutes(context: ServerContext): {
         return commands.read(chat, params.operationId, clientId);
       },
     ),
-  };
-}
+  }) as const;
 function owned(
   context: ServerContext,
   caller: Caller,
@@ -53,7 +48,6 @@ function owned(
 } {
   if (
     caller.kind !== 'client' ||
-    roleOfCaller(caller) !== 'owner' ||
     caller.via !== undefined ||
     caller.pluginId !== undefined ||
     caller.pluginRequester !== undefined
@@ -62,11 +56,8 @@ function owned(
       'forbidden',
       'Native commands require the owner’s direct authenticated app request.',
     );
-  const current = context.store.clients.byId(clientOf(caller).id);
-  if (current.role !== 'owner')
-    throw new ApiError('forbidden', 'The native command initiating owner changed.');
   const chat = context.assistant.chats.own(
-    { profileId: context.store.profiles.activeOf(current.id).id, role: 'owner' },
+    { profileId: profileIdOf(context.store, caller), role: 'owner' },
     chatId,
   );
   if (chat.engine.kind !== 'codex' && chat.engine.kind !== 'claude')

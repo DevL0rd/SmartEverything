@@ -1,7 +1,5 @@
 import { z } from 'zod';
-import { TRANSCRIPT_HIT, TRANSCRIPT_LINE } from './transcripts';
-
-export const TRANSCRIPT_NOTICE_CAPABILITY = 'transcript-notices-v1';
+import { TRANSCRIPT_HIT, TRANSCRIPT_LINE, TRANSCRIPT_SOURCES } from './transcripts';
 
 export const TRANSCRIPT_PAGE_LIMIT = 100;
 export const TRANSCRIPT_CURSOR = z.string().min(1).max(2048);
@@ -18,7 +16,7 @@ export const TRANSCRIPT_RANGE = z.strictObject({
 export type TranscriptRange = z.output<typeof TRANSCRIPT_RANGE>;
 export const TRANSCRIPT_CHANGED_NOTICE = z.strictObject({
   type: z.literal('transcript_changed'),
-  source: z.enum(['camera', 'plugin']),
+  source: z.enum(TRANSCRIPT_SOURCES),
   source_id: z.string().min(1).max(200),
   plugin_id: z.string().min(1).max(200).nullable(),
   session_id: z.uuid(),

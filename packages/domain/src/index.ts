@@ -1,27 +1,16 @@
-export * from './automation-feature-compatibility';
 export * from './speech-triggers';
 export * from './device-effects';
-export * from './api/endpoints-device-effects';
-export * from './api/endpoints-device-groups';
 export * from './device-targets';
 export * from './device-groups';
 export * from './device-group-commands';
 export * from './values';
-
 export * from './capabilities';
-
 export * from './devices';
-
 export * from './commands';
-
 export * from './events';
-
 export * from './search-triggers';
 
 export type { AdapterFailure, AdapterSink, ProviderAdapter, Unsubscribe } from './adapter';
-
-export { SEALED, UnsealError, createSealingKeys, seal, unseal } from './sealed';
-export type { Sealed, SealingKeys } from './sealed';
 
 export {
   HUB_COMMAND,
@@ -88,13 +77,18 @@ export type {
 
 export * from './comparison';
 
-export { localClock, minuteOfClock, shiftedDate, zonedInstant } from './zoned-clock';
-export type { LocalClock } from './zoned-clock';
+export {
+  insideClockWindow,
+  localClock,
+  minuteOfClock,
+  shiftedDate,
+  zonedInstant,
+} from './zoned-clock';
+export type { ClockWindow, LocalClock } from './zoned-clock';
 
 export * from './weather/index';
 export * from './exchange-rates';
 export * from './region';
-export * from './api/endpoints-exchange-rates';
 
 export { PLACE, PLACES, PLACE_NAME, placeLabel, shortPlaceLabel } from './places';
 export type { PlaceMatch, Places } from './places';
@@ -107,11 +101,8 @@ export {
   HEALTH_RECORD,
   HEALTH_RECORD_TYPE,
   HEALTH_RECORD_TYPES,
-  HEALTH_SOURCE_TOKEN,
   NUTRIENTS,
   affectedDays,
-  createHealthSourceToken,
-  hashHealthSourceToken,
   localDayOf,
 } from './health';
 export type {
@@ -125,10 +116,7 @@ export { hydrationAmounts } from './hydration';
 export {
   CLIENT_RECORD_ID,
   ENTRIES_SOURCE_APP,
-  FOOD_MULTIPLIER,
   FOOD_PORTION,
-  MULTIPLIER_MAX,
-  MULTIPLIER_MIN,
   HEALTH_ENTRY_INPUT,
   HEALTH_ENTRY_ROW,
   LOGGABLE_TYPE,
@@ -198,7 +186,16 @@ export type {
 } from './foods';
 
 export { accepts, describeCommandValue, deviceSummary, numberPresets } from './search';
-export { BYTE_RATE_UNIT, decimalsOf, formatByteRate, formatValue } from './value-format';
+export {
+  BYTE_RATE_UNIT,
+  decimalsOf,
+  formatByteRate,
+  formatBytes,
+  formatCount,
+  formatMegabits,
+  formatValue,
+} from './value-format';
+export type { CountFormat } from './value-format';
 export type {
   NumberTemplate,
   SearchAutomation,
@@ -229,15 +226,18 @@ export {
   EXACT_SCORE,
   RECENCY_WEIGHT,
   isSubsequence,
+  loweredText,
+  loweredTokenScore,
   numberIn,
   rankSearch,
   recencyBoost,
   scoreEntry,
+  scoreLowered,
   tokenScore,
   tokensOf,
   wantsActions,
 } from './search-ranking';
-export type { RankOptions, SearchHighlight, SearchResult } from './search-ranking';
+export type { LoweredText, RankOptions, SearchHighlight, SearchResult } from './search-ranking';
 
 export { MCP_TOKEN, createMcpToken, hashMcpToken } from './access-tokens';
 
@@ -245,16 +245,7 @@ export { zoneOffsetSeconds } from './zone-offset';
 
 export { HEALTH_TYPE_INFO, healthTypeInfo, type HealthTypeInfo } from './health-types';
 
-export {
-  defaultAmount,
-  factsOf,
-  foodEntryOf,
-  multiplierOf,
-  portionLabel,
-  scaledAmount,
-  waterEntryOf,
-  weightOf,
-} from './food-entries';
+export { defaultAmount, factsOf, foodEntryOf, portionLabel, waterEntryOf } from './food-entries';
 export type { EntrySpan, FoodLog } from './food-entries';
 
 export { MCP_PART_TEXTS, MCP_PATHS, MCP_SCOPE } from './mcp-tools';
@@ -272,167 +263,128 @@ export {
   partsOf,
 } from './mcp/served';
 export type { McpRoute, McpToolName } from './mcp/served';
+export { MCP_TOOL_LINES } from './mcp/served-lines';
 export * from './mcp/operations';
+export * from './mcp/endpoint-area';
+export { currentToolCall } from './mcp/retired-tools';
+export type { ToolCall } from './mcp/retired-tools';
 
-export { DESKTOP_COMPUTER_IDENTITY } from './desktop-bridge';
+export {
+  DESKTOP_COMPUTER_IDENTITY,
+  DESKTOP_SERVER,
+  OVERLAY_LEVELS_PORT_MESSAGE,
+} from './desktop-bridge';
 export type * from './desktop-bridge';
 
 export * from './api/index';
-
 export * from './vocabulary';
-
 export * from './vocabulary-people';
 
-export {
-  COMMAND_SEPARATOR,
-  SOCKETFILTERFW,
-  firewallArgv,
-  firewallScript,
-  powershellQuoted,
-} from './firewall-commands';
+export { SOCKETFILTERFW, firewallScript, powershellQuoted } from './firewall-commands';
+
+export { encodedPowerShell } from './firewall-plan';
 
 export * from './talk';
-
 export * from './talk-protocol';
-
+export * from './talk-reducer';
 export * from './assistant';
-
+export * from './assistant-settings-patch';
+export * from './attachment-note';
 export * from './ai-chats';
 export * from './chat-steps';
-
 export * from './ai-usage';
-
-export * from './api/endpoints-ai-usage';
-export * from './api/endpoints-computers';
-export * from './api/endpoints-computer-session';
-
 export * from './ai-budget';
-
-export * from './api/endpoints-ai-budget';
-
-export * from './api/endpoints-ai-chats';
 export * from './message-speaker';
-export { AI_COORDINATION_ENDPOINTS } from './api/endpoints-ai-coordination';
-
 export * from './assistant-voice';
 export * from './one-shot-speech';
 export * from './voice-activity';
 export * from './wake-sensitivity';
-
-export * from './api/endpoints-assistant-voice';
-
-export {
-  ASSISTANT_AREA_ENDPOINTS,
-  ASSISTANT_ATTACHMENT_LINK,
-  ASSISTANT_NEW_MESSAGE,
-  ASSISTANT_OUT_FILE,
-  ASSISTANT_POST,
-  ASSISTANT_UPLOAD,
-  ASSISTANT_UPLOAD_CHUNK,
-  ASSISTANT_UPLOAD_START,
-} from './api/endpoints-assistant';
-export type {
-  AssistantNewMessage,
-  AssistantOutFile,
-  AssistantPost,
-} from './api/endpoints-assistant';
-
-export {
-  TALK_AREA_ENDPOINTS,
-  TALK_CHANNEL_CHANGE,
-  TALK_MESSAGE_LINK,
-  TALK_NEW_CHANNEL,
-  TALK_NEW_MEMBER,
-} from './api/endpoints-talk';
-export type { TalkChannelChange, TalkNewChannel, TalkNewMember } from './api/endpoints-talk';
-
+export * from './listening';
 export * from './ai-models';
-
 export * from './ai-prices-google';
-
-export * from './api/endpoints-ai-models';
-
 export * from './schedules';
-
-export * from './api/endpoints-schedules';
-
 export * from './plugins';
+export { BLUETOOTH_MAC, MAC_ADDRESS, macBytes } from './mac-address';
 export * from './router';
 export * from './syncthing';
 export * from './adguard';
 export * from './discord';
 export * from './plugin-powers';
-export * from './api/endpoints-plugins';
 export * from './node/index';
-
+export * from './history-settings';
+export * from './history-backfill';
 export * from './signals';
-
 export * from './signal-sources/index';
-
 export * from './automation-ai';
-
-export * from './api/endpoints-signals';
-
 export * from './push-commands';
-
+export * from './live-notification';
 export * from './watch-data';
-
+export * from './phone-detail';
+export * from './phone-enums';
+export * from './phone-privacy';
 export * from './phones';
-
-export * from './api/endpoints-phones';
-
+export * from './machine-actions';
+export * from './machine-updates';
 export * from './reach';
-
-export * from './api/endpoints-reach';
-
-export * from './api/endpoints-calls';
-
 export * from './claude-contracts';
-
 export * from './chat-widgets';
-
 export * from './client-failures';
-
 export * from './ai-provider';
-
 export * from './computer-runtime-contracts';
-
 export * from './ai-subscription-usage';
-
 export * from './ai-harness-contracts';
-
+export * from './harness-native-frame';
 export * from './image-operations';
-export * from './api/endpoints-images';
-
 export * from './desktop-browser';
-
 export * from './ai-subscription-inference';
-
 export * from './shelly-presence';
+export * from './television-keys';
+export * from './television-apps';
+export * from './television-inputs';
+export * from './television-roles';
+export * from './television-values';
+export * from './television-routes';
+export * from './television';
 export * from './microwave';
+export * from './device-log';
+export * from './diffuser';
+export * from './remote-keys';
+export * from './ir-remote-state';
+export * from './body-outliers';
+export * from './laundry';
+export * from './laundry-plan';
 export * from './hub-connections';
 export * from './hub-native';
-
+export * from './hub-native-resources';
 export * from './ai-project-files';
-export * from './api/endpoints-ai-projects';
-
-export * from './native-project-compatibility';
-
 export * from './ai-references';
-export * from './api/endpoints-ai-references';
-
-export * from './ai-reference-compatibility';
-
 export * from './ai-reference-runtime';
-
 export * from './automation-values';
 export * from './automation-runs';
-
 export * from './automation-actions';
 export * from './automation-bindings';
 export * from './automation-tree';
 export * from './automation-sequences';
-
 export * from './automation-references';
-
-export * from './automation-runtime-compatibility';
+export * from './automation-v2-schema';
+export * from './automation-v2-convert';
+export * from './automation-v2-eval';
+export * from './automation-v2-values';
+export * from './automation-v2-identify';
+export * from './automation-v2-watch';
+export * from './automation-v2-device';
+export * from './health-codes';
+export * from './sleep';
+export * from './rates';
+export * from './level-percent';
+export * from './target-state';
+export * from './target-catalogue';
+export * from './target-result';
+export * from './chunk';
+export * from './voice-overlay';
+export * from './voice-overlay-view';
+export * from './person-access';
+export * from './table-areas';
+export * from './claude-billing-notice';
+export * from './navigation-layout';
+export * from './app-view';

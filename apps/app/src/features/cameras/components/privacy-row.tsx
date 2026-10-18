@@ -3,6 +3,7 @@ import { isPrivate, privacySwitchOf, type PrivacySwitch } from '@smarteverything
 import { SwitchRow } from '../../../components/rows';
 import { useControl } from '../../../store/control';
 import type { CameraEntry } from '../logic/cameras';
+import { background } from '@smarteverything/logging';
 
 export function hasPrivacySwitch(entry: CameraEntry): boolean {
   return privacySwitchOf(entry.device)?.writable === true;
@@ -24,7 +25,7 @@ function Row({
       value={isPrivate(privacy, control.value)}
       disabled={control.offline}
       onChange={(on) => {
-        void control.set(on === privacy.privateWhen);
+        background(control.set(on === privacy.privateWhen), 'control.set_failed');
       }}
     />
   );

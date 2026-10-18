@@ -14,7 +14,6 @@ export async function providerProbe(config: ProbeConfig): Promise<Query> {
     ...configurationOptions(config.options),
     cwd: await workDirectory(config.directory, config.options),
     tools: [],
-    settingSources: config.options.setting_sources ?? [],
     env: subscriptionEnvironment(),
     permissionMode: 'default',
     ...(config.executable === undefined ? {} : { pathToClaudeCodeExecutable: config.executable }),

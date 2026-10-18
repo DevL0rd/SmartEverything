@@ -22,11 +22,6 @@ class FeatureNotAvailable(feature: String) : SyncFailure(
   retryable = false
 )
 
-class SyncNotConfigured : SyncFailure(
-  "Health Connect sync has no ingest endpoint and source token yet; call configure first",
-  retryable = false
-)
-
 class BackgroundReadNotGranted : SyncFailure(
   "A scheduled sync needs READ_HEALTH_DATA_IN_BACKGROUND, which is not granted or not offered",
   retryable = false
@@ -55,8 +50,9 @@ class UnmappedValue(kind: String, value: Any) : SyncFailure(
   retryable = false
 )
 
-class IngestRejected(status: Int, body: String) : SyncFailure(
+class IngestRejected(status: Int, body: String, cause: Throwable? = null) : SyncFailure(
   "The health-ingest function refused the batch with HTTP $status: $body",
+  cause,
   retryable = false
 )
 

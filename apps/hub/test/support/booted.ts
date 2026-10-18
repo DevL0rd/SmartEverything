@@ -1,4 +1,4 @@
-import { API_ENDPOINTS, seal } from '@smarteverything/domain';
+import { API_ENDPOINTS } from '@smarteverything/domain';
 import { afterEach, beforeEach } from 'vitest';
 import { systemClock, type Clock } from '../../src/clock';
 import {
@@ -85,24 +85,12 @@ export async function bootServer(
 
 export async function linkFakeProvider(booted: Booted): Promise<void> {
   const live = await openLive(booted.base, booted.owner);
-  live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['provider_links'] }));
+  live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['provider_links'], streams: [] }));
   await live.next((message) => message.type === 'subscribed');
-  const key = await call(booted.base, booted.owner, { method: 'GET', path: '/api/providers/key' });
-  const publicKey = API_ENDPOINTS.sealingKey.response.parse(key.body).publicKey;
-  const credentials = {
-    provider: 'xiaomi',
-    username: 'me@example.com',
-    password: 'pw',
-    region: 'de',
-  };
   await call(booted.base, booted.owner, {
     method: 'POST',
-    path: '/api/commands',
-    body: {
-      device_id: null,
-      capability: 'hub:link_provider',
-      value: { provider: 'xiaomi', credentials: seal(publicKey, JSON.stringify(credentials)) },
-    },
+    path: '/api/providers/link',
+    body: { provider: 'xiaomi', username: 'me@example.com', password: 'pw', region: 'de' },
   });
   await live.next(
     (message) =>
@@ -128,11 +116,12 @@ export async function verifiedPublicUrl(booted: Booted): Promise<void> {
 export async function pairPhone(
   booted: Booted,
   role: 'owner' | 'member' = 'member',
-): Promise<{ token: string; clientId: string }> {
+  profileId?: string,
+): Promise<{ token: string; clientId: string; profileId: string | null }> {
   const started = await call(booted.base, booted.owner, {
     method: 'POST',
     path: '/api/pair/start',
-    body: { role },
+    body: profileId === undefined ? { role } : { role, profileId },
   });
   const code = API_ENDPOINTS.startPairing.response.parse(started.body).code;
   const claimed = await call(booted.base, null, {
@@ -141,7 +130,7 @@ export async function pairPhone(
     body: { code, name: 'Pixel', platform: 'android' },
   });
   const phone = API_ENDPOINTS.claimPairing.response.parse(claimed.body);
-  return { token: phone.token, clientId: phone.client.id };
+  return { token: phone.token, clientId: phone.client.id, profileId: phone.client.profile_id };
 }
 
 export interface BootedSuite {

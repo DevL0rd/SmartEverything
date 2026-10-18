@@ -3,8 +3,9 @@ import { AI_HTML_PREVIEW_PUBLICATION, AI_PREVIEW_PUBLICATION } from '@smartevery
 import {
   browserMetadata,
   setBrowserMetadata,
-  forgetBrowserMetadata,
+  forgetBrowserMetadataWhere,
 } from '../../../store/browser-metadata';
+import { jsonText } from '../../../format/json-text';
 import {
   BROWSER_TAB_ID,
   BROWSER_TAB_LIMIT,
@@ -13,6 +14,7 @@ import {
 } from './browser-tab-state';
 import type { BrowserTabs } from './browser-tabs';
 
+const TABS_KEY = z.tuple([z.string(), z.string(), z.string(), z.string()]);
 const SAVED_SOURCE = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('blank') }),
   z.strictObject({ kind: z.literal('public'), url: z.url() }),
@@ -79,6 +81,19 @@ export function persistBrowserTabs(key: string, tabs: BrowserTabs): () => void {
   });
 }
 
-export function forgetBrowserTabs(key: string): void {
-  forgetBrowserMetadata(key);
+export function browserTabsKey(
+  url: string,
+  clientId: string,
+  profileId: string,
+  chatId: string,
+): string {
+  return JSON.stringify([url, clientId, profileId, chatId]);
+}
+
+export function forgetChatBrowserTabs(chatId: string): void {
+  forgetBrowserMetadataWhere((key) => {
+    const parts = jsonText(key);
+    const parsed = parts.ok ? TABS_KEY.safeParse(parts.value) : null;
+    return parsed?.success === true && parsed.data[3] === chatId;
+  });
 }

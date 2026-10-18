@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { Logger, background } from '@smarteverything/logging';
+import { useState } from 'react';
+import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useValue } from '../../../design/external-store';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import { notify } from '../../../components/toast-store';
 import { errorText } from '../../../format/errors';
-import { useSettings } from '../../../store/selectors';
 import { PREFS, usePref } from '../../../store/prefs';
-import { retryHealthConnectWrites } from '../../profiles';
+import { retryHealthConnectWrites, usePairedServer, type RelayServer } from '../../profiles';
 import { retryHealthConnectEntries } from '../../health-log';
 import { useThisPhoneSource } from './this-phone';
+import { DEVICE_KEY, syncingNow } from './sync-progress';
+import { createActionRunner, type ActionOutcome, type ActionRunner } from './action-runner';
 import {
   HEALTH_CONNECT_ON_DEVICE,
   connectPhone,
-  onSyncProgress,
+  grantedNothing,
   readGrants,
   readHealthConnectStatus,
   readLastSync,
@@ -20,8 +24,7 @@ import {
   type SyncReport,
 } from './health-connect';
 
-const DEVICE_KEY = ['device', 'health-connect'] as const;
-const PROGRESS_SETTLE_MS = 2500;
+const log = new Logger('app.health-connect');
 
 type HealthConnectAction = 'connect' | 'sync';
 
@@ -35,35 +38,12 @@ export interface HealthConnectControls {
   readonly syncNow: () => void;
 }
 
-function useSyncing(onSettled: () => void): boolean {
-  const [syncing, setSyncing] = useState(false);
-  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (!HEALTH_CONNECT_ON_DEVICE) {
-      return undefined;
-    }
-    const subscription = onSyncProgress(() => {
-      setSyncing(true);
-      if (settle.current !== null) {
-        clearTimeout(settle.current);
-      }
-      settle.current = setTimeout(() => {
-        setSyncing(false);
-        onSettled();
-      }, PROGRESS_SETTLE_MS);
-    });
-    return (): void => {
-      subscription.remove();
-      if (settle.current !== null) {
-        clearTimeout(settle.current);
-      }
-    };
-  }, [onSettled]);
-  return syncing;
+function useSyncing(): boolean {
+  return useValue(syncingNow);
 }
 
 function useDeviceQuery<T>(part: string, read: () => Promise<T>): UseQueryResult<T> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: [...DEVICE_KEY, part],
     queryFn: read,
     enabled: HEALTH_CONNECT_ON_DEVICE,
@@ -72,83 +52,110 @@ function useDeviceQuery<T>(part: string, read: () => Promise<T>): UseQueryResult
 
 interface HealthConnectActions {
   readonly busy: HealthConnectAction | null;
-  readonly run: (action: HealthConnectAction, work: () => Promise<unknown>, done: string) => void;
+  readonly run: ActionRunner<HealthConnectAction>;
 }
 
 function useActions(refresh: () => void): HealthConnectActions {
   const [busy, setBusy] = useState<HealthConnectAction | null>(null);
-  const running = useRef(false);
-  const run = (action: HealthConnectAction, work: () => Promise<unknown>, done: string): void => {
-    if (running.current) {
-      return;
-    }
-    running.current = true;
-    setBusy(action);
-    work().then(
-      () => {
-        running.current = false;
-        setBusy(null);
-        notify({ message: done, tone: 'positive' });
-        refresh();
+  const [run] = useState(() =>
+    createActionRunner<HealthConnectAction>({
+      setBusy,
+      refresh,
+      succeeded: (outcome): void => {
+        log.info('health.action_succeeded', { tone: outcome.tone });
+        notify(outcome);
       },
-      (error: unknown) => {
-        running.current = false;
-        setBusy(null);
+      failed: (error): void => {
+        log.error('health.action_failed', error);
         const text = errorText(error);
         notify({ message: text.title, detail: text.detail, tone: 'critical' });
-        refresh();
       },
-    );
-  };
+    }),
+  );
   return { busy, run };
 }
 
 async function connectAndDeliver(
-  publicUrl: string | null,
+  server: RelayServer,
   intervalMinutes: number,
   connected: boolean,
-): Promise<void> {
-  const access = await connectPhone('Android phone', publicUrl, intervalMinutes, connected);
-  if (access.types.length === 0 && access.writeTypes?.length === 0) {
-    return;
+): Promise<ActionOutcome> {
+  const access = await connectPhone(server, 'Android phone', intervalMinutes, connected);
+  if (grantedNothing(access)) {
+    return { message: 'No Health Connect access was granted', tone: 'default' };
   }
   await retryHealthConnectWrites();
   await retryHealthConnectEntries();
+  return { message: 'Health Connect connected', tone: 'positive' };
+}
+
+async function syncAndReport(): Promise<ActionOutcome> {
+  await syncPhoneNow();
+  return { message: 'Synced', tone: 'positive' };
 }
 
 function useConnectionAction(actions: HealthConnectActions): () => void {
-  const publicUrl = useSettings().public_url;
   const pref = usePref(PREFS.healthSync);
   const connected = useThisPhoneSource() !== null;
+  const server = usePairedServer();
   return (): void => {
+    if (server === null) {
+      notify({ message: 'Pair this app with your server first', tone: 'critical' });
+      return;
+    }
     if (pref.status !== 'ready') {
       notify({ message: 'Reset the unreadable background sync setting first', tone: 'critical' });
       return;
     }
-    actions.run(
-      'connect',
-      () => connectAndDeliver(publicUrl, pref.value.intervalMinutes, connected),
-      'Health Connect access reviewed',
+    background(
+      actions.run('connect', () =>
+        connectAndDeliver(server, pref.value.intervalMinutes, connected),
+      ),
+      'actions.run_failed',
     );
   };
 }
 
-export function useHealthConnect(): HealthConnectControls {
+function useRefresh(): () => void {
   const client = useQueryClient();
   const refresh = (): void => {
-    void client.invalidateQueries({ queryKey: DEVICE_KEY });
+    background(client.invalidateQueries({ queryKey: DEVICE_KEY }), 'queries.invalidate_failed');
   };
+  return refresh;
+}
+
+export interface SyncControls {
+  readonly available: boolean;
+  readonly busy: HealthConnectAction | null;
+  readonly syncNow: () => void;
+}
+
+export function useSyncControls(): SyncControls {
+  const refresh = useRefresh();
+  const actions = useActions(refresh);
+  const status = useDeviceQuery('status', readHealthConnectStatus);
+  return {
+    available: status.data?.sdk === 'available',
+    busy: actions.busy,
+    syncNow: (): void => {
+      background(actions.run('sync', syncAndReport), 'actions.run_failed');
+    },
+  };
+}
+
+export function useHealthConnect(): HealthConnectControls {
+  const refresh = useRefresh();
   const actions = useActions(refresh);
   const connect = useConnectionAction(actions);
   return {
     status: useDeviceQuery('status', readHealthConnectStatus),
     grants: useDeviceQuery('grants', readGrants),
     last: useDeviceQuery('last', readLastSync),
-    syncing: useSyncing(refresh),
+    syncing: useSyncing(),
     busy: actions.busy,
     connect,
     syncNow: (): void => {
-      actions.run('sync', syncPhoneNow, 'Synced');
+      background(actions.run('sync', syncAndReport), 'actions.run_failed');
     },
   };
 }

@@ -1,13 +1,13 @@
+import { Logger, background } from '@smarteverything/logging';
 import { useReducer, useState, type Dispatch } from 'react';
 import { useRouter } from 'expo-router';
-import { LEGACY_AUTOMATION_DEFINITION, type AutomationRunRow } from '@smarteverything/domain';
-import { saveAutomationRevision } from '../../../api/automations';
-import { startOwnedRun } from '../../../api/automation-runtime';
+import type { AutomationRow, AutomationRunRow } from '@smarteverything/domain';
+import { saveAutomation, testAutomation } from '../../../api/automations';
 import { confirm } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
-import { attempt, removeAutomation, testDraftRun } from '../data/actions';
-import type { Catalog } from '../data/use-automations';
-import { definitionOf, type Draft, type DraftChange } from '../model/editor-state';
+import { attempt, removeAutomation } from '../data/actions';
+import { inScope, type Catalog } from '../data/use-automations';
+import { sameDraft, type Draft, type DraftChange } from '../model/editor-state';
 import {
   changeHistory,
   identifiedDraft,
@@ -15,10 +15,15 @@ import {
   type HistoryChange,
 } from '../model/draft-history';
 import { validateDraft, type Problems, type Validation } from '../model/validate';
+import type { ValidationChoices } from '../model/validate-steps';
 import { useClose, useDiscardPrompt } from './editor-navigation';
+import { useLibraryReturn } from './library-return';
+
+const log = new Logger('app.automations');
 export { useClose, useDiscardPrompt } from './editor-navigation';
 
 export type EditorStatus = 'New' | 'Unsaved changes' | 'Saved';
+
 export interface Editor {
   readonly automationId: string | null;
   readonly draft: Draft;
@@ -34,30 +39,40 @@ export interface Editor {
   readonly undo: (() => void) | null;
   readonly redo: (() => void) | null;
   readonly run: AutomationRunRow | null;
-  readonly closeRun: () => void;
-  readonly testLabel: string;
+  readonly setRun: (run: AutomationRunRow | null) => void;
   readonly canTest: boolean;
+  readonly asking: boolean;
+  readonly setAsking: (asking: boolean) => void;
+  readonly embedded: boolean;
+  readonly catalog: Catalog;
 }
+
 interface Session {
   readonly dirty: boolean;
   readonly draft: Draft;
   readonly validation: Validation;
   readonly automationId: string | null;
-  readonly revision: string | null;
+  readonly revision: number | null;
   readonly attempt: () => void;
 }
 
-function sameDraft(left: Draft, right: Draft): boolean {
-  return (
-    left.name === right.name &&
-    left.enabled === right.enabled &&
-    JSON.stringify(definitionOf(left)) === JSON.stringify(definitionOf(right))
-  );
+function choicesOf(catalog: Catalog): ValidationChoices {
+  return {
+    devices: catalog.allDevices,
+    sceneIds: catalog.scenes.map((scene) => scene.id),
+    profileIds: catalog.people.map((person) => person.id),
+    valueIds: catalog.values.map((value) => value.id),
+    groupIds: catalog.groups.map((group) => group.id),
+    roomIds: catalog.rooms.map((room) => room.id),
+    automationIds: catalog.automations.map((row) => row.id),
+    callable: catalog.callable,
+    inputs: catalog.inputs.map((input) => input.name),
+  };
 }
 
 function useSave(
   session: Session,
-  onSaved: (automationId: string, draft: Draft, revision: string) => void,
+  onSaved: (saved: AutomationRow, draft: Draft) => void,
 ): readonly [boolean, () => void] {
   const [saving, setSaving] = useState(false);
   return [
@@ -67,35 +82,45 @@ function useSave(
       session.attempt();
       const { validation, draft, automationId, revision } = session;
       if (!validation.valid) {
+        log.info('automation.save_blocked', { automationId, reason: 'invalid' });
         notify({ message: 'Fix the marked parts to save', tone: 'critical' });
         return;
       }
-      if (automationId !== null && revision === null) {
-        notify({ message: 'Reload this program before saving', tone: 'critical' });
-        return;
-      }
       setSaving(true);
-      void attempt('It wasn’t saved', async () => {
-        const saved = await saveAutomationRevision({
-          automationId,
-          name: validation.name,
-          enabled: draft.enabled,
-          definition: validation.definition,
-          ...(revision === null ? {} : { expectedRevision: revision }),
-        });
-        onSaved(saved.automation.id, draft, saved.definitionRevision);
-        notify({ message: `${validation.name} saved`, tone: 'positive' });
-      }).finally(() => {
-        setSaving(false);
-      });
+      background(
+        attempt(
+          'It wasn’t saved',
+          async () => {
+            const saved = await saveAutomation({
+              automationId,
+              name: validation.name,
+              enabled: draft.enabled,
+              definition: validation.automation,
+              ...(revision === null ? {} : { expectedRevision: revision }),
+            });
+            onSaved(saved, draft);
+            log.info('automation.saved', {
+              automationId: saved.id,
+              created: automationId === null,
+              enabled: draft.enabled,
+              revision: revision ?? null,
+            });
+            notify({ message: `${validation.name} saved`, tone: 'positive' });
+          },
+          { action: 'save', automationId, revision: revision ?? null },
+        ).finally(() => {
+          setSaving(false);
+        }),
+        'use_editor.attempt_failed',
+      );
     },
   ];
 }
 
 function useTest(
   session: Session,
-  catalog: Catalog,
   onRun: (run: AutomationRunRow) => void,
+  onAsk: () => void,
 ): readonly [boolean, () => void] {
   const [testing, setTesting] = useState(false);
   return [
@@ -103,61 +128,70 @@ function useTest(
     (): void => {
       if (testing) return;
       session.attempt();
-      const { validation, automationId, dirty } = session;
+      const { validation, automationId } = session;
       if (!validation.valid) {
+        log.info('automation.test_blocked', { automationId, reason: 'invalid' });
         notify({ message: 'Fix the marked parts to test it', tone: 'critical' });
         return;
       }
-      const legacy = LEGACY_AUTOMATION_DEFINITION.safeParse(validation.definition);
-      if ((automationId === null || dirty) && !legacy.success) {
-        notify({ message: 'Save to test this program', tone: 'critical' });
+      if ((validation.automation.inputs ?? []).length > 0) {
+        log.debug('automation.test_asking_inputs', () => ({
+          automationId,
+          inputs: (validation.automation.inputs ?? []).length,
+        }));
+        onAsk();
         return;
       }
       setTesting(true);
-      void attempt('The test didn’t start', async () => {
-        if (automationId !== null && !dirty) onRun(await startOwnedRun(automationId));
-        else if (legacy.success)
-          await testDraftRun(validation.name, legacy.data.actions, {
-            devices: catalog.allDevices,
-            scenes: catalog.scenes,
-          });
-      }).finally(() => {
-        setTesting(false);
-      });
+      background(
+        attempt(
+          'The test didn’t start',
+          async () => {
+            const run = await testAutomation(automationId, validation.automation);
+            log.info('automation.test_started', { automationId, runId: run.id });
+            onRun(run);
+          },
+          { action: 'test', automationId },
+        ).finally(() => {
+          setTesting(false);
+        }),
+        'use_editor.attempt_failed',
+      );
     },
   ];
 }
 
 function useRemove(session: Session, close: () => void): () => void {
   return () => {
-    const { automationId, draft, validation } = session;
+    const { automationId, draft } = session;
     if (automationId === null) {
       close();
       return;
     }
-    const restore = validation.valid ? { ...validation, enabled: draft.enabled } : null;
-    void confirm({
-      title: `Delete ${draft.name.trim() === '' ? 'this automation' : draft.name.trim()}?`,
-      confirmLabel: 'Delete',
-      tone: 'destructive',
-    }).then(async (accepted) => {
-      if (accepted && (await removeAutomation(automationId, restore))) close();
-    });
+    background(
+      confirm({
+        title: `Delete ${draft.name.trim() === '' ? 'this automation' : draft.name.trim()}?`,
+        confirmLabel: 'Delete',
+        tone: 'destructive',
+      }).then((accepted) => {
+        if (!accepted) return;
+        removeAutomation(automationId);
+        close();
+      }),
+      'use_editor.confirm_failed',
+    );
   };
 }
 
-interface DraftSession {
-  readonly session: Session;
-  readonly history: DraftHistory;
-  readonly change: Dispatch<HistoryChange>;
-  readonly attempted: boolean;
-  readonly saving: boolean;
-  readonly save: () => void;
+function problemsToShow(session: Session, attempted: boolean): Problems | null {
+  return attempted && !session.validation.valid ? session.validation.problems : null;
 }
+
 function editorStatus(session: Session): EditorStatus {
   if (session.automationId === null) return 'New';
   return session.dirty ? 'Unsaved changes' : 'Saved';
 }
+
 function historyActions(
   history: DraftHistory,
   change: Dispatch<HistoryChange>,
@@ -178,79 +212,94 @@ function historyActions(
   };
 }
 
-function useDraftSession(
-  start: Draft,
-  savedId: string | null,
-  initialRevision: string | null,
-  catalog: Catalog,
-): DraftSession {
-  const router = useRouter();
-  const [initial] = useState(() => identifiedDraft(start));
+interface EditorStart {
+  readonly draft: Draft;
+  readonly savedId: string | null;
+  readonly revision: number | null;
+  readonly reusable: boolean;
+}
+
+interface SessionState {
+  readonly session: Session;
+  readonly history: DraftHistory;
+  readonly change: Dispatch<HistoryChange>;
+  readonly catalog: Catalog;
+  readonly attempted: boolean;
+  readonly markSaved: (saved: AutomationRow, draft: Draft) => void;
+}
+
+function useSessionState(start: EditorStart, base: Catalog): SessionState {
+  const [initial] = useState(() => identifiedDraft(start.draft));
   const [history, change] = useReducer(changeHistory, { present: initial, past: [], future: [] });
   const [baseline, setBaseline] = useState(initial);
-  const [automationId, setAutomationId] = useState(savedId);
-  const [revision, setRevision] = useState(initialRevision);
+  const [automationId, setAutomationId] = useState(start.savedId);
+  const [revision, setRevision] = useState(start.revision);
   const [attempted, setAttempted] = useState(false);
-  const validation = validateDraft(history.present, {
-    devices: catalog.allDevices,
-    sceneIds: catalog.scenes.map((scene) => scene.id),
-    profileIds: catalog.people.map((person) => person.id),
+  const catalog = inScope(base, {
+    self: automationId,
+    inputs: history.present.automation.inputs ?? [],
   });
   const session: Session = {
     dirty: !sameDraft(history.present, baseline),
     draft: history.present,
-    validation,
+    validation: validateDraft(history.present, choicesOf(catalog), { reusable: start.reusable }),
     automationId,
     revision,
     attempt: () => {
       setAttempted(true);
     },
   };
-  const [saving, save] = useSave(session, (id, saved, nextRevision) => {
-    setBaseline(saved);
-    setAutomationId(id);
-    setRevision(nextRevision);
-    router.setParams({ automationId: id });
-  });
-  return { session, history, change, attempted, saving, save };
+  return {
+    session,
+    history,
+    change,
+    catalog,
+    attempted,
+    markSaved: (saved, draft): void => {
+      setBaseline(draft);
+      setAutomationId(saved.id);
+      setRevision(saved.revision);
+    },
+  };
 }
 
-export function useEditor(
-  start: Draft,
-  savedId: string | null,
-  catalog: Catalog,
-  initialRevision: string | null,
-): Editor {
-  const { session, history, change, attempted, saving, save } = useDraftSession(
-    start,
-    savedId,
-    initialRevision,
-    catalog,
-  );
+export function useEditor(start: EditorStart, base: Catalog): Editor {
+  const router = useRouter();
+  const { session, history, change, catalog, attempted, markSaved } = useSessionState(start, base);
   const [run, setRun] = useState<AutomationRunRow | null>(null);
   const [closing, close] = useClose();
-  const [testing, test] = useTest(session, catalog, setRun);
-  const structured = !LEGACY_AUTOMATION_DEFINITION.safeParse(definitionOf(session.draft)).success;
-  const needsSave = structured && (session.automationId === null || session.dirty);
-  useDiscardPrompt(session.dirty && !closing && !saving);
+  const destination = useLibraryReturn(session.dirty);
+  const [saving, save] = useSave(session, (saved, draft) => {
+    markSaved(saved, draft);
+    if (destination === null) router.setParams({ automationId: saved.id });
+    else destination.reusableSaved(saved);
+  });
+  const [asking, setAsking] = useState(false);
+  const [testing, test] = useTest(session, setRun, (): void => {
+    setAsking(true);
+  });
+  useDiscardPrompt(destination === null && session.dirty && !closing && !saving);
+  const { validation, automationId } = session;
+  const canTest = !saving;
   return {
-    automationId: session.automationId,
+    automationId,
     draft: session.draft,
     change,
-    validation: session.validation,
-    problems: attempted && !session.validation.valid ? session.validation.problems : null,
+    validation,
+    problems: problemsToShow(session, attempted),
     status: editorStatus(session),
     saving,
     testing,
     save,
     test,
-    remove: useRemove(session, close),
+    remove: useRemove(session, destination?.close ?? close),
     ...historyActions(history, change),
     run,
-    closeRun: (): void => {
-      setRun(null);
-    },
-    testLabel: needsSave ? 'Save to test' : 'Test run',
-    canTest: !needsSave && !saving,
+    setRun,
+    canTest,
+    asking,
+    setAsking,
+    embedded: destination !== null,
+    catalog,
   };
 }

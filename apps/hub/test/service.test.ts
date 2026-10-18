@@ -1,7 +1,7 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pid } from 'node:process';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DataDirectoryLockedError, LOCK_FILE } from '../src/data-lock';
 import { lockDataDirectory } from '../src/data-lock';
 import {
@@ -17,11 +17,17 @@ import {
   readServiceConfig,
   serviceUrl,
 } from '../src/service/configuration';
-import { RoleUnavailableError, runService } from '../src/service/runner';
+import { runService } from '../src/service/runner';
+import { HUB_VERSION } from '../src/version';
 import { captureLogs } from './support/logs';
 import { fakeGo2rtcServer, freePort, temporaryDirectory } from './support/server';
 
 let directory: { path: string; remove: () => Promise<void> };
+
+beforeAll(async () => {
+  await import('../src/start');
+  await import('../src/node/bootstrap');
+}, 120_000);
 
 beforeEach(async () => {
   captureLogs();
@@ -100,7 +106,7 @@ describe('service configuration', () => {
       JSON.stringify({ go2rtcBinary: 'go2rtc', extra: 1 }),
     );
     await expect(readServiceConfig(directory.path)).rejects.toThrow(
-      /go2rtcBinary: must be an absolute path/,
+      /service\.json is unusable: go2rtcBinary: must be an absolute path; value: Unrecognized key/,
     );
     await writeFile(
       join(directory.path, SERVICE_CONFIG_FILE),
@@ -114,6 +120,7 @@ describe('service configuration', () => {
       go2rtcApiPort: 1984,
       webrtcPort: 8555,
       logLevel: 'info',
+      wakeDiagnostics: false,
     });
     expect(serviceUrl({ host: '0.0.0.0', port: 7880 })).toBe('http://127.0.0.1:7880');
     expect(serviceUrl({ host: '::', port: 7880 })).toBe('http://127.0.0.1:7880');
@@ -133,7 +140,7 @@ describe('runService', () => {
     const ready = SERVICE_READY.parse(
       JSON.parse(await readFile(join(directory.path, SERVICE_READY_FILE), 'utf8')),
     );
-    expect(ready).toStrictEqual({ pid, url: service.server.url, version: '0.0.0' });
+    expect(ready).toStrictEqual({ pid, url: service.server.url, version: HUB_VERSION });
     expect(serviceUrl(await readServiceConfig(directory.path))).toBe(service.server.url);
     await writeFile(join(directory.path, RESTART_REQUEST_FILE), 'now');
     expect(await running.exits).toBe(RESTART_EXIT_CODE);
@@ -157,9 +164,9 @@ describe('runService', () => {
     );
   });
 
-  it('refuses a role this version cannot run, before taking the data directory', async () => {
+  it('refuses an unusable configuration before taking the data directory', async () => {
     await writeConfig({ role: 'node' });
-    await expect(runService(host().value)).rejects.toThrow(RoleUnavailableError);
+    await expect(runService(host().value)).rejects.toThrow(/service configuration/);
     expect(await exists(join(directory.path, SERVICE_PID_FILE))).toBe(false);
     expect(await exists(join(directory.path, LOCK_FILE))).toBe(false);
   });

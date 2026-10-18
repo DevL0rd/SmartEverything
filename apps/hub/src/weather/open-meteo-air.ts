@@ -1,4 +1,5 @@
 import {
+  appendTo,
   AIR_DAYS,
   AIR_NOW,
   AIR_HOUR,
@@ -71,7 +72,7 @@ function daysOf(raw: RawAir, hours: readonly AirHour[]): AirDay[] {
     const hour = hours[index];
     if (hour !== undefined) {
       const day = dayOf(time, raw.utc_offset_seconds);
-      byDay.set(day, [...(byDay.get(day) ?? []), hour]);
+      appendTo(byDay, day, hour);
     }
   });
   return [...byDay.entries()].map(([day, list]) => ({

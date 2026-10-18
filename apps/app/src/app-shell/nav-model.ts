@@ -15,6 +15,7 @@ export interface NavModel {
   readonly pages: readonly NavEntry[];
   readonly system: readonly NavEntry[];
   readonly orb: NavEntry | null;
+  readonly sheetActive: boolean;
 }
 
 const BAR_PAGES = 4;
@@ -50,6 +51,7 @@ function barModel(current: TabKey, availability: Availability, unread: number): 
     pages: pages.map((tab) => entry(tab, current, availability, unread)),
     system: [],
     orb: entry(ORB, current, availability, unread),
+    sheetActive: current !== ORB && !pages.includes(current),
   };
 }
 
@@ -62,6 +64,7 @@ export function directoryModel(
     pages: availablePages(availability).map((tab) => entry(tab, current, availability, unread)),
     system: [entry('settings', current, availability, unread)],
     orb: null,
+    sheetActive: false,
   };
 }
 

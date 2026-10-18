@@ -1,3 +1,4 @@
+import { usePluginScreen } from '../shared/plugin-log';
 import type { RobotLine, RobotStatus } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
@@ -6,12 +7,11 @@ import { Card } from '../../components/card';
 import { EmptyState } from '../../components/empty-state';
 import { ListRow } from '../../components/list-row';
 import { List } from '../../components/section';
-import { Skeleton } from '../../components/skeleton';
 import { plural } from '../../format/text';
 import { clock } from '../../format/time';
-import { PluginNotice, StreamProblem } from '../shared/plugin-notice';
+import { PluginStreamSection } from '../shared/plugin-stream-section';
 import { robotNotice, useRobotStatus } from './aibi-data';
-import { LINE_WHO, conversationText } from './aibi-text';
+import { LINE_WHO, conversationBadge } from './aibi-text';
 
 const LINE_ICON = { user: 'mic', aibi: 'speaker', note: 'move' } as const;
 
@@ -19,10 +19,7 @@ function Now({ status }: { readonly status: RobotStatus }): ReactNode {
   return (
     <Card title="Now" icon="messageCircle">
       <View className="flex-row flex-wrap items-center gap-2">
-        <Badge
-          label={conversationText(status)}
-          tone={status.conversation ? 'positive' : 'neutral'}
-        />
+        <Badge {...conversationBadge(status)} />
         {status.waiting === 0 ? null : (
           <Badge label={`${plural(status.waiting, 'thing')} to tell`} tone="info" />
         )}
@@ -46,31 +43,27 @@ function Line({ line }: { readonly line: RobotLine }): ReactNode {
 }
 
 export function ConversationSection(): ReactNode {
-  const stream = useRobotStatus();
-  if (stream.state === 'waiting') {
-    return <Skeleton shape="block" />;
-  }
-  if (stream.state === 'invalid') {
-    return <StreamProblem reason={stream.reason} />;
-  }
-  const status = stream.value;
+  usePluginScreen('aibi', 'ConversationSection');
   return (
-    <View className="gap-section-gap">
-      <PluginNotice pluginId="aibi" notice={robotNotice(status)} />
-      <Now status={status} />
-      {status.lines.length === 0 ? (
-        <EmptyState
-          icon="messageCircle"
-          title="Nothing said yet"
-          body="Say AIBI’s wake word and talk to it; the last lines appear here."
-        />
-      ) : (
-        <List title="Last conversation" footer="The whole conversation is in your chats.">
-          {status.lines.map((line) => (
-            <Line key={`${line.at}:${line.who}:${line.text}`} line={line} />
-          ))}
-        </List>
+    <PluginStreamSection stream={useRobotStatus()} pluginId="aibi" notice={robotNotice}>
+      {(status) => (
+        <>
+          <Now status={status} />
+          {status.lines.length === 0 ? (
+            <EmptyState
+              icon="messageCircle"
+              title="Nothing said yet"
+              body="Say AIBI’s wake word and talk to it; the last lines appear here."
+            />
+          ) : (
+            <List title="Last conversation" footer="The whole conversation is in your chats.">
+              {status.lines.map((line) => (
+                <Line key={`${line.at}:${line.who}:${line.text}`} line={line} />
+              ))}
+            </List>
+          )}
+        </>
       )}
-    </View>
+    </PluginStreamSection>
   );
 }

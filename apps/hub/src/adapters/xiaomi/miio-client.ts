@@ -17,7 +17,9 @@ import {
   type MiioHeader,
   type ProbeReply,
 } from '@smarteverything/xiaomi';
+import { RepeatLog } from '../../providers/repeat-log';
 import type { XiaomiTiming } from './dependencies';
+import { failureLine } from '@smarteverything/logging';
 
 const HANDSHAKE_LENGTH = 32;
 const MAX_PACKET_LENGTH = 4096;
@@ -63,10 +65,12 @@ export class MiioClient {
   private clock: Clock | null = null;
   private messageId = 0;
   private uplinks: UplinkListener | null = null;
+  private readonly repeat: RepeatLog;
 
   constructor(private readonly options: MiioClientOptions) {
+    this.repeat = new RepeatLog(options.log);
     options.socket.on('error', (error) => {
-      options.log.warn('miio.socket_failed', { host: options.host, reason: String(error) });
+      options.log.warn('miio.socket_failed', { host: options.host, reason: failureLine(error) });
     });
     options.socket.on('message', (packet, sender) => {
       if (
@@ -105,7 +109,7 @@ export class MiioClient {
     const { host, port, token, socket, log } = this.options;
     socket.send(encodeMessage(token, header, body), port, host, (error) => {
       if (error !== null) {
-        log.warn('miio.answer_failed', { host, reason: String(error) });
+        log.warn('miio.answer_failed', { host, reason: failureLine(error) });
       }
     });
   }
@@ -120,6 +124,7 @@ export class MiioClient {
 
   private serialized<T>(task: () => Promise<T>): Promise<T> {
     const result = this.queue.then(task, task);
+    // eslint-disable-next-line local/no-swallowed-errors -- the caller receives the same failure from the task result
     this.queue = result.catch(() => undefined);
     return result;
   }
@@ -146,9 +151,10 @@ export class MiioClient {
       this.uplinks?.(message.body, message.header);
       return true;
     } catch (error) {
-      this.options.log.warn('miio.uplink_refused', {
+      this.repeat.warn('miio.uplink_refused', this.options.host, {
         host: this.options.host,
-        reason: String(error),
+        length: packet.length,
+        reason: failureLine(error),
       });
       return true;
     }
@@ -163,6 +169,11 @@ export class MiioClient {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending = null;
+        this.options.log.debug('miio.exchange_timeout', {
+          host,
+          step,
+          timeoutMs: timing.requestTimeoutMs,
+        });
         reject(new MiioTimeoutError(host, step, timing.requestTimeoutMs));
       }, timing.requestTimeoutMs);
       this.pending = {
@@ -230,10 +241,10 @@ export class MiioClient {
       this.clock = { ...message.header, seenAt: this.options.now() };
       return message.body;
     } catch (error) {
-      this.options.log.debug('miio.packet_unreadable', {
+      this.options.log.debug('miio.packet_unreadable', () => ({
         host: this.options.host,
-        reason: String(error),
-      });
+        reason: failureLine(error),
+      }));
       return undefined;
     }
   }
@@ -253,7 +264,13 @@ export class MiioClient {
         throw error;
       }
       this.clock = null;
-      this.options.log.debug('miio.request_retried', { host: this.options.host, method, attempt });
+      this.options.log.debug('miio.request_retried', {
+        host: this.options.host,
+        method,
+        attempt,
+        of: this.options.timing.requestAttempts,
+        timeoutMs: this.options.timing.requestTimeoutMs,
+      });
       return this.attempt(method, params, attempt + 1);
     }
   }

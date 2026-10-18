@@ -1,6 +1,6 @@
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
+import { Logger, background } from '@smarteverything/logging';
 import { randomUUID } from 'expo-crypto';
-import { useRef, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { harnessTargetKey } from '@smarteverything/domain';
 import type {
@@ -9,196 +9,243 @@ import type {
   AiHarnessSession,
   JsonValue,
 } from '@smarteverything/domain';
-import { Button } from '../../../components/button';
-import { DecisionApproval } from '../../../components/decision-approval';
-import { DecisionFrame, DecisionStatus } from '../../../components/decision-frame';
+import { selectProfile } from '../../../api/people';
+import { DecisionStatus } from '../../../components/decision-frame';
+import { ProfileGate } from '../../../components/profile-gate';
+import { notify } from '../../../components/toast-store';
 import { Text } from '../../../components/text';
 import { useActiveProfile } from '../../../store/people';
-import { useDevice, useSyncStatus } from '../../../store/selectors';
+import { useDevice, useRow, useSyncStatus } from '../../../store/selectors';
+import { NeedsYouDock, type NeedsRequest } from '../approvals/needs-you-dock';
+import { requestCopy, type RequestKind } from '../approvals/needs-you-model';
+import { PermissionRequest } from '../approvals/permission-request';
+import { sendInstruction } from '../approvals/tell-instead';
+import { useRefetchOnLive } from '../approvals/use-refetch-on-live';
 import { useChatHarness, useHarnessAnswer } from '../data/harness';
 import { HARNESS_PERMISSION_REQUEST, HARNESS_QUESTION_REQUEST } from '../model/harness-questions';
 import { HarnessQuestions } from './harness-questions';
-function Permission({
-  request,
-  disabled,
+
+const log = new Logger('app.harness');
+
+const CANNOT_ANSWER =
+  'This request can’t be answered here. Answer it on the machine or stop the reply.';
+
+function useSubmit(
+  chatId: string,
+  interaction: AiHarnessInteraction,
+): {
+  readonly answer: ReturnType<typeof useHarnessAnswer>;
+  readonly submit: (value: JsonValue, then?: () => void) => void;
+} {
+  const answer = useHarnessAnswer(chatId);
+  const attempt = useRef<{ readonly payload: string; readonly id: string } | null>(null);
+  const submit = (value: JsonValue, then?: () => void): void => {
+    const payload = JSON.stringify(value);
+    const retry = attempt.current?.payload === payload;
+    const current =
+      retry && attempt.current !== null ? attempt.current : { payload, id: randomUUID() };
+    attempt.current = current;
+    log.info('interaction.answer_submitted', {
+      chatId,
+      interactionId: interaction.id,
+      kind: interaction.kind,
+      epoch: interaction.epoch,
+      retry,
+    });
+    answer.mutate(
+      {
+        operation_id: current.id,
+        interaction_id: interaction.id,
+        expected_epoch: interaction.epoch,
+        answer: value,
+      },
+      then === undefined ? undefined : { onSuccess: then },
+    );
+  };
+  return { answer, submit };
+}
+
+function Request({
+  chatId,
+  interaction,
+  frozen,
   submit,
 }: {
-  readonly request: AiHarnessInteraction['request'];
-  readonly disabled: boolean;
-  readonly submit: (answer: JsonValue) => void;
+  readonly chatId: string;
+  readonly interaction: AiHarnessInteraction;
+  readonly frozen: boolean;
+  readonly submit: (value: JsonValue, then?: () => void) => void;
 }): ReactNode {
-  const parsed = HARNESS_PERMISSION_REQUEST.safeParse(request);
-  if (!parsed.success)
+  const permission = HARNESS_PERMISSION_REQUEST.safeParse(interaction.request);
+  const questions = HARNESS_QUESTION_REQUEST.safeParse(interaction.request);
+  if (interaction.kind === 'permission' && permission.success)
     return (
-      <Text tone="warning">
-        Unsupported permission request. Review on the execution host or stop the turn.
-      </Text>
-    );
-  return (
-    <View className="gap-3">
-      <Text variant="title-3" accessibilityRole="header">
-        Allow {parsed.data.tool_name}?
-      </Text>
-      {parsed.data.reason === undefined ? null : <Text selectable>{parsed.data.reason}</Text>}
-      <Text variant="footnote" tone="variant">
-        Full action details were not supplied by the execution host.
-      </Text>
-      <DecisionApproval
-        pending={disabled}
-        options={[
-          { id: 'rejected', label: 'Deny', effect: 'deny' },
-          { id: 'allowed-once', label: 'Allow once', effect: 'allow' },
-          { id: 'cancelled', label: 'Cancel request', effect: 'cancel' },
-        ]}
-        answer={submit}
+      <PermissionRequest
+        tool={permission.data.tool_name}
+        reason={permission.data.reason}
+        pending={frozen}
+        handlers={{
+          allow: () => {
+            submit('allowed-once');
+          },
+          deny: () => {
+            submit('rejected');
+          },
+          cancel: () => {
+            submit('cancelled');
+          },
+          tell: (text) => {
+            submit('rejected', () => {
+              background(sendInstruction(chatId, text), 'instruction.send_failed');
+            });
+          },
+        }}
       />
-    </View>
-  );
+    );
+  if (interaction.kind === 'question' && questions.success)
+    return (
+      <HarnessQuestions questions={questions.data.questions} pending={frozen} submit={submit} />
+    );
+  return <Text tone="warning">{CANNOT_ANSWER}</Text>;
 }
+
 export function HarnessInteraction({
   chatId,
   interaction,
   disabled = false,
+  titled = true,
 }: {
   readonly chatId: string;
   readonly interaction: AiHarnessInteraction;
   readonly disabled?: boolean;
+  readonly titled?: boolean;
 }): ReactNode {
-  const answer = useHarnessAnswer(chatId);
-  const attempt = useRef<{ readonly payload: string; readonly id: string } | null>(null);
+  const { answer, submit } = useSubmit(chatId, interaction);
   const frozen = disabled || answer.isPending || answer.isSuccess;
-  const submit = (value: JsonValue): void => {
-    const payload = JSON.stringify(value);
-    if (attempt.current?.payload !== payload) attempt.current = { payload, id: randomUUID() };
-    answer.mutate({
-      operation_id: attempt.current.id,
-      interaction_id: interaction.id,
-      expected_epoch: interaction.epoch,
-      answer: value,
-    });
-  };
-  const questions = HARNESS_QUESTION_REQUEST.safeParse(interaction.request);
   return (
     <View className="gap-3">
-      {interaction.kind === 'permission' ? (
-        <Permission request={interaction.request} disabled={frozen} submit={submit} />
-      ) : interaction.kind === 'question' && questions.success ? (
-        <HarnessQuestions questions={questions.data.questions} pending={frozen} submit={submit} />
-      ) : (
-        <Text tone="warning">
-          This request is unsupported. Review on the execution host or stop the turn.
+      {titled && interaction.kind === 'permission' ? (
+        <Text variant="title-3" accessibilityRole="header">
+          Allow {toolOf(interaction)}?
         </Text>
-      )}
+      ) : null}
+      <Request chatId={chatId} interaction={interaction} frozen={frozen} submit={submit} />
       <DecisionStatus pending={answer.isPending} received={answer.isSuccess} error={answer.error} />
     </View>
   );
 }
-export function HarnessPromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  const profile = useActiveProfile();
-  const sync = useSyncStatus();
-  const state = useChatHarness(
-    chat.id,
-    chat.engine.kind === 'dsh' && chat.engine.session_id !== null,
-  );
-  const target = state.data?.target;
-  const device = useDevice(target?.kind === 'device' ? target.device_id : '');
-  const pending = state.data?.interactions ?? [];
-  const unavailable =
-    harnessUnavailable(sync.status === 'live', state.error, state.data) ??
-    harnessBinding(chat, state.data);
-  return (
-    <DecisionFrame
-      source={harnessSource(target?.kind === 'server', device?.label)}
-      unavailable={unavailable}
-      retry={() => {
-        void state.refetch();
-      }}
-      requests={pending.map((interaction) =>
-        harnessRequest({
-          chatId: chat.id,
-          profileId: profile?.id ?? null,
-          state: state.data,
-          interaction,
-          unavailable,
-          refresh: () => {
-            void state.refetch();
-          },
-        }),
-      )}
-    />
-  );
+
+function kindOf(interaction: AiHarnessInteraction): RequestKind {
+  if (interaction.kind === 'permission') return 'permission';
+  return interaction.kind === 'question' ? 'question' : 'other';
 }
 
-function harnessUnavailable(
-  live: boolean,
-  error: Error | null,
-  state: AiHarnessSession | undefined,
-): string | null {
-  if (!live) return 'Reconnect to answer this request.';
-  if (error !== null) return CHAT_ERROR_MESSAGE;
-  if (state === undefined) return null;
-  return ['unavailable', 'failed', 'switching'].includes(state.state)
-    ? 'The execution host cannot accept answers right now.'
-    : null;
+function toolOf(interaction: AiHarnessInteraction): string {
+  const parsed = HARNESS_PERMISSION_REQUEST.safeParse(interaction.request);
+  return parsed.success ? parsed.data.tool_name : 'a tool';
 }
-function harnessRequest({
-  chatId,
-  profileId,
-  state,
-  interaction,
-  unavailable,
-  refresh,
-}: {
-  readonly refresh: () => void;
-  readonly chatId: string;
-  readonly profileId: string | null;
-  readonly state: AiHarnessSession | undefined;
-  readonly interaction: AiHarnessInteraction;
-  readonly unavailable: string | null;
-}): { readonly id: string; readonly content: ReactNode } {
-  if (state === undefined) throw new Error('Pending interaction requires its native session.');
-  const admission = harnessAdmission(profileId, state, interaction);
+
+function needsRequest(
+  chatId: string,
+  state: AiHarnessSession,
+  interaction: AiHarnessInteraction,
+  options: { readonly machine: string; readonly frozen: boolean },
+): NeedsRequest {
+  const copy = requestCopy(kindOf(interaction), options.machine, toolOf(interaction));
   return {
-    id: `${profileId ?? 'none'}:${chatId}:${state.session_id}:${JSON.stringify(state.target)}:${interaction.id}:${String(interaction.epoch)}:${JSON.stringify(interaction.request)}`,
+    id: `${interaction.id}:${String(interaction.epoch)}`,
+    title: copy.title,
+    needs: copy.needs,
+    stale: interaction.epoch !== state.epoch,
     content: (
-      <View className="gap-3">
-        {admission === null ? null : (
-          <View className="gap-2">
-            <Text tone="warning">{admission}</Text>
-            <Button label="Refresh requests" size="lg" variant="text" onPress={refresh} />
-          </View>
-        )}
-        <HarnessInteraction
-          chatId={chatId}
-          interaction={interaction}
-          disabled={unavailable !== null || admission !== null}
-        />
-      </View>
+      <HarnessInteraction
+        chatId={chatId}
+        interaction={interaction}
+        disabled={options.frozen}
+        titled={false}
+      />
     ),
   };
 }
 
-function harnessSource(server: boolean, label: string | undefined): string {
-  return `SmartEverything · ${server ? 'Hub' : (label ?? 'Execution host unavailable')}`;
+function useHarnessGate(chat: AiChatRow): ReactNode | null {
+  const active = useActiveProfile();
+  const owner = useRow('profiles', chat.profile_id);
+  if (active === null || owner === null || active.id === chat.profile_id) return null;
+  return (
+    <ProfileGate
+      profileName={owner.name}
+      onSwitch={() => {
+        selectProfile(chat.profile_id).catch((error: unknown) => {
+          notify({ message: 'The profile was not changed', error, tone: 'critical' });
+        });
+      }}
+    />
+  );
 }
 
-function harnessBinding(chat: AiChatRow, state: AiHarnessSession | undefined): string | null {
-  if (state === undefined || chat.engine.kind !== 'dsh') return null;
-  return state.session_id !== chat.engine.session_id ||
-    harnessTargetKey(state.target) !== harnessTargetKey(chat.engine.execution_target) ||
-    state.metadata.profile_id !== chat.profile_id
-    ? 'The execution binding changed. Refresh requests to continue.'
+interface DockView {
+  readonly machine: string;
+  readonly notice: string | null;
+  readonly gate: ReactNode | null;
+  readonly requests: readonly NeedsRequest[];
+}
+
+function useMachine(target: AiHarnessSession['target'] | undefined): string {
+  const device = useDevice(target?.kind === 'device' ? target.device_id : '');
+  return target?.kind === 'server' ? 'Home Hub' : (device?.label ?? 'The computer');
+}
+
+function useHarnessRequests(chat: AiChatRow, dismissed: ReadonlySet<string>): DockView {
+  const live = useSyncStatus().status === 'live';
+  const state = useChatHarness(
+    chat.id,
+    chat.engine.kind === 'dsh' && chat.engine.session_id !== null,
+  );
+  useRefetchOnLive(live, () => {
+    background(state.refetch(), 'state.refetch_failed');
+  });
+  const session = state.data;
+  const machine = useMachine(session?.target);
+  const gate = useHarnessGate(chat);
+  if (session === undefined || harnessRebinding(chat, session))
+    return { machine, notice: null, gate, requests: [] };
+  const notice = harnessNotice(live, session, machine);
+  const frozen = notice !== null;
+  const requests = session.interactions
+    .map((interaction) => needsRequest(chat.id, session, interaction, { machine, frozen }))
+    .filter((request) => !dismissed.has(request.id));
+  return { machine, notice, gate, requests };
+}
+
+export function HarnessPromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const { machine, notice, gate, requests } = useHarnessRequests(chat, dismissed);
+  return (
+    <NeedsYouDock
+      requests={requests}
+      machine={machine}
+      gate={gate}
+      notice={notice}
+      onDismiss={(id) => {
+        setDismissed((previous) => new Set([...previous, id]));
+      }}
+    />
+  );
+}
+
+function harnessNotice(live: boolean, session: AiHarnessSession, machine: string): string | null {
+  if (!live) return 'Reconnect to answer this request.';
+  return ['unavailable', 'failed', 'switching'].includes(session.state)
+    ? `${machine} can’t take answers right now.`
     : null;
 }
 
-function harnessAdmission(
-  profileId: string | null,
-  state: AiHarnessSession,
-  interaction: AiHarnessInteraction,
-): string | null {
-  if (profileId !== state.metadata.profile_id)
-    return 'Switch to this conversation’s profile, then refresh requests to continue.';
-  if (interaction.epoch !== state.epoch)
-    return 'This request’s execution epoch is no longer current. Refresh requests to continue.';
-  return null;
+function harnessRebinding(chat: AiChatRow, session: AiHarnessSession): boolean {
+  return (
+    chat.engine.kind === 'dsh' &&
+    (session.session_id !== chat.engine.session_id ||
+      harnessTargetKey(session.target) !== harnessTargetKey(chat.engine.execution_target) ||
+      session.metadata.profile_id !== chat.profile_id)
+  );
 }

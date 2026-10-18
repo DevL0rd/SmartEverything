@@ -7,6 +7,7 @@ import { List } from '../../components/section';
 import { TextField } from '../../components/text-field';
 import { useValue } from '../../design/external-store';
 import type { PairingPresentation } from './pairing-actions';
+import { background } from '@smarteverything/logging';
 
 function CodeInputs({ pairing }: { readonly pairing: PairingPresentation }): ReactNode {
   const code = useValue(pairing.code);
@@ -51,13 +52,13 @@ export function CodeForm({
         <ListRow
           icon="home"
           title={home}
-          subtitle={checked ? 'Identity checked' : 'This browser’s home'}
+          subtitle={checked ? 'The pairing code confirms this home' : 'This browser’s home'}
           trailing={
             <Button
               label="Change"
               variant="text"
               onPress={() => {
-                void pairing.change('welcome');
+                background(pairing.change('welcome'), 'pairing.change_failed');
               }}
             />
           }

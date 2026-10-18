@@ -12,7 +12,7 @@ const table: RowShape = {
 describe('initialRowCount', () => {
   it('renders more rows when messages are short', () => {
     const rows = Array.from({ length: 40 }, () => short);
-    expect(initialRowCount(rows, 900)).toBe(10);
+    expect(initialRowCount(rows, 900)).toBe(6);
   });
 
   it('renders few rows when the newest messages are tall', () => {
@@ -28,7 +28,7 @@ describe('initialRowCount', () => {
         Array.from({ length: 200 }, () => short),
         5000,
       ),
-    ).toBe(10);
+    ).toBe(6);
   });
 
   it('counts table lines, attachments and embeds as taller than plain text', () => {

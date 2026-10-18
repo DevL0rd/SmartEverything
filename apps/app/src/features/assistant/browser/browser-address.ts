@@ -1,13 +1,15 @@
 import { z } from 'zod';
-import { publicBrowserUrl, type AiPreviewPublication } from '@smarteverything/domain';
+import { browsableUrl, publicBrowserUrl, type AiPreviewPublication } from '@smarteverything/domain';
 export type BrowserAddress =
   | { readonly kind: 'preview'; readonly publication: AiPreviewPublication; readonly path: string }
   | { readonly kind: 'public'; readonly url: string }
   | { readonly kind: 'rejected'; readonly reason: string };
+export type AddressReach = 'any-host' | 'public-hosts';
 export function browserAddress(
   value: string,
   selected: AiPreviewPublication | null,
   publications: readonly AiPreviewPublication[],
+  reach: AddressReach,
 ): BrowserAddress {
   if (selected !== null && value.startsWith('/') && !value.startsWith('//'))
     return previewPath(selected, value);
@@ -15,7 +17,7 @@ export function browserAddress(
   if (!parsed.success)
     return {
       kind: 'rejected',
-      reason: 'Enter a published service address, a relative path, or a public HTTPS address.',
+      reason: 'Enter a web address or a path like /docs.',
     };
   const url = new URL(parsed.data);
   if (!cleanAddress(url, value))
@@ -25,8 +27,14 @@ export function browserAddress(
     (row) => canonicalPreviewOrigin(row.source_origin) === origin,
   );
   if (publication !== undefined) return previewPath(publication, url.href);
-  if (publicBrowserUrl(url.href)) return { kind: 'public', url: url.href };
-  return { kind: 'rejected', reason: 'This service has not been shared with this chat.' };
+  return webAddress(url.href, reach);
+}
+function webAddress(href: string, reach: AddressReach): BrowserAddress {
+  if (!browsableUrl(href))
+    return { kind: 'rejected', reason: 'Enter an http or https web address.' };
+  if (reach === 'public-hosts' && !publicBrowserUrl(href))
+    return { kind: 'rejected', reason: 'This service has not been shared with this chat.' };
+  return { kind: 'public', url: href };
 }
 function previewPath(publication: AiPreviewPublication, value: string): BrowserAddress {
   const url = new URL(value, publication.source_origin);

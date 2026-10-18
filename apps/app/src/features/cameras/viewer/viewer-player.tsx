@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Dot } from '../../../components/badge';
 import { QuickTogglesSheet, hasQuickToggles } from '../components/quick-toggles';
 import { StreamInfoSheet } from '../player/stream-info-sheet';
+import { leaveViewer } from './leave-viewer';
 import type { Viewer } from './use-viewer';
 
 interface TopBarProps {
@@ -50,20 +51,11 @@ function PortraitDots({ deviceId }: { readonly deviceId: string }): ReactNode {
 }
 
 function LeaveButton({ viewer, immersive }: TopBarProps): ReactNode {
-  const router = useRouter();
   const { fullScreen } = viewer;
   if (immersive && fullScreen.manual) {
     return <IconButton icon="minimize" label="Leave full screen" onPress={fullScreen.leave} />;
   }
-  return (
-    <IconButton
-      icon="arrowLeft"
-      label="Back"
-      onPress={() => {
-        router.back();
-      }}
-    />
-  );
+  return <IconButton icon="arrowLeft" label="Back" onPress={leaveViewer} />;
 }
 
 const FILL = { flex: 1 };
@@ -198,27 +190,26 @@ export interface ViewerPlayerProps {
 
 export function ViewerPlayer({ viewer, topBar, rounded }: ViewerPlayerProps): ReactNode {
   const { fullScreen, hide } = viewer;
-  const router = useRouter();
+  return (
+    <View
+      onPointerMove={hide.poke}
+      className={cn('aspect-video w-full overflow-hidden bg-black', rounded && 'rounded-lg')}
+    >
+      {fullScreen.immersive ? null : <Stage viewer={viewer} immersive={false} topBar={topBar} />}
+    </View>
+  );
+}
+
+export function ViewerOverlays({ viewer }: { readonly viewer: Viewer }): ReactNode {
+  const { fullScreen, hide } = viewer;
   const focused = useIsFocused();
   return (
     <>
-      <View
-        onPointerMove={hide.poke}
-        className={cn('aspect-video w-full overflow-hidden bg-black', rounded && 'rounded-lg')}
-      >
-        {fullScreen.immersive ? null : <Stage viewer={viewer} immersive={false} topBar={topBar} />}
-      </View>
       <Modal
         visible={focused ? fullScreen.immersive : false}
         animationType="fade"
         supportedOrientations={['portrait', 'landscape']}
-        onRequestClose={
-          fullScreen.manual
-            ? fullScreen.leave
-            : (): void => {
-                router.back();
-              }
-        }
+        onRequestClose={fullScreen.manual ? fullScreen.leave : leaveViewer}
         statusBarTranslucent
         navigationBarTranslucent
       >

@@ -1,19 +1,23 @@
-import { projectHarnessContext, projectContextRequest } from './context-projection';
+import { join } from 'node:path';
 import { harnessContextPercent } from '@smarteverything/domain';
+import { chatFolder, ensureChatFolder } from '../projects/paths';
 import { switchConversation } from './switch-conversation';
 import { HarnessDiscovery } from './discovery';
+import { NativeIngest } from './native-ingest';
 import { HarnessSkillUpdatesService } from './skill-updates';
-import { systemClock, type Clock } from '../clock';
+import { Logger } from '@smarteverything/logging';
+import type { Clock } from '../clock';
+import { CountSummary } from '../providers/count-summary';
+import { RepeatLog } from '../providers/repeat-log';
 import { projectNativeWorkspace } from './workspace-publication';
 import { refusedNativeInput } from './input-refusal';
+import { logPublished, nextProjection, streamedWithoutChange } from './published-event';
 import { HarnessSubscriptions } from './subscriptions';
 import { HarnessConfigurationService } from './configuration';
 import { HarnessExtensions } from './extensions';
-import { randomUUID } from 'node:crypto';
-import type { HarnessGrant } from '../store/repositories/harness-coordination';
 import { prepareConversation } from './preparation';
 import { changePermission, confirmedPermission } from './permission';
-import { ApiError, AI_HARNESS_SESSION, harnessTargetKey } from '@smarteverything/domain';
+import { ApiError, AI_HARNESS_SESSION } from '@smarteverything/domain';
 import type {
   AiChatRow,
   DshEngine,
@@ -21,14 +25,15 @@ import type {
   AiModelRouteSelection,
   AiHarnessSession,
   AiHarnessHandoffRequest,
-  AiHarnessHandoff,
+  AiHarnessSwitchResult,
   AiHarnessAnswer,
   AiHarnessHost,
   AiHarnessEvent,
   AiHarnessPermissionChange,
+  HarnessNativeFrame,
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import type { ChatOwner } from '../assistant/chat-directory';
+import { ownedChat, type ChatOwner } from '../assistant/chat-directory';
 import type { HarnessAuthority } from '@smarteverything/harness';
 import { HarnessDirectory } from './directory';
 import { HarnessStorage } from './storage';
@@ -36,51 +41,64 @@ import type { HarnessRoutes } from './routes';
 import type { DshSessionPrincipal } from '../store/repositories/dsh-session-claims';
 
 export class HarnessService {
-  private readonly switching = new Map<string, Promise<AiHarnessHandoff>>();
-  private readonly listeners = new Map<string, (event: AiHarnessEvent) => void>();
+  private readonly log = new Logger('hub.harness');
+  private readonly events = new CountSummary(this.log, 'harness.events_summary');
+  private readonly stale = new RepeatLog(this.log);
+  private readonly switching = new Set<string>();
+  private readonly listeners = new Set<(event: AiHarnessEvent) => void>();
   readonly directory = new HarnessDirectory((request) => {
     this.admitWork(request);
   });
+  private readonly machineListeners = new Set<(chat: AiChatRow, text: string) => void>();
   readonly storage: HarnessStorage;
   readonly configuration: HarnessConfigurationService;
   readonly extensions: HarnessExtensions;
   readonly discovery: HarnessDiscovery;
   readonly skillUpdates: HarnessSkillUpdatesService;
   readonly subscriptions: HarnessSubscriptions;
+  private readonly ingest: NativeIngest;
+  private readonly dataDirectory: string;
   constructor(
     readonly store: Store,
     readonly routes: HarnessRoutes,
     private readonly announce: (event: AiHarnessEvent, profileId: string) => void,
-    options?: { readonly stateDirectory: string; readonly clock: Clock },
+    options: { readonly dataDirectory: string; readonly clock: Clock },
   ) {
+    const now = (): Date => options.clock.now();
+    this.dataDirectory = options.dataDirectory;
+    this.ingest = new NativeIngest(store, (event) => {
+      this.publish(event);
+    });
+    store.dshSessions.onAppend((sessionId, events) => {
+      this.ingest.appended(sessionId, events);
+    });
     this.storage = new HarnessStorage(store, this.directory);
     this.subscriptions = new HarnessSubscriptions(this.directory, routes);
     this.configuration = new HarnessConfigurationService(
       store.harnessConfiguration,
+      store.harnessExtensions,
       this.directory,
     );
     this.extensions = new HarnessExtensions(
+      store.harnessExtensions,
       this.configuration,
-      store.harnessSkillPresentations,
-      options?.stateDirectory,
+      join(options.dataDirectory, 'harness'),
+      now,
     );
-    this.discovery = new HarnessDiscovery(this.configuration);
+    this.settleInterruptedSwitches();
+    this.discovery = new HarnessDiscovery(() => this.extensions.installed(), now);
     this.skillUpdates = new HarnessSkillUpdatesService(
       store.harnessSkillUpdates,
       this.configuration,
       this.extensions,
-      {
-        source: this.discovery.skills,
-        plugins: this.discovery.plugins,
-        clock: options?.clock ?? systemClock,
-      },
+      options.clock,
     );
   }
+  chatFolder(chatId: string): string {
+    return ensureChatFolder(chatFolder(this.dataDirectory, chatId));
+  }
   own(owner: ChatOwner, chatId: string): AiChatRow {
-    const chat = this.store.aiChats.chat(chatId);
-    if (chat.profile_id !== owner.profileId)
-      throw new ApiError('forbidden', 'This chat belongs to a different profile.');
-    return chat;
+    return ownedChat(this.store, owner, chatId);
   }
   binding(chat: AiChatRow): DshEngine {
     if (chat.engine.kind !== 'dsh')
@@ -148,93 +166,153 @@ export class HarnessService {
     const chat = this.own(owner, chatId);
     const id = this.boundSession(chat);
     const receipt = this.store.harnessCoordination.begin(answer.operation_id, id, answer);
-    if (receipt.state === 'completed') return;
+    const fields = {
+      chatId,
+      harnessSession: id,
+      operationId: answer.operation_id,
+      interactionId: answer.interaction_id,
+    };
+    if (receipt.state === 'completed') {
+      this.log.debug('harness.answer_replayed', fields);
+      return;
+    }
     const session = this.state(owner, chatId);
-    if (
-      session.epoch !== answer.expected_epoch ||
-      !session.interactions.some((entry) => entry.id === answer.interaction_id)
-    )
-      throw new ApiError(
-        'conflict',
-        'This interaction is no longer pending at the selected native epoch.',
-      );
-    await this.directory.execute(session.target, answer.operation_id, {
-      kind: 'answer',
-      session_id: session.session_id,
-      expected_epoch: answer.expected_epoch,
-      answer,
-    });
+    this.assertPending(session, answer, fields);
+    const startedAt = performance.now();
+    try {
+      await this.directory.execute(session.target, answer.operation_id, {
+        kind: 'answer',
+        session_id: session.session_id,
+        expected_epoch: answer.expected_epoch,
+        answer,
+      });
+    } catch (cause) {
+      this.log.error('harness.answer_failed', cause, {
+        ...fields,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      throw cause;
+    }
     this.store.harnessCoordination.finish(answer.operation_id, { ok: true });
+    this.log.info('harness.answered', {
+      ...fields,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
   }
-  async switch(
+  private assertPending(
+    session: AiHarnessSession,
+    answer: AiHarnessAnswer,
+    fields: Record<string, string>,
+  ): void {
+    if (
+      session.epoch === answer.expected_epoch &&
+      session.interactions.some((entry) => entry.id === answer.interaction_id)
+    )
+      return;
+    this.log.warn('harness.answer_stale', {
+      ...fields,
+      expectedEpoch: answer.expected_epoch,
+      epoch: session.epoch,
+      pending: session.interactions.length,
+    });
+    throw new ApiError(
+      'conflict',
+      'This interaction is no longer pending at the selected native epoch.',
+    );
+  }
+  switch(
     owner: ChatOwner,
     chatId: string,
     input: AiHarnessHandoffRequest,
-    localClientId?: string,
-  ): Promise<AiHarnessHandoff> {
-    return switchConversation(this, this.switching, { owner, chatId, input, localClientId });
+  ): Promise<AiHarnessSwitchResult> {
+    const startedAt = performance.now();
+    this.log.info('harness.switch_started', { chatId, switching: this.switching.size });
+    return switchConversation(this, this.switching, { owner, chatId, input }).then(
+      (result) => {
+        this.log.info('harness.switch_finished', {
+          chatId,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+        return result;
+      },
+      (cause: unknown) => {
+        this.log.error('harness.switch_failed', cause, {
+          chatId,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+        throw cause;
+      },
+    );
   }
-  admitSwitch(chat: AiChatRow, operation: string): void {
-    if (this.store.harnessCoordination.permissionChange(this.boundSession(chat)) !== null)
-      throw new ApiError(
-        'conflict',
-        'Confirm the pending permission change before switching hosts.',
-      );
-    const active = this.store.harnessCoordination.state(this.boundSession(chat))?.handoff;
-    if (
-      active !== null &&
-      active !== undefined &&
-      active.id !== operation &&
-      active.stage !== 'completed' &&
-      active.stage !== 'failed'
-    )
-      throw new ApiError(
-        'conflict',
-        'Another admitted handoff is still pending for this conversation.',
-      );
+  private settleInterruptedSwitches(): void {
+    for (const id of this.store.harnessCoordination.switchingSessions()) {
+      this.log.warn('harness.switch_interrupted', { harnessSession: id });
+      this.store.harnessCoordination.settleSwitching(id, {
+        code: 'operation_failed',
+        message: 'The hub restarted during the machine change; send a message to continue.',
+        retry_at: null,
+      });
+    }
   }
-  onEvent(listener: (event: AiHarnessEvent) => void, consumer: string = randomUUID()): () => void {
-    if (this.listeners.has(consumer))
-      throw new ApiError('conflict', 'A native event consumer is already attached.');
-    this.listeners.set(consumer, listener);
+  onMachineChanged(listener: (chat: AiChatRow, text: string) => void): void {
+    this.machineListeners.add(listener);
+  }
+  machineChanged(chat: AiChatRow, text: string): void {
+    for (const listener of this.machineListeners) listener(chat, text);
+  }
+  turnRunning(chat: AiChatRow): boolean {
+    return this.store.harnessDeliveries.pending(this.boundSession(chat)).length > 0;
+  }
+  onEvent(listener: (event: AiHarnessEvent) => void): () => void {
+    this.listeners.add(listener);
     return () => {
-      this.listeners.delete(consumer);
+      this.listeners.delete(listener);
     };
+  }
+  native(frame: HarnessNativeFrame): void {
+    this.ingest.frame(frame);
   }
   publish(event: AiHarnessEvent): void {
+    this.events.count(event.kind);
     const grant = this.storage.grant(event.session_id);
-    const session = this.validateEvent(event, grant);
-    const retained = this.store.harnessRecovery.retained(event);
+    const session = this.validateEvent(event);
     const refusal = refusedNativeInput(this.store, event);
-    if (retained !== undefined && refusal !== undefined) throw refusal;
-    if (retained !== undefined) {
-      this.replay(event.session_id);
-      return;
+    if (refusal !== undefined) {
+      this.log.warn('harness.input_refused', {
+        chatId: event.chat_id,
+        harnessSession: event.session_id,
+        kind: event.kind,
+        reason: refusal.message,
+      });
+      throw refusal;
     }
+    logPublished(this.log, event);
     const policy = event.kind === 'state' ? confirmedPermission(this, event) : undefined;
     const next = {
-      ...this.nextProjection(event, session),
+      ...nextProjection(event, session, (state) => this.projected(state, session)),
       ...(policy === undefined ? {} : { permission: policy.permission }),
     };
-    if (event.kind === 'tool' && harnessTargetKey(event.target) !== harnessTargetKey(grant.target))
-      throw new ApiError('forbidden', 'Native tool publication names another execution host.');
     const published = event.kind === 'state' ? { ...event, session: next } : event;
-    this.store.harnessCoordination.accept(
-      next,
-      published,
-      (): void => {
-        if (policy !== undefined) {
-          const chat = this.store.aiChats.chat(event.chat_id);
-          this.store.aiChats.update(chat.id, {
-            engine: { ...this.binding(chat), permission: policy.permission },
-          });
-        }
-        this.store.harnessRecovery.keep(published, event);
-        this.noteContext(published);
-      },
-      policy,
-    );
-    this.replay(event.session_id);
+    if (!streamedWithoutChange(event, session, next))
+      this.store.harnessCoordination.accept(
+        next,
+        published,
+        (): void => {
+          if (policy !== undefined) {
+            const chat = this.store.aiChats.chat(event.chat_id);
+            this.store.aiChats.update(chat.id, {
+              engine: { ...this.binding(chat), permission: policy.permission },
+            });
+          }
+          this.noteContext(published);
+        },
+        policy,
+      );
+    this.deliver(published, grant.profile_id);
+  }
+  private deliver(event: AiHarnessEvent, profileId: string): void {
+    for (const listener of this.listeners) listener(event);
+    this.announce(event, profileId);
   }
   private noteContext(event: AiHarnessEvent): void {
     if (event.kind === 'usage') {
@@ -246,24 +324,6 @@ export class HarnessService {
     const percent = harnessContextPercent(event.session.context);
     this.store.aiChats.noteContext(event.chat_id, percent === null ? null : Math.round(percent));
   }
-  replay(sessionId?: string): void {
-    for (const [consumer, listener] of this.listeners) {
-      for (const event of this.store.harnessRecovery.pending(consumer, sessionId)) {
-        listener(event);
-        this.store.harnessRecovery.ack(event, consumer);
-      }
-    }
-    for (const event of this.store.harnessRecovery.pending('live-v1', sessionId)) {
-      const metadata = this.store.dshSessions.stat(
-        event.session_id,
-        this.store.aiChats.chat(event.chat_id).profile_id,
-      );
-      if (metadata === undefined)
-        throw new ApiError('conflict', 'Retained native publication lost its conversation.');
-      this.announce(event, this.store.aiChats.chat(event.chat_id).profile_id);
-      this.store.harnessRecovery.ack(event, 'live-v1');
-    }
-  }
   private boundSession(chat: AiChatRow): string {
     const id = this.binding(chat).session_id;
     if (id === null) throw new ApiError('conflict', 'This conversation has no native binding.');
@@ -271,82 +331,50 @@ export class HarnessService {
       throw new ApiError('forbidden', 'This native binding belongs to another conversation.');
     return id;
   }
-  private validateEvent(event: AiHarnessEvent, grant: HarnessGrant): AiHarnessSession {
+  private validateEvent(event: AiHarnessEvent): AiHarnessSession {
     const session = this.store.harnessCoordination.state(event.session_id);
-    if (session?.epoch !== event.epoch || session.chat_id !== event.chat_id)
+    if (session?.epoch !== event.epoch || session.chat_id !== event.chat_id) {
+      this.stale.warn('harness.event_stale', event.session_id, {
+        chatId: event.chat_id,
+        harnessSession: event.session_id,
+        kind: event.kind,
+        eventEpoch: event.epoch,
+        sessionEpoch: session?.epoch,
+        sessionKnown: session !== undefined,
+      });
       throw new ApiError('conflict', 'The runtime event belongs to a stale chat or native epoch.');
-    const writer = this.store.dshSessions.writerState(event.session_id, grant.profile_id);
-    if (writer.claim?.epoch !== event.epoch)
-      throw new ApiError('conflict', 'Native projection has no current writer claim.');
-    this.store.dshSessions.verifyWriter(
-      writer.claim,
-      this.hostPrincipal(grant.profile_id, this.directory.get(grant.target).host),
-    );
+    }
     return session;
-  }
-  private nextProjection(event: AiHarnessEvent, session: AiHarnessSession): AiHarnessSession {
-    return event.kind === 'state'
-      ? this.projected(event, session)
-      : event.kind === 'interaction'
-        ? {
-            ...session,
-            state: 'waiting' as const,
-            interactions: [
-              ...session.interactions.filter((entry) => entry.id !== event.interaction.id),
-              event.interaction,
-            ],
-          }
-        : event.kind === 'completed'
-          ? { ...session, state: 'idle' as const, work: [], reconnecting: false, failure: null }
-          : event.kind === 'failed'
-            ? { ...session, state: 'failed' as const, failure: event.failure, reconnecting: false }
-            : { ...session, state: 'working' as const };
   }
   private projected(
     event: Extract<AiHarnessEvent, { kind: 'state' }>,
     prior: AiHarnessSession,
   ): AiHarnessSession {
     const grant = this.storage.grant(event.session_id);
-    if (
-      event.session.session_id !== event.session_id ||
-      event.session.epoch !== event.epoch ||
-      harnessTargetKey(event.session.target) !== harnessTargetKey(grant.target)
-    )
-      throw new ApiError(
-        'forbidden',
-        'Native state publication names another session, epoch or execution host.',
-      );
     const metadata = this.store.dshSessions.stat(event.session_id, grant.profile_id);
     if (metadata === undefined)
       throw new ApiError('conflict', 'Native state metadata is unavailable.');
     projectNativeWorkspace(this, event, grant);
     return AI_HARNESS_SESSION.parse({
       ...event.session,
-      context: projectHarnessContext(event, prior.context),
-      context_request: projectContextRequest(event, prior.context_request),
+      context_request: prior.context_request,
       metadata,
       target: grant.target,
       route: grant.route,
       permission: grant.permission,
-      handoff: prior.handoff,
     });
   }
   hostPrincipal(profileId: string, host: AiHarnessHost): DshSessionPrincipal {
-    if (host.manifest === null)
-      throw new ApiError('conflict', 'Native composition is unavailable.');
     return {
       profile_id: profileId,
       target: host.target,
       runtime_instance: host.runtime_instance,
       connection_generation: host.connection_generation,
-      conversation_authorized: true,
       platform: host.platform,
-      composition: host.manifest.composition,
     };
   }
   private admitWork(request: HarnessRuntimeRequest): void {
-    if (request.kind === 'close' || request.kind === 'interrupt' || request.kind === 'drain')
-      return;
+    if (request.kind === 'close' || request.kind === 'interrupt') return;
     if (request.kind === 'open') {
       this.store.aiChats.assertWorkAllowed(request.chat_id);
       return;
@@ -359,12 +387,7 @@ export class HarnessService {
       throw new ApiError('conflict', 'Native work has no stored conversation.');
     this.store.aiChats.assertWorkAllowed(metadata.chat_id);
   }
-  admitTarget(
-    owner: ChatOwner,
-    host: AiHarnessHost,
-    _actorId: string,
-    _localClientId?: string,
-  ): void {
+  admitTarget(owner: ChatOwner, host: AiHarnessHost): void {
     if (host.target.kind === 'device' && owner.role !== 'owner')
       throw new ApiError('forbidden', 'Only an authorized owner may start local computer work.');
   }

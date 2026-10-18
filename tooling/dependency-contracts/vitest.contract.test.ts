@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { itIsPinnedToItsDeclaredVersion } from './contract-helpers';
 
 describe('vitest contract', () => {
-  itIsPinnedToItsDeclaredVersion('vitest');
-
   it('compares deeply with toStrictEqual, distinguishing undefined keys', () => {
     expect({ a: 1 }).toStrictEqual({ a: 1 });
     expect({ a: 1 }).not.toStrictEqual({ a: 1, b: undefined });

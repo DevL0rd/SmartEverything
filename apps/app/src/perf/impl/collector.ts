@@ -1,20 +1,44 @@
 import { COMPONENTS_MAX, JANK_MS } from './config';
+import type { RenderReason } from './fiber-diff';
 
-export interface CommitStat {
-  n: number;
-  sum: number;
-  max: number;
-  mounts: number;
+export class CommitStat {
+  n = 0;
+  sum = 0;
+  max = 0;
+  mounts = 0;
+
+  add(ms: number, mounted: boolean): void {
+    this.n += 1;
+    this.sum += ms;
+    this.max = Math.max(this.max, ms);
+    this.mounts += mounted ? 1 : 0;
+  }
 }
 
-export interface ComponentStat {
-  n: number;
-  worst: number;
-  self: number;
-  max: number;
-  props: Map<string, number>;
-  hooks: Map<string, number>;
-  parent: number;
+export class ComponentStat {
+  n = 0;
+  worst = 0;
+  self = 0;
+  max = 0;
+  readonly props = new Map<string, number>();
+  readonly hooks = new Map<string, number>();
+  parent = 0;
+
+  add(instance: number, self: number, reason: RenderReason | null): void {
+    this.n += 1;
+    this.worst = Math.max(this.worst, instance);
+    this.self += self;
+    this.max = Math.max(this.max, self);
+    if (reason !== null) {
+      this.parent += reason.parent ? 1 : 0;
+      reason.props.forEach((key) => {
+        bump(this.props, key);
+      });
+      reason.hooks.forEach((key) => {
+        bump(this.hooks, key);
+      });
+    }
+  }
 }
 
 export interface MountStat {
@@ -34,6 +58,12 @@ export interface ListStat {
   blankSamples: number;
   scrollFrames: number;
   scrollJanks: number;
+  content: number;
+  viewport: number;
+  offsetMax: number;
+  firstIndex: number;
+  lastIndex: number;
+  cellMax: number;
 }
 
 export interface FanStat {
@@ -43,14 +73,14 @@ export interface FanStat {
   ms: number;
 }
 
-export interface HotStat {
+interface HotStat {
   n: number;
   ms: number;
   max: number;
   size: number;
 }
 
-export interface StallRecord {
+interface StallRecord {
   readonly screen: string;
   readonly gap: number;
   readonly explained: number;
@@ -58,7 +88,7 @@ export interface StallRecord {
   readonly context: readonly string[];
 }
 
-export interface NavRecord {
+interface NavRecord {
   readonly from: string;
   readonly to: string;
   readonly ms: number;
@@ -67,7 +97,7 @@ export interface NavRecord {
   readonly commits: number;
 }
 
-export interface Frames {
+interface Frames {
   count: number;
   janks: number;
   worst: number;
@@ -118,78 +148,48 @@ function inner<V>(outer: Map<string, Map<string, V>>, key: string): Map<string, 
   return made;
 }
 
-export interface CommitSample {
-  readonly ms: number;
-  readonly mounted: boolean;
-}
-
-export function addCommit(
-  data: WindowData,
-  screen: string,
-  id: string,
-  sample: CommitSample,
-): void {
+export function commitStat(data: WindowData, screen: string, id: string): CommitStat {
   const stats = inner(data.commits, screen);
-  const stat = stats.get(id) ?? { n: 0, sum: 0, max: 0, mounts: 0 };
-  stats.set(id, {
-    n: stat.n + 1,
-    sum: stat.sum + sample.ms,
-    max: Math.max(stat.max, sample.ms),
-    mounts: stat.mounts + (sample.mounted ? 1 : 0),
-  });
+  let stat = stats.get(id);
+  if (stat === undefined) {
+    stat = new CommitStat();
+    stats.set(id, stat);
+  }
+  return stat;
 }
 
 function bump(map: Map<string, number>, key: string): void {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
 
-export interface ComponentRender {
-  readonly name: string;
-  readonly instance: number;
-  readonly self: number;
-  readonly props: readonly string[];
-  readonly hooks: readonly string[];
-  readonly parent: boolean;
-}
-
-export function addComponent(data: WindowData, screen: string, render: ComponentRender): void {
+export function componentStat(
+  data: WindowData,
+  screen: string,
+  name: string,
+): ComponentStat | null {
   const stats = inner(data.components, screen);
-  let stat = stats.get(render.name);
+  let stat = stats.get(name);
   if (stat === undefined) {
     if (stats.size >= COMPONENTS_MAX) {
-      return;
+      return null;
     }
-    stat = { n: 0, worst: 0, self: 0, max: 0, props: new Map(), hooks: new Map(), parent: 0 };
-    stats.set(render.name, stat);
+    stat = new ComponentStat();
+    stats.set(name, stat);
   }
-  stat.n += 1;
-  stat.worst = Math.max(stat.worst, render.instance);
-  stat.self += render.self;
-  stat.max = Math.max(stat.max, render.self);
-  stat.parent += render.parent ? 1 : 0;
-  render.props.forEach((key) => {
-    bump(stat.props, key);
-  });
-  render.hooks.forEach((key) => {
-    bump(stat.hooks, key);
-  });
+  return stat;
 }
 
 export function addMount(data: WindowData, label: string, change: Partial<MountStat>): void {
-  const stat = data.mounts.get(label) ?? {
-    mounts: 0,
-    unmounts: 0,
-    mountMs: 0,
-    maxMountMs: 0,
-    lifeMs: 0,
-  };
-  data.mounts.set(label, {
-    mounts: stat.mounts + (change.mounts ?? 0),
-    unmounts: stat.unmounts + (change.unmounts ?? 0),
-    mountMs: stat.mountMs + (change.mountMs ?? 0),
-    maxMountMs: Math.max(stat.maxMountMs, change.maxMountMs ?? 0),
-    lifeMs: stat.lifeMs + (change.lifeMs ?? 0),
-  });
+  let stat = data.mounts.get(label);
+  if (stat === undefined) {
+    stat = { mounts: 0, unmounts: 0, mountMs: 0, maxMountMs: 0, lifeMs: 0 };
+    data.mounts.set(label, stat);
+  }
+  stat.mounts += change.mounts ?? 0;
+  stat.unmounts += change.unmounts ?? 0;
+  stat.mountMs += change.mountMs ?? 0;
+  stat.maxMountMs = Math.max(stat.maxMountMs, change.maxMountMs ?? 0);
+  stat.lifeMs += change.lifeMs ?? 0;
 }
 
 export function addFrame(data: WindowData, gap: number, dragging: boolean): void {
@@ -204,28 +204,25 @@ export function addFrame(data: WindowData, gap: number, dragging: boolean): void
   }
 }
 
-export function addFan(
-  data: WindowData,
-  key: string,
-  change: { updates?: number; listeners?: number; commits?: number; ms?: number },
-): void {
-  const stat = data.fan.get(key) ?? { updates: 0, listeners: 0, commits: 0, ms: 0 };
-  data.fan.set(key, {
-    updates: stat.updates + (change.updates ?? 0),
-    listeners: stat.listeners + (change.listeners ?? 0),
-    commits: stat.commits + (change.commits ?? 0),
-    ms: stat.ms + (change.ms ?? 0),
-  });
+export function fanStat(data: WindowData, key: string): FanStat {
+  let stat = data.fan.get(key);
+  if (stat === undefined) {
+    stat = { updates: 0, listeners: 0, commits: 0, ms: 0 };
+    data.fan.set(key, stat);
+  }
+  return stat;
 }
 
 export function addHot(data: WindowData, kind: string, ms: number, size: number): void {
-  const stat = data.hot.get(kind) ?? { n: 0, ms: 0, max: 0, size: 0 };
-  data.hot.set(kind, {
-    n: stat.n + 1,
-    ms: stat.ms + ms,
-    max: Math.max(stat.max, ms),
-    size: stat.size + size,
-  });
+  let stat = data.hot.get(kind);
+  if (stat === undefined) {
+    stat = { n: 0, ms: 0, max: 0, size: 0 };
+    data.hot.set(kind, stat);
+  }
+  stat.n += 1;
+  stat.ms += ms;
+  stat.max = Math.max(stat.max, ms);
+  stat.size += size;
 }
 
 export function listStat(data: WindowData, screen: string, id: string): ListStat {
@@ -243,6 +240,12 @@ export function listStat(data: WindowData, screen: string, id: string): ListStat
     blankSamples: 0,
     scrollFrames: 0,
     scrollJanks: 0,
+    content: 0,
+    viewport: 0,
+    offsetMax: 0,
+    firstIndex: Number.POSITIVE_INFINITY,
+    lastIndex: -1,
+    cellMax: 0,
   };
   lists.set(id, made);
   return made;

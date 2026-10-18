@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import { ApiError, type TranscriptSession, type SpeechSource } from '@smarteverything/domain';
+import { type TranscriptSession, type SpeechSource } from '@smarteverything/domain';
 import type { ToolCaller } from '../../ai-tools/hub-tool';
 import { SPEECH_PRINCIPAL, type SpeechPrincipal } from '../../transcripts/speech-principal';
 import type { SpeechOccurrence } from '../../transcripts/speech';
 import type { StoreContext } from '../context';
 import { SQL_JSON, jsonText } from '../sql';
 
-const SEQUENCE = z.strictObject({ next_id: z.int().positive() });
+const SEQUENCE = z.strictObject({ seq: z.int().nonnegative() });
 const GRANT = z.strictObject({
   revision: z.string(),
   principal: SQL_JSON.pipe(SPEECH_PRINCIPAL),
@@ -36,19 +36,24 @@ export class SpeechRepository {
   constructor(private readonly context: StoreContext) {}
 
   watermark(): number {
-    const row = this.context.sql.get(
+    const rows = this.context.sql.all(
       SEQUENCE,
-      'select next_id from speech_sequence where singleton=1',
+      "select seq from sqlite_sequence where name = 'speech_commits'",
     );
-    if (row === undefined)
-      throw new ApiError('conflict', 'The speech commit sequence is unavailable.');
-    return row.next_id - 1;
+    return rows[0]?.seq ?? 0;
   }
   nextCommit(): number {
-    const id = this.watermark() + 1;
     this.context.sql.run(
-      'advance speech commit identity',
-      'update speech_sequence set next_id=next_id+1 where singleton=1',
+      'issue a speech commit identity',
+      'insert into speech_commits default values',
+    );
+    const id = this.watermark();
+    this.context.sql.run(
+      'release the speech commit row',
+      'delete from speech_commits where id=$id',
+      {
+        id,
+      },
     );
     return id;
   }

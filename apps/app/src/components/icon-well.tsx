@@ -5,7 +5,7 @@ import { useColour } from '../design/colour';
 import type { ColourRole } from '../design/tokens';
 import { Icon, type IconName } from './icon';
 
-export type IconWellSize = 's' | 'm' | 'l';
+type IconWellSize = 's' | 'm' | 'l';
 
 const WELL: Readonly<Record<IconWellSize, string>> = {
   s: 'size-7 rounded-sm',

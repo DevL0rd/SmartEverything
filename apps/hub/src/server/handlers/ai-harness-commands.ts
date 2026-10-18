@@ -2,14 +2,12 @@ import { API_ENDPOINTS, ApiError } from '@smarteverything/domain';
 import { listHarnessCommands, executeHarnessCommand } from '../../harness/commands';
 import type { HarnessService } from '../../harness/service';
 import { bound } from '../router';
-import { clientOf, profileIdOf, roleOfCaller } from '../auth';
+import { chatOwnerOf, clientOf } from '../auth';
+import type { ChatOwner } from '../../assistant/chat-directory';
 import type { Caller } from '../auth';
 
-export function harnessCommandRoutes(service: HarnessService): {
-  readonly listAiChatHarnessCommands: ReturnType<typeof bound>;
-  readonly executeAiChatHarnessCommand: ReturnType<typeof bound>;
-} {
-  return {
+export const harnessCommandRoutes = (service: HarnessService) =>
+  ({
     listAiChatHarnessCommands: bound(
       API_ENDPOINTS.listAiChatHarnessCommands,
       ({ params, body, caller }) => {
@@ -32,8 +30,7 @@ export function harnessCommandRoutes(service: HarnessService): {
         );
       },
     ),
-  };
-}
+  }) as const;
 
 function humanClient(caller: Caller): ReturnType<typeof clientOf> {
   if (
@@ -49,12 +46,6 @@ function humanClient(caller: Caller): ReturnType<typeof clientOf> {
   return clientOf(caller);
 }
 
-function ownerOf(
-  service: HarnessService,
-  caller: Caller,
-): {
-  readonly profileId: string;
-  readonly role: 'owner' | 'member';
-} {
-  return { profileId: profileIdOf(service.store, caller), role: roleOfCaller(caller) };
+function ownerOf(service: HarnessService, caller: Caller): ChatOwner {
+  return chatOwnerOf(service.store, caller);
 }

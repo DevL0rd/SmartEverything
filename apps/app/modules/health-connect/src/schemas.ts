@@ -1,4 +1,4 @@
-import { HEALTH_RECORD_TYPE, HEALTH_SOURCE_TOKEN, WATCH_PHASES } from '@smarteverything/domain';
+import { HEALTH_RECORD_TYPE, WATCH_PHASES } from '@smarteverything/domain';
 import { z } from 'zod';
 
 const MINIMUM_INTERVAL_MINUTES = 15;
@@ -43,13 +43,6 @@ export const PERMISSION_REQUEST = z.object({
 });
 
 export type PermissionRequest = z.infer<typeof PERMISSION_REQUEST>;
-
-export const SYNC_TARGET = z.object({
-  endpoint: z.url({ protocol: /^https?$/ }),
-  token: HEALTH_SOURCE_TOKEN,
-});
-
-export type SyncTarget = z.infer<typeof SYNC_TARGET>;
 
 export const SYNC_SCHEDULE = z.object({
   intervalMinutes: z.number().int().min(MINIMUM_INTERVAL_MINUTES),

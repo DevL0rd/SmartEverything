@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ReachSettings } from '@smarteverything/domain';
-import { ErrorState } from '../../../components/error-state';
-import { Skeleton } from '../../../components/skeleton';
+import { LoadedQuery } from '../../../components/loaded-query';
 import { notify } from '../../../components/toast-store';
 import { useReachSettings } from './reach-data';
 
@@ -10,14 +9,7 @@ export function ReachLoaded({
 }: {
   readonly children: (settings: ReachSettings) => ReactNode;
 }): ReactNode {
-  const settings = useReachSettings();
-  if (settings.isError) {
-    return <ErrorState error={settings.error} retry={() => void settings.refetch()} />;
-  }
-  if (settings.data === undefined) {
-    return <Skeleton shape="line" className="h-12" />;
-  }
-  return children(settings.data);
+  return <LoadedQuery query={useReachSettings()}>{children}</LoadedQuery>;
 }
 
 export function unsaved(error: unknown): void {

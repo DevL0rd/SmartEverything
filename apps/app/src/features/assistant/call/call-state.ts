@@ -2,16 +2,17 @@ import {
   SIGHT_LOOKS_KEPT,
   type CallCapabilities,
   type CallEnding,
-  type CallState,
+  type CallPhase,
   type EchoTestOutcome,
+  type OrbState,
+  type OverlayCameraPhase,
   type SightFacing,
   type SightLookTrigger,
   type SightSource,
 } from '@smarteverything/domain';
 import { ValueStore, useValue } from '../../../design/external-store';
-import type { OrbState } from './orb';
 
-export type CallPhase = 'idle' | CallState | 'reconnecting' | 'ended';
+export type { CallPhase } from '@smarteverything/domain';
 
 const TOOL_LINES_KEPT = 4;
 
@@ -38,9 +39,16 @@ export interface CallSightRequest {
   readonly target: string | null;
 }
 
-export type CameraPhase = 'off' | 'starting' | 'on' | 'paused' | 'denied' | 'busy';
+export interface CallMissed {
+  readonly requestId: string;
+  readonly what: SightSource;
+  readonly target: string | null;
+  readonly at: number;
+}
 
-export type ScreenPhase = 'off' | 'starting' | 'on';
+export type CameraPhase = OverlayCameraPhase;
+
+type ScreenPhase = 'off' | 'starting' | 'on';
 
 export interface CallVideo {
   readonly camera: CameraPhase;
@@ -49,7 +57,7 @@ export interface CallVideo {
   readonly screen: ScreenPhase;
 }
 
-export type CallEchoTest =
+type CallEchoTest =
   | { readonly status: 'idle' }
   | { readonly status: 'running' }
   | { readonly status: 'done'; readonly outcome: EchoTestOutcome };
@@ -60,6 +68,7 @@ export interface CallView {
   readonly chatId: string | null;
   readonly fix: CallFix | null;
   readonly startedAt: number | null;
+  readonly endedAt: number | null;
   readonly muted: boolean;
   readonly speaking: boolean;
   readonly video: CallVideo;
@@ -74,10 +83,11 @@ export interface CallView {
   readonly notice: string | null;
   readonly looks: readonly CallLook[];
   readonly request: CallSightRequest | null;
+  readonly missed: CallMissed | null;
   readonly echoTest: CallEchoTest;
 }
 
-export const IDLE_VIDEO: CallVideo = {
+const IDLE_VIDEO: CallVideo = {
   camera: 'off',
   facing: 'back',
   light: false,
@@ -90,6 +100,7 @@ export const IDLE_CALL: CallView = {
   chatId: null,
   fix: null,
   startedAt: null,
+  endedAt: null,
   muted: false,
   speaking: false,
   video: IDLE_VIDEO,
@@ -104,6 +115,7 @@ export const IDLE_CALL: CallView = {
   notice: null,
   looks: [],
   request: null,
+  missed: null,
   echoTest: { status: 'idle' },
 };
 
@@ -131,6 +143,7 @@ export function markEnded(end: CallEnd): void {
   if (callActive(callState.get())) {
     changeCall((call) => ({
       phase: 'ended',
+      endedAt: Date.now(),
       ending: end.ending,
       problem: end.problem,
       fix: end.fix ?? null,
@@ -138,6 +151,7 @@ export function markEnded(end: CallEnd): void {
       sight: null,
       speaking: false,
       request: null,
+      missed: null,
       video: IDLE_VIDEO,
     }));
   }

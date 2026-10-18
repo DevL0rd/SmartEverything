@@ -1,5 +1,4 @@
 import { Logger } from '@smarteverything/logging';
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import type { AiChatRuntimeProvider } from '@smarteverything/domain';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
 import type { StoreState } from '../../../store/state';
@@ -22,6 +21,7 @@ import { commandAttachments } from './attachments';
 import { commandAdapter } from './adapters';
 import type { CommandCatalogue } from './catalogue';
 import type { CommandReceipt } from './panels';
+const log = new Logger('app.assistant');
 interface SubmissionInput {
   readonly catalogue: CommandCatalogue;
   readonly draftKey: string;
@@ -48,7 +48,7 @@ interface Submission {
 export function useCommandSubmission(
   catalogue: CommandCatalogue,
   draftKey: string,
-  text: string,
+  text: () => string,
   options: { readonly preserveDraft?: boolean; readonly definitionId?: string | null } = {},
 ): Submission {
   const store = useEntityStore();
@@ -70,7 +70,7 @@ export function useCommandSubmission(
       definitionId: options.definitionId ?? null,
       ownNativeJob: native.own,
       draftKey,
-      text,
+      text: text(),
       quote,
       uploads,
       revision: draftRevision(draftKey),
@@ -94,6 +94,57 @@ export function useCommandSubmission(
     },
   };
 }
+function logCommand(
+  event: string,
+  name: string,
+  input: SubmissionInput,
+  extra: Readonly<Record<string, unknown>> = {},
+): void {
+  log[event.endsWith('.skipped') ? 'warn' : 'info'](event, {
+    name,
+    chatId: input.catalogue.chatId,
+    scopeKind: input.catalogue.scope?.kind ?? null,
+    uploads: input.uploads.length,
+    ...extra,
+  });
+}
+interface LineTarget {
+  readonly name: string;
+  readonly command: CommandDescriptor;
+  readonly chatId: string;
+  readonly scope: CommandScope;
+}
+async function executeLine(
+  input: SubmissionInput,
+  target: LineTarget,
+  show: (receipt: CommandReceipt) => void,
+): Promise<CommandOutcome> {
+  const { name, command, chatId, scope } = target;
+  return await commandAdapter(scope.kind).execute({
+    chatId,
+    scopeKey: input.catalogue.key,
+    scope,
+    command,
+    line: input.text,
+    arguments: acceptedArguments(command, input.text),
+    attachments: await commandAttachments(input.uploads),
+    authority: input.authority,
+    client: input.client,
+    signal: input.signal,
+    ownNativeJob: input.ownNativeJob,
+    progress: (state, text): void => {
+      show({ name, state, text });
+    },
+  });
+}
+function startReceipt(name: string, scope: CommandScope): CommandReceipt {
+  const dsh = scope.kind === 'dsh';
+  return {
+    name,
+    state: dsh ? 'running' : 'submitting',
+    text: dsh ? 'Running on the selected machine…' : 'Sending to the selected machine…',
+  };
+}
 async function submitCommand(
   input: SubmissionInput,
   show: (receipt: CommandReceipt) => void,
@@ -103,41 +154,38 @@ async function submitCommand(
   const name = intent.kind === 'command' ? intent.name : '';
   const rejection = rejectCommand(input, name);
   if (rejection !== null) {
+    logCommand('command.rejected', name, input, { reasonLength: rejection.length });
     show({ name, state: 'not run', text: rejection });
     return false;
   }
   const { scope, chatId } = input.catalogue;
-  if (scope === null || chatId === null) return false;
-  show({
-    name,
-    state: scope.kind === 'dsh' ? 'running' : 'submitting',
-    text:
-      scope.kind === 'dsh' ? 'Running on the selected host…' : 'Submitting to the selected host…',
-  });
+  if (scope === null || chatId === null) {
+    logCommand('command.skipped', name, input, { reason: 'no-scope-or-chat' });
+    return false;
+  }
+  const startedAt = Date.now();
+  logCommand('command.started', name, input);
+  show(startReceipt(name, scope));
   try {
     const command = commandDefinition(input.catalogue.commands, name, input.definitionId);
-    if (command === undefined) return false;
-    const outcome = await commandAdapter(scope.kind).execute({
-      chatId,
-      scopeKey: input.catalogue.key,
-      scope,
-      command,
-      line: input.text,
-      arguments: acceptedArguments(command, input.text),
-      attachments: await commandAttachments(input.uploads),
-      authority: input.authority,
-      client: input.client,
-      signal: input.signal,
-      ownNativeJob: input.ownNativeJob,
-      progress: (state, text): void => {
-        show({ name, state, text });
-      },
+    if (command === undefined) {
+      logCommand('command.skipped', name, input, { reason: 'unknown-command' });
+      return false;
+    }
+    const outcome = await executeLine(input, { name, command, chatId, scope }, show);
+    logCommand('command.finished', name, input, {
+      status: outcome.status,
+      durationMs: Date.now() - startedAt,
     });
     show(receiptOf(name, outcome));
     return completeCommand(input, outcome);
   } catch (error) {
-    new Logger('app.assistant').error('command.submission_failed', error, { name });
-    show({ name, state: 'failed', text: CHAT_ERROR_MESSAGE });
+    log.error('command.submission_failed', error, {
+      name,
+      chatId,
+      durationMs: Date.now() - startedAt,
+    });
+    show({ name, state: 'failed', text: 'The command failed.' });
     return false;
   }
 }
@@ -163,7 +211,7 @@ function rejectCommand(input: SubmissionInput, name: string): string | null {
         : row.id === definitionId,
     ).length > 1
   )
-    return `/${name} identifies more than one native command. Choose one exact definition from the command list.`;
+    return `/${name} matches more than one command. Choose one from the command list.`;
   return commandRejection(
     commandDefinition(input.catalogue.commands, name, input.definitionId),
     name,
@@ -178,9 +226,9 @@ function commandRejection(
   argumentsText: string,
 ): string | null {
   if (command === undefined)
-    return `/${name} is not available in this chat. Type / to see the host’s commands. Quote a bare path such as "/${name}" to send it as text.`;
+    return `/${name} is not available in this chat. Type / to see this machine’s commands. Quote a bare path such as "/${name}" to send it as text.`;
   if (!command.enabled || command.unavailableReason !== null)
-    return command.unavailableReason ?? `/${name} is disabled on the selected host.`;
+    return command.unavailableReason ?? `/${name} is turned off on the selected machine.`;
   if (!command.arguments && argumentsText.trim().length > 0)
     return `/${name} does not accept arguments. Remove them to run the command.`;
   return uploads.length > 0 && command.input?.attachments !== true
@@ -192,7 +240,7 @@ function receiptOf(name: string, outcome: CommandOutcome): CommandReceipt {
     return {
       name,
       state: 'failed',
-      text: CHAT_ERROR_MESSAGE,
+      text: 'The command failed.',
     };
   return {
     name,
@@ -240,7 +288,7 @@ function retireReceipt(receipt: ReceiptState | null): ReceiptState | null {
     value: {
       ...receipt.value,
       state: 'failed',
-      text: CHAT_ERROR_MESSAGE,
+      text: 'The command failed.',
     },
   };
 }

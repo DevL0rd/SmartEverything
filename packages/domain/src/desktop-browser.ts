@@ -52,6 +52,8 @@ export const BROWSER_STATUS = z.strictObject({
   problem: z.string().nullable(),
 });
 export type BrowserStatus = z.infer<typeof BROWSER_STATUS>;
+export const BROWSER_WINDOW_REQUEST = z.strictObject({ id: BROWSER_ID, url: z.url() });
+export type BrowserWindowRequest = z.infer<typeof BROWSER_WINDOW_REQUEST>;
 export const BROWSER_COMMAND = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('open'), target: BROWSER_TARGET }),
   z.strictObject({ kind: z.literal('navigate'), id: BROWSER_ID, url: z.url() }),
@@ -74,34 +76,36 @@ export const BROWSER_COMMAND = z.discriminatedUnion('kind', [
 ]);
 export type BrowserCommand = z.infer<typeof BROWSER_COMMAND>;
 export interface DesktopBrowser {
-  readonly publicSessionVersion?: () => number;
   readonly diagnostics?: NativeBrowserDiagnostics;
   command(command: BrowserCommand): Promise<void>;
   subscribe(listener: (status: BrowserStatus) => void): () => void;
+  subscribeWindowRequests(listener: (request: BrowserWindowRequest) => void): () => void;
 }
 
+const PRIVATE_HOST_SUFFIXES = ['localhost', 'local', 'internal', 'test', 'invalid', 'home'];
 function publicHost(host: string): boolean {
-  const denied = ['localhost', 'local', 'internal', 'test', 'invalid', 'home'];
   return (
     host.includes('.') &&
     !/^[0-9.]+$/.test(host) &&
     !host.includes(':') &&
-    !denied.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))
+    !PRIVATE_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))
   );
 }
-export function publicBrowserUrl(value: string): boolean {
+export function browsableUrl(value: string): boolean {
   const parsed = z.url().safeParse(value);
   if (!parsed.success) return false;
   const url = new URL(parsed.data);
   return (
-    url.protocol === 'https:' &&
+    (url.protocol === 'https:' || url.protocol === 'http:') &&
     url.username === '' &&
-    url.password === '' &&
-    publicHost(url.hostname.toLowerCase())
+    url.password === ''
   );
 }
+export function publicBrowserUrl(value: string): boolean {
+  return browsableUrl(value) && publicHost(new URL(value).hostname.toLowerCase());
+}
 export function browserAllows(target: BrowserTarget, value: string): boolean {
-  if (target.kind === 'public') return publicBrowserUrl(value);
+  if (target.kind === 'public') return browsableUrl(value);
   if (target.kind === 'native-html') return nativeHtmlAllows(target, value);
   const parsed = z.url().safeParse(value);
   if (!parsed.success) return false;

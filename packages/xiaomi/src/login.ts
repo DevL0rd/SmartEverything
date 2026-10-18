@@ -1,7 +1,7 @@
-import { md5 } from '@noble/hashes/legacy.js';
 import { z } from 'zod';
-import { bytesToHex, utf8ToBytes } from './bytes';
+import { digest, utf8ToBytes } from './bytes';
 import { XiaomiLoginError } from './errors';
+import { parseJson } from './json';
 
 export const ACCOUNT_BASE = 'https://account.xiaomi.com';
 export const XIAOMI_SID = 'xiaomiio';
@@ -68,15 +68,14 @@ export function parseLoginJson(step: string, text: string): unknown {
   if (!text.startsWith(JSON_PREFIX)) {
     throw new XiaomiLoginError(step, `a reply starting with ${JSON_PREFIX}`, text.slice(0, 80));
   }
-  try {
-    return JSON.parse(text.slice(JSON_PREFIX.length));
-  } catch (cause) {
-    throw new XiaomiLoginError(step, 'JSON after the prefix', String(cause));
-  }
+  return parseJson(
+    text.slice(JSON_PREFIX.length),
+    (cause) => new XiaomiLoginError(step, 'JSON after the prefix', cause),
+  );
 }
 
 export function passwordHash(password: string): string {
-  return bytesToHex(md5(utf8ToBytes(password))).toUpperCase();
+  return digest('md5', utf8ToBytes(password)).toHex().toUpperCase();
 }
 
 export function absoluteAccountUrl(url: string): string {

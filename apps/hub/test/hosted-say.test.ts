@@ -76,9 +76,6 @@ describe('saying something once', () => {
         ended: () => undefined,
       },
     });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 50);
-    });
     await saying.end('finished');
     expect(heard.map((options) => options.text)).toEqual(['Dinner is ready']);
     expect(packets.length).toBeGreaterThan(0);

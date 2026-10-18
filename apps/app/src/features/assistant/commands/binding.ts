@@ -1,22 +1,11 @@
 import type { AiChatRow } from '@smarteverything/domain';
-import { randomUUID } from 'expo-crypto';
-import { api } from '../../../api/transport';
+import { connectionId } from './connection-id';
 import { useActiveProfile } from '../../../store/people';
 import { useSyncStatus } from '../../../store/selectors';
 import { useDshCommandBinding } from './dsh-binding';
 import { useNativeCommandBinding } from './native-binding';
 import type { CommandBinding } from './types';
 export type { CommandBinding } from './types';
-const connections = new WeakMap<ReturnType<typeof api>, string>();
-function connectionId(live: boolean): string {
-  if (!live) return 'offline';
-  const client = api();
-  const existing = connections.get(client);
-  if (existing !== undefined) return existing;
-  const id = randomUUID();
-  connections.set(client, id);
-  return id;
-}
 export function useCommandBinding(chat: AiChatRow | undefined, opened: boolean): CommandBinding {
   const profile = useActiveProfile();
   const live = useSyncStatus().status === 'live';

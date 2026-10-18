@@ -71,7 +71,15 @@ describe('serviceLogin', () => {
         ssecurity: 'c2Vj',
         passToken: 'V1:pass',
         userId: '12345',
+        cUserId: 'c',
       },
+    });
+  });
+
+  it('leaves the community user id out of a session that carries none', () => {
+    expect(parseServiceLogin({ ...parseSessionOnly(), userId: 12345 })).toStrictEqual({
+      kind: 'session',
+      session: { ...parseSessionOnly(), userId: '12345' },
     });
   });
 
@@ -105,7 +113,7 @@ describe('serviceLoginAuth2', () => {
   it('returns the session of a successful sign-in', () => {
     expect(parseLoginAuth({ ...session, userId: '9' })).toStrictEqual({
       kind: 'session',
-      session: { ...parseSessionOnly(), userId: '9' },
+      session: { ...parseSessionOnly(), userId: '9', cUserId: 'c' },
     });
   });
 

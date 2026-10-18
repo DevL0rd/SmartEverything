@@ -21,15 +21,15 @@ describe('parseDeepLink', () => {
     expect(parseDeepLink('https://auth/callback')).toEqual({
       kind: 'refused',
       reason: 'the scheme is not smarteverything:',
-      received: 'https://auth/callback',
+      received: '[redacted deep link]',
     });
   });
 
   it('parseDeepLink refuses a route the app does not handle', () => {
     expect(parseDeepLink('smarteverything://settings/delete-account')).toEqual({
       kind: 'refused',
-      reason: 'the route settings/delete-account is not handled',
-      received: 'smarteverything://settings/delete-account',
+      reason: 'the route is not handled',
+      received: '[redacted deep link]',
     });
   });
 
@@ -37,12 +37,12 @@ describe('parseDeepLink', () => {
     expect(parseDeepLink('not a link').kind).toBe('refused');
   });
 
-  it('parseDeepLink refuses an oversized link and echoes only its start', () => {
+  it('parseDeepLink refuses an oversized link and does not echo any of it', () => {
     const huge = `${CALLBACK}&pad=${'a'.repeat(5000)}`;
     expect(parseDeepLink(huge)).toEqual({
       kind: 'refused',
       reason: 'the link is too long',
-      received: huge.slice(0, 64),
+      received: '[redacted deep link]',
     });
   });
 });
@@ -104,8 +104,8 @@ describe('DeepLinkInbox', () => {
     expect(refusals).toEqual([
       {
         kind: 'refused',
-        reason: 'the route elsewhere is not handled',
-        received: 'smarteverything://elsewhere',
+        reason: 'the route is not handled',
+        received: '[redacted deep link]',
       },
     ]);
     expect(inbox.take(new RecordingRecipient())).toEqual([]);

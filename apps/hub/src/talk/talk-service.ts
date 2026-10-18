@@ -1,14 +1,15 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { isCamera, type LiveChange, type TalkPresence } from '@smarteverything/domain';
+import type { LiveChange, TalkPresence } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Go2rtcClient } from '../cameras/go2rtc-client';
+import { systemClock } from '../clock';
 import type { Store } from '../store/store';
 import { CameraMicrophones } from './camera-microphone';
 import { CameraVideo } from './camera-video';
 import { CameraSpeakers } from './camera-speaker';
 import { TalkFeeds } from './feeds';
-import { memberLabel } from './labels';
+import { memberLabel, relabelledMembers } from './labels';
 import { TalkMembership } from './membership';
 import { TalkRecorder } from './recorder';
 import type { LiveConversation } from './live-sessions';
@@ -56,6 +57,7 @@ export class TalkService {
       go2rtc: options.go2rtc,
       feeds: this.feeds,
       ready: options.streamReady,
+      clock: systemClock,
       log,
     });
     const microphones = new CameraMicrophones({
@@ -106,6 +108,11 @@ export class TalkService {
     return this.relay.presence();
   }
 
+  accessChanged(): void {
+    this.membership.reload();
+    this.relay.membershipChanged();
+  }
+
   upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
     this.sockets.upgrade(request, socket, head);
   }
@@ -119,30 +126,13 @@ export class TalkService {
 
   private relabel(change: LiveChange): void {
     const { store } = this.options;
-    if (change.operation !== 'UPDATE') {
-      return;
-    }
-    const refresh = (kind: 'client' | 'camera', id: string): void => {
+    relabelledMembers(store, change).forEach(([kind, id]) => {
       store.talk.relabel(kind, id, memberLabel(store, kind, id));
-    };
-    if (change.table === 'clients' && change.record !== null) {
-      refresh('client', change.record.id);
-    } else if (change.table === 'devices' && change.record !== null && isCamera(change.record)) {
-      refresh('camera', change.record.id);
-    } else if (change.table === 'profiles' && change.record !== null) {
-      const profileId = change.record.id;
-      store.clients
-        .list()
-        .filter((client) => client.profile_id === profileId)
-        .forEach((client) => {
-          refresh('client', client.id);
-        });
-    }
+    });
   }
 
   private changed(change: LiveChange): void {
     if (change.operation === 'DELETE' && change.table === 'clients' && change.oldRecord !== null) {
-      this.sockets.closeClient(change.oldRecord.id);
       this.options.store.talk.forgetMember('client', change.oldRecord.id);
     }
     if (change.operation === 'DELETE' && change.table === 'devices' && change.oldRecord !== null) {

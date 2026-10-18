@@ -1,69 +1,61 @@
-import { COMPUTER_CAPTURE, SEE_REQUEST, type CaptureTarget } from '@smarteverything/domain';
-import { operate } from './acting';
+import {
+  COMPUTER_CAPTURE,
+  PHONE_ACTION_RESULT,
+  SEE_REQUEST,
+  type CaptureTarget,
+} from '@smarteverything/domain';
+import { operate, type OperatingContext } from './acting';
 import { IMAGE_LIMIT_BYTES, SNAPSHOT_TYPE, shotOf } from './camera-live';
+import { deviceScopeOfActor } from './person-reach';
 import { READS, ToolError, defineTool, matches, type Tool, type ToolContext } from './registry';
-import { placedDevices, type Placed } from './targets';
+import { placedDevices, resolveNamed, type Naming, type Placed } from './targets';
 
 const FOCUSED_APP = 'focused_app';
 
-function only(found: readonly Placed[], wanted: string, noun: string): Placed {
-  const [first] = found;
-  if (first === undefined) {
-    throw new ToolError(`There is no ${noun} matching "${wanted}"`, 'not_found');
-  }
-  if (found.length > 1) {
-    const names = found.map((placed) => placed.name).join(', ');
-    throw new ToolError(`"${wanted}" matches more than one ${noun}: ${names}`);
-  }
-  return first;
-}
+const PLACED_NAMING: Naming<Placed> = {
+  names: ({ name, device }) => [name, device.name],
+  label: ({ name }) => name,
+  id: ({ device }) => device.id,
+};
 
-function named(candidates: readonly Placed[], wanted: string, noun: string): Placed {
-  const exact = candidates.filter(
-    ({ device, name }) =>
-      device.id === wanted ||
-      name.toLowerCase() === wanted.toLowerCase() ||
-      device.name.toLowerCase() === wanted.toLowerCase(),
+export function machineOf(
+  context: Pick<ToolContext, 'store' | 'actor'>,
+  kind: 'computer' | 'phone',
+  wanted: string | undefined,
+): Placed {
+  const machines = placedDevices(context.store, deviceScopeOfActor(context)).filter(
+    ({ device }) => device.kind === kind,
   );
-  if (exact.length > 0) {
-    return only(exact, wanted, noun);
-  }
-  return only(
-    candidates.filter(({ name, device }) => matches(wanted, name, device.name)),
-    wanted,
-    noun,
-  );
-}
-
-function computerOf(context: ToolContext, wanted: string | undefined): Placed {
-  const computers = placedDevices(context.store).filter(({ device }) => device.kind === 'computer');
   if (wanted !== undefined) {
-    return named(computers, wanted, 'computer');
+    return resolveNamed(machines, wanted, kind, PLACED_NAMING);
   }
-  const [first] = computers;
+  const [first] = machines;
   if (first === undefined) {
-    throw new ToolError('This home has no computer to look at', 'not_found');
+    throw new ToolError(`This home has no ${kind} to look at`, 'not_found');
   }
-  if (computers.length > 1) {
-    throw new ToolError(`Say which computer: ${computers.map((placed) => placed.name).join(', ')}`);
+  if (machines.length > 1) {
+    throw new ToolError(
+      `Say which ${kind}: ${machines.map((placed) => `${placed.name} (id ${placed.device.id})`).join(', ')}`,
+    );
   }
   return first;
 }
 
 function cameraOf(context: ToolContext, wanted: string): Placed {
   const cameras = new Set(context.store.cameras.list().map((camera) => camera.device_id));
-  return named(
-    placedDevices(context.store).filter(({ device }) => cameras.has(device.id)),
+  return resolveNamed(
+    placedDevices(context.store, deviceScopeOfActor(context)).filter(({ device }) =>
+      cameras.has(device.id),
+    ),
     wanted,
     'camera',
+    PLACED_NAMING,
   );
 }
 
 function frontApp(context: ToolContext, computer: Placed): string {
-  const row = context.store.state
-    .list()
-    .find((state) => state.device_id === computer.device.id && state.capability === FOCUSED_APP);
-  return typeof row?.value === 'string' ? row.value : '';
+  const value = context.store.state.value(computer.device.id, FOCUSED_APP);
+  return typeof value === 'string' ? value : '';
 }
 
 async function captured(
@@ -83,6 +75,28 @@ async function captured(
   return capture;
 }
 
+export async function phoneShot(
+  context: OperatingContext & Pick<ToolContext, 'clock'>,
+  phone: Placed,
+): Promise<{ readonly data: string; readonly at: string }> {
+  const result = PHONE_ACTION_RESULT.parse(
+    await operate(context, 'runPhoneAction', {
+      params: { deviceId: phone.device.id },
+      body: { type: 'screenshot' },
+    }),
+  );
+  if (!result.ok) {
+    throw new ToolError(result.detail);
+  }
+  if (result.image === undefined) {
+    throw new ToolError(`${phone.name} answered without a picture`);
+  }
+  if (Buffer.from(result.image, 'base64').byteLength > IMAGE_LIMIT_BYTES) {
+    throw new ToolError(`The picture of ${phone.name} is too large for an assistant`);
+  }
+  return { data: result.image, at: context.clock.now().toISOString() };
+}
+
 export const SEE_TOOL: Tool = defineTool({
   name: 'see',
   input: SEE_REQUEST,
@@ -98,7 +112,15 @@ export const SEE_TOOL: Tool = defineTool({
         images: [shot.image],
       };
     }
-    const computer = computerOf(context, input.computer);
+    if (input.source === 'phone_screenshot') {
+      const phone = machineOf(context, 'phone', input.phone);
+      const shot = await phoneShot(context, phone);
+      return {
+        structured: { source: input.source, what: `${phone.name} screen`, at: shot.at },
+        images: [{ data: shot.data, mimeType: SNAPSHOT_TYPE }],
+      };
+    }
+    const computer = machineOf(context, 'computer', input.computer);
     if (input.source === 'desktop_window') {
       const front = frontApp(context, computer);
       if (!matches(input.window, front)) {

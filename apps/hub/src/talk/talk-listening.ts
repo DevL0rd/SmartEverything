@@ -4,20 +4,20 @@ import {
   type TalkSpeaker,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import { concat } from '../assistant-voice/audio';
 import { OpusSpeech } from '../reach/voice-pacing';
+import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import type { ListeningBudget } from '../transcripts/listening-budget';
 import { ownerProfileOf } from '../transcripts/owner';
 import type { Transcriber } from '../transcripts/transcriber';
-import type { Ear, EarOptions } from '../wake-name/ear';
+import { Utterances } from '../transcripts/utterances';
+import type { Ear, EarOptions, SpeechSegment } from '../wake-name/ear';
+import type { OnSuperseded, Superseded, WakeClaim } from '../wake-name/wake-claims';
 import type { PacketSink } from './transmission';
+import { background } from '@smarteverything/logging';
 
-export const TRANSCRIPT_CHARACTERS_MAX = 4000;
-export const CONTEXT_WINDOW_MS = 120_000;
-export const CONTEXT_LINES = 3;
-const SAMPLES_PER_MS = 16;
-const SHORTEST_MESSAGE_MS = 400;
+const CONTEXT_WINDOW_MS = 120_000;
+const CONTEXT_LINES = 3;
 const SILENCE_PAD_SAMPLES = 16_000;
 
 export interface TalkHeard {
@@ -26,22 +26,23 @@ export interface TalkHeard {
   readonly speaker: TalkSpeaker;
   readonly phrase: string;
   readonly transcript: string | null;
+  readonly onSuperseded: OnSuperseded;
 }
 
 export type Listener = Pick<Ear, 'hear' | 'close'>;
 
-export interface TalkEars {
+interface TalkEars {
   readonly make: (options: EarOptions) => Promise<Listener>;
 }
 
 export interface TalkListeningOptions {
-  readonly store: Pick<Store, 'talk' | 'clients' | 'profiles'>;
+  readonly store: Pick<Store, 'talk' | 'clients' | 'profiles' | 'personAccess'>;
   readonly ears: TalkEars;
   readonly transcriber: Pick<Transcriber, 'transcribe'>;
   readonly budget: Pick<ListeningBudget, 'capReached'>;
   readonly names: () => readonly string[];
   readonly keyPresent: () => boolean;
-  readonly now: () => Date;
+  readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly heard: (heard: TalkHeard) => void;
   readonly log: Logger;
 }
@@ -54,9 +55,12 @@ interface Message {
 
 class MessageListener implements PacketSink {
   private readonly speech: OpusSpeech;
-  private readonly chunks: Int16Array[] = [];
+  private readonly utterances: Utterances;
+  private readonly texts: Promise<string | null>[] = [];
   private readonly ear: Promise<Listener | null>;
+  private readonly stops: Superseded[] = [];
   private phrase: string | null = null;
+  private winner: WakeClaim | null = null;
 
   constructor(
     private readonly options: TalkListeningOptions,
@@ -64,8 +68,19 @@ class MessageListener implements PacketSink {
   ) {
     const { channel } = message;
     this.speech = new OpusSpeech((pcm) => {
-      this.chunks.push(pcm);
       this.hear(pcm);
+    });
+    this.utterances = new Utterances(options.clock, {
+      heard: (utterance): void => {
+        this.texts.push(this.transcribe(utterance));
+      },
+      skipped: (reason, ms): void => {
+        options.log.info('talk.utterance_skipped', {
+          messageId: message.messageId,
+          reason,
+          ms,
+        });
+      },
     });
     this.ear = options.ears
       .make({
@@ -73,10 +88,17 @@ class MessageListener implements PacketSink {
         fields: { channelId: channel.id },
         sensitivity: () => DEFAULT_WAKE_SENSITIVITY,
         resting: () => false,
-        wake: (phrase): void => {
-          this.phrase ??= phrase;
+        wake: (phrase, _words, onSuperseded): void => {
+          if (this.phrase === null) {
+            this.phrase = phrase;
+            onSuperseded((winner) => {
+              this.supersede(winner);
+            });
+          }
         },
-        speech: null,
+        speech: (segment): void => {
+          this.utterances.add(segment);
+        },
       })
       .catch((cause: unknown) => {
         options.log.error('talk.ear_failed', cause, { channelId: channel.id });
@@ -95,10 +117,32 @@ class MessageListener implements PacketSink {
     });
   }
 
-  private hear(pcm: Int16Array): void {
-    void this.ear.then((ear) => {
-      ear?.hear(pcm);
+  private supersede(winner: WakeClaim): void {
+    this.winner = winner;
+    this.options.log.info('talk.superseded', {
+      messageId: this.message.messageId,
+      winner: winner.source,
     });
+    this.stops.splice(0).forEach((stop) => {
+      stop(winner);
+    });
+  }
+
+  private readonly onSuperseded: OnSuperseded = (stop) => {
+    if (this.winner === null) {
+      this.stops.push(stop);
+    } else {
+      stop(this.winner);
+    }
+  };
+
+  private hear(pcm: Int16Array): void {
+    background(
+      this.ear.then((ear) => {
+        ear?.hear(pcm);
+      }),
+      'talk_listening.background_failed',
+    );
   }
 
   private async finish(): Promise<void> {
@@ -107,27 +151,35 @@ class MessageListener implements PacketSink {
       ear.hear(new Int16Array(SILENCE_PAD_SAMPLES));
       await ear.close();
     }
-    const transcript = await this.transcribe(concat(this.chunks));
+    this.utterances.finish();
+    const texts = await Promise.all(this.texts);
+    const joined = texts.flatMap((text) => (text === null ? [] : [text])).join(' ');
+    const transcript = joined === '' ? null : joined;
     if (transcript !== null) {
       this.options.store.talk.setTranscript(this.message.messageId, transcript);
     }
-    if (this.phrase !== null) {
-      this.options.heard({ ...this.message, phrase: this.phrase, transcript });
+    if (this.phrase !== null && this.winner === null) {
+      this.options.heard({
+        ...this.message,
+        phrase: this.phrase,
+        transcript,
+        onSuperseded: this.onSuperseded,
+      });
     }
   }
 
-  private async transcribe(pcm: Int16Array): Promise<string | null> {
+  private async transcribe(segment: SpeechSegment): Promise<string | null> {
     const { messageId, channel } = this.message;
-    const skipped = this.skipReason(pcm);
+    const skipped = this.skipReason();
     if (skipped !== null) {
       this.options.log.info('talk.transcript_skipped', { messageId, reason: skipped });
       return null;
     }
-    const { store, now } = this.options;
-    const since = new Date(now().getTime() - CONTEXT_WINDOW_MS).toISOString();
+    const { store, clock } = this.options;
+    const since = new Date(clock.now().getTime() - CONTEXT_WINDOW_MS).toISOString();
     const text = await this.options.transcriber
       .transcribe({
-        pcm16k: pcm,
+        pcm16k: segment.pcm,
         profileId: ownerProfileOf(store),
         pluginId: null,
         names: this.options.names(),
@@ -140,13 +192,10 @@ class MessageListener implements PacketSink {
         this.options.log.error('talk.transcript_failed', cause, { messageId });
         return null;
       });
-    return text === null ? null : text.slice(0, TRANSCRIPT_CHARACTERS_MAX);
+    return text;
   }
 
-  private skipReason(pcm: Int16Array): string | null {
-    if (pcm.length / SAMPLES_PER_MS < SHORTEST_MESSAGE_MS) {
-      return 'too_short';
-    }
+  private skipReason(): string | null {
     if (!this.options.keyPresent()) {
       return 'no_openrouter_key';
     }

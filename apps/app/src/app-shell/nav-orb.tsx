@@ -3,10 +3,15 @@ import { View } from 'react-native';
 import { Interactive } from '../components/interactive';
 import { Text } from '../components/text';
 import { cn } from '../design/cn';
-import { AssistantOrb, startCall } from '../features/assistant';
+import { AssistantOrb, startCall, useAnyChatWorking } from '../features/assistant';
 import { CountPill } from '../components/badge';
 import type { NavEntry } from './nav-model';
 import { navLabelOf } from './nav-item';
+import { useAppCovered } from './root-presentation';
+
+function callFromOrb(): void {
+  startCall({ source: 'orb' });
+}
 
 export function NavOrb({
   entry,
@@ -17,6 +22,8 @@ export function NavOrb({
   readonly onPress: () => void;
   readonly onIntent: () => void;
 }): ReactNode {
+  const covered = useAppCovered();
+  const working = useAnyChatWorking();
   return (
     <View onPointerEnter={onIntent} className="flex-1">
       <Interactive
@@ -25,9 +32,7 @@ export function NavOrb({
         hint="Hold to call"
         selected={entry.active}
         onPress={onPress}
-        onLongPress={() => {
-          startCall({ source: 'orb' });
-        }}
+        onLongPress={callFromOrb}
         className="h-16 w-full items-center justify-center gap-1"
         layerClassName="rounded-full"
       >
@@ -37,7 +42,11 @@ export function NavOrb({
             entry.active && 'border-2 border-primary',
           )}
         >
-          <AssistantOrb state="idle" size={entry.active ? 36 : 40} />
+          <AssistantOrb
+            state={working ? 'thinking' : 'idle'}
+            size={entry.active ? 36 : 40}
+            paused={covered}
+          />
           {entry.count > 0 ? (
             <View className="absolute -right-1 -top-1">
               <CountPill count={entry.count} />

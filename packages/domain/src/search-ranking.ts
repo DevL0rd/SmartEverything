@@ -50,31 +50,56 @@ function wordsOf(text: string): string[] {
 
 export function isSubsequence(needle: string, haystack: string): boolean {
   let found = 0;
-  for (const character of haystack) {
-    if (character === needle[found]) {
+  for (let index = 0; index < haystack.length && found < needle.length; index += 1) {
+    if (haystack[index] === needle[found]) {
       found += 1;
     }
   }
   return found === needle.length;
 }
 
-export function tokenScore(token: string, title: string, extra: string): number {
+export interface LoweredText {
+  readonly title: string;
+  readonly extra: string;
+  readonly titleWords: readonly string[];
+  readonly extraWords: readonly string[];
+}
+
+function startsAnyWord(words: readonly string[], token: string): boolean {
+  return words.some((word) => word.startsWith(token));
+}
+
+export function loweredTokenScore(token: string, lowered: LoweredText): number {
+  const { title, extra } = lowered;
   if (title.startsWith(token)) {
     return 8;
   }
-  if (wordsOf(title).some((word) => word.startsWith(token))) {
+  if (startsAnyWord(lowered.titleWords, token)) {
     return 6;
   }
   if (title.includes(token)) {
     return 4;
   }
-  if (wordsOf(extra).some((word) => word.startsWith(token))) {
+  if (startsAnyWord(lowered.extraWords, token)) {
     return 3;
   }
   if (extra.includes(token)) {
     return 2;
   }
   return isSubsequence(token, title) ? 1 : 0;
+}
+
+export function tokenScore(token: string, title: string, extra: string): number {
+  return loweredTokenScore(token, {
+    title,
+    extra,
+    get titleWords() {
+      return wordsOf(title);
+    },
+    get extraWords() {
+      return wordsOf(extra);
+    },
+  });
 }
 
 export function recencyBoost(usedAt: number | undefined, now: number): number {
@@ -84,17 +109,27 @@ export function recencyBoost(usedAt: number | undefined, now: number): number {
   return RECENCY_WEIGHT * 0.5 ** (Math.max(0, now - usedAt) / DAY_MS);
 }
 
-export function scoreEntry(
+export function loweredText(entry: SearchEntry): LoweredText {
+  const title = entry.title.toLowerCase();
+  const extra = [entry.detail, ...entry.keywords].join(' ').toLowerCase();
+  return { title, extra, titleWords: wordsOf(title), extraWords: wordsOf(extra) };
+}
+
+function isPhrase(title: string, tokens: readonly string[]): boolean {
+  return title === tokens.join(' ');
+}
+
+export function scoreLowered(
   entry: SearchEntry,
+  lowered: LoweredText,
   tokens: readonly string[],
   options: RankOptions,
 ): number | null {
-  const title = entry.title.toLowerCase();
-  const extra = [entry.detail, ...entry.keywords].join(' ').toLowerCase();
-  let total = title === tokens.join(' ') ? EXACT_SCORE : 0;
+  const { title } = lowered;
+  let total = isPhrase(title, tokens) ? EXACT_SCORE : 0;
   let named = true;
   for (const token of tokens) {
-    const score = tokenScore(token, title, extra);
+    const score = loweredTokenScore(token, lowered);
     if (score === 0) {
       return null;
     }
@@ -110,8 +145,16 @@ export function scoreEntry(
   );
 }
 
+export function scoreEntry(
+  entry: SearchEntry,
+  tokens: readonly string[],
+  options: RankOptions,
+): number | null {
+  return scoreLowered(entry, loweredText(entry), tokens, options);
+}
+
 function highlightOf(entry: SearchEntry, tokens: readonly string[]): SearchHighlight | null {
-  const title = entry.title.toLowerCase();
+  const { title } = loweredText(entry);
   for (const token of tokens) {
     const start = title.indexOf(token);
     if (start >= 0) {

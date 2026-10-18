@@ -2,14 +2,21 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { LegacyAction as Action } from '@smarteverything/domain';
 import type { Catalog } from '../data/use-automations';
-import { ACTION_TYPES, blankAction, type ActionType } from '../model/blanks';
-import { describeAction } from '../model/describe';
+import { ACTION_TYPES, blankAction, type ActionType, type Choices } from '../model/action-blanks';
+import { describeAction } from '../model/describe-action';
 import type { ListChange } from '../model/editor-state';
 import { ActionFields } from './action-fields';
-import { AddMenu } from './add-menu';
-import { addItems, choicesOf } from './add-items';
-import { ACTION_KINDS, actionIcon } from './kinds';
+import { AddMenu, type AddGroup } from './add-menu';
+import { ACTION_KINDS, actionIcon } from './action-kinds';
 import { BlockProblems, StepCard, movesOf } from './step-card';
+
+function choicesOf(catalog: Catalog): Choices {
+  return {
+    devices: catalog.devices,
+    sceneIds: catalog.scenes.map((scene) => scene.id),
+    wakeProfileId: catalog.wakeProfileId,
+  };
+}
 
 function ActionStep({
   action,
@@ -51,6 +58,31 @@ function ActionStep({
   );
 }
 
+function actionGroups(
+  catalog: Catalog,
+  types: readonly ActionType[],
+  onChange: (change: ListChange<Action>) => void,
+): readonly AddGroup[] {
+  const choices = choicesOf(catalog);
+  const entries = types.flatMap((type) => {
+    const item = blankAction(type, choices);
+    return item === null
+      ? []
+      : [
+          {
+            key: type,
+            label: ACTION_KINDS[type].label,
+            help: '',
+            icon: ACTION_KINDS[type].icon,
+            onPress: (): void => {
+              onChange({ kind: 'add', item });
+            },
+          },
+        ];
+  });
+  return entries.length === 0 ? [] : [{ title: 'Steps', options: entries }];
+}
+
 export function ActionSteps({
   actions,
   catalog,
@@ -79,12 +111,7 @@ export function ActionSteps({
       <BlockProblems problems={problems} />
       <AddMenu
         label={actions.length === 0 ? 'Add an action' : 'Add another action'}
-        items={addItems(
-          types,
-          ACTION_KINDS,
-          (type) => blankAction(type, choicesOf(catalog)),
-          onChange,
-        )}
+        groups={() => actionGroups(catalog, types, onChange)}
       />
     </View>
   );

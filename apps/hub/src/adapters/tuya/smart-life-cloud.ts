@@ -71,7 +71,7 @@ export class SmartLifeCloud {
       session,
     );
     if (reply.t === null) {
-      throw new TuyaResponseError(operation, ['t: the reply carries no issue time']);
+      throw new TuyaResponseError(operation, 't: the reply carries no issue time');
     }
     this.current = {
       ...session,

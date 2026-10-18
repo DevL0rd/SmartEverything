@@ -1,7 +1,7 @@
 import { AI_SUBSCRIPTION_USAGE } from './ai-subscription-usage';
 import { z } from 'zod';
 import { ENGINE } from './ai-chats';
-import { COMPUTER_RUNTIME_NATIVE_EVENT } from './node/ai-frames-v2';
+import { COMPUTER_RUNTIME_NATIVE_EVENT } from './node/ai-frames';
 import {
   COMPUTER_RUNTIME_STATUS,
   COMPUTER_AI_RUNTIME,
@@ -15,8 +15,6 @@ import { CODEX_PROMPT } from './codex-prompts';
 import { AI_CHAT_PROVIDER } from './ai-provider';
 import { CODEX_PROVIDER_EVENT, CODEX_PROVIDER_METADATA } from './node/runtime-provider';
 
-export const AI_ENGINE_CAPABILITY_V2 = 'computer-ai-v2';
-export const AI_ENGINE_HEADER_VALUE_V2 = 'application/json; smarteverything-ai-engines=computer-v2';
 export const AI_RUNTIME_ENGINE_PREFERENCE = z.strictObject({
   runtime: COMPUTER_AI_RUNTIME,
   model: z.string().min(1).max(200),

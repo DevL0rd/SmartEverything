@@ -13,7 +13,7 @@ import {
   type SpeechGateSink,
   type WebSpeechGate,
 } from './speech-gate';
-import type { CallAudioPref } from '@smarteverything/domain';
+import type { CallAudio } from '@smarteverything/domain';
 
 const log = new Logger('app.assistant-call');
 
@@ -21,6 +21,7 @@ export interface MicrophoneHandlers {
   readonly sink: SpeechGateSink;
   readonly assistantAudible: () => boolean;
   readonly muted: () => boolean;
+  readonly level?: (level: number) => void;
   readonly failure: (problem: string, error: unknown) => void;
 }
 
@@ -30,10 +31,9 @@ export class MicrophoneChain {
   private gate: WebSpeechGate | null = null;
   private settings: MicrophoneSettings;
   private opened = false;
-  private latest = 0;
 
   constructor(
-    private audio: CallAudioPref,
+    private audio: CallAudio,
     private readonly handlers: MicrophoneHandlers,
   ) {
     this.settings = microphoneSettingsOf(audio);
@@ -41,10 +41,6 @@ export class MicrophoneChain {
 
   get gateReady(): WebSpeechGate | null {
     return this.gate;
-  }
-
-  get level(): number {
-    return this.latest;
   }
 
   async open(): Promise<MediaStream> {
@@ -64,7 +60,7 @@ export class MicrophoneChain {
     }
   }
 
-  async apply(next: CallAudioPref): Promise<void> {
+  async apply(next: CallAudio): Promise<void> {
     const previous = this.audio;
     this.audio = next;
     if (!this.opened) {
@@ -97,7 +93,6 @@ export class MicrophoneChain {
     this.stream = null;
     const gate = this.gate;
     this.gate = null;
-    this.latest = 0;
     return gate === null ? Promise.resolve() : gate.stop();
   }
 
@@ -116,7 +111,7 @@ export class MicrophoneChain {
         }
       },
       onLevel: (level) => {
-        this.latest = level;
+        this.handlers.level?.(level);
       },
       onFailure: (error) => {
         this.handlers.failure('Microphone stopped working', error);

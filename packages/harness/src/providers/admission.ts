@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { CODEX_ADMISSION_PROOF, assertCodexAdmission } from './codex-admission';
 import { CODEX_IDENTITY_CANDIDATE } from '../credentials/codex-identity';
 
-export const PLAN_ONLY_ADMISSION = z.discriminatedUnion('state', [
+const PLAN_ONLY_ADMISSION = z.discriminatedUnion('state', [
   z.strictObject({ state: z.literal('unavailable'), reason: z.string().min(1).max(1000) }),
   z.strictObject({
     state: z.literal('verified'),

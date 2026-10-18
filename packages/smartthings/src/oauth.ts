@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SmartThingsResponseError } from './errors';
+import { issuePaths, SmartThingsResponseError } from './errors';
 
 export const SMARTTHINGS_API = 'https://api.smartthings.com';
 
@@ -77,10 +77,18 @@ export function refreshBody(refreshToken: string, clientId: string): string {
   }).toString();
 }
 
+function fieldNames(received: unknown): string[] {
+  return typeof received === 'object' && received !== null ? Object.keys(received) : [];
+}
+
 export function parseTokenResponse(received: unknown, now: Date): Tokens {
   const parsed = TOKEN_RESPONSE.safeParse(received);
   if (!parsed.success) {
-    throw new SmartThingsResponseError('token response', received, parsed.error.message);
+    throw new SmartThingsResponseError(
+      'token response',
+      fieldNames(received),
+      issuePaths(parsed.error),
+    );
   }
   return {
     accessToken: parsed.data.access_token,
@@ -118,7 +126,7 @@ export function accountFromSecrets(secrets: Readonly<Record<string, unknown>>): 
     throw new SmartThingsResponseError(
       'stored account',
       Object.keys(secrets),
-      parsed.error.message,
+      issuePaths(parsed.error),
     );
   }
   return parsed.data;

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ClaudeNotReadyError } from './errors';
 import { nativeSchemas } from './native-schemas';
 import type { ModStreams } from './streams';
+import { messageOf } from '@smarteverything/logging';
 
 const TOOL_LIST = z.array(
   z.looseObject({ name: z.string().min(1), description: z.string(), mcp: z.boolean() }),
@@ -82,10 +83,7 @@ export class NativeTools {
       this.changed?.();
       return tools;
     } catch (cause) {
-      const reason =
-        cause instanceof Error
-          ? cause.message.slice(0, 500)
-          : 'The installed tool declarations could not be parsed.';
+      const reason = messageOf(cause).slice(0, 500);
       return report.tools.map((tool) => ({
         name: tool.name,
         description: tool.description,

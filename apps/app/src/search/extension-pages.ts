@@ -13,7 +13,7 @@ import {
   extensionBrowseHref,
   bundledSkillHref,
   hostDescription,
-  installedItems,
+  pageKind,
 } from '../features/assistant';
 import type { IconName } from '../components/icon';
 import type { SourceLinks } from './sources';
@@ -46,16 +46,13 @@ function page(out: SourceLinks, parent: string, entry: Page): SearchSources['pag
 
 function actionPages(item: HarnessExtensionItem, out: SourceLinks): SearchSources['pages'] {
   const path = `extension:${item.id}`;
-  const actions =
-    item.selection.kind === 'entry'
-      ? ['On', ...(item.included ? [] : ['Remove']), 'Install']
-      : ['Install', 'Remove'];
+  const actions = ['On', 'Off', ...(item.source.kind === 'included' ? [] : ['Remove'])];
   return actions.map((title) =>
     page(out, `page:${path}`, {
       path: `${path}:action:${title}`,
       title,
       description: item.name,
-      to: extensionHref(item.id),
+      to: extensionHref(item.id, pageKind(item)),
     }),
   );
 }
@@ -73,7 +70,7 @@ function itemPages(
       path,
       title: item.name,
       description: item.description,
-      to: extensionHref(item.id),
+      to: extensionHref(item.id, pageKind(item)),
     },
   );
   const details: readonly Page[] = [
@@ -81,21 +78,21 @@ function itemPages(
       path: `${path}:devices`,
       title: 'Devices',
       description: item.name,
-      to: extensionHref(item.id, 'devices'),
+      to: extensionHref(item.id, pageKind(item), 'devices'),
       icon: 'monitor',
     },
     {
       path: `${path}:source`,
       title: 'Source',
       description: `${item.publisher} · ${item.name}`,
-      to: extensionHref(item.id, 'source'),
+      to: extensionHref(item.id, pageKind(item), 'source'),
       icon: 'link',
     },
     {
       path: `${path}:compatibility`,
       title: 'Works with',
       description: item.platforms.join(', '),
-      to: extensionHref(item.id),
+      to: extensionHref(item.id, pageKind(item)),
     },
     ...declaredPages(item),
   ];
@@ -128,18 +125,9 @@ export function extensionPages(
   owner: boolean,
   out: SourceLinks,
 ): SearchSources['pages'] {
-  const selected =
-    data.configuration === undefined
-      ? []
-      : installedItems(data.extensions?.items ?? [], data.configuration.desired);
-  const items = [
-    ...selected,
-    ...(data.extensions?.items ?? []).filter(
-      (item) => !selected.some((existing) => existing.id === item.id),
-    ),
-  ];
+  const items = data.extensions?.items ?? [];
   return [
-    ...browsePages(data, owner, out),
+    ...browsePages(owner, out),
     ...items.flatMap((item) => itemPages(item, owner, out)),
     ...bundledSkillPages(data, out),
     ...devicePages(data, out),
@@ -153,24 +141,20 @@ function declaredPages(item: HarnessExtensionItem): readonly Page[] {
       path: `${path}:capability:${title}`,
       title,
       description: item.name,
-      to: extensionHref(item.id),
+      to: extensionHref(item.id, pageKind(item)),
       icon: 'wrench',
     })),
     ...item.requirements.map((title): Page => ({
       path: `${path}:requirement:${title}`,
       title,
       description: item.name,
-      to: extensionHref(item.id),
+      to: extensionHref(item.id, pageKind(item)),
       icon: 'shield',
     })),
   ];
 }
 
-function browsePages(
-  data: ExtensionSearchData,
-  owner: boolean,
-  out: SourceLinks,
-): SearchSources['pages'] {
+function browsePages(owner: boolean, out: SourceLinks): SearchSources['pages'] {
   const entries = [
     page(out, 'setting:page/assistant/extensions', {
       path: 'extension-browse',
@@ -187,12 +171,12 @@ function browsePages(
       icon: 'fileText',
     }),
   ];
-  if (owner && (data.extensions?.import_formats.length ?? 0) > 0)
+  if (owner)
     entries.push(
       page(out, 'page:skill-browse', {
         path: 'extension-import',
         title: 'From a skill link',
-        description: 'Inspect a pinned GitHub skill or JSON bundle',
+        description: 'Install a skill or plugin from a git repository',
         to: extensionBrowseHref('skill'),
         icon: 'link',
       }),

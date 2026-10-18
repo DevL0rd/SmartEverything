@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runSyncthingCommand } from '../../../src/plugins/builtin/syncthing/controls';
-import {
-  SyncthingKeyRejectedError,
-  SyncthingRest,
-} from '../../../src/plugins/builtin/syncthing/rest-client';
+import { JsonApiRefusedError } from '../../../src/plugins/builtin/json-api';
+import { SyncthingRest } from '../../../src/plugins/builtin/syncthing/rest-client';
 import { fakeHttp } from '../fake-http';
 import { NEW_ID, PEER_ID } from './fake-syncthing';
 
@@ -92,6 +90,6 @@ describe('syncthing controls', () => {
     );
     await expect(
       runSyncthingCommand(rejected, { command: 'rescan', folderId: null }),
-    ).rejects.toBeInstanceOf(SyncthingKeyRejectedError);
+    ).rejects.toBeInstanceOf(JsonApiRefusedError);
   });
 });

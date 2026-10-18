@@ -8,7 +8,7 @@ import type {
 } from '@smarteverything/domain';
 class PreviewAuthorizationError extends Error {
   constructor(readonly publicationId: string) {
-    super('The service returned an invalid preview authorization. Select the service again.');
+    super("Couldn't open this preview. Choose it again.");
     this.name = 'PreviewAuthorizationError';
   }
 }
@@ -24,7 +24,6 @@ export type BrowserSelection =
       readonly target: BrowserTarget;
       readonly publication: AiHtmlPreviewPublication;
       readonly page: NativePageDescriptor;
-      readonly notice: number;
     }
   | { readonly kind: 'public'; readonly target: BrowserTarget }
   | {
@@ -32,12 +31,10 @@ export type BrowserSelection =
       readonly target: BrowserTarget;
       readonly publication: AiPreviewPublication;
       readonly lease: AiPreviewLease;
-      readonly notice: number;
     };
 export function previewSelection(
   publication: AiPreviewPublication,
   lease: AiPreviewLease,
-  notice: number,
   applicationOrigins: readonly string[],
 ): BrowserSelection {
   const url = new URL(lease.url);
@@ -60,7 +57,6 @@ export function previewSelection(
     kind: 'preview',
     publication,
     lease,
-    notice,
     target: {
       kind: 'preview',
       id: `${publication.id}:${publication.revision}:${lease.origin}`,
@@ -70,48 +66,42 @@ export function previewSelection(
     },
   };
 }
-export function selectionProblem(
+export type SelectionState =
+  | { readonly kind: 'current' }
+  | { readonly kind: 'gone'; readonly problem: string }
+  | { readonly kind: 'stale'; readonly publication: AiPreviewPublication };
+
+const CURRENT: SelectionState = { kind: 'current' };
+
+export function selectionState(
   selection: BrowserSelection | null,
   catalogue: AiPreviewCatalogue | undefined,
-  notices: ReadonlyMap<string, number>,
-  _live?: boolean,
-): string | null {
-  if (selection === null || selection.kind === 'public') return null;
-  if (selection.kind === 'html') return stablePageProblem(selection.publication.id, catalogue);
-  if ((notices.get(selection.publication.id) ?? 0) !== selection.notice)
-    return 'Sharing changed or was revoked. Choose a currently shared service to continue.';
-  if (previewExpired(selection.lease))
-    return 'Preview access expired. Choose the service again to renew it.';
-  return publicationProblem(selection, catalogue);
+): SelectionState {
+  if (selection === null || selection.kind === 'public' || catalogue === undefined) return CURRENT;
+  if (selection.kind === 'html')
+    return catalogue.documents.some((document) => document.id === selection.publication.id)
+      ? CURRENT
+      : { kind: 'gone', problem: 'This page is no longer available in this chat.' };
+  return previewState(selection, catalogue);
 }
-function publicationProblem(
+function previewState(
   selection: Extract<BrowserSelection, { kind: 'preview' }>,
-  catalogue: AiPreviewCatalogue | undefined,
-): string | null {
-  if (catalogue === undefined) return null;
-  if (!catalogue.gateway.ready)
-    return 'Preview connection unavailable. Choose the service again when its connection is ready.';
+  catalogue: AiPreviewCatalogue,
+): SelectionState {
   const publication = catalogue.publications.find((row) => row.id === selection.publication.id);
-  if (publication === undefined) return 'This service is no longer shared with this chat.';
-  const matches = [
-    publication.revision === selection.publication.revision,
-    publication.generation === selection.publication.generation,
-    publication.runtime_instance === selection.publication.runtime_instance,
-  ];
-  return matches.every(Boolean)
-    ? null
-    : 'This service restarted or was replaced. Choose it again to open a new preview.';
-}
-
-function previewExpired(lease: AiPreviewLease): boolean {
-  return lease.expires_at !== null && Date.parse(lease.expires_at) <= Date.now();
+  if (publication === undefined)
+    return { kind: 'gone', problem: 'This service is no longer shared with this chat.' };
+  const replaced =
+    publication.revision !== selection.publication.revision ||
+    publication.generation !== selection.publication.generation ||
+    publication.runtime_instance !== selection.publication.runtime_instance;
+  return replaced && catalogue.gateway.ready ? { kind: 'stale', publication } : CURRENT;
 }
 
 export function chatPageSelection(
   publication: AiHtmlPreviewPublication,
   page: NativePageDescriptor,
   target: BrowserTarget,
-  notice: number,
 ): BrowserSelection {
   if (
     page.chatId !== publication.chat_id ||
@@ -119,11 +109,5 @@ export function chatPageSelection(
     page.publicationId !== publication.id
   )
     throw new PreviewAuthorizationError(publication.id);
-  return { kind: 'html', publication, page, target, notice };
-}
-
-function stablePageProblem(id: string, catalogue: AiPreviewCatalogue | undefined): string | null {
-  return catalogue === undefined || catalogue.documents.some((document) => document.id === id)
-    ? null
-    : 'This page is no longer available in this chat.';
+  return { kind: 'html', publication, page, target };
 }

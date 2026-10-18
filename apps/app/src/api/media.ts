@@ -2,6 +2,7 @@ import {
   API_ENDPOINTS as E,
   HUB_COMMAND,
   type CameraChange,
+  type CameraQuality,
   type EventRow,
   type IceServer,
   type MediaSize,
@@ -42,8 +43,11 @@ export async function answerCameraOffer(
   deviceId: string,
   sdp: string,
   client: ApiClient = api(),
+  quality: CameraQuality = 'full',
 ): Promise<string> {
-  return (await client.call(E.offerCamera, { params: { deviceId }, body: { sdp } })).sdp;
+  return (
+    await client.call(E.offerCamera, { params: { deviceId }, query: { quality }, body: { sdp } })
+  ).sdp;
 }
 
 export async function answerTalkOffer(

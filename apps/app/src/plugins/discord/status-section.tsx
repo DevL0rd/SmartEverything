@@ -1,3 +1,4 @@
+import { usePluginScreen } from '../shared/plugin-log';
 import type { ReactNode } from 'react';
 import { Badge } from '../../components/badge';
 import { Banner } from '../../components/banner';
@@ -8,6 +9,7 @@ import { VoiceCalls } from './call-rows';
 import { GATEWAY_TEXT, useDiscordStatus } from './discord-data';
 
 export function DiscordStatusSection(): ReactNode {
+  usePluginScreen('discord', 'DiscordStatusSection');
   const stream = useDiscordStatus();
   if (stream.state !== 'ready') {
     return null;

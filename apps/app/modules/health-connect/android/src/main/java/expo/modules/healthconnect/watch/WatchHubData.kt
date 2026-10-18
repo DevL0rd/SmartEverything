@@ -9,8 +9,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.json.JSONException
-import org.json.JSONObject
+import kotlinx.serialization.Serializable
+
+@Serializable
+class WatchData(val weather: WatchWeather?, val user: WatchUser?)
 
 object WatchHubData {
   private const val TAG = "SmartEverythingWatch"
@@ -20,26 +22,24 @@ object WatchHubData {
   fun refresh(context: Context) {
     scope.launch {
       try {
-        apply(context, HubClient(relayTarget(context)).get(PATH))
+        apply(context, HubClient(relayTarget(context)).get<WatchData>(PATH))
       } catch (failure: SyncFailure) {
         failed(failure.message.orEmpty())
-      } catch (failure: JSONException) {
-        failed("the hub's answer could not be read: ${failure.message}")
       } catch (failure: Exception) {
         failed("${failure.javaClass.simpleName}: ${failure.message}")
       }
     }
   }
 
-  private fun apply(context: Context, data: JSONObject) {
-    val weather = data.optJSONObject("weather")
-    val user = data.optJSONObject("user")
+  private fun apply(context: Context, data: WatchData) {
+    val weather = data.weather
+    val user = data.user
     if (weather != null) {
-      WatchWeather.save(context, weather.toString())
-      WatchActions.send(WatchAction.Weather(WatchWeather.of(weather)))
+      WatchWeather.save(context, weather)
+      WatchActions.send(WatchAction.Weather(weather))
     }
     if (user != null) {
-      WatchPhoneBridge.setUser(context, WatchUserStore.userOf(user))
+      WatchPhoneBridge.setUser(context, user)
     }
     WatchEvents.emit("data_refreshed", "weather ${if (weather != null) "updated" else "not available"}, details ${if (user != null) "updated" else "not available"}")
   }

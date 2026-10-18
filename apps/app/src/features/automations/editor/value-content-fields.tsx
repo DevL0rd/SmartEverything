@@ -8,7 +8,10 @@ import { Select } from '../../../components/select';
 import { TextField } from '../../../components/text-field';
 import { SwitchRow } from '../../../components/rows';
 import { moved } from '../model/editor-state';
+import { DAY_MS } from '../../../format/time';
+import { MILLISECOND_UNITS } from './duration-units';
 import { NumberInput } from './number-input';
+import { DurationField } from './time-fields';
 
 type Choice = Extract<AutomationValueContent, { kind: 'choice' }>;
 type Numeric = Extract<AutomationValueContent, { kind: 'number' | 'duration' }>;
@@ -135,9 +138,9 @@ function OverflowField({ content, onChange }: NumericFieldsProps): ReactNode {
       label="Outside bounds"
       value={content.bounds.overflow}
       options={[
-        { value: 'reject', label: 'Reject the change' },
-        { value: 'clamp', label: 'Clamp to the nearest bound' },
-        { value: 'wrap', label: 'Wrap across the range' },
+        { value: 'reject', label: 'Say no and keep the old value' },
+        { value: 'clamp', label: 'Stop at the limit' },
+        { value: 'wrap', label: 'Wrap around to the other end' },
       ]}
       onChange={(overflow) => {
         onChange({ ...content, bounds: { ...content.bounds, overflow } });
@@ -146,22 +149,41 @@ function OverflowField({ content, onChange }: NumericFieldsProps): ReactNode {
   );
 }
 
-function NumericFields({ content, onChange, focus }: NumericFieldsProps): ReactNode {
+function CurrentNumber({ content, onChange, focus }: NumericFieldsProps): ReactNode {
+  if (content.kind === 'duration')
+    return (
+      <DurationField
+        label="Current duration"
+        value={Math.max(1, content.value)}
+        units={MILLISECOND_UNITS}
+        max={DAY_MS}
+        onChange={(value) => {
+          onChange({ ...content, value });
+        }}
+      />
+    );
+  return (
+    <NumberInput
+      label="Current number"
+      focusOnMount={focus === 'value'}
+      value={content.value}
+      onChange={(value) => {
+        if (value !== undefined) onChange({ ...content, value });
+      }}
+    />
+  );
+}
+
+function NumericFields(props: NumericFieldsProps): ReactNode {
+  const { content, onChange, focus } = props;
   const setBound = (key: 'minimum' | 'maximum' | 'quantum', value: number | undefined): void => {
     onChange({ ...content, bounds: { ...content.bounds, [key]: value } });
   };
   return (
     <View className="gap-3">
+      <CurrentNumber {...props} />
       <NumberInput
-        label={content.kind === 'duration' ? 'Current duration (milliseconds)' : 'Current number'}
-        focusOnMount={focus === 'value'}
-        value={content.value}
-        onChange={(value) => {
-          if (value !== undefined) onChange({ ...content, value });
-        }}
-      />
-      <NumberInput
-        label="Minimum (optional)"
+        label="Lowest allowed (optional)"
         focusOnMount={focus === 'bounds'}
         value={content.bounds.minimum}
         optional
@@ -170,7 +192,7 @@ function NumericFields({ content, onChange, focus }: NumericFieldsProps): ReactN
         }}
       />
       <NumberInput
-        label="Maximum (optional)"
+        label="Highest allowed (optional)"
         value={content.bounds.maximum}
         optional
         onChange={(value) => {
@@ -178,14 +200,14 @@ function NumericFields({ content, onChange, focus }: NumericFieldsProps): ReactN
         }}
       />
       <NumberInput
-        label="Quantum (optional)"
+        label="Step (optional)"
         value={content.bounds.quantum}
         optional
         onChange={(value) => {
           setBound('quantum', value);
         }}
       />
-      <OverflowField content={content} onChange={onChange} />
+      <OverflowField {...props} />
     </View>
   );
 }

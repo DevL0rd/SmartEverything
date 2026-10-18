@@ -1,18 +1,20 @@
 import type { ReactNode } from 'react';
-import { useContext, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text as NativeText } from 'react-native';
 import { useForeground } from '../../../design/animation-gate';
 import { useMotion } from '../../../design/motion';
-import { ScreenPausedContext } from '../../../design/screen-pause';
+import { useScreenPaused } from '../../../design/screen-pause';
+import { useScopeVisible } from '../../../design/visibility';
 
 const STEP_MS = 530;
 
 export function StreamCaret(): ReactNode {
   const { reduced } = useMotion();
   const foreground = useForeground();
-  const paused = useContext(ScreenPausedContext);
+  const paused = useScreenPaused();
   const [beat, setBeat] = useState(0);
-  const blinking = !reduced && foreground && !paused;
+  const visible = useScopeVisible();
+  const blinking = !reduced && foreground && !paused && visible;
   useEffect(() => {
     if (!blinking) {
       return undefined;

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { href } from '../../../app-shell/hrefs';
+import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { EmptyState } from '../../../components/empty-state';
 import { Grid } from '../../../components/grid';
@@ -67,36 +68,18 @@ function IdeasBlock({ ideas }: { readonly ideas: readonly Template[] }): ReactNo
   );
 }
 
-function CompactIntro(): ReactNode {
-  return (
-    <View className="flex-row items-center gap-4 px-2 py-2">
-      <View className="size-12 items-center justify-center rounded-full bg-primary-container">
-        <Icon name="automations" size={24} tone="primary" />
-      </View>
-      <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="title-3">Automate your home</Text>
-        <Text variant="callout" tone="variant">
-          Let things happen on their own, at a set time or when something changes.
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 export function FirstRun({ ideas }: { readonly ideas: readonly Template[] }): ReactNode {
   const { width, height } = useSizeClass();
   const compact = width === 'compact' || height === 'compact';
   return (
     <View className="gap-section-gap">
-      {compact ? (
-        <CompactIntro />
-      ) : (
-        <EmptyState
-          icon="automations"
-          title="Automate your home"
-          body="Let things happen on their own, at a set time or when something changes."
-        />
-      )}
+      <EmptyState
+        compact={compact}
+        icon="automations"
+        title="Automate your home"
+        body="Let things happen on their own, at a set time or when something changes."
+        action={<Button label="New automation" icon="plus" href={href.automation('new')} />}
+      />
       <IdeasBlock ideas={ideas.slice(0, SHOWN)} />
     </View>
   );

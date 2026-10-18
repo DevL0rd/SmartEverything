@@ -1,147 +1,110 @@
+import { createHash } from 'node:crypto';
 import {
-  ApiError,
-  HARNESS_DISCOVERY_REQUEST,
   HARNESS_DISCOVERY_PAGE,
+  HARNESS_DISCOVERY_REQUEST,
+  type HarnessDiscoveryItem,
   type HarnessDiscoveryPage,
   type HarnessDiscoveryRequest,
+  type HarnessExtensionSourceRequest,
 } from '@smarteverything/domain';
-import {
-  AnthropicSkills,
-  ANTHROPIC_SKILLS_SOURCE,
-  type AnthropicSkillSnapshot,
-} from './anthropic-skills';
-import { extensionDiscoveryPage } from './extension-discovery';
-import { ClaudePlugins } from './claude-plugins';
-import { HarnessDiscoverySourceError } from './discovery-http';
-import type { HarnessConfigurationService } from './configuration';
+import { inspect, readMarketplace, type Candidate } from './extension-inspect';
+import { gitSourceOf, withCheckout, type GitSource } from './extension-source';
 
-const CACHE_MS = 5 * 60 * 1000;
-const MAX_CACHED_PAGES = 64;
+const CACHE_MS = 60 * 60 * 1000;
+const DEFAULT_SOURCES: Readonly<Record<HarnessDiscoveryRequest['kind'], string>> = {
+  skill: 'anthropics/skills',
+  extension: 'anthropics/claude-plugins-official',
+};
+
+interface Catalogue {
+  readonly label: string;
+  readonly owner: string | null;
+  readonly commit: string;
+  readonly fetchedAt: Date;
+  readonly candidates: readonly Candidate[];
+}
+
 export class HarnessDiscovery {
-  readonly skills = new AnthropicSkills();
-  readonly plugins = new ClaudePlugins();
-  private readonly pages = new Map<string, HarnessDiscoveryPage>();
-  private readonly pending = new Map<string, Promise<HarnessDiscoveryPage>>();
+  private readonly catalogues = new Map<string, Catalogue>();
 
-  constructor(private readonly configuration: HarnessConfigurationService) {}
+  constructor(
+    private readonly installed: () => ReadonlySet<string>,
+    private readonly now: () => Date,
+  ) {}
 
   async browse(input: unknown): Promise<HarnessDiscoveryPage> {
     const request = HARNESS_DISCOVERY_REQUEST.parse(input);
-    if (!request.refresh && request.snapshot !== undefined)
-      (request.kind === 'skill' ? this.skills : this.plugins).retainedSnapshot(request.snapshot);
-    const key = JSON.stringify({ ...request, refresh: false });
-    const current = this.pages.get(key);
-    const inFlight = this.pending.get(key);
-    const page = inFlight ?? this.load(request, key, current);
-    const result = await page;
-    const installed = installedIds(this.configuration);
+    const requested: HarnessExtensionSourceRequest = request.source ?? {
+      url: DEFAULT_SOURCES[request.kind],
+    };
+    const source = gitSourceOf(requested);
+    const catalogue = await this.catalogue(source, request.refresh);
+    const kind = request.kind === 'skill' ? 'skill' : 'plugin';
+    const query = request.query.toLocaleLowerCase();
+    const matching = catalogue.candidates.filter(
+      (candidate) =>
+        candidate.kind === kind &&
+        `${candidate.name} ${candidate.description}`.toLocaleLowerCase().includes(query),
+    );
+    const offset = (request.page - 1) * request.page_size;
+    const installed = this.installed();
     return HARNESS_DISCOVERY_PAGE.parse({
-      ...result,
-      items: result.items.map((item) => ({
-        ...item,
-        installed_id: installed.get(item.id) ?? null,
-      })),
+      source: { id: catalogue.label, label: catalogue.label, url: source.url },
+      snapshot: catalogue.commit,
+      fetched_at: catalogue.fetchedAt.toISOString(),
+      items: matching
+        .slice(offset, offset + request.page_size)
+        .map((candidate) => item(candidate, source, catalogue, installed)),
+      total: matching.length,
+      next_page: offset + request.page_size >= matching.length ? null : request.page + 1,
     });
   }
 
-  private load(
-    request: HarnessDiscoveryRequest,
-    key: string,
-    current: HarnessDiscoveryPage | undefined,
-  ): Promise<HarnessDiscoveryPage> {
+  private async catalogue(source: GitSource, refresh: boolean): Promise<Catalogue> {
+    const key = createHash('sha256').update(JSON.stringify(source)).digest('hex');
+    const known = this.catalogues.get(key);
     if (
-      !request.refresh &&
-      current !== undefined &&
-      !current.stale &&
-      Date.now() - Date.parse(current.fetched_at) < CACHE_MS
+      !refresh &&
+      known !== undefined &&
+      this.now().getTime() - known.fetchedAt.getTime() < CACHE_MS
     )
-      return Promise.resolve(current);
-    const work = this.fetchPage(request)
-      .then((page) => this.remember(key, page, current))
-      .catch((cause: unknown) => {
-        if (cause instanceof ApiError) throw cause;
-        const warning =
-          cause instanceof HarnessDiscoverySourceError
-            ? cause.message
-            : 'The online source failed its bounded response, network or schema checks.';
-        if (current !== undefined) return this.remember(key, { ...current, stale: true, warning });
-        throw new ApiError('conflict', warning);
-      })
-      .finally(() => {
-        this.pending.delete(key);
-      });
-    this.pending.set(key, work);
-    return work;
-  }
-
-  private remember(
-    key: string,
-    page: HarnessDiscoveryPage,
-    current?: HarnessDiscoveryPage,
-  ): HarnessDiscoveryPage {
-    const retained =
-      page.stale && current !== undefined
-        ? { ...current, stale: true, warning: page.warning }
-        : page;
-    this.pages.delete(key);
-    this.pages.set(key, retained);
-    while (this.pages.size > MAX_CACHED_PAGES) {
-      const oldest = this.pages.keys().next().value;
-      if (oldest !== undefined) this.pages.delete(oldest);
-    }
-    return retained;
-  }
-
-  private async fetchPage(request: HarnessDiscoveryRequest): Promise<HarnessDiscoveryPage> {
-    if (request.kind === 'extension') return extensionDiscoveryPage(this.plugins, request);
-    try {
-      const snapshot = await this.skills.snapshot(
-        request.refresh,
-        request.refresh ? undefined : request.snapshot,
-      );
-      return skillPage(snapshot, request, false);
-    } catch (cause) {
-      if (cause instanceof ApiError) throw cause;
-      const cached = this.skills.cached();
-      if (cached === undefined) throw cause;
+      return known;
+    const loaded = await withCheckout(source, async (checkout) => {
+      const marketplace = await readMarketplace(checkout.directory, source.path);
       return {
-        ...skillPage(cached, request, true),
-        warning: 'Anthropic source refresh failed; this retained immutable snapshot is stale.',
+        label: marketplace?.name ?? source.url,
+        owner: marketplace?.owner ?? null,
+        commit: checkout.commit,
+        fetchedAt: this.now(),
+        candidates: marketplace?.candidates ?? (await inspect(checkout.directory, source.path)),
       };
-    }
+    });
+    this.catalogues.set(key, loaded);
+    return loaded;
   }
 }
 
-function skillPage(
-  snapshot: AnthropicSkillSnapshot,
-  request: HarnessDiscoveryRequest,
-  stale: boolean,
-): HarnessDiscoveryPage {
-  const query = request.query.toLocaleLowerCase();
-  const filtered = snapshot.items.filter((item) =>
-    `${item.name} ${item.description} ${item.publisher}`.toLocaleLowerCase().includes(query),
-  );
-  const offset = (request.page - 1) * request.page_size;
-  return {
-    source: ANTHROPIC_SKILLS_SOURCE,
-    snapshot: snapshot.commit,
-    fetched_at: snapshot.fetched_at,
-    stale,
-    items: filtered.slice(offset, offset + request.page_size),
-    total: filtered.length,
-    next_page:
-      offset + request.page_size >= filtered.length || request.page === 1000
-        ? null
-        : request.page + 1,
+function item(
+  candidate: Candidate,
+  source: GitSource,
+  catalogue: Catalogue,
+  installed: ReadonlySet<string>,
+): HarnessDiscoveryItem {
+  const id = `${candidate.kind}:${candidate.name}`;
+  const origin = candidate.source ?? {
+    url: source.url,
+    ...(source.ref === null ? {} : { ref: source.ref }),
+    ...(candidate.path === '' ? {} : { path: candidate.path }),
   };
-}
-
-function installedIds(configuration: HarnessConfigurationService): ReadonlyMap<string, string> {
-  const identities = new Map<string, string>();
-  for (const entry of configuration.desired().entries) {
-    identities.set(entry.id, entry.id);
-    for (const asset of entry.metadata?.skill_assets ?? [])
-      identities.set(asset.id, `skill-asset:${asset.id}`);
-  }
-  return identities;
+  return {
+    id,
+    kind: candidate.kind === 'skill' ? 'skill' : 'extension',
+    name: candidate.name,
+    description: candidate.description,
+    publisher: catalogue.owner ?? catalogue.label,
+    license: candidate.license,
+    source_url: origin.url,
+    installed_id: installed.has(id) ? id : null,
+    install: { source: origin, select: candidate.source === undefined ? [candidate.name] : [] },
+  };
 }

@@ -1,16 +1,19 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { Href } from 'expo-router';
-import type { ColourRole } from '../../design/tokens';
+import type { ColourRole, Idiom } from '../../design/tokens';
+import { cn } from '../../design/cn';
+import { useIdiom } from '../../design/platform';
 import { Glow } from '../glow';
 import { Icon, type IconName } from '../icon';
 import { IconWell } from '../icon-well';
 import { Interactive } from '../interactive';
 import { Text } from '../text';
-import type { WidgetSize } from './types';
+import { frameClassOf } from './frame-class';
+import { useWidgetFrame } from './widget-scope';
+import { surfaceClassName } from './surface-class';
 
-export const WIDGET_SURFACE =
-  'overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1';
+export { WIDGET_SURFACE } from './surface-class';
 
 export interface WidgetFrameProps {
   readonly title: string;
@@ -18,26 +21,31 @@ export interface WidgetFrameProps {
   readonly accent: ColourRole;
   readonly href?: Href;
   readonly action?: ReactNode;
-  readonly size: WidgetSize;
   readonly glow?: ColourRole | null;
   readonly children: ReactNode;
 }
 
 export function WidgetSurface({
   glow = null,
+  className,
   children,
 }: {
   readonly glow?: ColourRole | null;
+  readonly className?: string;
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <View className={`h-full ${WIDGET_SURFACE}`}>
+    <View className={cn(surfaceClassName(useWidgetFrame() !== null), className)}>
       {glow === null ? null : (
         <Glow colour={glow} x="85%" y="0%" radius="90%" strength={0.22} breathing />
       )}
       {children}
     </View>
   );
+}
+
+function headerHeight(idiom: Idiom): string {
+  return idiom === 'touch' ? 'min-h-10' : 'min-h-8';
 }
 
 function Title({
@@ -51,8 +59,9 @@ function Title({
   readonly accent: ColourRole;
   readonly link: boolean;
 }): ReactNode {
+  const height = headerHeight(useIdiom());
   return (
-    <View className="min-h-8 flex-1 flex-row items-center gap-2">
+    <View className={cn('flex-1 flex-row items-center gap-2', height)}>
       <IconWell icon={icon} colour={accent} size="s" />
       <Text variant="title-3" numberOfLines={1} className="shrink">
         {title}
@@ -88,27 +97,56 @@ export function WidgetHeader({
   );
 }
 
+function CompactHeader({
+  icon,
+  accent,
+  title,
+  href,
+  action,
+}: Pick<WidgetFrameProps, 'title' | 'icon' | 'accent' | 'href' | 'action'>): ReactNode {
+  const height = headerHeight(useIdiom());
+  const well = <IconWell icon={icon} colour={accent} size="s" />;
+  return (
+    <View className={cn('flex-row items-center justify-between gap-2', height)}>
+      {href === undefined ? (
+        well
+      ) : (
+        <Interactive
+          href={href}
+          label={`${title}, see all`}
+          className="-m-1 rounded-sm p-1"
+          layerClassName="rounded-sm"
+        >
+          {well}
+        </Interactive>
+      )}
+      {action}
+    </View>
+  );
+}
+
 export function WidgetFrame({
   title,
   icon,
   accent,
   href,
   action,
-  size,
   glow = null,
   children,
 }: WidgetFrameProps): ReactNode {
+  const frame = useWidgetFrame();
+  const compact = frame !== null && frameClassOf(frame) === 's';
+  const header = { title, icon, accent, action, ...(href === undefined ? {} : { href }) };
   return (
-    <WidgetSurface glow={glow}>
-      <View className="flex-1 gap-3 p-card-pad">
-        <WidgetHeader
-          title={title}
-          icon={icon}
-          accent={accent}
-          action={action}
-          {...(href === undefined ? {} : { href })}
-        />
-        <View className={size === 'S' ? 'flex-1 justify-end' : 'flex-1'}>{children}</View>
+    <WidgetSurface glow={glow} className="gap-3 p-card-pad">
+      {compact ? <CompactHeader {...header} /> : <WidgetHeader {...header} />}
+      <View className={compact ? 'flex-1 justify-end gap-1' : 'flex-1'}>
+        {compact ? (
+          <Text variant="body-strong" numberOfLines={2}>
+            {title}
+          </Text>
+        ) : null}
+        {children}
       </View>
     </WidgetSurface>
   );

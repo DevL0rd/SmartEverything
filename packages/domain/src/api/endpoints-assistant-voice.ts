@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { NO_BODY, endpoint } from './endpoint';
 import { NOTHING, knownResponseStrings } from './primitives';
-import { VOICE_PREVIEW, VOICE_PREVIEW_CANCEL, VOICE_PREVIEW_REQUEST } from '../voice-preview';
+import { VOICE_SAMPLE, VOICE_SAMPLE_PARAMS } from '../voice-preview';
 
 export * from '../voice-preview';
 
@@ -21,25 +21,15 @@ export const ASSISTANT_VOICE_STATUS = z.strictObject({
 export type AssistantVoiceStatus = z.infer<typeof ASSISTANT_VOICE_STATUS>;
 
 export const ASSISTANT_VOICE_ENDPOINTS = {
-  previewAssistantVoice: endpoint({
-    method: 'POST',
-    path: '/api/assistant/voice/preview',
+  readAssistantVoiceSample: endpoint({
+    method: 'GET',
+    path: '/api/assistant/voice/samples/:voice',
     access: 'owner',
-    summary: 'Generate one bounded Gemini Live call-voice sample on explicit Play',
-    params: NOTHING,
+    summary: 'A short Gemini Live sample (WAV) of one call voice, generated once and then kept',
+    params: VOICE_SAMPLE_PARAMS,
     query: NOTHING,
-    body: VOICE_PREVIEW_REQUEST,
-    response: VOICE_PREVIEW,
-  }),
-  cancelAssistantVoicePreview: endpoint({
-    method: 'DELETE',
-    path: '/api/assistant/voice/preview',
-    access: 'owner',
-    summary: 'Stop this paired app’s pending call-voice sample',
-    params: NOTHING,
-    query: NOTHING,
-    body: VOICE_PREVIEW_CANCEL,
-    response: NOTHING,
+    body: NO_BODY,
+    response: VOICE_SAMPLE,
   }),
   readAssistantVoice: endpoint({
     method: 'GET',

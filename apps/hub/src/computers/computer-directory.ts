@@ -4,11 +4,21 @@ import type { ComputerSession } from './computer-session';
 export class ComputerDirectory {
   private readonly sessions = new Set<ComputerSession>();
 
+  constructor(private readonly hubMachineId: string | null = null) {}
+
   add(session: ComputerSession): () => void {
     this.sessions.add(session);
     return (): void => {
       this.sessions.delete(session);
     };
+  }
+
+  isHubMachine(machineId: string): boolean {
+    return this.hubMachineId === machineId;
+  }
+
+  all(): readonly ComputerSession[] {
+    return [...this.sessions];
   }
 
   byExternalId(externalId: string): ComputerSession {

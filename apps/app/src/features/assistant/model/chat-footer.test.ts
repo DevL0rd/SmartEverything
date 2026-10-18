@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AssistantMessageRow } from '@smarteverything/domain';
-import { contextTone, filesLabel, footerFacts, repliesLabel } from './chat-footer';
+import { compactShown, executionFolderPath, executionLineOf, footerFacts } from './chat-footer';
 
 const FILE: AssistantMessageRow['attachments'][number] = {
   id: '00000000-0000-4000-8000-000000000001',
@@ -42,16 +42,68 @@ describe('footerFacts', () => {
   });
 });
 
-describe('footer labels', () => {
-  it('warns from the shared context threshold', () => {
-    expect(contextTone(79)).toBe('primary');
-    expect(contextTone(80)).toBe('warning');
+describe('compactShown', () => {
+  it('offers compaction from 60 % of the context', () => {
+    expect(compactShown(null)).toBe(false);
+    expect(compactShown(59)).toBe(false);
+    expect(compactShown(60)).toBe(true);
+  });
+});
+
+describe('executionLineOf', () => {
+  const home = {
+    runtime: null,
+    host: 'Home Hub',
+    path: null,
+    offline: false,
+    switchingTo: null,
+  } as const;
+
+  it('names the machine and the last folder segment', () => {
+    expect(executionLineOf({ ...home, host: 'Workstation', path: '/home/dana/repo' }).text).toBe(
+      'Workstation · repo',
+    );
   });
 
-  it('pluralises', () => {
-    expect(repliesLabel(1)).toBe('1 reply');
-    expect(repliesLabel(12)).toBe('12 replies');
-    expect(filesLabel(1)).toBe('1 file');
-    expect(filesLabel(3)).toBe('3 files');
+  it('names the runtime when a computer runs Claude or Codex', () => {
+    expect(
+      executionLineOf({ ...home, runtime: 'Claude', host: 'Workstation', path: 'C:\\work\\app\\' })
+        .text,
+    ).toBe('Claude on Workstation · app');
+  });
+
+  it('shows only the machine when the folder is unknown or home', () => {
+    expect(executionLineOf(home).text).toBe('Home Hub');
+    expect(executionLineOf({ ...home, path: '~' }).text).toBe('Home Hub');
+  });
+
+  it('warns when the machine is offline', () => {
+    expect(executionLineOf({ ...home, host: 'Studio', offline: true })).toEqual({
+      text: 'Studio is offline',
+      warning: true,
+      cancel: null,
+    });
+  });
+
+  it('says where the chat is moving to, ahead of everything else', () => {
+    expect(executionLineOf({ ...home, offline: true, switchingTo: 'Studio' })).toEqual({
+      text: 'Switching to Studio after the current step…',
+      warning: false,
+      cancel: null,
+    });
+  });
+});
+
+describe('executionFolderPath', () => {
+  const chatFolder = '/data/assistant/projects/3f2b8c1e-5d4a-4b7e-9c10-a1b2c3d4e5f6';
+
+  it('hides the private per-chat folder of the home hub', () => {
+    expect(executionFolderPath({ kind: 'server' }, chatFolder)).toBeNull();
+  });
+
+  it('keeps the folder of a computer', () => {
+    expect(
+      executionFolderPath({ kind: 'device', device_id: 'computer:abc' }, '/home/dana/repo'),
+    ).toBe('/home/dana/repo');
   });
 });

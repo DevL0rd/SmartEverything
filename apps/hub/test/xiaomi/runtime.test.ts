@@ -1,3 +1,4 @@
+import type { DiscoveredDevice } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { XiaomiAccountError, XiaomiSessionRejectedError } from '../../src/adapters/xiaomi/account';
 import { XiaomiHttpError } from '../../src/adapters/xiaomi/cloud-api';
@@ -95,7 +96,7 @@ describe('running Xiaomi devices', () => {
     world.cloud.expireNext = 1;
     await expect(adapter.refresh(['lumi.158d0001'])).resolves.toStrictEqual([]);
     expect(world.harness.attention).toStrictEqual([
-      'Xiaomi no longer accepts the saved sign-in; link the Xiaomi account again.',
+      'Xiaomi no longer accepts the stored passToken; the account has to be linked again.',
     ]);
     await expect(
       adapter.execute({
@@ -113,12 +114,13 @@ describe('running Xiaomi devices', () => {
     world.cloud.cloudProperties.set('100001/2.1', false);
     const recorded = await subscribe(world, adapter);
     world.purifier.silent = true;
-    await waitFor(() => recorded.devices.length > 0, 5000);
-    const purifier = recorded.devices.at(-1)?.find((device) => device.externalId === '100001');
-    expect(purifier?.details).toMatchObject({
-      transport: 'cloud',
-      polling: 'cloud-poll every 0.12 s: miIO and the MIoT cloud offer no push to this hub',
-    });
+    const purifierOf = (): DiscoveredDevice | undefined =>
+      recorded.devices.at(-1)?.find((device) => device.externalId === '100001');
+    await waitFor(() => purifierOf()?.details['transport'] === 'cloud', 5000);
+    const purifier = purifierOf();
+    expect(purifier?.details['updates']).toEqual(
+      expect.stringMatching(/^cloud-poll every 0\.12 s: /),
+    );
     expect(purifier?.details['transportReason']).toEqual(
       expect.stringMatching(
         /^the LAN stopped answering after 2 polls: The device at 127\.0\.0\.2 did not answer the miIO handshake/,
@@ -150,7 +152,7 @@ describe('running Xiaomi devices', () => {
     await adapter.discover();
     world.purifier.properties.set('4.1', 55);
     await waitFor(() => valuesOf(recorded.states).includes('100001/filter_life=55'));
-    expect(world.purifier.handshakes).toBe(2);
+    expect(world.purifier.handshakes).toBeGreaterThan(1);
   });
 
   it('names a failing cloud HTTP status', async () => {

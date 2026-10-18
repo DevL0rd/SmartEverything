@@ -69,13 +69,21 @@ export function toolActionTitle(
   tool: ChatTimelineTool,
   pluginName: (id: string) => string | null,
 ): string {
-  const key = toolKey(tool.name);
-  const action = ACTIONS.get(key);
-  const input = reportedRecord(tool.input);
   const title = readableToolLine(tool.title);
   if (title !== null && tool.title !== tool.name) return title;
-  if (action !== undefined) return actionTitle(action, input);
+  const action = ACTIONS.get(toolKey(tool.name));
+  if (action !== undefined) return actionTitle(action, inputRecord(tool));
   return fallbackTitle(tool.name, pluginName);
+}
+
+const INPUTS = new WeakMap<ChatTimelineTool, Readonly<Record<string, unknown>> | null>();
+
+function inputRecord(tool: ChatTimelineTool): Readonly<Record<string, unknown>> | null {
+  const known = INPUTS.get(tool);
+  if (known !== undefined) return known;
+  const record = reportedRecord(tool.input);
+  INPUTS.set(tool, record);
+  return record;
 }
 
 function fallbackTitle(name: string, pluginName: (id: string) => string | null): string {

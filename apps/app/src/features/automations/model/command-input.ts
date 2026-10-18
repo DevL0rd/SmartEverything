@@ -1,29 +1,7 @@
 import { z } from 'zod';
-import { JSON_VALUE } from '@smarteverything/domain';
-import type {
-  AutomationBindingKind,
-  AutomationInput,
-  JsonValue,
-  AutomationCommandInput,
-  DeviceCapability,
-} from '@smarteverything/domain';
-import { defaultValue } from './capability-choices';
-import { literalValue } from './input-bindings';
+import { JSON_VALUE, type DeviceCapability, type JsonValue } from '@smarteverything/domain';
+import type { Kind } from './inputs';
 
-export function commandBindingKind(capability: DeviceCapability): AutomationBindingKind | null {
-  switch (capability.value.kind) {
-    case 'boolean':
-      return 'boolean';
-    case 'number':
-      return capability.value.unit === 'ms' ? 'duration' : 'number';
-    case 'text':
-    case 'enum':
-      return 'string';
-    case 'action':
-    case 'color':
-      return null;
-  }
-}
 const PARAMETER = z.object({
   type: z.string().optional(),
   enum: z.array(JSON_VALUE).optional(),
@@ -41,27 +19,31 @@ export type CommandArgument = z.infer<typeof PARAMETER>;
 export interface CommandField {
   readonly name: string;
   readonly parameter: CommandArgument;
-  readonly kind: AutomationBindingKind;
+  readonly kind: Kind;
   readonly required: boolean;
 }
-function enumKind(values: readonly JsonValue[]): AutomationBindingKind | null {
+
+function enumKind(values: readonly JsonValue[]): Kind | null {
   if (values.length === 0) return null;
   if (values.every((value) => typeof value === 'number')) return 'number';
-  if (values.every((value) => typeof value === 'boolean')) return 'boolean';
-  return values.every((value) => typeof value === 'string') ? 'string' : null;
+  if (values.every((value) => typeof value === 'boolean')) return 'flag';
+  return values.every((value) => typeof value === 'string') ? 'text' : null;
 }
-function argumentKind(parameter: CommandArgument): AutomationBindingKind | null {
-  const types: Readonly<Record<string, AutomationBindingKind>> = {
-    boolean: 'boolean',
-    number: 'number',
-    integer: 'number',
-    string: 'string',
-  };
-  const kind = parameter.type === undefined ? 'string' : (types[parameter.type] ?? null);
+
+const TYPE_KINDS: Readonly<Record<string, Kind>> = {
+  boolean: 'flag',
+  number: 'number',
+  integer: 'number',
+  string: 'text',
+};
+
+function argumentKind(parameter: CommandArgument): Kind | null {
+  const kind = parameter.type === undefined ? 'text' : (TYPE_KINDS[parameter.type] ?? null);
   if (parameter.enum === undefined) return kind;
   const enumerated = enumKind(parameter.enum);
   return parameter.type === undefined || enumerated === kind ? enumerated : null;
 }
+
 export function commandFields(capability: DeviceCapability): readonly CommandField[] | null {
   const descriptor = capability.value;
   if (descriptor.kind !== 'action') return null;
@@ -69,7 +51,7 @@ export function commandFields(capability: DeviceCapability): readonly CommandFie
     return (
       descriptor.arguments?.map((name) => ({
         name,
-        kind: 'string',
+        kind: 'text',
         required: true,
         parameter: { type: 'string' },
       })) ?? null
@@ -84,7 +66,7 @@ export function commandFields(capability: DeviceCapability): readonly CommandFie
       : [
           {
             name,
-            parameter: { ...parameter, type: parameter.type ?? kind },
+            parameter: { ...parameter, type: parameter.type ?? 'string' },
             kind,
             required: required.has(name),
           },
@@ -92,43 +74,10 @@ export function commandFields(capability: DeviceCapability): readonly CommandFie
   });
   return fields.length === Object.keys(schema.data.properties).length ? fields : null;
 }
-export function commandFieldInput(field: CommandField): AutomationInput {
-  const value =
-    field.parameter.enum?.[0] ??
-    (field.kind === 'number' ? (field.parameter.minimum ?? 0) : literalValue(field.kind));
-  return { binding: { source: 'literal', kind: field.kind, value } };
-}
-export function commandBinding(
-  capability: DeviceCapability,
-  literal?: JsonValue,
-): AutomationCommandInput | null {
-  const kind = commandBindingKind(capability);
-  if (kind !== null)
-    return {
-      type: 'value',
-      input: {
-        binding: {
-          source: 'literal',
-          kind,
-          value: literal === undefined ? defaultValue(capability.value) : literal,
-        },
-      },
-    };
-  const fields = commandFields(capability);
-  if (fields === null) return null;
-  const given = z.record(z.string(), JSON_VALUE).safeParse(literal);
-  return {
-    type: 'fields',
-    fields: Object.fromEntries(
-      fields.flatMap((field) => {
-        const value = given.success ? given.data[field.name] : undefined;
-        if (value === undefined && !field.required) return [];
-        const input =
-          value === undefined
-            ? commandFieldInput(field)
-            : { binding: { source: 'literal' as const, kind: field.kind, value } };
-        return [[field.name, input]];
-      }),
-    ),
-  };
+
+export function fieldDefault(field: CommandField): JsonValue {
+  const first = field.parameter.enum?.[0];
+  if (first !== undefined) return first;
+  if (field.kind === 'number') return field.parameter.minimum ?? 0;
+  return field.kind === 'flag' ? false : '';
 }

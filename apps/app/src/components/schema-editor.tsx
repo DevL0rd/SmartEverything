@@ -3,9 +3,11 @@ import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { JsonValue } from '@smarteverything/domain';
 import { Button } from './button';
-import { ActionRow, NavRow, SelectRow, SwitchRow } from './rows';
+import { ActionRow, NavRow, SelectRow } from './rows';
 import { SearchField } from './search-field';
 import { List } from './section';
+import { Scalar } from './schema-scalar';
+import { SchemaForm } from './schema-form';
 import { Sheet } from './sheet';
 import { Text } from './text';
 import { TextField } from './text-field';
@@ -18,6 +20,7 @@ import {
   schemaOf,
   schemaType,
   valueSummary,
+  variantName,
   type Schema,
 } from './schema-values';
 interface NodeProps {
@@ -30,44 +33,10 @@ interface EditorProps {
   readonly value: Schema;
   readonly change: (value: Schema) => void;
   readonly initialSearch?: string;
+  readonly searchPlaceholder?: string;
   readonly exclusions?: Readonly<Record<string, string>>;
-}
-function Scalar({ schema, value, change }: NodeProps): ReactNode {
-  const [text, setText] = useState(typeof value === 'object' ? '' : String(value));
-  const type = schemaType(schema);
-  if (schema['const'] !== undefined) return <Text selectable>{valueSummary(schema['const'])}</Text>;
-  if (Array.isArray(schema['enum']))
-    return (
-      <SelectRow
-        title="Value"
-        value={String(arrayOf(schema['enum']).findIndex((entry) => entry === value))}
-        options={arrayOf(schema['enum']).map((entry, index) => ({
-          value: String(index),
-          label: valueSummary(entry),
-        }))}
-        onChange={(index) => {
-          const next = arrayOf(schema['enum'])[Number(index)];
-          if (next !== undefined) change(next);
-        }}
-      />
-    );
-  if (type === 'boolean')
-    return <SwitchRow title="Enabled" value={value === true} onChange={change} />;
-  if (type === 'null') return <Text tone="variant">Reset this flag to the runtime default.</Text>;
-  const numeric = type === 'number' || type === 'integer';
-  return (
-    <TextField
-      label="Value"
-      value={text}
-      kind={numeric ? 'number' : 'text'}
-      multiline={!numeric}
-      onChange={(next) => {
-        setText(next);
-        if (!numeric) change(next);
-        else change(next.trim() !== '' && Number.isFinite(Number(next)) ? Number(next) : next);
-      }}
-    />
-  );
+  readonly mode?: 'browse' | 'elicitation';
+  readonly disabled?: boolean;
 }
 function UnionNode({ schema, value, change }: NodeProps): ReactNode {
   const variants = branches(schema);
@@ -85,10 +54,7 @@ function UnionNode({ schema, value, change }: NodeProps): ReactNode {
         value={String(chosen)}
         options={variants.map((variant, index) => ({
           value: String(index),
-          label:
-            schemaType(variant) === 'null'
-              ? 'Reset override'
-              : `${schemaType(variant)} ${String(index + 1)}`,
+          label: variantName(variant, index),
         }))}
         onChange={(index) => {
           choose(Number(index));
@@ -228,6 +194,7 @@ function ObjectFields({
   change,
   exclusions = {},
   initialSearch = '',
+  searchPlaceholder = 'Find a native setting',
 }: EditorProps): ReactNode {
   const [query, setQuery] = useState(initialSearch);
   const [key, setKey] = useState<string | null>(null);
@@ -239,7 +206,7 @@ function ObjectFields({
     key === null ? {} : schemaOf(properties[key] ?? schema['additionalProperties']);
   return (
     <View className="gap-3">
-      <SearchField value={query} onChange={setQuery} placeholder="Find a native setting" />
+      <SearchField value={query} onChange={setQuery} placeholder={searchPlaceholder} />
       <ObjectRows fields={fields} query={query} value={value} change={change} choose={setKey} />
       {arbitrary ? <NewEntry value={value} add={setKey} /> : null}
       <ExclusionRows exclusions={exclusions} query={query} />
@@ -331,6 +298,30 @@ function SchemaNode(props: NodeProps): ReactNode {
   if (type === 'array') return <ArrayNode {...props} />;
   return <Scalar {...props} />;
 }
-export function SchemaEditor(props: EditorProps): ReactNode {
+export function SchemaEditor({
+  mode = 'browse',
+  disabled = false,
+  ...props
+}: EditorProps): ReactNode {
+  if (mode === 'elicitation') {
+    return (
+      <SchemaForm
+        schema={props.schema}
+        value={props.value}
+        change={props.change}
+        disabled={disabled}
+      />
+    );
+  }
+  if (branches(props.schema).length > 0)
+    return (
+      <SchemaNode
+        schema={props.schema}
+        value={props.value}
+        change={(next) => {
+          props.change(schemaOf(next));
+        }}
+      />
+    );
   return <ObjectFields {...props} />;
 }

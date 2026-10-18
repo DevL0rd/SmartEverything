@@ -38,11 +38,13 @@ export class FakeMiioDevice {
     readonly inputs: JsonValue[];
   }[] = [];
   readonly properties: Map<string, JsonValue>;
+  readonly acks: string[] = [];
   handshakes = 0;
   silent = false;
   private readonly socket: Socket = createSocket('udp4');
   private readonly token: Uint8Array;
   private readonly stamp = 1000;
+  private peer: { readonly host: string; readonly port: number } | null = null;
 
   constructor(private readonly options: FakeDeviceOptions) {
     this.token = parseToken(options.token);
@@ -68,7 +70,16 @@ export class FakeMiioDevice {
     });
   }
 
+  push(body: string): void {
+    if (this.peer === null) {
+      throw new Error('no client has contacted the fake device yet');
+    }
+    const header = { deviceId: this.options.deviceId, stamp: this.stamp + 2 };
+    this.socket.send(encodeMessage(this.token, header, body), this.peer.port, this.peer.host);
+  }
+
   private answer(packet: Uint8Array, host: string, port: number): void {
+    this.peer = { host, port };
     if (packet.length === 32) {
       this.handshakes += 1;
       const reply = new Uint8Array(32).fill(0xff);
@@ -82,7 +93,12 @@ export class FakeMiioDevice {
       return;
     }
     const message = decodeMessage(this.token, packet);
-    const request = REQUEST.parse(JSON.parse(message.body));
+    const parsed = REQUEST.safeParse(JSON.parse(message.body));
+    if (!parsed.success) {
+      this.acks.push(message.body);
+      return;
+    }
+    const request = parsed.data;
     this.requests.push({
       method: request.method,
       params: request.params,

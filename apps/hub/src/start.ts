@@ -1,7 +1,7 @@
 import { connectionPortNeeds } from './network/firewall';
 import { HubConnections } from './network/connections';
 import { openHubIdentity } from './network/identity';
-import { advertiseHub } from './network/avahi';
+import { advertiseHub } from './network/mdns-advertise';
 import type { Server } from 'node:http';
 import type { PreviewGatewayConfig } from './preview/gateway';
 import { mkdir } from 'node:fs/promises';
@@ -15,6 +15,7 @@ import { lockDataDirectory, type DataLock } from './data-lock';
 import type { RunningExtension, ServerExtension } from './extensions';
 import { bodyAlertsExtension } from './extensions/body-alerts';
 import { computersExtension } from './computers/extension';
+import { machineUpdatesExtension } from './updates/extension';
 import { phonesExtension } from './phones/extension';
 import { mcpExtension } from './extensions/mcp';
 import { OwnerAlerts } from './extensions/owner-alerts';
@@ -26,6 +27,7 @@ import type { ModuleRegistry } from './providers/registry-types';
 import { watchResume } from './clock/resume-watch';
 import { openSecretStore } from './secrets/open';
 import { buildServer, type BuiltServer } from './server/build';
+import { originAllowList } from './server/origin-allow-list';
 import { DATABASE_FILE, serviceUrl } from './service/configuration';
 import type { LogLines } from './service/log-lines';
 import { startCore, type Core } from './services';
@@ -48,11 +50,13 @@ export interface ServerOptions {
   readonly go2rtcApiPort?: number;
   readonly go2rtcRtspPort?: number;
   readonly webrtcPort?: number;
+  readonly wakeDiagnostics?: boolean;
   readonly log: Logger;
   readonly logLines: LogLines;
   readonly fatal: (cause: Error) => void;
   readonly modules?: ModuleRegistry;
   readonly allowedOrigins?: readonly string[];
+  readonly developmentOrigins?: boolean;
   readonly extensions?: readonly ServerExtension[];
   readonly clock?: Clock;
   readonly fetch?: typeof fetch;
@@ -89,9 +93,17 @@ function serverExtensions(
     privacyExtension(),
     bodyAlertsExtension({ alerts }),
     computersExtension(clock.now),
-    phonesExtension(),
+    phonesExtension(clock.now),
+    machineUpdatesExtension(),
     ...(options.extensions ?? []),
   ];
+}
+
+function allowedOriginsOf(options: ServerOptions): ReadonlySet<string> {
+  return originAllowList(
+    options.allowedOrigins ?? DEFAULT_ORIGINS,
+    options.developmentOrigins ?? false,
+  );
 }
 
 function listen(server: Server, port: number, host: string): Promise<AddressInfo> {
@@ -186,9 +198,10 @@ async function boot(options: ServerOptions, clock: Clock, undo: Undo[]): Promise
     secrets,
     core,
     dataDirectory: options.dataDirectory,
+    wakeDiagnostics: options.wakeDiagnostics ?? false,
     ...(options.preview === undefined ? {} : { preview: options.preview }),
     ...(options.codex === undefined ? {} : { codex: options.codex }),
-    allowedOrigins: new Set(options.allowedOrigins ?? DEFAULT_ORIGINS),
+    allowedOrigins: allowedOriginsOf(options),
     extensions: serverExtensions(options, clock, alerts, smartthings),
     fetch: outbound,
     clock,

@@ -4,7 +4,7 @@ import {
   type ClaudeCliAction,
   type ClaudeCliSession,
 } from '@smarteverything/domain';
-import { validateExecutionAuthority, admitExecutionDevice } from '../assistant/execution-authority';
+import { effectiveClientById } from '../server/person-access';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { ChatOwner } from '../assistant/chat-directory';
 import type { ComputerRunner } from '../assistant/engines/computer/runner';
@@ -26,7 +26,6 @@ export function ownedClaudeScope(
   chatId: string,
 ): ManagedClaudeScope {
   currentClaudeActor(context, actor);
-  if (actor.authority !== undefined) admitExecutionDevice(context.store, deviceId, actor.authority);
   const binding = context.store.claudeCliOperations.binding(chatId);
   const chat = context.assistant.chats.own(actor, chatId);
   if (
@@ -42,7 +41,7 @@ export function ownedClaudeScope(
     );
   const runner = context.assistant.computerProviders.get('claude');
   if (runner === undefined)
-    throw new ApiError('conflict', 'The native Claude provider is starting.');
+    throw new ApiError('conflict', 'Claude on this computer is starting. Try again in a moment.');
   return { chat: { ...chat, engine: chat.engine }, runner };
 }
 export function cliSession(
@@ -90,7 +89,6 @@ export function expectedClaudeScope(
 }
 export function currentClaudeActor(context: ManagedClaudeContext, actor: ManagedClaudeActor): void {
   if (actor.authority !== undefined) {
-    validateExecutionAuthority(context.store, actor.authority);
     if (
       actor.authority.kind !== 'client' ||
       actor.authority.role !== 'owner' ||
@@ -102,7 +100,7 @@ export function currentClaudeActor(context: ManagedClaudeContext, actor: Managed
   }
   if (
     actor.role !== 'owner' ||
-    context.store.clients.byId(actor.clientId).role !== 'owner' ||
+    effectiveClientById(context.store, actor.clientId).role !== 'owner' ||
     context.store.profiles.activeOf(actor.clientId).id !== actor.profileId
   )
     throw new ApiError(

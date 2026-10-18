@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import type { Channels } from '../channels';
-import { DiscordInputError } from '../errors';
 import { SNOWFLAKE } from '../ids';
 import type { DiscordRest } from '../link';
 import type { EventOrigin } from '../origins';
@@ -55,15 +54,6 @@ export function query(input: Readonly<Record<string, unknown>>): URLSearchParams
       .filter(([, value]) => value !== undefined)
       .map(([key, value]) => [key, String(value)]),
   );
-}
-
-export function originOf(context: OperationContext): EventOrigin {
-  if (context.origin === null) {
-    throw new DiscordInputError(
-      'This action answers a Discord request: pass the eventId of the request it belongs to',
-    );
-  }
-  return context.origin;
 }
 
 interface Meta extends Access {

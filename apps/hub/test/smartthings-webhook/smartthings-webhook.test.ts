@@ -1,5 +1,6 @@
 import { API_ENDPOINTS, type SmartThingsAppStatus } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { bootServer, pairPhone, verifiedPublicUrl, type Booted } from '../support/booted';
 import { captureLogs, type CapturedLogs } from '../support/logs';
 import { call, temporaryDirectory } from '../support/server';
@@ -20,6 +21,10 @@ const CONFIRMATION_URL = `${API}/apps/app-id/confirm-registration?token=t-1`;
 
 const INSTALLED = `${API}/v1/installedapps/app-1`;
 
+const APPS = `${API}/v1/apps`;
+
+const TOKEN = 'one-time-token';
+
 let directory: { path: string; remove: () => Promise<void> };
 let booted: Booted;
 let cloud: FakeCloud;
@@ -31,6 +36,23 @@ function urlOf(input: string | URL | Request): string {
     return input;
   }
   return input instanceof URL ? input.href : input.url;
+}
+
+function createdApp(body: string | null): unknown {
+  const created = z
+    .object({ appName: z.string(), apiOnly: z.object({ targetUrl: z.string() }) })
+    .parse(JSON.parse(body ?? '{}'));
+  return {
+    app: {
+      appId: 'app-id',
+      appName: created.appName,
+      apiOnly: {
+        subscription: { targetUrl: created.apiOnly.targetUrl, targetStatus: 'CONFIRMED' },
+      },
+    },
+    oauthClientId: 'client-1',
+    oauthClientSecret: 'secret-1',
+  };
 }
 
 function smartThingsCloud(): FakeCloud {
@@ -47,6 +69,8 @@ function smartThingsCloud(): FakeCloud {
     .always('GET', `${API}/v1/devices/lamp-1/status`, () =>
       json({ components: { main: { switch: { switch: { value: 'on' } } } } }),
     )
+    .always('GET', APPS, () => json({ items: [], _links: {} }))
+    .always('POST', APPS, (request) => json(createdApp(request.body)))
     .always('GET', INSTALLED, () => json({ installedAppId: 'app-1', locationId: 'loc-1' }))
     .always('GET', `${INSTALLED}/subscriptions`, () => json({ items: [] }))
     .always('POST', `${INSTALLED}/subscriptions`, () => json({ id: 'sub' }))
@@ -77,13 +101,18 @@ afterEach(async () => {
   await directory.remove();
 });
 
-async function saveApp(): Promise<void> {
-  const saved = await call(booted.base, booted.owner, {
-    method: 'PUT',
-    path: API_ENDPOINTS.readSmartThingsApp.path,
-    body: { clientId: 'client-1', clientSecret: 'secret-1' },
+async function setUp(token = TOKEN): Promise<Awaited<ReturnType<typeof call>>> {
+  return call(booted.base, booted.owner, {
+    method: 'POST',
+    path: API_ENDPOINTS.setUpSmartThings.path,
+    body: { token },
   });
+}
+
+async function saveApp(): Promise<void> {
+  const saved = await setUp();
   expect(saved.status).toBe(200);
+  expect(saved.body).toMatchObject({ outcome: 'ready' });
 }
 
 async function authorize(): Promise<URL> {
@@ -163,38 +192,51 @@ async function appStatus(): Promise<SmartThingsAppStatus> {
 }
 
 describe('the SmartThings app', () => {
-  it('stores the client id and secret in the secret store and shows the URLs to register', async () => {
+  it('sets the app up from a one-time token, keeps only the app credentials and shows the URLs to register', async () => {
     expect(await appStatus()).toEqual({
-      clientId: null,
+      app: null,
+      publicUrl: 'verified',
       redirectUri: `${PUBLIC_URL}/smartthings/callback`,
       webhookUrl: `${PUBLIC_URL}/smartthings/webhook`,
       webhook: { confirmedAt: null, lastEventAt: null, lastError: null },
     });
+    const created = cloud.sent('POST', APPS);
+    expect(created).toHaveLength(0);
     await saveApp();
-    expect((await appStatus()).clientId).toBe('client-1');
-    const cleared = await call(booted.base, booted.owner, {
-      method: 'DELETE',
-      path: API_ENDPOINTS.readSmartThingsApp.path,
-    });
-    expect(API_ENDPOINTS.forgetSmartThingsApp.response.parse(cleared.body).clientId).toBeNull();
+    expect(cloud.sent('POST', APPS)).toHaveLength(1);
+    expect(cloud.sent('POST', APPS)[0]?.headers['authorization']).toBe(`Bearer ${TOKEN}`);
+    const status = await appStatus();
+    expect(status.app).toEqual({ appId: 'app-id', clientId: 'client-1' });
+    expect(JSON.stringify(status)).not.toMatch(/secret-1|one-time-token/);
   });
 
-  it('lets only owners see or change it, and refuses an invalid one', async () => {
-    const phone = await pairPhone(booted, 'member');
-    for (const method of ['GET', 'PUT', 'DELETE']) {
-      const reply = await call(booted.base, phone.token, {
-        method,
-        path: API_ENDPOINTS.readSmartThingsApp.path,
-        body: method === 'PUT' ? { clientId: 'a', clientSecret: 'b' } : undefined,
-      });
-      expect(reply.status).toBe(403);
-    }
-    const invalid = await call(booted.base, booted.owner, {
-      method: 'PUT',
-      path: API_ENDPOINTS.readSmartThingsApp.path,
-      body: { clientId: ' ', clientSecret: 'b' },
+  it('names a refused token or missing scopes without echoing the token', async () => {
+    cloud.on('GET', APPS, () => json({ error: { code: 'Unauthorized', message: TOKEN } }, 401));
+    const refused = await setUp();
+    expect(refused.body).toMatchObject({ outcome: 'token_refused' });
+    expect(JSON.stringify(refused.body)).not.toContain(TOKEN);
+    cloud.on('GET', APPS, () => json({ error: { code: 'Forbidden', message: 'No.' } }, 403));
+    expect((await setUp()).body).toMatchObject({
+      outcome: 'scopes_missing',
+      missing: ['r:apps:*'],
     });
-    expect(invalid.status).toBe(400);
+    expect((await appStatus()).app).toBeNull();
+  });
+
+  it('lets only owners see or change it, and refuses an invalid token', async () => {
+    const phone = await pairPhone(booted, 'member');
+    const reads = await call(booted.base, phone.token, {
+      method: 'GET',
+      path: API_ENDPOINTS.readSmartThingsApp.path,
+    });
+    expect(reads.status).toBe(403);
+    const sets = await call(booted.base, phone.token, {
+      method: 'POST',
+      path: API_ENDPOINTS.setUpSmartThings.path,
+      body: { token: TOKEN },
+    });
+    expect(sets.status).toBe(403);
+    expect((await setUp(' ')).status).toBe(400);
   });
 
   it('needs the app before it builds a sign-in link', async () => {
@@ -205,18 +247,31 @@ describe('the SmartThings app', () => {
     expect(reply.status).toBe(409);
   });
 
-  it('needs a verified public URL before it builds a sign-in link', async () => {
+  it('needs a saved public URL before it builds a sign-in link', async () => {
     await saveApp();
     await call(booted.base, booted.owner, {
       method: 'PUT',
       path: '/api/settings/public-url',
-      body: { url: 'https://elsewhere.example.com' },
+      body: { url: null },
     });
     const reply = await call(booted.base, booted.owner, {
       method: 'POST',
       path: API_ENDPOINTS.authorizeSmartThings.path,
     });
     expect(reply.status).toBe(422);
+  });
+
+  it('builds the sign-in link for a saved address that is not verified yet', async () => {
+    await saveApp();
+    await call(booted.base, booted.owner, {
+      method: 'PUT',
+      path: '/api/settings/public-url',
+      body: { url: 'https://elsewhere.example.com' },
+    });
+    const url = await authorize();
+    expect(url.searchParams.get('redirect_uri')).toBe(
+      'https://elsewhere.example.com/smartthings/callback',
+    );
   });
 });
 
@@ -320,7 +375,8 @@ describe('the SmartThings webhook', () => {
     expect(logs.events()).toContain('webhook.refused');
   });
 
-  it('confirms the target URL by fetching the SmartThings confirmation URL', async () => {
+  it('confirms the target URL of its own app by fetching the SmartThings confirmation URL', async () => {
+    await saveApp();
     const body = JSON.stringify({
       messageType: 'CONFIRMATION',
       confirmationData: { appId: 'app-id', confirmationUrl: CONFIRMATION_URL },
@@ -331,7 +387,14 @@ describe('the SmartThings webhook', () => {
     expect((await appStatus()).webhook.confirmedAt).not.toBeNull();
   });
 
-  it('refuses to fetch a confirmation URL outside SmartThings and reports a failed confirmation', async () => {
+  it('refuses a confirmation for another app or outside SmartThings and reports a failed confirmation', async () => {
+    await saveApp();
+    const stranger = JSON.stringify({
+      messageType: 'CONFIRMATION',
+      confirmationData: { appId: 'other-app', confirmationUrl: CONFIRMATION_URL },
+    });
+    expect((await post(stranger, signer.headers(stranger))).status).toBe(403);
+    expect(cloud.sent('GET', CONFIRMATION_URL)).toHaveLength(0);
     const foreign = JSON.stringify({
       messageType: 'CONFIRMATION',
       confirmationData: { appId: 'app-id', confirmationUrl: 'https://evil.example.com/x' },

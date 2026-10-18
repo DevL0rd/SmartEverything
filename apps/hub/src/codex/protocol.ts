@@ -17,31 +17,29 @@ export const RPC_MESSAGE = z.union([
   }),
 ]);
 export type RpcMessage = z.infer<typeof RPC_MESSAGE>;
-export const RPC_METHOD = z.enum([
-  'initialize',
-  'account/read',
-  'account/rateLimits/read',
-  'config/read',
-  'model/list',
-  'skills/list',
-  'thread/compact/start',
-  'thread/start',
-  'thread/resume',
-  'thread/read',
-  'thread/list',
-  'thread/items/list',
-  'turn/start',
-  'turn/steer',
-  'turn/interrupt',
-  'thread/name/set',
-  'thread/fork',
-  'thread/archive',
-  'thread/unarchive',
-  'thread/delete',
-  'thread/unsubscribe',
-  'mcpServerStatus/list',
-]);
-export type RpcMethod = z.infer<typeof RPC_METHOD>;
+export type RpcMethod =
+  | 'initialize'
+  | 'account/read'
+  | 'account/rateLimits/read'
+  | 'config/read'
+  | 'model/list'
+  | 'skills/list'
+  | 'thread/compact/start'
+  | 'thread/start'
+  | 'thread/resume'
+  | 'thread/read'
+  | 'thread/list'
+  | 'thread/items/list'
+  | 'turn/start'
+  | 'turn/steer'
+  | 'turn/interrupt'
+  | 'thread/name/set'
+  | 'thread/fork'
+  | 'thread/archive'
+  | 'thread/unarchive'
+  | 'thread/delete'
+  | 'thread/unsubscribe'
+  | 'mcpServerStatus/list';
 export const INITIALIZED = z.object({
   userAgent: z.string().min(1),
   codexHome: z.string().min(1),
@@ -75,7 +73,7 @@ export const TURN = z.object({
   error: z.object({ message: z.string() }).nullable(),
 });
 export const TURN_REPLY = z.object({ turn: TURN });
-export const MODEL = z.object({
+const MODEL = z.object({
   id: z.string().min(1),
   model: z.string().min(1),
   displayName: z.string().min(1),

@@ -11,7 +11,7 @@ export const AIR_BAND_LABELS: Readonly<Record<AirBand, string>> = {
   severe: 'Severe pollution',
 };
 
-const PM25_UPPER_BOUNDS: readonly (readonly [number, AirBand])[] = [
+export const PM25_UPPER_BOUNDS: readonly (readonly [number, AirBand])[] = [
   [12, 'good'],
   [35.4, 'fair'],
   [55.4, 'moderate'],

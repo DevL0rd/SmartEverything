@@ -1,22 +1,28 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import { View } from 'react-native';
 import type { BoardClass, BoardWidget } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { useIdiom } from '../../../design/platform';
 import { useMotion } from '../../../design/motion';
 import { frameOf, type Cell, type Frame } from '../board-geometry';
 import type { Placement } from '../packer';
+import type { BoardReveal } from '../reveal';
 import type { WidgetDefinition } from '../types';
-import { addable, added, placeableSize, sizeOptions, type Availability } from './edit-model';
+import { addable, added, sizeOptions, type Availability } from './edit-model';
 import { AddTile, EditToolbar } from './edit-toolbar';
 import { EditableWidget } from './editable-widget';
 import type { BoardEditor } from './use-board-editor';
 import { useEditKeys } from './use-edit-keys';
 import { useEditSession, type EditSession } from './use-edit-handlers';
+import type { GalleryAdd } from './gallery-model';
+import { RevealRing } from './reveal-ring';
 import { WidgetGallery } from './widget-gallery';
 import { WidgetOptions } from './widget-options';
 
-export const ADD_TILE: BoardWidget = { key: 'board:add', type: 'board-add', size: 'S' };
+const log = new Logger('app.widget-board');
+
+export const ADD_TILE: BoardWidget = { key: 'board:add', type: 'board-add', size: 'M' };
 
 export interface EditCanvasProps {
   readonly editor: BoardEditor;
@@ -28,6 +34,7 @@ export interface EditCanvasProps {
   readonly catalogue: readonly WidgetDefinition[];
   readonly availability: Availability;
   readonly active: boolean;
+  readonly reveal: BoardReveal | null;
 }
 
 function definitionLookup(
@@ -49,12 +56,31 @@ function useFrames(session: EditSession, placements: readonly Placement[], cell:
   }, [placements, cell, frames]);
 }
 
+function place(
+  session: EditSession,
+  editor: BoardEditor,
+  board: BoardClass,
+  { type, size, options }: GalleryAdd,
+): void {
+  const next = added(editor.arrangement(board), type, size, options);
+  log.info('edit.widget_added', {
+    page: editor.page,
+    board,
+    type,
+    size,
+    widgets: next.length,
+    withOptions: options !== undefined,
+  });
+  editor.change(board, () => next, 'step');
+  session.patch({ galleryOpen: false, revealed: next.at(-1)?.key ?? null });
+}
+
 function Overlays(props: EditCanvasProps & { readonly session: EditSession }): ReactNode {
   const { session, editor, board, cell, catalogue, availability } = props;
-  const lookup = definitionLookup(catalogue);
   const optionsWidget =
     props.visible.find((widget) => widget.key === session.ui.optionsFor) ?? null;
-  const optionsDefinition = optionsWidget === null ? null : (lookup(optionsWidget.type) ?? null);
+  const optionsDefinition =
+    optionsWidget === null ? null : (definitionLookup(catalogue)(optionsWidget.type) ?? null);
   return (
     <>
       <WidgetGallery
@@ -62,16 +88,12 @@ function Overlays(props: EditCanvasProps & { readonly session: EditSession }): R
         onClose={() => {
           session.patch({ galleryOpen: false });
         }}
-        definitions={addable(catalogue, availability, editor.arrangement(board), board)}
+        definitions={addable(catalogue, availability, board)}
+        placed={editor.arrangement(board)}
         board={board}
         cell={cell}
-        onAdd={(type) => {
-          const definition = lookup(type);
-          const size = definition === undefined ? null : placeableSize(definition, board);
-          if (size !== null) {
-            editor.change(board, (widgets) => added(widgets, type, size), 'step');
-          }
-          session.patch({ galleryOpen: false });
+        onAdd={(request) => {
+          place(session, editor, board, request);
         }}
       />
       <WidgetOptions
@@ -100,42 +122,85 @@ function renderOrder(
   return [...placements].sort((a, b) => rank(a) - rank(b));
 }
 
+function RevealOverlay({
+  frame,
+  label,
+  onDone,
+}: {
+  readonly frame: Frame;
+  readonly label: string;
+  readonly onDone: () => void;
+}): ReactNode {
+  return (
+    <View style={frame} pointerEvents="none" className="absolute">
+      <RevealRing label={label} onDone={onDone} />
+    </View>
+  );
+}
+
+function useRevealed(
+  session: EditSession,
+  reveal: BoardReveal | null,
+): { readonly key: string | null; readonly done: () => void } {
+  return {
+    key: session.ui.revealed ?? reveal?.key ?? null,
+    done: (): void => {
+      if (session.ui.revealed === null) {
+        reveal?.onDone();
+      } else {
+        session.patch({ revealed: null });
+      }
+    },
+  };
+}
+
 function Tiles(props: EditCanvasProps & { readonly session: EditSession }): ReactNode {
   const { session, board, cell, placements, catalogue } = props;
+  const revealed = useRevealed(session, props.reveal);
   const touch = useIdiom() === 'touch';
   const { reduced } = useMotion();
   const lookup = definitionLookup(catalogue);
+  const openGallery = (): void => {
+    session.patch({ galleryOpen: true });
+  };
   return renderOrder(placements, session.ui.frozen).map((placement, order) => {
     const frame = frameOf(cell, placement);
     if (placement.widget.key === ADD_TILE.key) {
       return (
         <View key={placement.widget.key} style={frame} className="absolute">
-          <AddTile
-            onPress={() => {
-              session.patch({ galleryOpen: true });
-            }}
-          />
+          <AddTile onPress={openGallery} />
         </View>
       );
     }
     const definition = lookup(placement.widget.type);
-    return definition === undefined ? null : (
-      <EditableWidget
-        key={placement.widget.key}
-        widget={placement.widget}
-        definition={definition}
-        frame={frame}
-        cell={cell}
-        order={order}
-        sizes={sizeOptions(definition, board, cell)}
-        drag={session.drag}
-        handlers={session.handlers}
-        touch={touch}
-        reduced={reduced}
-        lifted={session.ui.lifted === placement.widget.key}
-        resizing={session.ui.resizing === placement.widget.key}
-        picked={session.ui.picked === placement.widget.key}
-      />
+    if (definition === undefined) {
+      return null;
+    }
+    return (
+      <Fragment key={placement.widget.key}>
+        <EditableWidget
+          widget={placement.widget}
+          definition={definition}
+          frame={frame}
+          cell={cell}
+          order={order}
+          sizes={sizeOptions(definition, board, cell)}
+          drag={session.drag}
+          handlers={session.handlers}
+          touch={touch}
+          reduced={reduced}
+          lifted={session.ui.lifted === placement.widget.key}
+          resizing={session.ui.resizing === placement.widget.key}
+          picked={session.ui.picked === placement.widget.key}
+        />
+        {revealed.key === placement.widget.key ? (
+          <RevealOverlay
+            frame={frame}
+            label={`Showing ${definition.title}`}
+            onDone={revealed.done}
+          />
+        ) : null}
+      </Fragment>
     );
   });
 }

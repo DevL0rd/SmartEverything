@@ -139,6 +139,10 @@ function AlarmSheet({
   );
 }
 
+export function alarmKey(alarm: WatchAlarm, index: number): string {
+  return alarm.id === null ? `${alarm.time}-${String(index)}` : String(alarm.id);
+}
+
 function AlarmRow({
   alarm,
   command,
@@ -196,9 +200,9 @@ export function WatchAlarms({
   const [editing, setEditing] = useState<WatchAlarm | 'new' | null>(null);
   return (
     <List inset title="Alarms">
-      {alarms.map((alarm) => (
+      {alarms.map((alarm, index) => (
         <AlarmRow
-          key={alarm.id ?? alarm.time}
+          key={alarmKey(alarm, index)}
           alarm={alarm}
           command={command}
           onEdit={() => {

@@ -4,7 +4,7 @@ const API_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   invalid_request: 'The app sent something your server could not accept.',
   unauthorized: 'This device is no longer paired with your server.',
   forbidden: 'Only the owner can do this.',
-  ownership_lost: 'This chat’s connection changed. Reopen it to continue.',
+  ownership_lost: 'An error occurred. Please try again.',
   not_found: 'This no longer exists.',
   method_not_allowed: 'Your server does not support this yet.',
   conflict: 'Something changed at the same time. Try again.',
@@ -61,7 +61,7 @@ export function errorText(error: unknown): ErrorText {
     return { title: API_MESSAGES[error.code], detail: error.message };
   }
   if (error instanceof Error) {
-    return { title: nativeMessage(error) ?? 'Something went wrong.', detail: error.message };
+    return { title: nativeMessage(error) ?? "That didn't work.", detail: error.message };
   }
-  return { title: 'Something went wrong.', detail: String(error) };
+  return { title: "That didn't work.", detail: String(error) };
 }

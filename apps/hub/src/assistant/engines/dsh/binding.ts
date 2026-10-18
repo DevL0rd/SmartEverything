@@ -40,12 +40,15 @@ export function selectChatEngineChange(
 ): AiChatChange {
   if (change.engine === undefined) return change;
   if (ports.selections === null)
-    throw new ApiError('conflict', 'SmartEverything model routes are starting.');
+    throw new ApiError('conflict', 'The assistant is starting. Try again in a moment.');
   const engine = ports.selections.select(before.profile_id, change.engine);
   if (engine.kind === 'dsh') {
     if (ports.harness === null)
       throw new ApiError('conflict', 'SmartEverything runtime is starting.');
-    admitUnboundEngineChange(ports.harness, ports.owner, before, engine);
+    return {
+      ...change,
+      engine: admitUnboundEngineChange(ports.harness, ports.owner, before, engine),
+    };
   }
   return { ...change, engine };
 }

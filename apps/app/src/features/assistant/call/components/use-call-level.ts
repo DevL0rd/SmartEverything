@@ -1,24 +1,50 @@
 import { useEffect } from 'react';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import type { CallPhase } from '../call-state';
+import type { CallLevelListener, LevelFeed } from '../engine/call-engine';
 import { callEngine } from '../engine/engine';
 
-export function useCallLevel(phase: CallPhase): SharedValue<number> {
+type LevelSource = 'input' | 'output' | null;
+
+function watchLevels(feed: LevelFeed, listener: CallLevelListener): () => void {
+  if (feed.kind === 'events') {
+    return feed.subscribe(listener);
+  }
+  let frame = 0;
+  const read = (): void => {
+    listener(feed.read());
+    frame = requestAnimationFrame(read);
+  };
+  frame = requestAnimationFrame(read);
+  return (): void => {
+    cancelAnimationFrame(frame);
+  };
+}
+
+export function useEngineLevel(source: LevelSource): SharedValue<number> {
   const level = useSharedValue(0);
   useEffect(() => {
-    if (phase !== 'listening' && phase !== 'speaking') {
+    if (source === null) {
       level.set(0);
       return undefined;
     }
-    let frame = 0;
-    const read = (): void => {
-      level.set(phase === 'speaking' ? callEngine.outputLevel() : callEngine.inputLevel());
-      frame = requestAnimationFrame(read);
-    };
-    frame = requestAnimationFrame(read);
+    const off = watchLevels(callEngine.levels, (levels) => {
+      level.set(source === 'output' ? levels.out : levels.in);
+    });
     return (): void => {
-      cancelAnimationFrame(frame);
+      off();
+      level.set(0);
     };
-  }, [phase, level]);
+  }, [source, level]);
   return level;
+}
+
+export function callLevelSource(phase: CallPhase, muted: boolean): LevelSource {
+  if (phase === 'speaking') return 'output';
+  if (phase === 'listening' && !muted) return 'input';
+  return null;
+}
+
+export function useCallLevel(phase: CallPhase, muted: boolean): SharedValue<number> {
+  return useEngineLevel(callLevelSource(phase, muted));
 }

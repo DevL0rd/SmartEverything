@@ -4,6 +4,7 @@ import type { GenerationStats } from '../openrouter/chat-types';
 import type { OpenRouterClient } from '../openrouter/client';
 import { settledGeneration } from '../openrouter/generation';
 import type { Ledger, Unsubscribe } from './ledger';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface ReconcilerOptions {
   readonly ledger: Ledger;
@@ -11,6 +12,8 @@ export interface ReconcilerOptions {
   readonly sleep: (milliseconds: number) => Promise<void>;
   readonly log: Logger;
 }
+
+const REFINE_ATTEMPTS = 5;
 
 function due(row: AiUsageRow): row is AiUsageRow & { generation_id: string } {
   return (
@@ -20,7 +23,7 @@ function due(row: AiUsageRow): row is AiUsageRow & { generation_id: string } {
   );
 }
 
-export function reconcileOf(stats: GenerationStats): UsageReconcile {
+function reconcileOf(stats: GenerationStats): UsageReconcile {
   const { nativeTokensPrompt, nativeTokensCompletion, nativeTokensReasoning, nativeTokensCached } =
     stats;
   return {
@@ -40,19 +43,23 @@ export class Reconciler {
   constructor(private readonly options: ReconcilerOptions) {
     this.unsubscribe = options.ledger.on((row) => {
       if (due(row)) {
-        this.schedule(row.id, row.generation_id);
+        this.schedule(row);
       }
     });
-    for (const row of options.ledger.pendingHarness())
-      if (due(row)) this.schedule(row.id, row.generation_id);
+    for (const row of options.ledger.pendingGenerations()) if (due(row)) this.schedule(row);
   }
 
-  private schedule(id: string, generationId: string): void {
-    if (this.settling.has(id)) return;
-    this.settling.add(id);
-    void this.settle(id, generationId).finally((): void => {
-      this.settling.delete(id);
-    });
+  private schedule(row: AiUsageRow & { generation_id: string }): void {
+    if (this.settling.has(row.id)) return;
+    this.settling.add(row.id);
+    const attempts =
+      row.meta['cost_available'] === true ? REFINE_ATTEMPTS : Number.POSITIVE_INFINITY;
+    background(
+      this.settle(row.id, row.generation_id, attempts).finally((): void => {
+        this.settling.delete(row.id);
+      }),
+      'reconciler.settle_failed',
+    );
   }
 
   stop(): void {
@@ -60,10 +67,10 @@ export class Reconciler {
     this.unsubscribe();
   }
 
-  private async settle(id: string, generationId: string): Promise<void> {
+  private async settle(id: string, generationId: string, attempts: number): Promise<void> {
     const { ledger, client, sleep, log } = this.options;
     try {
-      const stats = await settledGeneration(client, generationId, sleep);
+      const stats = await settledGeneration(client, generationId, sleep, attempts);
       if (this.stopped) {
         return;
       }
@@ -76,7 +83,7 @@ export class Reconciler {
       log.warn('ledger.reconcile_failed', {
         usageId: id,
         generationId,
-        reason: cause instanceof Error ? cause.message : String(cause),
+        reason: messageOf(cause),
       });
     }
   }

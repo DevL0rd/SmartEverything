@@ -1,0 +1,62 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1" onLayout=undefined pointerEvents="box-none" ref={current:null}
+      View className="flex-1 gap-1.5" pointerEvents="box-none"
+        View className="flex-1 flex-row gap-3" pointerEvents="box-none"
+          View className="items-center justify-center self-center" pointerEvents="none" style={width:96}
+            View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
+              Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
+                Svg.Ellipse cx=50 cy=80.5 fill=url(Svg.RadialGradient(cx="50%" cy="50%" r="50%"; Svg.Stop(offset="0" stopColor="#000000" stopOpacity=0.2; ); Svg.Stop(offset="0.6" stopColor="#000000" stopOpacity=0.09000000000000001; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0; ))) rx=44 ry=4
+                Svg.Path d="M14 79.6V82M86 79.6V82" stroke="#3d444b" strokeLinecap="round" strokeWidth=2.4
+                Svg.Path d="M10 22 H90 A6 6 0 0 1 96 28 V74 A6 6 0 0 1 90 80 H10 A6 6 0 0 1 4 74 V28 A6 6 0 0 1 10 22 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#384048" strokeOpacity=0.6 strokeWidth=0.8
+                Svg.Path d="M10 22 H90 A6 6 0 0 1 96 28 V74 A6 6 0 0 1 90 80 H10 A6 6 0 0 1 4 74 V28 A6 6 0 0 1 10 22 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#ceb8a2" stopOpacity=0.12; ); Svg.Stop(offset="0.3" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="0.36" stopColor="#FFFFFF" stopOpacity=1; ); Svg.Stop(offset="0.44" stopColor="#FFFFFF" stopOpacity=0; ); Svg.Stop(offset="1" stopColor="#000000" stopOpacity=0.12; ))) stroke=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#FFFFFF" stopOpacity=0.95; ); Svg.Stop(offset="0.35" stopColor="#FFFFFF" stopOpacity=0; ))) strokeWidth=0.9
+                Svg.Path d="M13 27 H67 A4 4 0 0 1 71 31 V71 A4 4 0 0 1 67 75 H13 A4 4 0 0 1 9 71 V31 A4 4 0 0 1 13 27 Z" fill="#474c51" fillOpacity=0.9 stroke="#3d444b" strokeWidth=0.5
+                Svg.Path d="M15 30 H65 A3 3 0 0 1 68 33 V69 A3 3 0 0 1 65 72 H15 A3 3 0 0 1 12 69 V33 A3 3 0 0 1 15 30 Z" fill="#1a2836" fillOpacity=0.2
+                Svg.Path d="M28 59.5Q40 72 52 59.5Z" fill="#ceb8a2" fillOpacity=0.4 stroke="#ceb8a2" strokeOpacity=0.7 strokeWidth=0.6
+                Svg.Path d="M28 59.5a12 2.6 0 1 0 24 0a12 2.6 0 1 0 -24 0" fill="#1a2836" fillOpacity=0.9 stroke="#ceb8a2" strokeOpacity=0.8 strokeWidth=0.6
+                Svg.Path d="M69.3 38 H69.3 A0.9 0.9 0 0 1 70.2 38.9 V63.1 A0.9 0.9 0 0 1 69.3 64 H69.3 A0.9 0.9 0 0 1 68.4 63.1 V38.9 A0.9 0.9 0 0 1 69.3 38 Z" fill="#384048"
+                Svg.Path d="M13 29H27L16 73H13ZM30 29H34L23 73H19Z" fill="#2e3842" fillOpacity=0.08
+                Svg.Path d="M77.2 26.5 H90.8 A2.2 2.2 0 0 1 93 28.7 V34.3 A2.2 2.2 0 0 1 90.8 36.5 H77.2 A2.2 2.2 0 0 1 75 34.3 V28.7 A2.2 2.2 0 0 1 77.2 26.5 Z" fill="#0B0D10" stroke="#3d444b" strokeWidth=0.6
+                Svg.Text fill="#FFD27A" fontFamily="Geist-SemiBold" fontSize=6.2 textAnchor="middle" transform="translate(84 34.4)"
+                Svg.Path d="M79.33 56.67L77.78 58.22M77.40 52.00L75.20 52.00M79.33 47.33L77.78 45.78M84.00 45.40L84.00 43.20M88.67 47.33L90.22 45.78M90.60 52.00L92.80 52.00M88.67 56.67L90.22 58.22" stroke="#3d444b" strokeLinecap="round" strokeWidth=1.7
+                Svg.Circle cx=84 cy=52 fill="#1a2836" r=4.8 stroke="#3d444b" strokeWidth=0.8
+                Svg.Path d="M78 65.5H90M78 70H90" stroke="#384048" strokeLinecap="round" strokeWidth=1.4
+              Anim.View pointerEvents="none" style=[{position:"absolute",left:11.52,top:28.8,width:53.76,height:40.32,opacity:1},{transitionProperty:"opacity",transitionDuration:250,transitionTimingFunction:"ease-out"}]
+                Svg.default height=40.32 viewBox="12 30 56 42" width=53.76
+                  Svg.Path d="M15 30 H65 A3 3 0 0 1 68 33 V69 A3 3 0 0 1 65 72 H15 A3 3 0 0 1 12 69 V33 A3 3 0 0 1 15 30 Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#ceb8a2" stopOpacity=0.45; ); Svg.Stop(offset="1" stopColor="#ceb8a2" stopOpacity=0.08; )))
+              Anim.View pointerEvents="none" style={position:"absolute",left:19.2,top:44.16,width:38.4,height:38.4,transform:[{scaleY:0.22}]}
+                Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:0,top:0,width:40.32,height:40.32},{animationName:{cssRules_:{from:{transform:[{rotate:"0deg"}]},to:{transform:[{rotate:"360deg"}]}},cssText_:"{\"from\":{\"transform\":[{\"rotate\":\"0deg\"}]},\"to\":{\"transform\":[{\"rotate\":\"360deg\"}]}}",length_:2,name_:"REA-CSS-0",processedKeyframes_:"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"},animationDuration:6000,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"normal",animationFillMode:"none",animationPlayState:"running"}]
+                  Svg.default height=40.32 viewBox="0 0 100 100" width=40.32
+                    Svg.Circle cx=50 cy=50 fill="#1f2c39" fillOpacity=0.18 r=44 stroke="#ceb8a2" strokeWidth=1.6
+                    Svg.Path d="M50 8V92M8 50H92" stroke="#ceb8a2" strokeOpacity=0.45 strokeWidth=1.6
+              Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:11.52,top:28.8,width:53.76,height:40.32},{animationName:{cssRules_:{from:{transform:[{rotate:"0deg"}]},to:{transform:[{rotate:"360deg"}]}},cssText_:"{\"from\":{\"transform\":[{\"rotate\":\"0deg\"}]},\"to\":{\"transform\":[{\"rotate\":\"360deg\"}]}}",length_:2,name_:"REA-CSS-0",processedKeyframes_:"from { transform: rotate(0deg) } to { transform: rotate(360deg) }"},animationDuration:1200,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"normal",animationFillMode:"none",animationPlayState:"running"}]
+                Svg.default height=40.32 viewBox="12 30 56 42" width=53.76
+                  Svg.Path d="M47 40a7 7 0 1 0 -14 0a7 7 0 1 0 14 0" fill="none" stroke="#333c45" strokeOpacity=0.6 strokeWidth=1
+                  Svg.Path d="M40 40c-1-5 2-7 4-6-1 3-2 5-4 6ZM40 40c5-1 7 2 6 4-3-1-5-2-6-4ZM40 40c1 5-2 7-4 6 1-3 2-5 4-6ZM40 40c-5 1-7-2-6-4 3 1 5 2 6 4Z" fill="#ceb8a2" fillOpacity=0.85
+              Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:11.52,top:28.8,width:53.76,height:40.32},{animationName:{cssRules_:{from:{transform:[{translateY:0}]},to:{transform:[{translateY:-6}]}},cssText_:"{\"from\":{\"transform\":[{\"translateY\":0}]},\"to\":{\"transform\":[{\"translateY\":-6}]}}",length_:2,name_:"REA-CSS-11",processedKeyframes_:"from { transform: translateY(0px) } to { transform: translateY(-6px) }"},animationDuration:2400,animationTimingFunction:"linear",animationDelay:0,animationIterationCount:"infinite",animationDirection:"alternate",animationFillMode:"none",animationPlayState:"running"}]
+                Svg.default height=40.32 viewBox="12 30 56 42" width=53.76
+                  Svg.Path d="M26 66q-2-4 0-8t0-8M40 66q-2-4 0-8t0-8M54 66q-2-4 0-8t0-8" fill="none" stroke="#ceb8a2" strokeLinecap="round" strokeOpacity=0.5 strokeWidth=1.2
+              Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
+                Svg.Path d="M12.4 25.4 H67.6 A5 5 0 0 1 72.6 30.4 V71.6 A5 5 0 0 1 67.6 76.6 H12.4 A5 5 0 0 1 7.4 71.6 V30.4 A5 5 0 0 1 12.4 25.4 Z" fill="none" stroke="#42484e" strokeOpacity=0.4 strokeWidth=2
+                Svg.Path d="M12.4 25.4 H67.6 A5 5 0 0 1 72.6 30.4 V71.6 A5 5 0 0 1 67.6 76.6 H12.4 A5 5 0 0 1 7.4 71.6 V30.4 A5 5 0 0 1 12.4 25.4 Z" fill="none" stroke="#ceb8a2" strokeDasharray="89.7 224.2" strokeLinecap="round" strokeOpacity=1 strokeWidth=2.4
+          View className="min-w-0 flex-1 gap-1" pointerEvents="box-none"
+            View accessibilityLabel="Device 0, Room 0. Cooking. Convection · 180 °C. 3 minutes left." accessible=true className="min-w-0 gap-0.5" pointerEvents="none"
+              View className="flex-row items-center justify-between gap-2"
+                Text className="font-sans-medium text-body text-on-surface text-left min-w-0 flex-1" numberOfLines=1 selectable=false
+                View className="flex-row items-center gap-1 self-start rounded-full px-2 py-0.5 bg-info/12"
+                  Text className="font-sans-medium text-caption text-info text-left" numberOfLines=1 selectable=false
+              Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=2 selectable=false
+              View className="flex-row items-end gap-3 overflow-hidden pt-0.5"
+                View className="min-w-0 shrink-0"
+                  View className="flex-row items-baseline gap-1" onLayout=undefined ref=undefined
+                    Text className="font-sans text-body text-on-surface text-left font-sans-medium tabular text-figure-m tracking-tight text-on-surface" selectable=false
+                    Text className="font-sans text-callout text-on-surface-variant text-left" selectable=false
+            View aria-hidden=true className="min-h-0 min-w-0 justify-end flex-1" pointerEvents="none"
+              View className="gap-1.5"
+                View accessibilityLabel="Progress 40 percent 40 %" accessibilityRole="progressbar" accessible=true className="w-full justify-center" onLayout=fn
+                  View className="w-full flex-row items-center h-1.5"
+                    View className="absolute inset-0 rounded-full" style={backgroundColor:"#ceb8a2",opacity:0.18}
+                    Anim.View className="absolute h-full rounded-full" style=[{backgroundColor:"#ceb8a2"},{}]
+                    Anim.View className="absolute left-0 rounded-full size-1.5" style=[{backgroundColor:"#ceb8a2"},{}]
+        View className="flex-row items-center gap-2" pointerEvents="box-none"
+          View className="flex-row flex-wrap items-center gap-2" pointerEvents="box-none"

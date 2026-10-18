@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { playTime } from '../../../format/time';
+import { useSecondOf } from '../../../store/clock';
 import { useTalkShortcutLabel } from '../desktop/use-talk-shortcuts';
 import { usePushToTalk, type PushState, type PushToTalk } from './use-push-to-talk';
 import { VoiceRing, type RingMotion } from './voice-ring';
@@ -45,19 +45,10 @@ const SIZE: Readonly<Record<TalkButtonSize, { face: string; ring: string; icon: 
 };
 
 function useElapsed(startedAt: number | null): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (startedAt === null) {
-      return undefined;
-    }
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, SECOND);
-    return (): void => {
-      clearInterval(timer);
-    };
-  }, [startedAt]);
-  return startedAt === null ? 0 : Math.max(0, Math.floor((now - startedAt) / SECOND));
+  return useSecondOf(
+    (now) => (startedAt === null ? 0 : Math.max(0, Math.floor((now - startedAt) / SECOND))),
+    startedAt !== null,
+  );
 }
 
 const LABELS: Readonly<Record<PushState, (push: PushToTalk, elapsed: number) => string>> = {
@@ -72,7 +63,7 @@ const LABELS: Readonly<Record<PushState, (push: PushToTalk, elapsed: number) => 
   ready: (push) => (push.mode === 'hold' ? 'Hold to talk' : 'Tap to talk'),
 };
 
-export function talkLabel(push: PushToTalk, elapsed: number): string {
+function talkLabel(push: PushToTalk, elapsed: number): string {
   return LABELS[push.state](push, elapsed);
 }
 

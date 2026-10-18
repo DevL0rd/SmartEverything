@@ -13,7 +13,7 @@ export function commandOrigin(
   return (commandId) => {
     const row = store.commands.byId(commandId);
     const client = row.requested_by === null ? null : store.clients.byId(row.requested_by).name;
-    return { source: row.source, client };
+    return { source: row.source, client, clientId: row.requested_by };
   };
 }
 

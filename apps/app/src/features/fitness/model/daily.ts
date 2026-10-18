@@ -1,4 +1,8 @@
+import { appendTo } from '@smarteverything/domain';
+import { HOUR_MS, startOfDayKey } from '../../../format/time';
 import type { DailyFigure } from './points';
+import type { Point } from './readers';
+import type { SeriesSpec } from './series-spec';
 
 export function figureOn(
   figures: readonly DailyFigure[],
@@ -19,14 +23,6 @@ export function baselineOf(
     : earlier.reduce((sum, figure) => sum + figure.value, 0) / earlier.length;
 }
 
-export function seriesFor(
-  figures: readonly DailyFigure[],
-  metric: string,
-  days: readonly string[],
-): (number | null)[] {
-  return days.map((day) => figureOn(figures, day, metric));
-}
-
 export function latestFigure(
   figures: readonly DailyFigure[],
   metric: string,
@@ -39,4 +35,36 @@ export function latestFigure(
         : latest,
     null,
   );
+}
+
+function middayOf(day: string): number {
+  return startOfDayKey(day) + 12 * HOUR_MS;
+}
+
+export function pointsOfDaily(spec: SeriesSpec, figures: readonly DailyFigure[]): readonly Point[] {
+  const metric = spec.daily;
+  if (metric === null) {
+    return [];
+  }
+  const range = spec.dailyRange;
+  const byDay = new Map<string, DailyFigure[]>();
+  for (const figure of figures) {
+    appendTo(byDay, figure.day, figure);
+  }
+  return figures
+    .filter((figure) => figure.metric === metric)
+    .map((figure): Point => {
+      const at = middayOf(figure.day);
+      if (range === null) {
+        return { at, value: figure.value, low: figure.value, high: figure.value };
+      }
+      const sameDay = byDay.get(figure.day) ?? [];
+      return {
+        at,
+        value: figure.value,
+        low: figureOn(sameDay, figure.day, range.min) ?? figure.value,
+        high: figureOn(sameDay, figure.day, range.max) ?? figure.value,
+      };
+    })
+    .sort((left, right) => left.at - right.at);
 }

@@ -1,6 +1,6 @@
 import type { HealthMetric } from '@smarteverything/domain';
 import { dayKeyOf } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useDayKey } from '../../../store/clock';
 import type { Device, StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 
@@ -44,7 +44,7 @@ function syncedFigure(
   return null;
 }
 
-export function reportedFigure(device: Device, metric: LiveMetric): StepsReading | null {
+function reportedFigure(device: Device, metric: LiveMetric): StepsReading | null {
   const value = device.details[DETAIL_KEYS[metric]];
   const at = device.details['reportedAt'];
   return typeof value === 'number' && typeof at === 'string' ? { value, at } : null;
@@ -62,7 +62,7 @@ function newer(left: StepsReading | null, right: StepsReading | null): StepsRead
   return right === null || Date.parse(left.at) >= Date.parse(right.at) ? left : right;
 }
 
-export function todayStepsOf(
+function todayStepsOf(
   synced: StepsReading | null,
   live: StepsReading | null,
   today: string,
@@ -79,7 +79,7 @@ export function useTodayFigure(
   metric: LiveMetric,
   phone: StepsReading | null = null,
 ): TodaySteps | null {
-  const today = dayKeyOf(useMinute());
+  const today = useDayKey();
   const profileId = device === null ? null : profileOf(device);
   const synced = useStoreSelector(
     (state) => syncedFigure(state, metric, today, profileId),

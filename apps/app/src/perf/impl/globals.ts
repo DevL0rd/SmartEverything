@@ -76,15 +76,13 @@ function timedParse(parse: typeof JSON.parse, lease: HotLease): typeof JSON.pars
     text: unknown,
     reviver?: (this: unknown, key: string, value: unknown) => unknown,
   ): unknown {
-    if (lease.subscriber() === null) {
-      return Reflect.apply(parse, this, [text, reviver]);
+    const subscriber = lease.subscriber();
+    if (subscriber === null) {
+      return parse.call(this, String(text), reviver);
     }
     const start = performance.now();
-    const value: unknown = Reflect.apply(parse, this, [text, reviver]);
-    const subscriber = lease.subscriber();
-    if (subscriber !== null) {
-      subscriber.json(performance.now() - start, typeof text === 'string' ? text.length : 0);
-    }
+    const value: unknown = parse.call(this, String(text), reviver);
+    subscriber.json(performance.now() - start, typeof text === 'string' ? text.length : 0);
     return value;
   };
 }

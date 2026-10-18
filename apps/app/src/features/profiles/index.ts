@@ -11,18 +11,17 @@ export type { RelayServer } from './scale-listener';
 export { ScaleSetupFlow } from './scale-setup-flow';
 export { ScaleStatus } from './scale-status';
 export { SETTINGS } from './settings';
-export { useHasScale } from './scale-presence';
+export { hasScale, useHasScale } from './scale-presence';
 export { BandLabel } from './band-bar';
 export {
-  BODY_TYPE_LABELS,
   COMPOSITION_METRICS,
   formatMetric,
   metricValue,
   type CompositionMetric,
 } from './composition-metrics';
 export { WhoWasThisHost } from './who-was-this';
+export { BodyBadges } from './body-badges';
 export { BodyDetails } from './body-details';
-export { FitnessSetupScreen, FitnessSetupWidget, useFitnessReady } from './fitness-ready';
+export { FitnessSetupWidget, useFitnessReady } from './fitness-ready';
 export { BodyReport } from './body-report';
-export { CompositionGrid } from './composition-grid';
 export { PhoneListeningRows } from './phone-listening-row';

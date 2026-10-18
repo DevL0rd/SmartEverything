@@ -1,69 +1,46 @@
-import {
-  ASSISTANT_TEXT_MAX,
-  type AiChatRow,
-  type SettledStep,
-  type ChatTimelineEmbed,
-  timelineChunks,
+import type {
+  AiChatRow,
+  AssistantReasonCode,
+  ChatTimelineEmbed,
+  SettledStep,
 } from '@smarteverything/domain';
 import type { ConversationLog } from '../../conversation-log';
 
 export class ProviderReplies {
-  private readonly chunks: { readonly id: string; text: string }[];
+  private readonly id: string;
+  private content = '';
+
   constructor(
     private readonly conversation: ConversationLog,
-    private readonly chat: AiChatRow,
-    private readonly replyTo: string | null,
+    chat: AiChatRow,
+    replyTo: string | null,
     private readonly model: string,
   ) {
-    this.chunks = [{ id: conversation.startReply(chat, replyTo, model).id, text: '' }];
+    this.id = conversation.startReply(chat, replyTo, model).id;
   }
 
   text(delta: string): void {
-    let remaining = delta;
-    while (remaining !== '') {
-      const last = this.chunks.at(-1);
-      if (last === undefined) throw new Error('The provider reply has no storage chunk.');
-      const room = ASSISTANT_TEXT_MAX - last.text.length;
-      if (room === 0) {
-        this.conversation.finishReply(last.id, last.text, {
-          model: this.model,
-          steps: [],
-          sources: [],
-        });
-        this.chunks.push({
-          id: this.conversation.startReply(this.chat, this.replyTo, this.model).id,
-          text: '',
-        });
-        continue;
-      }
-      last.text += remaining.slice(0, room);
-      remaining = remaining.slice(room);
-      this.conversation.flushReply(last.id, last.text);
-    }
+    this.content += delta;
+    this.conversation.flushReply(this.id, this.content);
   }
 
   fullText(): string {
-    return this.chunks.map((chunk) => chunk.text).join('');
+    return this.content;
   }
 
   timeline(timeline: ChatTimelineEmbed): void {
-    const pieces = timelineChunks(timeline.parts, ASSISTANT_TEXT_MAX);
-    for (const [index, parts] of pieces.entries()) {
-      const chunk = this.chunks[index];
-      if (chunk === undefined) throw new Error('The tool timeline lost its reply storage chunk.');
-      this.conversation.timeline(chunk.id, { ...timeline, parts: [...parts] });
-    }
+    this.conversation.timeline(this.id, timeline);
   }
 
   finish(steps: readonly SettledStep[]): void {
-    const last = this.chunks.at(-1);
-    if (last === undefined) throw new Error('The provider reply has no storage chunk.');
-    this.conversation.finishReply(last.id, last.text, { model: this.model, steps, sources: [] });
+    this.conversation.finishReply(this.id, this.content, {
+      model: this.model,
+      steps,
+      sources: [],
+    });
   }
 
-  fail(reason: string, steps: readonly SettledStep[]): void {
-    const last = this.chunks.at(-1);
-    if (last === undefined) throw new Error('The provider reply has no storage chunk.');
-    this.conversation.failReply(last.id, { text: last.text, reason, code: 'unknown' }, steps);
+  fail(reason: string, steps: readonly SettledStep[], code: AssistantReasonCode = 'unknown'): void {
+    this.conversation.failReply(this.id, { text: this.content, reason, code }, steps);
   }
 }

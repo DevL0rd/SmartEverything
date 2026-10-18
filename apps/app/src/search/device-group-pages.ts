@@ -1,6 +1,15 @@
 import type { Href } from 'expo-router';
-import { deviceFamily, type SearchPage, type SearchSources } from '@smarteverything/domain';
+import {
+  deviceFamily,
+  groupTargets,
+  roomLightTargets,
+  type SearchPage,
+  type SearchSources,
+  type TargetEntry,
+} from '@smarteverything/domain';
+import { href } from '../app-shell/hrefs';
 import { groupControlChoices } from '../features/device-groups';
+import { compareText, plural } from '../format/text';
 import type { SearchTables, SourceLinks } from './sources';
 import { rowsOf, type Device } from '../store/state';
 
@@ -8,6 +17,9 @@ interface GroupPage extends SearchPage {
   readonly to: Href;
   readonly parent: string;
 }
+
+type PageLink = (focus?: string) => Href;
+
 const CONTROL_KEYWORDS = [
   'all',
   'brightness',
@@ -19,7 +31,21 @@ const CONTROL_KEYWORDS = [
   'off',
 ];
 
-function controlsFor(page: GroupPage, devices: readonly Device[]): readonly GroupPage[] {
+function isLight(device: Device): boolean {
+  return deviceFamily(device) === 'light';
+}
+
+function describeMembers(kind: string, noun: string, devices: readonly Device[]): string {
+  const offline = devices.filter((device) => !device.online).length;
+  const parts = [kind, plural(devices.length, noun)];
+  return (offline === 0 ? parts : [...parts, `${String(offline)} offline`]).join(' · ');
+}
+
+function controlsFor(
+  page: GroupPage,
+  link: PageLink,
+  devices: readonly Device[],
+): readonly GroupPage[] {
   return groupControlChoices(devices).map((choice) => ({
     path: `${page.path}:${choice.reference}`,
     title: choice.presented.label,
@@ -30,83 +56,77 @@ function controlsFor(page: GroupPage, devices: readonly Device[]): readonly Grou
       choice.reference,
       ...choice.presented.options.map((option) => option.label),
     ],
-    to: page.to,
+    to: link(choice.reference),
     parent: `page:${page.path}`,
   }));
 }
 
-function namedPages(tables: SearchTables): readonly GroupPage[] {
-  const devices = rowsOf(tables.devices);
-  return rowsOf(tables.deviceGroups).flatMap((group) => {
-    const page: GroupPage = {
-      path: `device-group:${group.id}`,
-      title: group.name,
-      description: 'Device groups',
-      keywords: [...CONTROL_KEYWORDS, 'group', 'devices', 'edit', 'members'],
-      to: { pathname: '/devices', params: { groups: group.id } },
-      parent: 'page:device-groups',
-    };
-    const actions = ['Edit', 'Remove'].map((action) => ({
-      ...page,
-      path: `${page.path}:${action.toLowerCase()}`,
-      title: `${action} ${group.name}`,
-      parent: `page:${page.path}`,
-    }));
-    return [
-      page,
-      ...actions,
-      ...controlsFor(
-        page,
-        devices.filter((device) => group.device_ids.includes(device.id)),
-      ),
-    ];
-  });
+function namedPages(entry: TargetEntry<Device>): readonly GroupPage[] {
+  const { members } = entry;
+  const groupId = entry.target.kind === 'group' ? entry.target.groupId : '';
+  const lights = members.length > 0 && members.every(isLight);
+  const link: PageLink = (focus) => href.group(groupId, { focus });
+  const page: GroupPage = {
+    path: `device-group:${groupId}`,
+    title: entry.name,
+    description: lights
+      ? describeMembers('Light group', 'light', members)
+      : describeMembers('Device group', 'device', members),
+    keywords: [...CONTROL_KEYWORDS, 'group', lights ? 'lights' : 'devices', 'edit', 'members'],
+    to: link(),
+    parent: 'page:device-groups',
+  };
+  const actions = ['Edit', 'Remove'].map((action) => ({
+    ...page,
+    path: `${page.path}:${action.toLowerCase()}`,
+    title: `${action} ${entry.name}`,
+    to: href.group(groupId, { edit: true }),
+    parent: `page:${page.path}`,
+  }));
+  return [page, ...actions, ...controlsFor(page, link, members)];
 }
 
-function roomPages(tables: SearchTables): readonly GroupPage[] {
-  const devices = rowsOf(tables.devices).filter(
-    (device) => !device.hidden && deviceFamily(device) === 'light',
-  );
-  const rooms = [...rowsOf(tables.rooms), { id: 'none', name: 'No room' }];
-  return rooms.flatMap((room) => {
-    const members = devices.filter(
-      (device) => device.room_id === (room.id === 'none' ? null : room.id),
-    );
-    if (members.length === 0) return [];
-    const page: GroupPage = {
-      path: `room-lights:${room.id}`,
-      title: `${room.name} lights`,
-      description: 'Devices',
-      keywords: [...CONTROL_KEYWORDS, 'room', 'lights', 'group'],
-      to: { pathname: '/devices', params: { room: room.id } },
-      parent: 'page:devices',
-    };
-    return [page, ...controlsFor(page, members)];
-  });
+function roomPage(entry: TargetEntry<Device>): readonly GroupPage[] {
+  const roomId = entry.target.kind === 'room' ? entry.target.roomId : '';
+  const link: PageLink = (focus) => href.roomLights(roomId, { focus });
+  const page: GroupPage = {
+    path: entry.key,
+    title: entry.name,
+    description: describeMembers('Room lights', 'light', entry.members),
+    keywords: [...CONTROL_KEYWORDS, 'room', 'lights', 'group', 'light group'],
+    to: link(),
+    parent: 'page:devices',
+  };
+  return [page, ...controlsFor(page, link, entry.members)];
 }
 
 export function deviceGroupPages(tables: SearchTables, out: SourceLinks): SearchSources['pages'] {
+  const devices = rowsOf(tables.devices);
   const manager: GroupPage = {
     path: 'device-groups',
     title: 'Device groups',
     description: 'Devices',
     keywords: ['group', 'create', 'new', 'edit', 'remove', 'members'],
-    to: { pathname: '/devices', params: { groups: 'all' } },
+    to: href.devices(),
     parent: 'page:devices',
   };
   const create: GroupPage = {
     ...manager,
     path: 'device-groups:new',
     title: 'New device group',
-    to: { pathname: '/devices', params: { groups: 'new' } },
+    to: href.newGroup(),
     parent: 'page:device-groups',
   };
-  return [manager, create, ...namedPages(tables), ...roomPages(tables)].map(
-    ({ to, parent, ...page }) => {
-      out.links.set(`page:${page.path}`, to);
-      out.icons.set(`page:${page.path}`, 'bulb');
-      out.parents.set(`page:${page.path}`, parent);
-      return page;
-    },
-  );
+  const rooms = roomLightTargets(devices, rowsOf(tables.rooms), compareText);
+  return [
+    manager,
+    create,
+    ...groupTargets(devices, rowsOf(tables.deviceGroups)).flatMap(namedPages),
+    ...rooms.flatMap(roomPage),
+  ].map(({ to, parent, ...page }) => {
+    out.links.set(`page:${page.path}`, to);
+    out.icons.set(`page:${page.path}`, 'bulb');
+    out.parents.set(`page:${page.path}`, parent);
+    return page;
+  });
 }

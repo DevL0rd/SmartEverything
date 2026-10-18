@@ -51,9 +51,16 @@ describe('isPermissionGranted', () => {
     ).toBe(false);
   });
 
-  it('isPermissionGranted refuses a media request that names no media type', () => {
+  it('isPermissionGranted answers the typeless media request that getDisplayMedia raises: the app only', () => {
     expect(
       isPermissionGranted({ permission: 'media', requestingUrl: APP_PAGE, mediaTypes: [] }),
+    ).toBe(true);
+    expect(
+      isPermissionGranted({
+        permission: 'media',
+        requestingUrl: 'https://evil.example',
+        mediaTypes: [],
+      }),
     ).toBe(false);
   });
 
@@ -117,13 +124,23 @@ describe('origins and external links', () => {
     expect(isAppOrigin('app://smarteverything/')).toBe(true);
   });
 
-  it('isSafeExternalUrl allows https only', () => {
-    expect(isSafeExternalUrl('https://developer.smartthings.com/docs')).toBe(true);
+  it('isSafeExternalUrl opens http and https pages, such as the router or AdGuard on the home network', () => {
     for (const url of [
-      'http://example.com',
+      'https://developer.smartthings.com/docs',
+      'http://192.168.1.1/',
+      'http://adguard.local:3000/#/dashboard',
+    ]) {
+      expect(isSafeExternalUrl(url)).toBe(true);
+    }
+  });
+
+  it('isSafeExternalUrl refuses files, scripts, custom schemes and text that is not a URL', () => {
+    for (const url of [
       'file:///etc/passwd',
       'javascript:alert(1)',
       'smb://share',
+      'smarteverything://pair',
+      'app://smarteverything/',
       'nope',
     ]) {
       expect(isSafeExternalUrl(url)).toBe(false);

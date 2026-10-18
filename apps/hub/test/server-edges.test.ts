@@ -1,4 +1,4 @@
-import { API_ENDPOINTS, createHealthSourceToken, liveProtocols } from '@smarteverything/domain';
+import { API_ENDPOINTS, liveProtocols } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { LAMP } from './support/fake-provider';
@@ -94,7 +94,7 @@ describe('server protocol', () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-origin')).toBe('app://smarteverything');
     expect(preflight.headers.get('access-control-allow-headers')).toBe(
-      'authorization, content-type, range',
+      'accept, authorization, content-type, range',
     );
     expect(
       await raw('/api/rooms', { headers: { origin: 'https://evil.example.com' } }),
@@ -107,9 +107,7 @@ describe('server protocol', () => {
 
   it('opens /live only with its subprotocol and a valid token, and closes on an invalid message', async () => {
     expect(await refusedUpgrade(['other'])).toBe(400);
-    expect(
-      await refusedUpgrade([...liveProtocols(createHealthSourceToken().replace('hst_', 'set_'))]),
-    ).toBe(401);
+    expect(await refusedUpgrade([...liveProtocols(`set_${'ab'.repeat(32)}`)])).toBe(401);
     expect(
       await new Promise<number>((resolve) => {
         const socket = new WebSocket(`${suite.current.base.replace('http', 'ws')}/elsewhere`);
@@ -175,7 +173,13 @@ describe('roles and personal data', () => {
     expect(
       (await member({ method: 'POST', path: '/api/pair/start', body: { role: 'member' } })).status,
     ).toBe(403);
-    expect((await member({ method: 'GET', path: '/api/providers/key' })).status).toBe(403);
+    for (const [path, body] of [
+      ['/api/providers/link', { provider: 'xiaomi', username: 'u', password: 'p', region: 'de' }],
+      ['/api/providers/answer', { provider: 'xiaomi', answer: '1' }],
+      ['/api/providers/cancel', { provider: 'xiaomi' }],
+    ] as const) {
+      expect((await member({ method: 'POST', path, body })).status).toBe(403);
+    }
     expect(
       (await member({ method: 'PUT', path: '/api/settings/public-url', body: { url: null } }))
         .status,
@@ -228,32 +232,58 @@ describe('roles and personal data', () => {
     expect(room.body).toMatchObject({ name: 'Den', position: 0 });
   });
 
-  it('keeps each client’s layouts to itself, also on /live', async () => {
+  it('keeps client-scoped layouts to each client and shares the others through the profile, also on /live', async () => {
     await verifiedPublicUrl(suite.current);
     const phone = await pairPhone(suite.current);
     const live = await openLive(suite.current.base, phone.token);
-    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['layouts'] }));
+    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['layouts'], streams: [] }));
     await live.next((message) => message.type === 'subscribed');
     await call(suite.current.base, suite.current.owner, {
       method: 'PUT',
-      path: '/api/layouts/home',
+      path: '/api/layouts/camera-prefs',
       body: { layout: { owner: true } },
     });
     await call(suite.current.base, phone.token, {
       method: 'PUT',
-      path: '/api/layouts/home',
+      path: '/api/layouts/camera-prefs',
       body: { layout: { phone: true } },
     });
     expect(await live.next((message) => message.type === 'change')).toMatchObject({
       record: { layout: { phone: true } },
     });
     expect(
-      (await call(suite.current.base, phone.token, { method: 'GET', path: '/api/layouts/home' }))
-        .body,
+      (
+        await call(suite.current.base, phone.token, {
+          method: 'GET',
+          path: '/api/layouts/camera-prefs',
+        })
+      ).body,
     ).toStrictEqual({ layout: { phone: true } });
     expect(
-      (await call(suite.current.base, phone.token, { method: 'GET', path: '/api/layouts/climate' }))
+      (
+        await call(suite.current.base, suite.current.owner, {
+          method: 'GET',
+          path: '/api/layouts/camera-prefs',
+        })
+      ).body,
+    ).toStrictEqual({ layout: { owner: true } });
+    const sibling = await pairPhone(suite.current, 'member', phone.profileId ?? undefined);
+    await call(suite.current.base, sibling.token, {
+      method: 'PUT',
+      path: '/api/layouts/home',
+      body: { layout: { shared: true } },
+    });
+    expect(
+      (await call(suite.current.base, phone.token, { method: 'GET', path: '/api/layouts/home' }))
         .body,
+    ).toStrictEqual({ layout: { shared: true } });
+    expect(
+      (
+        await call(suite.current.base, suite.current.owner, {
+          method: 'GET',
+          path: '/api/layouts/home',
+        })
+      ).body,
     ).toStrictEqual({ layout: null });
     live.socket.close();
   });
@@ -333,16 +363,9 @@ describe('scenes, automations, health and assistant access', () => {
     ).toMatchObject([{ name: 'Empty' }, { name: 'Evening' }]);
   });
 
-  it('accepts health uploads only with a health source token and serves the daily figures', async () => {
-    const created = API_ENDPOINTS.createHealthSource.response.parse(
-      (
-        await call(suite.current.base, suite.current.owner, {
-          method: 'POST',
-          path: '/api/health/sources',
-          body: { name: 'Pixel' },
-        })
-      ).body,
-    );
+  it('takes health uploads from a phone’s own pairing and stops them when it stops syncing or is unpaired', async () => {
+    await verifiedPublicUrl(suite.current);
+    const phone = await pairPhone(suite.current);
     const batch = {
       records: [
         {
@@ -360,32 +383,27 @@ describe('scenes, automations, health and assistant access', () => {
       grantedTypes: ['Steps'],
       source: { device: 'Pixel', appVersion: '1.0' },
     };
-    expect(
+    const ingest = async (token: string | null): Promise<{ status: number; body: unknown }> =>
+      call(suite.current.base, token, { method: 'POST', path: '/api/health/ingest', body: batch });
+    expect((await ingest(null)).status).toBe(401);
+    expect((await ingest(phone.token)).status).toBe(403);
+    const registered = API_ENDPOINTS.createHealthSource.response.parse(
       (
-        await call(suite.current.base, suite.current.owner, {
+        await call(suite.current.base, phone.token, {
           method: 'POST',
-          path: '/api/health/ingest',
-          body: batch,
-        })
-      ).status,
-    ).toBe(401);
-    expect(
-      (
-        await call(suite.current.base, created.token, {
-          method: 'POST',
-          path: '/api/health/ingest',
-          body: batch,
+          path: '/api/health/sources',
+          body: { name: 'Pixel' },
         })
       ).body,
-    ).toStrictEqual({
-      stored: 1,
-      stale: 0,
-      deleted: 0,
-      days: ['2026-10-08'],
+    );
+    expect(registered).toMatchObject({ client_id: phone.clientId, last_sync_at: null });
+    expect(await ingest(phone.token)).toMatchObject({
+      status: 200,
+      body: { stored: 1, stale: 0, deleted: 0, days: ['2026-10-08'] },
     });
     expect(
       (
-        await call(suite.current.base, suite.current.owner, {
+        await call(suite.current.base, phone.token, {
           method: 'GET',
           path: '/api/health/daily?from=2026-10-01&to=2026-10-31&metrics=steps',
         })
@@ -395,23 +413,38 @@ describe('scenes, automations, health and assistant access', () => {
       (
         await call(suite.current.base, suite.current.owner, {
           method: 'GET',
-          path: '/api/health/sources',
+          path: '/api/health/daily?from=2026-10-01&to=2026-10-31&metrics=steps',
         })
       ).body,
-    ).toMatchObject([{ last_error: null, granted_types: ['Steps'] }]);
+    ).toStrictEqual([]);
+    const listed = async (): Promise<unknown> =>
+      (
+        await call(suite.current.base, suite.current.owner, {
+          method: 'GET',
+          path: '/api/health/sources',
+        })
+      ).body;
+    expect(await listed()).toMatchObject([
+      { client_id: phone.clientId, last_error: null, granted_types: ['Steps'] },
+    ]);
     await call(suite.current.base, suite.current.owner, {
       method: 'DELETE',
-      path: `/api/health/sources/${created.source.id}`,
+      path: `/api/health/sources/${phone.clientId}`,
     });
-    expect(
-      (
-        await call(suite.current.base, created.token, {
-          method: 'POST',
-          path: '/api/health/ingest',
-          body: batch,
-        })
-      ).status,
-    ).toBe(401);
+    expect(await listed()).toStrictEqual([]);
+    expect((await ingest(phone.token)).status).toBe(403);
+    await call(suite.current.base, phone.token, {
+      method: 'POST',
+      path: '/api/health/sources',
+      body: { name: 'Pixel' },
+    });
+    expect((await ingest(phone.token)).status).toBe(200);
+    await call(suite.current.base, suite.current.owner, {
+      method: 'DELETE',
+      path: `/api/clients/${phone.clientId}`,
+    });
+    expect((await ingest(phone.token)).status).toBe(401);
+    expect(await listed()).toStrictEqual([]);
   });
 
   it('creates and revokes personal MCP tokens and stores the push account without returning it', async () => {

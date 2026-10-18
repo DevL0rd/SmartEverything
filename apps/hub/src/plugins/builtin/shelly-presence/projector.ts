@@ -1,15 +1,12 @@
 import { shellyZoneValid } from './presence-validity';
 import { componentCapabilities, projectComponents } from './component-projection';
+import type { AdapterSink, DeviceCapability, DiscoveredDevice } from '@smarteverything/domain';
 import {
-  SHELLY_PRESENCE_ARGUMENTS,
-  SHELLY_PRESENCE_DETECTION_CAPABILITY,
-  SHELLY_PRESENCE_OPERATION_CAPABILITY,
-  type AdapterSink,
-  type DeviceCapability,
-  type DiscoveredDevice,
-  type ShellyPresenceDevice,
-  type ShellyPresenceZone,
-} from '@smarteverything/domain';
+  SHELLY_DETECTION_CAPABILITY,
+  SHELLY_PLUGIN_ID,
+  type ShellyDevice,
+  type ShellyZone,
+} from '@smarteverything/shelly';
 
 const READINGS: readonly DeviceCapability[] = [
   { key: 'occupancy', label: 'Occupancy', access: 'read', value: { kind: 'boolean' } },
@@ -34,30 +31,19 @@ const LIGHT: readonly DeviceCapability[] = [
     value: { kind: 'enum', options: ['dark', 'twilight', 'bright'] },
   },
 ];
-const CONTROLS: readonly DeviceCapability[] = [
-  {
-    key: SHELLY_PRESENCE_DETECTION_CAPABILITY,
-    label: 'Presence detection',
-    access: 'read_write',
-    value: { kind: 'boolean' },
-  },
-  {
-    key: SHELLY_PRESENCE_OPERATION_CAPABILITY,
-    label: 'Sensor operation',
-    access: 'write',
-    value: {
-      kind: 'action',
-      arguments: SHELLY_PRESENCE_ARGUMENTS,
-    },
-  },
-];
-export function shellyDevices(snapshot: ShellyPresenceDevice): DiscoveredDevice[] {
+const DETECTION: DeviceCapability = {
+  key: SHELLY_DETECTION_CAPABILITY,
+  label: 'Presence detection',
+  access: 'read_write',
+  value: { kind: 'boolean' },
+};
+export function shellyDevices(snapshot: ShellyDevice): DiscoveredDevice[] {
   const parent = describe(snapshot, snapshot.externalId, snapshot.name, {
     parentExternalId: null,
     capabilities: [
       ...READINGS,
       ...(snapshot.light.length === 0 ? [] : LIGHT),
-      ...CONTROLS,
+      DETECTION,
       ...componentCapabilities(snapshot),
     ],
   });
@@ -76,7 +62,7 @@ export function shellyDevices(snapshot: ShellyPresenceDevice): DiscoveredDevice[
   ];
 }
 function describe(
-  snapshot: ShellyPresenceDevice,
+  snapshot: ShellyDevice,
   externalId: string,
   name: string,
   projection: {
@@ -96,7 +82,7 @@ function describe(
     online: snapshot.connection.state === 'online',
     capabilities: [...projection.capabilities],
     details: {
-      pluginId: 'shelly-presence',
+      pluginId: SHELLY_PLUGIN_ID,
       firmware: snapshot.info.ver,
       shellyId: snapshot.id,
       physicalExternalId: snapshot.externalId,
@@ -104,25 +90,49 @@ function describe(
     },
   };
 }
-export function projectShellyReadings(sink: AdapterSink, snapshot: ShellyPresenceDevice): void {
-  const observedAt = snapshot.observedAt ?? new Date().toISOString();
-  if (!snapshot.zones.some((zone) => zone.main))
+function sameValidity(previous: ShellyDevice | null, snapshot: ShellyDevice): ShellyDevice | null {
+  return previous !== null &&
+    previous.connection.state === snapshot.connection.state &&
+    previous.config?.enable === snapshot.config?.enable &&
+    previous.status === snapshot.status
+    ? previous
+    : null;
+}
+function projectZones(
+  sink: AdapterSink,
+  snapshot: ShellyDevice,
+  base: ShellyDevice | null,
+  observedAt: string,
+): void {
+  if (base === null && !snapshot.zones.some((zone) => zone.main))
     for (const capability of ['occupancy', 'object_count'] as const)
       sink.state({ externalId: snapshot.externalId, capability, value: null, observedAt });
-  for (const zone of snapshot.zones) projectZone(sink, snapshot, zone, observedAt);
-  projectLight(sink, snapshot, observedAt);
-  projectComponents(sink, snapshot, observedAt);
+  const before = new Map(base?.zones.map((zone) => [zone.key, zone]));
+  for (const zone of snapshot.zones)
+    if (before.get(zone.key) !== zone) projectZone(sink, snapshot, zone, observedAt);
+}
+export function projectShellyReadings(
+  sink: AdapterSink,
+  snapshot: ShellyDevice,
+  previous: ShellyDevice | null = null,
+): void {
+  const observedAt = snapshot.observedAt ?? new Date().toISOString();
+  const base = sameValidity(previous, snapshot);
+  projectZones(sink, snapshot, base, observedAt);
+  if (base?.light !== snapshot.light) projectLight(sink, snapshot, observedAt);
+  projectComponents(sink, snapshot, observedAt, base);
+  if (base !== null) return;
   sink.state({
     externalId: snapshot.externalId,
-    capability: SHELLY_PRESENCE_DETECTION_CAPABILITY,
+    capability: SHELLY_DETECTION_CAPABILITY,
     value: snapshot.config?.enable ?? null,
     observedAt,
   });
 }
 function projectZone(
   sink: AdapterSink,
-  snapshot: ShellyPresenceDevice,
-  zone: ShellyPresenceZone,
+  snapshot: ShellyDevice,
+  zone: ShellyZone,
   observedAt: string,
 ): void {
   const externalId = zone.main ? snapshot.externalId : zone.externalId;
@@ -140,7 +150,7 @@ function projectZone(
     observedAt,
   });
 }
-function projectLight(sink: AdapterSink, snapshot: ShellyPresenceDevice, observedAt: string): void {
+function projectLight(sink: AdapterSink, snapshot: ShellyDevice, observedAt: string): void {
   const light = snapshot.light[0];
   if (light === undefined) return;
   const status = light.status;
@@ -161,8 +171,8 @@ function projectLight(sink: AdapterSink, snapshot: ShellyPresenceDevice, observe
   });
 }
 function lightValid(
-  snapshot: ShellyPresenceDevice,
-  status: ShellyPresenceDevice['light'][number]['status'],
+  snapshot: ShellyDevice,
+  status: ShellyDevice['light'][number]['status'],
 ): boolean {
   return (
     snapshot.connection.state === 'online' && status !== null && (status.errors?.length ?? 0) === 0

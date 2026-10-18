@@ -13,16 +13,14 @@ import type { ProjectAsset } from './project-content';
 import type { AiProjectPreviewWrite } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { profileIdOf, type Caller } from '../server/auth';
+import { onPreviewAuthorityChange } from './authority-events';
 
 export interface HtmlPublication {
   readonly view: AiHtmlPreviewPublication;
   readonly readHtml: () => Promise<string>;
   readonly readAsset?: (path: string, offset: number, length: number) => Promise<ProjectAsset>;
-  readonly byteLength?: number;
   readonly validate?: () => void;
 }
-const MAX_DOCUMENTS = 128;
-const MAX_HTML_BYTES = 16 * AI_PREVIEW_HTML_MAX;
 
 export class PreviewDocuments {
   readonly projects: PreviewProjectDocuments;
@@ -43,7 +41,7 @@ export class PreviewDocuments {
         this.invalidate(id);
       },
     });
-    this.unsubscribe = store.feed.subscribe(() => {
+    this.unsubscribe = onPreviewAuthorityChange(store, () => {
       this.revalidate();
     });
   }
@@ -99,7 +97,7 @@ export class PreviewDocuments {
     const { profile, chat } = owner;
     if (previous !== undefined && previous.view.revision !== input.revision)
       throw new ApiError('conflict', 'The HTML changed; use its current publication revision.');
-    this.admitSize(input.html, previous);
+    admitSize(input.html);
     const view: AiHtmlPreviewPublication = {
       kind: 'html',
       ...(source === undefined ? {} : { file_source: source.file }),
@@ -115,7 +113,6 @@ export class PreviewDocuments {
     this.entries.set(view.id, {
       view,
       readHtml: () => Promise.resolve(input.html),
-      byteLength: Buffer.byteLength(input.html),
       ...(source === undefined ? {} : { validate: source.validate }),
     });
     this.arm(view);
@@ -129,18 +126,6 @@ export class PreviewDocuments {
       content_changed: previous !== undefined,
     });
     return view;
-  }
-  private admitSize(html: string, previous: HtmlPublication | undefined): void {
-    if (Buffer.byteLength(html) > AI_PREVIEW_HTML_MAX)
-      throw new ApiError('invalid_request', 'The HTML exceeds its one-megabyte preview limit.');
-    if (previous === undefined && this.entries.size >= MAX_DOCUMENTS)
-      throw new ApiError('conflict', 'The published HTML limit was reached.');
-    const bytes = [...this.entries.values()].reduce(
-      (total, entry) => total + (entry.byteLength ?? 0),
-      0,
-    );
-    if (bytes - (previous?.byteLength ?? 0) + Buffer.byteLength(html) > MAX_HTML_BYTES)
-      throw new ApiError('conflict', 'The active HTML preview byte limit was reached.');
   }
   catalogue(caller: Caller, chat: string): readonly AiHtmlPreviewPublication[] {
     const profile = this.authorize(caller, chat);
@@ -248,4 +233,9 @@ export class PreviewDocuments {
     this.projects.stop();
     for (const id of this.entries.keys()) this.revoke(id);
   }
+}
+
+function admitSize(html: string): void {
+  if (Buffer.byteLength(html) > AI_PREVIEW_HTML_MAX)
+    throw new ApiError('invalid_request', 'The HTML exceeds its one-megabyte preview limit.');
 }

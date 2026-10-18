@@ -1,18 +1,8 @@
 import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import type { AssistantVoice } from '../../assistant-voice/assistant-voice';
 import { clientOf, type Caller } from '../auth';
-import { bound, type Bound } from '../router';
+import { bound } from '../router';
 import { currentRequestSignal } from '../request-signal';
-
-type AssistantVoiceRoutes = Record<
-  | 'readAssistantVoice'
-  | 'importGeminiKey'
-  | 'setGeminiKey'
-  | 'removeGeminiKey'
-  | 'previewAssistantVoice'
-  | 'cancelAssistantVoicePreview',
-  Bound
->;
 
 function onThisComputer(caller: Caller): void {
   if (!clientOf(caller).built_in) {
@@ -23,20 +13,16 @@ function onThisComputer(caller: Caller): void {
   }
 }
 
-export function assistantVoiceRoutes(voice: AssistantVoice): AssistantVoiceRoutes {
-  return {
-    previewAssistantVoice: bound(E.previewAssistantVoice, ({ body, caller }) =>
-      voice.preview(
+export const assistantVoiceRoutes = (voice: AssistantVoice) =>
+  ({
+    readAssistantVoiceSample: bound(E.readAssistantVoiceSample, ({ params, caller }) =>
+      voice.sample(
         clientOf(caller),
         caller.kind === 'client' ? caller.profileId : undefined,
-        body,
+        params.voice,
         currentRequestSignal(),
       ),
     ),
-    cancelAssistantVoicePreview: bound(E.cancelAssistantVoicePreview, ({ body, caller }) => {
-      voice.previews.cancel(clientOf(caller).id, body);
-      return {};
-    }),
     readAssistantVoice: bound(E.readAssistantVoice, () => voice.keys.status()),
     importGeminiKey: bound(E.importGeminiKey, ({ body, caller }) => {
       onThisComputer(caller);
@@ -44,5 +30,4 @@ export function assistantVoiceRoutes(voice: AssistantVoice): AssistantVoiceRoute
     }),
     setGeminiKey: bound(E.setGeminiKey, ({ body }) => voice.keys.save(body.key)),
     removeGeminiKey: bound(E.removeGeminiKey, () => voice.keys.remove()),
-  };
-}
+  }) as const;

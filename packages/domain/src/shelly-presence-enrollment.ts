@@ -30,7 +30,4 @@ export const SHELLY_PRESENCE_ENROLL_REQUEST = z.strictObject({
   password: z.string().min(1).max(300).nullable().default(null),
 });
 export const SHELLY_PRESENCE_ENROLL_RESULT = z.object({ device: SHELLY_PRESENCE_DEVICE });
-export const SHELLY_PRESENCE_FORGET_REQUEST = z.strictObject({
-  externalId: z.string().min(1).max(200),
-});
 export const SHELLY_PRESENCE_FORGET_RESULT = z.object({ removed: z.literal(true) });

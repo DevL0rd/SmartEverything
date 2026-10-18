@@ -52,24 +52,6 @@ function useGlow(channelId: string): 'critical' | 'primary' | null {
   return engine.receive?.channelId === channelId ? 'primary' : null;
 }
 
-function Small({
-  channel,
-  editing,
-}: {
-  readonly channel: TalkChannelRow;
-  readonly editing: boolean;
-}): ReactNode {
-  const activity = useChannelActivity(channel.id);
-  return (
-    <View className="flex-1 items-center justify-center gap-2">
-      <TalkButton channelId={channel.id} size="compact" editing={editing} />
-      <Text variant="footnote" tone={activity.live ? 'primary' : 'variant'} numberOfLines={1}>
-        {activity.line}
-      </Text>
-    </View>
-  );
-}
-
 function Medium({
   channel,
   editing,
@@ -115,9 +97,6 @@ function ChannelBody({
   readonly size: WidgetSize;
   readonly editing: boolean;
 }): ReactNode {
-  if (size === 'S') {
-    return <Small channel={channel} editing={editing} />;
-  }
   return size === 'M' ? (
     <Medium channel={channel} editing={editing} />
   ) : (
@@ -125,17 +104,16 @@ function ChannelBody({
   );
 }
 
-function NoChannel({ size }: { readonly size: WidgetSize }): ReactNode {
+function NoChannel(): ReactNode {
   const owner = useIsOwner();
   const none = useMyChannels().length === 0;
   return (
-    <WidgetFrame title="Walkie-talkie" icon="radio" accent="primary" size={size}>
+    <WidgetFrame title="Walkie-talkie" icon="radio" accent="primary">
       <WidgetEmpty
         icon="radio"
         colour="primary"
         title={none ? 'No channels yet' : 'Choose a channel'}
         body={none ? 'Talk to the whole home with one button.' : 'Edit the layout to pick one.'}
-        size={size}
         {...(none && owner
           ? { action: { label: 'Create', href: href.settings.talkChannel('new') } }
           : {})}
@@ -156,7 +134,7 @@ function ChannelWidget({
   const channel = useTalkChannel(channelId);
   const glow = useGlow(channelId);
   if (channel === null) {
-    return <NoChannel size={size} />;
+    return <NoChannel />;
   }
   return (
     <WidgetFrame
@@ -164,7 +142,6 @@ function ChannelWidget({
       icon={channel.icon}
       accent="primary"
       glow={glow}
-      size={size}
       href={href.talkChannel(channel.id)}
     >
       <ChannelBody channel={channel} size={size} editing={editing} />
@@ -181,7 +158,7 @@ function FirstChannel({
 }): ReactNode {
   const first = useMyChannels()[0];
   return first === undefined ? (
-    <NoChannel size={size} />
+    <NoChannel />
   ) : (
     <ChannelWidget channelId={first.id} size={size} editing={editing} />
   );

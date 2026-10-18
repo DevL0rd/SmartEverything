@@ -1,25 +1,8 @@
-import { API_ENDPOINTS as E, ApiError, type DeviceRow } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, type DeviceRow } from '@smarteverything/domain';
 import type { WatchActionTarget } from '../../local/watch-actions';
-import { clientOf, profileIdOf, type Caller } from '../auth';
+import { clientOf, ownerOrSelf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
-import { DONE_REPLY, bound, type Bound } from '../router';
-
-type WatchRoutes = Record<
-  | 'listWatchCandidates'
-  | 'readPhoneWatches'
-  | 'readWatchData'
-  | 'reportWatchState'
-  | 'saveWatchRecords'
-  | 'takeOverWatchBridge'
-  | 'readWatchDays'
-  | 'runWatchAction'
-  | 'answerWatchAction'
-  | 'readWatchConfig'
-  | 'startWatchWorkout'
-  | 'stopWatchWorkout'
-  | 'readWatchWorkout',
-  Bound
->;
+import { DONE_REPLY, bound } from '../router';
 
 function allowedTarget(
   context: ServerContext,
@@ -27,49 +10,37 @@ function allowedTarget(
   caller: Caller,
 ): WatchActionTarget {
   const target = context.hub.watches.target(device);
-  if (
-    clientOf(caller).role !== 'owner' &&
-    profileIdOf(context.store, caller) !== target.profileId
-  ) {
-    throw new ApiError('forbidden', `${target.name} belongs to another person.`);
-  }
+  ownerOrSelf(clientOf(caller).role, profileIdOf(context.store, caller) === target.profileId);
   return target;
 }
 
-function workoutRoutes(
-  context: ServerContext,
-): Pick<WatchRoutes, 'startWatchWorkout' | 'stopWatchWorkout' | 'readWatchWorkout'> {
-  const { store, hub } = context;
-  return {
+const workoutRoutes = (context: ServerContext) =>
+  ({
     startWatchWorkout: bound(E.startWatchWorkout, ({ params, body, caller }) =>
       context.watchActions.run(
-        allowedTarget(context, store.devices.byId(params.deviceId), caller),
+        allowedTarget(context, context.store.devices.byId(params.deviceId), caller),
         { type: 'start_workout', sport: body.sport },
         clientOf(caller).id,
       ),
     ),
     stopWatchWorkout: bound(E.stopWatchWorkout, ({ params, caller }) =>
       context.watchActions.run(
-        allowedTarget(context, store.devices.byId(params.deviceId), caller),
+        allowedTarget(context, context.store.devices.byId(params.deviceId), caller),
         { type: 'stop_workout' },
         clientOf(caller).id,
       ),
     ),
     readWatchWorkout: bound(E.readWatchWorkout, ({ params, caller }) => {
-      const device = store.devices.byId(params.deviceId);
+      const device = context.store.devices.byId(params.deviceId);
       allowedTarget(context, device, caller);
-      return hub.watches.workout(device);
+      return context.hub.watches.workout(device);
     }),
-  };
-}
+  }) as const;
 
-function bridgeRoutes(
-  context: ServerContext,
-): Pick<WatchRoutes, 'takeOverWatchBridge' | 'readWatchData'> {
-  const { store, hub } = context;
-  return {
+const bridgeRoutes = ({ store, hub, watchData }: ServerContext) =>
+  ({
     readWatchData: bound(E.readWatchData, ({ caller }) =>
-      context.watchData.dataOf(profileIdOf(store, caller)),
+      watchData.dataOf(profileIdOf(store, caller)),
     ),
     takeOverWatchBridge: bound(E.takeOverWatchBridge, ({ params, caller }) =>
       hub.watches.takeOverBridge(
@@ -78,54 +49,51 @@ function bridgeRoutes(
         clientOf(caller),
       ),
     ),
-  };
-}
+  }) as const;
 
-export function watchRoutes(context: ServerContext): WatchRoutes {
-  const { store, hub } = context;
-  return {
+export const watchRoutes = (context: ServerContext) =>
+  ({
     ...workoutRoutes(context),
     ...bridgeRoutes(context),
-    listWatchCandidates: bound(E.listWatchCandidates, () => hub.watches.candidates()),
+    listWatchCandidates: bound(E.listWatchCandidates, () => context.hub.watches.candidates()),
     readPhoneWatches: bound(E.readPhoneWatches, ({ caller }) =>
-      hub.watches.mine(profileIdOf(store, caller), clientOf(caller)),
+      context.hub.watches.mine(profileIdOf(context.store, caller), clientOf(caller)),
     ),
     reportWatchState: bound(E.reportWatchState, async ({ params, body, caller }) => {
-      await hub.watches.report(
-        store.devices.byId(params.deviceId),
-        profileIdOf(store, caller),
+      await context.hub.watches.report(
+        context.store.devices.byId(params.deviceId),
+        profileIdOf(context.store, caller),
         body,
         clientOf(caller),
       );
       return DONE_REPLY;
     }),
     saveWatchRecords: bound(E.saveWatchRecords, ({ params, body, caller }) =>
-      hub.watches.save(
-        store.devices.byId(params.deviceId),
-        profileIdOf(store, caller),
+      context.hub.watches.save(
+        context.store.devices.byId(params.deviceId),
+        profileIdOf(context.store, caller),
         body,
         clientOf(caller),
       ),
     ),
     readWatchDays: bound(E.readWatchDays, ({ query, caller }) =>
-      hub.watches.days(profileIdOf(store, caller), query.from, query.to),
+      context.hub.watches.days(profileIdOf(context.store, caller), query.from, query.to),
     ),
     runWatchAction: bound(E.runWatchAction, ({ params, body, caller }) =>
       context.watchActions.run(
-        allowedTarget(context, store.devices.byId(params.deviceId), caller),
+        allowedTarget(context, context.store.devices.byId(params.deviceId), caller),
         body,
         clientOf(caller).id,
       ),
     ),
     readWatchConfig: bound(E.readWatchConfig, ({ params, caller }) => {
-      const device = store.devices.byId(params.deviceId);
+      const device = context.store.devices.byId(params.deviceId);
       allowedTarget(context, device, caller);
-      return hub.watches.config(device);
+      return context.hub.watches.config(device);
     }),
     answerWatchAction: bound(E.answerWatchAction, ({ body, caller }) => {
       const { requestId, ...result } = body;
       context.watchActions.answer(clientOf(caller).id, requestId, result);
       return DONE_REPLY;
     }),
-  };
-}
+  }) as const;

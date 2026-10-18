@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Head from 'expo-router/head';
+import { Logger } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { PageHeader } from '../../../components/page-header';
+import { useLifecycleLog } from '../../../components/use-lifecycle-log';
 import { Screen } from '../../../components/screen';
 import { atLeast, useSizeClass } from '../../../design/size-class';
 import { useCameraEntry } from '../data/use-cameras';
@@ -14,8 +17,11 @@ import { useViewer, type Viewer } from '../viewer/use-viewer';
 import { InCallBar, PresetsRow, RecentForCamera, useAnswering } from '../viewer/viewer-panels';
 import { QuickToggles } from '../components/quick-toggles';
 import { TimelineSection } from '../viewer/timeline-section';
-import { ViewerPlayer } from '../viewer/viewer-player';
+import { viewerClasses, type ViewerLayout } from '../viewer/viewer-layout';
+import { ViewerOverlays, ViewerPlayer } from '../viewer/viewer-player';
 import { CameraTranscriptFeed } from '../transcripts/camera-transcript-feed';
+
+const log = new Logger('app.cameras');
 
 function Panels({
   viewer,
@@ -82,71 +88,43 @@ function ViewerHeader({ entry }: { readonly entry: CameraEntry }): ReactNode {
   );
 }
 
-function MediumViewer({
+function RegularViewer({
   viewer,
   answering,
+  layout,
 }: {
   readonly viewer: Viewer;
   readonly answering: boolean;
+  readonly layout: ViewerLayout;
 }): ReactNode {
-  const columns = atLeast(useSizeClass().width, 'expanded');
+  const css = viewerClasses(layout);
   return (
     <Screen
       header={<ViewerHeader entry={viewer.entry} />}
-      maxWidth="detail"
+      maxWidth={css.width}
       scroll={false}
       externalScroll
     >
       <CameraTranscriptFeed
         entry={viewer.entry}
         pageHeader={<ViewerHeader entry={viewer.entry} />}
-        maxWidth="detail"
+        maxWidth={css.width}
         header={
-          <View className="gap-section-gap">
-            <ViewerPlayer viewer={viewer} topBar={false} rounded />
-            <View className={columns ? 'flex-row items-start gap-section-gap' : 'gap-section-gap'}>
-              <View className={columns ? 'min-w-0 flex-1 gap-section-gap' : 'gap-section-gap'}>
-                <Panels viewer={viewer} answering={answering} />
+          <View className={css.row}>
+            <View className={css.main}>
+              <ViewerPlayer viewer={viewer} topBar={false} rounded />
+              {layout.wide ? <TimelineSection entry={viewer.entry} /> : null}
+            </View>
+            <View className={css.side}>
+              <View className={css.panels}>
+                {answering ? <InCallBar entry={viewer.entry} /> : null}
+                <PresetsRow viewer={viewer} />
+                <QuickToggles entry={viewer.entry} />
+                {layout.wide ? null : <TimelineSection entry={viewer.entry} />}
               </View>
-              <View className={columns ? 'min-w-0 flex-1' : ''}>
+              <View className={css.recent}>
                 <RecentForCamera entry={viewer.entry} />
               </View>
-            </View>
-          </View>
-        }
-      />
-    </Screen>
-  );
-}
-
-function WideViewer({
-  viewer,
-  answering,
-}: {
-  readonly viewer: Viewer;
-  readonly answering: boolean;
-}): ReactNode {
-  return (
-    <Screen
-      header={<ViewerHeader entry={viewer.entry} />}
-      maxWidth="dashboard"
-      scroll={false}
-      externalScroll
-    >
-      <CameraTranscriptFeed
-        entry={viewer.entry}
-        pageHeader={<ViewerHeader entry={viewer.entry} />}
-        header={
-          <View className="flex-row items-start gap-section-gap">
-            <View className="min-w-0 flex-1 gap-section-gap">
-              <ViewerPlayer viewer={viewer} topBar={false} rounded />
-              <TimelineSection entry={viewer.entry} />
-            </View>
-            <View className="w-inspector gap-section-gap">
-              {answering ? <InCallBar entry={viewer.entry} /> : null}
-              <PresetsRow viewer={viewer} />
-              <QuickToggles entry={viewer.entry} />
-              <RecentForCamera entry={viewer.entry} />
             </View>
           </View>
         }
@@ -159,19 +137,37 @@ function CameraViewer({ entry }: { readonly entry: CameraEntry }): ReactNode {
   const answering = useAnswering();
   const viewer = useViewer(entry, answering);
   const size = useSizeClass();
-  if (size.nav === 'bar') {
-    return <CompactViewer viewer={viewer} answering={answering} />;
-  }
-  return atLeast(size.width, 'large') ? (
-    <WideViewer viewer={viewer} answering={answering} />
-  ) : (
-    <MediumViewer viewer={viewer} answering={answering} />
+  const layout = size.nav === 'bar' ? 'compact' : atLeast(size.width, 'large') ? 'wide' : 'medium';
+  const deviceId = entry.device.id;
+  useEffect(() => {
+    log.debug('viewer.layout_changed', { deviceId, layout, answering });
+  }, [deviceId, layout, answering]);
+  return (
+    <>
+      {size.nav === 'bar' ? (
+        <CompactViewer viewer={viewer} answering={answering} />
+      ) : (
+        <RegularViewer
+          viewer={viewer}
+          answering={answering}
+          layout={{ wide: layout === 'wide', columns: atLeast(size.width, 'expanded') }}
+        />
+      )}
+      <ViewerOverlays viewer={viewer} />
+    </>
   );
 }
 
 export function ViewerScreen(): ReactNode {
   const { cameraId } = useLocalSearchParams<{ cameraId: string }>();
   const entry = useCameraEntry(cameraId);
+  const found = entry !== null;
+  useLifecycleLog(log, 'viewer', cameraId);
+  useEffect(() => {
+    if (!found) {
+      log.warn('viewer.camera_missing', { cameraId });
+    }
+  }, [cameraId, found]);
   if (entry === null) {
     return (
       <Screen header={<PageHeader title="Camera" />} maxWidth="reading">

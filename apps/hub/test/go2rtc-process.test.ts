@@ -2,7 +2,9 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { GO2RTC_USERNAME, startGo2rtc } from '../src/cameras/go2rtc-process';
+import { ffmpegPath } from '../src/media/ffmpeg-path';
 import { captureLogs, testLogger, type CapturedLogs } from './support/logs';
 
 let directory = '';
@@ -46,6 +48,7 @@ const READY = [
 function launch(
   binary: string,
   exited: (cause: Error) => void = () => undefined,
+  reported: (text: string) => void = () => undefined,
 ): Parameters<typeof startGo2rtc>[0] {
   return {
     binary,
@@ -59,25 +62,33 @@ function launch(
     xiaomi: { '1234567': 'pass-token' },
     log: testLogger(),
     exited,
+    reported,
   };
 }
 
 describe('startGo2rtc', () => {
   it('writes a private config, starts go2rtc with it, relays its log and resolves once the API listens', async () => {
-    const running = await startGo2rtc(launch(await fakeBinary(`${READY}\nexec sleep 30`)));
+    const reports: string[] = [];
+    const running = await startGo2rtc(
+      launch(await fakeBinary(`${READY}\nexec sleep 30`), undefined, (text) => {
+        reports.push(text);
+      }),
+    );
     const configPath = join(directory, 'go2rtc', 'go2rtc.yaml');
     expect(await readFile(join(directory, 'go2rtc', 'arguments'), 'utf8')).toBe(
       `-config\n${configPath}\n`,
     );
-    const config = await readFile(configPath, 'utf8');
-    expect(config).toContain(`  username: "${GO2RTC_USERNAME}"`);
-    expect(config).toContain(`  password: "${running.password}"`);
+    expect(parse(await readFile(configPath, 'utf8'))).toMatchObject({
+      api: { username: GO2RTC_USERNAME, password: running.password },
+      ffmpeg: { bin: ffmpegPath() },
+      xiaomi: { '1234567': 'pass-token' },
+    });
     expect(running.password).toBe('fixed-password');
-    expect(config).toContain('xiaomi:\n  1234567: "pass-token"\n');
     expect(running.baseUrl).toBe('http://127.0.0.1:1984');
     expect(running.username).toBe(GO2RTC_USERNAME);
     await running.stop();
     await running.stop();
+    expect(reports.some((text) => text.includes('[webrtc] no candidates'))).toBe(true);
     expect(logs.events()).toEqual(
       expect.arrayContaining([
         'go2rtc.output',

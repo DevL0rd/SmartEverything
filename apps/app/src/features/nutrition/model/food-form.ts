@@ -119,6 +119,15 @@ const PROBLEM_TEXT: Readonly<Record<string, string>> = {
   grams: 'Use numbers only',
 };
 
+export function nutrientProblemKey(nutrient: Nutrient): string {
+  return `grams.${nutrient}`;
+}
+
+function problemKeyOf(path: readonly PropertyKey[]): string {
+  const [head, nutrient] = path;
+  return head === 'grams' && typeof nutrient === 'string' ? `grams.${nutrient}` : String(head);
+}
+
 export type FoodCheck =
   | { readonly ok: true; readonly food: NewFood }
   | { readonly ok: false; readonly problems: ReadonlyMap<string, string> };
@@ -143,7 +152,7 @@ export function checkForm(form: FoodForm, origin: NewFood['origin']): FoodCheck 
           },
     kcal: number(form.kcal),
     grams: gramsOf(form),
-    water_percent: form.waterPercent,
+    water_percent: form.kind === 'drink' ? form.waterPercent : 0,
     origin,
     favourite: form.favourite,
   });
@@ -151,7 +160,7 @@ export function checkForm(form: FoodForm, origin: NewFood['origin']): FoodCheck 
     parsed.success
       ? []
       : parsed.error.issues.map((issue) => [
-          String(issue.path[0]),
+          problemKeyOf(issue.path),
           PROBLEM_TEXT[String(issue.path[0])] ?? 'Check this value',
         ]),
   );

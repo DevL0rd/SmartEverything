@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import type { IrCodeRow, IrRemoteRow } from '@smarteverything/domain';
+import { Logger, background } from '@smarteverything/logging';
 import { confirm } from '../../../components/confirm-store';
 import { EmptyState } from '../../../components/empty-state';
 import { IconButton } from '../../../components/icon-button';
 import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { removeIrCode, removeIrRemote } from '../../../api/ir';
 import { useDevice, useIrCodes, useIrRemotes } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
@@ -17,39 +18,47 @@ import { AddRemoteSheet } from './add-remote-sheet';
 import { LearnSheet } from './learn-sheet';
 import { DeviceSettingsFrame } from './settings-frame';
 
-function failed(what: string): (error: unknown) => void {
-  return (error) => {
-    notify({
-      message: what,
-      error,
-      tone: 'critical',
-    });
-  };
-}
+const log = new Logger('app.devices');
 
 function forgetCode(code: IrCodeRow): void {
-  void confirm({
-    title: `Forget ${code.button}?`,
-    confirmLabel: 'Forget',
-    tone: 'destructive',
-  }).then((yes) => {
-    if (yes) {
-      removeIrCode(code.id).catch(failed(`${code.button} was not forgotten`));
-    }
-  });
+  background(
+    confirm({
+      title: `Forget ${code.button}?`,
+      confirmLabel: 'Forget',
+      tone: 'destructive',
+    }).then((yes) => {
+      log.info('remote.forget_confirmed', { codeId: code.id, confirmed: yes });
+      if (yes) {
+        const fail = notifyFailure(`${code.button} was not forgotten`);
+        removeIrCode(code.id).catch((error: unknown) => {
+          log.error('remote.forget_failed', error, { codeId: code.id });
+          fail(error);
+        });
+      }
+    }),
+    'remotes_screen.confirm_failed',
+  );
 }
 
 function removeRemote(remote: IrRemoteRow): void {
-  void confirm({
-    title: `Remove ${remote.name}?`,
-    body: 'Its learned buttons go with it.',
-    confirmLabel: 'Remove',
-    tone: 'destructive',
-  }).then((yes) => {
-    if (yes) {
-      removeIrRemote(remote.id).catch(failed(`${remote.name} was not removed`));
-    }
-  });
+  background(
+    confirm({
+      title: `Remove ${remote.name}?`,
+      body: 'Its learned buttons go with it.',
+      confirmLabel: 'Remove',
+      tone: 'destructive',
+    }).then((yes) => {
+      log.info('remote.remove_confirmed', { remoteId: remote.id, confirmed: yes });
+      if (yes) {
+        const fail = notifyFailure(`${remote.name} was not removed`);
+        removeIrRemote(remote.id).catch((error: unknown) => {
+          log.error('remote.remove_failed', error, { remoteId: remote.id });
+          fail(error);
+        });
+      }
+    }),
+    'remotes_screen.confirm_failed',
+  );
 }
 
 function RemoteGroup({

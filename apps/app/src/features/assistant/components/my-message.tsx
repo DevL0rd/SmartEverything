@@ -9,7 +9,8 @@ import { viaLabelOf, type RunPosition } from '../model/speaker';
 import { EditBubble } from './edit-bubble';
 import { useMessageActions } from './message-actions';
 import { MessageFrame } from './message-frame';
-import { MyMeta, deliveryOf } from './message-meta';
+import { MyMeta } from './message-meta';
+import { deliveryOf } from '../model/delivery';
 import { BarTime, BubbleContent, MessagePreview, messageLabel, useTimeZone } from './message-parts';
 import { TurnNotice } from './turn-notice';
 
@@ -22,7 +23,7 @@ const TAIL: Readonly<Record<RunPosition, string>> = {
 
 function ownBubble(item: MessageItem, shown: boolean): string {
   return cn(
-    'max-w-full gap-2 rounded-xl bg-primary-container px-4 py-2.5',
+    'max-w-4/5 gap-2 rounded-xl bg-primary-container px-4 py-2.5',
     TAIL[item.position],
     item.waiting && 'opacity-70',
     shown && 'border border-critical/55',
@@ -78,7 +79,7 @@ export function MyMessage({
         actions.run('quote');
       }}
     >
-      <View className="items-end pl-12 medium:pl-24">
+      <View className="items-end">
         {editing ? (
           <EditBubble row={row} hasReply={replied} />
         ) : (

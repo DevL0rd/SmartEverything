@@ -1,4 +1,5 @@
 import {
+  appendTo,
   HEALTH_METRIC_UNITS,
   WATCH_DAY_ROW,
   type HealthMetric,
@@ -49,13 +50,14 @@ function figure(metric: HealthMetric, value: number): DailyFigure {
 }
 
 function figuresOf(row: WatchDayRow): DailyFigure[] {
-  const values = row.samples.map((sample) => sample.value);
-  if (values.length === 0) {
+  const last = row.samples.at(-1);
+  if (last === undefined) {
     return [];
   }
   if (row.kind === 'vitality') {
-    return [figure('vitality', values.at(-1) ?? 0)];
+    return [figure('vitality', last.value)];
   }
+  const values = row.samples.map((sample) => sample.value);
   const average = values.reduce((sum, value) => sum + value, 0) / values.length;
   return [
     figure('stress_average', Math.round(average)),
@@ -70,7 +72,7 @@ export class WatchDaysRepository {
     const groups = new Map<string, WatchSample[]>();
     for (const sample of batch.samples) {
       const day = localDay(sample.time, batch.zoneOffsetSeconds);
-      groups.set(day, [...(groups.get(day) ?? []), sample]);
+      appendTo(groups, day, sample);
     }
     return this.context.write(() =>
       [...groups.entries()].map(([day, samples]) => {

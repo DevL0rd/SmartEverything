@@ -15,10 +15,10 @@ import { RouteMap } from '../components/route-map';
 import { StatList } from '../components/stat-list';
 import { WorkoutIcon } from '../components/workout-row';
 import { useToday } from '../data/day';
-import { useWorkoutDetail } from '../data/workout';
-import { hoursMinutes } from '../../../format/time';
+import { useWorkoutDetail, type WorkoutDetail } from '../data/workout';
 import { appName } from '../model/sources';
-import { clock, dayLabel, startOfDayKey } from '../../../format/time';
+import { clock, dayLabel, hoursMinutes, startOfDayKey } from '../../../format/time';
+import { count, withUnit } from '../../../format/number';
 import { workoutFacts } from '../model/workout-facts';
 import type { Workout } from '../model/workouts';
 
@@ -85,8 +85,8 @@ function HeartCard({ workout }: { readonly workout: Workout }): ReactNode {
         side={
           <StatList
             stats={[
-              { label: 'Average', value: `${String(Math.round(workout.averageBpm))} bpm` },
-              { label: 'Highest', value: `${String(Math.round(workout.maxBpm))} bpm` },
+              { label: 'Average', value: withUnit(count(workout.averageBpm), 'bpm') },
+              { label: 'Highest', value: withUnit(count(workout.maxBpm), 'bpm') },
             ]}
           />
         }
@@ -113,8 +113,7 @@ function RouteCard({ workout }: { readonly workout: Workout }): ReactNode {
   );
 }
 
-function Body({ recordId }: { readonly recordId: string }): ReactNode {
-  const detail = useWorkoutDetail(recordId);
+function Body({ detail }: { readonly detail: WorkoutDetail }): ReactNode {
   const today = useToday();
   switch (detail.status) {
     case 'loading':
@@ -152,7 +151,7 @@ export function WorkoutScreen(): ReactNode {
     detail.status === 'ready' ? (detail.workout.title ?? detail.workout.name) : 'Workout';
   return (
     <Screen header={<PageHeader title={title} />} maxWidth="detail">
-      <Body recordId={workoutId} />
+      <Body detail={detail} />
     </Screen>
   );
 }

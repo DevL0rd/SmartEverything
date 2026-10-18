@@ -2,25 +2,17 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
-import { Select } from '../../../components/select';
+import { Icon } from '../../../components/icon';
+import { ListRow } from '../../../components/list-row';
+import { List } from '../../../components/section';
 import { Sheet } from '../../../components/sheet';
 import { TextField } from '../../../components/text-field';
 import { createIrRemote } from '../../../api/ir';
 import type { Device } from '../../../store/state';
 import { useMutationState } from '../../../store/mutation';
+import { CATEGORY_LOOKS, REMOTE_CATEGORIES, type RemoteCategory } from '../remote/remote-category';
 
-const CATEGORIES = [
-  { value: 'tv', label: 'TV' },
-  { value: 'air conditioner', label: 'Air conditioner' },
-  { value: 'fan', label: 'Fan' },
-  { value: 'set-top box', label: 'Set-top box' },
-  { value: 'projector', label: 'Projector' },
-  { value: 'audio', label: 'Audio' },
-  { value: 'light', label: 'Light' },
-  { value: 'other', label: 'Other' },
-] as const;
-
-type Category = (typeof CATEGORIES)[number]['value'];
+type Category = RemoteCategory;
 
 const NAME_MOST = 80;
 
@@ -28,6 +20,31 @@ interface Draft {
   readonly name: string;
   readonly brand: string;
   readonly category: Category;
+}
+
+function CategoryList({
+  value,
+  onPick,
+}: {
+  readonly value: Category;
+  readonly onPick: (category: Category) => void;
+}): ReactNode {
+  return (
+    <List title="What is it?">
+      {REMOTE_CATEGORIES.map((category) => (
+        <ListRow
+          key={category}
+          title={CATEGORY_LOOKS[category].label}
+          icon={CATEGORY_LOOKS[category].icon}
+          selected={value === category}
+          trailing={value === category ? <Icon name="check" size={20} tone="primary" /> : undefined}
+          onPress={() => {
+            onPick(category);
+          }}
+        />
+      ))}
+    </List>
+  );
 }
 
 function Fields({
@@ -43,6 +60,12 @@ function Fields({
 }): ReactNode {
   return (
     <View className="gap-4">
+      <CategoryList
+        value={draft.category}
+        onPick={(category) => {
+          onChange({ ...draft, category });
+        }}
+      />
       <TextField
         label="Name"
         placeholder="Remote name"
@@ -52,15 +75,6 @@ function Fields({
         }}
         error={problem}
         focusOnMount
-      />
-      <Select
-        label="Kind"
-        options={CATEGORIES}
-        value={draft.category}
-        onChange={(category) => {
-          onChange({ ...draft, category });
-        }}
-        showLabel
       />
       <TextField
         label="Brand (optional)"
@@ -96,7 +110,7 @@ export function AddRemoteSheet({
         createIrRemote({
           blasterId: blaster.id,
           name,
-          category: draft.category,
+          category: CATEGORY_LOOKS[draft.category].stored,
           brand: brand === '' ? null : brand,
         }),
       { failure: 'The remote wasn’t added', inline: true, onDone: onClose },

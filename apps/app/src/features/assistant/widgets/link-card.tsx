@@ -9,6 +9,7 @@ import { WIDGET_SURFACE } from '../../../components/widget-board';
 import { selectionTick } from '../../../platform/haptics';
 import { useSettingEnv } from '../../../settings/env';
 import type { SwitchSetting } from '../../../settings/types';
+import { sameJson } from '../../../store/same-json';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
 import { Overline } from '../components/overline';
 import { linkView, mostSpecific, type LinkView } from './link-sources';
@@ -75,13 +76,17 @@ function RelatedRow({
 }
 
 export function LinkCards({ links }: { readonly links: readonly ChatLink[] }): ReactNode {
-  const tables = useStoreSelector((state) => state.tables);
   const env = useSettingEnv();
-  const views = mostSpecific(
-    links.flatMap((link) => {
-      const view = linkView(link, tables, env);
-      return view === null ? [] : [view];
-    }),
+  const views = useStoreSelector(
+    (state) =>
+      mostSpecific(
+        links.flatMap((link) => {
+          const view = linkView(link, state.tables, env);
+          return view === null ? [] : [view];
+        }),
+      ),
+    sameJson,
+    [links, env.owner, env.platform, env.availability],
   );
   if (views.length === 0) {
     return null;

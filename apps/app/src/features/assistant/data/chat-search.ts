@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import type { AiChatHit } from '@smarteverything/domain';
 import { searchAiChats } from '../../../api/ai';
 import { useDebouncedValue } from '../../../design/use-debounced-value';
@@ -15,7 +15,7 @@ export interface MessageHits {
 
 export function useMessageHits(query: string, archived: boolean): MessageHits {
   const text = useDebouncedValue(query.trim(), SEARCH_DELAY_MS);
-  const result = useQuery({
+  const result = useScreenQuery({
     queryKey: chatSearchKey(text, archived),
     queryFn: () => searchAiChats(text, { archived, limit: HITS_MAX }),
     enabled: text !== '',

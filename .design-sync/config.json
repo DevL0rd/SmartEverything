@@ -1,0 +1,431 @@
+{
+  "projectId": "75ea7a49-33db-4009-8c7e-29f6f0274227",
+  "shape": "package",
+  "pkg": "smarteverything-kit",
+  "globalName": "SmartEverything",
+  "entry": ".design-sync/.cache/kit-pkg/dist/index.js",
+  "buildCmd": "node .design-sync/build-kit.mjs",
+  "srcDir": "../../../apps/app/src/components",
+  "cssEntry": "dist/styles.css",
+  "extraFonts": ["../../fonts.css"],
+  "provider": {
+    "component": "DsRoot"
+  },
+  "componentSrcMap": {
+    "DsRoot": null,
+    "Stage": null,
+    "ThemeScope": null,
+    "GlobalTheme": null,
+    "Axes": null,
+    "DrawnStroke": null,
+    "Extremes": null,
+    "Frame": null,
+    "KeyboardViewport": null,
+    "LinkIntentProvider": null,
+    "ListTop": null,
+    "MarkerLabel": null,
+    "MarkerLine": null,
+    "RowScope": null,
+    "SectionHeader": null,
+    "EditCanvas": null,
+    "EditableWidget": null,
+    "ResizeHandle": null
+  },
+  "guidelinesGlob": ["docs/*.md"],
+  "dtsPropsFor": {
+    "Gauge": "value: number; min: number; max: number; bands: readonly { upTo: number; colour: ColourRole }[]; size: number; label: string; thickness?: number; children?: React.ReactNode;"
+  },
+  "overrides": {
+    "Sheet": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "BottomSheet": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "DialogFrame": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "Overlay": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "Popover": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "Menu": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "LiftMenu": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "SelectPicker": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "ConfirmHost": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "Toasts": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x520"
+    },
+    "Screen": {
+      "cardMode": "column"
+    },
+    "FlowFrame": {
+      "cardMode": "column"
+    },
+    "MasterDetail": {
+      "cardMode": "column"
+    },
+    "VirtualList": {
+      "cardMode": "column"
+    },
+    "WidgetGallery": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x560"
+    },
+    "WidgetOptions": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x560"
+    },
+    "SchemaSettingsSheet": {
+      "cardMode": "single",
+      "primaryStory": "Dark",
+      "viewport": "800x560"
+    },
+    "TranscriptFeed": {
+      "cardMode": "column"
+    },
+    "Icon": {
+      "cardMode": "column"
+    },
+    "WidgetEmpty": {
+      "cardMode": "column"
+    },
+    "SwitchRow": {
+      "cardMode": "column"
+    },
+    "IconButton": {
+      "cardMode": "column"
+    },
+    "ImagePlaceholder": {
+      "cardMode": "column"
+    },
+    "PageHeader": {
+      "cardMode": "column"
+    },
+    "HomeIdentity": {
+      "cardMode": "column"
+    },
+    "DecisionQuestions": {
+      "cardMode": "column"
+    },
+    "Button": {
+      "cardMode": "column"
+    },
+    "WidgetSurface": {
+      "cardMode": "column"
+    },
+    "TabsBar": {
+      "cardMode": "column"
+    },
+    "RangeBars": {
+      "cardMode": "column"
+    },
+    "Checkbox": {
+      "cardMode": "column"
+    },
+    "FeedChrome": {
+      "cardMode": "column"
+    },
+    "DecisionApproval": {
+      "cardMode": "column"
+    },
+    "MenuRows": {
+      "cardMode": "column"
+    },
+    "WidgetFrame": {
+      "cardMode": "column"
+    },
+    "WidgetBoard": {
+      "cardMode": "column"
+    },
+    "QrCode": {
+      "cardMode": "column"
+    },
+    "EditToolbar": {
+      "cardMode": "column"
+    },
+    "ErrorState": {
+      "cardMode": "column"
+    },
+    "Switch": {
+      "cardMode": "column"
+    },
+    "ValueRow": {
+      "cardMode": "column"
+    },
+    "WidgetStat": {
+      "cardMode": "column"
+    },
+    "ReaderState": {
+      "cardMode": "column"
+    },
+    "NumberStepper": {
+      "cardMode": "column"
+    },
+    "Figure": {
+      "cardMode": "column"
+    },
+    "CodeScanner": {
+      "cardMode": "column"
+    },
+    "WidgetStats": {
+      "cardMode": "column"
+    },
+    "WidgetHeader": {
+      "cardMode": "column"
+    },
+    "Banner": {
+      "cardMode": "column"
+    },
+    "CopyButton": {
+      "cardMode": "column"
+    },
+    "SheetHeader": {
+      "cardMode": "column"
+    },
+    "Dot": {
+      "cardMode": "column"
+    },
+    "StructuredValue": {
+      "cardMode": "column"
+    },
+    "Highlighted": {
+      "cardMode": "column"
+    },
+    "SelectRow": {
+      "cardMode": "column"
+    },
+    "CodeBlock": {
+      "cardMode": "column"
+    },
+    "StatusChip": {
+      "cardMode": "column"
+    },
+    "SizeLabel": {
+      "cardMode": "column"
+    },
+    "Card": {
+      "cardMode": "column"
+    },
+    "SectionAction": {
+      "cardMode": "column"
+    },
+    "ReorderableList": {
+      "cardMode": "column"
+    },
+    "ToastCard": {
+      "cardMode": "column"
+    },
+    "ColourPicker": {
+      "cardMode": "column"
+    },
+    "Skeleton": {
+      "cardMode": "column"
+    },
+    "BrandGlyph": {
+      "cardMode": "column"
+    },
+    "TextField": {
+      "cardMode": "column"
+    },
+    "Sparkline": {
+      "cardMode": "column"
+    },
+    "Section": {
+      "cardMode": "column"
+    },
+    "CornerButton": {
+      "cardMode": "column"
+    },
+    "ActionRow": {
+      "cardMode": "column"
+    },
+    "BrandMark": {
+      "cardMode": "column"
+    },
+    "ActionDetails": {
+      "cardMode": "column"
+    },
+    "SearchField": {
+      "cardMode": "column"
+    },
+    "Slider": {
+      "cardMode": "column"
+    },
+    "Bars": {
+      "cardMode": "column"
+    },
+    "Segmented": {
+      "cardMode": "column"
+    },
+    "StageTimeline": {
+      "cardMode": "column"
+    },
+    "TimeSeriesChart": {
+      "cardMode": "column"
+    },
+    "HScroller": {
+      "cardMode": "column"
+    },
+    "DateNav": {
+      "cardMode": "column"
+    },
+    "QuickRow": {
+      "cardMode": "column"
+    },
+    "CountPill": {
+      "cardMode": "column"
+    },
+    "CopyField": {
+      "cardMode": "column"
+    },
+    "TranscriptRow": {
+      "cardMode": "column"
+    },
+    "ColourSwatches": {
+      "cardMode": "column"
+    },
+    "Select": {
+      "cardMode": "column"
+    },
+    "ListRow": {
+      "cardMode": "column"
+    },
+    "SheetBody": {
+      "cardMode": "column"
+    },
+    "StatTile": {
+      "cardMode": "column"
+    },
+    "FilterChip": {
+      "cardMode": "column"
+    },
+    "NavRow": {
+      "cardMode": "column"
+    },
+    "Ambient": {
+      "cardMode": "column"
+    },
+    "Grid": {
+      "cardMode": "column"
+    },
+    "DecisionStatus": {
+      "cardMode": "column"
+    },
+    "TargetDial": {
+      "cardMode": "column"
+    },
+    "NativeElicitation": {
+      "cardMode": "column"
+    },
+    "ChoiceChip": {
+      "cardMode": "column"
+    },
+    "ProgressBar": {
+      "cardMode": "column"
+    },
+    "List": {
+      "cardMode": "column"
+    },
+    "SchemaEditor": {
+      "cardMode": "column"
+    },
+    "Breadcrumbs": {
+      "cardMode": "column"
+    },
+    "FillChart": {
+      "cardMode": "column"
+    },
+    "Badge": {
+      "cardMode": "column"
+    },
+    "TimeField": {
+      "cardMode": "column"
+    },
+    "SwipeRow": {
+      "cardMode": "column"
+    },
+    "Text": {
+      "cardMode": "column"
+    },
+    "Interactive": {
+      "cardMode": "column"
+    },
+    "Arc": {
+      "cardMode": "column"
+    },
+    "EmptyState": {
+      "cardMode": "column"
+    },
+    "ProgressSteps": {
+      "cardMode": "column"
+    },
+    "OtpField": {
+      "cardMode": "column"
+    },
+    "DecisionFrame": {
+      "cardMode": "column"
+    },
+    "Glow": {
+      "cardMode": "column"
+    },
+    "IconWell": {
+      "cardMode": "column"
+    },
+    "ClockTextView": {
+      "cardMode": "column"
+    },
+    "EdgeScrim": {
+      "cardMode": "column"
+    },
+    "DecisionOptions": {
+      "cardMode": "column"
+    },
+    "DayAxis": {
+      "cardMode": "column"
+    },
+    "Gauge": {
+      "cardMode": "column"
+    },
+    "SkeletonBoard": {
+      "cardMode": "column"
+    },
+    "Tooltip": {
+      "cardMode": "column"
+    }
+  },
+  "docsDir": "../../docs",
+  "readmeHeader": ".design-sync/conventions.md"
+}

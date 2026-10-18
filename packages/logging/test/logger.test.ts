@@ -1,11 +1,10 @@
+import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '../src/logger';
 import { InvalidEventNameError } from '../src/event-name';
 import { InvalidScopeError } from '../src/scope';
 import { REDACTED } from '../src/redaction';
 import type { LogRecord } from '../src/record';
-import { withoutColour } from '../src/palette';
-import { renderBanner } from '../src/render';
 
 let written: LogRecord[] = [];
 let clock = 0;
@@ -119,6 +118,34 @@ describe('Logger', () => {
     expect(written.map((record) => record.level)).toEqual(['warn']);
   });
 
+  it('never builds a lazy payload when its level is off', () => {
+    Logger.configure({ level: 'info' });
+    const build = vi.fn(() => ({ rows: 3 }));
+    const logger = new Logger('app.devices');
+    logger.debug('a.b', build);
+    logger.trace('a.b', build);
+    expect(build).not.toHaveBeenCalled();
+    expect(written).toEqual([]);
+  });
+
+  it('builds a lazy payload once when its level is on and redacts what it returns', () => {
+    const build = vi.fn(() => ({ rows: 3, email: 'worker@example.com' }));
+    const logger = new Logger('app.devices');
+    logger.debug('a.b', build);
+    logger.trace('a.b', build);
+    expect(build).toHaveBeenCalledTimes(2);
+    expect(written.map((record) => record.payload)).toEqual([
+      { rows: 3, email: REDACTED },
+      { rows: 3, email: REDACTED },
+    ]);
+  });
+
+  it('writes no start line for an operation when debug is off, but still ends it', () => {
+    Logger.configure({ level: 'info' });
+    new Logger('db.automations').operation('scene.run', { sceneId: 'abc' }).succeeded();
+    expect(written.map((record) => record.event)).toEqual(['scene.run.succeeded']);
+  });
+
   it('redacts a denied field before it ever reaches the sink', () => {
     new Logger('app.sign-in').info('sign_in.requested', { email: 'worker@example.com' });
     expect(written[0]?.payload).toEqual({ email: REDACTED });
@@ -148,13 +175,6 @@ describe('Logger', () => {
     Logger.configure({ context: { release: '1.2.3', platform: 'server' } });
     new Logger('edge.health').info('notification.delivered');
     expect(written[0]).toMatchObject({ release: '1.2.3', platform: 'server' });
-  });
-
-  it('threads one correlation id through everything an action causes', () => {
-    Logger.beginAction('corr-1');
-    new Logger('app.devices').info('device.paired');
-    new Logger('db.automations').info('device.switched');
-    expect(written.map((record) => record.correlationId)).toEqual(['corr-1', 'corr-1']);
   });
 
   it('lets a child add context without touching its parent', () => {
@@ -221,19 +241,10 @@ describe('Logger', () => {
     expect(written).toEqual([]);
   });
 
-  it('sends a highlight through the sink when something is collecting records', () => {
-    new Logger('tool.migrate').highlight('Applying migrations');
-    expect(written[0]).toMatchObject({
-      event: 'logger.highlighted',
-      payload: { text: 'Applying migrations' },
-    });
-  });
-
   it('says nothing at all when the level is none', () => {
     Logger.configure({ level: 'none' });
     const logger = new Logger('app.devices');
     logger.error('a.b');
-    logger.highlight('nothing');
     expect(written).toEqual([]);
   });
 
@@ -267,18 +278,16 @@ describe('Logger', () => {
     expect(written[0]).toMatchObject({ release: '1.0.0', platform: 'web' });
   });
 
-  it('keeps a highlight quiet when the level would not carry an info line', () => {
-    Logger.configure({ level: 'warn' });
-    new Logger('tool.migrate').highlight('Applying migrations');
-    expect(written).toEqual([]);
-  });
-
-  it('keeps a banner quiet too when the level would not carry it', () => {
-    Logger.reset();
-    Logger.configure({ level: 'warn' });
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    new Logger('tool.migrate').highlight('Applying migrations');
-    expect(spy).not.toHaveBeenCalled();
+  it('hands every record to a tap as well as to the sink', () => {
+    const tapped: LogRecord[] = [];
+    Logger.configure({
+      tap: (record) => {
+        tapped.push(record);
+      },
+    });
+    new Logger('app.devices').info('device.paired');
+    expect(tapped).toEqual(written);
+    expect(tapped).toHaveLength(1);
   });
 
   it('reports the level it is set to', () => {
@@ -338,7 +347,16 @@ describe('Logger writing to the console', () => {
     expect(spy).toHaveBeenCalledTimes(1);
     const line = String(spy.mock.calls[0]?.[0]);
     expect(line).toContain('\u001B[');
-    expect(withoutColour(line)).toBe('[12:00:00]-[INFO]-[app.devices]: device.paired');
+    expect(stripVTControlCharacters(line)).toBe('[12:00:00]-[INFO]-[app.devices]: device.paired');
+  });
+
+  it('writes every level through console.log when the host asks for log-only routing', () => {
+    Logger.configure({ consoleRouting: 'log-only' });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    new Logger('app.devices').error('request.crashed', new Error('boom'));
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
   });
 
   it('writes a warning through console.warn, so a host can route it', () => {
@@ -366,24 +384,5 @@ describe('Logger writing to the console', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     new Logger('app.devices').info('device.paired');
     expect(String(spy.mock.calls[0]?.[0])).toBe('[12:00:00]-[INFO]-[app.devices]: device.paired');
-  });
-
-  it('prints a banner when a person is watching a terminal', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    new Logger('tool.migrate').highlight('Applying migrations');
-    expect(String(spy.mock.calls[0]?.[0])).toBe(renderBanner('Applying migrations', 'blue'));
-  });
-
-  it('takes the banner colour it is given', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    new Logger('tool.migrate').highlight('Careful', 'red');
-    expect(String(spy.mock.calls[0]?.[0])).toBe(renderBanner('Careful', 'red'));
-  });
-
-  it('falls back to a plain highlight line when output is not pretty', () => {
-    Logger.configure({ style: 'json' });
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    new Logger('tool.migrate').highlight('Applying migrations');
-    expect(String(spy.mock.calls[0]?.[0])).toContain('logger.highlighted');
   });
 });

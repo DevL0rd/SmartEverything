@@ -1,13 +1,17 @@
 import type { Logger } from '@smarteverything/logging';
 import type { VoiceEndpoint } from './call-link';
 import type { Call } from './call-parts';
+import { background } from '@smarteverything/logging';
 
-export const RESUME_GRACE_MS = 20_000;
+const RESUME_GRACE_MS = 20_000;
 
 export function holdCall(call: Call, log: Logger): void {
   call.endpoint.detach();
   const timer = setTimeout(() => {
-    void call.conversation.end('disconnected', 'The connection to your home dropped.');
+    background(
+      call.conversation.end('disconnected', 'The connection to your home dropped.'),
+      'conversation.end_failed',
+    );
   }, RESUME_GRACE_MS);
   timer.unref();
   call.live.hold(timer);

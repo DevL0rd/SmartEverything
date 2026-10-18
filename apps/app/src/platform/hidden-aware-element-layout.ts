@@ -1,6 +1,6 @@
-import { use, useLayoutEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
-import { ScreenPausedContext } from '../design/screen-pause';
+import { useScreenPaused } from '../design/screen-pause';
 
 interface Layout {
   readonly x: number;
@@ -139,7 +139,8 @@ export default function useElementLayout(
   onLayout: LayoutHandler | undefined,
 ): void {
   const watching = onLayout !== undefined;
-  const paused = watching ? use(ScreenPausedContext) : false;
+  const screenPaused = useScreenPaused();
+  const paused = watching && screenPaused;
   const wasPaused = useRef(paused);
   useLayoutEffect(() => {
     const node = ref.current;

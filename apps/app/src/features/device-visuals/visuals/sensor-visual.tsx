@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Circle, Defs } from 'react-native-svg';
+import { Circle } from 'react-native-svg';
 import { RING, loopStyle } from '../../../design/loops';
 import { Canvas, FULL, Layer, useSvgId } from '../parts/frame';
 import { BodyGradient, useInk, useTint } from '../parts/ink';
@@ -8,7 +8,9 @@ import { DIAL_FIGURES, Readout } from '../parts/readout';
 import { ContactShadow, Shine } from '../parts/material';
 import { circlePath } from '../parts/shapes';
 import type { VisualProps } from '../types';
+import { ContactVisual } from './contact-visual';
 import { PresenceVisual } from './presence-visual';
+import { RadarVisual } from './radar-visual';
 
 function Pulse({
   px,
@@ -47,9 +49,7 @@ function ReadingSensor({ state, size, px, tone, moving }: VisualProps): ReactNod
   return (
     <>
       <Canvas px={px}>
-        <Defs>
-          <BodyGradient id={body} ink={ink} vertical />
-        </Defs>
+        <BodyGradient id={body} ink={ink} vertical />
         <ContactShadow cx={50} cy={55} rx={46} ry={44} />
         <Circle cx={50} cy={50} r={38} fill={`url(#${body})`} stroke={ink.edge} strokeWidth={0.6} />
         <Shine d={circlePath({ cx: 50, cy: 50, r: 38 })} />
@@ -76,9 +76,15 @@ function ReadingSensor({ state, size, px, tone, moving }: VisualProps): ReactNod
 }
 
 export function SensorVisual(props: VisualProps): ReactNode {
-  return props.state.presence === null ? (
-    <ReadingSensor {...props} />
-  ) : (
+  if (props.state.open !== null) {
+    return <ContactVisual {...props} />;
+  }
+  if (props.state.presence === null) {
+    return <ReadingSensor {...props} />;
+  }
+  return props.state.detection === undefined ? (
     <PresenceVisual {...props} />
+  ) : (
+    <RadarVisual {...props} />
   );
 }

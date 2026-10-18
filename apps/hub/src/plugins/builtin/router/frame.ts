@@ -1,4 +1,4 @@
-import type { NetworkClient, RouterSnapshot } from '@smarteverything/domain';
+import { perSecond, type NetworkClient, type RouterSnapshot } from '@smarteverything/domain';
 import type { CollectOutput, Fields, InterfaceCounters } from './collect-parse';
 import {
   clampPercent,
@@ -6,7 +6,6 @@ import {
   megabitsPerSecond,
   numberOf,
   percentOf,
-  perSecond,
   roundTo,
 } from './frame-math';
 import {
@@ -53,8 +52,9 @@ export function wirelessInterfaces(state: FrameState | null): string[] {
 export function buildFrame(
   output: CollectOutput,
   previous: FrameState | null,
+  receivedAt: number,
 ): { readonly parts: FrameParts; readonly state: FrameState } {
-  const state = nextState(output, previous);
+  const state = nextState(output, previous, receivedAt);
   const seconds = previous === null ? 0 : state.routerTime - previous.routerTime;
   const stations = readStations(output, state.signals);
   const parts: FrameParts = {
@@ -79,10 +79,14 @@ function carry<T>(fresh: T | null, previous: T): T {
   return fresh ?? previous;
 }
 
-function nextState(output: CollectOutput, previous: FrameState | null): FrameState {
+function nextState(
+  output: CollectOutput,
+  previous: FrameState | null,
+  receivedAt: number,
+): FrameState {
   const before = previous ?? NO_HISTORY;
   return {
-    routerTime: numberOf(output.values.get('TS')) ?? Date.now() / 1000,
+    routerTime: receivedAt / 1000,
     cpuTimes: output.cpuTimes,
     interfaces: output.interfaces,
     slow: carry<SlowState | null>(readSlow(output), before.slow),

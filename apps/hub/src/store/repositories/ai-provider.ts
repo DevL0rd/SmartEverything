@@ -14,12 +14,13 @@ import {
 import { z } from 'zod';
 import type { StoreContext } from '../context';
 import { storedRow } from '../codec';
+import { trackPending } from './ai-chat-pending';
 import { jsonText, SQL_JSON } from '../sql';
 import {
   KEPT_PROVIDER_EVENTS,
   KEPT_PROVIDER_EVENT_BYTES,
   retainProviderEvents,
-} from '../ai-provider-retention';
+} from '../retention';
 
 const STATE = storedRow(AI_CHAT_PROVIDER.omit({ events: true, subscription_usage: true }), {
   json: ['metadata', 'prompts'],
@@ -52,6 +53,14 @@ export class AiProviderRepository {
 
   save(chatId: string, state: AiChatProvider): void {
     const row = AI_CHAT_PROVIDER.parse(state);
+    trackPending(this.context, chatId, () => {
+      this.saveRow(chatId, row);
+    });
+    this.saveSubscriptionUsage(chatId, row.subscription_usage);
+    if (row.session_id !== null) this.associate(chatId, row.device_id, row.session_id);
+  }
+
+  private saveRow(chatId: string, row: AiChatProvider): void {
     this.context.sql.run(
       'save the chat provider session',
       `insert into ai_provider_chats(chat_id, ${COLUMNS}, updated_at)
@@ -72,8 +81,6 @@ export class AiProviderRepository {
         now: this.context.now(),
       },
     );
-    this.saveSubscriptionUsage(chatId, row.subscription_usage);
-    if (row.session_id !== null) this.associate(chatId, row.device_id, row.session_id);
   }
 
   subscriptionUsage(chatId: string): Pick<AiChatProvider, 'subscription_usage'> {

@@ -7,7 +7,7 @@ const GREY = { red: 0.299, green: 0.587, blue: 0.114 } as const;
 const CHANNELS = 4;
 const FULL_SCALE = 255;
 
-export class SightRenderError extends Error {
+class SightRenderError extends Error {
   override readonly name = 'SightRenderError';
 }
 
@@ -19,7 +19,7 @@ function contextOf(canvas: OffscreenCanvas): OffscreenCanvasRenderingContext2D {
   return context;
 }
 
-export function fitted(
+function fitted(
   width: number,
   height: number,
   longEdge: number,

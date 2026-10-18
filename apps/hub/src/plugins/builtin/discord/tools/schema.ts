@@ -1,3 +1,4 @@
+import { appendTo } from '@smarteverything/domain';
 import { z } from 'zod';
 import { jsonSchemaOf } from '../../../../extensions/mcp/tools/registry';
 
@@ -12,13 +13,6 @@ export const EVENT_ID = z
   .describe(
     'The eventId of the Discord request you are answering. Optional when you name a channelId or userId.',
   );
-
-export const IDEMPOTENCY_KEY = z
-  .string()
-  .min(8)
-  .max(128)
-  .optional()
-  .describe('Optional. Pass the same key only when retrying an action so it is not repeated.');
 
 export const USER_REF = z
   .string()
@@ -49,7 +43,7 @@ export function flatSchemaOf(variants: readonly Variant[]): Readonly<Record<stri
   for (const variant of variants) {
     const parsed = SCHEMA.parse(jsonSchemaOf(variant.schema, 'input'));
     for (const [key, definition] of Object.entries(parsed.properties)) {
-      merged.set(key, [...(merged.get(key) ?? []), definition]);
+      appendTo(merged, key, definition);
     }
   }
   const properties = Object.fromEntries(
@@ -75,7 +69,7 @@ export function flatSchemaOf(variants: readonly Variant[]): Readonly<Record<stri
 export function summaryOf(action: string, schema: z.ZodType): string {
   const parsed = SCHEMA.parse(jsonSchemaOf(schema, 'input'));
   const names = Object.keys(parsed.properties).filter(
-    (key) => key !== 'action' && key !== 'eventId' && key !== 'idempotencyKey',
+    (key) => key !== 'action' && key !== 'eventId',
   );
   const needed = names.filter((key) => parsed.required.includes(key));
   const optional = names.filter((key) => !parsed.required.includes(key));

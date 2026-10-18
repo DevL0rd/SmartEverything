@@ -7,8 +7,13 @@ import {
   type BoardLayout,
   type BoardWidget,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
+import { LogTally } from '../../../design/log-tally';
 import type { HeaderAction, HeaderEditing } from '../../page-header';
 import type { BoardDefaults, BoardLayoutState } from '../types';
+
+const log = new Logger('app.widget-board');
+const editTally = new LogTally(log, 'edit.changes_summarised', 3000);
 
 type ChangeKind = 'step' | 'gesture';
 
@@ -28,9 +33,10 @@ export interface BoardEditor {
   readonly editing: boolean;
   readonly dirty: boolean;
   readonly canUndo: boolean;
+  readonly opening: string | null;
   readonly header: HeaderEditing | null;
   readonly editAction: HeaderAction;
-  readonly begin: () => void;
+  readonly begin: (openOptions?: string) => void;
   readonly done: () => void;
   readonly cancel: () => void;
   readonly undo: () => void;
@@ -41,6 +47,7 @@ export interface BoardEditor {
 }
 
 interface Session {
+  readonly opening: string | null;
   readonly start: BoardLayout;
   readonly draft: BoardLayout;
   readonly history: readonly BoardLayout[];
@@ -81,6 +88,7 @@ function recorded(
     return session;
   }
   return {
+    opening: session.opening,
     start: session.start,
     draft,
     history: push ? [...session.history, session.draft] : session.history,
@@ -92,7 +100,12 @@ function undone(session: Session | null): Session | null {
   if (session === null || previous === undefined) {
     return session;
   }
-  return { start: session.start, draft: previous, history: session.history.slice(0, -1) };
+  return {
+    opening: session.opening,
+    start: session.start,
+    draft: previous,
+    history: session.history.slice(0, -1),
+  };
 }
 
 interface Changes {
@@ -103,6 +116,7 @@ interface Changes {
 }
 
 function useChanges(
+  page: string,
   setSession: (update: (previous: Session | null) => Session | null) => void,
   defaults: BoardDefaults,
 ): Changes {
@@ -114,15 +128,18 @@ function useChanges(
     change: (board, update, kind): void => {
       const push = kind === 'step' || !gestureRef.current;
       gestureRef.current = kind === 'gesture';
+      editTally.bump(kind);
       commit((draft) => {
         const widgets = update(draft.classes[board]?.widgets ?? defaults[board]);
         return withArrangementFor(draft, board, { widgets: [...widgets] });
       }, push);
     },
     reset: (board): void => {
+      log.info('edit.board_reset', { page, board });
       commit((draft) => withoutClass(draft, board), true);
     },
     undo: (): void => {
+      log.debug('edit.undone', { page });
       setSession(undone);
     },
     settle: (): void => {
@@ -131,25 +148,38 @@ function useChanges(
   };
 }
 
+function logSkipped(page: string, reason: string): void {
+  log.debug('edit.begin_skipped', { page, reason });
+}
+
+function logEnded(event: string, page: string, dirty: boolean, session: Session | null): void {
+  log.info(event, { page, dirty, steps: session?.history.length ?? 0 });
+}
+
 export function useBoardEditor(input: BoardEditorInput): BoardEditor {
   const { page, layout, defaults, onSave } = input;
   const [session, setSession] = useState<Session | null>(null);
-  const changes = useChanges(setSession, defaults);
+  const changes = useChanges(page, setSession, defaults);
   const current = session?.draft ?? storedOf(layout);
   const dirty = session !== null && !sameLayout(session.start, session.draft);
-  const begin = (): void => {
+  const begin = (openOptions?: string): void => {
     if (session === null && layout.status === 'ready') {
       const stored = storedOf(layout);
-      setSession({ start: stored, draft: stored, history: [] });
+      log.info('edit.begun', { page, opening: openOptions ?? null });
+      setSession({ opening: openOptions ?? null, start: stored, draft: stored, history: [] });
+    } else {
+      logSkipped(page, session === null ? layout.status : 'already_editing');
     }
   };
   const done = (): void => {
+    logEnded('edit.done', page, dirty, session);
     if (dirty) {
       onSave(current);
     }
     setSession(null);
   };
   const cancel = (): void => {
+    logEnded('edit.cancelled', page, dirty, session);
     setSession(null);
   };
   return {
@@ -160,8 +190,16 @@ export function useBoardEditor(input: BoardEditorInput): BoardEditor {
     editing: session !== null,
     dirty,
     canUndo: (session?.history.length ?? 0) > 0,
+    opening: session?.opening ?? null,
     header: session === null ? null : { onDone: done, onCancel: cancel, dirty },
-    editAction: { icon: 'pencil', label: 'Edit layout', onPress: begin, shortcut: 'E' },
+    editAction: {
+      icon: 'pencil',
+      label: 'Edit layout',
+      onPress: (): void => {
+        begin();
+      },
+      shortcut: 'E',
+    },
     begin,
     done,
     cancel,

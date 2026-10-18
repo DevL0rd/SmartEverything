@@ -10,12 +10,29 @@ import { useCodexProvider } from './codex-provider-data';
 import { CodexProviderPrompt } from './codex-provider-prompts';
 import { useChatProvider } from './provider-data';
 import { ProviderPrompt } from './provider-prompts';
-function ClaudePromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
+import { background } from '@smarteverything/logging';
+interface NativeProviderQuery<Prompt> {
+  readonly data: (NativeBinding & { readonly prompts: readonly Prompt[] }) | undefined;
+  readonly error: Error | null;
+  readonly refetch: () => Promise<unknown>;
+}
+function NativePromptDock<Prompt extends { readonly status: string }>({
+  chat,
+  name,
+  provider,
+  render,
+}: {
+  readonly chat: AiChatRow;
+  readonly name: string;
+  readonly provider: NativeProviderQuery<Prompt>;
+  readonly render: (prompt: Prompt, disabled: boolean) => ReactNode;
+}): ReactNode {
   const owner = useIsOwner();
   const profile = useActiveProfile();
   const sync = useSyncStatus();
-  const provider = useChatProvider(chat.id, owner && chat.engine.kind === 'claude');
-  const device = useDevice(chat.engine.kind === 'claude' ? chat.engine.device_id : '');
+  const device = useDevice(
+    chat.engine.kind === 'claude' || chat.engine.kind === 'codex' ? chat.engine.device_id : '',
+  );
   const pending = provider.data?.prompts.filter((prompt) => prompt.status === 'pending') ?? [];
   if (!owner)
     return (
@@ -32,53 +49,41 @@ function ClaudePromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
   });
   return (
     <DecisionFrame
-      source={providerSource('Claude', device?.label)}
+      source={providerSource(name, device?.label)}
       unavailable={unavailable}
       retry={() => {
-        void provider.refetch();
+        background(provider.refetch(), 'provider.refetch_failed');
       }}
       requests={pending.map((prompt) => ({
         id: nativeRequestId(profile?.id ?? 'none', chat.id, provider.data, JSON.stringify(prompt)),
-        content: (
-          <ProviderPrompt chatId={chat.id} prompt={prompt} disabled={unavailable !== null} />
-        ),
+        content: render(prompt, unavailable !== null),
       }))}
     />
   );
 }
-function CodexPromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
-  const owner = useIsOwner();
-  const profile = useActiveProfile();
-  const sync = useSyncStatus();
-  const provider = useCodexProvider(chat.id, owner);
-  const device = useDevice(chat.engine.kind === 'codex' ? chat.engine.device_id : '');
-  const pending = provider.data?.prompts.filter((prompt) => prompt.status === 'pending') ?? [];
-  if (!owner)
-    return (
-      <Text tone="variant" className="px-gutter py-2">
-        {NATIVE_OWNER_REASON}
-      </Text>
-    );
-  const unavailable = nativeUnavailable({
-    chat,
-    profileId: profile?.id ?? null,
-    live: sync.status === 'live',
-    error: provider.error,
-    state: provider.data,
-  });
+function ClaudePromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
+  const provider = useChatProvider(chat.id, useIsOwner() && chat.engine.kind === 'claude');
   return (
-    <DecisionFrame
-      source={providerSource('Codex', device?.label)}
-      unavailable={unavailable}
-      retry={() => {
-        void provider.refetch();
-      }}
-      requests={pending.map((prompt) => ({
-        id: nativeRequestId(profile?.id ?? 'none', chat.id, provider.data, JSON.stringify(prompt)),
-        content: (
-          <CodexProviderPrompt chatId={chat.id} prompt={prompt} disabled={unavailable !== null} />
-        ),
-      }))}
+    <NativePromptDock
+      chat={chat}
+      name="Claude"
+      provider={provider}
+      render={(prompt, disabled) => (
+        <ProviderPrompt chatId={chat.id} prompt={prompt} disabled={disabled} />
+      )}
+    />
+  );
+}
+function CodexPromptDock({ chat }: { readonly chat: AiChatRow }): ReactNode {
+  const provider = useCodexProvider(chat.id, useIsOwner());
+  return (
+    <NativePromptDock
+      chat={chat}
+      name="Codex"
+      provider={provider}
+      render={(prompt, disabled) => (
+        <CodexProviderPrompt chatId={chat.id} prompt={prompt} disabled={disabled} />
+      )}
     />
   );
 }
@@ -131,7 +136,6 @@ function nativeRequestId(
   state: NativeBinding | undefined,
   request: string,
 ): string {
-  if (state === undefined)
-    throw new Error('Pending native request requires its supplying session.');
+  if (state === undefined) throw new Error('This request has closed.');
   return `${profileId}:${chatId}:${state.device_id}:${state.session_id ?? 'none'}:${state.job_id ?? 'none'}:${request}`;
 }

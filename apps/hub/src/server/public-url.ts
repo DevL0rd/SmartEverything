@@ -3,6 +3,7 @@ import { ApiError, MEDIA_PATHS, buildPath, type PublicUrlCheck } from '@smarteve
 import type { Logger } from '@smarteverything/logging';
 import type { PublicUrlOutcome } from '../store/repositories/settings';
 import type { Store } from '../store/store';
+import { failureLine } from '@smarteverything/logging';
 
 const PROBE_TIMEOUT_MS = 10_000;
 
@@ -15,10 +16,6 @@ export interface PublicUrlOptions {
 function probeUrl(publicUrl: string, nonce: string): URL {
   const base = publicUrl.endsWith('/') ? publicUrl : `${publicUrl}/`;
   return new URL(buildPath(MEDIA_PATHS.publicUrlProbe, { nonce }).slice(1), base);
-}
-
-function reasonOf(cause: unknown): string {
-  return cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
 }
 
 export class PublicUrlVerifier {
@@ -36,6 +33,11 @@ export class PublicUrlVerifier {
       throw new ApiError('conflict', 'No public URL is saved; save one before verifying it.');
     }
     const nonce = randomBytes(16).toString('hex');
+    const startedAt = performance.now();
+    this.options.log.info('public_url.checking', {
+      host: new URL(url).host,
+      protocol: new URL(url).protocol,
+    });
     this.pending.add(nonce);
     let outcome: PublicUrlOutcome;
     try {
@@ -44,7 +46,13 @@ export class PublicUrlVerifier {
       this.pending.delete(nonce);
     }
     const settings = this.options.store.settings.recordPublicUrlCheck(url, outcome);
-    this.options.log.info('public_url.checked', { verified: outcome.verified });
+    this.options.log.info('public_url.checked', {
+      verified: outcome.verified,
+      durationMs: Math.round(performance.now() - startedAt),
+      ...(outcome.verified
+        ? {}
+        : { reason: outcome.reason.replace(/\S+:\/\/\S+/g, '<url>').slice(0, 200) }),
+    });
     return outcome.verified
       ? { outcome: 'verified', settings }
       : { outcome: 'failed', reason: outcome.reason, settings };
@@ -73,7 +81,7 @@ export class PublicUrlVerifier {
     } catch (cause) {
       return {
         verified: false,
-        reason: `${target.toString()} could not be fetched: ${reasonOf(cause)}`,
+        reason: `${target.toString()} could not be fetched: ${failureLine(cause)}`,
       };
     }
   }

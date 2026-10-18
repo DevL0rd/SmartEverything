@@ -3,29 +3,29 @@ import { createHash } from 'node:crypto';
 import { canonicalRuntimeInput } from '../computers/runtime-receipts';
 import {
   COMPUTER_RUNTIME_EXECUTE,
-  COMPUTER_RUNTIME_REQUEST,
   COMPUTER_RUNTIME_REPLY,
-  NODE_AI_FRAME_V2,
+  NODE_RUNTIME_FRAME,
   COMPUTER_RUNTIME_READ,
-  COMPUTER_AI_CAPABILITIES,
+  type ApiErrorCode,
   type ComputerRuntimeRequest,
   type ComputerRuntimeReply,
   type ComputerRuntimeSettings,
   type ComputerAiRuntime,
-  type HubAiControl,
-  type HubAiControlV2,
-  type NodeAiFrameV2,
+  type HubRuntimeControl,
+  type NodeRuntimeFrame,
   type NodeHello,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { ComputerAiHost } from '../computers/ai-host';
-import {
-  adaptClaudeHost,
-  type ComputerRuntimeHost,
-  type ComputerRuntimeHostEvent,
-} from '../computers/runtime-host';
-import { NodeAiLink } from './ai-link';
-type ReplyResult = Extract<NodeAiFrameV2, { type: 'reply' }>['result'];
+import type { ComputerRuntimeHost, ComputerRuntimeHostEvent } from '../computers/runtime-host';
+import { apiErrorFor } from '../server/errors';
+import { NodeAiLink, type HubSocketFrame } from './ai-link';
+import { NodeComputerChannel } from './computer-channel';
+import type { ComputerNode } from './computer-node';
+import type { NodeLink } from './link';
+import { background, messageOf } from '@smarteverything/logging';
+import { trimOldest } from '../trim-oldest';
+const KEPT_RECEIPTS = 1_000;
+type ReplyResult = Extract<NodeRuntimeFrame, { type: 'reply' }>['result'];
 interface RequestReceipt {
   readonly signature: string;
   readonly result: Promise<ReplyResult>;
@@ -37,20 +37,27 @@ export interface NodeAiRuntimeOptions {
   readonly hello: NodeHello;
   readonly log: Logger;
   readonly transport?: NodeHubTransport;
-  readonly createHost: () => Promise<ComputerAiHost>;
-  readonly createRuntimeHosts?: () => Promise<readonly ComputerRuntimeHost[]>;
+  readonly createRuntimeHosts: () => Promise<readonly ComputerRuntimeHost[]>;
+  readonly createComputer: (link: NodeLink) => ComputerNode | null;
   readonly runtimes?: readonly ComputerAiRuntime[];
   readonly changed: (connected: boolean) => void;
 }
 export class NodeAiRuntime {
   private readonly link: NodeAiLink;
+  private readonly computer: NodeComputerChannel;
+  private created: Promise<readonly ComputerRuntimeHost[]> | null = null;
   private readonly hosts = new Map<ComputerAiRuntime, ComputerRuntimeHost>();
   private readonly subscriptions: (() => void)[] = [];
   private generation: string | null = null;
-  private v2 = false;
   private initializing: Promise<void> = Promise.resolve();
   private readonly receipts = new Map<string, RequestReceipt>();
   constructor(private readonly options: NodeAiRuntimeOptions) {
+    this.computer = new NodeComputerChannel({
+      create: options.createComputer,
+      send: (frame): void => {
+        this.link.sendComputer(frame);
+      },
+    });
     this.link = new NodeAiLink({
       ...options,
       received: (frame): void => {
@@ -69,9 +76,24 @@ export class NodeAiRuntime {
   stop(): void {
     this.link.stop();
     this.disconnect();
+    background(
+      this.created?.then(
+        (hosts) => {
+          for (const host of hosts) host.stop();
+        },
+        () => undefined,
+      ),
+      'ai_runtime.background_failed',
+    );
+    this.created = null;
   }
-  private async received(frame: HubAiControl | HubAiControlV2): Promise<void> {
+  private async received(frame: HubSocketFrame): Promise<void> {
+    if (frame.type === 'computer') {
+      this.computer.receive(frame.frame);
+      return;
+    }
     if (frame.type === 'welcome') {
+      // eslint-disable-next-line local/no-swallowed-errors -- the failed welcome was reported to its own caller
       this.initializing = this.initializing
         .catch((): void => undefined)
         .then(() => this.welcome(frame));
@@ -80,10 +102,7 @@ export class NodeAiRuntime {
     }
     await this.initializing;
     if (this.generation !== frame.generation) return;
-    const request = COMPUTER_RUNTIME_REQUEST.parse(
-      'runtime' in frame.request ? frame.request : { runtime: 'claude', request: frame.request },
-    );
-    await this.answerRequest(frame.id, frame.generation, request);
+    await this.answerRequest(frame.id, frame.generation, frame.request);
   }
   private async answerRequest(
     id: string,
@@ -96,10 +115,7 @@ export class NodeAiRuntime {
       this.reply(
         id,
         generation,
-        failure(
-          'request_collision',
-          'The request ID was already used with different runtime or input.',
-        ),
+        failure('conflict', 'The request ID was already used with different runtime or input.'),
       );
       return;
     }
@@ -107,56 +123,43 @@ export class NodeAiRuntime {
       this.reply(id, generation, await this.request(request));
       return;
     }
-    if (known === undefined && this.receipts.size >= 10_000) {
-      this.reply(
-        id,
-        generation,
-        failure(
-          'receipt_capacity',
-          'The node receipt capacity is reached; restart before new mutations.',
-        ),
-      );
-      return;
-    }
     const result = known?.result ?? this.request(request);
-    if (known === undefined)
+    if (known === undefined) {
       this.receipts.set(id, {
         signature,
         result: result.then((reply) =>
           JSON.stringify(reply).length <= 64_000
             ? reply
             : failure(
-                'already_completed',
+                'conflict',
                 'This mutation already completed; its large result was not retained and was not replayed.',
               ),
         ),
       });
+      trimOldest(this.receipts, KEPT_RECEIPTS);
+    }
     this.reply(id, generation, await result);
   }
-  private async welcome(
-    frame: Extract<HubAiControl | HubAiControlV2, { type: 'welcome' }>,
-  ): Promise<void> {
+  private async welcome(frame: Extract<HubRuntimeControl, { type: 'welcome' }>): Promise<void> {
     this.disconnect();
     this.generation = frame.generation;
-    this.v2 = 'runtimes' in frame;
-    const created =
-      this.options.createRuntimeHosts === undefined
-        ? [adaptClaudeHost(await this.options.createHost())]
-        : await this.options.createRuntimeHosts();
-    if (this.generation !== frame.generation) {
-      for (const host of created) host.stop();
-      return;
-    }
-    const settings: readonly ComputerRuntimeSettings[] =
-      'runtimes' in frame ? frame.runtimes : [{ runtime: 'claude', settings: frame.settings }];
+    this.computer.start();
+    const created = await this.runtimeHosts();
+    if (this.generation !== frame.generation) return;
     try {
-      await this.register(created, settings, frame.generation);
+      await this.register(created, frame.runtimes, frame.generation);
     } catch (cause) {
-      for (const host of created) host.stop();
       this.disconnect();
       throw cause;
     }
     if (this.generation === frame.generation) this.options.changed(true);
+  }
+  private runtimeHosts(): Promise<readonly ComputerRuntimeHost[]> {
+    this.created ??= this.options.createRuntimeHosts().catch((cause: unknown) => {
+      this.created = null;
+      throw cause;
+    });
+    return this.created;
   }
   private async register(
     created: readonly ComputerRuntimeHost[],
@@ -165,29 +168,21 @@ export class NodeAiRuntime {
   ): Promise<void> {
     for (const host of created) {
       const runtime = settings.find((entry) => entry.runtime === host.runtime);
-      if (runtime === undefined) {
-        host.stop();
-        continue;
-      }
-      if (this.hosts.has(host.runtime))
-        throw new NodeRuntimeError('A node registered a duplicate runtime host.');
+      if (runtime === undefined) continue;
       this.hosts.set(host.runtime, host);
-      this.subscriptions.push(
-        host.onEvent((event) => {
-          if (this.generation === generation && this.hosts.get(host.runtime) === host)
-            this.event(event);
-        }),
-      );
       await host.execute(
         COMPUTER_RUNTIME_EXECUTE.parse({
           runtime: runtime.runtime,
           request: { operation: 'configure', settings: runtime.settings },
         }),
       );
-      if (this.generation !== generation) {
-        for (const candidate of created) candidate.stop();
-        return;
-      }
+      if (this.generation !== generation) return;
+      this.subscriptions.push(
+        host.onEvent((event) => {
+          if (this.generation === generation && this.hosts.get(host.runtime) === host)
+            this.event(event);
+        }),
+      );
     }
   }
   private async request(request: ComputerRuntimeRequest): Promise<ReplyResult> {
@@ -207,84 +202,51 @@ export class NodeAiRuntime {
         throw new NodeRuntimeError('The runtime replied to a different operation.');
       return { ok: true, reply };
     } catch (cause) {
-      return failure(
-        cause instanceof Error ? cause.name : 'NodeExecutionError',
-        cause instanceof Error ? cause.message.slice(0, 2000) : 'The computer operation failed.',
-      );
+      const known = apiErrorFor(cause);
+      return failure(known?.code ?? 'upstream_failed', messageOf(cause).slice(0, 2000));
     }
   }
   private reply(id: string, generation: string, result: ReplyResult): void {
     if (this.generation !== generation) return;
-    const bound = { type: 'reply', id, generation, device_id: this.options.deviceId } as const;
-    if (this.v2) {
-      this.link.send({ ...bound, result });
-      return;
-    }
-    if (!result.ok) {
-      this.link.send({ ...bound, result });
-      return;
-    }
-    if (result.reply.runtime !== 'claude') return;
-    this.link.send({ ...bound, result: { ok: true, reply: result.reply.reply } });
+    this.link.send({ type: 'reply', id, generation, device_id: this.options.deviceId, result });
   }
   private event(event: ComputerRuntimeHostEvent): void {
     if (this.generation === null) return;
     const bound = { device_id: this.options.deviceId, generation: this.generation };
-    if (this.v2) {
-      if (event.kind === 'capabilities')
-        this.link.send({
-          ...bound,
-          type: 'capabilities',
-          runtime: event.runtime,
-          capabilities: event.capabilities,
-        });
-      else if (event.kind === 'native')
-        this.link.send(
-          NODE_AI_FRAME_V2.parse({
-            ...bound,
-            type: 'native_event',
-            payload: { runtime: event.runtime, notice: event.notice },
-          }),
-        );
-      else
-        this.link.send(
-          NODE_AI_FRAME_V2.parse({
-            ...bound,
-            type: 'provider_event',
-            payload: { runtime: event.runtime, event: event.event },
-          }),
-        );
-      return;
-    }
-    if (event.runtime !== 'claude') return;
-    if (event.kind === 'capabilities') {
-      const { runtime_version, operations, settings, control_reason, provider_reason } =
-        event.capabilities;
+    if (event.kind === 'capabilities')
       this.link.send({
         ...bound,
         type: 'capabilities',
-        capabilities: COMPUTER_AI_CAPABILITIES.parse({
-          runtime_version,
-          operations,
-          settings,
-          control_reason,
-          provider_reason,
-        }),
+        runtime: event.runtime,
+        capabilities: event.capabilities,
       });
-    } else if (event.kind === 'native')
-      this.link.send({ ...bound, type: 'native_event', notice: event.notice });
-    else this.link.send({ ...bound, type: 'provider_event', event: event.event });
+    else if (event.kind === 'native')
+      this.link.send(
+        NODE_RUNTIME_FRAME.parse({
+          ...bound,
+          type: 'native_event',
+          payload: { runtime: event.runtime, notice: event.notice },
+        }),
+      );
+    else
+      this.link.send(
+        NODE_RUNTIME_FRAME.parse({
+          ...bound,
+          type: 'provider_event',
+          payload: { runtime: event.runtime, event: event.event },
+        }),
+      );
   }
   private disconnect(): void {
     this.generation = null;
+    this.computer.stop();
     for (const unsubscribe of this.subscriptions) unsubscribe();
     this.subscriptions.length = 0;
-    for (const host of this.hosts.values()) host.stop();
     this.hosts.clear();
     this.options.changed(false);
   }
 }
-function failure(code: string, message: string): ReplyResult {
+function failure(code: ApiErrorCode, message: string): ReplyResult {
   return { ok: false, failure: { code, message } };
 }
 class NodeRuntimeError extends Error {

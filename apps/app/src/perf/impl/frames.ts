@@ -1,48 +1,25 @@
 import { AppState } from 'react-native';
+import { rawTimers } from '../../dev/raw-timers';
+
+const FRAME_MS = 16.7;
+const SAMPLE_MS = 250;
 
 export interface FrameHandlers {
   readonly frame: (gap: number, start: number, end: number) => void;
 }
 
 export function startFrames(handlers: FrameHandlers): () => void {
-  let last = 0;
-  let handle = 0;
-  let stopped = false;
-  const active = (): boolean => !stopped;
-  const tick = (): void => {
-    if (!active()) {
-      return;
-    }
+  let expected = performance.now() + SAMPLE_MS;
+  const timer = rawTimers.setInterval(() => {
     const now = performance.now();
-    if (last > 0) {
-      handlers.frame(now - last, last, now);
-    }
-    last = now;
-    if (active()) {
-      handle = requestAnimationFrame(tick);
-    }
-  };
+    handlers.frame(FRAME_MS + Math.max(0, now - expected), expected - SAMPLE_MS, now);
+    expected = now + SAMPLE_MS;
+  }, SAMPLE_MS);
   const state = AppState.addEventListener('change', () => {
-    if (!stopped) {
-      last = 0;
-    }
+    expected = performance.now() + SAMPLE_MS;
   });
-  const stop = (): void => {
-    if (stopped) {
-      return;
-    }
-    stopped = true;
-    try {
-      cancelAnimationFrame(handle);
-    } finally {
-      state.remove();
-    }
+  return (): void => {
+    rawTimers.clearInterval(timer);
+    state.remove();
   };
-  try {
-    handle = requestAnimationFrame(tick);
-    return stop;
-  } catch (error: unknown) {
-    stop();
-    throw error;
-  }
 }

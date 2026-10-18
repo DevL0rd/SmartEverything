@@ -15,6 +15,7 @@ import { chatSet, META_TOOL_NAMES } from '../../../ai-tools/tool-sets';
 import type { ComputerAiDirectory } from '../../../computers/ai-directory';
 import { withProviderToolAuthority } from './tool-authority';
 import { runtimeValue } from './request';
+import { ProviderToolTrace, invalidArguments, outsideGrant } from './tool-trace';
 import { scopedHub } from '../../coordination/scoped-tools';
 
 export interface ProviderGrant {
@@ -54,6 +55,7 @@ export async function routeProviderTool(
   event: Extract<ProviderEvent | CodexProviderEvent, { kind: 'tool_call' }>,
 ): Promise<{ readonly line: string; readonly failed: boolean; readonly output: string }> {
   const { directory, deviceId, grant, caller } = route;
+  const trace = new ProviderToolTrace(event, caller, route.runtime, deviceId);
   const result = await withProviderToolAuthority(
     { validate: route.validate, hubOsBan: route.hubOsBan === true },
     () => toolResult(grant, caller, event),
@@ -91,6 +93,7 @@ export async function routeProviderTool(
     route.runtime === 'claude' ? { runtime: 'claude', request } : { runtime: 'codex', request },
     z.strictObject({ delivered: z.boolean() }),
   );
+  trace.answered(result, response.delivered, text.length, responseText !== text);
   if (!response.delivered)
     throw new ApiError('conflict', 'The Claude computer no longer recognizes this tool request.');
   return { line: result.line, failed, output: text };
@@ -103,19 +106,24 @@ const TOOL_RESULT_CONTENT = {
 
 const IMAGE_MIME = z.enum(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
-export async function toolResult(
+async function toolResult(
   grant: ProviderGrant,
   caller: ToolCaller,
   event: Extract<ProviderEvent | CodexProviderEvent, { kind: 'tool_call' }>,
 ): Promise<HubToolResult> {
-  if (grant.hub === null || !grant.names.has(event.name))
+  if (grant.hub === null || !grant.names.has(event.name)) {
+    outsideGrant(event, caller, grant.names.size);
     return {
       response: { error: 'This tool is outside the immutable chat grant.' },
       line: '',
       pictures: [],
     };
+  }
   const checked = grant.hub.check(event.name, event.input);
-  if (!checked.ok) return { response: { error: checked.reason }, line: '', pictures: [] };
+  if (!checked.ok) {
+    invalidArguments(event, caller, checked.reason);
+    return { response: { error: checked.reason }, line: '', pictures: [] };
+  }
   return grant.hub.call(event.name, event.input, caller);
 }
 
@@ -123,7 +131,7 @@ function nativeToolResponse(text: string): string {
   if (text.length <= 200_000) return text;
   return JSON.stringify({
     error:
-      'The complete output exceeds the native transport limit. It is retained in the chat tool result; use bounded tool ranges to retrieve it. No output was truncated.',
+      'The complete output exceeds the native transport limit. The full output is kept in the chat; read it a page at a time with read_tool_result (chatId, callId, offset, limit). Nothing was lost.',
     output_characters: text.length,
     transport_limit: 200_000,
   });

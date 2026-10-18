@@ -8,7 +8,10 @@ import {
 import { Select } from '../../../components/select';
 import { SwitchRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
+import { DAY_MS } from '../../../format/time';
+import { MILLISECOND_UNITS } from './duration-units';
 import { NumberInput } from './number-input';
+import { DurationField } from './time-fields';
 
 interface ValueOperationFieldsProps {
   readonly content: AutomationValueContent;
@@ -109,14 +112,26 @@ function NumericOperation({ content, operation, onChange }: NumericProps): React
           });
         }}
       />
-      <NumberInput
-        label={content.kind === 'duration' ? 'Milliseconds' : 'Amount'}
-        value={operation.operation.value}
-        onChange={(value) => {
-          if (value !== undefined)
-            onChange({ kind: content.kind, operation: { type: operation.operation.type, value } });
-        }}
-      />
+      {content.kind === 'duration' ? (
+        <DurationField
+          label="Amount"
+          value={Math.max(1, operation.operation.value)}
+          units={MILLISECOND_UNITS}
+          max={DAY_MS}
+          onChange={(value) => {
+            onChange({ kind: 'duration', operation: { type: operation.operation.type, value } });
+          }}
+        />
+      ) : (
+        <NumberInput
+          label="Amount"
+          value={operation.operation.value}
+          onChange={(value) => {
+            if (value !== undefined)
+              onChange({ kind: 'number', operation: { type: operation.operation.type, value } });
+          }}
+        />
+      )}
     </View>
   );
 }

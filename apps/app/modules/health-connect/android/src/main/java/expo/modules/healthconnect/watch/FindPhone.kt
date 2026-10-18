@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import expo.modules.healthconnect.NativeGuard
+import expo.modules.healthconnect.phone.PhoneReporter
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.Ringtone
@@ -26,6 +27,9 @@ object FindPhone {
   const val ACTION_FOUND = "expo.modules.healthconnect.watch.FOUND_PHONE"
   private var ringtone: Ringtone? = null
   private var restoreVolume: Int? = null
+  @Volatile private var ringing = false
+
+  fun isRinging(): Boolean = ringing
 
   fun start(context: Context) {
     if (ringtone?.isPlaying == true) {
@@ -43,6 +47,8 @@ object FindPhone {
     }
     vibrate(context)
     anchor(context)
+    ringing = true
+    PhoneReporter.report(context)
     WatchEvents.emit("find_phone", if (ringtone == null) "no ringtone could be played; vibrating only" else "ringing")
   }
 
@@ -56,6 +62,8 @@ object FindPhone {
     vibrator(context)?.cancel()
     context.stopService(Intent(context, FindPhoneService::class.java))
     context.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+    ringing = false
+    PhoneReporter.report(context)
     WatchEvents.emit("find_phone_stopped", "stopped")
   }
 

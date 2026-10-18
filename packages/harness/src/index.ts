@@ -20,8 +20,8 @@ export type {
 } from './composition/configuration';
 export {
   installedHarnessBuiltins,
-  defaultHarnessBuiltins,
-  upgradeHarnessBuiltins,
+  desiredHarnessConfiguration,
+  HARNESS_BUILTIN_IDS,
   HARNESS_CODEGRAPH_PACKAGE,
   HARNESS_CODEGRAPH_VERSION,
   HARNESS_SKILLS_PACKAGE,
@@ -29,24 +29,19 @@ export {
   HARNESS_BROWSER_PACKAGE,
   HARNESS_BROWSER_VERSION,
 } from './composition/builtins';
-export { HARNESS_SKILL_ASSET_BUNDLE } from './composition/skill-asset-format';
 export { HarnessSkillAssets } from './composition/skill-assets';
-export { GithubHarnessSkillSource } from './composition/github-skill-source';
-export { githubSkillIdentity } from './composition/github-skill-bundle';
-export { inspectHarnessSkillBundle } from './composition/skill-inspection';
-export {
-  includedHarnessExtensions,
-  bundledHarnessSkills,
-  harnessSkillExtension,
-} from './composition/extension-catalogue';
-export { decodeSkillAsset } from './composition/skill-asset-format';
+export { harnessTreeHash, readHarnessTree, writeHarnessTree } from './composition/extension-tree';
+export { includedHarnessExtension, bundledHarnessSkills } from './composition/extension-catalogue';
 export type {
+  HarnessExtensionKind,
   HarnessSkillAssetSource,
   InstalledHarnessSkillAsset,
 } from './composition/skill-assets';
-export { HubSessionPersistence } from './persistence/service';
+export type { HarnessBuiltinSelection, HarnessDesiredInputs } from './composition/builtins';
+export { MachineSessionPersistence } from './persistence/service';
 export type {
   NativeSessionPersistencePort,
+  NativeSessionRange,
   NativeSessionSnapshot,
   NativeSessionWriter,
 } from './persistence/port';
@@ -76,16 +71,6 @@ export type { SubscriptionRoute, SubscriptionRouteOptions } from './providers/ad
 export { installSubscriptionRoutes } from './providers/install';
 export { SubscriptionProviderError } from './providers/errors';
 export type { SubscriptionFailure } from './providers/errors';
-export { PLAN_ONLY_ADMISSION, unavailableSubscriptionAdmission } from './providers/admission';
-export type { PlanOnlyAdmission, SubscriptionAdmissionPort } from './providers/admission';
-export {
-  SUBSCRIPTION_USE_PRINCIPAL,
-  unavailableSubscriptionUseAuthorization,
-} from './providers/principal';
-export type {
-  SubscriptionUsePrincipal,
-  SubscriptionUseAuthorizationPort,
-} from './providers/principal';
 export type { SubscriptionModelCatalog } from './providers/catalog';
 export type { SubscriptionAttachmentOptions } from './providers/pi-delegate';
 export { HARNESS_AUTHORITY } from './host/server-policy';
@@ -102,15 +87,7 @@ export {
   HARNESS_CLAUDE_PLUGINS_VERSION,
   HARNESS_CLAUDE_PLUGINS_METADATA,
 } from './composition/claude-plugin-metadata';
-export {
-  OFFICIAL_CLAUDE_PLUGINS,
-  officialClaudePlugin,
-  officialClaudePluginId,
-} from './composition/github-plugin-bundle';
-export type { OfficialClaudePlugin } from './composition/github-plugin-bundle';
-export { inspectHarnessClaudePluginBundle } from './composition/claude-plugin-inspection';
-export { skillSourceChunks } from './composition/github-skill-source';
-
-export { sharedHarnessSkillAssets } from './composition/github-skill-source';
+export { loadPlugin, parseMarkdownFile } from './composition/claude-plugin-manifest';
 export { readHarnessPluginAgent } from './composition/plugin-agent-source';
 export type { PluginAgentPort } from './composition/plugin-agent-port';
+export { RETRY_CEILING_MS, TRANSIENT_MESSAGE, transientDelayMs } from './providers/transient-retry';

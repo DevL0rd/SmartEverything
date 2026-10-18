@@ -3,10 +3,14 @@ import {
   SEARCH_TOOLS_INPUT,
   TOOL_DETAILS_INPUT,
   ToolDiscoveryError,
+  type DiscoverableTool,
+  type SearchScope,
   searchTools,
   toolDetails,
 } from '../../../ai-tools/tool-discovery';
-import { READS, ToolError, issuesOf, jsonSchemaOf, type Tool } from './registry';
+import { scopedToolCall } from './authority';
+import { reachableAreas } from './person-reach';
+import { READS, ToolError, issuesOf, jsonSchemaOf, type Tool, type ToolContext } from './registry';
 import { visibleTools } from './visibility';
 import { servedListing } from './served';
 
@@ -22,6 +26,13 @@ const LISTED = z.looseObject({
   }),
 });
 
+function discoverable(tool: Tool): DiscoverableTool {
+  return {
+    ...LISTED.parse(tool.listing),
+    ...(tool.variants === undefined ? {} : { variants: tool.variants }),
+  };
+}
+
 function discovered(
   run: () => Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
@@ -29,10 +40,15 @@ function discovered(
     return run();
   } catch (cause) {
     if (cause instanceof ToolDiscoveryError) {
-      throw new ToolError(cause.message);
+      throw new ToolError(cause.message, cause.code);
     }
     throw cause;
   }
+}
+
+function searchScope(context: ToolContext): SearchScope {
+  const areas = reachableAreas(context);
+  return areas === undefined ? {} : { operationInScope: (area) => areas.includes(area) };
 }
 
 export function discoveryTools(served: () => readonly Tool[]): Tool[] {
@@ -44,17 +60,16 @@ export function discoveryTools(served: () => readonly Tool[]): Tool[] {
         const result = SEARCH_TOOLS_INPUT.safeParse(raw);
         return result.success ? null : issuesOf(result.error);
       },
-      call: (context, raw) =>
-        Promise.resolve({
+      call: async (context, raw) =>
+        await scopedToolCall(context, 'search_tools', (scoped) => ({
           structured: discovered(() =>
             searchTools(
-              (context.visibleTools?.() ?? visibleTools(served(), context)).map((tool) =>
-                LISTED.parse(tool.listing),
-              ),
+              (scoped.visibleTools?.() ?? visibleTools(served(), scoped)).map(discoverable),
               raw,
+              searchScope(scoped),
             ),
           ),
-        }),
+        })),
     },
     {
       name: 'tool_details',
@@ -63,18 +78,15 @@ export function discoveryTools(served: () => readonly Tool[]): Tool[] {
         const result = TOOL_DETAILS_INPUT.safeParse(raw);
         return result.success ? null : issuesOf(result.error);
       },
-      call: (context, raw) =>
-        Promise.resolve({
+      call: async (context, raw) =>
+        await scopedToolCall(context, 'tool_details', (scoped) => ({
           structured: discovered(() =>
             toolDetails(
-              (context.visibleTools?.() ?? visibleTools(served(), context)).map((tool) => ({
-                ...LISTED.parse(tool.listing),
-                ...(tool.variants === undefined ? {} : { variants: tool.variants }),
-              })),
+              (scoped.visibleTools?.() ?? visibleTools(served(), scoped)).map(discoverable),
               raw,
             ),
           ),
-        }),
+        })),
     },
   ];
 }

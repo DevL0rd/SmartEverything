@@ -8,7 +8,7 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { FlowFrame } from '../../../components/flow-frame';
 import { Text } from '../../../components/text';
-import { notify } from '../../../components/toast-store';
+import { notifyFailure } from '../../../components/toast-store';
 import { useEntityStore } from '../../../store/store-context';
 import { useActiveProfile } from '../../../store/people';
 import { List } from '../../../components/section';
@@ -62,9 +62,7 @@ function Flow({
   };
   const next = (): void => {
     if (step === 'goals' && goals !== null) {
-      writeFitnessSettings(store, { goals }).catch((error: unknown) => {
-        notify({ message: 'Your goals were not saved', error, tone: 'critical' });
-      });
+      writeFitnessSettings(store, { goals }).catch(notifyFailure('Your goals were not saved'));
     }
     if (step === 'connect') {
       close();

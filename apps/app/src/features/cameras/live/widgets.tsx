@@ -15,7 +15,9 @@ import { Select } from '../../../components/select';
 import { RecentEventsBody } from '../components/recent-events';
 import { useCameraEntries } from '../data/use-cameras';
 import type { CameraEntry } from '../logic/cameras';
+import { useCameraCondition } from '../data/use-camera-condition';
 import { CameraTile } from './camera-tile';
+import { CameraUnreachable } from './camera-unreachable';
 
 export const CAMERAS_PAGE = 'cameras';
 
@@ -32,14 +34,27 @@ function cameraOf(entries: readonly CameraEntry[], options: unknown): CameraEntr
     : null;
 }
 
+function CameraFace({
+  entry,
+  live,
+}: {
+  readonly entry: CameraEntry;
+  readonly live: boolean;
+}): ReactNode {
+  const condition = useCameraCondition(entry);
+  return condition.online ? (
+    <CameraTile entry={entry} live={live} condition={condition} />
+  ) : (
+    <CameraUnreachable entry={entry} lastSeen={condition.lastSeen} />
+  );
+}
+
 function CameraWidget({
   options,
   editing,
-  size,
 }: {
   readonly options: unknown;
   readonly editing: boolean;
-  readonly size: WidgetSize;
 }): ReactNode {
   const entries = useCameraEntries();
   const entry = cameraOf(entries, options);
@@ -52,13 +67,12 @@ function CameraWidget({
             colour="primary"
             title="Choose a camera"
             body="Pick one in this tile’s options."
-            size={size}
           />
         </View>
       </WidgetSurface>
     );
   }
-  return <CameraTile entry={entry} live={!editing && entries.length <= LIVE_TILES_AT_MOST} />;
+  return <CameraFace entry={entry} live={!editing && entries.length <= LIVE_TILES_AT_MOST} />;
 }
 
 function CameraEditor({
@@ -93,13 +107,7 @@ function EventsWidget({
   const entries = useCameraEntries();
   const grid = size === 'XL';
   return (
-    <WidgetFrame
-      title="Latest events"
-      icon="film"
-      accent="critical"
-      href={href.cameraEvents()}
-      size={size}
-    >
+    <WidgetFrame title="Latest events" icon="film" accent="critical" href={href.cameraEvents()}>
       <View
         className={grid ? 'flex-1 overflow-hidden' : '-mx-card-pad flex-1 overflow-hidden'}
         pointerEvents={editing ? 'none' : 'auto'}
@@ -110,7 +118,7 @@ function EventsWidget({
   );
 }
 
-const ALL_SIZES: readonly WidgetSize[] = ['S', 'M', 'L', 'W'];
+const ALL_SIZES: readonly WidgetSize[] = ['M', 'W'];
 
 export const CAMERA_WIDGETS: readonly WidgetDefinition[] = [
   {
@@ -119,54 +127,42 @@ export const CAMERA_WIDGETS: readonly WidgetDefinition[] = [
     icon: 'cameras',
     group: 'Cameras',
     aspect: 16 / 9,
-    sizes: { compact: ['M', 'S'], medium: ALL_SIZES, expanded: ALL_SIZES },
+    sizes: { compact: ['M'], medium: ALL_SIZES, expanded: ALL_SIZES },
     defaultSize: 'M',
     instanceOptions: {
       schema: CAMERA_OPTIONS,
       editor: ({ value, onChange }) => <CameraEditor value={value} onChange={onChange} />,
     },
-    render: ({ options, editing, size }) => (
-      <CameraWidget options={options} editing={editing} size={size} />
-    ),
+    render: ({ options, editing }) => <CameraWidget options={options} editing={editing} />,
   },
   {
     type: 'camera-events',
     title: 'Latest events',
     icon: 'film',
     group: 'Cameras',
-    sizes: { compact: ['L'], medium: ['XL', 'L'], expanded: ['XL', 'L'] },
-    defaultSize: 'L',
+    sizes: { compact: ['XL'], medium: ['XL'], expanded: ['XL'] },
+    defaultSize: 'XL',
     render: ({ size, editing }) => <EventsWidget size={size} editing={editing} />,
   },
 ];
 
-function cameraSize(count: number, board: 'compact' | 'medium' | 'expanded'): WidgetSize {
-  if (board === 'compact') {
-    return 'M';
-  }
-  return board === 'expanded' && count > 4 ? 'S' : 'M';
-}
-
-function arrangement(
-  entries: readonly CameraEntry[],
-  board: 'compact' | 'medium' | 'expanded',
-): readonly BoardWidget[] {
+function arrangement(entries: readonly CameraEntry[]): readonly BoardWidget[] {
   return [
     ...entries.map((entry) => ({
       key: `camera:${entry.device.id}`,
       type: 'camera',
-      size: cameraSize(entries.length, board),
+      size: 'M' as const,
       options: { deviceId: entry.device.id },
     })),
-    { key: 'camera-events', type: 'camera-events', size: board === 'compact' ? 'L' : 'XL' },
+    { key: 'camera-events', type: 'camera-events', size: 'XL' as const },
   ];
 }
 
 export function cameraDefaults(entries: readonly CameraEntry[]): BoardDefaults {
   return {
-    compact: arrangement(entries, 'compact'),
-    medium: arrangement(entries, 'medium'),
-    expanded: arrangement(entries, 'expanded'),
+    compact: arrangement(entries),
+    medium: arrangement(entries),
+    expanded: arrangement(entries),
   };
 }
 

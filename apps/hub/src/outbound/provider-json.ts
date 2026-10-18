@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { messageOf } from '@smarteverything/logging';
 
 const TIMEOUT_MS = 10_000;
 
@@ -35,7 +36,7 @@ export async function fetchJson<T>(
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (cause) {
-    const reason = cause instanceof Error ? cause.message : String(cause);
+    const reason = messageOf(cause);
     throw new ProviderError(`Couldn’t reach ${provider} (${reason}).`);
   }
   if (response.status !== 200) {

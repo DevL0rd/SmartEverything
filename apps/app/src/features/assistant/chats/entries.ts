@@ -1,8 +1,9 @@
 import type { AiChatRow } from '@smarteverything/domain';
 import { chatSourceOf, type PluginNames } from '../model/chat-source';
+import { isComputerEngine } from '../provider/computer-engine';
 import type { ChatEntry, ChatLine } from './chat-entry';
 
-export interface ChatFailure {
+interface ChatFailure {
   readonly sent: boolean;
   readonly reason: string;
 }
@@ -55,7 +56,10 @@ export function entryOf(chat: AiChatRow, sources: EntrySources): ChatEntry {
     pinned: chat.pinned,
     archived: chat.archived_at !== null,
     unread: chat.unread_count,
+    requests: chat.pending_requests,
     parentId: chat.parent_id,
+    runtime: isComputerEngine(chat.engine) ? chat.engine.kind : null,
+    computerId: isComputerEngine(chat.engine) ? chat.engine.device_id : null,
     line: lineOf(chat, preview, sources.working.get(chat.id)),
   };
 }

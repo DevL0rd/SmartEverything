@@ -101,11 +101,15 @@ export interface SunSchedule {
 }
 
 export function nextSunEvent(schedule: SunSchedule, after: Date): Date | null {
-  const candidates = Array.from({ length: SEARCH_DAYS }, (_, index) =>
-    sunEventOn(schedule.event, utcDateAfter(after, index + FIRST_SEARCH_DAY), schedule.point),
-  );
-  const shifted = candidates
-    .filter((candidate) => candidate !== null)
-    .map((candidate) => new Date(candidate.getTime() + schedule.offsetMinutes * MINUTE_MS));
-  return shifted.find((candidate) => candidate.getTime() > after.getTime()) ?? null;
+  for (let day = FIRST_SEARCH_DAY; day < SEARCH_DAYS + FIRST_SEARCH_DAY; day += 1) {
+    const event = sunEventOn(schedule.event, utcDateAfter(after, day), schedule.point);
+    if (event === null) {
+      continue;
+    }
+    const shifted = event.getTime() + schedule.offsetMinutes * MINUTE_MS;
+    if (shifted > after.getTime()) {
+      return new Date(shifted);
+    }
+  }
+  return null;
 }

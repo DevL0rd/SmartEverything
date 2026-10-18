@@ -24,7 +24,7 @@ function useListOrder(): readonly string[] {
   const zone = useStoreSelector((state) => state.settings?.time_zone ?? null);
   return useMemo(
     () =>
-      sectionsOf(entries, now, zone).flatMap((section) =>
+      sectionsOf(entries, entries, { now, timeZone: zone }).flatMap((section) =>
         section.data.map((item) => item.entry.id),
       ),
     [entries, now, zone],
@@ -61,6 +61,10 @@ export function useThreadKeys(
 function shiftedKey(key: string, rows: readonly AssistantMessageRow[]): boolean {
   if (key === 'o') {
     router.navigate(href.assistantChat(NEW_CHAT_ID));
+    return true;
+  }
+  if (key === 'd') {
+    router.setParams({ sheet: 'chat' });
     return true;
   }
   const reply = latestReplyText(rows);

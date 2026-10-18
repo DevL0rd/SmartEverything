@@ -7,6 +7,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { hubNetwork } from './route-platform';
+import { countEvent, failureFacts } from './request-log';
 import { assertHubLease, type HubRouteLease } from './active-route';
 
 const log = new Logger('app.media-resource');
@@ -71,6 +72,8 @@ async function retirePresentations(network: NativeHubNetwork): Promise<void> {
     throw new NativeMediaPresentationError('Native media requires resource release support.');
   const results = await Promise.allSettled(retired.map((id) => release(id)));
   const failed = results.filter((result) => result.status === 'rejected').length;
+  if (retired.length > 0)
+    log.debug('resource.retired', { count: retired.length, failed, remaining: presentations.size });
   if (failed > 0) log.warn('resource.retirement_failed', { count: failed });
 }
 
@@ -119,8 +122,11 @@ async function resourcePresentation(
     existing?.url === input.url &&
     existing.authorizationExpiresAt === input.expiresAt &&
     existing.isCurrent()
-  )
+  ) {
+    countEvent('media.resource_reused');
     return (await existing.task).localUrl;
+  }
+  countEvent('media.resource_issued');
   const task = issuePresentation(network, lease, input, identity);
   tasks.set(identity, {
     pending: true,
@@ -137,6 +143,12 @@ async function resourcePresentation(
     return resource.localUrl;
   } catch (cause) {
     if (tasks.get(identity)?.task === task) tasks.delete(identity);
+    log.warn('resource.issue_failed', {
+      purpose: input.purpose,
+      routeGeneration: input.routeGeneration,
+      leaseCurrent: lease.isCurrent(),
+      ...failureFacts(cause),
+    });
     throw cause;
   }
 }
@@ -152,12 +164,12 @@ export async function presentMediaResource(
   const binding = lease.binding;
   const routeGeneration = lease.nativeRouteGeneration;
   if (binding === undefined || routeGeneration === undefined)
-    throw new NativeMediaPresentationError(
-      'Native media requires an independently bound route lease.',
-    );
+    throw new NativeMediaPresentationError("Couldn't open this media. Reconnect and try again.");
   assertHubLease(lease, 'GET');
-  if (Date.parse(expiresAt) <= Date.now())
+  if (Date.parse(expiresAt) <= Date.now()) {
+    log.warn('resource.authorization_expired', { purpose });
     throw new NativeMediaPresentationError('Native media authorization has expired.');
+  }
   await retirePresentations(network);
   assertHubLease(lease, 'GET');
   const signed = new URL(url);
@@ -179,9 +191,7 @@ export async function nativeMediaFile(
   const network = hubNetwork();
   if (resource !== undefined) {
     if (!resource.isCurrent() || resource.expiresAt <= Date.now())
-      throw new NativeMediaPresentationError(
-        'This native media grant has expired or its route changed.',
-      );
+      throw new NativeMediaPresentationError('This link expired. Open the media again.');
     if (network.downloadResource === undefined || network.capabilities.download !== true)
       throw new NativeMediaPresentationError(
         'This native media transport cannot open or save files.',
@@ -193,6 +203,13 @@ export async function nativeMediaFile(
     new URL(url).hostname === '127.0.0.1' &&
     GRANT_PATH.test(new URL(url).pathname)
   )
-    throw new NativeMediaPresentationError('This native media grant is no longer available.');
+    throw new NativeMediaPresentationError('This link expired. Open the media again.');
   return 'external';
+}
+
+export async function cancelNativeMediaFile(url: string): Promise<void> {
+  const resource = presentations.get(url);
+  if (resource === undefined) return;
+  presentations.delete(url);
+  await hubNetwork().releaseResource?.(resource.id);
 }

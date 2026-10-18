@@ -1,3 +1,4 @@
+import { max } from 'd3-array';
 import {
   MAX_HEART_RATE_LIMITS,
   effectiveFitnessGoals,
@@ -6,7 +7,7 @@ import {
   type FitnessGoals,
 } from '@smarteverything/domain';
 import { duration } from '../../../format/time';
-import { count, kilocalories, litres } from '../../../format/number';
+import { count, kilocalories, litres, withUnit } from '../../../format/number';
 
 export type { EffectiveFitnessGoals, FitnessGoalKey };
 
@@ -21,11 +22,11 @@ export function progressOf(value: number | null, goal: number): number {
 export function goalText(key: FitnessGoalKey, value: number): string {
   switch (key) {
     case 'steps':
-      return `${count(value)} steps`;
+      return withUnit(count(value), 'steps');
     case 'move_kcal':
       return kilocalories(value);
     case 'active_minutes':
-      return `${String(value)} min`;
+      return withUnit(count(value), 'min');
     case 'sleep_minutes':
       return duration(value * 60);
     case 'hydration_ml':
@@ -34,9 +35,12 @@ export function goalText(key: FitnessGoalKey, value: number): string {
 }
 
 export function maxHeartRateFromData(observed: readonly number[]): number | null {
-  if (observed.length === 0) {
+  const highest = max(observed);
+  if (highest === undefined) {
     return null;
   }
-  const highest = Math.round(Math.max(...observed));
-  return Math.min(MAX_HEART_RATE_LIMITS.max, Math.max(MAX_HEART_RATE_LIMITS.min, highest));
+  return Math.min(
+    MAX_HEART_RATE_LIMITS.max,
+    Math.max(MAX_HEART_RATE_LIMITS.min, Math.round(highest)),
+  );
 }

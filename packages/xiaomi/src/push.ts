@@ -40,15 +40,20 @@ const UPLINK = z.discriminatedUnion('method', [
   }),
 ]);
 
-const CHILD_EVENT = z.strictObject({
+const CHILD_EVENT = z.object({
   id: ID,
   method: LEGACY_BUTTON_METHOD,
-  params: z.tuple([]),
+  params: z.array(z.unknown()),
   sid: z.string().min(1),
   model: z.string().min(1),
 });
 
 const METHOD_CALL = z.object({ id: ID, method: z.string() });
+
+const STATUS_NOTICE = z.object({
+  id: ID,
+  method: z.enum(['event.gw.heartbeat', 'event.keepalive', 'props']),
+});
 
 const SUBSCRIBE_RESULT = z.object({ code: z.number().int() });
 
@@ -109,6 +114,11 @@ function parseJson(text: string): unknown {
 
 export function isUplink(text: string): boolean {
   return METHOD_CALL.safeParse(parseJson(text)).success;
+}
+
+export function statusNoticeId(text: string): number | null {
+  const notice = STATUS_NOTICE.safeParse(parseJson(text));
+  return notice.success ? notice.data.id : null;
 }
 
 function checkDevice(expected: string, received: string): void {

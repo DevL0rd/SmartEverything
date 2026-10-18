@@ -1,55 +1,23 @@
-import { href } from '../../app-shell/hrefs';
 import type { SettingDefinition } from '../../settings/types';
+import { ROUTES } from './routes';
 
-export const SETTINGS: readonly SettingDefinition[] = [
-  {
-    id: 'automations.values',
-    page: 'automations',
-    title: 'Values',
-    icon: 'customize',
-    keywords: ['variables', 'remember', 'number', 'duration', 'choice'],
-    scope: 'server',
-    control: 'link',
-    href: href.automationValues(),
-  },
-  {
-    id: 'automations.sequences',
-    page: 'automations',
-    title: 'Sequences',
-    icon: 'layers',
-    keywords: ['reusable', 'steps', 'parameters'],
-    scope: 'server',
-    control: 'link',
-    href: href.automationSequences(),
-  },
-  {
-    id: 'automations.scheduled',
-    page: 'automations',
-    title: 'Scheduled',
-    icon: 'timer',
-    keywords: ['later', 'timer', 'delay', 'once', 'countdown'],
-    scope: 'server',
-    control: 'link',
-    href: href.scheduled(),
-  },
-  {
-    id: 'automations.schedule',
-    page: 'automations',
-    title: 'Schedule',
-    icon: 'calendar',
-    keywords: ['week', 'next', 'when', 'calendar'],
-    scope: 'server',
-    control: 'link',
-    href: href.automationSchedule(),
-  },
-  {
-    id: 'automations.run-history',
-    page: 'automations',
-    title: 'Run history',
-    icon: 'activity',
-    keywords: ['log', 'ran', 'failed', 'history'],
-    scope: 'server',
-    control: 'link',
-    href: href.automationRuns(),
-  },
-];
+const LINKED: ReadonlySet<string> = new Set([
+  'automations.values',
+  'automations.sequences',
+  'automations.scheduled',
+  'automations.schedule',
+  'automations.runs',
+]);
+
+export const SETTINGS: readonly SettingDefinition[] = ROUTES.filter((route) =>
+  LINKED.has(route.key),
+).map((route): SettingDefinition => ({
+  id: route.key,
+  page: 'automations',
+  title: route.title,
+  icon: route.icon,
+  keywords: route.keywords,
+  scope: 'server',
+  control: 'link',
+  href: route.href,
+}));

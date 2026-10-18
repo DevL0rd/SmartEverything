@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { Button } from '../../components/button';
 import { Text } from '../../components/text';
 import { exportPresenceText } from './export-text';
+import { failure } from './use-presence-operation';
 export function TextExportButton({
   name,
   content,
@@ -15,7 +16,7 @@ export function TextExportButton({
   const [error, setError] = useState<string | null>(null);
   const share = (): void => {
     exportPresenceText(name, content).catch((caught: unknown) => {
-      setError(String(caught));
+      setError(failure(caught));
     });
   };
   return (

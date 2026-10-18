@@ -19,9 +19,9 @@ export interface ControlSpec {
   readonly onPress: () => void;
 }
 
-export const OLD_HUB_REASON = 'Update your home server to share video';
+const OLD_HUB_REASON = 'Update your home server to share video';
 
-export const RECONNECTING_REASON = 'Reconnecting…';
+const RECONNECTING_REASON = 'Reconnecting…';
 
 export interface ControlReasons {
   readonly camera: string | null;
@@ -60,7 +60,7 @@ export function reasonsOf(call: CallView, caps: EngineCapabilities): ControlReas
   return { camera, share, notice: camera ?? share };
 }
 
-export function cameraOnOf(call: CallView): boolean {
+function cameraOnOf(call: CallView): boolean {
   return (
     call.video.camera === 'on' || call.video.camera === 'paused' || call.video.camera === 'starting'
   );

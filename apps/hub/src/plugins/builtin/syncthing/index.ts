@@ -1,4 +1,5 @@
 import type { PluginManifestInput } from '@smarteverything/domain';
+import { figureWidget } from '../board-widget';
 import { defineBuiltinPlugin } from '../define';
 import { SYNC_ALERTS } from './event-plan';
 import { ACTIVITY_STREAM, SNAPSHOT_STREAM, startSyncthing } from './runtime';
@@ -15,7 +16,13 @@ const SYNCTHING_MANIFEST: PluginManifestInput = {
   icon: 'folder-sync',
   contributes: {
     data: [
-      { stream: SNAPSHOT_STREAM, title: 'Syncthing', schema: { type: 'object' }, history: 0 },
+      {
+        stream: SNAPSHOT_STREAM,
+        title: 'Syncthing',
+        schema: { type: 'object' },
+        history: 0,
+        live: true,
+      },
       { stream: ACTIVITY_STREAM, title: 'File activity', schema: { type: 'array' }, history: 0 },
     ],
     events: [
@@ -50,6 +57,7 @@ const SYNCTHING_MANIFEST: PluginManifestInput = {
         fields: { message: 'string' },
       },
     ],
+    widgets: [figureWidget('syncthing-sync', 'Sync', 'folderSync', SNAPSHOT_STREAM)],
     settings: SYNCTHING_SETTINGS_FORM,
     search: 'push',
     deviceFamilies: ['file_sync'],

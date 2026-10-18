@@ -1,178 +1,130 @@
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { PluginRecords } from '../contract';
 import { SNOWFLAKE } from './ids';
-import { jsonOf } from './json';
-import { PERSON } from './person';
+import { jsonOf } from '../json-value';
+import type { Person } from './person';
 
 const TEXT_LIMIT = 4000;
 const CAPACITY = 25_000;
-const EVICT_SHARE = 20;
-export const OWNER_CONTEXT_TTL_MS = 24 * 60 * 60_000;
-const OWNER_CONTEXT_CAP = 1000;
 
-const EVENT_ORIGIN = z.strictObject({
+const ROUTE = z.object({
   id: z.uuid(),
-  kind: z.enum(['message', 'interaction', 'voice', 'owner']),
+  kind: z.enum(['message', 'interaction', 'voice']),
   actorId: SNOWFLAKE,
   channelId: SNOWFLAKE,
   guildId: SNOWFLAKE.nullable(),
   messageId: SNOWFLAKE.optional(),
   sourceEventId: z.uuid().optional(),
-  text: z.string().max(TEXT_LIMIT),
-  author: PERSON.optional(),
-  mentions: z.array(PERSON).max(20).optional(),
   receivedAt: z.iso.datetime(),
 });
 
-export type EventOrigin = z.output<typeof EVENT_ORIGIN>;
+export type EventOrigin = z.output<typeof ROUTE> & {
+  readonly text: string;
+  readonly author?: Person | undefined;
+  readonly mentions?: readonly Person[] | undefined;
+};
 
 export interface OriginsLog {
   readonly warn: (event: string, payload: Readonly<Record<string, unknown>>) => void;
 }
 
+function messageKey(origin: Pick<EventOrigin, 'channelId' | 'messageId'>): string {
+  return `${origin.channelId}:${origin.messageId ?? ''}`;
+}
+
+function routeOf(origin: EventOrigin): z.output<typeof ROUTE> {
+  const { text: _text, author: _author, mentions: _mentions, ...route } = origin;
+  return route;
+}
+
 export class OriginStore {
   private readonly items = new Map<string, EventOrigin>();
-  private readonly messages = new Set<string>();
+  private readonly messages = new Map<string, string>();
 
   constructor(
     private readonly records: PluginRecords,
     private readonly log: OriginsLog,
     private readonly capacity = CAPACITY,
-    private readonly now: () => number = Date.now,
   ) {}
 
   load(): void {
+    const routes: z.output<typeof ROUTE>[] = [];
     for (const { key, value } of this.records.list()) {
-      const parsed = EVENT_ORIGIN.safeParse(value);
-      if (!parsed.success || parsed.data.id !== key) {
+      const parsed = ROUTE.safeParse(value);
+      if (parsed.success && parsed.data.id === key) {
+        routes.push(parsed.data);
+      } else {
         this.log.warn('discord.origin_unreadable', { key });
         this.records.remove(key);
-      } else if (this.expired(parsed.data)) {
-        this.records.remove(key);
-      } else {
-        this.remember(parsed.data);
       }
     }
+    routes.sort(byReceived);
+    for (const route of routes) {
+      this.remember({ ...route, text: '' });
+    }
+    this.evict();
   }
 
   get(id: string): EventOrigin | undefined {
     return this.items.get(id);
   }
 
-  expired(origin: EventOrigin): boolean {
-    return (
-      origin.kind === 'owner' && this.now() - Date.parse(origin.receivedAt) > OWNER_CONTEXT_TTL_MS
-    );
-  }
-
   since(after: string | undefined, limit: number): readonly EventOrigin[] {
     const cursor = cursorOf(after);
-    const found = [...this.items.values()]
-      .filter((origin) => origin.kind !== 'owner' && cursor.before(origin))
-      .sort(byReceived);
+    const found = [...this.items.values()].filter((origin) => cursor.before(origin));
     return after === undefined ? found.slice(-limit) : found.slice(0, limit);
   }
 
-  ownerContext(channelId: string, actorId: string, guildId: string, now: Date): EventOrigin {
-    const existing = [...this.items.values()].find(
-      (origin) =>
-        origin.kind === 'owner' &&
-        origin.channelId === channelId &&
-        origin.actorId === actorId &&
-        origin.guildId === guildId,
-    );
-    if (existing !== undefined && !this.expired(existing)) {
-      return existing;
-    }
-    if (existing !== undefined) {
-      this.forget(existing.id);
-    }
-    const origin: EventOrigin = {
-      id: randomUUID(),
-      kind: 'owner',
-      actorId,
-      channelId,
-      guildId,
-      text: '',
-      receivedAt: now.toISOString(),
-    };
-    this.capture(origin);
-    this.trimContexts();
-    return origin;
-  }
-
   hasMessage(channelId: string, messageId: string): boolean {
-    return this.messages.has(`${channelId}:${messageId}`);
+    return this.messages.has(messageKey({ channelId, messageId }));
   }
 
   capture(origin: EventOrigin): void {
     const clipped = { ...origin, text: origin.text.slice(0, TEXT_LIMIT) };
     this.remember(clipped);
-    this.records.put(clipped.id, jsonOf(clipped));
-    this.trim();
+    this.records.put(clipped.id, jsonOf(routeOf(clipped)));
+    this.evict();
   }
 
   edit(messageId: string, channelId: string, text: string): void {
-    for (const origin of this.items.values()) {
-      if (origin.messageId === messageId && origin.channelId === channelId) {
-        this.replace({ ...origin, text: text.slice(0, TEXT_LIMIT) });
-      }
+    const id = this.messages.get(messageKey({ channelId, messageId }));
+    const origin = id === undefined ? undefined : this.items.get(id);
+    if (origin !== undefined) {
+      this.items.set(origin.id, { ...origin, text: text.slice(0, TEXT_LIMIT) });
     }
-  }
-
-  forget(id: string): void {
-    const origin = this.items.get(id);
-    if (origin === undefined) {
-      return;
-    }
-    this.items.delete(id);
-    if (origin.messageId !== undefined) {
-      this.messages.delete(`${origin.channelId}:${origin.messageId}`);
-    }
-    this.records.remove(id);
   }
 
   private remember(origin: EventOrigin): void {
     this.items.set(origin.id, origin);
     if (origin.messageId !== undefined) {
-      this.messages.add(`${origin.channelId}:${origin.messageId}`);
+      this.messages.set(messageKey(origin), origin.id);
     }
   }
 
-  private replace(origin: EventOrigin): void {
-    this.items.set(origin.id, origin);
-    this.records.put(origin.id, jsonOf(origin));
-  }
-
-  private trim(): void {
-    const ordinary = [...this.items.values()].filter((origin) => origin.kind !== 'owner');
-    if (ordinary.length <= this.capacity) {
-      return;
-    }
-    const drop = Math.max(1, Math.ceil(ordinary.length / EVICT_SHARE));
-    for (const origin of ordinary.slice(0, drop)) {
-      this.forget(origin.id);
-    }
-  }
-
-  private trimContexts(): void {
-    const contexts = [...this.items.values()]
-      .filter((origin) => origin.kind === 'owner')
-      .sort(byReceived);
-    for (const origin of contexts.slice(0, Math.max(0, contexts.length - OWNER_CONTEXT_CAP))) {
-      this.forget(origin.id);
+  private evict(): void {
+    for (const [id, origin] of this.items) {
+      if (this.items.size <= this.capacity) {
+        return;
+      }
+      this.items.delete(id);
+      if (origin.messageId !== undefined) {
+        this.messages.delete(messageKey(origin));
+      }
+      this.records.remove(id);
     }
   }
 }
 
-function byReceived(left: EventOrigin, right: EventOrigin): number {
+function byReceived(
+  left: Pick<EventOrigin, 'receivedAt' | 'id'>,
+  right: Pick<EventOrigin, 'receivedAt' | 'id'>,
+): number {
   return (
     Date.parse(left.receivedAt) - Date.parse(right.receivedAt) || left.id.localeCompare(right.id)
   );
 }
 
-export function cursorOf(after: string | undefined): { before: (origin: EventOrigin) => boolean } {
+function cursorOf(after: string | undefined): { before: (origin: EventOrigin) => boolean } {
   if (after === undefined) {
     return { before: () => true };
   }

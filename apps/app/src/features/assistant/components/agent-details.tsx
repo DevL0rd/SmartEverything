@@ -1,39 +1,27 @@
-import { runBoundToChat } from '../model/subagent-state';
-import { AgentChatDelete } from './agent-chat-delete';
-import { useHarnessCatalogue } from '../data/harness';
-import { harnessHostName, harnessRouteLabel } from '../model/harness-context';
-import { AgentMessage } from './agent-message';
-import { Markdown } from './markdown/markdown';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { AiAgentRun } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
-import { CollapseRoot, CollapseBody, TurnChevron } from './disclosure';
-import { Interactive } from '../../../components/interactive';
 import { Button } from '../../../components/button';
-import { NavRow, ValueRow } from '../../../components/rows';
+import { IconButton } from '../../../components/icon-button';
+import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
-import { Text } from '../../../components/text';
-import { useDevice, useIsOwner } from '../../../store/selectors';
-import { QueryState } from '../../computers/components/query-state';
+import { useIsOwner } from '../../../store/selectors';
 import { useAgentRun, useInterruptAgent } from '../data/agent-runs';
+import { useGo } from '../details/details-scope';
+import { LoadFailed, RowsSkeleton } from '../details/section-state';
+import { RunTrace } from '../details/run-trace';
+import { RunUsage } from '../details/run-usage';
+import { runStateLabel } from '../details/run-state';
+import { AgentChatDelete } from './agent-chat-delete';
+import { AgentMessage } from './agent-message';
+import { Markdown } from './markdown/markdown';
+import { Text } from '../../../components/text';
+import { background } from '@smarteverything/logging';
 
-export const AGENT_SOURCE_LABELS = {
-  smarteverything: 'SmartEverything',
-  dsh: 'SmartEverything',
-  claude: 'Claude',
-  codex: 'Codex',
-} as const;
-const UNREPORTED = 'Not provided by this runtime';
-function DetailText({
-  title,
-  value,
-}: {
-  readonly title: string;
-  readonly value: string | null;
-}): ReactNode {
-  return value === null ? null : (
-    <View className="gap-2">
+function Detail({ title, value }: { readonly title: string; readonly value: string }): ReactNode {
+  return (
+    <View className="gap-1 px-4 py-3">
       <Text variant="caption" tone="variant">
         {title}
       </Text>
@@ -41,66 +29,54 @@ function DetailText({
     </View>
   );
 }
-function AgentIdentity({ run }: { readonly run: AiAgentRun }): ReactNode {
-  const device = useDevice(run.device_id ?? '');
-  const status =
-    run.state === 'unknown' && run.last_known_state !== null
-      ? `Unknown · last known ${run.last_known_state}`
-      : run.state;
+
+function FactRows({ run }: { readonly run: AiAgentRun }): ReactNode {
+  const go = useGo();
+  const child = run.child_chat_id;
+  const parentRun = run.parent_run_id;
   return (
-    <List title="Execution">
-      <ValueRow title="Engine" value={AGENT_SOURCE_LABELS[run.source]} />
-      <AgentTimes run={run} status={status} />
-      <HarnessAgentRoute run={run} />
-      <ValueRow title="Model" value={run.model ?? UNREPORTED} />
-      <ValueRow title="Thinking" value={run.effort ?? UNREPORTED} />
-      <ValueRow title="Runs on" value={agentHostName(run, device?.label)} />
-      <View className="gap-1 px-4 py-3">
-        <Text variant="footnote" tone="variant">
-          Folder
-        </Text>
-        <Text selectable>{run.cwd ?? UNREPORTED}</Text>
-      </View>
+    <List>
+      {[
+        run.task === null ? null : <Detail key="task" title="Objective" value={run.task} />,
+        run.progress === null ? null : (
+          <Detail key="progress" title="Latest progress" value={run.progress} />
+        ),
+        run.result === null ? null : <Detail key="result" title="Result" value={run.result} />,
+        run.error === null ? null : <Detail key="error" title="Error" value={run.error} />,
+        run.truncated ? (
+          <ListRow
+            key="truncated"
+            icon="info"
+            iconTone="warning"
+            title="This runtime’s retained output is truncated."
+          />
+        ) : null,
+        child === null ? null : (
+          <ListRow
+            key="child"
+            title="Open child chat"
+            chevron
+            onPress={() => {
+              go(href.assistantChat(child));
+            }}
+          />
+        ),
+        parentRun === null ? null : (
+          <ListRow
+            key="parent"
+            title="Parent agent"
+            chevron
+            onPress={() => {
+              go(href.assistantChat(run.parent_chat_id, { sheet: 'chat', agent: parentRun }));
+            }}
+          />
+        ),
+      ]}
     </List>
   );
 }
-function AgentUsage({ run }: { readonly run: AiAgentRun }): ReactNode {
-  const usage = run.usage;
-  if (usage === null) return <Text tone="variant">Usage: {UNREPORTED}</Text>;
-  return (
-    <List title="Reported usage">
-      <ValueRow
-        title="Input tokens"
-        value={usage.input_tokens === null ? UNREPORTED : String(usage.input_tokens)}
-      />
-      <ValueRow
-        title="Output tokens"
-        value={usage.output_tokens === null ? UNREPORTED : String(usage.output_tokens)}
-      />
-      <ValueRow
-        title="Total tokens"
-        value={usage.total_tokens === null ? UNREPORTED : String(usage.total_tokens)}
-      />
-      <ValueRow
-        title="Cost"
-        value={usage.cost_usd === null ? UNREPORTED : `${usage.cost_usd.toFixed(4)} USD`}
-      />
-      <ValueRow
-        title="Tool calls"
-        value={usage.tool_uses === null ? UNREPORTED : String(usage.tool_uses)}
-      />
-      <ValueRow
-        title="Duration"
-        value={
-          usage.duration_ms === null
-            ? UNREPORTED
-            : `${String(Math.round(usage.duration_ms / 1000))} s`
-        }
-      />
-    </List>
-  );
-}
-function AgentActions({
+
+function Actions({
   run,
   onDeleted,
 }: {
@@ -109,197 +85,84 @@ function AgentActions({
 }): ReactNode {
   const owner = useIsOwner();
   const interrupt = useInterruptAgent(run.parent_chat_id, run.id);
+  const mayInterrupt =
+    run.supported_actions.includes('interrupt') &&
+    (owner || run.source === 'smarteverything' || run.source === 'dsh');
   return (
-    <View className="gap-3">
-      {run.child_chat_id === null ? null : (
-        <NavRow title="Open child chat" href={href.assistantChat(run.child_chat_id)} />
-      )}
-      <AgentChatDelete run={run} onDeleted={onDeleted} />
-      {run.parent_run_id === null ? null : (
-        <NavRow
-          title="Parent agent"
-          href={href.assistantChat(run.parent_chat_id, {
-            sheet: 'chat',
-            agent: run.parent_run_id,
-          })}
-        />
-      )}
-      {run.supported_actions.includes('interrupt') &&
-      (owner || run.source === 'smarteverything' || run.source === 'dsh') ? (
+    <View className="flex-row flex-wrap gap-2 px-4">
+      {mayInterrupt ? (
         <Button
-          label="Interrupt agent"
-          variant="tonal"
+          label="Interrupt"
+          icon="square"
+          variant="outlined"
           loading={interrupt.isPending}
           onPress={() => {
             interrupt.mutate();
           }}
         />
       ) : null}
+      <AgentChatDelete run={run} onDeleted={onDeleted} />
     </View>
   );
 }
-function AgentResult({
+
+function Heading({
   run,
-  onDeleted,
+  onBack,
 }: {
   readonly run: AiAgentRun;
-  readonly onDeleted: () => void;
+  readonly onBack: (() => void) | null;
 }): ReactNode {
   return (
-    <View className="gap-section-gap">
-      <DetailText title="Objective" value={run.task} />
-      <DetailText title="Latest progress" value={run.progress} />
-      <DetailText title="Result" value={run.result} />
-      <DetailText title="Error" value={run.error} />
-      {run.truncated ? (
-        <Text tone="warning">This runtime’s retained output is truncated.</Text>
-      ) : null}
-      <AgentActions run={run} onDeleted={onDeleted} />
-      <AgentMessage run={run} />
-      <AgentContext run={run} />
-    </View>
+    <ListRow
+      title={run.title}
+      subtitle={runStateLabel(run)}
+      {...(onBack === null
+        ? {}
+        : {
+            leading: <IconButton icon="chevronLeft" label="Back to activity" onPress={onBack} />,
+          })}
+    />
   );
 }
+
 export function AgentDetails({
   chatId,
   agentRunId,
+  onBack,
   onDeleted,
-  childChatId,
 }: {
-  readonly childChatId?: string;
   readonly chatId: string;
   readonly agentRunId: string;
+  readonly onBack: (() => void) | null;
   readonly onDeleted: () => void;
 }): ReactNode {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const detail = useAgentRun(chatId, agentRunId, cursor);
-  return (
-    <View className="gap-section-gap">
-      <QueryState
-        error={detail.error}
-        pending={detail.isPending}
+  if (detail.error !== null) {
+    return (
+      <LoadFailed
+        what="this agent"
         retry={() => {
-          void detail.refetch();
+          background(detail.refetch(), 'detail.refetch_failed');
         }}
       />
-      {detail.data === undefined ? null : !runBoundToChat(detail.data.run, chatId, childChatId) ? (
-        <Text tone="variant">This run belongs to another chat.</Text>
-      ) : (
-        <>
-          <Text variant="title-3">{detail.data.run.title}</Text>
-          <AgentResult run={detail.data.run} onDeleted={onDeleted} />
-          <AgentTrace detail={detail.data} setCursor={setCursor} />
-          {detail.data.truncated ? (
-            <Text tone="warning">Published activity is truncated.</Text>
-          ) : null}
-        </>
-      )}
+    );
+  }
+  if (detail.data === undefined) return <RowsSkeleton />;
+  const { run } = detail.data;
+  return (
+    <View className="gap-section-gap pb-3">
+      <List>
+        <Heading run={run} onBack={onBack} />
+      </List>
+      <FactRows run={run} />
+      <Actions run={run} onDeleted={onDeleted} />
+      <View className="px-4">
+        <AgentMessage run={run} />
+      </View>
+      <RunUsage run={run} />
+      <RunTrace detail={detail.data} onNext={setCursor} />
     </View>
-  );
-}
-
-function AgentTimes({
-  run,
-  status,
-}: {
-  readonly run: AiAgentRun;
-  readonly status: string;
-}): ReactNode {
-  return (
-    <>
-      <ValueRow title="Status" value={status} />
-      <ValueRow
-        title="Started"
-        value={run.started_at === null ? UNREPORTED : new Date(run.started_at).toLocaleString()}
-      />
-      <ValueRow
-        title="Finished"
-        value={run.completed_at === null ? UNREPORTED : new Date(run.completed_at).toLocaleString()}
-      />
-    </>
-  );
-}
-
-function AgentTrace({
-  detail,
-  setCursor,
-}: {
-  readonly detail: NonNullable<ReturnType<typeof useAgentRun>['data']>;
-  readonly setCursor: (value: string | undefined) => void;
-}): ReactNode {
-  return (
-    <>
-      {detail.trace.length === 0 ? null : (
-        <View className="gap-3">
-          <Text variant="title-3">Published activity</Text>
-          {detail.trace.map((entry) => (
-            <View key={entry.seq} className="gap-1">
-              <Text variant="footnote" tone="variant">
-                {entry.kind} · {new Date(entry.created_at).toLocaleString()}
-              </Text>
-              <Text selectable>{entry.text}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-      {detail.next_cursor === null ? null : (
-        <Button
-          label="Next activity page"
-          variant="tonal"
-          onPress={() => {
-            setCursor(detail.next_cursor ?? undefined);
-          }}
-        />
-      )}
-    </>
-  );
-}
-
-function HarnessAgentRoute({ run }: { readonly run: AiAgentRun }): ReactNode {
-  const catalogue = useHarnessCatalogue();
-  const harness = run.harness;
-  if (harness === undefined) return null;
-  const route = catalogue.data?.routes.find((row) => row.id === harness.model_route_id);
-  return (
-    <>
-      <ValueRow title="Origin host" value={harnessHostName(harness.target, catalogue.data)} />
-      <ValueRow
-        title="Model supplier"
-        value={
-          route === undefined ? 'Supplier unavailable' : harnessRouteLabel(route, catalogue.data)
-        }
-      />
-    </>
-  );
-}
-
-function agentHostName(run: AiAgentRun, deviceName: string | undefined): string {
-  if (run.harness?.target.kind === 'server') return 'Home hub';
-  if (run.device_id === null) return UNREPORTED;
-  return deviceName ?? 'Computer unavailable';
-}
-
-function AgentContext({ run }: { readonly run: AiAgentRun }): ReactNode {
-  const [open, setOpen] = useState(false);
-  return (
-    <CollapseRoot className="gap-2">
-      <Interactive
-        label={open ? 'Hide agent details' : 'Show agent details'}
-        onPress={() => {
-          setOpen(!open);
-        }}
-        className="min-h-touch-min flex-row items-center justify-between rounded-sm px-2"
-      >
-        <Text variant="label">Details and usage</Text>
-        <TurnChevron open={open} />
-      </Interactive>
-      {open ? (
-        <CollapseBody className="gap-3">
-          <AgentIdentity run={run} />
-          <AgentUsage run={run} />
-          <DetailText title="Report availability" value={run.observability_reason} />
-        </CollapseBody>
-      ) : null}
-    </CollapseRoot>
   );
 }

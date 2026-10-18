@@ -1,71 +1,59 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
-import type { AiAgentRun } from '@smarteverything/domain';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useIsOwner, useRow } from '../../../store/selectors';
-import { CollapseBody, CollapseRoot, TurnChevron } from '../components/disclosure';
-import { useCurrentChildRuns } from '../data/agent-runs';
-import { useDeleteInactiveChats } from '../data/delete-inactive-chats';
-import { inactiveChild } from '../model/subagent-state';
-import { isComputerEngine } from '../provider/computer-engine';
+import { useIsOwner } from '../../../store/selectors';
+import { CollapseBody, CollapseRoot, TurnChevron } from '../../../components/disclosure';
+import type { ChatEntry } from './chat-entry';
 import { ChatRow } from './chat-row';
-import type { ChatRowItem } from './chat-entry';
+import { deleteInactiveAgents } from './row-actions';
+import { background } from '@smarteverything/logging';
 
-interface SubagentRowsProps {
-  readonly parentId: string;
-  readonly rows: readonly ChatRowItem[];
+export interface InactiveAgentsProps {
+  readonly agents: readonly ChatEntry[];
   readonly selected: string | null;
   readonly timeZone: string | null;
-  readonly onOpen: (id: string) => void;
-  readonly onDeleted: (id: string) => void;
-  readonly expandedInactives: ReadonlySet<string>;
-  readonly onToggleInactive: (id: string) => void;
+  readonly onOpen: (chatId: string) => void;
+  readonly onToggleAgents: (chatId: string) => void;
+  readonly onDeleted: (chatId: string) => void;
 }
 
 function InactiveHeader({
   count,
   open,
+  agents,
   onToggle,
-  runs,
-  parentId,
-  onDeleted,
 }: {
   readonly count: number;
   readonly open: boolean;
+  readonly agents: readonly ChatEntry[];
   readonly onToggle: () => void;
-  readonly runs: readonly AiAgentRun[];
-  readonly parentId: string;
-  readonly onDeleted: (id: string) => void;
 }): ReactNode {
   const owner = useIsOwner();
-  const parent = useRow('ai_chats', parentId);
-  const deletion = useDeleteInactiveChats(parentId, onDeleted);
-  const allowed = parent !== null && (!isComputerEngine(parent.engine) || owner);
   return (
-    <View className="flex-row items-center gap-1 px-gutter">
-      <View aria-hidden className="w-6" />
+    <View className="flex-row items-center gap-1">
       <Interactive
-        label={`${open ? 'Collapse' : 'Expand'} ${String(count)} inactive subagents`}
+        label={`${open ? 'Collapse' : 'Expand'} ${String(count)} inactive agents`}
+        expanded={open}
         onPress={onToggle}
-        className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-1.5 rounded-sm px-1"
+        className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-2 rounded-sm"
         layerClassName="rounded-sm"
       >
         <TurnChevron open={open} />
-        <Text variant="caption" tone="variant">{`Inactive · ${String(count)}`}</Text>
+        <Text variant="footnote" tone="variant">{`Inactive agents · ${String(count)}`}</Text>
       </Interactive>
-      {allowed ? (
+      {open && owner ? (
         <Interactive
-          label={`Delete all ${String(count)} inactive subagent chats`}
-          disabled={deletion.isPending}
+          label={`Delete all ${String(count)} inactive agent chats`}
           onPress={() => {
-            deletion.mutate(runs);
+            background(deleteInactiveAgents(agents), 'inactive_agents.delete_failed');
           }}
-          className="min-h-touch-min justify-center rounded-sm px-2"
+          className="min-h-touch-min justify-center rounded-sm px-3"
           layerClassName="rounded-sm"
         >
-          <Text variant="caption" tone="critical">
-            {deletion.isPending ? 'Deleting…' : 'Delete all'}
+          <Text variant="label" tone="critical">
+            Delete all
           </Text>
         </Interactive>
       ) : null}
@@ -73,49 +61,41 @@ function InactiveHeader({
   );
 }
 
-export function SubagentRows(props: SubagentRowsProps): ReactNode {
-  const query = useCurrentChildRuns(props.parentId);
-  const runs =
-    query.isSuccess && !query.hasNextPage && !query.isFetching
-      ? query.data.pages.flatMap((page) => page.runs)
-      : [];
-  const inactive = props.rows.filter((row) => inactiveChild(row.entry, runs) !== null);
-  const active = props.rows.filter((row) => inactiveChild(row.entry, runs) === null);
-  const inactiveRuns = inactive.flatMap((row) => {
-    const run = inactiveChild(row.entry, runs);
-    return run === null ? [] : [run];
-  });
-  const open = props.expandedInactives.has(props.parentId);
-  const rowOf = (row: ChatRowItem, compact: boolean): ReactNode => (
-    <ChatRow
-      key={row.entry.id}
-      entry={row.entry}
-      nested={row.nested}
-      inactive={compact}
-      selected={props.selected === row.entry.id}
-      timeZone={props.timeZone}
-      onOpen={props.onOpen}
-      onDeleted={props.onDeleted}
-    />
-  );
+export function InactiveAgents(props: InactiveAgentsProps): ReactNode {
+  const [open, setOpen] = useState(false);
+  if (props.agents.length === 0) {
+    return null;
+  }
   return (
-    <CollapseRoot>
-      {active.map((row) => rowOf(row, false))}
-      {inactive.length === 0 ? null : (
-        <>
-          <InactiveHeader
-            count={inactive.length}
-            open={open}
-            onToggle={() => {
-              props.onToggleInactive(props.parentId);
-            }}
-            runs={inactiveRuns}
-            parentId={props.parentId}
-            onDeleted={props.onDeleted}
-          />
-          {open ? <CollapseBody>{inactive.map((row) => rowOf(row, true))}</CollapseBody> : null}
-        </>
-      )}
+    <CollapseRoot className="pt-2">
+      <InactiveHeader
+        count={props.agents.length}
+        open={open}
+        agents={props.agents}
+        onToggle={() => {
+          setOpen((current) => !current);
+        }}
+      />
+      {open ? (
+        <CollapseBody>
+          {props.agents.map((entry) => (
+            <ChatRow
+              key={entry.id}
+              entry={entry}
+              agent
+              agentCount={0}
+              agentsRunning={0}
+              agentsNeeding={0}
+              agentsOpen={false}
+              selected={props.selected === entry.id}
+              timeZone={props.timeZone}
+              onOpen={props.onOpen}
+              onToggleAgents={props.onToggleAgents}
+              onDeleted={props.onDeleted}
+            />
+          ))}
+        </CollapseBody>
+      ) : null}
     </CollapseRoot>
   );
 }

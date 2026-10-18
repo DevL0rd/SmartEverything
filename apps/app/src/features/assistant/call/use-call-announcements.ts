@@ -6,7 +6,8 @@ import { notify } from '../../../components/toast-store';
 import { selectionTick } from '../../../platform/haptics';
 import { callActive, changeCall, type CallView } from './call-state';
 import { BUDGET_NOTICE } from './engine/call-messages';
-import { lookedAtText, SHARING_STOPPED } from './model/call-copy';
+import { SHARING_STOPPED } from './model/call-end';
+import { lookedAtText } from './model/call-copy';
 
 function say(text: string): void {
   AccessibilityInfo.announceForAccessibility(text);

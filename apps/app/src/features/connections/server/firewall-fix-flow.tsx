@@ -18,8 +18,9 @@ import { errorText } from '../../../format/errors';
 import { useFirewall } from '../../../store/selectors';
 import { useEntityStore } from '../../../store/store-context';
 import { FlowButton } from '../flows/flow-button';
-import { closeFlow } from '../flows/use-link-flow';
+import { leaveFlow } from '../flows/leave-flow';
 
+import { connectionsLog } from '../connections-log';
 type Phase =
   | { readonly kind: 'review'; readonly notice: DesktopFirewallResult | null }
   | { readonly kind: 'applying' }
@@ -45,16 +46,20 @@ function useApply(bridge: DesktopBridge): {
   const [phase, setPhase] = useState<Phase>({ kind: 'review', notice: null });
   const apply = (plan: FirewallPlan): void => {
     setPhase({ kind: 'applying' });
+    connectionsLog.info('firewall.apply_started', { revision: plan.revision });
     applyFirewall(bridge, plan.revision).then(
       (result) => {
+        connectionsLog.info('firewall.apply_finished', { outcome: result.outcome });
         setPhase(
           result.outcome === 'applied' ? { kind: 'applied' } : { kind: 'review', notice: result },
         );
         checkFirewall(store).catch((error: unknown) => {
+          connectionsLog.error('firewall.recheck_failed', error);
           notify({ message: 'The firewall wasn’t checked again', error, tone: 'critical' });
         });
       },
       (error: unknown) => {
+        connectionsLog.error('firewall.apply_failed', error, { revision: plan.revision });
         setPhase({
           kind: 'review',
           notice: { outcome: 'failed', detail: errorText(error).detail },
@@ -103,8 +108,8 @@ function DesktopFix({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
     return (
       <FlowFrame
         title="Fix the firewall"
-        onCancel={closeFlow}
-        footer={<FlowButton label="Done" onPress={closeFlow} />}
+        onCancel={leaveFlow}
+        footer={<FlowButton label="Done" onPress={leaveFlow} />}
       >
         <EmptyState
           icon="circleCheck"
@@ -117,7 +122,7 @@ function DesktopFix({ bridge }: { readonly bridge: DesktopBridge }): ReactNode {
   return (
     <FlowFrame
       title="Fix the firewall"
-      onCancel={closeFlow}
+      onCancel={leaveFlow}
       wide
       footer={
         <FlowButton
@@ -141,8 +146,8 @@ export function FirewallFixFlow(): ReactNode {
     return (
       <FlowFrame
         title="Fix the firewall"
-        onCancel={closeFlow}
-        footer={<FlowButton label="Close" onPress={closeFlow} />}
+        onCancel={leaveFlow}
+        footer={<FlowButton label="Close" onPress={leaveFlow} />}
       >
         <EmptyState
           icon="monitor"

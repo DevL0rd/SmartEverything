@@ -7,11 +7,12 @@ import {
   type ComputerRuntimeExecute,
   type ComputerRuntimeRequest,
   type ComputerRuntimeReply,
-  type NodeAiFrameV2,
-  type HubAiControlV2,
+  type NodeRuntimeFrame,
+  type HubRuntimeControl,
 } from '@smarteverything/domain';
 import type { ComputerRuntimeHost, ComputerRuntimeHostEvent } from './runtime-host';
 import { isNativeOperation } from '../claude/native-operations';
+import { messageOf } from '@smarteverything/logging';
 
 const TIMEOUT_MS = 30_000;
 interface Pending {
@@ -28,7 +29,7 @@ export class RemoteComputerRuntimeHost implements ComputerRuntimeHost {
     readonly runtime: ComputerAiRuntime,
     readonly deviceId: string,
     readonly generation: string,
-    private readonly send: (frame: HubAiControlV2) => void,
+    private readonly send: (frame: HubRuntimeControl) => void,
   ) {}
   read(request: ComputerRuntimeRead): Promise<ComputerRuntimeReply> {
     return this.call(request);
@@ -42,7 +43,7 @@ export class RemoteComputerRuntimeHost implements ComputerRuntimeHost {
       this.listeners.delete(listener);
     };
   }
-  receive(frame: Exclude<NodeAiFrameV2, { type: 'hello' }>): void {
+  receive(frame: Exclude<NodeRuntimeFrame, { type: 'hello' }>): void {
     if (frame.device_id !== this.deviceId || frame.generation !== this.generation)
       throw new ApiError(
         'forbidden',
@@ -65,7 +66,7 @@ export class RemoteComputerRuntimeHost implements ComputerRuntimeHost {
         return;
     }
   }
-  private capabilities(frame: Extract<NodeAiFrameV2, { type: 'capabilities' }>): void {
+  private capabilities(frame: Extract<NodeRuntimeFrame, { type: 'capabilities' }>): void {
     if (frame.runtime === this.runtime)
       this.emit({ kind: 'capabilities', runtime: frame.runtime, capabilities: frame.capabilities });
   }
@@ -106,12 +107,7 @@ export class RemoteComputerRuntimeHost implements ComputerRuntimeHost {
           request,
         });
       } catch (cause) {
-        this.failed(
-          id,
-          cause instanceof Error
-            ? `Request delivery failed: ${cause.message}; it was not resubmitted.`
-            : 'Request delivery failed with an unknown transport error; it was not resubmitted.',
-        );
+        this.failed(id, `Request delivery failed: ${messageOf(cause)}; it was not resubmitted.`);
       }
     });
   }
@@ -124,13 +120,13 @@ export class RemoteComputerRuntimeHost implements ComputerRuntimeHost {
     if (reply === null) pending.reject(new ApiError('claude_not_ready', message));
     else pending.resolve(reply);
   }
-  private settle(frame: Extract<NodeAiFrameV2, { type: 'reply' }>): void {
+  private settle(frame: Extract<NodeRuntimeFrame, { type: 'reply' }>): void {
     const pending = this.pending.get(frame.id);
     if (pending === undefined) return;
     this.pending.delete(frame.id);
     clearTimeout(pending.timer);
     if (!frame.result.ok) {
-      pending.reject(new ApiError('upstream_failed', frame.result.failure.message));
+      pending.reject(new ApiError(frame.result.failure.code, frame.result.failure.message));
       return;
     }
     const reply = COMPUTER_RUNTIME_REPLY.parse(frame.result.reply);

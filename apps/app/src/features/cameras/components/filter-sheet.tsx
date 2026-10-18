@@ -5,8 +5,10 @@ import { CAMERA_DETECTION_PRESENTATIONS, cameraDetectionsOf } from '@smarteveryt
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/checkbox';
 import { Section } from '../../../components/section';
+import { Segmented } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import type { CameraEntry } from '../logic/cameras';
+import { soundSelection } from './sound-filter';
 import { eventLook } from '../../activity';
 import {
   CAMERA_EVENT_KINDS,
@@ -71,32 +73,36 @@ function KindChoices({ filter, onChange }: Omit<FilterButtonProps, 'cameras'>): 
 }
 
 function SoundChoices({ filter, onChange }: Omit<FilterButtonProps, 'cameras'>): ReactNode {
-  const chosen = filter.soundDetections ?? null;
+  const chosen = filter.soundDetections ?? [];
+  const [only, setOnly] = useState(chosen.length > 0);
   return (
     <Section title="Sound details">
-      <Checkbox
-        label="Any sound"
-        checked={chosen === null}
-        onChange={(on) => {
-          onChange({ ...filter, soundDetections: on ? null : [] });
+      <Segmented
+        label="Sound details"
+        value={only ? 'only' : 'any'}
+        options={[
+          { value: 'any', label: 'Any sound' },
+          { value: 'only', label: 'Only:' },
+        ]}
+        onChange={(mode) => {
+          setOnly(mode === 'only');
+          if (mode === 'any') {
+            onChange({ ...filter, soundDetections: null });
+          }
         }}
       />
-      {cameraDetectionsOf('sound').map((detection) => (
-        <Checkbox
-          key={detection}
-          label={CAMERA_DETECTION_PRESENTATIONS[detection].label}
-          checked={chosen?.includes(detection) ?? false}
-          onChange={(on) => {
-            const current = chosen ?? [];
-            onChange({
-              ...filter,
-              soundDetections: on
-                ? [...current, detection]
-                : current.filter((entry) => entry !== detection),
-            });
-          }}
-        />
-      ))}
+      {only
+        ? cameraDetectionsOf('sound').map((detection) => (
+            <Checkbox
+              key={detection}
+              label={CAMERA_DETECTION_PRESENTATIONS[detection].label}
+              checked={chosen.includes(detection)}
+              onChange={(on) => {
+                onChange({ ...filter, soundDetections: soundSelection(chosen, detection, on) });
+              }}
+            />
+          ))
+        : null}
     </Section>
   );
 }

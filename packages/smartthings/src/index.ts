@@ -13,13 +13,7 @@ export {
 export type { AppCredentials, AppTargets, SmartThingsApp } from './apps';
 export { SmartThingsResponseError } from './errors';
 export type { Binding, SmartThingsCommand } from './bindings';
-export {
-  MAX_COMMANDS_PER_REQUEST,
-  nextRequestAt,
-  outcomesOf,
-  pruneHistory,
-  takeBatch,
-} from './command-batching';
+export { nextRequestAt, outcomesOf, pruneHistory, takeBatch } from './command-batching';
 export type { CommandOutcome, QueuedCommand } from './command-batching';
 export { CAPABILITY_DEFINITION, definitionKey, definitionPath } from './definition-schema';
 export type { CapabilityDefinition } from './definition-schema';
@@ -64,6 +58,7 @@ export {
   magicPacket,
   readDeviceInfo,
 } from './samsung-tv/power';
+export type { TvInfo } from './samsung-tv/power';
 export {
   installedAppsMessage,
   keyMessage,
@@ -73,6 +68,17 @@ export {
   readTvMessage,
   remoteUrl,
 } from './samsung-tv/remote';
+export {
+  SSDP_ADDRESS,
+  SSDP_PORT,
+  SSDP_TARGET,
+  SSDP_WAIT_SECONDS,
+  candidateOf,
+  readSsdpAnswer,
+  readSsdpAnnouncement,
+  ssdpSearchMessage,
+} from './samsung-tv/discovery';
+export type { TvCandidate } from './samsung-tv/discovery';
 export { artModeStatusRequest, setArtModeRequest } from './samsung-tv/art';
 export type { InstalledApp, TvMessage } from './samsung-tv/remote';
 export {

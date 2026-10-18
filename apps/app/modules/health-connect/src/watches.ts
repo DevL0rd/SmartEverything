@@ -1,4 +1,4 @@
-import { captureNativeServerEnrollment } from './hub-network';
+import { withNativeEnrollment } from './hub-network';
 import { z } from 'zod';
 import {
   WATCH_ACTION_RESULT,
@@ -22,12 +22,10 @@ import {
 } from './schemas';
 
 export async function syncWatches(serverUrl: string, token: string): Promise<PhoneWatchStatus[]> {
-  const enrollment = await captureNativeServerEnrollment(serverUrl, token);
   const source = nativeFor('syncWatches');
-  const answer =
-    enrollment === null
-      ? await source.syncWatches(serverUrl, token)
-      : await source.syncWatches(serverUrl, token, enrollment);
+  const answer = await withNativeEnrollment(serverUrl, token, (enrollment) =>
+    source.syncWatches(serverUrl, token, enrollment),
+  );
   return PHONE_WATCH_STATUSES.parse(answer);
 }
 

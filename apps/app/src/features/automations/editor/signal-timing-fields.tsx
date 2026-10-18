@@ -1,17 +1,13 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { SIGNAL_LIMITS, type SignalWindow, type SignalWindowMode } from '@smarteverything/domain';
+import { SIGNAL_LIMITS, type SignalWindowMode } from '@smarteverything/domain';
 import { NumberStepper } from '../../../components/number-stepper';
 import { SwitchRow } from '../../../components/rows';
 import { Segmented } from '../../../components/segmented';
 import type { SignalTiming } from '../model/signal-triggers';
-import { DurationField, type DurationUnits } from './time-fields';
-
-const SECOND_UNITS: DurationUnits = [
-  { value: 'seconds', label: 's', size: 1 },
-  { value: 'minutes', label: 'min', size: 60 },
-  { value: 'hours', label: 'h', size: 3600 },
-];
+import { SECOND_UNITS } from './duration-units';
+import { Labelled } from './labelled';
+import { DurationField } from './time-fields';
 
 const MODE_LABELS: Readonly<Record<SignalWindowMode, string>> = {
   avg: 'Average',
@@ -43,49 +39,60 @@ function TimedRow({ title, subtitle, seconds, max, onChange }: TimedRowProps): R
         }}
       />
       {seconds > 0 ? (
-        <DurationField label={title} value={seconds} units={SECOND_UNITS} max={max} onChange={onChange} />
+        <DurationField
+          label={title}
+          hideLabel
+          value={seconds}
+          units={SECOND_UNITS}
+          max={max}
+          onChange={onChange}
+        />
       ) : null}
     </View>
   );
 }
 
-function WindowDetail({
-  timing,
-  window,
-  counting,
-  modes,
-  onChange,
-}: {
+interface WindowProps {
   readonly timing: SignalTiming;
-  readonly window: SignalWindow;
-  readonly counting: boolean;
+  readonly window: NonNullable<SignalTiming['window']>;
   readonly modes: readonly SignalWindowMode[];
   readonly onChange: (timing: SignalTiming) => void;
-}): ReactNode {
-  return (
-    <View className="gap-3">
-      {counting ? (
+}
+
+function WindowKind({ timing, window, modes, onChange }: WindowProps): ReactNode {
+  if (modes.length === 1 && modes[0] === 'count')
+    return (
+      <Labelled label="At least">
         <NumberStepper
           label="At least"
           value={timing.atLeast}
           min={2}
-          max={100}
+          max={SIGNAL_LIMITS.windowSamples}
           step={1}
           unit="times"
           onChange={(atLeast) => {
             onChange({ ...timing, atLeast });
           }}
         />
-      ) : (
-        <Segmented
-          label="Use"
-          value={window.mode}
-          options={modes.map((mode) => ({ value: mode, label: MODE_LABELS[mode] }))}
-          onChange={(mode) => {
-            onChange({ ...timing, window: { ...window, mode } });
-          }}
-        />
-      )}
+      </Labelled>
+    );
+  return (
+    <Segmented
+      label="Use"
+      value={window.of}
+      options={modes.map((mode) => ({ value: mode, label: MODE_LABELS[mode] }))}
+      onChange={(mode) => {
+        onChange({ ...timing, window: { ...window, of: mode } });
+      }}
+    />
+  );
+}
+
+function WindowDetail(props: WindowProps): ReactNode {
+  const { timing, window, onChange } = props;
+  return (
+    <View className="gap-3">
+      <WindowKind {...props} />
       <DurationField
         label="Within"
         value={window.seconds}
@@ -114,18 +121,20 @@ function WindowFields({
     <View className="gap-3">
       <SwitchRow
         title={counting ? 'Count how often' : 'Smooth over time'}
-        subtitle={counting ? 'Only when it happens several times' : 'Use the average, lowest or highest'}
+        subtitle={
+          counting ? 'Only when it happens several times' : 'Use the average, lowest or highest'
+        }
         value={window !== null}
         onChange={(on) => {
           const mode = modes[0];
           onChange({
             ...timing,
-            window: on && mode !== undefined ? { mode, seconds: DEFAULT_SECONDS } : null,
+            window: on && mode !== undefined ? { of: mode, seconds: DEFAULT_SECONDS } : null,
           });
         }}
       />
       {window === null ? null : (
-        <WindowDetail timing={timing} window={window} counting={counting} modes={modes} onChange={onChange} />
+        <WindowDetail timing={timing} window={window} modes={modes} onChange={onChange} />
       )}
     </View>
   );

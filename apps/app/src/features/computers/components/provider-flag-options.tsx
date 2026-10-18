@@ -17,15 +17,10 @@ export function ProviderFlagOptions({
 }): ReactNode {
   const schema = metadata?.flag_settings_schema ?? {};
   if (Object.keys(schema).length === 0)
-    return (
-      <Text tone="variant">
-        Full native flag settings are available in this chat’s settings after runtime
-        initialization. Existing configured flags are preserved.
-      </Text>
-    );
+    return <Text tone="variant">More settings appear after the first reply.</Text>;
   return (
     <View className="gap-3">
-      <Text variant="title-3">Native flags for the next session</Text>
+      <Text variant="title-3">Advanced settings for the next session</Text>
       <SchemaSettingsSheet
         schema={schema}
         value={value.flag_settings ?? {}}

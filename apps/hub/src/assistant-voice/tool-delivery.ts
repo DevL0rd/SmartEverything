@@ -30,10 +30,9 @@ export interface ToolDelivery {
   readonly scheduling: ToolScheduling;
 }
 
-export function deliverToolAnswer(to: ToolDelivery, call: ToolCallRef, answer: ToolAnswer): void {
-  const { session, record, scheduling } = to;
+function recordAndShow(to: ToolDelivery, answer: ToolAnswer): void {
   if (answer.line !== '') {
-    record({
+    to.record({
       who: 'tool',
       text: answer.line,
       ok: !('error' in answer.response),
@@ -41,7 +40,23 @@ export function deliverToolAnswer(to: ToolDelivery, call: ToolCallRef, answer: T
     });
   }
   for (const picture of answer.pictures) {
-    session?.picture(picture);
+    to.session?.picture(picture);
   }
-  session?.toolResult(call.id, call.name, withPhotoNote(answer), { scheduling, more: false });
+}
+
+export function deliverToolAnswer(to: ToolDelivery, call: ToolCallRef, answer: ToolAnswer): void {
+  recordAndShow(to, answer);
+  to.session?.toolResult(call.id, call.name, withPhotoNote(answer), {
+    scheduling: to.scheduling,
+    more: false,
+  });
+}
+
+export function deliverLateAnswer(to: ToolDelivery, call: ToolCallRef, answer: ToolAnswer): void {
+  recordAndShow(to, answer);
+  const result = JSON.stringify(withPhotoNote(answer));
+  to.session?.text(
+    `[${call.name}, which you called before your connection was renewed, returned: ${result}]`,
+    true,
+  );
 }

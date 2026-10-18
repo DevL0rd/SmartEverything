@@ -1,62 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../../clock';
+import { bearerOf } from '../../server/http';
 import { withRequestSignal } from '../../server/request-signal';
-import { bearerOf, readBody } from '../../server/http';
 import type { Store } from '../../store/store';
 import { callerFor, challenge, type AcceptedCaller, type McpCaller } from './bearer';
-import { answered } from './dispatch';
-import { acceptsEventStream } from './event-stream';
-import {
-  INCOMING,
-  JSON_RPC_ERRORS,
-  PROTOCOL_VERSIONS,
-  errorMessage,
-  isRequest,
-  isSupportedVersion,
-  type Incoming,
-} from './protocol';
-import { replyEmpty, replyJson } from './respond';
+import { statelessHttp } from './http-transport';
+import { replyJson } from './respond';
+import { createMcpServer } from './server';
 import { siteOf } from './site';
 import type { ToolListFeed } from './tool-list-feed';
 import type { ToolContext } from './tools/registry';
 
-const MESSAGE_LIMIT = 1024 * 1024;
+const UNAUTHORIZED = -32001;
 
 export interface TransportOptions {
   readonly store: Store;
   readonly clock: Clock;
   readonly tools: ToolContext;
   readonly log: Logger;
-}
-
-function refuse(response: ServerResponse, status: number, code: number, message: string): void {
-  replyJson(response, status, errorMessage(null, code, message));
-}
-
-async function incoming(
-  request: IncomingMessage,
-  response: ServerResponse,
-): Promise<Incoming | null> {
-  const raw = await readBody(request, MESSAGE_LIMIT);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.toString('utf8'));
-  } catch (cause) {
-    refuse(response, 400, JSON_RPC_ERRORS.parse, `The body is not JSON: ${String(cause)}`);
-    return null;
-  }
-  const message = INCOMING.safeParse(parsed);
-  if (!message.success) {
-    refuse(response, 400, JSON_RPC_ERRORS.invalidRequest, 'Expected one JSON-RPC 2.0 message');
-    return null;
-  }
-  return message.data;
-}
-
-function versionHeader(request: IncomingMessage): string | undefined {
-  const header = request.headers['mcp-protocol-version'];
-  return Array.isArray(header) ? header.join(',') : header;
 }
 
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -87,96 +49,76 @@ function authorized(
   request: IncomingMessage,
   response: ServerResponse,
 ): AcceptedCaller | null {
-  const site = siteOf(options.store);
-  const token = bearerOf(request);
   const caller = callerOf(options, request);
   if (caller.kind === 'accepted') {
+    options.log.trace('caller.accepted', {
+      via: caller.via,
+      method: request.method,
+      localOnly: caller.localOnly,
+    });
     return caller;
   }
-  options.log.warn('caller.refused', { reason: caller.reason });
-  replyJson(response, 401, errorMessage(null, JSON_RPC_ERRORS.unauthorized, caller.reason), {
-    'www-authenticate': challenge(site, token === null ? null : 'invalid_token'),
+  options.log.warn('caller.refused', {
+    reason: caller.reason,
+    method: request.method,
+    hadBearer: bearerOf(request) !== null,
   });
+  replyJson(
+    response,
+    401,
+    { jsonrpc: '2.0', id: null, error: { code: UNAUTHORIZED, message: caller.reason } },
+    {
+      'www-authenticate': challenge(
+        siteOf(options.store),
+        bearerOf(request) === null ? null : 'invalid_token',
+      ),
+    },
+  );
   return null;
 }
 
-function accepted(
-  options: TransportOptions,
-  request: IncomingMessage,
-  response: ServerResponse,
-): AcceptedCaller | null {
-  const caller = authorized(options, request, response);
-  if (caller === null) {
-    return null;
-  }
-  const version = versionHeader(request);
-  if (!isSupportedVersion(version)) {
-    refuse(
-      response,
-      400,
-      JSON_RPC_ERRORS.invalidRequest,
-      `Unsupported MCP-Protocol-Version ${String(version)}; supported: ${PROTOCOL_VERSIONS.join(', ')}`,
-    );
-    return null;
-  }
-  return caller;
-}
-
-export async function postMcp(
+export async function handleMcp(
   options: TransportOptions,
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  const caller = accepted(options, request, response);
+  const caller = authorized(options, request, response);
   if (caller === null) {
     return;
   }
-  const message = await incoming(request, response);
-  if (message === null) {
-    return;
+  const mcp = createMcpServer({ ...options.tools, caller }, options.log);
+  const http = statelessHttp(true);
+  response.once('close', () => {
+    mcp.close().catch((cause: unknown) => {
+      options.log.error('request.close_failed', cause);
+    });
+  });
+  const startedAt = performance.now();
+  options.log.debug('request.started', { via: caller.via, method: request.method });
+  await mcp.connect(http.transport);
+  try {
+    await withRequestSignal(request, response, () => http.handle(request, response));
+    options.log.debug('request.finished', () => ({
+      via: caller.via,
+      status: response.statusCode,
+      durationMs: Math.round(performance.now() - startedAt),
+    }));
+  } catch (cause) {
+    options.log.error('request.failed', cause, {
+      via: caller.via,
+      durationMs: Math.round(performance.now() - startedAt),
+    });
+    throw cause;
   }
-  if (!isRequest(message)) {
-    replyEmpty(response, 202);
-    return;
-  }
-  options.log.info('request.accepted', { method: message.method });
-  const reply = await withRequestSignal(request, response, () =>
-    answered(message, { ...options.tools, caller }, options.log),
-  );
-  replyJson(response, 200, reply);
 }
 
-export function streamMcp(
+export async function streamMcp(
   options: TransportOptions,
   feed: ToolListFeed,
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  if (!acceptsEventStream(request)) {
-    refuse(
-      response,
-      406,
-      JSON_RPC_ERRORS.invalidRequest,
-      'GET opens the notification stream; send Accept: text/event-stream',
-    );
-    return Promise.resolve();
+  if (authorized(options, request, response) !== null) {
+    await feed.attach(request, response);
   }
-  if (accepted(options, request, response) !== null) {
-    feed.attach(response);
-  }
-  return Promise.resolve();
-}
-
-export function refuseMcpDelete(response: ServerResponse): Promise<void> {
-  replyJson(
-    response,
-    405,
-    errorMessage(
-      null,
-      JSON_RPC_ERRORS.invalidRequest,
-      'This server keeps no sessions, so there is none to end',
-    ),
-    { allow: 'GET, POST' },
-  );
-  return Promise.resolve();
 }

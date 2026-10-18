@@ -1,14 +1,14 @@
 import { ROUTES as AUTOMATIONS } from '../features/automations/routes';
 import { ROUTES as CAMERAS, preloadCameras, TRANSCRIPT_ACTIONS } from '../features/cameras/routes';
-import { ROUTES as CONNECTIONS } from '../features/connections/routes';
 import { ROUTES as DEVICE_LIST } from '../features/device-list/routes';
-import { ROUTES as DEVICES } from '../features/devices/routes';
+import { preloadToday } from '../features/fitness/data/preload';
 import { ROUTES as FITNESS } from '../features/fitness/routes';
 import { ROUTES as HOME } from '../features/home/routes';
 import { ROUTES as NUTRITION } from '../features/nutrition/routes';
 import { ROUTES as SETTINGS } from '../features/settings/routes';
 import { talkAvailable } from '../features/talk';
 import { ROUTES as WEATHER } from '../features/weather/routes';
+import { ASSISTANT_ACTIONS } from './assistant-actions';
 import { href } from './hrefs';
 import type { PreloadContext, RouteDefinition } from './route-types';
 
@@ -81,6 +81,7 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     parent: null,
     keywords: ['health', 'steps', 'sleep', 'heart'],
     available: (a) => a.hasHealth,
+    preload: preloadToday,
     searchable: true,
   },
   {
@@ -114,36 +115,7 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
     keywords: ['ai', 'chat', 'ask', 'claude', 'coordinator', 'assistant'],
     available: always,
     searchable: true,
-    actions: [
-      {
-        key: 'new-chat',
-        title: 'New chat',
-        icon: 'pencil',
-        href: href.assistantChat('new'),
-        keywords: ['start', 'ask', 'conversation', 'compose', 'message', 'write'],
-      },
-      {
-        key: 'call',
-        title: 'Call the assistant',
-        icon: 'phone',
-        href: href.assistantCall('palette'),
-        keywords: ['voice', 'talk', 'speak', 'ring', 'phone call', 'coordinator'],
-      },
-      {
-        key: 'unread-chats',
-        title: 'Unread chats',
-        icon: 'circle',
-        href: href.assistantChats('unread'),
-        keywords: ['new messages', 'inbox', 'not read', 'waiting'],
-      },
-      {
-        key: 'archived-chats',
-        title: 'Archived chats',
-        icon: 'archive',
-        href: href.assistantChats('archived'),
-        keywords: ['old', 'hidden', 'restore', 'unarchive'],
-      },
-    ],
+    actions: ASSISTANT_ACTIONS,
   },
   {
     key: 'talk',
@@ -174,20 +146,18 @@ export const TAB_ROUTES: readonly RouteDefinition[] = [
 const PAGES: readonly RouteDefinition[] = [
   ...HOME,
   ...WEATHER,
-  ...DEVICES,
   ...DEVICE_LIST,
   ...CAMERAS,
   ...FITNESS,
   ...NUTRITION,
   ...AUTOMATIONS,
   ...SETTINGS,
-  ...CONNECTIONS,
 ];
 
 function withChildPreloads(tab: RouteDefinition): RouteDefinition {
   const preloads = [
     ...new Set(
-      PAGES.filter((page) => page.tab === tab.tab).flatMap((page) =>
+      [tab, ...PAGES.filter((page) => page.tab === tab.tab)].flatMap((page) =>
         page.preload === undefined ? [] : [page.preload],
       ),
     ),

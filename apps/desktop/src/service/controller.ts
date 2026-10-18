@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { inspect } from 'node:util';
+import { Logger } from '@smarteverything/logging';
 import type {
   DesktopServer,
   DesktopServiceHealth,
@@ -10,11 +10,22 @@ import type { ServiceConfig } from '@smarteverything/hub/service/configuration';
 import { prepareServiceConfig, type PreparedConfig } from './config-file.js';
 import { LiveLink, type OpenSocket } from './live-link.js';
 import { PRIVATE_MODE, type ManagerState, type ServiceManager } from './manager.js';
-import { answers, readOwnerToken, readReady, readyUrl, readNodeWindow } from './ready.js';
+import {
+  answers,
+  nodeWindowFile,
+  readNodeWindow,
+  readOwnerToken,
+  readReady,
+  readyUrl,
+  writeNodeWindow,
+} from './ready.js';
 import type { ServiceLocations } from './locations.js';
 import type { ServiceSystem } from './system.js';
+import { waitFor } from './wait.js';
 
 const LOG_LINES = 200;
+
+const log = new Logger('desktop.service');
 
 export interface ControllerOptions {
   readonly manager: ServiceManager;
@@ -117,7 +128,7 @@ export class ServiceController {
         locations.readyFile,
         locations.supervisorPidFile,
         locations.ownerTokenFile,
-        path.join(locations.dataDirectory, 'node-window.json'),
+        nodeWindowFile(locations),
       ].map((file) => path.basename(file)),
     );
     this.#stopWatching = system.watch(locations.dataDirectory, {
@@ -128,6 +139,11 @@ export class ServiceController {
       },
       failed: this.#options.failed,
     });
+    log.info('service.watching', {
+      manager: this.#options.manager.kind,
+      files: relevant.size,
+      dataDirectory: locations.dataDirectory,
+    });
   }
 
   close(): void {
@@ -136,14 +152,27 @@ export class ServiceController {
   }
 
   refresh(): void {
-    this.status().then((status) => {
-      this.#publish(status);
-    }, this.#options.failed);
+    this.status().then(
+      (status) => {
+        this.#publish(status);
+      },
+      (cause: unknown) => {
+        log.error('service.refresh_failed', cause);
+        this.#options.failed(cause);
+      },
+    );
   }
 
   async status(): Promise<DesktopServiceStatus> {
     const observed = await this.#observe();
     const health = healthOf(observed, this.#failure);
+    log.trace('service.status_read', {
+      health,
+      installed: observed.state.installed,
+      active: observed.state.active,
+      current: observed.state.current,
+      answering: observed.url !== null,
+    });
     if (health === 'running') {
       this.#failure = null;
     }
@@ -161,10 +190,16 @@ export class ServiceController {
   }
 
   async ensure(): Promise<DesktopServiceStatus> {
-    return this.#attempt(async () => {
+    return this.#attempt('ensure', async () => {
       const { manager } = this.#options;
       const configChanged = await this.#writeConfig();
       const state = await manager.state();
+      log.debug('service.ensure_decided', {
+        installed: state.installed,
+        active: state.active,
+        current: state.current,
+        configChanged,
+      });
       if (!state.current) {
         await this.#reinstall(state);
         await manager.start();
@@ -186,7 +221,7 @@ export class ServiceController {
   }
 
   stop(): Promise<DesktopServiceStatus> {
-    return this.#attempt(async () => {
+    return this.#attempt('stop', async () => {
       await this.#options.manager.stop();
       await this.#stopped();
       return this.status();
@@ -194,17 +229,18 @@ export class ServiceController {
   }
 
   restart(): Promise<DesktopServiceStatus> {
-    return this.#attempt(() => this.#restarted());
+    return this.#attempt('restart', () => this.#restarted());
   }
 
   async #restarted(): Promise<DesktopServiceStatus> {
     const before = await readReady(this.#options.system, this.#options.locations);
+    log.debug('service.restarting', { previousPid: before?.pid ?? null });
     await this.#options.manager.restart();
     return this.#serving(before?.pid ?? null);
   }
 
   uninstall(): Promise<DesktopServiceStatus> {
-    return this.#attempt(async () => {
+    return this.#attempt('uninstall', async () => {
       await this.#options.manager.uninstall();
       await this.#stopped();
       return this.status();
@@ -213,6 +249,7 @@ export class ServiceController {
 
   async enableLinger(): Promise<DesktopServiceStatus> {
     this.#refuseUnlessManaged();
+    log.info('service.linger_enabling', { manager: this.#options.manager.kind });
     await this.#options.manager.enableLinger();
     return this.status();
   }
@@ -220,33 +257,39 @@ export class ServiceController {
   async logs(): Promise<DesktopServiceLogs> {
     const { files } = this.#options.system;
     const { logFile, outputLogFile } = this.#options.locations;
-    return {
-      file: logFile,
-      lines: [
-        ...tail(await files.read(outputLogFile), 'output: '),
-        ...tail(await files.read(logFile), ''),
-      ],
-    };
+    const lines = [
+      ...tail(await files.read(outputLogFile), 'output: '),
+      ...tail(await files.read(logFile), ''),
+    ];
+    log.debug('service.logs_read', () => ({ lines: lines.length, file: path.basename(logFile) }));
+    return { file: logFile, lines };
   }
 
-  async server(): Promise<DesktopServer> {
+  async server(): Promise<DesktopServer | null> {
     const status = await this.status();
     if (status.health === 'starting') {
       await this.#serving();
     } else if (status.health !== 'running') {
+      log.warn('service.server_unavailable', { health: status.health });
       throw new ServiceNotRunningError(status);
     }
     return this.#connection();
   }
 
-  async #connection(): Promise<DesktopServer> {
+  async setWindow(window: DesktopServer | null): Promise<void> {
+    const { system, locations } = this.#options;
+    await writeNodeWindow(system, locations, window);
+  }
+
+  async #connection(): Promise<DesktopServer | null> {
     const { system, locations } = this.#options;
     const ready = await readReady(system, locations);
     if (ready === null) {
+      log.warn('service.ready_missing', { file: path.basename(locations.readyFile) });
       throw new ServiceNotRunningError(await this.status());
     }
     return 'role' in ready
-      ? readNodeWindow(system, locations, ready.hub_url)
+      ? readNodeWindow(system, locations)
       : { url: ready.url, token: await readOwnerToken(system, locations) };
   }
 
@@ -281,6 +324,7 @@ export class ServiceController {
   }
 
   async #reinstall(state: ManagerState): Promise<void> {
+    log.info('service.reinstalling', { installed: state.installed, active: state.active });
     if (state.active) {
       await this.#options.manager.stop();
       await this.#stopped();
@@ -290,18 +334,28 @@ export class ServiceController {
 
   #refuseUnlessManaged(): void {
     if (this.#options.managedBy === 'stable-app') {
+      log.warn('service.refused_managed', { managedBy: this.#options.managedBy });
       throw new ManagedByStableAppError();
     }
   }
 
-  async #attempt(step: () => Promise<DesktopServiceStatus>): Promise<DesktopServiceStatus> {
+  async #attempt(
+    action: string,
+    step: () => Promise<DesktopServiceStatus>,
+  ): Promise<DesktopServiceStatus> {
     this.#refuseUnlessManaged();
+    const operation = log.operation('service.action', {
+      action,
+      manager: this.#options.manager.kind,
+    });
     try {
       this.#failure = null;
       const status = await step();
       this.#publish(status);
+      operation.succeeded({ health: status.health, active: status.active });
       return status;
     } catch (error: unknown) {
+      operation.failed(error);
       this.#failure = error instanceof Error ? error.message : String(error);
       this.refresh();
       throw error;
@@ -318,8 +372,7 @@ export class ServiceController {
       );
     });
     const status = await this.status();
-    const connection = await this.#connection();
-    this.#live.follow(connection.url, connection.token);
+    this.#followWindow(await this.#connection());
     return status;
   }
 
@@ -330,49 +383,44 @@ export class ServiceController {
 
   #until(expected: string, check: () => Promise<boolean>): Promise<void> {
     const { system, locations, timeoutMs } = this.#options;
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (error: unknown): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timer);
-        stop();
-        if (error === null) {
-          resolve();
-        } else {
-          reject(error instanceof Error ? error : new Error(inspect(error)));
-        }
-      };
-      const evaluate = (): void => {
-        check().then((done) => {
-          if (done) {
-            finish(null);
-          }
-        }, finish);
-      };
-      const timer = setTimeout(() => {
-        void this.status().then((status) => {
-          finish(new ServiceTimeoutError(expected, timeoutMs, status.detail));
-        }, finish);
-      }, timeoutMs);
-      const stop = system.watch(locations.dataDirectory, { changed: evaluate, failed: finish });
-      evaluate();
+    return waitFor({
+      expected,
+      check,
+      timeoutMs,
+      watch: (listener) => system.watch(locations.dataDirectory, listener),
+      timedOut: async () =>
+        new ServiceTimeoutError(expected, timeoutMs, (await this.status()).detail),
     });
+  }
+
+  #followWindow(connection: DesktopServer | null): void {
+    if (connection !== null) this.#live.follow(connection.url, connection.token);
   }
 
   #publish(status: DesktopServiceStatus): void {
     if (status.health === 'running') {
-      this.#connection().then((connection) => {
-        this.#live.follow(connection.url, connection.token);
-      }, this.#options.failed);
+      this.#connection().then(
+        (connection) => {
+          this.#followWindow(connection);
+        },
+        (cause: unknown) => {
+          log.error('service.connection_failed', cause);
+          this.#options.failed(cause);
+        },
+      );
     }
     const text = JSON.stringify(status);
     if (text === this.#last) {
       return;
     }
     this.#last = text;
+    log.info('service.status_changed', {
+      health: status.health,
+      installed: status.installed,
+      active: status.active,
+      manager: status.manager,
+      listeners: this.#listeners.size,
+    });
     for (const listener of this.#listeners) {
       listener(status);
     }

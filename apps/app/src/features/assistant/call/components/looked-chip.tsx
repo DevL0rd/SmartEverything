@@ -20,6 +20,7 @@ export function LookedChip({ look }: { readonly look: CallLook }): ReactNode {
           <Icon name={sourceIconOf(look.source)} size={16} tone="variant" />
         ) : (
           <Image
+            resizeMethod="resize"
             source={{ uri: `data:image/jpeg;base64,${look.picture}` }}
             accessibilityIgnoresInvertColors
             className="size-full"

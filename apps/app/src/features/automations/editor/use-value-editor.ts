@@ -11,6 +11,7 @@ import { attempt } from '../data/actions';
 import { blankValue } from '../model/value-content';
 import { useLibraryReturn } from './library-return';
 import { useClose, useDiscardPrompt } from './editor-navigation';
+import { background } from '@smarteverything/logging';
 
 export interface ValueEditorState {
   readonly row: AutomationValueRow | null;
@@ -23,15 +24,24 @@ export interface ValueEditorState {
 function valueRemoval(row: AutomationValueRow | null, close: () => void): () => void {
   return (): void => {
     if (row === null) return;
-    void confirm({
-      title: `Delete ${row.content.name}?`,
-      body: 'Values used by an automation cannot be deleted.',
-      confirmLabel: 'Delete',
-      tone: 'destructive',
-    }).then(async (accepted) => {
-      if (accepted && (await attempt('The Value wasn’t deleted', () => removeValue(row.id))))
-        close();
-    });
+    background(
+      confirm({
+        title: `Delete ${row.content.name}?`,
+        body: 'Values used by an automation cannot be deleted.',
+        confirmLabel: 'Delete',
+        tone: 'destructive',
+      }).then(async (accepted) => {
+        if (
+          accepted &&
+          (await attempt('The Value wasn’t deleted', () => removeValue(row.id), {
+            action: 'delete-value',
+            valueId: row.id,
+          }))
+        )
+          close();
+      }),
+      'use_value_editor.confirm_failed',
+    );
   };
 }
 export function useValueEditor(
@@ -49,14 +59,21 @@ export function useValueEditor(
   const save = (): void => {
     if (busy) return;
     setBusy(true);
-    void attempt('The Value wasn’t saved', async () => {
-      const saved = await saveValue(validateAutomationValue(content), row);
-      notify({ message: `${content.name} saved`, tone: 'positive' });
-      if (destination === null) close();
-      else destination.valueSaved(saved);
-    }).finally(() => {
-      setBusy(false);
-    });
+    background(
+      attempt(
+        'The Value wasn’t saved',
+        async () => {
+          const saved = await saveValue(validateAutomationValue(content), row);
+          notify({ message: `${content.name} saved`, tone: 'positive' });
+          if (destination === null) close();
+          else destination.valueSaved(saved);
+        },
+        { action: 'save-value', valueId: row?.id ?? null, kind: content.kind },
+      ).finally(() => {
+        setBusy(false);
+      }),
+      'use_value_editor.attempt_failed',
+    );
   };
   return {
     row,

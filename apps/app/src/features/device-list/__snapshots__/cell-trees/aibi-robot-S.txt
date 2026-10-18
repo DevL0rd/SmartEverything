@@ -1,0 +1,25 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1 justify-between gap-2"
+      View aria-hidden=true className="relative shrink-0 size-12" onLayout=undefined pointerEvents="none" ref={current:null}
+        Svg.default height=48 pointerEvents="none" style={position:"absolute",left:0,top:0,width:48,height:48} viewBox="0 0 100 100" width=48
+          Svg.Ellipse cx=50 cy=90 fill="#1f2c39" rx=34 ry=6.5 stroke="#3d444b" strokeWidth=0.8
+          Svg.Ellipse cx=50 cy=89.5 fill="#1a2836" fillOpacity=0.85 rx=22 ry=3.4
+          Svg.Circle cx=74 cy=90 fill="#656463" r=1.9
+        Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:0,top:0,width:48,height:48},null]
+          Svg.default height=48 viewBox="0 0 100 100" width=48
+            Svg.Path d="M18 45 H18 A4 4 0 0 1 22 49 V59 A4 4 0 0 1 18 63 H18 A4 4 0 0 1 14 59 V49 A4 4 0 0 1 18 45 Z M82 45 H82 A4 4 0 0 1 86 49 V59 A4 4 0 0 1 82 63 H82 A4 4 0 0 1 78 59 V49 A4 4 0 0 1 82 45 Z" fill="#1f2c39" stroke="#3d444b" strokeWidth=0.6
+            Svg.Path d="M50 19V10" stroke="#333c45" strokeLinecap="round" strokeWidth=2
+            Svg.Path d="M48 18 H52 A28 28 0 0 1 80 46 V52 A28 28 0 0 1 52 80 H48 A28 28 0 0 1 20 52 V46 A28 28 0 0 1 48 18 Z" fill=url(Svg.LinearGradient(x1="0" x2="1" y1="0" y2="0"; Svg.Stop(offset="0" stopColor="#1a2836"; ); Svg.Stop(offset="0.45" stopColor="#1f2c39"; ); Svg.Stop(offset="1" stopColor="#1a2836"; ))) stroke="#3d444b" strokeWidth=0.8
+            Svg.Path d="M41 30 H59 A14 14 0 0 1 73 44 V48 A14 14 0 0 1 59 62 H41 A14 14 0 0 1 27 48 V44 A14 14 0 0 1 41 30 Z" fill="#0B0D10" stroke="none"
+            Svg.Path d="M46 56Q50 59 54 56" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeOpacity=0.7 strokeWidth=1.6
+            Svg.Ellipse cx=50 cy=71 fill="#384048" fillOpacity=0.8 rx=7 ry=2.6
+            Svg.Circle cx=50 cy=8.5 fill="#4c5054" r=3.2
+          Anim.View pointerEvents="none" renderToHardwareTextureAndroid=false style=[{position:"absolute",left:14.4,top:17.28,width:19.2,height:9.6},{animationName:{cssRules_:{0%:{transform:[{scaleY:1}]},3%:{transform:[{scaleY:0.08}]},6%:{transform:[{scaleY:1}]},100%:{transform:[{scaleY:1}]}},cssText_:"{\"0%\":{\"transform\":[{\"scaleY\":1}]},\"3%\":{\"transform\":[{\"scaleY\":0.08}]},\"6%\":{\"transform\":[{\"scaleY\":1}]},\"100%\":{\"transform\":[{\"scaleY\":1}]}}",length_:4,name_:"REA-CSS-4",processedKeyframes_:"0% { transform: scaleY(1) } 3% { transform: scaleY(0.08) } 6% { transform: scaleY(1) } 100% { transform: scaleY(1) }"},animationDuration:8000,animationTimingFunction:"ease-in-out",animationDelay:0,animationIterationCount:"infinite",animationDirection:"normal",animationFillMode:"none",animationPlayState:"running"}]
+            Svg.default height=9.6 viewBox="30 36 40 20" width=19.2
+              Svg.Ellipse cx=41 cy=46 fill="#FFFFFF" rx=4.2 ry=6.2
+              Svg.Ellipse cx=59 cy=46 fill="#FFFFFF" rx=4.2 ry=6.2
+      View className="min-w-0 gap-0.5"
+        Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=2 selectable=false
+        Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+        Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=2 selectable=false

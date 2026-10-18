@@ -1,17 +1,17 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View } from 'react-native';
-import { ASSISTANT_TEXT_MAX } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
 import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
-import { Text } from '../../../components/text';
+import { Icon } from '../../../components/icon';
 import { Tooltip } from '../../../components/tooltip';
 import { notify } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
-import { count } from '../../../format/number';
 import { PickerMissingError, pickFiles, type PickSource } from '../../../platform/pick-files';
 import { attachFiles } from '../data/uploads';
 import type { Quote } from '../model/composer-state';
+import { VoiceMessageSheet } from '../voice-message/voice-message-sheet';
+import { ComposerChip } from './composer-chip';
 
 function pick(source: PickSource): void {
   pickFiles(source).then(attachFiles, (error: unknown) => {
@@ -47,10 +47,29 @@ const ATTACH_ITEMS: readonly MenuItem[] = [
   },
 ];
 
-export function AttachButton({ disabled }: { readonly disabled: boolean }): ReactNode {
+function attachItems(recordVoice: () => void): readonly MenuItem[] {
+  return [...ATTACH_ITEMS, { label: 'Voice message', icon: 'mic', onPress: recordVoice }];
+}
+
+export function AttachButton({
+  disabled,
+  reason,
+}: {
+  readonly disabled: boolean;
+  readonly reason: string | null;
+}): ReactNode {
+  const label = disabled && reason !== null ? `Attach is unavailable. ${reason}` : 'Attach';
   const pointer = useIdiom() === 'pointer';
   const [hovered, setHovered] = useState(false);
-  const { ref, open, menu } = useAnchoredMenu(ATTACH_ITEMS, 'Attach');
+  const [recording, setRecording] = useState(false);
+  const items = useMemo(
+    () =>
+      attachItems(() => {
+        setRecording(true);
+      }),
+    [],
+  );
+  const { ref, open, menu } = useAnchoredMenu(items, 'Attach');
   return (
     <View
       ref={ref}
@@ -63,9 +82,17 @@ export function AttachButton({ disabled }: { readonly disabled: boolean }): Reac
         setHovered(false);
       }}
     >
-      <IconButton icon="plus" label="Attach" onPress={open} disabled={disabled} />
-      {pointer && hovered ? <Tooltip text="Attach" placement="above" /> : null}
+      <IconButton icon="plus" label={label} onPress={open} disabled={disabled} />
+      {pointer && hovered ? <Tooltip text={label} placement="above" /> : null}
       {menu}
+      {recording ? (
+        <VoiceMessageSheet
+          open
+          onClose={() => {
+            setRecording(false);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -82,31 +109,13 @@ export function QuoteChip({
   readonly onRemove: () => void;
 }): ReactNode {
   return (
-    <View className="mx-1 mt-1 flex-row items-center gap-1 overflow-hidden rounded-lg border-l-2 border-primary bg-surface-3 pl-3">
-      <View className="min-w-0 flex-1 py-1">
-        <Text variant="caption" tone="primary">
-          {`Quoting ${quote.who}`}
-        </Text>
-        <Text variant="footnote" tone="variant" numberOfLines={1}>
-          {quote.text}
-        </Text>
-      </View>
-      <IconButton icon="close" label="Remove the quote" onPress={onRemove} />
+    <View className="px-1">
+      <ComposerChip
+        leading={<Icon name="reply" size={16} />}
+        label={`Quoting ${quote.who}`}
+        removeLabel="Remove the quote"
+        onRemove={onRemove}
+      />
     </View>
-  );
-}
-
-export function Counter({ length }: { readonly length: number }): ReactNode {
-  const full = length >= ASSISTANT_TEXT_MAX;
-  return (
-    <Text
-      variant="caption"
-      tone={full ? 'critical' : 'variant'}
-      numberOfLines={1}
-      className="tabular"
-      accessibilityLiveRegion="polite"
-    >
-      {`${count(length)} / ${count(ASSISTANT_TEXT_MAX)}`}
-    </Text>
   );
 }

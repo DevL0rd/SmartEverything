@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { AppState, PermissionsAndroid, type Permission } from 'react-native';
+import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { PermissionsAndroid, type Permission } from 'react-native';
 import { Logger } from '@smarteverything/logging';
 import {
   isHealthConnectLinked,
@@ -12,10 +12,14 @@ import {
   type WatchRelayChange,
   type WatchRelayStatus,
 } from '../../../modules/health-connect';
-import { ValueStore, useValue } from '../../design/external-store';
+import { notify } from '../../components/toast-store';
 import { rawErrorText } from '../../format/errors';
+import { useScreenQuery } from '../../queries/use-screen-query';
 
 const log = new Logger('app.watch');
+
+export const RELAY_KEY = ['native', 'watch-relay'] as const;
+const APPS_KEY = ['native', 'phone-apps'] as const;
 
 export type RelayState =
   | { readonly kind: 'unsupported' }
@@ -23,55 +27,48 @@ export type RelayState =
   | { readonly kind: 'ready'; readonly status: WatchRelayStatus }
   | { readonly kind: 'failed'; readonly reason: string };
 
-const relay = new ValueStore<RelayState>(
-  isHealthConnectLinked ? { kind: 'loading' } : { kind: 'unsupported' },
-);
-const apps = new ValueStore<readonly PhoneApp[] | null>(null);
-
-async function load(): Promise<void> {
-  try {
-    relay.set({ kind: 'ready', status: await watchRelayStatus() });
-  } catch (error) {
-    relay.set({ kind: 'failed', reason: rawErrorText(error) });
+export function relayStateOf(
+  linked: boolean,
+  status: WatchRelayStatus | undefined,
+  error: Error | null,
+): RelayState {
+  if (!linked) {
+    return { kind: 'unsupported' };
   }
+  if (status !== undefined) {
+    return { kind: 'ready', status };
+  }
+  return error === null ? { kind: 'loading' } : { kind: 'failed', reason: rawErrorText(error) };
 }
 
 export function useRelay(): RelayState {
-  useEffect(() => {
-    if (!isHealthConnectLinked) {
-      return undefined;
-    }
-    void load();
-    const back = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void load();
-      }
-    });
-    return (): void => {
-      back.remove();
-    };
-  }, []);
-  return useValue(relay);
+  const query = useScreenQuery({
+    queryKey: RELAY_KEY,
+    queryFn: watchRelayStatus,
+    enabled: isHealthConnectLinked,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+  return relayStateOf(isHealthConnectLinked, query.data, query.error);
 }
 
-export function usePhoneApps(): readonly PhoneApp[] | null {
-  useEffect(() => {
-    if (isHealthConnectLinked && apps.get() === null) {
-      phoneApps().then(apps.set, (error: unknown) => {
-        relay.set({ kind: 'failed', reason: rawErrorText(error) });
-      });
-    }
-  }, []);
-  return useValue(apps);
+export function usePhoneApps(): {
+  readonly apps: readonly PhoneApp[];
+  readonly error: Error | null;
+} {
+  const query = useScreenQuery({
+    queryKey: APPS_KEY,
+    queryFn: phoneApps,
+    enabled: isHealthConnectLinked,
+    retry: false,
+  });
+  return { apps: query.data ?? [], error: query.error };
 }
 
-export async function changeRelay(change: WatchRelayChange): Promise<void> {
-  try {
-    relay.set({ kind: 'ready', status: await setWatchRelay(change) });
-    log.info('watch.relay_changed', { ...change, apps: change.apps?.length ?? null });
-  } catch (error) {
-    relay.set({ kind: 'failed', reason: rawErrorText(error) });
-  }
+interface RelayRequest {
+  readonly change: WatchRelayChange;
+  readonly askCallPermissions: boolean;
 }
 
 function callPermissions(): Permission[] {
@@ -84,14 +81,53 @@ function callPermissions(): Permission[] {
   ];
 }
 
-export async function allowCalls(on: boolean): Promise<void> {
-  if (on) {
+async function changeRelay({
+  change,
+  askCallPermissions,
+}: RelayRequest): Promise<WatchRelayStatus> {
+  if (askCallPermissions) {
     const answers = await PermissionsAndroid.requestMultiple(callPermissions());
     log.info('watch.call_permissions_answered', answers);
   }
-  await changeRelay({ calls: on });
+  const status = await setWatchRelay(change);
+  log.info('watch.relay_changed', { ...change, apps: change.apps?.length ?? null });
+  return status;
+}
+
+export function relayChangeOptions(client: QueryClient): {
+  readonly mutationFn: (request: RelayRequest) => Promise<WatchRelayStatus>;
+  readonly onSuccess: (status: WatchRelayStatus) => void;
+  readonly onError: (error: Error) => void;
+} {
+  return {
+    mutationFn: changeRelay,
+    onSuccess: (status): void => {
+      client.setQueryData(RELAY_KEY, status);
+    },
+    onError: (error): void => {
+      log.error('watch.relay_change_failed', error);
+      notify({ message: 'The watch setting was not changed', error, tone: 'critical' });
+    },
+  };
+}
+
+export function useRelayChange(): {
+  readonly change: (change: WatchRelayChange) => void;
+  readonly allowCalls: (on: boolean) => void;
+} {
+  const client = useQueryClient();
+  const mutation = useMutation(relayChangeOptions(client));
+  return {
+    change: (change): void => {
+      mutation.mutate({ change, askCallPermissions: false });
+    },
+    allowCalls: (on): void => {
+      mutation.mutate({ change: { calls: on }, askCallPermissions: on });
+    },
+  };
 }
 
 export async function openAccess(which: 'notifications' | 'dnd'): Promise<void> {
+  log.info('watch.access_opened', { which });
   await (which === 'notifications' ? openNotificationAccess() : openDndAccess());
 }

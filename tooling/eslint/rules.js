@@ -1,3 +1,8 @@
+import frameBudget from './frame-budget.js';
+import lazyDebugPayload from './lazy-debug-payload.js';
+import noSwallowedErrors from './no-swallowed-errors.js';
+import noVoidPromise from './no-void-promise.js';
+import noStrayText from './no-stray-text.js';
 import workletCallsWorklets from './worklet-calls-worklets.js';
 
 const CONTROL = /^\s*(eslint|global|globals|exported|prettier-ignore)\b/;
@@ -28,5 +33,13 @@ const noComments = {
 };
 
 export default {
-  rules: { 'no-comments': noComments, 'worklet-calls-worklets': workletCallsWorklets },
+  rules: {
+    'frame-budget': frameBudget,
+    'lazy-debug-payload': lazyDebugPayload,
+    'no-comments': noComments,
+    'no-stray-text': noStrayText,
+    'no-swallowed-errors': noSwallowedErrors,
+    'no-void-promise': noVoidPromise,
+    'worklet-calls-worklets': workletCallsWorklets,
+  },
 };

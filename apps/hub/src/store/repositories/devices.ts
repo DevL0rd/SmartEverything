@@ -1,4 +1,5 @@
 import { DEVICE_ROW, type DeviceRow } from '@smarteverything/domain';
+import { z } from 'zod';
 import type { DeviceUpsert } from '../../database/port';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
@@ -8,6 +9,8 @@ const STORED_DEVICE = storedRow(DEVICE_ROW, {
   flags: ['online', 'hidden', 'favourite'],
   json: ['capabilities', 'details'],
 });
+
+const JSON_MATCH = z.strictObject({ matches: z.int().nonnegative() });
 
 const COLUMNS =
   'id, provider, external_id, parent_id, kind, name, display_name, model, manufacturer, provider_room, room_id, online, capabilities, details, hidden, favourite, position, created_at, updated_at';
@@ -40,6 +43,19 @@ const UPSERT = `insert into devices (
     details = excluded.details,
     updated_at = excluded.updated_at`;
 
+function sameFields(row: DeviceRow, device: DeviceUpsert): boolean {
+  return (
+    row.parent_id === device.parentId &&
+    row.kind === device.kind &&
+    row.name === device.name &&
+    row.model === device.model &&
+    row.manufacturer === device.manufacturer &&
+    row.provider_room === device.providerRoom &&
+    row.online === device.online &&
+    (row.room_id !== null || device.roomId === null)
+  );
+}
+
 export class DevicesRepository {
   constructor(private readonly context: StoreContext) {}
 
@@ -58,6 +74,14 @@ export class DevicesRepository {
     return this.context.sql.get(STORED_DEVICE, `select ${COLUMNS} from devices where id = $id`, {
       id,
     });
+  }
+
+  byExternal(provider: string, externalId: string): DeviceRow | undefined {
+    return this.context.sql.get(
+      STORED_DEVICE,
+      `select ${COLUMNS} from devices where provider = $provider and external_id = $externalId`,
+      { provider, externalId },
+    );
   }
 
   update(id: string, patch: DevicePatch): DeviceRow {
@@ -120,11 +144,10 @@ export class DevicesRepository {
   }
 
   private upsertOne(device: DeviceUpsert): DeviceRow {
-    const before = this.context.sql.get(
-      STORED_DEVICE,
-      `select ${COLUMNS} from devices where provider = $provider and external_id = $externalId`,
-      { provider: device.provider, externalId: device.externalId },
-    );
+    const before = this.byExternal(device.provider, device.externalId);
+    if (before !== undefined && this.unchanged(before, device)) {
+      return before;
+    }
     const id = before?.id ?? this.context.newId();
     this.context.sql.run('save the device', UPSERT, {
       id,
@@ -148,6 +171,22 @@ export class DevicesRepository {
       return row;
     }
     return this.announce(before);
+  }
+
+  private unchanged(row: DeviceRow, device: DeviceUpsert): boolean {
+    if (!sameFields(row, device)) {
+      return false;
+    }
+    const match = this.context.sql.get(
+      JSON_MATCH,
+      'select count(*) as matches from devices where id = $id and capabilities = $capabilities and details = $details',
+      {
+        id: row.id,
+        capabilities: jsonText(device.capabilities),
+        details: jsonText(device.details),
+      },
+    );
+    return match?.matches === 1;
   }
 
   private announce(before: DeviceRow): DeviceRow {

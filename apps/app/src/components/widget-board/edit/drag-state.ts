@@ -1,5 +1,5 @@
-import { useWindowDimensions } from 'react-native';
 import {
+  measure,
   scrollTo,
   useFrameCallback,
   useSharedValue,
@@ -110,31 +110,36 @@ export function useDragState(onTarget: (key: string, target: string | null) => v
 }
 
 const EDGE = 96;
-const TOP_CHROME = 72;
-const BOTTOM_CHROME = 96;
 const MAX_SPEED = 14;
 
-function edgeSpeed(pointerY: number, height: number): number {
+function edgeSpeed(pointerY: number, top: number, bottom: number): number {
   'worklet';
   if (pointerY < 0) {
     return 0;
   }
-  const top = TOP_CHROME + EDGE - pointerY;
-  if (top > 0) {
-    return -Math.min(MAX_SPEED, (top / EDGE) * MAX_SPEED);
+  const near = top + EDGE - pointerY;
+  if (near > 0) {
+    return -Math.min(MAX_SPEED, (near / EDGE) * MAX_SPEED);
   }
-  const bottom = pointerY - (height - BOTTOM_CHROME - EDGE);
-  return bottom > 0 ? Math.min(MAX_SPEED, (bottom / EDGE) * MAX_SPEED) : 0;
+  const far = pointerY - (bottom - EDGE);
+  return far > 0 ? Math.min(MAX_SPEED, (far / EDGE) * MAX_SPEED) : 0;
 }
 
 export function useAutoScroll(state: DragState): (active: boolean) => void {
   const { scrollRef } = useScreen();
-  const { height } = useWindowDimensions();
   const callback = useFrameCallback(() => {
     if (scrollRef === null || state.key.get() === NO_TARGET) {
       return;
     }
-    const speed = edgeSpeed(state.point.get().pointerY, height);
+    const viewport = measure(scrollRef);
+    if (viewport === null) {
+      return;
+    }
+    const speed = edgeSpeed(
+      state.point.get().pointerY,
+      viewport.pageY,
+      viewport.pageY + viewport.height,
+    );
     if (speed === 0) {
       return;
     }

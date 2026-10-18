@@ -7,20 +7,19 @@ export interface TransportActor {
   readonly kind: 'node';
   readonly id: string;
   readonly deviceId: string;
-  readonly profileId: string | null;
 }
 export function authenticate(
-  context: ServerContext,
+  context: Pick<ServerContext, 'computerNodes'>,
   request: IncomingMessage,
-  deviceId: string,
+  deviceId?: string,
 ): TransportActor {
   const token = bearerOf(request);
   if (!NODE_AI_TOKEN.safeParse(token).success)
     throw new ApiError('unauthorized', 'Harness transport requires its paired computer token.');
   const node = context.computerNodes.authenticate(token);
-  if (node.device_id !== deviceId)
+  if (deviceId !== undefined && node.device_id !== deviceId)
     throw new ApiError('forbidden', 'This node token belongs to another computer.');
-  return { kind: 'node', id: deviceId, deviceId, profileId: null };
+  return { kind: 'node', id: node.device_id, deviceId: node.device_id };
 }
 export function requireActor(connection: HarnessConnection, actor: TransportActor): void {
   if (connection.actor.kind !== actor.kind || connection.actor.id !== actor.id)

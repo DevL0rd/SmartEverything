@@ -89,7 +89,7 @@ function Fields({
     <View className="gap-4">
       <TextField
         label="Access ID"
-        kind="url"
+        kind="code"
         value={form.accessId}
         onChange={(accessId) => {
           onChange({ ...form, accessId });
@@ -113,7 +113,7 @@ function Fields({
       />
       <TextField
         label="App account UID"
-        kind="url"
+        kind="code"
         value={form.appUserId}
         onChange={(appUserId) => {
           onChange({ ...form, appUserId });

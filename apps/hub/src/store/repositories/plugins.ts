@@ -11,7 +11,7 @@ import type { SQLInputValue } from 'node:sqlite';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
-import { SQL_JSON, jsonText } from '../sql';
+import { SQL_JSON, flag, jsonText, whenDefined } from '../sql';
 
 const STORED_PLUGIN = storedRow(PLUGIN_ROW, {
   flags: ['enabled', 'trusted'],
@@ -51,24 +51,16 @@ export interface PluginChange {
   readonly iconUrl?: string | null | undefined;
 }
 
-function flag(value: boolean | undefined): number | undefined {
-  return value === undefined ? undefined : Number(value);
-}
-
-function json(value: unknown): string | undefined {
-  return value === undefined ? undefined : jsonText(value);
-}
-
 function columnsOf(change: PluginChange): Readonly<Record<string, SQLInputValue | undefined>> {
   return {
-    manifest: json(change.manifest),
-    enabled: flag(change.enabled),
-    trusted: flag(change.trusted),
+    manifest: whenDefined(change.manifest, jsonText),
+    enabled: whenDefined(change.enabled, flag),
+    trusted: whenDefined(change.trusted, flag),
     status: change.status,
     status_detail: change.statusDetail,
-    tool_switches: json(change.toolSwitches),
-    settings: json(change.settings),
-    secret_names: json(change.secretNames),
+    tool_switches: whenDefined(change.toolSwitches, jsonText),
+    settings: whenDefined(change.settings, jsonText),
+    secret_names: whenDefined(change.secretNames, jsonText),
     icon_url: change.iconUrl,
   };
 }
@@ -104,7 +96,7 @@ export class PluginsRepository {
           manifest: jsonText(plugin.manifest),
           source: plugin.source,
           location: plugin.location,
-          trusted: Number(plugin.trusted),
+          trusted: flag(plugin.trusted),
           now,
         },
       );

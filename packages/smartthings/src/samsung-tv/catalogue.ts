@@ -1,3 +1,5 @@
+import { TV_APP_CATALOGUE } from '@smarteverything/domain';
+
 export const TV_KEYS = [
   'KEY_POWER',
   'KEY_POWEROFF',
@@ -60,31 +62,12 @@ export interface TvApp {
   readonly ids: readonly [string, ...string[]];
 }
 
-export const TV_APPS: readonly TvApp[] = [
-  { name: 'Netflix', ids: ['3201907018807', '11101200001'] },
-  { name: 'YouTube', ids: ['111299001912'] },
-  { name: 'YouTube TV', ids: ['3201707014489'] },
-  { name: 'Prime Video', ids: ['3201910019365', '3201512006785'] },
-  { name: 'Disney+', ids: ['3201901017640', '3202009021709', '3202204027038'] },
-  { name: 'Apple TV', ids: ['3201807016597'] },
-  { name: 'Apple Music', ids: ['3201908019041'] },
-  { name: 'Plex', ids: ['3201512006963'] },
-  { name: 'Spotify', ids: ['3201606009684'] },
-  { name: 'Max', ids: ['3202301029760'] },
-  { name: 'Hulu', ids: ['3201601007625'] },
-  { name: 'Paramount+', ids: ['3201710014981', '3202110025305'] },
-  { name: 'Peacock', ids: ['3202006020991'] },
-  { name: 'Twitch', ids: ['3202203026841'] },
-  { name: 'Tubi', ids: ['3201504001965'] },
-  { name: 'Pluto TV', ids: ['3201808016802'] },
-  { name: 'Crunchyroll', ids: ['3202302030097'] },
-  { name: 'DAZN', ids: ['3201806016390'] },
-  { name: 'Xbox', ids: ['3202203026799'] },
-  { name: 'GeForce NOW', ids: ['3202102023078'] },
-  { name: 'SmartThings', ids: ['3201910019378', '3201710015016', '3202311033054'] },
-  { name: 'Gallery', ids: ['3201710015037'] },
-  { name: 'Browser', ids: ['org.tizen.browser', '3201907018784', '3202010022079'] },
-];
+export const TV_APPS: readonly TvApp[] = TV_APP_CATALOGUE.flatMap(
+  ({ name, launchIds }): readonly TvApp[] => {
+    const [first, ...rest] = launchIds;
+    return first === undefined ? [] : [{ name, ids: [first, ...rest] }];
+  },
+);
 
 export const TV_APP_NAMES: readonly string[] = TV_APPS.map((app) => app.name);
 

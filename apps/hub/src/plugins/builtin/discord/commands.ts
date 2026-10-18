@@ -10,6 +10,11 @@ export interface CommandReply {
   readonly tone: CommandTone;
 }
 
+interface Asked {
+  readonly key: string;
+  readonly actor: string;
+}
+
 type CommandOptions = Readonly<Record<string, string | undefined>>;
 
 interface CommandRun {
@@ -18,6 +23,10 @@ interface CommandRun {
   readonly conversation: string;
   readonly guildId: string | null;
   readonly actorId: string;
+}
+
+function askedBy(call: CommandRun): Asked {
+  return { key: call.conversation, actor: call.actorId };
 }
 
 export interface CommandSet {
@@ -68,10 +77,10 @@ function option(
 function status(
   assistant: PluginAssistant,
   visibility: ActivityVisibility,
-  key: string,
+  asked: Asked,
 ): CommandReply {
   const settings = assistant.settings();
-  const chat = assistant.conversation(key);
+  const chat = assistant.conversation(asked.key, asked.actor);
   const lines =
     chat === null
       ? ['**State** ready · no conversation here yet']
@@ -92,8 +101,8 @@ function status(
   };
 }
 
-function usage(assistant: PluginAssistant): CommandReply {
-  const view = assistant.usage();
+function usage(assistant: PluginAssistant, actor: string): CommandReply {
+  const view = assistant.usage(actor);
   return {
     title: 'AI spending',
     tone: 'info',
@@ -105,8 +114,8 @@ function usage(assistant: PluginAssistant): CommandReply {
   };
 }
 
-async function compact(assistant: PluginAssistant, key: string): Promise<CommandReply> {
-  return (await assistant.compact(key))
+async function compact(assistant: PluginAssistant, asked: Asked): Promise<CommandReply> {
+  return (await assistant.compact(asked.key, asked.actor))
     ? {
         title: 'Compacting',
         tone: 'good',
@@ -115,8 +124,8 @@ async function compact(assistant: PluginAssistant, key: string): Promise<Command
     : { title: 'Nothing to compact', tone: 'info', lines: ['The conversation is still short.'] };
 }
 
-async function startOver(assistant: PluginAssistant, key: string): Promise<CommandReply> {
-  const had = await assistant.startOver(key);
+async function startOver(assistant: PluginAssistant, asked: Asked): Promise<CommandReply> {
+  const had = await assistant.startOver(asked.key, asked.actor);
   return {
     title: 'Fresh start',
     tone: 'good',
@@ -128,8 +137,8 @@ async function startOver(assistant: PluginAssistant, key: string): Promise<Comma
   };
 }
 
-async function stop(assistant: PluginAssistant, key: string): Promise<CommandReply> {
-  return (await assistant.stop(key))
+async function stop(assistant: PluginAssistant, asked: Asked): Promise<CommandReply> {
+  return (await assistant.stop(asked.key, asked.actor))
     ? { title: 'Stopped', tone: 'good', lines: ['The current work was interrupted.'] }
     : {
         title: 'Nothing to stop',
@@ -161,14 +170,14 @@ async function activity(
 
 async function model(
   assistant: PluginAssistant,
-  key: string,
+  asked: Asked,
   name: string | undefined,
 ): Promise<CommandReply> {
   if (name === undefined || name.trim() === '') {
     throw new DiscordInputError('Give a model id, or default');
   }
   const wanted = name.trim().toLowerCase() === 'default' ? null : name.trim();
-  const label = await assistant.setModel(key, wanted);
+  const label = await assistant.setModel(asked.key, wanted, asked.actor);
   return {
     title: 'Model',
     tone: 'good',
@@ -184,27 +193,27 @@ export function builtInCommands(
     {
       name: 'status',
       definition: define('status', 'Show the assistant’s state, model and spending here'),
-      run: ({ conversation }) => Promise.resolve(status(assistant, visibility, conversation)),
+      run: (call) => Promise.resolve(status(assistant, visibility, askedBy(call))),
     },
     {
       name: 'usage',
       definition: define('usage', 'Show what the AI cost recently'),
-      run: () => Promise.resolve(usage(assistant)),
+      run: ({ actorId }) => Promise.resolve().then(() => usage(assistant, actorId)),
     },
     {
       name: 'compact',
       definition: define('compact', 'Compact the current conversation to free up context'),
-      run: ({ conversation }) => compact(assistant, conversation),
+      run: (call) => compact(assistant, askedBy(call)),
     },
     {
       name: 'new',
       definition: define('new', 'Start a fresh conversation'),
-      run: ({ conversation }) => startOver(assistant, conversation),
+      run: (call) => startOver(assistant, askedBy(call)),
     },
     {
       name: 'stop',
       definition: define('stop', 'Stop what the assistant is working on'),
-      run: ({ conversation }) => stop(assistant, conversation),
+      run: (call) => stop(assistant, askedBy(call)),
     },
     {
       name: 'activity',
@@ -221,7 +230,7 @@ export function builtInCommands(
       definition: define('model', 'Change the model of this conversation', [
         option('name', 'Model id, or default'),
       ]),
-      run: ({ conversation, options }) => model(assistant, conversation, options['name']),
+      run: (call) => model(assistant, askedBy(call), call.options['name']),
     },
   ];
 }

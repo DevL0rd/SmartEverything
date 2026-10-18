@@ -1,0 +1,1547 @@
+{
+  "livingRoom": {
+    "model": "QA65S95BAKXXT",
+    "capabilities": [
+      {
+        "key": "power",
+        "label": "Power",
+        "access": "read_write",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "volume",
+        "label": "Volume",
+        "access": "read_write",
+        "value": {
+          "kind": "number",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%"
+        }
+      },
+      {
+        "key": "mute",
+        "label": "Mute",
+        "access": "read_write",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "playback",
+        "label": "Playback",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": ["playing", "paused", "stopped", "fast forwarding", "rewinding"]
+        }
+      },
+      {
+        "key": "input_source",
+        "label": "Input",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": ["dtv"]
+        }
+      },
+      {
+        "key": "raw:media_input_source.input_source",
+        "label": "Input (media input source)",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": [
+            "AM",
+            "CD",
+            "FM",
+            "HDMI",
+            "HDMI1",
+            "HDMI2",
+            "HDMI3",
+            "HDMI4",
+            "HDMI5",
+            "HDMI6",
+            "digitalTv",
+            "USB",
+            "YouTube",
+            "aux",
+            "bluetooth",
+            "digital",
+            "melon",
+            "wifi"
+          ]
+        }
+      },
+      {
+        "key": "channel",
+        "label": "Channel",
+        "access": "read_write",
+        "value": {
+          "kind": "number",
+          "min": 1,
+          "max": 9999,
+          "step": 1
+        }
+      },
+      {
+        "key": "app_launch",
+        "label": "Open app",
+        "access": "write",
+        "value": {
+          "kind": "enum",
+          "options": [
+            "Netflix",
+            "YouTube",
+            "YouTube TV",
+            "Prime Video",
+            "Disney+",
+            "Apple TV",
+            "Apple Music",
+            "Plex",
+            "Spotify",
+            "Max",
+            "Hulu",
+            "Paramount+",
+            "Peacock",
+            "Twitch",
+            "Tubi",
+            "Pluto TV",
+            "Crunchyroll",
+            "DAZN",
+            "Xbox",
+            "GeForce NOW",
+            "SmartThings",
+            "Gallery",
+            "Browser"
+          ]
+        }
+      },
+      {
+        "key": "remote_key",
+        "label": "Remote button",
+        "access": "write",
+        "value": {
+          "kind": "enum",
+          "options": ["UP", "DOWN", "LEFT", "RIGHT", "OK", "BACK", "MENU", "HOME"]
+        }
+      },
+      {
+        "key": "raw:audio_volume:volume_down",
+        "label": "Audio volume: volume down",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:audio_volume:volume_up",
+        "label": "Audio volume: volume up",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:tv_channel.tv_channel_name",
+        "label": "Tv channel tv channel name",
+        "access": "read_write",
+        "value": {
+          "kind": "text",
+          "maxLength": 255
+        }
+      },
+      {
+        "key": "raw:tv_channel:channel_down",
+        "label": "Tv channel: channel down",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:tv_channel:channel_up",
+        "label": "Tv channel: channel up",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:media_track_control.supported_track_control_commands",
+        "label": "Media track control supported track control commands",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:media_track_control:previous_track",
+        "label": "Media track control: previous track",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:media_track_control:next_track",
+        "label": "Media track control: next track",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.error.error",
+        "label": "Custom error error",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.error:set_error",
+        "label": "Custom error: set error",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["error"]
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.picture_mode",
+        "label": "Custom picturemode picture mode",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.supported_picture_modes",
+        "label": "Custom picturemode supported picture modes",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.supported_picture_modes_map",
+        "label": "Custom picturemode supported picture modes map",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode:set_picture_mode",
+        "label": "Custom picturemode: set picture mode",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["mode"]
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.supported_sound_modes_map",
+        "label": "Custom soundmode supported sound modes map",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.sound_mode",
+        "label": "Custom soundmode sound mode",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.supported_sound_modes",
+        "label": "Custom soundmode supported sound modes",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode:set_sound_mode",
+        "label": "Custom soundmode: set sound mode",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["mode"]
+        }
+      },
+      {
+        "key": "raw:custom.accessibility:set_accessibility",
+        "label": "Custom accessibility: set accessibility",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["menuName", "menuId", "option"]
+        }
+      },
+      {
+        "key": "raw:custom.recording:record_start",
+        "label": "Custom recording: record start",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.recording:record_stop",
+        "label": "Custom recording: record stop",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.tvsearch:search",
+        "label": "Custom tvsearch: search",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["query", "url"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.ambient.info",
+        "label": "Samsungvd ambient info",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.ambient:send_data",
+        "label": "Samsungvd ambient: send data",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["data"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.ambient:set_ambient_on",
+        "label": "Samsungvd ambient: set ambient on",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.media_output_supported",
+        "label": "Samsungvd supports features media output supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.ime_adv_supported",
+        "label": "Samsungvd supports features ime adv supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.wifi_update_support",
+        "label": "Samsungvd supports features wifi update support",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.executable_service_list",
+        "label": "Samsungvd supports features executable service list",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.remoteless_supported",
+        "label": "Samsungvd supports features remoteless supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.art_supported",
+        "label": "Samsungvd supports features art supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.mobile_cam_supported",
+        "label": "Samsungvd supports features mobile cam supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungim.fixed_find_node:refresh",
+        "label": "Samsungim fixed find node: refresh",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:samsungvd.thing_status.updated_time",
+        "label": "Samsungvd thing status updated time",
+        "access": "read",
+        "value": {
+          "kind": "number",
+          "min": -100000,
+          "max": 100000,
+          "step": 1
+        }
+      },
+      {
+        "key": "raw:samsungvd.thing_status.status",
+        "label": "Samsungvd thing status status",
+        "access": "read",
+        "value": {
+          "kind": "enum",
+          "options": ["AgentUpdate Started", "Idle"]
+        }
+      },
+      {
+        "key": "raw:refresh:refresh",
+        "label": "Refresh: refresh",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:samsungvd.firmware_version.firmware_version",
+        "label": "Samsungvd firmware version firmware version",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.firmware_version:set_firmware_version",
+        "label": "Samsungvd firmware version: set firmware version",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["version"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_power_on_by_ocf.supports_power_on_by_ocf",
+        "label": "Samsungvd supports power on by ocf supports power on by ocf",
+        "access": "read",
+        "value": {
+          "kind": "enum",
+          "options": ["true", "false"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.device_category.category",
+        "label": "Samsungvd device category category",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      }
+    ],
+    "state": {
+      "input_source": "dtv",
+      "mute": false,
+      "power": false,
+      "raw:custom.picturemode.picture_mode": "Optimised",
+      "raw:custom.picturemode.supported_picture_modes": ["EyeComfort", "Optimised"],
+      "raw:custom.picturemode.supported_picture_modes_map": [
+        {
+          "id": "modeGen_589826",
+          "name": "EyeComfort"
+        },
+        {
+          "id": "modeIntelligent",
+          "name": "Optimised"
+        }
+      ],
+      "raw:custom.soundmode.sound_mode": "Amplify",
+      "raw:custom.soundmode.supported_sound_modes": ["Amplify", "Standard"],
+      "raw:custom.soundmode.supported_sound_modes_map": [
+        {
+          "id": "modeAmplify",
+          "name": "Amplify"
+        },
+        {
+          "id": "modeStandard",
+          "name": "Standard"
+        }
+      ],
+      "raw:samsungvd.device_category.category": "tv",
+      "raw:samsungvd.supports_power_on_by_ocf.supports_power_on_by_ocf": "false",
+      "raw:samsungvd.thing_status.status": "Idle",
+      "raw:tv_channel.tv_channel_name": "9Ur5IzDKqV.TizenYouTube",
+      "volume": 17
+    }
+  },
+  "monitor": {
+    "model": "LS49CG954SEXXT",
+    "capabilities": [
+      {
+        "key": "power",
+        "label": "Power",
+        "access": "read_write",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "volume",
+        "label": "Volume",
+        "access": "read_write",
+        "value": {
+          "kind": "number",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%"
+        }
+      },
+      {
+        "key": "mute",
+        "label": "Mute",
+        "access": "read_write",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "playback",
+        "label": "Playback",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": ["playing", "paused", "stopped", "fast forwarding", "rewinding"]
+        }
+      },
+      {
+        "key": "input_source",
+        "label": "Input",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": ["HDMI1"]
+        }
+      },
+      {
+        "key": "raw:media_input_source.input_source",
+        "label": "Input (media input source)",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": [
+            "AM",
+            "CD",
+            "FM",
+            "HDMI",
+            "HDMI1",
+            "HDMI2",
+            "HDMI3",
+            "HDMI4",
+            "HDMI5",
+            "HDMI6",
+            "digitalTv",
+            "USB",
+            "YouTube",
+            "aux",
+            "bluetooth",
+            "digital",
+            "melon",
+            "wifi"
+          ]
+        }
+      },
+      {
+        "key": "channel",
+        "label": "Channel",
+        "access": "read_write",
+        "value": {
+          "kind": "number",
+          "min": 1,
+          "max": 9999,
+          "step": 1
+        }
+      },
+      {
+        "key": "app_launch",
+        "label": "Open app",
+        "access": "write",
+        "value": {
+          "kind": "enum",
+          "options": [
+            "Netflix",
+            "YouTube",
+            "YouTube TV",
+            "Prime Video",
+            "Disney+",
+            "Apple TV",
+            "Apple Music",
+            "Plex",
+            "Spotify",
+            "Max",
+            "Hulu",
+            "Paramount+",
+            "Peacock",
+            "Twitch",
+            "Tubi",
+            "Pluto TV",
+            "Crunchyroll",
+            "DAZN",
+            "Xbox",
+            "GeForce NOW",
+            "SmartThings",
+            "Gallery",
+            "Browser"
+          ]
+        }
+      },
+      {
+        "key": "remote_key",
+        "label": "Remote button",
+        "access": "write",
+        "value": {
+          "kind": "enum",
+          "options": ["UP", "DOWN", "LEFT", "RIGHT", "OK", "BACK", "MENU", "HOME"]
+        }
+      },
+      {
+        "key": "raw:audio_volume:volume_down",
+        "label": "Audio volume: volume down",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:audio_volume:volume_up",
+        "label": "Audio volume: volume up",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:tv_channel.tv_channel_name",
+        "label": "Tv channel tv channel name",
+        "access": "read_write",
+        "value": {
+          "kind": "text",
+          "maxLength": 255
+        }
+      },
+      {
+        "key": "raw:tv_channel:channel_down",
+        "label": "Tv channel: channel down",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:tv_channel:channel_up",
+        "label": "Tv channel: channel up",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:media_track_control.supported_track_control_commands",
+        "label": "Media track control supported track control commands",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:media_track_control:previous_track",
+        "label": "Media track control: previous track",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:media_track_control:next_track",
+        "label": "Media track control: next track",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.error.error",
+        "label": "Custom error error",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.error:set_error",
+        "label": "Custom error: set error",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["error"]
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.picture_mode",
+        "label": "Custom picturemode picture mode",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.supported_picture_modes",
+        "label": "Custom picturemode supported picture modes",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.supported_picture_modes_map",
+        "label": "Custom picturemode supported picture modes map",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode:set_picture_mode",
+        "label": "Custom picturemode: set picture mode",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["mode"]
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.supported_sound_modes_map",
+        "label": "Custom soundmode supported sound modes map",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.sound_mode",
+        "label": "Custom soundmode sound mode",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.supported_sound_modes",
+        "label": "Custom soundmode supported sound modes",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode:set_sound_mode",
+        "label": "Custom soundmode: set sound mode",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["mode"]
+        }
+      },
+      {
+        "key": "raw:custom.accessibility:set_accessibility",
+        "label": "Custom accessibility: set accessibility",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["menuName", "menuId", "option"]
+        }
+      },
+      {
+        "key": "raw:custom.recording:record_start",
+        "label": "Custom recording: record start",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.recording:record_stop",
+        "label": "Custom recording: record stop",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.tvsearch:search",
+        "label": "Custom tvsearch: search",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["query", "url"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.media_output_supported",
+        "label": "Samsungvd supports features media output supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.ime_adv_supported",
+        "label": "Samsungvd supports features ime adv supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.wifi_update_support",
+        "label": "Samsungvd supports features wifi update support",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.executable_service_list",
+        "label": "Samsungvd supports features executable service list",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.remoteless_supported",
+        "label": "Samsungvd supports features remoteless supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.art_supported",
+        "label": "Samsungvd supports features art supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.mobile_cam_supported",
+        "label": "Samsungvd supports features mobile cam supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_power_on_by_ocf.supports_power_on_by_ocf",
+        "label": "Samsungvd supports power on by ocf supports power on by ocf",
+        "access": "read",
+        "value": {
+          "kind": "enum",
+          "options": ["true", "false"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.thing_status.updated_time",
+        "label": "Samsungvd thing status updated time",
+        "access": "read",
+        "value": {
+          "kind": "number",
+          "min": -100000,
+          "max": 100000,
+          "step": 1
+        }
+      },
+      {
+        "key": "raw:samsungvd.thing_status.status",
+        "label": "Samsungvd thing status status",
+        "access": "read",
+        "value": {
+          "kind": "enum",
+          "options": ["AgentUpdate Started", "Idle"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.firmware_version.firmware_version",
+        "label": "Samsungvd firmware version firmware version",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.firmware_version:set_firmware_version",
+        "label": "Samsungvd firmware version: set firmware version",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["version"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.device_category.category",
+        "label": "Samsungvd device category category",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:refresh:refresh",
+        "label": "Refresh: refresh",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control.supported_mode_map",
+        "label": "Samsungvd light control supported mode map",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control.request_id",
+        "label": "Samsungvd light control request id",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control.selected_mode",
+        "label": "Samsungvd light control selected mode",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control.stream_control",
+        "label": "Samsungvd light control stream control",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control.selected_app_id",
+        "label": "Samsungvd light control selected app id",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control.error_code",
+        "label": "Samsungvd light control error code",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control.supported_modes",
+        "label": "Samsungvd light control supported modes",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.light_control:set_light_control_mode",
+        "label": "Samsungvd light control: set light control mode",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["selectedMode"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.launch_service:launch_tvplus",
+        "label": "Samsungvd launch service: launch tvplus",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["providerId", "serviceId"]
+        }
+      }
+    ],
+    "state": {
+      "input_source": "HDMI1",
+      "mute": false,
+      "power": true,
+      "raw:custom.soundmode.sound_mode": "Game",
+      "raw:custom.soundmode.supported_sound_modes": ["Amplify", "Standard", "Game"],
+      "raw:custom.soundmode.supported_sound_modes_map": [
+        {
+          "id": "modeAmplify",
+          "name": "Amplify"
+        },
+        {
+          "id": "modeStandard",
+          "name": "Standard"
+        },
+        {
+          "id": "modeGame",
+          "name": "Game"
+        }
+      ],
+      "raw:samsungvd.device_category.category": "monitor",
+      "raw:samsungvd.supports_power_on_by_ocf.supports_power_on_by_ocf": "true",
+      "raw:samsungvd.thing_status.status": "Idle",
+      "raw:tv_channel.tv_channel_name": "",
+      "volume": 30
+    }
+  },
+  "bedroom": {
+    "model": "QA65S95BAKXXT",
+    "capabilities": [
+      {
+        "key": "power",
+        "label": "Power",
+        "access": "read_write",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "volume",
+        "label": "Volume",
+        "access": "read_write",
+        "value": {
+          "kind": "number",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%"
+        }
+      },
+      {
+        "key": "mute",
+        "label": "Mute",
+        "access": "read_write",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "playback",
+        "label": "Playback",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": ["playing", "paused", "stopped", "fast forwarding", "rewinding"]
+        }
+      },
+      {
+        "key": "input_source",
+        "label": "Input",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": ["dtv", "HDMI1"]
+        }
+      },
+      {
+        "key": "raw:media_input_source.input_source",
+        "label": "Input (media input source)",
+        "access": "read_write",
+        "value": {
+          "kind": "enum",
+          "options": [
+            "AM",
+            "CD",
+            "FM",
+            "HDMI",
+            "HDMI1",
+            "HDMI2",
+            "HDMI3",
+            "HDMI4",
+            "HDMI5",
+            "HDMI6",
+            "digitalTv",
+            "USB",
+            "YouTube",
+            "aux",
+            "bluetooth",
+            "digital",
+            "melon",
+            "wifi"
+          ]
+        }
+      },
+      {
+        "key": "channel",
+        "label": "Channel",
+        "access": "read_write",
+        "value": {
+          "kind": "number",
+          "min": 1,
+          "max": 9999,
+          "step": 1
+        }
+      },
+      {
+        "key": "app_launch",
+        "label": "Open app",
+        "access": "write",
+        "value": {
+          "kind": "enum",
+          "options": [
+            "Netflix",
+            "YouTube",
+            "YouTube TV",
+            "Prime Video",
+            "Disney+",
+            "Apple TV",
+            "Apple Music",
+            "Plex",
+            "Spotify",
+            "Max",
+            "Hulu",
+            "Paramount+",
+            "Peacock",
+            "Twitch",
+            "Tubi",
+            "Pluto TV",
+            "Crunchyroll",
+            "DAZN",
+            "Xbox",
+            "GeForce NOW",
+            "SmartThings",
+            "Gallery",
+            "Browser"
+          ]
+        }
+      },
+      {
+        "key": "remote_key",
+        "label": "Remote button",
+        "access": "write",
+        "value": {
+          "kind": "enum",
+          "options": ["UP", "DOWN", "LEFT", "RIGHT", "OK", "BACK", "MENU", "HOME"]
+        }
+      },
+      {
+        "key": "raw:audio_volume:volume_down",
+        "label": "Audio volume: volume down",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:audio_volume:volume_up",
+        "label": "Audio volume: volume up",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:tv_channel.tv_channel_name",
+        "label": "Tv channel tv channel name",
+        "access": "read_write",
+        "value": {
+          "kind": "text",
+          "maxLength": 255
+        }
+      },
+      {
+        "key": "raw:tv_channel:channel_down",
+        "label": "Tv channel: channel down",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:tv_channel:channel_up",
+        "label": "Tv channel: channel up",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:media_track_control.supported_track_control_commands",
+        "label": "Media track control supported track control commands",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:media_track_control:previous_track",
+        "label": "Media track control: previous track",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:media_track_control:next_track",
+        "label": "Media track control: next track",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.error.error",
+        "label": "Custom error error",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.error:set_error",
+        "label": "Custom error: set error",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["error"]
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.picture_mode",
+        "label": "Custom picturemode picture mode",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.supported_picture_modes",
+        "label": "Custom picturemode supported picture modes",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode.supported_picture_modes_map",
+        "label": "Custom picturemode supported picture modes map",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.picturemode:set_picture_mode",
+        "label": "Custom picturemode: set picture mode",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["mode"]
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.supported_sound_modes_map",
+        "label": "Custom soundmode supported sound modes map",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.sound_mode",
+        "label": "Custom soundmode sound mode",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode.supported_sound_modes",
+        "label": "Custom soundmode supported sound modes",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:custom.soundmode:set_sound_mode",
+        "label": "Custom soundmode: set sound mode",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["mode"]
+        }
+      },
+      {
+        "key": "raw:custom.accessibility:set_accessibility",
+        "label": "Custom accessibility: set accessibility",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["menuName", "menuId", "option"]
+        }
+      },
+      {
+        "key": "raw:custom.recording:record_start",
+        "label": "Custom recording: record start",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.recording:record_stop",
+        "label": "Custom recording: record stop",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:custom.tvsearch:search",
+        "label": "Custom tvsearch: search",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["query", "url"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.media_output_supported",
+        "label": "Samsungvd supports features media output supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.ime_adv_supported",
+        "label": "Samsungvd supports features ime adv supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.wifi_update_support",
+        "label": "Samsungvd supports features wifi update support",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.executable_service_list",
+        "label": "Samsungvd supports features executable service list",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.remoteless_supported",
+        "label": "Samsungvd supports features remoteless supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.art_supported",
+        "label": "Samsungvd supports features art supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_features.mobile_cam_supported",
+        "label": "Samsungvd supports features mobile cam supported",
+        "access": "read",
+        "value": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "key": "raw:samsungim.fixed_find_node:refresh",
+        "label": "Samsungim fixed find node: refresh",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:samsungvd.thing_status.updated_time",
+        "label": "Samsungvd thing status updated time",
+        "access": "read",
+        "value": {
+          "kind": "number",
+          "min": -100000,
+          "max": 100000,
+          "step": 1
+        }
+      },
+      {
+        "key": "raw:samsungvd.thing_status.status",
+        "label": "Samsungvd thing status status",
+        "access": "read",
+        "value": {
+          "kind": "enum",
+          "options": ["AgentUpdate Started", "Idle"]
+        }
+      },
+      {
+        "key": "raw:refresh:refresh",
+        "label": "Refresh: refresh",
+        "access": "write",
+        "value": {
+          "kind": "action"
+        }
+      },
+      {
+        "key": "raw:samsungvd.firmware_version.firmware_version",
+        "label": "Samsungvd firmware version firmware version",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      },
+      {
+        "key": "raw:samsungvd.firmware_version:set_firmware_version",
+        "label": "Samsungvd firmware version: set firmware version",
+        "access": "write",
+        "value": {
+          "kind": "action",
+          "arguments": ["version"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.supports_power_on_by_ocf.supports_power_on_by_ocf",
+        "label": "Samsungvd supports power on by ocf supports power on by ocf",
+        "access": "read",
+        "value": {
+          "kind": "enum",
+          "options": ["true", "false"]
+        }
+      },
+      {
+        "key": "raw:samsungvd.device_category.category",
+        "label": "Samsungvd device category category",
+        "access": "read",
+        "value": {
+          "kind": "text",
+          "maxLength": 4096
+        }
+      }
+    ],
+    "state": {
+      "input_source": "HDMI1",
+      "mute": false,
+      "power": false,
+      "raw:custom.picturemode.picture_mode": "Optimised",
+      "raw:custom.picturemode.supported_picture_modes": ["EyeComfort", "Optimised"],
+      "raw:custom.picturemode.supported_picture_modes_map": [
+        {
+          "id": "modeGen_589826",
+          "name": "EyeComfort"
+        },
+        {
+          "id": "modeIntelligent",
+          "name": "Optimised"
+        }
+      ],
+      "raw:custom.soundmode.sound_mode": "Standard",
+      "raw:custom.soundmode.supported_sound_modes": ["Amplify", "Standard"],
+      "raw:custom.soundmode.supported_sound_modes_map": [
+        {
+          "id": "modeAmplify",
+          "name": "Amplify"
+        },
+        {
+          "id": "modeStandard",
+          "name": "Standard"
+        }
+      ],
+      "raw:samsungvd.device_category.category": "tv",
+      "raw:samsungvd.supports_power_on_by_ocf.supports_power_on_by_ocf": "true",
+      "raw:samsungvd.thing_status.status": "Idle",
+      "raw:tv_channel.tv_channel_name": "com.samsung.tv.csfs",
+      "volume": 7
+    }
+  }
+}

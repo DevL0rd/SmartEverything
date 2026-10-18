@@ -29,6 +29,14 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'ble',
+          root: './packages/ble',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
           name: 'tuya',
           root: './packages/tuya',
           environment: 'node',
@@ -39,6 +47,14 @@ export default defineConfig({
         test: {
           name: 'smartthings',
           root: './packages/smartthings',
+          environment: 'node',
+          include: ['test/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
+          name: 'shelly',
+          root: './packages/shelly',
           environment: 'node',
           include: ['test/**/*.test.ts'],
         },

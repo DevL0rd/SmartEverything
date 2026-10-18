@@ -1,3 +1,4 @@
+import { usePluginScreen } from '../shared/plugin-log';
 import { robotMoveLabel, type JsonValue, type RobotMoves } from '@smarteverything/domain';
 import { useLocalSearchParams } from 'expo-router';
 import { useState, type ReactNode } from 'react';
@@ -12,6 +13,7 @@ import type { Device } from '../../store/state';
 import { StreamProblem } from '../shared/plugin-notice';
 import { useMoveControl, useRobotMoves, useRobotStatus } from './aibi-data';
 import { MoveSheet } from './move-sheet';
+import { background } from '@smarteverything/logging';
 
 function Banners({
   talking,
@@ -49,7 +51,7 @@ function MoveList({
 }): ReactNode {
   const open = moves.actions.find((move) => move.id === chosen) ?? null;
   const send = (value: JsonValue): void => {
-    void control.set(value);
+    background(control.set(value), 'control.set_failed');
   };
   return (
     <>
@@ -85,6 +87,7 @@ function MoveList({
 }
 
 export function MovesSection({ device }: { readonly device: Device }): ReactNode {
+  usePluginScreen('aibi', 'MovesSection');
   const moves = useRobotMoves();
   const status = useRobotStatus();
   const control = useMoveControl(device);

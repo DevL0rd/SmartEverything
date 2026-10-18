@@ -1,6 +1,12 @@
-import { NODE_HELLO, type NodeHello, type NodeInterface } from '@smarteverything/domain';
+import {
+  NODE_HELLO,
+  type ComputerFeature,
+  type NodeHello,
+  type NodeInterface,
+} from '@smarteverything/domain';
 import { existsSync, readFileSync } from 'node:fs';
 import { cpus, hostname, networkInterfaces, release, totalmem } from 'node:os';
+import { addressesOf } from '../../../network/lan';
 import { physicalInterfaces } from './network';
 
 function osName(): string {
@@ -35,19 +41,30 @@ function interfacesOf(): NodeInterface[] {
   return [...physicalInterfaces()].map((name) => ({
     name,
     mac: readFileSync(`/sys/class/net/${name}/address`, 'utf8').trim(),
-    addresses: (addresses[name] ?? []).map((address) => address.address),
+    addresses: addressesOf(addresses, name),
   }));
 }
 
-export function readIdentity(hybrid: boolean, uptimeSeconds: number, now: Date): NodeHello {
+export function readIdentity(
+  hybrid: boolean,
+  uptimeSeconds: number,
+  now: Date,
+  features: readonly ComputerFeature[] = [],
+): NodeHello {
   return NODE_HELLO.parse({
     machineId: readFileSync('/etc/machine-id', 'utf8').trim(),
     hostname: hostname(),
     os: { name: osName(), kernel: release() },
     hardware: hardwareOf(),
-    cpu: { model: cpuModel(), threads: cpus().length, hybrid },
+    cpu: {
+      model: cpuModel(),
+      threads: cpus().length,
+      hybrid,
+      kinds: hybrid ? ['performance', 'efficiency'] : [],
+    },
     memoryBytes: totalmem(),
     interfaces: interfacesOf(),
     bootedAt: new Date(now.getTime() - uptimeSeconds * 1000).toISOString(),
+    features,
   });
 }

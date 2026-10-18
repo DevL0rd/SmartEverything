@@ -1,0 +1,38 @@
+View className="h-full overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 elevation-1"
+  View className="flex-1 p-card-pad" pointerEvents="box-none"
+    View className="flex-1 flex-row gap-4" pointerEvents="box-none"
+      View className="self-start"
+        View className="items-center justify-center overflow-hidden bg-surface-3 rounded-lg" pointerEvents="none"
+          View pointerEvents="none" style=[{position:"absolute",left:0,right:0,top:0,bottom:0},{experimental_backgroundImage:"radial-gradient(ellipse 62% 62% at 50% 42%, rgba(76, 80, 84, 0.3) 0%, rgba(76, 80, 84, 0.09999999999999999) 60%, rgba(76, 80, 84, 0) 100%)"}]
+          View aria-hidden=true className="relative shrink-0 size-24" onLayout=undefined pointerEvents="none" ref={current:null}
+            Svg.default height=96 viewBox="0 0 100 100" width=96
+              Svg.Path d="M19 10 H81 A5 5 0 0 1 86 15 V83 A5 5 0 0 1 81 88 H19 A5 5 0 0 1 14 83 V15 A5 5 0 0 1 19 10 Z" fill="#1a2836" stroke="#3d444b" strokeWidth=0.6
+              Svg.Path d="M20 14 H80 A2 2 0 0 1 82 16 V82 A2 2 0 0 1 80 84 H20 A2 2 0 0 1 18 82 V16 A2 2 0 0 1 20 14 Z" fill=url(Svg.LinearGradient(x1="0" x2="0" y1="0" y2="1"; Svg.Stop(offset="0" stopColor="#74706c" stopOpacity=0.35; ); Svg.Stop(offset="1" stopColor="#ceb8a2" stopOpacity=0.15; )))
+              Svg.Path d="M50 14 V84 M18 49 H82" stroke="#1a2836" strokeWidth=1.5
+              Svg.Path d="M12 86 H88 A2 2 0 0 1 90 88 V88 A2 2 0 0 1 88 90 H12 A2 2 0 0 1 10 88 V88 A2 2 0 0 1 12 86 Z" fill="#1f2c39" stroke="#3d444b" strokeWidth=0.5
+            View pointerEvents="none" style={position:"absolute",left:17.28,top:13.44,width:61.44,height:67.2,overflow:"hidden"}
+              Anim.View style=[{width:"100%",height:13.439999999999996,overflow:"hidden",backgroundColor:"#1f2c39"},{transitionProperty:"height",transitionDuration:250,transitionTimingFunction:"ease-out"}]
+                Svg.default height=67.2 viewBox="0 0 64 70" width=61.44
+                  Svg.Path d="M0 3.5 H64 M0 7.5 H64 M0 11.5 H64 M0 15.5 H64 M0 19.5 H64 M0 23.5 H64 M0 27.5 H64 M0 31.5 H64 M0 35.5 H64 M0 39.5 H64 M0 43.5 H64 M0 47.5 H64 M0 51.5 H64 M0 55.5 H64 M0 59.5 H64 M0 63.5 H64 M0 67.5 H64 M0 71.5 H64" stroke="#3d444b" strokeWidth=0.6
+            Svg.default height=96 pointerEvents="none" style={position:"absolute",left:0,top:0,width:96,height:96} viewBox="0 0 100 100" width=96
+              Svg.Path d="M18 11 H82 A2 2 0 0 1 84 13 V13 A2 2 0 0 1 82 15 H18 A2 2 0 0 1 16 13 V13 A2 2 0 0 1 18 11 Z" fill="#1f2c39" stroke="#3d444b" strokeWidth=0.5
+      View className="min-w-0 flex-1 gap-3" pointerEvents="box-none"
+        View className="flex-row items-start gap-2" pointerEvents="box-none"
+          View className="min-w-0 flex-1" pointerEvents="none"
+            View className="min-w-0 gap-0.5" pointerEvents="none"
+              Text className="font-sans-medium text-body text-on-surface text-left" numberOfLines=2 selectable=false
+              Text className="font-sans text-callout text-on-surface-variant text-left" numberOfLines=1 selectable=false
+          View className="flex-row items-center"
+        View className="min-h-0 flex-1 overflow-hidden" pointerEvents="box-none"
+          View className="gap-3" pointerEvents="box-none"
+            View className="flex-row gap-3"
+              View className="min-w-0 flex-1"
+                View className="w-full gap-1.5"
+                  View className="flex-row items-center justify-between gap-3"
+                    Text className="font-sans text-footnote text-on-surface-variant text-left" numberOfLines=1 selectable=false
+                    Text className="font-sans text-footnote text-on-surface-variant text-left tabular" numberOfLines=1 selectable=false
+                  View accessibilityActions=[{name:"increment"},{name:"decrement"}] accessibilityLabel="Position" accessibilityRole="adjustable" accessibilityValue={min:0,max:100,now:80,text:"80%"} accessible=true aria-disabled=false aria-valuemax=100 aria-valuemin=0 aria-valuenow=80 aria-valuetext="80%" className="rounded-md focus:outline-2 focus:outline-offset-2 focus:outline-focus min-h-touch-min w-full min-w-24 justify-center px-3" focusable=false onAccessibilityAction=fn onBlur=fn onFocus=fn ref={current:null}
+                    View className="h-6 justify-center" onLayout=fn
+                      View className="h-1.5 overflow-hidden rounded-full border-hairline border-track bg-track"
+                        Anim.View className="h-full rounded-full bg-primary" style={}
+                      Anim.View className="absolute top-0 left-0 -ml-3 size-6 rounded-full border-2 border-surface-1 bg-primary elevation-1" style={}

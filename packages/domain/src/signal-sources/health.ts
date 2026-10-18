@@ -1,5 +1,6 @@
 import { HEALTH_METRICS, HEALTH_METRIC_UNITS } from '../api/rows-access';
 import { LOGGABLE_TYPES } from '../health-entries';
+import { humanizeKey } from '../presentation/humanize';
 import type { SignalFieldSpec, SignalSourceSpec } from './spec';
 
 const COUNT_UNIT = 'count';
@@ -9,19 +10,6 @@ export const BODY_READING_FIELDS: readonly SignalFieldSpec[] = [
   { field: 'heart_rate', label: 'Heart rate', unit: 'bpm' },
   { field: 'bmi', label: 'BMI', unit: null },
 ];
-
-function sentenceOf(words: readonly string[]): string {
-  const text = words.join(' ').toLowerCase();
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-export function metricLabel(metric: string): string {
-  return sentenceOf(metric.split('_'));
-}
-
-export function loggedTypeLabel(type: string): string {
-  return sentenceOf(type.split(/(?=[A-Z])/));
-}
 
 export const HEALTH_SIGNALS: SignalSourceSpec = {
   source: 'health',
@@ -33,7 +21,7 @@ export const HEALTH_SIGNALS: SignalSourceSpec = {
       subject: 'profile',
       fields: HEALTH_METRICS.map((metric) => ({
         field: metric,
-        label: metricLabel(metric),
+        label: humanizeKey(metric),
         unit: HEALTH_METRIC_UNITS[metric] === COUNT_UNIT ? null : HEALTH_METRIC_UNITS[metric],
       })),
       match: [],
@@ -45,7 +33,7 @@ export const HEALTH_SIGNALS: SignalSourceSpec = {
       subject: 'profile',
       fields: LOGGABLE_TYPES.map((type) => ({
         field: type,
-        label: loggedTypeLabel(type),
+        label: humanizeKey(type),
         unit: null,
       })),
       match: [],

@@ -73,13 +73,13 @@ function WorkspaceFlags({ value, change }: ValueProps): ReactNode {
 function Sandbox({ value, change, permissionControls = true }: ValueProps): ReactNode {
   const policy = value.sandbox_policy;
   return (
-    <List title="Native sandbox">
+    <List title="Sandbox">
       {permissionControls ? (
         <SelectRow
-          title="Sandbox policy"
+          title="Sandbox"
           value={policy?.type ?? 'default'}
           options={[
-            { value: 'default', label: 'Runtime default' },
+            { value: 'default', label: 'Default' },
             { value: 'readOnly', label: 'Read only' },
             { value: 'workspaceWrite', label: 'Workspace write' },
             { value: 'dangerFullAccess', label: 'Full access' },
@@ -122,12 +122,12 @@ function Approvals({ value, change, permissionControls = true }: ValueProps): Re
     <List title="Approvals">
       {permissionControls ? (
         <SelectRow
-          title="Approval policy"
+          title="When to ask"
           value={
             typeof policy === 'string' ? policy : policy === undefined ? 'default' : 'granular'
           }
           options={[
-            { value: 'default', label: 'Runtime default' },
+            { value: 'default', label: 'Default' },
             { value: 'untrusted', label: 'Untrusted commands' },
             { value: 'on-request', label: 'On request' },
             { value: 'never', label: 'Never' },
@@ -191,7 +191,7 @@ function Advanced({
     <View className="gap-4">
       <TextField
         label="Additional directories"
-        helper="One absolute path on the supplying computer per line"
+        helper="One absolute path on this computer per line"
         multiline
         value={value.additional_directories?.join('\n') ?? ''}
         onChange={(text) => {
@@ -235,7 +235,7 @@ export function CodexOptions({
         label="Working directory"
         value={value.cwd ?? ''}
         disabled={disabled}
-        helper="Absolute path on the supplying computer; leave empty for its managed workspace"
+        helper="Absolute path on this computer; leave empty for its managed workspace"
         onChange={(cwd) => {
           change(cwd === '' ? without(value, 'cwd') : { ...value, cwd });
         }}
@@ -254,9 +254,7 @@ export function CodexOptions({
           else invalid(parsed.error.message);
         }}
       />
-      {disabled ? (
-        <Text tone="variant">Stop active work before changing the execution binding.</Text>
-      ) : null}
+      {disabled ? <Text tone="variant">Stop the reply to change these options.</Text> : null}
     </View>
   );
 }

@@ -89,6 +89,7 @@ function TypedField(props: ArgumentFieldProps): ReactNode {
     try {
       onChange(parseArgument(text, parameter));
       setError(null);
+      // eslint-disable-next-line local/no-swallowed-errors -- text that is not valid input is reported inline to the person
     } catch {
       onChange(text);
       setError(numeric ? 'Enter a valid number.' : 'Enter valid JSON.');

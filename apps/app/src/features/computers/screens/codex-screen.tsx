@@ -16,13 +16,14 @@ import {
   useCodexRead,
   useRuntimeSupported,
 } from '../data/computer-runtime';
+import { background } from '@smarteverything/logging';
 
 function CodexHomeTools({ status }: { readonly status: ComputerRuntimeStatus }): ReactNode {
   const change = useComputerRuntimeChange(status.device_id);
   if (status.settings.runtime !== 'codex') return null;
   const control = status.settings.settings.control;
   return (
-    <List footer="This Codex grant is independent from Claude and follows the hub’s global policy.">
+    <List footer="Separate from Claude. Uses the home tools you allowed in Settings.">
       <SwitchRow
         title="Follow allowed home tools"
         value={control.mcp_areas === null}
@@ -64,7 +65,7 @@ function CodexModels({ status }: { readonly status: ComputerRuntimeStatus }): Re
         error={models.error}
         pending={models.isPending ? status.online : false}
         retry={() => {
-          void models.refetch();
+          background(models.refetch(), 'models.refetch_failed');
         }}
       />
       <List>
@@ -91,7 +92,7 @@ function RuntimeBody({ status }: { readonly status: ComputerRuntimeStatus }): Re
     <>
       <List
         title="Codex sessions"
-        footer={status.capabilities.control_reason ?? 'Connected to the owning Codex runtime.'}
+        footer={status.capabilities.control_reason ?? 'Connected to Codex on this computer.'}
       >
         <SwitchRow
           title="Control Codex sessions"
@@ -103,7 +104,7 @@ function RuntimeBody({ status }: { readonly status: ComputerRuntimeStatus }): Re
         />
         <NavRow
           title="Sessions"
-          subtitle="Native messages, work, prompts and usage"
+          subtitle="Messages, work, requests and usage"
           href={href.settings.device(status.device_id, 'codex-sessions')}
         />
         <NavRow
@@ -140,7 +141,7 @@ export function ComputerCodexScreen({ deviceId }: { readonly deviceId: string })
             error={status.error}
             pending={status.isPending}
             retry={() => {
-              void status.refetch();
+              background(status.refetch(), 'status.refetch_failed');
             }}
           />
           {status.data === undefined ? null : (
@@ -148,7 +149,7 @@ export function ComputerCodexScreen({ deviceId }: { readonly deviceId: string })
               <Banner
                 tone={status.data.online ? 'positive' : 'warning'}
                 title={status.data.online ? 'Computer connected' : 'Computer offline'}
-                body="Codex session control and model supply are configured independently."
+                body="Sessions and models are set up separately."
                 wrapBody
               />
               <RuntimeBody status={status.data} />
@@ -187,7 +188,7 @@ function ProviderRows({
         }}
       />
       <ValueRow title="Authentication" value={status.capabilities.authentication} />
-      <ValueRow title="Subscription route" value={status.capabilities.subscription} />
+      <ValueRow title="Plan" value={status.capabilities.subscription} />
       <ValueRow
         title="Runtime version"
         value={status.capabilities.runtime_version ?? 'Unavailable'}

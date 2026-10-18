@@ -1,5 +1,5 @@
 import type { ServerResponse } from 'node:http';
-import { PAGE_STYLE } from '../../server/page-style';
+import { htmlPage } from '../../server/page-style';
 
 export const PAGE_OUTCOMES = [
   'linked',
@@ -54,23 +54,12 @@ const MESSAGES: Readonly<Record<PageOutcome, PageMessage>> = {
 
 export function sendPage(response: ServerResponse, outcome: PageOutcome): void {
   const message = MESSAGES[outcome];
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${message.title} - SmartEverything</title>
-<style>${PAGE_STYLE}</style>
-</head>
-<body>
-<main>
-<p class="brand">SmartEverything</p>
+  const html = htmlPage({
+    title: `${message.title} - SmartEverything`,
+    body: `<p class="brand">SmartEverything</p>
 <h1>${message.title}</h1>
-<p>${message.detail}</p>
-</main>
-</body>
-</html>
-`;
+<p>${message.detail}</p>`,
+  });
   response.writeHead(message.status, {
     'content-type': 'text/html; charset=utf-8',
     'content-length': Buffer.byteLength(html),

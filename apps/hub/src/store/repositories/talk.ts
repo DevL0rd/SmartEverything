@@ -116,8 +116,8 @@ export class TalkRepository {
   removeChannel(id: string): TalkMessageRow[] {
     return this.context.write(() => {
       const before = this.channel(id);
-      const messages = this.messages({ channelId: id, limit: Number.MAX_SAFE_INTEGER });
-      const members = this.members().filter((member) => member.channel_id === id);
+      const messages = this.messagesOfChannel(id);
+      const members = this.membersOfChannel(id);
       this.context.sql.run(
         'remove the walkie-talkie channel',
         'delete from talk_channels where id = $id',
@@ -140,6 +140,30 @@ export class TalkRepository {
     return this.context.sql.all(
       STORED_MEMBER,
       `select ${MEMBER_COLUMNS} from talk_members order by channel_id, member_kind, created_at`,
+    );
+  }
+
+  private membersOfChannel(channelId: string): TalkMemberRow[] {
+    return this.context.sql.all(
+      STORED_MEMBER,
+      `select ${MEMBER_COLUMNS} from talk_members where channel_id = $channel`,
+      { channel: channelId },
+    );
+  }
+
+  private membersOf(kind: TalkMemberKind, memberId: string): TalkMemberRow[] {
+    return this.context.sql.all(
+      STORED_MEMBER,
+      `select ${MEMBER_COLUMNS} from talk_members where member_kind = $kind and member_id = $member`,
+      { kind, member: memberId },
+    );
+  }
+
+  private messagesOfChannel(channelId: string): TalkMessageRow[] {
+    return this.context.sql.all(
+      STORED_MESSAGE,
+      `select ${MESSAGE_COLUMNS} from talk_messages where channel_id = $channel order by started_at desc`,
+      { channel: channelId },
     );
   }
 
@@ -193,9 +217,8 @@ export class TalkRepository {
 
   relabel(kind: TalkMemberKind, memberId: string, label: MemberLabel): void {
     this.context.write(() => {
-      for (const member of this.members()) {
-        const same = member.label === label.label && member.detail === label.detail;
-        if (member.member_kind === kind && member.member_id === memberId && !same) {
+      for (const member of this.membersOf(kind, memberId)) {
+        if (member.label !== label.label || member.detail !== label.detail) {
           this.setMember({ channelId: member.channel_id, kind, memberId }, member.listening, label);
         }
       }
@@ -204,11 +227,9 @@ export class TalkRepository {
 
   forgetMember(kind: TalkMemberKind, memberId: string): void {
     this.context.write(() => {
-      for (const member of this.members()) {
-        if (member.member_kind === kind && member.member_id === memberId) {
-          this.removeMember({ channelId: member.channel_id, kind, memberId });
-        }
-      }
+      this.membersOf(kind, memberId).forEach((member) => {
+        this.removeMember({ channelId: member.channel_id, kind, memberId });
+      });
     });
   }
 

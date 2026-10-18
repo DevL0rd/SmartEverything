@@ -18,19 +18,15 @@ export function homeCameras(options: HomeCamerasOptions): HomeCameras {
   const { store, video } = options;
   return {
     name: (cameraId): string => {
-      const camera = store.cameras.list().find((candidate) => candidate.device_id === cameraId);
       const device = store.devices.find(cameraId);
-      if (camera === undefined || device === undefined) {
+      if (store.cameras.find(cameraId) === undefined || device === undefined) {
         throw new SightError('failed', `There is no camera ${cameraId} in this home.`);
       }
       if (!device.online) {
         throw new SightError('failed', `${device.name} is offline.`);
       }
       const privacy = privacySwitchOf(device);
-      const state = store.state
-        .list()
-        .find((row) => row.device_id === device.id && row.capability === privacy?.key);
-      if (privacy !== null && isPrivate(privacy, state?.value)) {
+      if (privacy !== null && isPrivate(privacy, store.state.value(device.id, privacy.key))) {
         throw new SightError('denied', `${device.name} has its privacy mode on.`);
       }
       return device.name;

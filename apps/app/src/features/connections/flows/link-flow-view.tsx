@@ -3,24 +3,17 @@ import { View } from 'react-native';
 import { PROVIDER_INFO, type Provider, type ProviderLinkRow } from '@smarteverything/domain';
 import { Banner } from '../../../components/banner';
 import { FlowButton } from './flow-button';
+import { DoneMark } from '../../../components/done-mark';
 import { FlowFrame } from '../../../components/flow-frame';
-import { Icon } from '../../../components/icon';
-import { ProgressSteps, type ProgressStep } from '../../../components/progress-steps';
+import { ProgressSteps, stepsAt } from '../../../components/progress-steps';
 import { Text } from '../../../components/text';
 import { plural } from '../../../format/text';
 import { useDevices } from '../../../store/selectors';
-import { stepIndexOf, type LinkStage } from '../model/link-stage';
+import { stepIndexOf } from '../model/link-stage';
 import { problemTitle } from '../model/problems';
 import { PromptBody } from './prompt-body';
-import { closeFlow, type LinkFlow } from './use-link-flow';
-
-function stepsOf(labels: readonly string[], stage: LinkStage): readonly ProgressStep[] {
-  const current = stepIndexOf(stage);
-  return labels.map((label, index) => ({
-    label,
-    state: index < current ? 'done' : index === current ? 'active' : 'waiting',
-  }));
-}
+import { leaveFlow } from './leave-flow';
+import type { LinkFlow } from './use-link-flow';
 
 function DevicePreview({ provider }: { readonly provider: Provider }): ReactNode {
   const devices = useDevices({ includeHidden: true }).filter(
@@ -55,9 +48,7 @@ export function LinkDone({
   return (
     <View className="gap-5">
       <View className="items-center gap-2 pt-2">
-        <View className="size-16 items-center justify-center rounded-full bg-positive/14">
-          <Icon name="check" size={32} tone="positive" />
-        </View>
+        <DoneMark />
         <Text variant="title-2" align="center">
           {`${PROVIDER_INFO[row.provider].name} connected`}
         </Text>
@@ -88,11 +79,11 @@ function Body({ provider, labels, flow, form, doneExtra }: LinkFlowViewProps): R
     case 'form':
       return form;
     case 'working':
-      return <ProgressSteps steps={stepsOf(labels, stage)} />;
+      return <ProgressSteps steps={stepsAt(labels, stepIndexOf(stage))} />;
     case 'prompt':
       return (
         <View className="gap-6">
-          <ProgressSteps steps={stepsOf(labels, stage)} />
+          <ProgressSteps steps={stepsAt(labels, stepIndexOf(stage))} />
           <PromptBody provider={provider} prompt={stage.prompt} />
         </View>
       );
@@ -117,7 +108,7 @@ function Footer({ flow, formFooter }: LinkFlowViewProps): ReactNode {
     case 'prompt':
       return <FlowButton label="Stop" variant="text" onPress={flow.cancel} />;
     case 'done':
-      return <FlowButton label="Done" onPress={closeFlow} />;
+      return <FlowButton label="Done" onPress={leaveFlow} />;
     case 'failed':
       return <FlowButton label="Try again" onPress={flow.restart} />;
   }

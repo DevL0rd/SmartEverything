@@ -237,10 +237,10 @@ describe('head and key codes', () => {
       key: '01@@',
     });
     expect(() => parseHeadKey('{')).toThrow(
-      /^The head_key IR code is not valid: it is not JSON \(SyntaxError/,
+      /^The head_key IR code is not valid: the text is not JSON \(SyntaxError/,
     );
     expect(() => parseHeadKey(JSON.stringify({ head: '01', key: '01@@' }))).toThrow(
-      'The head_key IR code is not valid: head: Invalid string: must match pattern',
+      'The head_key IR code is not valid: the text does not fit: ✖ Invalid string: must match pattern',
     );
     expect(HEAD_KEY.safeParse({ head: HEAD_TYPE_1, key: 'zz@@' }).success).toBe(false);
     expect(HEAD_KEY.safeParse({ head: HEAD_TYPE_1, key: 'zz01@@' }).success).toBe(false);

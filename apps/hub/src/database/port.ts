@@ -84,7 +84,7 @@ export interface CameraUpsert {
   readonly twoWayAudio: boolean;
 }
 
-export interface CameraRecord {
+interface CameraRecord {
   readonly deviceId: string;
   readonly recordEvents: boolean;
 }
@@ -97,32 +97,6 @@ export interface ProviderLinkChange {
   readonly problem?: ProviderLinkRow['problem'];
   readonly lastError?: string | null;
   readonly deviceCount?: number;
-}
-
-export interface HomeRecord {
-  readonly timeZone: string;
-  readonly latitude: number | null;
-  readonly longitude: number | null;
-}
-
-export interface AutomationRecord {
-  readonly id: string;
-  readonly name: string;
-  readonly enabled: boolean;
-  readonly definition: unknown;
-  readonly runCount: number;
-  readonly lastError: string | null;
-}
-
-export interface SceneRecord {
-  readonly id: string;
-  readonly actions: unknown;
-}
-
-export interface AutomationChange {
-  readonly lastRunAt?: string;
-  readonly runCount?: number;
-  readonly lastError: string | null;
 }
 
 export interface CommandInsert {
@@ -168,7 +142,7 @@ export interface HubDatabase {
     online: boolean,
   ) => Promise<readonly DeviceRecord[]>;
   readonly removeDevices: (ids: readonly string[]) => Promise<void>;
-  readonly ensureRooms: (names: readonly string[]) => Promise<ReadonlyMap<string, string>>;
+  readonly matchRooms: (names: readonly string[]) => Promise<ReadonlyMap<string, string>>;
   readonly loadState: () => Promise<readonly StateRecord[]>;
   readonly upsertState: (rows: readonly StateRecord[]) => Promise<void>;
   readonly insertEvents: (rows: readonly EventInsert[]) => Promise<readonly string[]>;
@@ -180,9 +154,5 @@ export interface HubDatabase {
   readonly loadCameras: () => Promise<readonly CameraRecord[]>;
   readonly upsertCameras: (rows: readonly CameraUpsert[]) => Promise<void>;
   readonly updateProviderLink: (provider: Provider, change: ProviderLinkChange) => Promise<void>;
-  readonly loadHome: () => Promise<HomeRecord>;
-  readonly loadAutomations: () => Promise<readonly AutomationRecord[]>;
-  readonly loadScenes: () => Promise<readonly SceneRecord[]>;
-  readonly updateAutomation: (id: string, change: AutomationChange) => Promise<void>;
   readonly storeRecording: (file: RecordingFile, row: RecordingInsert) => Promise<void>;
 }

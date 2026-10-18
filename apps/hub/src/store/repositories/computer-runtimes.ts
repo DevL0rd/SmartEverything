@@ -121,7 +121,7 @@ export class ComputerRuntimesRepository {
     );
   }
 }
-export class RuntimeStorageBindingError extends Error {
+class RuntimeStorageBindingError extends Error {
   override readonly name = 'RuntimeStorageBindingError';
   constructor(
     readonly expected: string,

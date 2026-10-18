@@ -1,48 +1,53 @@
-import {
-  openNodeHubSocket,
-  retireNodeHubSocket,
-  type NodeHubTransport,
-} from '../client-network/node-transport';
-import { harnessSocketUrl, publishHarnessSubscription } from './harness-connection';
+import { NodeConnection } from './node-connection';
+import type { NodeHubTransport } from '../client-network/node-transport';
+import { HarnessCalls } from './harness-connection';
 import { isSupplierInferenceControl, supplierInferenceControl } from './harness-model-inference';
 import { NodeHarnessError, NodeHarnessBinding } from './harness-binding';
 import { NativePreviewRelay } from '../preview/native-relay';
 import { randomUUID } from 'node:crypto';
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
-import WebSocket from 'ws';
+import type { WebSocket } from 'ws';
 import {
   DEFAULT_AI_HARNESS_PERMISSION,
   HUB_HARNESS_CONTROL,
   NODE_HARNESS_CONNECT,
   NODE_HARNESS_FRAME,
+  NODE_HARNESS_PATH,
   NODE_HARNESS_PROTOCOL,
   HARNESS_CONFIGURATION_CAPABILITY,
   HARNESS_SUBSCRIPTION_CAPABILITY,
   AI_PREVIEW_CAPABILITY,
   AI_PREVIEW_FILE_CAPABILITY,
   isPreviewControl,
-  SUBSCRIPTION_INFERENCE_MAX_BYTES,
 } from '@smarteverything/domain';
-import type { HubHarnessControl, NodeHarnessFrame } from '@smarteverything/domain';
+import type {
+  AiSubscriptionHostStatus,
+  HubHarnessControl,
+  NodeHarnessFrame,
+} from '@smarteverything/domain';
 import { createComputerHarness, type ComputerHarness } from '@smarteverything/harness/process';
+import { harnessFailure } from './harness-failure';
 import type { Logger } from '@smarteverything/logging';
 import type { NodeServiceConfig } from '../service/configuration';
-import { nodeHarnessFetch } from '../client-network/harness-fetch';
 import { subscriptionFailureCategory } from './harness-subscription-failure';
 
-const WELCOME_TIMEOUT_MS = 30_000;
+type Welcome = Extract<HubHarnessControl, { type: 'harness_welcome' }>;
+interface Composed {
+  readonly harness: ComputerHarness;
+  readonly preview: NativePreviewRelay;
+  readonly generation: string;
+}
 export class NodeHarnessRuntime {
-  private socket: WebSocket | null = null;
-  private unsubscribeRoute: (() => void) | null = null;
-  private harness: ComputerHarness | null = null;
-  private preview: NativePreviewRelay | null = null;
-  private retry: NodeJS.Timeout | null = null;
+  private ready: WebSocket | null = null;
+  private binding: NodeHarnessBinding | null = null;
+  private runtime: Composed | null = null;
   private stopped = false;
-  private delay = 1000;
-  private retiring = false;
-  private cleanup: Promise<void> = Promise.resolve();
-  private composing: Promise<void> = Promise.resolve();
+  private queue: Promise<void> = Promise.resolve();
+  private readonly instance = randomUUID();
+  private readonly unsent: string[] = [];
+  private readonly calls = new HarnessCalls();
+  private readonly connection: NodeConnection;
   constructor(
     private readonly options: {
       readonly node: NodeServiceConfig['node'];
@@ -52,23 +57,33 @@ export class NodeHarnessRuntime {
       readonly log: Logger;
       readonly transport?: NodeHubTransport;
     },
-  ) {}
-  private followRoute(): void {
-    if (this.unsubscribeRoute !== null || this.options.transport === undefined) return;
-    this.unsubscribeRoute = this.options.transport.subscribe(() => {
-      if (this.retry !== null) clearTimeout(this.retry);
-      this.retry = null;
-      const socket = this.socket;
-      if (socket !== null) {
-        this.closed(socket);
-        retireNodeHubSocket(socket);
-      } else this.start();
+  ) {
+    this.connection = new NodeConnection({
+      hubUrl: options.node.hub_url,
+      path: NODE_HARNESS_PATH,
+      protocol: NODE_HARNESS_PROTOCOL,
+      token: options.node.node_token,
+      transport: options.transport,
+      log: options.log,
+      failure: 'harness.connection_failed',
+      opened: (socket): void => {
+        this.connect(socket);
+      },
+      message: (socket, text): void => {
+        try {
+          this.receive(socket, text);
+        } catch (cause) {
+          this.rejected(cause);
+        }
+      },
+      closed: (socket): void => {
+        if (this.ready === socket) this.ready = null;
+        this.binding = null;
+        this.calls.detach(socket);
+      },
     });
   }
   start(): void {
-    if (this.stopped || this.socket !== null || this.retiring) return;
-    this.followRoute();
-    if (this.options.transport?.ready() === false) return;
     const os = platform();
     if (os !== 'linux' && os !== 'darwin') {
       this.options.log.warn('harness.unavailable', {
@@ -76,59 +91,20 @@ export class NodeHarnessRuntime {
       });
       return;
     }
-    const url = harnessSocketUrl(this.options.node.hub_url, this.options.log);
-    if (url === null) return;
-    const socket = openNodeHubSocket(this.options.transport, url, NODE_HARNESS_PROTOCOL, {
-      headers: { authorization: `Bearer ${this.options.node.node_token}` },
-      maxPayload: SUBSCRIPTION_INFERENCE_MAX_BYTES,
-      handshakeTimeout: 10_000,
-    });
-    this.socket = socket;
-    const instance = randomUUID();
-    const timer = setTimeout(() => {
-      socket.terminate();
-    }, WELCOME_TIMEOUT_MS);
-    this.watchSocket(socket, instance, timer, os === 'darwin' ? 'macos' : 'linux');
+    this.connection.start();
   }
-  private watchSocket(
-    socket: WebSocket,
-    instance: string,
-    timer: NodeJS.Timeout,
-    os: 'macos' | 'linux',
-  ): void {
-    socket.on('open', () => {
-      this.connect(socket, instance);
-    });
-    const binding = new NodeHarnessBinding(instance, timer, os);
-    socket.on('message', (raw, binary) => {
-      try {
-        if (binary) throw new NodeHarnessError('Computer controls require JSON text.');
-        const bytes = Buffer.isBuffer(raw)
-          ? raw
-          : Array.isArray(raw)
-            ? Buffer.concat(raw)
-            : Buffer.from(raw);
-        this.receive(socket, bytes.toString('utf8'), binding);
-      } catch (cause) {
-        this.failed(socket, cause);
-      }
-    });
-    socket.on('error', (cause) => {
-      this.options.log.error('harness.connection_failed', cause);
-    });
-    socket.on('close', () => {
-      clearTimeout(timer);
-      this.closed(socket);
-    });
-  }
-  private connect(socket: WebSocket, instance: string): void {
+  private connect(socket: WebSocket): void {
+    this.binding = new NodeHarnessBinding(
+      this.instance,
+      platform() === 'darwin' ? 'macos' : 'linux',
+    );
     socket.send(
       JSON.stringify(
         NODE_HARNESS_CONNECT.parse({
           type: 'harness_connect',
           protocol: 1,
           device_id: this.options.node.device_id,
-          runtime_instance: instance,
+          runtime_instance: this.instance,
           machine_id: this.options.machineId,
           capabilities: [
             HARNESS_CONFIGURATION_CAPABILITY,
@@ -140,38 +116,62 @@ export class NodeHarnessRuntime {
       ),
     );
   }
-  private receive(socket: WebSocket, text: string, binding: NodeHarnessBinding): void {
-    if (this.socket !== socket) return;
+  private receive(socket: WebSocket, text: string): void {
+    const binding = this.binding;
+    if (binding === null)
+      throw new NodeHarnessError('Computer control arrived before its handshake.');
     const frame = HUB_HARNESS_CONTROL.parse(JSON.parse(text));
     binding.validate(frame, this.options.node.device_id);
-    if (frame.type === 'harness_welcome') {
-      this.composing = this.compose(socket, frame, binding.os).catch((cause: unknown) => {
-        this.failed(socket, cause);
-      });
+    if (frame.type === 'harness_call_result') {
+      this.calls.receive(frame);
       return;
     }
-    void this.control(socket, frame).catch((cause: unknown) => {
-      this.failed(socket, cause);
-    });
+    if (frame.type === 'harness_welcome') {
+      this.connection.welcomed();
+      this.calls.attach({ socket, binding: frameBinding(frame) });
+      this.queue = this.queue
+        .then(() => this.welcomed(socket, frame, binding.os))
+        .catch((cause: unknown) => {
+          this.options.log.error('harness.compose_failed', cause);
+          socket.terminate();
+        });
+      return;
+    }
+    void this.queue
+      .then(() => this.control(socket, frame))
+      .catch((cause: unknown) => {
+        this.rejected(cause);
+      });
   }
   async stop(): Promise<void> {
     this.stopped = true;
-    this.unsubscribeRoute?.();
-    this.unsubscribeRoute = null;
-    if (this.retry !== null) clearTimeout(this.retry);
-    this.retry = null;
-    const socket = this.socket;
-    if (socket !== null) {
-      retireNodeHubSocket(socket);
-      this.closed(socket);
-    }
-    await this.cleanup;
+    this.ready = null;
+    this.connection.stop();
+    this.calls.close();
+    await this.queue;
+    await this.dispose();
   }
-  private async compose(
-    socket: WebSocket,
-    frame: Extract<HubHarnessControl, { type: 'harness_welcome' }>,
-    os: 'linux' | 'macos',
-  ): Promise<void> {
+  private async welcomed(socket: WebSocket, frame: Welcome, os: 'linux' | 'macos'): Promise<void> {
+    if (this.stopped || this.connection.socket !== socket) return;
+    const runtime =
+      this.runtime?.generation === frame.generation ? this.runtime : await this.replace(frame, os);
+    if (this.connection.socket !== socket || socket.readyState !== socket.OPEN) return;
+    this.ready = socket;
+    this.connection.healthy();
+    socket.send(JSON.stringify(runtime.harness.hello));
+    for (const text of this.unsent.splice(0)) socket.send(text);
+    this.options.log.info('harness.ready', {
+      device_id: frame.device_id,
+      generation: frame.generation,
+      runtime_instance: frame.runtime_instance,
+    });
+    runtime.harness.reconnectSubscriptions().catch((cause: unknown) => {
+      this.options.log.error('harness.compose_failed', cause);
+      socket.terminate();
+    });
+  }
+  private async replace(frame: Welcome, os: 'linux' | 'macos'): Promise<Composed> {
+    await this.dispose();
     const preview = new NativePreviewRelay(
       this.options.node.hub_url,
       this.options.node.node_token,
@@ -191,47 +191,72 @@ export class NodeHarnessRuntime {
         home_directory: homedir(),
         state_directory: join(this.options.dataDirectory, 'harness'),
         platform: os,
-        inbound_execution: true,
         permission: DEFAULT_AI_HARNESS_PERMISSION,
         ...(frame.configuration === undefined ? {} : { configuration: frame.configuration }),
       },
-      (status): Promise<void> => publishHarnessSubscription(socket, this.socket, frame, status),
-      preview,
-      nodeHarnessFetch(this.options.node, this.options.transport?.fetch),
+      this.calls,
+      {
+        publishSubscription: (status): Promise<void> => this.publishSubscription(frame, status),
+        preview,
+        ...(this.options.transport?.fetch === undefined
+          ? {}
+          : { fetch: this.options.transport.fetch }),
+      },
     );
-    if (this.socket !== socket || this.stopped || socket.readyState !== WebSocket.OPEN) {
-      preview.stop();
-      await harness.stop();
-      return;
+    this.runtime = { harness, preview, generation: frame.generation };
+    return this.runtime;
+  }
+  private async dispose(): Promise<void> {
+    const runtime = this.runtime;
+    this.runtime = null;
+    this.unsent.length = 0;
+    if (runtime === null) return;
+    runtime.preview.stop();
+    try {
+      await runtime.harness.stop();
+    } catch (cause) {
+      this.options.log.error('harness.cleanup_unknown', cause);
     }
-    this.harness = harness;
-    this.preview = preview;
-    this.delay = 1000;
-    socket.send(JSON.stringify(harness.hello));
-    await harness.reconnectSubscriptions();
-    this.options.log.info('harness.ready', {
-      device_id: frame.device_id,
-      generation: frame.generation,
-      runtime_instance: frame.runtime_instance,
-    });
+  }
+  private publishSubscription(binding: Welcome, status: AiSubscriptionHostStatus): Promise<void> {
+    const socket = this.connection.socket;
+    if (socket === null || socket.readyState !== socket.OPEN)
+      return Promise.reject(new NodeHarnessError('Subscription supplying host disconnected.'));
+    socket.send(
+      JSON.stringify(
+        NODE_HARNESS_FRAME.parse({
+          ...frameBinding(binding),
+          type: 'harness_subscription_status',
+          status,
+        }),
+      ),
+    );
+    return Promise.resolve();
+  }
+  private deliver(frame: NodeHarnessFrame): void {
+    const text = JSON.stringify(frame);
+    const socket = this.ready;
+    if (socket !== null && socket.readyState === socket.OPEN) socket.send(text);
+    else this.unsent.push(text);
   }
   private async control(
     socket: WebSocket,
-    frame: Exclude<HubHarnessControl, { type: 'harness_welcome' }>,
+    frame: Exclude<HubHarnessControl, { type: 'harness_welcome' | 'harness_call_result' }>,
   ): Promise<void> {
-    const harness = this.harness;
-    if (harness === null || this.socket !== socket)
+    const runtime = this.runtime;
+    if (runtime === null || this.ready !== socket)
       throw new NodeHarnessError('Computer composition has not completed its hello.');
+    const { harness, preview } = runtime;
     if (isSupplierInferenceControl(frame)) {
-      await supplierInferenceControl(socket, harness, frame, (): boolean => this.socket === socket);
+      await supplierInferenceControl(socket, harness, frame, (): boolean => this.ready === socket);
       return;
     }
     if (isPreviewControl(frame)) {
-      await this.previewControl(frame);
+      await this.previewControl(preview, frame);
       return;
     }
     if (frame.type === 'harness_subscription_control') {
-      await this.subscriptionControl(socket, harness, frame);
+      await this.subscriptionControl(harness, frame);
       return;
     }
     if (frame.type === 'harness_configuration') {
@@ -239,25 +264,22 @@ export class NodeHarnessRuntime {
       return;
     }
     if (frame.type === 'harness_ownership_lost') {
-      this.preview?.lose(frame.session_id);
+      preview.lose(frame.session_id);
       await harness.lose(frame.session_id);
       return;
     }
-    await this.request(socket, harness, frame);
+    await this.request(harness, frame);
   }
   private async previewControl(
+    preview: NativePreviewRelay,
     frame: Extract<HubHarnessControl, { type: 'preview_open' | 'preview_file_close' }>,
   ): Promise<void> {
-    if (frame.type === 'preview_file_close') this.preview?.forget(frame.watch_handle);
-    else await this.openPreview(frame);
-  }
-  private async openPreview(
-    frame: Extract<HubHarnessControl, { type: 'preview_open' }>,
-  ): Promise<void> {
-    if (this.preview === null)
-      throw new NodeHarnessError('The native preview adapter is unavailable.');
+    if (frame.type === 'preview_file_close') {
+      preview.forget(frame.watch_handle);
+      return;
+    }
     try {
-      await this.preview.open(frame);
+      await preview.open(frame);
     } catch (cause) {
       this.options.log.warn('preview.open_refused', {
         error_name: cause instanceof Error ? cause.name : 'unknown',
@@ -265,7 +287,6 @@ export class NodeHarnessRuntime {
     }
   }
   private async subscriptionControl(
-    socket: WebSocket,
     harness: ComputerHarness,
     frame: Extract<HubHarnessControl, { type: 'harness_subscription_control' }>,
   ): Promise<void> {
@@ -304,18 +325,13 @@ export class NodeHarnessRuntime {
         },
       });
     }
-    if (this.socket === socket && socket.readyState === WebSocket.OPEN)
-      socket.send(JSON.stringify(reply));
+    this.deliver(reply);
   }
   private async request(
-    socket: WebSocket,
     harness: ComputerHarness,
     frame: Extract<HubHarnessControl, { type: 'harness_request' }>,
   ): Promise<void> {
-    let result: Extract<
-      ReturnType<typeof NODE_HARNESS_FRAME.parse>,
-      { type: 'harness_reply' }
-    >['result'];
+    let result: Extract<NodeHarnessFrame, { type: 'harness_reply' }>['result'];
     try {
       result = {
         ok: true,
@@ -325,61 +341,32 @@ export class NodeHarnessRuntime {
       this.options.log.error('harness.operation_failed', cause, { operation_id: frame.id });
       result = {
         ok: false,
-        failure: {
-          code: 'operation_failed',
-          message:
-            cause instanceof Error
-              ? cause.message.slice(0, 2000)
-              : 'Computer native operation failed.',
-          retry_at: null,
-        },
+        failure: harnessFailure(cause),
       };
     }
-    if (this.socket === socket && socket.readyState === WebSocket.OPEN)
-      socket.send(
-        JSON.stringify(
-          NODE_HARNESS_FRAME.parse({
-            type: 'harness_reply',
-            id: frame.id,
-            device_id: frame.device_id,
-            generation: frame.generation,
-            runtime_instance: frame.runtime_instance,
-            result,
-          }),
-        ),
-      );
+    this.deliver(
+      NODE_HARNESS_FRAME.parse({
+        type: 'harness_reply',
+        id: frame.id,
+        device_id: frame.device_id,
+        generation: frame.generation,
+        runtime_instance: frame.runtime_instance,
+        result,
+      }),
+    );
   }
-  private failed(socket: WebSocket, cause: unknown): void {
-    this.options.log.error('harness.protocol_failed', cause);
-    socket.terminate();
-    this.closed(socket);
+  private rejected(cause: unknown): void {
+    this.options.log.error('harness.frame_rejected', cause);
   }
-  private closed(socket: WebSocket): void {
-    if (this.socket !== socket) return;
-    this.socket = null;
-    this.retiring = true;
-    const harness = this.harness;
-    this.harness = null;
-    this.preview?.stop();
-    this.preview = null;
-    this.cleanup = (async (): Promise<void> => {
-      if (harness !== null) {
-        try {
-          await harness.stop();
-        } catch (cause) {
-          this.options.log.error('harness.cleanup_unknown', cause);
-        }
-      }
-      await this.composing;
-    })();
-    void this.cleanup.then(() => {
-      this.retiring = false;
-      if (this.stopped) return;
-      this.retry = setTimeout(() => {
-        this.retry = null;
-        this.start();
-      }, this.delay);
-      this.delay = Math.min(this.delay * 2, 30_000);
-    });
-  }
+}
+function frameBinding(frame: Welcome): {
+  readonly device_id: string;
+  readonly generation: string;
+  readonly runtime_instance: string;
+} {
+  return {
+    device_id: frame.device_id,
+    generation: frame.generation,
+    runtime_instance: frame.runtime_instance,
+  };
 }

@@ -32,6 +32,5 @@ export class ProcessOpenings {
 }
 
 export function openIdentity(input: Open): string {
-  const { expires_at: _expiresAt, ...claim } = input.claim;
-  return JSON.stringify({ ...input, claim });
+  return JSON.stringify(input);
 }

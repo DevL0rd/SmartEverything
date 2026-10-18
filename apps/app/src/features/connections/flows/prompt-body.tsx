@@ -9,11 +9,16 @@ import { OtpField } from '../../../components/otp-field';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { notify } from '../../../components/toast-store';
+import { CODE_DIGITS, codeComplete } from '../model/verification-code';
 import { TuyaQr } from './tuya-qr';
 import { useMutationState } from '../../../store/mutation';
 
+import { connectionsLog } from '../connections-log';
 export function openInBrowser(url: string): void {
   WebBrowser.openBrowserAsync(url).catch((error: unknown) => {
+    connectionsLog.warn('browser.open_failed', {
+      error: error instanceof Error ? error.name : typeof error,
+    });
     notify({ message: 'The page didn’t open', error, tone: 'critical' });
   });
 }
@@ -80,7 +85,7 @@ function CaptchaPrompt({
       />
       <TextField
         label="Characters"
-        kind="url"
+        kind="code"
         value={text}
         onChange={setText}
         onSubmit={() => {
@@ -116,7 +121,7 @@ function CodePrompt({
         label="Verification code"
         value={code}
         onChange={setCode}
-        format={{ digits: 6 }}
+        format={{ digits: CODE_DIGITS }}
         onSubmit={() => {
           answer.send(code);
         }}
@@ -125,7 +130,7 @@ function CodePrompt({
       <SendButton
         busy={answer.busy}
         sent={answer.sent}
-        disabled={code.length < 4}
+        disabled={!codeComplete(code)}
         onPress={() => {
           answer.send(code);
         }}

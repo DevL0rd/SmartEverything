@@ -16,6 +16,7 @@ import { mcpStatusValue } from './mcp-status';
 import { metadataOf } from './metadata';
 import { nativeSubscriptionBilling } from './billing';
 import type { ProviderMetadata } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 type ConnectionRead = Extract<ProviderReadQuery, { kind: 'account_info' | 'mcp_status' }>;
 export function connectionReadRequest(request: ProviderReadQuery): request is ConnectionRead {
   return new Set(['account_info', 'mcp_status']).has(request.kind);
@@ -40,8 +41,8 @@ export async function readModels(runtime: Query, deviceId: string): Promise<Comp
     efforts: model.supportedEffortLevels ?? [],
     adaptive_thinking: model.supportsAdaptiveThinking === true,
     fast: model.supportsFastMode === true,
-    available: false,
-    reason: billing.reason,
+    available: billing.state === 'eligible',
+    reason: billing.state === 'blocked' ? billing.reason : null,
   }));
 }
 export async function jobMetadata(job: ProviderJob): Promise<ProviderMetadata> {
@@ -50,13 +51,16 @@ export async function jobMetadata(job: ProviderJob): Promise<ProviderMetadata> {
 }
 export function closeProbe(discovery: Promise<Query> | null, log: Logger): void {
   if (discovery !== null)
-    void discovery.then(
-      (runtime): void => {
-        runtime.close();
-      },
-      (cause: unknown): void => {
-        log.error('provider.discovery_failed', cause);
-      },
+    background(
+      discovery.then(
+        (runtime): void => {
+          runtime.close();
+        },
+        (cause: unknown): void => {
+          log.error('provider.discovery_failed', cause);
+        },
+      ),
+      'runtime_reads.background_failed',
     );
 }
 

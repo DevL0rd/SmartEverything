@@ -1,11 +1,13 @@
 import { referenceSubmissions, type ReferenceSubmissions } from './reference-submission';
+import { MessageReplay } from './message-replay';
+import { ownedUploads, queueEvent } from './request-events';
 import type { ReferenceService } from '../references/service';
 import type { EngineRegistry } from './engines/registry';
-import { outputAuthority } from './output-authority';
-import { issueEventAuthority, eventAuthority } from './execution-authority';
+import { outputAuthority } from './turn-authority';
+import { eventAuthority } from './turn-authority';
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@smarteverything/logging';
 import {
-  ApiError,
   type AiChatRow,
   type AiEdit,
   type AiRetryFrom,
@@ -15,15 +17,11 @@ import {
   type AssistantPost,
   type MessageOrigin,
 } from '@smarteverything/domain';
-import {
-  summaryOf,
-  type AssistantMessageChange,
-  type StoredAttachment,
-} from '../store/repositories/assistant-chat';
+import type { StoredAttachment } from '../store/repositories/assistant-chat';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
-import type { ChatDirectory } from './chat-directory';
+import type { ChatDirectory, ChatOwner } from './chat-directory';
 import type { ConversationLog } from './conversation-log';
 import type { AssistantDelivery } from './delivery';
 import type { AssistantFiles } from './files';
@@ -58,21 +56,13 @@ function spokenText(task: VoiceTask, profileName: string): string {
   return `[Spoken by ${profileName} in a voice call on ${task.device}; your final reply is read out loud, so keep it short and speakable, with no markdown] ${task.task}${said}`;
 }
 
-interface FileReplacement {
-  readonly kept: StoredAttachment[];
-  readonly removed: StoredAttachment[];
-}
-
-const KEPT_FILES: FileReplacement = { kept: [], removed: [] };
-
-interface Rearmed {
-  readonly row: AssistantMessageRow;
-  readonly files: readonly StoredAttachment[];
-  readonly queued: boolean;
-}
+const log = new Logger('hub.assistant');
 
 export class AssistantRequests {
-  constructor(private readonly deps: RequestsDeps) {}
+  private readonly replay: MessageReplay;
+  constructor(private readonly deps: RequestsDeps) {
+    this.replay = new MessageReplay(deps);
+  }
 
   referenceSubmissions(
     references: ReferenceService,
@@ -88,9 +78,24 @@ export class AssistantRequests {
         ? undefined
         : store.assistantSearch.byClientMessageId(chat.id, body.client_message_id);
     if (sent !== undefined) {
+      log.debug('request.duplicate_ignored', {
+        chatId: chat.id,
+        messageId: sent.id,
+        profileId: sender.profileId,
+        clientId: sender.clientId,
+      });
       return sent;
     }
     const row = store.write(() => this.accept(sender, body, chat));
+    log.debug('request.accepted', {
+      chatId: chat.id,
+      messageId: row.id,
+      profileId: sender.profileId,
+      clientId: sender.clientId,
+      textLength: body.text.length,
+      attachments: body.attachments.length,
+      references: body.references?.length ?? 0,
+    });
     this.deps.delivery().added();
     return row;
   }
@@ -108,181 +113,62 @@ export class AssistantRequests {
       origin: { source: 'app', plugin_id: null, device_id: null, name: null },
       ...(body.client_message_id === undefined ? {} : { clientMessageId: body.client_message_id }),
     });
-    this.queued(
-      {
-        id: randomUUID(),
-        kind: 'chat',
-        chat_id: chat.id,
-        message_id: row.id,
-        profile_id: sender.profileId,
-        client_id: sender.clientId,
-        text: body.text,
-      },
-      false,
-    );
+    this.queued({
+      id: randomUUID(),
+      kind: 'chat',
+      chat_id: chat.id,
+      message_id: row.id,
+      profile_id: sender.profileId,
+      client_id: sender.clientId,
+      text: body.text,
+    });
     store.aiChats.update(chat.id, { read: true });
     return row;
   }
 
-  async retry(
+  retry(
     chat: AiChatRow,
     messageId: string,
     from: AiRetryFrom,
     clientId?: string | null,
   ): Promise<AssistantMessageRow> {
-    return this.replayed(() => this.rearm(chat, messageId, from, clientId));
+    return this.replay.retry(chat, messageId, from, clientId);
   }
 
-  async edit(
+  resume(
+    chat: AiChatRow,
+    messageId: string,
+    clientId?: string | null,
+  ): Promise<AssistantMessageRow> {
+    return this.replay.resume(chat, messageId, clientId);
+  }
+
+  edit(
     chat: AiChatRow,
     messageId: string,
     body: AiEdit,
     clientId?: string | null,
   ): Promise<AssistantMessageRow> {
-    return this.replayed(() => this.reword(chat, messageId, body, clientId));
-  }
-
-  private async replayed(work: () => Rearmed): Promise<AssistantMessageRow> {
-    const { row, files, queued } = this.deps.store.write(work);
-    await this.deps.files.remove(files);
-    if (queued) {
-      this.deps.delivery().added();
-    }
-    return row;
-  }
-
-  private rearm(
-    chat: AiChatRow,
-    messageId: string,
-    from: AiRetryFrom,
-    clientId: string | null | undefined,
-  ): Rearmed {
-    const { message, event } = this.askedMessage(chat, messageId);
-    if (message.state !== from) {
-      return { row: message, files: [], queued: false };
-    }
-    this.requireLatest(chat, message, 'retried');
-    return this.replay(chat, { message, event }, {}, clientId);
-  }
-
-  private reword(
-    chat: AiChatRow,
-    messageId: string,
-    body: AiEdit,
-    clientId: string | null | undefined,
-  ): Rearmed {
-    const { message, event } = this.askedMessage(chat, messageId);
-    if (message.origin !== null && message.origin.source !== 'app') {
-      throw new ApiError('invalid_request', 'Only a message written in the app can be edited.');
-    }
-    if (message.state !== 'answered' && message.state !== 'failed') {
-      throw new ApiError('conflict', 'Wait for the AI to finish, or stop it, before editing.');
-    }
-    this.requireLatest(chat, message, 'edited');
-    const replaced =
-      body.attachments === undefined ? KEPT_FILES : this.replaceFiles(message, body.attachments);
-    const change: AssistantMessageChange = {
-      text: body.text,
-      references: body.references ?? [],
-      ...(body.attachments === undefined ? {} : { attachments: replaced.kept.map(summaryOf) }),
-    };
-    const done = this.replay(chat, { message, event }, change, clientId);
-    return { ...done, files: [...done.files, ...replaced.removed] };
-  }
-
-  private replaceFiles(message: AssistantMessageRow, ids: readonly string[]): FileReplacement {
-    const { assistantChat } = this.deps.store;
-    const kept = this.ownFiles(message.profile_id, ids);
-    const removed = assistantChat.attachmentsOf(message.id);
-    assistantChat.removeAttachments(removed.map((file) => file.id));
-    assistantChat.attachTo(
-      message.id,
-      kept.map((file) => file.id),
-    );
-    return { kept, removed };
-  }
-
-  private askedMessage(
-    chat: AiChatRow,
-    messageId: string,
-  ): { readonly message: AssistantMessageRow; readonly event: StoredEvent } {
-    const { assistantChat: messages, assistantEvents: events } = this.deps.store;
-    const message = messages.message(messageId);
-    const event = events.ofMessage(messageId);
-    if (message.chat_id !== chat.id || message.role !== 'person' || event === undefined) {
-      throw new ApiError(
-        'invalid_request',
-        'Only a message of a person that the AI was asked about can be retried or edited.',
-      );
-    }
-    return { message, event };
+    return this.replay.edit(chat, messageId, body, clientId);
   }
 
   assertReplay(chat: AiChatRow, messageId: string, edit?: AiEdit): void {
-    const { message } = this.askedMessage(chat, messageId);
-    this.requireLatest(chat, message, 'changed');
-    if (edit !== undefined && message.origin !== null && message.origin.source !== 'app')
-      throw new ApiError('invalid_request', 'Only an app message can be edited.');
-    if (edit?.attachments !== undefined) this.ownFiles(message.profile_id, edit.attachments);
-  }
-
-  private requireLatest(chat: AiChatRow, message: AssistantMessageRow, verb: string): void {
-    if (this.deps.store.assistantChat.latestPersonText(chat.id)?.id !== message.id) {
-      throw new ApiError('conflict', `Only the latest message of a chat can be ${verb}.`);
-    }
-  }
-
-  private replay(
-    chat: AiChatRow,
-    asked: { readonly message: AssistantMessageRow; readonly event: StoredEvent },
-    change: AssistantMessageChange,
-    clientId: string | null | undefined,
-  ): Rearmed {
-    const { message, event } = asked;
-    const original = eventAuthority(this.deps.store, event);
-    const { assistantChat: messages } = this.deps.store;
-    const files = messages.removeMessages(messages.repliesTo(message.id).map((reply) => reply.id));
-    const row = messages.updateMessage(message.id, {
-      ...change,
-      state: 'queued',
-      reason: null,
-      reason_code: null,
-    });
-    this.queued(
-      {
-        id: randomUUID(),
-        kind: event.kind,
-        chat_id: chat.id,
-        message_id: message.id,
-        profile_id: event.profile_id,
-        client_id: clientId === undefined ? event.client_id : clientId,
-        text: change.text ?? event.text,
-        report_to: event.report_to,
-        hops: event.hops,
-      },
-      original.kind === 'service',
-      original,
-    );
-
-    return { row, files, queued: true };
+    this.replay.assertReplay(chat, messageId, edit);
   }
 
   voice(task: VoiceTask & { readonly chatId: string }): string {
     const { store } = this.deps;
     const chat = store.aiChats.chat(task.chatId);
     const eventId = randomUUID();
-    this.queued(
-      {
-        id: eventId,
-        kind: 'voice',
-        chat_id: chat.id,
-        message_id: task.callMessageId,
-        profile_id: task.profileId,
-        client_id: task.clientId,
-        text: spokenText(task, store.profiles.byId(task.profileId).name),
-      },
-      true,
-    );
+    this.queued({
+      id: eventId,
+      kind: 'voice',
+      chat_id: chat.id,
+      message_id: task.callMessageId,
+      profile_id: task.profileId,
+      client_id: task.clientId,
+      text: spokenText(task, store.profiles.byId(task.profileId).name),
+    });
     this.deps.delivery().added();
     return eventId;
   }
@@ -291,15 +177,16 @@ export class AssistantRequests {
     body: AssistantPost,
     local: boolean,
     ownerProfile: () => string,
+    actor: ChatOwner,
   ): Promise<AssistantMessageRow> {
-    const profileId = body.profileId ?? ownerProfile();
-    if (!this.deps.store.profiles.list().some((profile) => profile.id === profileId)) {
-      throw new ApiError(
-        'invalid_request',
-        'There is no person with that profileId; take it from list_people, or leave it out for the owner.',
-      );
-    }
-    const chat = this.deps.chats.defaultChat(profileId);
+    const { profileId, chat } = this.deps.chats.postTarget(actor, body, ownerProfile);
+    log.debug('request.post_received', {
+      chatId: chat.id,
+      profileId,
+      files: body.files.length,
+      textLength: body.text.length,
+      local,
+    });
     const files = await Promise.all(
       body.files.map((file) =>
         this.deps.files.fromOutFile(profileId, file, {
@@ -334,32 +221,37 @@ export class AssistantRequests {
         client_id: scope.clientId,
         text,
       });
-      issueEventAuthority(this.deps.store, event, false);
+      eventAuthority(this.deps.store, event);
       return true;
     });
+    log.debug('request.preview_error_queued', { eventId: id, chatId: scope.chatId, added });
     if (added) this.deps.delivery().added();
   }
 
   turn(chat: AiChatRow, text: string, origin: MessageOrigin): string {
     const eventId = randomUUID();
     const note = this.deps.conversation.originNote(chat, origin);
-    this.queued(
-      {
-        id: eventId,
-        kind: 'wake',
-        chat_id: chat.id,
-        message_id: note.id,
-        profile_id: chat.profile_id,
-        client_id: null,
-        text,
-      },
-      true,
-    );
+    this.queued({
+      id: eventId,
+      kind: 'wake',
+      chat_id: chat.id,
+      message_id: note.id,
+      profile_id: chat.profile_id,
+      client_id: null,
+      text,
+    });
     this.deps.delivery().added();
     return eventId;
   }
 
   async inbound(turn: InboundTurn): Promise<{ eventId: string; messageId: string }> {
+    log.debug('request.inbound_received', {
+      chatId: turn.chat.id,
+      profileId: turn.chat.profile_id,
+      files: turn.files.length,
+      textLength: turn.text.length,
+      source: turn.origin.source,
+    });
     const files = await Promise.all(
       turn.files.map((file) =>
         this.deps.files.fromOutFile(turn.chat.profile_id, file, {
@@ -378,23 +270,28 @@ export class AssistantRequests {
       origin: turn.origin,
     });
     const eventId = randomUUID();
-    this.queued(
-      {
-        id: eventId,
-        kind: 'plugin',
-        chat_id: turn.chat.id,
-        message_id: row.id,
-        profile_id: turn.chat.profile_id,
-        client_id: null,
-        text: turn.engineText,
-      },
-      true,
-    );
+    this.queued({
+      id: eventId,
+      kind: 'plugin',
+      chat_id: turn.chat.id,
+      message_id: row.id,
+      profile_id: turn.chat.profile_id,
+      client_id: null,
+      text: turn.engineText,
+    });
     this.deps.delivery().added();
     return { eventId, messageId: row.id };
   }
 
   finished(event: StoredEvent, text: string, ok: boolean): void {
+    log.info('request.finished', {
+      eventId: event.id,
+      kind: event.kind,
+      chatId: event.chat_id,
+      profileId: event.profile_id,
+      ok,
+      replyLength: text.length,
+    });
     this.deps.store.assistantEvents.mark(event.id, 'answered_at');
     if (event.kind === 'voice') {
       this.deps.voiceResult()?.(event.id, text, false);
@@ -404,25 +301,11 @@ export class AssistantRequests {
 
   private queued(
     input: Parameters<Store['assistantEvents']['add']>[0],
-    service: boolean,
     source?: ConversationAuthority,
   ): StoredEvent {
-    return this.deps.store.write(() => {
-      const event = this.deps.store.assistantEvents.add(input);
-      issueEventAuthority(this.deps.store, event, service, source);
-      return event;
-    });
+    return queueEvent(this.deps.store, input, source);
   }
   private ownFiles(profileId: string, ids: readonly string[]): StoredAttachment[] {
-    return ids.map((id) => {
-      const file = this.deps.store.assistantChat.attachment(id);
-      if (file.profile_id !== profileId || file.message_id !== null) {
-        throw new ApiError(
-          'invalid_request',
-          `The attachment ${id} is not an unsent upload of yours.`,
-        );
-      }
-      return file;
-    });
+    return ownedUploads(this.deps.store, profileId, ids);
   }
 }

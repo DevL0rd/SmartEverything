@@ -5,7 +5,10 @@ import { AI_MODEL_ROUTE } from '../ai-model-route';
 import {
   AI_HARNESS_ANSWER,
   AI_HARNESS_PERMISSION_CHANGE,
-  AI_HARNESS_HANDOFF,
+  AI_HARNESS_SWITCH_RESULT,
+  AI_MACHINE_LIST,
+  AI_MACHINE_SWITCH,
+  AI_MACHINE_SWITCH_RESULT,
   AI_HARNESS_HANDOFF_REQUEST,
   AI_HARNESS_SESSION,
 } from '../ai-harness-session';
@@ -19,11 +22,7 @@ import {
 import { endpoint, NO_BODY } from './endpoint';
 import { DONE, NOTHING, queryLimit } from './primitives';
 import { HARNESS_RUNTIME_REQUEST } from '../node/harness-frames';
-import {
-  AI_HARNESS_CONFIGURATION_CATALOGUE,
-  AI_HARNESS_CONFIGURATION_REPLACE,
-  HARNESS_DESIRED_CONFIGURATION,
-} from '../ai-harness-configuration';
+import { AI_HARNESS_CONFIGURATION_CATALOGUE } from '../ai-harness-configuration';
 
 const CHAT = z.strictObject({ chatId: z.uuid() });
 const SESSION = z.strictObject({ sessionId: DSH_SESSION_ID });
@@ -45,21 +44,11 @@ export const AI_HARNESS_CONFIGURATION_ENDPOINTS = {
     path: '/api/ai/harness/configuration',
     access: 'member',
     summary:
-      'Read the central desired extensions and each host’s last reported installation and readiness',
+      'Read what every host should have installed and each host’s last reported installation and readiness',
     params: NOTHING,
     query: NOTHING,
     body: NO_BODY,
     response: AI_HARNESS_CONFIGURATION_CATALOGUE,
-  }),
-  replaceAiHarnessConfiguration: endpoint({
-    method: 'PUT',
-    path: '/api/ai/harness/configuration',
-    access: 'owner',
-    summary: 'Replace the central desired extension revision after matching the current revision',
-    params: NOTHING,
-    query: NOTHING,
-    body: AI_HARNESS_CONFIGURATION_REPLACE,
-    response: HARNESS_DESIRED_CONFIGURATION,
   }),
 } as const;
 
@@ -112,7 +101,8 @@ export const AI_HARNESS_ENDPOINTS = {
     method: 'GET',
     path: '/api/ai/chats/:chatId/harness',
     access: 'member',
-    summary: 'Read this chat’s native session, execution host, route, interactions and handoff',
+    summary:
+      'Read this chat’s native session, execution host, route and interactions; a chat that was never opened is attached first',
     params: CHAT,
     query: NOTHING,
     body: NO_BODY,
@@ -122,11 +112,33 @@ export const AI_HARNESS_ENDPOINTS = {
     method: 'POST',
     path: '/api/ai/chats/:chatId/harness/switch',
     access: 'member',
-    summary: 'Drain, interrupt or recover this same native chat on an explicitly selected host',
+    summary:
+      'Move this same native chat to another machine now when idle, or at the AI’s next tool call while it works',
     params: CHAT,
     query: NOTHING,
     body: AI_HARNESS_HANDOFF_REQUEST,
-    response: AI_HARNESS_HANDOFF,
+    response: AI_HARNESS_SWITCH_RESULT,
+  }),
+  listAiChatMachines: endpoint({
+    method: 'GET',
+    path: '/api/ai/chats/:chatId/machines',
+    access: 'member',
+    summary: 'List the machines this chat can run on: name, operating system, online, current',
+    params: CHAT,
+    query: NOTHING,
+    body: NO_BODY,
+    response: AI_MACHINE_LIST,
+  }),
+  switchAiChatMachine: endpoint({
+    method: 'POST',
+    path: '/api/ai/chats/:chatId/machine',
+    access: 'member',
+    summary:
+      'Move this chat to another machine by id or name: at once when idle, at the next tool call while the AI works',
+    params: CHAT,
+    query: NOTHING,
+    body: AI_MACHINE_SWITCH,
+    response: AI_MACHINE_SWITCH_RESULT,
   }),
   answerAiChatHarness: endpoint({
     method: 'POST',

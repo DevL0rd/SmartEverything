@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { type HistoryRow, type PresentedCapability } from '@smarteverything/domain';
+import { type PresentedCapability } from '@smarteverything/domain';
 import { Card } from '../../../components/card';
-import { TimeSeriesChart, type ChartPoint } from '../../../components/charts';
+import { TimeSeriesChart } from '../../../components/charts';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { SwitchRow } from '../../../components/rows';
@@ -11,7 +11,8 @@ import { List } from '../../../components/section';
 import { Segmented } from '../../../components/segmented';
 import { Select } from '../../../components/select';
 import { Skeleton } from '../../../components/skeleton';
-import { useHistory } from '../../../queries/history';
+import type { ColourRole } from '../../../design/tokens';
+import { useDeviceSeries } from '../../../queries/history';
 import type { Device } from '../../../store/state';
 import { useDeviceModel } from '../model/device-model';
 import {
@@ -20,39 +21,42 @@ import {
   historyMetrics,
   type HistoryRangeKey,
 } from '../model/history-model';
+import { background } from '@smarteverything/logging';
 
-function pointsOf(rows: readonly HistoryRow[], deviceId: string): readonly ChartPoint[] {
-  return rows.flatMap((row) =>
-    row.device_id === deviceId && typeof row.value === 'number'
-      ? [{ t: Date.parse(row.observed_at), v: row.value }]
-      : [],
-  );
-}
-
-function Chart({
+export function MetricChart({
   device,
   metric,
   range,
+  colour = 'viz-1',
+  height = 220,
 }: {
   readonly device: Device;
   readonly metric: PresentedCapability;
   readonly range: HistoryRangeKey;
+  readonly colour?: ColourRole;
+  readonly height?: number;
 }): ReactNode {
-  const history = useHistory([metric.key], RANGE_HOURS[range]);
+  const history = useDeviceSeries(device.id, metric.key, RANGE_HOURS[range]);
   if (history.isPending) {
     return <Skeleton shape="block" className="h-50" />;
   }
   if (history.isError) {
-    return <ErrorState error={history.error} retry={() => void history.refetch()} />;
+    return (
+      <ErrorState
+        error={history.error}
+        retry={() => {
+          background(history.refetch(), 'history.refetch_failed');
+        }}
+      />
+    );
   }
-  const points = pointsOf(history.data, device.id);
   return (
     <View className="gap-2">
       <TimeSeriesChart
-        series={[{ points, colour: 'viz-1', label: metric.label }]}
+        series={[{ points: history.data, colour, label: metric.label }]}
         range={range}
         fit
-        height={220}
+        height={height}
         {...(metric.unit === null ? {} : { unit: metric.unit })}
       />
     </View>
@@ -93,7 +97,7 @@ export function HistorySection({ device }: { readonly device: Device }): ReactNo
             </View>
             <Segmented label="Range" options={HISTORY_RANGES} value={range} onChange={setRange} />
           </View>
-          <Chart device={device} metric={metric} range={range} />
+          <MetricChart device={device} metric={metric} range={range} />
         </View>
       </Card>
       <List>

@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from 'react';
 import { isCamera } from '@smarteverything/domain';
-import type { WidgetDefinition } from '../../../components/widget-board';
+import type { WidgetDefinition, WidgetFrameBox } from '../../../components/widget-board';
 import type { Device } from '../../../store/state';
 import { CAMERA_WIDGETS } from '../../cameras';
 import { DeviceSpotlightWidget } from '../../devices';
@@ -9,12 +9,17 @@ const CAMERA: WidgetDefinition | undefined = CAMERA_WIDGETS.find(
   (definition) => definition.type === 'camera',
 );
 
-function Cell({ device, wide }: { readonly device: Device; readonly wide: boolean }): ReactNode {
-  const size = wide ? 'M' : 'S';
+function Cell({
+  device,
+  frame,
+}: {
+  readonly device: Device;
+  readonly frame: WidgetFrameBox;
+}): ReactNode {
   if (isCamera(device) && CAMERA !== undefined) {
-    return CAMERA.render({ size, options: { deviceId: device.id }, editing: false });
+    return CAMERA.render({ size: 'M', options: { deviceId: device.id }, editing: false, frame });
   }
-  return <DeviceSpotlightWidget deviceId={device.id} size={size} editing={false} banner />;
+  return <DeviceSpotlightWidget deviceId={device.id} size="M" editing={false} frame={frame} />;
 }
 
 export const DeviceCell = memo(Cell);

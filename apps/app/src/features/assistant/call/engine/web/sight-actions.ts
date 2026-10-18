@@ -4,7 +4,8 @@ import { callState, changeCall, changeVideo } from '../../call-state';
 import type { SightStart } from '../call-engine';
 import { SightStartError } from '../sight-failure';
 import { CallFeatureUnavailableError } from '../unavailable';
-import { HUB_TOO_OLD, engineCapabilities, reachableSources } from './engine-support';
+import { HUB_TOO_OLD } from '../hub-reasons';
+import { engineCapabilities, reachableSources } from './engine-support';
 import { SightDesk, type SightPorts } from './sight-desk';
 import { startFailure } from './sight-devices';
 
@@ -89,20 +90,13 @@ export class SightActions {
 
   async show(start: SightStart, lookId: string): Promise<void> {
     this.require(start.source);
-    await this.desk.look({
-      source: start.source,
-      target: start.target ?? null,
-      lookId,
-      gesture: true,
-    });
+    await this.desk.look({ source: start.source, target: start.target ?? null, lookId });
   }
 
   capture(requestId: string, source: SightStart['source'], target: string | null): void {
-    this.desk
-      .look({ source, target, lookId: requestId, gesture: navigator.userActivation.isActive })
-      .catch((error: unknown) => {
-        this.refuse(requestId, startFailure(source, error));
-      });
+    this.desk.look({ source, target, lookId: requestId }).catch((error: unknown) => {
+      this.refuse(requestId, startFailure(source, error));
+    });
   }
 
   private refuse(requestId: string, failure: SightStartError): void {

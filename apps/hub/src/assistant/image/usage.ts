@@ -1,6 +1,5 @@
 import { MICROS_PER_USD, type ImageOperationReceipt } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
-import { ImageOperationError } from './errors';
 
 export function recordImageUsage(
   store: Store,
@@ -10,11 +9,6 @@ export function recordImageUsage(
   const cost = receipt.usage?.['cost'];
   if (cost === undefined) return receipt;
   const micros = Math.round(cost * MICROS_PER_USD);
-  if (!Number.isSafeInteger(micros))
-    throw new ImageOperationError(
-      'limit',
-      'Reported image cost exceeds the supported accounting range.',
-    );
   const row = store.ledger.record({
     profile_id: receipt.profile_id,
     client_id: receipt.origin?.client_id ?? null,

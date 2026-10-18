@@ -77,7 +77,9 @@ describe('camera media through the server', () => {
     });
     const link = API_ENDPOINTS.cameraSnapshot.response.parse(reply.body);
     expect(link.url).toMatch(
-      new RegExp(`^/media/cameras/${camera}/snapshot\\?expires=\\d+&signature=[0-9a-f]{64}$`),
+      new RegExp(
+        `^/media/cameras/${camera}/snapshot\\?expires=\\d+&signature=[0-9a-f]{64}&size=full$`,
+      ),
     );
     const frame = await fetch(`${suite.current.base}${link.url}`);
     expect(frame.status).toBe(200);
@@ -108,7 +110,7 @@ describe('camera media through the server', () => {
   it('records a camera event and serves the files through short-lived signed links with ranges', async () => {
     const camera = await cameraId();
     const live = await openLive(suite.current.base, suite.current.owner);
-    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['recordings'] }));
+    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['recordings'], streams: [] }));
     await live.next((message) => message.type === 'subscribed');
     suite.current.fake.adapter.sink?.event({
       externalId: CAMERA.externalId,
@@ -150,8 +152,8 @@ describe('camera media through the server', () => {
     expect(part.headers.get('content-range')).toBe('bytes 2-4/10');
     expect(await part.text()).toBe('234');
     expect(await (await fetch(url, { headers: { range: 'bytes=-3' } })).text()).toBe('789');
-    expect((await fetch(url, { headers: { range: 'bytes=20-' } })).status).toBe(400);
-    expect((await fetch(url, { headers: { range: 'lines=1-2' } })).status).toBe(400);
+    expect((await fetch(url, { headers: { range: 'bytes=20-' } })).status).toBe(416);
+    expect(await (await fetch(url, { headers: { range: 'lines=1-2' } })).text()).toBe('0123456789');
     expect((await fetch(`${suite.current.base}/media/recordings/${clip?.id ?? ''}`)).status).toBe(
       401,
     );
@@ -177,7 +179,7 @@ describe('camera media through the server', () => {
   it('records a clip on demand as a hub command', async () => {
     const camera = await cameraId();
     const live = await openLive(suite.current.base, suite.current.owner);
-    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['commands'] }));
+    live.socket.send(JSON.stringify({ type: 'subscribe', tables: ['commands'], streams: [] }));
     await live.next((message) => message.type === 'subscribed');
     await call(suite.current.base, suite.current.owner, {
       method: 'POST',

@@ -22,7 +22,7 @@ function guarded(
   work: (args: Readonly<Record<string, unknown>>) => unknown,
 ): LocalAction['run'] {
   return async (args, caller): Promise<LocalOutput> => {
-    await services.authority.access(caller, undefined, false);
+    await services.authority.access(caller, undefined);
     return plain(await work(args));
   };
 }

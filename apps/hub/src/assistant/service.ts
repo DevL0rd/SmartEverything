@@ -1,15 +1,12 @@
 import { attachHarnessReferences } from '../harness/reference-delivery';
-import { replayClient, type ReferenceSubmissions, type ReplayActor } from './reference-submission';
+import { type ReferenceSubmissions, type ReplayActor } from './reference-submission';
 import { ReferenceService } from '../references/service';
+import { claudeReferences } from '../references/claude';
 import { ProjectFilesService } from '../projects/service';
 import { removeChatTree, type RemovalAdmission } from './remove-chat-tree';
-import {
-  admitHarnessChange,
-  closeReplacedHarness,
-  selectChatEngineChange,
-  codexPermissionChange,
-} from './engines/dsh/binding';
+import { updateChat } from './chat-update';
 import type { z } from 'zod';
+import { Logger } from '@smarteverything/logging';
 import { harnessEngine } from './engines/dsh/wiring';
 import type { HarnessService } from '../harness/service';
 import type { HarnessDispatcher } from '@smarteverything/harness/process';
@@ -26,7 +23,6 @@ import {
   patchAssistantSettings,
   legacyAssistantSettings,
   RETIRED_STATUS_FIELDS,
-  ApiError,
   type AiChatChange,
   type AiChatBranch,
   type AiChatHit,
@@ -45,6 +41,7 @@ import {
 } from '@smarteverything/domain';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
 import { assistantAuxiliaries } from './auxiliary-wiring';
+import type { SideParts } from './side-completion';
 import { ComputerProviders } from './computer-providers';
 import { EngineSelections } from './engine-selections';
 import { computerRunners } from './computer-wiring';
@@ -55,13 +52,16 @@ import type { StoredEvent } from '../store/repositories/assistant-events';
 import { ChatBranches } from './chat-branch';
 import type { ChatDirectory, ChatOwner } from './chat-directory';
 import { StatusPublisher } from './status-publisher';
-import { ownerProfile } from './profile';
+import { ownerProfileOf } from '../transcripts/owner';
 import { TurnListeners } from './turn-listeners';
 import { ConversationLog } from './conversation-log';
+import { HUB_RESTARTED } from './interruption';
 import type { Coordination } from './coordination/asks';
 import { costRolledUp } from './cost-rollup';
 import type { AssistantDelivery } from './delivery';
-import { removeConversationMessages, mutableChat } from './remove-messages';
+import { removeConversationMessages } from './remove-messages';
+import { compactChat, interruptChat } from './chat-run-control';
+import { MessageEdits } from './message-edits';
 import type { EngineStatus } from './engines/engine';
 import { EngineRegistry } from './engines/registry';
 import type { AssistantFiles } from './files';
@@ -77,6 +77,7 @@ import type {
 } from './service-contract';
 export type * from './service-contract';
 export type { Sender } from './requests';
+const log = new Logger('hub.assistant');
 export class AssistantService {
   readonly files: AssistantFiles;
   readonly voice: VoiceResponder;
@@ -89,6 +90,7 @@ export class AssistantService {
   private readonly delivery: AssistantDelivery;
   private readonly engines: EngineRegistry;
   private readonly requests: AssistantRequests;
+  private readonly edits: MessageEdits;
   readonly submissions: ReferenceSubmissions;
   selections: EngineSelections | null = null;
   claude: ClaudeRunner | null = null;
@@ -103,8 +105,8 @@ export class AssistantService {
   private readonly listeners = new TurnListeners();
   constructor(private readonly options: AssistantServiceOptions) {
     const { store } = options;
-    this.projects = new ProjectFilesService(store, options.dataDirectory);
-    this.references = new ReferenceService(store, options.dataDirectory);
+    this.projects = new ProjectFilesService(options.dataDirectory);
+    this.references = new ReferenceService(store, this.projects);
     this.files = assistantFiles(options, this.projects);
     this.conversation = new ConversationLog(store);
     this.chats = assistantChats(options, this.files, () => this.selections, this.projects);
@@ -142,6 +144,13 @@ export class AssistantService {
       },
     );
     this.submissions = this.requests.referenceSubmissions(this.references, this.engines);
+    this.edits = new MessageEdits({
+      store,
+      chats: this.chats,
+      engines: this.engines,
+      submissions: this.submissions,
+      requests: this.requests,
+    });
     this.voice = this.voiceOf();
   }
   private voiceOf(): VoiceResponder {
@@ -170,15 +179,27 @@ export class AssistantService {
   }
   runTurn(input: TurnRequest): { chatId: string; eventId: string } {
     const chat = this.chats.forTurn(input.profileId, input.chatId, input.title);
+    log.debug('turn.requested', {
+      chatId: chat.id,
+      profileId: input.profileId,
+      textLength: input.text.length,
+      source: input.origin.source,
+      newChat: input.chatId === undefined,
+    });
     return { chatId: chat.id, eventId: this.requests.turn(chat, input.text, input.origin) };
   }
+  admitDelivery(admit: (event: StoredEvent) => boolean): () => void {
+    return this.delivery.admission(admit);
+  }
   start(): void {
+    log.info('service.starting', { engines: this.computerProviders.size });
     this.coordination.restart();
-    this.conversation.interrupted('Stopped by a server restart.');
+    this.conversation.interrupted(HUB_RESTARTED);
     this.delivery.pump();
   }
   attachComputerAi(directory: ComputerAiDirectory): void {
     this.selections = new EngineSelections(this.options.store, directory, this.options.log);
+    this.references.attachNative(['claude'], claudeReferences(directory));
     const runners = computerRunners(this.options, directory, {
       conversation: this.conversation,
       files: this.files,
@@ -198,10 +219,14 @@ export class AssistantService {
     this.claude = runners.get('claude') ?? null;
     for (const [runtime, runner] of runners) this.computerProviders.set(runtime, runner);
     for (const runner of this.computerProviders.values()) this.engines.attach(runner.engine());
+    log.info('engine.attached', { kind: 'computer', runners: [...runners.keys()].join(',') });
     this.delivery.pump();
   }
   attachHarness(service: HarnessService, dispatcher: HarnessDispatcher): void {
     this.harness = attachHarnessReferences(service, this.references);
+    service.onMachineChanged((chat, text) => {
+      this.conversation.note(chat, 'SmartEverything', text, null);
+    });
     this.selections?.attachHarness(service);
     this.engines.attach(
       harnessEngine({ service, dispatcher, conversation: this.conversation }, this.options, {
@@ -213,10 +238,11 @@ export class AssistantService {
         },
       }),
     );
+    log.info('engine.attached', { kind: 'harness' });
     this.titles?.backfill();
     this.delivery.pump();
   }
-  attachMediaNotes(notes: Pick<MediaNotes, 'ensure' | 'later'>): void {
+  attachMediaNotes(notes: Pick<MediaNotes, 'ensure' | 'later' | 'wants'>): void {
     this.files.attachMediaNotes(notes);
   }
   attachLedger(ledger: LedgerRollup): () => void {
@@ -242,13 +268,13 @@ export class AssistantService {
   attachTools(tools: ToolHub): void {
     this.tools = tools;
   }
-  attachAuxiliaries(): void {
-    this.titles = assistantAuxiliaries(this.options, this.engines, (listener) =>
+  attachAuxiliaries(parts: SideParts): void {
+    this.titles = assistantAuxiliaries(this.options, parts, (listener) =>
       this.onFinished(listener),
     );
   }
   stop(): void {
-    this.references.stop();
+    log.info('service.stopping', { engines: this.computerProviders.size });
     this.delivery.stop();
     for (const runner of this.computerProviders.values()) runner.stop();
     this.selections?.stop();
@@ -264,6 +290,7 @@ export class AssistantService {
   }
   update(change: AssistantSettingsChange): Promise<AssistantStatus> {
     this.options.store.assistantChat.saveSettings(patchAssistantSettings(this.settings(), change));
+    log.info('settings.updated', { fields: Object.keys(change).join(',') });
     this.delivery.pump();
     this.publisher.publish();
     return Promise.resolve(this.status());
@@ -288,6 +315,7 @@ export class AssistantService {
     inactiveOnly = false,
   ): Promise<void> {
     const { chats, engines, delivery } = this;
+    log.info('chat.removing', { chatId, profileId: owner.profileId, inactiveOnly });
     return removeChatTree({ chats, engines, delivery, admit, inactiveOnly }, owner, chatId);
   }
   branchChat(owner: ChatOwner, chatId: string, body: AiChatBranch): Promise<AiChatRow> {
@@ -297,30 +325,18 @@ export class AssistantService {
   searchChats(owner: ChatOwner, query: AiChatSearch): AiChatHit[] {
     return this.chats.search(owner, query);
   }
-  async updateChat(owner: ChatOwner, chatId: string, change: AiChatChange): Promise<AiChatRow> {
-    const before = this.chats.own(owner, chatId);
-    const selected = selectChatEngineChange(
-      { selections: this.selections, harness: this.harness, owner },
-      before,
-      change,
-    );
-    admitHarnessChange(before, selected);
-    const altersScope = selected.engine !== undefined || selected.tools !== undefined;
-    if (altersScope) this.engines.forMutation(before, owner.role);
-    const permissionOnly = codexPermissionChange(before, selected);
-    if (this.engineStatus(before)?.state === 'working' && altersScope && !permissionOnly)
-      throw new ApiError(
-        'conflict',
-        'Stop the running turn before changing its engine or tool scope.',
-      );
-    if (selected.engine !== undefined) this.selections?.validate(selected.engine, owner.role);
-    if (selected.engine !== undefined)
-      await this.computerProviders.bindingChanged(before, selected.engine);
-    await closeReplacedHarness(this.engines, owner, before, selected);
-    this.coordination.assertChange(before, selected);
-    const chat = this.chats.update(owner, chatId, selected);
-    this.delivery.pump();
-    return Promise.resolve(chat);
+  updateChat(owner: ChatOwner, chatId: string, change: AiChatChange): Promise<AiChatRow> {
+    const { chats, engines, delivery, coordination, computerProviders, selections, harness } = this;
+    const ports = {
+      chats,
+      engines,
+      delivery,
+      coordination,
+      computerProviders,
+      selections,
+      harness,
+    };
+    return updateChat(ports, owner, chatId, change);
   }
 
   controlAgentRun(run: AiAgentRun, control: z.infer<typeof AI_AGENT_RUN_CONTROL>): Promise<void> {
@@ -338,71 +354,36 @@ export class AssistantService {
     return this.engines.engineOf(chat)?.status(chat) ?? null;
   }
 
-  async compact(owner: ChatOwner, chatId: string, clientId?: string): Promise<boolean> {
-    const chat = this.chats.own(owner, chatId);
-    const engine = this.engines.forMutation(chat, owner.role);
-    if (engine?.status(chat).state === 'working')
-      throw new ApiError('conflict', 'Wait for active work to finish before compacting.');
-    return (await engine?.compact(chat, clientId)) ?? false;
+  compact(owner: ChatOwner, chatId: string, clientId?: string): Promise<boolean> {
+    return compactChat({ chats: this.chats, engines: this.engines }, owner, chatId, clientId);
   }
 
-  async interrupt(owner: ChatOwner, chatId: string): Promise<void> {
-    const chat = this.chats.own(owner, chatId);
-    const engine = this.engines.forMutation(chat, owner.role);
-    if (engine === null) {
-      throw new ApiError('conflict', 'Nothing is running in this chat.');
-    }
-    await engine.interrupt(chat);
+  interrupt(owner: ChatOwner, chatId: string): Promise<void> {
+    return interruptChat({ chats: this.chats, engines: this.engines }, owner, chatId);
   }
 
   send(sender: Sender, body: AssistantNewMessage, chatId?: string): AssistantMessageRow {
     return this.submissions.plain(sender, body, chatId);
   }
-  async retry(
+  retry(
     owner: ChatOwner,
     target: { readonly chatId: string; readonly messageId: string },
     from: AiRetryFrom,
     actor?: ReplayActor,
   ): Promise<AssistantMessageRow> {
-    const chat = mutableChat(this.chats, this.engines, owner, target.chatId);
-    const message = this.options.store.assistantChat.message(target.messageId);
-    if (message.chat_id === chat.id && message.state === from) {
-      await this.submissions.replay(actor, chat, message);
-      await this.rewriteAsked(owner, chat, message);
-    }
-    return this.requests.retry(chat, target.messageId, from, replayClient(actor));
+    return this.edits.retry(owner, target, from, actor);
   }
 
-  async edit(
+  edit(
     owner: ChatOwner,
     target: { readonly chatId: string; readonly messageId: string },
     body: AiEdit,
     actor?: ReplayActor,
   ): Promise<AssistantMessageRow> {
-    const chat = mutableChat(this.chats, this.engines, owner, target.chatId);
-    const message = this.options.store.assistantChat.message(target.messageId);
-    const changed = await this.submissions.edit(actor, chat, message, body);
-    if (message.chat_id === chat.id && (message.state === 'answered' || message.state === 'failed'))
-      await this.rewriteAsked(owner, chat, message, changed);
-    return this.requests.edit(chat, target.messageId, changed, replayClient(actor));
+    return this.edits.edit(owner, target, body, actor);
   }
 
-  private async rewriteAsked(
-    owner: ChatOwner,
-    chat: AiChatRow,
-    message: AssistantMessageRow,
-    edit?: AiEdit,
-  ): Promise<void> {
-    this.requests.assertReplay(chat, message.id, edit);
-    const engine = this.engines.forMutation(chat, owner.role);
-    await engine?.historyChanged(chat, owner);
-    engine?.historyRemoved?.(chat, [
-      message,
-      ...this.options.store.assistantChat.repliesTo(message.id),
-    ]);
-  }
-
-  post(body: AssistantPost, local: boolean): Promise<AssistantMessageRow> {
-    return this.requests.post(body, local, () => ownerProfile(this.options.store));
+  post(body: AssistantPost, local: boolean, actor: ChatOwner): Promise<AssistantMessageRow> {
+    return this.requests.post(body, local, () => ownerProfileOf(this.options.store), actor);
   }
 }

@@ -1,13 +1,9 @@
-import { uint32 } from './bytes';
+import { uint8, uint32 } from './bytes';
 import type { MiBeaconObject } from './mibeacon';
 
-const XIAOMI_SCALE_PRODUCTS: Readonly<Record<number, string>> = {
-  0x30d9: 'yunmai.scales.ms103',
-  0x3bd5: 'yunmai.scales.ms104',
-  0x48cf: 'yunmai.scales.ms107',
-  0x4b05: 'xiaomi.scales.ms110',
-  0x78bd: 'xiaomi.scales.400pgj',
-};
+const XIAOMI_SCALE_PRODUCTS: ReadonlySet<number> = new Set([
+  0x30d9, 0x3bd5, 0x48cf, 0x4b05, 0x78bd,
+]);
 
 export const SCALE_MEASUREMENT_OBJECT = 0x6e16;
 
@@ -35,7 +31,7 @@ function present(raw: number, scale: number): number | null {
 }
 
 export function isXiaomiScale(productId: number): boolean {
-  return XIAOMI_SCALE_PRODUCTS[productId] !== undefined;
+  return XIAOMI_SCALE_PRODUCTS.has(productId);
 }
 
 export function decodeScaleObject(object: MiBeaconObject): ScalePacket {
@@ -44,7 +40,7 @@ export function decodeScaleObject(object: MiBeaconObject): ScalePacket {
       `Expected object 0x6e16 of 9 bytes, received 0x${object.id.toString(16)} of ${String(object.data.length)}.`,
     );
   }
-  const scaleUser = object.data[0] ?? 0;
+  const scaleUser = uint8(object.data, 0);
   const packed = uint32(object.data, 1);
   const weight = packed & 0x7ff;
   const heart = (packed >>> 11) & 0x7f;

@@ -7,9 +7,11 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import { opusCodec, OpusFramer } from '../assistant-voice/audio';
 import type { PriceBook } from '../ledger/gemini-live';
+import type { SpeakingAnchor } from '../reach/room-media';
 import { recordSpeech } from '../ledger/speech';
 import type { Store } from '../store/store';
 import type { SpeechChunk, SpeechProvider, SpeechUsage } from './speech-provider';
+import { messageOf } from '@smarteverything/logging';
 
 export interface SpeechSink {
   readonly audio: (packet: Uint8Array) => void;
@@ -22,6 +24,7 @@ export interface SpeechRequest {
   readonly profileId: string;
   readonly clientId: string | null;
   readonly text: string;
+  readonly at?: SpeakingAnchor;
   readonly sink: SpeechSink;
 }
 
@@ -56,19 +59,33 @@ export class OneShotSpeech {
 
   say(request: SpeechRequest): Promise<Saying> {
     const control = new AbortController();
+    this.options.log.debug('speech.requested', {
+      id: request.id,
+      profileId: request.profileId,
+      clientId: request.clientId,
+      textChars: request.text.length,
+    });
     const finished = this.run(request, control.signal);
     finished.catch((cause: unknown) => {
       if (!control.signal.aborted) {
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        this.options.log.warn('speech.failed', { id: request.id, detail });
+        const detail = messageOf(cause);
+        this.options.log.warn('speech.failed', {
+          id: request.id,
+          detail: detail.slice(0, 300),
+          cause: cause instanceof Error ? cause.name : typeof cause,
+        });
         request.sink.ended('failed', detail);
+      } else {
+        this.options.log.debug('speech.aborted', { id: request.id });
       }
     });
     return Promise.resolve({
       end: async (reason): Promise<void> => {
+        this.options.log.debug('speech.end_requested', { id: request.id, reason });
         if (reason !== 'finished') {
           control.abort();
         }
+        // eslint-disable-next-line local/no-swallowed-errors -- the failure is logged where the speech starts
         await finished.catch(() => undefined);
       },
     });
@@ -80,6 +97,13 @@ export class OneShotSpeech {
     const provider = this.options.providers[SPEECH_MODEL_PROVIDERS[model]];
     const codec = opusCodec();
     const framer = new OpusFramer(codec);
+    const startedAt = performance.now();
+    this.options.log.info('speech.started', {
+      id: request.id,
+      model,
+      provider: SPEECH_MODEL_PROVIDERS[model],
+      textChars: request.text.length,
+    });
     const emit = (frames: readonly Uint8Array[]): void => {
       frames.forEach((frame) => {
         request.sink.audio(frame);
@@ -102,7 +126,14 @@ export class OneShotSpeech {
         return;
       }
       this.record(request, model, played);
-      this.options.log.info('speech.said', { id: request.id, model });
+      this.options.log.info('speech.said', {
+        id: request.id,
+        model,
+        audioMs: Math.round((played.samples * 1000) / SPEECH_SAMPLE_RATE),
+        inputTokens: played.usage?.inputTokens,
+        audioTokens: played.usage?.audioTokens,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
       request.sink.said();
     } finally {
       codec.free();

@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import type {
   TranscriptSettings,
   TranscriptSettingsChange,
@@ -10,13 +11,14 @@ import {
   saveTranscriptSettings,
 } from '../../../api/transcripts';
 import { transcriptKeys } from '../../../queries/keys';
+import { background } from '@smarteverything/logging';
 
 export function useTranscriptSettings(): UseQueryResult<TranscriptSettings> {
-  return useQuery({ queryKey: transcriptKeys.settings(), queryFn: readTranscriptSettings });
+  return useScreenQuery({ queryKey: transcriptKeys.settings(), queryFn: readTranscriptSettings });
 }
 
 export function useTranscriptStatus(cameraId?: string): UseQueryResult<TranscriptStatus> {
-  return useQuery({
+  return useScreenQuery({
     queryKey: transcriptKeys.status(cameraId),
     queryFn: () => readTranscriptStatus(cameraId),
   });
@@ -33,10 +35,16 @@ export function useTranscriptActions(): TranscriptActions {
     saveSettings: async (change): Promise<void> => {
       const saved = await saveTranscriptSettings(change);
       client.setQueryData(transcriptKeys.settings(), saved);
-      void client.invalidateQueries({ queryKey: transcriptKeys.status() });
+      background(
+        client.invalidateQueries({ queryKey: transcriptKeys.status() }),
+        'queries.invalidate_failed',
+      );
     },
     refreshStatus: (): void => {
-      void client.invalidateQueries({ queryKey: transcriptKeys.status() });
+      background(
+        client.invalidateQueries({ queryKey: transcriptKeys.status() }),
+        'queries.invalidate_failed',
+      );
     },
   };
 }

@@ -40,7 +40,6 @@ function taskMessage(eventId: string, text: string, senderId: string): InboundMe
       tool: REPLY_TOOL_NAME,
       eventIdArg: 'eventId',
       textArg: 'text',
-      idempotencyArg: null,
       progressArg: 'progress',
       filesArg: null,
     },

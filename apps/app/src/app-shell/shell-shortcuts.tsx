@@ -1,15 +1,14 @@
 import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
-import { View, type TextInput } from 'react-native';
+import type { TextInput } from 'react-native';
 import { router } from 'expo-router';
-import { Sheet } from '../components/sheet';
-import { openQuickAsk } from '../features/assistant';
-import { Text } from '../components/text';
+import { matchesQuickAskShortcut, openQuickAsk } from '../features/assistant';
 import { openSearch } from '../search/open-search';
 import { closeSearchOverlay } from '../search/overlay-state';
 import { href } from './hrefs';
 import type { NavEntry } from './nav-model';
-import { SHORTCUTS, useKeyboard, type KeyPress } from './shortcuts';
+import { QUICK_ASK_ID, ShortcutHelp } from './shortcut-help';
+import { shortcutOf, shortcutPressed, useKeyboard, type KeyPress } from './shortcuts';
 
 export interface ShellShortcutTargets {
   readonly searchRef: RefObject<TextInput | null>;
@@ -27,19 +26,19 @@ function focusSearch(targets: ShellShortcutTargets): void {
 }
 
 function anywhereKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
-  if (press.command && press.key.toLowerCase() === 'k') {
+  if (press.command && shortcutPressed(press, 'search')) {
     focusSearch(targets);
     return true;
   }
-  if (press.command && press.key === ' ') {
+  if (matchesQuickAskShortcut(press)) {
     openQuickAsk();
     return true;
   }
-  if (press.command && press.key === ',') {
+  if (shortcutPressed(press, 'settings')) {
     router.navigate(href.settings.index());
     return true;
   }
-  if (press.key === 'Escape' && !press.command && !press.alt) {
+  if (shortcutPressed(press, 'escape')) {
     closeSearchOverlay();
     return false;
   }
@@ -48,7 +47,7 @@ function anywhereKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
 
 function commandKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
   const index = Number.parseInt(press.key, 10);
-  if (press.key.toLowerCase() === 'b') {
+  if (shortcutPressed(press, 'sidebar')) {
     targets.toggleSidebar();
     return true;
   }
@@ -61,62 +60,63 @@ function commandKey(press: KeyPress, targets: ShellShortcutTargets): boolean {
 }
 
 function plainKey(press: KeyPress, targets: ShellShortcutTargets, showHelp: () => void): boolean {
-  if (press.alt && press.key === 'ArrowLeft') {
+  if (shortcutPressed(press, 'back')) {
     router.back();
     return true;
   }
-  if (press.alt && press.key === 'ArrowRight') {
+  if (shortcutPressed(press, 'forward')) {
     window.history.forward();
     return true;
   }
   if (press.typing) {
     return false;
   }
-  if (press.key === '/') {
+  if (shortcutPressed(press, 'search')) {
     focusSearch(targets);
     return true;
   }
-  if (press.key === '?') {
+  if (shortcutPressed(press, 'help')) {
     showHelp();
     return true;
   }
   return false;
 }
 
+function triedShortcutId(press: KeyPress): string | undefined {
+  if (matchesQuickAskShortcut(press)) return QUICK_ASK_ID;
+  const found = shortcutOf(press)?.id;
+  return found === QUICK_ASK_ID ? undefined : found;
+}
+
+function tryShortcut(press: KeyPress, light: (id: string | null) => void): boolean {
+  if (press.key === 'Escape' || (press.typing && !press.command && !press.alt)) {
+    return false;
+  }
+  const id = triedShortcutId(press);
+  light(id ?? null);
+  return id !== undefined;
+}
+
 export function ShellShortcuts(targets: ShellShortcutTargets): ReactNode {
   const [help, setHelp] = useState(false);
-  useKeyboard((press) => anywhereKey(press, targets), true);
-  useKeyboard((press) =>
-    press.command
+  const [hit, setHit] = useState<string | null>(null);
+  useKeyboard((press) => (help ? tryShortcut(press, setHit) : anywhereKey(press, targets)), true);
+  useKeyboard((press) => {
+    if (help) return false;
+    return press.command
       ? commandKey(press, targets)
       : plainKey(press, targets, () => {
           setHelp(true);
-        }),
-  );
+        });
+  });
   return (
-    <Sheet
+    <ShortcutHelp
       open={help}
+      hit={hit}
       onClose={() => {
         setHelp(false);
+        setHit(null);
       }}
-      title="Keyboard shortcuts"
-      detents={['fit']}
-    >
-      <View className="gap-2">
-        {SHORTCUTS.map((shortcut) => (
-          <View
-            key={`${shortcut.keys}${shortcut.label}`}
-            className="flex-row items-center justify-between gap-4 py-1"
-          >
-            <Text variant="body">{shortcut.label}</Text>
-            <View className="rounded-xs border border-outline px-2 py-0.5">
-              <Text variant="caption" tone="variant">
-                {shortcut.keys}
-              </Text>
-            </View>
-          </View>
-        ))}
-      </View>
-    </Sheet>
+    />
   );
 }

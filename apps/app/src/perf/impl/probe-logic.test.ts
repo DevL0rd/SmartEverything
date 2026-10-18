@@ -3,19 +3,6 @@ import { ActionLog } from './actions';
 import { CommitLog } from './commits';
 import { NavTracker } from './nav';
 import { pathOf } from './globals';
-import { Ring } from './ring';
-
-describe('Ring', () => {
-  it('keeps the newest entries and answers ranges', () => {
-    const ring = new Ring<{ at: number }>(3);
-    [1, 2, 3, 4].forEach((at) => {
-      ring.push({ at });
-    });
-    expect(ring.between(0, 10).map((entry) => entry.at)).toEqual([2, 3, 4]);
-    expect(ring.between(3, 3)).toHaveLength(1);
-    expect(ring.last()?.at).toBe(4);
-  });
-});
 
 describe('ActionLog', () => {
   it('describes the actions around a stall with offsets from its start', () => {

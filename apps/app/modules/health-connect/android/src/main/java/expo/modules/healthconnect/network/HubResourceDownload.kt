@@ -7,6 +7,8 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import expo.modules.kotlin.activityresult.AppContextActivityResultContract
 import expo.modules.kotlin.activityresult.AppContextActivityResultLauncher
 import java.io.Serializable
@@ -48,7 +50,8 @@ class HubResourceDownload(private val context: Context, private val broker: HubR
   }
   private fun visible(activity: () -> Activity?): Activity {
     val current = activity() ?: error("Open or save a resource from the visible app")
-    require(!current.isFinishing && !current.isDestroyed && current.hasWindowFocus())
+    require(!current.isFinishing && !current.isDestroyed) { "The app screen is closing" }
+    require(current is LifecycleOwner && current.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) { "The app is not in the foreground" }
     return current
   }
   private fun open(grant: HubResourceGrant, file: HubResourceFile, activity: Activity) {

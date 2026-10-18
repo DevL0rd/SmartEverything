@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { join } from 'node:path';
 import type { Duplex } from 'node:stream';
 import {
   SIGHT_FRAME_LIMITS,
@@ -7,8 +8,8 @@ import {
   type AssistantVoiceClientMessage,
   type ClientRow,
   type SightFrame,
-  type VoicePreview,
-  type VoicePreviewRequest,
+  type CallVoice,
+  type VoiceSample,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { VoiceResponder } from '../assistant/voice-link';
@@ -31,12 +32,15 @@ import {
 } from '../speech/one-shot-speech';
 import { GeminiKeys } from './gemini-key';
 import { GeminiLivePreview, type VoiceSampleProvider } from './gemini-preview';
-import { VoicePreviews } from './voice-previews';
+import { VoiceSamples } from './voice-samples';
 import { TurnSessions, type TurnRequest } from './turn-sessions';
 import type { TurnSession } from './turn-session';
 import { VoiceSockets } from './voice-sockets';
 import type { HostedCall, HostedCallRequest, OutreachDesk } from './outreach';
 import type { VideoSource } from './video';
+import type { SpeakingMedia } from '../reach/room-media';
+import { sayWhileSpeaking } from '../speech/speaking-say';
+import { background } from '@smarteverything/logging';
 
 export interface AssistantVoiceOptions {
   readonly store: Store;
@@ -47,6 +51,8 @@ export interface AssistantVoiceOptions {
   readonly fetch: typeof fetch;
   readonly now: () => Date;
   readonly cameras: HomeCameras;
+  readonly roomMedia?: SpeakingMedia;
+  readonly dataDirectory: string;
   readonly log: Logger;
   readonly provider?: VoiceProvider;
   readonly speech?: SpeechProviders;
@@ -55,7 +61,7 @@ export interface AssistantVoiceOptions {
 
 export class AssistantVoice {
   readonly keys: GeminiKeys;
-  readonly previews: VoicePreviews;
+  readonly samples: VoiceSamples;
   private readonly desk: CallDesk;
   private readonly turns: TurnSessions;
   private readonly speech: OneShotSpeech;
@@ -68,7 +74,7 @@ export class AssistantVoice {
   constructor(private readonly options: AssistantVoiceOptions) {
     const { store, log } = options;
     this.keys = new GeminiKeys(options.secrets, options.fetch);
-    this.previews = this.createPreviews();
+    this.samples = this.createSamples();
     const provider = options.provider ?? new Gemini(() => this.keys.current());
     this.speech = new OneShotSpeech({
       store,
@@ -84,6 +90,7 @@ export class AssistantVoice {
       prices: options.prices,
       now: options.now,
       log,
+      ...(options.roomMedia === undefined ? {} : { roomMedia: options.roomMedia }),
     };
     this.desk = new CallDesk({ ...calls, cameras: options.cameras });
     this.turns = new TurnSessions(calls);
@@ -110,16 +117,18 @@ export class AssistantVoice {
     );
   }
 
-  preview(
+  sample(
     client: ClientRow,
     profileId: string | undefined,
-    request: VoicePreviewRequest,
+    voice: CallVoice,
     signal?: AbortSignal,
-  ): Promise<VoicePreview> {
-    return this.previews.sample(
-      client.id,
-      profileId ?? this.options.store.profiles.activeOf(client.id).id,
-      request,
+  ): Promise<VoiceSample> {
+    return this.samples.sample(
+      {
+        clientId: client.id,
+        profileId: profileId ?? this.options.store.profiles.activeOf(client.id).id,
+      },
+      voice,
       signal,
     );
   }
@@ -130,21 +139,19 @@ export class AssistantVoice {
 
   attachBudget(budget: SightBudget): void {
     this.desk.attachBudget(budget);
-    this.previews.attachBudget(() => budget.reason());
+    this.samples.attachBudget(() => budget.reason());
   }
 
   host(request: HostedCallRequest): Promise<HostedCall> {
-    this.previews.stopAll();
     return this.desk.host(request);
   }
 
   turn(request: TurnRequest): Promise<TurnSession> {
-    this.previews.stopAll();
     return this.turns.open(request);
   }
 
   say(request: SpeechRequest): Promise<Saying> {
-    return this.speech.say(request);
+    return sayWhileSpeaking(this.options.roomMedia, (spoken) => this.speech.say(spoken), request);
   }
 
   attachVideo(callId: string, source: VideoSource): () => void {
@@ -164,24 +171,21 @@ export class AssistantVoice {
   }
 
   async stop(): Promise<void> {
-    this.previews.stopAll();
     await this.desk.stop();
     this.turns.stop();
     this.sockets.stop();
   }
 
-  private createPreviews(): VoicePreviews {
-    const previews = new VoicePreviews({
-      provider: this.options.previewProvider ?? new GeminiLivePreview(() => this.keys.current()),
-      store: this.options.store,
-      prices: this.options.prices,
-      log: this.options.log,
+  private createSamples(): VoiceSamples {
+    const { options } = this;
+    return new VoiceSamples({
+      provider: options.previewProvider ?? new GeminiLivePreview(() => this.keys.current()),
+      store: options.store,
+      prices: options.prices,
+      log: options.log,
       key: (): string | null => this.keys.current(),
+      directory: join(options.dataDirectory, 'voice-samples'),
     });
-    this.keys.changes(() => {
-      previews.invalidateCredential();
-    });
-    return previews;
   }
 
   private connected(endpoint: VoiceEndpoint): void {
@@ -214,13 +218,12 @@ export class AssistantVoice {
     }
     switch (message.type) {
       case 'call_start':
-        this.previews.stop(client.id);
         this.desk.start(endpoint, client, message).catch((cause: unknown) => {
           this.options.log.error('voice.call_crashed', cause);
         });
         break;
       case 'call_end':
-        void this.desk.hangUp(endpoint.id, message.callId, 'hung_up');
+        background(this.desk.hangUp(endpoint.id, message.callId, 'hung_up'), 'up.hang_failed');
         break;
       case 'mute':
         this.desk.mute(endpoint.id, message.callId, message.muted);

@@ -2,7 +2,7 @@ import { usePresenceSelection } from './use-presence-selection';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
-import type { ShellyPresenceDevice } from '@smarteverything/domain';
+import type { ShellyDevice } from '@smarteverything/shelly';
 import { View } from 'react-native';
 import { Button } from '../../components/button';
 import { NavRow } from '../../components/rows';
@@ -13,15 +13,14 @@ import { ZoneEditor } from './zone-editor';
 import { AreaEditor } from './area-editor';
 import { usePresenceOperation } from './use-presence-operation';
 import { OperationFeedback } from './operation-feedback';
-import { presenceActionAvailable } from './availability';
+import { actionAvailable } from './presence-operation';
 import { LiveRoomMap } from './live-room-map';
+import { background } from '@smarteverything/logging';
 
-function BlindSpots({ sensor }: { readonly sensor: ShellyPresenceDevice }): ReactNode {
+function BlindSpots({ sensor }: { readonly sensor: ShellyDevice }): ReactNode {
   const [area, setArea] = useState(sensor.config?.blind ?? []);
   const [valid, setValid] = useState(true);
-  const [revision] = useState(sensor.revision);
   const operation = usePresenceOperation(sensor);
-  const acceptedRevision = operation.acceptedRevision ?? revision;
   return (
     <View className="gap-3">
       <RoomMap sensor={sensor} area={area} />
@@ -29,24 +28,18 @@ function BlindSpots({ sensor }: { readonly sensor: ShellyPresenceDevice }): Reac
         value={area}
         change={setArea}
         validity={setValid}
-        context={sensor.zones.flatMap((zone) => zone.config.area)}
+        context={sensor.zones.flatMap((zone) => zone.config.area ?? [])}
       />
-      {acceptedRevision !== sensor.revision ? (
-        <Text tone="warning">Configuration changed. Reopen blind spots before saving.</Text>
-      ) : null}
       <OperationFeedback operation={operation} />
       <Button
         label="Save blind spots"
         loading={operation.busy}
-        disabled={
-          !valid || acceptedRevision !== sensor.revision || sensor.connection.state !== 'online'
-        }
+        disabled={!valid || sensor.connection.state !== 'online'}
         onPress={() => {
-          void operation.run({
-            action: 'set_presence',
-            config: { blind: area },
-            ...(acceptedRevision === null ? {} : { expectedRevision: acceptedRevision }),
-          });
+          background(
+            operation.run({ action: 'set_presence', params: { config: { blind: area } } }),
+            'operation.run_failed',
+          );
         }}
       />
     </View>
@@ -58,7 +51,7 @@ function SelectedArea({
   selected,
   close,
 }: {
-  readonly sensor: ShellyPresenceDevice;
+  readonly sensor: ShellyDevice;
   readonly selected: string;
   readonly close: () => void;
 }): ReactNode {
@@ -84,7 +77,7 @@ function RoomZoneList({
   sensor,
   select,
 }: {
-  readonly sensor: ShellyPresenceDevice;
+  readonly sensor: ShellyDevice;
   readonly select: (value: string) => void;
 }): ReactNode {
   return (
@@ -94,7 +87,9 @@ function RoomZoneList({
           key={zone.key}
           title={zone.config.name ?? (zone.main ? 'Main zone' : zone.key)}
           subtitle={
-            zone.main ? 'Room boundary · main zone' : `${String(zone.config.area.length)} segments`
+            zone.main
+              ? 'Room boundary · main zone'
+              : `${String((zone.config.area ?? []).length)} segments`
           }
           onPress={() => {
             select(zone.key);
@@ -105,7 +100,7 @@ function RoomZoneList({
   );
 }
 
-export function RoomSettings({ sensor }: { readonly sensor: ShellyPresenceDevice }): ReactNode {
+export function RoomSettings({ sensor }: { readonly sensor: ShellyDevice }): ReactNode {
   const params = useLocalSearchParams<{ readonly focus?: string; readonly zone?: string }>();
   const zoneKey = sensor.zones.find(
     (zone) => String(zone.config.id) === params.zone || zone.key === params.zone,
@@ -135,7 +130,7 @@ export function RoomSettings({ sensor }: { readonly sensor: ShellyPresenceDevice
         label="Add zone"
         icon="plus"
         variant="tonal"
-        disabled={!presenceActionAvailable(sensor, 'add_zone') || sensor.zones.length >= 10}
+        disabled={!actionAvailable(sensor, 'add_zone')}
         onPress={() => {
           setSelected('new');
         }}

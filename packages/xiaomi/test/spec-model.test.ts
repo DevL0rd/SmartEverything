@@ -195,6 +195,8 @@ describe('device kinds', () => {
     expect(deviceKindOf(urn('device', 'air-purifier'))).toBe('air_purifier');
     expect(deviceKindOf(urn('device', 'video-doorbell'))).toBe('doorbell');
     expect(deviceKindOf(urn('device', 'temperature-humidity-sensor'))).toBe('sensor');
+    expect(deviceKindOf(urn('device', 'washer'))).toBe('appliance');
+    expect(deviceKindOf(urn('device', 'dryer'))).toBe('appliance');
     expect(deviceKindOf(urn('device', 'kettle'))).toBe('other');
     const kinds = {
       light: 'light',

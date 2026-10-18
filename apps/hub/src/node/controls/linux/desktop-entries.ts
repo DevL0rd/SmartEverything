@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, watch, type FSWatcher } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { sessionEnvironment } from './session-environment';
+import { isMissing } from '../../../fs-util';
 
 export interface DesktopEntry extends InstalledApp {
   readonly path: string;
@@ -55,7 +56,7 @@ function listed(directory: string): string[] {
   try {
     return readdirSync(directory).filter((name) => name.endsWith(SUFFIX));
   } catch (cause) {
-    if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
+    if (isMissing(cause)) {
       return [];
     }
     throw cause;

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { RowChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { MIGRATIONS } from '../../src/store/migrations';
 import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -19,6 +20,7 @@ afterEach(async () => {
   await opened.close();
 });
 
+const HEAD = Math.max(...MIGRATIONS.map((migration) => migration.version));
 const VERSION = z.object({ version: z.number(), name: z.string() });
 
 describe('store schema', () => {
@@ -34,10 +36,7 @@ describe('store schema', () => {
     const database = new DatabaseSync(path);
     expect(
       z.array(VERSION).parse(database.prepare('select version, name from schema_version').all()),
-    ).toStrictEqual([
-      { version: 1, name: 'initial' },
-      { version: 2, name: 'oauth' },
-    ]);
+    ).toStrictEqual(MIGRATIONS.map(({ version, name }) => ({ version, name })));
     expect({ ...database.prepare('pragma journal_mode').get() }).toStrictEqual({
       journal_mode: 'wal',
     });
@@ -46,20 +45,22 @@ describe('store schema', () => {
       logs.records
         .filter((record) => record.event === 'store.opened')
         .map((record) => record.payload),
-    ).toStrictEqual([{ version: 2 }, { version: 2 }]);
+    ).toStrictEqual([{ version: HEAD }, { version: HEAD }]);
   });
 
   it('refuses a database written by a newer server', () => {
     const path = join(opened.directory, 'test.db');
     const database = new DatabaseSync(path);
     database
-      .prepare("insert into schema_version (version, name, applied_at) values (9, 'future', 'x')")
+      .prepare(
+        `insert into schema_version (version, name, applied_at) values (${String(HEAD + 1)}, 'future', 'x')`,
+      )
       .run();
     database.close();
     expect(() =>
       openStore({ path, log: testLogger(), now: () => new Date(), systemTimeZone: 'UTC' }),
     ).toThrow(
-      'The database is at schema version 9, but this server only knows up to 2; a newer server wrote it.',
+      `The database is at schema version ${String(HEAD + 1)}, but this server only knows up to ${String(HEAD)}; a newer server wrote it.`,
     );
   });
 

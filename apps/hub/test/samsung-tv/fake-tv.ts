@@ -55,6 +55,10 @@ export class FakeTv {
   artAnswers: ArtAnswers = 'normal';
   readonly artRequests: ArtRequest[] = [];
   readonly sleeps: number[] = [];
+  restRequests = 0;
+  address = 'tv.test';
+  wifiMac = 'a1:b2:c3:d4:e5:f6';
+  private readonly announcementListeners = new Set<(host: string) => void>();
   installed: readonly InstalledEntry[] = [{ appId: '111299001912', app_type: 2, name: 'YouTube' }];
   readonly connections: string[] = [];
   readonly messages: unknown[] = [];
@@ -106,6 +110,8 @@ export class FakeTv {
     return [...this.artSockets].filter((socket) => socket.readyState === WebSocket.OPEN).length;
   }
 
+  clockMs = Date.parse('2026-10-08T12:00:00.000Z');
+
   readonly io: SamsungTvIo = {
     fetch: (input) => this.answerRest(input instanceof Request ? input.url : input.toString()),
     sendMagicPacket: (packet) => {
@@ -122,8 +128,14 @@ export class FakeTv {
       }
       return new WebSocket(`ws://127.0.0.1:${String(this.port)}${parsed.pathname}${parsed.search}`);
     },
+    announcements: (heard) => {
+      this.announcementListeners.add(heard);
+      return () => {
+        this.announcementListeners.delete(heard);
+      };
+    },
     clock: {
-      now: () => new Date('2026-10-08T12:00:00.000Z'),
+      now: () => new Date(this.clockMs),
       at: () => () => undefined,
       sleep: (milliseconds) => {
         this.sleeps.push(milliseconds);
@@ -131,6 +143,12 @@ export class FakeTv {
       },
     },
   };
+
+  announce(host: string): void {
+    this.announcementListeners.forEach((heard) => {
+      heard(host);
+    });
+  }
 
   dropConnections(): void {
     this.sockets.forEach((socket) => {
@@ -166,7 +184,8 @@ export class FakeTv {
   }
 
   private answerRest(url: string): Promise<Response> {
-    if (url !== 'http://tv.test:8001/api/v2/') {
+    this.restRequests += 1;
+    if (url !== `http://${this.address}:8001/api/v2/`) {
       return Promise.reject(new Error(`unexpected REST URL ${url}`));
     }
     if (this.power === 'off') {
@@ -176,6 +195,7 @@ export class FakeTv {
       PowerState: this.power,
       modelName: 'QE65S95C',
       name: 'Living room TV',
+      wifiMac: this.wifiMac,
       ...(this.frameSupport === null ? {} : { FrameTVSupport: this.frameSupport }),
     };
     return Promise.resolve(Response.json({ type: 'Samsung SmartTV', device }));

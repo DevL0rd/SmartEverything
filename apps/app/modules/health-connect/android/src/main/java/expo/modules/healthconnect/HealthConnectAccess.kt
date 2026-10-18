@@ -74,6 +74,14 @@ object HealthConnectAccess {
     )
   }
 
+  suspend fun connected(context: Context): Boolean {
+    if (HealthConnectClient.getSdkStatus(context) != HealthConnectClient.SDK_AVAILABLE) {
+      return false
+    }
+    val access = grants(HealthConnectClient.getOrCreate(context))
+    return access.types.isNotEmpty() || access.writeTypes.isNotEmpty()
+  }
+
   suspend fun grants(client: HealthConnectClient): Access {
     val granted = call { client.permissionController.getGrantedPermissions() }
     return Access(

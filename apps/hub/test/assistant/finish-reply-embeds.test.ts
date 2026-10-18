@@ -3,6 +3,7 @@ import {
   WEB_SOURCES_KIND,
   chatWidgetsOf,
   type AiChatRow,
+  type AssistantMessageRow,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
@@ -24,8 +25,8 @@ function done(
   return { model: 'anthropic/claude-sonnet-5', steps: [], sources };
 }
 
-function embedsOf(id: string): { kind: string; sources?: unknown }[] {
-  return opened.store.assistantChat.message(id).embeds as { kind: string; sources?: unknown }[];
+function embedsOf(id: string): AssistantMessageRow['embeds'] {
+  return opened.store.assistantChat.message(id).embeds;
 }
 
 beforeEach(async () => {
@@ -39,9 +40,9 @@ beforeEach(async () => {
   const files = new AssistantFiles({
     dataDirectory: opened.directory,
     chat: store.assistantChat,
-    now: () => new Date(),
+    now: (): Date => new Date(),
   });
-  chat = new ChatDirectory(store, files, () => new Date()).create(owner, {
+  chat = new ChatDirectory(store, files, (): Date => new Date()).create(owner, {
     engine: DEFAULT_ENGINE,
   });
   conversation = new ConversationLog(store);

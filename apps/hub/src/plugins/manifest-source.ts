@@ -1,3 +1,4 @@
+import { Logger, describeFailure } from '@smarteverything/logging';
 import { readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
@@ -11,6 +12,8 @@ import {
   type PluginManifestInput,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+
+const log = new Logger('hub.plugin-manifest');
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -59,7 +62,13 @@ async function probed(url: URL): Promise<unknown> {
     const declared = await client
       .readResource({ uri: PLUGIN_MANIFEST_RESOURCE })
       .then((result) => RESOURCE_TEXT.parse(result).contents[0]?.text ?? null)
-      .catch(() => null);
+      .catch((cause: unknown) => {
+        log.debug('manifest.resource_unreadable', () => ({
+          host: url.host,
+          error: describeFailure(cause).message,
+        }));
+        return null;
+      });
     if (declared !== null) {
       return JSON.parse(declared);
     }
@@ -81,7 +90,13 @@ async function probed(url: URL): Promise<unknown> {
 
 async function fromUrl(text: string, fetcher: typeof fetch): Promise<FoundManifest> {
   const url = new URL(text);
-  const declared = await wellKnown(url, fetcher).catch(() => null);
+  const declared = await wellKnown(url, fetcher).catch((cause: unknown) => {
+    log.debug('manifest.well_known_unreadable', () => ({
+      host: url.host,
+      error: describeFailure(cause).message,
+    }));
+    return null;
+  });
   const raw = declared ?? (await probed(url));
   const manifest = parsed(raw, url.toString());
   const mcp = manifest.mcp ?? { transport: 'http' as const, url: url.toString(), bearer: null };
@@ -96,7 +111,10 @@ async function fromFolder(path: string): Promise<FoundManifest> {
     throw new ApiError('invalid_request', 'Choose the plugin folder with its full path.');
   }
   const folder = resolve(path);
-  const info = await stat(folder).catch(() => null);
+  const info = await stat(folder).catch((cause: unknown) => {
+    log.debug('manifest.folder_unreadable', () => ({ error: describeFailure(cause).message }));
+    return null;
+  });
   if (info?.isDirectory() !== true) {
     throw new ApiError('not_found', `There is no folder at ${folder}.`);
   }

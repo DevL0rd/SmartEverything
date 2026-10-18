@@ -1,11 +1,11 @@
 import type { ReactNode, RefObject } from 'react';
-import { useEffect, useRef } from 'react';
 import { TextInput, View } from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
 import { Icon } from './icon';
 import { IconButton } from './icon-button';
 import { Text } from './text';
+import { useFocusOnMount } from './use-focus-on-mount';
 
 export interface SearchFieldProps {
   readonly value: string;
@@ -46,25 +46,12 @@ function Trailing({
   );
 }
 
-function useInputRef(
-  external: RefObject<TextInput | null> | undefined,
-  focusOnMount: boolean,
-): RefObject<TextInput | null> {
-  const own = useRef<TextInput>(null);
-  const ref = external ?? own;
-  useEffect(() => {
-    if (focusOnMount) {
-      ref.current?.focus();
-    }
-  }, [focusOnMount, ref]);
-  return ref;
-}
-
 export function SearchField(props: SearchFieldProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const ref = useInputRef(props.inputRef, props.focusOnMount === true);
+  const ref = useFocusOnMount(props.focusOnMount === true, props.inputRef);
   return (
     <View
+      accessibilityRole="search"
       className={cn(
         'flex-row items-center gap-2',
         props.variant === 'bar'
@@ -76,7 +63,6 @@ export function SearchField(props: SearchFieldProps): ReactNode {
       <TextInput
         ref={ref}
         accessibilityLabel={props.placeholder}
-        accessibilityRole="search"
         value={props.value}
         onChangeText={props.onChange}
         onSubmitEditing={props.onSubmit}

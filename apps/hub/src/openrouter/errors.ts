@@ -1,17 +1,17 @@
-export const OPENROUTER_ERROR_CODES = [
-  'no_key',
-  'unauthorized',
-  'no_credits',
-  'rate_limited',
-  'unavailable',
-  'bad_request',
-  'not_found',
-  'refused',
-  'unreadable',
-  'failed',
-] as const;
+import type { z } from 'zod';
+import { messageOf } from '@smarteverything/logging';
 
-export type OpenRouterErrorCode = (typeof OPENROUTER_ERROR_CODES)[number];
+export type OpenRouterErrorCode =
+  | 'no_key'
+  | 'unauthorized'
+  | 'no_credits'
+  | 'rate_limited'
+  | 'unavailable'
+  | 'bad_request'
+  | 'not_found'
+  | 'refused'
+  | 'unreadable'
+  | 'failed';
 
 export class OpenRouterError extends Error {
   override readonly name = 'OpenRouterError';
@@ -20,6 +20,7 @@ export class OpenRouterError extends Error {
     readonly code: OpenRouterErrorCode,
     message: string,
     readonly status: number | null = null,
+    readonly retryAfterMs: number | null = null,
   ) {
     super(message);
   }
@@ -81,9 +82,15 @@ export function openRouterError(
   code: OpenRouterErrorCode,
   detail: string | null,
   status: number | null = null,
+  retryAfterMs: number | null = null,
 ): OpenRouterError {
   const base = FRIENDLY[code];
-  return new OpenRouterError(code, detail === null ? `${base}.` : `${base} (${detail}).`, status);
+  return new OpenRouterError(
+    code,
+    detail === null ? `${base}.` : `${base} (${detail}).`,
+    status,
+    retryAfterMs,
+  );
 }
 
 export type JsonRead =
@@ -93,6 +100,16 @@ export function readJson(text: string): JsonRead {
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch (cause) {
-    return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+    return { ok: false, reason: messageOf(cause) };
   }
+}
+
+export function readAs<T>(schema: z.ZodType<T>, value: unknown, what: string): T {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const where = issue === undefined ? what : `${what} ${issue.path.join('.')}: ${issue.message}`;
+    throw openRouterError('unreadable', where);
+  }
+  return parsed.data;
 }

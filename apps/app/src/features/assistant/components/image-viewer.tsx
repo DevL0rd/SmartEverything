@@ -2,7 +2,7 @@ import type { ReactNode, RefObject } from 'react';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { FlatList, Modal, View, type NativeScrollEvent } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { ScopedTheme } from 'uniwind';
+import { ThemeScope } from '../../../design/theme-scope';
 import type { AssistantAttachment } from '@smarteverything/domain';
 import { IconButton } from '../../../components/icon-button';
 import { Text } from '../../../components/text';
@@ -11,7 +11,7 @@ import { isNative, useIdiom } from '../../../design/platform';
 import { useMotion } from '../../../design/motion';
 import { cn } from '../../../design/cn';
 import { useChatImages } from '../data/chat-images';
-import { canShareFiles, downloadFile, shareFile } from '../data/file-actions';
+import { canShareFiles, downloadFile, shareFile } from '../../../platform/file-actions';
 import type { SignedLink } from '../../../api/media';
 import { useAttachmentLinks } from '../data/remote';
 import { useArrowKeys } from './use-arrow-keys';
@@ -326,7 +326,7 @@ function Viewer({
   );
   return (
     <GestureHandlerRootView style={FILL}>
-      <ScopedTheme theme="dark">
+      <ThemeScope theme="dark">
         <View
           ref={root}
           tabIndex={-1}
@@ -339,7 +339,7 @@ function Viewer({
           <Steps paging={paging} count={images.length} />
           <ResultFooter image={images[index]} chatId={chatId} />
         </View>
-      </ScopedTheme>
+      </ThemeScope>
     </GestureHandlerRootView>
   );
 }

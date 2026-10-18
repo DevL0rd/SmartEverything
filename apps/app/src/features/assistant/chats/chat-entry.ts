@@ -1,6 +1,8 @@
-import type { AiChatKind } from '@smarteverything/domain';
-import { DAY_MS, localDayKey } from '../../../format/time';
+import { appendTo } from '@smarteverything/domain';
+import type { AiChatKind, ClaudeSession, ComputerAiRuntime } from '@smarteverything/domain';
+import { DAY_MS, dayRelationOf } from '../../../format/time';
 import { sameSource, type ChatSource } from '../model/chat-source';
+import { compareText } from '../../../format/text';
 
 export interface PreviewChatLine {
   readonly kind: 'preview';
@@ -21,6 +23,12 @@ export type ChatLine =
   | { readonly kind: 'working'; readonly step: string | null }
   | FailedChatLine;
 
+export interface DesktopRef {
+  readonly deviceId: string;
+  readonly deviceName: string;
+  readonly session: ClaudeSession;
+}
+
 export interface ChatEntry {
   readonly id: string;
   readonly kind: AiChatKind;
@@ -30,19 +38,24 @@ export interface ChatEntry {
   readonly pinned: boolean;
   readonly archived: boolean;
   readonly unread: number;
+  readonly requests: number;
   readonly parentId: string | null;
+  readonly runtime: ComputerAiRuntime | null;
+  readonly computerId: string | null;
   readonly line: ChatLine;
+  readonly desktop?: DesktopRef;
 }
 
-export interface ChatRowItem {
+export interface ChatFamily {
   readonly entry: ChatEntry;
-  readonly nested: boolean;
+  readonly agents: readonly ChatEntry[];
+  readonly matchedAgents: boolean;
 }
 
 export interface ChatSection {
   readonly key: string;
   readonly title: string;
-  readonly data: readonly ChatRowItem[];
+  readonly data: readonly ChatFamily[];
 }
 
 type Bucket = 'Pinned' | 'Today' | 'Yesterday' | 'Previous 7 days' | 'Older';
@@ -55,56 +68,108 @@ function bucketOf(entry: ChatEntry, now: number, timeZone: string | null): Bucke
   if (entry.pinned && !entry.archived) {
     return 'Pinned';
   }
-  const day = localDayKey(entry.at, timeZone);
-  if (day === localDayKey(now, timeZone)) {
+  const relation = dayRelationOf(entry.at, now, timeZone);
+  if (relation === 'today') {
     return 'Today';
   }
-  if (day === localDayKey(now - DAY_MS, timeZone)) {
+  if (relation === 'yesterday') {
     return 'Yesterday';
   }
   return now - Date.parse(entry.at) < WEEK_MS ? 'Previous 7 days' : 'Older';
 }
 
-export function newestFirst(left: ChatEntry, right: ChatEntry): number {
-  return right.at.localeCompare(left.at) || left.id.localeCompare(right.id);
+function newestFirst(left: ChatEntry, right: ChatEntry): number {
+  return compareText(right.at, left.at) || compareText(left.id, right.id);
 }
 
-interface Family {
-  readonly parent: ChatEntry;
-  readonly children: readonly ChatEntry[];
+function runningFirst(left: ChatEntry, right: ChatEntry): number {
+  const running = Number(right.line.kind === 'working') - Number(left.line.kind === 'working');
+  return running || newestFirst(left, right);
 }
 
-function familiesOf(entries: readonly ChatEntry[]): readonly Family[] {
-  const known = new Set(entries.map((entry) => entry.id));
-  const hasParent = (entry: ChatEntry): boolean =>
-    entry.parentId !== null && known.has(entry.parentId);
-  return entries
-    .filter((entry) => !hasParent(entry))
-    .sort(newestFirst)
-    .map((parent) => ({
-      parent,
-      children: entries.filter((entry) => entry.parentId === parent.id).sort(newestFirst),
-    }));
+function isAgent(entry: ChatEntry): boolean {
+  return entry.kind === 'subagent';
 }
 
-function rowsOf(family: Family): readonly ChatRowItem[] {
-  return [
-    { entry: family.parent, nested: false },
-    ...family.children.map((entry) => ({ entry, nested: true })),
-  ];
+type EntryIndex = ReadonlyMap<string, ChatEntry>;
+
+export function rootEntryOf(entry: ChatEntry, index: EntryIndex): ChatEntry | null {
+  let current: ChatEntry | undefined = entry;
+  while (current !== undefined && isAgent(current)) {
+    current = index.get(current.parentId ?? '');
+  }
+  return current ?? null;
+}
+
+function rootIdOf(entry: ChatEntry, index: EntryIndex): string | null {
+  return rootEntryOf(entry, index)?.id ?? null;
+}
+
+function agentsByRoot(
+  pool: readonly ChatEntry[],
+  index: EntryIndex,
+): ReadonlyMap<string, readonly ChatEntry[]> {
+  const grouped = new Map<string, ChatEntry[]>();
+  for (const entry of pool) {
+    const root = isAgent(entry) ? rootIdOf(entry, index) : null;
+    if (root !== null) {
+      appendTo(grouped, root, entry);
+    }
+  }
+  return new Map([...grouped].map(([root, agents]) => [root, agents.sort(runningFirst)]));
+}
+
+export function orphanAgentsOf(pool: readonly ChatEntry[]): readonly ChatEntry[] {
+  const index: EntryIndex = new Map(pool.map((entry) => [entry.id, entry]));
+  return pool
+    .filter((entry) => isAgent(entry) && rootIdOf(entry, index) === null)
+    .sort(newestFirst);
+}
+
+function rootsOf(
+  matched: readonly ChatEntry[],
+  index: EntryIndex,
+  narrowed: boolean,
+): ReadonlyMap<string, boolean> {
+  const roots = new Map<string, boolean>();
+  for (const entry of matched) {
+    const root = rootIdOf(entry, index);
+    if (root !== null) {
+      roots.set(root, (roots.get(root) ?? false) || (narrowed && isAgent(entry)));
+    }
+  }
+  return roots;
+}
+
+interface SectionsContext {
+  readonly now: number;
+  readonly timeZone: string | null;
+  readonly narrowed?: boolean;
 }
 
 export function sectionsOf(
-  entries: readonly ChatEntry[],
-  now: number,
-  timeZone: string | null,
+  matched: readonly ChatEntry[],
+  pool: readonly ChatEntry[],
+  { now, timeZone, narrowed = matched !== pool }: SectionsContext,
 ): readonly ChatSection[] {
-  const families = familiesOf(entries);
+  const index: EntryIndex = new Map(pool.map((entry) => [entry.id, entry]));
+  const agents = agentsByRoot(pool, index);
+  const roots = rootsOf(matched, index, narrowed);
+  const families = pool
+    .filter((entry) => roots.has(entry.id))
+    .sort(newestFirst)
+    .map((entry): ChatFamily => ({
+      entry,
+      agents: agents.get(entry.id) ?? [],
+      matchedAgents: roots.get(entry.id) ?? false,
+    }));
+  const bucketed = new Map<Bucket, ChatFamily[]>();
+  for (const family of families) {
+    appendTo(bucketed, bucketOf(family.entry, now, timeZone), family);
+  }
   return BUCKETS.flatMap((bucket) => {
-    const inBucket = families.filter((family) => bucketOf(family.parent, now, timeZone) === bucket);
-    return inBucket.length === 0
-      ? []
-      : [{ key: bucket, title: bucket, data: inBucket.flatMap(rowsOf) }];
+    const data = bucketed.get(bucket) ?? [];
+    return data.length === 0 ? [] : [{ key: bucket, title: bucket, data }];
   });
 }
 
@@ -122,16 +187,23 @@ function lineKey(line: ChatLine): string {
   }
 }
 
+const ENTRY_KEYS = [
+  'id',
+  'kind',
+  'title',
+  'at',
+  'pinned',
+  'archived',
+  'unread',
+  'requests',
+  'parentId',
+  'runtime',
+  'computerId',
+] as const;
+
 export function sameEntry(left: ChatEntry, right: ChatEntry): boolean {
   return (
-    left.id === right.id &&
-    left.kind === right.kind &&
-    left.title === right.title &&
-    left.at === right.at &&
-    left.pinned === right.pinned &&
-    left.archived === right.archived &&
-    left.unread === right.unread &&
-    left.parentId === right.parentId &&
+    ENTRY_KEYS.every((key) => left[key] === right[key]) &&
     sameSource(left.source, right.source) &&
     lineKey(left.line) === lineKey(right.line)
   );

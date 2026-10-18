@@ -50,7 +50,7 @@ export class Policy {
   }
 
   isOwner(userId: string): boolean {
-    return this.people.find(userId)?.status === 'owner';
+    return this.people.requesterOf(userId) === 'owner';
   }
 
   assertUser(userId: string): void {

@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { useEffect, useRef } from 'react';
 import { Pressable, View } from 'react-native';
 import type { PresentedCapability } from '@smarteverything/domain';
 import { Icon, type IconName } from '../../../components/icon';
@@ -8,7 +7,9 @@ import { cn } from '../../../design/cn';
 import { selectionTick } from '../../../platform/haptics';
 import { useControl } from '../../../store/control';
 import type { Device } from '../../../store/state';
+import { useHoldRepeat } from '../television/use-hold-repeat';
 import { Guard } from './guard';
+import { background } from '@smarteverything/logging';
 
 const REPEAT_MS = 700;
 
@@ -24,18 +25,18 @@ function HoldButton({
   readonly disabled: boolean;
 }): ReactNode {
   const control = useControl(device.id, presented.key);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stop = (): void => {
-    if (timer.current !== null) {
-      clearInterval(timer.current);
-      timer.current = null;
-    }
-  };
-  useEffect(() => stop, []);
-  const turn = (): void => {
+  const turn = (stop: () => void): void => {
     selectionTick();
-    void control.set(null);
+    background(
+      control.set(null).then((sent) => {
+        if (!sent) {
+          stop();
+        }
+      }),
+      'control.set_failed',
+    );
   };
+  const handlers = useHoldRepeat(turn, () => REPEAT_MS);
   return (
     <Pressable
       accessibilityRole="button"
@@ -43,12 +44,7 @@ function HoldButton({
       accessibilityHint="Hold to keep turning"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      onPressIn={() => {
-        turn();
-        stop();
-        timer.current = setInterval(turn, REPEAT_MS);
-      }}
-      onPressOut={stop}
+      {...handlers}
       className={cn(
         'h-control-h flex-1 flex-row items-center justify-center gap-2 rounded-full bg-surface-2 px-4 active:bg-surface-3',
         disabled && 'opacity-40',

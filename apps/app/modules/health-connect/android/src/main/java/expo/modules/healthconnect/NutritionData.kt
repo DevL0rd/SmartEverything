@@ -3,10 +3,10 @@ package expo.modules.healthconnect
 import androidx.health.connect.client.records.NutritionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.units.Mass
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonObject
 
 object NutritionData {
-  fun describe(record: Record): JSONObject? = when (record) {
+  fun describe(record: Record): JsonObject? = when (record) {
     is NutritionRecord -> jsonOf(
       "name" to record.name,
       "mealType" to record.mealType,
@@ -17,15 +17,8 @@ object NutritionData {
     else -> null
   }
 
-  private fun grams(record: NutritionRecord): JSONObject {
-    val json = JSONObject()
-    for ((name, mass) in nutrients(record)) {
-      if (mass != null) {
-        json.put(name, mass.inGrams)
-      }
-    }
-    return json
-  }
+  private fun grams(record: NutritionRecord): JsonObject =
+    jsonOf(*nutrients(record).mapNotNull { (name, mass) -> mass?.let { name to it.inGrams } }.toTypedArray())
 
   private fun nutrients(record: NutritionRecord): List<Pair<String, Mass?>> = listOf(
     "biotin" to record.biotin,

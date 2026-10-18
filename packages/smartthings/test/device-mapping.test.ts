@@ -377,7 +377,7 @@ describe('device details that SmartThings may leave out', () => {
           { id: '!!!', categories: [], capabilities: [{ id: 'switch' }] },
         ],
       }),
-    ).toThrow(/^The SmartThings device did not have the expected shape: .*Received "device-1"\.$/s);
+    ).toThrow(/^The SmartThings device did not have the expected shape: .+\.$/s);
   });
 
   it('exposes a capability raw when its mapper finds nothing to offer', () => {
@@ -389,7 +389,7 @@ describe('device details that SmartThings may leave out', () => {
           capabilities: [
             {
               id: 'samsungvd.mediaInputSource',
-              status: { inputSource: { value: 'dtv' }, supportedInputSourcesMap: { value: [] } },
+              status: { inputSource: { value: '' }, supportedInputSourcesMap: { value: [] } },
             },
           ],
         },

@@ -51,7 +51,7 @@ export function diagnosticSnapshot(state: SnapshotState): PreviewDiagnosticsSnap
         ? available
         : {
             kind: 'unavailable',
-            reason: 'Cookie clearing requires an owned isolated preview profile.',
+            reason: "Cookies can't be cleared for this page.",
           },
   };
 }
@@ -66,6 +66,6 @@ function storageSupport(available: boolean): PreviewDiagnosticsSnapshot['clearSt
   if (available) return { kind: 'available' };
   return {
     kind: 'unavailable',
-    reason: 'Website data clearing requires an owned profile and a supported WebView provider.',
+    reason: "Website data can't be cleared on this phone.",
   };
 }

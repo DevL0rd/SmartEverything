@@ -1,24 +1,22 @@
+import { Listeners } from '../listeners';
+
 export interface OwnerAlert {
   readonly title: string;
   readonly body: string;
   readonly data: Readonly<Record<string, string>>;
+  readonly person?: string;
 }
 
 export type OwnerAlertListener = (alert: OwnerAlert) => void;
 
 export class OwnerAlerts {
-  private readonly listeners = new Set<OwnerAlertListener>();
+  private readonly alerts = new Listeners<OwnerAlert>();
 
   raise(alert: OwnerAlert): void {
-    for (const listener of this.listeners) {
-      listener(alert);
-    }
+    this.alerts.emit(alert);
   }
 
   listen(listener: OwnerAlertListener): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
+    return this.alerts.listen(listener);
   }
 }

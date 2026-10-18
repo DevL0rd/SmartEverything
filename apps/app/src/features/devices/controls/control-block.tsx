@@ -1,14 +1,13 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import { deviceFamily, type JsonValue, type PresentedCapability } from '@smarteverything/domain';
+import type { JsonValue, PresentedCapability } from '@smarteverything/domain';
 import { NumberStepper } from '../../../components/number-stepper';
 import { Segmented } from '../../../components/segmented';
 import { Select } from '../../../components/select';
 import { Slider } from '../../../components/slider';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
-import { useControl, type Control } from '../../../store/control';
-import { useLiveControl } from '../../../store/use-live-control';
+import type { Control } from '../../../store/control';
 import type { Device } from '../../../store/state';
 import { shownValue } from '../model/device-model';
 import { CapabilityRow } from './capability-row';
@@ -17,13 +16,14 @@ import { DialBlock, isDial } from './dial-block';
 import { Guard } from './guard';
 import { SEGMENTED_MOST_OPTIONS, usesStepper, type NumberDescriptor } from './number-kind';
 import { ActionButton } from './action-button';
+import { liveChange, useDeviceControl } from './use-device-control';
+import { background } from '@smarteverything/logging';
 
 interface BlockProps {
   readonly device: Device;
   readonly presented: PresentedCapability;
   readonly control: Control;
   readonly disabled: boolean;
-  readonly continuous?: boolean;
   readonly unknownValue?: string;
 }
 
@@ -56,7 +56,7 @@ function Labelled({
 function EnumBlock({ presented, control, disabled }: BlockProps): ReactNode {
   const value = typeof control.value === 'string' ? control.value : '';
   const set = (next: string): void => {
-    void control.set(next);
+    background(control.set(next), 'control.set_failed');
   };
   return (
     <Labelled label={presented.label}>
@@ -95,7 +95,7 @@ function NumberBlock(props: BlockProps & { readonly descriptor: NumberDescriptor
   const value = typeof control.value === 'number' ? control.value : null;
   const format = (next: number): string => shownValue(presented, next);
   const set = (next: number): void => {
-    void control.set(next);
+    background(control.set(next), 'control.set_failed');
   };
   if (usesStepper(descriptor, presented)) {
     return (
@@ -126,9 +126,7 @@ function NumberBlock(props: BlockProps & { readonly descriptor: NumberDescriptor
         disabled={disabled}
         formatValue={format}
         unknownValue={captionOf(props)}
-        {...(props.continuous === true || deviceFamily(props.device) === 'light'
-          ? { onChange: set }
-          : {})}
+        {...liveChange(presented, set)}
         onCommit={set}
       />
     </Labelled>
@@ -144,7 +142,7 @@ function SwitchBlock({ presented, control, disabled }: BlockProps): ReactNode {
         value={control.value === true}
         disabled={disabled}
         onChange={(next: JsonValue) => {
-          void control.set(next);
+          background(control.set(next), 'control.set_failed');
         }}
       />
     </View>
@@ -191,8 +189,7 @@ export function ControlBlock({
   readonly presented: PresentedCapability;
   readonly reason: string | null;
 }): ReactNode {
-  const raw = useControl(device.id, presented.key);
-  const control = useLiveControl(device, presented.key, raw, deviceFamily(device) === 'light');
+  const control = useDeviceControl(device, presented);
   return (
     <Guard reason={reason}>
       <CapabilityControl

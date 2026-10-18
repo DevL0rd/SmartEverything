@@ -1,4 +1,3 @@
-import { CHAT_ERROR_MESSAGE } from '../model/turn-notice';
 import { CommandBindingError } from './types';
 import { randomUUID } from 'expo-crypto';
 import { AI_HARNESS_COMMAND_ENDPOINTS as E } from '@smarteverything/domain';
@@ -23,7 +22,7 @@ export function commandAdapter(kind: 'dsh' | 'native'): CommandAdapter {
 async function discoverHarnessCommands(binding: CommandBinding): Promise<DiscoveredCommands> {
   if (binding.target?.kind !== 'dsh' || binding.chatId === null)
     throw new CommandBindingError(
-      'Command discovery requires the exact harness session.',
+      'Commands aren’t ready yet. Try again in a moment.',
       'harness session',
       'unbound',
     );
@@ -53,7 +52,7 @@ async function discoverHarnessCommands(binding: CommandBinding): Promise<Discove
 async function executeHarnessCommand(input: CommandExecution): Promise<CommandOutcome> {
   if (input.scope.kind !== 'dsh')
     throw new CommandBindingError(
-      'The harness command has a different runtime binding.',
+      'Couldn’t run the command. Refresh commands and try again.',
       'dsh',
       input.scope.kind,
     );
@@ -68,7 +67,7 @@ async function executeHarnessCommand(input: CommandExecution): Promise<CommandOu
     },
     input.authority,
   );
-  if (outcome.status !== 'settled') return { status: outcome.status, text: CHAT_ERROR_MESSAGE };
+  if (outcome.status !== 'settled') return { status: outcome.status, text: 'The command failed.' };
   return {
     status: 'settled',
     completion: outcome.execution.result.kind === 'success' ? 'complete' : 'not run',

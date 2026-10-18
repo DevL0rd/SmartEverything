@@ -12,8 +12,6 @@ import type {
 } from '@smarteverything/domain';
 import type { SubscriptionInferencePort } from '@smarteverything/harness';
 
-const MAX_PENDING = 4;
-const CALL_TIMEOUT_MS = 15 * 60_000;
 class PendingInference {
   result: SubscriptionInferenceResult | undefined;
   error: Error | undefined;
@@ -25,7 +23,6 @@ class PendingInference {
   constructor(
     readonly request: SubscriptionInferenceRequest,
     readonly abort: AbortController,
-    readonly timer: NodeJS.Timeout,
   ) {}
   advance(): void {
     this.sequence += 1;
@@ -36,7 +33,6 @@ class PendingInference {
   release(): boolean {
     if (this.released) return false;
     this.released = true;
-    clearTimeout(this.timer);
     this.result = undefined;
     this.wake = undefined;
     return true;
@@ -104,19 +100,11 @@ export class RemoteHarnessModels implements SubscriptionInferencePort {
     signal: AbortSignal,
   ): AsyncIterable<SubscriptionInferenceResult> {
     signal.throwIfAborted();
-    if (this.stopped || this.pending.size >= MAX_PENDING)
-      throw new ApiError(
-        'conflict',
-        'Subscription inference supplier is offline or at its bounded call limit.',
-      );
+    if (this.stopped) throw new ApiError('conflict', 'Subscription inference supplier is offline.');
     this.admit(request);
     const id = randomUUID();
     const abort = new AbortController();
-    const timer = setTimeout(() => {
-      abort.abort('Supplier model call timed out; completion is uncertain.');
-    }, CALL_TIMEOUT_MS);
-    timer.unref();
-    const pending = new PendingInference(request, abort, timer);
+    const pending = new PendingInference(request, abort);
     const cancelled = (): void => {
       pending.error ??= new ApiError(
         'conflict',

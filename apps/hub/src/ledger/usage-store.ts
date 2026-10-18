@@ -97,10 +97,10 @@ export class UsageStore {
     );
   }
 
-  pendingHarness(): AiUsageRow[] {
+  pendingGenerations(): AiUsageRow[] {
     return this.context.sql.all(
       STORED,
-      `select ${LIST} from ai_usage where generation_id is not null and cost_state in ('estimated','reported') and json_extract(meta,'$.harness_session_id') is not null`,
+      `select ${LIST} from ai_usage where source = 'openrouter' and generation_id is not null and cost_state in ('estimated','reported')`,
     );
   }
 

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
+import { Logger, background } from '@smarteverything/logging';
 import { List } from '../../../components/section';
-import { ListRow } from '../../../components/list-row';
-import { SwitchRow } from '../../../components/rows';
+import { SwitchRow, ValueRow } from '../../../components/rows';
 import { notify } from '../../../components/toast-store';
 import {
   disableDoorObservation,
@@ -12,6 +12,9 @@ import { useIsOwner } from '../../../store/selectors';
 import { useMinute } from '../../../store/clock';
 import type { Device } from '../../../store/state';
 import { PhoneListeningRows } from '../../profiles';
+import { bleStatusOf } from './ble-status';
+
+const log = new Logger('app.devices');
 
 function useChangeObservation(
   deviceId: string,
@@ -20,6 +23,7 @@ function useChangeObservation(
   const [busy, setBusy] = useState(false);
   const change = async (enabled: boolean): Promise<void> => {
     setBusy(true);
+    log.info('observation.changing', { deviceId, enabled });
     try {
       if (enabled) {
         await enableDoorObservation(deviceId);
@@ -27,7 +31,9 @@ function useChangeObservation(
         await disableDoorObservation(deviceId);
       }
       await refresh();
+      log.info('observation.changed', { deviceId, enabled });
     } catch (error) {
+      log.error('observation.change_failed', error, { deviceId, enabled });
       notify({ message: 'Bluetooth observation was not changed', error, tone: 'critical' });
     } finally {
       setBusy(false);
@@ -42,6 +48,7 @@ export function BluetoothObservation({ device }: { readonly device: Device }): R
   const query = useBleObservation(device.id, device.details['bleObserverFreshUntil']);
   const status = query.data;
   const { busy, change } = useChangeObservation(device.id, query.refetch);
+  const readiness = bleStatusOf(status, query.error, now);
   return (
     <List
       title="Bluetooth updates"
@@ -58,34 +65,16 @@ export function BluetoothObservation({ device }: { readonly device: Device }): R
         disabled={!owner || busy || status === undefined}
         value={status?.configured ?? false}
         onChange={(enabled) => {
-          void change(enabled);
+          background(change(enabled), 'bluetooth_observation.change_failed');
         }}
       />
-      <ListRow
+      <ValueRow
         title="Your server"
         icon="server"
-        subtitle={query.error !== null ? query.error.message : readiness(status, now)}
-        onPress={() => {
-          void query.refetch();
-        }}
+        value={readiness.value}
+        {...(readiness.detail === undefined ? {} : { subtitle: readiness.detail })}
       />
       {status?.configured === true ? <PhoneListeningRows health={false} /> : null}
     </List>
   );
-}
-
-function readiness(status: ReturnType<typeof useBleObservation>['data'], now: number): string {
-  if (status === undefined) {
-    return 'Reading receiver status…';
-  }
-  if (!status.configured) {
-    return 'Bluetooth observation is off';
-  }
-  if (status.blockedReason !== null) {
-    return status.blockedReason;
-  }
-  if (status.freshUntil !== null && Date.parse(status.freshUntil) <= now) {
-    return 'No recent authenticated broadcast · Cloud updates active';
-  }
-  return 'Authenticated Bluetooth broadcasts received recently';
 }

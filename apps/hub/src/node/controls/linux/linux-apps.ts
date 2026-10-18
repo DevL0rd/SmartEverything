@@ -4,24 +4,16 @@ import type { RunProgram } from '../../run-program';
 import type { AppControl } from '../session-controls';
 import type { DesktopEntries } from './desktop-entries';
 import type { KdeBridge } from './kde-bridge';
-import { ownUid } from './sessions';
-import { statSync } from 'node:fs';
+import { sendSignal } from './linux-processes';
 
-function ownedBy(pid: number, uid: number): boolean {
-  try {
-    return statSync(`/proc/${String(pid)}`).uid === uid;
-  } catch (cause) {
-    if (cause instanceof Error && 'code' in cause && cause.code === 'ENOENT') {
-      return false;
-    }
-    throw cause;
-  }
+function gone(cause: unknown): boolean {
+  return cause instanceof NodeFailureError && cause.code === 'not_found';
 }
 
 export class LinuxApps implements AppControl {
   constructor(
     private readonly entries: DesktopEntries,
-    private readonly bridge: () => KdeBridge,
+    private readonly bridge: () => Pick<KdeBridge, 'windowsOf'>,
     private readonly run: RunProgram,
   ) {}
 
@@ -45,12 +37,17 @@ export class LinuxApps implements AppControl {
       throw new NodeFailureError('not_found', 'That app has no open windows.');
     }
     if (force) {
-      const uid = ownUid();
-      new Set(pids).forEach((pid) => {
-        if (pid !== process.pid && ownedBy(pid, uid)) {
-          process.kill(pid, 'SIGKILL');
+      for (const pid of new Set(pids)) {
+        try {
+          if (pid !== process.pid) {
+            sendSignal(pid, 'SIGKILL');
+          }
+        } catch (cause) {
+          if (!gone(cause)) {
+            throw cause;
+          }
         }
-      });
+      }
     }
     return pids.length;
   }

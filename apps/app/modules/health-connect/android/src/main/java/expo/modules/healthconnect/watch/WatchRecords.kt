@@ -1,34 +1,36 @@
 package expo.modules.healthconnect.watch
 
+import expo.modules.healthconnect.HealthEnvelope
+import expo.modules.healthconnect.jsonArrayOf
 import expo.modules.healthconnect.jsonOf
 import java.time.Instant
 import java.time.temporal.ChronoUnit
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 
 class WatchRecords(private val deviceId: String, private val file: WatchFile, private val now: Instant) {
-  fun all(): List<JSONObject> =
+  fun all(): List<HealthEnvelope> =
     hourly() + spots() + file.sleeps.map { sleep(it) } + file.workouts.map { workout(it) } + file.resting.map { resting(it) }
 
   private fun id(type: String, at: Instant): String =
     "watch:$deviceId:${file.key}:$type:${at.epochSecond}"
 
-  private fun envelope(type: String, start: Instant, end: Instant?, data: JSONObject): JSONObject = jsonOf(
-    "recordId" to id(type, start),
-    "type" to type,
-    "startTime" to start.toString(),
-    "endTime" to end?.toString(),
-    "zoneOffsetSeconds" to file.zoneOffsetSeconds,
-    "sourceApp" to SOURCE_APP,
-    "lastModified" to now.toString(),
-    "data" to data
+  private fun envelope(type: String, start: Instant, end: Instant?, data: JsonObject): HealthEnvelope = HealthEnvelope(
+    recordId = id(type, start),
+    type = type,
+    startTime = start,
+    endTime = end,
+    zoneOffsetSeconds = file.zoneOffsetSeconds,
+    sourceApp = SOURCE_APP,
+    lastModified = now,
+    data = data
   )
 
-  private fun hourly(): List<JSONObject> = file.minutes
+  private fun hourly(): List<HealthEnvelope> = file.minutes
     .groupBy { it.time.truncatedTo(ChronoUnit.HOURS) }
     .flatMap { (hour, minutes) -> hourRecords(hour, minutes) }
 
-  private fun hourRecords(hour: Instant, minutes: List<MinuteSample>): List<JSONObject> {
+  private fun hourRecords(hour: Instant, minutes: List<MinuteSample>): List<HealthEnvelope> {
     val end = minutes.maxOf { it.time }.plusSeconds(MINUTE)
     val steps = minutes.sumOf { it.steps ?: 0 }
     val kcal = minutes.sumOf { it.activeKcal ?: 0 }
@@ -42,15 +44,15 @@ class WatchRecords(private val deviceId: String, private val file: WatchFile, pr
     ) + minutes.filter { (it.spo2 ?: 0) in VALID_SPO2 }.map { oxygen(it.time, it.spo2 ?: 0) }
   }
 
-  private fun heartRate(start: Instant, end: Instant, samples: List<Pair<Instant, Int>>): JSONObject {
-    val array = JSONArray(samples.map { (time, bpm) -> jsonOf("time" to time.toString(), "bpm" to bpm) })
+  private fun heartRate(start: Instant, end: Instant, samples: List<Pair<Instant, Int>>): HealthEnvelope {
+    val array = jsonArrayOf(samples) { (time, bpm) -> jsonOf("time" to time.toString(), "bpm" to bpm) }
     return envelope("HeartRate", start, end, jsonOf("samples" to array))
   }
 
-  private fun oxygen(time: Instant, percent: Int): JSONObject =
+  private fun oxygen(time: Instant, percent: Int): HealthEnvelope =
     envelope("OxygenSaturation", time, null, jsonOf("percent" to percent))
 
-  private fun spots(): List<JSONObject> = file.spots.mapNotNull { spot ->
+  private fun spots(): List<HealthEnvelope> = file.spots.mapNotNull { spot ->
     when (spot.kind) {
       SpotKind.HEART_RATE -> spot.takeIf { it.value in VALID_HEART_RATE }
         ?.let { heartRate(it.time, it.time.plusSeconds(1), listOf(it.time to it.value)) }
@@ -59,14 +61,14 @@ class WatchRecords(private val deviceId: String, private val file: WatchFile, pr
     }
   }
 
-  private fun sleep(night: SleepNight): JSONObject {
-    val stages = JSONArray(night.stages.filter { it.end > it.start }.map {
+  private fun sleep(night: SleepNight): HealthEnvelope {
+    val stages = jsonArrayOf(night.stages.filter { it.end > it.start }) {
       jsonOf("startTime" to it.start.toString(), "endTime" to it.end.toString(), "stage" to it.stage)
-    })
+    }
     return envelope("SleepSession", night.start, night.end, jsonOf("title" to null, "notes" to null, "stages" to stages))
   }
 
-  private fun workout(workout: Workout): JSONObject = envelope(
+  private fun workout(workout: Workout): HealthEnvelope = envelope(
     "ExerciseSession",
     workout.start,
     workout.end,
@@ -75,13 +77,13 @@ class WatchRecords(private val deviceId: String, private val file: WatchFile, pr
       "title" to workout.title,
       "notes" to null,
       "plannedExerciseSessionId" to null,
-      "segments" to JSONArray(),
-      "laps" to JSONArray(),
+      "segments" to JsonArray(emptyList()),
+      "laps" to JsonArray(emptyList()),
       "route" to jsonOf("status" to "absent")
     )
   )
 
-  private fun resting(rate: RestingHeartRate): JSONObject =
+  private fun resting(rate: RestingHeartRate): HealthEnvelope =
     envelope("RestingHeartRate", rate.time, null, jsonOf("bpm" to rate.bpm))
 
   companion object {

@@ -5,6 +5,8 @@ import type { z } from 'zod';
 import type { Diagnostics, ClaudeSource } from './diagnostics';
 import { ClaudeFileReadError } from './errors';
 import { PathWatch } from './fs-watch';
+import { messageOf } from '@smarteverything/logging';
+import { isMissing } from '../fs-util';
 
 const READ_ATTEMPTS = 4;
 const READ_RETRY_MS = 50;
@@ -26,10 +28,6 @@ export interface JsonFilesOptions<T> {
   readonly changed: () => void;
   readonly accepted?: (name: string, value: T) => Promise<void>;
   readonly log: Logger;
-}
-
-function isMissing(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
 }
 
 function issuesText(error: z.ZodError): string {
@@ -92,9 +90,7 @@ export class JsonFiles<T> {
       this.options.diagnostics.report(
         this.options.source,
         name ?? this.options.directory,
-        cause instanceof Error
-          ? cause.message
-          : 'The native metadata could not be read or retained.',
+        messageOf(cause),
       );
       this.firstScan?.reject(cause);
       this.firstScan = null;
@@ -181,7 +177,7 @@ export class JsonFiles<T> {
         return { kind: 'json', value: JSON.parse(text) };
       } catch (cause) {
         if (attempt >= READ_ATTEMPTS) {
-          const reason = cause instanceof Error ? cause.message : String(cause);
+          const reason = messageOf(cause);
           return { kind: 'invalid', reason: `not valid JSON: ${reason}` };
         }
       }

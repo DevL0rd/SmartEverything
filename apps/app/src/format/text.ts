@@ -1,3 +1,8 @@
+import { collator } from './locale';
+
+const TEXT_ORDER = collator();
+const NATURAL_ORDER = collator({ numeric: true, sensitivity: 'base' });
+
 export function titleCase(words: string): string {
   return words
     .split(/\s+/)
@@ -6,8 +11,16 @@ export function titleCase(words: string): string {
     .join(' ');
 }
 
+export function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export function compareText(first: string, second: string): number {
+  return TEXT_ORDER.compare(first, second);
+}
+
 export function naturalCompare(first: string, second: string): number {
-  return first.localeCompare(second, undefined, { numeric: true, sensitivity: 'base' });
+  return NATURAL_ORDER.compare(first, second);
 }
 
 export function plural(count: number, one: string, many = `${one}s`): string {
@@ -36,6 +49,7 @@ export function breakableUrl(url: string): string {
 export function hostOf(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
+    // eslint-disable-next-line local/no-swallowed-errors -- a URL that does not parse is the typed null result
   } catch {
     return null;
   }

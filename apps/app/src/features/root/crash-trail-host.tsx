@@ -5,7 +5,7 @@ import { sendTrail } from '../../api/client-failures';
 import { useConnection } from '../../api/transport';
 import { markBooted } from '../../platform/crash-guard';
 import { setScreen } from '../../platform/crash-trail';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import { reportProcessExits } from '../../platform/last-exit';
 import { useSyncStatus } from '../../store/selectors';
 
@@ -17,7 +17,7 @@ function TrailSender(): ReactNode {
   const sync = useSyncStatus();
   useEffect(() => {
     if (sync.status === 'live') {
-      void sendTrail();
+      background(sendTrail(), 'trail.send_failed');
     }
   }, [sync.status]);
   return null;

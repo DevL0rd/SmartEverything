@@ -1,19 +1,21 @@
 import type { ReactNode, ReactElement } from 'react';
-import { FlatList, View, type LayoutChangeEvent } from 'react-native';
-import type { TranscriptHit } from '@smarteverything/domain';
-import { Button } from '../button';
+import { View, type LayoutChangeEvent } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Text } from '../text';
 import { HeaderSlotContext } from '../screen-context';
 import { FeedChrome } from './feed-chrome';
+import { feedItems, sessionRemovable, type FeedItem } from './feed-items';
 import { ReaderState } from './reader-state';
+import { SessionHeader } from './session-header';
 import { TranscriptRow } from './transcript-row';
 import { useFeedScroll } from './use-feed-scroll';
-import type { TranscriptFeedState } from './state';
+import type { TranscriptFeedState, TranscriptRemoval } from './state';
 
 export interface TranscriptFeedProps {
   readonly feed: TranscriptFeedState;
   readonly timeZone: string;
-  readonly remove?: (hit: TranscriptHit) => void;
+  readonly grouped: boolean;
+  readonly remove?: TranscriptRemoval;
   readonly header?: ReactNode;
   readonly pageHeader?: ReactElement;
   readonly banner?: ReactNode;
@@ -23,61 +25,23 @@ export interface TranscriptFeedProps {
   readonly focusSearch?: boolean;
 }
 
-function Paging({ feed }: { readonly feed: TranscriptFeedState }): ReactNode {
-  return (
-    <View className="flex-row flex-wrap items-center justify-between gap-2 py-3">
-      {feed.newer ? (
-        <Button
-          label="Newer lines"
-          icon="arrowUp"
-          variant="text"
-          loading={feed.loadingNewer}
-          onPress={feed.loadNewer}
-        />
-      ) : null}
-      {feed.older ? (
-        <Button
-          label="Older lines"
-          icon="arrowDown"
-          variant="text"
-          loading={feed.loadingOlder}
-          onPress={feed.loadOlder}
-        />
-      ) : (
-        <Text variant="caption" tone="variant">
-          Start of available transcript
-        </Text>
-      )}
-    </View>
-  );
-}
-
 interface FeedHeaderProps extends TranscriptFeedProps {
   readonly layout: (event: LayoutChangeEvent) => void;
   readonly top: () => void;
 }
 
-function FeedStatus({ feed }: { readonly feed: TranscriptFeedState }): ReactNode {
+function FeedFooter({ feed }: { readonly feed: TranscriptFeedState }): ReactNode {
+  const quiet = feed.rows.length === 0 || (feed.older && !feed.loadingOlder);
   return (
-    <>
-      <ReaderState
-        error={feed.error}
-        loading={feed.loading}
-        empty={feed.rows.length === 0}
-        missingAnchor={feed.missingAnchor}
-        words={feed.settled}
-        retry={feed.refresh}
-      />
-      {feed.newer ? (
-        <Button
-          label="Newer lines"
-          icon="arrowUp"
-          variant="text"
-          loading={feed.loadingNewer}
-          onPress={feed.loadNewer}
-        />
-      ) : null}
-    </>
+    <View className="pb-section-gap">
+      {quiet ? null : (
+        <View className="py-3">
+          <Text variant="caption" tone="variant" align="center">
+            {feed.older ? 'Loading older lines…' : 'Start of available transcript'}
+          </Text>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -115,58 +79,98 @@ function FeedHeader({
           controls={controls}
           focusSearch={focusSearch === true}
         />
-        <FeedStatus feed={feed} />
+        <ReaderState
+          error={feed.error}
+          loading={feed.loading}
+          empty={feed.rows.length === 0}
+          missingAnchor={feed.missingAnchor}
+          words={feed.settled}
+          retry={feed.refresh}
+        />
       </View>
     </View>
   );
 }
 
-function FeedViewport({ feed, timeZone, remove, ...props }: TranscriptFeedProps): ReactNode {
-  const { listRef, layout, jump, top, scroll, retryJump, anchorReady } = useFeedScroll(
-    feed.rows,
+function renderItem(
+  item: FeedItem,
+  props: TranscriptFeedProps,
+  anchorReady: () => void,
+): ReactElement {
+  const { feed, timeZone, grouped, remove } = props;
+  if (item.kind === 'day')
+    return (
+      <Text key={item.key} variant="label" tone="variant" className="px-4 pb-1 pt-4">
+        {item.label}
+      </Text>
+    );
+  if (item.kind === 'session')
+    return (
+      <SessionHeader
+        key={item.key}
+        session={item.session}
+        timeZone={timeZone}
+        remove={remove !== undefined && sessionRemovable(item.session) ? remove.session : undefined}
+      />
+    );
+  const { hit } = item;
+  const highlighted = feed.anchor === hit.line.id;
+  return (
+    <TranscriptRow
+      key={item.key}
+      hit={hit}
+      timeZone={timeZone}
+      showSource={!grouped}
+      highlighted={highlighted}
+      ready={highlighted ? anchorReady : undefined}
+      open={
+        feed.settled === '' || feed.context
+          ? undefined
+          : (): void => {
+              feed.open(hit.line.id);
+            }
+      }
+      remove={remove?.line}
+    />
+  );
+}
+
+const FEED_DRAW_DISTANCE = 1000;
+
+function itemKey(item: FeedItem): string {
+  return item.key;
+}
+
+function itemType(item: FeedItem): FeedItem['kind'] {
+  return item.kind;
+}
+
+function FeedViewport(props: TranscriptFeedProps): ReactNode {
+  const { feed, timeZone, grouped } = props;
+  const items = feedItems(feed.rows, { timeZone, grouped });
+  const { listRef, layout, jump, top, scroll, anchorReady } = useFeedScroll(
+    items,
     feed.anchor,
     props.focus === true,
   );
   return (
-    <FlatList<TranscriptHit>
+    <FlashList<FeedItem>
       ref={listRef}
-      className="flex-1"
-      contentContainerClassName="pb-section-gap"
-      data={feed.rows}
-      keyExtractor={(hit) => String(hit.line.id)}
+      data={items}
+      keyExtractor={itemKey}
+      getItemType={itemType}
       keyboardShouldPersistTaps="handled"
-      initialNumToRender={50}
-      maxToRenderPerBatch={10}
-      windowSize={5}
-      maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
-      ListHeaderComponent={
-        <FeedHeader {...props} feed={feed} timeZone={timeZone} layout={layout} top={top} />
-      }
-      ListFooterComponent={feed.rows.length === 0 ? null : <Paging feed={feed} />}
+      drawDistance={FEED_DRAW_DISTANCE}
+      ListHeaderComponent={<FeedHeader {...props} layout={layout} top={top} />}
+      ListFooterComponent={<FeedFooter feed={feed} />}
       onScroll={scroll}
       scrollEventThrottle={16}
       onContentSizeChange={jump}
-      onScrollToIndexFailed={retryJump}
-      onEndReached={() => {
-        if (feed.older && !feed.fetching) feed.loadOlder();
-      }}
+      onEndReached={feed.loadOlder}
       onEndReachedThreshold={0.3}
-      renderItem={({ item }) => (
-        <TranscriptRow
-          hit={item}
-          timeZone={timeZone}
-          highlighted={feed.anchor === item.line.id}
-          ready={feed.anchor === item.line.id ? anchorReady : undefined}
-          open={
-            feed.settled === '' || feed.context
-              ? undefined
-              : (): void => {
-                  feed.open(item.line.id);
-                }
-          }
-          remove={remove}
-        />
-      )}
+      onStartReached={feed.loadNewer}
+      onStartReachedThreshold={0.3}
+      renderItem={({ item }) => renderItem(item, props, anchorReady)}
     />
   );
 }

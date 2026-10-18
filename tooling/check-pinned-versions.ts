@@ -1,34 +1,16 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Logger } from '@smarteverything/logging';
+import { unpinnedDependencies, workspaceManifests } from './pinned-versions';
 
 const log = new Logger('tool.pinned-versions');
 
-interface Manifest {
-  readonly dependencies?: Readonly<Record<string, string>>;
-  readonly devDependencies?: Readonly<Record<string, string>>;
-  readonly optionalDependencies?: Readonly<Record<string, string>>;
-}
+const root = process.cwd();
 
-const RANGE = /^[\^~><=]|\s-\s|\|\|/;
-
-function manifestAt(path: string): Manifest {
-  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
-  if (parsed === null || typeof parsed !== 'object') {
-    throw new Error(`${path} does not hold an object`);
-  }
-  return parsed;
-}
-
-const manifest = manifestAt('package.json');
-const ranged: string[] = [];
-
-for (const section of ['dependencies', 'devDependencies', 'optionalDependencies'] as const) {
-  for (const [name, version] of Object.entries(manifest[section] ?? {})) {
-    if (RANGE.test(version)) {
-      ranged.push(`${section}.${name}@${version}`);
-    }
-  }
-}
+const ranged = workspaceManifests(root).flatMap((path) => {
+  const manifest: unknown = JSON.parse(readFileSync(join(root, path), 'utf8'));
+  return unpinnedDependencies(path, manifest);
+});
 
 if (ranged.length > 0) {
   log.warn('dependencies.not_pinned', { count: ranged.length, ranged });

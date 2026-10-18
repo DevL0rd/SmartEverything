@@ -2,10 +2,10 @@ import { leastTrustedOrigin, type PluginOrigin, type WakeAiAction } from '@smart
 import type { Logger } from '@smarteverything/logging';
 import type { ActionOrigin } from '../automations/actions';
 import type { Cancel, Clock } from '../clock';
-import { describeError } from '../commands/executor';
 import type { Store } from '../store/store';
 import { wakeRefusal, type WakeRefusalStore } from './wake-refusal';
 import { WakeText, type WakeLines, type WakeNameStore } from './wake-text';
+import { failureLine } from '@smarteverything/logging';
 
 export const WAKE_GATHER_MS = 1000;
 
@@ -17,7 +17,7 @@ export interface WakeTurnInput {
   readonly plugin: PluginOrigin | null;
 }
 
-export interface WakeTurns {
+interface WakeTurns {
   readonly run: (input: WakeTurnInput) => { readonly chatId: string };
 }
 
@@ -28,7 +28,7 @@ export interface WakeRunnerOptions {
   readonly log: Logger;
 }
 
-export class WakeRefusedError extends Error {
+class WakeRefusedError extends Error {
   override readonly name = 'WakeRefusedError';
 }
 
@@ -88,7 +88,15 @@ export class WakeRunner {
       return Promise.reject(new WakeRefusedError(refusal.reason));
     }
     return new Promise((resolve, reject) => {
-      this.batchFor(action, origin).items.push({
+      const batch = this.batchFor(action, origin);
+      this.options.log.debug('wake.gathering', {
+        automationId: origin.automationId,
+        profileId: action.profileId,
+        chatId: action.chatId,
+        batched: batch.items.length + 1,
+        textChars: lines.text.length,
+      });
+      batch.items.push({
         action,
         origin,
         lines,
@@ -104,6 +112,7 @@ export class WakeRunner {
   }
 
   stop(): void {
+    this.options.log.info('wake.stopping', { batches: this.batches.size });
     for (const batch of this.batches.values()) {
       batch.cancel();
       for (const item of batch.items) {
@@ -139,6 +148,11 @@ export class WakeRunner {
     if (batch === undefined) {
       return;
     }
+    this.options.log.info('wake.flushing', {
+      profileId: batch.profileId,
+      chatId: batch.chatId,
+      items: batch.items.length,
+    });
     try {
       const { chatId } = this.options.turns.run({
         profileId: batch.profileId,
@@ -147,9 +161,14 @@ export class WakeRunner {
         text: batch.items.map((item) => item.lines.text).join('\n\n'),
         plugin: leastTrustedOrigin(batch.items.flatMap((item) => item.origin.plugin ?? [])),
       });
+      this.options.log.info('wake.turn_started', {
+        profileId: batch.profileId,
+        chatId,
+        items: batch.items.length,
+      });
       this.settleAll(batch, { state: 'woke', reason: null, chatId }, null);
     } catch (cause) {
-      const reason = describeError(cause);
+      const reason = failureLine(cause);
       this.options.log.error('wake.turn_failed', cause, { chatId: batch.chatId });
       this.settleAll(batch, { state: 'failed', reason, chatId: batch.chatId }, new Error(reason));
     }

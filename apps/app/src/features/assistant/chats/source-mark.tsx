@@ -9,16 +9,21 @@ import { useRow } from '../../../store/selectors';
 import { pluginIcon } from '../../plugins';
 import type { ChatSource, ChatSourceKind } from '../model/chat-source';
 
-export type SourceMarkSize = 20 | 28 | 40;
+export type SourceMarkSize = 20 | 28 | 32 | 40;
 
-const GLYPH_SIZE: Readonly<Record<SourceMarkSize, 16 | 20>> = { 20: 16, 28: 16, 40: 20 };
+const GLYPH_SIZE: Readonly<Record<SourceMarkSize, 16 | 20>> = { 20: 16, 28: 16, 32: 16, 40: 20 };
 
 interface DiscLook {
   readonly icon: IconName;
   readonly fill: string;
 }
 
-const BOX: Readonly<Record<SourceMarkSize, string>> = { 20: 'size-5', 28: 'size-7', 40: 'size-10' };
+const BOX: Readonly<Record<SourceMarkSize, string>> = {
+  20: 'size-5',
+  28: 'size-7',
+  32: 'size-8',
+  40: 'size-10',
+};
 
 const DISC: Readonly<Record<Exclude<ChatSourceKind, 'app' | 'branch' | 'plugin'>, DiscLook>> = {
   call: { icon: 'phone', fill: 'bg-positive' },

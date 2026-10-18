@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import { Keyboard, type View } from 'react-native';
-import { ValueStore, useValue } from '../design/external-store';
+import { ValueStore, useSelected } from '../design/external-store';
+
+const LAYOUT_SETTLE_MS = 80;
 
 export type ObstacleEdge = 'bottom' | 'start';
 
@@ -30,6 +32,14 @@ const obstacles = new ValueStore<ReadonlyMap<string, Obstacle>>(new Map());
 
 function put(key: string, obstacle: Obstacle | null): void {
   obstacles.update((current) => {
+    const held = current.get(key) ?? null;
+    if (
+      obstacle === null
+        ? held === null
+        : held?.edge === obstacle.edge && sameFrame(held.frame, obstacle.frame)
+    ) {
+      return current;
+    }
     const next = new Map(current);
     if (obstacle === null) {
       next.delete(key);
@@ -55,6 +65,7 @@ export function useMeasuredFrame(onFrame: (frame: Frame | null) => void): Measur
   const reported = useRef<Frame | null>(null);
   const live = useRef(false);
   const handler = useRef(onFrame);
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const measure = useCallback((): void => {
     node.current?.measureInWindow((x, y, width, height) => {
       const next = { x, y, width, height };
@@ -64,6 +75,13 @@ export function useMeasuredFrame(onFrame: (frame: Frame | null) => void): Measur
       }
     });
   }, []);
+  const settled = useCallback((): void => {
+    if (settle.current !== null) clearTimeout(settle.current);
+    settle.current = setTimeout(() => {
+      settle.current = null;
+      measure();
+    }, LAYOUT_SETTLE_MS);
+  }, [measure]);
   useEffect(() => {
     handler.current = onFrame;
     live.current = true;
@@ -71,6 +89,8 @@ export function useMeasuredFrame(onFrame: (frame: Frame | null) => void): Measur
     measure();
     return (): void => {
       live.current = false;
+      if (settle.current !== null) clearTimeout(settle.current);
+      settle.current = null;
       onFrame(null);
     };
   }, [onFrame, measure]);
@@ -83,7 +103,7 @@ export function useMeasuredFrame(onFrame: (frame: Frame | null) => void): Measur
     },
     [measure],
   );
-  return useMemo(() => ({ attach, onLayout: measure }), [attach, measure]);
+  return useMemo(() => ({ attach, onLayout: settled }), [attach, settled]);
 }
 
 export function useToastObstacle(edge: ObstacleEdge, active = true): MeasuredView {
@@ -127,9 +147,11 @@ function roomOf(host: Frame, list: readonly Obstacle[]): ToastRoom {
 }
 
 export function useToastRoom(host: Frame | null): ToastRoom {
-  const current = useValue(obstacles);
-  if (host === null) {
-    return { bottom: null, start: null };
-  }
-  return roomOf(host, [...current.values()]);
+  const bottom = useSelected(obstacles, (current) =>
+    host === null ? null : roomOf(host, [...current.values()]).bottom,
+  );
+  const start = useSelected(obstacles, (current) =>
+    host === null ? null : roomOf(host, [...current.values()]).start,
+  );
+  return { bottom, start };
 }

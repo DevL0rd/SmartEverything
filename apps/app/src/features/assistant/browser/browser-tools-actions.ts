@@ -12,8 +12,10 @@ import {
   PREVIEW_CAPTURE,
   type PreviewDiagnostics,
   type PreviewDiagnosticsSnapshot,
+  type PreviewDocument,
   type PreviewSupport,
 } from './browser-diagnostics-contract';
+import { background } from '@smarteverything/logging';
 export type PreviewTool = 'capture' | 'clear-cache' | 'clear-cookies' | 'clear-storage';
 const COMPLETION: Readonly<Record<PreviewTool, string>> = {
   capture: 'Preview captured',
@@ -44,11 +46,6 @@ async function perform(
   const current = controller.read().console;
   if (current.kind === 'unavailable') throw new PreviewToolUnavailableError(current.reason);
   const expected = Object.freeze({ documentId: current.documentId, epoch: current.epoch });
-  await waitForBrowserMenuClose(menuOwner);
-  await waitForPreviewLayout(controller, expected);
-  const ready = controller.read().console;
-  if (ready.kind === 'unavailable') throw new PreviewToolUnavailableError(ready.reason);
-  requirePreviewDocument(ready, expected);
   switch (tool) {
     case 'clear-cache':
       await controller.clearCache(expected);
@@ -60,9 +57,21 @@ async function perform(
       await controller.clearCookies(expected);
       return;
     case 'capture':
-      requirePreviewDocument(PREVIEW_CAPTURE.parse(await controller.capture(expected)), expected);
+      await capture(controller, expected, menuOwner);
       return;
   }
+}
+async function capture(
+  controller: PreviewDiagnostics,
+  expected: PreviewDocument,
+  menuOwner: symbol | null,
+): Promise<void> {
+  await waitForBrowserMenuClose(menuOwner);
+  await waitForPreviewLayout(controller, expected);
+  const ready = controller.read().console;
+  if (ready.kind === 'unavailable') throw new PreviewToolUnavailableError(ready.reason);
+  requirePreviewDocument(ready, expected);
+  requirePreviewDocument(PREVIEW_CAPTURE.parse(await controller.capture(expected)), expected);
 }
 interface BrowserToolsContext {
   readonly controller: PreviewDiagnostics;
@@ -95,18 +104,21 @@ export function useBrowserTools({
       return;
     }
     setPending(tool);
-    void perform(controller, tool, menuOwner)
-      .then(
-        () => {
-          notify({ message: COMPLETION[tool] });
-        },
-        (error: unknown) => {
-          notify({ message: 'Browser action could not finish', error, tone: 'critical' });
-        },
-      )
-      .finally(() => {
-        setPending(null);
-      });
+    background(
+      perform(controller, tool, menuOwner)
+        .then(
+          () => {
+            notify({ message: COMPLETION[tool] });
+          },
+          (error: unknown) => {
+            notify({ message: 'Browser action could not finish', error, tone: 'critical' });
+          },
+        )
+        .finally(() => {
+          setPending(null);
+        }),
+      'browser_tools_actions.perform_failed',
+    );
   };
   return {
     pending,

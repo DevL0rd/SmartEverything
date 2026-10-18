@@ -1,0 +1,285 @@
+diff --git a/lib/git-hooks.d.ts b/lib/git-hooks.d.ts
+deleted file mode 100644
+index 9d1fa2feed0ad005a11d40fc9a11fad38678f5a1..0000000000000000000000000000000000000000
+diff --git a/lib/git-hooks.js b/lib/git-hooks.js
+deleted file mode 100644
+index 8e23e9a6ec8d3bd8b6ae8e448494a07af1bdbffc..0000000000000000000000000000000000000000
+diff --git a/lib/index.d.ts b/lib/index.d.ts
+index 35311ced666da468dc52c68d42f0832c00bbe9f5..e0113ab1f1cdefc32e79c776fdc63c6729100e62 100644
+--- a/lib/index.d.ts
++++ b/lib/index.d.ts
+@@ -32,10 +32,6 @@ export { createWatcher, nodeWatch } from './watcher.ts';
+ export type { DegradeReason, WatchConfig, WatchHandle, WatchPrimitive, Watcher } from './watcher.ts';
+ export { decideWatch, readProcVersion } from './watch-policy.ts';
+ export type { WatchDecision, WatchPolicyInput } from './watch-policy.ts';
+-export { detectWorktree, execGit } from './worktree.ts';
+-export type { GitExec, WorktreeInfo } from './worktree.ts';
+-export { HOOK_MARKER_BEGIN, HOOK_MARKER_END, installGitHooks, uninstallGitHooks } from './git-hooks.ts';
+-export type { GitHooksOptions } from './git-hooks.ts';
+ /** Cordis plugin name for loader diagnostics. */
+ export declare const name = "codegraph-tree-sitter";
+ /** Services required by this plugin. */
+@@ -84,6 +80,7 @@ export interface Config {
+     maxFileBytes?: number;
+     /** The walk stops discovering new files once this many have been found (default 50000). */
+     maxFiles?: number;
++    maxDirectories?: number;
+     /** Files parsed concurrently (default 4). */
+     concurrency?: number;
+     /**
+diff --git a/lib/index.js b/lib/index.js
+index c0d44404c72654a4e718b9587b763fe0843771c5..eadbb58830a19abfaab0386bcca29a715b030c58 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -23,8 +23,6 @@ import { LANGUAGE_TABLE } from "./languages.js";
+ import { walkAndExtract } from "./walk.js";
+ import { resolveWorkspace } from "./resolve.js";
+ import { writeGraph } from "./schema.js";
+-import { createWatcher } from "./watcher.js";
+-import { decideWatch, readProcVersion } from "./watch-policy.js";
+ export { LANGUAGE_TABLE, languageFor } from "./languages.js";
+ export { extractFile } from "./extract.js";
+ export { loadGitignore, matchesGitignore, parseGitignore } from "./gitignore.js";
+@@ -33,8 +31,6 @@ export { SCHEMA_VERSION, writeGraph } from "./schema.js";
+ export { isExcluded, walkAndExtract } from "./walk.js";
+ export { createWatcher, nodeWatch } from "./watcher.js";
+ export { decideWatch, readProcVersion } from "./watch-policy.js";
+-export { detectWorktree, execGit } from "./worktree.js";
+-export { HOOK_MARKER_BEGIN, HOOK_MARKER_END, installGitHooks, uninstallGitHooks } from "./git-hooks.js";
+ /** Cordis plugin name for loader diagnostics. */
+ export const name = 'codegraph-tree-sitter';
+ /** Services required by this plugin. */
+@@ -66,6 +62,7 @@ export const Config = z.object({
+     respectGitignore: z.boolean().default(true),
+     maxFileBytes: z.number().default(DEFAULT_MAX_FILE_BYTES),
+     maxFiles: z.number().default(DEFAULT_MAX_FILES),
++    maxDirectories: z.number().default(10000),
+     concurrency: z.number().default(DEFAULT_CONCURRENCY),
+     watch: z.boolean().default(true),
+     watchDebounceMs: z.number().default(DEFAULT_WATCH_DEBOUNCE_MS),
+@@ -80,43 +77,10 @@ export function apply(ctx, config) {
+     const resolved = config;
+     assertPositiveInteger('maxFileBytes', resolved.maxFileBytes);
+     assertPositiveInteger('maxFiles', resolved.maxFiles);
++    assertPositiveInteger('maxDirectories', resolved.maxDirectories);
+     assertPositiveInteger('concurrency', resolved.concurrency);
+     assertPositiveInteger('watchDebounceMs', resolved.watchDebounceMs);
+     assertPositiveInteger('maxWatchedDirectories', resolved.maxWatchedDirectories);
+-    // Keyed by project root, private to this plugin instance: never registered on `ctx`, so there is no
+-    // cross-plugin relation here for an invariant to describe — just process-local bookkeeping this
+-    // effect's cleanup below tears down on unload.
+-    const watchers = new Map();
+-    /** Start (or leave running) file watching for `projectRoot`, once it has a baseline to refresh. */
+-    function ensureWatching(projectRoot) {
+-        if (watchers.has(projectRoot))
+-            return;
+-        const decision = decideWatch({
+-            configuredWatch: resolved.watch,
+-            root: projectRoot,
+-            env: process.env,
+-            platform: process.platform,
+-            procVersion: readProcVersion,
+-        });
+-        if (!decision.enabled)
+-            return;
+-        const watcher = createWatcher({
+-            root: projectRoot,
+-            exclude: resolved.exclude,
+-            respectGitignore: resolved.respectGitignore,
+-            debounceMs: resolved.watchDebounceMs,
+-            maxWatchedDirectories: resolved.maxWatchedDirectories,
+-            sync: () => runSync(projectRoot, resolved),
+-            // No diagnostics service is wired into this package's dependencies; this is the floor for
+-            // "degradation must be visible" until one is, per NOTES.local.md.
+-            onDegraded: (reason) => {
+-                console.error(`codegraph-tree-sitter: file watching for "${projectRoot}" stopped permanently (${reason.code}); ` +
+-                    'the index will no longer refresh on its own — run codegraph_index manually to update it.');
+-            },
+-        });
+-        watchers.set(projectRoot, watcher);
+-        watcher.start();
+-    }
+     const indexer = {
+         id: CodegraphIndexerId(resolved.indexerId),
+         async canIndex(projectRoot) {
+@@ -134,30 +98,10 @@ export function apply(ctx, config) {
+             const report = await runIndex(projectRoot, resolved, signal);
+             // Watching starts only after a successful index establishes the baseline it refreshes — never
+             // from a canIndex() probe or a failed run.
+-            ensureWatching(projectRoot);
+             return report;
+         },
+     };
+-    ctx.effect(function* () {
+-        yield () => {
+-            for (const watcher of watchers.values())
+-                watcher.stop();
+-            watchers.clear();
+-        };
+-        yield ctx.codegraph.registerIndexer(indexer);
+-    }, 'codegraph-tree-sitter');
+-}
+-/**
+- * Run one watch-triggered reindex. Always a full rebuild in this version — `runIndex` has no notion of
+- * a file subset — so the watcher's own collected paths are not consulted here.
+- * @param projectRoot - absolute path of the workspace to refresh.
+- * @param config - the resolved plugin configuration.
+- * @returns how many files the rebuild indexed, and how long it took.
+- */
+-async function runSync(projectRoot, config) {
+-    const startedAt = Date.now();
+-    const report = await runIndex(projectRoot, config);
+-    return { filesChanged: report.filesIndexed, durationMs: Date.now() - startedAt };
++    ctx.codegraph.registerIndexer(indexer);
+ }
+ /**
+  * One indexing run: walk, parse, resolve, and write.
+@@ -172,6 +116,7 @@ async function runIndex(projectRoot, config, signal) {
+         respectGitignore: config.respectGitignore,
+         maxFileBytes: config.maxFileBytes,
+         maxFiles: config.maxFiles,
++        maxDirectories: config.maxDirectories,
+         concurrency: config.concurrency,
+         languages: config.languages,
+     }, signal);
+@@ -180,7 +125,7 @@ async function runIndex(projectRoot, config, signal) {
+     const graph = resolveWorkspace(files, indexedAt);
+     signal?.throwIfAborted();
+     const databasePath = join(projectRoot, DATABASE_RELATIVE_PATH);
+-    await writeGraph(databasePath, { files, nodes: graph.nodes, edges: graph.edges, unresolved: graph.unresolved, indexedAt });
++    await writeGraph(databasePath, { files, nodes: graph.nodes, edges: graph.edges, unresolved: graph.unresolved, indexedAt }, signal);
+     const languageCounts = new Map();
+     for (const file of files)
+         languageCounts.set(file.language, (languageCounts.get(file.language) ?? 0) + 1);
+diff --git a/lib/invariant.d.ts b/lib/invariant.d.ts
+deleted file mode 100644
+index 2e3421e45ff21e0a7ebecab298527c062b379ff2..0000000000000000000000000000000000000000
+diff --git a/lib/invariant.js b/lib/invariant.js
+deleted file mode 100644
+index 6d7ef33701a6dc268360d3d8f84583b48735dc30..0000000000000000000000000000000000000000
+diff --git a/lib/schema.d.ts b/lib/schema.d.ts
+index f3a1ef4bd2b86df66f2d0f1a296c889bb95219b8..9bddbae148a43d4de519f506eafdbf873c16d2f7 100644
+--- a/lib/schema.d.ts
++++ b/lib/schema.d.ts
+@@ -31,5 +31,5 @@ export interface WriteInput {
+  * @param databasePath - absolute path of the `.codegraph/codegraph.db` file to (re)create.
+  * @param input - the run's resolved graph and per-file metadata.
+  */
+-export declare function writeGraph(databasePath: string, input: WriteInput): Promise<void>;
++export declare function writeGraph(databasePath: string, input: WriteInput, signal?: AbortSignal): Promise<void>;
+ //# sourceMappingURL=schema.d.ts.map
+\ No newline at end of file
+diff --git a/lib/schema.js b/lib/schema.js
+index d8ff2c163a37890407cf7644d5d3beaa4fc4b0e8..70d1360ff8690295435dd3458817e09a99ab1e62 100644
+--- a/lib/schema.js
++++ b/lib/schema.js
+@@ -61,7 +61,8 @@ async function removeGraphFiles(path) {
+  * @param databasePath - absolute path of the `.codegraph/codegraph.db` file to (re)create.
+  * @param input - the run's resolved graph and per-file metadata.
+  */
+-export async function writeGraph(databasePath, input) {
++export async function writeGraph(databasePath, input, signal) {
++    signal?.throwIfAborted();
+     await mkdir(dirname(databasePath), { recursive: true });
+     const tempPath = `${databasePath}.tmp-${process.pid}-${randomUUID()}`;
+     // Defensive: a previous run that crashed mid-write may have left this exact temp name behind.
+@@ -116,9 +117,16 @@ export async function writeGraph(databasePath, input) {
+     }
+     // The old file's sidecars, if any, describe the graph being replaced, not the new one; clear them
+     // before the rename so the new file never inherits a stale WAL/SHM pair.
+-    await rm(`${databasePath}-wal`, { force: true });
+-    await rm(`${databasePath}-shm`, { force: true });
+-    await rename(tempPath, databasePath);
++    try {
++        signal?.throwIfAborted();
++        await rm(`${databasePath}-wal`, { force: true });
++        await rm(`${databasePath}-shm`, { force: true });
++        signal?.throwIfAborted();
++        await rename(tempPath, databasePath);
++    } catch (cause) {
++        await removeGraphFiles(tempPath);
++        throw cause;
++    }
+     // rename() only moves the main file; the temp name's own sidecars (should the driver have left any)
+     // never travel with it and would otherwise linger under the temp name forever.
+     await removeGraphFiles(tempPath);
+diff --git a/lib/walk.js b/lib/walk.js
+index 77059eb298e554bf9cab783c6768d98b935aeef6..49000baacd0be008e7cf4114da4fc65524806723 100644
+--- a/lib/walk.js
++++ b/lib/walk.js
+@@ -40,10 +40,14 @@ async function discover(projectRoot, config, signal) {
+     const gitignoreRules = config.respectGitignore ? await loadGitignore(projectRoot) : [];
+     const candidates = [];
+     let overflow = 0;
++    let directories = 0;
+     async function scan(relativeDir) {
+         signal?.throwIfAborted();
++        directories += 1;
++        if (directories > config.maxDirectories) throw new Error('Codegraph directory scan limit exceeded.');
+         const entries = await readdir(posix.join(projectRoot, relativeDir), { withFileTypes: true });
+         for (const entry of entries) {
++            signal?.throwIfAborted();
+             const relativePath = relativeDir === '' ? entry.name : `${relativeDir}/${entry.name}`;
+             if (isExcluded(entry.name, relativePath, entry.isDirectory(), excluded, gitignoreRules))
+                 continue;
+@@ -87,7 +91,8 @@ async function parseCandidate(candidate, config, signal) {
+          * null only when the parser has none. */
+         if (tree === null)
+             return undefined;
+-        const extraction = extractFile(tree, spec);
++        let extraction;
++        try { extraction = extractFile(tree, spec); } finally { tree.delete(); }
+         return {
+             path: candidate.path,
+             language: spec.language,
+@@ -120,7 +125,9 @@ async function mapWithConcurrency(items, concurrency, task) {
+             results[index] = await task(item);
+         }
+     }
+-    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
++    const resultsSettled = await Promise.allSettled(Array.from({ length: Math.min(concurrency, items.length) }, worker));
++    const failure = resultsSettled.find(result => result.status === 'rejected');
++    if (failure !== undefined) throw failure.reason;
+     return results;
+ }
+ /**
+diff --git a/lib/worktree.d.ts b/lib/worktree.d.ts
+deleted file mode 100644
+index 075da234ac480386169419630966f2cb6036bf2c..0000000000000000000000000000000000000000
+diff --git a/lib/worktree.js b/lib/worktree.js
+deleted file mode 100644
+index 6e1c25e6298964bb5c8dfd79a26e227e74a26f96..0000000000000000000000000000000000000000
+diff --git a/package.json b/package.json
+index fb82ff7c442af3db780654b60c9fa9f2d2b04420..c685a0e6ffaa3f5685cf3ca9dec4cb97af5444e2 100644
+--- a/package.json
++++ b/package.json
+@@ -33,11 +33,11 @@
+       "types": "./lib/index.d.ts",
+       "default": "./lib/index.js"
+     },
+-    "./invariant": {
+-      "types": "./lib/invariant.d.ts",
+-      "default": "./lib/invariant.js"
+-    },
+-    "./package.json": "./package.json"
++    "./package.json": "./package.json",
++    "./grammar": {
++      "types": "./lib/grammar.d.ts",
++      "default": "./lib/grammar.js"
++    }
+   },
+   "files": [
+     "lib/**/*.js",
+@@ -54,11 +54,6 @@
+     "dsh-plugin-codegraph-service": "^0.1.6"
+   },
+   "peerDependencies": {
+-    "@deepseek-ai/cordis": ">=4.0.1",
+-    "@deepseek-ai/dsh-invariants": ">=0.1.0-rc.6"
+-  },
+-  "devDependencies": {
+-    "@deepseek-ai/cordis": "^4.0.1",
+-    "@deepseek-ai/dsh-invariants": "0.1.0-rc.6"
++    "@deepseek-ai/cordis": ">=4.0.1"
+   }
+ }

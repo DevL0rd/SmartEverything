@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { StoreConflictError, jsonText } from '../sql';
+import { PersonAccessRepository, insertPersonAccess } from './person-access';
 
 const STORED_PROFILE = storedRow(PROFILE_ROW, { json: ['fitness_goals'] });
 
@@ -20,7 +21,11 @@ const COLUMNS =
 const POSITION = z.object({ next: z.number() });
 
 export class ProfilesRepository {
-  constructor(private readonly context: StoreContext) {}
+  private readonly access: PersonAccessRepository;
+
+  constructor(private readonly context: StoreContext) {
+    this.access = new PersonAccessRepository(context);
+  }
 
   list(): ProfileRow[] {
     return this.context.sql.all(
@@ -80,6 +85,7 @@ export class ProfilesRepository {
           now,
         },
       );
+      insertPersonAccess(this.context, id, 'member', 'adult');
       const row = this.byId(id);
       this.context.changed('profiles', 'INSERT', row, null);
       return row;
@@ -87,7 +93,12 @@ export class ProfilesRepository {
   }
 
   update(id: string, change: ProfileChange): ProfileRow {
-    return this.change(id, { ...change });
+    return this.context.write(() => {
+      if (typeof change.scale_user === 'number') {
+        this.releaseScaleUser(id, change.scale_user);
+      }
+      return this.change(id, { ...change });
+    });
   }
 
   updateFitness(id: string, change: FitnessSettingsChange): ProfileRow {
@@ -103,20 +114,26 @@ export class ProfilesRepository {
 
   learnScaleUser(id: string, scaleUser: number): void {
     this.context.write(() => {
-      const holders = this.list().filter(
-        (profile) => profile.scale_user === scaleUser && profile.id !== id,
-      );
-      for (const holder of holders) {
-        this.change(holder.id, { scale_user: null });
-      }
-      if (holders.length === 0 && this.byId(id).scale_user !== scaleUser) {
+      const released = this.releaseScaleUser(id, scaleUser);
+      if (released === 0 && this.byId(id).scale_user !== scaleUser) {
         this.change(id, { scale_user: scaleUser });
       }
     });
   }
 
+  private releaseScaleUser(id: string, scaleUser: number): number {
+    const holders = this.list().filter(
+      (profile) => profile.scale_user === scaleUser && profile.id !== id,
+    );
+    for (const holder of holders) {
+      this.change(holder.id, { scale_user: null });
+    }
+    return holders.length;
+  }
+
   assertRemovable(id: string): void {
     this.byId(id);
+    this.access.assertNotLastOwner(id);
     if (this.list().every((profile) => profile.id === id))
       throw new StoreConflictError('remove the profile', 'the home needs at least one profile');
   }
@@ -135,9 +152,9 @@ export class ProfilesRepository {
         );
       const before = this.byId(id);
       const rest = this.list().filter((profile) => profile.id !== id);
-      const [heir] = rest;
+      const heir = rest.find((profile) => this.access.find(profile.id)?.role === 'owner');
       if (heir === undefined) {
-        throw new StoreConflictError('remove the profile', 'the home needs at least one profile');
+        throw new StoreConflictError('remove the profile', 'the home needs at least one owner');
       }
       this.context.sql.run(
         'move the apps to another profile',

@@ -1,4 +1,5 @@
 import type { WakeSensitivity } from '@smarteverything/domain';
+import { systemClock } from '../../../../clock';
 import type { PluginVoice } from '../../../plugin-voice';
 import type { PluginAssistant } from '../../contract';
 import type { Identity } from '../identity';
@@ -48,12 +49,14 @@ function hooksOf(deps: FactoryDeps, guildId: string, session: () => CallSession)
     captures: (userId): boolean =>
       userId !== identity.botId &&
       (settings.voice_transcribe === 'everyone' || policy.userAllowed(userId)),
-    mixes: (userId, pcm): boolean => live.mixes(session(), userId, pcm),
+    mixes: (userId, pcm): void => {
+      live.mixes(session(), userId, pcm);
+    },
     wakeable: (userId): boolean => live.wakeable(session(), userId),
     wakeSensitivity: (): WakeSensitivity => settings.voice_wake_sensitivity,
     wakeNames: (): string[] => policy.names(),
-    wake: (userId, phrase, words): void => {
-      live.wake(session(), roster.person(guildId, userId), phrase, words);
+    wake: (userId, phrase, words, onSuperseded): void => {
+      live.wake(session(), roster.person(guildId, userId), { phrase, words, onSuperseded });
     },
     heard: (line): void => {
       live.heard(session(), line);
@@ -88,7 +91,7 @@ export function buildSession(
     transcript,
     voice: deps.voice,
     language: deps.settings.voice_language,
-    now: deps.now,
+    clock: systemClock,
     ...(resumed === undefined ? {} : { lines: resumed.lines }),
     hooks: hooksOf(deps, guildId, () => session),
   });

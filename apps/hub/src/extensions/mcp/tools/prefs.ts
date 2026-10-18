@@ -70,6 +70,8 @@ const PREFERENCE_OPERATIONS: Readonly<Record<ClientPrefKey, PreferenceOperations
   ai_models: operations(CLIENT_PREFS.ai_models),
   ai_speech: operations(CLIENT_PREFS.ai_speech),
   region: operations(CLIENT_PREFS.region),
+  device_alerts: operations(CLIENT_PREFS.device_alerts),
+  shared_clipboard: operations(CLIENT_PREFS.shared_clipboard),
 };
 export function readPref(context: ToolContext, key: ClientPrefKey, as: ActingAs): Promise<unknown> {
   return PREFERENCE_OPERATIONS[key].read(context, as);

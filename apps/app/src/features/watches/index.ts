@@ -8,3 +8,4 @@ export { WatchHero } from './watch-hero';
 export { STRESS_WIDGET } from './stress-widget';
 export { WATCH_WORKOUT_WIDGET } from './watch-workout-widget';
 export { useStartWorkout } from './watch-workout-start';
+export { WatchCard } from './watch-card';

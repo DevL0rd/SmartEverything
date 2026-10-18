@@ -1,19 +1,13 @@
-import {
-  DEFAULT_ENGINE,
-  NO_PRICES,
-  type AiEffort,
-  type AiModelRow,
-  type AiUsageRow,
-  type UsageEntry,
-} from '@smarteverything/domain';
+import { DEFAULT_ENGINE, NO_PRICES, type AiModelRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory, type ChatOwner } from '../../src/assistant/chat-directory';
 import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../src/assistant/files';
 import { ChatTitles } from '../../src/assistant/titles/chat-titles';
 import { cleanTitle } from '../../src/assistant/titles/title-text';
-import type { ChatChunk, ChatRequest } from '../../src/openrouter/chat-types';
-import { TurnAccumulator } from '../../src/openrouter/turn';
+import type { SideParts } from '../../src/assistant/side-completion';
+import type { ChatRequest } from '../../src/openrouter/chat-types';
+import type { OrChunk } from '../../src/openrouter/wire';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -48,40 +42,56 @@ function model(id: string): AiModelRow {
   };
 }
 
+async function* answer(text: string): AsyncGenerator<OrChunk> {
+  await Promise.resolve();
+  if (broken) throw new Error('The connection dropped.');
+  yield {
+    id: 'gen-1',
+    model: 'google/gemini-3.5-flash-lite',
+    choices: [{ delta: { content: text }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 40, completion_tokens: 6, cost: 0.00012 },
+  };
+}
+
+function parts(): SideParts {
+  return {
+    client: {
+      chat: (request): AsyncGenerator<OrChunk> => {
+        requests.push(request);
+        return answer(replies.shift() ?? '');
+      },
+    },
+    catalogue: {
+      rows: () => rows,
+      effortFor: () => null,
+      onChange: (listener) => {
+        listeners.push(listener);
+        return () => {
+          listeners = listeners.filter((entry) => entry !== listener);
+        };
+      },
+    },
+  };
+}
+
 let opened: TestStore;
 let chats: ChatDirectory;
 let owner: ChatOwner;
 let replies: string[];
 let requests: ChatRequest[];
-let entries: UsageEntry[];
 let rows: AiModelRow[];
-let broken: boolean;
 let listeners: (() => void)[];
+let broken: boolean;
 let titles: ChatTitles;
 let logs: CapturedLogs;
-
-async function* answer(text: string): AsyncIterable<ChatChunk> {
-  await Promise.resolve();
-  yield {
-    type: 'start',
-    generationId: 'gen-1',
-    model: 'google/gemini-3.5-flash-lite',
-  };
-  if (broken) {
-    throw new Error('The connection dropped.');
-  }
-  yield { type: 'text', text };
-  yield { type: 'finish', reason: 'stop' };
-}
 
 beforeEach(async () => {
   logs = captureLogs();
   replies = [];
   requests = [];
-  entries = [];
+  rows = [model('google/gemini-3.5-flash-lite')];
   listeners = [];
   broken = false;
-  rows = [model('google/gemini-3.5-flash'), model('google/gemini-3.5-flash-lite')];
   opened = await testStore(() => new Date(MOMENT));
   const { store } = opened;
   const client = store.clients.create(
@@ -104,34 +114,7 @@ beforeEach(async () => {
     }),
     now,
   );
-  titles = new ChatTitles({
-    store,
-    client: {
-      chat: (request): AsyncIterable<ChatChunk> => {
-        requests.push(request);
-        return answer(replies.shift() ?? '');
-      },
-    },
-    catalogue: {
-      rows: (): readonly AiModelRow[] => rows,
-      effortFor: (): AiEffort | null => null,
-      onChange: (listener): (() => void) => {
-        listeners.push(listener);
-        return (): void => {
-          listeners = listeners.filter((other) => other !== listener);
-        };
-      },
-    },
-    newTurn: () => new TurnAccumulator(),
-    ledger: {
-      record: (entry): AiUsageRow => {
-        entries.push(entry);
-        return store.ledger.record(entry);
-      },
-    },
-    now,
-    log: testLogger('assistant'),
-  });
+  titles = new ChatTitles({ store, ...parts(), now, log: testLogger('assistant') });
 });
 
 afterEach(async () => {
@@ -173,17 +156,35 @@ async function settled(): Promise<void> {
 }
 
 describe('chat titles', () => {
-  it('names a new chat from its first exchange and records the cost', async () => {
+  it('names a new chat from its first exchange', async () => {
     const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
     replies.push('"Planning the garden lights 🌙."');
     titles.afterReply(exchange(chat.id, 'Turn on the garden lights at dusk'), 'Done.', true);
     await settled();
     expect(opened.store.aiChats.chat(chat.id).title).toBe('Planning the garden lights');
     expect(opened.store.aiChats.titleAuto(chat.id)).toBe(false);
-    expect(requests[0]?.model).toBe('google/gemini-3.5-flash-lite');
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.chat_id).toBe(chat.id);
-    expect(entries[0]?.work).toBe('chat');
+    expect(requests).toHaveLength(1);
+    expect(JSON.stringify(requests[0]?.messages)).toContain('Turn on the garden lights at dusk');
+  });
+
+  it('records the title request in the usage ledger against the chat', async () => {
+    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    replies.push('Garden lights');
+    titles.afterReply(exchange(chat.id, 'Turn on the garden lights'), 'Done.', true);
+    await settled();
+    const usage = opened.store.ledger.pendingGenerations();
+    expect(usage).toHaveLength(1);
+    expect(usage[0]).toMatchObject({
+      chat_id: chat.id,
+      source: 'openrouter',
+      work: 'chat',
+      model_id: 'google/gemini-3.5-flash-lite',
+      generation_id: 'gen-1',
+      tokens_in: 40,
+      tokens_out: 6,
+      cost_micros: 120,
+      cost_state: 'reported',
+    });
   });
 
   it('never renames a chat the person named or renamed', async () => {
@@ -200,7 +201,7 @@ describe('chat titles', () => {
     expect(opened.store.aiChats.chat(renamed.id).title).toBe('My list');
   });
 
-  it('keeps the default title when the model has no usable answer or no model exists', async () => {
+  it('keeps the default title when the answer is unusable or there is no small model yet', async () => {
     const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
     replies.push('  🌙 ');
     titles.afterReply(exchange(chat.id, 'Hi'), 'Hello', true);
@@ -214,20 +215,13 @@ describe('chat titles', () => {
     expect(logs.events().filter((event) => event === 'assistant.title_failed')).toHaveLength(2);
   });
 
-  it('records a call that broke off as an estimated cost to reconcile', async () => {
+  it('keeps the default title and logs when the completion fails', async () => {
     const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
     broken = true;
     titles.afterReply(exchange(chat.id, 'Hi'), 'Hello', true);
     await settled();
-    expect(entries).toEqual([
-      expect.objectContaining({
-        generation_id: 'gen-1',
-        cost_micros: 0,
-        cost_state: 'estimated',
-        chat_id: chat.id,
-      }),
-    ]);
     expect(opened.store.aiChats.titleAuto(chat.id)).toBe(true);
+    expect(logs.events().filter((event) => event === 'assistant.title_failed')).toHaveLength(1);
   });
 
   it('skips failed replies and voice tasks, and names call chats from the transcript', async () => {
@@ -242,42 +236,78 @@ describe('chat titles', () => {
     expect(opened.store.aiChats.chat(chat.id).title).toBe('Kitchen timer for pasta');
   });
 
-  it('backfills once, after the model list loads', async () => {
+  it('backfills the untitled chats once', async () => {
     const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
-    titles.afterReply(exchange(chat.id, 'Water the plants'), 'Will do', false);
-    opened.store.assistantChat.addMessage({
-      profile_id: chat.profile_id,
-      client_id: null,
-      role: 'responder',
-      kind: 'text',
-      author: 'Coordinator',
-      text: 'Will do',
-      attachments: [],
-      state: 'answered',
-      reason: null,
-      steps: [],
-      step_states: [],
-      reply_to: null,
-      chat_id: chat.id,
-      origin: null,
-      embeds: [],
-      cost_micros: 0,
-      model: null,
-    });
-    rows = [];
-    titles.backfill();
-    expect(listeners).toHaveLength(1);
-    rows = [model('google/gemini-3.5-flash-lite')];
+    for (const [role, text] of [
+      ['person', 'Water the plants'],
+      ['responder', 'Will do'],
+    ] as const) {
+      opened.store.assistantChat.addMessage({
+        profile_id: chat.profile_id,
+        client_id: null,
+        role,
+        kind: 'text',
+        author: role === 'person' ? 'Sam' : 'Coordinator',
+        text,
+        attachments: [],
+        state: 'answered',
+        reason: null,
+        steps: [],
+        step_states: [],
+        reply_to: null,
+        chat_id: chat.id,
+        origin: null,
+        embeds: [],
+        cost_micros: 0,
+        model: null,
+      });
+    }
     replies.push('Watering the plants');
-    listeners.forEach((listener) => {
-      listener();
-    });
+    titles.backfill();
     await settled();
-    expect(listeners).toHaveLength(0);
     expect(opened.store.aiChats.chat(chat.id).title).toBe('Watering the plants');
     titles.backfill();
     await settled();
     expect(requests).toHaveLength(1);
+  });
+});
+
+describe('title backfill', () => {
+  it('waits for the small model to appear in the model list before naming old chats', async () => {
+    const chat = chats.create(owner, { engine: DEFAULT_ENGINE });
+    for (const [role, text] of [
+      ['person', 'Water the plants'],
+      ['responder', 'Will do'],
+    ] as const) {
+      opened.store.assistantChat.addMessage({
+        profile_id: chat.profile_id,
+        client_id: null,
+        role,
+        kind: 'text',
+        author: role === 'person' ? 'Sam' : 'Coordinator',
+        text,
+        attachments: [],
+        state: 'answered',
+        reason: null,
+        steps: [],
+        step_states: [],
+        reply_to: null,
+        chat_id: chat.id,
+        origin: null,
+        embeds: [],
+        cost_micros: 0,
+        model: null,
+      });
+    }
+    rows = [];
+    replies.push('Watering the plants');
+    titles.backfill();
+    await settled();
+    expect(requests).toHaveLength(0);
+    rows = [model('google/gemini-3.5-flash-lite')];
+    for (const listener of listeners) listener();
+    await settled();
+    expect(opened.store.aiChats.chat(chat.id).title).toBe('Watering the plants');
   });
 });
 

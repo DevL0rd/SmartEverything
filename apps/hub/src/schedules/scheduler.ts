@@ -10,6 +10,7 @@ import type { Store } from '../store/store';
 import { stepLineOf } from './book';
 import { finalStateOf, missedRun, resultOf, withResults } from './results';
 import type { StepRunner } from './steps';
+import { background } from '@smarteverything/logging';
 
 const DAY_MS = 86_400_000;
 
@@ -46,7 +47,7 @@ export class Scheduler {
   start(): void {
     this.purge();
     for (const row of this.options.store.schedules.interrupted()) {
-      void this.resume(row);
+      background(this.resume(row), 'scheduler.resume_failed');
     }
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
       if (change.table === 'scheduled_actions') {
@@ -138,7 +139,7 @@ export class Scheduler {
     this.purge();
     const now = this.options.clock.now();
     for (const row of this.options.store.schedules.due(now.toISOString())) {
-      void this.begin(row, now);
+      background(this.begin(row, now), 'scheduler.begin_failed');
     }
     this.arm();
   }

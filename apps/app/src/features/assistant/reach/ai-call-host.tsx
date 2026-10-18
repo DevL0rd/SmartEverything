@@ -16,7 +16,8 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { notify } from '../../../components/toast-store';
 import { desktopBridge } from '../../../design/platform';
-import { useSession } from '../../../store/selectors';
+import type { StoreState } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
 import { useSizeClass } from '../../../design/size-class';
 import { useRingTone } from '../../cameras';
 import { useAssistantName } from '../data/assistant-data';
@@ -24,10 +25,14 @@ import { declineOutreach, useOutreach, useRefreshOutreach } from './reach-data';
 
 const log = new Logger('app.reach-ring');
 
+const selectClientId = (state: StoreState): string | null => state.session?.client.id ?? null;
+
 function useRinging(): AiOutreachRow | null {
   const rows = useOutreach().data ?? [];
-  const own = useSession().client.id;
-  return rows.find((row) => row.state === 'ringing' && row.clients.includes(own)) ?? null;
+  const own = useStoreSelector(selectClientId);
+  return (
+    rows.find((row) => row.state === 'ringing' && own !== null && row.clients.includes(own)) ?? null
+  );
 }
 
 function callOf(

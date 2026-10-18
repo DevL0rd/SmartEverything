@@ -13,7 +13,7 @@ import { Text } from '../../../components/text';
 import type { useBrowserTabs } from '../browser/browser-tab-events';
 import { HarnessBrowser } from '../provider/harness-browser';
 
-export function BrowserPanel({
+function BrowserPanel({
   chat,
   onClose,
   docked,

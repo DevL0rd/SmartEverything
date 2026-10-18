@@ -8,6 +8,7 @@ import {
   type VoiceReceiver,
 } from '@discordjs/voice';
 import type { DaveTrouble, VoiceClosing } from './link';
+import { messageOf } from '@smarteverything/logging';
 
 const PASSTHROUGH_SECONDS = 30;
 const REARM_MS = 5000;
@@ -47,16 +48,12 @@ export interface DaveOutlets {
   readonly giveUp: (reason: VoiceClosing, cause: unknown) => void;
 }
 
-function describe(cause: unknown): string {
-  return cause instanceof Error ? cause.message : 'unknown DAVE failure';
-}
-
 function closed(stream: AudioReceiveStream): Promise<unknown> {
   return stream.closed ? Promise.resolve() : once(stream, 'close');
 }
 
 function isDecryptFailure(cause: unknown): boolean {
-  return describe(cause).includes(DECRYPT_ERROR);
+  return messageOf(cause).includes(DECRYPT_ERROR);
 }
 
 export class DaveGuard {
@@ -143,7 +140,7 @@ export class DaveGuard {
           throw cause;
         }
         this.arm();
-        this.report('decrypt', describe(cause), 'resubscribed');
+        this.report('decrypt', messageOf(cause), 'resubscribed');
         await closed(stream);
       }
     }
@@ -192,10 +189,10 @@ export class DaveGuard {
   private encryptFailed(cause: unknown): void {
     this.encryptFailures += 1;
     if (this.encryptFailures === 1) {
-      this.report('encrypt', describe(cause), 'dropped');
+      this.report('encrypt', messageOf(cause), 'dropped');
     }
     if (this.encryptFailures === ENCRYPT_FAILURE_LIMIT) {
-      this.report('encrypt', describe(cause), 'ended');
+      this.report('encrypt', messageOf(cause), 'ended');
       this.outlets.giveUp('closed', cause);
     }
   }
@@ -207,7 +204,7 @@ export class DaveGuard {
       session?.setPassthroughMode(true, PASSTHROUGH_SECONDS);
       session?.setPassthroughMode(false, PASSTHROUGH_SECONDS);
     } catch (cause) {
-      this.report('session', describe(cause), 'dropped');
+      this.report('session', messageOf(cause), 'dropped');
     }
   }
 

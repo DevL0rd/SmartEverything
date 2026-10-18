@@ -1,6 +1,6 @@
 import type { PluginManifestInput } from '@smarteverything/domain';
 import { ANIMATIONS, USABLE_ACTIONS } from './catalogue';
-import { DEFAULT_PERSONALITY, SCOPES } from './settings';
+import { DEFAULT_PERSONALITY } from './settings';
 
 type Form = NonNullable<NonNullable<PluginManifestInput['contributes']>['settings']>;
 
@@ -11,13 +11,9 @@ const MODE_OPTIONS = [
 
 const RESTART_NOTE = 'Changing it restarts the plugin and ends a conversation in progress.';
 
-const PORT_NOTE = `The plugin may only open the standard port; another number is refused when the plugin starts. ${RESTART_NOTE}`;
-
 const NAME_ITEM = { pattern: '[a-z][a-z0-9_]*', maxLength: 80 } as const;
 
 const ANIMATION_ITEM = { pattern: null, maxLength: 120 } as const;
-
-const SCOPE_ITEM = { pattern: '[a-z.]+', maxLength: 20 } as const;
 
 export const AIBI_SETTINGS_FORM: Form = {
   owner_name: {
@@ -100,18 +96,6 @@ export const AIBI_SETTINGS_FORM: Form = {
     live: true,
     group: 'Body',
   },
-  scopes: {
-    type: 'list',
-    title: 'What the assistant may do with AIBI',
-    description:
-      'aibi.read looks at AIBI, aibi.speak lets it talk, aibi.act lets it move, memory.write lets it forget.',
-    item: SCOPE_ITEM,
-    maxItems: SCOPES.length,
-    default: [...SCOPES],
-    humanOnly: true,
-    live: true,
-    group: 'Body',
-  },
   lan_address: {
     type: 'string',
     title: 'This computer’s address for AIBI',
@@ -133,36 +117,6 @@ export const AIBI_SETTINGS_FORM: Form = {
     title: 'DNS server for everything else',
     description: `Address of a DNS server, with an optional :port. ${RESTART_NOTE}`,
     default: '1.1.1.1',
-    humanOnly: true,
-    group: 'Network',
-  },
-  http_port: {
-    type: 'number',
-    title: 'HTTP port',
-    description: `AIBI downloads its speech here. ${PORT_NOTE}`,
-    minimum: 1,
-    maximum: 65_535,
-    default: 80,
-    humanOnly: true,
-    group: 'Network',
-  },
-  https_port: {
-    type: 'number',
-    title: 'HTTPS port',
-    description: `AIBI’s requests arrive here. ${PORT_NOTE}`,
-    minimum: 1,
-    maximum: 65_535,
-    default: 443,
-    humanOnly: true,
-    group: 'Network',
-  },
-  dns_port: {
-    type: 'number',
-    title: 'DNS port',
-    description: PORT_NOTE,
-    minimum: 1,
-    maximum: 65_535,
-    default: 53,
     humanOnly: true,
     group: 'Network',
   },

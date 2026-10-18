@@ -5,14 +5,15 @@ import type {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  ViewToken,
 } from 'react-native';
+import type { ViewableChange, ViewableToken } from '../../../components/virtual-list-visibility';
 import {
   finishedStreaming,
   shouldFollowContent,
   stuckAfterScroll,
   type ScrollSample,
 } from './thread-stick';
+import { ValueStore } from '../../../design/external-store';
 import { count } from '../../../perf/probe-kit';
 import { useTimeout } from './use-timeout';
 
@@ -44,15 +45,12 @@ interface Pin {
 
 const NO_PIN: Pin = { key: null, mode: 'idle' };
 
-const WINDOW_SIZE = 7;
-
-const WINDOW_SIZE_MAX = 21;
+export const WINDOW_SIZE = 7;
 
 export interface ThreadScroll {
-  readonly windowSize: number;
   readonly away: boolean;
   readonly pinned: boolean;
-  readonly active: boolean;
+  readonly activity: ValueStore<boolean>;
   readonly anchor: string | null;
   readonly onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   readonly onContentSizeChange: (width: number, height: number) => void;
@@ -72,12 +70,10 @@ type Fit = 'unmeasured' | 'short' | 'roomy';
 interface Size {
   viewport: number;
   height: number;
-  tallest: number;
 }
 
 interface Geometry {
   readonly fit: Fit;
-  readonly windowSize: number;
   readonly size: RefObject<Size>;
   readonly onViewportLayout: (event: LayoutChangeEvent) => void;
   readonly onNewestLayout: (event: LayoutChangeEvent) => void;
@@ -90,31 +86,21 @@ function fitOf(size: Size): Fit {
   return size.height > size.viewport - PIN_MARGIN_PX ? 'roomy' : 'short';
 }
 
-function windowSizeOf(size: Size): number {
-  if (size.viewport === 0) {
-    return WINDOW_SIZE;
-  }
-  return Math.min(WINDOW_SIZE_MAX, Math.ceil((WINDOW_SIZE * size.tallest) / size.viewport));
-}
-
 function useGeometry(): Geometry {
-  const size = useRef<Size>({ viewport: 0, height: 0, tallest: 0 });
+  const size = useRef<Size>({ viewport: 0, height: 0 });
   const [fit, setFit] = useState<Fit>('unmeasured');
-  const [windowSize, setWindowSize] = useState(WINDOW_SIZE);
   const onViewportLayout = useCallback((event: LayoutChangeEvent): void => {
     count('lay.view');
     const next = event.nativeEvent.layout.height;
     size.current.viewport = next;
-    size.current.tallest = Math.max(size.current.tallest, next);
     setFit(fitOf(size.current));
-    setWindowSize(windowSizeOf(size.current));
   }, []);
   const onNewestLayout = useCallback((event: LayoutChangeEvent): void => {
     count('lay.newest');
     size.current.height = event.nativeEvent.layout.height;
     setFit(fitOf(size.current));
   }, []);
-  return { fit, windowSize, size, onViewportLayout, onNewestLayout };
+  return { fit, size, onViewportLayout, onNewestLayout };
 }
 
 function usePin(
@@ -214,7 +200,7 @@ function useStick(
     onContentSizeChange: (_width, next): void => {
       const follow = shouldFollowContent(stuck.current, height.current, next);
       height.current = next;
-      if (follow) {
+      if (follow && sample.current?.offset !== 0) {
         list.current?.scrollToOffset({ offset: 0, animated: false });
       }
     },
@@ -228,17 +214,16 @@ export function useThreadScroll(
   const key = newest?.key ?? null;
   const [away, setAway] = useState(false);
   const geometry = useGeometry();
-  const [active, setActive] = useState(false);
+  const [activity] = useState(() => new ValueStore(false));
   const [anchor, setAnchor] = useState<string | null>(null);
   const quiet = useTimeout();
   const pin = usePin(list, newest, { fit: geometry.fit, size: geometry.size, away });
   const stick = useStick(list, newest, pin.release);
   useFollowOwn(list, newest, { release: pin.release, stick: stick.stick });
   return {
-    windowSize: geometry.windowSize,
     away,
     pinned: pin.pinned,
-    active,
+    activity,
     anchor,
     onContentSizeChange: stick.onContentSizeChange,
     onScroll: (event): void => {
@@ -251,9 +236,9 @@ export function useThreadScroll(
         setAnchor(newest?.key ?? null);
       }
       setAway(nowAway);
-      setActive(true);
+      activity.set(true);
       quiet.start(CHIP_MS, () => {
-        setActive(false);
+        activity.set(false);
       });
       pin.observe(nowAway);
     },
@@ -311,12 +296,8 @@ export function useIndexScroller(list: RefObject<FlatList | null>): IndexScrolle
   };
 }
 
-interface ViewableChange {
-  readonly viewableItems: readonly ViewToken[];
-}
-
 function topKeyOf(change: ViewableChange): string | null {
-  let top: ViewToken | null = null;
+  let top: ViewableToken | null = null;
   for (const token of change.viewableItems) {
     if (
       token.isViewable &&
@@ -329,13 +310,20 @@ function topKeyOf(change: ViewableChange): string | null {
   return top?.key ?? null;
 }
 
-export function useTopKey(): {
-  readonly topKey: string | null;
+export interface TopKey {
+  readonly store: ValueStore<string | null>;
   readonly onViewableItemsChanged: (change: ViewableChange) => void;
-} {
-  const [topKey, setTopKey] = useState<string | null>(null);
-  const [onViewableItemsChanged] = useState(() => (change: ViewableChange): void => {
-    setTopKey(topKeyOf(change));
+}
+
+export function useTopKey(): TopKey {
+  const [topKey] = useState<TopKey>(() => {
+    const store = new ValueStore<string | null>(null);
+    return {
+      store,
+      onViewableItemsChanged: (change): void => {
+        store.set(topKeyOf(change));
+      },
+    };
   });
-  return { topKey, onViewableItemsChanged };
+  return topKey;
 }

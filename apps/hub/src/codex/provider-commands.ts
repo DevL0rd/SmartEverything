@@ -27,6 +27,7 @@ import { codexCommandEvent } from './command-events';
 import { CodexProviderSkills } from './provider-skills';
 import { codexSkillDescriptor } from './skill-catalogue';
 import { SKILLS_CHANGED } from './skills-protocol';
+import { messageOf } from '@smarteverything/logging';
 export { CODEX_COMMAND_REVISION } from './provider-skills';
 export const CODEX_CAPABILITY_REVISION = 'codex-app-server-0.162.1-r2';
 export const CODEX_SKILLS_CAPABILITY_REVISION = 'codex-app-server-0.162.1-skills-r3';
@@ -235,8 +236,7 @@ export class CodexProviderCommands {
         await job.client.request('thread/compact/start', { threadId: job.threadId }),
       );
     } catch (cause) {
-      const text =
-        cause instanceof Error ? cause.message.slice(0, 2000) : 'Codex compaction failed.';
+      const text = messageOf(cause).slice(0, 2000);
       if (submitted && job !== null) {
         if (cause instanceof CodexRuntimeError && !cause.uncertain) job.rejected(text);
         else job.lost(text);

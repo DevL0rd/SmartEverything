@@ -22,6 +22,7 @@ import type { Budget } from '../ledger/budget';
 import type { OwnerAlerts } from '../extensions/owner-alerts';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
 import { followBudget, startAssistantVoice } from '../assistant-voice/start';
+import { RoomMedia } from '../reach/room-media';
 import { homeCameras } from '../assistant-voice/home-cameras';
 import { Reconciler } from '../ledger/reconciler';
 import type { ClaudeService } from '../claude/service';
@@ -34,7 +35,7 @@ import { codexLocalFactory } from './codex-wiring';
 import { startReach, type StartedReach } from './reach-wiring';
 import { contextOf, statusOf } from './build-context';
 import { extensionRoutes, routeTable, startExtensions } from './build-routes';
-import { PluginSpeakers } from '../plugins/plugin-reach';
+import { PluginSpeakers } from '../plugins/plugin-speakers';
 import { startTranscribing, type Transcribing } from './transcribing';
 import { wirePlugins, type Plugins } from './plugin-wiring';
 import type { ToolHub } from '../ai-tools/tool-hub';
@@ -51,6 +52,7 @@ export interface BuildOptions {
   readonly secrets: SecretStore;
   readonly core: Core;
   readonly dataDirectory: string;
+  readonly wakeDiagnostics?: boolean;
   readonly codex?: {
     readonly executable?: string;
     readonly controlSocket?: string;
@@ -199,6 +201,12 @@ function voiceOf(options: BuildOptions, context: ServerContext, tools: ToolHub):
     prices: context.openRouter.catalogue,
     openCalls: context.openCalls,
     cameras: homeCameras({ store: options.store, video: context.talk.camera.video }),
+    roomMedia: new RoomMedia({
+      store: options.store,
+      enabled: () => options.store.assistantChat.settings().voice.pause_media_while_speaking,
+      submit: options.core.hub.submit,
+      log: options.log.forArea('hub.room-media'),
+    }),
     now: options.clock.now,
     assistant: context.assistant,
     log: options.log.forArea('hub.voice'),
@@ -229,6 +237,14 @@ function reconcilerOf(options: BuildOptions, context: ServerContext): Reconciler
   });
 }
 
+function startClocks(context: ServerContext): void {
+  context.access.lifecycle.start();
+  context.weather.start();
+  context.exchangeRates.start();
+  context.openRouter.start();
+  context.harness.skillUpdates.start();
+}
+
 function stopServing(served: Serving): void {
   served.reconciler.stop();
   served.budget.stop();
@@ -248,17 +264,14 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
   await context.preview.gateway.start();
   await context.talk.start();
   context.assistant.start();
-  const operations = new Operations(context.log);
+  const operations = new Operations(context.log, context.store);
   const extensions = await startExtensions(options, context, operations);
   const served = serve(options, context, operations, extensions);
-  const harness = await startHubHarness(options, context, served.tools, operations);
+  const harness = await startHubHarness(options, context, served.tools);
   if (harness !== null) context.assistant.attachHarness(context.harness, harness);
   const { http, secure, cameraSockets, voice, schedules } = served;
   const unsubscribe = followNetworkSettings(options, context);
-  context.weather.start();
-  context.exchangeRates.start();
-  context.openRouter.start();
-  context.harness.skillUpdates.start();
+  startClocks(context);
   const unfollowLive = subscribeLive(options, live);
   return {
     http,
@@ -277,6 +290,7 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
       context.weather.stop();
       context.exchangeRates.stop();
       stopComputersAndServing(context, served);
+      await served.claude.settled();
       context.openRouter.stop();
       cameraSockets.stop();
       schedules.scheduler.stop();
@@ -319,17 +333,22 @@ function rawRoutesOf(
   ];
 }
 function stopComputersAndServing(context: ServerContext, served: Serving): void {
+  context.access.lifecycle.stop();
   context.harnessSockets.stop();
   context.nodeSockets.stop();
   context.computerAi.stop();
+  context.machineApprovals.stop();
   stopServing(served);
 }
 
 function attachBudget(context: ServerContext, budget: Budget): void {
   bindMeteredBudget(context.store, budget.gate);
   context.assistant.coordination.attachGate(budget.gate);
-  context.imageRuntime.bindSpend((background): void => {
-    budget.gate.check('image', background ? { background: true } : undefined);
+  context.imageRuntime.bindSpend((spend): void => {
+    budget.gate.check('image', {
+      profileId: spend.profileId,
+      ...(spend.background ? { background: true as const } : {}),
+    });
   });
 }
 

@@ -1,6 +1,6 @@
+import { systemClock } from '../src/clock';
 import { readFileSync } from 'node:fs';
 import {
-  NO_PRICES,
   TALK_NEW_CHANNEL,
   type AiUsageRow,
   type TalkChannelRow,
@@ -17,16 +17,20 @@ import { TalkListening, type Listener, type TalkHeard } from '../src/talk/talk-l
 import { talkContext, talkWakeText } from '../src/talk/talk-wake-text';
 import type { PacketSink, TalkEndpoint } from '../src/talk/transmission';
 import { Transmissions } from '../src/talk/transmissions';
-import { Transcriber, type TranscriptionInput } from '../src/transcripts/transcriber';
-import type { EarOptions } from '../src/wake-name/ear';
-import { WakeClaims, STAND_DOWN_GRACE_MS } from '../src/wake-name/wake-claims';
+import type {
+  TranscriptionAnswer,
+  TranscriptionInput,
+  TranscriptionProvider,
+} from '../src/openrouter/transcription';
+import type { Superseded, WakeClaim } from '../src/wake-name/wake-claims';
+import { Transcriber } from '../src/transcripts/transcriber';
+import type { EarOptions, SpeechSegment } from '../src/wake-name/ear';
 import { FakeClock } from './support/fake-clock';
 import { testLogger } from './support/logs';
 import { testStore, type TestStore } from './support/store';
 
 const START = '2026-10-08T10:00:00.000Z';
 const FRAME_48K = 960;
-const PRICING = { ...NO_PRICES, input_per_mtok: 1, output_per_mtok: 2, audio_in_per_mtok: 3 };
 
 function voice(): Int16Array {
   const bytes = readFileSync(new URL('assistant/fixtures/hw_us1.pcm', import.meta.url));
@@ -53,16 +57,14 @@ function settled(): Promise<void> {
   });
 }
 
-class FakeProvider {
+class FakeProvider implements TranscriptionProvider {
   readonly inputs: TranscriptionInput[] = [];
 
-  transcribe(
-    input: TranscriptionInput,
-  ): Promise<{ text: string; usage: { promptTokenCount: number } }> {
+  transcribe(input: TranscriptionInput): Promise<TranscriptionAnswer> {
     this.inputs.push(input);
     return Promise.resolve({
       text: ' hey jarvis turn on the lights ',
-      usage: { promptTokenCount: 100 },
+      usage: { seconds: 3, input_tokens: 100, cost: 0.001 },
     });
   }
 }
@@ -82,6 +84,7 @@ let channel: TalkChannelRow;
 let keyPresent: boolean;
 let ownerClient: string;
 let listening: TalkListening;
+let clock: FakeClock;
 const speaker: TalkSpeaker = {
   kind: 'client',
   id: crypto.randomUUID(),
@@ -110,7 +113,28 @@ function startMessage(row: TalkChannelRow): string {
   return id;
 }
 
-async function speak(sink: PacketSink): Promise<void> {
+function segment(startedAt: number, pcm: Int16Array = voice()): SpeechSegment {
+  return { startedAt, endedAt: startedAt + pcm.length / 16, pcm };
+}
+
+const WAV_HEADER_BYTES = 44;
+
+function wavBytes(samples: number): number {
+  return WAV_HEADER_BYTES + samples * 2;
+}
+
+function tone(samples: number): Int16Array {
+  return Int16Array.from({ length: samples }, (_, index) => Math.round(8000 * Math.sin(index / 5)));
+}
+
+async function speak(
+  sink: PacketSink,
+  segments: readonly SpeechSegment[] = [segment(0)],
+): Promise<void> {
+  await settled();
+  segments.forEach((spoken) => {
+    ears[0]?.options.speech?.(spoken);
+  });
   opusPackets(voice()).forEach((packet) => {
     sink.packet(packet);
   });
@@ -132,7 +156,7 @@ beforeEach(async () => {
   test.store.ledger.on((row): void => {
     booked.push(row);
   });
-  const clock = new FakeClock(START);
+  clock = new FakeClock(START);
   listening = new TalkListening({
     store: test.store,
     ears: {
@@ -153,13 +177,12 @@ beforeEach(async () => {
     transcriber: new Transcriber({
       provider,
       ledger: test.store.ledger,
-      prices: { priceOf: (): typeof PRICING => PRICING },
       log: testLogger('transcriber'),
     }),
     budget: { capReached: (): boolean => false },
     names: (): string[] => ['Jarvis'],
     keyPresent: (): boolean => keyPresent,
-    now: clock.now,
+    clock,
     heard: (message): void => {
       heard.push(message);
     },
@@ -221,7 +244,11 @@ describe('the name heard on a walkie-talkie channel', () => {
     const sink = listening.open(channel, messageId, speaker);
     await settled();
     expect(ears[0]?.options.claim).toEqual({ source: 'talk', key: channel.id });
-    ears[0]?.options.wake?.('hey jarvis', () => new Int16Array());
+    ears[0]?.options.wake?.(
+      'hey jarvis',
+      () => new Int16Array(),
+      () => undefined,
+    );
     await speak(sink);
     expect(ears[0]?.closed).toBe(true);
     expect(heard).toHaveLength(1);
@@ -230,6 +257,81 @@ describe('the name heard on a walkie-talkie channel', () => {
       phrase: 'hey jarvis',
       transcript: 'hey jarvis turn on the lights',
     });
+  });
+
+  it('sends the pieces of one message with short pauses as one transcription', async () => {
+    const messageId = startMessage(channel);
+    const first = segment(0, tone(16_000));
+    const second = segment(first.endedAt + 300, tone(16_000));
+    const lastWord = segment(second.endedAt + 300, tone(4800));
+    await speak(listening.open(channel, messageId, speaker), [first, second, lastWord]);
+    expect(provider.inputs).toHaveLength(1);
+    const seams = 2 * 4000;
+    expect(provider.inputs[0]?.data.length).toBe(
+      wavBytes(first.pcm.length + second.pcm.length + lastWord.pcm.length + seams),
+    );
+    expect(test.store.talk.message(messageId).transcript).toBe('hey jarvis turn on the lights');
+  });
+
+  it('keeps a short last word that is too short to be heard alone', async () => {
+    const messageId = startMessage(channel);
+    const first = segment(0, tone(24_000));
+    const word = segment(first.endedAt + 300, tone(4800));
+    await speak(listening.open(channel, messageId, speaker), [first, word]);
+    expect(provider.inputs).toHaveLength(1);
+    expect(provider.inputs[0]?.data.length).toBe(wavBytes(24_000 + 4000 + 4800));
+  });
+
+  it('transcribes pieces far apart separately and joins their texts in order', async () => {
+    const messageId = startMessage(channel);
+    const first = segment(0);
+    const second = segment(first.endedAt + 5000);
+    await speak(listening.open(channel, messageId, speaker), [first, second]);
+    expect(provider.inputs).toHaveLength(2);
+    expect(test.store.talk.message(messageId).transcript).toBe(
+      'hey jarvis turn on the lights hey jarvis turn on the lights',
+    );
+  });
+
+  it('does not run the turn of a wake that was superseded', async () => {
+    const sink = listening.open(channel, startMessage(channel), speaker);
+    await settled();
+    const stops: Superseded[] = [];
+    ears[0]?.options.wake?.(
+      'hey jarvis',
+      () => new Int16Array(),
+      (registered) => {
+        stops.push(registered);
+      },
+    );
+    const winner: WakeClaim = { source: 'voice_call', key: 'guild', snippetDbfs: -10 };
+    stops.forEach((stop) => {
+      stop(winner);
+    });
+    await speak(sink);
+    expect(heard).toHaveLength(0);
+  });
+
+  it('hands a late stop to the turn so its pending reply can be dropped', async () => {
+    const sink = listening.open(channel, startMessage(channel), speaker);
+    await settled();
+    const stops: Superseded[] = [];
+    ears[0]?.options.wake?.(
+      'hey jarvis',
+      () => new Int16Array(),
+      (registered) => {
+        stops.push(registered);
+      },
+    );
+    await speak(sink);
+    const dropped: string[] = [];
+    heard[0]?.onSuperseded((winner) => {
+      dropped.push(winner.source);
+    });
+    stops.forEach((stop) => {
+      stop({ source: 'voice_call', key: 'guild', snippetDbfs: -10 });
+    });
+    expect(dropped).toEqual(['voice_call']);
   });
 
   it('does not wake the AI when the name was not heard', async () => {
@@ -265,55 +367,6 @@ describe('the name heard on a walkie-talkie channel', () => {
   });
 });
 
-describe('wake priority', () => {
-  let clock: FakeClock;
-  let claims: WakeClaims;
-
-  beforeEach(() => {
-    clock = new FakeClock(START);
-    claims = new WakeClaims({ clock, log: testLogger('claims') });
-  });
-
-  function lateIso(ms: number): string {
-    return new Date(Date.parse(START) + ms).toISOString();
-  }
-
-  it('lets a camera wake when nobody else claimed the wake', async () => {
-    const result = claims.request({ source: 'camera', key: 'cam' });
-    clock.advanceTo(lateIso(STAND_DOWN_GRACE_MS));
-    expect(await result).toBe(true);
-  });
-
-  it('makes a camera stand down when the name was heard on a walkie-talkie channel', async () => {
-    expect(await claims.request({ source: 'talk', key: 'channel' })).toBe(true);
-    const camera = claims.request({ source: 'camera', key: 'cam' });
-    clock.advanceTo(lateIso(STAND_DOWN_GRACE_MS));
-    expect(await camera).toBe(false);
-  });
-
-  it('makes a camera stand down when the same name was heard in a Discord voice call', async () => {
-    expect(await claims.request({ source: 'voice_call', key: 'discord:person' })).toBe(true);
-    const camera = claims.request({ source: 'camera', key: 'cam' });
-    clock.advanceTo(lateIso(STAND_DOWN_GRACE_MS));
-    expect(await camera).toBe(false);
-  });
-
-  it('makes a camera that heard first stand down for a claim that arrives within the grace', async () => {
-    const camera = claims.request({ source: 'camera', key: 'cam' });
-    expect(await claims.request({ source: 'talk', key: 'channel' })).toBe(true);
-    clock.advanceTo(lateIso(STAND_DOWN_GRACE_MS));
-    expect(await camera).toBe(false);
-  });
-
-  it('lets the camera wake again once the claim has run out', async () => {
-    expect(await claims.request({ source: 'talk', key: 'channel' })).toBe(true);
-    clock.advanceTo(lateIso(60_000));
-    const camera = claims.request({ source: 'camera', key: 'cam' });
-    clock.advanceTo(lateIso(60_000 + STAND_DOWN_GRACE_MS));
-    expect(await camera).toBe(true);
-  });
-});
-
 describe('which messages the AI listens to', () => {
   function transmissions(): Transmissions {
     const membership = new TalkMembership(test.store);
@@ -332,6 +385,7 @@ describe('which messages the AI listens to', () => {
         go2rtc: { play: (): Promise<void> => Promise.resolve() },
         feeds: new TalkFeeds(log),
         ready,
+        clock: systemClock,
         log,
       }),
       microphones: new CameraMicrophones({ rtspPort: 0, ready, log }),

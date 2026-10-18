@@ -1,34 +1,36 @@
 import { ipcRenderer } from 'electron';
-import { HUB_CONNECTION_METADATA, DESKTOP_COMPUTER_IDENTITY } from '@smarteverything/domain';
 import {
-  NATIVE_HUB_ROUTE_CONFIGURATION,
-  NATIVE_HUB_ROUTE_SNAPSHOT,
+  DESKTOP_COMPUTER_IDENTITY,
+  DESKTOP_SERVER,
+  HUB_PAIRING_INSPECTION,
+  HUB_PAIRING_INSPECTION_ID,
+  HUB_PAIRING_OBSERVATION,
   NATIVE_HUB_DISCOVERY,
   NATIVE_HUB_NETWORK_CHANGE,
   NATIVE_HUB_REQUEST,
-  NATIVE_HUB_RESOURCE_OPEN,
   NATIVE_HUB_RESOURCE,
-  NATIVE_HUB_RESOURCE_ID,
   NATIVE_HUB_RESOURCE_DOWNLOAD,
   NATIVE_HUB_RESOURCE_DOWNLOAD_RESULT,
+  NATIVE_HUB_RESOURCE_ID,
+  NATIVE_HUB_RESOURCE_OPEN,
   NATIVE_HUB_RESPONSE,
+  NATIVE_HUB_ROUTE_CONFIGURATION,
+  NATIVE_HUB_ROUTE_SNAPSHOT,
   NATIVE_HUB_SOCKET_EVENT,
   NATIVE_HUB_SOCKET_OPEN,
   NATIVE_HUB_SOCKET_SEND,
   NATIVE_HUB_TRUST,
+  type DesktopComputerIdentity,
+  type DesktopServer,
+  type HubPairingNetwork,
   type NativeHubNetwork,
-  type NativeHubResourceOpen,
   type NativeHubResourceDownload,
   type NativeHubResourceDownloadResult,
+  type NativeHubResourceOpen,
   type NativeHubRouteAuthority,
-} from '../../../../packages/domain/src/hub-native';
-import type { DesktopComputerIdentity, DesktopServer } from '@smarteverything/domain';
-import {
-  HUB_PAIRING_INSPECTION,
-  HUB_PAIRING_INSPECTION_ID,
-  HUB_PAIRING_OBSERVATION,
-  type HubPairingNetwork,
-} from '../../../../packages/domain/src/hub-pairing';
+} from '@smarteverything/domain';
+import { readHubCapabilities } from './capabilities.js';
+
 function subscribe(channel: string, forward: (value: unknown) => void): () => void {
   const receive = (_event: unknown, value: unknown): void => {
     forward(value);
@@ -38,22 +40,7 @@ function subscribe(channel: string, forward: (value: unknown) => void): () => vo
     ipcRenderer.removeListener(channel, receive);
   };
 }
-const authoritySupported: unknown = ipcRenderer.sendSync('desktop:hub-authority-supported');
-const resourceSupported: unknown = ipcRenderer.sendSync('desktop:hub-resource-supported');
-const capabilities = {
-  http: true,
-  websocket: true,
-  media: false,
-  routeAuthority: authoritySupported === true,
-  background: authoritySupported === true,
-  image: resourceSupported === true,
-  httpMedia: resourceSupported === true,
-  mse: false,
-  html: false,
-  download: resourceSupported === true,
-  guest: false,
-  pairingInspection: true,
-};
+const capabilities = readHubCapabilities(process.argv);
 const routeAuthority: NativeHubRouteAuthority = {
   configure: async (value) =>
     NATIVE_HUB_ROUTE_SNAPSHOT.parse(
@@ -90,7 +77,7 @@ export const hubNetwork: NativeHubNetwork & HubPairingNetwork = {
       HUB_PAIRING_INSPECTION_ID.parse(requestId),
     );
   },
-  ...(resourceSupported === true
+  ...(capabilities.httpMedia === true
     ? {
         openResource: async (value: NativeHubResourceOpen) =>
           NATIVE_HUB_RESOURCE.parse(
@@ -117,7 +104,7 @@ export const hubNetwork: NativeHubNetwork & HubPairingNetwork = {
         },
       }
     : {}),
-  ...(authoritySupported === true ? { routeAuthority } : {}),
+  ...(capabilities.routeAuthority === true ? { routeAuthority } : {}),
   configureTrust: async (trust) => {
     await ipcRenderer.invoke('desktop:hub-configure-trust', NATIVE_HUB_TRUST.parse(trust));
   },
@@ -160,24 +147,8 @@ export const hubNetwork: NativeHubNetwork & HubPairingNetwork = {
       listener(NATIVE_HUB_SOCKET_EVENT.parse(value));
     }),
 };
-export async function server(): Promise<DesktopServer> {
-  const value: unknown = await ipcRenderer.invoke('desktop:server');
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    !('url' in value) ||
-    !('token' in value) ||
-    typeof value.url !== 'string' ||
-    typeof value.token !== 'string'
-  )
-    throw new Error('desktop:server answers a URL and token');
-  return {
-    url: value.url,
-    token: value.token,
-    ...('connection' in value && value.connection !== undefined
-      ? { connection: HUB_CONNECTION_METADATA.parse(value.connection) }
-      : {}),
-  };
+export async function server(): Promise<DesktopServer | null> {
+  return DESKTOP_SERVER.nullable().parse(await ipcRenderer.invoke('desktop:server'));
 }
 
 export async function computerIdentity(): Promise<DesktopComputerIdentity> {
